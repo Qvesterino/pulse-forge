@@ -26,6 +26,7 @@ import { clamp } from "../shared/ids";
 import { DragNumber, Slider } from "./controls";
 import { cursorsAt, usePublishCursor, useRemoteCursors } from "./remoteCursors";
 import { getLastPlayActivity } from "./playActivity";
+import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { SequencerCheatSheet } from "./SequencerCheatSheet";
 import type { RemoteCursor } from "../collab/CollaborationProvider";
 
@@ -80,7 +81,27 @@ const OVERSCAN = 5;
    the CSS: .sequencer-row / .sequencer-ruler label track and the grid gap. */
 const COL_GAP = 4;
 const COL_OVERSCAN = 6;
-const STEPS_LABEL_PX = 168;
+/** Label column width — MUST mirror --steps-label in styles.css: the row
+ *  grid, the playhead offset and this windowing math all share one value. */
+const NARROW_QUERY = "(max-width: 760px)";
+function currentStepsLabelPx(): number {
+  if (typeof window === "undefined" || !window.matchMedia) return 168;
+  return window.matchMedia(NARROW_QUERY).matches ? 112 : 168;
+}
+
+/** Reactive label width: re-windows the step grid when the layout breakpoint
+ *  flips (resize across 760px, device rotation). */
+function useStepsLabelPx(): number {
+  const [px, setPx] = useState(currentStepsLabelPx);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = () => setPx(currentStepsLabelPx());
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return px;
+}
 
 function buildFlatItems(tracks: Track[]): FlatItem[] {
   const items: FlatItem[] = [];
@@ -486,6 +507,7 @@ export function Sequencer({
   const hZoomRef = useRef(1);
   hZoomRef.current = hZoom;
   const effMinCol = Math.max(8, Math.round(STEP_MIN_PX * hZoom));
+  const stepsLabel = useStepsLabelPx();
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -512,10 +534,10 @@ export function Sequencer({
       const rect = ruler.getBoundingClientRect();
       const contentX = clientX - rect.left + scroller.scrollLeft;
       const stride = effMinCol + COL_GAP;
-      const step = Math.floor((contentX - (STEPS_LABEL_PX + COL_GAP)) / stride);
+      const step = Math.floor((contentX - (stepsLabel + COL_GAP)) / stride);
       return Math.max(0, Math.min(pattern.stepCount - 1, step));
     },
-    [effMinCol, pattern.stepCount],
+    [effMinCol, pattern.stepCount, stepsLabel],
   );
   const onRulerPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
@@ -584,27 +606,27 @@ export function Sequencer({
   const colWindow = useMemo<{ from: number; to: number } | null>(() => {
     const stepCount = pattern.stepCount;
     if (hView.width <= 0) return null;
-    const avail = hView.width - STEPS_LABEL_PX - COL_GAP;
+    const avail = hView.width - stepsLabel - COL_GAP;
     if (avail <= 0) return null;
     const minTotal = stepCount * effMinCol + (stepCount - 1) * COL_GAP;
     if (minTotal <= avail) return null;
     const stride = effMinCol + COL_GAP;
-    const stepsStart = STEPS_LABEL_PX + COL_GAP;
+    const stepsStart = stepsLabel + COL_GAP;
     const from = Math.max(0, Math.floor((hView.left - stepsStart) / stride) - COL_OVERSCAN);
     const to = Math.min(stepCount, Math.ceil((hView.left + hView.width - stepsStart) / stride) + COL_OVERSCAN);
     if (from <= 0 && to >= stepCount) return null;
     return { from, to };
-  }, [hView, pattern.stepCount, effMinCol]);
+  }, [hView, pattern.stepCount, effMinCol, stepsLabel]);
 
   /** Pixel width of the steps area at the real column size — anchors the
    * continuous playhead, which must sweep the content, not the viewport. */
   const stepsPx = useMemo(() => {
     const stepCount = pattern.stepCount;
-    const avail = Math.max(0, hView.width - STEPS_LABEL_PX - COL_GAP);
+    const avail = Math.max(0, hView.width - stepsLabel - COL_GAP);
     const minTotal = stepCount * effMinCol + (stepCount - 1) * COL_GAP;
     const colW = avail === 0 || minTotal > avail ? effMinCol : (avail - (stepCount - 1) * COL_GAP) / stepCount;
     return Math.round(stepCount * colW + (stepCount - 1) * COL_GAP);
-  }, [hView.width, pattern.stepCount, effMinCol]);
+  }, [hView.width, pattern.stepCount, effMinCol, stepsLabel]);
 
   // Ctrl+wheel zoom: the step under the cursor stays anchored — content X
   // scales by the stride ratio, then the scroll offset compensates.
@@ -739,6 +761,50 @@ export function Sequencer({
             }
           >
             CLEAR LOCKS
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Randomize velocities of the selected active steps (silence stays silent)"
+            onClick={() => {
+              const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
+              for (const padId of stepSelection.padIds) {
+                const row = pattern.rows[padId] ?? [];
+                for (let s = stepSelection.from; s <= stepSelection.to; s++) {
+                  const v = row[s] ?? 0;
+                  if (v > 0) entries.push({ padId, stepIndex: s, velocity: v });
+                }
+              }
+              if (entries.length === 0) return;
+              const next = randomizeVelocities(entries.map((e) => e.velocity));
+              services.store.execute(
+                setStepsVelocity(doc, pattern.id, entries.map((e, i) => ({ ...e, velocity: next[i] }))),
+              );
+            }}
+          >
+            RND VEL
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Humanize — nudge selected step velocities ±12% so the groove breathes"
+            onClick={() => {
+              const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
+              for (const padId of stepSelection.padIds) {
+                const row = pattern.rows[padId] ?? [];
+                for (let s = stepSelection.from; s <= stepSelection.to; s++) {
+                  const v = row[s] ?? 0;
+                  if (v > 0) entries.push({ padId, stepIndex: s, velocity: v });
+                }
+              }
+              if (entries.length === 0) return;
+              const next = humanizeVelocities(entries.map((e) => e.velocity));
+              services.store.execute(
+                setStepsVelocity(doc, pattern.id, entries.map((e, i) => ({ ...e, velocity: next[i] }))),
+              );
+            }}
+          >
+            HUMAN
           </button>
           <button type="button" className="btn btn-small" onClick={() => onSelectSteps(null)}>
             ✕ CLEAR SEL

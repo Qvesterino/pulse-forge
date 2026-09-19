@@ -10,6 +10,25 @@ import { NoteRepeatController } from "../src/audio-engine/NoteRepeat";
 import { Transport } from "../src/transport/Transport";
 import type { Command } from "../src/commands/types";
 
+// Mock AudioContext shape that satisfies the surface `JamGate.tsx` and other
+// components read off `engine.context` / `engine.ensureContext()`. Production
+// `BaseAudioContext` is a wide interface (~30 properties); we expose only the
+// `state` + `resume` subset that tests actually touch, plus `currentTime` and
+// `decodeAudioData` for the few tests that load fixture audio.
+type MockAudioContext = Pick<AudioContext, "state" | "resume" | "currentTime" | "decodeAudioData">;
+const mockAudioContext = (state: AudioContextState = "suspended"): MockAudioContext => ({
+  state,
+  resume: vi.fn(async () => {}),
+  currentTime: 0,
+  decodeAudioData: vi.fn(async (_bytes) => ({
+    duration: 1,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    length: 44100,
+    getChannelData: () => new Float32Array(44100),
+  })) as unknown as AudioContext["decodeAudioData"],
+});
+
 export function mockServices(doc?: ProjectDocument): Services {
   const project = doc ?? createProjectFromTemplate("house");
   const listeners = new Set<() => void>();
@@ -24,7 +43,12 @@ export function mockServices(doc?: ProjectDocument): Services {
   return {
     core: {
       engine: {
-        ensureContext: vi.fn(),
+        // Returns a suspended MockAudioContext by default — the real
+        // `AudioEngine.ensureContext()` returns BaseAudioContext (or throws),
+        // so any test that calls it without an `if (ctx && ...)` guard used
+        // to crash with `TypeError: Cannot read properties of undefined`.
+        // The mock return closes the JamGate teardown unhandled rejection.
+        ensureContext: vi.fn(() => mockAudioContext()),
         panic: vi.fn(),
         automationReset: vi.fn(),
         transportStarted: vi.fn(),
@@ -133,7 +157,11 @@ export function mockServices(doc?: ProjectDocument): Services {
       },
     } as any,
     engine: {
-      ensureContext: vi.fn(),
+      // Same return shape as `core.engine.ensureContext` above — the
+      // top-level `engine` is what most component tests read, and the
+      // previous `vi.fn()` (return undefined) was the source of the
+      // JamGate teardown TypeError flagged in GOAL 02.
+      ensureContext: vi.fn(() => mockAudioContext()),
       panic: vi.fn(),
       preview: vi.fn(),
       previewSlice: vi.fn(),
@@ -141,15 +169,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       previewInstrumentPreset: vi.fn(),
       stopPreview: vi.fn(),
       get context() {
-        return {
-          decodeAudioData: async (_b: ArrayBuffer) => ({
-            duration: 1,
-            sampleRate: 44100,
-            numberOfChannels: 1,
-            getChannelData: () => new Float32Array(44100),
-            length: 44100,
-          }),
-        };
+        return mockAudioContext("running");
       },
       setProject: vi.fn(),
       trigger: vi.fn(),

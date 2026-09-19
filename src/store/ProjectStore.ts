@@ -158,6 +158,24 @@ export class ProjectStore {
 
   getDoc = (): ProjectDocument => this.doc_;
 
+  // ─── Fine-grained selectors ──────────────────────────────────────────────
+  // Each of these returns the corresponding slice of the document. They
+  // are stable references for a given snapshot — `normalizeProject` uses
+  // structural sharing, so when the user edits a *different* slice (e.g.
+  // a track gain) the scenes/tracks/etc. arrays remain the same array
+  // identity. Combined with `useSyncExternalStore` in `src/ui/context.ts`
+  // this lets a component subscribe to just the slice it actually reads
+  // and skip re-renders when only unrelated parts of the document change.
+  getScenes = (): ProjectDocument["scenes"] => this.doc_.scenes;
+  getTracks = (): ProjectDocument["tracks"] => this.doc_.tracks;
+  getReturns = (): ProjectDocument["returns"] => this.doc_.returns;
+  getArrangement = (): ProjectDocument["arrangement"] => this.doc_.arrangement;
+  getMarkers = (): ProjectDocument["markers"] => this.doc_.markers;
+  getAutomation = (): ProjectDocument["automation"] => this.doc_.automation;
+  getPatterns = (): ProjectDocument["patterns"] => this.doc_.patterns;
+  getMacros = (): ProjectDocument["macros"] => this.doc_.macros;
+  getMaster = (): ProjectDocument["master"] => this.doc_.master;
+
   getSaveStatus = (): SaveStatus => this.saveStatus_;
 
   getLastSavedAt = (): string | null => this.lastSavedAt_;

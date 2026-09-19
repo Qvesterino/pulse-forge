@@ -71,6 +71,27 @@ export function detectTransients(data: Float32Array, sampleRate: number, sensiti
   return onsets;
 }
 
+/**
+ * Nearest detected onset to `timeSec` within `windowSec` (transient magnet
+ * for warp pins / slice markers). Returns the onset time, or null when
+ * nothing is close enough — callers keep the un-snapped position.
+ * Pure — shared by the waveform pin editor and the tests.
+ */
+export function nearestOnset(timeSec: number, onsets: ReadonlyArray<number>, windowSec = 0.06): number | null {
+  if (!Number.isFinite(timeSec) || !Number.isFinite(windowSec) || windowSec <= 0) return null;
+  let best: number | null = null;
+  let bestDist = windowSec;
+  for (const o of onsets) {
+    if (!Number.isFinite(o)) continue;
+    const dist = Math.abs(o - timeSec);
+    if (dist <= bestDist) {
+      bestDist = dist;
+      best = o;
+    }
+  }
+  return best;
+}
+
 if (typeof self !== "undefined" && typeof (self as unknown as { postMessage?: unknown }).postMessage === "function") {
   (self as unknown as { onmessage: (e: MessageEvent<OnsetDetectorRequest>) => void }).onmessage = (
     e: MessageEvent<OnsetDetectorRequest>,

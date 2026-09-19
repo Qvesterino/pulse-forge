@@ -1,5 +1,6 @@
 import type { MusicalKey, Pattern, ProjectDocument, PatternGeneration } from "../project-model/types";
 import type { GenerateOptions, GrooveData } from "../ai/types";
+import type { CandidateBankEntry } from "./candidate-bank";
 
 export const INTENT_SCHEMA_VERSION = 1 as const;
 
@@ -150,6 +151,50 @@ export interface GenerationResult {
     id: string;
     version: string;
   };
+  /**
+   * A1 candidate audition: the FULL ranked candidate bank, best first. Only
+   * present when the caller asked for it (`includeBank`) and only meaningful
+   * in memory — `applyGenerationResultCommand` persists the selected proposal
+   * alone; the bank is never serialized into the project.
+   */
+  bank?: readonly RankedCandidate[];
+  /** How the default (winner) selection was made — used by resultForCandidate. */
+  selection?: RankerSelectionMeta;
+}
+
+/** Selection provenance for a generation run's candidate ranking. */
+export interface RankerSelectionMeta {
+  featureVersion: string;
+  rankerVersion: string;
+  modelHash: string | null;
+  /** "off" = heuristic-only ranking (in-memory meta; persisted provenance coerces to "shadow"). */
+  mode: "off" | "shadow" | "active";
+  source: "model" | "fallback";
+}
+
+/** Full provider ranking output — proposal plus the auditionable bank. */
+export interface GenerationRanked {
+  proposal: GenerationProposal;
+  /** Valid candidates, best first. Empty on fallback/rejected runs. */
+  ranked: readonly CandidateBankEntry[];
+  /** Model scores parallel to `ranked` (null where the model did not score). */
+  modelScores: readonly (number | null)[];
+  ranker: RankerSelectionMeta;
+}
+
+/** One UI-facing audition candidate (derived from a CandidateBankEntry). */
+export interface RankedCandidate {
+  candidateIndex: number;
+  seed: string;
+  source: "template" | "symbolic-prior";
+  status: "accepted" | "repaired";
+  repairs: readonly string[];
+  /** Heuristic score (0..1). */
+  score: number;
+  /** ONNX ranker score when the model participated, else null. */
+  modelScore: number | null;
+  contentHash: string;
+  pattern: Pattern;
 }
 
 export interface GenerationProvider {

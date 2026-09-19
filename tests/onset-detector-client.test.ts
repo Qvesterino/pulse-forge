@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { detectTransientsAsync } from "../src/audio-workers/onset-detector-client";
-import { detectTransients } from "../src/audio-workers/onset-detector";
+import { detectTransients, nearestOnset } from "../src/audio-workers/onset-detector";
 
 describe("detectTransientsAsync", () => {
   it("falls back to the pure detector when module workers are unavailable", async () => {
@@ -54,5 +54,27 @@ describe("detectTransientsAsync", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("nearestOnset", () => {
+  const onsets = [0.5, 1.0, 1.5];
+
+  it("snaps to the nearest onset inside the window", () => {
+    expect(nearestOnset(0.52, onsets)).toBe(0.5);
+    expect(nearestOnset(0.97, onsets)).toBe(1.0);
+  });
+
+  it("keeps the position when nothing is close (null)", () => {
+    expect(nearestOnset(0.2, onsets)).toBeNull();
+    expect(nearestOnset(0.75, onsets)).toBeNull(); // 0.25 from both — outside 60 ms
+    expect(nearestOnset(0.5, [])).toBeNull();
+  });
+
+  it("respects a custom window and skips non-finite entries", () => {
+    expect(nearestOnset(0.6, onsets, 0.2)).toBe(0.5);
+    expect(nearestOnset(0.6, [0.5, Number.NaN], 0.2)).toBe(0.5);
+    expect(nearestOnset(Number.NaN, onsets)).toBeNull();
+    expect(nearestOnset(0.52, onsets, 0)).toBeNull();
   });
 });

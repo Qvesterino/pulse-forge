@@ -17,6 +17,11 @@ interface SliderProps {
   onPreview?: (value: number) => void;
   /** Restore the audio preview when an in-progress pointer gesture is cancelled. */
   onCancel?: () => void;
+  /**
+   * Context menu request — fired by right-click AND by a touch long-press, so
+   * touch devices get the same reset/type-value menu as the mouse.
+   */
+  onMenu?: (x: number, y: number) => void;
   disabled?: boolean;
   compact?: boolean;
 }
@@ -31,6 +36,7 @@ export function Slider({
   onCommit,
   onPreview,
   onCancel,
+  onMenu,
   disabled,
   compact,
 }: SliderProps) {
@@ -39,6 +45,10 @@ export function Slider({
   // Preview coalescing: pointermove can fire faster than frames — schedule at
   // most one preview per frame, always carrying the LATEST value.
   const previewRaf = useRef<number | null>(null);
+  const menuTimer = useRef<number | null>(null);
+  const menuAnchor = useRef<{ x: number; y: number } | null>(null);
+  const holdFired = useRef(false);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
   const shown = dragValue ?? value;
 
   const firePreview = (v: number) => {
@@ -74,16 +84,54 @@ export function Slider({
     const v = positionToValue(event.clientX);
     setDragValue(v);
     firePreview(v);
+    // Touch/pen long-press opens the same menu as right-click (the browser
+    // never produces a contextmenu from a slider drag on touch). The hold
+    // aborts the drag — a release afterwards must not commit the touched
+    // position as a level change.
+    holdFired.current = false;
+    if (onMenu && event.pointerType !== "mouse") {
+      dragStart.current = { x: event.clientX, y: event.clientY };
+      menuAnchor.current = { x: event.clientX, y: event.clientY };
+      menuTimer.current = window.setTimeout(() => {
+        menuTimer.current = null;
+        holdFired.current = true;
+        cancelPreview();
+        setDragValue(null);
+        onCancel?.();
+        const anchor = menuAnchor.current;
+        if (anchor) onMenu(anchor.x, anchor.y);
+      }, 450);
+    }
+  };
+
+  const clearMenuTimer = () => {
+    if (menuTimer.current !== null) {
+      window.clearTimeout(menuTimer.current);
+      menuTimer.current = null;
+    }
+    dragStart.current = null;
+    menuAnchor.current = null;
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (holdFired.current) return;
     if (dragValue === null) return;
+    // Movement past the slop cancels the pending hold: this is a drag, not a
+    // long-press.
+    const start = dragStart.current;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) clearMenuTimer();
     const v = positionToValue(event.clientX);
     setDragValue(v);
     firePreview(v);
   };
 
   const handlePointerUp = () => {
+    if (holdFired.current) {
+      holdFired.current = false;
+      clearMenuTimer();
+      return;
+    }
+    clearMenuTimer();
     if (dragValue === null) return;
     // Kill a pending preview so a stale frame can't land after the commit.
     cancelPreview();
@@ -95,6 +143,8 @@ export function Slider({
   // commit; without this the slider would keep tracking hover moves and the
   // next click would commit a stale value.
   const handlePointerCancel = () => {
+    clearMenuTimer();
+    holdFired.current = false;
     cancelPreview();
     setDragValue(null);
     onCancel?.();
@@ -121,6 +171,14 @@ export function Slider({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onContextMenu={
+          onMenu
+            ? (event) => {
+                event.preventDefault();
+                onMenu(event.clientX, event.clientY);
+              }
+            : undefined
+        }
         onDoubleClick={() => onCommit(defaultValue)}
         onKeyDown={(event) => {
           if (disabled) return;

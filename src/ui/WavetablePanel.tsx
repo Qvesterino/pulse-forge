@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { setInstrumentParam } from "../commands/commands";
 import { extractWavetable, FACTORY_WAVETABLES } from "../instruments/wavetables";
 import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
+import type { Services } from "../services";
 import { Slider } from "./controls";
 
 /**
@@ -38,7 +39,12 @@ export function WavetablePanel({
 }: {
   track: Extract<InstrumentTrack, { kind: "instrument" }>;
   doc: ProjectDocument;
-  services: { bank: { get(id: string | null): AudioBuffer | undefined }; store: { execute: (c: unknown) => unknown } };
+  // Pick only what this panel uses — the broader `Services` contract requires
+  // ~25 fields most of which are irrelevant here, and tests would otherwise
+  // have to fake the entire interface. The inline-struct leak we previously
+  // had (`execute: (c: unknown) => unknown`) is gone: this prop now has the
+  // same exact type the production code site uses.
+  services: Pick<Services, "bank" | "store">;
 }) {
   const p = track.params;
   const tableIdx = ((Math.round(p.table ?? 0) % FACTORY_WAVETABLES.length) + FACTORY_WAVETABLES.length) % FACTORY_WAVETABLES.length;

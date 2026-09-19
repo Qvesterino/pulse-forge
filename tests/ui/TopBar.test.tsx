@@ -183,10 +183,11 @@ describe("TopBar", () => {
     expect(screen.getByLabelText("Project name")).toBeInTheDocument();
   });
 
-  it("renders MIX, FX, ARR, MOD, EXPORT buttons", () => {
+  it("renders MIX, DEV, ARR, MOD, EXPORT buttons", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
     expect(screen.getByText("MIX")).toBeInTheDocument();
-    expect(screen.getByText("FX")).toBeInTheDocument();
+    // the FX rack panel was renamed DEV (track device chain)
+    expect(screen.getByText("DEV")).toBeInTheDocument();
     expect(screen.getByText("ARR")).toBeInTheDocument();
     expect(screen.getByText("MOD")).toBeInTheDocument();
     expect(screen.getByText("EXPORT")).toBeInTheDocument();

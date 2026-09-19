@@ -56,6 +56,63 @@ export function useDoc(): ProjectDocument {
   return useSyncExternalStore(store.subscribe, store.getDoc, store.getDoc);
 }
 
+// ─── Fine-grained document slices ───────────────────────────────────────
+// Each hook subscribes ONLY to its slice of the document. `normalizeProject`
+// in src/project-model/schema.ts uses structural sharing, so when an
+// unrelated slice changes (e.g. a track gain) the slice returned by the
+// corresponding getX() helper stays referentially identical and the
+// subscriber skips the re-render. Components that previously called
+// useDoc() but only ever read `doc.scenes`, `doc.tracks`, etc. should
+// switch to the matching fine-grained hook — the largest single win is
+// `ArrangementPanel.tsx`, whose 23 `.map()` calls were forced to
+// re-render on every undo/redo because it subscribed to the whole
+// document through `useDoc()`.
+
+export function useScenes(): ProjectDocument["scenes"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getScenes, store.getScenes);
+}
+
+export function useTracks(): ProjectDocument["tracks"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getTracks, store.getTracks);
+}
+
+export function useReturns(): ProjectDocument["returns"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getReturns, store.getReturns);
+}
+
+export function useArrangement(): ProjectDocument["arrangement"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getArrangement, store.getArrangement);
+}
+
+export function useMarkers(): ProjectDocument["markers"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getMarkers, store.getMarkers);
+}
+
+export function useAutomation(): ProjectDocument["automation"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getAutomation, store.getAutomation);
+}
+
+export function usePatterns(): ProjectDocument["patterns"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getPatterns, store.getPatterns);
+}
+
+export function useMacros(): ProjectDocument["macros"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getMacros, store.getMacros);
+}
+
+export function useMaster(): ProjectDocument["master"] {
+  const { store } = useServices();
+  return useSyncExternalStore(store.subscribe, store.getMaster, store.getMaster);
+}
+
 export function useSaveStatus(): AppSaveStatus {
   const { store } = useServices();
   return useSyncExternalStore(store.subscribe, store.getSaveStatus, store.getSaveStatus);

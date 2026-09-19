@@ -139,6 +139,9 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
             <span className="embed-brand-mark">KX</span> KYX
           </span>
           <div className="landing-nav-actions">
+            <a className="landing-btn landing-btn-ghost landing-btn-sm" href="/download">
+              Download
+            </a>
             <a className="landing-btn landing-btn-ghost landing-btn-sm" href="/gallery">
               Beat gallery
             </a>
@@ -173,7 +176,9 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
                 Explore the gallery
               </a>
             </div>
-            <span className="landing-hint">No install · Works offline · Installable as an app</span>
+            <span className="landing-hint">
+              No install · Works offline · <a href="/download">Prefer a desktop app? Download for Windows</a>
+            </span>
           </div>
           <div className="landing-hero-player" aria-label="Live beat preview">
             <EmbedApp code={heroCode} inline hideBrand />

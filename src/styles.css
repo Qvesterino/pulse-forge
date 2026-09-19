@@ -17,6 +17,8 @@
   --glass-scene: rgba(255, 255, 255, 0.035);
   --glass-scene-strong: rgba(255, 255, 255, 0.07);
   --glass-scene-stroke: rgba(255, 255, 255, 0.1);
+  /* Sequencer label column — mirrors STEPS_LABEL_PX in Sequencer.tsx. */
+  --steps-label: 168px;
 }
 
 * {
@@ -426,6 +428,30 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
   min-height: 0;
+}
+
+/* Tablet band (768–1100px): the fixed 280px inspector left the sequencer
+   ~460px wide, which its 168px label column + 22px step floor cannot fit.
+   Narrow the inspector first; it becomes a row below 860px (see the
+   max-width: 760px block for the phone presentation). */
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 230px;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .workspace > .inspector {
+    max-height: 34vh;
+    overflow-y: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }
 
 .workspace-main {
@@ -910,7 +936,7 @@ button {
 
 .sequencer-row {
   display: grid;
-  grid-template-columns: 168px 1fr;
+  grid-template-columns: var(--steps-label, 168px) 1fr;
   gap: 4px;
   margin-bottom: 4px;
 }
@@ -923,7 +949,7 @@ button {
 
 .track-header-row {
   display: grid;
-  grid-template-columns: 168px 1fr;
+  grid-template-columns: var(--steps-label, 168px) 1fr;
   gap: 4px;
   margin: 4px 0 4px;
 }
@@ -1074,8 +1100,10 @@ button {
   width: 2px;
   margin-left: -1px;
   /* Sweep the scrolled CONTENT width (--grid-steps-px from GridPlayhead),
-     not the viewport — at 256 steps they differ by ~5k px. */
-  left: calc(172px + var(--playhead-frac, 0) * var(--grid-steps-px, 100%));
+     not the viewport — at 256 steps they differ by ~5k px. The label offset
+     must track the same variable the grid columns use (narrow viewports
+     shrink it to 112px). */
+  left: calc(var(--steps-label, 168px) + 4px + var(--playhead-frac, 0) * var(--grid-steps-px, 100%));
   background: var(--accent);
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
   border-radius: 1px;
@@ -1974,8 +2002,14 @@ button {
    loop. The wall's height comes from a min-height clamped to the dock height
    instead. Scoped to the master — channel strips keep their centered layout. */
 .master-strip {
-  flex: 1 1 800px;
-  min-width: 800px;
+  /* 800px was a hard floor on the whole strip, so on a 1280–1440px laptop the
+     channel strips + master could not coexist without horizontal scrolling —
+     the master fader lived off-screen. The wall still needs its width, but it
+     may shrink down to the wall's usable minimum and let the dock scroll as a
+     whole instead of forcing an 800px column. Narrow viewports lower the
+     wall minimums (see the meter media query at the bottom of this file). */
+  flex: 1 1 min(720px, 100%);
+  min-width: min(580px, 100%);
 }
 
 .master-strip .channel-controls {
@@ -2360,13 +2394,25 @@ button {
 
 .arr-panel {
   max-height: 360px;
-  overflow: hidden;
+  /* A fixed 360px cap with overflow:hidden clipped the timeline bottom at
+     mid widths (760–1100px) where the ≤760px rescue below did not apply. */
+  overflow: auto;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
   padding: 10px 14px;
   display: grid;
   grid-template-columns: minmax(246px, 290px) minmax(0, 1fr);
   gap: 16px;
+}
+
+/* Mid widths: the scene rail + timeline stop coexisting in one row. */
+@media (max-width: 1000px) {
+  .arr-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 420px;
+    overflow-y: auto;
+  }
 }
 
 .arr-scenes {
@@ -2862,6 +2908,15 @@ button {
   display: grid;
   grid-template-columns: minmax(340px, 1.2fr) minmax(300px, 1fr) minmax(280px, 1fr);
   gap: 16px;
+}
+
+/* The fixed 3-column grid needs ~940px; in a dock (or a 768–1024 tablet) the
+   macros/LFO column was pushed outside the slot's clipped overflow and became
+   unreachable. Collapse to auto-fit before the panel runs out of room. */
+@media (max-width: 1100px) {
+  .mod-panel {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
 }
 
 /* ---------- MIDI panel ---------- */
@@ -4759,12 +4814,14 @@ button {
   height: 4px;
   background: rgba(0, 0, 0, 0.35);
   border-radius: 2px;
-  overflow: hidden;
+  /* overflow must stay visible: the coarse-pointer hit pad below is an
+     ::before with a negative inset (a 4px bar is far too thin to grab). */
   cursor: ew-resize;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .step-amount-fill {
   height: 100%;
+  border-radius: 1px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), var(--accent));
   transition: width 0.06s;
 }
@@ -5765,6 +5822,16 @@ button {
   position: relative;
   flex: 1;
   min-width: 620px;
+}
+
+/* Mid-width docks (1280–1440 laptops, split view): the wall may shrink to
+   keep the MASTER fader on screen. The spectrum column keeps its 300px
+   floor; the goniometer/verdict column gives way first. */
+@media (max-width: 1500px) {
+  .master-meter {
+    grid-template-columns: minmax(240px, 1fr) minmax(200px, 280px);
+    min-width: 480px;
+  }
 }
 
 .master-dynamics-meters {
@@ -7406,6 +7473,14 @@ html {
     min-width: 36px;
   }
 
+  /* History buttons hard-set a 28×26 box (specificity beats .btn) — without
+     this they stay untappable at the phone-class target size. */
+  .btn-history {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+  }
+
   .row-pad,
   .row-toggle {
     min-height: 42px;
@@ -7428,6 +7503,33 @@ html {
   .collab-field input,
   .freesound-search input {
     min-height: 42px;
+  }
+
+  /* Audio-clip fade/gain handles are 7-12px mouse targets. clip-path clips
+     any ::before pad, so grow the handles themselves for fingers. */
+  .arr-audio-clip-handle-fade {
+    width: 22px;
+    height: 22px;
+  }
+
+  .arr-audio-clip-handle-fade.left {
+    left: 4px;
+  }
+
+  .arr-audio-clip-handle-fade.right {
+    right: 4px;
+  }
+
+  .arr-audio-clip-handle-gain {
+    width: 44px;
+    height: 14px;
+  }
+
+  /* The p-lock amount bar is a 4px strip; the finger needs a wider grab. */
+  .step-amount-track::before {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
   }
 }
 
@@ -7737,6 +7839,58 @@ html {
 .arr-audio-clip-handle-fade:hover,
 .arr-audio-clip-handle-gain:hover {
   filter: brightness(1.15);
+}
+
+/* ── Warp pins (FL/Slicex-style, draggable on the waveform) ── */
+.warp-pins-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.warp-pin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  pointer-events: none;
+}
+.warp-pin-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: rgba(245, 158, 11, 0.7);
+  pointer-events: none;
+}
+.warp-pin-handle {
+  position: absolute;
+  top: 1px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  background: rgba(245, 158, 11, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  transform: rotate(45deg);
+  border-radius: 2px;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+.warp-pin-handle:hover {
+  filter: brightness(1.2);
+}
+.warp-pin.dragging .warp-pin-line {
+  background: #fbbf24;
+  width: 3px;
+}
+.warp-pin.disabled .warp-pin-line {
+  background: rgba(245, 158, 11, 0.3);
+}
+.warp-pin.disabled .warp-pin-handle {
+  background: rgba(245, 158, 11, 0.4);
+  cursor: not-allowed;
 }
 
 /* ── Dice Tray ─────────────────────────────────────────────────────── */
@@ -9653,6 +9807,12 @@ html {
 }
 
 @media (max-width: 760px) {
+  /* Narrow phones: the row label shrinks so the step grid keeps usable width.
+     Sequencer.tsx reads the same number for its windowing geometry. */
+  :root {
+    --steps-label: 112px;
+  }
+
   /* Bottom panels become a fixed, swipe-away-able sheet above the statusbar. */
   .bottom-panels {
     display: block;
@@ -9727,10 +9887,14 @@ html {
 }
 
 .pr-fullscreen-toggle {
-  display: none; /* desktop never shows it — media query below re-enables it */
+  display: none; /* desktop shows it only when the roll would be cramped */
 }
 
-@media (max-width: 760px), (pointer: coarse) {
+/* The roll is capped at 180px tall (≈12 of 61 semitones), so the fullscreen
+   toggle must be reachable on SHORT viewports too, not just narrow/touch:
+   a 1440×720 laptop with a docked mixer needs it exactly as much as a
+   phone does. */
+@media (max-width: 1100px), (max-height: 820px), (pointer: coarse) {
   .pr-fullscreen-toggle {
     display: inline-flex;
   }
@@ -10752,7 +10916,27 @@ a.brand:hover .brand-mark {
   letter-spacing: 0.045em;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.device-chain-item:active {
+  cursor: grabbing;
+}
+
+.device-chain-item:not([draggable="true"]),
+.device-chain-item:not([draggable="true"]):active {
   cursor: pointer;
+}
+
+.device-chain-item.is-dragging {
+  opacity: 0.38;
+}
+
+.device-chain-item.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .device-chain-item:hover,
@@ -10844,6 +11028,22 @@ a.brand:hover .brand-mark {
   min-width: 0;
 }
 
+.device-editor .fx-device-family {
+  flex: none;
+  margin-left: 3px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font: 700 7px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-editor .fx-device-family.family-dynamics {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-soft));
+  color: var(--accent);
+}
+
 .device-editor .fx-device-content {
   display: flex;
   flex: 1 1 0;
@@ -10859,6 +11059,16 @@ a.brand:hover .brand-mark {
   flex: none;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 3px 10px;
+}
+
+.device-editor .fx-device-params[data-family="tone"] {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  padding-left: 7px;
+}
+
+.device-editor .fx-device-params[data-family="dynamics"] {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  padding-left: 7px;
 }
 
 .device-editor .fx-device-params .slider,
@@ -11182,4 +11392,109 @@ a.brand:hover .brand-mark {
   .vlyx-docked .ultina-module-controls > .device-param-pager {
     grid-column: auto;
   }
+}
+
+/* ── Download page (/download) — reuses the landing design system ───────── */
+
+.landing-hint a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.landing-hint a:hover {
+  text-decoration: underline;
+}
+
+/* The download hero carries no player — a single focused column. Direct
+ * grid children otherwise stretch full-width (justify-items) and inherit
+ * the 56px two-column row-gap; margins inside the copy flow instead. */
+.dl-solo {
+  grid-template-columns: 1fr;
+  max-width: 860px;
+  gap: 0;
+  justify-items: start;
+}
+
+.dl-note {
+  display: block;
+  margin-top: 24px;
+  max-width: 92ch;
+}
+
+/* ── Intent candidate audition (INTENT_ENGINE.md A1) ─────────────────── */
+.intent-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 6px;
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.intent-candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+
+.intent-candidate-row.winner {
+  background: rgba(255, 208, 0, 0.08);
+}
+
+.intent-candidate-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.intent-candidate-index {
+  font-weight: 600;
+  min-width: 22px;
+}
+
+.intent-candidate-source {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.intent-candidate-source.symbolic-prior {
+  color: #9ecbff;
+}
+
+.intent-candidate-source.template {
+  color: #9fdf9f;
+}
+
+.intent-candidate-win {
+  color: #ffd000;
+  font-size: 10px;
+}
+
+.intent-candidate-fixed {
+  color: #ffb066;
+  font-size: 10px;
+}
+
+.intent-candidate-score {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.intent-audition-btn,
+.intent-use-btn {
+  min-width: 28px;
+  padding: 2px 8px;
 }

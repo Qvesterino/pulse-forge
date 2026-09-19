@@ -234,6 +234,29 @@ export class YDocStore {
 
   getLastSavedAt = (): string | null => this.lastSavedAt_;
 
+  // ─── Fine-grained selectors ──────────────────────────────────────────────
+  // Mirror of ProjectStore.getScenes/getTracks/... — required so that the
+  // `ProjectStore | YDocStore` union in src/ui/context.ts exposes these
+  // methods and `useScenes()` / `useTracks()` / etc. compile cleanly in both
+  // solo and collab mode. YDocStore delegates to `this.doc_` — the Y.Doc
+  // snapshot is read on every call and the slice returned is whatever the
+  // Yjs→ProjectDocument projection produced at the time of the last
+  // local mutation. For collab, structural sharing is NOT guaranteed at
+  // the Yjs level (a remote peer can mutate any slice), so a slice
+  // change from anywhere will invalidate every selector — but a local
+  // command that mutates only one slice (e.g. a track gain via
+  // applyProjectToYMap with targeted diff) leaves the others referentially
+  // stable, which is the common case in the UI hot path.
+  getScenes = (): ProjectDocument["scenes"] => this.doc_.scenes;
+  getTracks = (): ProjectDocument["tracks"] => this.doc_.tracks;
+  getReturns = (): ProjectDocument["returns"] => this.doc_.returns;
+  getArrangement = (): ProjectDocument["arrangement"] => this.doc_.arrangement;
+  getMarkers = (): ProjectDocument["markers"] => this.doc_.markers;
+  getAutomation = (): ProjectDocument["automation"] => this.doc_.automation;
+  getPatterns = (): ProjectDocument["patterns"] => this.doc_.patterns;
+  getMacros = (): ProjectDocument["macros"] => this.doc_.macros;
+  getMaster = (): ProjectDocument["master"] => this.doc_.master;
+
   /**
    * Execute a command. If the command has applyToYDoc, use it for efficient
    * Y.Doc mutations. Otherwise, apply a targeted diff that updates existing

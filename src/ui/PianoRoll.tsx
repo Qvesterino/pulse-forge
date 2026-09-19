@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDoc, useServices } from "./context";
-import type { InstrumentTrack, NoteEvent, Pattern } from "../project-model/types";
+import type { InstrumentTrack, NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS, pitchName } from "../project-model/types";
 import {
   addNote,
@@ -21,6 +21,7 @@ import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
+import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -63,9 +64,11 @@ interface NoteDragPreview {
 interface PianoRollNoteHandlers {
   beginDrag: (event: React.PointerEvent, note: NoteEvent) => void;
   pointerHover: (event: React.PointerEvent) => void;
-  pointerUp: (event: React.PointerEvent) => void;
+  pointerUp: (event?: React.PointerEvent) => void;
   pointerCancel: () => void;
   deleteAt: (event: React.MouseEvent, note: NoteEvent) => void;
+  /** Touch long-press — opens the note action menu (delete/duplicate/slide). */
+  openMenu: (note: NoteEvent, x: number, y: number) => void;
 }
 
 /**
@@ -111,7 +114,7 @@ const PianoRollNote = memo(
           top: `${clamp(top, 0, (PITCH_COUNT - 1) * ROW_HEIGHT)}px`,
           opacity: 0.35 + note.velocity * 0.65,
         }}
-        title={`${pitchName(note.pitch)}${note.slide ? " (slide)" : ""} — Smart Tool: top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate`}
+        title={`${pitchName(note.pitch)}${note.slide ? " (slide)" : ""} — top third = move, right edge = resize, middle+Alt = duplicate, middle+Ctrl = velocity — S strum, Alt+S slide, L legato, Ctrl+B duplicate — hold on touch for the note menu`}
         onPointerDown={(event) => handlers.beginDrag(event, note)}
         onPointerMove={handlers.pointerHover}
         onPointerUp={handlers.pointerUp}
@@ -311,6 +314,11 @@ export function PianoRollTrack({
   } | null>(null);
   const [velZoom, setVelZoom] = useState(1);
   const [noteClipboard, setNoteClipboard] = useState<NoteEvent[] | null>(null);
+  // Touch note menu — opened by a long-press; right-click keeps instant delete.
+  const [noteMenu, setNoteMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
+  const noteMenuTimer = useRef<number | null>(null);
+  const noteMenuAnchor = useRef<{ x: number; y: number } | null>(null);
+  const noteLongPressFired = useRef(false);
   // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
   const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
   // Step entry (FL-style): a grid cursor — QWERTY letter keys insert notes at
@@ -425,6 +433,22 @@ export function PianoRollTrack({
   const beginNoteDrag = (event: React.PointerEvent, note: NoteEvent) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    // Touch/pen: hold a note to open the action menu (delete / duplicate /
+    // slide). Without this the only note deletion on touch is impossible —
+    // mobile browsers never produce a right-click.
+    if (event.pointerType !== "mouse") {
+      if (noteMenuTimer.current !== null) window.clearTimeout(noteMenuTimer.current);
+      const anchor = { x: event.clientX, y: event.clientY };
+      noteMenuAnchor.current = anchor;
+      noteMenuTimer.current = window.setTimeout(() => {
+        noteMenuTimer.current = null;
+        noteLongPressFired.current = true;
+        onSelectNote({ trackId: track.id, noteIds: [note.id] });
+        setNoteMenu({ noteId: note.id, x: anchor.x, y: anchor.y });
+      }, 450);
+      // Fall through: if the finger moves, the timer is cancelled and the
+      // normal move gesture proceeds.
+    }
     if (event.shiftKey) {
       const currentIds = selectedNote?.trackId === track.id ? selectedNote.noteIds : [];
       const nextIds = currentIds.includes(note.id)
@@ -544,6 +568,14 @@ export function PianoRollTrack({
   };
 
   const onNotePointerMove = (event: React.PointerEvent) => {
+    // Any real movement before the hold threshold means "drag", not "menu".
+    if (noteMenuTimer.current !== null) {
+      const start = noteMenuAnchor.current;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 7) {
+        window.clearTimeout(noteMenuTimer.current);
+        noteMenuTimer.current = null;
+      }
+    }
     const current = dragRef.current;
     if (!current) return;
     if (current.mode === "noteVelocity") {
@@ -577,6 +609,17 @@ export function PianoRollTrack({
   };
 
   const onNotePointerUp = (event?: React.PointerEvent) => {
+    // The hold already opened the note menu — releasing must not commit a move.
+    if (noteMenuTimer.current !== null) {
+      window.clearTimeout(noteMenuTimer.current);
+      noteMenuTimer.current = null;
+    }
+    if (noteLongPressFired.current) {
+      noteLongPressFired.current = false;
+      dragRef.current = null;
+      setDrag(null);
+      return;
+    }
     const current = dragRef.current;
     dragRef.current = null;
     setDrag(null);
@@ -619,6 +662,11 @@ export function PianoRollTrack({
 
   // Interrupted drag (touch takeover, autoscroll, …) — abort without committing.
   const onNotePointerCancel = () => {
+    if (noteMenuTimer.current !== null) {
+      window.clearTimeout(noteMenuTimer.current);
+      noteMenuTimer.current = null;
+    }
+    noteLongPressFired.current = false;
     const current = dragRef.current;
     dragRef.current = null;
     setDrag(null);
@@ -1029,6 +1077,7 @@ export function PianoRollTrack({
     pointerUp: () => {},
     pointerCancel: () => {},
     deleteAt: () => {},
+    openMenu: () => {},
   });
   noteHandlersRef.current = {
     beginDrag: beginNoteDrag,
@@ -1036,6 +1085,7 @@ export function PianoRollTrack({
     pointerUp: onNotePointerUp,
     pointerCancel: onNotePointerCancel,
     deleteAt: deleteNoteAt,
+    openMenu: (note, x, y) => setNoteMenu({ noteId: note.id, x, y }),
   };
   const velHandlersRef = useRef<PianoRollVelHandlers>({
     beginDrag: () => {},
@@ -1096,9 +1146,45 @@ export function PianoRollTrack({
             type="button"
             className="btn btn-small"
             title="Quantize to 1/16"
-            onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids)))}
+            onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids ?? [])))}
           >
             QUANT
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={!hasSelection}
+            title="Randomize velocities of the selected notes (0.45–100%)"
+            onClick={() =>
+              runOnSelection((ids) => {
+                const list = ids ?? [];
+                const current = list.map((id) => notes.find((n) => n.id === id)?.velocity ?? 0);
+                const next = randomizeVelocities(current);
+                const velocities: Record<string, number> = {};
+                list.forEach((id, i) => (velocities[id] = next[i]));
+                services.store.execute(setNotesVelocities(doc, track.id, velocities));
+              })
+            }
+          >
+            RND
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={!hasSelection}
+            title="Humanize — nudge selected note velocities ±12% so the part breathes"
+            onClick={() =>
+              runOnSelection((ids) => {
+                const list = ids ?? [];
+                const current = list.map((id) => notes.find((n) => n.id === id)?.velocity ?? 0);
+                const next = humanizeVelocities(current);
+                const velocities: Record<string, number> = {};
+                list.forEach((id, i) => (velocities[id] = next[i]));
+                services.store.execute(setNotesVelocities(doc, track.id, velocities));
+              })
+            }
+          >
+            HUMAN
           </button>
           <button
             type="button"
@@ -1662,6 +1748,73 @@ export function PianoRollTrack({
               {label}
             </button>
           ))}
+        </div>
+      )}
+      {noteMenu && (
+        <div
+          className="context-menu pr-note-menu"
+          role="menu"
+          aria-label="Note actions"
+          style={{
+            left: Math.min(noteMenu.x, window.innerWidth - 180),
+            top: Math.min(noteMenu.y, window.innerHeight - 160),
+          }}
+          onMouseDown={(ev) => ev.stopPropagation()}
+          onPointerDown={(ev) => ev.stopPropagation()}
+        >
+          <div className="context-menu-header">{pitchName(notes.find((n) => n.id === noteMenu.noteId)?.pitch ?? 60)}</div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = noteMenu.noteId;
+              setNoteMenu(null);
+              services.store.execute(deleteNote(services.store.doc, track.id, target));
+            }}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = noteMenu.noteId;
+              setNoteMenu(null);
+              services.store.execute(duplicateNotes(services.store.doc, track.id, [target]));
+            }}
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = noteMenu.noteId;
+              setNoteMenu(null);
+              const source = notes.find((n) => n.id === target);
+              if (!source) return;
+              const next = notes.map((n) => (n.id === target ? { ...n, slide: !n.slide } : n));
+              const prev = [...notes];
+              services.store.execute({
+                type: "toggleSlide",
+                label: `${source.slide ? "Unslide" : "Slide"} ${pitchName(source.pitch)}`,
+                execute: (d: ProjectDocument) => ({
+                  ...d,
+                  patterns: d.patterns.map((p: Pattern) =>
+                    p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+                  ),
+                }),
+                undo: (d: ProjectDocument) => ({
+                  ...d,
+                  patterns: d.patterns.map((p: Pattern) =>
+                    p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+                  ),
+                }),
+              } as never);
+            }}
+          >
+            {notes.find((n) => n.id === noteMenu.noteId)?.slide ? "Unslide" : "Slide"}
+          </button>
         </div>
       )}
     </div>

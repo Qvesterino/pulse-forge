@@ -6,6 +6,7 @@ import {
   applyEffectPreset,
   applyFxEqPreset,
   moveEffect,
+  moveEffectToIndex,
   removeEffect,
   resetEffect,
   setEffectParam,
@@ -37,12 +38,13 @@ const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
 import { presetsForEffect } from "../effects/presets";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
-import { Slider } from "./controls";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 import { DockedPlugin } from "./FloatingPlugin";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { effectEditorSpec } from "./effectEditorRegistry";
+import { EffectParameterGrid } from "./EffectParameterGrid";
 
 type EffectRackProps = {
   track: Track;
@@ -67,9 +69,11 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(() =>
     track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),
   );
+  const [draggedFxId, setDraggedFxId] = useState<string | null>(null);
+  const [dropTargetFxId, setDropTargetFxId] = useState<string | null>(null);
   useEffect(() => {
-    setSelectedDeviceId(track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null));
-  }, [track.id, track.effects.length, hasInstrument]);
+    setSelectedDeviceId(null);
+  }, [track.id]);
   const activeDeviceId =
     selectedDeviceId === "instrument" && hasInstrument
       ? "instrument"
@@ -135,7 +139,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
           <span className="devices-track-name" title={track.name}>
             {track.name}
           </span>
-          <div className="devices-chain" role="group" aria-label="Track device chain">
+          <div className="devices-chain" role="group" aria-label="Track device chain. Drag modules to reorder them.">
             {hasInstrument && (
               <button
                 type="button"
@@ -152,10 +156,42 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               <button
                 key={fx.id}
                 type="button"
-                className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}`}
+                draggable
+                className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}${draggedFxId === fx.id ? " is-dragging" : ""}${dropTargetFxId === fx.id ? " is-drop-target" : ""}`}
                 aria-pressed={activeDeviceId === fx.id}
                 title={`${EFFECT_DEFS[fx.type].name}${fx.bypassed ? " — bypassed" : ""}`}
                 onClick={() => setSelectedDeviceId(fx.id)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", fx.id);
+                  setDraggedFxId(fx.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedFxId(null);
+                  setDropTargetFxId(null);
+                }}
+                onDragOver={(event) => {
+                  if (!draggedFxId || draggedFxId === fx.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropTargetFxId(fx.id);
+                }}
+                onDragLeave={() => setDropTargetFxId((current) => (current === fx.id ? null : current))}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const draggedId = event.dataTransfer.getData("text/plain") || draggedFxId;
+                  const from = track.effects.findIndex((candidate) => candidate.id === draggedId);
+                  const targetIndex = track.effects.findIndex((candidate) => candidate.id === fx.id);
+                  if (draggedId && from >= 0 && targetIndex >= 0 && from !== targetIndex) {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const insertAfter = event.clientX >= rect.left + rect.width / 2;
+                    const insertionSlot = targetIndex + (insertAfter ? 1 : 0);
+                    const finalIndex = from < insertionSlot ? insertionSlot - 1 : insertionSlot;
+                    services.store.execute(moveEffectToIndex(doc, track.id, draggedId, finalIndex));
+                  }
+                  setDraggedFxId(null);
+                  setDropTargetFxId(null);
+                }}
               >
                 <span className="device-chain-dot" aria-hidden="true" />
                 {EFFECT_DEFS[fx.type].name}
@@ -165,11 +201,29 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
           <select
             className="devices-add-effect"
             value=""
-            aria-label="Add effect"
-            title="Add effect to this track"
+            title={
+              selectedFx
+                ? `Insert effect after ${EFFECT_DEFS[selectedFx.type].name}`
+                : activeDeviceId === "instrument"
+                  ? `Insert effect after ${instrumentLabel}`
+                  : "Add effect to this track"
+            }
+            aria-label={
+              selectedFx
+                ? "Insert effect after the selected device"
+                : activeDeviceId === "instrument"
+                  ? "Insert effect after the instrument"
+                  : "Add effect to the track"
+            }
             onChange={(event) => {
               const type = event.target.value as EffectType;
-              if (type) services.store.execute(addEffect(doc, track.id, type));
+              if (!type) return;
+              const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+              const insertionIndex =
+                selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+              const command = addEffect(doc, track.id, type, insertionIndex);
+              services.store.execute(command);
+              setSelectedDeviceId(command.effectId);
             }}
           >
             <option value="">+ FX</option>
@@ -306,6 +360,7 @@ function Device({
   const isModified = Object.keys({ ...defaultParams, ...fx.params }).some(
     (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
   );
+  const editorSpec = effectEditorSpec(fx.type);
   const genericParams = devicesMode
     ? fx.type === "fxeq"
       ? def.params.filter((param) => !/^band\d+\./.test(param.id))
@@ -313,9 +368,27 @@ function Device({
         ? def.params.filter((param) => param.id.startsWith("global."))
         : def.params
     : def.params;
-  const paramsPerPage = devicesMode ? 4 : genericParams.length || 1;
-  const pageCount = Math.max(1, Math.ceil(genericParams.length / paramsPerPage));
-  const visibleParams = genericParams.slice(paramPage * paramsPerPage, (paramPage + 1) * paramsPerPage);
+  const usableParams = genericParams.filter(
+    (param) =>
+      !(
+        fx.type === "eq" &&
+        ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(param.id)
+      ),
+  );
+  const primaryParams = (editorSpec.primaryParamIds ?? [])
+    .map((id) => usableParams.find((param) => param.id === id))
+    .filter((param): param is (typeof usableParams)[number] => !!param);
+  const remainingParams = usableParams.filter((param) => !primaryParams.some((primary) => primary.id === param.id));
+  const pageSize = 4;
+  const chunkParams = (params: typeof usableParams) =>
+    Array.from({ length: Math.ceil(params.length / pageSize) }, (_, page) =>
+      params.slice(page * pageSize, (page + 1) * pageSize),
+    );
+  const controlPages = devicesMode
+    ? [...(primaryParams.length > 0 ? [primaryParams] : []), ...chunkParams(remainingParams)]
+    : [usableParams];
+  const pageCount = Math.max(1, controlPages.length);
+  const visibleParams = controlPages[paramPage] ?? [];
 
   useEffect(() => setParamPage(0), [fx.id]);
 
@@ -337,6 +410,7 @@ function Device({
         </button>
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
+          <span className={`fx-device-family family-${editorSpec.family}`}>{editorSpec.family.toUpperCase()}</span>
           <span className="fx-device-state">{fx.bypassed ? "BYPASSED" : "ACTIVE"}</span>
           {isModified && (
             <span className="fx-device-dirty" title="Parameters differ from the factory defaults">
@@ -622,7 +696,13 @@ function Device({
           )}
           {devicesMode && pageCount > 1 && (
             <div className="device-param-pager" role="group" aria-label={`${def.name} parameter pages`}>
-              <span>CONTROLS {paramPage + 1}/{pageCount}</span>
+              <span>
+                {editorSpec.primaryParamIds && paramPage === 0
+                  ? "MAIN"
+                  : editorSpec.primaryParamIds
+                    ? `DETAILS ${paramPage}/${pageCount - 1}`
+                    : `CONTROLS ${paramPage + 1}/${pageCount}`}
+              </span>
               <button
                 type="button"
                 className="btn btn-small"
@@ -643,51 +723,15 @@ function Device({
               </button>
             </div>
           )}
-          <div className={`fx-device-params${devicesMode ? " is-paged" : ""}`}>
-            {visibleParams
-              .filter(
-                (p) =>
-                  !(
-                    fx.type === "eq" &&
-                    ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(p.id)
-                  ),
-              )
-              .map((p) =>
-                p.options ? (
-                  <label key={p.id} className="fx-param-select">
-                    <span className="slider-label">{p.label}</span>
-                    <select
-                      value={
-                        p.options.some((o) => o.value === (fx.params[p.id] ?? p.default))
-                          ? (fx.params[p.id] ?? p.default)
-                          : p.default
-                      }
-                      onChange={(event) =>
-                        services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, Number(event.target.value)))
-                      }
-                    >
-                      {p.options.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <Slider
-                    key={p.id}
-                    compact
-                    label={p.label}
-                    value={fx.params[p.id] ?? p.default}
-                    min={p.min}
-                    max={p.max}
-                    defaultValue={p.default}
-                    format={p.format}
-                    onCommit={(v) => services.store.execute(setEffectParam(doc, track.id, fx.id, p.id, v))}
-                  />
-                ),
-              )}
-          </div>
+          <EffectParameterGrid
+            family={editorSpec.family}
+            params={visibleParams}
+            values={fx.params}
+            paged={devicesMode}
+            onChange={(paramId, value) =>
+              services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+            }
+          />
         </div>
       )}
     </div>

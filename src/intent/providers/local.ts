@@ -19,6 +19,8 @@ import type {
   GenerationPlan,
   GenerationProposal,
   GenerationProvider,
+  GenerationRanked,
+  RankerSelectionMeta,
 } from "../types";
 
 type PatternGenerator = (doc: ProjectDocument, options: GenerateOptions) => Pattern;
@@ -202,18 +204,31 @@ export class LocalDeterministicProvider implements GenerationProvider {
     };
   }
 
-  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
+  /**
+   * Full ranking run (A1 candidate audition): the winning proposal PLUS the
+   * whole ranked bank and selection provenance, so the UI can audition every
+   * candidate and apply any of them with truthful provenance.
+   */
+  async generateRanked(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationRanked> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
-    // Model ranking (goal doc Fáze 4) and the symbolic prior (T2) require the
-    // async worker path; the synchronous command path keeps the heuristic
-    // ranking with template candidates only.
-    const mode = rankerMode();
+    // Genuinely single-candidate plans have no bank to rank — take the sync
+    // fast path. NOTE: ranker mode "off" deliberately does NOT short-circuit:
+    // audition needs the heuristic-ranked bank, and rankCandidatesWithModel
+    // degrades to exactly that when the model is off.
     const symbolic = symbolicWanted(plan);
-    if (
-      mode === "off" ||
-      (!symbolic && plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1))
-    ) {
-      return this.generateSync(plan, context);
+    if (!symbolic && plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1)) {
+      return {
+        proposal: this.generateSync(plan, context),
+        ranked: [],
+        modelScores: [],
+        ranker: {
+          featureVersion: "features.v1",
+          rankerVersion: "unavailable",
+          modelHash: null,
+          mode: "shadow",
+          source: "fallback",
+        },
+      };
     }
     const effectiveKey = plan.options.key ?? context.project.key;
     const { candidates: templateCandidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
@@ -234,6 +249,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
     // A model-path defect (feature extraction, batch assembly) must never break
     // generation: fall back to the deterministic heuristic bank ranking, same
     // as a worker timeout or an invalid model response would.
+    const mode = rankerMode();
     let ranked;
     try {
       ranked = await rankCandidatesWithModel(context.project, candidates, plan);
@@ -250,6 +266,14 @@ export class LocalDeterministicProvider implements GenerationProvider {
         fallbackReason: `ranker-pipeline-error:${reason}`,
       };
     }
+
+    const rankerMeta: RankerSelectionMeta = {
+      featureVersion: ranked.featureVersion ?? "features.v1",
+      rankerVersion: ranked.rankerVersion ?? "unavailable",
+      modelHash: ranked.modelHash,
+      mode: ranked.mode,
+      source: ranked.source === "model" ? "model" : "fallback",
+    };
 
     if (ranked.order.length > 0) {
       const selected = ranked.order[0];
@@ -277,19 +301,26 @@ export class LocalDeterministicProvider implements GenerationProvider {
         generation: {
           ...selected.pattern.generation!,
           ranker: {
-            featureVersion: ranked.featureVersion ?? "features.v1",
-            rankerVersion: ranked.rankerVersion ?? "unavailable",
-            modelHash: ranked.modelHash,
+            featureVersion: rankerMeta.featureVersion,
+            rankerVersion: rankerMeta.rankerVersion,
+            modelHash: rankerMeta.modelHash,
             selectedIndex: selected.candidateIndex,
-            mode: ranked.mode === "active" ? "active" : "shadow",
-            source: ranked.source === "model" ? "model" : "fallback",
+            // Persisted vocabulary predates "off" — shadow truthfully means
+            // "the model did not actively decide this selection".
+            mode: rankerMeta.mode === "active" ? "active" : "shadow",
+            source: rankerMeta.source,
           },
         },
       };
       return {
-        status: selected.status,
-        pattern: withProvenance,
-        diagnostics: diagnosticsFor(withProvenance, selected.repairs, bankWarnings),
+        proposal: {
+          status: selected.status,
+          pattern: withProvenance,
+          diagnostics: diagnosticsFor(withProvenance, selected.repairs, bankWarnings),
+        },
+        ranked: ranked.order,
+        modelScores: ranked.modelScores,
+        ranker: rankerMeta,
       };
     }
 
@@ -300,28 +331,43 @@ export class LocalDeterministicProvider implements GenerationProvider {
     });
     if (fallbackReport.ok) {
       return {
-        status: "fallback",
+        proposal: {
+          status: "fallback",
+          pattern: fallback,
+          diagnostics: diagnosticsFor(
+            fallback,
+            [],
+            ["local-generator-fallback", ...failures],
+            [],
+            failures.length > 0 ? failures.join("|") : "candidate-bank-no-valid-candidate",
+          ),
+        },
+        ranked: [],
+        modelScores: ranked.modelScores,
+        ranker: rankerMeta,
+      };
+    }
+    return {
+      proposal: {
+        status: "rejected",
         pattern: fallback,
         diagnostics: diagnosticsFor(
           fallback,
           [],
-          ["local-generator-fallback", ...failures],
           [],
-          failures.length > 0 ? failures.join("|") : "candidate-bank-no-valid-candidate",
+          [...failures, ...invariantErrors(fallbackReport)],
+          "fallback-failed-invariant-gate",
         ),
-      };
-    }
-    return {
-      status: "rejected",
-      pattern: fallback,
-      diagnostics: diagnosticsFor(
-        fallback,
-        [],
-        [],
-        [...failures, ...invariantErrors(fallbackReport)],
-        "fallback-failed-invariant-gate",
-      ),
+      },
+      ranked: [],
+      modelScores: ranked.modelScores,
+      ranker: rankerMeta,
     };
+  }
+
+  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
+    const { proposal } = await this.generateRanked(plan, context, signal);
+    return proposal;
   }
 }
 

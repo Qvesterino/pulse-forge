@@ -2053,20 +2053,50 @@ export class AudioEngine {
     }
 
     if (warpSegs) {
-      // One repitch source per segment, all sharing the clip gain so fades
-      // span the whole clip. Segments tile [when, when+clipDurSec] back to
-      // back at grid-exact boundaries — live and offline schedule identically.
+      // One repitch source per segment through a private micro-fade gain, all
+      // sharing the clip gain (musical fades still span the whole clip).
+      // Interior joints overlap into a 3 ms crossfade (see
+      // `warpSegmentRenders`): boundaries stay grid-exact, clicks do not.
+      // Live and offline schedule identically.
+      const renders = warpSegmentRenders(warpSegs, {
+        clipTicks,
+        clipDurSec,
+        contentStartSec: playOffset,
+        contentDurSec: contentDur,
+      });
       let pending = warpSegs.length;
-      for (const seg of warpSegs) {
+      for (let s = 0; s < warpSegs.length; s++) {
+        const seg = warpSegs[s];
+        const render = renders[s] ?? {
+          startOffsetSec: (seg.startTick / clipTicks) * clipDurSec,
+          bufOffsetSec: seg.bufStartSec,
+          playDurSec: Math.max(0.005, seg.bufEndSec - seg.bufStartSec),
+          fadeInAt: (seg.startTick / clipTicks) * clipDurSec,
+          fadeInDur: 0,
+          fadeOutAt: (seg.endTick / clipTicks) * clipDurSec,
+          fadeOutDur: 0,
+        };
         const segSource = ctx.createBufferSource();
         segSource.buffer = playBuffer;
         segSource.playbackRate.value = seg.rate;
-        segSource.connect(gain);
-        const segWhen = when + (seg.startTick / clipTicks) * clipDurSec;
-        const segWall = ((seg.endTick - seg.startTick) / clipTicks) * clipDurSec;
+        const segGain = ctx.createGain();
+        segSource.connect(segGain).connect(gain);
+        const segWhen = when + render.startOffsetSec;
+        if (render.fadeInDur > 0.0001) {
+          segGain.gain.setValueAtTime(0, segWhen);
+          segGain.gain.linearRampToValueAtTime(1, segWhen + render.fadeInDur);
+        } else {
+          segGain.gain.setValueAtTime(1, segWhen);
+        }
+        if (render.fadeOutDur > 0.0001) {
+          const foutAt = when + render.fadeOutAt;
+          segGain.gain.setValueAtTime(1, foutAt);
+          segGain.gain.linearRampToValueAtTime(0, foutAt + render.fadeOutDur);
+        }
         try {
-          segSource.start(segWhen, seg.bufStartSec, Math.max(0.005, seg.bufEndSec - seg.bufStartSec));
-          segSource.stop(segWhen + segWall + 0.02);
+          // start() duration is buffer-domain: wall play length × rate.
+          segSource.start(segWhen, render.bufOffsetSec, Math.max(0.005, render.playDurSec * seg.rate));
+          segSource.stop(segWhen + render.playDurSec + 0.01);
         } catch {
           /* already started */
         }
@@ -2075,6 +2105,9 @@ export class AudioEngine {
           this.oneShotSources.delete(segSource);
           try {
             segSource.disconnect();
+          } catch {}
+          try {
+            segGain.disconnect();
           } catch {}
           if (--pending <= 0) {
             try {
@@ -4570,6 +4603,151 @@ export function buildWarpSegments(opts: {
     segs.push({ startTick: a.rel, endTick: b.rel, bufStartSec: a.buf, bufEndSec: b.buf, rate });
   }
   return segs.length > 0 ? segs : null;
+}
+
+/**
+ * Buffer time (sec, original-sample timeline) playing at an arrangement tick
+ * under the current warp map — the neutral value for a NEW pin at that tick
+ * (inserting it leaves the sound unchanged; dragging it bends time).
+ *
+ * With no usable markers it falls back to the straight-playback position,
+ * which is mode-aware: resample consumes the source at `rate` per wall
+ * second, stretch-mode straight plays a pre-stretched buffer, i.e. the
+ * original advances at 1/`rate` per wall second.
+ *
+ * Returns null when the tick is outside the clip or geometry is degenerate.
+ * Pure — shared by the waveform pin editor and the tests.
+ */
+export function warpBufferTimeAtTick(opts: {
+  markers: ReadonlyArray<{ timeSec: number; tick: number }>;
+  clipStartTick: number;
+  clipTicks: number;
+  /** Arrangement tick to query (absolute). */
+  tick: number;
+  /** Wall seconds per tick. */
+  spt: number;
+  /** Trimmed content window (secs, original-sample timeline). */
+  contentStartSec: number;
+  contentDurSec: number;
+  stretchRate?: number;
+  stretchMode?: "resample" | "stretch";
+}): number | null {
+  const { markers, clipStartTick, clipTicks, tick, spt, contentStartSec, contentDurSec } = opts;
+  if (!Number.isFinite(clipTicks) || clipTicks <= 0) return null;
+  if (!Number.isFinite(spt) || spt <= 0) return null;
+  if (!Number.isFinite(contentStartSec) || !Number.isFinite(contentDurSec) || contentDurSec <= 0) return null;
+  const rel = tick - clipStartTick;
+  if (!(rel >= 0) || !(rel <= clipTicks)) return null;
+  const contentEnd = contentStartSec + contentDurSec;
+  const clampBuf = (v: number): number => Math.min(contentEnd, Math.max(contentStartSec, v));
+  const pins: { rel: number; buf: number }[] = [{ rel: 0, buf: contentStartSec }];
+  let inRange = 0;
+  for (const m of markers) {
+    if (!Number.isFinite(m.timeSec) || !Number.isFinite(m.tick)) continue;
+    const r = m.tick - clipStartTick;
+    if (r < 0 || r > clipTicks) continue;
+    inRange++;
+    pins.push({ rel: r, buf: clampBuf(m.timeSec) });
+  }
+  pins.push({ rel: clipTicks, buf: contentEnd });
+  pins.sort((a, b) => a.rel - b.rel);
+  if (inRange === 0) {
+    const rate = Math.min(4, Math.max(0.25, opts.stretchRate ?? 1));
+    const straight =
+      opts.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01
+        ? contentStartSec + (rel * spt) / rate
+        : contentStartSec + rel * spt * rate;
+    return clampBuf(straight);
+  }
+  for (let i = 0; i + 1 < pins.length; i++) {
+    const a = pins[i];
+    const b = pins[i + 1];
+    if (rel >= a.rel && rel <= b.rel) {
+      const span = b.rel - a.rel;
+      if (span <= 1e-9) return clampBuf(a.buf);
+      const t = (rel - a.rel) / span;
+      return clampBuf(a.buf + (b.buf - a.buf) * t);
+    }
+  }
+  return clampBuf(contentEnd);
+}
+
+/** Default micro-crossfade at repitch-warp segment joints (de-click only). */
+export const WARP_MICRO_FADE_SEC = 0.003;
+
+/**
+ * One repitch-warp segment's exact playback envelope: where its source
+ * starts/stops (wall + buffer offsets, both relative to the clip start) and
+ * the micro-fade automation on its private gain. Interior joints overlap:
+ * the outgoing voice rings `o` past the boundary while the incoming voice
+ * started `o` early — a 3 ms crossfade that kills boundary clicks without
+ * moving any boundary in time. Edge fades (clip start/end) are capped at
+ * half the segment so a sub-6 ms segment never folds its ramps over.
+ */
+export interface WarpSegmentRender {
+  /** Wall offset (sec) from the clip `when` to start the source. */
+  startOffsetSec: number;
+  /** Buffer offset (sec) to start reading. */
+  bufOffsetSec: number;
+  /** Wall seconds to keep the source playing (stop = when + start + play). */
+  playDurSec: number;
+  /** Fade-in on the private gain (sec, relative to the clip start). */
+  fadeInAt: number;
+  fadeInDur: number;
+  /** Fade-out on the private gain (sec, relative to the clip start). */
+  fadeOutAt: number;
+  fadeOutDur: number;
+}
+
+/**
+ * Expand warp segments into click-free render plans. Pure — shared by the
+ * live trigger and the offline render (both go through `triggerAudioClip`).
+ */
+export function warpSegmentRenders(
+  segs: ReadonlyArray<WarpSegment>,
+  opts: {
+    clipTicks: number;
+    clipDurSec: number;
+    contentStartSec: number;
+    contentDurSec: number;
+    fadeSec?: number;
+  },
+): WarpSegmentRender[] {
+  const { clipTicks, clipDurSec, contentStartSec, contentDurSec } = opts;
+  const fade = Math.max(0, opts.fadeSec ?? WARP_MICRO_FADE_SEC);
+  if (segs.length === 0 || !(clipTicks > 0) || !(clipDurSec > 0)) return [];
+  const contentEnd = contentStartSec + contentDurSec;
+  const wallAt = (tick: number): number => (tick / clipTicks) * clipDurSec;
+  return segs.map((s, i) => {
+    const wallStart = wallAt(s.startTick);
+    const wallEnd = wallAt(s.endTick);
+    const segWall = Math.max(0, wallEnd - wallStart);
+    // Overlap with the previous joint: limited by the fade and by readable
+    // content on both sides of the shared buffer break.
+    let overlapIn = 0;
+    if (i > 0 && fade > 0 && s.rate > 0) {
+      const prev = segs[i - 1];
+      overlapIn = Math.min(fade, (s.bufStartSec - contentStartSec) / s.rate, (contentEnd - prev.bufEndSec) / Math.max(1e-6, prev.rate));
+      if (!Number.isFinite(overlapIn) || overlapIn < 0.0005) overlapIn = 0;
+    }
+    // Overlap past the next joint (symmetric readability check).
+    let overlapOut = 0;
+    if (i + 1 < segs.length && fade > 0 && s.rate > 0) {
+      const next = segs[i + 1];
+      overlapOut = Math.min(fade, (contentEnd - s.bufEndSec) / s.rate, (next.bufStartSec - contentStartSec) / Math.max(1e-6, next.rate));
+      if (!Number.isFinite(overlapOut) || overlapOut < 0.0005) overlapOut = 0;
+    }
+    const startOffsetSec = wallStart - overlapIn;
+    const bufOffsetSec = s.bufStartSec - overlapIn * s.rate;
+    const playDurSec = Math.max(0.005, wallEnd + overlapOut - startOffsetSec);
+    // Edge fades cap at half the segment; interior joints use the overlap.
+    const edgeFade = Math.min(fade, segWall / 2);
+    const fadeInAt = startOffsetSec;
+    const fadeInDur = i > 0 ? overlapIn : edgeFade;
+    const fadeOutAt = i + 1 < segs.length ? wallEnd : wallEnd - edgeFade;
+    const fadeOutDur = i + 1 < segs.length ? overlapOut : edgeFade;
+    return { startOffsetSec, bufOffsetSec, playDurSec, fadeInAt, fadeInDur, fadeOutAt, fadeOutDur };
+  });
 }
 
 /**

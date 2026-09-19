@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { audioClipPlayWindow, buildWarpSegments } from "../src/audio-engine/AudioEngine";
+import {
+  audioClipPlayWindow,
+  buildWarpSegments,
+  warpBufferTimeAtTick,
+  warpSegmentRenders,
+  type WarpSegment,
+} from "../src/audio-engine/AudioEngine";
 import type { AudioClip } from "../src/project-model/types";
 
 function makeClip(patch: Partial<AudioClip> = {}): AudioClip {
@@ -146,5 +152,100 @@ describe("buildWarpSegments", () => {
     expect(buildWarpSegments({ ...base, markers: [], clipTicks: 0 })).toBeNull();
     expect(buildWarpSegments({ ...base, markers: [], contentDurSec: 0 })).toBeNull();
     expect(buildWarpSegments({ ...base, markers: [{ timeSec: NaN, tick: 100 }] })).toBeNull();
+  });
+});
+
+describe("warpBufferTimeAtTick", () => {
+  // 4-bar clip, 8 s of content, 120 BPM grid (spt = 8/7680).
+  const base = {
+    clipStartTick: 0,
+    clipTicks: 4 * 1920,
+    spt: 8 / (4 * 1920),
+    contentStartSec: 0,
+    contentDurSec: 8,
+  };
+
+  it("straight resample position without markers (rate × wall)", () => {
+    // rel 3840 ticks = 4 s wall; rate 2 consumes 8 s of source — clamped to content end.
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: 1920, stretchRate: 2 })).toBeCloseTo(4, 5);
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: 3840, stretchRate: 2 })).toBeCloseTo(8, 5);
+  });
+
+  it("straight stretch position without markers (wall ÷ rate)", () => {
+    // Stretch straight plays a pre-stretched buffer: the original advances
+    // at 1/rate per wall second — a pin here reproduces the legacy sound.
+    expect(
+      warpBufferTimeAtTick({ ...base, markers: [], tick: 3840, stretchRate: 2, stretchMode: "stretch" }),
+    ).toBeCloseTo(2, 5);
+  });
+
+  it("interpolates neutrally inside an existing warp map", () => {
+    const markers = [{ timeSec: 6, tick: 2 * 1920 }];
+    // Midpoint of the first span (0→3840 ticks maps 0→6 s): tick 1920 = 3 s.
+    expect(warpBufferTimeAtTick({ ...base, markers, tick: 1920 })).toBeCloseTo(3, 5);
+    // Exact pin reproduces itself.
+    expect(warpBufferTimeAtTick({ ...base, markers, tick: 2 * 1920 })).toBeCloseTo(6, 5);
+  });
+
+  it("returns null outside the clip or on degenerate geometry", () => {
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: -1 })).toBeNull();
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: 4 * 1920 + 1 })).toBeNull();
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: 100, spt: 0 })).toBeNull();
+    expect(warpBufferTimeAtTick({ ...base, markers: [], tick: 100, contentDurSec: 0 })).toBeNull();
+  });
+});
+
+describe("warpSegmentRenders", () => {
+  // Two segments tiling a 4-bar clip holding 8 s of content (rate 1 each).
+  const segs: WarpSegment[] = [
+    { startTick: 0, endTick: 2 * 1920, bufStartSec: 0, bufEndSec: 4, rate: 1 },
+    { startTick: 2 * 1920, endTick: 4 * 1920, bufStartSec: 4, bufEndSec: 8, rate: 1 },
+  ];
+  const opts = { clipTicks: 4 * 1920, clipDurSec: 8, contentStartSec: 0, contentDurSec: 8 };
+
+  it("overlaps interior joints into a 3 ms crossfade without moving boundaries", () => {
+    const [a, b] = warpSegmentRenders(segs, opts);
+    // Outgoing rings 3 ms past the 4 s joint; incoming started 3 ms early.
+    expect(a.playDurSec).toBeCloseTo(4.003, 6);
+    expect(b.startOffsetSec).toBeCloseTo(3.997, 6);
+    expect(b.bufOffsetSec).toBeCloseTo(3.997, 6);
+    expect(a.fadeOutAt).toBeCloseTo(4, 6);
+    expect(a.fadeOutDur).toBeCloseTo(0.003, 6);
+    expect(b.fadeInAt).toBeCloseTo(3.997, 6);
+    expect(b.fadeInDur).toBeCloseTo(0.003, 6);
+    // Clip edges fade in/out (de-click) instead of overlapping nothing.
+    expect(a.fadeInAt).toBe(0);
+    expect(a.fadeInDur).toBeCloseTo(0.003, 6);
+    expect(b.fadeOutDur).toBeCloseTo(0.003, 6);
+    expect(b.fadeOutAt).toBeCloseTo(7.997, 6);
+  });
+
+  it("keeps every ramp ordered and every read inside content", () => {
+    const out = warpSegmentRenders(segs, opts);
+    for (const r of out) {
+      // Fade-out never starts before the fade-in finished.
+      expect(r.fadeOutAt).toBeGreaterThanOrEqual(r.fadeInAt + r.fadeInDur - 1e-9);
+      expect(r.playDurSec).toBeGreaterThan(0);
+      expect(r.bufOffsetSec).toBeGreaterThanOrEqual(0);
+      expect(r.bufOffsetSec).toBeLessThanOrEqual(8);
+      for (const v of [r.startOffsetSec, r.fadeInAt, r.fadeInDur, r.fadeOutAt, r.fadeOutDur]) {
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("caps edge fades at half a tiny segment (no folded ramps)", () => {
+    const tiny: WarpSegment[] = [{ startTick: 0, endTick: 10, bufStartSec: 0, bufEndSec: 0.01, rate: 1 }];
+    const [r] = warpSegmentRenders(tiny, { ...opts, clipTicks: 10, clipDurSec: 0.004 });
+    expect(r.fadeInDur).toBeLessThanOrEqual(0.002 + 1e-9);
+    expect(r.fadeOutDur).toBeLessThanOrEqual(0.002 + 1e-9);
+    expect(r.fadeOutAt).toBeGreaterThanOrEqual(r.fadeInAt + r.fadeInDur - 1e-9);
+  });
+
+  it("returns [] for empty or degenerate input", () => {
+    expect(warpSegmentRenders([], opts)).toEqual([]);
+    expect(warpSegmentRenders(segs, { ...opts, clipTicks: 0 })).toEqual([]);
+    expect(warpSegmentRenders(segs, { ...opts, clipDurSec: 0 })).toEqual([]);
   });
 });

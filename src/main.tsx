@@ -27,6 +27,7 @@ initTheme();
 const EmbedApp = lazy(() => import("./embed/EmbedApp").then((m) => ({ default: m.EmbedApp })));
 const GalleryPage = lazy(() => import("./gallery/GalleryPage").then((m) => ({ default: m.GalleryPage })));
 const LandingPage = lazy(() => import("./landing/LandingPage").then((m) => ({ default: m.LandingPage })));
+const DownloadPage = lazy(() => import("./download/DownloadPage").then((m) => ({ default: m.DownloadPage })));
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Root element not found");
@@ -58,6 +59,15 @@ if (/^\/embed(\/|$)/.test(PATH)) {
     <StrictMode>
       <Suspense fallback={ROUTE_FALLBACK}>
         <GalleryPage />
+      </Suspense>
+    </StrictMode>,
+  );
+} else if (/^\/download(\/|$)/.test(PATH)) {
+  // /download — the desktop app page; no studio boot either.
+  createRoot(container).render(
+    <StrictMode>
+      <Suspense fallback={ROUTE_FALLBACK}>
+        <DownloadPage />
       </Suspense>
     </StrictMode>,
   );

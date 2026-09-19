@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { groupShortcuts, shortcutDisplayBindings } from "./shortcuts";
+import { EDITOR_SHORTCUTS, groupShortcuts, shortcutDisplayBindings } from "./shortcuts";
 import { gestureMatches, gesturesByArea } from "./helpContent";
 
 interface HelpOverlayProps {
@@ -57,8 +57,23 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
     () => gesturesByArea().map(({ area, items }) => ({ area, items: items.filter((g) => gestureMatches(g, query)) })),
     [query],
   );
+  const editorAreas = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = EDITOR_SHORTCUTS.filter(
+      (sc) =>
+        !q ||
+        sc.label.toLowerCase().includes(q) ||
+        sc.area.toLowerCase().includes(q) ||
+        sc.bindings.some((binding) => binding.toLowerCase().includes(q)),
+    );
+    const order = [...new Set(EDITOR_SHORTCUTS.map((sc) => sc.area))];
+    return order
+      .map((area) => ({ area, items: matches.filter((sc) => sc.area === area) }))
+      .filter(({ items }) => items.length > 0);
+  }, [query]);
   const gesturesVisible = gestureAreas.some(({ items }) => items.length > 0);
-  const nothingFound = groups.length === 0 && !gesturesVisible;
+  const editorsVisible = editorAreas.length > 0;
+  const nothingFound = groups.length === 0 && !gesturesVisible && !editorsVisible;
 
   if (!open) return null;
 
@@ -153,6 +168,33 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
                   </ul>
                 </section>
               ))}
+          </div>
+        )}
+
+        {editorsVisible && (
+          <div className="help-gestures" aria-label="Editor shortcuts">
+            <h3 className="help-group-title">EDITOR SHORTCUTS — DEPENDS ON FOCUS</h3>
+            {editorAreas.map(({ area, items }) => (
+              <section key={area} className="help-group" aria-labelledby={`help-editor-${area}`}>
+                <h4 id={`help-editor-${area}`} className="help-group-title">
+                  {area.toUpperCase()}
+                </h4>
+                <ul className="help-list">
+                  {items.map((sc) => (
+                    <li key={`${sc.area}-${sc.label}`} className="help-row">
+                      <span className="help-label">{sc.label}</span>
+                      <span className="help-bindings">
+                        {sc.bindings.map((binding) => (
+                          <kbd key={binding} className="help-kbd" aria-label={binding}>
+                            {binding}
+                          </kbd>
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
           </div>
         )}
 

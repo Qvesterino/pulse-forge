@@ -25,3 +25,13 @@ build/
 
 # Symbolic prior training dataset — regenerated deterministically by `npm run prior:train`
 scripts/data/symbolic-prior-dataset.json
+
+# TypeScript incremental build cache (239 KB generated). When
+# `tsconfig.json` has `incremental: true`, the build cache absorbs partial
+# runs and can mask regressions introduced during experimental config
+# changes — see GOAL 04 follow-up #1 in AGENT_WORK_LOG.md. CI should always
+# run `npx tsc --noEmit -p tsconfig.json --incremental false` so the cache
+# cannot silently hide real typecheck errors.
+tsconfig.tsbuildinfo*
+*.bak
+*.tsbuildinfo

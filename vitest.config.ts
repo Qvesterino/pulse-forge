@@ -22,6 +22,20 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     css: false,
+    // Pool config (rejected 2026-09-18):
+    //   - `isolate: false` collapsed 78-file setup time from 406 s to ~13 s
+    //     in early testing, but it produced 7 contamination failures in
+    //     WavetablePanel / SampleBrowser / Mixer. Each test file expects a
+    //     fresh jsdom DOM and module-level service mocks; the 4× wall-clock
+    //     speedup is not worth the false negatives.
+    //   - `pool: 'forks'` + `maxForks: 6` (without `isolate: false`) added
+    //     IPC overhead but no real speedup — extrapolation for all 78
+    //     files was ~530 s (slower than the default `pool: 'threads'`).
+    // Both reverted. The 400 s+ environment setup is structural — the cost
+    // is per-file jsdom init plus the project-size module graph — and would
+    // require splitting the test surface (e.g. unit-only vs UI tests,
+    // separated into different packages) to make a meaningful dent. That
+    // is out of scope for this campaign.
     // E2E specs under tests/e2e/ are run by the Playwright runner
     // (`npm run test:e2e`), not vitest — vitest's default `testMatch`
     // would otherwise pick them up and fail with a vitest-shaped error.

@@ -4376,14 +4376,28 @@ function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[]
   return track && "effects" in track ? track.effects : [];
 }
 
-export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectType): Command {
+export function addEffect(
+  doc: ProjectDocument,
+  trackId: string,
+  type: EffectType,
+  insertAt?: number,
+): Command & { readonly effectId: string } {
   const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params: defaultParamsOf(type) };
   if (type === "stepGate") fx.steps = [...DEFAULT_GATE_PATTERN];
   if (type === "stutter") fx.steps = Array.from({ length: 16 }, () => 1);
+  const initialEffects = trackEffectsOf(doc, trackId);
+  const insertionIndex =
+    insertAt === undefined ? initialEffects.length : Math.max(0, Math.min(initialEffects.length, Math.floor(insertAt)));
   return {
     type: "addEffect",
     label: `Add ${EFFECT_DEFS[type].name}`,
-    execute: (d) => withTrackEffects(d, trackId, (effects) => [...effects, fx]),
+    effectId: fx.id,
+    execute: (d) =>
+      withTrackEffects(d, trackId, (effects) => {
+        const next = [...effects];
+        next.splice(Math.max(0, Math.min(next.length, insertionIndex)), 0, fx);
+        return next;
+      }),
     undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fx.id)),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
@@ -4401,7 +4415,7 @@ export function addEffect(_doc: ProjectDocument, trackId: string, type: EffectTy
           fxMap.set("params", params);
           for (const [k, v] of Object.entries(fx.params)) params.set(k, v);
           if (fx.steps) fxMap.set("steps", [...fx.steps]);
-          effects.push([fxMap]);
+          effects.insert(Math.max(0, Math.min(effects.length, insertionIndex)), [fxMap]);
           break;
         }
       }
@@ -4556,6 +4570,23 @@ export function moveEffect(doc: ProjectDocument, trackId: string, fxId: string, 
   const index = effects.findIndex((f) => f.id === fxId);
   const target = index + direction;
   if (index < 0 || target < 0 || target >= effects.length) throw new Error("Effect cannot move in that direction");
+  return moveEffectToIndex(doc, trackId, fxId, target);
+}
+
+/** Move a device to a final zero-based position in its track's effect chain. */
+export function moveEffectToIndex(doc: ProjectDocument, trackId: string, fxId: string, toIndex: number): Command {
+  const effects = trackEffectsOf(doc, trackId);
+  const index = effects.findIndex((f) => f.id === fxId);
+  if (index < 0) throw new Error("Effect not found in track chain");
+  const target = Math.max(0, Math.min(effects.length - 1, Math.floor(toIndex)));
+  if (index === target) {
+    return {
+      type: "moveEffect",
+      label: `Reorder ${EFFECT_DEFS[effects[index].type].name}`,
+      execute: (d) => d,
+      undo: (d) => d,
+    };
+  }
   const reordered = [...effects];
   const [moved] = reordered.splice(index, 1);
   reordered.splice(target, 0, moved);

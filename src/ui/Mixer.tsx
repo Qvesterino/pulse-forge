@@ -393,11 +393,6 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
     return () => window.removeEventListener("mousedown", onDown);
   }, [faderMenu]);
 
-  const openFaderMenu = (e: React.MouseEvent, param: "gain" | "pan" | string, defaultValue: number) => {
-    e.preventDefault();
-    setFaderMenu({ x: e.clientX, y: e.clientY, param, defaultValue, trackId: track.id });
-  };
-
   return (
     <div
       className={`channel-strip${isGroup ? " group-strip" : ""}${dragOver ? " drag-over" : ""}${selection.trackIds.includes(track.id) ? " selected-strip" : ""}`}
@@ -530,28 +525,26 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
               </select>
             </label>
           )}
-          <div onContextMenu={(e) => openFaderMenu(e, "gain", 0.9)}>
-            <Slider
-              label="VOL"
-              value={track.gain}
-              min={0}
-              max={1.5}
-              defaultValue={0.9}
-              format={(v) => (20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}
-              onCommit={(gain) => services.store.execute(setTrackParams(doc, track.id, { gain }))}
-            />
-          </div>
-          <div onContextMenu={(e) => openFaderMenu(e, "pan", 0)}>
-            <Slider
-              label="PAN"
-              value={track.pan}
-              min={-1}
-              max={1}
-              defaultValue={0}
-              format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
-              onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
-            />
-          </div>
+          <Slider
+            label="VOL"
+            value={track.gain}
+            min={0}
+            max={1.5}
+            defaultValue={0.9}
+            format={(v) => (20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}
+            onCommit={(gain) => services.store.execute(setTrackParams(doc, track.id, { gain }))}
+            onMenu={(x, y) => setFaderMenu({ x, y, param: "gain", defaultValue: 0.9, trackId: track.id })}
+          />
+          <Slider
+            label="PAN"
+            value={track.pan}
+            min={-1}
+            max={1}
+            defaultValue={0}
+            format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
+            onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
+            onMenu={(x, y) => setFaderMenu({ x, y, param: "pan", defaultValue: 0, trackId: track.id })}
+          />
           {doc.returns.map((ret) => (
             <div
               key={ret.id}
@@ -565,7 +558,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                   trackId: track.id,
                 });
               }}
-              title="RMB → Create return"
+              title="Send level — drag the slider, or open the menu for exact values"
             >
               <Slider
                 compact
@@ -576,24 +569,27 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                 defaultValue={0}
                 format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
                 onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
+                onMenu={(x, y) =>
+                  setFaderMenu({ x, y, param: `send:${ret.id}`, defaultValue: 0, trackId: track.id })
+                }
               />
             </div>
           ))}
-          <div
-            className="send-create"
-            onContextMenu={(e) => {
-              e.preventDefault();
+          <button
+            type="button"
+            className="btn btn-small send-create"
+            title="Create a new return track (FX bus fed by the sends above)"
+            aria-label="Create return track"
+            onClick={() => {
               try {
                 services.store.execute(createReturnTrack(doc));
               } catch {
                 /* ignore */
               }
             }}
-            title="RMB here to create a new return"
-            style={{ fontSize: 10, color: "var(--muted)", cursor: "context-menu", padding: "2px 0" }}
           >
-            + SEND (RMB → New return)
-          </div>
+            + RETURN
+          </button>
         </div>
         <Meter engine={services.engine} kind="track" id={track.id} />
       </div>

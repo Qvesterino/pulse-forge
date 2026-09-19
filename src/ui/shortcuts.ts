@@ -229,6 +229,101 @@ export function groupShortcuts(): { group: Shortcut["group"]; items: Shortcut[] 
 }
 
 /**
+ * Shortcuts implemented by individual editors (piano roll, arrangement,
+ * capture, assist) rather than the central matcher. They are advertised in
+ * the help overlay so "?" remains the single place a user can discover them —
+ * they are NOT matched here (each editor owns its own keydown handling).
+ */
+export interface EditorShortcut {
+  label: string;
+  area: string;
+  bindings: string[];
+}
+
+export const EDITOR_SHORTCUTS: EditorShortcut[] = [
+  {
+    area: "Piano roll keys",
+    label: "Strum selected notes",
+    bindings: ["S"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Slide (portamento) toggle",
+    bindings: ["Alt + S"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Legato — extend notes to the next",
+    bindings: ["L"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Duplicate selected notes",
+    bindings: ["Ctrl + B"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Quantize 50% (keep groove feel)",
+    bindings: ["Alt + Q"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Chord stamp menu",
+    bindings: ["Shift + C"],
+  },
+  {
+    area: "Piano roll keys",
+    label: "Nudge notes (grid / octave)",
+    bindings: ["← →", "↑ ↓", "Shift + ↑ ↓"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Locators to selection (loop)",
+    bindings: ["P"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Bounce the selected range to an audio clip",
+    bindings: ["Ctrl + B"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Crossfade the selected clips",
+    bindings: ["X"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Separate the audio clip at the playhead",
+    bindings: ["Ctrl + E"],
+  },
+  {
+    area: "Capture",
+    label: "Capture last take (after stop/pause)",
+    bindings: ["A"],
+  },
+  {
+    area: "Assist",
+    label: "One-click vary (seeded variation)",
+    bindings: ["Ctrl + Shift + V"],
+  },
+  {
+    area: "Assist",
+    label: "One-click fill",
+    bindings: ["Ctrl + Shift + F"],
+  },
+  {
+    area: "Dice tray",
+    label: "Roll full / vary (tray open)",
+    bindings: ["D", "Shift + D"],
+  },
+  {
+    area: "Dice tray",
+    label: "Walk the roll history (tray open)",
+    bindings: ["← →"],
+  },
+];
+
+/**
  * Build a display string for a shortcut, e.g. "Ctrl + Z" or "Alt + M".
  * Uses the primary keyHint and its modifiers.
  */

@@ -42,12 +42,15 @@ import { computeSceneIntensity } from "../project-model/intensity";
 import type {
   ArrangementClip,
   ArrangementTransitionType,
+  AudioClip,
   IntensityPoint,
   ProjectDocument,
   SceneRole,
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
+import { warpBufferTimeAtTick } from "../audio-engine/AudioEngine";
+import { nearestOnset } from "../audio-workers/onset-detector";
 import { extractGroove } from "../audio-engine/groove-extract";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
@@ -62,6 +65,16 @@ import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
 const BASE_BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
+/**
+ * Transient times (sec) per audio buffer for the warp-pin magnet. Module
+ * scope: detection is async (worker for long samples) and outlives renders.
+ * A placement miss simply stays un-snapped and kicks off detection, so the
+ * next pin on the same buffer snaps.
+ */
+const warpOnsetCache = new Map<string, number[]>();
+const warpOnsetInflight = new Set<string>();
+/** Grab radius of the transient magnet around the pointed sample time. */
+const WARP_SNAP_SEC = 0.06;
 const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
   { value: "", label: "INFER FROM NAME" },
   { value: "intro", label: "INTRO" },
@@ -361,8 +374,7 @@ export function ArrangementPanel() {
       )
     : undefined;
 
-  const execute = (command: Parameters<typeof services.store.execute>[0]): boolean => {
-    try {
+  const execute = (command: Parameters<typeof services.store.execute>[0]): boolean => {    try {
       setActionError(null);
       services.store.execute(command);
       return true;
@@ -371,6 +383,100 @@ export function ArrangementPanel() {
       return false;
     }
   };
+
+  /**
+   * Background transient detection for one buffer (worker when worthwhile,
+   * sync fallback otherwise — see `detectTransientsAsync`). Idempotent:
+   * cached and in-flight buffers are skipped.
+   */
+  const warmWarpOnsets = (bufferId: string): void => {
+    if (warpOnsetCache.has(bufferId) || warpOnsetInflight.has(bufferId)) return;
+    const buf = services.bank.get(bufferId);
+    if (!buf || !(buf.duration > 0) || buf.duration > 600) return;
+    warpOnsetInflight.add(bufferId);
+    detectTransientsAsync(buf.getChannelData(0), buf.sampleRate).then(
+      (times) => {
+        warpOnsetInflight.delete(bufferId);
+        warpOnsetCache.set(bufferId, times);
+      },
+      () => warpOnsetInflight.delete(bufferId),
+    );
+  };
+
+  /**
+   * Add a warp pin at an absolute tick (neutral insertion: the pin lands on
+   * the current warp map / straight playback, so the sound does not jump —
+   * dragging it afterwards bends time). Time grabs the nearest detected
+   * transient within 60 ms (transient magnet); the tick stays where the
+   * user pointed. Shared by the context-menu action and double-click on
+   * the waveform.
+   */
+  const addWarpPinAtTick = (clip: AudioClip, tick: number): void => {
+    if (clip.reverse) {
+      setActionError("Warp pins need forward playback — switch off Reverse first");
+      return;
+    }
+    if (clip.loop) {
+      setActionError("Warp is bypassed on looped clips — switch off Loop first");
+      return;
+    }
+    const buf = services.bank.get(clip.bufferId);
+    if (!buf) {
+      setActionError("Buffer not loaded");
+      return;
+    }
+    const clipStartTick = clip.startBar * BAR_TICKS;
+    const clipTicks = clip.lengthBars * BAR_TICKS;
+    const rel = tick - clipStartTick;
+    if (!(rel > 0) || !(rel < clipTicks)) return;
+    const spt = 60 / (doc.bpm * PPQ);
+    const contentStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
+    const contentDur = Math.max(0.01, buf.duration - contentStart - (clip.trimEnd ?? 0));
+    const contentEnd = contentStart + contentDur;
+    const bufTime =
+      warpBufferTimeAtTick({
+        markers: clip.warpMarkers ?? [],
+        clipStartTick,
+        clipTicks,
+        tick: Math.round(tick),
+        spt,
+        contentStartSec: contentStart,
+        contentDurSec: contentDur,
+        stretchRate: clip.stretchRate ?? 1,
+        stretchMode: clip.stretchMode,
+      }) ?? contentStart;
+    // Transient magnet: grab the nearest onset when one is close, so pins
+    // land on hits instead of between them. First placement warms the
+    // detector and stays un-snapped; later placements snap.
+    let finalTime = bufTime;
+    const cached = warpOnsetCache.get(clip.bufferId);
+    if (cached) {
+      const snapped = nearestOnset(bufTime, cached, WARP_SNAP_SEC);
+      if (snapped !== null) finalTime = Math.min(contentEnd, Math.max(contentStart, snapped));
+    } else {
+      warmWarpOnsets(clip.bufferId);
+    }
+    const markers = [...(clip.warpMarkers ?? []), { timeSec: Math.round(finalTime * 1000) / 1000, tick: Math.round(tick) }]
+      .sort((a, b) => a.tick - b.tick)
+      .slice(0, 256);
+    try {
+      execute(updateAudioClip(services.store.doc, clip.id, { warpMarkers: markers }));
+      // Warm the pitch-preserving warp cache (stretch + pins) so
+      // the next play is exact instead of repitch-fallback.
+      services.engine.warmWarpForClip({ ...clip, warpMarkers: markers });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Warp pin failed");
+    }
+  };
+
+  // Warm transient detection for every audio clip's buffer (magnet for
+  // future pins). Keyed by buffer set — a project edit re-runs it, a
+  // re-render does not.
+  const warpBufferIds = audioClips.map((c) => c.bufferId).join(",");
+  useEffect(() => {
+    for (const c of audioClips) warmWarpOnsets(c.bufferId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warpBufferIds]);
 
   // Piecewise bar→seconds map (VISION §10): every clip's span runs at its
   // scene's EFFECTIVE tempo (scene.bpm pin, else project tempo), gaps at the
@@ -1446,6 +1552,17 @@ export function ArrangementPanel() {
                     setSelectedAudioClipId(clip.id);
                     setSelectedClipId(null);
                   }}
+                  onDoubleClick={(event) => {
+                    // Double-click empty waveform = add a neutral warp pin.
+                    // Pin handles / trim / fade / gain zones keep their own
+                    // gestures — only the bare waveform adds pins.
+                    const target = event.target as HTMLElement | null;
+                    if (target?.closest(".warp-pin, .arr-audio-clip-handle, .arr-audio-clip-handle-fade, .arr-audio-clip-handle-gain")) return;
+                    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                    if (rect.width <= 0) return;
+                    const frac = (event.clientX - rect.left) / rect.width;
+                    addWarpPinAtTick(clip, Math.round(clip.startBar * BAR_TICKS + frac * clip.lengthBars * BAR_TICKS));
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1453,6 +1570,24 @@ export function ArrangementPanel() {
                   }}
                 >
                   <AudioClipWaveform buffer={buffer ?? null} reverse={clip.reverse} />
+                  <WarpPinsOverlay
+                    clip={clip}
+                    disabledReason={
+                      clip.reverse
+                        ? "Warp needs forward playback — switch off Reverse"
+                        : clip.loop
+                          ? "Warp is bypassed on looped clips — switch off Loop"
+                          : null
+                    }
+                    onCommit={(markers) => {
+                      try {
+                        execute(updateAudioClip(services.store.doc, clip.id, { warpMarkers: markers }));
+                        services.engine.warmWarpForClip({ ...clip, warpMarkers: markers });
+                      } catch (err) {
+                        setActionError(err instanceof Error ? err.message : "Warp edit failed");
+                      }
+                    }}
+                  />
                   <span className="arr-audio-clip-label">{track?.name ?? clip.bufferId.slice(0, 8)}</span>
                   <span
                     className="arr-audio-clip-handle left"
@@ -1645,49 +1780,22 @@ export function ArrangementPanel() {
             <button
               type="button"
               role="menuitem"
-              title="Pin the sample time playing at the playhead to the grid — Resample clips bend pitch (repitch warp), Stretch clips keep pitch (phase-vocoder pre-render, warmed in background)"
+              title="Pin the sample time playing at the playhead to the grid — grabs the nearest transient within 60 ms. Resample clips bend pitch (repitch warp), Stretch clips keep pitch (phase-vocoder pre-render, warmed in background)"
               onClick={() => {
                 const c = audioClips.find((x) => x.id === audioMenu.clipId);
                 if (!c) {
                   setAudioMenu(null);
                   return;
                 }
-                if (c.reverse) {
-                  setActionError("Warp pins need forward playback — switch off Reverse first");
-                  setAudioMenu(null);
-                  return;
-                }
-                const buf = services.bank.get(c.bufferId);
-                if (!buf) {
-                  setActionError("Buffer not loaded");
-                  setAudioMenu(null);
-                  return;
-                }
                 const pos = services.transport.position;
                 const clipStartTick = c.startBar * BAR_TICKS;
                 const clipTicks = c.lengthBars * BAR_TICKS;
-                const rel = pos - clipStartTick;
-                if (!(rel > 0) || !(rel < clipTicks)) {
+                if (!(pos > clipStartTick) || !(pos < clipStartTick + clipTicks)) {
                   setActionError("Move playhead inside the clip, then pin");
                   setAudioMenu(null);
                   return;
                 }
-                const spt = 60 / (doc.bpm * PPQ);
-                const rate = Math.min(4, Math.max(0.25, c.stretchRate ?? 1));
-                const contentStart = (c.offsetSec ?? 0) + (c.trimStart ?? 0);
-                const contentEnd = buf.duration - (c.trimEnd ?? 0);
-                const bufTime = Math.min(contentEnd, Math.max(contentStart, contentStart + rel * spt * rate));
-                const markers = [...(c.warpMarkers ?? []), { timeSec: Math.round(bufTime * 1000) / 1000, tick: Math.round(pos) }]
-                  .sort((a, b) => a.tick - b.tick)
-                  .slice(0, 256);
-                try {
-                  execute(updateAudioClip(services.store.doc, c.id, { warpMarkers: markers }));
-                  // Warm the pitch-preserving warp cache (stretch + pins) so
-                  // the next play is exact instead of repitch-fallback.
-                  services.engine.warmWarpForClip({ ...c, warpMarkers: markers });
-                } catch (err) {
-                  setActionError(err instanceof Error ? err.message : "Warp pin failed");
-                }
+                addWarpPinAtTick(c, pos);
                 setAudioMenu(null);
               }}
             >
@@ -2171,6 +2279,132 @@ function AudioClipWaveform({ buffer, reverse }: { buffer: AudioBuffer | null; re
       style={{ width: "100%", height: 28 }}
       aria-label="Audio waveform (min/max envelope like WavetablePreview)"
     />
+  );
+}
+
+/**
+ * Draggable warp pins directly on the audio waveform (FL/Slicex-style).
+ *
+ * Each pin locks one sample time to one grid position; dragging it
+ * horizontally bends time around it (pitch follows in Resample clips,
+ * pitch is preserved in Stretch clips). Model edits commit through the
+ * same undoable `updateAudioClip` command as every other clip edit.
+ *
+ * - drag: move the pin in time (Shift = snap to 1/16)
+ * - double-click empty waveform: add a neutral pin (sound does not jump)
+ * - Alt-click / right-click a pin: delete it
+ */
+function WarpPinsOverlay({
+  clip,
+  disabledReason,
+  onCommit,
+}: {
+  clip: AudioClip;
+  disabledReason: string | null;
+  onCommit: (markers: { timeSec: number; tick: number }[]) => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ index: number; originTick: number; startX: number; moved: boolean } | null>(null);
+  const [dragTick, setDragTick] = useState<number | null>(null);
+  const markers = clip.warpMarkers ?? [];
+  if (markers.length === 0) return null;
+  const clipStartTick = clip.startBar * BAR_TICKS;
+  const clipTicks = clip.lengthBars * BAR_TICKS;
+  if (!(clipTicks > 0)) return null;
+
+  const commitMove = (index: number, tick: number) => {
+    const target = markers[index];
+    if (!target) return;
+    const clamped = Math.max(clipStartTick + 1, Math.min(clipStartTick + clipTicks - 1, Math.round(tick)));
+    if (clamped === target.tick) return;
+    const next = markers.map((m, i) => (i === index ? { ...m, tick: clamped } : m));
+    next.sort((a, b) => a.tick - b.tick);
+    onCommit(next.slice(0, 256));
+  };
+
+  const commitDelete = (index: number) => {
+    onCommit(markers.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div ref={overlayRef} className="warp-pins-overlay" aria-label={`Warp pins (${markers.length})`}>
+      {markers.map((m, i) => {
+        const tick = dragRef.current?.index === i && dragTick !== null ? dragTick : m.tick;
+        const leftPct = ((tick - clipStartTick) / clipTicks) * 100;
+        if (leftPct < 0 || leftPct > 100) return null;
+        const bar = Math.floor(tick / BAR_TICKS) + 1;
+        return (
+          <div
+            key={`${m.tick}-${m.timeSec}-${i}`}
+            className={`warp-pin${disabledReason ? " disabled" : ""}${dragRef.current?.index === i ? " dragging" : ""}`}
+            style={{ left: `${leftPct}%` }}
+          >
+            <div className="warp-pin-line" />
+            <button
+              type="button"
+              className="warp-pin-handle"
+              aria-label={`Warp pin ${i + 1}, bar ${bar}, sample ${m.timeSec.toFixed(2)}s — drag to bend time, Alt-click or right-click to delete`}
+              title={
+                disabledReason ??
+                `Warp pin · bar ${bar} · ${m.timeSec.toFixed(2)}s — drag to bend (Shift = snap 1/16), Alt-click / right-click deletes`
+              }
+              onPointerDown={(e) => {
+                if (disabledReason) return;
+                if (e.button !== 0) return;
+                if (e.altKey) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  commitDelete(i);
+                  return;
+                }
+                e.stopPropagation();
+                e.preventDefault();
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  /* no capture */
+                }
+                dragRef.current = { index: i, originTick: m.tick, startX: e.clientX, moved: false };
+                setDragTick(m.tick);
+              }}
+              onPointerMove={(e) => {
+                const drag = dragRef.current;
+                if (!drag || drag.index !== i) return;
+                const overlay = overlayRef.current;
+                const width = overlay?.getBoundingClientRect().width ?? 0;
+                if (width <= 0) return;
+                const dx = e.clientX - drag.startX;
+                if (!drag.moved && Math.abs(dx) < 3) return;
+                drag.moved = true;
+                let next = drag.originTick + (dx / width) * clipTicks;
+                if (e.shiftKey) next = Math.round(next / STEP_TICKS) * STEP_TICKS;
+                setDragTick(Math.max(clipStartTick + 1, Math.min(clipStartTick + clipTicks - 1, Math.round(next))));
+              }}
+              onPointerUp={(e) => {
+                const drag = dragRef.current;
+                if (!drag || drag.index !== i) return;
+                dragRef.current = null;
+                const final = dragTick;
+                setDragTick(null);
+                if (!drag.moved || final === null) return;
+                e.stopPropagation();
+                commitMove(i, final);
+              }}
+              onPointerCancel={() => {
+                if (dragRef.current?.index !== i) return;
+                dragRef.current = null;
+                setDragTick(null);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!disabledReason) commitDelete(i);
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
