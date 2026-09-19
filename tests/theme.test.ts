@@ -17,10 +17,10 @@ describe("theme", () => {
     resetTheme();
   });
 
-  it("starts on the Forge preset with no overrides", () => {
+  it("starts on the Molten preset with no overrides", () => {
     initTheme();
     const state = getThemeSnapshot();
-    expect(state.preset).toBe("forge");
+    expect(state.preset).toBe("molten");
     expect(state.hue).toBeNull();
     expect(state.scale).toBe(1);
     // The default preset applies its accent explicitly (identical to :root).
@@ -50,10 +50,10 @@ describe("theme", () => {
   it("an invalid persisted state falls back to defaults", () => {
     localStorage.setItem("pf-theme-v1", "{not json");
     const state = initTheme();
-    expect(state.preset).toBe("forge");
+    expect(state.preset).toBe("molten");
     // Unknown preset ids fall back to the default preset.
     localStorage.setItem("pf-theme-v1", JSON.stringify({ preset: "nope" }));
-    expect(initTheme().preset).toBe("forge");
+    expect(initTheme().preset).toBe("molten");
   });
 
   it("clamps scale and hue into their ranges", () => {
@@ -65,6 +65,7 @@ describe("theme", () => {
 
   it("accent helpers", () => {
     expect(accentOf({ preset: "forge", hue: null } as never)).toBe("#f59e0b");
+    expect(accentOf({ preset: "molten", hue: null } as never)).toBe("#f59e0b");
     expect(accentOf({ preset: "forge", hue: 200 } as never)).toBe("hsl(200, 85%, 60%)");
     expect(hexOrHslToSoft("#f59e0b")).toBe("rgba(245, 158, 11, 0.14)");
     expect(hexOrHslToSoft("hsl(200, 85%, 60%)")).toBe("hsla(200, 85%, 60%, 0.14)");
@@ -76,6 +77,16 @@ describe("theme", () => {
     for (const preset of THEME_PRESETS) {
       expect(preset.accent).toMatch(/^#[0-9a-f]{6}$/i);
     }
+  });
+
+  it("switching to a preset without var overrides clears the previous palette (no leak)", () => {
+    setTheme({ preset: "molten" });
+    expect(document.documentElement.style.getPropertyValue("--bg")).toBe("#0b0c10");
+    setTheme({ preset: "forge" });
+    // Forge declares no vars — the inline overrides must be gone so :root wins.
+    expect(document.documentElement.style.getPropertyValue("--bg")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--text")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe("#f59e0b");
   });
 });
 

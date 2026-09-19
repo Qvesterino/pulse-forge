@@ -423,6 +423,34 @@ Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
   per-mood/genre rozhodnutia, konzervativnosť, overrides, apply (fx + clamp +
   sidechain + one undo) + idempotencia, mix parser EN/SK, router priority.
 
+### 5.8 Songwriting roles (A2 v2 — verse/chorus/bridge, HOTOVÉ)
+
+Odpoveď na "ako má vyzerať intro/verse/chorus/bridge/outro":
+
+- **First-class role**: `SceneRole` rozšírený o `verse | chorus | bridge`
+  (additívne — `clampSceneRole` ich prijíma, staré projekty sa načítajú
+  nezmenené). `inferSceneRole` rozpozná staré scény pomenované
+  "Chorus/VERSE/Bridge" — pozor: scéna "Chorus" sa teraz inferuje ako
+  `chorus`, nie `drop` (nová sémantika).
+- **Inštrumentácia per sekcia**: `SongSectionSpec.instrumentation` hovorí,
+  ktoré roly sa v sekcii VÔBEC vygenerujú — intro/outro = bicí+bas,
+  build/verse = bez leadu, drop/chorus = plný set, break/bridge = len
+  chords+lead. buildSong intersectuje inštrumentáciu s rolami používateľa
+  ("no drums" vyhráva vo všetkých sekciách); skutočné roly sú v provenance
+  (`SongBuildSection.roles`).
+- **Pop forma pre trap**: intro(4) → verse(8) → chorus(8) → verse(8) →
+  chorus(8) → bridge(4) → chorus(8) → outro(4) = 52 barov s CHORUS markermi
+  (impact) — beats na vokály majú verse/chorus logiku; house/techno ostávajú
+  electronic forms s doplnenou inštrumentáciou.
+- **Synonymá**: arrangeWords — chorus/refren/hook, verse/zloha (stem, padá
+  aj "zlohu"), bridge/most/mostik; chorus už NIE je alias dropu. autoArrange
+  nové roly folduje do najbližších bucktov (chorus→drop, verse→build,
+  bridge→break). Bandmate etiquette: verse = 85 % density bez fill,
+  chorus = full + fill na konci, bridge = 40 % bez kicku/snáru.
+- **UI**: ArrangementPanel role picker má VERSE/CHORUS/BRIDGE.
+- Testy: song 11 (inštrumentácia, pop forma, intersection, clamp/infer),
+  arrangeWords 13 (nové synonymá EN+SK).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
@@ -432,7 +460,7 @@ Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
   `symbolic-melodic.test.ts` (melodic prior provider + key-safe noty),
   `favorites-ledger.test.ts` (ledger + konverter),
   `candidate-audition.test.ts` (A1 bank + resultForCandidate + apply),
-  `intent-song.test.ts` (A2 forma + delty + apply/undo),
+  `intent-song.test.ts` (A2 forma + delty + apply/undo + A2 v2 inštrumentácia),
   `intent-mix-route.test.ts` (D1 mix profil/parser/apply + D3 router),
   `tests/intent/arrangeWords.test.ts`, `dice.test.ts`,
   `dice-subseed.test.ts`, `dice-locks.test.ts`, `ranker-client.test.ts`,
@@ -469,7 +497,7 @@ Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
 | Text understanding | **parser v3 (EN + SK)**: frázy, BPM range (na/pri/okolo/medzi), key (mol/dur + EN, flats→sharps, minor default), moods/traits so SK stems, takty, roly s negáciami (bez bubnov…) — detekcia dvojjazyčná, kanonický intent ostáva EN | embedding-based porozumenie (T1 krok 2) — prirodzene pokryje aj SK |
 | Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
 | Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
-| Štruktúra pesničky | **HOTOVÉ (A2)**: song builder — intent → intro→build→drop→break→drop→outro s role-aware patternami, markermi a prechodmi; + phrase plan + `arrangeWords`/autoArrange | section-aware prior kandidáty, audíció celej pesničky, fill/transition generovanie |
+| Štruktúra pesničky | **HOTOVÉ (A2 v2)**: song builder s verse/chorus/bridge rolami, inštrumentáciou per sekciu (intro=bicí+bas, chorus=full, bridge=bez bicích), pop forma pre trap + elektronickej formy | section-aware prior kandidáty, audíció celej pesničky, reálne transition ZVUKY |
 | Intent → mix | **HOTOVÉ (D1)**: mix profil z intentu (tone/punch/space/pump) ako jeden undo krok | loudness target (limiter), per-section mix v song builderi |
 | Unified bar | **HOTOVÉ (D3)**: ⚡ router arrange→mix→pattern v IntentPaneli | vzor/pattern z audio referencie (T4) |
 | Audio dimenzia | sample kity, grooves; žiadne audio AI | audio embeddingy (tagovanie sample lib, audio ranker rendered výstupu) |
@@ -505,9 +533,9 @@ Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
   priamo z favoritov~~ **HOTOVÉ (C2)** — ranker sa učí z preferenčných skupín;
   ~~melodic prior trénovaný aj z favoritov~~ **HOTOVÉ (C1)**.
 
-### T3 — Štruktúra a dlhá forma — ✅ základ HOTOVÝ (2026-09-19, A2)
-- ~~Section planner (song form)~~ **HOTOVÉ**: song builder (§5.6) — forma per
-  žáner + role-aware generácia + markers/transitions, jeden undo krok.
+### T3 — Štruktúra a dlhá forma — ✅ HOTOVÉ (2026-09-19, A2 + A2 v2)
+- ~~Section planner (song form)~~ **HOTOVÉ**: song builder (§5.6) + songwriting
+  role verse/chorus/bridge s inštrumentáciou per sekciu (§5.8).
 - Ostáva: fill/transition generovanie (dnes len typy), section-aware prior,
   audíció celej pesničky po Worker boundary.
 
@@ -560,7 +588,7 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 
 ---
 
-*Posledná úplná revízia mapy: 2026-09-19 (T1 overený, parser v3 EN+SK, drum+melodic
-prior v1, C1+C2 favorites→retrain, A1 audition, A2 song builder, D1 mix chain,
-D3 unified intent bar). Dokument sa dopĺňa pri každej zmene Intent Engine;
-fakty boli overené čítaním zdrojov uvedených v §3.*
+*Posledná úplná revízia mapy: 2026-09-19 (T1, parser v3 EN+SK, drum+melodic prior
+v1, C1+C2 favorites→retrain, A1 audition, A2 song builder + v2 songwriting
+role, D1 mix chain, D3 unified bar). Dokument sa dopĺňa pri každej zmene
+Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*

@@ -57,7 +57,9 @@ const AXIS_MIN_HZ = 20;
 const AXIS_MAX_HZ = 20000;
 
 /** Split handles snap within this many CSS px of the split line. */
-const HANDLE_HIT_PX = 8;
+/** Split-line hit radius. Fingers need a much wider target than a mouse —
+ *  the canvas is a log axis, so 8px is a tiny slice of the spectrum. */
+const HANDLE_HIT_PX = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 24 : 8;
 /** Mirrors the core's XOVER_MIN_GAP_HZ — splits never approach closer. */
 const SPLIT_MIN_GAP_HZ = 40;
 /** Visual dB span of the EQ curve overlay (matches the ±24 dB def range). */
@@ -807,6 +809,34 @@ export function FxEqPanel({
               onPreview={(v) => previewParam(`band${selectedBand}.gainDb`, v)}
               onCancel={() => cancelParamPreview(`band${selectedBand}.gainDb`)}
             />
+          </div>
+          {/* Numeric crossover fallback: the split lines are ~8px targets on a
+              log canvas. Exact entry (and full touch parity) lives here so
+              precision editing never requires pixel-hunting the curve. */}
+          <div className="fxeq-split-editor" role="group" aria-label="Crossover frequencies">
+            {splits.map((freq, index) => (
+              <label key={`split-${index}`} className="fxeq-split-field">
+                <span className="slider-label">X{index + 2}</span>
+                <input
+                  type="number"
+                  className="fxeq-split-input"
+                  aria-label={`Crossover ${index + 2} frequency`}
+                  value={Math.round(freq)}
+                  min={Math.round(Math.max(80, schema.defById.get(`crossoverFreq${index + 2}`)?.minValue ?? 80))}
+                  max={Math.round(Math.min(AXIS_MAX_HZ, schema.defById.get(`crossoverFreq${index + 2}`)?.maxValue ?? AXIS_MAX_HZ))}
+                  step={10}
+                  onChange={(event) => {
+                    const raw = Number(event.target.value);
+                    if (!Number.isFinite(raw)) return;
+                    onParam(`crossoverFreq${index + 2}`, clampSplit(index, raw));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+                <span className="fxeq-split-unit">Hz</span>
+              </label>
+            ))}
           </div>
         </div>
       )}

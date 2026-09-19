@@ -174,7 +174,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     // holdStart/holdLen delimit the captured window [start-len, start);
     // while active nothing is written and the loop states stay frozen.
     this.holdActive = false;
-    this.holdStart = 0;
+    this.holdAnchorL = 0;
+    this.holdAnchorR = 0;
     this.holdLen = 64;
     this.holdPhase = 0;
     this._lastFreezeMode = -1;
@@ -660,8 +661,35 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     // current tail window; while held, nothing is written at all.
     const freezeMode = Math.round(params.freeze[0]);
     if (freezeMode === 2 && this._lastFreezeMode !== 2) {
-      this.holdLen = Math.min(this.bufSize >> 1, Math.max(64, Math.round(this.delaySamples)));
-      this.holdStart = this.writePos;
+      // HOLD captures ONE full echo period. The old `bufSize >> 1` cap
+      // truncated every TIME above 1 s (bufSize ≈ 2 s + 1) to a
+      // non-periodic fragment — the loop then clicked and the repeat
+      // rhythm was wrong. The ring always holds a full period
+      // (delaySamples is clamped to bufSize-1), so clamp only against
+      // the buffer, not against half of it.
+      this.holdLen = Math.min(this.bufSize - 1, Math.max(64, Math.round(this.delaySamples)));
+      // Anchor the captured window at the CURRENT modulated tap instead
+      // of the unmodulated period start: entering HOLD mid-modulation no
+      // longer jumps the read pointer by the full LFO/wow offset (the
+      // old raw read also ignored the wow, so character 1 clicked on
+      // every freeze). The window is [anchor - holdLen, anchor), so
+      // playback walks chronologically and the live tap resumes exactly
+      // at the anchor on unfreeze.
+      const captureChar = Math.round(params.character[0]);
+      const captureWobble = captureChar === 1 ? 0.0005 * this.sr : 0;
+      const captureWobRate = (TWO_PI * 0.7) / this.sr;
+      // The live path advances the wow phases before its first read this
+      // block; mirror that so the anchor is the exact position the live
+      // tap would have used.
+      if (captureWobble > 0) {
+        this.wobPhaseL += captureWobRate;
+        this.wobPhaseR += captureWobRate;
+      }
+      const lfoNow = Math.sin(this.lfoPhase) * this.modDepthMs;
+      const wobNowL = captureWobble > 0 ? Math.sin(this.wobPhaseL) * captureWobble : 0;
+      const wobNowR = captureWobble > 0 ? Math.sin(this.wobPhaseR) * captureWobble : 0;
+      this.holdAnchorL = this.writePos - this.delaySamples - lfoNow - wobNowL;
+      this.holdAnchorR = this.writePos - this.delaySamples - lfoNow - wobNowR;
       this.holdPhase = 0;
     }
     this._lastFreezeMode = freezeMode;
@@ -715,9 +743,14 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       if (this.holdActive) {
         const hp = this.holdPhase;
         this.holdPhase = hp + 1 >= this.holdLen ? 0 : hp + 1;
-        const rpos = (this.holdStart - this.holdLen + hp + size) % size;
-        const hL = L[rpos];
-        const hR = R[rpos];
+        // Chronological walk from the exact capture anchor — the window
+        // is [anchor - holdLen, anchor) at the modulated positions the
+        // live tap occupied, so freeze entry/exit are click-free and the
+        // captured period is the full echo time (not a truncated half).
+        const rpos = this.holdAnchorL + hp;
+        const rpos2 = this.holdAnchorR + hp;
+        const hL = this.readBuffer(L, rpos);
+        const hR = this.readBuffer(R, rpos2);
         let hoL = hL + spread * 0.5 * (hR - hL);
         let hoR = hR + spread * 0.5 * (hL - hR);
         const preHoL = hoL;

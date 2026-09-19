@@ -33,6 +33,30 @@ export interface ThemePreset {
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
+  {
+    /**
+     * The default identity: near-black glass, deep layered panels, amber
+     * molten accent. Mirrors `:root` in styles.css (first-paint parity), so
+     * a user with no stored theme sees exactly this and nothing shifts after
+     * initTheme() runs.
+     */
+    id: "molten",
+    name: "Molten",
+    accent: "#f59e0b",
+    vars: {
+      "--accent": "#f59e0b",
+      "--accent-soft": "rgba(245, 158, 11, 0.14)",
+      "--bg": "#0b0c10",
+      "--bg-panel": "#12141a",
+      "--bg-panel-2": "#181b22",
+      "--bg-raise": "#1f232b",
+      "--border": "#2a2e37",
+      "--border-soft": "#20242c",
+      "--text": "#d9dbe1",
+      "--text-dim": "#8d94a2",
+      "--text-faint": "#7a8290",
+    },
+  },
   { id: "forge", name: "Forge", accent: "#f59e0b", vars: {} },
   {
     id: "cyan",
@@ -79,7 +103,27 @@ export const THEME_PRESETS: ThemePreset[] = [
 ];
 
 const STORAGE_KEY = "pf-theme-v1";
-const DEFAULT_STATE: ThemeState = { preset: "forge", hue: null, scale: 1, compact: false, reduceMotion: false };
+const DEFAULT_STATE: ThemeState = { preset: "molten", hue: null, scale: 1, compact: false, reduceMotion: false };
+
+/**
+ * Every CSS variable a preset is allowed to override. `applyTheme` clears
+ * these before applying the preset, so switching Molten → Forge (vars: {})
+ * returns to the :root defaults instead of leaking the previous palette's
+ * inline values onto the document root.
+ */
+const PRESET_OWNED_VARS = [
+  "--bg",
+  "--bg-panel",
+  "--bg-panel-2",
+  "--bg-raise",
+  "--border",
+  "--border-soft",
+  "--text",
+  "--text-dim",
+  "--text-faint",
+  "--accent",
+  "--accent-soft",
+] as const;
 
 let state: ThemeState = { ...DEFAULT_STATE };
 const listeners = new Set<() => void>();
@@ -141,6 +185,11 @@ export function applyTheme(next: ThemeState): void {
     "--accent": accent,
     "--accent-soft": hexOrHslToSoft(accent),
   };
+  // Clear preset-owned vars first: a preset without overrides (Forge) must
+  // fall back to :root, not to whatever palette was applied before it.
+  for (const key of PRESET_OWNED_VARS) {
+    if (!(key in apply)) root.style.removeProperty(key);
+  }
   for (const [key, value] of Object.entries(apply)) {
     root.style.setProperty(key, value);
   }

@@ -360,10 +360,24 @@ export function DragNumber({
 }: DragNumberProps) {
   const [edit, setEdit] = useState<number | null>(null);
   const [typeDraft, setTypeDraft] = useState<string | null>(null);
+  // Touch parity with the double-click reset: a long-press (no movement)
+  // opens the same value menu the Slider gets.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuTimer = useRef<number | null>(null);
+  const menuAnchor = useRef<{ x: number; y: number } | null>(null);
+  const holdFired = useRef(false);
   const startY = useRef(0);
   const startValue = useRef(0);
 
   const shown = edit ?? value;
+
+  const clearMenuTimer = () => {
+    if (menuTimer.current !== null) {
+      window.clearTimeout(menuTimer.current);
+      menuTimer.current = null;
+    }
+    menuAnchor.current = null;
+  };
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
@@ -375,10 +389,24 @@ export function DragNumber({
     startY.current = event.clientY;
     startValue.current = shown;
     setEdit(shown);
+    holdFired.current = false;
+    if (event.pointerType !== "mouse") {
+      menuAnchor.current = { x: event.clientX, y: event.clientY };
+      menuTimer.current = window.setTimeout(() => {
+        menuTimer.current = null;
+        holdFired.current = true;
+        setEdit(null);
+        const anchor = menuAnchor.current;
+        if (anchor) setMenu(anchor);
+      }, 450);
+    }
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (holdFired.current) return;
     if (edit === null) return;
+    const anchor = menuAnchor.current;
+    if (anchor && Math.abs(event.clientY - startY.current) > 6) clearMenuTimer();
     const delta = (startY.current - event.clientY) * sensitivity;
     const raw = Math.min(max, Math.max(min, startValue.current + delta));
     setEdit(Math.round(raw * 10) / 10);
@@ -387,13 +415,22 @@ export function DragNumber({
   const cleanCommit = (raw: number) => onCommit(Math.min(max, Math.max(min, Math.round(raw * 10) / 10)));
 
   const handlePointerUp = () => {
+    clearMenuTimer();
+    if (holdFired.current) {
+      holdFired.current = false;
+      return;
+    }
     if (edit === null) return;
     cleanCommit(edit);
     setEdit(null);
   };
 
   // Interrupted drag — abort without committing (see Slider).
-  const handlePointerCancel = () => setEdit(null);
+  const handlePointerCancel = () => {
+    clearMenuTimer();
+    holdFired.current = false;
+    setEdit(null);
+  };
 
   const commitTypeDraft = () => {
     if (typeDraft === null) return;
@@ -419,6 +456,10 @@ export function DragNumber({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY });
+      }}
       onDoubleClick={() => onCommit(defaultValue)}
       onKeyDown={(event) => {
         if (event.key === "Enter" && typeDraft === null) {
@@ -465,6 +506,17 @@ export function DragNumber({
         />
       ) : (
         <span className="drag-number-value">{format ? format(shown) : shown.toFixed(1)}</span>
+      )}
+      {menu && (
+        <ValueMenu
+          x={menu.x}
+          y={menu.y}
+          defaultValue={defaultValue}
+          format={format}
+          onReset={() => onCommit(defaultValue)}
+          onType={() => setTypeDraft(String(Math.round(shown * 100) / 100))}
+          onClose={() => setMenu(null)}
+        />
       )}
     </div>
   );

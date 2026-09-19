@@ -134,6 +134,8 @@ interface TrackNodes {
   analyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
+  /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
+  sendDelays: Map<string, DelayNode>;
 }
 
 interface ReturnNodes {
@@ -175,6 +177,8 @@ interface GroupNodes {
   analyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
+  /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
+  sendDelays: Map<string, DelayNode>;
 }
 
 const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
@@ -320,6 +324,18 @@ export function resolveSlicePlayback(pad: DrumPad, bufferDuration: number): Reso
     fadeOut,
     reverse,
   };
+}
+
+ /**
+  * Per-send PDC delay (seconds): the send tap sits post-chain-PDC, so the
+  * send waits out the downstream latency (the sender's group chain; 0 for
+  * groups and ungrouped tracks) minus the return's own latency. Clamped ≥ 0 —
+  * a return carrying heavier latency FX than the sender's downstream keeps a
+  * documented residual of (returnLat − downstream) instead.
+  */
+export function sendPdcDelaySec(downstreamLatSec: number, returnLatSec: number): number {
+  if (!Number.isFinite(downstreamLatSec) || !Number.isFinite(returnLatSec)) return 0;
+  return Math.max(0, downstreamLatSec - returnLatSec);
 }
 
 export class AudioEngine {
@@ -1349,6 +1365,8 @@ export class AudioEngine {
     nodes.fx.pdcDelay?.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
+    for (const delay of nodes.sendDelays.values()) delay.disconnect();
+    nodes.sendDelays.clear();
     nodes.input.disconnect();
     nodes.panner.disconnect();
     nodes.gain.disconnect();
@@ -1427,6 +1445,8 @@ export class AudioEngine {
     nodes.analyser.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
+    for (const delay of nodes.sendDelays.values()) delay.disconnect();
+    nodes.sendDelays.clear();
     this.groupNodes.delete(id);
   }
 
@@ -1498,6 +1518,7 @@ export class AudioEngine {
           analyser,
           fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
           sends: new Map(),
+          sendDelays: new Map(),
         };
         this.groupNodes.set(track.id, nodes);
       }
@@ -1585,6 +1606,7 @@ export class AudioEngine {
           analyser,
           fx: { runtimes: new Map(), params: new Map(), signature: "", pdcDelay: null, latencySubs: [] },
           sends: new Map(),
+          sendDelays: new Map(),
         };
         this.trackNodes.set(track.id, nodes);
       }
@@ -1732,10 +1754,14 @@ export class AudioEngine {
 
   /**
    * Minimal PDC for latency-introducing effects (look-ahead limiter etc.).
-   * Inserts and groups are fully compensated to the longest chain. Returns
-   * (send/return) are aligned among themselves; dry vs wet via a return
-   * remains offset by at most maxReturnLatency (≤5 ms for limiter, inaudible
-   * for reverb/delay tails). This is documented in DSP-ROADMAP §5.
+   * Inserts and groups are fully compensated to the longest chain. Sends tap
+   * post-track-PDC, so each send carries its own compensation delay covering
+   * the downstream group latency minus the return's own latency — dry vs wet
+   * lands sample-aligned for zero-latency returns (reverb/delay/duck/chorus)
+   * no matter which track or group feeds them. Returns keep their true
+   * relative timing (no padding inflation). Documented residual: a return
+   * carrying its own latency FX (limiter on a return) fed from a
+   * lower-latency chain stays late by (returnLat − downstream).
    */
   private syncPdc(): void {
     const ctx = this.ctx;
@@ -1759,16 +1785,10 @@ export class AudioEngine {
     for (const lat of groupLatency.values()) {
       if (lat > maxEffective) maxEffective = lat;
     }
-    // Returns: align among themselves (sends via returns are offset by return latency,
-    // but at least all returns share the same latency)
+    // Return latencies are read per-send below; returns themselves are NOT
+    // padded (their true timing is what the send delays align against).
     const returnLatency = new Map<string, number>();
-    let maxReturnLatency = 0;
-    for (const [id, nodes] of this.returnNodes) {
-      const lat = chainLatency(nodes.fx);
-      returnLatency.set(id, lat);
-      if (lat > maxReturnLatency) maxReturnLatency = lat;
-    }
-    if (maxReturnLatency > maxEffective) maxEffective = maxReturnLatency;
+    for (const [id, nodes] of this.returnNodes) returnLatency.set(id, chainLatency(nodes.fx));
     const now = ctx.currentTime;
     for (const [id, nodes] of this.trackNodes) {
       nodes.fx.pdcDelay?.delayTime.setTargetAtTime(Math.max(0, maxEffective - (effective.get(id) ?? 0)), now, 0.02);
@@ -1776,12 +1796,24 @@ export class AudioEngine {
     for (const nodes of this.groupNodes.values()) {
       nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
     }
-    for (const [id, nodes] of this.returnNodes) {
-      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(
-        Math.max(0, maxReturnLatency - (returnLatency.get(id) ?? 0)),
-        now,
-        0.02,
-      );
+    for (const nodes of this.returnNodes.values()) {
+      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
+    }
+    // Per-send compensation. Track taps sit post-track-PDC at
+    // (maxEffective − groupLat), so the send waits out the downstream group
+    // latency minus the return's own latency. Group taps sit post-group at
+    // exactly maxEffective (downstream 0).
+    for (const [id, nodes] of this.trackNodes) {
+      const track = this.doc.tracks.find((t) => t.id === id);
+      const downstream = track && track.kind !== "group" && track.groupId ? (groupLatency.get(track.groupId) ?? 0) : 0;
+      for (const [returnId, delay] of nodes.sendDelays) {
+        delay.delayTime.setTargetAtTime(sendPdcDelaySec(downstream, returnLatency.get(returnId) ?? 0), now, 0.02);
+      }
+    }
+    for (const nodes of this.groupNodes.values()) {
+      for (const [returnId, delay] of nodes.sendDelays) {
+        delay.delayTime.setTargetAtTime(sendPdcDelaySec(0, returnLatency.get(returnId) ?? 0), now, 0.02);
+      }
     }
   }
 
@@ -1793,14 +1825,22 @@ export class AudioEngine {
       if (!live.has(returnId)) {
         sendGain.disconnect();
         nodes.sends.delete(returnId);
+        nodes.sendDelays.get(returnId)?.disconnect();
+        nodes.sendDelays.delete(returnId);
       }
     }
     for (const returnId of live) {
       let sendGain = nodes.sends.get(returnId);
       if (!sendGain) {
         sendGain = ctx.createGain();
-        sendGain.connect(this.returnNodes.get(returnId)!.input);
+        // Per-send PDC stage: sendGain → delay → return input. syncPdc()
+        // sizes the delay so dry vs wet lands aligned (delayTime 0 when no
+        // latency FX is involved — fully transparent).
+        const sendDelay = ctx.createDelay(0.2);
+        sendGain.connect(sendDelay);
+        sendDelay.connect(this.returnNodes.get(returnId)!.input);
         nodes.sends.set(returnId, sendGain);
+        nodes.sendDelays.set(returnId, sendDelay);
         nodes.modMacroPan.connect(sendGain);
       }
       sendGain.gain.setTargetAtTime(sends[returnId] ?? 0, ctx.currentTime, 0.01);

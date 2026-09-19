@@ -1,13 +1,17 @@
 :root {
-  --bg: #0e0f12;
-  --bg-panel: #15171c;
-  --bg-panel-2: #1a1d23;
-  --bg-raise: #21242b;
-  --border: #262a32;
-  --border-soft: #1e2128;
-  --text: #d7d9de;
-  --text-dim: #8a8f99;
-  --text-faint: #747a87;
+  /* Molten — the default identity. These values mirror THEME_PRESETS[0]
+     ("Molten") in src/ui/theme.ts so the very first paint (before
+     initTheme() runs) already wears the branded palette. Changing one
+     without the other is a bug. */
+  --bg: #0b0c10;
+  --bg-panel: #12141a;
+  --bg-panel-2: #181b22;
+  --bg-raise: #1f232b;
+  --border: #2a2e37;
+  --border-soft: #20242c;
+  --text: #d9dbe1;
+  --text-dim: #8d94a2;
+  --text-faint: #7a8290;
   --accent: #f59e0b;
   --accent-soft: rgba(245, 158, 11, 0.14);
   --play: #4ade80;
@@ -9045,6 +9049,57 @@ html {
   display: flex;
   gap: 6px;
   align-items: flex-start;
+}
+
+/* Numeric crossover fallback under the band map (touch/precision). The
+   split lines on the canvas are 8px mouse targets — this row is the exact
+   entry path that never requires pixel-hunting. */
+.fxeq-split-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.fxeq-split-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.fxeq-split-input {
+  width: 62px;
+  height: 22px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: 11px var(--mono);
+  text-align: right;
+  padding: 0 4px;
+}
+
+.fxeq-split-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.fxeq-split-unit {
+  font-family: var(--mono);
+}
+
+@media (pointer: coarse) {
+  .fxeq-split-input {
+    height: 40px;
+    width: 76px;
+    font-size: 13px;
+  }
+
+  .fxeq-split-field {
+    font-size: 12px;
+  }
 }
 
 .fxeq-band-gain {

@@ -2240,3 +2240,34 @@ re-render benefit kicking in immediately. Estimated work:
 3. **`PcmMicRecorder.ts:175` typecheck warning** (`"live" !== "ended"`) is a pre-existing narrowing bug not touched by this migration. Logged separately as a follow-up.
 4. **The full-doc hook (`useDoc`) now overlaps with `useActivePatternId`** — both subscribe to the same doc, but `useDoc` re-renders on every slice mutation while `useActivePatternId` only re-renders when `doc.activePatternId` actually changes (thanks to `===` compare on the string). New code should reach for the slice hook; `useDoc` is reserved for legacy callers.
 5. **Bugs uncovered**: removing the unused `doc` declaration in `Sequencer.tsx`'s `TrackHeaderRow` and `PadRow` initially broke 4 callers that referenced `doc` in JSX. Re-added `const doc = services.store.getDoc()` in both. Pattern: ALWAYS grep for `doc\b` (word boundary, no slice prefix) before declaring a plain getter swap.
+
+
+---
+
+## GOAL 11 (campaign restart) — Intent Engine A2 v2: songwriting roles verse/chorus/bridge (2026-09-19)
+
+**Goal executed:** The user asked whether the song builder handles "how intro/verse/chorus/bridge/outro should LOOK" — assessment showed sections differed only by slider deltas and SceneRole had no verse/chorus/bridge. This goal made them first-class: role-aware INSTRUMENTATION per section + a pop form + full tooling support.
+
+**Areas inspected:**
+
+- All SceneRole consumers: project-model/schema.ts (SCENE_ROLES clamp list + inferSceneRole name inference — CRITICAL: unextended clamp list would silently DROP new roles on project load), commands.ts autoArrangeSong role bucketing, collab/bandmate.ts etiquetteFor, ui/ArrangementPanel.tsx role picker, intent/arrangeWords.ts ROLE_SYNONYMS, grooves renderer (verified clips tile patterns — full-length section patterns unaffected).
+
+**Fixes implemented:**
+
+- `SceneRole` += "verse" | "chorus" | "bridge" (types.ts; additive union — backward compatible). `SCENE_ROLES` clamp list extended (schema.ts) and `inferSceneRole` recognizes Verse/Chorus/Hook/Bridge scene names — SEMANTIC CHANGE: a scene named "Chorus" now infers `chorus`, not `drop`.
+- `arrangeWords.ts` ROLE_SYNONYMS: chorus (chorus|hook|refren), verse (verse|zloh — STEM form after tests caught that "pridaj zlohu" accusative failed the zloha boundary), bridge (bridge|most|mostik). "chorus" is no longer a drop alias; "bridge" no longer a break alias; plain drop/break unchanged.
+- `autoArrangeSong`: new roles fold into nearest buckets (chorus→drop, verse→build, bridge→break) so auto-arrangement uses them.
+- `bandmate.ts` etiquetteFor: verse = 0.85 density no fill; chorus = full + fill at p ≥ 0.9; bridge = 0.4 density, hats+perc only. roleFromName recognizes the new roles.
+- `ArrangementPanel` role picker: VERSE/CHORUS/BRIDGE entries.
+- `song.ts` (A2 v2): `SongSectionSpec.instrumentation: IntentRole[]` — the roles a section GENERATES (intro/outro = drums+bass, build/verse = +chords, drop/chorus = full, break/bridge = chords+lead). `buildSong` intersects instrumentation with the USER's intent roles ("no drums" wins in every section); actual generated roles land in provenance (`SongBuildSection.roles`). SONG_FORMS regenerated wholesale (two-writer formatting conflict made incremental patching unreliable): house/techno electronic forms + instrumentation, trap switched to the POP FORM (intro(4) → verse(8) → chorus(8) → verse(8) → chorus(8) → bridge(4) → chorus(8) → outro(4) = 52 bars, CHORUS impact markers, bridge strips to chords+lead), ambient labels keep their own instrumentation.
+- Tests: intent-song 11/11 (form shapes, instrumentation per label, trap pop role sequence, chorus-has-lead vs verse-not provenance via section.roles, bridge zero drum hits + melodic present, user-role intersection, apply/undo, clampSceneRole/inferSceneRole); arrangeWords 13/13 (new EN+SK synonyms incl. refren/zlohu/most; drop/break unchanged).
+
+**Important files changed:** src/project-model/{types,schema}.ts, src/intent/{arrangeWords,song}.ts, src/commands/commands.ts (autoArrange buckets), src/collab/bandmate.ts, src/ui/ArrangementPanel.tsx, tests/{intent-song,intent/arrangeWords}.test.ts, INTENT_ENGINE.md (§5.8, §7.2, T3, map).
+
+**Validation:** intent-area regression 133/133 across 13 files (incl. project-invariants for schema round-trip); typecheck clean for changed files. Two incidents documented: (1) a python heredoc wrote literal backspace bytes (0x08) into schema.ts regexes — repaired via chr(92) construction and verified by cat -A + tsc; (2) SONG_FORMS had formatting from two writers — resolved by full-block regeneration from a canonical spec. Concurrent session's controls.tsx typecheck breakage remains theirs.
+
+**Unresolved issues / risks:**
+
+1. inferSceneRole semantic change: projects with scenes NAMED "Chorus" (previously inferred drop) now infer chorus after reload — musically correct, but arrangement markers/buckets keyed to drop shift; a one-line note belongs in the next release notes.
+2. Instrumentation filtering relies on the generator honoring `roles` (verified) — lead parts on 2-track docs fall back positionally to the bass track (generator naming heuristic), so "lead present" is provenance-level truth, not a per-track guarantee.
+3. Pop form exists for trap only; house/techno verse/chorus variants can be added on demand (SONG_FORMS entry each).

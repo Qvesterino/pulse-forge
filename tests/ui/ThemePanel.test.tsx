@@ -15,7 +15,7 @@ describe("ThemePanel install-from-code", () => {
     render(<ThemePanel />);
     fireEvent.click(screen.getByRole("button", { name: "INSTALL FROM CODE…" }));
     expect(screen.getByText("Invalid theme code")).toBeInTheDocument();
-    expect(getThemeSnapshot().preset).toBe("forge");
+    expect(getThemeSnapshot().preset).toBe("molten");
     expect(getThemeSnapshot().hue).toBeNull();
     expect(getThemeSnapshot().scale).toBe(1);
   });
