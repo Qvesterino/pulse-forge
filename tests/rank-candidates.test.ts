@@ -150,10 +150,10 @@ describe("rankerMode flag", () => {
     resetRankerClient();
   });
 
-  it("defaults to the activated ranker mode", () => {
-    // Commit 765e91a flipped DEFAULT_RANKER_MODE to "active" after the golden
-    // preference gate passed; the localStorage override still wins.
-    expect(rankerMode()).toBe("active");
+  it("defaults to shadow until independent golden evaluation is valid", () => {
+    // The checked-in golden set currently maps to no exact dataset groups;
+    // no model may influence candidate choice until an independent review gate passes.
+    expect(rankerMode()).toBe("shadow");
   });
 
   it("reads the localStorage override", () => {

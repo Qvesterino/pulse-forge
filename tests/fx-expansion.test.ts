@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 /**
  * FX Expansion processor DSP contracts (docs/FX-EXPANSION-ROADMAP.md):
@@ -69,8 +69,7 @@ function peakOf(block: Float32Array[]): number {
 
 beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
-  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor =
-    FakeAudioWorkletProcessor;
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
   (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = () => {};
   // Worklet processors are raw JS without exports — evaluate the source in a
   // sandbox where registerProcessor captures the class.
@@ -172,36 +171,52 @@ describe("fx expansion processors", () => {
     expect(render(1)).toBeGreaterThan(render(0) * 2);
   });
 
-  it("beatMangler: NORM with unity volume ≈ passthrough; a zeroed step silences its slice", () => {
-    const barSamples = Math.round((60 / 120) * 4 * SR); // 1 bar @ 120 BPM
+  it("beatMangler: NORM with unity volume ≈ passthrough; a zeroed volume envelope silences", () => {
+    const bar = Math.round((60 / 120) * 4 * SR); // 1 bar @ 120 BPM
+    type ManglerWithPort = ReturnType<typeof beatManglerFactory> & { port: FakePort };
     const render = (volume: number[]) => {
-      const fx = beatManglerFactory();
-      const driveSteps = () =>
-        (fx as unknown as { port: { onmessage: ((e: unknown) => void) | null } }).port.onmessage?.({
-          data: { type: "steps", volume, pitch: null },
-        });
-      driveSteps();
-      (fx as unknown as { port: { onmessage: ((e: unknown) => void) | null } }).port.onmessage?.({
-        data: { type: "bpm", bpm: 120 },
-      });
-      // Fill one full bar first (block-wise like a real render).
-      const filler = stereoBuffer(4096, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
-      const sink: Float32Array[][] = [[new Float32Array(4096), new Float32Array(4096)]];
-      for (let written = 0; written < barSamples; written += 4096) {
-        fx.process([filler], sink, param({ mix: 1 }));
-      }
-      // Now render one mangled bar.
+      const fx = beatManglerFactory() as ManglerWithPort;
+      fx.port.onmessage?.({ data: { type: "steps", volume, pitch: null } });
+      fx.port.onmessage?.({ data: { type: "bpm", bpm: 120 } });
+      // Feed a FULL BAR of input — the mangler replays the last recorded bar,
+      // so the window must be full before the mangled pass reads it.
+      const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
       const output: Float32Array[][] = [[]];
-      output[0] = [new Float32Array(barSamples), new Float32Array(barSamples)];
-      fx.process([filler], output, param({ mix: 1 }));
+      output[0] = [new Float32Array(bar), new Float32Array(bar)];
+      fx.process([input], output, param({ mix: 1 }));
       return output[0];
     };
     const unity = render(Array(16).fill(1));
     const muted = render(Array(16).fill(0));
-    // Unity loop ≈ passthrough energy (the bar replays the live sine);
-    // an all-zero volume envelope silences the mangler completely.
-    expect(energyOf(unity)).toBeGreaterThan(0.3);
-    expect(energyOf(muted)).toBeLessThan(0.001);
+    const unityEnergy = energyOf(unity);
+    const mutedEnergy = energyOf(muted);
+    // Unity loop ≈ passthrough energy; all-zero volume ≈ silence.
+    expect(unityEnergy).toBeGreaterThan(0.3);
+    expect(mutedEnergy).toBeLessThan(0.001);
+    void unityEnergy;
+    void mutedEnergy;
+  });
+
+  it("beatMangler never logs or crashes in the audio thread when a stale debug flag is set", () => {
+    const debugGlobal = globalThis as typeof globalThis & { __BM_DBG?: boolean };
+    const hadDebugFlag = Object.prototype.hasOwnProperty.call(debugGlobal, "__BM_DBG");
+    const previousDebugFlag = debugGlobal.__BM_DBG;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    debugGlobal.__BM_DBG = true;
+    try {
+      const fx = beatManglerFactory() as ReturnType<typeof beatManglerFactory> & { port: FakePort };
+      fx.port.onmessage?.({ data: { type: "steps", volume: Array(16).fill(1), pitch: null } });
+      const bar = Math.round((60 / 120) * 4 * SR);
+      const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
+      const output: Float32Array[][] = [[new Float32Array(bar), new Float32Array(bar)]];
+      fx.process([input], output, param({ mix: 1 }));
+      expect(log).not.toHaveBeenCalled();
+      expect(peakOf(output[0])).toBeGreaterThan(0);
+    } finally {
+      log.mockRestore();
+      if (hadDebugFlag) debugGlobal.__BM_DBG = previousDebugFlag;
+      else delete debugGlobal.__BM_DBG;
+    }
   });
 });
 

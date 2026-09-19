@@ -1212,7 +1212,7 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // routing and MIDI mappings were silently and permanently destroyed by
   // Ctrl+Z. Cleaning them here makes the removal part of `next`, and the
   // backward delta restores them together with the track.
-  const stripSidechain = (effects: typeof doc.tracks[number]["effects"]) =>
+  const stripSidechain = (effects: (typeof doc.tracks)[number]["effects"]) =>
     effects.map((e) => (e.sidechainTrackId === trackId ? { ...e, sidechainTrackId: undefined } : e));
   const midi = doc.midi;
   const next: ProjectDocument = {
@@ -1220,7 +1220,8 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
     tracks: doc.tracks
       .filter((t) => t.id !== trackId)
       .map((t) => {
-        if (isGroup && t.kind !== "group" && t.groupId === trackId) return { ...t, groupId: undefined, effects: stripSidechain(t.effects) };
+        if (isGroup && t.kind !== "group" && t.groupId === trackId)
+          return { ...t, groupId: undefined, effects: stripSidechain(t.effects) };
         if ("effects" in t) return { ...t, effects: stripSidechain(t.effects) };
         return t;
       }),
@@ -3702,8 +3703,7 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
     const role = sceneRoleOf(scene) ?? "custom";
     // Songwriting roles (A2 v2) fold into their nearest electronic bucket:
     // chorus plays like a drop, verse like a build, bridge like a break.
-    const folded =
-      role === "chorus" ? "drop" : role === "verse" ? "build" : role === "bridge" ? "break" : role;
+    const folded = role === "chorus" ? "drop" : role === "verse" ? "build" : role === "bridge" ? "break" : role;
     const bucket: Bucket =
       folded === "intro" || folded === "build" || folded === "drop" || folded === "break" || folded === "outro"
         ? folded

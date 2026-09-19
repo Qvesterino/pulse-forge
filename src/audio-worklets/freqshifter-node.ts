@@ -5,7 +5,10 @@ import type { EffectRuntime } from "../effects/types";
  * The processor module MUST be pre-loaded via `loadCoreWorklets()` first —
  * callers gate construction behind `isWorkletReady("freqShifter", ctx)`.
  */
-export function createFreqShiftNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
+export function createFreqShiftNode(
+  ctx: BaseAudioContext,
+  instance: { params: Record<string, number> },
+): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "freqshift-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,

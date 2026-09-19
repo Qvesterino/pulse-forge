@@ -1,11 +1,11 @@
 /**
- * Intent ranker ACTIVATION orchestrator (goal doc Fáze 4/5 — run AFTER the
- * human golden review):
+ * Intent ranker ACTIVATION orchestrator (only after an independent human
+ * holdout evaluation; in-sample golden fit is not an activation signal):
  *
  *   1. verifies scripts/data/intent-ranker-golden.json is reviewed:true
- *      (with reviewedBy + reviewedAt),
+ *      (with exact dataset group keys and complete candidate permutations),
  *   2. retrains + re-validates the model (npm run ranker:train),
- *   3. reads the golden verdict —
+ *   3. reads an independent held-out golden verdict —
  *        ready-for-active  → flips DEFAULT_RANKER_MODE to "active" in
  *                            ranker-client.ts, runs typecheck + ranker tests,
  *        otherwise          → keeps shadow mode and prints guidance.
@@ -22,7 +22,7 @@ const goldenPath = path.join(ROOT, "scripts", "data", "intent-ranker-golden.json
 const clientPath = path.join(ROOT, "src", "ai", "ranking", "ranker-client.ts");
 const reportPath = path.join(ROOT, "scripts", "data", "intent-ranker-validation.json");
 
-function run(cmd: string): void {
+function run(cmd) {
   console.log(`\n[activate] $ ${cmd}`);
   execSync(cmd, { stdio: "inherit", cwd: ROOT });
 }
@@ -51,14 +51,14 @@ run("npm run ranker:train");
 // 3. Verdict gate.
 const report = JSON.parse(readFileSync(reportPath, "utf8"));
 const verdict = report.goldenVerdict;
-const goldenAccuracy = report.goldenPairwiseAccuracy;
-console.log(`[activate] goldenVerdict=${verdict} goldenPairwiseAccuracy=${goldenAccuracy}`);
+const goldenAccuracy = report.goldenHoldoutPairwiseAccuracy;
+console.log(`[activate] goldenVerdict=${verdict} goldenHoldoutPairwiseAccuracy=${goldenAccuracy ?? "not available"}`);
 
 if (verdict !== "ready-for-active") {
   console.error(
     `[activate] verdict is NOT ready-for-active — ranker stays in SHADOW mode.\n` +
-      "  Options: re-curate the golden preferences (more/better-separated labels),\n" +
-      "  add more dataset groups, or keep the heuristic ranking as the default.",
+      "  In-sample training fit is not sufficient: review a separate held-out set,\n" +
+      "  then keep the heuristic ranking as the default until that evaluation passes.",
   );
   process.exit(1);
 }

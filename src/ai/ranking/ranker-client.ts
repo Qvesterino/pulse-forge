@@ -21,7 +21,7 @@ export type RankerMode = "off" | "shadow" | "active";
  * npm run ranker:activate orchestrator does this after the golden gate
  * passes). localStorage override (pf:intent-ranker) always wins.
  */
-export const DEFAULT_RANKER_MODE: RankerMode = "active";
+export const DEFAULT_RANKER_MODE: RankerMode = "shadow";
 
 export function rankerMode(): RankerMode {
   try {

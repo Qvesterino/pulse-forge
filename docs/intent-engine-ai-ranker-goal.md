@@ -21,6 +21,16 @@ Závisí od: existujúci deterministic generator, candidate bank, quality gates
   24.7 KB a jeho ONNX input/output contract je validovaný.
 - [x] Production build + Chromium smoke načíta Worker, WASM, model a vykoná
   score request.
+- [x] Default ranker mode is `shadow`; a reviewed preference set must bind
+  to exact dataset group keys and complete candidate permutations.
+- [ ] Current checked-in golden file is not valid evidence: its entries lack
+  exact `groupKey` values, its style names match no current dataset groups,
+  and one order duplicates candidate 2 while omitting candidate 0. The old
+  empty-set metric was `1.0` by convention; it did not represent a review.
+- [ ] Golden preferences are now held out by exact dataset group and excluded
+  from training; the activation gate also requires at least 12 pairwise
+  comparisons across house/techno/trap/ambient. The current file fails this
+  gate and must be re-curated against the current dataset before activation.
 - [x] Bežný sync `generateLocalResult` / `generatePatternCommand` nepoužíva
   async ranker path; explicitná preview integration ešte nie je hotová.
 - [x] Model nemá ručne skontrolované golden preferencie ani dôkaz, že zlepšuje

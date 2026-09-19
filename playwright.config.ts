@@ -14,6 +14,10 @@ import { defineConfig, devices } from "playwright/test";
  * helper from `tests/e2e/_helpers.ts`.
  */
 const isCI = !!process.env.CI;
+const e2ePort = Number(process.env.PULSE_FORGE_E2E_PORT ?? "5199");
+if (!Number.isInteger(e2ePort) || e2ePort < 1024 || e2ePort > 65535) {
+  throw new Error("PULSE_FORGE_E2E_PORT must be an integer between 1024 and 65535");
+}
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -26,7 +30,7 @@ export default defineConfig({
   retries: isCI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:5199",
+    baseURL: `http://127.0.0.1:${e2ePort}`,
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
@@ -34,8 +38,8 @@ export default defineConfig({
   webServer: {
     // `predev` already builds the worklet bundles; the npm script just wraps
     // `vite` and forwards the port flags. strictPort mirrors the smoke flow.
-    command: "npm run dev -- --port 5199 --strictPort",
-    url: "http://127.0.0.1:5199",
+    command: `npm run dev -- --host 127.0.0.1 --port ${e2ePort} --strictPort`,
+    url: `http://127.0.0.1:${e2ePort}`,
     timeout: 120_000,
     reuseExistingServer: !isCI,
   },

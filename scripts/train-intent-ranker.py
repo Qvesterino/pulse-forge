@@ -241,59 +241,92 @@ if _args.favorites:
         )
 
 # Human golden preferences (goal doc Fáze 2 — the ONLY path to "better than
-# heuristic"): when scripts/data/intent-ranker-golden.json is reviewed=true,
-# golden groups use POSITION-DERIVED labels (best → 1.0 … worst → 0.0)
-# instead of the heuristic teacher. Unreviewed/missing file ⇒ heuristic
-# teacher everywhere and the model stays in shadow mode.
+# heuristic"): reviewed labels bind to ONE exact dataset group. Candidate
+# indices are not transferable across seeds because each seed contains
+# different musical material. Unreviewed/missing file ⇒ heuristic teacher.
 golden_path = ROOT / "scripts" / "data" / "intent-ranker-golden.json"
 # Golden combo keys are genre:style prefixes (e.g. "house:classic") —
 # they match ALL dataset groups sharing that prefix (multiple seeds per combo).
-golden_prefixes: dict[str, list[int]] = {}  # prefix → golden order (candidate indices)
+golden_orders: dict[str, list[int]] = {}  # exact dataset group key → candidate order
 golden_reviewed = False
 if golden_path.exists():
     golden = json.loads(golden_path.read_text(encoding="utf8"))
     golden_reviewed = bool(golden.get("reviewed"))
     if golden_reviewed:
-        for combo in golden.get("combos", []):
-            golden_prefixes[combo["combo"]] = [int(p) for p in combo["order"]]
-        print(f"[golden] reviewed=true — {len(golden_prefixes)} golden prefix(es) use human labels")
+        if not str(golden.get("reviewedBy", "")).strip() or not golden.get("reviewedAt"):
+            raise SystemExit("[golden] reviewed preferences need reviewedBy and reviewedAt metadata")
+        combos = golden.get("combos")
+        if not isinstance(combos, list) or not combos:
+            raise SystemExit("[golden] reviewed preferences need at least one exact group")
+        groups_by_key = {group["groupKey"]: group for group in dataset["groups"]}
+        for combo in combos:
+            if not isinstance(combo, dict):
+                raise SystemExit("[golden] each combo entry must be an object")
+            label = combo.get("combo", "<unnamed>")
+            group_key = combo.get("groupKey")
+            if not isinstance(group_key, str) or not group_key:
+                raise SystemExit(f"[golden] {label}: missing exact groupKey; prefix reuse is unsafe")
+            if group_key in golden_orders:
+                raise SystemExit(f"[golden] {label}: duplicate groupKey {group_key}")
+            group = groups_by_key.get(group_key)
+            if group is None:
+                raise SystemExit(f"[golden] {label}: groupKey does not exist in the current dataset: {group_key}")
+            order = combo.get("order")
+            indices = [candidate.get("index") for candidate in group["candidates"]]
+            if (
+                not isinstance(order, list)
+                or any(type(index) is not int or index < 0 for index in order)
+                or len(set(order)) != len(order)
+                or len(indices) < 2
+                or any(type(index) is not int or index < 0 for index in indices)
+                or len(set(indices)) != len(indices)
+                or set(order) != set(indices)
+            ):
+                raise SystemExit(
+                    f"[golden] {label}: order must contain every candidate index exactly once ({indices})"
+                )
+            golden_orders[group_key] = order
+        print(f"[golden] reviewed=true — {len(golden_orders)} exact group(s) use human labels")
     else:
         print("[golden] template exists but is NOT reviewed — heuristic teacher stays")
 
-def golden_order_for(group_key: str) -> list[int] | None:
-    """Match a dataset group key (e.g. 'house:classic:ds-house-classic-0')
-    against golden combo prefixes (e.g. 'house:classic'). Returns the
-    golden order (candidate indices best→worst) or None."""
-    for prefix, order in golden_prefixes.items():
-        if group_key.startswith(prefix + ":") or group_key == prefix:
-            return order
-    return None
-
 samples: list[dict] = []
+golden_holdout_samples: list[dict] = []
 favorite_group_keys = {group["groupKey"] for group in favorite_groups}
+overlapping_feedback = set(golden_orders).intersection(favorite_group_keys)
+if overlapping_feedback:
+    raise SystemExit(
+        "[golden] holdout groups also appear in favorites; keep evaluation groups independent from training feedback: "
+        + ", ".join(sorted(overlapping_feedback))
+    )
 for group in dataset["groups"]:
     is_favorite = group["groupKey"] in favorite_group_keys
-    golden_order = golden_order_for(group["groupKey"]) if golden_reviewed else None
+    golden_order = golden_orders.get(group["groupKey"]) if golden_reviewed else None
     for candidate in group["candidates"]:
+        if golden_order is not None:
+            position = golden_order.index(candidate["index"])
+            denominator = max(1, len(golden_order) - 1)
+            golden_holdout_samples.append(
+                {
+                    "x": np.array(candidate["features"], dtype=np.float64),
+                    "score": 1.0 - position / denominator,
+                    "index": candidate["index"],
+                    "groupKey": group["groupKey"],
+                    "golden": True,
+                }
+            )
+            continue
         if is_favorite and candidate["index"] == int(group.get("winnerIndex", 0)):
             # The human's pick tops its group by definition (C2 label).
             label_score = 1.0
-            is_golden = False
-        elif golden_order is not None and candidate["index"] in golden_order:
-            position = golden_order.index(candidate["index"])
-            denominator = max(1, len(golden_order) - 1)
-            label_score = 1.0 - position / denominator
-            is_golden = True
         else:
             label_score = candidate["heuristicScore"]
-            is_golden = False
         samples.append(
             {
                 "x": np.array(candidate["features"], dtype=np.float64),
                 "score": label_score,
                 "index": candidate["index"],
                 "groupKey": group["groupKey"],
-                "golden": is_golden,
                 "favorite": is_favorite,
             }
         )
@@ -365,12 +398,27 @@ report = {
     "valSpearmanVsHeuristic": round(spearman(val_rows), 4),
 }
 if golden_reviewed:
-    golden_rows = [sample for sample in samples if sample.get("golden")]
-    report["goldenPairwiseAccuracy"] = round(pairwise_accuracy(golden_rows), 4)
+    if not golden_holdout_samples:
+        raise SystemExit("[golden] no reviewed labels matched valid candidates; refusing to report a passing score")
+    golden_pairs = pairs_for(golden_holdout_samples, np.random.default_rng(1))
+    golden_genres = sorted(
+        {
+            group["genre"]
+            for group in dataset["groups"]
+            if group["groupKey"] in golden_orders
+        }
+    )
+    report["goldenHoldoutPairwiseAccuracy"] = round(pairwise_accuracy(golden_holdout_samples), 4)
+    report["goldenHoldoutPairs"] = len(golden_pairs)
+    report["goldenHoldoutCandidates"] = len(golden_holdout_samples)
+    report["goldenHoldoutGroups"] = len(golden_orders)
+    report["goldenHoldoutGenres"] = golden_genres
+    required_genres = {"house", "techno", "trap", "ambient"}
+    has_coverage = required_genres.issubset(set(golden_genres)) and len(golden_pairs) >= 12
     report["goldenVerdict"] = (
         "ready-for-active"
-        if report["goldenPairwiseAccuracy"] >= 0.75
-        else "insufficient-golden-fit — stay in shadow and re-curate"
+        if has_coverage and report["goldenHoldoutPairwiseAccuracy"] >= 0.75
+        else "insufficient-independent-golden-evaluation — stay in shadow"
     )
 print("[train] report:", json.dumps(report, indent=2))
 if golden_reviewed:

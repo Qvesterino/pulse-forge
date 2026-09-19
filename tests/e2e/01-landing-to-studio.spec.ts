@@ -2,6 +2,26 @@ import { test, expect } from "playwright/test";
 import { openHouseTemplateFromLanding } from "./_helpers";
 
 test.describe("01 — landing to studio", () => {
+  test("defers core audio services until the visitor enters the studio", async ({ page }) => {
+    const serviceRequests: string[] = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (/\/(?:src\/)?services(?:-[^/]*)?\.(?:ts|js)$/.test(pathname)) {
+        serviceRequests.push(pathname);
+      }
+    });
+
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Make beats in your browser." })).toBeVisible();
+    // The page load event includes statically imported entry dependencies; the
+    // preview may finish its own asynchronous render later.
+    expect(serviceRequests).toEqual([]);
+
+    await page.getByRole("button", { name: "Open the studio", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "NEW PROJECT" })).toBeVisible();
+    await expect.poll(() => serviceRequests.length).toBeGreaterThan(0);
+  });
+
   test("first-time visitor walks landing CTA into the studio with the House template", async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {

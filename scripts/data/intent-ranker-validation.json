@@ -15,6 +15,10 @@
   "valPairwiseAccuracyVsHeuristic": 0.7889,
   "valTop1AgreementWithHeuristic": 0.6571,
   "valSpearmanVsHeuristic": 0.6229,
-  "goldenPairwiseAccuracy": 1.0,
-  "goldenVerdict": "ready-for-active"
+  "goldenHoldoutPairwiseAccuracy": null,
+  "goldenHoldoutPairs": 0,
+  "goldenHoldoutCandidates": 0,
+  "goldenHoldoutGroups": 0,
+  "goldenHoldoutGenres": [],
+  "goldenVerdict": "invalid-golden-data"
 }

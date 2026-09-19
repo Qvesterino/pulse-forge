@@ -52,12 +52,15 @@ function createRecorder() {
     disconnect: ReturnType<typeof vi.fn>;
   }> = [];
   const samples = [new Float32Array(0)];
+  const contextStateEvents = new EventTarget();
   const context = {
     state: "running",
     sampleRate: 48_000,
     currentTime: 1,
     destination: {},
     audioWorklet: {},
+    addEventListener: contextStateEvents.addEventListener.bind(contextStateEvents),
+    removeEventListener: contextStateEvents.removeEventListener.bind(contextStateEvents),
     createMediaStreamSource: vi.fn(() => source),
     createGain: vi.fn(() => {
       const gain = {
@@ -97,7 +100,11 @@ function createRecorder() {
     bpm: 110,
     recordingInputOffsetMs: 17,
   });
-  return { recorder, recovery, metadata, samples, track, source, gains };
+  const changeContextState = (state: string) => {
+    (context as unknown as { state: string }).state = state;
+    contextStateEvents.dispatchEvent(new Event("statechange"));
+  };
+  return { recorder, recovery, metadata, samples, track, source, gains, context, changeContextState };
 }
 
 async function waitForAck(node: FakeWorkletNode): Promise<void> {
@@ -200,6 +207,58 @@ describe("PcmMicRecorder", () => {
     expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone disconnected/i));
     await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
     expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("stops and preserves the take when the AudioContext is suspended", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, track, changeContextState } = createRecorder();
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [new Float32Array([0.25, -0.5]).buffer] });
+    await waitForAck(lastNode!);
+    changeContextState("suspended");
+
+    const take = await recorder.stop();
+    expect(take?.session.totalFrames).toBe(2);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(/audio context became suspended.*uncommitted buffer may be incomplete/i),
+    );
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
+    expect(recorder.state).toBe("idle");
+    expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("stops and preserves the take when the microphone track is muted", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, track } = createRecorder();
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [new Float32Array([0.125, -0.25]).buffer] });
+    await waitForAck(lastNode!);
+    track.dispatchEvent(new Event("mute"));
+
+    const take = await recorder.stop();
+    expect(take?.session.totalFrames).toBe(2);
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone input was interrupted/i));
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
+    expect(recorder.state).toBe("idle");
+    expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("refuses to start when the microphone is already muted", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, track } = createRecorder();
+    Object.defineProperty(track, "muted", { value: true });
+
+    await expect(recorder.start(metadata)).rejects.toThrow(/not delivering audio/i);
+
+    expect(recorder.state).toBe("idle");
+    expect(track.stop).toHaveBeenCalledOnce();
+    await expect(recovery.listRecoverable()).resolves.toEqual([]);
   });
 
   it("warns when the worklet never confirms its final flush and keeps committed PCM recoverable", async () => {

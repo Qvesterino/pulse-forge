@@ -1,6 +1,5 @@
 import { StrictMode, Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createCoreServices, openProject } from "./services";
 import type { CoreServices, Services } from "./services";
 import type { ProjectDocument } from "./project-model/types";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
@@ -131,36 +130,33 @@ function Boot() {
 
   useEffect(() => {
     let cancelled = false;
-    createCoreServices().then(
-      (core) => {
-        if (cancelled) return;
+    void (async () => {
+      try {
         // ?import=<share code> — a shared link drops the project straight
-        // into the studio, skipping the browser. A corrupted/truncated link
-        // must surface (like the embed player does) instead of silently
-        // dumping the user into an unrelated empty browser.
+        // into the studio, skipping the browser. Reject corrupt links before
+        // loading the audio engine; they do not need services to explain the
+        // problem to the user.
         const code = new URLSearchParams(location.search).get("import");
         const imported = code ? decodeShareCode(code) : null;
         if (code && !imported) {
           setScreen({ kind: "error", message: "This beat link is invalid or corrupted." });
           return;
         }
+
+        const { createCoreServices, openProject } = await import("./services");
+        if (cancelled) return;
+        const core = await createCoreServices();
+        if (cancelled) return;
         if (imported) {
-          void openProject(core, imported).then(
-            (services) => {
-              if (!cancelled) setScreen({ kind: "studio", services });
-            },
-            (error) => {
-              if (!cancelled) setScreen({ kind: "error", message: String(error) });
-            },
-          );
+          const services = await openProject(core, imported);
+          if (!cancelled) setScreen({ kind: "studio", services });
         } else {
           setScreen({ kind: "browser", core });
         }
-      },
-      (error) => {
+      } catch (error) {
         if (!cancelled) setScreen({ kind: "error", message: String(error) });
-      },
-    );
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -169,10 +165,12 @@ function Boot() {
   const openDoc = useCallback((core: CoreServices, doc: ProjectDocument) => {
     // Surface open failures (e.g. the lazy collab chunk cannot load) — a
     // silent rejection would leave the browser looking unresponsive.
-    void openProject(core, doc).then(
-      (services) => setScreen({ kind: "studio", services }),
-      (error) => setScreen({ kind: "error", message: String(error) }),
-    );
+    void import("./services")
+      .then(({ openProject }) => openProject(core, doc))
+      .then(
+        (services) => setScreen({ kind: "studio", services }),
+        (error) => setScreen({ kind: "error", message: String(error) }),
+      );
   }, []);
 
   /** Swap the studio's services in place (collab session start/leave). */

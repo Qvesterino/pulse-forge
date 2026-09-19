@@ -15,6 +15,7 @@ import { ENV_SHAPE_OPTIONS, scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
 import { modMatrixParams, scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
+import { shapeOscillator } from "./bandlimited";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { pitchShiftPreserveDuration } from "../audio-engine/time-stretch";
 
@@ -399,8 +400,12 @@ const analog: InstrumentDefinition = {
         const lfoNodes: OscillatorNode[] = [];
         const mkOsc = (waveIndex: number, detune: number, level: number, transpose = 0) => {
           const osc = ctx.createOscillator();
-          osc.type = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(waveIndex)))];
-          osc.frequency.value = freq * Math.pow(2, transpose / 12);
+          const wave = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(waveIndex)))];
+          const oscFreq = freq * Math.pow(2, transpose / 12);
+          // Band-limited spectrum (saw/square/triangle via PeriodicWave);
+          // sine stays native. Timing/phase semantics unchanged.
+          shapeOscillator(ctx, osc, wave, oscFreq);
+          osc.frequency.value = oscFreq;
           osc.detune.value = detune;
           const g = ctx.createGain();
           g.gain.value = level;
@@ -436,7 +441,8 @@ const analog: InstrumentDefinition = {
             const t = unison === 1 ? 0 : (u / (unison - 1)) * 2 - 1;
             const detune = t * spread;
             const osc = ctx.createOscillator();
-            osc.type = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(p.oscA ?? 2)))];
+            const uniWave = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(p.oscA ?? 2)))];
+            shapeOscillator(ctx, osc, uniWave, freq);
             osc.frequency.value = freq;
             osc.detune.value = detune;
             const g = ctx.createGain();
@@ -724,8 +730,9 @@ const bass: InstrumentDefinition = {
           transpose = 0,
         ) => {
           const osc = ctx.createOscillator();
-          osc.type = type;
           const targetFreq = freq * Math.pow(2, transpose / 12);
+          // Band-limited for saw/square/triangle; sine stays native.
+          shapeOscillator(ctx, osc, type, targetFreq);
           osc.detune.value = detuneCents;
           const g = ctx.createGain();
           g.gain.value = levelGain;
@@ -1895,7 +1902,7 @@ const texture: InstrumentDefinition = {
           const weight = u === 0 ? 0.6 : 0.5;
           const sumWeights = 0.6 + 0.5 * (n - 1);
           const osc = ctx.createOscillator();
-          osc.type = useSaw ? "sawtooth" : "sine";
+          shapeOscillator(ctx, osc, useSaw ? "sawtooth" : "sine", freq);
           osc.frequency.value = freq;
           osc.detune.value = t * (spreadCents + 7);
           lfo2Depth.connect(osc.detune);
@@ -4767,7 +4774,7 @@ const drumsynth: InstrumentDefinition = {
           srcs.push(nsrc);
           for (const f of [185, 330]) {
             const osc = ctx.createOscillator();
-            osc.type = "triangle";
+            shapeOscillator(ctx, osc, "triangle", f * po);
             osc.frequency.value = f * po;
             const og = ctx.createGain();
             og.gain.setValueAtTime(0.3 + body * 0.3, when);
@@ -4797,8 +4804,10 @@ const drumsynth: InstrumentDefinition = {
           bp.connect(hp).connect(hg).connect(noteGain);
           for (const ratio of HAT_RATIOS) {
             const osc = ctx.createOscillator();
-            osc.type = "square";
-            osc.frequency.value = base * ratio;
+            const hatFreq = base * ratio;
+            // Band-limited metallic squares (fixed pitch — ideal table case).
+            shapeOscillator(ctx, osc, "square", hatFreq);
+            osc.frequency.value = hatFreq;
             const og = ctx.createGain();
             og.gain.value = 0.12;
             osc.connect(og).connect(bp);
@@ -4857,8 +4866,9 @@ const drumsynth: InstrumentDefinition = {
           bp.connect(g).connect(noteGain);
           for (const mult of [1, 1.485]) {
             const osc = ctx.createOscillator();
-            osc.type = "square";
-            osc.frequency.value = base * mult;
+            const bellFreq = base * mult;
+            shapeOscillator(ctx, osc, "square", bellFreq);
+            osc.frequency.value = bellFreq;
             const og = ctx.createGain();
             og.gain.value = 0.35;
             osc.connect(og).connect(bp);
@@ -4881,8 +4891,9 @@ const drumsynth: InstrumentDefinition = {
           bp.connect(g).connect(noteGain);
           for (const mult of [1, 1.5]) {
             const osc = ctx.createOscillator();
-            osc.type = "triangle";
-            osc.frequency.value = base * mult;
+            const rimFreq = base * mult;
+            shapeOscillator(ctx, osc, "triangle", rimFreq);
+            osc.frequency.value = rimFreq;
             const og = ctx.createGain();
             og.gain.setValueAtTime(0.5, when);
             og.gain.setTargetAtTime(0.0001, when + 0.001, Math.max(0.008, decay * 0.08) / 3);
@@ -4956,8 +4967,9 @@ const drumsynth: InstrumentDefinition = {
           bp.connect(hp).connect(g).connect(noteGain);
           for (let k = 0; k < 8; k++) {
             const osc = ctx.createOscillator();
-            osc.type = "square";
-            osc.frequency.value = base * (1 + k * 0.7 + (k % 3) * 0.23);
+            const metalFreq = base * (1 + k * 0.7 + (k % 3) * 0.23);
+            shapeOscillator(ctx, osc, "square", metalFreq);
+            osc.frequency.value = metalFreq;
             const og = ctx.createGain();
             og.gain.value = 0.09;
             osc.connect(og).connect(bp);
@@ -5013,7 +5025,9 @@ const drumsynth: InstrumentDefinition = {
           const fStart = (1400 + tone * 4200) * po;
           const sweep = Math.max(0.02, 0.05 + snap * 0.25);
           const osc = ctx.createOscillator();
-          osc.type = "square";
+          // Table frozen at the sweep start (spectrum follows the schedule
+          // pitch while the frequency dives — standard wavetable behavior).
+          shapeOscillator(ctx, osc, "square", fStart);
           osc.frequency.setValueAtTime(fStart, when);
           osc.frequency.exponentialRampToValueAtTime(Math.max(60, fStart / (1.6 + body * 3)), when + sweep);
           const g = ctx.createGain();

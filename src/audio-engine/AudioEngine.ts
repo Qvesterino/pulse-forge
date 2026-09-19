@@ -330,13 +330,13 @@ export function resolveSlicePlayback(pad: DrumPad, bufferDuration: number): Reso
   };
 }
 
- /**
-  * Per-send PDC delay (seconds): the send tap sits post-chain-PDC, so the
-  * send waits out the downstream latency (the sender's group chain; 0 for
-  * groups and ungrouped tracks) minus the return's own latency. Clamped ≥ 0 —
-  * a return carrying heavier latency FX than the sender's downstream keeps a
-  * documented residual of (returnLat − downstream) instead.
-  */
+/**
+ * Per-send PDC delay (seconds): the send tap sits post-chain-PDC, so the
+ * send waits out the downstream latency (the sender's group chain; 0 for
+ * groups and ungrouped tracks) minus the return's own latency. Clamped ≥ 0 —
+ * a return carrying heavier latency FX than the sender's downstream keeps a
+ * documented residual of (returnLat − downstream) instead.
+ */
 export function sendPdcDelaySec(downstreamLatSec: number, returnLatSec: number): number {
   if (!Number.isFinite(downstreamLatSec) || !Number.isFinite(returnLatSec)) return 0;
   return Math.max(0, downstreamLatSec - returnLatSec);
@@ -705,8 +705,12 @@ export class AudioEngine {
         this.upgradeMasterDynamics();
         this.upgradeKwMeter();
       })
-      .catch(() => {
+      .catch((err) => {
         if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
+        // Fire-and-forget is deliberate, but a mid-syncProject throw leaves
+        // chains half-built — that must at least be observable in the
+        // console instead of silently degrading the graph.
+        console.error("[audio-engine] deferred FX rebuild failed:", err);
       });
   }
 
@@ -844,6 +848,7 @@ export class AudioEngine {
       const merger = ctx.createChannelMerger(2);
       const midL = ctx.createGain();
       const midR = ctx.createGain();
+      const midSum = ctx.createGain();
       const sideL = ctx.createGain();
       const sideR = ctx.createGain();
       const sideSum = ctx.createGain();
@@ -868,8 +873,14 @@ export class AudioEngine {
       splitter.connect(midR, 1);
       splitter.connect(sideL, 0);
       splitter.connect(sideR, 1);
-      midL.connect(merger, 0, 0);
-      midR.connect(merger, 0, 1);
+      // Decode with the shared M=(L+R)/2 signal on both channels. Sending
+      // half of each original channel directly to its own output is not a
+      // mid/side decode: with Bass Mono disabled it leaves a -6 dB,
+      // polarity-inverted copy of a hard-panned signal on the other side.
+      midL.connect(midSum);
+      midR.connect(midSum);
+      midSum.connect(merger, 0, 0);
+      midSum.connect(merger, 0, 1);
       // Side: sum, then wet (lowpassed) + dry crossfade.
       sideL.connect(sideSum);
       sideR.connect(invL);
@@ -1325,11 +1336,7 @@ export class AudioEngine {
     // Groups and returns carry tempo-synced / phase-locked FX too (Pump,
     // Step Gate, SYNC delays) — skipping them left bus effects out of phase
     // with the transport for the whole play.
-    for (const nodes of [
-      ...this.trackNodes.values(),
-      ...this.groupNodes.values(),
-      ...this.returnNodes.values(),
-    ]) {
+    for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
       for (const rt of nodes.fx.runtimes.values()) {
         rt.onTransportStarted?.(time, beatPhase);
       }
@@ -1532,8 +1539,14 @@ export class AudioEngine {
    * target chain's construction is not sufficient.
    */
   private syncFxSidechains(doc: ProjectDocument): void {
-    for (const owner of doc.tracks) {
-      const ownerNodes = owner.kind === "group" ? this.groupNodes.get(owner.id) : this.trackNodes.get(owner.id);
+    // Returns hold sidechain-capable FX too; skipping them left a return's
+    // detector feed null whenever its chain was built before the source
+    // track existed (fxSignature unchanged → no rebuild to rewire it).
+    for (const owner of [...doc.tracks, ...doc.returns]) {
+      const ownerNodes =
+        owner.kind === "group"
+          ? this.groupNodes.get(owner.id)
+          : (this.trackNodes.get(owner.id) ?? this.returnNodes.get(owner.id));
       if (!ownerNodes) continue;
       for (const fx of owner.effects) {
         if (fx.bypassed) continue;
@@ -1943,11 +1956,7 @@ export class AudioEngine {
     // Bus and return chains hold tempo-synced runtimes (SYNC delays, LFO
     // syncs) — without these loops a return delay kept the old BPM after a
     // project/scene tempo change and echoes landed off-grid.
-    for (const nodes of [
-      ...this.trackNodes.values(),
-      ...this.groupNodes.values(),
-      ...this.returnNodes.values(),
-    ]) {
+    for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
       for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm);
     }
     // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,

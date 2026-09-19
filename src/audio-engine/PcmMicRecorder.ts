@@ -44,6 +44,8 @@ export class PcmMicRecorder {
   private stream: MediaStream | null = null;
   private track: MediaStreamTrack | null = null;
   private onTrackEnded: (() => void) | null = null;
+  private onTrackMuted: (() => void) | null = null;
+  private onContextStateChange: (() => void) | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private node: AudioWorkletNode | null = null;
   private muteGain: GainNode | null = null;
@@ -190,10 +192,24 @@ export class PcmMicRecorder {
       this.onTrackEnded = () =>
         this.reportError("Microphone disconnected — the captured take is being stopped and kept for recovery");
       this.track.addEventListener("ended", this.onTrackEnded);
+      this.onTrackMuted = () =>
+        this.reportError("Microphone input was interrupted — the captured take is being stopped and kept for recovery");
+      this.track.addEventListener("mute", this.onTrackMuted);
       if (isTrackEnded(this.track)) throw new Error("The microphone disconnected before recording began");
+      if (this.track.muted) throw new Error("The selected microphone is not delivering audio");
+      this.onContextStateChange = () => {
+        if (this.state_ !== "recording" || ctx.state === "running") return;
+        this.reportError(
+          `Audio context became ${String(ctx.state)} during microphone recording. Recording stopped; previously committed blocks are recoverable, but the final uncommitted buffer may be incomplete.`,
+        );
+      };
+      ctx.addEventListener("statechange", this.onContextStateChange);
+      if (ctx.state !== "running") {
+        throw new Error(`Audio context became ${String(ctx.state)} before recording began`);
+      }
       this.startedAt = ctx.currentTime;
-      this.node.port.postMessage({ type: "start" });
       this.state_ = "recording";
+      this.node.port.postMessage({ type: "start" });
     } catch (error) {
       const session = this.session;
       this.cleanupWiring();
@@ -398,7 +414,11 @@ export class PcmMicRecorder {
     rejectReady?.(new Error("Recording start was cancelled"));
     this.stoppedResolve = null;
     if (this.track && this.onTrackEnded) this.track.removeEventListener("ended", this.onTrackEnded);
+    if (this.track && this.onTrackMuted) this.track.removeEventListener("mute", this.onTrackMuted);
+    if (this.onContextStateChange) this.deps.ctx.removeEventListener("statechange", this.onContextStateChange);
     this.onTrackEnded = null;
+    this.onTrackMuted = null;
+    this.onContextStateChange = null;
     if (this.source && this.node) {
       try {
         this.source.disconnect(this.node);

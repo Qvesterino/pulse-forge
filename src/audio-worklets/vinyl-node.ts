@@ -8,7 +8,10 @@ import type { EffectRuntime } from "../effects/types";
  * The instance id seeds the crackle RNG — every instance crackles differently
  * but deterministically (offline parity).
  */
-export function createVinylNode(ctx: BaseAudioContext, instance: { params: Record<string, number>; id?: string }): EffectRuntime {
+export function createVinylNode(
+  ctx: BaseAudioContext,
+  instance: { params: Record<string, number>; id?: string },
+): EffectRuntime {
   let seed = 7;
   const id = instance.id ?? "";
   for (let i = 0; i < id.length; i++) {

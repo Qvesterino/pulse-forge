@@ -320,15 +320,27 @@ function MasterStrip() {
             </button>
             <button
               type="button"
-              className={`btn btn-small${master.msEnabled ? " active-solo" : ""}`}
-              title="Mid/Side processing on master (Cubase MixConsole) — separate mid/side gain"
-              aria-label="Master M/S"
-              aria-pressed={!!master.msEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { msEnabled: !master.msEnabled }))}
+              className={`btn btn-small${master.bassMonoEnabled ? " active-solo" : ""}`}
+              title="Bass Mono — below the corner frequency the master collapses to mono (club/low-end focus)"
+              aria-label="Master bass mono"
+              aria-pressed={!!master.bassMonoEnabled}
+              onClick={() => services.store.execute(setMasterConfig(doc, { bassMonoEnabled: !master.bassMonoEnabled }))}
             >
-              M/S
+              B-MONO
             </button>
           </div>
+          {!!master.bassMonoEnabled && (
+            <Slider
+              compact
+              label="B-MONO"
+              value={master.bassMonoFreq ?? 120}
+              min={60}
+              max={400}
+              defaultValue={120}
+              format={(v) => `${Math.round(v)} Hz`}
+              onCommit={(bassMonoFreq) => services.store.execute(setMasterConfig(doc, { bassMonoFreq }))}
+            />
+          )}
           {master.tapeEnabled && (
             <Slider
               compact
