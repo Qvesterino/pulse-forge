@@ -1,5 +1,11 @@
 import { useRef, useState, useSyncExternalStore } from "react";
-import { useDoc, useServices } from "./context";
+import {
+  useActivePatternId,
+  useArrangement,
+  usePatterns,
+  useScenes,
+  useServices,
+} from "./context";
 import { sceneRoleOf } from "../project-model/schema";
 import { assistVary } from "../commands/commands";
 import type { Pattern, Scene } from "../project-model/types";
@@ -77,7 +83,14 @@ export function SceneLauncher({
   onDuplicatePattern,
 }: SceneLauncherProps) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): SceneLauncher reads scenes, the
+  // arrangement (clips), patterns (for scene→pattern mapping), and the
+  // active pattern id (for current-scene resolution). Subscribing to the
+  // whole doc re-renders this strip on every unrelated edit.
+  const scenes = useScenes();
+  const arrangement = useArrangement();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
   const runtime = useSceneRuntimeState();
   const [localSelectedSceneId, setLocalSelectedSceneId] = useState<string | null>(null);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
@@ -87,13 +100,13 @@ export function SceneLauncher({
 
   const currentSceneId = currentSceneIdFor(
     runtime.mode,
-    doc.activePatternId,
-    doc.scenes,
-    doc.arrangement.clips,
+    activePatternId,
+    scenes,
+    arrangement.clips,
     playheadBar,
   );
-  const selectedSceneId = selectedSceneIdProp ?? localSelectedSceneId ?? currentSceneId ?? doc.scenes[0]?.id ?? null;
-  const selectedScene = doc.scenes.find((scene) => scene.id === selectedSceneId) ?? doc.scenes[0];
+  const selectedSceneId = selectedSceneIdProp ?? localSelectedSceneId ?? currentSceneId ?? scenes[0]?.id ?? null;
+  const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0];
   const canReorder = Boolean(onReorderScenes);
 
   const selectScene = (scene: Scene) => {
@@ -109,7 +122,7 @@ export function SceneLauncher({
 
   const commitEdit = () => {
     if (!editingSceneId) return;
-    const scene = doc.scenes.find((candidate) => candidate.id === editingSceneId);
+    const scene = scenes.find((candidate) => candidate.id === editingSceneId);
     const name = draftName.trim();
     if (scene && name && name !== scene.name) onRenameScene?.(scene, name);
     setEditingSceneId(null);
@@ -181,9 +194,9 @@ export function SceneLauncher({
   return (
     <div className={`scene-launcher scene-launcher-${variant}`} aria-label="Scene launcher">
       <div className="scene-launcher-list" ref={listRef}>
-        {doc.scenes.map((scene, index) => {
-          const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
-          const useCount = doc.scenes.filter((candidate) => candidate.patternId === scene.patternId).length;
+        {scenes.map((scene, index) => {
+          const pattern = patterns.find((candidate) => candidate.id === scene.patternId);
+          const useCount = scenes.filter((candidate) => candidate.patternId === scene.patternId).length;
           const role = sceneRoleOf(scene);
           const isSelected = selectedSceneId === scene.id;
           const isCurrent = currentSceneId === scene.id;
@@ -341,7 +354,7 @@ export function SceneLauncher({
           >
             DUPLICATE PATTERN
           </button>
-          {doc.scenes.filter((scene) => scene.patternId === selectedScene.patternId).length > 1 && (
+          {scenes.filter((scene) => scene.patternId === selectedScene.patternId).length > 1 && (
             <span className="scene-shared-note">
               Selected scene shares its pattern. Duplicate it before editing independently.
             </span>

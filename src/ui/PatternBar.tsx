@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useActivePatternId, usePatterns, useServices } from "./context";
 import {
   clearPattern,
   createFill,
@@ -45,10 +45,16 @@ export function PatternBar({
   onOpenDice?: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): PatternBar reads patterns and the
+  // active pattern id. Subscribing to the whole document via `useDoc()`
+  // re-renders this bar on every unrelated edit (a track gain, an
+  // automation-point move).
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const active = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  const active = patterns.find((p) => p.id === activePatternId)!;
   const groove = grooveOf(doc);
   const playheadBar = usePlayheadBar(services.transport);
   const chipsRef = useRef<HTMLDivElement>(null);
@@ -92,7 +98,7 @@ export function PatternBar({
 
   const commitRename = () => {
     if (editingId !== null && draft.trim() !== "") {
-      const current = doc.patterns.find((p) => p.id === editingId);
+      const current = patterns.find((p) => p.id === editingId);
       if (current && current.name !== draft.trim()) {
         services.store.execute(renamePattern(doc, editingId, draft.trim()));
       }
@@ -102,14 +108,14 @@ export function PatternBar({
 
   const getDropIndex = (clientX: number): number => {
     const chips = chipsRef.current;
-    if (!chips) return doc.patterns.length;
+    if (!chips) return patterns.length;
     const buttons = chips.querySelectorAll<HTMLButtonElement>(".pattern-chip");
     for (let i = 0; i < buttons.length; i++) {
       const rect = buttons[i].getBoundingClientRect();
       const mid = rect.left + rect.width / 2;
       if (clientX < mid) return i;
     }
-    return doc.patterns.length;
+    return patterns.length;
   };
 
   const handlePointerDown = (event: React.PointerEvent, patternId: string, index: number) => {
@@ -150,8 +156,8 @@ export function PatternBar({
   return (
     <section className="pattern-bar" aria-label="Patterns">
       <div className="pattern-chips" role="tablist" aria-label="Pattern selector" ref={chipsRef}>
-        {doc.patterns.map((pattern, index) => {
-          const isActive = pattern.id === doc.activePatternId;
+        {patterns.map((pattern, index) => {
+          const isActive = pattern.id === activePatternId;
           const isDragging = drag?.patternId === pattern.id;
           if (editingId === pattern.id) {
             return (
@@ -266,7 +272,7 @@ export function PatternBar({
           type="button"
           className="btn btn-small"
           title="Duplicate active pattern (Ctrl+D)"
-          onClick={() => services.store.execute(duplicatePattern(doc, doc.activePatternId))}
+          onClick={() => services.store.execute(duplicatePattern(doc, activePatternId))}
         >
           DUP
         </button>
@@ -275,7 +281,7 @@ export function PatternBar({
           type="button"
           className="btn btn-small"
           title="Mutate active pattern into a seeded variation (velocities, ghosts, microtiming)"
-          onClick={() => services.store.execute(mutatePattern(doc, doc.activePatternId))}
+          onClick={() => services.store.execute(mutatePattern(doc, activePatternId))}
         >
           MUT
         </button>
@@ -283,7 +289,7 @@ export function PatternBar({
           type="button"
           className="btn btn-small"
           title="Creates a NEW pattern as a fill — snare roll over the last beat. (The FILL in the ASSIST panel works into the current pattern instead.)"
-          onClick={() => services.store.execute(createFill(doc, doc.activePatternId))}
+          onClick={() => services.store.execute(createFill(doc, activePatternId))}
         >
           FILL
         </button>
@@ -345,7 +351,7 @@ export function PatternBar({
           type="button"
           className="btn btn-small btn-danger"
           title="Clear all steps of active pattern (undoable)"
-          onClick={() => services.store.execute(clearPattern(doc, doc.activePatternId))}
+          onClick={() => services.store.execute(clearPattern(doc, activePatternId))}
         >
           CLEAR
         </button>
@@ -353,8 +359,8 @@ export function PatternBar({
           type="button"
           className="btn btn-small btn-danger"
           title="Delete active pattern"
-          disabled={doc.patterns.length <= 1}
-          onClick={() => services.store.execute(deletePattern(doc, doc.activePatternId))}
+          disabled={patterns.length <= 1}
+          onClick={() => services.store.execute(deletePattern(doc, activePatternId))}
         >
           DEL
         </button>
@@ -364,7 +370,7 @@ export function PatternBar({
           title="Pattern length — 16 steps = 1 bar (long pads want 32+)"
           value={active.stepCount}
           onChange={(event) =>
-            services.store.execute(setPatternLength(doc, doc.activePatternId, Number(event.target.value)))
+            services.store.execute(setPatternLength(doc, activePatternId, Number(event.target.value)))
           }
         >
           <option value={16}>16 · 1 bar</option>
@@ -381,7 +387,7 @@ export function PatternBar({
           onChange={(event) => {
             const gridTicks = Number(event.target.value);
             setQuantizeGrid(gridTicks);
-            services.store.execute(quantizePatternToGrid(doc, doc.activePatternId, gridTicks));
+            services.store.execute(quantizePatternToGrid(doc, activePatternId, gridTicks));
           }}
         >
           <option value={GRID_8TH}>1/8</option>
@@ -393,7 +399,7 @@ export function PatternBar({
             type="button"
             className="btn btn-small"
             title={`Snap all notes to the project scale (${doc.key})`}
-            onClick={() => services.store.execute(quantizePatternToScale(doc, doc.activePatternId, doc.key!))}
+            onClick={() => services.store.execute(quantizePatternToScale(doc, activePatternId, doc.key!))}
           >
             SCALE
           </button>

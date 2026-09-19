@@ -456,7 +456,16 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           /* ignore */
         }
       }}
-      style={track.color ? { borderTopColor: track.color, borderTopWidth: 3 } : undefined}
+      data-colored={track.color || undefined}
+      style={
+        track.color
+          ? ({
+              borderTopColor: track.color,
+              borderTopWidth: 3,
+              "--strip-color": track.color,
+            } as React.CSSProperties)
+          : undefined
+      }
     >
       <div className="channel-name">
         {isGroup && (

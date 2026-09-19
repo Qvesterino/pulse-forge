@@ -146,4 +146,25 @@ describe("PcmMicRecorder", () => {
     await recorder.cancel();
     await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
   });
+
+  it("stops itself on microphone loss and preserves committed PCM for recovery", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, recovery, metadata, track } = createRecorder();
+    const onError = vi.fn();
+    recorder.onError = onError;
+    await recorder.start(metadata);
+
+    const pcm = new Float32Array([0.125, -0.25]);
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+    await waitForAck(lastNode!);
+    track.dispatchEvent(new Event("ended"));
+
+    for (let i = 0; i < 30 && recorder.state !== "idle"; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(recorder.state).toBe("idle");
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone disconnected/i));
+    await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
+    expect(track.stop).toHaveBeenCalledOnce();
+  });
 });

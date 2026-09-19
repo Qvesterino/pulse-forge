@@ -1,6 +1,14 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
-import { useCanRedo, useCanUndo, useDoc, useLastSavedAt, useSaveStatus, useServices } from "./context";
+import {
+  useActivePatternId,
+  useArrangement,
+  useCanRedo,
+  useCanUndo,
+  useLastSavedAt,
+  useSaveStatus,
+  useServices,
+} from "./context";
 import { useTransportPosition } from "./playhead";
 import { DragNumber } from "./controls";
 import { setBpm, setProjectName } from "../commands/commands";
@@ -83,7 +91,13 @@ export function TopBar({
   onToggleHistory: () => void;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selectors (GOAL 04): TopBar reads only the arrangement
+  // (clip count badge) and the active pattern id (assist commands) from the
+  // document. The full doc is still needed for the project name and BPM
+  // scalars — those are plain getter reads, not subscriptions.
+  const arrangement = useArrangement();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
   const saveStatus = useSaveStatus();
   const lastSavedAt = useLastSavedAt();
   const canUndo = useCanUndo();
@@ -241,7 +255,7 @@ export function TopBar({
       // barAtTick is 1-indexed, clips are 0-indexed bars.
       const playheadBar = barAtTick(Math.max(0, services.transport.position), doc);
       const barIndex = playheadBar - 1;
-      const clips = doc.arrangement.clips;
+      const clips = arrangement.clips;
       if (clips.length === 0) {
         showModeHint({
           text: "ARRANGEMENT EMPTY — drag scenes into the timeline or hit AUTO ARRANGE",
@@ -317,13 +331,13 @@ export function TopBar({
       // 1-klik Assist shortcuts — deterministic, no panel
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
         event.preventDefault();
-        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-vary");
-        services.store.execute(assistVary(doc, doc.activePatternId, seed, 0.6));
+        const seed = nextSeed(activePatternId + String(Date.now()), "topbar-vary");
+        services.store.execute(assistVary(doc, activePatternId, seed, 0.6));
       }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        const seed = nextSeed(doc.activePatternId + String(Date.now()), "topbar-fill");
-        services.store.execute(assistFill(doc, doc.activePatternId, seed));
+        const seed = nextSeed(activePatternId + String(Date.now()), "topbar-fill");
+        services.store.execute(assistFill(doc, activePatternId, seed));
       }
     };
     window.addEventListener("keydown", handler);

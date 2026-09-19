@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDoc, useLibrary, useServices } from "./context";
+import { useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
 import { PRESET_ENERGIES, PRESET_USE_CASES, getPresetMetadata } from "../presets/catalog";
@@ -17,7 +17,7 @@ type ScopeFilter = "all" | "fav" | "recent" | "similar";
 
 export function PresetBrowser({ track }: { track: InstrumentTrack }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const library = useLibrary();
   const [genre, setGenre] = useState<GenreFilter>("all");
   const [mood, setMood] = useState<MoodFilter>("all");

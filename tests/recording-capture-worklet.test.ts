@@ -69,12 +69,12 @@ describe("recording AudioWorklet PCM protocol", () => {
     const processor = createProcessor();
     renderQuantum(processor, new Float32Array(128)); // initializes channel contract
     processor.port.onmessage!({ data: { type: "start" } });
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 4; i++) {
       const result = renderQuantum(processor, new Float32Array(128).fill(i));
-      if (i < 8) expect(result.keepAlive).toBe(true);
+      if (i < 3) expect(result.keepAlive).toBe(true);
       else expect(result.keepAlive).toBe(false);
     }
-    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(8);
+    expect(processor.messages.filter((message: any) => message.type === "chunk")).toHaveLength(3);
     expect(
       processor.messages.some((message: any) => message.type === "error" && /could not keep up/i.test(message.reason)),
     ).toBe(true);

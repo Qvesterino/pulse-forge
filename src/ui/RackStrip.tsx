@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useActivePatternId, usePatterns, useServices } from "./context";
 import type { DrumTrack } from "../project-model/types";
 import { usePlayheadStep } from "./playhead";
 import { assetCategoryOf, categoryColor } from "./kitColors";
@@ -55,8 +55,13 @@ export function RackStrip({
   leading?: React.ReactNode;
 }) {
   const services = useServices();
-  const doc = useDoc();
-  const pattern = doc.patterns.find((p) => p.id === doc.activePatternId)!;
+  // Fine-grained selectors (GOAL 04): RackStrip reads patterns (for the
+  // active pattern lookup) and the active pattern id. Helpers and command
+  // arguments need the full doc; it's a plain getter (no subscription).
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const doc = services.store.getDoc();
+  const pattern = patterns.find((p) => p.id === activePatternId)!;
   const playheadStep = usePlayheadStep(services.transport, doc);
   const [repeatRate, setRepeatRate] = useState<RepeatRate>("off");
   const [falloff, setFalloff] = useState<FalloffMode>("decay");

@@ -57,7 +57,7 @@ export class RecordingRecoveryRepository {
     if (!Array.isArray(chunk.channels) || chunk.channels.length === 0)
       throw new Error("Recording block has no audio channels");
     for (const channel of chunk.channels) {
-      if (!(channel instanceof ArrayBuffer) || channel.byteLength !== chunk.frames * Float32Array.BYTES_PER_ELEMENT)
+      if (!isArrayBuffer(channel) || channel.byteLength !== chunk.frames * Float32Array.BYTES_PER_ELEMENT)
         throw new Error("Recording block has an invalid PCM channel");
     }
 
@@ -68,7 +68,13 @@ export class RecordingRecoveryRepository {
       const request = sessions.get(chunk.sessionId);
       request.onsuccess = () => {
         const session = request.result as RecordingSession | undefined;
-        if (!session || session.status !== "recording" || chunk.sequence !== session.chunkCount) {
+        if (
+          !session ||
+          session.status !== "recording" ||
+          chunk.sequence !== session.chunkCount ||
+          chunk.channels.length !== session.channels ||
+          chunk.frames > Math.max(128, Math.round(session.sampleRate))
+        ) {
           request.transaction?.abort();
           return;
         }
@@ -123,7 +129,7 @@ export class RecordingRecoveryRepository {
   async forEachChunk(sessionId: string, visit: (chunk: RecordingPcmChunk, frameOffset: number) => void): Promise<void> {
     const session = await this.get(sessionId);
     if (!session) throw new Error("Recording recovery session was not found");
-    await this.forEachPcmBlock(sessionId, session.chunkCount, session.totalFrames, visit);
+    await this.forEachPcmBlock(sessionId, session.chunkCount, session.totalFrames, session.channels, visit);
     const current = await this.get(sessionId);
     if (!current || current.chunkCount !== session.chunkCount || current.totalFrames !== session.totalFrames) {
       throw new Error("Recording recovery data changed while it was being read; the staged audio was kept");
@@ -135,6 +141,9 @@ export class RecordingRecoveryRepository {
     if (
       !Number.isInteger(reference.frames) ||
       reference.frames <= 0 ||
+      !reference.recordingId ||
+      !Number.isInteger(reference.chunkCount) ||
+      reference.chunkCount <= 0 ||
       !Number.isInteger(reference.channels) ||
       reference.channels < 1 ||
       reference.channels > 32 ||
@@ -152,14 +161,20 @@ export class RecordingRecoveryRepository {
       const detail = error instanceof Error ? `: ${error.message}` : "";
       throw new Error(`Saved recording is too large to restore into memory${detail}`);
     }
-    await this.forEachPcmBlock(reference.recordingId, reference.chunkCount, reference.frames, (chunk, offset) => {
-      if (chunk.channels.length !== buffer.numberOfChannels || offset + chunk.frames > buffer.length) {
-        throw new Error("Saved PCM recording block dimensions are invalid");
-      }
-      for (let channel = 0; channel < chunk.channels.length; channel++) {
-        buffer.getChannelData(channel).set(new Float32Array(chunk.channels[channel]), offset);
-      }
-    });
+    await this.forEachPcmBlock(
+      reference.recordingId,
+      reference.chunkCount,
+      reference.frames,
+      reference.channels,
+      (chunk, offset) => {
+        if (chunk.channels.length !== buffer.numberOfChannels || offset + chunk.frames > buffer.length) {
+          throw new Error("Saved PCM recording block dimensions are invalid");
+        }
+        for (let channel = 0; channel < chunk.channels.length; channel++) {
+          buffer.getChannelData(channel).set(new Float32Array(chunk.channels[channel]), offset);
+        }
+      },
+    );
     return buffer;
   }
 
@@ -167,6 +182,7 @@ export class RecordingRecoveryRepository {
     ownerId: string,
     expectedChunks: number,
     expectedFrames: number,
+    expectedChannels: number,
     visit: (chunk: RecordingPcmChunk, frameOffset: number) => void,
   ): Promise<void> {
     const db = await this.openDatabase();
@@ -179,8 +195,20 @@ export class RecordingRecoveryRepository {
         const cursor = cursorRequest.result;
         if (!cursor) return;
         const chunk = cursor.value as RecordingPcmChunk;
-        if (chunk.sessionId !== ownerId || chunk.sequence !== expectedSequence) {
-          visitFailure = new Error("Recording PCM data has a missing or out-of-order block");
+        const chunkValid =
+          chunk.sessionId === ownerId &&
+          chunk.sequence === expectedSequence &&
+          Number.isInteger(chunk.frames) &&
+          chunk.frames > 0 &&
+          Array.isArray(chunk.channels) &&
+          chunk.channels.length === expectedChannels &&
+          chunk.channels.every(
+            (channel) => isArrayBuffer(channel) && channel.byteLength === chunk.frames * Float32Array.BYTES_PER_ELEMENT,
+          ) &&
+          Number.isSafeInteger(frameOffset + chunk.frames) &&
+          frameOffset + chunk.frames <= expectedFrames;
+        if (!chunkValid) {
+          visitFailure = new Error("Recording PCM data has an invalid, missing, or out-of-order block");
           cursorRequest.transaction?.abort();
           return;
         }
@@ -279,4 +307,10 @@ export class RecordingRecoveryRepository {
       };
     });
   }
+}
+
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  // IndexedDB returns structured clones that can originate in another realm;
+  // instanceof ArrayBuffer is false for those otherwise-valid PCM payloads.
+  return Object.prototype.toString.call(value) === "[object ArrayBuffer]";
 }

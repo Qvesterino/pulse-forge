@@ -50,9 +50,10 @@ export function isPcmRecordingAudio(value: UserSampleAudio["data"]): value is Pc
 /**
  * Persistence for user-imported audio samples. Metadata lives in the
  * `user-samples` store so the SampleBrowser can list user samples without
- * loading any audio; the original encoded bytes live in `user-sample-audio`
- * (added in DB v5) and are decoded back into the in-memory SampleBank at
- * boot via `restoreUserSampleAudio` so imports survive reloads.
+ * loading any audio. Imported files keep their encoded bytes in
+ * `user-sample-audio`; microphone recordings store a reference to committed
+ * Float32 PCM blocks there and retain those blocks in the recording store.
+ * Both formats restore into the SampleBank through `restoreUserSampleAudio`.
  */
 export class UserSampleRepository {
   private cache: UserSampleAsset[] | null = null;

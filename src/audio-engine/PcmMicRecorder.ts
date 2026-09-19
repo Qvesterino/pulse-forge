@@ -95,10 +95,11 @@ export class PcmMicRecorder {
       this.assertStartIsCurrent(token);
 
       const getUserMedia =
-        this.deps.getUserMedia ?? ((constraints) => navigator.mediaDevices.getUserMedia(constraints));
-      if (typeof navigator === "undefined" && !this.deps.getUserMedia) {
-        throw new Error("Microphone capture is not available in this browser");
-      }
+        this.deps.getUserMedia ??
+        (typeof navigator !== "undefined"
+          ? navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices)
+          : undefined);
+      if (!getUserMedia) throw new Error("Microphone capture is not available in this browser");
       try {
         this.stream = await getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -172,7 +173,7 @@ export class PcmMicRecorder {
       this.onTrackEnded = () =>
         this.reportError("Microphone disconnected — the captured take is being stopped and kept for recovery");
       this.track.addEventListener("ended", this.onTrackEnded);
-      if (this.track.readyState === "ended") throw new Error("The microphone disconnected before recording began");
+      if (isTrackEnded(this.track)) throw new Error("The microphone disconnected before recording began");
       this.startedAt = ctx.currentTime;
       this.node.port.postMessage({ type: "start" });
       this.state_ = "recording";
@@ -303,6 +304,15 @@ export class PcmMicRecorder {
   private reportError(message: string): void {
     if (this.errorReported) return;
     this.errorReported = true;
+    // Capture lifecycle must not rely on a mounted UI reacting to onError.
+    // Stop at the recorder boundary too; UI callers may also call stop(),
+    // which safely joins the same finishPromise.
+    if (this.state_ === "recording") {
+      void this.finishCapture().catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`[recording] cleanup after capture error failed: ${detail}`);
+      });
+    }
     this.onError?.(message);
   }
 
@@ -398,4 +408,8 @@ async function loadCaptureWorklet(ctx: AudioContext): Promise<void> {
 function createSessionId(): string {
   const randomId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null;
   return `recording.${randomId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+function isTrackEnded(track: MediaStreamTrack): boolean {
+  return track.readyState === "ended";
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 import { freezeTrack, unfreezeTrack } from "../commands/commands";
 import { renderTrack } from "../rendering/track-renderer";
 import type { Track } from "../project-model/types";
@@ -11,7 +11,7 @@ import { downloadWav, encodeWav } from "../rendering/wav";
  */
 export function FreezeButton({ track }: { track: Track }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDoc, useSelection, useServices } from "./context";
+import { useSelection, useServices, useTracks } from "./context";
 import { createDrumTrack, createGroupTrack, createInstrumentTrack, setTrackParams } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 
@@ -37,7 +37,11 @@ export function TrackTabs({
 }) {
   const selection = useSelection();
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selector (GOAL 04): TrackTabs only ever reads `tracks`.
+  // Subscribing to the whole document via `useDoc()` would re-render every
+  // tab on every unrelated edit (a return gain, a macro mapping change).
+  const tracks = useTracks();
+  const doc = services.store.getDoc();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
@@ -48,7 +52,7 @@ export function TrackTabs({
 
   const commitRename = () => {
     if (editingTrackId !== null && draft.trim() !== "") {
-      const current = doc.tracks.find((t) => t.id === editingTrackId);
+      const current = tracks.find((t) => t.id === editingTrackId);
       if (current && current.name !== draft.trim()) {
         services.store.execute(setTrackParams(doc, editingTrackId, { name: draft.trim() }));
       }
@@ -58,7 +62,7 @@ export function TrackTabs({
 
   return (
     <div className="track-tabs" role="tablist" aria-label="Tracks">
-      {doc.tracks.map((track, idx) => {
+      {tracks.map((track, idx) => {
         const isSelected = selection.trackIds.includes(track.id) || track.id === selectedTrackId;
         if (editingTrackId === track.id) {
           return (

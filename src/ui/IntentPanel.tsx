@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useServices, useDoc } from "./context";
+import { useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { applyGenerationResultCommand } from "../commands/commands";
@@ -25,7 +25,7 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
  */
 export function IntentPanel() {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const [text, setText] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

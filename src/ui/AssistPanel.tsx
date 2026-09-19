@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useScenes, useServices } from "./context";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../commands/commands";
 import { styleNames, type ReplaceTarget } from "../assist/patternOps";
 import { buildAssistPatch } from "../assist/pipeline";
@@ -21,7 +21,12 @@ function randomSeed(prev?: string): string {
  */
 export function AssistPanel({ onClose }: { onClose: () => void }) {
   const services = useServices();
-  const doc = useDoc();
+  // Fine-grained selector (GOAL 04): AssistPanel reads scenes (UI gate),
+  // and helper functions take the full doc (getActivePattern, getDrumTrack,
+  // parseArrangeIntent). A plain getter gives us the doc; the scenes
+  // subscription powers the conditional render of the scene-asser UI.
+  const scenes = useScenes();
+  const doc = services.store.getDoc();
   const pattern = getActivePattern(doc);
   const [seed, setSeed] = useState(randomSeed);
   const [amount, setAmount] = useState(0.6);
@@ -121,7 +126,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {doc.scenes.length > 0 && (
+      {scenes.length > 0 && (
         <div className="assist-arrange" role="group" aria-label="Arrange by words">
           <div className="assist-preview-header">
             <span>ARRANGE — describe the change</span>

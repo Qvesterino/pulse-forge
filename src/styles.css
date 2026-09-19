@@ -1814,9 +1814,29 @@ button {
   gap: 6px;
   min-width: 190px;
   padding: 8px;
-  background: var(--bg-panel-2);
+  background: linear-gradient(180deg, var(--bg-panel-2), color-mix(in srgb, var(--bg-panel-2) 82%, #000));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 10px rgba(0, 0, 0, 0.25);
+  transition:
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
+}
+
+/* Tag colour bleeds into the strip: lit border + aura + name glow. */
+.channel-strip[data-colored] {
+  border-color: color-mix(in srgb, var(--strip-color) 45%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 14px color-mix(in srgb, var(--strip-color) 22%, transparent);
+}
+.channel-strip[data-colored] .channel-name-input {
+  color: color-mix(in srgb, var(--strip-color) 55%, var(--text));
+}
+.channel-strip[data-colored] .channel-name-input:focus {
+  border-color: var(--strip-color);
 }
 
 /* Grab-worthy fader caps — the default 3px line was needle-thin to hit. */
@@ -1952,6 +1972,9 @@ button {
 .channel-strip.selected-strip {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 16px rgba(245, 158, 11, 0.18);
 }
 .channel-color {
   width: 18px;
@@ -1965,33 +1988,43 @@ button {
 .fader-menu {
   position: fixed;
   z-index: 120;
-  min-width: 180px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  min-width: 190px;
+  background: linear-gradient(180deg, rgba(33, 36, 43, 0.92), rgba(21, 23, 28, 0.94));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .fader-menu .context-menu-header {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-faint);
   padding: 4px 8px;
+  letter-spacing: 0.5px;
 }
 .fader-menu button {
   text-align: left;
-  padding: 6px 8px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
   color: var(--text);
   font-size: 12px;
-  border-radius: 3px;
+  border-radius: 6px;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .fader-menu button:hover:not(:disabled) {
-  background: var(--bg-raise);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .fader-menu button:disabled {
   opacity: 0.4;
@@ -2138,14 +2171,31 @@ button {
 }
 
 .meter {
+  position: relative;
   width: 10px;
   align-self: stretch;
   background: var(--bg);
   border: 1px solid var(--border-soft);
-  border-radius: 2px;
+  border-radius: 3px;
   display: flex;
   align-items: flex-end;
   overflow: hidden;
+}
+
+/* LED ladder: dark rungs drawn OVER the dynamic fill (pseudo-element —
+   the fill is a child, so a parent background-image would sit behind it). */
+.meter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.55) 3px,
+    rgba(0, 0, 0, 0.55) 4px
+  );
 }
 
 .meter-fill {
@@ -2153,6 +2203,27 @@ button {
   border-radius: 1px;
 }
 
+/* Peak-hold latch: thin bright line riding the top of the fill. */
+.meter-hold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #fff;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1;
+}
+
+.meter[data-clipping="true"] {
+  border-color: #f87171;
+  box-shadow:
+    0 0 0 1px rgba(248, 113, 113, 0.25),
+    0 0 10px rgba(248, 113, 113, 0.45);
+}
+
+/* Legacy class hook kept working (the component sets a data attribute). */
 .meter.clipping {
   border-color: #f87171;
   box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.2);
@@ -9950,6 +10021,8 @@ html {
 }
 .dock-slot {
   contain: layout style;
+  container-name: bottom-dock-slot;
+  container-type: inline-size;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
@@ -9961,6 +10034,23 @@ html {
 .dock-slot > * {
   flex: 1 0 auto;
   max-height: none;
+}
+
+/* Split panels must adapt to the width of their own slot, not the browser
+   viewport. Viewport media queries miss this case on wide monitors. */
+@container bottom-dock-slot (max-width: 1100px) {
+  .mod-panel {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+}
+
+@container bottom-dock-slot (max-width: 780px) {
+  .arr-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 420px;
+    overflow-y: auto;
+  }
 }
 .bottom-panels .dock-resize-handle {
   display: flex;

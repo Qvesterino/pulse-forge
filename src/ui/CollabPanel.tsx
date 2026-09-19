@@ -4,7 +4,7 @@ import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared
 import { encodeProjectForGallery, setRemixParent } from "../gallery/galleryApi";
 import { Slider } from "./controls";
 import { JAM_ROLES, normalizeJamRole, type JamRole } from "../collab/jamRoles";
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 
 /**
  * Collab session panel: start/join a room, copy a share link, see who is
@@ -14,7 +14,7 @@ import { useDoc, useServices } from "./context";
  */
 export function CollabPanel({ onReplaceServices }: { onReplaceServices: (services: Services) => void }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const [serverUrl, setServerUrl] = useState(defaultServerUrl());
   const [roomDraft, setRoomDraft] = useState("");
   const [copied, setCopied] = useState(false);

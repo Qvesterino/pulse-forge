@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { useServices, useDoc } from "./context";
+import { useServices } from "./context";
 import type { ProjectSnapshot } from "../persistence/SnapshotRepository";
 
 function formatTime(ts: number): string {
@@ -23,7 +23,7 @@ function diffLabel(diff: { added: number; removed: number; changed: number } | u
  */
 export function UndoHistoryPanel({ open }: { open: boolean }) {
   const services = useServices();
-  const doc = useDoc();
+  const doc = services.store.getDoc();
   const historyKey = useSyncExternalStore(
     services.store.subscribe,
     () => services.store.undoStackLength,

@@ -29,7 +29,7 @@ import {
 } from "../analysis/ultinaAnalysisClient";
 import type { GlobalMeters } from "../effects/ultina-core/contracts/meters";
 import { renderTrack } from "../rendering/track-renderer";
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 import { Slider } from "./controls";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 
@@ -115,7 +115,10 @@ export function UltinaPanel({
   docked?: boolean;
 }) {
   const services = useServices();
-  const doc = useDoc();
+  // GOAL 04: doc is only consumed inside async event handlers (passed to
+  // renderTrack for freeze-bounce). A plain getter avoids the doc-wide
+  // subscription this component would otherwise carry.
+  const doc = services.store.getDoc();
   const [selectedModule, setSelectedModule] = useState<string>("comp");
   const [selectedEqBand, setSelectedEqBand] = useState(0);
   const [dockPage, setDockPage] = useState<"modules" | "assist" | "tools">("modules");

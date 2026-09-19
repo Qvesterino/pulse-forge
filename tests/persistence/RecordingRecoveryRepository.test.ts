@@ -80,6 +80,20 @@ describe("RecordingRecoveryRepository", () => {
     await expect(recovery.get(take.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
   });
 
+  it("rejects PCM blocks whose channel layout differs from the recording session", async () => {
+    const take = session("recording-channel-mismatch");
+    await recovery.begin(take);
+    await expect(
+      recovery.appendChunk({
+        sessionId: take.id,
+        sequence: 0,
+        frames: 1,
+        channels: [new Float32Array([0.25]).buffer],
+      }),
+    ).rejects.toThrow();
+    await expect(recovery.get(take.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
+  });
+
   it("materializes exact float PCM and atomically promotes it to a user sample", async () => {
     const take = session("recording-finalize");
     await recovery.begin(take);

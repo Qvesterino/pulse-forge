@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 import { SampleBrowser } from "./SampleBrowser";
 import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/commands";
 import { gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
@@ -65,7 +65,9 @@ function sourceLabel(id: string | null, userAssets: UserSampleAsset[]): string {
 /** Modal sample editor: waveform, transient/grid slicing and Drum Rack mapping. */
 export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => void }) {
   const services = useServices();
-  const doc = useDoc();
+  // GOAL 04: SliceLab only reads doc.bpm (a root scalar). A plain getter
+  // avoids the doc-wide subscription this component would otherwise carry.
+  const doc = services.store.getDoc();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragBoundaryRef = useRef<number | null>(null);
   const [userAssets, setUserAssets] = useState<UserSampleAsset[]>([]);

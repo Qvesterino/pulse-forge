@@ -1,10 +1,12 @@
-import { useDoc, useServices } from "./context";
+import { useServices } from "./context";
 import { setProjectKey } from "../commands/commands";
 import { ROOT_NAMES, SCALE_TYPES, SCALE_LABELS, formatKey, parseKey } from "../project-model/scales";
 
 export function ScalePanel({ scaleSnap, onToggleSnap }: { scaleSnap: boolean; onToggleSnap: () => void }) {
   const services = useServices();
-  const doc = useDoc();
+  // GOAL 04: ScalePanel only reads doc.key (a root scalar). A plain getter
+  // avoids the doc-wide subscription this component would otherwise carry.
+  const doc = services.store.getDoc();
   const key = doc.key;
   const parsed = key ? parseKey(key) : null;
   const rootIdx = parsed?.root ?? 0;

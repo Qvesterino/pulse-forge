@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDoc, useServices } from "./context";
+import { useMacros, useServices } from "./context";
 import { setMacroValue } from "../commands/commands";
 import { Slider } from "./controls";
 
@@ -20,8 +20,10 @@ const HINT = "double-click a rail to reset · centered = 0%";
  */
 export function MacroPerformanceBar() {
   const services = useServices();
-  const doc = useDoc();
-  const macros = doc.macros.slice(0, 4);
+  // Fine-grained selector (GOAL 04): MacroPerformanceBar only reads the
+  // first 4 macros. Subscribing to the whole doc would re-render this bar
+  // on every unrelated edit (a track gain, an automation-point move).
+  const macros = useMacros().slice(0, 4);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "1";
