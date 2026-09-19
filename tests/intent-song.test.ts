@@ -19,9 +19,33 @@ describe("song form planner", () => {
       "drop",
       "outro",
     ]);
-    expect(planSongForm(normalizeIntent({ genre: "trap", seed: "x" })).sections.length).toBe(6);
+    expect(planSongForm(normalizeIntent({ genre: "trap", seed: "x" })).sections.length).toBe(8);
     expect(planSongForm(normalizeIntent({ genre: "ambient", seed: "x" })).sections.length).toBe(5);
     expect(planSongForm(INTENT).totalBars).toBe(44);
+  });
+
+  it("every section carries role-aware instrumentation (A2 v2)", () => {
+    const form = planSongForm(INTENT);
+    const byLabel = Object.fromEntries(form.sections.map((section) => [section.label, section]));
+    expect(byLabel["Intro"].instrumentation).toEqual(["drums", "bass"]);
+    expect(byLabel["Drop A"].instrumentation).toEqual(["drums", "bass", "chords", "lead"]);
+    expect(byLabel["Break"].instrumentation).toEqual(["chords", "lead"]);
+    // trap uses the POP form: verse/chorus/bridge are first-class
+    const trap = planSongForm(normalizeIntent({ genre: "trap", seed: "x" }));
+    expect(trap.sections.map((section) => section.role)).toEqual([
+      "intro",
+      "verse",
+      "chorus",
+      "verse",
+      "chorus",
+      "bridge",
+      "chorus",
+      "outro",
+    ]);
+    const chorus = trap.sections.find((section) => section.role === "chorus")!;
+    expect(chorus.instrumentation).toEqual(["drums", "bass", "chords", "lead"]);
+    const bridge = trap.sections.find((section) => section.role === "bridge")!;
+    expect(bridge.instrumentation).toEqual(["chords", "lead"]);
   });
 
   it("shifts sliders relative to the base intent and clamps to 0..1", () => {

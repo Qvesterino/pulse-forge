@@ -444,7 +444,15 @@ export async function buildSong(
   let resolvedBpm: number | null = null;
   let key: MusicalKey | null = baseIntent.key ?? doc.key ?? null;
 
+  const ALL_ROLES: IntentRole[] = ["drums", "bass", "chords", "lead"];
+  const userRoles = baseIntent.roles ?? ALL_ROLES;
+
   for (const [index, section] of form.sections.entries()) {
+    // A2 v2 role-aware instrumentation: the section plays only the roles its
+    // form asks for, further limited by the USER's role request ("no drums"
+    // keeps drums out of every section, including choruses).
+    const wanted = section.instrumentation.filter((role) => userRoles.includes(role));
+    const sectionRoles = wanted.length > 0 ? wanted : userRoles;
     const sectionIntent = normalizeIntent({
       genre: baseIntent.genre,
       style: baseIntent.style ?? undefined,
@@ -458,7 +466,7 @@ export async function buildSong(
       complexity: section.complexityDelta,
       variation: baseIntent.variation,
       candidateCount: 1,
-      roles: baseIntent.roles,
+      roles: sectionRoles,
       constraints: baseIntent.constraints,
       controls: baseIntent.controls,
     });
