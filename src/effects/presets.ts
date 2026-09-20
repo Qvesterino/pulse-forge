@@ -804,6 +804,45 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     level: 0,
     mix: 1,
   }),
+  // Reverse Swell — live reverse-envelope risers (no reversed sample needed).
+  preset("reverseswell-drop-riser", "Drop Riser", "reverseSwell", {
+    engaged: 0,
+    time: 2,
+    reach: 2,
+    curve: 0.6,
+    tone: 12000,
+    level: 0,
+    mix: 1,
+  }),
+  preset("reverseswell-tape-dive", "Tape Dive", "reverseSwell", {
+    // reach >> time: the reverse read crawls (slow dive into the drop).
+    engaged: 0,
+    time: 4,
+    reach: 8,
+    curve: 0.35,
+    tone: 7000,
+    level: 0,
+    mix: 1,
+  }),
+  preset("reverseswell-chirp", "Rising Chirp", "reverseSwell", {
+    // reach < time: the reverse read runs fast (octave-ish riser chirp).
+    engaged: 0,
+    time: 1.5,
+    reach: 0.5,
+    curve: 0.85,
+    tone: 16000,
+    level: -2,
+    mix: 0.9,
+  }),
+  preset("reverseswell-sub-swell", "Sub Swell", "reverseSwell", {
+    engaged: 0,
+    time: 3,
+    reach: 3,
+    curve: 0.5,
+    tone: 2000,
+    level: 1,
+    mix: 1,
+  }),
 
   manglerPreset(
     "beatmangler-halftime",

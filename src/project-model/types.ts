@@ -29,6 +29,7 @@ export type EffectType =
   | "duckDelay"
   | "multiTapDelay"
   | "vocoder"
+  | "reverseSwell"
   | "kaskada"
   | "ringMod"
   | "tapeStop"

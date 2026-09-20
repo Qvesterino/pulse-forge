@@ -32,6 +32,7 @@ import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
 import { createVocoderNode } from "../audio-worklets/vocoder-node";
+import { createReverseSwellNode } from "../audio-worklets/reverseswell-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -143,6 +144,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   // The vocoder degrades to a 1:1 carrier passthrough when the worklet is
   // missing OR when no modulator track is routed (see createVocoderNode).
   vocoder: "degraded",
+  reverseSwell: "critical",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -4312,6 +4314,56 @@ const vocoder: EffectDefinition = {
   },
 };
 
+/* ────────────── Reverse Swell — live reverse-envelope riser ────────────── */
+// Records continuously; an `engaged` latch plays the last `reach` seconds
+// BACKWARDS under a rising envelope — the reverse-cymbal riser built from the
+// track's own audio, no reversed sample needed. `time` = swell duration,
+// `reach` = how much material it plays (their ratio sets the reverse rate).
+
+export const REVERSE_SWELL_MAX_SEC = 8;
+
+const reverseSwell: EffectDefinition = {
+  type: "reverseSwell",
+  name: "Reverse Swell",
+  category: "movement",
+  params: [
+    { id: "engaged", label: "ENGAGE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "ARMED") },
+    {
+      id: "time",
+      label: "SWELL",
+      min: 0.25,
+      max: REVERSE_SWELL_MAX_SEC,
+      default: 2,
+      unit: "s",
+      format: (v) => `${v.toFixed(2)} s`,
+    },
+    {
+      id: "reach",
+      label: "REACH",
+      min: 0.25,
+      max: REVERSE_SWELL_MAX_SEC,
+      default: 2,
+      unit: "s",
+      format: (v) => `${v.toFixed(2)} s`,
+    },
+    {
+      id: "curve",
+      label: "CURVE",
+      min: 0,
+      max: 1,
+      default: 0.6,
+      format: (v) => (v < 0.05 ? "Lin" : `^${(1 + v * 4).toFixed(1)}`),
+    },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 12000, unit: "Hz", format: formatHz },
+    { id: "level", label: "LEVEL", min: -24, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("reverseSwell", ctx)) return createReverseSwellNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — reverse swell bypassed (1:1 signal)");
+  },
+};
+
 /* ────────────── KYX Kaskáda — character stereo delay ────────────── */
 
 const kaskada: EffectDefinition = {
@@ -4483,6 +4535,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   vinyl,
   beatMangler,
   vocoder,
+  reverseSwell,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -4503,6 +4556,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "comb",
   "vowel",
   "vocoder",
+  "reverseSwell",
   "duckDelay",
   "kaskada",
   "multiTapDelay",
@@ -4553,6 +4607,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "multiTapDelay",
   "tapeSat",
   "vocoder",
+  "reverseSwell",
   "drumBuss",
   "bassBuss",
   "utility",
