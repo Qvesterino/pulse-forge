@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 /**
  * User theme system — colours, accent hue, UI scale, density and motion.
  *
- * The whole app is built on CSS custom properties (`:root` in styles.css),
+ * The whole app is built on CSS custom properties (`:root` in src/styles/01-base.css),
  * so a theme is just a set of variable overrides applied to
  * `document.documentElement` plus a couple of behaviour classes. Preferences
  * persist in localStorage (per-user/per-browser — deliberately NOT part of
@@ -36,7 +36,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     /**
      * The default identity: near-black glass, deep layered panels, amber
-     * molten accent. Mirrors `:root` in styles.css (first-paint parity), so
+     * molten accent. Mirrors `:root` in src/styles/01-base.css (first-paint parity), so
      * a user with no stored theme sees exactly this and nothing shifts after
      * initTheme() runs.
      */

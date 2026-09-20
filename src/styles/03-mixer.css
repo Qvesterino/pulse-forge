@@ -1,0 +1,733 @@
+
+
+/* ---------- Mixer ---------- */
+
+.mixer {
+  contain: layout style;
+  max-height: 170px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+}
+
+.mixer-strips {
+  display: flex;
+  gap: 10px;
+  height: 100%;
+}
+
+.channel-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+  padding: 8px;
+  background: linear-gradient(180deg, var(--bg-panel-2), color-mix(in srgb, var(--bg-panel-2) 82%, #000));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 10px rgba(0, 0, 0, 0.25);
+  transition:
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
+}
+
+/* Tag colour bleeds into the strip: lit border + aura + name glow. */
+.channel-strip[data-colored] {
+  border-color: color-mix(in srgb, var(--strip-color) 45%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 14px color-mix(in srgb, var(--strip-color) 22%, transparent);
+}
+.channel-strip[data-colored] .channel-name-input {
+  color: color-mix(in srgb, var(--strip-color) 55%, var(--text));
+}
+.channel-strip[data-colored] .channel-name-input:focus {
+  border-color: var(--strip-color);
+}
+
+/* Grab-worthy fader caps — the default 3px line was needle-thin to hit. */
+.channel-strip .slider-thumb {
+  width: 12px;
+  transform: translateX(-6px);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 6px rgba(245, 158, 11, 0.25);
+}
+
+.mixer-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Macros live inline on the batch FX toolbar (right side) — no own row.
+   Narrow windows wrap the group under the batch actions via flex-wrap. */
+.mixer-performance-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.mixer-performance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font: 700 10px var(--mono);
+  letter-spacing: 1px;
+}
+
+.mixer-performance-hint {
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.mixer-performance-grid {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mixer-macro-control {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 1 230px;
+  min-width: 185px;
+  padding: 3px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+/* Comfortable macro rails — the compact 16px default reads as a sliver
+   next to the batch buttons. */
+.mixer-performance-grid .slider-compact .slider-track {
+  height: 22px;
+}
+
+.mixer-macro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mixer-macro-name,
+.mixer-macro-value {
+  font: 700 10px var(--mono);
+}
+
+.mixer-macro-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  letter-spacing: 0.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mixer-macro-value {
+  color: var(--accent);
+}
+
+.mixer-macro-control .slider {
+  margin-top: 3px;
+}
+
+.mixer-macro-control .slider-header {
+  display: none;
+}
+
+.mixer-macro-targets {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  white-space: nowrap;
+}
+
+.mixer-macro-targets.empty {
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+.mixer-batch-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+.channel-strip.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.channel-strip.selected-strip {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 16px rgba(245, 158, 11, 0.18);
+}
+.channel-color {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  padding: 0;
+  margin-left: 6px;
+  cursor: pointer;
+}
+.fader-menu {
+  position: fixed;
+  z-index: 120;
+  min-width: 190px;
+  background: linear-gradient(180deg, rgba(33, 36, 43, 0.92), rgba(21, 23, 28, 0.94));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fader-menu .context-menu-header {
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 4px 8px;
+  letter-spacing: 0.5px;
+}
+.fader-menu button {
+  text-align: left;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.fader-menu button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.fader-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.channel-name {
+  display: flex;
+  align-items: center;
+}
+
+.channel-name-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+}
+
+.channel-name-input:hover {
+  border-color: var(--border);
+}
+
+.channel-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.channel-name-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  padding: 3px 6px;
+}
+
+.master-strip {
+  background: transparent;
+  border-style: dashed;
+  min-width: 90px;
+}
+
+.channel-body {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 76px;
+}
+
+.channel-controls {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* MASTER strip: the IN/CEIL column has a definite width and the stereo meters
+   live inside it (flex:1 here created a huge void left of the metering wall).
+   The strip keeps a floor wide enough for the wall (controls 150 + wall min
+   620) so flex-shrink can never clip it; a definite basis avoids the
+   canvases' broken max-content contribution. NOTE: do NOT flex the body
+   height here — the goniometer's ResizeObserver turns that into a growth
+   loop. The wall's height comes from a min-height clamped to the dock height
+   instead. Scoped to the master — channel strips keep their centered layout. */
+.master-strip {
+  /* 800px was a hard floor on the whole strip, so on a 1280–1440px laptop the
+     channel strips + master could not coexist without horizontal scrolling —
+     the master fader lived off-screen. The wall still needs its width, but it
+     may shrink down to the wall's usable minimum and let the dock scroll as a
+     whole instead of forcing an 800px column. Narrow viewports lower the
+     wall minimums (see the meter media query at the bottom of this file). */
+  flex: 1 1 min(720px, 100%);
+  min-width: min(580px, 100%);
+}
+
+.master-strip .channel-controls {
+  flex: 0 0 auto;
+}
+
+.master-strip .channel-controls {
+  /* Definite width + stretch: IN/CEIL sliders and the stereo meters share the
+     same 150px column (meters narrow enough to read, sliders wide enough to
+     drag). Controls hug the top; MasterStereoMeters fills the rest. */
+  width: 150px;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 2px;
+  gap: 6px;
+}
+
+/* Four toggles must fit the 150px column in one row — intrinsic button
+   width (52px × 4) overflows it and M/S ends up under the metering wall. */
+.master-strip .master-toggles .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+
+.master-strip .meter {
+  height: 56px;
+  align-self: center;
+}
+
+.channel-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.channel-buttons .btn-small {
+  min-width: 30px;
+}
+
+/* ---------- Freeze controls ---------- */
+
+.freeze-controls {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.freeze-controls .btn-small {
+  font-size: 8px;
+  padding: 1px 4px;
+  min-width: auto;
+}
+
+.freeze-error,
+.sample-library-error {
+  color: var(--danger, #ef4444);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.freeze-error {
+  max-width: 14rem;
+}
+
+.meter {
+  position: relative;
+  width: 10px;
+  align-self: stretch;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+/* LED ladder: dark rungs drawn OVER the dynamic fill (pseudo-element —
+   the fill is a child, so a parent background-image would sit behind it). */
+.meter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.55) 3px,
+    rgba(0, 0, 0, 0.55) 4px
+  );
+}
+
+.meter-fill {
+  width: 100%;
+  border-radius: 1px;
+}
+
+/* Peak-hold latch: thin bright line riding the top of the fill. */
+.meter-hold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #fff;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1;
+}
+
+.meter[data-clipping="true"] {
+  border-color: #f87171;
+  box-shadow:
+    0 0 0 1px rgba(248, 113, 113, 0.25),
+    0 0 10px rgba(248, 113, 113, 0.45);
+}
+
+/* Legacy class hook kept working (the component sets a data attribute). */
+.meter.clipping {
+  border-color: #f87171;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.2);
+}
+
+/* ---------- Effect rack ---------- */
+
+.fx-rack {
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  container-type: inline-size;
+}
+
+.fx-rack-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.fx-add-select {
+  height: 26px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 0 8px;
+}
+
+.fx-add-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.fx-empty {
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 8px 2px;
+}
+
+.fx-devices {
+  /* Accordion device view: one focused editor at a time, full rack width.
+     The old row layout squeezed four flagship editors into ~260px columns. */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.fx-device {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fx-device.bypassed {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.fx-device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fx-device-toggle {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.fx-device-toggle:hover,
+.fx-device-toggle:focus-visible {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.fx-device-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.fx-device-title {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
+.fx-device-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+.fx-device-state {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.4px;
+}
+
+.fx-device.bypassed .fx-device-state {
+  color: #f59e0b;
+}
+
+.fx-device-dirty {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font: 9px var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.fx-device-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fx-device.collapsed {
+  /* Collapsed accordion rows stay full-width slim bars — a tidy device list
+     above the focused editor. */
+  align-self: stretch;
+  min-height: 42px;
+  padding: 6px 10px;
+}
+
+.fx-device-warn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #f59e0b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  cursor: help;
+}
+
+.fx-gr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-gr-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.fx-gr-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4ade80, #f59e0b 70%, #f87171);
+}
+
+.fx-gr-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 58px;
+  text-align: right;
+}
+
+/* ---------- Modulator step grid ---------- */
+
+.mod-step-grid-wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mod-step-grid {
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.mod-step-grid svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mod-step-grid-zero {
+  stroke: var(--border);
+  stroke-width: 0.02;
+}
+
+.mod-step-grid-bar {
+  fill: rgba(245, 158, 11, 0.75);
+}
+
+.mod-step-grid-bar.active {
+  fill: #f59e0b;
+}
+
+.mod-step-grid-tools {
+  display: flex;
+  gap: 4px;
+}
+
+/* ---------- Spectrum analyzer ---------- */
+
+.spectrum-analyzer {
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  margin-top: 6px;
+}
+
+.fx-device-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.fx-device-buttons .btn-small {
+  min-width: 24px;
+  height: 22px;
+  font-size: 10px;
+}
+
+.fx-device-params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.fx-param-select {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fx-param-select select {
+  height: 22px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.fx-param-select select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.slider-compact .slider-track {
+  height: 16px;
+}
+
+.slider-compact .slider-thumb {
+  width: 2px;
+}

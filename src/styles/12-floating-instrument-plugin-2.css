@@ -1,0 +1,927 @@
+
+
+.landing-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.landing-card h3 {
+  margin: 14px 0 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.landing-card p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.landing-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Closing CTA band */
+
+.landing-cta-band {
+  padding: 32px 0 88px;
+}
+
+.landing-cta-panel {
+  padding: 56px 32px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: radial-gradient(420px 220px at 50% 0%, rgba(245, 158, 11, 0.08), transparent 70%), var(--bg-panel);
+}
+
+.landing-cta-panel h2 {
+  margin: 0 0 10px;
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.landing-cta-panel p {
+  margin: 0 0 28px;
+  font-size: 15px;
+  color: var(--text-dim);
+}
+
+/* Footer */
+
+.landing-footer {
+  border-top: 1px solid var(--border-soft);
+}
+
+.landing-footer-inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 26px;
+  padding-bottom: 26px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 960px) {
+  .landing-hero {
+    padding: 56px 0 72px;
+  }
+
+  .landing-hero-inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .landing-grid,
+  .landing-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-shell {
+    padding: 0 20px;
+  }
+
+  .landing-nav-actions .landing-btn-ghost {
+    display: none;
+  }
+
+  .landing-grid,
+  .landing-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Onboarding tour ────────────────────────────────────────────────────── */
+
+.tour-card {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 220;
+  width: min(460px, calc(100vw - 32px));
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+
+.tour-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tour-brand {
+  background: var(--accent);
+  color: #0e0f12;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tour-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+}
+
+.tour-body {
+  font-size: 13px;
+  color: var(--text-dim, #b6bac2);
+  line-height: 1.55;
+  margin: 0 0 10px;
+}
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tour-hint {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bg-raise);
+}
+
+.tour-dot.done {
+  background: var(--text-dim, #8a8f98);
+}
+
+.tour-dot.active {
+  background: var(--accent);
+}
+
+/* ---------- Beat Gallery (/gallery) ---------- */
+
+.gallery-root {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 0 clamp(16px, 4vw, 56px) 48px;
+  user-select: text;
+}
+
+.gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 0 18px;
+  flex-wrap: wrap;
+}
+
+.gallery-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.gallery-brand-mark,
+.embed-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #14100a;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.gallery-brand h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.12em;
+}
+
+.gallery-brand p {
+  margin: 3px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  max-width: 520px;
+}
+
+.gallery-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.gallery-publish {
+  margin-bottom: 18px;
+}
+
+.gallery-publish-toggle {
+  width: 100%;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.gallery-publish-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gallery-publish-form {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  padding: 14px;
+}
+
+.gallery-publish-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.gallery-publish-close {
+  color: var(--text-dim);
+  padding: 2px 6px;
+}
+
+.gallery-publish-close:hover {
+  color: var(--text);
+}
+
+.gallery-publish-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.gallery-publish-form input,
+.gallery-publish-form textarea {
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.gallery-publish-form input:focus,
+.gallery-publish-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.gallery-publish-form textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.gallery-publish-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.gallery-publish-status {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.gallery-filelabel {
+  display: inline-flex;
+  align-items: center;
+}
+
+.gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.gallery-search {
+  flex: 1;
+  max-width: 420px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.gallery-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.gallery-tagrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.gallery-tag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.gallery-tag:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gallery-tag-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gallery-tag-count {
+  color: var(--text-faint);
+}
+
+.gallery-state {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.gallery-state-error code {
+  background: var(--bg-raise);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.gallery-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.gallery-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-panel);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gallery-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.gallery-play {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gallery-play:hover {
+  background: var(--accent);
+  color: #14100a;
+}
+
+.gallery-card-titlebox {
+  min-width: 0;
+}
+
+.gallery-card-title {
+  margin: 0;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-card-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.gallery-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gallery-embed .embed-root {
+  height: 200px;
+}
+
+.gallery-card-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.gallery-open {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.gallery-copylink {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.gallery-copylink:hover {
+  color: var(--accent);
+}
+
+.gallery-report-toggle {
+  margin-left: auto;
+}
+
+.gallery-report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.gallery-report label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gallery-report select {
+  min-width: 190px;
+  max-width: 100%;
+}
+
+.gallery-report small {
+  flex-basis: 100%;
+  color: var(--text-faint);
+  line-height: 1.35;
+}
+
+.gallery-report [role="status"] {
+  color: var(--accent);
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+
+.gallery-footer {
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .gallery-publish-row {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Collab presence cursors ---------- */
+
+.remote-cursor-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 6px currentColor;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.pr-remote-cursor {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 8px currentColor;
+  pointer-events: none;
+  z-index: 4;
+  transition:
+    left 0.12s ease-out,
+    top 0.12s ease-out;
+}
+
+/* ---------- Mobile layout V2: bottom sheets + fullscreen piano roll ---------- */
+
+/* Desktop dock: a real flex column so --dock-height + split apply.
+   Panels keep their intrinsic height up to the dock height; overflow scrolls. */
+.bottom-panels {
+  display: flex;
+  flex-direction: column;
+  height: var(--dock-height, 300px);
+  min-height: 0;
+  overflow: hidden;
+}
+.bottom-panels.sheet-collapsed {
+  height: auto;
+  overflow: visible;
+}
+.bottom-panels.sheet-collapsed .dock-slot,
+.bottom-panels.sheet-collapsed .dock-resize-handle {
+  display: none;
+}
+.bottom-panels.dock-split {
+  flex-direction: row;
+  align-items: stretch;
+  column-gap: 6px;
+}
+.dock-slot {
+  contain: layout style;
+  container-name: bottom-dock-slot;
+  container-type: inline-size;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.dock-slot > * {
+  flex: 1 0 auto;
+  max-height: none;
+}
+
+/* Split panels must adapt to the width of their own slot, not the browser
+   viewport. Viewport media queries miss this case on wide monitors. */
+@container bottom-dock-slot (max-width: 1100px) {
+  .mod-panel {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+}
+
+@container bottom-dock-slot (max-width: 780px) {
+  .arr-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 420px;
+    overflow-y: auto;
+  }
+}
+
+@container bottom-dock-slot (max-width: 980px) {
+  .midi-creative-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.bottom-panels .dock-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 7px;
+  flex: none;
+  cursor: row-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  touch-action: none;
+}
+.bottom-panels .dock-resize-handle span {
+  width: 42px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+.bottom-panels .dock-resize-handle:hover span,
+.bottom-panels .dock-resize-handle:focus-visible span {
+  background: var(--accent);
+}
+.sheet-handle {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  /* Narrow phones: the row label shrinks so the step grid keeps usable width.
+     Sequencer.tsx reads the same number for its windowing geometry. */
+  :root {
+    --steps-label: 112px;
+  }
+
+  /* Bottom panels become a fixed, swipe-away-able sheet above the statusbar. */
+  .bottom-panels {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 26px; /* above the statusbar row */
+    z-index: 70;
+    max-height: 55vh;
+    overflow-y: auto;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.45);
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .sheet-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 22px;
+    touch-action: none;
+    position: sticky;
+    top: 0;
+    background: var(--bg-panel);
+    z-index: 2;
+  }
+
+  .sheet-handle-bar {
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--text-faint);
+  }
+
+  /* Collapsed: only the grab handle stays. */
+  .bottom-panels.sheet-collapsed > :not(.sheet-handle) {
+    display: none;
+  }
+
+  .statusbar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .workspace {
+    /* The fixed sheet no longer occupies a grid row — stack the inspector
+       under the editor instead of squeezing a 280px side column. */
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .workspace .inspector {
+    max-height: 30vh;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    border-left: none;
+  }
+}
+
+/* Fullscreen piano roll — the editor takes the whole screen (tablets/phones).
+   Activated by state; the toggle button is only shown on narrow/touch screens. */
+.pianoroll-wrap.pr-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+}
+
+.pr-fullscreen-toggle {
+  display: none; /* desktop shows it only when the roll would be cramped */
+}
+
+/* The roll is capped at 180px tall (≈12 of 61 semitones), so the fullscreen
+   toggle must be reachable on SHORT viewports too, not just narrow/touch:
+   a 1440×720 laptop with a docked mixer needs it exactly as much as a
+   phone does. */
+@media (max-width: 1100px), (max-height: 820px), (pointer: coarse) {
+  .pr-fullscreen-toggle {
+    display: inline-flex;
+  }
+}
+
+.pattern-midi-status {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Gallery flywheel: stats, fork, remix chip ---------- */
+
+.gallery-card-stats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.gallery-stat {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.gallery-you-badge {
+  margin-left: 8px;
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+
+.gallery-fork {
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.gallery-fork:hover {
+  background: var(--accent-soft);
+}
+
+.gallery-remix-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+
+.gallery-remix-chip button {
+  margin-left: auto;
+  color: var(--text-dim);
+  padding: 0 4px;
+}
+
+.gallery-remix-chip button:hover {
+  color: var(--text);
+}
+
+/* ---------- Timeline recording (arm + REC) ---------- */
+
+.arr-arm-select {
+  min-height: 28px;
+  max-width: 160px;
+  background: var(--bg-raise);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.arr-arm-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.arr-rec-saving,
+.arr-rec-error {
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.arr-rec-error {
+  color: var(--stop);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arr-rec-saving {
+  color: var(--text-dim);
+}
+
+.arr-recording-recovery {
+  display: grid;
+  gap: 6px;
+  margin: 6px 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  background: var(--bg-panel);
+  font: 10px var(--mono);
+}
+
+.arr-recording-recovery > strong {
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+
+.arr-recording-recovery-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arr-recording-recovery-row > span {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--text-dim);
+}

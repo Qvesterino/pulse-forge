@@ -82,7 +82,7 @@ const OVERSCAN = 5;
    the CSS: .sequencer-row / .sequencer-ruler label track and the grid gap. */
 const COL_GAP = 4;
 const COL_OVERSCAN = 6;
-/** Label column width — MUST mirror --steps-label in styles.css: the row
+/** Label column width — MUST mirror --steps-label in src/styles/01-base.css: the row
  *  grid, the playhead offset and this windowing math all share one value. */
 const NARROW_QUERY = "(max-width: 760px)";
 function currentStepsLabelPx(): number {

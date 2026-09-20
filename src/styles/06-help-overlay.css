@@ -1,0 +1,861 @@
+
+
+/* ---------- Help overlay ---------- */
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 9, 12, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.help-card {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 18px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.help-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.help-group-title {
+  margin: 0 0 2px;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.help-row:hover {
+  background: var(--bg-panel-2);
+}
+
+.help-label {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.help-kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.help-footer {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 10px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 6px;
+}
+
+.help-footer kbd {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 0 4px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  margin: 0 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-raise);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- Groove controls in pattern bar ---------- */
+
+.pattern-groove {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel);
+}
+
+/* Horizontal single-line groove controls — keeps the pattern row at chip
+   height instead of stacking label over value. */
+.pattern-groove .drag-number {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+}
+
+/* ---------- Scene launch strip ---------- */
+
+.scene-launcher {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scene-launcher-list {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.scene-launcher-panel .scene-launcher-list {
+  max-height: 205px;
+  overflow-y: auto;
+  flex-direction: column;
+  padding: 2px;
+}
+
+.scene-launcher-bar .scene-launcher-list {
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.role-intro {
+  --scene-role-color: #60a5fa;
+}
+
+.role-build {
+  --scene-role-color: #fbbf24;
+}
+
+.role-drop {
+  --scene-role-color: #fb7185;
+}
+
+.role-break {
+  --scene-role-color: #a78bfa;
+}
+
+.role-outro {
+  --scene-role-color: #94a3b8;
+}
+
+.role-fill {
+  --scene-role-color: #34d399;
+}
+
+.role-custom {
+  --scene-role-color: #c4b5fd;
+}
+
+.scene-launch-card {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: stretch;
+  gap: 6px;
+  padding: 5px;
+  background: var(--glass-scene);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  transition:
+    background 0.14s,
+    border-color 0.14s,
+    box-shadow 0.14s,
+    opacity 0.14s;
+}
+
+/* Touch reorder grip — HTML5 drag-and-drop never fires on touch, so the card
+   gets an explicit pointer handle (desktop hides it; native DnD is fine). */
+.scene-drag-grip {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 26px;
+  padding: 0;
+  display: none;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  border-radius: 4px;
+  touch-action: none;
+  z-index: 2;
+}
+
+.scene-drag-grip:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (pointer: coarse) {
+  .scene-drag-grip {
+    display: grid;
+    width: 30px;
+    height: 44px;
+  }
+
+  .scene-launch-card {
+    padding-left: 30px;
+  }
+}
+
+.scene-launcher-bar .scene-launch-card {
+  flex: 0 0 auto;
+  width: auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px;
+}
+
+/* Single-line scene chips in the bar: the meta (pattern/length/use) lives in
+   the card tooltip, so the strip shares the pattern row instead of hanging
+   below it as a near-empty second row. */
+.scene-launcher-bar .scene-select-control {
+  gap: 0;
+}
+
+.scene-launcher-bar .scene-select-meta {
+  display: none;
+}
+
+.scene-launcher-bar .scene-state-badges {
+  align-items: center;
+  padding-top: 0;
+}
+
+.scene-launcher-bar .scene-action {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+}
+
+.scene-launcher-panel .scene-launch-card {
+  width: 100%;
+}
+
+.scene-launch-card:hover {
+  background: var(--glass-scene-strong);
+  border-color: #3b4250;
+}
+
+.scene-launch-card.selected {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.scene-launch-card.current {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.scene-launch-card.playing {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.7);
+  box-shadow:
+    0 0 0 1px rgba(74, 222, 128, 0.12),
+    0 0 18px rgba(74, 222, 128, 0.08);
+}
+
+.scene-launch-card.queued {
+  border-style: dashed;
+  border-color: rgba(245, 158, 11, 0.7);
+}
+
+.scene-launch-card.dragging {
+  opacity: 0.45;
+}
+
+.scene-select-control {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 1px 4px;
+  text-align: left;
+  color: var(--text-dim);
+}
+
+.scene-select-control:hover,
+.scene-launch-card.selected .scene-select-control {
+  color: var(--text);
+}
+
+.scene-select-main,
+.scene-select-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.scene-select-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+}
+
+.scene-select-meta {
+  color: var(--text-faint);
+  font: 8px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.scene-select-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arr-clip-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arr-clip-role {
+  flex: 0 0 auto;
+  color: var(--scene-role-color, var(--text-faint));
+  font: 8px var(--mono);
+  letter-spacing: 0.55px;
+}
+
+.scene-select-meta .scene-shared,
+.scene-shared-note {
+  color: var(--accent);
+}
+
+.scene-role-badge,
+.scene-loop-badge {
+  flex: 0 0 auto;
+  color: var(--scene-role-color, var(--accent));
+  font: 8px var(--mono);
+  letter-spacing: 0.45px;
+}
+
+.scene-loop-badge {
+  color: var(--play);
+}
+
+.scene-state-badges {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.scene-state-badge {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: 8px var(--mono);
+  letter-spacing: 0.55px;
+  white-space: nowrap;
+}
+
+.scene-state-badge.playing {
+  color: var(--play);
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
+.scene-state-badge.current {
+  color: var(--text-dim);
+}
+
+.scene-state-badge.queued {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.scene-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.scene-action {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.35px;
+}
+
+.scene-action:hover {
+  color: var(--text);
+  border-color: #4a5262;
+}
+
+.scene-action-launch:hover,
+.scene-launch-card.playing .scene-action-launch {
+  color: var(--play);
+  border-color: rgba(74, 222, 128, 0.55);
+}
+
+.scene-action-edit:hover {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.scene-action-delete:hover {
+  color: var(--stop);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.scene-edit-input {
+  min-width: 0;
+  width: 100%;
+  height: 26px;
+  padding: 0 5px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text);
+  font: 11px var(--sans);
+}
+
+.scene-launcher-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scene-duplicate-pattern {
+  flex: 0 0 auto;
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.scene-shared-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 8px var(--mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-launch-card,
+  .scene-action {
+    transition: none;
+  }
+}
+
+.scene-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.scene-launch {
+  height: 24px;
+  padding: 0 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.scene-launch:hover {
+  color: var(--text);
+  border-color: #343945;
+}
+
+.scene-launch.active {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: var(--play);
+}
+
+.scene-launch.queued {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+  animation: queued-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes queued-pulse {
+  from {
+    opacity: 0.65;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Step editor (probability / ratchet / microtiming) ---------- */
+
+.step-editor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+}
+
+.step-editor-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.step-editor-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.step-editor-field select {
+  height: 24px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.step-editor-close {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.step-editor-close:hover {
+  color: var(--text);
+}
+
+/* ---------- Step selection & performance markers ---------- */
+
+.step.in-selection {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.step.has-probability {
+  border-style: dashed;
+  border-width: 1px;
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+.step.micro-early::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background: rgba(125, 211, 252, 0.8);
+  border-radius: 1px;
+}
+
+.step.micro-late::before {
+  content: "";
+  position: absolute;
+  right: 1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  background: rgba(125, 211, 252, 0.8);
+  border-radius: 1px;
+}
+
+.step-amount-track {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  /* overflow must stay visible: the coarse-pointer hit pad below is an
+     ::before with a negative inset (a 4px bar is far too thin to grab). */
+  cursor: ew-resize;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.step-amount-fill {
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), var(--accent));
+  transition: width 0.06s;
+}
+.step:not(.active) .step-amount-track {
+  opacity: 0.45;
+}
+.step.has-amount .step-amount-track {
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.35);
+}
+.step-amount-track:hover {
+  opacity: 1;
+}
+
+.step-badge {
+  position: absolute;
+  right: 1px;
+  top: 0;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.step.has-locks {
+  box-shadow: inset 0 -2px 0 rgba(96, 165, 250, 0.9);
+}
+
+.step-lock-dot {
+  position: absolute;
+  left: 2px;
+  bottom: 0;
+  font-size: 6px;
+  color: var(--accent);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.step-editor-locks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.step-editor-lock-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-lock-clear {
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.step-selection-toolbar {
+  /* Overlay, not in-flow: an in-flow bar shifts the whole step grid the
+     moment a selection starts, which invalidates the pointer-drag's
+     elementFromPoint hit-testing mid-gesture (multi-select collapsed to the
+     anchor step) and made the browser's contextmenu miss the right-clicked
+     step entirely. */
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid #60a5fa;
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
+}
+
+.step-selection-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+/* ---------- Arrangement ruler (song-mode seek) ---------- */
+
+.arr-ruler {
+  position: relative;
+  height: 18px;
+  margin-bottom: 2px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  cursor: ew-resize;
+}
+
+.arr-ruler-mark {
+  position: absolute;
+  top: 2px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  padding-left: 3px;
+  border-left: 1px solid var(--border);
+  height: 12px;
+  pointer-events: none;
+}
+
+.arr-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -0.5px;
+  background: var(--play);
+  box-shadow:
+    0 0 8px rgba(74, 222, 128, 0.8),
+    0 0 2px rgba(74, 222, 128, 1);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.arr-playhead-lane {
+  z-index: 5;
+}
+
+/* ---------- Arrangement markers ---------- */
+
+.arr-marker {
+  position: absolute;
+  top: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--text-dim);
+  pointer-events: auto;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.arr-marker:hover {
+  background: var(--text);
+}
+
+.arr-marker-drop {
+  background: #f59e0b;
+  border-radius: 50%;
+}
+
+.arr-marker-buildup {
+  background: #f97316;
+}
+
+.arr-marker-riser {
+  background: #8b5cf6;
+}
+
+.arr-marker-impact {
+  background: #f87171;
+  border-radius: 50%;
+}
+
+.arr-marker-cue {
+  background: #38bdf8;
+}
+
+.arr-marker-custom {
+  background: var(--text-faint);
+}
+
+/* ---------- Arrangement seconds display ---------- */
+
+.arr-ruler-mark {
+  position: absolute;
+  top: 2px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+  padding-left: 3px;
+  border-left: 1px solid var(--border);
+  height: 12px;
+  pointer-events: none;
+}

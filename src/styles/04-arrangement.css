@@ -1,0 +1,903 @@
+
+
+/* ---------- Arrangement ---------- */
+
+.arr-panel {
+  max-height: 360px;
+  /* A fixed 360px cap with overflow:hidden clipped the timeline bottom at
+     mid widths (760–1100px) where the ≤760px rescue below did not apply. */
+  overflow: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: minmax(246px, 290px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+/* Mid widths: the scene rail + timeline stop coexisting in one row. */
+@media (max-width: 1000px) {
+  .arr-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: 420px;
+    overflow-y: auto;
+  }
+}
+
+.arr-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+
+.arr-scenes-header,
+.arr-timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.arr-section-heading,
+.arr-timeline-title-group {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.arr-section-label {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font: 8px var(--mono);
+  letter-spacing: 0.8px;
+}
+
+.scene-actions,
+.arr-quick-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.arr-scene-role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 9px var(--mono);
+  color: var(--text-faint);
+}
+
+.arr-scene-role select,
+.arr-transition-editor select,
+.arr-transition-editor input {
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: inherit;
+}
+
+.arr-scene-role select {
+  flex: 1;
+}
+
+.scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scene-chip-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.scene-chip {
+  height: 24px;
+  padding: 0 12px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px 0 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.scene-chip:hover {
+  color: var(--text);
+}
+
+.scene-role-badge {
+  margin-left: 5px;
+  color: var(--accent);
+  font-size: 8px;
+  font-family: var(--mono);
+}
+
+.scene-chip.selected {
+  border-color: #3a4050;
+  color: var(--text);
+}
+
+.scene-chip.active-pattern {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+}
+
+.scene-delete {
+  height: 24px;
+  width: 20px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.scene-delete:hover {
+  color: var(--stop);
+}
+
+.arr-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+
+.arr-timeline-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.arr-lane-scroll {
+  min-height: 118px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  contain: layout style;
+}
+
+/* Scene-intensity lane (VISION §11): a 0..1 editable curve strip under the
+   clip lane. Point handles are DOM spans; the curve is one SVG per lane. */
+.arr-intensity-lane {
+  position: relative;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid #23262d;
+  touch-action: none;
+  user-select: none;
+}
+
+.arr-intensity-label {
+  position: absolute;
+  left: 6px;
+  top: 3px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #5b6069;
+  pointer-events: none;
+}
+
+.arr-intensity-value {
+  position: absolute;
+  left: 6px;
+  bottom: 3px;
+  font-size: 10px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+.arr-intensity-neutral {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #2c3037;
+  pointer-events: none;
+}
+
+.arr-intensity-clipspan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 1px solid #23262d;
+  pointer-events: none;
+}
+
+.arr-intensity-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.arr-intensity-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.arr-intensity-point {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid #0e0f12;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+}
+
+.arr-intensity-point:hover {
+  background: #ffd27a;
+}
+
+.arr-status-strip {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.arr-status-badge {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: 8px var(--mono);
+  letter-spacing: 0.45px;
+}
+
+.arr-status-mode {
+  color: var(--text-dim);
+}
+
+.arr-status-quantize {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.arr-status-queued {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.65);
+  background: var(--accent-soft);
+}
+
+.arr-status-ready {
+  color: var(--text-faint);
+}
+
+.arr-role-flow {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  gap: 3px;
+  overflow-x: auto;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.arr-role-flow-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: var(--scene-role-color, var(--text-dim));
+}
+
+.arr-role-flow-role {
+  padding: 3px 5px;
+  border: 1px solid color-mix(in srgb, var(--scene-role-color, var(--border)) 55%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--scene-role-color, var(--bg-raise)) 10%, transparent);
+  font: 9px var(--mono);
+  letter-spacing: 0.7px;
+}
+
+.arr-role-flow-length {
+  color: var(--text-faint);
+  font: 8px var(--mono);
+}
+
+.arr-role-flow-arrow {
+  margin: 0 2px;
+  color: var(--text-faint);
+  font: 12px var(--sans);
+}
+
+.arr-role-flow-empty {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+  letter-spacing: 0.7px;
+}
+
+.arr-lane {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  cursor: copy;
+}
+
+.arr-bar-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-soft);
+  pointer-events: none;
+}
+
+.arr-bar-grid.bar-strong {
+  background: #2c313c;
+}
+
+.arr-clip {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  background: linear-gradient(180deg, #3a4050, #2c313c);
+  border: 1px solid #465065;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  cursor: grab;
+  user-select: none;
+  box-shadow: inset 3px 0 var(--scene-role-color, #465065);
+}
+
+.arr-clip.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
+}
+
+.arr-clip.current {
+  border-color: color-mix(in srgb, var(--scene-role-color, var(--accent)) 65%, white 10%);
+}
+
+.arr-clip.playing {
+  background: color-mix(in srgb, var(--scene-role-color, var(--play)) 20%, var(--bg-raise));
+  box-shadow:
+    inset 3px 0 var(--scene-role-color, var(--play)),
+    0 0 14px color-mix(in srgb, var(--scene-role-color, var(--play)) 22%, transparent);
+}
+
+.arr-clip:active {
+  cursor: grabbing;
+}
+
+.arr-clip-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arr-clip-bars {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.arr-clip-resize {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.arr-transition-mark {
+  position: absolute;
+  top: 18px;
+  z-index: 4;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel-2);
+  color: var(--text-faint);
+  font: 8px var(--mono);
+  cursor: pointer;
+}
+
+.arr-transition-mark:hover,
+.arr-transition-mark.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arr-transition-editor,
+.arr-skeleton-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.arr-transition-label,
+.arr-skeleton-title {
+  font: 9px var(--mono);
+  color: var(--text-dim);
+}
+
+.arr-transition-editor input[type="number"] {
+  width: 48px;
+}
+
+.arr-transition-editor input:not([type="number"]) {
+  width: 150px;
+}
+
+.arr-skeleton-item {
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font: 9px var(--mono);
+}
+
+.arr-skeleton-empty,
+.arr-error {
+  color: var(--stop);
+  font: 10px var(--mono);
+}
+
+.arr-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 760px) {
+  .arr-panel {
+    max-height: 500px;
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .arr-scenes {
+    max-height: 210px;
+  }
+
+  .arr-timeline-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .arr-timeline-actions {
+    justify-content: flex-start;
+  }
+
+  .arr-status-strip {
+    max-width: 100%;
+  }
+}
+
+/* ---------- Modulation panel ---------- */
+
+.mod-panel {
+  max-height: 230px;
+  overflow: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: minmax(340px, 1.2fr) minmax(300px, 1fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+
+/* The fixed 3-column grid needs ~940px; in a dock (or a 768–1024 tablet) the
+   macros/LFO column was pushed outside the slot's clipped overflow and became
+   unreachable. Collapse to auto-fit before the panel runs out of room. */
+@media (max-width: 1100px) {
+  .mod-panel {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+}
+
+/* ---------- MIDI panel ---------- */
+
+.midi-panel {
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.midi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.midi-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  min-width: 52px;
+  text-align: right;
+}
+
+.midi-select {
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.midi-select-small {
+  min-width: 80px;
+}
+
+.midi-select-tiny {
+  min-width: 50px;
+}
+
+.midi-empty {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+.midi-cc-section,
+.midi-drum-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.midi-cc-row,
+.midi-drum-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.midi-cc-num {
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 32px;
+}
+
+.midi-cc-target {
+  flex: 1;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.midi-drum-note {
+  font-weight: 600;
+  min-width: 48px;
+  color: var(--text-dim);
+}
+
+.midi-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.midi-drum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 980px) {
+  .midi-creative-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Latency calibration ---------- */
+
+.latency-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(5, 6, 8, 0.72);
+}
+
+.latency-card {
+  width: min(460px, 100%);
+  max-height: min(620px, calc(100vh - 36px));
+  overflow: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.45);
+}
+
+.latency-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.latency-step {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.latency-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.latency-copy,
+.latency-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.latency-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.latency-actions,
+.latency-test-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.midi-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.midi-tabs,
+.midi-tool-buttons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.midi-creativity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.midi-creative-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.midi-creative-track {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.midi-creative-controls {
+  flex-wrap: wrap;
+}
+
+.midi-creative-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.midi-tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.midi-tool-section .panel-title {
+  font-size: 10px;
+}
+
+.midi-number-row {
+  flex-wrap: wrap;
+}
+
+.midi-seed {
+  min-width: 90px;
+  flex: 1;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.midi-seed:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.midi-creative-disabled,
+.midi-error {
+  color: var(--text-dim);
+  font-size: 10px;
+  padding: 8px 0;
+}
+
+.midi-error {
+  color: #ef4444;
+}
+
+.latency-result {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.latency-result div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.latency-result span {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.latency-result strong {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.latency-result p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.latency-result-unstable {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.latency-busy {
+  align-items: center;
+  justify-content: center;
+  min-height: 190px;
+  text-align: center;
+}
+
+.latency-pulse {
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: latency-spin 0.8s linear infinite;
+}
+
+@keyframes latency-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.latency-error {
+  padding: 10px;
+  color: var(--stop);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.latency-offset-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.latency-offset-control output {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.latency-offset-control input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .latency-overlay {
+    place-items: end center;
+    padding: 8px;
+  }
+
+  .latency-card {
+    max-height: calc(100vh - 16px);
+  }
+}

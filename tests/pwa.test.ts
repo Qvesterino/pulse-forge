@@ -35,7 +35,7 @@ describe("PWA manifest config", () => {
     const hex = /^#[0-9a-f]{6}$/i;
     expect(manifest.theme_color).toMatch(hex);
     expect(manifest.background_color).toMatch(hex);
-    // Molten app shell — mirrors --bg in styles.css and the default preset.
+    // Molten app shell — mirrors --bg in src/styles/01-base.css and the default preset.
     expect(manifest.theme_color).toBe("#0b0c10");
   });
 

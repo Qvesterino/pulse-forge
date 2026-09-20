@@ -29,7 +29,7 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     scope: "/",
     start_url: "/",
     display: "standalone",
-    // Molten app shell (mirrors --bg in styles.css / THEME_PRESETS[0]).
+    // Molten app shell (mirrors --bg in src/styles/01-base.css / THEME_PRESETS[0]).
     background_color: "#0b0c10",
     theme_color: "#0b0c10",
     categories: ["music", "productivity", "entertainment"],

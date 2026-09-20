@@ -1,0 +1,980 @@
+
+
+/* ---------- Sequencer ---------- */
+
+.sequencer {
+  min-height: 0;
+  /* Anchor for the absolutely-positioned p-lock selection toolbar. */
+  position: relative;
+  overflow: auto;
+  contain: layout style;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+}
+
+/* The sequencer's single top chrome row: pattern title + FOCUS toggle live
+   in the ruler's 168px label cell, aligned with the step columns. */
+.ruler-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-right: 6px;
+  /* Corner cell: the ruler lives inside the scroll container now, so the
+     label pins horizontally while the ticks scroll under it. */
+  position: sticky;
+  left: 0;
+  z-index: 11;
+  background: var(--bg-panel);
+}
+
+.ruler-label-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.sequencer-ruler .beat-focus-toggle {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 18px;
+  padding: 0 7px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+
+.beat-focus-toggle {
+  flex: 0 0 auto;
+  min-width: 92px;
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.sequencer.beat-focus {
+  position: fixed;
+  inset: 48px 0 26px;
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 16px;
+  overflow: auto;
+  background: var(--bg);
+  border: 0;
+  border-radius: 0;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+}
+
+/* Beat focus: the ruler bar is the single sticky chrome — it inherits the
+   accent title and full-height scroll like the old focus bar did. */
+.sequencer.beat-focus .ruler-label-title {
+  color: var(--accent);
+}
+
+.sequencer.beat-focus .sequencer-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+}
+
+.sequencer.beat-focus .sequencer-ruler {
+  background: var(--bg);
+}
+
+.sequencer-ruler {
+  display: grid;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-panel);
+  /* Hairline anchor: the sticky bar stays visually separated from the rows
+     scrolling underneath it. */
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+}
+
+.ruler-tick {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 2px 0;
+  border-radius: 2px;
+}
+
+.ruler-tick.beat-start {
+  color: var(--text-dim);
+}
+
+.ruler-tick.current {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sequencer-row {
+  display: grid;
+  grid-template-columns: var(--steps-label, 168px) 1fr;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* Row tracking: sweeping the grid highlights the pad row under the cursor. */
+.sequencer-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+}
+
+.track-header-row {
+  display: grid;
+  grid-template-columns: var(--steps-label, 168px) 1fr;
+  gap: 4px;
+  margin: 4px 0 4px;
+}
+
+.track-header-row:first-of-type {
+  margin-top: 2px;
+}
+
+.track-header {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  padding: 2px;
+}
+
+.track-header-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-header-name:hover {
+  color: var(--text);
+}
+
+.track-header-row.selected .track-header-name {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.track-header-spacer {
+  grid-column: 2 / -1;
+  border-top: 1px solid var(--border-soft);
+  margin-top: 12px;
+}
+
+.sequencer-row.selected .row-label {
+  background: var(--bg-raise);
+  border-radius: 4px;
+}
+
+.row-label {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  padding: 2px;
+}
+
+.row-pad {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--pad-color, var(--border));
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.row-pad:hover {
+  background: var(--bg-raise);
+  filter: brightness(1.1);
+}
+
+.row-pad.selected {
+  background: var(--bg-raise);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 10px color-mix(in srgb, var(--pad-color, var(--accent)) 28%, transparent);
+}
+
+.row-toggle {
+  width: 22px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.row-toggle:hover {
+  color: var(--text);
+}
+
+.row-toggle.active-mute {
+  color: var(--stop);
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.row-toggle.active-solo {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.5);
+  background: var(--accent-soft);
+}
+
+.row-steps {
+  display: grid;
+  gap: 4px;
+}
+
+.step {
+  position: relative;
+  height: 30px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  transition:
+    background 0.08s,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.step.beat-start {
+  border-left: 1px solid #333947;
+}
+
+.step:hover {
+  background: var(--bg-panel-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.step.active {
+  /* Kit colour per row (kicks vs snares vs hats…) with velocity as opacity —
+     the grid shows the shape of the beat, amber stays reserved for the
+     playhead and selection. Molten body: lit top edge + soft aura scaled by
+     velocity, so accents visibly burn brighter than ghosts. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 88%), #17181c),
+    color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 60%), #17181c)
+  );
+  border-color: color-mix(in srgb, var(--pad-color, var(--accent)) 40%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 12px color-mix(in srgb, var(--pad-color, var(--accent)) calc(var(--step-velocity, 0.8) * 32%), transparent);
+}
+
+/* Continuous playhead sweeping the grid while the transport runs. The steps
+   area starts after the 168px label column + 4px gap; within it the position
+   is linear in the pattern fraction (equal-width step columns). */
+.seq-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  /* Sweep the scrolled CONTENT width (--grid-steps-px from GridPlayhead),
+     not the viewport — at 256 steps they differ by ~5k px. The label offset
+     must track the same variable the grid columns use (narrow viewports
+     shrink it to 112px). */
+  left: calc(var(--steps-label, 168px) + 4px + var(--playhead-frac, 0) * var(--grid-steps-px, 100%));
+  background: var(--accent);
+  box-shadow:
+    0 0 10px rgba(245, 158, 11, 0.75),
+    0 0 3px rgba(245, 158, 11, 1);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.seq-playhead[data-playing="false"] {
+  display: none;
+}
+
+.step.playhead {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+.step.active.playhead {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.step.playhead {
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 158, 11, 0.55),
+    0 0 6px rgba(245, 158, 11, 0.35);
+}
+
+.step.active.playhead {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 0 8px rgba(245, 158, 11, 0.45);
+}
+
+/* Pulsing playhead indicator for the active step */
+@keyframes step-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+.step.playhead:not(.active) {
+  animation: step-pulse 0.18s ease-out;
+}
+
+/* Track header hint: highlight when a step on that track is currently playing */
+.track-header-row.playing .track-header-name {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: var(--play);
+}
+
+/* ---------- Inspector ---------- */
+
+.inspector {
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  color: var(--text-dim);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.inspector select {
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.inspector select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ---------- Slider ---------- */
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.slider-disabled {
+  opacity: 0.4;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.slider-label {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--text-faint);
+}
+
+.slider-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.slider-track {
+  position: relative;
+  height: 22px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  cursor: ew-resize;
+}
+
+.slider-fill {
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.25), rgba(245, 158, 11, 0.45));
+  border-radius: 2px;
+}
+
+.slider-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  transform: translateX(-1px);
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.pad-toggles {
+  display: flex;
+  gap: 6px;
+}
+
+.btn.active-mute {
+  color: var(--stop);
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.btn.active-solo {
+  color: var(--accent);
+  border-color: rgba(245, 158, 11, 0.5);
+  background: var(--accent-soft);
+}
+
+/* ---------- Piano roll ---------- */
+
+.pianoroll-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pianoroll-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+
+.pr-toolbar-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  min-width: 70px;
+}
+
+.pr-toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pr-velocity-lane {
+  position: relative;
+  height: 48px;
+  margin-left: 46px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pr-velocity-bg {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent 23px,
+    rgba(255, 255, 255, 0.02) 23px,
+    rgba(255, 255, 255, 0.02) 24px
+  );
+  pointer-events: none;
+}
+
+.pr-vel-bar {
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  margin-left: -4px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  opacity: 0.7;
+  cursor: ns-resize;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
+  transition: opacity 0.12s ease;
+}
+
+.pr-vel-bar:hover {
+  opacity: 1;
+}
+
+.pr-vel-bar.selected {
+  background: #fff;
+  opacity: 0.9;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+}
+
+.pr-marquee {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgba(245, 158, 11, 0.12);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pianoroll {
+  display: flex;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pianoroll-keys {
+  flex: 0 0 46px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-right: 1px solid var(--border-soft);
+}
+
+.pr-key {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  background: linear-gradient(180deg, #2c313c, #23262e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: none;
+  border-bottom: 1px solid #12141a;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.pr-key.black {
+  background: linear-gradient(180deg, #191c22, #12141a);
+}
+
+.pr-key.c-key {
+  color: var(--text-dim);
+  background: linear-gradient(180deg, #343a47, #2a2f3a);
+}
+
+.pr-key:hover {
+  filter: brightness(1.25);
+}
+
+.pianoroll-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 180px;
+  background: var(--bg);
+}
+
+.pianoroll-grid {
+  position: relative;
+  background-image: repeating-linear-gradient(to bottom, #171a20 0px, #171a20 13px, #12141a 13px, #12141a 14px);
+  cursor: crosshair;
+}
+
+.pr-beatline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #2c313c;
+  pointer-events: none;
+}
+
+/* Multi-bar pattern orientation (FL-style): stronger line each 16 steps + bar number */
+.pr-barline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #3d4454;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.pr-barnum {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: #98a0b3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.pr-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(245, 158, 11, 0.09);
+  border-left: 2px solid rgba(245, 158, 11, 0.85);
+  box-shadow:
+    0 0 10px rgba(245, 158, 11, 0.4),
+    inset 0 0 14px rgba(245, 158, 11, 0.12);
+  pointer-events: none;
+}
+
+/* Sequencer gesture cheat sheet — anchored over the grid, dismissible. */
+.cheat-sheet {
+  position: absolute;
+  top: 46px;
+  right: 10px;
+  width: 360px;
+  max-height: calc(100% - 60px);
+  overflow: auto;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  z-index: 20;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.cheat-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cheat-sheet-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+.cheat-sheet-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cheat-sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cheat-sheet-group-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.cheat-sheet-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 1px 0;
+}
+
+.cheat-sheet-keys {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.cheat-sheet-what {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.cheat-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Ruler loop region — rAF-positioned overlay, reads transport truth. */
+.ruler-loop-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(74, 222, 128, 0.14);
+  border-left: 1px solid rgba(74, 222, 128, 0.5);
+  border-right: 1px solid rgba(74, 222, 128, 0.5);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ruler-loop-overlay[data-visible="false"] {
+  display: none;
+}
+
+/* Performed pad flash — applied via rAF DOM mutation, no re-render. */
+.row-pad.live-hit {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+}
+
+.midi-readout {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.rec-strength {
+  width: 72px;
+  accent-color: var(--accent);
+}
+
+/* Step-entry cursor — pitch row × entry length, dashed accent box. */
+.pr-step-cursor {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.pr-step-toggle.active-solo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pr-step-dur {
+  height: 26px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.pr-note {
+  position: absolute;
+  height: 10px;
+  margin-top: 2px;
+  /* Molten note body: lit top edge fading to a darker base — adapts to any
+     theme accent, velocity still scales through the inline opacity. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 72%, #fff) 0%,
+    var(--accent) 45%,
+    color-mix(in srgb, var(--accent) 60%, #000) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.pr-note.selected {
+  border-color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.pr-note:active {
+  cursor: grabbing;
+}
+.pr-note.ghost {
+  background: var(--accent);
+  border-color: rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+}
+.pr-note.ghost-track {
+  background: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.35);
+  pointer-events: none;
+}
+/* FL slide note (portamento): half-triangle badge on the left edge */
+.pr-note.slide::after {
+  content: "▲";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 7px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+/* ---------- Pattern bar ---------- */
+
+.pattern-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pattern-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pattern-chip {
+  height: 26px;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.pattern-chip:hover {
+  color: var(--text);
+}
+
+.pattern-chip.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+}
+
+.pattern-chip.dragging {
+  opacity: 0.4;
+}
+
+.pattern-chips {
+  position: relative;
+}
+
+.pattern-drop-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pattern-rename {
+  height: 26px;
+  padding: 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 13px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  width: 120px;
+}
+
+.pattern-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Group divider: pattern lifecycle | creative tools | clipboard | destructive.
+   A thin visual seam — the eye parses groups instead of ten equal buttons. */
+.pattern-actions .action-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 5px 3px;
+  background: var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.pattern-bar > .scene-launcher {
+  /* Compact chips flow inline after the actions; flex-wrap gives them their
+     own row only when the window is genuinely too narrow. */
+  flex: 0 1 auto;
+  order: 4;
+  width: auto;
+}
+
+.pattern-length {
+  height: 24px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 0 4px;
+}

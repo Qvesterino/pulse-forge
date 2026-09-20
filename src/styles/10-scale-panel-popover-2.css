@@ -1,0 +1,831 @@
+
+
+.freesound-error {
+  font-size: 11px;
+  color: #ef4444;
+  line-height: 1.4;
+}
+
+.freesound-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.freesound-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+}
+
+.freesound-name em {
+  color: var(--text-dim, #8a8f98);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.freesound-token a {
+  color: var(--accent);
+}
+
+/* ── Touch / tablet support ─────────────────────────────────────────────── */
+
+/* Kill the double-tap zoom delay everywhere; individual drag surfaces opt out below. */
+html {
+  touch-action: manipulation;
+}
+
+.audio-unlock {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  background: var(--accent);
+  color: #0e0f12;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  /* 44px-class hit targets for the primary touch surfaces. */
+  .btn {
+    min-height: 42px;
+    min-width: 42px;
+  }
+
+  .btn-small {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  /* History buttons hard-set a 28×26 box (specificity beats .btn) — without
+     this they stay untappable at the phone-class target size. */
+  .btn-history {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .row-pad,
+  .row-toggle {
+    min-height: 42px;
+  }
+
+  .sample-row,
+  .preset-chip {
+    min-height: 40px;
+  }
+
+  .preset-chip {
+    padding: 6px 12px;
+  }
+
+  .sequencer-ruler .ruler-tick {
+    font-size: 13px;
+  }
+
+  .preset-search,
+  .collab-field input,
+  .freesound-search input {
+    min-height: 42px;
+  }
+
+  /* Audio-clip fade/gain handles are 7-12px mouse targets. clip-path clips
+     any ::before pad, so grow the handles themselves for fingers. */
+  .arr-audio-clip-handle-fade {
+    width: 22px;
+    height: 22px;
+  }
+
+  .arr-audio-clip-handle-fade.left {
+    left: 4px;
+  }
+
+  .arr-audio-clip-handle-fade.right {
+    right: 4px;
+  }
+
+  .arr-audio-clip-handle-gain {
+    width: 44px;
+    height: 14px;
+  }
+
+  /* The p-lock amount bar is a 4px strip; the finger needs a wider grab. */
+  .step-amount-track::before {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
+  }
+}
+
+/* Drag surfaces: the browser must not steal touches for scrolling —
+   velocity drags and number scrubs are the interaction. */
+.step,
+.drag-number,
+.slider-track {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.fx-preset-select,
+.fx-sidechain-picker select,
+.channel-bus-select select {
+  min-height: 28px;
+  background: var(--panel-strong, #171b24);
+  color: inherit;
+  border: 1px solid var(--line, #343b4a);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+.eq-response-curve {
+  height: 62px;
+  margin: 5px 0 8px;
+  position: relative;
+  background: linear-gradient(to bottom, transparent 49%, rgba(255, 255, 255, 0.16) 50%, transparent 51%);
+  border: 1px solid var(--line, #343b4a);
+}
+
+.eq-response-curve svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.eq-response-line {
+  fill: none;
+  stroke: #56d6b1;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.eq-response-zero {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.eq-response-curve span {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  font-size: 9px;
+  color: var(--muted, #8992a5);
+}
+
+.fx-sidechain-picker {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.fx-sidechain-picker .fx-param-select {
+  min-width: 180px;
+}
+.fx-sidechain-status {
+  color: var(--muted, #8992a5);
+  font-size: 11px;
+  padding-bottom: 6px;
+}
+.channel-bus-select {
+  display: grid;
+  gap: 3px;
+  min-width: 100px;
+}
+
+.master-loudness-readout {
+  display: grid;
+  /* 1fr tracks (not auto): value text changes (-INF ↔ numbers) must not
+     shift column widths. */
+  grid-template-columns: repeat(2, minmax(95px, 1fr));
+  gap: 3px 8px;
+  align-content: center;
+  font:
+    10px/1.2 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #8992a5);
+}
+.master-loudness-readout > span {
+  min-width: 95px;
+  white-space: nowrap;
+}
+.master-loudness-readout .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  font-size: 9px;
+}
+.master-mix-check {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  color: #f59e0b;
+  font-size: 10px;
+  max-width: 190px;
+  /* One reserved line inside the fixed warnings row — overflow clips
+     instead of pushing the wall around. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.context-menu {
+  position: fixed;
+  background: linear-gradient(180deg, rgba(33, 36, 43, 0.92), rgba(21, 23, 28, 0.94));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 190px;
+  z-index: 300;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu-header {
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.context-menu button {
+  text-align: left;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.context-menu button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.context-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.context-menu hr {
+  border: none;
+  height: 1px;
+  background: var(--border-soft);
+  margin: 4px 0;
+}
+
+.arr-ruler {
+  position: relative;
+}
+
+.arr-lane {
+  position: relative;
+}
+
+.arr-time-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(245, 158, 11, 0.12);
+  border-left: 1px solid rgba(245, 158, 11, 0.6);
+  border-right: 1px solid rgba(245, 158, 11, 0.6);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.arr-time-range-lane {
+  background: rgba(245, 158, 11, 0.08);
+}
+.arr-audio-clip {
+  position: absolute;
+  top: 4px;
+  height: 48px;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  cursor: grab;
+  z-index: 3;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease;
+}
+.arr-audio-clip:hover {
+  filter: brightness(1.12);
+}
+.arr-audio-clip.selected {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px var(--accent),
+    0 0 16px rgba(245, 158, 11, 0.25);
+}
+.arr-audio-clip.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.arr-audio-clip.current {
+  border-color: rgba(245, 158, 11, 0.6);
+}
+.arr-audio-clip .audio-waveform {
+  flex: 1;
+  display: block;
+}
+.arr-audio-clip .audio-waveform-empty {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 6px;
+}
+.arr-audio-clip-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.arr-audio-clip-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: ew-resize;
+}
+.arr-audio-clip-handle.left {
+  left: 0;
+  border-right: 1px dashed rgba(255, 255, 255, 0.25);
+}
+.arr-audio-clip-handle.right {
+  right: 0;
+  border-left: 1px dashed rgba(255, 255, 255, 0.25);
+}
+.arr-audio-clip-fades {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+}
+.arr-audio-fade {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.35), transparent);
+  height: 100%;
+}
+.arr-audio-fade.out {
+  background: linear-gradient(270deg, rgba(245, 158, 11, 0.35), transparent);
+}
+.arr-audio-clip-handle-fade {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  background: rgba(245, 158, 11, 0.92);
+  cursor: ew-resize;
+  z-index: 4;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.arr-audio-clip-handle-fade.left {
+  left: 8px;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  border-radius: 0 0 2px 0;
+}
+.arr-audio-clip-handle-fade.right {
+  right: 8px;
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+  border-radius: 0 0 0 2px;
+}
+.arr-audio-clip-handle-gain {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 7px;
+  background: rgba(99, 102, 241, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-top: none;
+  border-radius: 0 0 3px 3px;
+  cursor: ns-resize;
+  z-index: 4;
+}
+.arr-audio-clip-handle-gain::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 1px;
+}
+.arr-audio-clip-handle-fade:hover,
+.arr-audio-clip-handle-gain:hover {
+  filter: brightness(1.15);
+}
+
+/* ── Warp pins (FL/Slicex-style, draggable on the waveform) ── */
+.warp-pins-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.warp-pin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  pointer-events: none;
+}
+.warp-pin-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: rgba(245, 158, 11, 0.7);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.55);
+  pointer-events: none;
+}
+.warp-pin-handle {
+  position: absolute;
+  top: 1px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  background: rgba(245, 158, 11, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 0 8px rgba(245, 158, 11, 0.8),
+    0 0 2px rgba(255, 255, 255, 0.6);
+  transform: rotate(45deg);
+  border-radius: 2px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  transition:
+    filter 120ms ease,
+    box-shadow 120ms ease;
+}
+.warp-pin-handle:hover {
+  filter: brightness(1.25);
+  box-shadow:
+    0 0 12px rgba(245, 158, 11, 1),
+    0 0 3px rgba(255, 255, 255, 0.8);
+}
+.warp-pin.dragging .warp-pin-line {
+  background: #fbbf24;
+  width: 3px;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.9);
+}
+.warp-pin.dragging .warp-pin-handle {
+  filter: brightness(1.3);
+  box-shadow:
+    0 0 14px rgba(251, 191, 36, 1),
+    0 0 4px rgba(255, 255, 255, 0.9);
+}
+.warp-pin.disabled .warp-pin-line {
+  background: rgba(245, 158, 11, 0.3);
+}
+.warp-pin.disabled .warp-pin-handle {
+  background: rgba(245, 158, 11, 0.4);
+  cursor: not-allowed;
+}
+
+/* ── Dice Tray ─────────────────────────────────────────────────────── */
+.dice-tray {
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dice-tray-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dice-tray-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.dice-tray-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.dice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dice-intent-sliders {
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+.dice-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 90px;
+}
+.dice-slider span {
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.dice-slider input[type="range"] {
+  width: 90px;
+}
+.dice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.dice-field span {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.dice-field select,
+.dice-field input {
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.dice-seed-field {
+  flex-direction: row;
+  align-items: center;
+}
+.dice-seed-field input {
+  width: 90px;
+}
+.dice-big {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+}
+.dice-big:hover {
+  border-color: var(--accent);
+}
+.dice-big.dice-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.dice-jitter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 8px;
+}
+.dice-jitter label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.dice-jitter input[type="range"] {
+  width: 100px;
+}
+.dice-jitter-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.dice-mode-switch {
+  display: flex;
+  gap: 4px;
+}
+.dice-locks {
+  gap: 6px;
+}
+.dice-locks-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.06em;
+}
+.dice-lock {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.dice-history {
+  gap: 8px;
+}
+.dice-history-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.dice-history-strip {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: thin;
+}
+.dice-history-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dice-history-dot.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.dice-history-dot.fav {
+  color: var(--accent);
+}
+.dice-seed-display {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.dice-preview {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--bg-panel-2);
+}
+.dice-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.dice-preview-meta {
+  flex: 1;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.dice-preview-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 8px;
+}
+/* MELODIC dice target — mini note strip (pitch = height, time = width). */
+.dice-melodic-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dice-melodic-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.dice-melodic-grid {
+  position: relative;
+  height: 52px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dice-melodic-note {
+  position: absolute;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+.dice-preview-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dice-preview-ruler {
+  display: flex;
+  gap: 2px;
+  margin-left: 36px;
+}
+.dice-preview-step {
+  width: 18px;
+  font-size: 9px;
+  text-align: center;
+  color: var(--text-faint);
+}
+.dice-preview-step.beat {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.dice-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dice-preview-pad {
+  width: 36px;
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: right;
+  padding-right: 4px;
+  font-family: var(--mono);
+}
+.dice-preview-cell {
+  width: 18px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border-soft);
+}
+.dice-preview-cell.beat {
+  border-color: var(--border);
+}
+.dice-preview-cell.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.dice-footer-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+.dice-footer-hint kbd {
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0 4px;
+  font-size: 10px;
+  margin: 0 1px;
+}

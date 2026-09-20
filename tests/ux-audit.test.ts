@@ -4,7 +4,7 @@
  * The shortcuts table had two real collisions before (bare 1–5 bound by both
  * tracks and panels; Alt+5 computing a bogus panel id). These tests keep the
  * table collision-free and the documented verbs covered. The contrast test
- * parses the :root tokens out of styles.css and enforces WCAG ratios so a
+ * parses the :root tokens out of src/styles/01-base.css and enforces WCAG ratios so a
  * theme tweak cannot silently dim the UI below readability.
  */
 import { readFileSync } from "node:fs";
@@ -103,7 +103,7 @@ describe("keyboard shortcut table", () => {
 // ── Design token contrast ───────────────────────────────────────────────────
 
 function readRootTokens(): Record<string, string> {
-  const css = readFileSync(join(__dirname, "../src/styles.css"), "utf-8");
+  const css = readFileSync(join(__dirname, "../src/styles/01-base.css"), "utf-8");
   const root = css.slice(css.indexOf(":root"), css.indexOf("}", css.indexOf(":root")));
   const tokens: Record<string, string> = {};
   for (const match of root.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})/g)) {

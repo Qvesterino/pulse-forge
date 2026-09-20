@@ -1,0 +1,18 @@
+/* Cascade entry — split from src/styles.css (12 579 lines) by scripts/split-styles.mjs.
+   Files are imported in the ORIGINAL cascade order; reordering changes
+   specificity resolution, so treat the sequence below as load-bearing. */
+@import "./01-base.css";
+@import "./02-sequencer.css";
+@import "./03-mixer.css";
+@import "./04-arrangement.css";
+@import "./05-drop-zone.css";
+@import "./06-help-overlay.css";
+@import "./07-project-browser.css";
+@import "./08-master-meter.css";
+@import "./09-scale-panel-popover.css";
+@import "./10-scale-panel-popover-2.css";
+@import "./11-floating-instrument-plugin.css";
+@import "./12-floating-instrument-plugin-2.css";
+@import "./13-project-snapshots.css";
+@import "./14-command-palette.css";
+@import "./15-command-palette-2.css";

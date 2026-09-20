@@ -1,0 +1,867 @@
+:root {
+  /* Molten — the default identity. These values mirror THEME_PRESETS[0]
+     ("Molten") in src/ui/theme.ts so the very first paint (before
+     initTheme() runs) already wears the branded palette. Changing one
+     without the other is a bug. */
+  --bg: #0b0c10;
+  --bg-panel: #12141a;
+  --bg-panel-2: #181b22;
+  --bg-raise: #1f232b;
+  --border: #2a2e37;
+  --border-soft: #20242c;
+  --text: #d9dbe1;
+  --text-dim: #8d94a2;
+  --text-faint: #7a8290;
+  --accent: #f59e0b;
+  --accent-soft: rgba(245, 158, 11, 0.14);
+  --play: #4ade80;
+  --stop: #f87171;
+  --mono: "Cascadia Code", "JetBrains Mono", Consolas, "SF Mono", monospace;
+  --sans: Inter, "Segoe UI", system-ui, sans-serif;
+  --glass-scene: rgba(255, 255, 255, 0.035);
+  --glass-scene-strong: rgba(255, 255, 255, 0.07);
+  --glass-scene-stroke: rgba(255, 255, 255, 0.1);
+  /* Sequencer label column — mirrors STEPS_LABEL_PX in Sequencer.tsx. */
+  --steps-label: 168px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--sans);
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.app {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 48px minmax(0, 1fr) auto auto 26px;
+}
+
+/* ---------- Top bar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+  z-index: 80;
+  overflow: visible;
+  gap: 10px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, var(--bg-panel), color-mix(in srgb, var(--bg-panel) 88%, #000));
+  border-bottom: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 12px rgba(0, 0, 0, 0.35);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #fff), var(--accent));
+  color: #141008;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  border-radius: 5px;
+  letter-spacing: -0.5px;
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.brand-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--text);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.transport-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 9px;
+  border-left: 1px solid var(--border-soft);
+  border-right: 1px solid var(--border-soft);
+  /* Recessed console plate: the transport reads as one instrument cluster. */
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  /* Anchor for the floating song-mode guard chip (.mode-hint). */
+  position: relative;
+}
+
+.btn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+
+.btn:hover {
+  color: var(--text);
+  border-color: #343945;
+}
+
+.btn-play {
+  color: var(--play);
+  font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.btn-play.active {
+  background: rgba(74, 222, 128, 0.14);
+  border-color: rgba(74, 222, 128, 0.55);
+  color: #86efac;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 14px rgba(74, 222, 128, 0.45);
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+}
+
+/* MIDI record arm — red dot, pulses while armed so the state is unmistakable
+   mid-take. */
+.btn-record {
+  color: #f87171;
+  font-size: 12px;
+}
+
+.btn-record.armed {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: #f87171;
+  color: #fecaca;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.5);
+  animation: record-arm-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes record-arm-pulse {
+  from {
+    background: rgba(248, 113, 113, 0.1);
+  }
+  to {
+    background: rgba(248, 113, 113, 0.32);
+  }
+}
+
+.rec-option {
+  height: 30px;
+  max-width: 96px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+
+.btn-countin.active,
+.btn-preroll.active,
+.btn-metronome.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 10px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.btn-stop {
+  color: var(--stop);
+}
+
+.btn-history {
+  min-width: 28px;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+.btn-history:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #343945;
+}
+
+.btn-history:disabled {
+  opacity: 0.3;
+}
+
+.btn-ghost.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+}
+
+.btn-small {
+  height: 24px;
+  min-width: 52px;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.btn-danger:hover:not(:disabled) {
+  color: var(--stop);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.position-display {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  min-width: 72px;
+  text-align: center;
+  background: linear-gradient(180deg, #0a0b0e, #050608);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  padding: 5px 8px;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.6),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 6%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.drag-number {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-raise);
+  cursor: ns-resize;
+}
+
+.drag-number:focus-visible,
+.slider-track:focus-visible,
+.row-pad:focus-visible,
+.step:focus-visible,
+.pad:focus-visible,
+.track-tab:focus-visible,
+.track-tab.active:focus-visible,
+.pattern-chip:focus-visible,
+.pattern-chip.active:focus-visible,
+.scene-chip:focus-visible,
+.scene-chip.selected:focus-visible,
+.btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.drag-number-label {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: var(--text-faint);
+}
+
+.drag-number-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.drag-number-input {
+  width: 64px;
+  height: 19px;
+  padding: 0 3px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text);
+  font: 12px var(--mono);
+  text-align: center;
+}
+
+.drag-number-input:focus {
+  outline: none;
+}
+
+/* Inline "type a value" popover under a slider (built-in value menu). */
+.value-type-popover {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  z-index: 30;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.slider {
+  position: relative;
+}
+
+.value-menu {
+  min-width: 170px;
+}
+
+.project-name {
+  flex: 1;
+  max-width: 280px;
+  min-width: 100px;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+}
+
+.project-name:hover {
+  border-color: var(--border);
+}
+
+.project-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  gap: 7px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.topbar-overflow {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.topbar-overflow-trigger {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.topbar-overflow-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 120;
+  width: 226px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 7px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.48);
+}
+
+.topbar-overflow-section + .topbar-overflow-section {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.topbar-overflow-heading {
+  padding: 3px 8px 5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.4px;
+}
+
+.topbar-overflow-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: left;
+}
+
+.topbar-overflow-item:hover,
+.topbar-overflow-item:focus-visible,
+.topbar-overflow-item.active {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.topbar-overflow-item.active {
+  color: var(--accent);
+}
+
+.save-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.save-saved {
+  color: var(--play);
+}
+
+.save-dirty {
+  color: var(--accent);
+}
+
+.save-error {
+  color: var(--stop);
+}
+
+/* ---------- Workspace ---------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  min-height: 0;
+}
+
+/* Tablet band (768–1100px): the fixed 280px inspector left the sequencer
+   ~460px wide, which its 168px label column + 22px step floor cannot fit.
+   Narrow the inspector first; it becomes a row below 860px (see the
+   max-width: 760px block for the phone presentation). */
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 230px;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .workspace > .inspector {
+    max-height: 34vh;
+    overflow-y: auto;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.workspace-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  gap: 8px;
+}
+
+.workspace-main > .sequencer {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- Rack ---------- */
+
+.rack-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.track-tab {
+  height: 26px;
+  padding: 0 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.track-tab:hover {
+  color: var(--text);
+}
+
+.track-tab.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--accent);
+}
+
+.track-tab-rename {
+  height: 26px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  outline: none;
+  min-width: 120px;
+}
+
+.track-add {
+  min-width: 76px;
+}
+
+.rack {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+
+/* Top chrome row: track tabs (leading) + live Note Repeat controls, one row
+   instead of two above the pad grid. */
+.rack-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding: 2px 2px;
+}
+
+.rack-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.rack-header-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-soft);
+}
+
+@media (max-width: 1450px) {
+  .rack-header-hint {
+    display: none;
+  }
+}
+
+.rack-header-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.rack-header-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.rack-header-field select {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+.rack-header-toggle {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.rack-header-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgb(96 165 250 / 0.12);
+}
+
+.rack-header-hint {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+/* Pad keys editor + colour swatches (per-pad customisation). */
+.pad-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.pad-key-slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+
+.pad-key-slot.capturing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pad-key-index {
+  color: var(--text-faint);
+  font-size: 8px;
+}
+
+.pad-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding: 2px 0 6px;
+}
+
+.pad-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  cursor: pointer;
+}
+
+.pad-color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.pad-color-auto {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel-2);
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+/* Track colour dot (user-set track colour). */
+.track-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  margin-right: 4px;
+  flex: none;
+}
+
+/* Pinned per-pad repeat rate chip (kick 1/16, hat 1/8T …). */
+.pad-rate-badge {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--accent);
+  background: rgb(0 0 0 / 0.45);
+  border: 1px solid var(--accent) 66;
+  border-radius: 3px;
+  padding: 0 2px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.track-tab-badge,
+.track-header-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 4px;
+  background: var(--bg);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+
+.track-header-badge {
+  font-size: 9px;
+}
+
+.pad {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 8px;
+  min-height: 44px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--pad-color, var(--border));
+  border-radius: 4px;
+  text-align: left;
+  transition:
+    background 0.1s,
+    transform 0.05s;
+}
+
+.pad:hover {
+  background: var(--bg-panel-2);
+}
+
+.pad:active {
+  transform: translateY(1px);
+}
+
+.pad.selected {
+  background: var(--bg-raise);
+  border-color: #3a4050;
+  border-left-color: var(--pad-color, var(--accent));
+}
+
+.pad.hit {
+  background: color-mix(in srgb, var(--pad-color, var(--accent)) 26%, var(--bg-panel));
+}
+
+.pad-index {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text-faint);
+}
+
+.pad-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pad-synth-badge {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.6px;
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  padding: 1px 3px;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+.pad-meter {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pad-meter-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--pad-color, var(--accent));
+  opacity: 0.9;
+  transition: height 0.08s linear;
+  border-radius: 2px;
+}

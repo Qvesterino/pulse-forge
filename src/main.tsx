@@ -6,7 +6,7 @@ import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
 import { initSwUpdate } from "./sw-update";
-import "./styles.css";
+import "./styles/index.css";
 import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
 

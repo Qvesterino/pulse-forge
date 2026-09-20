@@ -1,0 +1,999 @@
+
+
+/* ---------- Command palette (Ctrl+K) ---------- */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(8, 9, 12, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 0;
+}
+
+.palette-card {
+  width: min(560px, 94vw);
+  max-height: 62vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.palette-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  padding: 14px 16px;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.palette-item.selected {
+  background: var(--accent-soft);
+}
+
+.palette-item.selected .palette-title {
+  color: var(--accent);
+}
+
+.palette-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-kbd {
+  flex: none;
+}
+
+.palette-group {
+  flex: none;
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.palette-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.palette-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* SW update banner (PWA "prompt" mode) — src/sw-update.ts */
+.pf-update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel, #1c1f27);
+  color: var(--text, #eee);
+  border: 1px solid var(--accent, #f59e0b);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+/* Arrangement zoom + clip marquee + delete toast */
+.arr-zoom-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.arr-marquee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.arr-delete-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 44px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #1a1d23;
+  border: 1px solid #2c3037;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+/* Scene Mode wall-clock authoring (SCENE SECS) */
+.arr-clip-secs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #71717a;
+}
+
+.arr-clip-secs input {
+  width: 62px;
+  background: #101216;
+  border: 1px solid #2c3037;
+  border-radius: 4px;
+  color: #f4f4f5;
+  font-size: 11px;
+  padding: 3px 5px;
+}
+
+.scene-loop-info {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #71717a;
+  padding: 2px 0;
+}
+
+/* Mod matrix shared UI (Inspector advanced + floating plugin) — mirrors the
+   WavetablePanel selectRow look via the wt-mod-* classes above. */
+.mod-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.mod-matrix .wt-mod-row .slider-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* MPE discoverability strip (MidiPanel): badge + per-note pressure/timbre bars */
+.mpe-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.mpe-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.mpe-badge.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mpe-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.mpe-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mpe-note-name {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.mpe-bar {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.mpe-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.mpe-bar-fill.mpe-pressure {
+  background: var(--accent);
+}
+
+.mpe-bar-fill.mpe-timbre {
+  background: rgba(96, 165, 250, 0.9);
+}
+
+/* SIMILAR similarity chip in the preset browser */
+.preset-sim {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Instant Jam: gallery card button + collab panel badge */
+.gallery-jam {
+  color: var(--accent);
+}
+
+.collab-jam-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+/* TAP TO JAM gate — full-screen autoplay-policy moment for jam joiners */
+.jam-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(245, 158, 11, 0.14), transparent 70%), rgba(6, 8, 12, 0.94);
+  cursor: pointer;
+  user-select: none;
+}
+
+.jam-gate-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 32px;
+}
+
+.jam-gate-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 3px 12px;
+  animation: jam-gate-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes jam-gate-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.jam-gate-title {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.jam-gate-sub {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  max-width: 420px;
+}
+
+/* PUBLISH THIS JAM — the loop closer in the collab panel */
+.collab-publish {
+  color: var(--accent);
+}
+
+/* AI bandmate section in the collab panel */
+.collab-bandmate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+.collab-bandmate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.collab-bandmate-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.collab-bandmate-on {
+  color: var(--accent);
+  margin-left: 4px;
+}
+
+.collab-bandmate-off {
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 4px;
+}
+
+.collab-bandmate-scene {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(96, 165, 250, 0.9);
+}
+
+/* ARRANGE by words — intent section in the assist panel */
+.assist-arrange {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+/* KYX logo → landing (project browser header): DAW-standard home affordance */
+a.brand {
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+a.brand:hover {
+  opacity: 0.8;
+}
+
+a.brand:hover .brand-mark {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+}
+
+/* INTENT dock panel (VISION §10) */
+.intent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+  contain: layout style;
+}
+.intent-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.intent-title {
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.intent-subtitle {
+  font-size: 10px;
+  color: var(--muted);
+}
+.intent-textarea {
+  width: 100%;
+  min-height: 60px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  padding: 8px;
+  resize: vertical;
+}
+.intent-textarea:focus {
+  outline: 1px solid var(--accent);
+}
+.intent-detected {
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.intent-error {
+  font-size: 11px;
+  color: #f87171;
+}
+.intent-status {
+  font-size: 11px;
+  color: #4ade80;
+}
+.intent-generate-btn {
+  align-self: flex-start;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+}
+
+/* Device editors reflow against their actual dock slot. This also applies
+   when FX and instrument panels share the dock in split view. */
+@container (max-width: 620px) {
+  .fx-rack-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .fx-rack-header .panel-title {
+    flex: 1 1 100%;
+  }
+
+  .fx-add-select {
+    flex: 1 1 180px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fx-device-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .fx-device-title {
+    flex: 1 1 140px;
+    flex-wrap: wrap;
+  }
+
+  .fx-preset-select {
+    flex: 1 1 120px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .fx-device-buttons {
+    flex: none;
+    margin-left: auto;
+  }
+
+  .fx-device-params {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  }
+
+  .fx-sidechain-picker .fx-param-select {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+
+  .fx-sidechain-status {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .fxeq-preset-row,
+  .fxeq-band-scalars {
+    flex-wrap: wrap;
+  }
+
+  .fxeq-band-chips {
+    flex-wrap: wrap;
+  }
+
+  .fxeq-band-gain {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .ultina-assist-opts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  }
+
+  .ozvena-weights {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .ozvena-pad {
+    height: clamp(120px, 34cqi, 190px);
+  }
+}
+
+@container (max-width: 430px) {
+  .instrument-plugin-header {
+    align-items: flex-start;
+  }
+
+  .instrument-plugin-actions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .instrument-plugin-panel .floating-plugin-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .instrument-plugin-panel .wt-mod-row {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .instrument-plugin-panel .wt-mod-select {
+    min-width: 0;
+    flex: 1 1 72px;
+  }
+
+  .instrument-plugin-panel .wt-mod-amt {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── Native bottom device chain ────────────────────────────────────────── */
+.dock-slot:has(.devices-panel) {
+  overflow: hidden;
+}
+
+.dock-slot:has(.devices-panel) > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.devices-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  container-type: inline-size;
+}
+
+.devices-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  background: linear-gradient(180deg, var(--bg-raise), var(--bg-panel-2));
+  border-bottom: 1px solid var(--border);
+}
+
+.devices-track-name {
+  flex: 0 1 140px;
+  min-width: 64px;
+  overflow: hidden;
+  color: var(--text-dim, #8a8f98);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devices-chain {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.device-chain-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim, #8a8f98);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.device-chain-item:active {
+  cursor: grabbing;
+}
+
+.device-chain-item:not([draggable="true"]),
+.device-chain-item:not([draggable="true"]):active {
+  cursor: pointer;
+}
+
+.device-chain-item.is-dragging {
+  opacity: 0.38;
+}
+
+.device-chain-item.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.device-chain-item:hover,
+.device-chain-item.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.device-chain-item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.device-chain-item.is-bypassed {
+  opacity: 0.55;
+}
+
+.device-chain-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.device-chain-item.active .device-chain-dot {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+}
+
+.devices-add-effect {
+  flex: none;
+  height: 25px;
+  max-width: 150px;
+  padding: 0 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: 700 9px var(--mono);
+}
+
+.device-surface {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 9px;
+}
+
+.devices-empty {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: var(--text-faint);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-editor {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.device-editor .fx-device-header {
+  flex: none;
+  min-height: 32px;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.device-editor .fx-device-toggle {
+  display: none;
+}
+
+.device-editor .fx-device-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.device-editor .fx-device-family {
+  flex: none;
+  margin-left: 3px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font: 700 7px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-editor .fx-device-family.family-tone,
+.device-editor .fx-device-params[data-family="tone"] {
+  --device-family-color: #67e8f9;
+}
+
+.device-editor .fx-device-family.family-dynamics,
+.device-editor .fx-device-params[data-family="dynamics"] {
+  --device-family-color: #fbbf24;
+}
+
+.device-editor .fx-device-family.family-character,
+.device-editor .fx-device-params[data-family="character"] {
+  --device-family-color: #fb923c;
+}
+
+.device-editor .fx-device-family.family-movement,
+.device-editor .fx-device-params[data-family="movement"] {
+  --device-family-color: #c084fc;
+}
+
+.device-editor .fx-device-family.family-space,
+.device-editor .fx-device-params[data-family="space"] {
+  --device-family-color: #60a5fa;
+}
+
+.device-editor .fx-device-family[class*="family-"] {
+  border-color: color-mix(in srgb, var(--device-family-color, var(--accent)) 40%, var(--border-soft));
+  color: var(--device-family-color, var(--text-faint));
+}
+
+.device-editor .fx-device-content {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 5px;
+  padding-top: 5px;
+}
+
+.device-editor .fx-device-params.is-paged {
+  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 10px;
+}
+
+.device-editor .fx-device-params[data-family] {
+  border-left: 2px solid color-mix(in srgb, var(--device-family-color, var(--accent)) 42%, transparent);
+  padding-left: 7px;
+}
+
+.ryft-spectrum {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 6px;
+}
+
+.ryft-spectrum.is-docked {
+  gap: 3px;
+  margin-top: 0;
+  padding: 5px 0 4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.ryft-spectrum-legend {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.045em;
+}
+
+.ryft-spectrum-title {
+  color: var(--text-dim);
+  letter-spacing: 0.09em;
+}
+
+.ryft-spectrum-key {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.ryft-spectrum-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+}
+
+.ryft-spectrum-swatch.dry {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.ryft-spectrum-swatch.delay {
+  background: #f59e0b;
+}
+
+.ryft-spectrum-swatch.loop-eq {
+  height: 0;
+  border-top: 2px dashed rgba(34, 211, 238, 0.7);
+}
+
+.ryft-spectrum-swatch.unmask {
+  background: rgba(248, 113, 113, 0.85);
+}
+
+.ryft-spectrum-hint {
+  margin-left: auto;
+  color: var(--text-faint);
+}
+
+.ryft-spectrum-warning {
+  color: #f87171;
+}
+
+.ryft-spectrum-canvas {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg) 72%, #000);
+}
+
+.device-editor .fx-device-params .slider,
+.device-editor .floating-plugin-grid .slider {
+  min-width: 0;
+}
+
+.device-param-pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 22px;
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.device-param-pager > span {
+  margin-right: auto;
+}
+
+.device-view-tabs,
+.device-subtabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.device-subtabs {
+  padding-left: 4px;
+  border-left: 2px solid var(--accent);
+}
+
+.instrument-plugin-body {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 9px;
+}
+
+.instrument-plugin-panel .floating-plugin-stack {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.instrument-docked-content,
+.drum-docked-content {
+  flex: 1 1 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 5px;
+}
+
+.instrument-docked-content > .floating-plugin-grid,
+.drum-docked-content > .floating-plugin-grid {
+  flex: 1 1 auto;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+
+.instrument-docked-content .wt-panel,
+.instrument-docked-content .env-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.instrument-docked-content .wt-canvas,
+.instrument-docked-content .granular-canvas {
+  display: block;
+  width: 100%;
+  height: 86px;
+  max-height: 86px;
+}
+
+.instrument-docked-content .wt-mod-row {
+  min-height: 20px;
+}
