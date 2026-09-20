@@ -38,6 +38,7 @@ import {
   sanitizeGateSteps,
   sanitizeManglerSteps,
 } from "../project-model/modulators";
+import { planProductionActions, type ProductionIntent } from "../intent/production";
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
@@ -67,6 +68,11 @@ import {
   clampParam as clampUltinaParam,
   buildDefaultParams as buildUltinaDefaults,
 } from "../effects/ultina-core/contracts/parameterSchema";
+import {
+  tryGetParamDef as tryGetMorphParamDef,
+  clampParam as clampMorphParam,
+  buildDefaultParams as buildMorphDefaults,
+} from "../effects/morph-dynamics-core/contracts/parameterSchema";
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
@@ -4462,6 +4468,41 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
 
 /** Replace the step pattern of a step-sequenced effect (stepGate) — one undo step per edit stroke. */
 /**
+ * Production Intent (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md Phase 1+2):
+ * compile a deterministic production plan — concept × target → effect ops —
+ * into ONE undoable command group. Effects that already exist on the target
+ * track are adjusted in place; missing ones are added with the planned
+ * params. This is the commit path for "make the bass deeper" style requests;
+ * the language layer never touches AudioNodes directly.
+ */
+export function applyProductionIntentCommand(doc: ProjectDocument, intent: ProductionIntent): Command {
+  const { plan } = planProductionActions(doc, intent);
+  let next = doc;
+  const added: { trackId: string; fxId: string; type: EffectType }[] = [];
+  for (const action of plan.actions) {
+    const existing = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
+    if (!existing) {
+      const add = addEffect(next, action.trackId, action.type);
+      next = add.execute(next);
+      added.push({ trackId: action.trackId, fxId: add.effectId, type: action.type });
+    }
+  }
+  for (const action of plan.actions) {
+    const instance = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
+    if (!instance) continue;
+    for (const [paramId, value] of Object.entries(action.params)) {
+      const param = setEffectParam(next, action.trackId, instance.id, paramId, value);
+      next = param.execute(next);
+    }
+  }
+  // Production intents are deterministic — undo restores the exact previous
+  // chain state, and a redo replays the same folded operations.
+  return snapshot("applyProductionIntent", plan.label, doc, next);
+}
+
+/**
+ * Beat Mangler envelope edit (FX expansion): replace `volumeSteps` and/or
+/**
  * Beat Mangler envelope edit (FX expansion): replace `volumeSteps` and/or
  * `pitchSteps` on a beatMangler instance. Sanitized to 16/32 steps with the
  * field-specific ranges; fields the caller omits stay untouched.
@@ -5808,6 +5849,68 @@ export function applyUltinaPreset(
   return {
     type: "applyUltinaPreset",
     label: `VLYX preset ${presetName}`,
+    execute: (d) => apply(d, nextParams),
+    undo: (d) => apply(d, undoParams),
+  };
+}
+
+/* ---------------- MORPH DYNAMICS editing + presets ---------------- */
+
+/** Set any MORPH DYNAMICS param — schema-validated and clamped ("macro.pressure", "dyn.ratio", "routes.0.amount"…). */
+export function setMorphDynamicsParam(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  paramId: string,
+  value: number,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "morphdynamics") throw new Error(`MORPH effect ${fxId} not found`);
+  const def = tryGetMorphParamDef(paramId);
+  if (!def) throw new Error(`MORPH param ${paramId} not defined`);
+  const previous = target.params[paramId] ?? def.defaultValue;
+  const clamped = clampMorphParam(paramId, Number.isFinite(value) ? value : previous);
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
+    );
+  return {
+    type: "setMorphDynamicsParam",
+    label: `MORPH ${paramId}`,
+    execute: (d) => apply(d, { [paramId]: clamped }),
+    undo: (d) => apply(d, { [paramId]: previous }),
+  };
+}
+
+/** Apply a MORPH DYNAMICS factory preset in ONE undoable gesture (defaults + preset overrides). */
+export function applyMorphDynamicsPreset(
+  doc: ProjectDocument,
+  trackId: string,
+  fxId: string,
+  presetName: string,
+  presetParams: Record<string, number>,
+): Command {
+  const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
+  if (!target || target.type !== "morphdynamics") throw new Error(`MORPH effect ${fxId} not found`);
+  // Presets are data: unknown ids / non-finite values are dropped and every
+  // survivor clamped through the schema (same discipline as setMorphDynamicsParam).
+  const nextParams: Record<string, number> = { ...buildMorphDefaults() };
+  for (const [id, value] of Object.entries(presetParams)) {
+    if (!tryGetMorphParamDef(id)) continue;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    nextParams[id] = clampMorphParam(id, value);
+  }
+  const previousParams = { ...target.params };
+  // Undo restores a CANONICAL full map (defaults + previous) so the doc and
+  // the worklet cannot disagree after an undo across a preset boundary.
+  const undoParams: Record<string, number> = { ...buildMorphDefaults(), ...previousParams };
+  const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((f) => (f.id === fxId ? { ...f, params: { ...values } } : f)),
+    );
+  return {
+    type: "applyMorphDynamicsPreset",
+    label: `MORPH preset ${presetName}`,
     execute: (d) => apply(d, nextParams),
     undo: (d) => apply(d, undoParams),
   };

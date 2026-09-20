@@ -197,6 +197,7 @@ export function defaultMasterConfig(): MasterConfig {
     bassMonoFreq: 120,
     glueEnabled: true,
     tiltDb: 0,
+    loudnessTrimDb: 0,
   };
 }
 

@@ -490,6 +490,12 @@ export class AudioEngine {
   private masterSplitter: ChannelSplitterNode | null = null;
   private masterAnalyserL: AnalyserNode | null = null;
   private masterAnalyserR: AnalyserNode | null = null;
+  /**
+   * Dedicated post-limiter sink for the spectrogram view. Kept separate from
+   * masterAnalyser so the spectrogram's larger fftSize never perturbs the
+   * spectrum-curve and goniometer consumers reading the shared 2048 node.
+   */
+  private masterSpectrogramAnalyser: AnalyserNode | null = null;
   private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
@@ -792,6 +798,11 @@ export class AudioEngine {
     }
     try {
       this.masterAnalyserR?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterSpectrogramAnalyser?.disconnect();
     } catch {
       /* already disconnected */
     }
@@ -1217,6 +1228,16 @@ export class AudioEngine {
     this.masterLimiter.connect(this.masterSplitter);
     this.masterSplitter.connect(this.masterAnalyserL, 0);
     this.masterSplitter.connect(this.masterAnalyserR, 1);
+    // Spectrogram tap: post-limiter sink (no output connection) — the same
+    // observer pattern as the stereo tap above. 4096 gives ~10.7 Hz bin
+    // spacing at 44.1 kHz so sub-bass rows stay readable on the log axis;
+    // smoothing 0.55 trades a little smear for a flicker-free waterfall.
+    this.masterSpectrogramAnalyser = ctx.createAnalyser();
+    this.masterSpectrogramAnalyser.fftSize = 4096;
+    this.masterSpectrogramAnalyser.smoothingTimeConstant = 0.55;
+    this.masterSpectrogramAnalyser.channelCount = 2;
+    this.masterSpectrogramAnalyser.channelCountMode = "explicit";
+    this.masterLimiter.connect(this.masterSpectrogramAnalyser);
     // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
     if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
   }
@@ -1243,7 +1264,15 @@ export class AudioEngine {
     if (!this.master || !this.masterClipper || !this.masterLimiter) return;
     const ctx = this.ctx;
     const now = ctx ? ctx.currentTime : 0;
-    if (this.master) this.master.gain.setTargetAtTime(Math.min(2, Math.max(0, config.masterGain)), now, 0.01);
+    if (this.master) {
+      // Genre loudness trim (song references) rides multiplicatively on the
+      // input trim — pre-limiter by design, the limiter catches the extra
+      // drive. Engine clamp ±12 dB is a defensive bound; the builder writes
+      // at most ±6.
+      const gain = Math.min(2, Math.max(0, config.masterGain));
+      const trim = Math.min(12, Math.max(-12, config.loudnessTrimDb ?? 0));
+      this.master.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);
+    }
     if (this.masterTape) {
       const enabled = config.tapeEnabled ?? false;
       const drive = Math.min(1, Math.max(0, config.tapeDrive ?? 0.35));
@@ -4916,6 +4945,11 @@ export class AudioEngine {
   getMasterStereoAnalysers(): { l: AnalyserNode; r: AnalyserNode } | null {
     if (!this.masterAnalyserL || !this.masterAnalyserR) return null;
     return { l: this.masterAnalyserL, r: this.masterAnalyserR };
+  }
+
+  /** Dedicated post-limiter analyser for the spectrogram waterfall (read-only observer). */
+  getMasterSpectrogramAnalyser(): AnalyserNode | null {
+    return this.masterSpectrogramAnalyser;
   }
 
   /**

@@ -6,6 +6,7 @@ import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
 import { createUltinaNode } from "./ultinaNode";
 import { createOzvenaNode } from "./ozvenaNode";
+import { createMorphDynamicsNode } from "./morphDynamicsNode";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
@@ -38,6 +39,11 @@ import {
   buildDefaultParams as buildUltinaDefaultParams,
 } from "./ultina-core/contracts/parameterSchema";
 import { buildSchema as buildFxEqSchema } from "./fxeq-core/core/parameterSchema";
+import {
+  PARAM_BY_ID as MORPH_PARAM_BY_ID,
+  clampParam as clampMorphParam,
+  buildDefaultParams as buildMorphDefaultParams,
+} from "./morph-dynamics-core/contracts/parameterSchema";
 import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { OZVENA_AUDIO_PARAM_SECTIONS, OZVENA_ENUM_VALUES, clampOzvenaParam } from "./ozvena-params";
@@ -120,11 +126,12 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   // Flagship suites degrade to an honest 1:1 bypass (never silence) when
   // their worklet module has not landed in this context yet — the engine
   // hot-swaps the real DSP once the module arrives. Kaskáda rides the
-  // always-loaded core bundle, the other three lazy-load on demand.
+  // always-loaded core bundle, the others lazy-load on demand.
   fxeq: "degraded",
   ultina: "degraded",
   ozvena: "degraded",
   kaskada: "degraded",
+  morphdynamics: "degraded",
   // FX expansion (docs/FX-EXPANSION-ROADMAP.md): real DSP lives in the
   // always-loaded core worklet bundle; the fallback is an honest bypass.
   ringMod: "critical",
@@ -175,6 +182,7 @@ export function effectProcessorStatus(
       | "fxeq"
       | "ultina"
       | "ozvena"
+      | "morphdynamics"
       | "kaskada",
     ctx,
   )
@@ -2723,6 +2731,82 @@ const ozvena: EffectDefinition = {
   },
 };
 
+/* ---------------- MORPH DYNAMICS (dynamics-driven morph processor) ----------------
+ * "Your sound becomes the modulator": transient/body/texture analysis becomes
+ * the control system driving dynamics, character, motion and space. PRESSURE
+ * is the signature macro — the depth of reactive transformation. DSP runs in
+ * an AudioWorklet (first-party morph-dynamics-core; see the plugin docs in
+ * src/effects/morph-dynamics/*.md and tests/morph-dynamics-*.test.ts). The
+ * rack exposes the six macros; the full engine (dynamics, stages, mod matrix)
+ * lives in the MORPH panel.
+ */
+
+const MORPH_PARAM_DEFAULTS: Record<string, number> = {
+  "global.inputGainDb": 0,
+  "global.outputGainDb": 0,
+  "global.mix": 100,
+  "macro.pressure": 35,
+  "macro.punch": 20,
+  "macro.body": 50,
+  "macro.texture": 50,
+  "macro.motion": 35,
+  "macro.space": 30,
+};
+
+const morphdynamics: EffectDefinition = {
+  type: "morphdynamics",
+  name: "MORPH",
+  category: "dynamics",
+  params: [
+    { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    {
+      id: "macro.pressure",
+      label: "PRESSURE",
+      min: 0,
+      max: 100,
+      default: 35,
+      unit: "%",
+      format: (v) => `${v.toFixed(0)}%`,
+    },
+    {
+      id: "macro.punch",
+      label: "PUNCH",
+      min: -100,
+      max: 100,
+      default: 20,
+      unit: "%",
+      format: (v) => `${v.toFixed(0)}%`,
+    },
+    { id: "macro.body", label: "BODY", min: 0, max: 100, default: 50, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    {
+      id: "macro.texture",
+      label: "TEXTURE",
+      min: 0,
+      max: 100,
+      default: 50,
+      unit: "%",
+      format: (v) => `${v.toFixed(0)}%`,
+    },
+    {
+      id: "macro.motion",
+      label: "MOTION",
+      min: 0,
+      max: 100,
+      default: 35,
+      unit: "%",
+      format: (v) => `${v.toFixed(0)}%`,
+    },
+    { id: "macro.space", label: "SPACE", min: 0, max: 100, default: 30, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("morphdynamics", ctx)) {
+      return createMorphDynamicsNode(ctx, instance, MORPH_PARAM_DEFAULTS);
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — MORPH bypassed (1:1 signal)");
+  },
+};
+
 function bussCurve(drive: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(new ArrayBuffer(2048 * 4));
   const k = 1 + drive * 18;
@@ -4344,6 +4428,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   ultina,
   ozvena,
   kaskada,
+  morphdynamics,
   multiTapDelay,
   ringMod,
   tapeStop,
@@ -4393,6 +4478,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "fxeq",
   "ultina",
   "ozvena",
+  "morphdynamics",
   "ringMod",
   "tapeStop",
   "freqShifter",
@@ -4430,7 +4516,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
 ];
 
 /** Flagship plugin suites exposed alongside the core effects. */
-export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada"];
+export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
 
 /**
  * Core effects grouped by their registry category for the Add Effect menu —
@@ -4560,6 +4646,21 @@ export function normalizePluginParams(
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       if (!OZVENA_PARAM_PATHS.has(id)) continue;
       params[id] = clampOzvenaParam(id, value, OZVENA_DEFAULT_DEEP_PARAMS[id] ?? 0);
+    }
+    return params;
+  }
+  if (type === "morphdynamics") {
+    // First-party parameterSchema is the single source of truth (ranges,
+    // defaults) for every MORPH param — macros, engine sections and the 8
+    // routes.N.* matrix slots all live in the flat numeric map.
+    const params: Record<string, number> = {
+      ...defaultParamsOf(type),
+      ...buildMorphDefaultParams(),
+    };
+    for (const [id, value] of Object.entries(source)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      if (!MORPH_PARAM_BY_ID.has(id)) continue; // unknown id from an older schema
+      params[id] = clampMorphParam(id, value);
     }
     return params;
   }

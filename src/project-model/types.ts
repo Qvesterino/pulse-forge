@@ -55,7 +55,8 @@ export type EffectType =
   | "shimmer"
   | "fxeq"
   | "ultina"
-  | "ozvena";
+  | "ozvena"
+  | "morphdynamics";
 
 export type InstrumentKind =
   | "sampler"
@@ -315,6 +316,13 @@ export interface MasterConfig {
    * roughly constant. Consumed by the intent mix chain ("sound like X").
    */
   tiltDb?: number;
+  /**
+   * Per-genre loudness trim in dB (default 0), computed by the song builder
+   * from the measured genre references (scripts/measure-genre-references.mjs)
+   * so every generated song exports at ≈ SONG_LOUDNESS_TARGET_LUFS. Applied
+   * multiplicatively on top of masterGain, pre-limiter.
+   */
+  loudnessTrimDb?: number;
 }
 
 export interface NoteEvent {

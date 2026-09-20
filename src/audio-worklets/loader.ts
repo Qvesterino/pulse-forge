@@ -28,13 +28,14 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 /** Vendored plugin DSP suites — loaded per effect type, on demand. */
-export const PLUGIN_WORKLET_TYPES = ["fxeq", "ultina", "ozvena"] as const;
+export const PLUGIN_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics"] as const;
 export type PluginWorkletType = (typeof PLUGIN_WORKLET_TYPES)[number];
 
 const PLUGIN_MODULE_URLS: Record<PluginWorkletType, string> = {
   fxeq: new URL("/fxeq-worklet.js", import.meta.url).href,
   ultina: new URL("/ultina-worklet.js", import.meta.url).href,
   ozvena: new URL("/ozvena-worklet.js", import.meta.url).href,
+  morphdynamics: new URL("/morph-dynamics-worklet.js", import.meta.url).href,
 };
 
 const CORE_TYPES = [
