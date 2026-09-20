@@ -505,7 +505,27 @@ function Device({
             ))}
           </select>
         )}
-        {fx.type === "ozvena" && (
+          {fx.type === "ozvena" && irNote === "IR loaded" && (
+            <button
+              type="button"
+              className="btn btn-small fx-ir-load"
+              title="Drop the loaded user impulse response (fall back to the factory IR selection)"
+              onClick={() => {
+                const engine = services.engine as typeof services.engine & {
+                  clearUserIrForFx?: (trackId: string, fxId: string) => void;
+                };
+                try {
+                  engine.clearUserIrForFx?.(track.id, fx.id);
+                  setIrNote(null);
+                } catch (err: unknown) {
+                  setIrNote(err instanceof Error ? err.message : String(err));
+                }
+              }}
+            >
+              CLR
+            </button>
+          )}
+          {fx.type === "ozvena" && (
           <label className="btn btn-small fx-ir-load" title="Load a user impulse response (VØID convolution)">
             IR…
             <input
@@ -526,7 +546,24 @@ function Device({
                 setIrNote("Decoding…");
                 engine
                   .loadUserIrForFx(track.id, fx.id, file)
-                  .then(() => setIrNote("IR loaded"))
+                  .then(() => {
+                    setIrNote("IR loaded");
+                    // A freshly loaded IR is silent while convolution.mode
+                    // is "algorithmic" (the default) — the convolver only
+                    // runs in hybrid/convolution mode. Flip to hybrid so
+                    // the IR is actually audible; the user can switch back
+                    // to algorithmic (or to IR-only) in the VØID panel.
+                    // (Reconciled from Pulse Forge audit, 2026-09-19.)
+                    const mode = Math.round(fx.params["convolution.mode"] ?? 0);
+                    if (mode === 0) {
+                      try {
+                        services.store.execute(setEffectParam(doc, track.id, fx.id, "convolution.mode", 1));
+                      } catch {
+                        // Non-fatal: the IR itself is loaded and the mode
+                        // can still be flipped manually in the panel.
+                      }
+                    }
+                  })
                   .catch((err: unknown) => setIrNote(err instanceof Error ? err.message : String(err)));
               }}
             />

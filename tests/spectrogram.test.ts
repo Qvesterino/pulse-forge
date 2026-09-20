@@ -231,4 +231,9 @@ describe("spectrogram engine taps", () => {
     const engine = new AudioEngine();
     expect(engine.getSpectrogramTrackAnalyser("ghost-track")).toBeNull();
   });
+
+  it("exposes no mid/side taps before a master graph exists", () => {
+    const engine = new AudioEngine();
+    expect(engine.getMasterSpectrogramStereoTaps()).toBeNull();
+  });
 });

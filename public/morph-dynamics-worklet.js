@@ -144,15 +144,7 @@
     for (let slot = 0; slot < ROUTE_COUNT; slot++) {
       defs.push(p(routeParamId(slot, "enabled"), `Route ${slot + 1} On`, 0, 0, 1, "boolean", false));
       defs.push(
-        p(
-          routeParamId(slot, "source"),
-          `Route ${slot + 1} Source`,
-          0,
-          0,
-          MOD_SOURCES.length - 1,
-          "enum",
-          false
-        )
+        p(routeParamId(slot, "source"), `Route ${slot + 1} Source`, 0, 0, MOD_SOURCES.length - 1, "enum", false)
       );
       defs.push(
         p(
@@ -364,6 +356,10 @@
     // +24 dB max boost
     static REF_CEILING = 0.25;
     // −8 dB max desensitize
+    /** The clamped reference actually used for score normalization (observable).
+     * Declared after the statics — instance initializers may not run before a
+     * static they reference is initialized. */
+    refEff = _FeatureExtractor.REF_NOMINAL;
     // Published scores (persist between blocks so meters never strobe).
     signals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
     prepare(sampleRate2, qualityMode) {
@@ -392,6 +388,14 @@
     /** Toggle the adaptive level reference (analysis.adaptiveLevel). */
     setAdaptiveLevel(on) {
       this.adaptiveLevel = on;
+    }
+    /**
+     * The clamped reference actually used for score normalization (linear).
+     * With AGC off this is the fixed nominal; the processor reports the
+     * deviation from nominal as the AGC boost meter.
+     */
+    getReference() {
+      return this.refEff;
     }
     reset() {
       this.fast.reset();
@@ -445,6 +449,7 @@
         this.levelRef += (mono - this.levelRef) * (1 - this.levelDownCoef);
       }
       const ref = this.adaptiveLevel ? Math.min(_FeatureExtractor.REF_CEILING, Math.max(_FeatureExtractor.REF_FLOOR, this.levelRef)) : _FeatureExtractor.REF_NOMINAL;
+      this.refEff = ref;
       const inputEnergy = clamp01(fastV / (ref * 2));
       const density = clamp01(slowV / (ref * 1.5));
       const divergence = slowV > 1e-6 ? Math.max(0, (fastV - slowV) / (fastV + slowV)) : 0;
@@ -912,6 +917,7 @@
       density: 0,
       inputEnergy: 0,
       pressureActive: 0,
+      agcBoostDb: 0,
       routes: new Array(ROUTE_SLOTS).fill(0)
     };
     inPeakHold = 0;
@@ -1185,6 +1191,7 @@
         this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
         this.meters.gainReductionDb = this.dyn.grDb;
         this.meters.pressureActive = routeScale;
+        this.meters.agcBoostDb = q[ANALYSIS_ADAPTIVE_LEVEL_ID] >= 0.5 ? 20 * Math.log10(0.1 / Math.max(this.analysis.getReference(), 1e-6)) : 0;
         for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
       }
       this.meters.transient = this.meters.transient * 0.5 + sig.transient * 0.5;

@@ -383,6 +383,42 @@ export function OzvenaPanel({
         </div>
       )}
 
+      {/* ── CONVOLUTION ────────────────────────────────────────────── */}
+      {(!docked || dockPage === "engines") && (
+        <div className="ozvena-engines" aria-label="Convolution">
+          <div className="ozvena-engine">
+            <div className="ultina-module-head">
+              <span className="fxeq-module-tag">IR</span>
+              <select
+                aria-label="Convolution mode"
+                title="Convolution mode: algorithmic engines only (OFF), algorithmic + IR (HYBRID), IR only (CONV)"
+                value={Math.max(0, Math.min(2, Math.round(params["convolution.mode"] ?? 0)))}
+                onChange={(e) => onParam("convolution.mode", Number(e.target.value))}
+              >
+                <option value={0}>ALGORITHMIC</option>
+                <option value={1}>HYBRID</option>
+                <option value={2}>CONV</option>
+              </select>
+            </div>
+            {(params["convolution.mode"] ?? 0) >= 0.5 && (
+              <label className="collab-field">
+                <span>IR WET — {Math.round(params["convolution.wet"] ?? 100)}%</span>
+                <Slider
+                  compact
+                  label=""
+                  value={Math.max(0, Math.min(100, params["convolution.wet"] ?? 100))}
+                  min={0}
+                  max={100}
+                  defaultValue={100}
+                  format={(v) => `${v.toFixed(0)}%`}
+                  onCommit={(v) => onParam("convolution.wet", Math.round(v))}
+                />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── REVERB ASSISTANT ─────────────────────────────────────────── */}
       {(!docked || dockPage === "assist") && (
         <div className="ultina-assist" aria-label="Reverb assistant">

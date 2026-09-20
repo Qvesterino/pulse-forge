@@ -19,6 +19,13 @@ export interface MorphMeters {
   inputEnergy: number;
   /** PRESSURE after its nonlinear curve — instantaneous reactive drive 0..1. */
   pressureActive: number;
+  /**
+   * AGC compensation on the analysis tap in dB (−8…+24): how far the
+   * adaptive level reference sits from the fixed nominal. 0 = AGC off or
+   * material already at the nominal reference. Observability for the
+   * analysis engine (docs principle 7).
+   */
+  agcBoostDb: number;
   /** Per-route post-modulation magnitude 0..1 (route slot 0..7 activity). */
   routes: number[];
 }

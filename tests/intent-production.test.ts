@@ -178,13 +178,15 @@ describe("applyProductionIntentCommand", () => {
     expect(fx!.pitchSteps!.some((s) => s !== 0)).toBe(true);
   });
 
-  it("robotic adds ringMod on the lead, metallic adds freqShifter on the drums", () => {
+  it("robotic adds ringMod on the named track, metallic adds freqShifter on the drums", () => {
     const d = doc();
-    let next = applyProductionIntentCommand(d, parseProductionIntent("make the lead robotic")!).execute(d);
+    // House template has no lead — name the 808 directly (robotic's default
+    // home is lead, but the named target wins).
+    let next = applyProductionIntentCommand(d, parseProductionIntent("make the 808 robotic")!).execute(d);
     next = applyProductionIntentCommand(next, parseProductionIntent("metallic drums")!).execute(next);
-    const lead = next.tracks.find((t) => t.kind === "instrument" && /\b(lead|synth|pluck)\b/i.test(t.name));
+    const bass = bassTrackOf(next);
     const drums = next.tracks.find((t) => t.kind === "drum");
-    expect(lead && "effects" in lead ? lead.effects.some((f) => f.type === "ringMod") : false).toBe(true);
+    expect(bass.effects.some((f) => f.type === "ringMod")).toBe(true);
     expect(drums && "effects" in drums ? drums.effects.some((f) => f.type === "freqShifter") : false).toBe(true);
   });
 });

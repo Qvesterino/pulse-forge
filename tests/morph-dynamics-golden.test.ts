@@ -234,6 +234,24 @@ describe("morph-dynamics core processor — thesis behavior", () => {
     expect(adaptive.density).toBeGreaterThan(0.2);
   });
 
+  it("AGC boost meter: quiet material reads positive, loud reads negative, off reads 0", () => {
+    const boostAt = (adaptive: boolean, amp: number): number => {
+      const proc = makeProcessor({ "analysis.adaptiveLevel": adaptive ? 1 : 0 });
+      const { meters } = render(proc, sine(220, amp), 4.5);
+      return meters.agcBoostDb;
+    };
+    // Quiet tone → reference sits BELOW nominal → positive compensation…
+    const quiet = boostAt(true, 0.015);
+    expect(quiet).toBeGreaterThan(3);
+    expect(quiet).toBeLessThanOrEqual(24.1);
+    // …hot tone → reference above nominal → negative (capped at −8 dB)…
+    const hot = boostAt(true, 0.5);
+    expect(hot).toBeLessThan(-1);
+    expect(hot).toBeGreaterThanOrEqual(-8.1);
+    // …and with AGC off the meter reports exactly zero.
+    expect(boostAt(false, 0.015)).toBe(0);
+  });
+
   it("AGC: silence never runs away — a whisper after long silence stays bounded", () => {
     const proc = makeProcessor();
     render(proc, () => 0, 3); // long silence → ref decays toward the floor

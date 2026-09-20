@@ -501,6 +501,13 @@ export class AudioEngine {
   private masterSpectrogramAnalyser: AnalyserNode | null = null;
   private masterSpectrogramLow: AnalyserNode | null = null;
   private masterSpectrogramHigh: AnalyserNode | null = null;
+  /**
+   * Mid/side spectrogram companions: 0.5·(L±R) matrices off the master
+   * splitter feeding dedicated sink analysers. Side = L−R makes wide-only
+   * content (reverbs, wideners, Haas) visible and centered content vanish.
+   */
+  private masterSpectrogramMid: AnalyserNode | null = null;
+  private masterSpectrogramSide: AnalyserNode | null = null;
   private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
@@ -818,6 +825,16 @@ export class AudioEngine {
     }
     try {
       this.masterSpectrogramHigh?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterSpectrogramMid?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterSpectrogramSide?.disconnect();
     } catch {
       /* already disconnected */
     }
@@ -1268,6 +1285,33 @@ export class AudioEngine {
     this.masterSpectrogramHigh.channelCount = 2;
     this.masterSpectrogramHigh.channelCountMode = "explicit";
     this.masterLimiter.connect(this.masterSpectrogramHigh);
+    // Mid/side spectrogram matrix off the existing stereo splitter:
+    // mid = 0.5·(L+R), side = 0.5·(L−R). The ±0.5 gains sum inside one
+    // merge node per branch; each feeds a mono sink analyser (no output).
+    const msBranch = (sign: number) => {
+      const gl = ctx.createGain();
+      gl.gain.value = 0.5;
+      const gr = ctx.createGain();
+      gr.gain.value = 0.5 * sign;
+      const merge = ctx.createGain();
+      this.masterSplitter!.connect(gl, 0);
+      this.masterSplitter!.connect(gr, 1);
+      gl.connect(merge);
+      gr.connect(merge);
+      return merge;
+    };
+    this.masterSpectrogramMid = ctx.createAnalyser();
+    this.masterSpectrogramMid.fftSize = 4096;
+    this.masterSpectrogramMid.smoothingTimeConstant = 0.55;
+    this.masterSpectrogramMid.channelCount = 1;
+    this.masterSpectrogramMid.channelCountMode = "explicit";
+    msBranch(1).connect(this.masterSpectrogramMid);
+    this.masterSpectrogramSide = ctx.createAnalyser();
+    this.masterSpectrogramSide.fftSize = 4096;
+    this.masterSpectrogramSide.smoothingTimeConstant = 0.55;
+    this.masterSpectrogramSide.channelCount = 1;
+    this.masterSpectrogramSide.channelCountMode = "explicit";
+    msBranch(-1).connect(this.masterSpectrogramSide);
     // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
     if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
   }
@@ -4689,6 +4733,19 @@ export class AudioEngine {
     rt.loadUserIr(buffer);
   }
 
+  /**
+   * Roadmap O7: drop a previously loaded user IR (falls back to the
+   * factory selection). Mirrors loadUserIrForFx for the rack's CLR button.
+   */
+  clearUserIrForFx(trackId: string, fxId: string): void {
+    const rt =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    if (!rt?.clearUserIr) throw new Error("This effect cannot load impulse responses");
+    rt.clearUserIr();
+  }
+
   /** Live meter snapshot from an effect runtime ( Ultina spectrum/LUFS/masking…). */
   getFxMeters(trackId: string, fxId: string): unknown {
     const rt =
@@ -4989,6 +5046,15 @@ export class AudioEngine {
   getMasterSpectrogramTaps(): { low: AnalyserNode; mid: AnalyserNode; high: AnalyserNode } | null {
     if (!this.masterSpectrogramLow || !this.masterSpectrogramAnalyser || !this.masterSpectrogramHigh) return null;
     return { low: this.masterSpectrogramLow, mid: this.masterSpectrogramAnalyser, high: this.masterSpectrogramHigh };
+  }
+
+  /**
+   * Mid/side spectrogram taps (0.5·(L+R) and 0.5·(L−R)) off the master
+   * splitter. Null until the master graph exists.
+   */
+  getMasterSpectrogramStereoTaps(): { mid: AnalyserNode; side: AnalyserNode } | null {
+    if (!this.masterSpectrogramMid || !this.masterSpectrogramSide) return null;
+    return { mid: this.masterSpectrogramMid, side: this.masterSpectrogramSide };
   }
 
   /**

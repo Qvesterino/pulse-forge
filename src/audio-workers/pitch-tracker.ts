@@ -80,16 +80,34 @@ export function trackPitch(data: Float32Array, sampleRate: number): PitchFrame[]
         bestTau = tau;
       }
     }
-    // Parabolic refinement around the dip (sub-sample period → stabler midi).
+    // YIN absolute threshold: take the FIRST dip below it and descend to that
+    // valley's local minimum. The global minimum would pick subharmonics —
+    // every multiple of the true period is an equally perfect period
+    // (d'(3τ) ≈ 0), which lands octaves and fifths BELOW the hummed pitch.
     let tauPick = bestTau;
-    if (bestTau > tauMin && bestTau < tauMax) {
-      const s0 = cmnd[bestTau - 1];
-      const s1 = cmnd[bestTau];
-      const s2 = cmnd[bestTau + 1];
+    for (let tau = tauMin; tau <= tauMax; tau++) {
+      if (cmnd[tau] < 0.1) {
+        let valley = tau;
+        while (valley + 1 <= tauMax && cmnd[valley + 1] < cmnd[valley]) valley++;
+        tauPick = valley;
+        bestValue = cmnd[valley];
+        break;
+      }
+    }
+    // Parabolic refinement around the picked dip (sub-sample period → stabler
+    // midi). Refines tauPick, not the global minimum — they differ when the
+    // threshold path picked the first valley over a deeper subharmonic one.
+    if (tauPick > tauMin && tauPick < tauMax) {
+      const i0 = Math.round(tauPick - 1);
+      const i1 = Math.round(tauPick);
+      const i2 = Math.round(tauPick + 1);
+      const s0 = cmnd[i0];
+      const s1 = cmnd[i1];
+      const s2 = cmnd[i2];
       const denom = 2 * (2 * s1 - s2 - s0);
       if (Math.abs(denom) > 1e-12) {
         const shift = (s2 - s0) / denom;
-        if (Math.abs(shift) < 1) tauPick = bestTau + shift;
+        if (Math.abs(shift) < 1) tauPick = tauPick + shift;
       }
     }
 

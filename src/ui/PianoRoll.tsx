@@ -22,6 +22,7 @@ import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from
 import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
+import { HumToMelodyPanel } from "./HumToMelody";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -332,6 +333,8 @@ export function PianoRollTrack({
   // advances by the entry duration; arrows move it, Delete removes the note
   // under it. Live melodicKeys play yields to the editor while this is on.
   const [stepEntry, setStepEntry] = useState(false);
+  // Hum-to-melody panel (toolbar HUM) — record a hummed take into note drafts.
+  const [humOpen, setHumOpen] = useState(false);
   const [entrySteps, setEntrySteps] = useState(2);
   const [cursor, setCursor] = useState({ pitch: 60, step: 0 });
   const cursorRef = useRef(cursor);
@@ -1201,6 +1204,15 @@ export function PianoRollTrack({
           </button>
           <button
             type="button"
+            className={`btn btn-small${humOpen ? " active-solo" : ""}`}
+            aria-pressed={humOpen}
+            title="Hum to melody — record a hummed take and land it as notes snapped to the project key"
+            onClick={() => setHumOpen((v) => !v)}
+          >
+            HUM
+          </button>
+          <button
+            type="button"
             className="btn btn-small"
             title="Duplicate"
             onClick={() => runOnSelection((ids) => services.store.execute(duplicateNotes(doc, track.id, ids)))}
@@ -1555,6 +1567,14 @@ export function PianoRollTrack({
         </div>
       </div>
       <div className="pianoroll">
+        {humOpen && (
+          <HumToMelodyPanel
+            track={track}
+            pattern={pattern}
+            docKey={doc.key ?? null}
+            onClose={() => setHumOpen(false)}
+          />
+        )}
         <div className="pianoroll-keys">
           {Array.from({ length: PITCH_COUNT }, (_, i) => {
             const pitch = PITCH_MAX - i;

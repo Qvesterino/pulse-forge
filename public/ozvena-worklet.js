@@ -2253,8 +2253,8 @@
           }
           if (wetL) wetL[i] = sumL;
           if (wetR) wetR[i] = sumR;
+          if (tapFadeRemaining > 0) tapFadeRemaining--;
         }
-        if (tapFadeRemaining > 0) tapFadeRemaining--;
         writePosL = wl;
         writePosR = wr;
         hasRendered = true;
@@ -2672,8 +2672,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
-        const bassGainF = bassGain;
-        const midBandGainF = midBandGain;
+        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
+        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
@@ -3203,8 +3203,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
-        const bassGainF = bassGain;
-        const midBandGainF = midBandGain;
+        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
+        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const effectiveDepth = modDepthSamples;
         const width = clamp(params.stereoWidth, 0, 1);
@@ -4141,7 +4141,10 @@
       loadedIrRate = sampleRate2;
     }
     function clearUserIr() {
+      if (!userIrActive) return;
       userIrActive = false;
+      loadedIrId = null;
+      loadedIrRate = 0;
       syncConvolutionIr();
     }
     function setupIpc() {
@@ -4585,6 +4588,9 @@
       getIrChannels() {
         return convolution.getIrChannels();
       },
+      isUserIrActive() {
+        return userIrActive;
+      },
       loadUserIr(samples, channels) {
         loadUserIr(samples, channels);
       },
@@ -4747,7 +4753,7 @@
           const channels = msg.channels === 4 ? 4 : msg.channels === 2 ? 2 : 1;
           const sets = checkedIrSets(msg.sets, sampleRate);
           if (sets) {
-            if (this.state.convolution?.irId === msg.irId) {
+            if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
               this.proc.loadPrecomputedIr(sets, channels);
               this.postLatency();
             }
@@ -4756,7 +4762,7 @@
           const samples = msg.samples;
           if (!(samples instanceof Float32Array) || samples.length === 0) return;
           if (channels > 1 && samples.length % channels !== 0) return;
-          if (this.state.convolution?.irId === msg.irId) {
+          if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
             this.proc.loadUserIr(samples, channels);
             this.postLatency();
           }

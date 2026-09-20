@@ -81,6 +81,10 @@ export class FeatureExtractor {
   private static readonly REF_NOMINAL = 0.1;
   private static readonly REF_FLOOR = 0.00625; // +24 dB max boost
   private static readonly REF_CEILING = 0.25; // −8 dB max desensitize
+  /** The clamped reference actually used for score normalization (observable).
+   * Declared after the statics — instance initializers may not run before a
+   * static they reference is initialized. */
+  private refEff = FeatureExtractor.REF_NOMINAL;
 
   // Published scores (persist between blocks so meters never strobe).
   private signals: AnalysisSignals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
@@ -120,6 +124,15 @@ export class FeatureExtractor {
   /** Toggle the adaptive level reference (analysis.adaptiveLevel). */
   setAdaptiveLevel(on: boolean): void {
     this.adaptiveLevel = on;
+  }
+
+  /**
+   * The clamped reference actually used for score normalization (linear).
+   * With AGC off this is the fixed nominal; the processor reports the
+   * deviation from nominal as the AGC boost meter.
+   */
+  getReference(): number {
+    return this.refEff;
   }
 
   reset(): void {
@@ -196,6 +209,7 @@ export class FeatureExtractor {
     const ref = this.adaptiveLevel
       ? Math.min(FeatureExtractor.REF_CEILING, Math.max(FeatureExtractor.REF_FLOOR, this.levelRef))
       : FeatureExtractor.REF_NOMINAL;
+    this.refEff = ref;
     const inputEnergy = clamp01(fastV / (ref * 2));
     const density = clamp01(slowV / (ref * 1.5));
 

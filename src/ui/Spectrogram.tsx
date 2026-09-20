@@ -33,7 +33,9 @@ import type { Transport } from "../transport/Transport";
  * Resolution modes. SINGLE: one FFT (selectable size). MULTI: the engine's
  * three taps — long window (8192) below 250 Hz for Hz-level sub-bass
  * detail, mid window (4096) through 2 kHz, short window (1024) above for
- * transient-crisp highs — composed into one column.
+ * transient-crisp highs — composed into one column. VIEW MID/SIDE: the
+ * engine's 0.5·(L±R) matrix taps (single 4096 window) — SIDE shows
+ * wide-only content while centered kick/bass vanish.
  *
  * Transport behavior: pause holds the view, stop and seek clear it (old
  * content must never read as current), loop wraps insert a dark separator
@@ -65,6 +67,7 @@ function formatDb(db: number): string {
 export function Spectrogram({
   analyser,
   taps,
+  stereoTaps,
   transport,
   id,
   sources,
@@ -75,6 +78,8 @@ export function Spectrogram({
 }: {
   analyser: AnalyserNode | null;
   taps: SpectroTaps | null;
+  /** Mid/side master taps (0.5·(L±R)) — null until the master graph exists. */
+  stereoTaps: { mid: AnalyserNode; side: AnalyserNode } | null;
   transport: Transport;
   id: string;
   /** Selectable analysis sources (tracks + buses); "" in sourceId = master. */
@@ -91,6 +96,7 @@ export function Spectrogram({
   const [ceilDb, setCeilDb] = useState<number>(0);
   const [lutIdx, setLutIdx] = useState<number>(0);
   const [multi, setMulti] = useState(false);
+  const [viewMode, setViewMode] = useState<"mix" | "mid" | "side">("mix");
   /** Log-axis zoom. max === 0 means "up to Nyquist". */
   const [zoom, setZoom] = useState<{ min: number; max: number }>({ min: SPECTRO_MIN_FREQ, max: 0 });
   const [, setClearSeq] = useState(0);
@@ -114,8 +120,12 @@ export function Spectrogram({
   // FFT cost). Its fftSize is fixed (2048) and shared with the meters, so
   // track views always run single-FFT; MULTI stays a master feature.
   const trackAnalyser = sourceId ? getTrackAnalyser(sourceId) : null;
-  const effectiveAnalyser = sourceId ? trackAnalyser : analyser;
-  const effectiveMulti = multi && !sourceId;
+  // Mid/side view: dedicated 0.5·(L±R) master taps. Single-FFT by design —
+  // a multires M/S matrix would double the tap count for little gain.
+  const msAnalyser =
+    !sourceId && viewMode !== "mix" && stereoTaps ? (viewMode === "mid" ? stereoTaps.mid : stereoTaps.side) : null;
+  const effectiveAnalyser = sourceId ? trackAnalyser : msAnalyser ?? analyser;
+  const effectiveMulti = multi && !sourceId && !msAnalyser;
 
   useEffect(() => {
     if (!open) return;
@@ -440,12 +450,38 @@ export function Spectrogram({
             </label>
             <label
               className="spectrogram-ctl"
-              title={sourceId ? "MULTI resolution is a master view — tracks run their own single window" : "Multi-resolution: long window for sub-bass, short for transients"}
+              title={
+                sourceId
+                  ? "Mid/side is a master view — tracks have no splitter matrix"
+                  : "MID = 0.5·(L+R), SIDE = 0.5·(L−R): wide-only content (reverbs, wideners) shows on SIDE; centered kick/bass vanishes"
+              }
+            >
+              VIEW
+              <select
+                value={viewMode}
+                disabled={!!sourceId || !stereoTaps}
+                onChange={(e) => setViewMode(e.target.value as "mix" | "mid" | "side")}
+                aria-label="Spectrogram stereo view"
+              >
+                <option value="mix">MIX</option>
+                <option value="mid">MID</option>
+                <option value="side">SIDE</option>
+              </select>
+            </label>
+            <label
+              className="spectrogram-ctl"
+              title={
+                sourceId
+                  ? "MULTI resolution is a master view — tracks run their own single window"
+                  : viewMode !== "mix"
+                    ? "Mid/side views run the 4096 window"
+                    : "Multi-resolution: long window for sub-bass, short for transients"
+              }
             >
               RES
               <select
                 value={effectiveMulti ? "multi" : "single"}
-                disabled={!taps || !!sourceId}
+                disabled={!taps || !!sourceId || viewMode !== "mix"}
                 onChange={(e) => setMulti(e.target.value === "multi")}
                 aria-label="Spectrogram resolution mode"
               >
@@ -457,7 +493,7 @@ export function Spectrogram({
               FFT
               <select
                 value={fftSize}
-                disabled={effectiveMulti || !!sourceId}
+                disabled={effectiveMulti || !!sourceId || viewMode !== "mix"}
                 onChange={(e) => setFftSize(Number(e.target.value))}
                 aria-label="Spectrogram FFT size"
               >

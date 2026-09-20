@@ -261,6 +261,15 @@ export function MorphDynamicsPanel({
     ctx.fillRect(grX + 20, 8, 6, (3 * (barH + gap) - gap) * (1 - p));
     ctx.fillStyle = "#e8b04b";
     ctx.fillRect(grX + 20, 8 + (3 * (barH + gap) - gap) * (1 - p), 6, (3 * (barH + gap) - gap) * p);
+
+    // AGC readout (top strip, right-aligned): how much the adaptive level
+    // reference is currently compensating. Docs principle 7 — the analysis
+    // engine must be observable, not a black box.
+    const boost = m?.agcBoostDb ?? 0;
+    if (Math.abs(boost) > 0.5) {
+      ctx.fillStyle = boost > 0 ? "#7dc98f" : "#c6a35b";
+      ctx.fillText(`AGC ${boost > 0 ? "+" : ""}${boost.toFixed(0)} dB`, w - 96, 12);
+    }
   };
 
   const groupedPresets = useMemo(() => {

@@ -48,7 +48,7 @@ describe("pickDiceFx", () => {
     const registry = await import("../src/effects/registry");
     for (const card of DICE_FX_CARDS) {
       expect(registry.EFFECT_DEFS[card.type], `${card.key} type`).toBeDefined();
-      for (const [paramId, value] of Object.entries(card.params)) {
+      for (const [paramId, value] of Object.entries(card.params ?? {})) {
         const def = registry.EFFECT_DEFS[card.type].params.find((pd) => pd.id === paramId);
         expect(def, `${card.key}.${paramId} is a real param`).toBeDefined();
         expect(value).toBeGreaterThanOrEqual(def!.min);

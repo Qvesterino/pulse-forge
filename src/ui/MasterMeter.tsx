@@ -206,6 +206,13 @@ export function MasterMeter() {
               }
             ).getMasterSpectrogramTaps?.() ?? null
           }
+          stereoTaps={
+            (
+              services.engine as unknown as {
+                getMasterSpectrogramStereoTaps?: () => { mid: AnalyserNode; side: AnalyserNode } | null;
+              }
+            ).getMasterSpectrogramStereoTaps?.() ?? null
+          }
           sources={spectroSources}
           sourceId={effectiveSpectroSource}
           onSourceChange={setSpectroSource}

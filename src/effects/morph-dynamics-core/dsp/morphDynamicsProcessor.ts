@@ -99,6 +99,7 @@ export class MorphDynamicsProcessor {
     density: 0,
     inputEnergy: 0,
     pressureActive: 0,
+    agcBoostDb: 0,
     routes: new Array<number>(ROUTE_SLOTS).fill(0),
   };
   private inPeakHold = 0;
@@ -441,6 +442,15 @@ export class MorphDynamicsProcessor {
       this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
       this.meters.gainReductionDb = this.dyn.grDb;
       this.meters.pressureActive = routeScale;
+      // AGC observability: the compensation the scores receive relative to
+      // the fixed nominal, in dB. The normalization divides BY the
+      // reference, so a SMALL reference (quiet material) lifts scores —
+      // positive boost; a large reference (hot material) tames them —
+      // negative, capped at −8 dB. 0 when AGC is off.
+      this.meters.agcBoostDb =
+        q[P.ANALYSIS_ADAPTIVE_LEVEL_ID] >= 0.5
+          ? 20 * Math.log10(0.1 / Math.max(this.analysis.getReference(), 1e-6))
+          : 0;
       for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
     }
     this.meters.transient = this.meters.transient * 0.5 + sig.transient * 0.5;

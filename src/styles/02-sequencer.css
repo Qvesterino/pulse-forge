@@ -978,3 +978,70 @@
   font-size: 11px;
   padding: 0 4px;
 }
+/* ---------- Hum-to-melody panel (piano roll HUM) ---------- */
+.hum-panel {
+  position: absolute;
+  top: 44px;
+  right: 12px;
+  z-index: 30;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.hum-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.hum-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.hum-mode select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.hum-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.hum-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--stop);
+}
+
+.hum-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+}
+
+.hum-rec-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stop);
+  animation: hum-pulse 1s ease-in-out infinite;
+}
+
+@keyframes hum-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
