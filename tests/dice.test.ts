@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { nextSeed, seedAt, jitterControls, pickStyle, throwDice } from "../src/shared/dice";
 import type { IntentControls } from "../src/intent/types";
+import {
+  applyDiceFxToDoc,
+  clearDiceFx,
+  DEFAULT_DICE_LOCKS,
+  DICE_FX_CARDS,
+  diceFxInstanceId,
+  pickDiceFx,
+} from "../src/intent/dice";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 
 describe("dice core", () => {
   it("nextSeed is deterministic", () => {
@@ -62,5 +71,52 @@ describe("dice core", () => {
     expect(a.value).toBeGreaterThanOrEqual(1);
     expect(a.value).toBeLessThanOrEqual(6);
     expect(a.nextSeed).toBe(nextSeed("seedA", `throw:${a.value}`));
+  });
+});
+
+describe("DICE FX cards", () => {
+  it("selects a stable card per seed and respects the FX lock", () => {
+    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) => pickDiceFx(value, DEFAULT_DICE_LOCKS));
+    expect(seed).toBeDefined();
+    const card = pickDiceFx(seed!, DEFAULT_DICE_LOCKS);
+    expect(card).not.toBeNull();
+    expect(pickDiceFx(seed!, DEFAULT_DICE_LOCKS)).toEqual(card);
+    expect(pickDiceFx(seed!, { ...DEFAULT_DICE_LOCKS, fx: true })).toBeNull();
+  });
+
+  it("replaces only its managed slot on the target drum track and clears without touching user FX", () => {
+    const source = createProjectFromTemplate("house");
+    const drum = source.tracks.find((track) => track.kind === "drum");
+    expect(drum).toBeDefined();
+    if (!drum || drum.kind !== "drum") return;
+    const secondDrum = { ...drum, id: "drum-secondary", name: "Secondary drums", effects: [] };
+    const userFx = { id: "user-eq", type: "eq" as const, bypassed: false, params: { lowGain: 1 } };
+    const doc = {
+      ...source,
+      tracks: source.tracks.map((track) => (track.id === drum.id ? { ...track, effects: [userFx] } : track)).concat(secondDrum),
+    };
+
+    const first = applyDiceFxToDoc(doc, DICE_FX_CARDS[0], drum.id);
+    const firstDrum = first.tracks.find((track) => track.id === drum.id);
+    const untouchedDrum = first.tracks.find((track) => track.id === secondDrum.id);
+    expect(firstDrum?.effects).toHaveLength(2);
+    expect(firstDrum?.effects[0]).toEqual(userFx);
+    expect(firstDrum?.effects[1].id).toBe(diceFxInstanceId(DICE_FX_CARDS[0]));
+    expect(untouchedDrum?.effects).toEqual([]);
+
+    const replaced = applyDiceFxToDoc(first, DICE_FX_CARDS[1], drum.id);
+    expect(replaced.tracks.find((track) => track.id === drum.id)?.effects).toHaveLength(2);
+    expect(replaced.tracks.find((track) => track.id === drum.id)?.effects[1].id).toBe(diceFxInstanceId(DICE_FX_CARDS[1]));
+
+    const cleared = clearDiceFx(replaced, drum.id);
+    expect(cleared.tracks.find((track) => track.id === drum.id)?.effects).toEqual([userFx]);
+    expect(cleared.tracks.find((track) => track.id === secondDrum.id)?.effects).toEqual([]);
+  });
+
+  it("is a no-op when the target drum track is missing", () => {
+    const project = createProjectFromTemplate("house");
+    const doc = { ...project, tracks: project.tracks.filter((track) => track.kind !== "drum") };
+    expect(applyDiceFxToDoc(doc, DICE_FX_CARDS[0])).toBe(doc);
+    expect(clearDiceFx(doc)).toBe(doc);
   });
 });

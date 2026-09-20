@@ -22,9 +22,13 @@ import {
   applyDiceLocks,
   diceCurrentSeed,
   jitteredIntentForSeed,
+  pickDiceFx,
+  applyDiceFxToDoc,
+  clearDiceFx,
   type DiceSession,
   type DiceLocks,
   type DiceMode,
+  type DiceFxCard,
 } from "../intent/dice";
 import { nextSeed } from "../shared/dice";
 import { forkRandom } from "../shared/rng";
@@ -56,6 +60,8 @@ export interface DicePreview {
   /** MELODIC target: scale-aware phrase for the instrument track. */
   melodicNotes: NoteEvent[] | null;
   melodicTrackId: string | null;
+  /** DICE FX is committed with FULL drum rolls; the ghost preview is dry. */
+  fxCard: DiceFxCard | null;
 }
 
 interface DiceContextValue {
@@ -147,6 +153,7 @@ export function DiceProvider({
 
   const preview = useMemo<DicePreview>(() => {
     const seed = diceCurrentSeed(session);
+    const fxCard = target === "drums" && session.mode === "full" ? pickDiceFx(seed, session.locks) : null;
     const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
     const beforeHits = (() => {
       try {
@@ -174,6 +181,7 @@ export function DiceProvider({
         kitName: null,
         melodicNotes: null,
         melodicTrackId: null,
+        fxCard,
       };
     }
 
@@ -197,6 +205,7 @@ export function DiceProvider({
           kitName: null,
           melodicNotes: null,
           melodicTrackId: null,
+          fxCard,
         };
       }
       const phrase = buildMelodicPhrase(doc, {
@@ -219,6 +228,7 @@ export function DiceProvider({
         kitName: null,
         melodicNotes: phrase.notes,
         melodicTrackId: instTrack.id,
+        fxCard,
       };
     }
 
@@ -248,6 +258,7 @@ export function DiceProvider({
           kitName: null,
           melodicNotes: null,
           melodicTrackId: null,
+          fxCard,
         };
       } catch {
         return {
@@ -263,6 +274,7 @@ export function DiceProvider({
           kitName: null,
           melodicNotes: null,
           melodicTrackId: null,
+          fxCard,
         };
       }
     }
@@ -375,6 +387,7 @@ export function DiceProvider({
         kitName,
         melodicNotes: null,
         melodicTrackId: null,
+        fxCard,
       };
     } catch {
       return {
@@ -390,6 +403,7 @@ export function DiceProvider({
         kitName: null,
         melodicNotes: null,
         melodicTrackId: null,
+        fxCard,
       };
     }
   }, [session, doc, active, target]);
@@ -561,6 +575,7 @@ export function DiceProvider({
   const apply = useCallback(
     (services: Services, currentDoc: ProjectDocument) => {
       const seed = diceCurrentSeed(session);
+      const fxCard = target === "drums" && session.mode === "full" ? pickDiceFx(seed, session.locks) : null;
       const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
       if (target === "melodic") {
         // MELODIC apply: write the seeded phrase into the active pattern for
@@ -624,7 +639,14 @@ export function DiceProvider({
           replaceMode: "new",
           drumTrackId: currentDoc.tracks.find((t) => t.kind === "drum")?.id,
         };
-        services.store.execute(generatePatternCommand(currentDoc, opts));
+        const generated = generatePatternCommand(currentDoc, opts).execute(currentDoc);
+        const drumTrackId = currentDoc.tracks.find((track) => track.kind === "drum")?.id;
+        const withDiceFx = session.locks.fx
+          ? generated
+          : fxCard
+            ? applyDiceFxToDoc(generated, fxCard, drumTrackId)
+            : clearDiceFx(generated, drumTrackId);
+        services.store.execute(snapshot("diceFull", `Dice FULL ${seed}`, currentDoc, withDiceFx));
         return;
       }
       const lockedPattern = previewedPattern;
@@ -655,7 +677,7 @@ export function DiceProvider({
           return { ...t, pads };
         });
       }
-      const nextDoc: ProjectDocument = {
+      let nextDoc: ProjectDocument = {
         ...currentDoc,
         tracks: nextTracks,
         patterns: [...currentDoc.patterns, lockedPattern],
@@ -665,6 +687,10 @@ export function DiceProvider({
         ],
         activePatternId: lockedPattern.id,
       };
+      const drumTrackId = nextDoc.tracks.find((track) => track.kind === "drum")?.id;
+      if (!session.locks.fx) {
+        nextDoc = fxCard ? applyDiceFxToDoc(nextDoc, fxCard, drumTrackId) : clearDiceFx(nextDoc, drumTrackId);
+      }
       services.store.execute(snapshot("diceFullLocked", `Dice FULL ${seed}`, currentDoc, nextDoc));
     },
     [session, target],

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { DiceProvider, useDice } from "../../src/ui/DiceContext";
 import { renderWithContext } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { DEFAULT_DICE_LOCKS, pickDiceFx } from "../../src/intent/dice";
+import { mockServices } from "../helpers";
 
 function Consumer() {
   const dice = useDice();
@@ -101,5 +103,42 @@ describe("DiceContext", () => {
       </DiceProvider>,
     );
     expect(screen.getByTestId("hasFull").textContent).toBe("true");
+  });
+
+  it("previews and commits a deterministic FX card in the same undoable FULL roll", () => {
+    const doc = createProjectFromTemplate("house");
+    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) => pickDiceFx(value, DEFAULT_DICE_LOCKS));
+    expect(seed).toBeDefined();
+    const card = pickDiceFx(seed!, DEFAULT_DICE_LOCKS)!;
+    const services = mockServices(doc);
+
+    function FxConsumer() {
+      const dice = useDice();
+      return (
+        <div>
+          <div data-testid="fx-card">{dice.preview.fxCard?.key ?? "clean"}</div>
+          <button type="button" onClick={() => dice.setSeed(seed!)}>setFxSeed</button>
+          <button type="button" onClick={() => dice.apply(services, doc)}>apply</button>
+        </div>
+      );
+    }
+
+    renderWithContext(
+      <DiceProvider doc={doc} active>
+        <FxConsumer />
+      </DiceProvider>,
+      { services },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "setFxSeed" }));
+    expect(screen.getByTestId("fx-card")).toHaveTextContent(card.key);
+    fireEvent.click(screen.getByRole("button", { name: "apply" }));
+
+    const execute = vi.mocked(services.store.execute);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const command = execute.mock.calls[0][0];
+    const after = command.execute(doc);
+    const drum = after.tracks.find((track) => track.kind === "drum");
+    expect(drum?.effects.some((fx) => fx.id === `dice-fx-${card.key}` && fx.type === card.type)).toBe(true);
+    expect(command.undo(after)).toEqual(doc);
   });
 });

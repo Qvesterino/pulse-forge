@@ -455,6 +455,15 @@ export function DiceTray() {
         >
           Kit {session.locks.kit ? "■" : "□"}
         </button>
+        <button
+          type="button"
+          className={`btn btn-small dice-lock${session.locks.fx ? " active-solo" : ""}`}
+          aria-pressed={session.locks.fx}
+          onClick={() => toggleLockKey("fx")}
+          title="Lock FX — keep the drum track effects unchanged on FULL rolls"
+        >
+          FX {session.locks.fx ? "■" : "□"}
+        </button>
       </div>
 
       {/* History strip */}
@@ -513,6 +522,9 @@ export function DiceTray() {
                 : ""}
             {session.intent.length} steps · {session.intent.genre}
             {session.intent.style ? ` · ${session.intent.style}` : ""}
+            {target === "drums" && preview.mode === "full"
+              ? ` · FX ${preview.fxCard?.label ?? (session.locks.fx ? "LOCKED" : "CLEAN")} (apply only)`
+              : ""}
           </span>
           {target === "drums" && (
             <button
