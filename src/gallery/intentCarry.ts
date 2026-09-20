@@ -2,10 +2,10 @@
  * Gallery intent carry (viral growth plan B1) — "Regenerate with intent".
  *
  * Intent-generated patterns keep their normalized IntentSpec snapshot in
- * `pattern.intent` (provenance, survives publish/share-code round-trips).
- * A gallery beat that carries one can be regenerated in the studio: same
- * character, FRESH seed — the intent engine's answer to "make me another
- * one like this".
+ * `pattern.generation.intent` (attachProvenance; survives publish and
+ * share-code round-trips). A gallery beat that carries one can be
+ * regenerated in the studio: same character, FRESH seed — the intent
+ * engine's answer to "make me another one like this".
  *
  * Pure document math: no store, no UI. The flow is a plain studio link with
  * `?import=<code>&regen=1` — Boot stashes the flag, IntentPanel pulls the
@@ -33,7 +33,9 @@ export function intentSnapshotOfDoc(doc: ProjectDocument): IntentSnapshot | null
   if (dropScene?.patternId) ordered.push(byId.get(dropScene.patternId));
   ordered.push(...doc.patterns);
   for (const pattern of ordered) {
-    const intent = (pattern as { intent?: unknown })?.intent;
+    // `generation.intent` is what the engine writer stamps (attachProvenance);
+    // top-level `intent` stays readable as a legacy fallback.
+    const intent = pattern?.generation?.intent ?? (pattern as { intent?: unknown } | undefined)?.intent;
     if (intent && typeof intent === "object" && !Array.isArray(intent)) {
       return intent as IntentSnapshot;
     }

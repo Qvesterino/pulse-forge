@@ -442,7 +442,41 @@ describe("gallery flywheel: plays + remix chain", () => {
 });
 
 describe("gallery intent carry (Fáza B)", () => {
-  it("extracts genre + regenerable from the published code's pattern provenance", async () => {
+  it("extracts genre + regenerable from the engine writer's provenance shape (generation.intent)", async () => {
+    // Regression for the reader/writer seam: attachProvenance stamps
+    // `pattern.generation.intent`; top-level `pattern.intent` is a legacy
+    // fallback no engine code writes.
+    const { base } = await boot();
+    const doc = createProjectFromTemplate("house");
+    const withIntent = {
+      ...doc,
+      patterns: doc.patterns.map((p, index) =>
+        index === 0
+          ? {
+              ...p,
+              generation: {
+                ...p.generation,
+                intent: { genre: "trap", energy: 0.9, density: 0.6, seed: "abc", bpmRange: [130, 145] },
+              },
+            }
+          : p,
+      ),
+    };
+    const post = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "engine intent beat",
+        code: compressToEncodedURIComponent(JSON.stringify(withIntent)),
+      }),
+    });
+    expect(post.status).toBe(201);
+    const { item } = (await post.json()) as { item: { genre: string | null; regenerable: boolean } };
+    expect(item.genre).toBe("trap");
+    expect(item.regenerable).toBe(true);
+  });
+
+  it("still extracts from the legacy top-level pattern.intent shape", async () => {
     const { base } = await boot();
     const doc = createProjectFromTemplate("house");
     const withIntent = {

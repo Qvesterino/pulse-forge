@@ -2,9 +2,26 @@ import { describe, expect, it } from "vitest";
 import { intentSnapshotOfDoc, promptFromIntent, freshRegenSeed } from "../src/gallery/intentCarry";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { uid } from "../src/shared/ids";
-import type { ProjectDocument } from "../src/project-model/types";
+import type { PatternGeneration, ProjectDocument } from "../src/project-model/types";
 
-/** Stamp a document's patterns with intent provenance (as the engine does). */
+/** Stamp a document's patterns with intent provenance in the ENGINE WRITER
+ *  shape — `pattern.generation.intent` (attachProvenance, local.ts). */
+function withEngineIntents(
+  doc: ProjectDocument,
+  intents: Array<Record<string, unknown> | null>,
+): ProjectDocument {
+  return {
+    ...doc,
+    patterns: doc.patterns.map((p, i) =>
+      intents[i]
+        ? { ...p, generation: { ...p.generation, intent: intents[i] } as PatternGeneration }
+        : p,
+    ),
+  };
+}
+
+/** Stamp the LEGACY top-level `pattern.intent` shape (pre-fix fixtures,
+ *  kept readable as a fallback). */
 function withIntents(
   doc: ProjectDocument,
   intents: Array<Record<string, unknown> | null>,
@@ -30,6 +47,32 @@ function twoPatternDoc(): ProjectDocument {
 }
 
 describe("intentSnapshotOfDoc", () => {
+  it("reads the engine writer's provenance shape (pattern.generation.intent)", () => {
+    // Regression: the seam this file used to mask. Real generated beats carry
+    // intent at `generation.intent` (attachProvenance) — top-level
+    // `pattern.intent` is written by NOTHING in the engine.
+    const doc = withEngineIntents(twoPatternDoc(), [null, { genre: "trap", energy: 0.9 }]);
+    const snapshot = intentSnapshotOfDoc(doc);
+    expect((snapshot as { genre?: string } | null)?.genre).toBe("trap");
+  });
+
+  it("prefers generation.intent when a pattern somehow carries both shapes", () => {
+    const base = createProjectFromTemplate("house");
+    const doc = withEngineIntents(
+      { ...base, patterns: [{ ...base.patterns[0]!, intent: { genre: "house" } } as typeof base.patterns[number]] },
+      [{ genre: "drill", energy: 0.7 }],
+    );
+    const snapshot = intentSnapshotOfDoc(doc);
+    expect((snapshot as { genre?: string } | null)?.genre).toBe("drill");
+  });
+
+  it("still reads the legacy top-level pattern.intent shape", () => {
+    const base = createProjectFromTemplate("house");
+    const doc = withIntents(base, [{ genre: "techno", energy: 0.8 }]);
+    const snapshot = intentSnapshotOfDoc(doc);
+    expect((snapshot as { genre?: string } | null)?.genre).toBe("techno");
+  });
+
   it("prefers the DROP scene's pattern provenance (the beat's character)", () => {
     // Drop scene → pattern B (stamped trap); pattern A (house) sits first in
     // the array and must LOSE to the drop scene's pick.

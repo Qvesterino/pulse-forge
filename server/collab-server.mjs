@@ -158,15 +158,17 @@ function decodeShareCodeMeta(code) {
     const parsed = JSON.parse(json);
     if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.tracks)) return null;
     // Fáza B (gallery as entry point): intent-provenance metadata. Generated
-    // patterns carry their normalized IntentSpec snapshot in `pattern.intent`
-    // — a feed card can offer "Regenerate with intent" and a genre filter
-    // without decoding the (potentially large) code on the client again.
+    // patterns carry their normalized IntentSpec snapshot at
+    // `pattern.generation.intent` (attachProvenance) — a feed card can offer
+    // "Regenerate with intent" and a genre filter without decoding the
+    // (potentially large) code on the client again. Top-level `pattern.intent`
+    // stays readable as a legacy fallback.
     let genre = null;
     let regenerable = false;
     if (Array.isArray(parsed.patterns)) {
       for (const pattern of parsed.patterns) {
         if (!pattern || typeof pattern !== "object") continue;
-        const intent = pattern.intent;
+        const intent = pattern.generation && pattern.generation.intent ? pattern.generation.intent : pattern.intent;
         if (!intent || typeof intent !== "object") continue;
         regenerable = true;
         if (genre === null && typeof intent.genre === "string" && /^[a-z0-9-]{1,24}$/.test(intent.genre)) {

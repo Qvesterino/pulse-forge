@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderProject } from "../rendering/renderer";
 import { decodeShareCode, shareAppUrl } from "../export/shareCode";
+import { intentSnapshotOfDoc } from "../gallery/intentCarry";
 import type { ProjectDocument } from "../project-model/types";
 
 type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | { kind: "error"; message: string };
@@ -220,13 +221,9 @@ export function EmbedApp({
   const regenerable = useMemo(() => {
     const doc = bufferDocRef.current;
     if (!doc || !Array.isArray(doc.patterns)) return false;
-    // `intent` provenance lives on the pattern objects but is not on the
-    // base Pattern type — read it through a structural cast (same as
-    // gallery/intentCarry).
-    return doc.patterns.some((p) => {
-      const intent = (p as { intent?: unknown } | null)?.intent;
-      return Boolean(intent && typeof intent === "object");
-    });
+    // Same provenance contract as the gallery regen carry: the engine stamps
+    // `pattern.generation.intent`; legacy top-level `intent` still counts.
+    return intentSnapshotOfDoc(doc) !== null;
   }, [meta]);
   const duration = bufferRef.current?.duration ?? 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
