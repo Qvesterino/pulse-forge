@@ -2610,3 +2610,72 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 - Fix: `tests/morph-dynamics-contract.test.ts:32-44` (regex documentation + accept camelCase + numeric)
 - Documentation: this AGENT_WORK_LOG entry
 
+
+
+---
+
+## GOAL 17 (campaign restart) — Intent Engine D1 v2a: targeted effect intents (2026-09-19)
+
+**Goal executed:** "Intent engine that can modify values in effects" — beyond the D1 profile level: effect × target × direction grammar ("viac delayu na leade", "add reverb to the bridge", "menej filtra na basi", "huge reverb on the pads") resolving to concrete FX instances on concrete tracks.
+
+**Findings that shaped scope:**
+
+1. `AutomationTarget.kind: "fxParam"` lanes + `doc.automation` + engine `scheduleDeviceAutomation` (raw param units, clamped) — per-section MIX automation is FEASIBLE.
+2. The concurrent session is ALREADY implementing per-section song FX more comprehensively (fxTrack + sceneAutomation lanes + cue audioClips in applySongCommand — discovered mid-integration). v2b per-section mix DEFERRED to them to avoid duplication; my engine-side v2a (targeted effect grammar + applier) remains complementary (track-scoped FX changes from one sentence).
+3. The concurrent session is also mid-flight in IntentPanel.tsx (section-parse + production-intent FX ride-along) — panel wiring for effectIntent deliberately deferred to avoid a clobber war; engine API delivered tested.
+
+**Fixes implemented:**
+
+- `parseEffectIntent(text)` (mix.ts): PREFIX effect stems (reverb/delay/distort/saturat/chorus/flanger/phaser/tremolo/bitcrush/compress/pump/eq|filter|filtr) so SK/EN inflections match ("delayu", "reverbu", "filtra"); targets = track roles + scene-role EXPANSION via the song-builder instrumentation map (bridge→chords+lead, chorus→all…); direction more/less/remove (remove wins: "remove X", "bez X", "odstran"); amount subtle/medium/huge scales the knob delta.
+- **Design rule (tested)**: NO explicit target ⇒ NOT a targeted effect — generic "more reverb" stays on the mix-profile route; targeted route requires effect + target.
+- `applyEffectIntent(doc, intent)`: add-if-missing via addEffectToTracks, knob turn via setEffectParam clamped with clampEffectParam (primary knob per effect: mix/drive/ratio/amount/highShelfGain for eq), remove via removeEffectFromTracks; folded into ONE snapshot; idempotent ("changed nothing").
+- `route.ts`: effectIntent route ABOVE the mix profile (targeted beats generic); RoutedIntent extended.
+- Tests: `tests/intent-effect-targets.test.ts` (11) — EN/SK grammar, scene-role expansion, amount ordering, remove precedence, router specificity, execution add/knob/target-isolation/one-undo, remove round-trip, no-drums respect.
+
+**Important files changed:** src/intent/{mix,route}.ts, tests/intent-effect-targets.test.ts, INTENT_ENGINE.md (§5.13).
+
+**Validation:** effect-target tests 11/11; intent-area regression 183/183 across 18 files; typecheck clean for changed files.
+
+**Two environment incidents documented for the campaign log:**
+
+1. Bash heredoc backslash mangling (`\b` → 0x08 bytes) corrupted regexes in schema.ts/mix.ts TWICE — root cause: this shell passes quoted heredocs with single-level backslash stripping under the restored-PATH environment. Fix pattern: construct backslashes via `chr(92)` and verify with `grep -c $'\x08'`. 
+2. Aggressive file-revert phenomenon: bash-python writes to mix.ts/route.ts silently reverted within the same command (co-tenant editor/sync holding buffers) — the Edit/Write TOOLS persisted reliably while bash-python writes did not; all late edits switched to Edit-tool or verified-rewrite patterns.
+
+**Unresolved issues / risks:**
+
+1. Panel wiring for effectIntent (10-line branch in routeAndExecute) pending coordination with the concurrent session's IntentPanel rework.
+2. Effect knob coverage: one primary knob per effect (mix/drive/ratio) — finer param targeting ("longer delay", "darker reverb") is a v3 vocabulary extension.
+3. Per-section mix automation belongs to the concurrent stream's fxTrack/sceneAutomation implementation — composition with my track-scoped applyEffectIntent is untested (both write track FX params; order effects TBD).
+
+---
+
+## GOAL 02 (campaign re-run 3) — Architecture consistency & ownership audit (2026-09-20/21)
+
+**Goal executed:** Architecture/ownership audit of everything landed since the 2026-09-13 sweep (108+ commits): command-layer exclusivity re-verification across all new subsystems, boundary/DI/duplication audit, fixes for the safe violations.
+
+**Areas inspected (2 parallel recon agents + direct verification):**
+
+- Command-layer exclusivity: mutation-pattern greps across src/ui, src/intent, src/audio-engine, src/ai, src/gallery, src/landing, src/embed, src/scheduler; AudioEngine doc-write surface; intent command paths (production/exact/song/mix/transitions/revise); panel write paths (ModPanel, EffectRack, RackStrip, ArrangementPanel, KaskadaPanel, MorphDynamicsPanel props-only, PianoRoll); scheduler/capture/recorder side-channels; YDocStore execute parity.
+- Boundaries: UI→infrastructure imports, storage-key duplication, clamp/range duplication, loudness-module overlap, provenance-walk duplication, intent↔commands import directions, effects registry/type-union drift, services→ui edges, feature logic in shared/.
+
+**VERDICT — command-layer exclusivity HOLDS.** Zero violations. Enforcement is stronger than convention: `snapshot()` deep-freezes `prev` in dev/test (docDelta.ts deepFreeze). AudioEngine receive-only. Residual risks recorded (not violations): ~22 `applyToYDoc` fast paths must mirror execute(); whole-doc snapshot closures (captureLastTake, moveClips/deleteClips, PianoRoll altDragDuplicate) lean on the generic whole-doc Yjs diff (peer-clobber surface); AudioEngine's long-lived `this.doc` aliases undo snapshots (dev-only freeze).
+
+**Fixes implemented (all A-class, small):**
+
+1. **pf-publish-code single-sourced** — `PUBLISH_CODE_KEY` exported from `src/gallery/galleryApi.ts`; `PublishButton`, `GalleryPage` import it; `src/ui/CollabPanel.tsx` replaced its raw `"pf-publish-code"` magic string (third drifted site, outside the gallery layer).
+2. **Output-trim clamp de-duplicated** — `src/project-model/schema.ts` inline `[-18,+12]` 1-decimal clamp now calls `clampFxOutputTrimDb` (src/effects/presetLoudness.ts). Same numbers today; one range source.
+3. **GroovePoolRepository DI restored** — `ModPanel.tsx` (ScenePanel useRef) + `RackStrip.tsx` (2 sites) constructed `new GroovePoolRepository()` directly; now use `services.groovePool` (already on the CoreServices surface). Unused class imports removed. Shared test mock (`tests/helpers.tsx` mockServices) gained a `groovePool` stub — ModPanel's suite exposed the mock gap (`undefined.list`).
+
+**Recorded (not fixed, with reasons):** MorphPresetRepository/UltinaPresetRepository constructed in panels — repos not on services surface (MorphDynamicsPanel is concurrent-session in-flight: untouched; UltinaPanel candidate for next pass); intent/↔commands/ bidirectional FOLDER coupling (commands.ts imports intent/{production,pipeline,exact}; intent/{song,mix} import commands back — no module cycle today, verified; monitor); `effectProcessorStatus` stale cast union in registry.ts missing 8 worklet kinds (harmless, type-only; registry was warm — deferred); EFFECT_ORDER plain-array exhaustiveness gap (menu-drift risk — guard test candidate); shared/dice.ts feature-coupled + services.ts→ui/playActivity.ts mislocated (cosmetic).
+
+**Second race incident (benign this time):** while GOAL 02 fixes sat uncommitted, the concurrent session's `git add -A` absorbed them into ITS commits `92b48d5` + `31169db` (alongside their reverseSwell feature `7721c43`). Nothing lost — but campaign authorship is now interleave-committed. Combined with GOAL 01's hard-reset wipe, the rule stands: **commit campaign work promptly; expect absorption races.**
+
+**Important files changed:** src/gallery/{galleryApi,PublishButton,GalleryPage}.ts(x), src/ui/{CollabPanel,ModPanel,RackStrip}.tsx, src/project-model/schema.ts, tests/helpers.tsx, SYSTEM_AUDIT_MAP.md (§17 boundary findings + full 2026-09-20 rewrite).
+
+**Validation:** filtered `tsc --noEmit` clean for all touched files; RackStrip suite 7/7 WITH the DI change; gallery suites (intent-carry 9, server 20, remix 4) + project-invariants PASS in the same run. ModPanel suite: 9/9 FAILED pre-stub (root-caused to the shared mock missing groovePool — not the production change); stub added, dynamic re-validation **PENDING** — every vitest attempt wedged >30 min (machine saturated by the concurrent session's own suite; 62 node processes, one at 326% CPU). Single-fork run left in background; confirm on completion.
+
+**Unresolved issues:** ModPanel dynamic confirmation (above); registry cast-union cleanup (deferred, warm file).
+
+**Remaining risks:** absorption races make campaign history interleaved with the other session's feature commits; full-suite baseline still not established on the current tree (GOAL 12 gate).
+
+**Recommendations for next session (GOAL 03):** critical-path audit — (1) confirm ModPanel 9/9 green (helpers stub already committed); (2) intent routing overlap: "make the drums darker/brighter/warmer" hits the global MIX branch before production.ts can target the drums track — trace `route.ts` precedence, decide whether comparative+target-word should route to production intents (behavior change, needs care: production.ts ALREADY has those concepts × targets wired); (3) `?regen=1` end-to-end on a REAL engine-generated beat (the seam fix just made this path live for the first time).
