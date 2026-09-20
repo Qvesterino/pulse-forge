@@ -4,6 +4,7 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
+import { peekRegenFlag } from "../landing/handoff";
 import { ContextMenu, deriveContext, type ContextMenuState } from "./ContextMenu";
 import { TopBar } from "./TopBar";
 import { TrackTabs } from "./TrackTabs";
@@ -213,16 +214,16 @@ export function App({
     setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));
     setSheetCollapsed(false);
   };
-  // Viral growth plan A2: a brand-new visitor lands in a studio whose INTENT
-  // panel is already open — the engine is the product, the demo beat under
-  // it proves sound works. Once per browser (flag); never overrides a
-  // returning user's saved dock.
+  // Viral growth plan A2/B1: a brand-new visitor lands in a studio whose
+  // INTENT panel is already open — the engine is the product, the demo beat
+  // under it proves sound works. Same for a gallery REGEN arrival (the panel
+  // auto-runs a fresh-seed generation from the imported beat's intent).
+  // Once per browser (flag); never overrides a returning user's saved dock.
   const firstRunIntentRef = useRef(false);
   useEffect(() => {
     if (firstRunIntentRef.current) return;
     firstRunIntentRef.current = true;
-    if (!intentPanelFirstRun()) return;
-    setBottomPanel("intent");
+    if (intentPanelFirstRun() || peekRegenFlag()) setBottomPanel("intent");
   }, []);
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();

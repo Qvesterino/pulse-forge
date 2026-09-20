@@ -3003,8 +3003,14 @@ const fm: InstrumentDefinition = {
 
         const modulator = ctx.createOscillator();
         const modWaves = ["sine", "triangle", "square"] as const;
-        modulator.type = modWaves[Math.max(0, Math.min(2, Math.round(p.modWave ?? 0)))];
-        modulator.frequency.value = freq * ratio;
+        const modWave = modWaves[Math.max(0, Math.min(2, Math.round(p.modWave ?? 0)))];
+        const modFreq = freq * ratio;
+        // Band-limited modulator (square/triangle tables at the schedule
+        // ratio — their naive harmonics would fold AND seed folded FM
+        // sidebands; sine stays native). RATIO automation retunes the
+        // frequency live with the spectrum frozen (as with glide).
+        shapeOscillator(ctx, modulator, modWave, modFreq);
+        modulator.frequency.value = modFreq;
 
         const modEnv = ctx.createGain();
         const modGain = ctx.createGain();

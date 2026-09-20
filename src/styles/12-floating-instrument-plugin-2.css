@@ -403,6 +403,42 @@
   color: var(--text-faint);
 }
 
+/* B3 genre chips — structured intent genres, visually distinct from the
+   free-form #tags (amber outline instead of plain border). */
+.gallery-genrerow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.gallery-genre {
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.gallery-genre:hover {
+  filter: brightness(1.15);
+}
+
+.gallery-genre-active {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.45);
+}
+
+/* B1 regen button — shares the fork button chrome, amber accent marks it
+   as the intent-engine path. */
+.gallery-regen {
+  color: var(--accent);
+}
+
 .gallery-state {
   padding: 40px 0;
   text-align: center;
@@ -491,9 +527,10 @@
 
 .gallery-card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
   margin-top: auto;
 }
 

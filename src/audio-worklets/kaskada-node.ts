@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Main-thread wrapper for the KYX Kaskáda AudioWorklet delay processor.
@@ -26,15 +27,8 @@ export function createKaskadaNode(ctx: BaseAudioContext, instance: { params: Rec
   input.connect(node);
   node.connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const param = node.parameters.get(id);
-    if (!param) return;
-    if (when === undefined) param.value = v;
-    else param.setValueAtTime(v, when);
-  };
-
-  // Apply initial params
-  for (const [id, v] of Object.entries(instance.params)) setParam(id, v);
+  // Apply initial params (safeApplyAudioParam guards non-finite values)
+  for (const [id, v] of Object.entries(instance.params)) safeApplyAudioParam(node, id, v);
 
   let meters: unknown = null;
   let metersWanted = false;
@@ -53,9 +47,9 @@ export function createKaskadaNode(ctx: BaseAudioContext, instance: { params: Rec
   return {
     input,
     output,
-    setParameter: (id, value) => setParam(id, value),
-    setParameterAt: (id, value, when) => setParam(id, value, when),
-    syncBpm: (bpm) => setParam("bpm", bpm),
+    setParameter: (id, value) => safeApplyAudioParam(node, id, value),
+    setParameterAt: (id, value, when) => safeApplyAudioParam(node, id, value, when),
+    syncBpm: (bpm) => safeApplyAudioParam(node, "bpm", bpm),
     getMeters: () => meters,
     setMetersEnabled(enabled: boolean) {
       if (disposed) return;

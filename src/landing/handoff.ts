@@ -123,3 +123,46 @@ export function takeIntentPrefill(): string | null {
   }
   return raw && raw.trim() ? raw : null;
 }
+
+// ── Regenerate-with-intent (viral growth plan B1) ──────────────────────────
+// A gallery/embed link carries `?regen=1`; Boot stashes this flag so the App
+// opens the INTENT panel and the panel auto-runs one fresh-seed generation
+// from the imported beat's own intent provenance. Peek on the App side (the
+// flag must survive until the panel mounts), take on the panel side.
+
+const REGEN_FLAG_KEY = "pf-intent-regen";
+
+export function stashRegenFlag(): void {
+  const storage = session();
+  if (!storage) return;
+  try {
+    storage.setItem(REGEN_FLAG_KEY, "1");
+  } catch {
+    /* best-effort — regen degrades to a normal import */
+  }
+}
+
+/** True when the studio boot came from a `?regen=1` link (non-destructive). */
+export function peekRegenFlag(): boolean {
+  const storage = session();
+  if (!storage) return false;
+  try {
+    return storage.getItem(REGEN_FLAG_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Consume the regen flag (IntentPanel mount — the auto-generate runs once). */
+export function takeRegenFlag(): boolean {
+  const storage = session();
+  if (!storage) return false;
+  let present = false;
+  try {
+    present = storage.getItem(REGEN_FLAG_KEY) === "1";
+    if (present) storage.removeItem(REGEN_FLAG_KEY);
+  } catch {
+    return false;
+  }
+  return present;
+}

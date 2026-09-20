@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Frequency Shifter AudioWorkletNode synchronously.
@@ -21,20 +22,14 @@ export function createFreqShiftNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("shift", instance.params.shift ?? 0);
-  setParam("mix", instance.params.mix ?? 1);
+  safeApplyAudioParam(node, "shift", instance.params.shift ?? 0);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   return {
     input,
     output,
-    setParameter: (id, v) => setParam(id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

@@ -157,9 +157,28 @@ function decodeShareCodeMeta(code) {
     if (!json || json.length > 4_000_000) return null;
     const parsed = JSON.parse(json);
     if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.tracks)) return null;
+    // Fáza B (gallery as entry point): intent-provenance metadata. Generated
+    // patterns carry their normalized IntentSpec snapshot in `pattern.intent`
+    // — a feed card can offer "Regenerate with intent" and a genre filter
+    // without decoding the (potentially large) code on the client again.
+    let genre = null;
+    let regenerable = false;
+    if (Array.isArray(parsed.patterns)) {
+      for (const pattern of parsed.patterns) {
+        if (!pattern || typeof pattern !== "object") continue;
+        const intent = pattern.intent;
+        if (!intent || typeof intent !== "object") continue;
+        regenerable = true;
+        if (genre === null && typeof intent.genre === "string" && /^[a-z0-9-]{1,24}$/.test(intent.genre)) {
+          genre = intent.genre;
+        }
+      }
+    }
     return {
       bpm: typeof parsed.bpm === "number" && parsed.bpm >= 20 && parsed.bpm <= 300 ? Math.round(parsed.bpm) : null,
       projectName: typeof parsed.name === "string" ? cleanText(parsed.name, 64) : "",
+      genre,
+      regenerable,
     };
   } catch {
     return null;
@@ -228,6 +247,8 @@ class GalleryStore {
       code,
       bpm: meta.bpm,
       projectName: meta.projectName,
+      genre: meta.genre,
+      regenerable: meta.regenerable === true,
       parentId,
       plays: 0,
       createdAt: new Date().toISOString(),

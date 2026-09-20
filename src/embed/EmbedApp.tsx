@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderProject } from "../rendering/renderer";
 import { decodeShareCode, shareAppUrl } from "../export/shareCode";
+import type { ProjectDocument } from "../project-model/types";
 
 type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | { kind: "error"; message: string };
 
@@ -30,6 +31,8 @@ export function EmbedApp({
 } = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: "decoding" });
   const [meta, setMeta] = useState<{ name: string; bpm: number; code: string } | null>(null);
+  /** The decoded project — kept for the B2 regenerable check (no re-decode). */
+  const bufferDocRef = useRef<ProjectDocument | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -58,6 +61,7 @@ export function EmbedApp({
       setPhase({ kind: "error", message: "This beat link is invalid or corrupted." });
       return;
     }
+    bufferDocRef.current = doc;
     if (cancelled) return;
     setMeta({ name: doc.name, bpm: doc.bpm, code });
     setPhase({ kind: "rendering" });
@@ -210,6 +214,14 @@ export function EmbedApp({
   const openUrl = meta
     ? shareAppUrl(meta.code, typeof location !== "undefined" ? location.origin : "https://kyx.app")
     : "#";
+  // B2 share-view CTA: when the beat carries intent provenance, the studio
+  // can regenerate it — one extra link, zero extra engine weight here.
+  const regenUrl = meta ? `${openUrl}&regen=1` : "#";
+  const regenerable = useMemo(() => {
+    const doc = bufferDocRef.current;
+    if (!doc || !Array.isArray(doc.patterns)) return false;
+    return doc.patterns.some((p) => p && typeof p === "object" && p.intent && typeof p.intent === "object");
+  }, [meta]);
   const duration = bufferRef.current?.duration ?? 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -254,6 +266,11 @@ export function EmbedApp({
           {phase.kind === "error" ? phase.message : ""}
         </span>
         <div className="embed-actions">
+          {regenerable && (
+            <a className="embed-cta embed-cta-ghost" href={regenUrl} target="_blank" rel="noreferrer">
+              REMIX IN KYX
+            </a>
+          )}
           <a className="embed-cta" href={openUrl} target="_blank" rel="noreferrer">
             OPEN IN KYX
           </a>

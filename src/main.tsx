@@ -5,7 +5,7 @@ import type { ProjectDocument } from "./project-model/types";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
-import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill } from "./landing/handoff";
+import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill, stashRegenFlag } from "./landing/handoff";
 import { initSwUpdate } from "./sw-update";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
@@ -98,6 +98,10 @@ function Entry() {
     if (window.kyxDesktop?.isDesktop) return true;
     if (/^\/landing(\/|$)/.test(PATH) || new URLSearchParams(location.search).has("landing")) return false;
     if (/^\/studio(\/|$)/.test(PATH)) return true;
+    // Gallery/embed share links (?import=…) ARE the onboarding for their
+    // clicker: the beat is the demo. Fáza B — "galéria ako vstupný bod" —
+    // a REGEN/FORK/OPEN click must land in the studio, not a marketing page.
+    if (new URLSearchParams(location.search).has("import")) return true;
     try {
       return localStorage.getItem(ONBOARDED_KEY) === "1";
     } catch {
@@ -142,7 +146,12 @@ function Boot() {
         // SAME openProject path — an explicit ?import= link wins when both
         // exist. A corrupt LINK is a user-visible error; a corrupt HANDOFF
         // just falls back to normal studio entry.
-        const linkCode = new URLSearchParams(location.search).get("import");
+        const params = new URLSearchParams(location.search);
+        const linkCode = params.get("import");
+        // Fáza B (Regenerate with intent): a gallery/embed link with ?regen=1
+        // opens the studio with the beat AND auto-runs one fresh-seed
+        // generation from the beat's own intent provenance.
+        if (params.get("regen") === "1") stashRegenFlag();
         // PEEK, not take: StrictMode mounts this effect twice in dev — a
         // take-and-clear on the first (cancelled) run would swallow the
         // handoff. The winning run clears it once the studio is up, so a

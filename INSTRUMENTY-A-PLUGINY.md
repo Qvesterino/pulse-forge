@@ -29,7 +29,7 @@ Všetky inštrumenty sú WebAudio grafy na main threadu s per-voice stateful fil
 
 - **MPE timbre (CC74)** — druhá expresívna dimenzia (LinnStrument/Osmose): per-note bipolar, 0,5 = nota báza, ±50 % — filtre škálujú CUTOFF (Analog, Bass, Keys, Wavetable), FM škáluje INDEX; posledná nota kanála bez MPE zón = monofónny timbre. Routing: `MidiInput.handleCC` → `engine.polyTimbre`.
 - **Filter je stabilný v celej rovine cutoff × rezonancia** — Chamberlin SVF má numerický stabilita clamp (`f·q`), takže extrémne nastavenia (vysoký cutoff + nízka rezonancia) neprejdú do clamp limit cyklu; len mierne zmenšia efektívnu rezonanciu v tom rohu.
-- **Band-limited oscilátory** — saw/square/triangle v Analogu, Base, Texture a Drum Syntheze idú cez `PeriodicWave` tabuľky s presne sub-Nyquist harmonickými pre naplánovanú výšku (`src/instruments/bandlimited.ts`, per-note cache, RMS-normalizované) — jasné leady a metalické bicie bez aliasingového šumu; sine ostáva natívny, FM/keys cesty (audio-rate modulácia) zámerne tiež.
+- **Band-limited oscilátory** — saw/square/triangle v Analogu, Base, Texture a Drum Syntheze idú cez `PeriodicWave` tabuľky s presne sub-Nyquist harmonickými pre naplánovanú výšku (`src/instruments/bandlimited.ts`, per-note cache, RMS-normalizované) — jasné leady a metalické bicie bez aliasingového šumu; sine ostáva natívny, FM modulátor (tri/square) je tabuľkovaný tiež, keys nosiče sú sínusové a teda exaktné. Zvyšok: FM interakčné sidebandy samotné sa nad Nyquistom sklápajú (DX7-fyzika, ako na hardvérových origináloch) — odstránený je aliasing samotného modulátora.
 - **Panic/dispose** — okamžité utíšenie všetkých hlasov.
 
 ### 1.1 Sampler (`sampler`) — 16 hlasov

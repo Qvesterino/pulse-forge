@@ -14,9 +14,11 @@
  *  - RMS-normalized to the naive equivalents (saw/tri 1/√3, square 1), so
  *    drive/filter staging and preset loudness keep their meaning.
  *  - Sine stays native (exact, no aliasing possible).
- *  - FM paths (fm/modulator, keys carriers) keep native oscillators: their
- *    frequency is audio-rate modulated, which a static table cannot follow.
- *    Documented residual, not an oversight.
+ *  - FM modulator (tri/square) is tabled at the schedule ratio — its naive
+ *    harmonics would fold AND seed folded FM sidebands. Keys carriers stay
+ *    native (sine, exact). The FM *interaction* sidebands themselves still
+ *    fold above Nyquist — DX7-class physics, shared with the hardware
+ *    originals — only the modulator's own aliasing is removed.
  *  - Glide/pitch ramps keep working — the spectrum is frozen at the schedule
  *    pitch while the frequency glides (standard wavetable-glide behavior).
  */

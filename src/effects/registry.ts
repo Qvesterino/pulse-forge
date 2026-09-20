@@ -3610,12 +3610,36 @@ const pitchShift: EffectDefinition = {
 
 const vinyl: EffectDefinition = {
   type: "vinyl",
-  name: "Vinyl",
+  name: "Vinyl Suite",
   category: "character",
   params: [
+    // Master macro first — the "one knob" path for people who just want AGE.
     { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
+    // Crackle module
     { id: "crackle", label: "CRACKLE", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "crackleTone", label: "POP TONE", min: 400, max: 9000, default: 2200, unit: "Hz", format: formatHz },
+    { id: "crackleDecay", label: "POP DECAY", min: 0, max: 1, default: 0.5, format: formatPct },
+    // Surface noise module
+    { id: "hiss", label: "HISS", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "hissTone", label: "HISS TONE", min: 1000, max: 16000, default: 6000, unit: "Hz", format: formatHz },
+    // Motor rumble module
+    { id: "rumble", label: "RUMBLE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "rumbleTone", label: "RUMBLE FREQ", min: 30, max: 120, default: 60, unit: "Hz", format: formatHz },
+    // Pitch wobble module
+    { id: "wowRate", label: "WOW RATE", min: 0.2, max: 4, default: 0.7, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
     { id: "wow", label: "WOW", min: 0, max: 1, default: 0.5, format: formatPct },
+    {
+      id: "flutterRate",
+      label: "FLUTTER RATE",
+      min: 4,
+      max: 30,
+      default: 11,
+      unit: "Hz",
+      format: (v) => `${v.toFixed(1)} Hz`,
+    },
+    { id: "flutter", label: "FLUTTER", min: 0, max: 1, default: 0.3, format: formatPct },
+    // Gear character
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     {
       id: "year",
       label: "YEAR",
@@ -3624,11 +3648,14 @@ const vinyl: EffectDefinition = {
       default: 0.8,
       format: (v) => `${Math.round(2020 - v * 100)}`,
     },
+    { id: "toneLp", label: "LP TRIM", min: 1000, max: 16000, default: 16000, unit: "Hz", format: formatHz },
+    { id: "toneHp", label: "HP TRIM", min: 10, max: 400, default: 20, unit: "Hz", format: formatHz },
+    { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
-  factory(ctx, instance) {
-    if (isWorkletReady("vinyl", ctx)) return createVinylNode(ctx, instance);
-    return bypassRuntime(ctx, "AudioWorklet unavailable — vinyl bypassed (1:1 signal)");
+  factory(ctx, instance, env) {
+    if (isWorkletReady("vinyl", ctx)) return createVinylNode(ctx, instance, env);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — vinyl suite bypassed (1:1 signal)");
   },
 };
 

@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Beat Mangler AudioWorkletNode synchronously.
@@ -27,13 +28,7 @@ export function createBeatManglerNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("mix", instance.params.mix ?? 1);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   let lastVolume: readonly number[] | undefined;
   let lastPitch: readonly number[] | undefined;
@@ -66,10 +61,10 @@ export function createBeatManglerNode(
         lastFill = v;
         pushMode();
       } else if (id === "mix") {
-        setParam("mix", v, ctx.currentTime);
+        safeApplyAudioParam(node, "mix", v, ctx.currentTime);
       }
     },
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     /** Engine sync path: doc `volumeSteps`/`pitchSteps` reference changed. */
     setSteps: (volume: readonly number[] | undefined, pitch: readonly number[] | undefined) =>
       pushSteps(volume as number[] | undefined, pitch as number[] | undefined),

@@ -20,22 +20,18 @@ export function createReverbNode(ctx: BaseAudioContext, instance: { params: Reco
   input.connect(node).connect(output);
 
   const setParam = (id: string, v: number, when?: number) => {
-    // Map legacy `tone` to `damping`+`tone` for compat
-    const targetId = id === "tone" ? "tone" : id;
-    const p = node.parameters.get(targetId);
-    if (!p) {
-      // Fallback: tone alias drives damping as well
-      if (id === "tone") {
-        const dp = node.parameters.get("damping");
-        if (dp) {
-          if (when === undefined) dp.value = v;
-          else dp.setValueAtTime(v, when);
-        }
+    // Map legacy `tone` to `damping`+`tone` for compat. The helper drops
+    // non-finite values so a corrupt preset write cannot abort the chain.
+    if (id === "tone") {
+      safeApplyAudioParam(node, "tone", v, when);
+      const dp = node.parameters.get("damping");
+      if (dp && Number.isFinite(v)) {
+        if (when === undefined) dp.value = v;
+        else dp.setValueAtTime(v, when);
       }
       return;
     }
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
+    safeApplyAudioParam(node, id, v, when);
   };
 
   setParam("decay", instance.params.decay ?? 1.8);

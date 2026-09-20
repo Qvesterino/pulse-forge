@@ -106,6 +106,15 @@ describe("bandlimitedCoefficients", () => {
     expect(freqToMidi(-3)).toBe(69);
     expect(freqToMidi(100000)).toBe(127);
   });
+
+  it("high-ratio FM modulator tables actually constrain (6160 Hz → 3 harmonics)", () => {
+    // Square modulator at 880 Hz × ratio 7: naive carries 100+ partials,
+    // most folding; the table keeps exactly floor(24000/6160) = 3.
+    const { harmonicCount, imag } = bandlimitedCoefficients("square", 880 * 7, SR);
+    expect(harmonicCount).toBe(3);
+    expect(imag.length).toBe(4); // fundamental + 3rd only — no 5th to fold
+    expect(imag[3]).not.toBe(0);
+  });
 });
 
 describe("aliasing A/B proof", () => {
@@ -263,6 +272,11 @@ function bassTrack(overrides: Record<string, number> = {}) {
   return { id: "t-bass", params };
 }
 
+function fmTrack(overrides: Record<string, number> = {}) {
+  const params = { ...defaultInstrumentParams("fm"), ...overrides };
+  return { id: "t-fm", params };
+}
+
 describe("voice wiring", () => {
   it("analog saw voices route through setPeriodicWave (sine stays native)", () => {
     const record = { periodicWaveBuilds: 0, oscs: [] as MockOsc[] };
@@ -322,5 +336,29 @@ describe("voice wiring", () => {
     shapeOscillator(ctx, osc as unknown as OscillatorNode, "square", 440);
     expect(record.periodicWaveBuilds).toBe(1);
     expect(periodicWaveFor(ctx, "square", 440)).toBe(periodicWaveFor(ctx, "square", 440));
+  });
+
+  it("FM square modulator goes band-limited, sine modulator stays native", () => {
+    const sqRecord = { periodicWaveBuilds: 0, oscs: [] as MockOsc[] };
+    const sqCtx = mockCtx(sqRecord);
+    const sqRuntime = INSTRUMENT_DEFS.fm.factory(
+      sqCtx as unknown as BaseAudioContext,
+      fmTrack({ modWave: 2 }) as never,
+      VOICE_ENV,
+    );
+    sqRuntime.noteOn(69, 0.9, 0, 0.5);
+    // Modulator (square) tabled; carrier (sine) native.
+    expect(sqRecord.oscs.filter((o) => o.periodicWaveCalls > 0)).toHaveLength(1);
+    expect(sqRecord.periodicWaveBuilds).toBe(1);
+
+    const sinRecord = { periodicWaveBuilds: 0, oscs: [] as MockOsc[] };
+    const sinCtx = mockCtx(sinRecord);
+    const sinRuntime = INSTRUMENT_DEFS.fm.factory(
+      sinCtx as unknown as BaseAudioContext,
+      fmTrack({ modWave: 0 }) as never,
+      VOICE_ENV,
+    );
+    sinRuntime.noteOn(69, 0.9, 0, 0.5);
+    expect(sinRecord.periodicWaveBuilds).toBe(0);
   });
 });

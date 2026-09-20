@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Tape Stop / Spin AudioWorkletNode synchronously.
@@ -19,23 +20,18 @@ export function createTapeStopNode(ctx: BaseAudioContext, instance: { params: Re
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("engaged", instance.params.engaged ?? 0);
-  setParam("time", instance.params.time ?? 1);
-  setParam("curve", instance.params.curve ?? 0);
-  setParam("spin", instance.params.spin ?? 0);
-  setParam("mix", instance.params.mix ?? 1);
+  // safeApplyAudioParam guards non-finite writes (defence-in-depth)
+  safeApplyAudioParam(node, "engaged", instance.params.engaged ?? 0);
+  safeApplyAudioParam(node, "time", instance.params.time ?? 1);
+  safeApplyAudioParam(node, "curve", instance.params.curve ?? 0);
+  safeApplyAudioParam(node, "spin", instance.params.spin ?? 0);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   return {
     input,
     output,
-    setParameter: (id, v) => setParam(id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

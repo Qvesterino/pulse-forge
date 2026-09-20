@@ -528,6 +528,13 @@
   filter: brightness(1.1);
 }
 
+/* B2 secondary CTA — the regenerate path next to the primary OPEN IN KYX. */
+.embed-cta-ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+}
+
 .embed-brand {
   display: flex;
   align-items: center;

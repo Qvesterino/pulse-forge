@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Pitch Shifter AudioWorkletNode synchronously.
@@ -30,23 +31,18 @@ export function createPitchShiftNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("semitones", instance.params.semitones ?? 0);
-  setParam("fine", instance.params.fine ?? 0);
-  setParam("grainMs", instance.params.grainMs ?? 55);
-  setParam("width", instance.params.width ?? 0.5);
-  setParam("mix", instance.params.mix ?? 1);
+  // safeApplyAudioParam guards non-finite writes (defence-in-depth)
+  safeApplyAudioParam(node, "semitones", instance.params.semitones ?? 0);
+  safeApplyAudioParam(node, "fine", instance.params.fine ?? 0);
+  safeApplyAudioParam(node, "grainMs", instance.params.grainMs ?? 55);
+  safeApplyAudioParam(node, "width", instance.params.width ?? 0.5);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   return {
     input,
     output,
-    setParameter: (id, v) => setParam(id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

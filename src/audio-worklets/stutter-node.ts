@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Stutter AudioWorkletNode synchronously.
@@ -25,15 +26,10 @@ export function createStutterNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("division", instance.params.division ?? 4);
-  setParam("mix", instance.params.mix ?? 0.8);
-  setParam("feedback", instance.params.feedback ?? 0);
+  // safeApplyAudioParam guards non-finite writes (defence-in-depth)
+  safeApplyAudioParam(node, "division", instance.params.division ?? 4);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.8);
+  safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
 
   const steps = instance.steps && instance.steps.length > 0 ? instance.steps : undefined;
   if (steps) node.port.postMessage({ type: "pattern", steps: [...steps] });
@@ -42,10 +38,10 @@ export function createStutterNode(
     input,
     output,
     setParameter(id, value) {
-      setParam(id, value, ctx.currentTime);
+      safeApplyAudioParam(node, id, value, ctx.currentTime);
     },
     setParameterAt(id, value, when) {
-      setParam(id, value, when);
+      safeApplyAudioParam(node, id, value, when);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     syncBpm(bpm: number) {

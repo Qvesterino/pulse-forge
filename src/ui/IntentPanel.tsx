@@ -12,7 +12,8 @@ import type { IntentInput } from "../intent/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
-import { takeIntentPrefill } from "../landing/handoff";
+import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
+import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { renderProject } from "../rendering/renderer";
 import { sanitizeFilename } from "../rendering/wav";
@@ -33,6 +34,11 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
  * ranking and provenance live behind the engine boundary; this panel never
  * regenerates or re-validates engine output.
  */
+
+/** B1: a `?regen=1` arrival auto-runs exactly one generation per page load —
+    StrictMode must not double-fire it. */
+let regenAutoRan = false;
+
 export function IntentPanel() {
   const services = useServices();
   const doc = services.store.getDoc();
@@ -70,6 +76,28 @@ export function IntentPanel() {
     setText(prefill);
     setStatus("Your beat is loaded below — tweak the prompt or forge another.");
     promptInputRef.current?.focus();
+  }, []);
+
+  // B1 gallery REGEN: `?regen=1` opened the studio with a beat that carries
+  // intent provenance — pre-fill the field with the beat's own character and
+  // auto-run ONE fresh-seed generation ("another one like this"). StrictMode
+  // double-mounts this effect; the module-level guard keeps it single-shot.
+  // runGeneration is declared below — a mount-time call reads it fine (hoisted
+  // const via closure at effect-run time), so this effect sits here beside the
+  // prefill one it mirrors.
+  useEffect(() => {
+    if (!takeRegenFlag()) return;
+    if (regenAutoRan) return;
+    regenAutoRan = true;
+    const snapshot = intentSnapshotOfDoc(doc);
+    if (!snapshot) {
+      setStatus("This beat carries no intent provenance — describe your variation instead.");
+      return;
+    }
+    setText(promptFromIntent(snapshot) || "regenerated take");
+    setStatus("🎲 Regenerating — same character, fresh take…");
+    void runGeneration({ ...(snapshot as IntentInput), seed: freshRegenSeed() }, new AbortController());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Live parse preview — shows what the engine understood from the text. */

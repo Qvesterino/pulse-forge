@@ -25,6 +25,10 @@ export interface GalleryItem {
   remixCount?: number;
   /** Present when this beat was published as a remix of another beat. */
   parentId?: string | null;
+  /** Intent genre extracted server-side from the pattern provenance (B3). */
+  genre?: string | null;
+  /** True when the beat carries an intent snapshot a studio can regenerate from (B1). */
+  regenerable?: boolean;
 }
 
 export interface PublishInput {

@@ -2394,3 +2394,40 @@ re-render benefit kicking in immediately. Estimated work:
 
 1. The concurrent session's default-ranker-mode flip (active→shadow) needs a product decision — with the golden gate passed, shadow-by-default silently disables the trained ranker for users.
 2. Energy revise on melodic-only sections is a no-op (mapping gap above) — either scale melodic velocities by energy in the engine, or have reviseSection fall back to density with a status note.
+
+## GOAL 16 (campaign restart) — Browser Audio Plugin Hardening §6: NaN guard on AudioParam writes (2026-09-21)
+
+**Goal executed:** Close the one P1 defensive gap exposed by a 61-area Browser-Audio-Plugin-Hardening sweep of pulse-forge. Only `compressor-node.ts` validated `Number.isFinite` before forwarding a stored value to `node.parameters.get(id).value = v` / `.setValueAtTime(v, when)`. Web Audio SPEC-MANDATES `TypeError` on `NaN`/`±Infinity`, which the `AudioEngine.syncFxParams` loop at `src/audio-engine/AudioEngine.ts:1525` would unconditionally trigger on any corrupt stored value (bad preset JSON, partial migration, half-applied undo replay). The throw aborts the per-track fx chain build and the track plays silent instead of falling back to the worklet's prepared default.
+
+**Areas inspected:** every file under `src/audio-worklets/` (26 wrappers — 25 effect-node wrappers + 1 universal meter). Source-grep `node.parameters.get` followed by `.value =` or `.setValueAtTime(`; pattern found in 25 of 26 (only `kwmeter-node.ts` has no AudioParam surface). Existing `compressor-node.ts:52` inline `Number.isFinite` check confirmed as the only precedent.
+
+**Fixes implemented:**
+
+- `src/audio-worklets/safeAudioParam.ts` (new, 1981 bytes, fully documented) — `safeApplyAudioParam(node, id, value, when?)` looks up the AudioParam by id (no-op on unknown ids), DROPS non-finite values so the AudioParam retains its worklet-prepare default, otherwise applies the write unchanged. Plain case (`when` undefined) → `p.value = v`. Scheduled case → `p.setValueAtTime(v, when)`. Idempotent — finite values produce behaviourally identical writes to the prior inline code.
+- 25 effect-node wrappers migrated to use the helper:
+  - 18 mechanical replacements via `scripts/apply-safe-audio-param.mjs` (one-shot codemod that recognised the canonical 5-line `const setParam = (id, v, when?) => { const p = node.parameters.get(id); if (!p) return; if (when === undefined) p.value = v; else p.setValueAtTime(v, when); }` body and rewrote both the closure and the call sites to `safeApplyAudioParam(node, …)`).
+  - 7 manual migrations for outlier patterns: `kaskada-node.ts` (param-named local), `envfollower-node.ts` (no `when`), `sidechain-node.ts` (no `when`), `stepgate-node.ts` (`apply`-named body), `reverb-node.ts` (tone→damping alias preserved), `vinyl-node.ts` (per-param replay loop), plus `freqshifter-node.ts`/`pitchshift-node.ts`/`tape-node.ts` cleanup of stale `setParam(...)` tails the codemod left behind.
+  - `compressor-node.ts` left untouched — its own inline `Number.isFinite` check predates this campaign and is behaviourally identical to the new helper.
+  - `kwmeter-node.ts` left untouched — sink node with no AudioParam surface.
+- `tests/audio-worklets-safe-param.test.ts` (new, 5 tests, all PASS) — strict spec-compliant throwing fake `AudioParam` confirms every path:
+  1. `NaN / +Infinity / −Infinity` dropped, never throw.
+  2. Both instant-`value` and `setValueAtTime` paths covered.
+  3. Finite values pass through unchanged — regression guard against silent value clamping.
+  4. Unknown param ids are silent no-ops.
+  5. Real downstream AudioParam errors still surface (the guard only blocks the spec-mandated non-finite throw, not general contract failures).
+- `scripts/apply-safe-audio-param.mjs` (new, 5614 bytes) — idempotent codemod, kept under `scripts/` as an artefact so future AudioParam-write sites get fixed the same way.
+
+**Important files changed:** `src/audio-worklets/safeAudioParam.ts` (new); `tests/audio-worklets-safe-param.test.ts` (new); `scripts/apply-safe-audio-param.mjs` (new); 25 `*-node.ts` migrations across the wrapper fleet; `PLUGIN_HARDENING_AUDIT.md` (new — the campaign-closeout report).
+
+**Validation:**
+
+- `tsc --noEmit --skipLibCheck` for the diff: clean. Two pre-existing errors remain OUT OF SCOPE: `embed/EmbedApp.tsx:223` (Pattern.intent access — concurrent work) and `audio-engine/PcmMicRecorder.ts:175` (narrowing bug — logged in earlier audit), both confirmed via `git stash`.
+- `vitest run tests/audio-worklets-safe-param.test.ts`: 5/5 PASS, 6 ms.
+- `vitest run tests/audio-worklets.test.ts tests/audio-engine-lifecycle.test.ts`: 24/24 PASS (no semantic regression in the existing worklet/lifecycle gates).
+- 25 node files compile under the strict no-onward-calls audit (no stale `setParam(...)` references left from the codemod migration).
+
+**Unresolved issues / follow-ups (carried forward):**
+
+1. **Remaining 60 audit areas** are documented as P2/P3 follow-ups in `PLUGIN_HARDENING_AUDIT.md`. Each item that isn't already covered by a previous campaign's "Defect X.Y" comment (`AudioEngine.ts:516-705` for useContext disposal, `ultina-worklet.entry.js:14-39` for preallocated scratch, `fxeq-node.ts:115` for `onLatencyChange`, etc.) would be a multi-hour investigation on its own.
+2. **`compressor-node.ts` inline guard** is functionally identical to `safeApplyAudioParam` but the cosmetic unification is deferred — risk = 0, benefit = consistency.
+3. **`clampEffectParam`** is applied at the doc-write boundary (`commands.ts`, `schema.ts`, `registry.ts`, `targets.ts`, `mix.ts`) but NOT at the runtime sync boundary (`AudioEngine.syncFxParams` iterates `fx.params` directly). The new helper defends against the spec throw, but out-of-spec values still reach the AudioParam — a focused 2-4 h follow-up could add a `clampBeforeForwarded` wrapper for symmetry with the doc-write path.

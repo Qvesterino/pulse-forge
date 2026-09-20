@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a stock Delay AudioWorkletNode synchronously.
@@ -22,27 +23,22 @@ export function createStockDelayNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("time", instance.params.time ?? 375);
-  setParam("sync", instance.params.sync ?? 0);
-  setParam("bpm", bpm);
-  setParam("pingPong", instance.params.pingPong ?? 0);
-  setParam("feedback", instance.params.feedback ?? 0.35);
-  setParam("tone", instance.params.tone ?? 4000);
-  setParam("mix", instance.params.mix ?? 0.25);
+  // safeApplyAudioParam guards non-finite writes (defence-in-depth)
+  safeApplyAudioParam(node, "time", instance.params.time ?? 375);
+  safeApplyAudioParam(node, "sync", instance.params.sync ?? 0);
+  safeApplyAudioParam(node, "bpm", bpm);
+  safeApplyAudioParam(node, "pingPong", instance.params.pingPong ?? 0);
+  safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0.35);
+  safeApplyAudioParam(node, "tone", instance.params.tone ?? 4000);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.25);
 
   return {
     input,
     output,
-    setParameter: (id, v) => setParam(id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     syncBpm(nextBpm) {
-      setParam("bpm", nextBpm, ctx.currentTime);
+      safeApplyAudioParam(node, "bpm", nextBpm, ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

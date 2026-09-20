@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Flanger AudioWorkletNode synchronously.
@@ -18,24 +19,18 @@ export function createFlangerNode(ctx: BaseAudioContext, instance: { params: Rec
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("rate", instance.params.rate ?? 0.5);
-  setParam("depth", instance.params.depth ?? 3);
-  setParam("base", instance.params.base ?? 5);
-  setParam("feedback", instance.params.feedback ?? 0.4);
-  setParam("spread", instance.params.spread ?? 0.7);
-  setParam("mix", instance.params.mix ?? 0.5);
+  safeApplyAudioParam(node, "rate", instance.params.rate ?? 0.5);
+  safeApplyAudioParam(node, "depth", instance.params.depth ?? 3);
+  safeApplyAudioParam(node, "base", instance.params.base ?? 5);
+  safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0.4);
+  safeApplyAudioParam(node, "spread", instance.params.spread ?? 0.7);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
 
   return {
     input,
     output,
-    setParameter: (id, v) => setParam(id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => setParam(id, v, when),
+    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
+    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

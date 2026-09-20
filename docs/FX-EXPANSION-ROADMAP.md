@@ -111,20 +111,27 @@ Checklist, ktorý musí splniť každá implementácia (overené na Kaskade a st
 
 **Effort:** 1–1,5 dňa. **Riziko:** minimálne (najjednoduchší z celého plánu; syncBpm precedent hotový).
 
-### 3.3 VINYL / LO-FI SUITE (`vinyl`)
+### 3.3 VINYL / LO-FI SUITE (`vinyl`) — HOTOVO (profesionálny suite, nie one-knob)
 
-**Prečo:** lo-fi/phonk/boom-bap žánre; kúsky existujú (PRISM lofi modul, bitcrusher, tapeSat) — ale beatmaker chce JEDEN otočný „AGE" parameter, nie štyri pluginy.
+**Prečo:** lo-fi/phonk/boom-bap žánre; kúsky existujú (PRISM lofi modul, bitcrusher, tapeSat) — ale beatmaker chce jeden nástroj, ktorý vie aj rýchlo (AGE) aj hlboko (moduly).
 
-**Implementácia (worklet):**
-- crackle: seeded impulsy (mulberry32, densita parametrom) cez bandpass,
-- wow: 0.5–2 Hz sine na read-rate delay line (jeden modulovaný delay node),
-- flutter: 8–16 Hz jitter,
-- dust: filtrovaný noise layer,
-- `year` makro 1920–2020 (band-limit + AM rozhlasový tvar závislý od veku),
-- `amount` makro 0..1 (ovláda všetky súčasne — „jeden otočný parameter" je celý point).
-- Determinizmus: seed z track id (texture precedent), offline parity test povinný.
+**Implementácia (worklet) — finálna podoba:**
+- **crackle**: Poisson-timed pop stream (nie fixná mriežka) — `crackle` (densita), `crackleTone` (400 Hz–9 kHz klik), `crackleDecay` (tight click ↔ dlhý chvost); každý pop pristane na jednom kanáli deterministicky.
+- **hiss**: spojitý filtrovaný noise floor — `hiss` + `hissTone`.
+- **rumble**: motor/turntable low-end — `rumble` + `rumbleTone` (30–120 Hz).
+- **wow**: `wowRate` 0.2–4 Hz + `wow` hĺbka (až ~2 ms delay read).
+- **flutter**: `flutterRate` 4–30 Hz + `flutter` hĺbka (~0.25 ms).
+- **year**: 1920–2020 band-limit kontúra (LP 9 k→1.5 k, HP 120→820 Hz).
+- **drive**: tube-ish saturácia (Padé tanh) mokrého signálu.
+- **toneLp / toneHp**: master wet band trim.
+- **width**: šírka mokrého signálu (0 = mono record).
+- **amount**: AGE makro — škáluje artefaktové moduly (crackle/hiss/rumble/wow/flutter); drive/tone/year sú zámerné nastavenia, nie šum.
+- **Stereo integrita**: všetky filtre per-kanálový stav, wow/flutter čítajú **proti sebe** (anti-phase wobble) — mokrý signál si drží (a vie rozšíriť) stereo obraz namiesto kolapsu do mona.
+- Determinizmus: seed z projektu/track/instance (`env.seed`, fallback id hash), offline parity test povinný.
+- **6 presetov**: 78 RPM Shellac, Dusty Lo-Fi, Club Clean, Tape Wobble, Phonk Crush, Radio 1930.
+- **Editor**: prvá stránka MAIN = AGE + CRACKLE + HISS + WOW; modulové detaily na ďalších stránkach (využíva existujúci paging v EffectRacku).
 
-**Effort:** 1,5–2 dni. **Riziko:** nízke-stredné.
+**Effort:** 1,5–2 dni. **Riziko:** nízke-stredné. **Stav:** hotové vrátane testov (`tests/vinyl-suite.test.ts`, 9 testov: per-modul kontrola, tone/decay charakter, wow pohyb, drive boundy, year band-limit, width stereo, determinizmus, back-compat).
 
 ---
 

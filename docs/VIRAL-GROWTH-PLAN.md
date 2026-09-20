@@ -80,16 +80,24 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 
 ---
 
-## 4. FÁZA B — Galéria ako vstupný bod (share loop)
+## 4. FÁZA B — Galéria ako vstupný bod (share loop) — **DODANÉ 2026-09-20**
 
-### B1 — Remix + Regenerate na každej karte (`M`)
-`src/gallery/GalleryPage.tsx`, `src/gallery/remix.ts`
+### B1 — Regenerate with intent na každej karte ✅
+- **REGEN 🎲** tlačidlo na kartách, ktorých beat nesie intent provenance (server extrahuje `regenerable` + `genre` z pattern.intent pri publikovaní — žiadne klient-side dekódovanie feedu).
+- Flow: `/?import=<code>&regen=1` → Boot stashuje flag → štúdio sa otvorí s beatom → IntentPanel sa auto-otvorí, prefillne charakter beatu („trap 145 high energy”) a **auto-spustí jednu generáciu s čerstvým seedom** (StrictMode singleton guard).
+- `src/gallery/intentCarry.ts` — čisté funkcie: výber snapshotu (drop-scene priorita), prompt z intentu, čerstvý seed.
+- Bonus (produktové rozhodnutie): `?import=` linky **preskočia landing** aj pre prvých návštevníkov — beat je onboarding; galéria je tak skutočne vstupný bod.
+- Funnel event: `gallery_regen_opened`.
 
-- Každý beat dostane dve akcie: **Remix in studio** (existuje) a **Regenerate** — z publikovaného projektu prečíta intent/seed a pustí novú generáciu s rovnakým characterom, iným seedom. Publikované projekty si majú ukladať intent metadáta (rozšírenie publish payloadu — spätné kompatibilné).
-### B2 — „Toto chcem tiež“ na share pohľade (`S`)
-Embed/share view dostane výrazné CTA „Open in studio + Remix“ (cesta `?import=` existuje).
-### B3 — Žánrové filtre galérie (`S`)
-Filtrovanie podľa intent žánra uloženého pri publishi.
+### B2 — CTA na share pohľade ✅
+- EmbedApp: druhé CTA **„REMIX IN KYX”** (ghost štýl) vedľa OPEN IN KYX — len keď beat nesie intent (regenerable check z dekódovaného doc, bez re-dekódu).
+
+### B3 — Žánrové filtre ✅
+- Server ukladá `genre` (validovaný) pri publikovaní; `GalleryItem.genre?: string | null`.
+- Galéria: amber žánrové chips počítadlami, klik = filter (kombinovateľné s tagmi a searchom); legacy beaty bez žánru sa len nefiltrujú.
+- CSS fix: `.gallery-card-actions` flex-wrap (7 akcií sa teraz čisto láme).
+
+**Server contract rozšírený back-compatible:** starí klienti polia ignorujú, staré itemy majú `genre: null`. Testy: server contract (2), intentCarry unit (5 + 1 regen auto-gen), plný Chromium E2E (publish → karta → REGEN → štúdio → 3 kandidáti).
 
 ---
 

@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Sidechain Compressor AudioWorkletNode synchronously.
@@ -36,29 +37,23 @@ export function createSidechainNode(
   input.connect(workletNode);
   workletNode.connect(output);
 
-  // Set initial parameter values
+  // Set initial parameter values (safeApplyAudioParam guards non-finite writes)
   const params = instance.params;
-  const setParam = (id: string, value: number) => {
-    const p = workletNode.parameters.get(id);
-    if (p) p.value = value;
-  };
-  setParam("threshold", params.threshold ?? -18);
-  setParam("ratio", params.ratio ?? 4);
-  setParam("attack", params.attack ?? 0.005);
-  setParam("release", params.release ?? 0.2);
-  setParam("amount", params.amount ?? 1);
-  setParam("splitFreq", params.splitFreq ?? 0);
+  safeApplyAudioParam(workletNode, "threshold", params.threshold ?? -18);
+  safeApplyAudioParam(workletNode, "ratio", params.ratio ?? 4);
+  safeApplyAudioParam(workletNode, "attack", params.attack ?? 0.005);
+  safeApplyAudioParam(workletNode, "release", params.release ?? 0.2);
+  safeApplyAudioParam(workletNode, "amount", params.amount ?? 1);
+  safeApplyAudioParam(workletNode, "splitFreq", params.splitFreq ?? 0);
 
   return {
     input,
     output,
     setParameter(id: string, v: number) {
-      const p = workletNode.parameters.get(id);
-      if (p) p.setValueAtTime(v, ctx.currentTime);
+      safeApplyAudioParam(workletNode, id, v, ctx.currentTime);
     },
     setParameterAt(id: string, v: number, when: number) {
-      const p = workletNode.parameters.get(id);
-      if (p) p.setValueAtTime(v, when);
+      safeApplyAudioParam(workletNode, id, v, when);
     },
     getAudioParam: (paramId: string) => workletNode.parameters.get(paramId) ?? null,
     /**

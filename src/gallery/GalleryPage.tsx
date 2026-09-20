@@ -19,6 +19,7 @@ import {
   type RemixParent,
 } from "./galleryApi";
 import { buildRemix, remixTagsOf } from "./remix";
+import { funnelEvent } from "../services/funnel";
 import { randomRoomId } from "../collab/collabShared";
 
 type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
@@ -34,6 +35,7 @@ const PUBLISH_CODE_KEY = "pf-publish-code";
 export function GalleryPage() {
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [filter, setFilter] = useState<string | null>(null);
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
@@ -71,11 +73,23 @@ export function GalleryPage() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
   }, [feed]);
 
+  // B3: genre chips — server-extracted intent genres, only rendered when at
+  // least one beat carries provenance (legacy items simply never filter).
+  const genres = useMemo(() => {
+    if (feed.kind !== "ready") return [];
+    const counts = new Map<string, number>();
+    for (const item of feed.items) {
+      if (item.genre) counts.set(item.genre, (counts.get(item.genre) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [feed]);
+
   const visible = useMemo(() => {
     if (feed.kind !== "ready") return [];
     const q = query.trim().toLowerCase();
     return feed.items.filter((item) => {
       if (filter && !item.tags.includes(filter)) return false;
+      if (genreFilter && item.genre !== genreFilter) return false;
       if (!q) return true;
       return (
         item.title.toLowerCase().includes(q) ||
@@ -83,7 +97,7 @@ export function GalleryPage() {
         item.tags.some((tag) => tag.includes(q))
       );
     });
-  }, [feed, filter, query]);
+  }, [feed, filter, genreFilter, query]);
 
   return (
     <div className="gallery-root" aria-label="Beat Gallery">
@@ -119,6 +133,21 @@ export function GalleryPage() {
           </button>
         )}
       </div>
+
+      {genres.length > 0 && (
+        <div className="gallery-genrerow" aria-label="Genres">
+          {genres.map(([genre, count]) => (
+            <button
+              key={genre}
+              type="button"
+              className={"gallery-genre" + (genreFilter === genre ? " gallery-genre-active" : "")}
+              onClick={() => setGenreFilter(genreFilter === genre ? null : genre)}
+            >
+              {genre} <span className="gallery-tag-count">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {allTags.length > 0 && (
         <div className="gallery-tagrow" aria-label="Popular tags">
@@ -243,6 +272,18 @@ function GalleryCard({
   };
 
   /**
+   * REGEN (viral growth plan B1): open the studio with this beat AND a
+   * `?regen=1` marker — the studio pulls the beat's own intent provenance
+   * and auto-runs ONE fresh-seed generation. Same character, new take, one
+   * click. Beats without provenance never show this button (server marks
+   * `regenerable`).
+   */
+  const regenerate = () => {
+    funnelEvent("gallery_regen_opened");
+    window.open(`${openUrl}&regen=1`, "_blank", "noopener");
+  };
+
+  /**
    * INSTANT JAM: open this beat in a LIVE collab room — the studio boots
    * with ?import= (the beat) AND ?collab= (the room), seeds the room with
    * the beat, and every friend who opens the same link joins the same jam.
@@ -335,6 +376,16 @@ function GalleryCard({
         <a className="btn btn-export gallery-open" href={openUrl} target="_blank" rel="noreferrer">
           OPEN IN KYX
         </a>
+        {item.regenerable && (
+          <button
+            type="button"
+            className="gallery-fork gallery-regen"
+            title="Regenerate: the intent engine re-composes this beat's character with a fresh take"
+            onClick={regenerate}
+          >
+            REGEN 🎲
+          </button>
+        )}
         <button
           type="button"
           className="gallery-fork"

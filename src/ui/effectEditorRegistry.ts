@@ -13,6 +13,9 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   eq: { primaryParamIds: ["hpFreq", "lowShelfGain", "lowMidGain", "highShelfGain"] },
   compressor: { primaryParamIds: ["threshold", "ratio", "attack", "release"] },
   kaskada: { primaryParamIds: ["time", "sync", "feedback", "mix"] },
+  // Vinyl Suite: the age macro + the three headline artefacts on page 1;
+  // module detail (tones, decay, rates, drive, trims) lives on later pages.
+  vinyl: { primaryParamIds: ["amount", "crackle", "hiss", "wow"] },
 };
 
 /**
