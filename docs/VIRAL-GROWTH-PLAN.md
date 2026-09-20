@@ -101,12 +101,12 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 
 ---
 
-## 5. FÁZA C — Výkonnostný rozpočet konverzie
+## 5. FÁZA C — Výkonnostný rozpočet konverzie — **DODANÉ 2026-09-20**
 
-- **Landing first sound < 5 s** za tepla, < 10 s studená (merané `performance.mark`; event do funnel.ts).
-- Landing chunk ostane bez intent modelu aj bez plného štúdia (len parser + offline render — overené, že cesta existuje cez EmbedApp).
-- Po A1 zmerať a prípadne odstrániť ťažké importy z landing path (LandingPage je už lazy).
-- Štúdio TTI (time-to-interactive) po Forge it: demo projekt + pending doc nesmú blokovať prvý render.
+- **TTFB meranie živé:** `funnelTiming()` (localStorage `pf-funnel-timings-v1`, count/last/min/max) — `landing_forge_generate_ms` (klik→kód), `landing_forge_to_sound_ms` (klik→prvé prehratie), `landing_first_sound_ms` (od načítania stránky = konverzná metrika), `studio_ready_after_import_ms` (TTI po galéria/landing príchode). Budgety: first sound < 5 s teplá / < 10 s studená — čísla sa zbierajú od prvého behu, Diagnostics panel si ich neskôr vypíše.
+- **Landing bundle budget ENFORCED:** `check-bundle-size.mjs` počíta tranzitívnu closure LandingPage chunku z build outputu — **493 KB on-demand (budget 600 KB, 8 chunkov)**; guardy failujú build ak do landing route zavandá `transformers.web-` (model) alebo `App-` (štúdio UI). Source-level twin: `tests/landing-budget.test.ts` prechádza statické importy z LandingPage+EmbedApp a zakazuje services.ts/UI/collab/semantic/store/onnxruntime.
+- **Importy zmerané, ťažké kusy ok:** landing route = parser + deterministický provider + command apply (commands chunk 219 KB — bez neho nie je apply) + offline renderer (AudioEngine, platí ako embed cesta). Model ani štúdio v grafe NIE sú (testom aj buildom pinované).
+- **Štúdio TTI po Forge it:** merané cez `studio_ready_after_import_ms`; demo projekt + pending doc neblokujú prvý render (otvára sa cez rovnakú openProject cestu ako import).
 
 ---
 

@@ -220,7 +220,13 @@ export function EmbedApp({
   const regenerable = useMemo(() => {
     const doc = bufferDocRef.current;
     if (!doc || !Array.isArray(doc.patterns)) return false;
-    return doc.patterns.some((p) => p && typeof p === "object" && p.intent && typeof p.intent === "object");
+    // `intent` provenance lives on the pattern objects but is not on the
+    // base Pattern type — read it through a structural cast (same as
+    // gallery/intentCarry).
+    return doc.patterns.some((p) => {
+      const intent = (p as { intent?: unknown } | null)?.intent;
+      return Boolean(intent && typeof intent === "object");
+    });
   }, [meta]);
   const duration = bufferRef.current?.duration ?? 0;
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;

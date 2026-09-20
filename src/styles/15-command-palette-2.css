@@ -817,6 +817,28 @@
   padding: 6px 0;
 }
 
+/* Preset shelf: the signature shapes as one-click chips. */
+.beatmangler-shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.beatmangler-preset {
+  letter-spacing: 0.5px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.beatmangler-preset.active {
+  background: var(--accent-soft);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: var(--accent);
+}
+
 .beatmangler-lane {
   display: flex;
   align-items: stretch;
@@ -830,4 +852,28 @@
   font-size: 9px;
   letter-spacing: 1px;
   color: var(--text-faint);
+  cursor: help;
+}
+
+/* Envelope tools row — steps/resize on the left, shape ops on the right. */
+.beatmangler-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.beatmangler-actions-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+.beatmangler-actions-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-soft);
+  margin: 0 4px;
 }

@@ -45,6 +45,18 @@ const OPTIONAL_SEMANTIC_PREFIX = "transformers.web-";
 // before the lazy plugin worklets load — splitting them out would trade a
 // number here for a load-order risk in the audio path.
 const CORE_WORKLET_BUDGET_KB = 150;
+// Fáza C (viral growth plan §5) — the landing conversion budget. The landing
+// route (LandingPage chunk + its transitive static imports: embed player,
+// intent parser, command apply, renderer) must stay free of the studio UI,
+// the semantic model runtime and heavy workers; its on-demand payload is
+// measured at 493 KB (2026-09-20) — 600 gives ~20% headroom. Raise only as a
+// conscious decision; the guards below fail hard instead.
+const LANDING_ROUTE_BUDGET_KB = 600;
+const LANDING_ENTRY_PREFIX = "LandingPage-";
+// Modules that must never statically reach the landing route. The semantic
+// model runtime and the studio shell have their own routes/chunks; if one of
+// these appears in the closure, a bad import crept into the landing graph.
+const LANDING_FORBIDDEN = ["transformers.web-", "App-"];
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -106,5 +118,61 @@ if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
   );
   failed = true;
 }
+
+// ── Landing route closure (Fáza C) ────────────────────────────────────────
+// BFS over the static import statements at the top of each built chunk,
+// starting from the LandingPage chunk. Vite emits `from"./X.js"` /
+// `import"./X.js"` for every static edge, so the closure is exactly what the
+// browser downloads for the landing route beyond (plus) the shared entry.
+const landingEntry = readdirSync(join(dist, "assets")).find(
+  (file) => file.endsWith(".js") && file.startsWith(LANDING_ENTRY_PREFIX),
+);
+if (!landingEntry) {
+  console.error(`[size-budget] FAIL — no ${LANDING_ENTRY_PREFIX}*.js chunk in dist/assets (landing route moved?).`);
+  failed = true;
+} else {
+  const jsFiles = readdirSync(join(dist, "assets")).filter((file) => file.endsWith(".js"));
+  const sizeOf = (file) => statSync(join(dist, "assets", file)).size / 1024;
+  // Static import edges live in the import prologue of each chunk.
+  const staticDeps = (file) => {
+    const prologue = readFileSync(join(dist, "assets", file), "utf8").slice(0, 8000);
+    const out = [];
+    for (const match of prologue.matchAll(/from"\.\/([^"]+)"|import"\.\/([^"]+)"/g)) {
+      out.push(match[1] ?? match[2]);
+    }
+    return out;
+  };
+  const seen = new Set([landingEntry]);
+  const queue = [landingEntry];
+  let landingOnDemandKb = 0;
+  while (queue.length > 0) {
+    const file = queue.shift();
+    landingOnDemandKb += sizeOf(file);
+    for (const dep of staticDeps(file)) {
+      if (!seen.has(dep) && jsFiles.includes(dep)) {
+        seen.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  // The entry chunk loads on every route — budget the ON-DEMAND payload.
+  const entryBase = entryMatch[1].split("/").pop();
+  if (entryBase && seen.has(entryBase)) landingOnDemandKb -= sizeOf(entryBase);
+  const forbiddenHits = [...seen].filter((file) => LANDING_FORBIDDEN.some((bad) => file.startsWith(bad)));
+  console.log(
+    `[size-budget] landing route: ${landingOnDemandKb.toFixed(0)} KB on-demand across ${seen.size} chunks (budget ${LANDING_ROUTE_BUDGET_KB})`,
+  );
+  if (landingOnDemandKb > LANDING_ROUTE_BUDGET_KB) {
+    console.error(
+      `[size-budget] FAIL — landing route over budget: ${landingOnDemandKb.toFixed(0)} > ${LANDING_ROUTE_BUDGET_KB} KB.`,
+    );
+    failed = true;
+  }
+  if (forbiddenHits.length > 0) {
+    console.error(`[size-budget] FAIL — forbidden modules reached the landing route: ${forbiddenHits.join(", ")}`);
+    failed = true;
+  }
+}
+
 if (failed) process.exit(1);
 console.log("[size-budget] OK");

@@ -1,5 +1,6 @@
 import type {
   ArrangementTransitionType,
+  InstrumentTrack,
   Marker,
   MusicalKey,
   Pattern,
@@ -11,8 +12,10 @@ import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent } from "./plan";
 import { generateLocalResult } from "./pipeline";
 import { applyTransitionToPattern } from "./transitions";
+import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
+import { applyGenreKitToDoc } from "./genre-kit";
 import type { Command } from "../commands/types";
-import { sceneRoleOf } from "../project-model/schema";
+import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
 import { snapshot } from "../commands/commands";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 
@@ -378,6 +381,196 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       instrumentation: ["drums", "bass"],
     },
   ],
+  drill: [
+    // POP FORM, drill dialect: half-time verses, hook lands with impact+riser.
+    {
+      role: "intro",
+      label: "Intro",
+      bars: 4,
+      intensity: 0.4,
+      transitionIn: null,
+      energyDelta: -0.25,
+      densityDelta: -0.15,
+      complexityDelta: -0.1,
+      instrumentation: ["drums"],
+    },
+    {
+      role: "verse",
+      label: "Verse 1",
+      bars: 8,
+      intensity: 0.6,
+      transitionIn: "fill",
+      energyDelta: -0.05,
+      densityDelta: 0,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 1",
+      bars: 8,
+      intensity: 0.85,
+      marker: { type: "impact", name: "HOOK 1" },
+      transitionIn: "riser",
+      energyDelta: 0.15,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "verse",
+      label: "Verse 2",
+      bars: 8,
+      intensity: 0.6,
+      transitionIn: "fill",
+      energyDelta: -0.05,
+      densityDelta: 0,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 2",
+      bars: 8,
+      intensity: 0.85,
+      marker: { type: "impact", name: "HOOK 2" },
+      transitionIn: "drop",
+      energyDelta: 0.15,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "bridge",
+      label: "Bridge",
+      bars: 4,
+      intensity: 0.4,
+      marker: { type: "cue", name: "BRIDGE" },
+      transitionIn: "break",
+      energyDelta: -0.2,
+      densityDelta: -0.15,
+      complexityDelta: 0,
+      instrumentation: ["chords", "lead"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 3",
+      bars: 8,
+      intensity: 0.9,
+      marker: { type: "impact", name: "HOOK 3" },
+      transitionIn: "riser",
+      energyDelta: 0.2,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "outro",
+      label: "Outro",
+      bars: 4,
+      intensity: 0.35,
+      transitionIn: "break",
+      energyDelta: -0.15,
+      densityDelta: -0.1,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
+    },
+  ],
+  phonk: [
+    // POP FORM, memphis dialect: cowbell hooks, tape-drop into hook 2.
+    {
+      role: "intro",
+      label: "Intro",
+      bars: 4,
+      intensity: 0.4,
+      transitionIn: null,
+      energyDelta: -0.25,
+      densityDelta: -0.15,
+      complexityDelta: -0.1,
+      instrumentation: ["drums"],
+    },
+    {
+      role: "verse",
+      label: "Verse 1",
+      bars: 8,
+      intensity: 0.6,
+      transitionIn: "fill",
+      energyDelta: -0.05,
+      densityDelta: 0,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 1",
+      bars: 8,
+      intensity: 0.85,
+      marker: { type: "impact", name: "HOOK 1" },
+      transitionIn: "riser",
+      energyDelta: 0.15,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "verse",
+      label: "Verse 2",
+      bars: 8,
+      intensity: 0.6,
+      transitionIn: "fill",
+      energyDelta: -0.05,
+      densityDelta: 0,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 2",
+      bars: 8,
+      intensity: 0.85,
+      marker: { type: "impact", name: "HOOK 2" },
+      transitionIn: "drop",
+      energyDelta: 0.15,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "bridge",
+      label: "Bridge",
+      bars: 4,
+      intensity: 0.4,
+      marker: { type: "cue", name: "BRIDGE" },
+      transitionIn: "break",
+      energyDelta: -0.2,
+      densityDelta: -0.15,
+      complexityDelta: 0,
+      instrumentation: ["chords", "lead"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 3",
+      bars: 8,
+      intensity: 0.9,
+      marker: { type: "impact", name: "HOOK 3" },
+      transitionIn: "fill",
+      energyDelta: 0.2,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "lead"],
+    },
+    {
+      role: "outro",
+      label: "Outro",
+      bars: 4,
+      intensity: 0.35,
+      transitionIn: "break",
+      energyDelta: -0.15,
+      densityDelta: -0.1,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass"],
+    },
+  ],
 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -526,19 +719,23 @@ export async function buildSong(
 
 /**
  * Install a built song as ONE undoable command: patterns + scenes (role,
- * intensity, name) + contiguous clips + markers + transitions. Generation
- * happened in buildSong — this only folds the pre-built result into the
- * document (command etiquette).
+ * intensity, name) + contiguous clips + markers + transitions (now carrying
+ * real cue assets) + FX-cue audioClips on a dedicated "FX Cues" lane, plus
+ * the genre kit colouring for drill/phonk. Generation happened in buildSong
+ * — this only folds the pre-built result into the document (command
+ * etiquette).
  */
 export function applySongCommand(doc: ProjectDocument, build: SongBuild): import("../commands/types").Command {
   if (build.sections.length === 0) throw new Error("Song build has no sections");
 
-  let next = doc;
+  let next = applyGenreKitToDoc(doc, build.baseIntent.genre);
   const clips: ProjectDocument["arrangement"]["clips"] = [];
   const markers: Marker[] = [];
   const transitions: NonNullable<ProjectDocument["arrangement"]["transitions"]> = [];
+  const seams: TransitionSeam[] = [];
   let bar = 0;
   let previousClipId: string | null = null;
+  let previousBars = 0;
 
   for (const section of build.sections) {
     const sceneId = `scene-${section.pattern.id}`;
@@ -559,12 +756,20 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     const clip = { id: `clip-${section.pattern.id}`, sceneId, startBar: bar, lengthBars: section.bars };
     clips.push(clip);
     if (previousClipId && section.transitionIn) {
+      const transitionId = `trans-${section.pattern.id}`;
       transitions.push({
-        id: `trans-${section.pattern.id}`,
+        id: transitionId,
         fromClipId: previousClipId,
         toClipId: clip.id,
         type: section.transitionIn,
         lengthBars: 1,
+        cueAssetId: transitionCueAsset(section.transitionIn) ?? undefined,
+      });
+      seams.push({
+        id: transitionId,
+        type: section.transitionIn,
+        seamBar: bar,
+        outgoingStartBar: bar - previousBars,
       });
     }
     if (section.marker) {
@@ -577,13 +782,40 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
       });
     }
     previousClipId = clip.id;
+    previousBars = section.bars;
     bar += section.bars;
   }
+
+  // FX cue lane: one instrument track named "FX Cues", reused across song
+  // re-generations (no track stacking). Cue clips are plain audioClips, so
+  // the live scheduler and the offline renderer play them unchanged.
+  const existingFx = next.tracks.find(
+    (t): t is InstrumentTrack => t.kind === "instrument" && t.name === FX_CUE_TRACK_NAME,
+  );
+  const fxTrack: InstrumentTrack =
+    existingFx ??
+    {
+      ...createInstrumentTrackModel("sampler", next.tracks.length),
+      name: FX_CUE_TRACK_NAME,
+      sampleId: null,
+    };
+  const cueClips = buildTransitionCueClips(seams, build.resolvedBpm ?? doc.bpm, fxTrack.id);
 
   const bpmUpdate = build.resolvedBpm != null ? { bpm: build.resolvedBpm } : {};
   next = {
     ...next,
-    arrangement: { ...next.arrangement, clips, transitions },
+    tracks: existingFx ? next.tracks : [...next.tracks, fxTrack],
+    arrangement: {
+      ...next.arrangement,
+      clips,
+      transitions,
+      // Replace only THIS lane's previous cue clips — user clips (recorded
+      // takes, imported audio) on other tracks survive a re-generate.
+      audioClips: [
+        ...(next.arrangement.audioClips ?? []).filter((c) => c.trackId !== fxTrack.id),
+        ...cueClips,
+      ],
+    },
     markers: [...(next.markers ?? []), ...markers],
     activePatternId: build.sections[build.sections.length - 1].pattern.id,
     ...bpmUpdate,

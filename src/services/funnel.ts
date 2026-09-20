@@ -42,3 +42,54 @@ export function funnelEvent(name: string): void {
 export function funnelCounts(): FunnelCounts {
   return readCounts();
 }
+
+// ── Timings (Fáza C — TTFB / výkonnostné rozpočty) ─────────────────────────
+
+const TIMING_KEY = "pf-funnel-timings-v1";
+
+export interface FunnelTimingStat {
+  count: number;
+  last: number;
+  min: number;
+  max: number;
+}
+
+type FunnelTimings = Record<string, FunnelTimingStat>;
+
+function readTimings(): FunnelTimings {
+  try {
+    const raw = localStorage.getItem(TIMING_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as FunnelTimings;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Record one timing sample (ms). Millisecond budgets live here, not in
+ * counters: TTFB (forge→first sound), studio TTI after an import, … Values
+ * must be finite and ≥ 0 — junk samples are dropped, not clamped.
+ */
+export function funnelTiming(name: string, durationMs: number): void {
+  if (typeof name !== "string" || name.length === 0 || name.length > 64) return;
+  if (!Number.isFinite(durationMs) || durationMs < 0) return;
+  const value = Math.round(durationMs);
+  const timings = readTimings();
+  const stat = timings[name];
+  timings[name] = stat
+    ? { count: stat.count + 1, last: value, min: Math.min(stat.min, value), max: Math.max(stat.max, value) }
+    : { count: 1, last: value, min: value, max: value };
+  try {
+    localStorage.setItem(TIMING_KEY, JSON.stringify(timings));
+  } catch {
+    /* quota/blocked — best-effort */
+  }
+}
+
+/** Read all timing stats (diagnostics panel / future beacon). */
+export function funnelTimings(): FunnelTimings {
+  return readTimings();
+}

@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
 import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill, stashRegenFlag } from "./landing/handoff";
+import { funnelTiming } from "./services/funnel";
 import { initSwUpdate } from "./sw-update";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
@@ -174,6 +175,10 @@ function Boot() {
           const services = await openProject(core, imported);
           if (cancelled) return;
           clearPendingHandoff();
+          // Fáza C budget: studio TTI after arriving with a beat (gallery
+          // REGEN/FORK/OPEN, landing handoff). createCoreServices +
+          // openProject must not block the first render path for long.
+          funnelTiming("studio_ready_after_import_ms", performance.now());
           setScreen({ kind: "studio", services });
         } else {
           setScreen({ kind: "browser", core });

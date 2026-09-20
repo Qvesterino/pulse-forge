@@ -11,7 +11,7 @@ import {
   takeIntentPrefill,
   takePendingHandoff,
 } from "../src/landing/handoff";
-import { funnelCounts, funnelEvent } from "../src/services/funnel";
+import { funnelCounts, funnelEvent, funnelTiming, funnelTimings } from "../src/services/funnel";
 import { decodeShareCode } from "../src/export/shareCode";
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +73,20 @@ describe("funnel events", () => {
     funnelEvent("");
     funnelEvent("x".repeat(100));
     expect(funnelCounts()).toEqual(before);
+  });
+
+  it("records timing samples with count/min/max stats and drops junk (Fáza C)", () => {
+    funnelTiming("landing_forge_to_sound_ms", 4200);
+    funnelTiming("landing_forge_to_sound_ms", 3800);
+    funnelTiming("landing_forge_to_sound_ms", 9000);
+    const stat = funnelTimings().landing_forge_to_sound_ms;
+    expect(stat).toEqual({ count: 3, last: 9000, min: 3800, max: 9000 });
+    // Junk samples must not land: negative, NaN, oversized names.
+    funnelTiming("landing_forge_to_sound_ms", -5);
+    funnelTiming("landing_forge_to_sound_ms", Number.NaN);
+    funnelTiming("", 100);
+    expect(funnelTimings().landing_forge_to_sound_ms).toEqual({ count: 3, last: 9000, min: 3800, max: 9000 });
+    expect(funnelTimings()[""]).toBeUndefined();
   });
 });
 

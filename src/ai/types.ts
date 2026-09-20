@@ -15,9 +15,12 @@ export interface PadMarkovModel {
 }
 
 /** Groove data — one style variation within a genre */
+/** All available genres (song forms, grooves and intent parsing key off this). */
+export type Genre = "house" | "techno" | "trap" | "ambient" | "drill" | "phonk";
+
 export interface GrooveData {
   id: string;
-  genre: "house" | "techno" | "trap" | "ambient";
+  genre: Genre;
   name: string;
   bpm: [number, number];
   swing: number;
@@ -41,7 +44,7 @@ export interface GenerationConstraints {
 }
 
 export interface GenerateOptions {
-  genre: "house" | "techno" | "trap" | "ambient";
+  genre: Genre;
   style?: string;
   seed: string;
   stepCount: number;
@@ -86,7 +89,7 @@ export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
 };
 
 /** All available genres */
-export const GENRES = ["house", "techno", "trap", "ambient"] as const;
+export const GENRES = ["house", "techno", "trap", "ambient", "drill", "phonk"] as const;
 
 /** Pad index → name mapping (matches makeKit in schema.ts) */
 export const PAD_NAMES: readonly string[] = [

@@ -27,20 +27,22 @@ interface FakeAudioParam {
 
 /** Throwing AudioParam stand-in that mirrors the Web Audio spec. */
 function makeStrictParam(): FakeAudioParam {
+  // Closure-backed store — `this._value` inside accessors does not typecheck
+  // (this is contextually `{}` in a cast literal), the behavior is identical.
+  let stored = 0;
   return {
     set value(v: number) {
       // Spec: AudioParam setter throws on non-finite values.
       if (!Number.isFinite(v)) throw new TypeError(`non-finite AudioParam value: ${v}`);
-      this._value = v;
+      stored = v;
     },
     setValueAtTime(v: number, _time: number) {
       if (!Number.isFinite(v)) throw new TypeError(`non-finite AudioParam value: ${v}`);
-      this._value = v;
+      stored = v;
     },
     get value(): number {
-      return this._value;
+      return stored;
     },
-    _value: 0,
   } as unknown as FakeAudioParam;
 }
 

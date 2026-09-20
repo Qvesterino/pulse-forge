@@ -4,7 +4,7 @@ import { encodeShareCode } from "../export/shareCode";
 import { createProjectFromTemplate } from "../project-model/templates";
 import { generateLandingBeat } from "./landingBeat";
 import { savePendingHandoff } from "./handoff";
-import { funnelEvent } from "../services/funnel";
+import { funnelEvent, funnelTiming } from "../services/funnel";
 
 const PROMPT_CHIPS = ["dark trap 140", "deep house 124", "hard techno 145", "lo-fi chill 85", "uk garage 133"];
 
@@ -29,6 +29,9 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
   const [demoUntilForge, setDemoUntilForge] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Fáza C — TTFB measurement: the budgets (forge→sound < 5 s warm, < 10 s
+  // cold) are only real if they are measured. Anchor = each Forge click.
+  const forgeStartRef = useRef(0);
 
   useEffect(() => {
     // A superseding forge (or unmount) cancels the in-flight generation;
@@ -42,11 +45,13 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    forgeStartRef.current = performance.now();
     setPhase({ kind: "busy" });
     try {
       const beat = await generateLandingBeat(text, controller.signal);
       if (controller.signal.aborted) return;
       funnelEvent("landing_prompt_forged");
+      funnelTiming("landing_forge_generate_ms", performance.now() - forgeStartRef.current);
       setPhase({ kind: "ready", code: encodeShareCode(beat.doc) });
       setDemoUntilForge(false);
     } catch (err) {
@@ -128,7 +133,20 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
         {phase.kind === "ready" && (
           <>
             <span className="landing-hero-player">
-              <EmbedApp code={phase.code} inline hideBrand onPlayed={() => funnelEvent("landing_prompt_played")} />
+              <EmbedApp
+                code={phase.code}
+                inline
+                hideBrand
+                onPlayed={() => {
+                  funnelEvent("landing_prompt_played");
+                  // TTFB: click→sound for THIS forge, and time-to-first-sound
+                  // relative to page load (the conversion budget number).
+                  if (forgeStartRef.current > 0) {
+                    funnelTiming("landing_forge_to_sound_ms", performance.now() - forgeStartRef.current);
+                  }
+                  funnelTiming("landing_first_sound_ms", performance.now());
+                }}
+              />
             </span>
             <div className="landing-prompt-actions">
               <button type="button" className="landing-btn landing-btn-primary" onClick={openInStudio}>
