@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
+import { parseProductionIntent } from "../intent/production";
+import { applyProductionIntentCommand } from "../commands/commands";
 import { applyGenerationResultCommand } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { buildSong, applySongCommand, reviseSection, replacePatternInPlaceCommand } from "../intent/song";
@@ -166,6 +168,22 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     buffersRef.current = new Map();
+    // Production intents (master doc §4.3): "make the bass deeper" tweaks the
+    // EXISTING track's sound through effects — one undoable command group —
+    // instead of generating a new pattern. Detection is comparative/
+    // imperative phrasing, so "dark techno" still generates.
+    const production = parseProductionIntent(text);
+    if (production) {
+      try {
+        const cmd = applyProductionIntentCommand(doc, production);
+        services.store.execute(cmd);
+        setStatus(`✓ ${cmd.label} — applied (one undo step)`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+      setBusy(false);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
