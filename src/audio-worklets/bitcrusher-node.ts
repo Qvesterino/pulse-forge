@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Bitcrusher AudioWorkletNode synchronously.
@@ -25,11 +26,11 @@ export function createBitcrusherNode(
   input.connect(dry).connect(output);
   input.connect(wet).connect(node).connect(out).connect(output);
 
-  // Set initial parameter values
+  // Set initial parameter values (safeApplyAudioParam guards non-finite)
+  safeApplyAudioParam(node, "bits", instance.params.bits ?? 8);
+  safeApplyAudioParam(node, "downsample", instance.params.downsample ?? 1);
   const bitsParam = node.parameters.get("bits");
   const dsParam = node.parameters.get("downsample");
-  if (bitsParam) bitsParam.value = instance.params.bits ?? 8;
-  if (dsParam) dsParam.value = instance.params.downsample ?? 1;
 
   // Set initial mix
   const mixVal = instance.params.mix ?? 1;
@@ -47,10 +48,10 @@ export function createBitcrusherNode(
       const now = ctx.currentTime;
       switch (id) {
         case "bits":
-          bitsParam?.setValueAtTime(v, now);
+          safeApplyAudioParam(node, "bits", v, now);
           break;
         case "downsample":
-          dsParam?.setValueAtTime(v, now);
+          safeApplyAudioParam(node, "downsample", v, now);
           break;
         case "mix":
           wet.gain.setTargetAtTime(v, now, 0.02);
@@ -64,10 +65,10 @@ export function createBitcrusherNode(
     setParameterAt(id: string, v: number, when: number) {
       switch (id) {
         case "bits":
-          bitsParam?.setValueAtTime(v, when);
+          safeApplyAudioParam(node, "bits", v, when);
           break;
         case "downsample":
-          dsParam?.setValueAtTime(v, when);
+          safeApplyAudioParam(node, "downsample", v, when);
           break;
         case "mix":
           wet.gain.setTargetAtTime(v, when, 0.02);

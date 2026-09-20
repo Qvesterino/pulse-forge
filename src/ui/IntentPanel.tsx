@@ -13,6 +13,13 @@ import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
 import { takeIntentPrefill } from "../landing/handoff";
+import { PublishToGalleryButton } from "../gallery/PublishButton";
+import { renderProject } from "../rendering/renderer";
+import { sanitizeFilename } from "../rendering/wav";
+import { canExportVideo, recordVideo } from "../export/video";
+import { downloadBlob } from "../export/download";
+import { encodeShareCode, shareAppUrl } from "../export/shareCode";
+import { funnelEvent } from "../services/funnel";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 
 /**
@@ -77,6 +84,13 @@ export function IntentPanel() {
   // THIS intent with a shifted slider (same seed = same beat, new character).
   const lastIntentRef = useRef<IntentInput | null>(null);
 
+  // A3 share moment: right after USE the beat belongs to the user — that is
+  // the moment of pride and the moment to share. The CTA row appears after
+  // every successful apply and hides when a new generation starts.
+  const [justApplied, setJustApplied] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const videoSupported = useMemo(() => canExportVideo(), []);
+
   const runGeneration = async (intentInput: IntentInput, controller: AbortController) => {
     try {
       const result: GenerationResult = await generateAsyncResult(
@@ -121,6 +135,7 @@ export function IntentPanel() {
     setStatus(null);
     setBankResult(null);
     setPlayingIndex(null);
+    setJustApplied(false);
     stopAudition();
     buffersRef.current = new Map();
     const controller = new AbortController();
@@ -186,6 +201,52 @@ export function IntentPanel() {
     setStatus(
       candidate ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})` : `✓ pattern applied`,
     );
+    // A3: the applied beat is the share moment — reveal Publish/Video/Copy.
+    setJustApplied(true);
+  };
+
+  /** Copy a share link that opens the whole project in another tab. */
+  const copyShareLink = async () => {
+    funnelEvent("share_copy");
+    const url = shareAppUrl(encodeShareCode(services.store.getDoc()), location.origin);
+    try {
+      if (!navigator.clipboard) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(url);
+      setStatus("✓ Share link copied — anyone opening it gets this project");
+    } catch {
+      // Clipboard permission denied / insecure context — surface the link
+      // the manual way instead of failing silently (or lying about success).
+      window.prompt("Copy this share link:", url);
+      setStatus("Share link shown — copy it from the dialog");
+    }
+  };
+
+  /** Render the applied beat and record a vertical social clip. */
+  const exportVideo = async () => {
+    if (videoBusy) return;
+    setVideoBusy(true);
+    setError(null);
+    funnelEvent("share_video");
+    try {
+      setStatus("Rendering your beat…");
+      const buffer = await renderProject(services.store.getDoc(), services.bank, {
+        mode: services.playback.getSnapshot(),
+        sampleRate: 44100,
+      });
+      setStatus("Recording video…");
+      const result = await recordVideo(buffer, {
+        title: services.store.getDoc().name,
+        bpm: services.store.getDoc().bpm,
+        seconds: buffer.duration,
+        onProgress: (f) => setStatus(`Recording video… ${Math.round(f * 100)}%`),
+      });
+      downloadBlob(result.blob, `${sanitizeFilename(services.store.getDoc().name)}-clip.${result.ext}`);
+      setStatus(`✓ Video exported — ${result.ext.toUpperCase()}, ready for Reels/Shorts/TikTok`);
+    } catch (err) {
+      setError(`video export failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setVideoBusy(false);
+    }
   };
 
   // A2 song builder: one intent → full arranged song (one undo step).
@@ -196,6 +257,7 @@ export function IntentPanel() {
     setError(null);
     setStatus(null);
     setBankResult(null);
+    setJustApplied(false);
     stopAudition();
     try {
       const intentInput = parsed?.input ?? {};
@@ -226,6 +288,7 @@ export function IntentPanel() {
     if (!text.trim() || routeBusy) return;
     setRouteBusy(true);
     setError(null);
+    setJustApplied(false);
     try {
       const route = routeIntentText(text, doc);
       if (route.kind === "arrange") {
@@ -325,6 +388,22 @@ export function IntentPanel() {
       {status && (
         <div className="intent-status" role="status">
           {status}
+        </div>
+      )}
+      {justApplied && (
+        <div className="intent-share" aria-label="Share your beat">
+          <span className="intent-share-label">Yours. Share it:</span>
+          <div className="intent-share-actions">
+            <PublishToGalleryButton />
+            {videoSupported && (
+              <button type="button" className="btn" disabled={videoBusy} onClick={() => void exportVideo()}>
+                {videoBusy ? "…" : "VIDEO"}
+              </button>
+            )}
+            <button type="button" className="btn" onClick={() => void copyShareLink()}>
+              COPY LINK
+            </button>
+          </div>
         </div>
       )}
       <div className="intent-actions">

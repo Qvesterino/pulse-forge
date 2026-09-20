@@ -72,7 +72,7 @@ Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorag
 - [x] Z landing page: napíšem prompt → klik → počujem beat. **Bez vstupu do štúdia.** *(A1 dodané 2026-09-20)*
 - [x] Klik na Forge it → štúdio sa otvorí s týmto beatom, IntentPanel je otvorený a predvyplnený. *(A1+A2 dodané)*
 - [x] Úplne prvá návšteva štúdia (bez promptu) → IntentPanel otvorený, pole má focus. *(A2)*
-- [ ] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz. *(A3 — ešte nie)*
+- [x] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz. *(A3 dodané 2026-09-20 — Publish / VIDEO (canExportVideo guard) / Copy link + funnel eventy share_publish / share_video / share_copy)*
 - [x] Funnel eventy sa zapisujú (`pf-funnel-v1`); landing bundle sa nezväčší o model ani engine navýše existujúceho EmbedApp path. *(A4-lite)*
 - [x] E2E smoke: landing prompt → studio (rozšírený `01-landing-to-studio`, plný forge test v Chromium).
 

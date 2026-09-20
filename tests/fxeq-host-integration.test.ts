@@ -9,7 +9,11 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { blendParams, createFxEqNode } from "../src/effects/fxeqNode";
+import { createFxEqProcessor } from "../src/effects/fxeq-core/core/fxEqProcessor";
+import { normalizePluginParams } from "../src/effects/registry";
 import type { EffectInstance } from "../src/project-model/types";
+
+const SR = 44_100;
 
 class FakePort {
   onmessage: ((event: { data: unknown }) => void) | null = null;

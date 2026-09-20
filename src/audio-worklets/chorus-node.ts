@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Chorus AudioWorkletNode synchronously.
@@ -18,16 +19,10 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
   const out = ctx.createGain();
   input.connect(node).connect(out);
 
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  setParam("rate", instance.params.rate ?? 0.6);
-  setParam("depth", instance.params.depth ?? 0.5);
-  setParam("spread", instance.params.spread ?? 1);
-  setParam("mix", instance.params.mix ?? 0.5);
+  safeApplyAudioParam(node, "rate", instance.params.rate ?? 0.6);
+  safeApplyAudioParam(node, "depth", instance.params.depth ?? 0.5);
+  safeApplyAudioParam(node, "spread", instance.params.spread ?? 1);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
   out.gain.value = Math.pow(10, (instance.params.output ?? 0) / 20);
 
   const smoothOut = (v: number, when: number) => out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
@@ -40,18 +35,18 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
         smoothOut(v, ctx.currentTime);
         return;
       }
-      setParam(id, v, ctx.currentTime);
+      safeApplyAudioParam(node, id, v, ctx.currentTime);
     },
     setParameterAt: (id, v, when) => {
       if (id === "output") {
         smoothOut(v, when);
         return;
       }
-      setParam(id, v, when);
+      safeApplyAudioParam(node, id, v, when);
     },
     syncBpm(bpm) {
       // Snap the LFO to 1/4-beat rate (musical default for chorus motion).
-      setParam("rate", bpm / 60 / 4, ctx.currentTime);
+      safeApplyAudioParam(node, "rate", bpm / 60 / 4, ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

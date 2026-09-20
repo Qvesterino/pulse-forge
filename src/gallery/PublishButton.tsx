@@ -1,5 +1,6 @@
 import { useDoc } from "../ui/context";
 import { encodeProjectForGallery, setRemixParent } from "./galleryApi";
+import { funnelEvent } from "../services/funnel";
 
 const PUBLISH_CODE_KEY = "pf-publish-code";
 
@@ -13,6 +14,7 @@ const PUBLISH_CODE_KEY = "pf-publish-code";
 export function PublishToGalleryButton() {
   const doc = useDoc();
   const publish = () => {
+    funnelEvent("share_publish");
     try {
       sessionStorage.setItem(PUBLISH_CODE_KEY, encodeProjectForGallery(doc));
     } catch {

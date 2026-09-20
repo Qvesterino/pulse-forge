@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a Look-ahead Limiter AudioWorkletNode synchronously.
@@ -31,18 +32,12 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
   };
 
   // Registry speaks ms for LOOKAHEAD; the processor param is seconds.
-  const apply = (id: string, v: number, when: number | undefined) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
-  apply("ceiling", instance.params.ceiling ?? -1, undefined);
-  apply("threshold", instance.params.threshold ?? -6, undefined);
-  apply("release", instance.params.release ?? 0.12, undefined);
-  apply("lookahead", Math.max(1, lookaheadMs) / 1000, undefined);
-  apply("link", instance.params.link ?? 1, undefined);
-  apply("mix", instance.params.mix ?? 1, undefined);
+  safeApplyAudioParam(node, "ceiling", instance.params.ceiling ?? -1);
+  safeApplyAudioParam(node, "threshold", instance.params.threshold ?? -6);
+  safeApplyAudioParam(node, "release", instance.params.release ?? 0.12);
+  safeApplyAudioParam(node, "lookahead", Math.max(1, lookaheadMs) / 1000);
+  safeApplyAudioParam(node, "link", instance.params.link ?? 1);
+  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   return {
     input,
@@ -50,18 +45,18 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
     setParameter(id, value) {
       if (id === "lookaheadMs") {
         lookaheadMs = value;
-        apply("lookahead", Math.max(1, value) / 1000, ctx.currentTime);
+        safeApplyAudioParam(node, "lookahead", Math.max(1, value) / 1000, ctx.currentTime);
         return;
       }
-      apply(id, value, ctx.currentTime);
+      safeApplyAudioParam(node, id, value, ctx.currentTime);
     },
     setParameterAt(id, value, when) {
       if (id === "lookaheadMs") {
         lookaheadMs = value;
-        apply("lookahead", Math.max(1, value) / 1000, when);
+        safeApplyAudioParam(node, "lookahead", Math.max(1, value) / 1000, when);
         return;
       }
-      apply(id, value, when);
+      safeApplyAudioParam(node, id, value, when);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     getLatencySec() {

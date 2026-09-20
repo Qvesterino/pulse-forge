@@ -6,6 +6,7 @@ import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
+import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
@@ -44,15 +45,6 @@ const EMPTY_EXPORT_SUMMARY: BufferSummary = {
   lufsIntegrated: -120,
   monoLossDb: 0,
 };
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
-}
 
 type RecSourceKind = "master" | "track" | "mic";
 type RecState = "idle" | "recording" | "saving";

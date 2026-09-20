@@ -462,6 +462,34 @@ a.brand:hover .brand-mark {
   font-size: 11px;
   color: #4ade80;
 }
+/* A3 share moment — revealed right after USE. Compact row that fits the
+   380px dock without crowding the generate actions below it. */
+.intent-share {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.05);
+}
+.intent-share-label {
+  font-size: 10.5px;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.intent-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.intent-share-actions .btn,
+.intent-share-actions .btn-export {
+  padding: 4px 9px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
 .intent-generate-btn {
   align-self: flex-start;
   font-weight: bold;

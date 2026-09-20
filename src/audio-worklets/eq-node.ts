@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
  * Create a stock EQ AudioWorkletNode synchronously.
@@ -65,22 +66,15 @@ export function createEqNode(ctx: BaseAudioContext, instance: { params: Record<s
   // only when the canonical id was absent from the instance params (the
   // native graph consulted the same construction-time snapshot per set).
   const locked = new Set(EQ_CANONICAL.filter((id) => instance.params[id] !== undefined));
-  const setParam = (id: string, v: number, when?: number) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
-  };
   for (const id of EQ_CANONICAL) {
-    const p = node.parameters.get(id);
-    if (p && resolved[id] !== undefined) p.value = resolved[id];
+    if (resolved[id] !== undefined) safeApplyAudioParam(node, id, resolved[id]);
   }
 
   const applyParam = (id: string, v: number, when: number | undefined) => {
     const canonical = EQ_ALIASES[id] ?? id;
     if (!EQ_CANONICAL.includes(canonical)) return;
     if (EQ_ALIASES[id] !== undefined && locked.has(canonical)) return;
-    setParam(canonical, v, when);
+    safeApplyAudioParam(node, canonical, v, when);
   };
 
   const audioParamFor = (paramId: string): AudioParam | null => {

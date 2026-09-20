@@ -8,6 +8,8 @@
  * Output contract: mono control signal 0..~1 (audio-rate). The ENGINE owns the
  * depth Gain and the destination AudioParam wiring, mirroring oscillator LFOs.
  */
+import { safeApplyAudioParam } from "./safeAudioParam";
+
 export interface EnvFollowerHandle {
   input: AudioNode;
   output: AudioNode;
@@ -29,13 +31,11 @@ export function createEnvFollowerNode(
     outputChannelCount: [1],
   });
 
-  const setParam = (id: string, v: number) => {
-    const p = node.parameters.get(id);
-    if (p) p.value = v;
-  };
-  setParam("attack", Math.max(0.001, instance.params.attackMs ?? 12) / 1000);
-  setParam("release", Math.max(0.01, instance.params.releaseMs ?? 180) / 1000);
-  setParam("sensitivity", instance.params.sensitivity ?? 1.5);
+  // safeApplyAudioParam guards non-finite writes (defensive layer for
+  // automation curves / preset applies against corrupt stored values).
+  safeApplyAudioParam(node, "attack", Math.max(0.001, instance.params.attackMs ?? 12) / 1000);
+  safeApplyAudioParam(node, "release", Math.max(0.01, instance.params.releaseMs ?? 180) / 1000);
+  safeApplyAudioParam(node, "sensitivity", instance.params.sensitivity ?? 1.5);
 
   let lastEnv = 0;
   node.port.onmessage = (event: MessageEvent) => {
