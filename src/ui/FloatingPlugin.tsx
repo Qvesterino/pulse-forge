@@ -314,6 +314,7 @@ function InstrumentPluginContent({
                   max={p.max}
                   defaultValue={p.default}
                   format={p.format}
+                  taper={p.taper}
                   onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
                 />
               ),
@@ -441,16 +442,17 @@ function DrumPluginContent({
             format={(v) => `${v.toFixed(2)} s`}
             onCommit={(decay) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), decay }))}
           />
-          <Slider
-            compact
-            label="TONE"
-            value={pad.synth?.tone ?? 5000}
-            min={200}
-            max={12000}
-            defaultValue={5000}
-            format={(v) => `${Math.round(v)} Hz`}
-            onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), tone }))}
-          />
+            <Slider
+              compact
+              label="TONE"
+              value={pad.synth?.tone ?? 5000}
+              min={200}
+              max={12000}
+              defaultValue={5000}
+              format={(v) => `${Math.round(v)} Hz`}
+              taper="log"
+              onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), tone }))}
+            />
           {(mode === "profi" || pad.synth?.type === "hatClosed" || pad.synth?.type === "hatOpen") && (
             <Slider
               compact

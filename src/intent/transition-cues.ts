@@ -21,6 +21,8 @@ export const CUE_ASSET_SECONDS: Record<string, number> = {
   "factory.fx.downlifter": 2.0,
   "factory.fx.impact": 1.1,
   "factory.fx.sweep": 1.5,
+  "factory.fx.reverse": 1.25,
+  "factory.fx.noise": 0.35,
 };
 
 interface CueSpec {
@@ -33,19 +35,25 @@ interface CueSpec {
 }
 
 /**
- * Transition type → cue specs. `fill`/`custom` stay drum-only (the roll IS
- * the sound); `riser` keeps its drum build and adds the sweep asset on top;
- * `drop` fires the impact plus a downlifter right after the seam; `break`
- * lays a quiet sweep under the dropout silence.
+ * Transition type → cue specs. `fill` stays drum-only (the roll IS the
+ * sound); `riser` keeps its drum build and adds the sweep asset on top;
+ * `impact` is the classic pair — reverse-suck swelling INTO the seam, boom
+ * landing ON it; `drop` fires the impact plus a downlifter right after the
+ * seam; `break` lays a quiet sweep under the dropout silence; `custom` gets
+ * a soft noise accent (foley-style snap) so it is not silent.
  */
 const TRANSITION_CUES: Partial<Record<ArrangementTransitionType, CueSpec[]>> = {
   riser: [{ assetId: "factory.fx.riser", place: "before-seam" }],
-  impact: [{ assetId: "factory.fx.impact", place: "at-seam" }],
+  impact: [
+    { assetId: "factory.fx.impact", place: "at-seam" },
+    { assetId: "factory.fx.reverse", place: "before-seam", gain: 0.8 },
+  ],
   drop: [
     { assetId: "factory.fx.impact", place: "at-seam" },
     { assetId: "factory.fx.downlifter", place: "at-seam", gain: 0.8 },
   ],
   break: [{ assetId: "factory.fx.sweep", place: "before-seam", gain: 0.55 }],
+  custom: [{ assetId: "factory.fx.noise", place: "at-seam", gain: 0.5 }],
 };
 
 /** Primary cue asset for the transition's `cueAssetId` metadata (null = drum-only). */

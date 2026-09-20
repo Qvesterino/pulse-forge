@@ -108,13 +108,25 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["ice spice", "jersey club", "jersey beat"],
-    genre: "trap",
+    // First-class jersey since the sound-quality pass — bouncy club grooves
+    // + punchy kit instead of folding into trap.
+    genre: "jersey",
     style: "bouncy",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
-    bpmRange: [140, 150],
+    bpmRange: [134, 142],
     label: "jersey",
+  },
+  {
+    names: ["pendulum", "goldie", "liquid dnb", "neurofunk", "jungle beat"],
+    genre: "dnb",
+    style: "liquid",
+    mood: "dark",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [172, 178],
+    label: "dnb",
   },
   {
     names: ["kanye", "kanye west", "kanye type beat", "boom bap", "boombap", "boom-bap"],

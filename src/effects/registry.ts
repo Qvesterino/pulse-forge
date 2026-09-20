@@ -2415,7 +2415,7 @@ const ultina: EffectDefinition = {
 
 const OZVENA_PARAM_DEFAULTS: Record<string, number> = {
   "global.inputGainDb": 0,
-  "global.dryWet": 100,
+  "global.dryWet": 25,
   "global.outputGainDb": 0,
   "blendPad.x": 0.5,
   "blendPad.y": 0.5,
@@ -2501,7 +2501,7 @@ const ozvena: EffectDefinition = {
     { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "blendPad.x", label: "PAD X", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
     { id: "blendPad.y", label: "PAD Y", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
-    { id: "global.dryWet", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+    { id: "global.dryWet", label: "MIX", min: 0, max: 100, default: 25, unit: "%", format: (v) => `${v.toFixed(0)}%` },
     { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "engines.e1.enabled", label: "E1", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },
     { id: "engines.e2.enabled", label: "E2", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF") },

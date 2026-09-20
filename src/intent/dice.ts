@@ -1,5 +1,5 @@
 import { classifyPads } from "../assist/patternOps";
-import type { Pattern, ProjectDocument } from "../project-model/types";
+import type { EffectType, Pattern, ProjectDocument } from "../project-model/types";
 import { hashString } from "../shared/rng";
 import { nextSeed, jitterControls, pickStyle } from "../shared/dice";
 import type { IntentSpec } from "./types";
@@ -16,6 +16,8 @@ export interface DiceLocks {
   snare: boolean;
   hats: boolean;
   kit: boolean;
+  /** FX expansion: when locked, dice rolls leave track FX untouched. */
+  fx: boolean;
 }
 
 export const DEFAULT_DICE_LOCKS: DiceLocks = {
@@ -27,6 +29,7 @@ export const DEFAULT_DICE_LOCKS: DiceLocks = {
   snare: false,
   hats: false,
   kit: false,
+  fx: false,
 };
 
 export interface DiceSession {
@@ -201,4 +204,117 @@ export function applyDiceLocks(prev: Pattern | null, next: Pattern, locks: DiceL
 /** Get the active intent+seed for preview (jitter already applied in rollSession). */
 export function diceCurrentSeed(session: DiceSession): string {
   return session.seedChain[session.cursor] ?? session.seedChain[0] ?? "";
+}
+
+/* ────────────── FX character cards (FX expansion) ────────────── */
+
+/** Effect instance id prefix reserved for dice-applied FX slots. */
+export const DICE_FX_PREFIX = "dice-fx-";
+
+/**
+ * One rollable FX character card: an effect instance (type + params, plus
+ * optional beatMangler envelopes) the dice applies to the drum track.
+ * Deterministic per seed — part of the reproducible roll identity.
+ */
+export interface DiceFxCard {
+  key: string;
+  label: string;
+  type: EffectType;
+  params: Record<string, number>;
+  volumeSteps?: number[];
+  pitchSteps?: number[];
+}
+
+/**
+ * The rollable palette. All cards ride the FX-expansion effects (pitchShift
+ * / tapeStop / ringMod / freqShifter / vinyl / beatMangler) and reuse their
+ * preset-style params. `pitchShift`/`vinyl` cards lean on per-instance
+ * seeding inside the worklets, so stacked rolls sound distinct.
+ */
+export const DICE_FX_CARDS: DiceFxCard[] = [
+  { key: "chop-neg3", label: "Chop −3", type: "pitchShift", params: { semitones: -3, fine: 0, grainMs: 45, width: 0.6, mix: 1 } },
+  { key: "chop-plus4", label: "Chop +4", type: "pitchShift", params: { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 } },
+  {
+    key: "tape-arm",
+    label: "Tape Arm",
+    type: "tapeStop",
+    // Pre-armed, not engaged — the drummer pulls ENGAGE for fills.
+    params: { engaged: 0, time: 0.6, curve: 0, spin: 0, mix: 1 },
+  },
+  {
+    key: "mangler-half",
+    label: "Halftime",
+    type: "beatMangler",
+    params: { playMode: 1, repeatFill: 0, mix: 1 },
+    volumeSteps: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    pitchSteps: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
+  {
+    key: "mangler-chop",
+    label: "Chop Wobble",
+    type: "beatMangler",
+    params: { playMode: 0, repeatFill: 0, mix: 1 },
+    volumeSteps: [1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6],
+    pitchSteps: [0, 0, 12, 0, 0, -12, 0, 0, 0, 0, 12, 0, -12, 0, 0, 0],
+  },
+  { key: "ring-robot", label: "Robot Ring", type: "ringMod", params: { frequency: 95, feedback: 0.4, mix: 0.85 } },
+  { key: "freq-drift", label: "Sub Drift", type: "freqShifter", params: { shift: -38, mix: 0.9 } },
+  { key: "vinyl-dust", label: "Lo-Fi Dust", type: "vinyl", params: { amount: 0.55, crackle: 0.45, wow: 0.5, year: 0.7, mix: 1 } },
+];
+
+/** Stable per-card instance id — replace-on-apply without extra doc state. */
+export function diceFxInstanceId(card: DiceFxCard): string {
+  return `${DICE_FX_PREFIX}${card.key}`;
+}
+
+/**
+ * Deterministically pick the FX card for a seed (null = no FX this roll —
+ * happens for ~22% of seeds so rolls without colour stay in the mix).
+ * `locks.fx` forces null: a locked FX means "dice can't touch my effects".
+ */
+export function pickDiceFx(seed: string, locks: DiceLocks): DiceFxCard | null {
+  if (locks.fx) return null;
+  const h = hashString(`${seed}|dice.fx`);
+  const roll = (h % 10000) / 10000;
+  if (roll < 0.22) return null; // no-FX roll keeps clean kits in the mix
+  const index = Math.floor(((h >>> 8) % 100000) / 100000 * DICE_FX_CARDS.length);
+  return DICE_FX_CARDS[Math.min(DICE_FX_CARDS.length - 1, index)];
+}
+
+const isDiceFxInstance = (fx: { id: string }): boolean => fx.id.startsWith(DICE_FX_PREFIX);
+
+/**
+ * Pure doc transform: install the card's effect instance on the drum track,
+ * replacing any previous dice-FX slots (stable ids make replace-on-apply
+ * survive reloads without extra document state). User-added effects stay.
+ */
+export function applyDiceFxToDoc(doc: ProjectDocument, card: DiceFxCard): ProjectDocument {
+  return {
+    ...doc,
+    tracks: doc.tracks.map((track) => {
+      if (track.kind !== "drum") return track;
+      const kept = track.effects.filter((fx) => !isDiceFxInstance(fx));
+      const instance = {
+        id: diceFxInstanceId(card),
+        type: card.type,
+        bypassed: false,
+        params: { ...card.params },
+        ...(card.volumeSteps ? { volumeSteps: [...card.volumeSteps] } : {}),
+        ...(card.pitchSteps ? { pitchSteps: [...card.pitchSteps] } : {}),
+      };
+      return { ...track, effects: [...kept, instance] };
+    }),
+  };
+}
+
+/** Pure doc transform: strip every dice-FX slot (back to the user's own FX). */
+export function clearDiceFx(doc: ProjectDocument): ProjectDocument {
+  return {
+    ...doc,
+    tracks: doc.tracks.map((track) => {
+      if (track.kind !== "drum") return track;
+      if (!track.effects.some((fx) => isDiceFxInstance(fx))) return track;
+      return { ...track, effects: track.effects.filter((fx) => !isDiceFxInstance(fx)) };
+    }),
+  };
 }

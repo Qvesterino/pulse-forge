@@ -46,6 +46,7 @@ export function EffectParameterGrid({
             max={param.max}
             defaultValue={param.default}
             format={param.format}
+            taper={param.taper}
             onCommit={(value) => onChange(param.id, value)}
           />
         ),

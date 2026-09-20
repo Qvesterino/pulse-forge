@@ -41,7 +41,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bhouse\b/, "house"],
   [/\bdeep\b/, "house"],
   [/\bgarage\b|\bukg\b|\buk garage\b/, "house"],
-  [/\bjersey\b/, "house"],
+  [/\bjersey\b/, "jersey"], // first-class since the sound-quality pass (own grooves + kit)
   [/\bafro\b|\bafrobeat\b|\bafro house\b/, "house"],
   [/\breggaeton\b/, "house"],
   [/\btechno\b/, "techno"],
@@ -57,6 +57,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bambient\b/, "ambient"],
   [/\blofi\b|\blo-?fi\b/, "ambient"],
   [/\bscore\b|\bscene\b|\bsoundscape\b|\bcinematic\b/, "ambient"],
+  [/\bdnb\b|\bdrum ?n ?bass\b|\bdrum and bass\b|\bjungle\b|\bliquid dnb\b/, "dnb"],
 ];
 
 /**

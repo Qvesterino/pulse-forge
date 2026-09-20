@@ -71,17 +71,23 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
  */
 export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {}): MixProfile {
   const genre = intent.genre;
-  // Genre character defaults (drill/phonk, sound-quality pass): when neither
-  // the user nor the mood asked for a tone/punch, the genre itself defines
-  // the color — drill reads dark and driven, phonk warm (tape-ish) and dry.
-  const characterGenre = genre === "drill" || genre === "phonk";
-  const tone =
-    overrides.tone ?? moodTone(intent) ?? (characterGenre ? (genre === "phonk" ? "warm" : "dark") : null);
+  // Genre character defaults (sound-quality pass): when neither the user nor
+  // the mood asked for a tone/punch, the genre itself defines the color —
+  // drill reads dark and driven, phonk warm (tape-ish), jersey bright and
+  // club-pumping; dnb carries no tone default (its splits run sub-heavy AND
+  // top-bright) but always punches.
+  const CHARACTER_TONE: Partial<Record<typeof genre, NonNullable<MixOverrides["tone"]>>> = {
+    drill: "dark",
+    phonk: "warm",
+    jersey: "bright",
+  };
+  const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
+  const tone = overrides.tone ?? moodTone(intent) ?? (CHARACTER_TONE[genre] ?? null);
   const punch: MixOverrides["punch"] | null =
     overrides.punch ??
     (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
   const lushGenre = genre === "ambient";
-  const dryGenre = genre === "techno" || genre === "trap" || characterGenre;
+  const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -93,7 +99,7 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
       ? false
       : overrides.pump === "on"
         ? true
-        : (genre === "house" || genre === "techno") && intent.energy >= 0.55;
+        : (genre === "house" || genre === "techno" || genre === "jersey") && intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];
   const summary: string[] = [];

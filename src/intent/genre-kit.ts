@@ -37,6 +37,18 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     // back to role "fx" by index either way — generation is unaffected).
     { index: 15, assetId: "factory.perc.cowbell", name: "Cowbell" },
   ],
+  jersey: [
+    // Club bounce: short punchy kick up front, hard alt, cracking backbeat.
+    { index: 0, assetId: "factory.kick.punch" },
+    { index: 2, assetId: "factory.kick.techno" },
+    { index: 4, assetId: "factory.snare.punch" },
+  ],
+  dnb: [
+    // Two-step character: punchy kick, cracking snare, 16th pedal hat.
+    { index: 0, assetId: "factory.kick.punch" },
+    { index: 4, assetId: "factory.snare.punch" },
+    { index: 9, assetId: "factory.hat.pedal" },
+  ],
 };
 
 /** Pure: return a doc with genre kit swaps applied to every drum track. */

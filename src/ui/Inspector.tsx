@@ -255,6 +255,7 @@ export function Inspector({
                 max={p.max}
                 defaultValue={p.default}
                 format={p.format}
+                taper={p.taper}
                 onCommit={(v) => services.store.execute(setInstrumentParam(doc, track.id, p.id, v))}
               />
             ),

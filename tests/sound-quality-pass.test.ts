@@ -98,13 +98,35 @@ function fakeBuild(genre: "drill" | "phonk" | "house", suffix: string, bpm: numb
 }
 
 describe("transition cue assets (T3 wave 2)", () => {
-  it("maps transition types to cue assets (fill/custom stay drum-only)", () => {
+  it("maps transition types to cue assets (fill stays drum-only)", () => {
     expect(transitionCueAsset("riser")).toBe("factory.fx.riser");
     expect(transitionCueAsset("impact")).toBe("factory.fx.impact");
     expect(transitionCueAsset("drop")).toBe("factory.fx.impact");
     expect(transitionCueAsset("break")).toBe("factory.fx.sweep");
+    expect(transitionCueAsset("custom")).toBe("factory.fx.noise");
     expect(transitionCueAsset("fill")).toBeNull();
-    expect(transitionCueAsset("custom")).toBeNull();
+  });
+
+  it("impact = reverse-suck swelling INTO the seam + boom ON it; custom = noise accent", () => {
+    const impact = buildTransitionCueClips(
+      [{ id: "i1", type: "impact", seamBar: 24, outgoingStartBar: 16 }],
+      140,
+      "track-fx",
+    );
+    expect(impact).toHaveLength(2);
+    const boom = impact.find((c) => c.bufferId === "factory.fx.impact")!;
+    const reverse = impact.find((c) => c.bufferId === "factory.fx.reverse")!;
+    expect(boom.startBar).toBe(24);
+    expect(reverse.startBar + reverse.lengthBars).toBe(24); // ends at the seam
+    expect(reverse.gain).toBeLessThan(1);
+
+    const custom = buildTransitionCueClips(
+      [{ id: "c1", type: "custom", seamBar: 24, outgoingStartBar: 16 }],
+      140,
+      "track-fx",
+    );
+    expect(custom).toHaveLength(1);
+    expect(custom[0]).toMatchObject({ bufferId: "factory.fx.noise", startBar: 24, gain: 0.5 });
   });
 
   it("before-seam cues END at the seam and clamp into the outgoing section", () => {
@@ -336,5 +358,75 @@ describe("drill + phonk genre plumbing", () => {
     const cueClips = (next.arrangement.audioClips ?? []).filter((c) => c.trackId === fxTrack!.id);
     expect(cueClips.length).toBeGreaterThanOrEqual(3);
     expect(next.tracks.find((t) => t.kind === "drum")!.pads[0].assetId).toBe("factory.kick.sub808");
+  });
+});
+
+describe("jersey + dnb genre plumbing (wave 2)", () => {
+  it("GENRES includes jersey and dnb; grooves registered with unique ids", () => {
+    expect(GENRES).toContain("jersey");
+    expect(GENRES).toContain("dnb");
+    expect(getGroovesForGenre("jersey").length).toBeGreaterThanOrEqual(3);
+    expect(getGroovesForGenre("dnb").length).toBeGreaterThanOrEqual(3);
+    const ids = GROOVE_LIBRARY.map((g) => g.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("resolveGroove returns the right family", () => {
+    expect(resolveGroove("jersey", undefined, () => 0).genre).toBe("jersey");
+    expect(resolveGroove("dnb", undefined, () => 0).genre).toBe("dnb");
+  });
+
+  it("song forms exist: jersey hooks, dnb drops (Drop 2 via the impact pair)", () => {
+    const jersey = planSongForm(normalizeIntent({ genre: "jersey", seed: "sq" }));
+    expect(jersey.sections.map((s) => s.label)).toContain("Hook 1");
+    const dnb = planSongForm(normalizeIntent({ genre: "dnb", seed: "sq" }));
+    expect(dnb.sections.map((s) => s.label)).toContain("Drop 1");
+    // The impact transition (reverse + boom) is exercised by Drop 2.
+    expect(dnb.sections.find((s) => s.label === "Drop 2")?.transitionIn).toBe("impact");
+  });
+
+  it("parser detects jersey/dnb (jersey was a house fold; jungle alias)", () => {
+    expect(parseIntentText("jersey club beat").input.genre).toBe("jersey");
+    expect(parseIntentText("dnb").input.genre).toBe("dnb");
+    expect(parseIntentText("drum and bass").input.genre).toBe("dnb");
+    expect(parseIntentText("jungle").input.genre).toBe("dnb");
+    expect(parseIntentText("house beat").input.genre).toBe("house");
+  });
+
+  it("generator accepts jersey/dnb and produces drum content", () => {
+    const doc = testDoc();
+    for (const genre of ["jersey", "dnb"] as const) {
+      const pattern = generatePattern(doc, { ...DEFAULT_GENERATE_OPTIONS, genre, seed: `sq2-${genre}`, stepCount: 16 });
+      const hits = Object.values(pattern.rows).reduce(
+        (sum, row) => sum + row.reduce((s, v) => s + (v > 0 ? 1 : 0), 0),
+        0,
+      );
+      expect(hits).toBeGreaterThan(0);
+    }
+  });
+
+  it("mix character: jersey bright + pump, dnb punched without a tone default", () => {
+    const jersey = planMixProfile(normalizeIntent({ genre: "jersey", seed: "sq", energy: 0.7 }));
+    expect(jersey.summary).toContain("tone: bright");
+    expect(jersey.summary.some((s) => s.startsWith("pump:"))).toBe(true);
+
+    const dnb = planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" }));
+    expect(dnb.summary.some((s) => s.startsWith("punch:"))).toBe(true);
+    expect(dnb.summary.some((s) => s.startsWith("tone:"))).toBe(false);
+  });
+
+  it("kit colouring: jersey punch kit, dnb pedal-hat kit (idempotent, one undo)", () => {
+    const jersey = applyGenreKitToDoc(testDoc(), "jersey");
+    const jerseyPads = jersey.tracks.find((t) => t.kind === "drum")!.pads;
+    expect(jerseyPads[0].assetId).toBe("factory.kick.punch");
+    expect(jerseyPads[4].assetId).toBe("factory.snare.punch");
+
+    const dnb = applyGenreKitToDoc(testDoc(), "dnb");
+    const dnbPads = dnb.tracks.find((t) => t.kind === "drum")!.pads;
+    expect(dnbPads[0].assetId).toBe("factory.kick.punch");
+    expect(dnbPads[4].assetId).toBe("factory.snare.punch");
+    expect(dnbPads[9].assetId).toBe("factory.hat.pedal");
+
+    expect(applyGenreKitToDoc(dnb, "dnb")).toBe(dnb);
   });
 });
