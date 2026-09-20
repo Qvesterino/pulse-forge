@@ -4552,7 +4552,8 @@ export function applyExactIntentCommand(
     }
     // Pad-family targets (hats/snare/kick) map to per-PAD params on the
     // drum track — "Pan the hats 20% right" is literally a pad-level op.
-    if (op.target === "hats" || op.target === "snare" || op.target === "kick") {
+    const padFamily = op.target as string;
+    if (padFamily === "hats" || padFamily === "snare" || padFamily === "kick") {
       const drum = next.tracks.find((t) => t.kind === "drum");
       if (!drum || drum.kind !== "drum") continue;
       const families = classifyPads(drum.pads);

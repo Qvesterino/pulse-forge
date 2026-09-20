@@ -1,5 +1,6 @@
 import { classifyPads } from "../assist/patternOps";
 import type { EffectType, Pattern, ProjectDocument } from "../project-model/types";
+import { defaultParamsOf } from "../effects/registry";
 import { hashString } from "../shared/rng";
 import { nextSeed, jitterControls, pickStyle } from "../shared/dice";
 import type { IntentSpec } from "./types";
@@ -220,7 +221,8 @@ export interface DiceFxCard {
   key: string;
   label: string;
   type: EffectType;
-  params: Record<string, number>;
+  /** Omitted = the effect's registry-curated defaults apply at instance build. */
+  params?: Record<string, number>;
   volumeSteps?: number[];
   pitchSteps?: number[];
 }
@@ -232,6 +234,7 @@ export interface DiceFxCard {
  * seeding inside the worklets, so stacked rolls sound distinct.
  */
 export const DICE_FX_CARDS: DiceFxCard[] = [
+  /* ── pitch ── */
   {
     key: "chop-neg3",
     label: "Chop −3",
@@ -245,12 +248,33 @@ export const DICE_FX_CARDS: DiceFxCard[] = [
     params: { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 },
   },
   {
+    key: "chop-octdown",
+    label: "Sub Oct",
+    type: "pitchShift",
+    params: { semitones: -12, grainMs: 70, width: 0, mix: 1 },
+  },
+  /* ── tape / vinyl ── */
+  {
     key: "tape-arm",
     label: "Tape Arm",
     type: "tapeStop",
     // Pre-armed, not engaged — the drummer pulls ENGAGE for fills.
     params: { engaged: 0, time: 0.6, curve: 0, spin: 0, mix: 1 },
   },
+  {
+    key: "tape-slow",
+    label: "Slow Stop",
+    type: "tapeStop",
+    params: { engaged: 1, time: 4, curve: 0, spin: 0, mix: 1 },
+  },
+  {
+    key: "vinyl-dust",
+    label: "Lo-Fi Dust",
+    type: "vinyl",
+    params: { amount: 0.55, crackle: 0.45, wow: 0.5, year: 0.7, mix: 1 },
+  },
+  { key: "vinyl-78", label: "78 RPM", type: "vinyl", params: { amount: 0.9, crackle: 0.8, wow: 0.8, year: 1, mix: 1 } },
+  /* ── mangler ── */
   {
     key: "mangler-half",
     label: "Halftime",
@@ -267,14 +291,55 @@ export const DICE_FX_CARDS: DiceFxCard[] = [
     volumeSteps: [1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6, 1, 0.4, 1, 0.6],
     pitchSteps: [0, 0, 12, 0, 0, -12, 0, 0, 0, 0, 12, 0, -12, 0, 0, 0],
   },
-  { key: "ring-robot", label: "Robot Ring", type: "ringMod", params: { frequency: 95, feedback: 0.4, mix: 0.85 } },
-  { key: "freq-drift", label: "Sub Drift", type: "freqShifter", params: { shift: -38, mix: 0.9 } },
   {
-    key: "vinyl-dust",
-    label: "Lo-Fi Dust",
-    type: "vinyl",
-    params: { amount: 0.55, crackle: 0.45, wow: 0.5, year: 0.7, mix: 1 },
+    key: "mangler-fill",
+    label: "Fill Bridge",
+    type: "beatMangler",
+    params: { playMode: 0, repeatFill: 4, mix: 1 },
+    volumeSteps: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    pitchSteps: [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
   },
+  /* ── movement ── */
+  { key: "ring-robot", label: "Robot Ring", type: "ringMod", params: { frequency: 95, feedback: 0.4, mix: 0.85 } },
+  { key: "ring-steel", label: "Steel Perc", type: "ringMod", params: { frequency: 830, feedback: 0, mix: 1 } },
+  { key: "freq-drift", label: "Sub Drift", type: "freqShifter", params: { shift: -38, mix: 0.9 } },
+  { key: "freq-metal", label: "Metal Air", type: "freqShifter", params: { shift: 620, mix: 0.7 } },
+  {
+    key: "tremolo-fast",
+    label: "Trem Fast",
+    type: "tremolo",
+    params: { rate: 12, depth: 0.8, shape: 0, mode: 0, mix: 1 },
+  },
+  {
+    key: "tremolo-slow",
+    label: "Trem Slow",
+    type: "tremolo",
+    params: { rate: 3, depth: 0.7, shape: 0, mode: 1, mix: 1 },
+  },
+  { key: "autowah-funk", label: "Auto Wah", type: "autowah", params: { mix: 0.8 } },
+  { key: "flanger-jet", label: "Jet Flange", type: "flanger", params: { mix: 0.6 } },
+  { key: "phaser-sweep", label: "Phaser", type: "phaser", params: { mix: 0.7 } },
+  { key: "haas-wide", label: "Quick Wide", type: "haasWidener", params: { delayMs: 14, width: 0.85, feedback: 0 } },
+  { key: "comb-metal", label: "Comb Metal", type: "comb", params: { mix: 0.6 } },
+  /* ── dynamics / character ── */
+  { key: "transient-attack", label: "Snap Attack", type: "transient", params: { attack: 0.85, sustain: -0.4, mix: 1 } },
+  { key: "saturation-warm", label: "Warm Drive", type: "saturation", params: { mix: 0.8 } },
+  { key: "tape-warm", label: "Tape Warm", type: "tapeSat", params: { drive: 0.5, tone: 5500, mix: 1 } },
+  { key: "clipper-hard", label: "Hard Clip", type: "clipper", params: { drive: 0.5, ceiling: -3, softness: 0.1 } },
+  { key: "distort-grit", label: "Grit", type: "distortion", params: { drive: 0.55, tone: 6000, mix: 1 } },
+  { key: "bitcrush-8bit", label: "8-Bit", type: "bitcrusher", params: { mix: 1 } },
+  { key: "chorus-lush", label: "Lush Chorus", type: "chorus", params: { mix: 0.6 } },
+  /* ── space ── */
+  { key: "delay-8th", label: "Delay 1/8", type: "delay", params: { sync: 4, feedback: 0.4, tone: 4500, mix: 0.4 } },
+  {
+    key: "delay-dotted",
+    label: "Dotted 1/8",
+    type: "delay",
+    params: { sync: 3, feedback: 0.45, tone: 4000, mix: 0.4 },
+  },
+  { key: "reverb-tight", label: "Tight Room", type: "reverb", params: { mix: 0.3 } },
+  { key: "shimmer-halo", label: "Shimmer", type: "shimmer", params: { mix: 0.5 } },
+  { key: "duckdelay-pump", label: "Duck Delay", type: "duckDelay", params: { mix: 0.4 } },
 ];
 
 /** Stable per-card instance id — replace-on-apply without extra doc state. */
@@ -315,7 +380,7 @@ export function applyDiceFxToDoc(doc: ProjectDocument, card: DiceFxCard, drumTra
         id: diceFxInstanceId(card),
         type: card.type,
         bypassed: false,
-        params: { ...card.params },
+        params: { ...defaultParamsOf(card.type), ...card.params },
         ...(card.volumeSteps ? { volumeSteps: [...card.volumeSteps] } : {}),
         ...(card.pitchSteps ? { pitchSteps: [...card.pitchSteps] } : {}),
       };
