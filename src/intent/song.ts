@@ -15,6 +15,11 @@ import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreKitToDoc } from "./genre-kit";
 import { genreMasterTiltDb } from "./mix";
+import {
+  GENRE_REFERENCE,
+  SONG_LOUDNESS_TARGET_LUFS,
+  SONG_LOUDNESS_TRIM_LIMIT_DB,
+} from "./genre-reference.generated";
 import type { Command } from "../commands/types";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
 import { snapshot } from "../commands/commands";
@@ -1003,6 +1008,23 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   const masterTilt = genreMasterTiltDb(build.baseIntent.genre);
   if (masterTilt !== undefined) {
     next = { ...next, master: { ...next.master, tiltDb: masterTilt } };
+  }
+
+  // Genre loudness trim (sound-quality pass): every genre's reference render
+  // (scripts/measure-genre-references.mjs) measured a different untrimmed
+  // loudness — the trim lands every generated song at
+  // SONG_LOUDNESS_TARGET_LUFS so exports are consistent across genres.
+  // Computed against the UNTRIMMED reference and applied uniformly, so
+  // measured + trim hits the target with no feedback loop.
+  const genreRef = GENRE_REFERENCE[build.baseIntent.genre];
+  if (genreRef) {
+    const trim = Math.max(
+      -SONG_LOUDNESS_TRIM_LIMIT_DB,
+      Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, Math.round((SONG_LOUDNESS_TARGET_LUFS - genreRef.integrated) * 10) / 10),
+    );
+    if (next.master.loudnessTrimDb !== trim) {
+      next = { ...next, master: { ...next.master, loudnessTrimDb: trim } };
+    }
   }
 
   const bpmUpdate = build.resolvedBpm != null ? { bpm: build.resolvedBpm } : {};

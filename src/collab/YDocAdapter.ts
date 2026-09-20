@@ -857,6 +857,7 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
     "bassMonoEnabled",
     "bassMonoFreq",
     "tiltDb",
+    "loudnessTrimDb",
   ]);
 
   // Groove

@@ -46,8 +46,8 @@
     "format:check": "prettier --check src tests",
     "prepare": "node scripts/setup-hooks.mjs",
     "build:fxeq": "node scripts/build-fxeq-worklet.mjs",
-    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena",
-    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena",
+    "predev": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics",
+    "prebuild": "npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics",
     "build:core-worklets": "node scripts/build-core-worklets.mjs",
     "build:ultina": "node scripts/build-ultina-worklet.mjs",
     "build:ozvena": "node scripts/build-ozvena-worklet.mjs",
@@ -55,7 +55,9 @@
     "ranker:review-pack": "node scripts/render-golden-review-pack.mjs",
     "video:beat": "node scripts/make-promo-beat.mjs",
     "video:promo": "remotion render remotion/index.ts PulseForgePromo out/pulse-forge-promo.mp4 --codec=h264 --public-dir=./remotion/public",
-    "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public"
+    "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public",
+    "references:genres": "node scripts/measure-genre-references.mjs",
+    "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

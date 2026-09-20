@@ -13,6 +13,11 @@ import { applySongCommand, buildSong, planSongForm } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { parseIntentText } from "../src/intent/text-parser";
 import { applyMixIntent, genreMasterTiltDb, planMixProfile } from "../src/intent/mix";
+import {
+  GENRE_REFERENCE,
+  SONG_LOUDNESS_TARGET_LUFS,
+  SONG_LOUDNESS_TRIM_LIMIT_DB,
+} from "../src/intent/genre-reference.generated";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { GROOVE_LIBRARY, getGroovesForGenre } from "../src/ai/grooves";
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../src/ai/types";
@@ -496,5 +501,61 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
     expect(glueIn).toBeGreaterThan(wiring);
     // Clamp keeps a bad document from slamming the master.
     expect(source).toMatch(/Math\.min\(4, Math\.max\(-4, config\.tiltDb \?\? 0\)\)/);
+  });
+});
+
+describe("genre song references — per-genre loudness trim (sound-quality wave 4)", () => {
+  it("generated table covers every genre with MEASURED, plausible values", () => {
+    for (const genre of GENRES) {
+      const ref = GENRE_REFERENCE[genre];
+      expect(ref, `${genre} reference missing`).toBeDefined();
+      // bars > 0 distinguishes a real measurement run from the placeholder.
+      expect(ref.bars, `${genre} reference not measured (placeholder)`).toBeGreaterThan(0);
+      expect(ref.integrated).toBeGreaterThan(-35);
+      expect(ref.integrated).toBeLessThan(-5);
+      expect(Number.isFinite(ref.punchPlrDb)).toBe(true);
+      expect(Number.isFinite(ref.tiltDb)).toBe(true);
+    }
+  });
+
+  it("applySongCommand trims every genre toward the -14 LUFS target (clamped ±6)", () => {
+    for (const genre of GENRES) {
+      const ref = GENRE_REFERENCE[genre];
+      const expected = Math.max(
+        -SONG_LOUDNESS_TRIM_LIMIT_DB,
+        Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, Math.round((SONG_LOUDNESS_TARGET_LUFS - ref.integrated) * 10) / 10),
+      );
+      const next = applySongCommand(testDoc(), fakeBuild(genre, "a", 124)).execute(testDoc());
+      expect(next.master.loudnessTrimDb, `${genre} trim`).toBe(expected);
+      // Post-trim projected loudness lands on target (within the clamp).
+      const projected = Math.round((ref.integrated + (next.master.loudnessTrimDb ?? 0)) * 10) / 10;
+      expect(projected).toBeGreaterThanOrEqual(SONG_LOUDNESS_TARGET_LUFS - SONG_LOUDNESS_TRIM_LIMIT_DB);
+      expect(projected).toBeLessThanOrEqual(SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB);
+    }
+  });
+
+  it("trim is deterministic and undoable; tilt and trim share the one undo step", async () => {
+    const doc = testDoc();
+    const build = await buildSong(doc, normalizeIntent({ genre: "drill", seed: "sq-trim" }));
+    const command = applySongCommand(doc, build);
+    const first = command.execute(doc);
+    const second = applySongCommand(first, build).execute(first);
+    expect(second.master.loudnessTrimDb).toBe(first.master.loudnessTrimDb);
+    expect(command.undo(doc)).toBe(doc);
+    // Character genres get BOTH: tilt from the tone map, trim from the reference.
+    expect(first.master.tiltDb).toBe(2); // drill dark
+    expect(first.master.loudnessTrimDb).toBeDefined();
+  });
+
+  it("engine source pin: trim rides multiplicatively on master gain, clamped ±12", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+    const apply = source.slice(
+      source.indexOf("private applyMasterConfig"),
+      source.indexOf("if (this.masterTiltLow"),
+    );
+    expect(apply).toContain("config.loudnessTrimDb ?? 0");
+    expect(apply).toMatch(/Math\.min\(12, Math\.max\(-12,/);
+    // Multiplicative on the clamped input trim, pre-limiter (before tape/M/S).
+    expect(apply).toMatch(/gain \* Math\.pow\(10, trim \/ 20\)/);
   });
 });

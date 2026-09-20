@@ -6,6 +6,7 @@ import { evaluateMasterVerdict, evaluateMixCheck, MIN_DB } from "../audio-engine
 import { Goniometer } from "./Goniometer";
 import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
+import { Spectrogram } from "./Spectrogram";
 import { setMasterConfig } from "../commands/commands";
 
 interface ReadState {
@@ -181,6 +182,15 @@ export function MasterMeter() {
           accent="#f59e0b"
           id="master"
           fillHeight
+        />
+        <Spectrogram
+          analyser={
+            (
+              services.engine as unknown as { getMasterSpectrogramAnalyser?: () => AnalyserNode | null }
+            ).getMasterSpectrogramAnalyser?.() ?? null
+          }
+          transport={services.transport}
+          id="master"
         />
         <div className="master-loudness-readout" aria-label="Master loudness">
           <span>LUFS-M {formatDb(state.lufsMomentary)}</span>
