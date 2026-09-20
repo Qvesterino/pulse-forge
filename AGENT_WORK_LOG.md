@@ -2679,3 +2679,40 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** absorption races make campaign history interleaved with the other session's feature commits; full-suite baseline still not established on the current tree (GOAL 12 gate).
 
 **Recommendations for next session (GOAL 03):** critical-path audit — (1) confirm ModPanel 9/9 green (helpers stub already committed); (2) intent routing overlap: "make the drums darker/brighter/warmer" hits the global MIX branch before production.ts can target the drums track — trace `route.ts` precedence, decide whether comparative+target-word should route to production intents (behavior change, needs care: production.ts ALREADY has those concepts × targets wired); (3) `?regen=1` end-to-end on a REAL engine-generated beat (the seam fix just made this path live for the first time).
+
+
+---
+
+## GOAL 18 (campaign restart) — Intent Engine D1 v2c: loudness loop (2026-09-19)
+
+**Goal executed:** "make it louder / quieter / loudness na −9" — a real measure-and-adjust loudness loop: offline render through the full master chain → BS.1770-4 integrated LUFS → `master.loudnessTrimDb` converge → verify re-render. Closes the last D1 follow-up (loudness target / limiter).
+
+**Existing infrastructure discovered (reused, not rebuilt):** `analyzeLoudnessBuffer(channels, sampleRate)` — full BS.1770-4 dual-gate K-weighted LUFS (src/audio-engine/kweighting.ts); `MasterConfig.loudnessTrimDb` ±6 dB pre-limiter trim (already written per-genre by the song builder — our loop composes by reading the CURRENT trim and adding the needed delta); `SONG_LOUDNESS_TARGET_LUFS = −14` (genre-reference.generated).
+
+**Fixes implemented:**
+
+- `src/intent/loudness.ts`: `parseLoudnessIntent` — "make it louder/quieter" nudges (±3 dB), SK stems "hlasit/hlasie/hlasitej" (deliberately NOT bare "hlas" — that means a VOCAL, false-positive trap), explicit targets "loudness na −9" / "−9 lufs" with a LOOKBEHIND (`(?<![\d-])`) instead of  — a  before the minus sign fails at space→hyphen transitions and parsed "−9" as "+9"; `applyLoudnessIntent` — INJECTABLE render (unit tests without an audio context), measure → trim → re-render → converge (max 2 corrections; the limiter is nonlinear so step one can undershoot), trim clamped to the ±6 dB field, compose-with-current-trim semantics.
+- Engine fix: `analyzeLoudnessBuffer` — digital silence (nothing above the −70 absolute gate) now returns `measured: false` (previously true with −∞ integrated — the loudness loop would chase −∞ with gain). Honest "not measurable" contract for consumers.
+- `route.ts`: loudness route (before effectIntent — "make it louder" has no effect noun, but ordering it early keeps "loudness na −9" from ever reaching pattern parse).
+- IntentPanel: loudness branch — "🔊 measuring loudness…" status → "⚡ loudness: −16.2 → −14.1 LUFS (trim +2.1 dB)".
+- Tests: `tests/intent-loudness.test.ts` (10) — parse EN/SK/targets/non-loudness, router, BS.1770 math (20 dB amplitude ⇒ ≈20 LU), silence unmeasurable, apply-loop convergence with an injected synthetic render (sine loudness shifts with the doc trim), ±6 clamp, render-failure ok:false.
+
+**Important files changed:** src/intent/loudness.ts, src/intent/route.ts, src/audio-engine/kweighting.ts (measured contract), src/ui/IntentPanel.tsx (loudness branch + import), tests/intent-loudness.test.ts, INTENT_ENGINE.md (§5.14).
+
+**Validation:** loudness tests 10/10; intent-area regression 187/187 across 18 files; typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. Verify-loop re-render doubles loudness latency (~2 offline renders per apply) — acceptable at 44.1 kHz pattern/song lengths; a cached LUFS meter inside the engine could halve it later.
+2. The trim composes with the song builder's per-genre trim on the SAME field — re-running a song build OVERWRITES the intent-applied trim (song builder recomputes per-genre); documented order-dependence, a merge policy is future work.
+3. The concurrent session's controls.tsx/ExportPanel typecheck breakage persists (theirs); my filtered tsc clean.
+
+### GOAL 02 addendum — ModPanel validation closure (2026-09-21, ~01:15)
+
+**Resolution of the pending ModPanel suite confirmation:**
+
+- Three runs, three tree states, consistent result: **tests 1–5 PASS** (aria label, AUTOMATION, MODULATORS, MACROS, SCENES — all of which exercise the DI-swapped ScenePanel groovePool path and the new mock stub). The remaining 4 tests (Ultina deep-parameter trio + wall-clock info) stall reproducibly at the same point.
+- Machine load ruled OUT as the cause: the stall reproduces on a quiet machine (31 node processes, load dropped) at the identical test boundary — it is not CPU starvation.
+- Attribution: across the three runs the COMMON changed factors in those test paths are the concurrent session's in-flight files — at final run time `src/ui/EffectRack.tsx` was actively being rewritten (+38/−28, uncommitted), plus registry/sections/morph work landed in `99daceb` mid-validation. `src/ui/ModPanel.tsx` and its test are clean vs HEAD. My changes in these paths are a one-line DI source swap + a mock stub supplying exactly the repo's public surface (list/save/remove, verified against GroovePoolRepository source).
+- Verdict: the original 9/9 failure root cause (mock missing `groovePool`) is definitively FIXED — tests 1–5 prove the fix; the original failure is impossible to reintroduce silently since the stub lives in the shared mockServices. The 4-test stall is classified as **concurrent-session in-flight suspicion, not a campaign regression**: verify on a quiet tree (their work committed or stashed by them) with `npx vitest run tests/ui/ModPanel.test.tsx`. If it still stalls with a clean tree, it is a REAL find in their EffectRack/sections work — report to owner, do not hot-fix their moving code.
+- Side observation for GOAL 03: `refreshPool`'s async `setState` outside act() produces React warnings on every ScenePanel test (pre-existing pattern, noise only).
