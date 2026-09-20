@@ -17,19 +17,27 @@ export function EffectParameterGrid({
 }) {
   return (
     <div className={`fx-device-params${paged ? " is-paged" : ""}`} data-family={family}>
-      {params.map((param) =>
-        param.options ? (
+      {params.map((param) => {
+        const options =
+          param.options ??
+          (param.kind === "toggle"
+            ? [
+                { value: 0, label: "Off" },
+                { value: 1, label: "On" },
+              ]
+            : undefined);
+        return options ? (
           <label key={param.id} className="fx-param-select">
             <span className="slider-label">{param.label}</span>
             <select
               value={
-                param.options.some((option) => option.value === (values[param.id] ?? param.default))
+                options.some((option) => option.value === (values[param.id] ?? param.default))
                   ? (values[param.id] ?? param.default)
                   : param.default
               }
               onChange={(event) => onChange(param.id, Number(event.target.value))}
             >
-              {param.options.map((option) => (
+              {options.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -49,8 +57,8 @@ export function EffectParameterGrid({
             taper={param.taper}
             onCommit={(value) => onChange(param.id, value)}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

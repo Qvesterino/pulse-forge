@@ -97,7 +97,7 @@ describe("VØID freeze runaway", () => {
     sendParam(proc, "engines.e2.bassDecay", 2);
     sendParam(proc, "engines.e2.time", 1400);
     sendParam(proc, "engines.e2.mix", 100);
-    sendParam(proc, "blendPad.x", 0);
+    sendParam(proc, "blendPad.x", 1);
     sendParam(proc, "blendPad.y", 0);
     sendParam(proc, "preDelay.ms", 0);
     sendParam(proc, "global.freeze", 1);

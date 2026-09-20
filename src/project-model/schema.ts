@@ -1478,6 +1478,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.bassMonoFreq === "number" && Number.isFinite(m.bassMonoFreq)
         ? Math.min(400, Math.max(60, m.bassMonoFreq))
         : 120;
+    const tiltDb =
+      typeof m.tiltDb === "number" && Number.isFinite(m.tiltDb) ? Math.min(4, Math.max(-4, m.tiltDb)) : 0;
     if (
       dg !== m.masterGain ||
       dc !== m.ceilingDb ||
@@ -1491,7 +1493,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       lufsTarget !== m.lufsTarget ||
       glueEnabled !== m.glueEnabled ||
       bassMonoEnabled !== m.bassMonoEnabled ||
-      bassMonoFreq !== m.bassMonoFreq
+      bassMonoFreq !== m.bassMonoFreq ||
+      tiltDb !== m.tiltDb
     ) {
       doc = {
         ...doc,
@@ -1509,6 +1512,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           glueEnabled,
           bassMonoEnabled,
           bassMonoFreq,
+          tiltDb,
         },
       };
       s.changed = true;

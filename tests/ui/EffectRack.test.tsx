@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EffectRack } from "../../src/ui/EffectRack";
+import { EffectParameterGrid } from "../../src/ui/EffectParameterGrid";
 import { UltinaPanel } from "../../src/ui/UltinaPanel";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { EFFECT_DEFS } from "../../src/effects/registry";
 
 describe("EffectRack", () => {
   function trackWithEffects(count: number) {
@@ -178,6 +180,47 @@ describe("EffectRack", () => {
       (call: unknown[]) => call[0] as { type: string },
     );
     expect(executed.some((c) => c.type === "setDeviceState")).toBe(true);
+  });
+});
+
+describe("EffectParameterGrid", () => {
+  it("renders declared toggles and enums as explicit selects", () => {
+    const tapeStopParams = EFFECT_DEFS.tapeStop.params.filter((param) =>
+      ["engaged", "curve", "spin"].includes(param.id),
+    );
+    const pingPong = EFFECT_DEFS.delay.params.find((param) => param.id === "pingPong")!;
+
+    renderWithContext(
+      <>
+        <EffectParameterGrid
+          family="movement"
+          params={tapeStopParams}
+          values={{ engaged: 0, curve: 0, spin: 0 }}
+          onChange={vi.fn()}
+          paged={false}
+        />
+        <EffectParameterGrid
+          family={EFFECT_DEFS.delay.category}
+          params={[pingPong]}
+          values={{ pingPong: 0 }}
+          onChange={vi.fn()}
+          paged={false}
+        />
+      </>,
+    );
+
+    const engage = screen.getByRole("combobox", { name: "ENGAGE" }) as HTMLSelectElement;
+    const curve = screen.getByRole("combobox", { name: "CURVE" }) as HTMLSelectElement;
+    const spin = screen.getByRole("combobox", { name: "SPIN" }) as HTMLSelectElement;
+    expect(engage.value).toBe("0");
+    expect(Array.from(engage.options).map((option) => option.textContent)).toEqual(["Armed", "On"]);
+    expect(curve.value).toBe("0");
+    expect(Array.from(curve.options).map((option) => option.textContent)).toEqual(["Exponential", "Linear"]);
+    expect(spin.value).toBe("0");
+    expect(Array.from(spin.options).map((option) => option.textContent)).toEqual(["Stop", "Reverse"]);
+    const pingPongSelect = screen.getByRole("combobox", { name: "PING-PONG" }) as HTMLSelectElement;
+    expect(pingPongSelect.value).toBe("0");
+    expect(Array.from(pingPongSelect.options).map((option) => option.textContent)).toEqual(["Off", "On"]);
   });
 });
 

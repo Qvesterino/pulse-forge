@@ -148,19 +148,38 @@ Neprehľadávať ľubovoľné objektové kľúče a nepovažovať „parameter e
 
 ### Úlohy
 
-- [ ] Zaznamenať aktuálny command → store → runtime → offline render tok pri editácii FX parametra.
+- [x] Zaznamenať aktuálny command → store → runtime → offline render tok pri editácii FX parametra.
 - [ ] Inventarizovať effect types, parametre, enumy, deep schemas, write commands, pluginové A/B/preview schopnosti a existujúce assistant proposals.
-- [ ] Určiť, ktoré zariadenia sú podporované priamo a ktoré vyžadujú explicitný adapter.
+- [x] Pokryť v deterministickom report-e všetky effect types, technické descriptor count-y podľa source, deep schema counts a aktuálne write/preview adaptery; hlavné command/A-B/proposal hranice sú zaznamenané nižšie.
+- [x] Určiť aktuálnu hranicu podpory: sémanticky iba EQ/Reverb; deep flagship katalógy sú zatiaľ read-only a každý ďalší write path potrebuje explicitný adapter.
 - [ ] Zafixovať východiskové audio/project fixture pre vybraný pilot.
-- [ ] Vybrať vertikálny pilot: vstavaný `eq` a `reverb`, následne jeden flagship (odporúčanie: FXEQ) po zavedení adaptera.
-- [ ] Zaznamenať, že V1 mení iba jedno existujúce zariadenie a nemení routing/bypass/topológiu.
+- [x] Vybrať vertikálny pilot: vstavaný `eq` a `reverb`; ďalší flagship až po zavedení a overení adaptera.
+- [x] Zaznamenať, že aktuálny flow mení iba jeden existujúci effect instance a iba jeho navrhnuté parametre; routing/bypass/topológia nie sú súčasťou Apply.
 - [ ] Overiť, že nový kód neprepisuje aktuálne necommitnuté zmeny.
+
+### Baseline tok overený v kóde
+
+1. `EffectIntentAssistant` drží proposal mimo projektu. Preview volá `AudioEngine.beginEffectIntentPreview` iba pre vybrané parametre; pri zmene projektu/targetu, spustení transportu alebo zatvorení assistant-a preview sa ruší. Ak transport práve hrá, nové preview sa odmietne.
+2. Apply zavolá `applyEffectIntentProposal`, ktorý overí target, `targetSchemaId` aj `baseStateHash`, znova spustí deterministický planner, vyžaduje presnú zhodu proposal-u a vytvorí jeden snapshot command.
+3. `ProjectStore.execute` uloží command do undo histórie a zavolá `onDocChanged`; `services.ts` na tejto hranici posiela nový dokument do `AudioEngine.setProject`. `YDocStore.execute` zapisuje command ako jednu Yjs transakciu.
+4. `AudioEngine` vytvorí runtime cez `EFFECT_DEFS[type].factory`; pri zmene parametrov volá `EffectRuntime.setParameter`. `renderProject` vytvorí `OfflineAudioContext`, načíta potrebné worklety a použije rovnaký `AudioEngine`/effect factory tok na render dokumentu.
+
+**Dôležitá hranica:** používateľské Intent preview je dočasný override živého audio runtime-u, nie samostatný offline render kandidáta. Offline render používa aplikovaný (alebo inak pripravený) projektový stav; zatiaľ preto nemožno tvrdiť, že preview waveform a offline render kandidáta boli samostatne porovnané bitovo.
+
+### Existujúce FX editovacie a assistant rozhrania
+
+- Bežné rack parametre zapisuje `setEffectParam`; Ozvena cezň vie zapísať aj hlboké parametre validované cez `targetParamDef`. FXEQ a Ultina majú vlastné schema-aware `setFxEqParam` a `setUltinaParam` commands, preto ich budúci sémantický adapter nesmie obchádzať.
+- Panel Ultina už vie prijať návrh modulu toggle-ov a parametrov cez `applyUltinaProposal`; Ozvena má batch patch command `applyOzvenaStatePatch`. Sú to existujúce device-specific proposal/write hranice, nie automaticky kompatibilné návrhy z prirodzeného jazyka.
+- FXEQ, Ultina a Ozvena už majú A/B porovnávanie uložené v `deviceState`; FXEQ/Ozvena používajú `effect-ab-v1`, Ultina vlastný `ultina-ab-v1`. Toto je užitočný základ pre neskoršie kandidátne audition, no Intent Assistant zatiaľ do slotov nepíše.
+- Bežný knob drag má `AudioEngine.previewFxParam` — priamy runtime override pred commitom. Intent audition je samostatný, stale-guarded flow cez `beginEffectIntentPreview` a dnes povoľuje len rack `ParamDef` hodnoty pre EQ/Reverb. Ani jeden z týchto flow-ov zatiaľ nie je univerzálny bezpečný preview adapter pre hlboké plugin schémy.
+
+**Architektonický dôsledok:** rozšírenie na pluginy má pripojiť capability-specific planner k už existujúcim schema-aware commandom a zdieľanému preview protokolu. Nemá vytvoriť paralelný generický zápis do `effect.params` ani zameniť A/B snapshot s projektovým undo.
 
 ### Exit criteria
 
-- [ ] Každý plánovaný zápis má jednoznačný target a validovaný write path.
-- [ ] Existuje reprodukovateľný test pre aktuálny stav pilotného zariadenia.
-- [ ] Je jasne oddelená jednorazová editácia parametrov od hudobnej generácie a `planMixProfile`.
+- [x] Každý aktuálne podporovaný zápis má jednoznačný target a validovaný write path; nepodporované deep write paths sa nezapínajú.
+- [x] Existuje reprodukovateľný unit a browser E2E test pre EQ/Reverb pilotný flow.
+- [x] Jednorazová FX editácia je oddelená od hudobnej generácie a `planMixProfile` v samostatnom `src/effect-intent/` kontrakte.
 
 ---
 
@@ -171,18 +190,32 @@ Neprehľadávať ľubovoľné objektové kľúče a nepovažovať „parameter e
 ### Úlohy
 
 - [x] Zaviesť read-only normalizovaný descriptor catalog nad existujúcimi schémami; nezačať paralelnú autoritatívnu schému (aktuálny pilot: EQ/Reverb).
-- [ ] Adaptovať bežný `ParamDef` a následne FXEQ/Ultina/Ozvena/Kaskada schémy.
-- [ ] Rozlišovať continuous/enum/toggle, jednotky, log/linear škálu, default, rozsah a aktuálne dostupnosť parametra.
+- [x] Adaptovať bežný `ParamDef` pre všetky vstavané rack efekty do read-only technického descriptor catalogu.
+- [x] Adaptovať hlbokú FXEQ schému read-only cez explicitný band-aware adapter; schema identity zahŕňa aktuálne bandy a metadata.
+- [x] Adaptovať hlbokú Ultina schému z `ALL_PARAMS` vrátane enumov, boolean/step metadát, automation capability a schema identity.
+- [x] Adaptovať Ozvena audio state tree read-only; numeric enum indexy zdieľajú jednu mapu medzi hostom a workletom a assistant/masking/IR identity zostávajú mimo param katalógu.
+- [x] Kaskada nemá samostatnú deep schema; jej technické parametre sú pokryté rack `ParamDef` adapterom.
+- [x] Pre rack `ParamDef` rozlišovať continuous/enum, jednotky, log/linear škálu, default, rozsah, možnosti a validitu aktuálnej hodnoty; chybné dáta sa pri čítaní potichu neopravujú.
+- [x] Explicitne označiť známe rack binary controls ako `toggle` (Delay, FXEQ, Ultina, Ozvena, Utility, Beat Mangler, Kaskáda a Tape Stop); test kontroluje zhodu `ParamDef` → descriptor.
+- [x] Označiť Tape Stop `curve`/`spin` ako enum s explicitnými možnosťami; nepretržitý `tremolo.shape` zostáva continuous, pretože DSP ho morfuje medzi vlnovými tvarmi.
+- [x] Explicitne označiť známe DSP-kvantované integer controls (`bits`, `downsample`, `taps`, `repeatFill`, vocoder `bands`) ako `discrete`/`step: 1`; malformed fractional state sa hlási ako neplatný.
+- [x] Doplniť dostupné enum/discrete/toggle metadáta z FXEQ, Ultina, Ozvena a explicitne označených Kaskada rack parametrov; chýbajúce FXEQ taper/enum údaje označiť `unknown`/`rangeOnly`.
+- [x] Doplniť explicitné boolean/enum metadáta pre zistené rack výnimky; analýza všetkých registry definitions rozlíšila Tape Stop modes od skutočne continuous normalized controls.
+- [x] Rack UI zobrazuje toggles/enums ako selects a `setEffectParam` odmieta neplatné rack enum/toggle hodnoty aj neznáme parametre.
 - [ ] Pridať ručne kurátorované sémantické anotácie: `warmth`, `brightness`, `body`, `presence`, `space`, `width`, `drive`, `dynamics`, `movement`.
 - [ ] Pri každej anotácii uviesť polarity, konzervatívny rozsah zmeny, možné konflikty a kvalitu dôkazu.
+- [x] Pilotné EQ/Reverb anotácie majú jediný zdroj pravdy (`capabilities.ts`) s polaritou, safe bounds, constraints, vysvetlením, rizikom a evidence statusom; catalog aj planner z neho odvodzujú svoje schopnosti.
 - [ ] Označiť nebezpečné/štrukturálne parametre ako nepodporované vo V1: bypass, routing, module graph, latency/quality modes a skryté analysis-only hodnoty.
-- [ ] Pridať coverage report: koľko parametrov má technickú validáciu a koľko aj overenú sémantiku.
+- [x] Pridať coverage report pre celý technický catalog: parameter counts podľa rack/deep source, sémantické coverage, rack-only intent write/preview adaptery a zastarané mapping ID.
 
 ### Exit criteria
 
-- [ ] Descriptor catalog je deterministický a nemení projekt.
+- [x] Rack descriptor catalog je deterministický a nemení projekt.
+- [x] FXEQ descriptor catalog rešpektuje aktívny počet bandov, obsahový schema fingerprint a ne-normalizuje malformed current values.
+- [x] Ultina a Ozvena deep adapters zachovávajú schémou určené enum/toggle validity a neexponujú neaudio bookkeeping ako FX parametre.
 - [ ] Neznáme ID, zastaraná schema a neplatné enum hodnoty sú odmietnuté s dôvodom.
-- [ ] Sémantické anotácie sú oddelené od DSP schém a každá má aspoň unit test.
+- [x] Pre aktuálny EQ/Reverb pilot je proposal zviazaný s fingerprintom úplného parameter catalogu; zmena schema identity zneplatní návrh ešte pred Apply.
+- [x] Pilotné sémantické anotácie sú oddelené od DSP schém a testy overujú každé mapping ID, rozsah aj descriptor binding.
 
 ---
 
@@ -197,6 +230,7 @@ Neprehľadávať ľubovoľné objektové kľúče a nepovažovať „parameter e
 - [x] Parsovať intenzitu a smer, rozpoznávať explicitné zachovávacie obmedzenia a neinterpretovanú negáciu bezpečne odmietnuť.
 - [x] Podporiť viac cieľov v jednej požiadavke len vtedy, ak sú nezávislé a neprotirečia si; opačné pohyby jedného parametra vyžiadajú clarification.
 - [x] Vrátiť pravdivé `needsClarification`/`unsupported` pri rozpore, neznámom pojme alebo neplatnom targete; nevymýšľať parameter.
+- [x] Validovať aj runtime payload shape (vnorené `null`, neznáme hodnoty, duplicitné goals/constraints, NaN) a vrátiť `unsupported` namiesto neobslúženej výnimky.
 - [x] Zachovať vstupný text, parser version a normalizovaný intent v kanonickom výsledku; neukladať ich do projektu.
 - [x] Pridať fixtures pre diakritiku, synonymá, zložené požiadavky a adversarial vstupy; typo tolerance zostáva zámerne vypnutá.
 
@@ -224,12 +258,14 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 ### Úlohy
 
 - [x] Mapovať kanonický cieľ iba na parametre s explicitnou sémantickou anotáciou pre konkrétne zariadenie (pilot EQ/Reverb).
+- [x] Zdieľať ten istý capability mapping medzi descriptor catalogom a plannerom; neexistujúci parameter, necontinuous typ ani nesúlad capability so schémou sa odmietne s diagnostikou.
 - [x] Zohľadniť aktuálne hodnoty, lineárne/logaritmické mapovanie a konzervatívne delta limity; enum/coupled mappingy čakajú na device adaptery.
 - [x] Použiť ručne zvolené dB a log-ratio kroky; nepoužívať univerzálne „pridaj 10 % rozsahu“ naprieč jednotkami.
 - [x] Rešpektovať explicitné `preserve` obmedzenia ako hard constraints.
 - [x] Detegovať konflikty a zamietnuť alebo sa opýtať; nikdy ich potichu neprepisovať prioritou heuristiky.
 - [x] Zaviesť `plannerVersion`, canonical serialization a `baseStateHash`.
 - [x] Každú navrhnutú zmenu vysvetliť ľudsky a uviesť konkrétny parameter.
+- [x] Zobraziť warning pre zvýšené riziko a pre pilotné mappingy bez blind golden review; confidence sa nesmie predstierať.
 - [x] Ak vybraný efekt nedokáže dosiahnuť cieľ bez rizika alebo bez porušenia constraints, vrátiť `unsupported`/`needsClarification`.
 - [ ] Vygenerovať viac než jeden kandidát iba ak ich vieme férovo porovnať a používateľ ich vie vypočuť.
 
@@ -246,7 +282,7 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 - [ ] Golden text → intent → proposal fixtures sú stabilné a vysvetliteľné.
 - [x] Boundary/property-style test sweep dokazuje deterministickosť a rozsahy pilotných hodnôt; integration test overí izoláciu ostatných trackov.
-- [ ] Opakovaný planner nad rovnakým stavom nevytvorí „zmenu“, ktorá nič nemení.
+- [x] Boundary sweep overuje nulovú intenzitu; opakovaný planner nad rovnakým stavom je deterministický a nulový návrh vráti ako `noChange`.
 
 ---
 
@@ -259,15 +295,18 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 - [x] Pridať command builder pre validovaný `EffectChangeProposal` v pilotnom EQ/Reverb rozsahu; deep plugin adaptery zostávajú otvorené.
 - [x] Aplikovať všetky zmeny jedným používateľským undo krokom.
 - [x] Undo musí obnoviť presný pôvodný canonical stav pilotného efektu.
-- [ ] Zachovať Yjs/collab, autosave, project reload a existujúce project normalization pravidlá.
+- [x] Pilotný command prechádza cez `YDocStore` ako jedna undo transakcia; peer sync a zachovanie nesúvisiacej vzdialenej zmeny sú testované. Autosave/reload pilotnej hodnoty je pokrytý browser E2E.
 - [x] Pred Apply porovnať target identity a `baseStateHash`; pri stale state proposal odmietnuť alebo vyžiadať refresh.
-- [ ] Opakované Apply nesmie neúmyselne zduplikovať deltu ani vytvoriť prázdne undo položky.
-- [ ] Zápis cez jednorazovú sadu existujúcich setterov sa môže použiť interne, ale do history/store sa odošle jedna atomic command.
+- [x] Pred Apply porovnať aj `targetSchemaId`, odvodené z kompletného technical parameter catalogu; planner/proposal contract je vo verzii `effect-intent-rules-v2`.
+- [x] Opakované Apply nad už zmeneným targetom odmietne stale proposal; prázdny alebo nepovolený výber parametrov nevytvorí undo položku.
+- [x] Všetky schválené parametre sa zapíšu jednou atomic command do history/store.
 
 ### Exit criteria
 
 - [x] Apply/undo/redo vráti presne očakávané parametre pre pilotný EQ/Reverb flow.
-- [ ] Persistence a kolaborácia zachovajú zmenu bez neznámych fields.
+- [x] YDocStore peer round-trip zachová pilotnú zmenu a nesúvisiacu peer editáciu.
+- [x] Autosave a reload zachovajú aplikovanú Reverb hodnotu v browser E2E.
+- [ ] Legacy schema/unknown-field compatibility je overená pre všetky device adaptery.
 - [ ] Zmena targetu alebo editácia parametra po preview nedovolí stale proposal prepísať nové dáta.
 
 ---
@@ -280,10 +319,10 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 - [x] Pridať akciu **Ask FX / Upraviť zvuk** do kontextu konkrétneho podporovaného effect device.
 - [x] Zobraziť rozpoznaný cieľ a target, aby používateľ vedel, čo engine pochopil.
-- [x] Ukázať parameter diff, krátke vysvetlenie a warnings; ovládanie intenzity ešte chýba.
-- [ ] Poskytnúť `Apply`, `Cancel`, zmenu intenzity a možnosť vyradiť jednotlivú navrhnutú zmenu.
+- [x] Ukázať parameter diff, krátke vysvetlenie, warnings a ovládanie intenzity s deterministickým prepočtom návrhu.
+- [x] Poskytnúť `Apply`, `Cancel`, zmenu intenzity a možnosť vyradiť jednotlivú navrhnutú zmenu; preview aj atomic Apply rešpektujú vybranú množinu parametrov.
 - [x] Zobraziť jasné empty/error states pre nepodporovaný zámer, neplatný target, plugin fallback a stale proposal.
-- [ ] Po Apply ponúknuť štandardný Undo; neduplikovať nový vlastný history systém.
+- [x] Po Apply funguje štandardný globálny Undo/Redo; nepridávať paralelný history systém.
 
 ### Audio audition — povinný bezpečnostný návrh
 
@@ -297,8 +336,9 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 ### Exit criteria
 
-- [ ] E2E: otvorenie panelu → parse → proposal → audition → cancel obnoví audio aj project hash.
-- [ ] E2E: audition → apply → undo → redo zachová presnú sekvenciu.
+- [x] Browser E2E: offline Reverb proposal → audition → cancel ponechá project parameter nezmenený; engine test overí návrat live hodnoty. Exact PCM/hash parity zostáva otvorená.
+- [x] Browser E2E: audition → Apply iba vybraného parametra pri upravenej intenzite → štandardný undo/redo a autosave/reload; nevýber MIX ponechá MIX nezmenený.
+- [x] Browser E2E: offline EQ brightness request vráti konkrétny HIGH SHELF diff bez modelu alebo siete.
 - [ ] Všetky opustené preview sessions sa deterministicky uzatvoria a nezanechajú transient state.
 
 ---
@@ -309,7 +349,7 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 ### Odporúčané poradie pokrytia
 
-1. [ ] `eq` a `reverb` — najzrozumiteľnejšie pilotné mapovania;
+1. [x] `eq` a `reverb` — pilotné mapovania sú implementované; slepé ľudské golden počúvanie ešte chýba;
 2. [ ] `saturation`/`tapeSat` a `delay` — až s jasným wet/output safety správaním;
 3. [ ] FXEQ — prvý deep-schema flagship adapter;
 4. [ ] Ultina, Ozvena a Kaskada — každé ako vlastná capability sada a vlastné testy;
@@ -330,7 +370,7 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 - [ ] 0 neautorizovaných zmien mimo vybraného effect instance v property/integration testoch.
 - [ ] 100 % podporovaných golden promptov má vysvetlený, opakovateľný výsledok alebo explicitný clarification.
 - [ ] Unsupported requests sú bezpečne odmietnuté, nie „opravené“ na iný význam.
-- [ ] Browser app funguje offline pre všetky deterministické V1 flow-y.
+- [x] Offline browser E2E pokrýva Reverb audition/apply/undo/redo/reload a EQ proposal; ďalšie efekty ešte nie sú vo V1 podporované.
 
 ---
 
@@ -406,16 +446,16 @@ ONNX pokračuje iba vtedy, ak held-out test preukáže merateľné zlepšenie ro
 
 ## 7. Riziká a mitigácie
 
-| Riziko | Mitigácia |
-|---|---|
-| Nejasné slová majú rozdielny význam podľa efektu | Explicitný target, kurátorované device mappings, otázka pri nejednoznačnosti |
-| Parameter ranges nie sú perceptuálne lineárne | Descriptor mapping podľa jednotky/taper + konzervatívne zariadeniové limity |
-| AI zmení nesúvisiaci alebo skrytý parameter | Strict allowlist, output ako intent, schema validation pred plannerom aj pri Apply |
-| Preview sa uloží alebo zostane po zatvorení panelu | Samostatná transient session s lifecycle cleanup; preview bez dostupnej garancie sa vypne |
-| Undo deep plugin parametrov neobnoví audio runtime | Canonical full-state undo a device-specific integration tests |
-| Model znie „presvedčivo“, ale návrh zhorší mix | Blind loudness-matched golden review a explicitné subjektívne acceptance |
-| Rozsah feature sa rozleje na celý mixer/VST hosting | V1 = jedno existujúce effect instance; ďalší scope až po V1 gate |
-| Model/asset spomalí offline app | Parser je plnohodnotný offline baseline; model lazy a optional |
+| Riziko                                              | Mitigácia                                                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Nejasné slová majú rozdielny význam podľa efektu    | Explicitný target, kurátorované device mappings, otázka pri nejednoznačnosti              |
+| Parameter ranges nie sú perceptuálne lineárne       | Descriptor mapping podľa jednotky/taper + konzervatívne zariadeniové limity               |
+| AI zmení nesúvisiaci alebo skrytý parameter         | Strict allowlist, output ako intent, schema validation pred plannerom aj pri Apply        |
+| Preview sa uloží alebo zostane po zatvorení panelu  | Samostatná transient session s lifecycle cleanup; preview bez dostupnej garancie sa vypne |
+| Undo deep plugin parametrov neobnoví audio runtime  | Canonical full-state undo a device-specific integration tests                             |
+| Model znie „presvedčivo“, ale návrh zhorší mix      | Blind loudness-matched golden review a explicitné subjektívne acceptance                  |
+| Rozsah feature sa rozleje na celý mixer/VST hosting | V1 = jedno existujúce effect instance; ďalší scope až po V1 gate                          |
+| Model/asset spomalí offline app                     | Parser je plnohodnotný offline baseline; model lazy a optional                            |
 
 ---
 

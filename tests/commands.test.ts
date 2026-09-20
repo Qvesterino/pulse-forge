@@ -466,6 +466,22 @@ describe("effect commands", () => {
     expect(() => setEffectParam(store.doc, trackId, fx.id, "nonexistent", 0.5)).toThrow(/not defined/);
   });
 
+  it("setEffectParam rejects invalid enum and toggle values", () => {
+    const doc = createDefaultProject();
+    const store = new ProjectStore(doc);
+    const trackId = doc.tracks[0].id;
+    store.execute(addEffect(store.doc, trackId, "tapeStop"));
+    const fx = getDrumTrack(store.doc).effects[0];
+
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "curve", 0.5)).toThrow(/invalid enum value/i);
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "curve", 99)).toThrow(/invalid enum value/i);
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "spin", 0.5)).toThrow(/invalid enum value/i);
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "engaged", 0.5)).toThrow(/invalid toggle value/i);
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "engaged", 99)).toThrow(/invalid toggle value/i);
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "curve", 1)).not.toThrow();
+    expect(() => setEffectParam(store.doc, trackId, fx.id, "engaged", 1)).not.toThrow();
+  });
+
   it("setEffectParam accepts Ozvena's deep enum paths and clamps the index", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);

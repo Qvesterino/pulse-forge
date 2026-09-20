@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./canonical";
+export * from "./capabilities";
 export * from "./catalog";
 export * from "./parser";
 export * from "./planner";

@@ -9,6 +9,10 @@ export interface ParamDef {
   unit?: string;
   format?: (value: number) => string;
   options?: { value: number; label: string }[];
+  /** Explicit value kind when a numeric range alone is ambiguous. */
+  kind?: "continuous" | "enum" | "toggle" | "discrete" | "unknown";
+  /** Quantization interval for explicitly discrete parameters. */
+  step?: number;
   /**
    * Slider taper: "log" maps the drag position logarithmically so Hz-domain
    * knobs (cutoff, EQ bands, tone) spend their travel musically instead of

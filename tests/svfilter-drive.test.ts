@@ -44,6 +44,23 @@ function renderThrough(params: Record<string, number>, input: Float32Array): Flo
   return out;
 }
 
+function processBlock(
+  proc: Proc,
+  inputs: Float32Array[],
+  params: Record<string, number>,
+): [Float32Array, Float32Array] {
+  const length = inputs[0]?.length ?? 128;
+  const outputs: [Float32Array, Float32Array] = [new Float32Array(length), new Float32Array(length)];
+  proc.process([inputs], [outputs], {
+    cutoff: [params.cutoff ?? 700],
+    resonance: [params.resonance ?? 1.2],
+    mode: [params.mode ?? 0],
+    drive: [params.drive ?? 0],
+    mix: [params.mix ?? 1],
+  });
+  return outputs;
+}
+
 function peak(data: Float32Array): number {
   let v = 0;
   for (let i = 0; i < data.length; i++) v = Math.max(v, Math.abs(data[i]));
@@ -74,6 +91,56 @@ describe("SVF drive (raw worklet DSP)", () => {
     for (let i = 0; i < N; i++) input[i] = amp * Math.sin((2 * Math.PI * freq * i) / 44100);
     return input;
   }
+
+  it("keeps mono output and later stereo state bit-identical, including driven filtering", () => {
+    for (const drive of [0, 0.8]) {
+      const params = { cutoff: 420, resonance: 0.72, mode: 0, drive, mix: 0.83 };
+      const monoProcessor = new Processor();
+      const duplicatedStereoProcessor = new Processor();
+      const mono = Float32Array.from({ length: 128 }, (_, i) => 0.42 * Math.sin((2 * Math.PI * 87 * i) / 44100));
+      const monoOut = processBlock(monoProcessor, [mono], params);
+      const stereoOut = processBlock(duplicatedStereoProcessor, [mono, mono], params);
+      expect(monoOut[0]).toEqual(stereoOut[0]);
+      expect(monoOut[1]).toEqual(stereoOut[1]);
+
+      // A channel-layout change between render quanta must retain the same
+      // right-channel filter/drive history as continuously duplicated stereo.
+      const left = Float32Array.from({ length: 128 }, (_, i) => 0.36 * Math.sin((2 * Math.PI * 131 * i) / 44100));
+      const right = Float32Array.from({ length: 128 }, (_, i) => 0.31 * Math.sin((2 * Math.PI * 197 * i) / 44100));
+      const transitioned = processBlock(monoProcessor, [left, right], params);
+      const reference = processBlock(duplicatedStereoProcessor, [left, right], params);
+      expect(transitioned[0]).toEqual(reference[0]);
+      expect(transitioned[1]).toEqual(reference[1]);
+    }
+  });
+
+  it("renders filter/drive tails before skipping exact silence and resumes cleanly", () => {
+    const quiet = new Float32Array(128);
+    for (const drive of [0, 0.8]) {
+      const params = { cutoff: 3000, resonance: 0.35, mode: 0, drive, mix: 1 };
+      const processor = new Processor();
+      const excitation = sine(1000, 0.5).slice(0, 128);
+      expect(peak(processBlock(processor, [excitation], params)[0])).toBeGreaterThan(0.01);
+
+      const firstTail = processBlock(processor, [quiet, quiet], params);
+      expect(peak(firstTail[0])).toBeGreaterThan(0);
+      let settledToExactSilence = false;
+      for (let block = 0; block < 600; block++) {
+        const tail = processBlock(processor, [quiet, quiet], params);
+        if (peak(tail[0]) === 0 && peak(tail[1]) === 0) {
+          settledToExactSilence = true;
+          break;
+        }
+      }
+      expect(settledToExactSilence).toBe(true);
+
+      const nextNote = sine(223, 0.4).slice(0, 128);
+      const resumed = processBlock(processor, [nextNote], params);
+      const fresh = processBlock(new Processor(), [nextNote], params);
+      expect(resumed[0]).toEqual(fresh[0]);
+      expect(resumed[1]).toEqual(fresh[1]);
+    }
+  });
 
   it("drive 0 passes the filter deterministically and unchanged between runs", () => {
     const input = sine(8000, 0.5);

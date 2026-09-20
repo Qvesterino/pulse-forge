@@ -4598,6 +4598,17 @@
   }
 
   // src/effects/ozvena-params.ts
+  var OZVENA_ENUM_VALUES = {
+    "engines.e2.algo": ["room", "mediumChamber", "plate"],
+    "engines.e3.algo": ["largeChamber", "hall"],
+    "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
+    "mod.mode": ["randomFat", "pitch"],
+    "convolution.mode": ["algorithmic", "hybrid", "convolution"],
+    "global.quality": ["eco", "standard", "high", "render"]
+  };
+  var ENUM_RANGES = Object.fromEntries(
+    Object.entries(OZVENA_ENUM_VALUES).map(([id, values]) => [id, { min: 0, max: values.length - 1 }])
+  );
   var OZVENA_IR_MAX_SECONDS = 10;
   function capUserIrFrames(frames, sampleRate2) {
     if (!Number.isFinite(frames) || frames <= 0) return 0;
@@ -4618,14 +4629,7 @@
     if (sets.some((s) => s === null)) return null;
     return sets;
   }
-  var ENUM_BY_PATH = {
-    "engines.e2.algo": ["room", "mediumChamber", "plate"],
-    "engines.e3.algo": ["largeChamber", "hall"],
-    "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
-    "mod.mode": ["randomFat", "pitch"],
-    "convolution.mode": ["algorithmic", "hybrid", "convolution"],
-    "global.quality": ["eco", "standard", "high", "render"]
-  };
+  var ENUM_BY_PATH = OZVENA_ENUM_VALUES;
   function setPath(state, id, value) {
     const parts = id.split(".");
     const write = (node, depth) => {

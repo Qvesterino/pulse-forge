@@ -9,12 +9,15 @@ import { STEP_TICKS, type InstrumentTrack, type NoteEvent, type Pattern } from "
 import {
   buildPriorGridRows,
   priorGenreOf,
+  PRIOR_GENRES,
+  PRIOR_STYLE_VOCAB,
   PRIOR_FEATURES_VERSION,
   PRIOR_FEATURE_COUNT,
 } from "../../ai/symbolic/prior-features";
 import {
   buildMelodicFeatureRow,
   melodicGenreOf,
+  MELODIC_GENRES,
   MELODIC_DURATION_VALUES,
   MELODIC_FEATURE_COUNT,
   MELODIC_FEATURES_VERSION,
@@ -234,8 +237,14 @@ export class SymbolicPriorProvider implements GenerationProvider {
     }
     const pads = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads : [];
     const padRoles = pads.map((pad, index) => inferPadRole(pad.name, index));
-    const genre = priorGenreOf(options.genre);
     const styleId = resolveGrooveForGeneration(doc, options).id;
+    // These models have a fixed, versioned vocabulary. New groove-library
+    // genres must stay on the template path until matching models are trained;
+    // mapping (for example) drill onto the house one-hot silently biases it.
+    const supportsDrumPrior =
+      (PRIOR_GENRES as readonly string[]).includes(options.genre) &&
+      (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
+    const supportsMelodicPrior = (MELODIC_GENRES as readonly string[]).includes(options.genre);
     const densityGain = 0.55 + plan.intent.density * 0.9;
     const velocityJitter = plan.intent.controls.velocityVariation * 0.24;
 
@@ -248,15 +257,15 @@ export class SymbolicPriorProvider implements GenerationProvider {
         const melodicOnly = generatePattern(doc, {
           ...options,
           seed: symbolicSeed,
-          roles: (options.roles ?? ["drums", "bass", "chords", "lead"]).filter((role) => role !== "drums"),
+          roles: supportsDrumPrior
+            ? (options.roles ?? ["drums", "bass", "chords", "lead"]).filter((role) => role !== "drums")
+            : options.roles,
         });
 
         // Melodic prior (T2 v2) — replaces template melody when available.
-        const priorMelody = await sampleMelodicParts(
-          plan,
-          context,
-          forkRandom(`${symbolicSeed}|melody.neural`, "stream"),
-        );
+        const priorMelody = supportsMelodicPrior
+          ? await sampleMelodicParts(plan, context, forkRandom(`${symbolicSeed}|melody.neural`, "stream"))
+          : null;
         let notes: Pattern["notes"] = melodicOnly.notes;
         if (priorMelody) {
           notes = {};
@@ -270,8 +279,13 @@ export class SymbolicPriorProvider implements GenerationProvider {
         }
 
         const rowsById: Record<string, number[]> = {};
-        if (pads.length > 0) {
-          const featureRows = buildPriorGridRows({ genre, styleId, stepCount, padRoles });
+        if (pads.length > 0 && supportsDrumPrior) {
+          const featureRows = buildPriorGridRows({
+            genre: priorGenreOf(options.genre),
+            styleId,
+            stepCount,
+            padRoles,
+          });
           const batch = new Float32Array(featureRows.length * PRIOR_FEATURE_COUNT);
           featureRows.forEach((row, index) => batch.set(row, index * PRIOR_FEATURE_COUNT));
           const run = await runPriorGrid(batch, featureRows.length);
@@ -304,7 +318,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
         const candidate: Pattern = attachProvenance(
           {
             ...melodicOnly,
-            name: `${melodicOnly.name} (prior${priorMelody ? "+melody" : ""})`,
+            name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${priorMelody ? "+melody" : ""})`,
             rows: { ...melodicOnly.rows, ...rowsById },
             ...(notes ? { notes } : {}),
             generation: {
@@ -331,7 +345,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
-          source: "symbolic-prior",
+          source: Object.keys(rowsById).length > 0 || priorMelody ? "symbolic-prior" : "template",
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

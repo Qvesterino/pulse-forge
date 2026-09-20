@@ -58,8 +58,10 @@ beforeEach(() => {
 });
 
 describe("prior-features contract", () => {
-  it("style vocabulary exactly covers the groove library", () => {
-    expect([...GROOVE_LIBRARY.map((groove) => groove.id)].sort()).toEqual([...PRIOR_STYLE_VOCAB].sort());
+  it("fixed model style vocabulary only references grooves in the library", () => {
+    const grooveIds = new Set(GROOVE_LIBRARY.map((groove) => groove.id));
+    expect(PRIOR_STYLE_VOCAB.length).toBeGreaterThan(0);
+    expect(PRIOR_STYLE_VOCAB.every((styleId) => grooveIds.has(styleId))).toBe(true);
   });
 
   it("produces deterministic fixed-width one-hot rows", () => {
@@ -78,6 +80,17 @@ describe("prior-features contract", () => {
     expect(a[PRIOR_FEATURE_COUNT - 1]).toBe(1);
     // all features finite
     for (const value of a) expect(Number.isFinite(value)).toBe(true);
+  });
+
+  it("does not alias an untrained style to the first trained style", () => {
+    const row = buildPriorFeatureRow({
+      genre: "house",
+      styleId: "drill.dark",
+      role: "kick",
+      step: 0,
+      stepCount: 16,
+    });
+    expect(row.slice(4, 4 + PRIOR_STYLE_VOCAB.length)).toEqual(Array(PRIOR_STYLE_VOCAB.length).fill(0));
   });
 
   it("maps vocab roles by index and wraps foreign roles into `unknown`", () => {
@@ -196,6 +209,24 @@ describe("symbolic prior provider", () => {
     const ranked = rankCandidateBank(doc, entries);
     expect(ranked.length).toBe(2);
     expect(ranked[0].score).toBeGreaterThanOrEqual(ranked[1].score);
+  });
+
+  it("keeps unsupported groove genres on the template path instead of aliasing them to house", async () => {
+    const drillIntent = normalizeIntent({
+      genre: "drill",
+      seed: "unsupported-prior-genre",
+      candidateCount: 0,
+      symbolicCandidates: 1,
+      roles: ["drums", "bass", "chords", "lead"],
+    });
+    const plan = planGeneration(drillIntent, doc);
+    const { entries } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    expect(runPriorGridMock).not.toHaveBeenCalled();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].source).toBe("template");
+    const drumRows = Object.values(entries[0].pattern.rows);
+    expect(drumRows.length).toBeGreaterThan(0);
+    for (const row of drumRows) expect(row.length).toBe(16);
   });
 });
 

@@ -33,6 +33,12 @@ function hasAny(tokens: string[], needles: string[]): boolean {
 }
 
 function inferUseCase(preset: Pick<InstrumentPreset, "instrument" | "name" | "tags" | "mood">): PresetUseCase {
+  // Bass-role instruments normalize against the bass plateau even when
+  // play-style words match other families ("pluck", "stab", "impact"):
+  // families are role plateaus, and a bass preset auditioned at e.g. pluck
+  // loudness (-30.9) lands ~18 dB off at the clamp (factory.bass.house.pluck
+  // measured -13.2 → -17.7; factory.808.score.impact measured -2.4 → -18.0).
+  if (["bass", "808", "logdrum"].includes(preset.instrument)) return "bass";
   const tokens = tokensOf(preset);
   for (const entry of TOKEN_USE_CASES) if (hasAny(tokens, entry.tokens)) return entry.useCase;
   if (preset.instrument === "drumsynth") return "drums";

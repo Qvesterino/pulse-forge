@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import type { EffectIntentPreviewEndReason } from "../audio-engine/AudioEngine";
 import type { EffectInstance, ProjectDocument } from "../project-model/types";
 import { applyEffectIntentProposal } from "../effect-intent/apply";
@@ -29,6 +29,8 @@ export function EffectIntentAssistant({
   const [open, setOpen] = useState(false);
   const [request, setRequest] = useState("");
   const [proposal, setProposal] = useState<EffectChangeProposal | null>(null);
+  const [intensity, setIntensity] = useState(60);
+  const [selectedParamIds, setSelectedParamIds] = useState<Set<string>>(() => new Set());
   const [previewing, setPreviewing] = useState(false);
   const [message, setMessage] = useState("");
   const previewRef = useRef<ActivePreview | null>(null);
@@ -97,6 +99,7 @@ export function EffectIntentAssistant({
     setMessage("");
     const parsed = parseEffectIntent(request);
     if (parsed.status !== "ready") {
+      setSelectedParamIds(new Set());
       setMessage(parsed.diagnostics.join(" "));
       return;
     }
@@ -106,12 +109,66 @@ export function EffectIntentAssistant({
       parsed.intent,
     );
     if (result.status !== "ready") {
+      setSelectedParamIds(new Set());
       setMessage(result.diagnostics.join(" "));
       return;
     }
     setProposal(result.proposal);
+    setIntensity(Math.round(parsed.intent.goals[0].amount * 100));
+    setSelectedParamIds(new Set(result.proposal.changes.map((change) => change.paramId)));
     proposalRef.current = { proposal: result.proposal, doc: services.store.getDoc() };
     setMessage("Návrh je pripravený. Projekt sa zatiaľ nezmenil.");
+  };
+
+  const changeIntensity = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextIntensity = Number(event.currentTarget.value);
+    setIntensity(nextIntensity);
+    const current = proposalRef.current;
+    if (!current || current.proposal !== proposal) return;
+
+    cancelPreview();
+    const doc = services.store.getDoc();
+    if (current.doc !== doc || !isEffectIntentProposalCurrent(doc, current.proposal)) {
+      proposalRef.current = null;
+      setProposal(null);
+      setSelectedParamIds(new Set());
+      setMessage("Zariadenie sa zmenilo. Vytvor nový návrh z aktuálneho stavu.");
+      return;
+    }
+
+    const intent = {
+      ...current.proposal.intent,
+      goals: current.proposal.intent.goals.map((goal) => ({ ...goal, amount: nextIntensity / 100 })),
+    };
+    const result = planEffectIntent(doc, current.proposal.target, intent);
+    if (result.status !== "ready") {
+      proposalRef.current = null;
+      setProposal(null);
+      setSelectedParamIds(new Set());
+      setMessage(result.diagnostics.join(" "));
+      return;
+    }
+
+    setProposal(result.proposal);
+    setSelectedParamIds(new Set(result.proposal.changes.map((change) => change.paramId)));
+    proposalRef.current = { proposal: result.proposal, doc };
+    setMessage(`Návrh prepočítaný na intenzitu ${nextIntensity} %. Projekt sa nemení.`);
+  };
+
+  const toggleParam = (paramId: string) => {
+    const interruptedPreview = previewRef.current !== null;
+    cancelPreview();
+    setSelectedParamIds((current) => {
+      const next = new Set(current);
+      if (next.has(paramId)) next.delete(paramId);
+      else next.add(paramId);
+      return next;
+    });
+    setMessage(
+      interruptedPreview
+        ? "Výber zmenený; preview sa zastavilo a projekt ostal nezmenený."
+        : "Výber zmien aktualizovaný; projekt ostal nezmenený.",
+    );
   };
 
   const togglePreview = () => {
@@ -132,7 +189,15 @@ export function EffectIntentAssistant({
       setMessage("Zariadenie sa zmenilo. Vytvor nový návrh z aktuálneho stavu.");
       return;
     }
-    const values = Object.fromEntries(proposal.changes.map((change) => [change.paramId, change.after]));
+    const values = Object.fromEntries(
+      proposal.changes
+        .filter((change) => selectedParamIds.has(change.paramId))
+        .map((change) => [change.paramId, change.after]),
+    );
+    if (Object.keys(values).length === 0) {
+      setMessage("Vyber aspoň jeden parameter, ktorý chceš vypočuť.");
+      return;
+    }
     if (!services.engine.beginEffectIntentPreview(trackId, effect.id, values, onPreviewEnded)) {
       setMessage("Live audio preview nie je dostupný. Návrh môžeš stále skontrolovať a aplikovať.");
       return;
@@ -145,6 +210,10 @@ export function EffectIntentAssistant({
   const applyProposal = () => {
     if (!proposal) return;
     const doc = services.store.getDoc();
+    if (selectedParamIds.size === 0) {
+      setMessage("Vyber aspoň jeden parameter, ktorý chceš aplikovať.");
+      return;
+    }
     if (proposalRef.current?.proposal !== proposal || proposalRef.current.doc !== doc || !isEffectIntentProposalCurrent(doc, proposal)) {
       cancelPreview();
       proposalRef.current = null;
@@ -155,8 +224,12 @@ export function EffectIntentAssistant({
     cancelPreview();
     proposalRef.current = null;
     try {
-      services.store.execute(applyEffectIntentProposal(doc, proposal));
+      const selected = proposal.changes
+        .filter((change) => selectedParamIds.has(change.paramId))
+        .map((change) => change.paramId);
+      services.store.execute(applyEffectIntentProposal(doc, proposal, selected));
       setProposal(null);
+      setSelectedParamIds(new Set());
       setMessage("Zmeny aplikované ako jedna vratná operácia.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Návrh sa nepodarilo aplikovať.");
@@ -168,6 +241,7 @@ export function EffectIntentAssistant({
     proposalRef.current = null;
     setOpen(false);
     setProposal(null);
+    setSelectedParamIds(new Set());
     setMessage("");
   };
 
@@ -216,13 +290,38 @@ export function EffectIntentAssistant({
           {proposal && (
             <div className="effect-intent-proposal">
               <div className="effect-intent-summary">{proposal.summary}</div>
+              <label className="effect-intent-intensity" htmlFor={`effect-intent-intensity-${effect.id}`}>
+                <span>Intenzita návrhu</span>
+                <strong>{intensity} %</strong>
+                <input
+                  id={`effect-intent-intensity-${effect.id}`}
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={intensity}
+                  onChange={changeIntensity}
+                  aria-label="Intenzita návrhu"
+                />
+              </label>
+              <p className="effect-intent-selection-hint">
+                Vybrané zmeny: {selectedParamIds.size} / {proposal.changes.length}. Odškrtnuté parametre sa nezmenia.
+              </p>
               <ul>
                 {proposal.changes.map((change) => (
                   <li key={change.paramId}>
-                    <div className="effect-intent-change">
-                      <strong>{change.label}</strong>
-                      <span>{change.beforeText} <span aria-hidden="true">→</span> {change.afterText}</span>
-                    </div>
+                    <label className="effect-intent-change-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedParamIds.has(change.paramId)}
+                        onChange={() => toggleParam(change.paramId)}
+                        aria-label={`Zahrnúť ${change.label}`}
+                      />
+                      <span className="effect-intent-change">
+                        <strong>{change.label}</strong>
+                        <span>{change.beforeText} <span aria-hidden="true">→</span> {change.afterText}</span>
+                      </span>
+                    </label>
                     <small>{change.rationale}</small>
                   </li>
                 ))}
@@ -234,13 +333,13 @@ export function EffectIntentAssistant({
                 <button
                   type="button"
                   className={`btn btn-small${previewing ? " active" : ""}`}
-                  disabled={effect.bypassed}
-                  title={effect.bypassed ? "Najprv zapni zariadenie, aby sa dalo vypočuť" : "Dočasne vypočuť bez zmeny projektu"}
+                  disabled={effect.bypassed || selectedParamIds.size === 0}
+                  title={effect.bypassed ? "Najprv zapni zariadenie, aby sa dalo vypočuť" : "Dočasne vypočuť iba vybrané zmeny"}
                   onClick={togglePreview}
                 >
                   {previewing ? "Zastaviť preview" : "Vypočuť"}
                 </button>
-                <button type="button" className="btn btn-small btn-primary" onClick={applyProposal}>
+                <button type="button" className="btn btn-small btn-primary" onClick={applyProposal} disabled={selectedParamIds.size === 0}>
                   Apply zmeny
                 </button>
                 <button

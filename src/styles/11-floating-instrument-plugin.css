@@ -339,6 +339,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -676,6 +677,47 @@
   font-family: ui-monospace, "Cascadia Code", monospace;
   font-size: 11px;
   font-weight: 700;
+}
+
+/* Numeric blend-pad coordinates — the pad itself is a drag-only canvas, so
+   exact placement (and touch precision) lives in these two fields. */
+.ozvena-pad-numeric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ozvena-pad-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.ozvena-pad-input {
+  width: 52px;
+  height: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: 11px var(--mono);
+  text-align: right;
+  padding: 0 4px;
+}
+
+.ozvena-pad-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .ozvena-pad-input {
+    width: 68px;
+    height: 36px;
+    font-size: 13px;
+  }
 }
 
 .ozvena-pad {

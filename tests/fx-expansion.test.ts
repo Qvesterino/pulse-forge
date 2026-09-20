@@ -45,6 +45,11 @@ function param(values: Record<string, number>): Record<string, Float32Array> {
   return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, Float32Array.of(v)]));
 }
 
+/** Browser AudioWorkletNode supplies every declared AudioParam at its default. */
+function beatManglerParams(values: Record<string, number>): Record<string, Float32Array> {
+  return param({ mix: 1, trigger: 0, interval: 0, offset: 0, chance: 1, gate: 2, ...values });
+}
+
 function stereoBuffer(n: number, fillL: (i: number) => number, fillR?: (i: number) => number): Float32Array[] {
   const l = new Float32Array(n);
   const r = new Float32Array(n);
@@ -207,12 +212,14 @@ describe("fx expansion processors", () => {
       const fx = beatManglerFactory() as ManglerWithPort;
       fx.port.onmessage?.({ data: { type: "steps", volume, pitch: null } });
       fx.port.onmessage?.({ data: { type: "bpm", bpm: 120 } });
-      // Feed a FULL BAR of input — the mangler replays the last recorded bar,
-      // so the window must be full before the mangled pass reads it.
+      // The first bar primes the ring buffer and is intentionally passed
+      // through; measure a second full bar, when the envelope is active.
       const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
+      const primeOutput: Float32Array[][] = [[new Float32Array(bar), new Float32Array(bar)]];
+      fx.process([input], primeOutput, beatManglerParams({ mix: 1 }));
       const output: Float32Array[][] = [[]];
       output[0] = [new Float32Array(bar), new Float32Array(bar)];
-      fx.process([input], output, param({ mix: 1 }));
+      fx.process([input], output, beatManglerParams({ mix: 1 }));
       return output[0];
     };
     const unity = render(Array(16).fill(1));
@@ -236,7 +243,7 @@ describe("fx expansion processors", () => {
     const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
     const output: Float32Array[][] = [[]];
     output[0] = [new Float32Array(bar), new Float32Array(bar)];
-    fx.process([input], output, param({ mix: 0 }));
+    fx.process([input], output, beatManglerParams({ mix: 0 }));
     for (let i = 0; i < bar; i++) {
       expect(output[0][0][i]).toBeCloseTo(input[0][i], 5);
       expect(output[0][1][i]).toBeCloseTo(input[1][i], 5);
@@ -251,7 +258,7 @@ describe("fx expansion processors", () => {
     const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
     const output: Float32Array[][] = [[]];
     output[0] = [new Float32Array(bar), new Float32Array(bar)];
-    fx.process([input], output, param({ mix: 1 }));
+    fx.process([input], output, beatManglerParams({ mix: 1 }));
     for (const ch of output[0]) {
       for (let i = 0; i < ch.length; i++) expect(Number.isFinite(ch[i])).toBe(true);
     }
@@ -269,7 +276,7 @@ describe("fx expansion processors", () => {
       const bar = Math.round((60 / 120) * 4 * SR);
       const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
       const output: Float32Array[][] = [[new Float32Array(bar), new Float32Array(bar)]];
-      fx.process([input], output, param({ mix: 1 }));
+      fx.process([input], output, beatManglerParams({ mix: 1 }));
       expect(log).not.toHaveBeenCalled();
       expect(peakOf(output[0])).toBeGreaterThan(0);
     } finally {

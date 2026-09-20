@@ -40,6 +40,10 @@ export class PcmMicRecorder {
   onError: ((message: string) => void) | null = null;
 
   private state_: PcmRecorderState = "idle";
+  // `cancel()` can return while getUserMedia is still awaiting a permission
+  // prompt. Keep that attempt exclusive until its async start path unwinds;
+  // otherwise its late cleanup can disconnect a newer take's graph.
+  private startInFlight = false;
   private startToken = 0;
   private startedAt = 0;
   private stream: MediaStream | null = null;
@@ -90,7 +94,10 @@ export class PcmMicRecorder {
   }
 
   async start(getMetadata: () => PcmRecordingMetadata | null): Promise<void> {
-    if (this.state_ !== "idle") throw new Error(this.state_ === "starting" ? "Already starting" : "Already recording");
+    if (this.startInFlight || this.state_ !== "idle") {
+      throw new Error(this.state_ === "starting" || this.startInFlight ? "A recording start is still settling" : "Already recording");
+    }
+    this.startInFlight = true;
     const token = ++this.startToken;
     this.state_ = "starting";
     this.nextChunkSequence = 0;
@@ -229,6 +236,8 @@ export class PcmMicRecorder {
       }
       this.state_ = "idle";
       throw error;
+    } finally {
+      this.startInFlight = false;
     }
   }
 

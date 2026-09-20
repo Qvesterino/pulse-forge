@@ -263,6 +263,44 @@ export function OzvenaPanel({
             <span style={{ color: VERTEX_COLORS.e2 }}>E2 {(weights.e2 * 100).toFixed(0)}%</span>
             <span style={{ color: VERTEX_COLORS.e3 }}>E3 {(weights.e3 * 100).toFixed(0)}%</span>
           </div>
+          {/* Numeric pad coordinates — the pad is a drag-only 512×280 canvas;
+              exact placement (and touch precision) needs typed values. */}
+          <div className="ozvena-pad-numeric" role="group" aria-label="Blend pad position">
+            <label className="ozvena-pad-field">
+              <span className="slider-label">X</span>
+              <input
+                type="number"
+                className="ozvena-pad-input"
+                aria-label="Blend pad X position percent"
+                value={Math.round(x * 100)}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(event) => {
+                  const v = Number(event.target.value);
+                  if (!Number.isFinite(v)) return;
+                  onParam("blendPad.x", +Math.max(0, Math.min(1, v / 100)).toFixed(4));
+                }}
+              />
+            </label>
+            <label className="ozvena-pad-field">
+              <span className="slider-label">Y</span>
+              <input
+                type="number"
+                className="ozvena-pad-input"
+                aria-label="Blend pad Y position percent"
+                value={Math.round(y * 100)}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(event) => {
+                  const v = Number(event.target.value);
+                  if (!Number.isFinite(v)) return;
+                  onParam("blendPad.y", +Math.max(0, Math.min(1, v / 100)).toFixed(4));
+                }}
+              />
+            </label>
+          </div>
         </div>
       )}
       {(!docked || dockPage === "blend") && (

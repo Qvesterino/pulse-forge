@@ -856,6 +856,7 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
     "glueEnabled",
     "bassMonoEnabled",
     "bassMonoFreq",
+    "tiltDb",
   ]);
 
   // Groove

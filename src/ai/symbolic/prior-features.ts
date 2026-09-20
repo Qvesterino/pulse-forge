@@ -8,7 +8,7 @@ import type { GenerateOptions } from "../types";
  *
  * ONE row describes one (pad, step) request: "how likely is a hit for this
  * pad role at this position in this genre/style?". The model is a learned
- * prior over the groove LIBRARY — it interpolates between template variations
+ * prior over its fixed, trained style vocabulary — it interpolates between template variations
  * so sampled patterns are style-consistent yet novel. It never sees runtime
  * randomness; sampling/thresholding happens in the provider with seeded RNG.
  *
@@ -24,7 +24,8 @@ export const PRIOR_FEATURES_VERSION = "prior-features.v1";
 export const PRIOR_GENRES = ["house", "techno", "trap", "ambient"] as const;
 export type PriorGenre = (typeof PRIOR_GENRES)[number];
 
-/** Groove ids the model was trained on — must match GROOVE_LIBRARY exactly. */
+/** Fixed training vocabulary. Every id must exist in GROOVE_LIBRARY; new styles
+ * need a newly trained/versioned model rather than an implicit feature change. */
 export const PRIOR_STYLE_VOCAB = [
   "house.driving",
   "house.minimal",
@@ -83,13 +84,13 @@ export interface PriorFeatureInput {
 
 function oneHot(values: readonly string[], value: string, offset: number, row: number[]): void {
   const index = values.indexOf(value);
-  row[offset + (index >= 0 ? index : 0)] = 1;
+  if (index >= 0) row[offset + index] = 1;
 }
 
 /**
  * Build one fixed-order feature row. Pure — same input ⇒ same row.
- * Unknown style/role fall back to index 0 with the one-hot still set (the
- * model saw index 0 classes during training; presence beats absence).
+ * Unknown values remain all-zero in their block. The provider keeps styles
+ * outside this fixed model vocabulary on the template-generation path.
  */
 export function buildPriorFeatureRow(input: PriorFeatureInput): number[] {
   const row = new Array<number>(PRIOR_FEATURE_COUNT).fill(0);

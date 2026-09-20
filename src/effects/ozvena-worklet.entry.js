@@ -9,7 +9,7 @@
  */
 import { createOzvenaProcessor } from "./ozvena-core/core/ozvenaProcessor.ts";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types.ts";
-import { capUserIrFrames } from "./ozvena-params.ts";
+import { OZVENA_ENUM_VALUES, capUserIrFrames } from "./ozvena-params.ts";
 import { validatePrecomputedIrSet } from "./ozvena-core/dsp/fftPartitioned.ts";
 
 const MAX_BLOCK = 128;
@@ -41,14 +41,7 @@ function checkedIrSets(rawSets, sampleRate) {
  *  full path (not leaf name) keeps e.g. engines.e3.algo inside its own
  *  largeChamber/hall list — an E2 index would produce an invalid E3 algo
  *  that throws inside the engine's recompute(). */
-const ENUM_BY_PATH = {
-  "engines.e2.algo": ["room", "mediumChamber", "plate"],
-  "engines.e3.algo": ["largeChamber", "hall"],
-  "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
-  "mod.mode": ["randomFat", "pitch"],
-  "convolution.mode": ["algorithmic", "hybrid", "convolution"],
-  "global.quality": ["eco", "standard", "high", "render"],
-};
+const ENUM_BY_PATH = OZVENA_ENUM_VALUES;
 
 /**
  * Return a NEW state with `id` (dotted path) set to `value`, cloning only

@@ -90,6 +90,14 @@ function osDrive(state, x, driveGain, makeup) {
   return out;
 }
 
+function driveStateIsSilent(state) {
+  if (state.prev !== 0) return false;
+  for (let i = 0; i < 8; i++) {
+    if (state.sub[i] !== 0 || state.sat[i] !== 0) return false;
+  }
+  return true;
+}
+
 class SvFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -126,12 +134,46 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
+    // Browsers may upmix a mono source to two identical channels before it
+    // reaches this node. Detect that once per render quantum so the mono
+    // fast path also covers those graphs without guessing from node options.
+    let monoInput = !inR;
+    if (inL && inR) {
+      monoInput = true;
+      for (let i = 0; i < len; i++) {
+        if (inL[i] !== inR[i]) {
+          monoInput = false;
+          break;
+        }
+      }
+    }
 
     const cutoff = Math.max(20, Math.min(20000, parameters.cutoff[0]));
     const res = Math.max(0, Math.min(1, parameters.resonance[0]));
     const mode = Math.round(parameters.mode[0]);
     const drive = parameters.drive[0];
     const mix = parameters.mix[0];
+
+    // Per-note synth voices can remain connected to the mix bus for the rest
+    // of an OfflineAudioContext render after their oscillator has stopped.
+    // Once both the input and SVF/drive history are exactly silent, avoid the
+    // per-sample DSP while keeping the processor alive for later input.
+    let hasInput = false;
+    if (inL || inR) {
+      for (let i = 0; i < len; i++) {
+        if ((inL && inL[i] !== 0) || (inR && inR[i] !== 0)) {
+          hasInput = true;
+          break;
+        }
+      }
+    }
+    const filterIsSilent = this.lpL === 0 && this.bpL === 0 && this.lpR === 0 && this.bpR === 0;
+    const driveIsSilent = drive <= 0 || (driveStateIsSilent(this.drvL) && driveStateIsSilent(this.drvR));
+    if (!hasInput && filterIsSilent && driveIsSilent) {
+      outL.fill(0);
+      if (outR) outR.fill(0);
+      return true;
+    }
 
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
@@ -157,7 +199,8 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       if (drive > 0) {
         const makeup = 1 + drive * 2.5;
         l = osDrive(this.drvL, l, driveGain, makeup);
-        r = osDrive(this.drvR, r, driveGain, makeup);
+        if (inR) r = osDrive(this.drvR, r, driveGain, makeup);
+        else r = l;
       }
 
       // Chamberlin SVF — left
@@ -172,16 +215,23 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       if (Math.abs(this.bpL) < 1e-20) this.bpL = 0;
       if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
-      // Chamberlin SVF — right
-      const hpR = r - this.lpR - this.q * this.bpR;
-      this.bpR += this.f * hpR;
-      this.lpR += this.f * this.bpR;
-      if (this.bpR > clampVal) this.bpR = clampVal;
-      else if (this.bpR < -clampVal) this.bpR = -clampVal;
-      if (this.lpR > clampVal) this.lpR = clampVal;
-      else if (this.lpR < -clampVal) this.lpR = -clampVal;
-      if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
-      if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
+      // A mono source is upmixed identically by the engine. Reuse the left
+      // result instead of running an identical second SVF per sample; mirror
+      // state after the quantum below so a later stereo quantum resumes as
+      // if both channels had been filtered independently throughout.
+      let hpR = hpL;
+      if (!monoInput) {
+        // Chamberlin SVF — right
+        hpR = r - this.lpR - this.q * this.bpR;
+        this.bpR += this.f * hpR;
+        this.lpR += this.f * this.bpR;
+        if (this.bpR > clampVal) this.bpR = clampVal;
+        else if (this.bpR < -clampVal) this.bpR = -clampVal;
+        if (this.lpR > clampVal) this.lpR = clampVal;
+        else if (this.lpR < -clampVal) this.lpR = -clampVal;
+        if (Math.abs(this.bpR) < 1e-20) this.bpR = 0;
+        if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
+      }
 
       // Mode select
       let fL, fR;
@@ -203,9 +253,22 @@ class SvFilterProcessor extends AudioWorkletProcessor {
           fR = this.lpR;
           break; // LP
       }
+      if (monoInput) fR = fL;
 
       outL[i] = l * (1 - mix) + fL * mix;
       if (outR) outR[i] = r * (1 - mix) + fR * mix;
+    }
+
+    if (monoInput) {
+      this.bpR = this.bpL;
+      this.lpR = this.lpL;
+      if (drive > 0) {
+        this.drvR.sub.set(this.drvL.sub);
+        this.drvR.w = this.drvL.w;
+        this.drvR.sat.set(this.drvL.sat);
+        this.drvR.sw = this.drvL.sw;
+        this.drvR.prev = this.drvL.prev;
+      }
     }
 
     return true;

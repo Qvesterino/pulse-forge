@@ -1,8 +1,14 @@
-import type { EffectInstance, EffectType, ProjectDocument } from "../project-model/types";
+import type { EffectInstance, ProjectDocument } from "../project-model/types";
 import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import { targetEffectsOf } from "../project-model/targets";
 import { effectIntentFingerprint } from "./canonical";
-import { effectIntentParameterCatalog, formatEffectIntentValue, supportsEffectIntent } from "./catalog";
+import {
+  effectIntentCatalogSnapshot,
+  effectParameterSchemaFingerprint,
+  formatEffectIntentValue,
+  supportsEffectIntent,
+} from "./catalog";
+import { effectIntentMappingsForGoal } from "./capabilities";
 import type {
   EffectChangeProposal,
   EffectIntentGoal,
@@ -11,102 +17,7 @@ import type {
   EffectIntentSpec,
   EffectIntentTarget,
 } from "./types";
-import {
-  EFFECT_INTENT_PARSER_VERSION,
-  EFFECT_INTENT_PLANNER_VERSION,
-  EFFECT_INTENT_SCHEMA_VERSION,
-} from "./types";
-
-interface ParameterRule {
-  paramId: string;
-  /** Signed change when the named goal moves in its positive direction. */
-  amount: number;
-  mode: "add" | "logScale";
-  protects: readonly EffectIntentProtectedArea[];
-  safeMin?: number;
-  safeMax?: number;
-  rationale: (direction: "increase" | "decrease") => string;
-}
-
-const RULES: Partial<Record<EffectType, Partial<Record<EffectIntentGoal, readonly ParameterRule[]>>>> = {
-  eq: {
-    warmth: [
-      {
-        paramId: "lowShelfGain",
-        amount: 0.8,
-        mode: "add",
-        protects: ["lowEnd"],
-        safeMin: -4,
-        safeMax: 4,
-        rationale: (direction) => (direction === "increase" ? "jemne pridá telo v nízkych frekvenciách" : "jemne uberie telo v nízkych frekvenciách"),
-      },
-      {
-        paramId: "highShelfGain",
-        amount: -0.7,
-        mode: "add",
-        protects: ["highs"],
-        safeMin: -4,
-        safeMax: 4,
-        rationale: (direction) => (direction === "increase" ? "zjemní horný shelf pre teplejší tón" : "otvorí horný shelf pre chladnejší tón"),
-      },
-    ],
-    brightness: [
-      {
-        paramId: "highShelfGain",
-        amount: 1.1,
-        mode: "add",
-        protects: ["highs"],
-        safeMin: -4,
-        safeMax: 4,
-        rationale: (direction) => (direction === "increase" ? "jemne otvorí horný shelf" : "jemne stlmí horný shelf"),
-      },
-    ],
-  },
-  reverb: {
-    warmth: [
-      {
-        paramId: "tone",
-        amount: -0.14,
-        mode: "logScale",
-        protects: ["highs"],
-        safeMin: 900,
-        safeMax: 9000,
-        rationale: (direction) => (direction === "increase" ? "stlmí jasnosť dozvuku pre teplejší priestor" : "otvorí dozvuk pre chladnejší tón"),
-      },
-    ],
-    brightness: [
-      {
-        paramId: "tone",
-        amount: 0.14,
-        mode: "logScale",
-        protects: ["highs"],
-        safeMin: 900,
-        safeMax: 9000,
-        rationale: (direction) => (direction === "increase" ? "otvorí horné frekvencie dozvuku" : "zjemní horné frekvencie dozvuku"),
-      },
-    ],
-    space: [
-      {
-        paramId: "mix",
-        amount: 0.075,
-        mode: "add",
-        protects: ["highs"],
-        safeMin: 0,
-        safeMax: 0.75,
-        rationale: (direction) => (direction === "increase" ? "pridá trochu mokrého dozvuku" : "stiahne množstvo mokrého dozvuku"),
-      },
-      {
-        paramId: "decay",
-        amount: Math.log(1.22),
-        mode: "logScale",
-        protects: [],
-        safeMin: 0.25,
-        safeMax: 4.5,
-        rationale: (direction) => (direction === "increase" ? "predĺži dozvuk pre väčší priestor" : "skráti dozvuk pre suchší výsledok"),
-      },
-    ],
-  },
-};
+import { EFFECT_INTENT_PARSER_VERSION, EFFECT_INTENT_PLANNER_VERSION, EFFECT_INTENT_SCHEMA_VERSION } from "./types";
 
 function findEffect(doc: ProjectDocument, trackId: string, fxId: string): EffectInstance | undefined {
   return targetEffectsOf(doc, trackId).find((effect) => effect.id === fxId);
@@ -115,40 +26,46 @@ function findEffect(doc: ProjectDocument, trackId: string, fxId: string): Effect
 function validIntent(intent: EffectIntentSpec): boolean {
   const goals = new Set<EffectIntentGoal>(["warmth", "brightness", "space"]);
   const protectedAreas = new Set<EffectIntentProtectedArea>(["lowEnd", "highs", "stereo", "drive"]);
+  if (!intent || typeof intent !== "object" || Array.isArray(intent)) return false;
+  if (
+    intent.schemaVersion !== EFFECT_INTENT_SCHEMA_VERSION ||
+    intent.parserVersion !== EFFECT_INTENT_PARSER_VERSION ||
+    typeof intent.sourceText !== "string" ||
+    intent.sourceText.length > 500 ||
+    !Array.isArray(intent.goals) ||
+    intent.goals.length === 0 ||
+    intent.goals.length > 3 ||
+    !Array.isArray(intent.preserve)
+  ) {
+    return false;
+  }
+
   const seenGoals = new Set<EffectIntentGoal>();
+  for (const value of intent.goals as unknown[]) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const goal = value as Record<string, unknown>;
+    if (
+      typeof goal.goal !== "string" ||
+      !goals.has(goal.goal as EffectIntentGoal) ||
+      (goal.direction !== "increase" && goal.direction !== "decrease") ||
+      typeof goal.amount !== "number" ||
+      !Number.isFinite(goal.amount) ||
+      goal.amount < 0 ||
+      goal.amount > 1 ||
+      seenGoals.has(goal.goal as EffectIntentGoal)
+    ) {
+      return false;
+    }
+    seenGoals.add(goal.goal as EffectIntentGoal);
+  }
+
   const seenProtectedAreas = new Set<EffectIntentProtectedArea>();
-  if (Array.isArray(intent?.goals)) {
-    for (const goal of intent.goals) {
-      if (seenGoals.has(goal.goal)) return false;
-      seenGoals.add(goal.goal);
-    }
+  for (const value of intent.preserve as unknown[]) {
+    if (typeof value !== "string" || !protectedAreas.has(value as EffectIntentProtectedArea)) return false;
+    if (seenProtectedAreas.has(value as EffectIntentProtectedArea)) return false;
+    seenProtectedAreas.add(value as EffectIntentProtectedArea);
   }
-  if (Array.isArray(intent?.preserve)) {
-    for (const area of intent.preserve) {
-      if (seenProtectedAreas.has(area)) return false;
-      seenProtectedAreas.add(area);
-    }
-  }
-  return (
-    !!intent &&
-    intent.schemaVersion === EFFECT_INTENT_SCHEMA_VERSION &&
-    intent.parserVersion === EFFECT_INTENT_PARSER_VERSION &&
-    typeof intent.sourceText === "string" &&
-    intent.sourceText.length <= 500 &&
-    Array.isArray(intent.goals) &&
-    intent.goals.length > 0 &&
-    intent.goals.length <= 3 &&
-    intent.goals.every(
-      (goal) =>
-        goals.has(goal.goal) &&
-        (goal.direction === "increase" || goal.direction === "decrease") &&
-        Number.isFinite(goal.amount) &&
-        goal.amount >= 0 &&
-        goal.amount <= 1,
-    ) &&
-    Array.isArray(intent.preserve) &&
-    intent.preserve.every((area) => protectedAreas.has(area))
-  );
+  return true;
 }
 
 export function effectIntentTargetStateHash(effect: EffectInstance): string {
@@ -172,14 +89,23 @@ export function planEffectIntent(
     return { status: "unsupported", diagnostics: ["Typ vybraného zariadenia sa medzičasom zmenil."] };
   }
   if (!supportsEffectIntent(effect.type)) {
-    return { status: "unsupported", diagnostics: [`${EFFECT_DEFS[effect.type].name} zatiaľ nemá kurátorované mapovanie pre FX intent.`] };
+    return {
+      status: "unsupported",
+      diagnostics: [`${EFFECT_DEFS[effect.type].name} zatiaľ nemá kurátorované mapovanie pre FX intent.`],
+    };
   }
 
-  const descriptors = new Map(effectIntentParameterCatalog(effect).map((descriptor) => [descriptor.id, descriptor]));
+  const catalog = effectIntentCatalogSnapshot(effect);
+  const parameterDescriptors = catalog.intentDescriptors;
+  const descriptors = new Map(parameterDescriptors.map((descriptor) => [descriptor.id, descriptor]));
+  const targetSchemaId = catalog.schemaId;
+  if (!targetSchemaId) {
+    return { status: "unsupported", diagnostics: ["Parameter schéma zariadenia nemá platnú identitu."] };
+  }
   const accumulators = new Map<
     string,
     {
-      mode: ParameterRule["mode"];
+      mode: "add" | "logScale";
       amount: number;
       reasons: string[];
       safeMin: number;
@@ -188,26 +114,59 @@ export function planEffectIntent(
     }
   >();
   const warnings: string[] = [];
+  let usesUnreviewedMapping = false;
 
   for (const goal of intent.goals) {
-    const rules = RULES[effect.type]?.[goal.goal];
-    if (!rules?.length) {
-      return { status: "unsupported", diagnostics: [`${EFFECT_DEFS[effect.type].name} nepodporuje cieľ „${goal.goal}“.`] };
+    const mappings = effectIntentMappingsForGoal(effect.type, goal.goal);
+    if (mappings.length === 0) {
+      return {
+        status: "unsupported",
+        diagnostics: [`${EFFECT_DEFS[effect.type].name} nepodporuje cieľ „${goal.goal}“.`],
+      };
     }
     let applicable = 0;
     let protectedCount = 0;
-    for (const rule of rules) {
-      const descriptor = descriptors.get(rule.paramId);
-      if (!descriptor || descriptor.kind !== "continuous" || !descriptor.intentGoals.includes(goal.goal)) continue;
-      if (rule.protects.some((area) => intent.preserve.includes(area))) {
+    for (const mapping of mappings) {
+      const descriptor = descriptors.get(mapping.paramId);
+      if (!descriptor) {
+        return {
+          status: "unsupported",
+          diagnostics: [
+            `Kurátorované mapovanie ${mapping.paramId} už nie je dostupné v schéme zariadenia; návrh bol zastavený.`,
+          ],
+        };
+      }
+      if (
+        descriptor.kind !== "continuous" ||
+        !descriptor.intentGoals.includes(goal.goal) ||
+        !descriptor.intentMappings.some((candidate) => candidate === mapping)
+      ) {
+        return {
+          status: "unsupported",
+          diagnostics: [`Kurátorované mapovanie pre ${descriptor.label} sa nezhoduje s aktuálnou schémou zariadenia.`],
+        };
+      }
+      if (!descriptor.currentIsValid) {
+        return {
+          status: "unsupported",
+          diagnostics: [
+            `Aktuálna hodnota parametra ${descriptor.label} je mimo platnej schémy; najprv oprav stav zariadenia.`,
+          ],
+        };
+      }
+      if (mapping.evidence === "curated-unreviewed") usesUnreviewedMapping = true;
+      if (mapping.risk === "elevated") {
+        warnings.push(`Mapovanie parametra ${descriptor.label} má zvýšené riziko; skontroluj celý diff pred Apply.`);
+      }
+      if (mapping.protects.some((area) => intent.preserve.includes(area))) {
         protectedCount++;
         continue;
       }
       applicable++;
       const signed = goal.direction === "increase" ? 1 : -1;
-      const contribution = rule.amount * goal.amount * signed;
-      const existing = accumulators.get(rule.paramId);
-      if (existing && existing.mode !== rule.mode) {
+      const contribution = mapping.positiveStep * goal.amount * signed;
+      const existing = accumulators.get(mapping.paramId);
+      if (existing && existing.mode !== mapping.mode) {
         return {
           status: "needsClarification",
           diagnostics: [`Ciele sa pokúšajú upraviť ${descriptor.label} nekompatibilnými spôsobmi.`],
@@ -218,24 +177,27 @@ export function planEffectIntent(
         if (opposing) {
           return {
             status: "needsClarification",
-            diagnostics: [`Ciele „${opposing.goal}“ a „${goal.goal}“ vyžadujú opačné zmeny parametra ${descriptor.label}.`],
+            diagnostics: [
+              `Ciele „${opposing.goal}“ a „${goal.goal}“ vyžadujú opačné zmeny parametra ${descriptor.label}.`,
+            ],
           };
         }
       }
       const accumulator = existing ?? {
-        mode: rule.mode,
+        mode: mapping.mode,
         amount: 0,
         reasons: [],
-        safeMin: rule.safeMin ?? descriptor.min,
-        safeMax: rule.safeMax ?? descriptor.max,
+        safeMin: mapping.safeMin,
+        safeMax: mapping.safeMax,
         contributors: [],
       };
       accumulator.amount += contribution;
-      accumulator.reasons.push(rule.rationale(goal.direction));
-      if (contribution !== 0) accumulator.contributors.push({ goal: goal.goal, sign: Math.sign(contribution) as -1 | 1 });
-      accumulator.safeMin = Math.max(accumulator.safeMin, rule.safeMin ?? descriptor.min);
-      accumulator.safeMax = Math.min(accumulator.safeMax, rule.safeMax ?? descriptor.max);
-      accumulators.set(rule.paramId, accumulator);
+      accumulator.reasons.push(mapping.rationale[goal.direction]);
+      if (contribution !== 0)
+        accumulator.contributors.push({ goal: goal.goal, sign: Math.sign(contribution) as -1 | 1 });
+      accumulator.safeMin = Math.max(accumulator.safeMin, mapping.safeMin);
+      accumulator.safeMax = Math.min(accumulator.safeMax, mapping.safeMax);
+      accumulators.set(mapping.paramId, accumulator);
     }
     if (applicable === 0 && protectedCount > 0) {
       return {
@@ -243,7 +205,16 @@ export function planEffectIntent(
         diagnostics: [`Obmedzenia chránia všetky parametre, ktorými by sa dal upraviť cieľ „${goal.goal}".`],
       };
     }
-    if (protectedCount > 0) warnings.push(`Časť mapovania pre „${goal.goal}“ bola vynechaná kvôli zachovaniu zvolených frekvenčných oblastí.`);
+    if (protectedCount > 0)
+      warnings.push(
+        `Časť mapovania pre „${goal.goal}“ bola vynechaná kvôli zachovaniu zvolených frekvenčných oblastí.`,
+      );
+  }
+
+  if (usesUnreviewedMapping) {
+    warnings.push(
+      "Pilotné zvukové mapovanie ešte neprešlo blind golden review; pred Apply si návrh vypočuj, ak je preview dostupné.",
+    );
   }
 
   const changes: EffectChangeProposal["changes"] = [];
@@ -267,7 +238,10 @@ export function planEffectIntent(
   }
 
   if (changes.length === 0) {
-    return { status: "noChange", diagnostics: ["Zariadenie už je na bezpečnej hranici tejto zmeny; návrh by nič nezmenil."] };
+    return {
+      status: "noChange",
+      diagnostics: ["Zariadenie už je na bezpečnej hranici tejto zmeny; návrh by nič nezmenil."],
+    };
   }
 
   const name = EFFECT_DEFS[effect.type].name;
@@ -287,6 +261,7 @@ export function planEffectIntent(
       schemaVersion: EFFECT_INTENT_SCHEMA_VERSION,
       plannerVersion: EFFECT_INTENT_PLANNER_VERSION,
       target: { ...target },
+      targetSchemaId,
       baseStateHash: effectIntentTargetStateHash(effect),
       intent,
       summary: `${name}: ${summary}`,
@@ -298,5 +273,10 @@ export function planEffectIntent(
 
 export function isEffectIntentProposalCurrent(doc: ProjectDocument, proposal: EffectChangeProposal): boolean {
   const effect = findEffect(doc, proposal.target.trackId, proposal.target.fxId);
-  return !!effect && effect.type === proposal.target.effectType && effectIntentTargetStateHash(effect) === proposal.baseStateHash;
+  return (
+    !!effect &&
+    effect.type === proposal.target.effectType &&
+    effectParameterSchemaFingerprint(effect) === proposal.targetSchemaId &&
+    effectIntentTargetStateHash(effect) === proposal.baseStateHash
+  );
 }

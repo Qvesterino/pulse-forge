@@ -8,7 +8,7 @@
  *
  * Signal path per band:
  *   1. carrier runs through a 2-pole bandpass at f0[i]
- *   2. modulator runs through its own bandpass at f0[i] × 2^(shift/12)
+ *   2. modulator runs through its own bandpass at f0[i] / 2^(shift/12)
  *   3. a per-band envelope follower tracks the modulator band
  *   4. output += carrierBand × envelope
  *
@@ -18,9 +18,8 @@
  *
  * Pro features beyond the basic 16-band engine:
  *   - `bands`  8 / 12 / 16 log-spaced bands (loFreq…hiFreq)
- *   - `shift`  formant shift −24…+24 st: the MODULATOR band set moves while
- *              the carrier band set stays put — a real formant shift (the
- *              modulator's resonances land on different carrier bands)
+ *   - `shift`  formant shift −24…+24 st: the modulator spectrum maps onto
+ *              carrier bands at the shifted frequencies
  *   - `sibilance` unvoiced passthrough: high-passed modulator mixed straight
  *              into the output so consonants survive the filterbank
  *   - `stereo` equal-power band fan across the stereo field
@@ -55,26 +54,14 @@ function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** RBJ bandpass coefficients at a given frequency (direct form I). */
-function rbjBandpass(f0, q, sr, out, index) {
-  const w0 = (2 * Math.PI * clamp(f0, 20, sr * 0.45)) / sr;
-  const alpha = Math.sin(w0) / (2 * Math.max(0.5, q));
-  const a0 = 1 + alpha;
-  const base = index * 4;
-  out[base] = alpha / a0; // b0
-  out[base + 1] = 0; // b1 (bandpass: no b1)
-  out[base + 2] = -alpha / a0; // b2
-  out[base + 3] = (-2 * Math.cos(w0)) / a0; // a1
-  out[base + 4 - 1] = out[base + 4 - 1]; // (placeholder keeps indexing obvious)
-}
-
 class VocoderProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.sr = globalThis.sampleRate || 44100;
 
     // Coefficient banks: [b0, b1, b2, a1, a2] per band, carrier + modulator.
-    // The modulator bank sits at f0 × 2^(shift/12) — a real formant shift.
+    // The modulator band for carrier f0 sits at f0 / 2^(shift/12), so a
+    // positive shift maps each modulator resonance onto a higher carrier band.
     this.carCoeffs = new Float64Array(VOC_MAX_BANDS * 5);
     this.modCoeffs = new Float64Array(VOC_MAX_BANDS * 5);
     this.lastLayout = "";
@@ -136,7 +123,10 @@ class VocoderProcessor extends AudioWorkletProcessor {
       // Bands beyond the active count mirror the last frequency: their state
       // is never read (the loop stops at `bands`), so the values are inert.
       this.setBandpass(this.carCoeffs, b, f0, q);
-      this.setBandpass(this.modCoeffs, b, clamp(f0 * shiftRatio, 20, this.sr * 0.45), q);
+      // Positive formant shift raises the modulator's spectral envelope: a
+      // modulator peak at f excites the carrier band at f * shiftRatio, so
+      // analyze each carrier band at the corresponding lower modulator center.
+      this.setBandpass(this.modCoeffs, b, clamp(f0 / shiftRatio, 20, this.sr * 0.45), q);
 
       // Equal-power fan across the stereo field, blended toward mono by
       // `stereo` (0 = every band centred, 1 = full L→R fan).
@@ -232,7 +222,8 @@ class VocoderProcessor extends AudioWorkletProcessor {
         const carBandL = this.biquad(carLv, this.carCoeffs, b, this.carrierState[cIdx]);
         const carBandR = this.biquad(carRv, this.carCoeffs, b, this.carrierState[cIdx + 1]);
 
-        // Modulator band at f0 × shiftRatio (L/R) — the formant shift.
+        // Modulator band mapped inversely to carrier f0 — positive shift moves
+        // a modulator peak upward onto a higher-frequency carrier band.
         const modBandL = this.biquad(modLv, this.modCoeffs, b, this.modState[cIdx]);
         const modBandR = this.biquad(modRv, this.modCoeffs, b, this.modState[cIdx + 1]);
 

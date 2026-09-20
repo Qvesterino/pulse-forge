@@ -11,14 +11,33 @@ export interface OzvenaParamRange {
   max: number;
 }
 
-const ENUM_RANGES: Record<string, OzvenaParamRange> = {
-  "engines.e2.algo": { min: 0, max: 2 },
-  "engines.e3.algo": { min: 0, max: 1 },
-  "blendPad.engine2Algo": { min: 0, max: 2 },
-  "mod.mode": { min: 0, max: 1 },
-  "convolution.mode": { min: 0, max: 2 },
-  "global.quality": { min: 0, max: 3 },
-};
+/** Canonical enum order shared by the host's numeric parameter surface and the worklet state tree. */
+export const OZVENA_ENUM_VALUES = {
+  "engines.e2.algo": ["room", "mediumChamber", "plate"],
+  "engines.e3.algo": ["largeChamber", "hall"],
+  "blendPad.engine2Algo": ["room", "mediumChamber", "plate"],
+  "mod.mode": ["randomFat", "pitch"],
+  "convolution.mode": ["algorithmic", "hybrid", "convolution"],
+  "global.quality": ["eco", "standard", "high", "render"],
+} as const satisfies Readonly<Record<string, readonly string[]>>;
+
+/** Audio-bearing state sections; assistant/analyzer bookkeeping is not a DSP parameter surface. */
+export const OZVENA_AUDIO_PARAM_SECTIONS = [
+  "global",
+  "blendPad",
+  "engines",
+  "preDelay",
+  "smoother",
+  "preEq",
+  "reverbEq",
+  "mod",
+  "duck",
+  "convolution",
+] as const;
+
+const ENUM_RANGES: Record<string, OzvenaParamRange> = Object.fromEntries(
+  Object.entries(OZVENA_ENUM_VALUES).map(([id, values]) => [id, { min: 0, max: values.length - 1 }]),
+);
 
 /** Resolve the legal numeric range for one flattened Ozvena path. */
 export function ozvenaParamRange(id: string, value: number | boolean = 0): OzvenaParamRange {

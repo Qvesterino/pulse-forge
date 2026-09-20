@@ -277,11 +277,11 @@ describe("kaskada parameter contract", () => {
     }
   });
 
-  it("all 6 factory presets are in-range against the registry definition", () => {
+  it("all factory presets are in-range against the registry definition", () => {
     const ks = CORE_EFFECT_PRESETS.filter((p) => p.type === "kaskada");
-    expect(ks.length).toBe(6);
+    expect(ks.length).toBeGreaterThan(0);
     const ids = new Set(ks.map((p) => p.id));
-    expect(ids.size).toBe(6);
+    expect(ids.size).toBe(ks.length);
     const defs = EFFECT_DEFS.kaskada.params;
     for (const preset of ks) {
       for (const [id, value] of Object.entries(preset.params)) {

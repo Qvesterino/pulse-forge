@@ -31,7 +31,7 @@ class FakeWorkletNode {
   }
 }
 
-function createRecorder() {
+function createRecorder(options: { deferMicrophonePermission?: boolean } = {}) {
   const recovery = new RecordingRecoveryRepository();
   const track = new EventTarget() as MediaStreamTrack;
   Object.defineProperty(track, "readyState", { value: "live" });
@@ -40,6 +40,13 @@ function createRecorder() {
     getAudioTracks: () => [track],
     getTracks: () => [track],
   } as unknown as MediaStream;
+  let resolveMicrophonePermission: ((value: MediaStream) => void) | null = null;
+  const microphonePermission = options.deferMicrophonePermission
+    ? new Promise<MediaStream>((resolve) => {
+        resolveMicrophonePermission = resolve;
+      })
+    : Promise.resolve(stream);
+  const getUserMedia = vi.fn(() => microphonePermission);
   const source = {
     connect: vi.fn((node: unknown) => {
       if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
@@ -89,7 +96,7 @@ function createRecorder() {
     ctx: context,
     recovery,
     addWorkletModule: vi.fn(async () => {}),
-    getUserMedia: vi.fn(async () => stream),
+    getUserMedia,
   });
   const metadata = () => ({
     projectId: "project-1",
@@ -104,7 +111,19 @@ function createRecorder() {
     (context as unknown as { state: string }).state = state;
     contextStateEvents.dispatchEvent(new Event("statechange"));
   };
-  return { recorder, recovery, metadata, samples, track, source, gains, context, changeContextState };
+  return {
+    recorder,
+    recovery,
+    metadata,
+    samples,
+    track,
+    source,
+    gains,
+    context,
+    changeContextState,
+    getUserMedia,
+    resolveMicrophonePermission: () => resolveMicrophonePermission?.(stream),
+  };
 }
 
 async function waitForAck(node: FakeWorkletNode): Promise<void> {
@@ -134,6 +153,25 @@ afterEach(async () => {
 });
 
 describe("PcmMicRecorder", () => {
+  it("keeps a cancelled permission request from overlapping a new take", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, track, getUserMedia, resolveMicrophonePermission } = createRecorder({
+      deferMicrophonePermission: true,
+    });
+    const pendingStart = recorder.start(metadata);
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+
+    await recorder.cancel();
+    expect(recorder.state).toBe("idle");
+    await expect(recorder.start(metadata)).rejects.toThrow(/start is still settling/i);
+    expect(getUserMedia).toHaveBeenCalledOnce();
+
+    resolveMicrophonePermission();
+    await expect(pendingStart).rejects.toThrow(/cancelled/i);
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(recorder.state).toBe("idle");
+  });
+
   it("records Float32 PCM, waits for durable block acknowledgement, and marks the take recoverable", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const { recorder, recovery, metadata, samples, track, source, gains } = createRecorder();

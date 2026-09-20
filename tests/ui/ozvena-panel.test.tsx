@@ -53,6 +53,30 @@ describe("OzvenaPanel blend pad — keyboard accessibility", () => {
     // x=y=0.5 → barycentric weights e1≈21%, e2≈21%, e3≈58%.
     expect(pad).toHaveAttribute("aria-valuetext", "E1 21%, E2 21%, E3 58%");
   });
+
+  it("exposes numeric X/Y fields that write typed percentages", () => {
+    const { onParam } = renderPad();
+    const x = screen.getByRole("spinbutton", { name: "Blend pad X position percent" });
+    const y = screen.getByRole("spinbutton", { name: "Blend pad Y position percent" });
+    expect(x).toHaveValue(50);
+    expect(y).toHaveValue(50);
+
+    fireEvent.change(x, { target: { value: "80" } });
+    expect(onParam).toHaveBeenCalledWith("blendPad.x", 0.8);
+    onParam.mockClear();
+    fireEvent.change(y, { target: { value: "25" } });
+    expect(onParam).toHaveBeenCalledWith("blendPad.y", 0.25);
+  });
+
+  it("clamps typed pad percentages to 0..100", () => {
+    const { onParam } = renderPad();
+    const x = screen.getByRole("spinbutton", { name: "Blend pad X position percent" });
+    fireEvent.change(x, { target: { value: "180" } });
+    expect(onParam).toHaveBeenCalledWith("blendPad.x", 1);
+    onParam.mockClear();
+    fireEvent.change(x, { target: { value: "-40" } });
+    expect(onParam).toHaveBeenCalledWith("blendPad.x", 0);
+  });
 });
 
 describe("OzvenaPanel Reverb Assistant — diff-based patch", () => {

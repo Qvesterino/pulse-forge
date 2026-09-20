@@ -249,7 +249,17 @@ describe("normalizeProject — macros, returns, master", () => {
       glueEnabled: true,
       bassMonoEnabled: false,
       bassMonoFreq: 120,
+      tiltDb: 0,
     });
+  });
+
+  it("normalizes master tilt to the audio-engine range", () => {
+    const doc = createDefaultProject();
+    const normalized = normalizeProject({ ...doc, master: { ...doc.master, tiltDb: 12 } });
+    expect(normalized.master.tiltDb).toBe(4);
+
+    const invalid = normalizeProject({ ...doc, master: { ...doc.master, tiltDb: Number.NaN } });
+    expect(invalid.master.tiltDb).toBe(0);
   });
 });
 

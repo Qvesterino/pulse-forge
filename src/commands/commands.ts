@@ -4531,6 +4531,12 @@ export function setEffectParam(
   };
   const canonicalId = type === "eq" ? eqLegacyMap[paramId] : undefined;
   const safeValue = Number.isFinite(value) ? value : (def?.default ?? deepDef!.default);
+  if (def?.kind === "toggle" && safeValue !== 0 && safeValue !== 1) {
+    throw new Error(`Invalid toggle value ${safeValue} for ${type}.${paramId}; expected 0 or 1`);
+  }
+  if (def?.options?.length && !def.options.some((option) => option.value === safeValue)) {
+    throw new Error(`Invalid enum value ${safeValue} for ${type}.${paramId}`);
+  }
   const clamped = def
     ? clampEffectParam(type, paramId, safeValue)
     : Math.min(deepDef!.max, Math.max(deepDef!.min, safeValue));
@@ -4606,7 +4612,8 @@ export function applyEffectChainPreset(
   const factoryById = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
   const instances: EffectInstance[] = chain.effects.map((item) => {
     const preset = factoryById.get(item.presetId);
-    if (!preset || preset.type !== item.type) throw new Error(`Factory preset ${item.presetId} does not match ${item.type}`);
+    if (!preset || preset.type !== item.type)
+      throw new Error(`Factory preset ${item.presetId} does not match ${item.type}`);
     const params = defaultParamsOf(item.type);
     for (const [id, value] of Object.entries(preset.params)) params[id] = clampEffectParam(item.type, id, value);
     const outputTrimDb = clampFxOutputTrimDb(preset.outputTrimDb ?? factoryFxPresetGainDb(preset.id));
@@ -5382,12 +5389,8 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
   const nextParams = { ...target.params };
   for (const [id, value] of Object.entries(preset.params)) nextParams[id] = clampEffectParam(target.type, id, value);
   const nextSteps = preset.steps ? sanitizeGateSteps(preset.steps) : target.steps;
-  const nextVolume = preset.volumeSteps
-    ? sanitizeManglerSteps(preset.volumeSteps, 0, 1, 1)
-    : target.volumeSteps;
-  const nextPitch = preset.pitchSteps
-    ? sanitizeManglerSteps(preset.pitchSteps, -24, 24, 0)
-    : target.pitchSteps;
+  const nextVolume = preset.volumeSteps ? sanitizeManglerSteps(preset.volumeSteps, 0, 1, 1) : target.volumeSteps;
+  const nextPitch = preset.pitchSteps ? sanitizeManglerSteps(preset.pitchSteps, -24, 24, 0) : target.pitchSteps;
   const nextTrim = clampFxOutputTrimDb(preset.outputTrimDb ?? factoryFxPresetGainDb(preset.id));
   const apply = (
     d: ProjectDocument,

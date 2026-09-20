@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EffectRack } from "../../src/ui/EffectRack";
 import { renderWithContext, mockServices } from "../helpers";
@@ -18,8 +18,8 @@ function setup(type: EffectType) {
     },
   ];
   const services = mockServices(doc);
-  renderWithContext(<EffectRack track={track} />, { services });
-  return { doc, track, services };
+  const rendered = renderWithContext(<EffectRack track={track} />, { services });
+  return { doc, track, services, unmount: rendered.unmount };
 }
 
 async function request(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -29,7 +29,7 @@ async function request(user: ReturnType<typeof userEvent.setup>, text: string) {
 }
 
 describe("Effect Intent Assistant UI", () => {
-  it("shows a reviewed parameter diff without mutating the project", async () => {
+  it("shows a pilot parameter diff and its review warning without mutating the project", async () => {
     const user = userEvent.setup();
     const { services } = setup("eq");
     await request(user, "trochu teplejšie, ale nechaj výšky tak");
@@ -37,6 +37,7 @@ describe("Effect Intent Assistant UI", () => {
     expect(screen.getByText("EQ: teplejšie")).toBeInTheDocument();
     expect(screen.getByText("LOW SHELF", { selector: "strong" })).toBeInTheDocument();
     expect(screen.queryByText("HIGH SHELF", { selector: "strong" })).toBeNull();
+    expect(screen.getByText(/blind golden review/)).toBeInTheDocument();
     expect(screen.getByText(/Projekt sa zatiaľ nezmenil/)).toBeInTheDocument();
     expect(services.store.execute).not.toHaveBeenCalled();
     expect(services.engine.beginEffectIntentPreview).not.toHaveBeenCalled();
@@ -70,6 +71,18 @@ describe("Effect Intent Assistant UI", () => {
     expect(screen.queryByRole("region", { name: /Ask FX/ })).toBeNull();
   });
 
+  it("restores a live preview when the FX rack unmounts", async () => {
+    const user = userEvent.setup();
+    const { services, unmount } = setup("eq");
+    await request(user, "brighter");
+    await user.click(screen.getByRole("button", { name: "Vypočuť" }));
+
+    unmount();
+
+    expect(services.engine.cancelEffectIntentPreview).toHaveBeenCalledTimes(1);
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
   it("applies the previewed proposal as one undoable command", async () => {
     const user = userEvent.setup();
     const { services } = setup("reverb");
@@ -79,6 +92,34 @@ describe("Effect Intent Assistant UI", () => {
     expect(services.store.execute).toHaveBeenCalledTimes(1);
     const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as { type: string };
     expect(command.type).toBe("applyEffectIntentProposal");
+  });
+
+  it("replans at the chosen intensity and previews/applies only checked parameters", async () => {
+    const user = userEvent.setup();
+    const { doc, services } = setup("reverb");
+    await request(user, "more space");
+
+    fireEvent.change(screen.getByRole("slider", { name: "Intenzita návrhu" }), { target: { value: "100" } });
+    expect(screen.getByText("100 %")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Zahrnúť MIX" }));
+    await user.click(screen.getByRole("button", { name: "Vypočuť" }));
+
+    const beginPreview = services.engine.beginEffectIntentPreview as ReturnType<typeof vi.fn>;
+    const previewValues = beginPreview.mock.calls[0][2] as Record<string, number>;
+    expect(previewValues).toHaveProperty("decay");
+    expect(previewValues).not.toHaveProperty("mix");
+
+    await user.click(screen.getByRole("button", { name: "Zastaviť preview" }));
+    await user.click(screen.getByRole("button", { name: "Apply zmeny" }));
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      execute: (current: typeof doc) => typeof doc;
+    };
+    const applied = command.execute(doc);
+    const effect = applied.tracks.flatMap((track) => track.effects).find((candidate) => candidate.id === "fx-reverb")!;
+    const original = doc.tracks.flatMap((track) => track.effects).find((candidate) => candidate.id === "fx-reverb")!;
+
+    expect(effect.params.decay).toBeGreaterThan(original.params.decay);
+    expect(effect.params.mix).toBe(original.params.mix);
   });
 
   it("ends the audition when transport starts and keeps the proposal unapplied", async () => {

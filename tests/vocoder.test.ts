@@ -164,8 +164,8 @@ describe("Vocoder processor", () => {
       car[i] = Math.sin((2 * Math.PI * 1000 * i) / SR) * 0.4 + Math.sin((2 * Math.PI * 2000 * i) / SR) * 0.4;
     }
     const mod = tone(1000, n);
-    const [flat] = render(car, mod, { shift: 0 }, blocks);
-    const [shifted] = render(car, mod, { shift: 12 }, blocks);
+    const [flat] = render(car, mod, { shift: 0, loFreq: 60, hiFreq: 2000 }, blocks);
+    const [shifted] = render(car, mod, { shift: 12, loFreq: 60, hiFreq: 2000 }, blocks);
     const tailFlat = flat.slice(n * (blocks - 2));
     const tailShift = shifted.slice(n * (blocks - 2));
     // Shift 0 → the 1 kHz carrier band is the excited one.
@@ -189,19 +189,19 @@ describe("Vocoder processor", () => {
   it("FORMANT shift changes which carrier band the modulator excites", () => {
     const n = 8192;
     const blocks = 6;
-    const mod = tone(1000, n);
+    const mod = tone(2000, n);
     const car = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      car[i] = Math.sin((2 * Math.PI * 440 * i) / SR) * 0.4 + Math.sin((2 * Math.PI * 4000 * i) / SR) * 0.4;
+      car[i] = Math.sin((2 * Math.PI * 2000 * i) / SR) * 0.4 + Math.sin((2 * Math.PI * 4000 * i) / SR) * 0.4;
     }
-    const [flat] = render(car, mod, { shift: 0 }, blocks);
-    const [shifted] = render(car, mod, { shift: 12 }, blocks);
+    const [flat] = render(car, mod, { shift: 0, loFreq: 60, hiFreq: 4000 }, blocks);
+    const [shifted] = render(car, mod, { shift: 12, loFreq: 60, hiFreq: 4000 }, blocks);
     const tailFlat = flat.slice(n * (blocks - 2));
     const tailShift = shifted.slice(n * (blocks - 2));
-    // A +12 st formant shift moves the modulator's peak up an octave: the
-    // 4000 Hz carrier band gains relative energy vs the 440 Hz band.
-    const flatRatio = goertzel(tailFlat, 4000) / Math.max(1e-9, goertzel(tailFlat, 440));
-    const shiftRatio = goertzel(tailShift, 4000) / Math.max(1e-9, goertzel(tailShift, 440));
+    // A +12 st shift moves the 2 kHz modulator peak onto the 4 kHz carrier
+    // band; the 4 kHz carrier should gain relative to the 2 kHz carrier.
+    const flatRatio = goertzel(tailFlat, 4000) / Math.max(1e-9, goertzel(tailFlat, 2000));
+    const shiftRatio = goertzel(tailShift, 4000) / Math.max(1e-9, goertzel(tailShift, 2000));
     expect(shiftRatio).toBeGreaterThan(flatRatio);
   });
 
