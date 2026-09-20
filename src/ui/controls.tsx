@@ -90,8 +90,7 @@ interface SliderProps {
   max: number;
   defaultValue: number;
   format?: (value: number) => string;
-  onCommit: (value: number) => void;
-  /**
+  onCommit: (value: number) => void;  /**
    * Fire-and-forget live preview while dragging (open plugin panels push the
    * value straight to the audio runtime so the knob is audible DURING the
    * drag). The document write still happens once, on commit — the preview
@@ -107,6 +106,35 @@ interface SliderProps {
   onMenu?: (x: number, y: number) => void;
   disabled?: boolean;
   compact?: boolean;
+  /**
+   * Drag taper: "log" maps the pointer position logarithmically (Hz-domain
+   * knobs). Value domain is untouched — type-in, automation and presets
+   * still speak plain values; only the gesture + fill geometry change.
+   */
+  taper?: "linear" | "log";
+}
+
+/**
+ * Slider taper math (pure — unit-tested). Linear is identity; log maps the
+ * 0..1 drag ratio onto min..max geometrically (midpoint = geometric mean),
+ * so a 20 Hz–20 kHz knob puts 632 Hz in the middle instead of 10 kHz.
+ * Log requires min > 0 and max > min, otherwise it falls back to linear.
+ */
+export type SliderTaper = "linear" | "log";
+
+export function taperToRatio(min: number, max: number, value: number, taper: SliderTaper = "linear"): number {
+  if (taper !== "log" || !(min > 0) || !(max > min)) {
+    return (value - min) / (max - min);
+  }
+  return Math.log(value / min) / Math.log(max / min);
+}
+
+export function ratioToTaper(min: number, max: number, ratio: number, taper: SliderTaper = "linear"): number {
+  const r = Math.min(1, Math.max(0, ratio));
+  if (taper !== "log" || !(min > 0) || !(max > min)) {
+    return min + r * (max - min);
+  }
+  return min * Math.pow(max / min, r);
 }
 
 export function Slider({
@@ -122,6 +150,7 @@ export function Slider({
   onMenu,
   disabled,
   compact,
+  taper = "linear",
 }: SliderProps) {
   const [dragValue, setDragValue] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -169,7 +198,7 @@ export function Slider({
     if (!track) return value;
     const rect = track.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    return min + ratio * (max - min);
+    return ratioToTaper(min, max, ratio, taper);
   };
 
   const handlePointerDown = (event: React.PointerEvent) => {
@@ -250,7 +279,7 @@ export function Slider({
     onCancel?.();
   };
 
-  const percent = ((shown - min) / (max - min)) * 100;
+  const percent = Math.min(100, Math.max(0, taperToRatio(min, max, shown, taper) * 100));
 
   return (
     <div className={`slider${compact ? " slider-compact" : ""}${disabled ? " slider-disabled" : ""}`}>
@@ -281,14 +310,17 @@ export function Slider({
         onDoubleClick={() => onCommit(defaultValue)}
         onKeyDown={(event) => {
           if (disabled) return;
-          const step = (max - min) / 100;
+          // Keyboard steps move in ratio domain so log knobs step musically
+          // (×/÷ constant factor) instead of jumping hundreds of Hz.
+          const ratioStep = 0.01;
+          const ratio = taperToRatio(min, max, shown, taper);
           if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
             event.preventDefault();
-            onCommit(Math.max(min, shown - step));
+            onCommit(ratioToTaper(min, max, ratio - ratioStep, taper));
           }
           if (event.key === "ArrowRight" || event.key === "ArrowUp") {
             event.preventDefault();
-            onCommit(Math.min(max, shown + step));
+            onCommit(ratioToTaper(min, max, ratio + ratioStep, taper));
           }
         }}
       >

@@ -24,8 +24,10 @@ describe("text-parser v2", () => {
     expect(parsed.input.energy).toBe(0.3);
   });
 
-  it("maps adjacent genres to the canonical four", () => {
-    expect(parseIntentText("phonk beat").input.genre).toBe("trap");
+  it("maps adjacent genres to the canonical set (phonk/drill promoted to first-class)", () => {
+    // Sound-quality pass: phonk and drill got their own grooves, song forms
+    // and kit colouring — they stopped folding into trap.
+    expect(parseIntentText("phonk beat").input.genre).toBe("phonk");
     expect(parseIntentText("ukg groove").input.genre).toBe("house");
     expect(parseIntentText("lofi chill beat").input.genre).toBe("ambient");
     expect(parseIntentText("acid line").input.genre).toBe("techno");

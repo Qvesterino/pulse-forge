@@ -50,9 +50,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bindustrial\b/, "techno"],
   [/\bdub techno\b|\bdubtech\b|\bdub\b/, "techno"],
   [/\bhardcore\b|\bgabber\b/, "techno"],
-  [/\bdrill\b/, "trap"], // drill = 140+ sliding 808s — trap family (was: techno, a tempo-proximity mistake)
+  [/\bdrill\b/, "drill"], // first-class since the sound-quality pass (own grooves + kit swap)
   [/\btrap\b/, "trap"],
-  [/\bphonk\b/, "trap"],
+  [/\bphonk\b|\bmemphis\b|\bmemfis\b/, "phonk"],
   [/\bhip ?hop\b|\bboombap\b|\bboom bap\b/, "trap"],
   [/\bambient\b/, "ambient"],
   [/\blofi\b|\blo-?fi\b/, "ambient"],

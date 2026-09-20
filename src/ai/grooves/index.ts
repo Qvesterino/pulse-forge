@@ -6,6 +6,8 @@ import { AMBIENT_GROOVES } from "./ambient";
 import { HYBRID_GROOVES } from "./hybrid";
 import { DRILL_GROOVES } from "./drill";
 import { PHONK_GROOVES } from "./phonk";
+import { JERSEY_GROOVES } from "./jersey";
+import { DNB_GROOVES } from "./dnb";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -15,6 +17,8 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HYBRID_GROOVES,
   ...DRILL_GROOVES,
   ...PHONK_GROOVES,
+  ...JERSEY_GROOVES,
+  ...DNB_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

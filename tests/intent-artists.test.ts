@@ -39,9 +39,11 @@ describe("artist type-beat presets (C1)", () => {
     expect(parseIntentText("kanye type beat").input.bpmRange).toEqual([86, 92]);
   });
 
-  it("drill resolves to trap (tempo-proximity techno bug fixed)", () => {
-    expect(parseIntentText("uk drill beat").input.genre).toBe("trap");
-    expect(parseIntentText("central cee type beat").input.genre).toBe("trap");
+  it("drill resolves to the drill genre (first-class since the sound-quality pass)", () => {
+    // History: drill→techno was a tempo-proximity bug, fixed to trap family;
+    // now drill has its own grooves/kit, so it stays drill.
+    expect(parseIntentText("uk drill beat").input.genre).toBe("drill");
+    expect(parseIntentText("central cee type beat").input.genre).toBe("drill");
   });
 
   it("no artist → no chip, parsing unchanged", () => {

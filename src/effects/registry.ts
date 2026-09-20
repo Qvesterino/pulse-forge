@@ -207,14 +207,14 @@ const eq: EffectDefinition = {
   name: "EQ",
   category: "tone",
   params: [
-    { id: "hpFreq", label: "HP FREQ", min: 20, max: 1000, default: 20, unit: "Hz", format: formatHz },
-    { id: "lpFreq", label: "LP FREQ", min: 2000, max: 20000, default: 20000, unit: "Hz", format: formatHz },
-    { id: "lowShelfFreq", label: "LOW SHELF FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "hpFreq", label: "HP FREQ", min: 20, max: 1000, default: 20, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "lpFreq", label: "LP FREQ", min: 2000, max: 20000, default: 20000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "lowShelfFreq", label: "LOW SHELF FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz, taper: "log" },
     { id: "lowShelfGain", label: "LOW SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-    { id: "lowMidFreq", label: "LOW MID FREQ", min: 80, max: 2000, default: 400, unit: "Hz", format: formatHz },
+    { id: "lowMidFreq", label: "LOW MID FREQ", min: 80, max: 2000, default: 400, unit: "Hz", format: formatHz, taper: "log" },
     { id: "lowMidGain", label: "LOW MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
     { id: "lowMidQ", label: "LOW MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
-    { id: "highMidFreq", label: "HIGH MID FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz },
+    { id: "highMidFreq", label: "HIGH MID FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz, taper: "log" },
     { id: "highMidGain", label: "HIGH MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
     { id: "highMidQ", label: "HIGH MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
     {
@@ -225,16 +225,17 @@ const eq: EffectDefinition = {
       default: 6000,
       unit: "Hz",
       format: formatHz,
+      taper: "log",
     },
     { id: "highShelfGain", label: "HIGH SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
     // Legacy aliases remain in the registry so old documents and commands keep working.
     { id: "lowGain", label: "LOW", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-    { id: "lowFreq", label: "LOW FREQ", min: 40, max: 400, default: 120, unit: "Hz", format: formatHz },
+    { id: "lowFreq", label: "LOW FREQ", min: 40, max: 400, default: 120, unit: "Hz", format: formatHz, taper: "log" },
     { id: "midGain", label: "MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-    { id: "midFreq", label: "MID FREQ", min: 200, max: 4000, default: 1000, unit: "Hz", format: formatHz },
+    { id: "midFreq", label: "MID FREQ", min: 200, max: 4000, default: 1000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "midQ", label: "MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
     { id: "highGain", label: "HIGH", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-    { id: "highFreq", label: "HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "highFreq", label: "HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
   ],
   factory(ctx, instance) {
     if (isWorkletReady("eq", ctx)) return createEqNode(ctx, instance);
@@ -380,13 +381,13 @@ const msEq: EffectDefinition = {
   name: "M/S EQ",
   category: "tone",
   params: [
-    { id: "midLowFreq", label: "M LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "midLowFreq", label: "M LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz, taper: "log" },
     { id: "midLowGain", label: "M LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
-    { id: "midHighFreq", label: "M HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "midHighFreq", label: "M HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "midHighGain", label: "M HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
-    { id: "sideLowFreq", label: "S LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "sideLowFreq", label: "S LOW FREQ", min: 40, max: 500, default: 120, unit: "Hz", format: formatHz, taper: "log" },
     { id: "sideLowGain", label: "S LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
-    { id: "sideHighFreq", label: "S HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "sideHighFreq", label: "S HIGH FREQ", min: 1500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "sideHighGain", label: "S HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
@@ -634,8 +635,8 @@ const multiband: EffectDefinition = {
   name: "Multiband",
   category: "tone",
   params: [
-    { id: "lowFreq", label: "LOW XOVER", min: 80, max: 800, default: 200, unit: "Hz", format: formatHz },
-    { id: "highFreq", label: "HIGH XOVER", min: 800, max: 8000, default: 2000, unit: "Hz", format: formatHz },
+    { id: "lowFreq", label: "LOW XOVER", min: 80, max: 800, default: 200, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "highFreq", label: "HIGH XOVER", min: 800, max: 8000, default: 2000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "lowGain", label: "LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "midGain", label: "MID", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "highGain", label: "HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
@@ -758,7 +759,7 @@ const compressor: EffectDefinition = {
         { value: 1, label: "PEAK" },
       ],
     },
-    { id: "scHpf", label: "SC HPF", min: 20, max: 500, default: 20, unit: "Hz", format: formatHz },
+    { id: "scHpf", label: "SC HPF", min: 20, max: 500, default: 20, unit: "Hz", format: formatHz, taper: "log" },
     { id: "makeup", label: "MAKEUP", min: 0, max: 24, default: 0, unit: "dB", format: formatDb },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
@@ -832,7 +833,7 @@ const saturation: EffectDefinition = {
   category: "character",
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.3, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 12000, default: 8000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 8000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
@@ -896,7 +897,7 @@ const tapeSat: EffectDefinition = {
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
     { id: "hysteresis", label: "HYST", min: 0, max: 0.95, default: 0.3, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
@@ -1002,7 +1003,7 @@ const reverb: EffectDefinition = {
   params: [
     { id: "decay", label: "DECAY", min: 0.1, max: 6, default: 1.8, unit: "s", format: formatSec },
     { id: "predelay", label: "PRE-DLY", min: 0, max: 120, default: 20, unit: "ms", format: formatMs },
-    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "diffusion", label: "DIFFUSION", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
@@ -1201,7 +1202,7 @@ const delay: EffectDefinition = {
     },
     { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
   ],
   factory(ctx, instance, env) {
@@ -1491,7 +1492,7 @@ const distortion: EffectDefinition = {
   category: "character",
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 12000, default: 5000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 5000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
@@ -1749,7 +1750,7 @@ const chorus: EffectDefinition = {
   name: "Chorus",
   category: "movement",
   params: [
-    { id: "rate", label: "RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "rate", label: "RATE", min: 0.1, max: 8, default: 0.6, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz`, taper: "log" },
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 1, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -1771,7 +1772,7 @@ const phaser: EffectDefinition = {
   name: "Phaser",
   category: "movement",
   params: [
-    { id: "rate", label: "RATE", min: 0.05, max: 8, default: 0.4, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "rate", label: "RATE", min: 0.05, max: 8, default: 0.4, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz`, taper: "log" },
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.3, format: formatPct },
     {
@@ -2615,8 +2616,8 @@ const drumBuss: EffectDefinition = {
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.22, format: formatPct },
     { id: "transient", label: "TRANSIENT", min: -1, max: 1, default: 0.15, format: formatPct },
     { id: "compressor", label: "COMPRESSOR", min: 0, max: 1, default: 0.25, format: formatPct },
-    { id: "tone", label: "TONE", min: 300, max: 16000, default: 9000, unit: "Hz", format: formatHz },
-    { id: "boomFrequency", label: "BOOM FREQ", min: 30, max: 160, default: 60, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 300, max: 16000, default: 9000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "boomFrequency", label: "BOOM FREQ", min: 30, max: 160, default: 60, unit: "Hz", format: formatHz, taper: "log" },
     { id: "boomAmount", label: "BOOM", min: 0, max: 1, default: 0.12, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -18, max: 18, default: 0, unit: "dB", format: formatDb },
@@ -2701,7 +2702,7 @@ const bassBuss: EffectDefinition = {
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.16, format: formatPct },
     { id: "subEnhance", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
-    { id: "subFrequency", label: "SUB FREQ", min: 20, max: 160, default: 70, unit: "Hz", format: formatHz },
+    { id: "subFrequency", label: "SUB FREQ", min: 20, max: 160, default: 70, unit: "Hz", format: formatHz, taper: "log" },
     { id: "compression", label: "COMPRESSION", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.01, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
@@ -3100,7 +3101,7 @@ const svFilter: EffectDefinition = {
   name: "SV Filter",
   category: "tone",
   params: [
-    { id: "cutoff", label: "CUTOFF", min: 20, max: 20000, default: 2000, unit: "Hz", format: formatHz },
+    { id: "cutoff", label: "CUTOFF", min: 20, max: 20000, default: 2000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.3, format: formatPct },
     { id: "mode", label: "MODE", min: 0, max: 3, default: 0, options: SVF_MODES },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
@@ -3124,7 +3125,7 @@ const flanger: EffectDefinition = {
   name: "Flanger",
   category: "movement",
   params: [
-    { id: "rate", label: "RATE", min: 0.05, max: 10, default: 0.5, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "rate", label: "RATE", min: 0.05, max: 10, default: 0.5, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz`, taper: "log" },
     { id: "depth", label: "DEPTH", min: 0, max: 10, default: 3, unit: "ms", format: formatMs },
     { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
@@ -3151,7 +3152,7 @@ const tremolo: EffectDefinition = {
   name: "Tremolo",
   category: "movement",
   params: [
-    { id: "rate", label: "RATE", min: 0.1, max: 20, default: 5, unit: "Hz", format: (v) => `${v.toFixed(1)} Hz` },
+    { id: "rate", label: "RATE", min: 0.1, max: 20, default: 5, unit: "Hz", format: (v) => `${v.toFixed(1)} Hz`, taper: "log" },
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.7, format: formatPct },
     {
       id: "shape",
@@ -3185,8 +3186,8 @@ const autowah: EffectDefinition = {
   name: "Autowah",
   category: "movement",
   params: [
-    { id: "minFreq", label: "MIN FREQ", min: 100, max: 2000, default: 300, unit: "Hz", format: formatHz },
-    { id: "maxFreq", label: "MAX FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz },
+    { id: "minFreq", label: "MIN FREQ", min: 100, max: 2000, default: 300, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "maxFreq", label: "MAX FREQ", min: 500, max: 8000, default: 2500, unit: "Hz", format: formatHz, taper: "log" },
     { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatMs },
@@ -3261,7 +3262,7 @@ const comb: EffectDefinition = {
       default: 0.5,
       format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`,
     },
-    { id: "damp", label: "DAMP", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz },
+    { id: "damp", label: "DAMP", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -3317,7 +3318,7 @@ const duckDelay: EffectDefinition = {
   params: [
     { id: "time", label: "TIME", min: 30, max: 1000, default: 375, unit: "ms", format: formatMs },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "duckAmount", label: "DUCK", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "duckThresh", label: "THRESH", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
     { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
@@ -3349,6 +3350,7 @@ const ringMod: EffectDefinition = {
       default: 220,
       unit: "Hz",
       format: (v) => (v >= 100 ? `${Math.round(v)} Hz` : `${v.toFixed(1)} Hz`),
+      taper: "log",
     },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -3441,7 +3443,7 @@ const multiTapDelay: EffectDefinition = {
     { id: "t4Div", label: "T4 DIV", min: 0, max: 7, default: 0, options: MULTITAP_DIVISIONS },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.85, default: 0.3, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4500, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 8000, default: 4500, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
   factory(ctx, instance, env) {
@@ -3617,16 +3619,16 @@ const vinyl: EffectDefinition = {
     { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
     // Crackle module
     { id: "crackle", label: "CRACKLE", min: 0, max: 1, default: 0.5, format: formatPct },
-    { id: "crackleTone", label: "POP TONE", min: 400, max: 9000, default: 2200, unit: "Hz", format: formatHz },
+    { id: "crackleTone", label: "POP TONE", min: 400, max: 9000, default: 2200, unit: "Hz", format: formatHz, taper: "log" },
     { id: "crackleDecay", label: "POP DECAY", min: 0, max: 1, default: 0.5, format: formatPct },
     // Surface noise module
     { id: "hiss", label: "HISS", min: 0, max: 1, default: 0.35, format: formatPct },
-    { id: "hissTone", label: "HISS TONE", min: 1000, max: 16000, default: 6000, unit: "Hz", format: formatHz },
+    { id: "hissTone", label: "HISS TONE", min: 1000, max: 16000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
     // Motor rumble module
     { id: "rumble", label: "RUMBLE", min: 0, max: 1, default: 0, format: formatPct },
-    { id: "rumbleTone", label: "RUMBLE FREQ", min: 30, max: 120, default: 60, unit: "Hz", format: formatHz },
+    { id: "rumbleTone", label: "RUMBLE FREQ", min: 30, max: 120, default: 60, unit: "Hz", format: formatHz, taper: "log" },
     // Pitch wobble module
-    { id: "wowRate", label: "WOW RATE", min: 0.2, max: 4, default: 0.7, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+    { id: "wowRate", label: "WOW RATE", min: 0.2, max: 4, default: 0.7, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz`, taper: "log" },
     { id: "wow", label: "WOW", min: 0, max: 1, default: 0.5, format: formatPct },
     {
       id: "flutterRate",
@@ -3636,6 +3638,7 @@ const vinyl: EffectDefinition = {
       default: 11,
       unit: "Hz",
       format: (v) => `${v.toFixed(1)} Hz`,
+      taper: "log",
     },
     { id: "flutter", label: "FLUTTER", min: 0, max: 1, default: 0.3, format: formatPct },
     // Gear character
@@ -3648,8 +3651,8 @@ const vinyl: EffectDefinition = {
       default: 0.8,
       format: (v) => `${Math.round(2020 - v * 100)}`,
     },
-    { id: "toneLp", label: "LP TRIM", min: 1000, max: 16000, default: 16000, unit: "Hz", format: formatHz },
-    { id: "toneHp", label: "HP TRIM", min: 10, max: 400, default: 20, unit: "Hz", format: formatHz },
+    { id: "toneLp", label: "LP TRIM", min: 1000, max: 16000, default: 16000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "toneHp", label: "HP TRIM", min: 10, max: 400, default: 20, unit: "Hz", format: formatHz, taper: "log" },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
@@ -3724,8 +3727,8 @@ const kaskada: EffectDefinition = {
     { id: "pingPong", label: "PING-PONG", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "reverse", label: "REVERSE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "ON" : "OFF") },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.95, default: 0.35, format: formatPct },
-    { id: "toneLp", label: "TONE LP", min: 500, max: 12000, default: 4500, unit: "Hz", format: formatHz },
-    { id: "toneHp", label: "TONE HP", min: 20, max: 800, default: 150, unit: "Hz", format: formatHz },
+    { id: "toneLp", label: "TONE LP", min: 500, max: 12000, default: 4500, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "toneHp", label: "TONE HP", min: 20, max: 800, default: 150, unit: "Hz", format: formatHz, taper: "log" },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     {
       id: "modRate",
@@ -3735,6 +3738,7 @@ const kaskada: EffectDefinition = {
       default: 0.6,
       unit: "Hz",
       format: (v) => `${v.toFixed(1)} Hz`,
+      taper: "log",
     },
     { id: "modDepth", label: "MOD DEPTH", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.8, format: formatPct },

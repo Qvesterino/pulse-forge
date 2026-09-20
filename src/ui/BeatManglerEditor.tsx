@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useServices } from "./context";
+import { useDoc, useServices } from "./context";
 import { setBeatManglerSteps } from "../commands/commands";
 import { StepGridEditor } from "./StepGridEditor";
 
@@ -30,12 +30,6 @@ interface ManglerPreset {
 /** `null` pitch = leave the pitch lane untouched (keep the user's melody). */
 function ramp(from: number, to: number, steps = PRESET_STEPS): number[] {
   return Array.from({ length: steps }, (_, i) => Math.round((from + ((to - from) * i) / (steps - 1)) * 100) / 100);
-}
-
-function repeat(pattern: number[], count: number, steps = PRESET_STEPS): number[] {
-  const out = Array.from({ length: steps }, (_, i) => pattern[i % pattern.length]);
-  for (let i = count; i < steps; i++) out[i] = 0;
-  return out;
 }
 
 const MANGLER_PRESETS: ManglerPreset[] = [
@@ -86,27 +80,21 @@ const MANGLER_PRESETS: ManglerPreset[] = [
   },
 ];
 
-export function BeatManglerEditor({
-  trackId,
-  fxId,
-  volumeSteps,
-  pitchSteps,
-}: {
-  trackId: string;
-  fxId: string;
-  volumeSteps?: number[];
-  pitchSteps?: number[];
-}) {
+export function BeatManglerEditor({ trackId, fxId }: { trackId: string; fxId: string }) {
   const services = useServices();
+  // Subscribe to the document so a preset/commit re-renders the lanes with
+  // the new envelope (props would go stale the moment a command lands).
+  const doc = useDoc();
   const [lastPreset, setLastPreset] = useState<string | null>(null);
 
+  const fx = doc.tracks.find((t) => t.id === trackId)?.effects.find((e) => e.id === fxId);
   const volume = useMemo(
-    () => (volumeSteps && volumeSteps.length > 0 ? volumeSteps : Array(PRESET_STEPS).fill(1)),
-    [volumeSteps],
+    () => (fx?.volumeSteps && fx.volumeSteps.length > 0 ? fx.volumeSteps : Array(PRESET_STEPS).fill(1)),
+    [fx?.volumeSteps],
   );
   const pitch = useMemo(
-    () => (pitchSteps && pitchSteps.length > 0 ? pitchSteps : Array(PRESET_STEPS).fill(0)),
-    [pitchSteps],
+    () => (fx?.pitchSteps && fx.pitchSteps.length > 0 ? fx.pitchSteps : Array(PRESET_STEPS).fill(0)),
+    [fx?.pitchSteps],
   );
 
   const commit = (patch: { volume?: number[]; pitch?: number[] }) => {

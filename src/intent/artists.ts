@@ -96,7 +96,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["pop smoke", "uk drill", "central cee", "drill type beat"],
-    genre: "trap",
+    // First-class drill since the sound-quality pass — own grooves + kit swap
+    // (sliding-808 kick, dark snare) instead of folding into trap.
+    genre: "drill",
     style: "sparse",
     mood: "dark",
     energy: 0.65,

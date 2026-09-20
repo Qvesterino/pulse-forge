@@ -9,6 +9,12 @@ export interface ParamDef {
   unit?: string;
   format?: (value: number) => string;
   options?: { value: number; label: string }[];
+  /**
+   * Slider taper: "log" maps the drag position logarithmically so Hz-domain
+   * knobs (cutoff, EQ bands, tone) spend their travel musically instead of
+   * bunching everything at the left end. Falls back to linear when min ≤ 0.
+   */
+  taper?: "linear" | "log";
 }
 
 export interface EffectRuntime {

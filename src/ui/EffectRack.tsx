@@ -621,14 +621,7 @@ function Device({
               onCommit={(steps) => services.store.execute(setEffectSteps(doc, track.id, fx.id, steps))}
             />
           )}
-          {fx.type === "beatMangler" && (
-            <BeatManglerEditor
-              trackId={track.id}
-              fxId={fx.id}
-              volumeSteps={fx.volumeSteps}
-              pitchSteps={fx.pitchSteps}
-            />
-          )}
+          {fx.type === "beatMangler" && <BeatManglerEditor trackId={track.id} fxId={fx.id} />}
           <Suspense fallback={<div className="fx-panel-loading">Loading editor…</div>}>
             {fx.type === "fxeq" && (
               <FxEqPanel

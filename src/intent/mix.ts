@@ -7,6 +7,7 @@ import {
   snapshot,
 } from "../commands/commands";
 import { clampEffectParam } from "../effects/registry";
+import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { roleForTrack } from "./favorites";
 import type { IntentSpec } from "./types";
 
@@ -69,12 +70,18 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
  * (genre/mood/reverb override), pump (house/techno energy or override).
  */
 export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {}): MixProfile {
-  const tone = overrides.tone ?? moodTone(intent);
-  const punch: MixOverrides["punch"] | null =
-    overrides.punch ?? (intent.energy >= 0.75 || intent.mood === "aggressive" ? "more" : null);
   const genre = intent.genre;
+  // Genre character defaults (drill/phonk, sound-quality pass): when neither
+  // the user nor the mood asked for a tone/punch, the genre itself defines
+  // the color — drill reads dark and driven, phonk warm (tape-ish) and dry.
+  const characterGenre = genre === "drill" || genre === "phonk";
+  const tone =
+    overrides.tone ?? moodTone(intent) ?? (characterGenre ? (genre === "phonk" ? "warm" : "dark") : null);
+  const punch: MixOverrides["punch"] | null =
+    overrides.punch ??
+    (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
   const lushGenre = genre === "ambient";
-  const dryGenre = genre === "techno" || genre === "trap";
+  const dryGenre = genre === "techno" || genre === "trap" || characterGenre;
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -111,10 +118,20 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
 
   // ── Punch: drum compression + drive (energy/aggressive/punch words) ─────
   if (punch === "more") {
+    // Reference punch (sound-quality pass): for the CHARACTER genres the
+    // drum compressor's threshold sits just under the drum family's measured
+    // peak activity (integrated + PLR − 3 dB), so it rides the transient tops
+    // and adapts when curated content changes (regenerate via
+    // `npm run presets:loudness`). Legacy genres keep the hand-tuned value —
+    // no sonic change to existing material.
+    const drumsRef = FAMILY_REFERENCE.drums;
+    const punchThreshold = characterGenre
+      ? Math.max(-30, Math.min(-6, Math.round((drumsRef.integrated + drumsRef.punchPlrDb - 3) * 10) / 10))
+      : -16;
     decisions.push({
       target: "drums",
       effectType: "compressor",
-      params: { threshold: -16, ratio: 4, attack: 0.006, makeup: 2 },
+      params: { threshold: punchThreshold, ratio: 4, attack: 0.006, makeup: 2 },
     });
     decisions.push({ target: "drums", effectType: "saturation", params: { drive: 0.45, mix: 0.6 } });
     decisions.push({ target: "bass", effectType: "saturation", params: { drive: 0.4 } });

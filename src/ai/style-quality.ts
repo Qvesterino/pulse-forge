@@ -27,6 +27,13 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   techno: { densityRange: [0.12, 0.66], syncopationRange: [0.06, 0.42], maxDistance: 0.95 },
   trap: { densityRange: [0.1, 0.7], syncopationRange: [0.18, 0.72], maxDistance: 1.05 },
   ambient: { densityRange: [0.06, 0.64], syncopationRange: [0.08, 0.78], maxDistance: 1.15 },
+  // Drill/phonk sit in the trap family: sparse-but-syncopated kick patterns,
+  // generous syncopation tolerance for sliding 808s and memphis swing.
+  drill: { densityRange: [0.1, 0.68], syncopationRange: [0.18, 0.76], maxDistance: 1.05 },
+  phonk: { densityRange: [0.1, 0.72], syncopationRange: [0.16, 0.74], maxDistance: 1.1 },
+  // Jersey: busy bouncy club patterns; DnB: syncopated two-step breaks.
+  jersey: { densityRange: [0.14, 0.8], syncopationRange: [0.16, 0.72], maxDistance: 1.0 },
+  dnb: { densityRange: [0.12, 0.82], syncopationRange: [0.2, 0.85], maxDistance: 1.1 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {
