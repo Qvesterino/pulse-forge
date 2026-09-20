@@ -101,6 +101,17 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     return buf[i0] * (1 - frac) + buf[i1] * frac;
   }
 
+  readSegmentAt(start, length, offset, channel) {
+    const wrapped = (((offset % length) + length) % length);
+    const i0 = Math.floor(wrapped);
+    const frac = wrapped - i0;
+    const i1 = (i0 + 1) % length;
+    const buf = channel === 1 ? this.bufR : this.bufL;
+    const p0 = (start + i0) % this.bufferLen;
+    const p1 = (start + i1) % this.bufferLen;
+    return buf[p0] * (1 - frac) + buf[p1] * frac;
+  }
+
   randomForEvent(eventIndex) {
     let x = (this.seed ^ Math.imul(eventIndex | 0, 0x9e3779b1)) >>> 0;
     x ^= x >>> 16;
@@ -190,9 +201,8 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
           const vol = hasVol ? Math.max(0, Math.min(1, this.volumeSteps[stepIdx])) : 1;
           const pitch = hasPitch ? Math.max(-24, Math.min(24, this.pitchSteps[stepIdx])) : 0;
           const speed = modeMult * Math.pow(2, pitch / 12);
-          const readPosition = this.repeatStart + relative;
-          const wetL = this.readAt(readPosition, 0) * vol;
-          const wetR = this.readAt(readPosition, 1) * vol;
+          const wetL = this.readSegmentAt(this.repeatStart, span, relative, 0) * vol;
+          const wetR = this.readSegmentAt(this.repeatStart, span, relative, 1) * vol;
           out = live * (1 - mix) + wetL * mix;
           outRight = liveR * (1 - mix) + wetR * mix;
           this.repeatReadPos += speed;

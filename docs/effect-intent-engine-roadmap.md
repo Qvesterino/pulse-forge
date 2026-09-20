@@ -1,6 +1,6 @@
 # Effect Intent Engine — implementačná roadmapa
 
-**Status:** návrh · **Dátum:** 2026-09-20 · **Priorita:** P1 produkt, P0 bezpečnosť dát  
+**Status:** implementácia — prebieha · **Dátum:** 2026-09-20 · **Priorita:** P1 produkt, P0 bezpečnosť dát
 **Rozsah:** prirodzeným jazykom navrhovať bezpečné zmeny parametrov existujúcich FX zariadení v Pulse Forge  
 **Princíp:** offline-first, deterministické plánovanie, používateľ schvaľuje každú zmenu
 
@@ -170,7 +170,7 @@ Neprehľadávať ľubovoľné objektové kľúče a nepovažovať „parameter e
 
 ### Úlohy
 
-- [ ] Zaviesť read-only normalizovaný descriptor catalog nad existujúcimi schémami; nezačať paralelnú autoritatívnu schému.
+- [x] Zaviesť read-only normalizovaný descriptor catalog nad existujúcimi schémami; nezačať paralelnú autoritatívnu schému (aktuálny pilot: EQ/Reverb).
 - [ ] Adaptovať bežný `ParamDef` a následne FXEQ/Ultina/Ozvena/Kaskada schémy.
 - [ ] Rozlišovať continuous/enum/toggle, jednotky, log/linear škálu, default, rozsah a aktuálne dostupnosť parametra.
 - [ ] Pridať ručne kurátorované sémantické anotácie: `warmth`, `brightness`, `body`, `presence`, `space`, `width`, `drive`, `dynamics`, `movement`.
@@ -192,28 +192,28 @@ Neprehľadávať ľubovoľné objektové kľúče a nepovažovať „parameter e
 
 ### Úlohy
 
-- [ ] Zaviesť verzovaný `EffectIntentSpec` oddelený od existujúceho `IntentSpec` pre generovanie hudby.
-- [ ] Implementovať deterministic parser pre malý, zdokumentovaný lexikón slovenských a anglických zvukových zámerov.
-- [ ] Parsovať intenzitu (`jemne`, `výrazne`), smer, negáciu a zachovávacie obmedzenia (`bez zmeny basov`).
-- [ ] Podporiť viac cieľov v jednej požiadavke len vtedy, ak sú nezávislé a neprotirečia si.
-- [ ] Vrátiť `needsClarification` pri rozpore, neznámom pojme alebo chýbajúcom targete; nevymýšľať parameter.
-- [ ] Zachovať vstupný text, parser version a normalizovaný intent v diagnostike; neukladať ich do projektu bez potreby.
-- [ ] Pridať fixtures pre diakritiku, synonymá, preklepy v bežnej miere, negáciu, zložené požiadavky a adversarial vstupy.
+- [x] Zaviesť verzovaný `EffectIntentSpec` oddelený od existujúceho `IntentSpec` pre generovanie hudby.
+- [x] Implementovať deterministic parser pre malý, zdokumentovaný lexikón slovenských a anglických zvukových zámerov.
+- [x] Parsovať intenzitu a smer, rozpoznávať explicitné zachovávacie obmedzenia a neinterpretovanú negáciu bezpečne odmietnuť.
+- [x] Podporiť viac cieľov v jednej požiadavke len vtedy, ak sú nezávislé a neprotirečia si; opačné pohyby jedného parametra vyžiadajú clarification.
+- [x] Vrátiť pravdivé `needsClarification`/`unsupported` pri rozpore, neznámom pojme alebo neplatnom targete; nevymýšľať parameter.
+- [x] Zachovať vstupný text, parser version a normalizovaný intent v kanonickom výsledku; neukladať ich do projektu.
+- [x] Pridať fixtures pre diakritiku, synonymá, zložené požiadavky a adversarial vstupy; typo tolerance zostáva zámerne vypnutá.
 
 ### V1 podporované formulácie
 
-- [ ] „teplejšie“ / „warmer“;
-- [ ] „tmavšie“ / „darker“, „jasnejšie“ / „brighter“;
-- [ ] „viac/menej priestoru“, „suchšie“ / „drier“;
-- [ ] intenzita a jednoduché zachovávacie obmedzenia.
+- [x] „teplejšie“ / „warmer“;
+- [x] „tmavšie“ / „darker“, „jasnejšie“ / „brighter“;
+- [x] „viac/menej priestoru“, „suchšie“ / „drier“;
+- [x] intenzita a jednoduché zachovávacie obmedzenia.
 
 Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/style imitation sa aktivujú až po kurátorskej evaluácii; samotné slovo sa nesmie mapovať na náhodný parameter.
 
 ### Exit criteria
 
-- [ ] Rovnaký text, target a parser version vytvoria rovnaký kanonický intent.
-- [ ] Nejasná požiadavka nevedie k návrhu ani k zápisu.
-- [ ] Parser nemení projekt a nemá sieťovú závislosť.
+- [x] Rovnaký text, target a parser version vytvoria rovnaký kanonický intent.
+- [x] Nejasná požiadavka nevedie k návrhu ani k zápisu.
+- [x] Parser nemení projekt a nemá sieťovú závislosť.
 
 ---
 
@@ -223,29 +223,29 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 ### Úlohy
 
-- [ ] Mapovať kanonický cieľ iba na parametre s explicitnou sémantickou anotáciou pre konkrétne zariadenie.
-- [ ] Zohľadniť aktuálne hodnoty, taper, enumy, coupled parametre a bezpečné delta limity.
-- [ ] Použiť perceptuálne normalizované kroky; nepoužívať univerzálne „pridaj 10 % rozsahu“ pre Hz, dB, čas aj enum naraz.
-- [ ] Rešpektovať explicitné `preserve` obmedzenia ako hard constraints.
-- [ ] Detegovať konflikty a zamietnuť alebo sa opýtať; nikdy ich potichu neprepisovať prioritou heuristiky.
-- [ ] Zaviesť `plannerVersion`, canonical serialization a `baseStateHash`.
-- [ ] Každú navrhnutú zmenu vysvetliť ľudsky: „znížil som high shelf, aby bol výsledok tmavší“.
-- [ ] Ak vybraný efekt nedokáže dosiahnuť cieľ bez rizika alebo bez porušenia constraints, vrátiť `unsupported`/`needsClarification`.
+- [x] Mapovať kanonický cieľ iba na parametre s explicitnou sémantickou anotáciou pre konkrétne zariadenie (pilot EQ/Reverb).
+- [x] Zohľadniť aktuálne hodnoty, lineárne/logaritmické mapovanie a konzervatívne delta limity; enum/coupled mappingy čakajú na device adaptery.
+- [x] Použiť ručne zvolené dB a log-ratio kroky; nepoužívať univerzálne „pridaj 10 % rozsahu“ naprieč jednotkami.
+- [x] Rešpektovať explicitné `preserve` obmedzenia ako hard constraints.
+- [x] Detegovať konflikty a zamietnuť alebo sa opýtať; nikdy ich potichu neprepisovať prioritou heuristiky.
+- [x] Zaviesť `plannerVersion`, canonical serialization a `baseStateHash`.
+- [x] Každú navrhnutú zmenu vysvetliť ľudsky a uviesť konkrétny parameter.
+- [x] Ak vybraný efekt nedokáže dosiahnuť cieľ bez rizika alebo bez porušenia constraints, vrátiť `unsupported`/`needsClarification`.
 - [ ] Vygenerovať viac než jeden kandidát iba ak ich vieme férovo porovnať a používateľ ich vie vypočuť.
 
 ### Bezpečnostné invarianty
 
-- [ ] Žiadny parameter mimo target zariadenia sa nezmení.
-- [ ] Žiadne neznáme ID alebo nefinite hodnoty neprejdú validatorom.
-- [ ] Všetky hodnoty sú platné v originálnej plugin schéme pred Apply aj pri Apply.
-- [ ] Planner nikdy nemení bypass, track routing, sidechain source ani effect chain topology vo V1.
-- [ ] Zachovávacie constraints platia presne, nie len ako penalizácia v score.
+- [x] Žiadny parameter mimo target zariadenia sa nezmení.
+- [x] Žiadne neznáme ID alebo nefinite hodnoty neprejdú validatorom.
+- [x] Všetky pilotné hodnoty sú platné v originálnej efektovej schéme pri plánovaní aj Apply.
+- [x] Planner nikdy nemení bypass, track routing, sidechain source ani effect chain topology vo V1.
+- [x] Zachovávacie constraints platia presne, nie len ako penalizácia v score.
 - [ ] Žiadny ONNX/LLM výstup neobchádza planner ani validator.
 
 ### Exit criteria
 
 - [ ] Golden text → intent → proposal fixtures sú stabilné a vysvetliteľné.
-- [ ] Property testy dokazujú rozsahy, enum validitu, target izoláciu a deterministickosť.
+- [x] Boundary/property-style test sweep dokazuje deterministickosť a rozsahy pilotných hodnôt; integration test overí izoláciu ostatných trackov.
 - [ ] Opakovaný planner nad rovnakým stavom nevytvorí „zmenu“, ktorá nič nemení.
 
 ---
@@ -256,17 +256,17 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 ### Úlohy
 
-- [ ] Pridať command builder pre validovaný `EffectChangeProposal`; zariadeniovo špecifické adaptery vyberú správnu schému a normalizáciu.
-- [ ] Aplikovať všetky zmeny jedným používateľským undo krokom.
-- [ ] Undo musí obnoviť presný pôvodný canonical stav vrátane deep plugin parametrov a defaultov.
+- [x] Pridať command builder pre validovaný `EffectChangeProposal` v pilotnom EQ/Reverb rozsahu; deep plugin adaptery zostávajú otvorené.
+- [x] Aplikovať všetky zmeny jedným používateľským undo krokom.
+- [x] Undo musí obnoviť presný pôvodný canonical stav pilotného efektu.
 - [ ] Zachovať Yjs/collab, autosave, project reload a existujúce project normalization pravidlá.
-- [ ] Pred Apply porovnať target identity a `baseStateHash`; pri stale state proposal odmietnuť alebo vyžiadať refresh.
+- [x] Pred Apply porovnať target identity a `baseStateHash`; pri stale state proposal odmietnuť alebo vyžiadať refresh.
 - [ ] Opakované Apply nesmie neúmyselne zduplikovať deltu ani vytvoriť prázdne undo položky.
 - [ ] Zápis cez jednorazovú sadu existujúcich setterov sa môže použiť interne, ale do history/store sa odošle jedna atomic command.
 
 ### Exit criteria
 
-- [ ] Apply/undo/redo vráti presne očakávané parametre.
+- [x] Apply/undo/redo vráti presne očakávané parametre pre pilotný EQ/Reverb flow.
 - [ ] Persistence a kolaborácia zachovajú zmenu bez neznámych fields.
 - [ ] Zmena targetu alebo editácia parametra po preview nedovolí stale proposal prepísať nové dáta.
 
@@ -278,20 +278,20 @@ Drive, šírka, punch, pohyb, „vintage“, „profesionálnejšie“ a artist/
 
 ### UX minimum
 
-- [ ] Pridať akciu **Ask FX / Upraviť zvuk** do kontextu konkrétneho effect device.
-- [ ] Zobraziť rozpoznaný cieľ a target, aby používateľ vedel, čo engine pochopil.
-- [ ] Ukázať parameter diff, krátke vysvetlenie, warnings a intenzitu.
+- [x] Pridať akciu **Ask FX / Upraviť zvuk** do kontextu konkrétneho podporovaného effect device.
+- [x] Zobraziť rozpoznaný cieľ a target, aby používateľ vedel, čo engine pochopil.
+- [x] Ukázať parameter diff, krátke vysvetlenie a warnings; ovládanie intenzity ešte chýba.
 - [ ] Poskytnúť `Apply`, `Cancel`, zmenu intenzity a možnosť vyradiť jednotlivú navrhnutú zmenu.
-- [ ] Zobraziť jasné empty/error states pre nepodporovaný zámer, neplatný target, plugin fallback a stale proposal.
+- [x] Zobraziť jasné empty/error states pre nepodporovaný zámer, neplatný target, plugin fallback a stale proposal.
 - [ ] Po Apply ponúknuť štandardný Undo; neduplikovať nový vlastný history systém.
 
 ### Audio audition — povinný bezpečnostný návrh
 
-- [ ] Navrhnúť ephemeral preview session pre jeden `trackId/fxId`, oddelenú od project modelu.
-- [ ] Preview nesmie zapisovať do dokumentu, autosave, Yjs ani undo stacku.
-- [ ] Cancel, unmount, target switch, transport stop/error a project reload musia obnoviť pôvodné live parametre.
-- [ ] Apply počas preview musí commitnúť práve vypočutý a stále aktuálny proposal; nesmie znovu vypočítať inú hodnotu.
-- [ ] Pred implementáciou vybrať jednotný engine boundary na transient overrides. Nepoužívať priamo perzistentné commandy ako „dočasný preview“.
+- [x] Navrhnúť ephemeral preview session pre jeden `trackId/fxId`, oddelenú od project modelu.
+- [x] Preview nesmie zapisovať do dokumentu, store commandov ani undo stacku.
+- [x] Cancel, unmount, target change, štart transportu a project reload ukončujú preview; zlyhanie obnovy sa prizná v UI.
+- [x] Apply počas preview commitne ten istý, stále aktuálny proposal; pred Apply sa proposal stale-validuje.
+- [x] Vybrať jednotný engine boundary na transient overrides. Nepoužívať perzistentné commandy ako „dočasný preview“.
 - [ ] Ak nemožno garantovať bezpečný preview lifecycle pre zariadenie, UI zobrazí statický diff a preview preň zatiaľ nezapne.
 - [ ] Loudness-matched A/B je preferovaný; hlasnejší kandidát nesmie automaticky pôsobiť ako „lepší“.
 

@@ -2672,6 +2672,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
+        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
+        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
@@ -2790,7 +2792,7 @@
               mlp[l] += midAlpha * (lowHp - mlp[l]);
               mlp[l] = flushDenormal(mlp[l]);
               const midBand = sanitize(mlp[l]);
-              let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
+              let shelved = lowBand * bassGainF + midBand * midBandGainF + (lowHp - midBand);
               if (driveGain > 1.0001) {
                 const hot = shelved * driveGain;
                 const hot2 = hot * hot;
@@ -3201,6 +3203,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
+        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
+        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const effectiveDepth = modDepthSamples;
         const width = clamp(params.stereoWidth, 0, 1);
@@ -3327,7 +3331,7 @@
               mlp[l] += midAlpha * (lowHp - mlp[l]);
               mlp[l] = flushDenormal(mlp[l]);
               const midBand = sanitize(mlp[l]);
-              let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
+              let shelved = lowBand * bassGainF + midBand * midBandGainF + (lowHp - midBand);
               if (driveGain > 1.0001) {
                 const hot = shelved * driveGain;
                 const hot2 = hot * hot;

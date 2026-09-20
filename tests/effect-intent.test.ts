@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { EffectInstance, EffectType, ProjectDocument } from "../src/project-model/types";
+import { clampEffectParam, EFFECT_DEFS } from "../src/effects/registry";
 import {
   applyEffectIntentProposal,
   effectIntentParameterCatalog,
@@ -8,6 +9,7 @@ import {
   parseEffectIntent,
   planEffectIntent,
 } from "../src/effect-intent";
+import { canonicalEffectIntentJson } from "../src/effect-intent/canonical";
 
 function docWithEffect(type: EffectType, params: Record<string, number> = {}): { doc: ProjectDocument; trackId: string; fx: EffectInstance } {
   const doc = createProjectFromTemplate("house");
@@ -86,6 +88,14 @@ describe("Effect Intent Engine — curated descriptors and planner", () => {
     expect(result.status).toBe("unsupported");
   });
 
+  it("asks for clarification when two goals require opposite movement of one parameter", () => {
+    const { doc, trackId, fx } = docWithEffect("eq");
+    const result = planEffectIntent(doc, { trackId, fxId: fx.id, effectType: fx.type }, readyIntent("warmer and brighter"));
+
+    expect(result.status).toBe("needsClarification");
+    if (result.status === "needsClarification") expect(result.diagnostics[0]).toMatch(/opačné zmeny parametra HIGH SHELF/i);
+  });
+
   it("maps reverb space to wet amount and decay without touching unrelated parameters", () => {
     const { doc, trackId, fx } = docWithEffect("reverb", { mix: 0.3, decay: 1.8, tone: 6000, predelay: 20, diffusion: 0.5 });
     const proposal = readyProposal(doc, trackId, fx, "a little more space");
@@ -108,6 +118,46 @@ describe("Effect Intent Engine — curated descriptors and planner", () => {
     expect(planEffectIntent(doc, { trackId, fxId: fx.id, effectType: fx.type }, parsed).status).toBe("unsupported");
     expect(planEffectIntent(doc, { trackId, fxId: fx.id, effectType: fx.type }, { ...parsed, goals: [{ ...parsed.goals[0], amount: 100 }] }).status).toBe("unsupported");
   });
+
+  it("keeps generated proposals deterministic and schema-valid across boundary intensities", () => {
+    const scenarios = [
+      { type: "eq" as const, phrases: ["warmer", "cooler"] },
+      { type: "eq" as const, phrases: ["brighter", "darker"] },
+      { type: "reverb" as const, phrases: ["more space", "less space"] },
+    ];
+    const amounts = [0, 0.001, 0.3, 0.6, 0.99, 1];
+
+    for (const scenario of scenarios) {
+      const { doc, trackId, fx } = docWithEffect(scenario.type);
+      const descriptors = new Map(effectIntentParameterCatalog(fx).map((descriptor) => [descriptor.id, descriptor]));
+      for (const phrase of scenario.phrases) {
+        const parsedIntent = readyIntent(phrase);
+        for (const amount of amounts) {
+          const intent = { ...parsedIntent, goals: parsedIntent.goals.map((goal) => ({ ...goal, amount })) };
+          const target = { trackId, fxId: fx.id, effectType: fx.type };
+          const first = planEffectIntent(doc, target, intent);
+          const second = planEffectIntent(doc, target, intent);
+          expect(second).toEqual(first);
+
+          if (first.status !== "ready") {
+            expect(first.status).toBe("noChange");
+            continue;
+          }
+          if (second.status !== "ready") throw new Error("Repeated planning returned a different result status");
+          expect(canonicalEffectIntentJson(first.proposal)).toBe(canonicalEffectIntentJson(second.proposal));
+          for (const change of first.proposal.changes) {
+            const descriptor = descriptors.get(change.paramId);
+            const param = EFFECT_DEFS[fx.type].params.find((candidate) => candidate.id === change.paramId);
+            expect(descriptor?.intentGoals).toContain(intent.goals[0].goal);
+            expect(param).toBeDefined();
+            expect(Number.isFinite(change.after)).toBe(true);
+            expect(clampEffectParam(fx.type, change.paramId, change.after)).toBe(change.after);
+            if (param?.options) expect(param.options.some((option) => option.value === change.after)).toBe(true);
+          }
+        }
+      }
+    }
+  });
 });
 
 describe("Effect Intent Engine — atomic apply and stale guards", () => {
@@ -115,12 +165,14 @@ describe("Effect Intent Engine — atomic apply and stale guards", () => {
     const { doc, trackId, fx } = docWithEffect("reverb", { mix: 0.3, decay: 1.8, tone: 6000, predelay: 20, diffusion: 0.5 });
     const original = structuredClone(doc);
     const proposal = readyProposal(doc, trackId, fx, "more space");
+    expect(doc).toEqual(original);
     const command = applyEffectIntentProposal(doc, proposal);
     const applied = command.execute(doc);
     const afterFx = applied.tracks.flatMap((track) => track.effects).find((effect) => effect.id === fx.id)!;
     expect(afterFx.params.mix).toBeGreaterThan(original.tracks.flatMap((track) => track.effects).find((effect) => effect.id === fx.id)!.params.mix);
     expect(command.undo(applied)).toEqual(original);
     expect(command.execute(command.undo(applied))).toEqual(applied);
+    expect(applied.tracks.find((track) => track.id !== trackId)).toEqual(original.tracks.find((track) => track.id !== trackId));
     expect(command.type).toBe("applyEffectIntentProposal");
   });
 

@@ -96,6 +96,20 @@ describe("Effect Intent Assistant UI", () => {
     expect(services.store.execute).not.toHaveBeenCalled();
   });
 
+  it("shows a truthful warning when the runtime cannot restore preview values", async () => {
+    const user = userEvent.setup();
+    const { services } = setup("eq");
+    await request(user, "brighter");
+    await user.click(screen.getByRole("button", { name: "Vypočuť" }));
+
+    const begin = services.engine.beginEffectIntentPreview as ReturnType<typeof vi.fn>;
+    const onEnded = begin.mock.calls[0][3] as (reason: "restoreFailed") => void;
+    act(() => onEnded("restoreFailed"));
+
+    expect(screen.getByText(/Plugin odmietol obnoviť pôvodné audio hodnoty/)).toBeInTheDocument();
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
   it("does not expose the assistant for an effect without reviewed mappings", () => {
     setup("delay");
     expect(screen.queryByRole("button", { name: /Ask FX/ })).toBeNull();

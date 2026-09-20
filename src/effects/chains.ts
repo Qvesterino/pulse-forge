@@ -20,7 +20,7 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     description: "Add readable upper harmonics while keeping the sub centered and controlled.",
     effects: [
       { type: "tapeSat", presetId: "tape-808-harmonics" },
-      { type: "eq", presetId: "eq-warm" },
+      { type: "eq", presetId: "eq-air" },
     ],
   },
   {
@@ -56,7 +56,7 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     description: "Stagger light stereo hat taps into a short, filtered RYFT tail.",
     effects: [
       { type: "multiTapDelay", presetId: "multitap-pingpong-hats" },
-      { type: "kaskada", presetId: "kaskada-pp-wide" },
+      { type: "kaskada", presetId: "kaskada-hat-sync" },
     ],
   },
   {

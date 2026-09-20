@@ -56,10 +56,16 @@ export function EffectIntentAssistant({
       setMessage("Projekt sa zmenil. Preview sa obnovilo a návrh treba vytvoriť znova.");
     } else if (reason === "transportStarted") {
       setMessage("Preview sa zastavilo pri spustení prehrávania; projekt sa nezmenil.");
+    } else if (reason === "restoreFailed") {
+      if (proposalRef.current && services.store.getDoc() !== proposalRef.current.doc) {
+        proposalRef.current = null;
+        setProposal(null);
+      }
+      setMessage("Plugin odmietol obnoviť pôvodné audio hodnoty. Projekt sa nezmenil; zastav prehrávanie a znovu načítaj zariadenie.");
     } else {
       setMessage("Preview zastavené; projekt ostal nezmenený.");
     }
-  }, []);
+  }, [services.store]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -213,6 +213,10 @@
     margin-left: auto;
   }
 
+  .devices-add-chain {
+    margin-left: 0;
+  }
+
   .ryft-spectrum-hint {
     display: none;
   }

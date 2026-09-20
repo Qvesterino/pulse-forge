@@ -411,7 +411,7 @@ function Device({
   const defaultParams = normalizePluginParams(fx.type, {}) ?? defaultParamsOf(fx.type);
   const isModified = Object.keys({ ...defaultParams, ...fx.params }).some(
     (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
-  );
+  ) || (fx.outputTrimDb ?? 0) !== 0;
   const editorSpec = effectEditorSpec(fx.type);
   const genericParams = devicesMode
     ? fx.type === "fxeq"
@@ -797,7 +797,7 @@ function Device({
                 services.store.execute(setEffectOutputTrimDb(services.store.getDoc(), track.id, fx.id, value))
               }
             />
-            <span className="fx-output-trim-note">Preset match</span>
+            <span className="fx-output-trim-note">Preset / manual</span>
           </div>
         </div>
       )}

@@ -71,7 +71,7 @@ import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
 import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
-import { BEATMAKING_EFFECT_CHAINS, type BeatmakingEffectChain } from "../effects/chains";
+import type { BeatmakingEffectChain } from "../effects/chains";
 import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { clamp, uid } from "../shared/ids";
 import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";

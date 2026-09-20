@@ -618,7 +618,7 @@ export function ExportPanel({
         >
           EXPORT SCOREPACK
         </button>
-        <label className="export-policy" title="Track stems are rendered in 24-bit PCM and can make the transfer much larger.">
+        <label className="export-policy" title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large.">
           <input
             type="checkbox"
             checked={includeTrackStems}

@@ -236,12 +236,14 @@ class VinylProcessor extends AudioWorkletProcessor {
       let hissR = 0;
       if (hissAmp > 0.00001) {
         this.hissLpState[0] += ((this.rng() * 2 - 1) - this.hissLpState[0]) * hissLpCoef;
-        this.hissHpPrev[0] = this.hissHpState[0];
-        this.hissHpState[0] = this.hissLpState[0] - this.hissHpPrev[0] * (1 - hissHpCoef);
+        this.hissHpState[0] = (1 - hissHpCoef) *
+          (this.hissHpState[0] + this.hissLpState[0] - this.hissHpPrev[0]);
+        this.hissHpPrev[0] = this.hissLpState[0];
         hissL = this.hissHpState[0];
         this.hissLpState[1] += ((this.rng() * 2 - 1) - this.hissLpState[1]) * hissLpCoef;
-        this.hissHpPrev[1] = this.hissHpState[1];
-        this.hissHpState[1] = this.hissLpState[1] - this.hissHpPrev[1] * (1 - hissHpCoef);
+        this.hissHpState[1] = (1 - hissHpCoef) *
+          (this.hissHpState[1] + this.hissLpState[1] - this.hissHpPrev[1]);
+        this.hissHpPrev[1] = this.hissLpState[1];
         hissR = this.hissHpState[1];
       }
 
@@ -267,19 +269,23 @@ class VinylProcessor extends AudioWorkletProcessor {
 
       // --- Year contour: old records are thin + band-limited (per channel) ---
       this.yearLpState[0] += (sumL - this.yearLpState[0]) * yearLpCoef;
-      this.yearHpPrev[0] = this.yearHpState[0];
-      this.yearHpState[0] = this.yearLpState[0] - this.yearHpPrev[0] * (1 - yearHpCoef);
+      this.yearHpState[0] = (1 - yearHpCoef) *
+        (this.yearHpState[0] + this.yearLpState[0] - this.yearHpPrev[0]);
+      this.yearHpPrev[0] = this.yearLpState[0];
       this.yearLpState[1] += (sumR - this.yearLpState[1]) * yearLpCoef;
-      this.yearHpPrev[1] = this.yearHpState[1];
-      this.yearHpState[1] = this.yearLpState[1] - this.yearHpPrev[1] * (1 - yearHpCoef);
+      this.yearHpState[1] = (1 - yearHpCoef) *
+        (this.yearHpState[1] + this.yearLpState[1] - this.yearHpPrev[1]);
+      this.yearHpPrev[1] = this.yearLpState[1];
 
       // --- Master wet tone trim (per channel) ---
       this.toneLpState[0] += (this.yearHpState[0] - this.toneLpState[0]) * toneLpCoef;
-      this.toneHpPrev[0] = this.toneHpState[0];
-      this.toneHpState[0] = this.toneLpState[0] - this.toneHpPrev[0] * (1 - toneHpCoef);
+      this.toneHpState[0] = (1 - toneHpCoef) *
+        (this.toneHpState[0] + this.toneLpState[0] - this.toneHpPrev[0]);
+      this.toneHpPrev[0] = this.toneLpState[0];
       this.toneLpState[1] += (this.yearHpState[1] - this.toneLpState[1]) * toneLpCoef;
-      this.toneHpPrev[1] = this.toneHpState[1];
-      this.toneHpState[1] = this.toneLpState[1] - this.toneHpPrev[1] * (1 - toneHpCoef);
+      this.toneHpState[1] = (1 - toneHpCoef) *
+        (this.toneHpState[1] + this.toneLpState[1] - this.toneHpPrev[1]);
+      this.toneHpPrev[1] = this.toneLpState[1];
       let trimL = this.toneHpState[0];
       let trimR = this.toneHpState[1];
 

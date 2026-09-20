@@ -178,7 +178,14 @@ export function planEffectIntent(
   const descriptors = new Map(effectIntentParameterCatalog(effect).map((descriptor) => [descriptor.id, descriptor]));
   const accumulators = new Map<
     string,
-    { mode: ParameterRule["mode"]; amount: number; reasons: string[]; safeMin: number; safeMax: number }
+    {
+      mode: ParameterRule["mode"];
+      amount: number;
+      reasons: string[];
+      safeMin: number;
+      safeMax: number;
+      contributors: Array<{ goal: EffectIntentGoal; sign: -1 | 1 }>;
+    }
   >();
   const warnings: string[] = [];
 
@@ -206,15 +213,26 @@ export function planEffectIntent(
           diagnostics: [`Ciele sa pokúšajú upraviť ${descriptor.label} nekompatibilnými spôsobmi.`],
         };
       }
+      if (existing && contribution !== 0) {
+        const opposing = existing.contributors.find((item) => item.sign !== Math.sign(contribution));
+        if (opposing) {
+          return {
+            status: "needsClarification",
+            diagnostics: [`Ciele „${opposing.goal}“ a „${goal.goal}“ vyžadujú opačné zmeny parametra ${descriptor.label}.`],
+          };
+        }
+      }
       const accumulator = existing ?? {
         mode: rule.mode,
         amount: 0,
         reasons: [],
         safeMin: rule.safeMin ?? descriptor.min,
         safeMax: rule.safeMax ?? descriptor.max,
+        contributors: [],
       };
       accumulator.amount += contribution;
       accumulator.reasons.push(rule.rationale(goal.direction));
+      if (contribution !== 0) accumulator.contributors.push({ goal: goal.goal, sign: Math.sign(contribution) as -1 | 1 });
       accumulator.safeMin = Math.max(accumulator.safeMin, rule.safeMin ?? descriptor.min);
       accumulator.safeMax = Math.min(accumulator.safeMax, rule.safeMax ?? descriptor.max);
       accumulators.set(rule.paramId, accumulator);

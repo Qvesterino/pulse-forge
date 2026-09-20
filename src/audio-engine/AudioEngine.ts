@@ -127,7 +127,7 @@ interface FxChainState {
   latencySubs: Array<() => void>;
 }
 
-export type EffectIntentPreviewEndReason = "manual" | "projectChanged" | "transportStarted";
+export type EffectIntentPreviewEndReason = "manual" | "projectChanged" | "transportStarted" | "restoreFailed";
 
 interface EffectIntentPreviewSession {
   trackId: string;
@@ -1505,6 +1505,7 @@ export class AudioEngine {
       const trimGain = ctx.createGain();
       trimGain.gain.value = dbToLinear(fx.outputTrimDb ?? 0);
       rawRuntime.output.connect(trimGain);
+      let trimDisposed = false;
       const rt = new Proxy(rawRuntime, {
         get(target, property, receiver) {
           if (property === "output") return trimGain;
@@ -1516,6 +1517,8 @@ export class AudioEngine {
           }
           if (property === "dispose") {
             return () => {
+              if (trimDisposed) return;
+              trimDisposed = true;
               try {
                 target.dispose();
               } finally {
@@ -1526,6 +1529,9 @@ export class AudioEngine {
           return Reflect.get(target, property, receiver);
         },
       }) as EffectRuntime;
+      const positionTick = this.transportTickNow();
+      const beatPhase = ((positionTick % PPQ) + PPQ) % PPQ / PPQ;
+      rt.onTransportStarted?.(ctx.currentTime, beatPhase, positionTick / PPQ);
       // PRISM's runtime morph slots are intentionally transient audio state,
       // but their source snapshots are document-owned. Rehydrate them here so
       // a lazy worklet swap or chain rebuild cannot silently empty A/B.
@@ -4706,11 +4712,12 @@ export class AudioEngine {
   cancelEffectIntentPreview(
     nextDoc: ProjectDocument | undefined = this.doc ?? undefined,
     reason: EffectIntentPreviewEndReason = "manual",
-  ): void {
+  ): boolean {
     const active = this.effectIntentPreview;
-    if (!active) return;
+    if (!active) return true;
     this.effectIntentPreview = null;
     const current = nextDoc ? targetOwner(nextDoc, active.trackId)?.effects.find((effect) => effect.id === active.fxId) : undefined;
+    let restored = true;
     if (current?.type === active.effectType) {
       const values = Object.fromEntries(
         active.paramIds.map((paramId) => {
@@ -4718,9 +4725,14 @@ export class AudioEngine {
           return [paramId, current.params[paramId] ?? def?.default ?? 0];
         }),
       );
-      this.previewFxParams(active.trackId, active.fxId, values);
+      restored = this.previewFxParams(active.trackId, active.fxId, values);
     }
-    active.onEnded?.(reason);
+    try {
+      active.onEnded?.(restored ? reason : "restoreFailed");
+    } catch {
+      // UI observers must not interrupt project or transport lifecycle work.
+    }
+    return restored;
   }
 
   /**

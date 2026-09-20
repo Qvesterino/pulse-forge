@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "./node_modules",
+    "./src/effects/ultina-core/analysis"
+  ],
+  "include": [
+    "./src",
+    "./vite.config.ts"
+  ]
+}

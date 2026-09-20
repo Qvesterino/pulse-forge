@@ -3647,7 +3647,17 @@ const multiTapDelay: EffectDefinition = {
 
     // Shared feedback loop around the tone stage.
     const feedbackGain = ctx.createGain();
-    feedbackGain.gain.value = p("feedback");
+    let feedback = p("feedback");
+    const feedbackLoopGain = () => {
+      let sum = 0;
+      for (let t = 0; t < tapCount; t++) sum += 1 / Math.sqrt(t + 1);
+      return Math.max(1, sum);
+    };
+    // The feedback loop fans back into every active tap. Normalize the return
+    // gain by their summed gains so four taps cannot turn a safe feedback
+    // setting into a runaway loop.
+    const effectiveFeedback = () => feedback / feedbackLoopGain();
+    feedbackGain.gain.value = effectiveFeedback();
     tone.connect(feedbackGain).connect(input);
 
     tone.connect(wet).connect(output);
@@ -3658,6 +3668,13 @@ const multiTapDelay: EffectDefinition = {
       wet.gain.setValueAtTime(v, when ?? ctx.currentTime);
     };
     applyMix(p("mix"));
+
+    const applyFeedback = (value: number, when?: number) => {
+      feedback = clampParam("feedback", value);
+      const normalized = effectiveFeedback();
+      if (when !== undefined) feedbackGain.gain.setValueAtTime(normalized, when);
+      else feedbackGain.gain.value = normalized;
+    };
 
     const setDivision = (tapIndex: number, rawDivisionIndex: number, when?: number) => {
       const divisionIndex = Math.round(clampParam(`t${tapIndex + 1}Div`, rawDivisionIndex));
@@ -3684,6 +3701,7 @@ const multiTapDelay: EffectDefinition = {
         if (when !== undefined) tapNodes[t].gain.gain.setValueAtTime(gain, when);
         else tapNodes[t].gain.gain.value = gain;
       }
+      applyFeedback(feedback, when);
       applySpread(spread, when);
     };
 
@@ -3693,9 +3711,7 @@ const multiTapDelay: EffectDefinition = {
         return;
       }
       if (id === "feedback") {
-        const feedback = clampParam(id, value);
-        if (when !== undefined) feedbackGain.gain.setValueAtTime(feedback, when);
-        else feedbackGain.gain.value = feedback;
+        applyFeedback(value, when);
         return;
       }
       if (id === "tone") {

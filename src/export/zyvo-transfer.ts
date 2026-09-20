@@ -63,7 +63,7 @@ export interface ZyvoTransferStem {
   audioPath: string;
   sampleRate: number;
   channels: number;
-  bitDepth: 24;
+  bitDepth: 32;
   frameCount: number;
   durationSeconds: number;
 }
@@ -104,7 +104,7 @@ export interface ZyvoTransferProgress {
 }
 
 export interface ZyvoTransferOptions {
-  /** Defaults on: bakes one time-aligned, pre-master 24-bit WAV per renderable KYX track. */
+  /** Defaults on: bakes one time-aligned, pre-master 32-bit-float WAV per renderable KYX track. */
   includeTrackStems?: boolean;
   quality?: ExportQuality;
 }
@@ -129,8 +129,14 @@ export async function buildZyvoTransfer(
   const quality = options.quality ?? "studio";
   const sourceTracks = doc.tracks.filter((track) => track.kind !== "group");
   const tracksToRender = includeTrackStems ? sourceTracks : [];
+  if (tracksToRender.length > 2000) throw new Error("KYX transfer supports up to 2,000 track stems. Disable stems to transfer the full master mix.");
+  if (doc.markers.length > 10_000 || doc.arrangement.clips.length > 10_000) {
+    throw new Error("KYX transfer supports up to 10,000 arrangement sections and markers.");
+  }
   const baseName = sanitizeFilename(doc.name);
+  const transferProjectName = doc.name.trim().slice(0, 180) || "KYX Session";
   const sourceProject = encodeUtf8(JSON.stringify(doc, null, 2));
+  if (sourceProject.byteLength > 64 * 1024 * 1024) throw new Error("The embedded KYX project JSON exceeds the 64 MiB transfer limit.");
 
   onProgress({ phase: "Rendering exact KYX master", pct: 0.04 });
   const masterBuffer = await renderProject(doc, bank, {
@@ -141,6 +147,7 @@ export async function buildZyvoTransfer(
     signal,
   });
   throwIfAborted(signal);
+  assertTransferBuffer(masterBuffer, "KYX master");
 
   const estimatedArchiveBytes = estimateArchiveBytes(
     masterBuffer.length,
@@ -188,11 +195,15 @@ export async function buildZyvoTransfer(
       signal,
     });
     throwIfAborted(signal);
+    assertTransferBuffer(buffer, `KYX stem “${sourceTrack.name}”`);
+    if (buffer.length !== masterBuffer.length) {
+      throw new Error(`KYX stem “${sourceTrack.name}” is not sample-aligned with the master render.`);
+    }
 
-    // 24-bit PCM keeps every stem comfortably within the portable ZIP budget;
-    // the exact 32-bit-float stereo master remains alongside them.
+    // Float32 stems retain pre-master headroom and avoid a second lossy or
+    // nonlinear conversion; the 1 GiB transfer cap remains the hard guard.
     const audioPath = `audio/tracks/${String(index + 1).padStart(3, "0")}-${slug(sourceTrack.name)}-${slug(sourceTrack.id)}.wav`;
-    entries.push({ name: audioPath, data: new Uint8Array(encodeWav(buffer, 24)) });
+    entries.push({ name: audioPath, data: new Uint8Array(encodeWav(buffer, 32)) });
     stemMetadata.push({
       sourceTrackId: sourceTrack.id,
       name: sourceTrack.name,
@@ -207,7 +218,7 @@ export async function buildZyvoTransfer(
       audioPath,
       sampleRate: buffer.sampleRate,
       channels: buffer.numberOfChannels,
-      bitDepth: 24,
+      bitDepth: 32,
       frameCount: buffer.length,
       durationSeconds: buffer.duration,
     });
@@ -222,7 +233,7 @@ export async function buildZyvoTransfer(
     sourceProjectPath: "source/kyx-project.json",
     project: {
       id: doc.id,
-      name: doc.name,
+      name: transferProjectName,
       bpm: doc.bpm,
       timeSignature: { ...doc.timeSignature },
       key: doc.key ?? null,
@@ -254,6 +265,7 @@ export async function buildZyvoTransfer(
       "Track fader gain and pan are baked into each stem; imported stem mixer channels start at unity/center and muted.",
       "The original KYX JSON is included. Instrument, effect, automation and sample-bank state are preserved there, not translated into VocalForge-native synth state.",
       "Nonlinear track/group processing means isolated stems are remix sources, not a promise that summing them recreates the mastered full mix.",
+      "Sidechain keying from tracks outside an isolated stem may not reproduce in that stem; the full-mix render remains the authoritative reference.",
     ],
   };
   entries.push({ name: "manifest.json", data: encodeUtf8(JSON.stringify(manifest, null, 2)) });
@@ -348,8 +360,14 @@ function buildSections(doc: ProjectDocument, timeAt: (tick: number) => number): 
 }
 
 function estimateArchiveBytes(masterFrames: number, stemCount: number, sourceBytes: number): number {
-  // Master = stereo IEEE float32; each stem = stereo signed 24-bit PCM.
-  return 44 + masterFrames * 2 * 4 + stemCount * (44 + masterFrames * 2 * 3) + sourceBytes + 2_000_000;
+  // Master and every stem are stereo IEEE float32 interchange WAVs.
+  return 44 + masterFrames * 2 * 4 + stemCount * (44 + masterFrames * 2 * 4) + sourceBytes + 2_000_000;
+}
+
+function assertTransferBuffer(buffer: AudioBuffer, label: string): void {
+  if (buffer.sampleRate !== TRANSFER_SAMPLE_RATE || buffer.numberOfChannels !== 2 || buffer.length <= 0) {
+    throw new Error(`${label} did not render as non-empty 48 kHz stereo audio.`);
+  }
 }
 
 function formatBytes(value: number): string {
@@ -382,9 +400,10 @@ function buildReadme(projectName: string, manifest: ZyvoTransferManifest): strin
     "## Audio fidelity",
     "",
     `- Authoritative stereo mix: ${manifest.master.sampleRate} Hz, 32-bit float WAV, ${manifest.master.quality} offline render.`,
-    "- Optional track stems are time-aligned to zero, 24-bit PCM, and rendered before KYX master processing.",
+    "- Optional track stems are time-aligned to zero, 32-bit float, and rendered before KYX master processing.",
     "- The VocalForge project starts with the exact master mix audible and all stems muted, preventing accidental doubling.",
     "- Track/group processing is included in the stems. The full mix remains the reference because nonlinear processing cannot be undone by a stem sum.",
+    "- Sidechain inputs from other tracks may differ in isolated stems; use the full mix as the definitive reference.",
     "",
     "## Editability",
     "",
