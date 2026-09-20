@@ -30,6 +30,7 @@ import { createFreqShiftNode } from "../audio-worklets/freqshifter-node";
 import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
+import { createVocoderNode } from "../audio-worklets/vocoder-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -132,6 +133,9 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   pitchShift: "critical",
   vinyl: "critical",
   beatMangler: "critical",
+  // The vocoder degrades to a 1:1 carrier passthrough when the worklet is
+  // missing OR when no modulator track is routed (see createVocoderNode).
+  vocoder: "degraded",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -3876,6 +3880,41 @@ const BEATMANGLER_MODES = [
   { value: 3, label: "REV" },
 ];
 
+/** Stable beat-repeat division ids. Existing projects start with 1/1…1/32;
+ * dotted and triplet ids are appended so saved parameter values stay valid. */
+export const BEATMANGLE_REPEAT_DIVISIONS = [
+  { value: 0, label: "1/1" },
+  { value: 6, label: "1/2D" },
+  { value: 1, label: "1/2" },
+  { value: 7, label: "1/2T" },
+  { value: 8, label: "1/4D" },
+  { value: 2, label: "1/4" },
+  { value: 9, label: "1/4T" },
+  { value: 10, label: "1/8D" },
+  { value: 3, label: "1/8" },
+  { value: 11, label: "1/8T" },
+  { value: 12, label: "1/16D" },
+  { value: 4, label: "1/16" },
+  { value: 13, label: "1/16T" },
+  { value: 14, label: "1/32D" },
+  { value: 5, label: "1/32" },
+  { value: 15, label: "1/32T" },
+];
+export const BEATMANGLE_OFFSETS = Array.from({ length: 16 }, (_, value) => ({
+  value,
+  label: (() => {
+    if (value === 0) return "0";
+    let numerator = value;
+    let denominator = 16;
+    while (numerator % 2 === 0 && denominator % 2 === 0) {
+      numerator /= 2;
+      denominator /= 2;
+    }
+    return `+${numerator}/${denominator}`;
+  })(),
+}));
+export const BEATMANGLE_GATE_DIVISIONS = BEATMANGLE_REPEAT_DIVISIONS;
+
 const beatMangler: EffectDefinition = {
   type: "beatMangler",
   name: "Beat Mangler",
@@ -3897,14 +3936,88 @@ const beatMangler: EffectDefinition = {
       default: 0,
       format: (v) => (v < 2 ? "OFF" : `${Math.round(v)}×`),
     },
+    {
+      id: "trigger",
+      label: "REPEAT",
+      min: 0,
+      max: 1,
+      default: 0,
+      options: [
+        { value: 0, label: "OFF" },
+        { value: 1, label: "ON" },
+      ],
+    },
+    {
+      id: "interval",
+      label: "INTERVAL",
+      min: 0,
+      max: 15,
+      default: 0,
+      options: BEATMANGLE_REPEAT_DIVISIONS,
+    },
+    {
+      id: "offset",
+      label: "OFFSET",
+      min: 0,
+      max: 15,
+      default: 0,
+      options: BEATMANGLE_OFFSETS,
+    },
+    { id: "chance", label: "CHANCE", min: 0, max: 1, default: 1, format: formatPct },
+    {
+      id: "gate",
+      label: "GATE",
+      min: 0,
+      max: 15,
+      default: 2,
+      options: BEATMANGLE_GATE_DIVISIONS,
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   // Envelope data lives on EffectInstance.volumeSteps / pitchSteps (16/32
   // values, sanitized by normalizeEffects) — it flows to the runtime via the
   // engine's setSteps sync path, not through this params table.
   factory(ctx, instance, env) {
-    if (isWorkletReady("beatMangler", ctx)) return createBeatManglerNode(ctx, instance, env.bpm);
+    if (isWorkletReady("beatMangler", ctx)) return createBeatManglerNode(ctx, instance, env.bpm, env.seed ?? 0);
     return bypassRuntime(ctx, "AudioWorklet unavailable — beat mangler bypassed (1:1 signal)");
+  },
+};
+
+/* ────────────── Vocoder — carrier/modulator filterbank ────────────── */
+// Carrier = this track's signal (input 0); modulator = the track routed via
+// `EffectInstance.sidechainTrackId` (input 1, the sidechain precedent). The
+// processor runs an 8/12/16-band analysis/synthesis filterbank with a real
+// formant shift on the modulator bank and a sibilance passthrough so
+// consonants survive. No modulator wired → carrier passes 1:1 (degraded).
+
+const vocoder: EffectDefinition = {
+  type: "vocoder",
+  name: "Vocoder",
+  category: "character",
+  params: [
+    { id: "bands", label: "BANDS", min: 8, max: 16, default: 16, format: (v) => `${Math.round(v)}` },
+    { id: "loFreq", label: "LO BAND", min: 60, max: 500, default: 120, unit: "Hz", format: formatHz },
+    { id: "hiFreq", label: "HI BAND", min: 2000, max: 12000, default: 7000, unit: "Hz", format: formatHz },
+    { id: "q", label: "SHARPNESS", min: 1, max: 16, default: 4, format: (v) => v.toFixed(1) },
+    { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.004, unit: "s", format: formatMs },
+    { id: "release", label: "RELEASE", min: 0.005, max: 1, default: 0.06, unit: "s", format: formatMs },
+    {
+      id: "shift",
+      label: "FORMANT",
+      min: -24,
+      max: 24,
+      default: 0,
+      unit: "st",
+      format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st`,
+    },
+    { id: "sibilance", label: "SIBILANCE", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "stereo", label: "STEREO", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "level", label: "LEVEL", min: -24, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance) {
+    if (isWorkletReady("vocoder", ctx)) return createVocoderNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — vocoder bypassed (1:1 signal)");
   },
 };
 
@@ -4037,6 +4150,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   pitchShift,
   vinyl,
   beatMangler,
+  vocoder,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -4104,6 +4218,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "duckDelay",
   "multiTapDelay",
   "tapeSat",
+  "vocoder",
   "drumBuss",
   "bassBuss",
   "utility",

@@ -28,3 +28,4 @@ import "./freqshifter-processor.js";
 import "./pitchshift-processor.js";
 import "./vinyl-processor.js";
 import "./beatmangler-processor.js";
+import "./vocoder-processor.js";

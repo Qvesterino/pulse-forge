@@ -70,7 +70,9 @@ import {
 import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
-import type { EffectPreset } from "../effects/presets";
+import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
+import { BEATMAKING_EFFECT_CHAINS, type BeatmakingEffectChain } from "../effects/chains";
+import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { clamp, uid } from "../shared/ids";
 import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
 import { applyDocDelta, computeDocDelta, deepEqualRef, deepFreeze } from "./docDelta";
@@ -4570,6 +4572,79 @@ export function setEffectParam(
   };
 }
 
+/** User-adjustable engine-owned output trim, kept outside the DSP parameter map. */
+export function setEffectOutputTrimDb(doc: ProjectDocument, trackId: string, fxId: string, gainDb: number): Command {
+  const target = trackEffectsOf(doc, trackId).find((effect) => effect.id === fxId);
+  if (!target) throw new Error(`Effect ${fxId} not found`);
+  const previous = target.outputTrimDb ?? 0;
+  const next = Number.isFinite(gainDb) ? clampFxOutputTrimDb(gainDb) : previous;
+  const apply = (d: ProjectDocument, value: number): ProjectDocument =>
+    withTrackEffects(d, trackId, (effects) =>
+      effects.map((fx) => {
+        if (fx.id !== fxId) return fx;
+        const { outputTrimDb: _trim, ...withoutTrim } = fx;
+        return value === 0 ? withoutTrim : { ...withoutTrim, outputTrimDb: value };
+      }),
+    );
+  return {
+    type: "setEffectOutputTrimDb",
+    label: `Set ${EFFECT_DEFS[target.type].name} output trim`,
+    execute: (d) => apply(d, next),
+    undo: (d) => apply(d, previous),
+  };
+}
+
+/** Insert a short beatmaking chain as one undoable document change. */
+export function applyEffectChainPreset(
+  doc: ProjectDocument,
+  trackId: string,
+  chain: BeatmakingEffectChain,
+  insertAt = trackEffectsOf(doc, trackId).length,
+): Command & { readonly firstEffectId: string } {
+  if (!doc.tracks.some((track) => track.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  if (chain.effects.length === 0) throw new Error("Effect chain is empty");
+  const factoryById = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
+  const instances: EffectInstance[] = chain.effects.map((item) => {
+    const preset = factoryById.get(item.presetId);
+    if (!preset || preset.type !== item.type) throw new Error(`Factory preset ${item.presetId} does not match ${item.type}`);
+    const params = defaultParamsOf(item.type);
+    for (const [id, value] of Object.entries(preset.params)) params[id] = clampEffectParam(item.type, id, value);
+    const outputTrimDb = clampFxOutputTrimDb(preset.outputTrimDb ?? factoryFxPresetGainDb(preset.id));
+    const instance: EffectInstance = {
+      id: uid("fx"),
+      type: item.type,
+      bypassed: false,
+      params,
+      ...(preset.steps ? { steps: sanitizeGateSteps(preset.steps) } : {}),
+      ...(preset.volumeSteps ? { volumeSteps: sanitizeManglerSteps(preset.volumeSteps, 0, 1, 1) } : {}),
+      ...(preset.pitchSteps ? { pitchSteps: sanitizeManglerSteps(preset.pitchSteps, -24, 24, 0) } : {}),
+      ...(outputTrimDb !== 0 ? { outputTrimDb } : {}),
+    };
+    return instance;
+  });
+  const chainTrim = factoryFxChainGainDb(chain.id);
+  if (chainTrim !== 0) {
+    const last = instances[instances.length - 1];
+    last.outputTrimDb = clampFxOutputTrimDb((last.outputTrimDb ?? 0) + chainTrim);
+    if (last.outputTrimDb === 0) delete last.outputTrimDb;
+  }
+  const insertionIndex = Math.max(0, Math.min(trackEffectsOf(doc, trackId).length, Math.floor(insertAt)));
+  const ids = new Set(instances.map((instance) => instance.id));
+  return {
+    type: "applyEffectChainPreset",
+    label: `Insert ${chain.name} chain`,
+    firstEffectId: instances[0].id,
+    execute: (d) =>
+      withTrackEffects(d, trackId, (effects) => {
+        const next = [...effects];
+        const at = Math.max(0, Math.min(next.length, insertionIndex));
+        next.splice(at, 0, ...instances);
+        return next;
+      }),
+    undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((effect) => !ids.has(effect.id))),
+  };
+}
+
 export function toggleEffectBypass(doc: ProjectDocument, trackId: string, fxId: string): Command {
   const prev = trackEffectsOf(doc, trackId).find((f) => f.id === fxId)?.bypassed ?? false;
   const apply = (d: ProjectDocument, bypassed: boolean): ProjectDocument =>
@@ -5301,18 +5376,46 @@ export function applyEffectPreset(doc: ProjectDocument, trackId: string, fxId: s
   if (target.type !== preset.type) throw new Error("Preset does not match effect type");
   const previous = { ...target.params };
   const previousSteps = target.steps ? [...target.steps] : undefined;
+  const previousVolume = target.volumeSteps ? [...target.volumeSteps] : undefined;
+  const previousPitch = target.pitchSteps ? [...target.pitchSteps] : undefined;
+  const previousTrim = target.outputTrimDb ?? 0;
   const nextParams = { ...target.params };
   for (const [id, value] of Object.entries(preset.params)) nextParams[id] = clampEffectParam(target.type, id, value);
   const nextSteps = preset.steps ? sanitizeGateSteps(preset.steps) : target.steps;
-  const apply = (d: ProjectDocument, params: Record<string, number>, steps: number[] | undefined): ProjectDocument =>
+  const nextVolume = preset.volumeSteps
+    ? sanitizeManglerSteps(preset.volumeSteps, 0, 1, 1)
+    : target.volumeSteps;
+  const nextPitch = preset.pitchSteps
+    ? sanitizeManglerSteps(preset.pitchSteps, -24, 24, 0)
+    : target.pitchSteps;
+  const nextTrim = clampFxOutputTrimDb(preset.outputTrimDb ?? factoryFxPresetGainDb(preset.id));
+  const apply = (
+    d: ProjectDocument,
+    params: Record<string, number>,
+    steps: number[] | undefined,
+    volume: number[] | undefined,
+    pitch: number[] | undefined,
+    outputTrimDb: number,
+  ): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
-      effects.map((fx) => (fx.id === fxId ? { ...fx, params: { ...params }, steps } : fx)),
+      effects.map((fx) => {
+        if (fx.id !== fxId) return fx;
+        const { outputTrimDb: _previousTrim, ...withoutTrim } = fx;
+        return {
+          ...withoutTrim,
+          params: { ...params },
+          steps,
+          volumeSteps: volume,
+          pitchSteps: pitch,
+          ...(outputTrimDb !== 0 ? { outputTrimDb } : {}),
+        };
+      }),
     );
   return {
     type: "applyEffectPreset",
     label: `Apply ${preset.name} preset`,
-    execute: (d) => apply(d, nextParams, nextSteps),
-    undo: (d) => apply(d, previous, previousSteps),
+    execute: (d) => apply(d, nextParams, nextSteps, nextVolume, nextPitch, nextTrim),
+    undo: (d) => apply(d, previous, previousSteps, previousVolume, previousPitch, previousTrim),
   };
 }
 
@@ -5322,21 +5425,28 @@ export function resetEffect(doc: ProjectDocument, trackId: string, fxId: string)
   if (!target) throw new Error(`Effect ${fxId} not found`);
 
   const previousParams = { ...target.params };
+  const previousTrim = target.outputTrimDb ?? 0;
   // Flagship plugins expose deep, namespaced DSP parameters in addition to
   // the compact rack surface. normalizePluginParams({}) builds a complete,
   // schema-valid default map so reset cannot leave stale hidden parameters in
   // the worklet after a prior preset or A/B recall.
   const nextParams = normalizePluginParams(target.type, {}) ?? defaultParamsOf(target.type);
-  const apply = (d: ProjectDocument, params: Record<string, number>): ProjectDocument =>
+  const apply = (d: ProjectDocument, params: Record<string, number>, outputTrimDb: number): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
-      effects.map((fx) => (fx.id === fxId ? { ...fx, params: { ...params } } : fx)),
+      effects.map((fx) => {
+        if (fx.id !== fxId) return fx;
+        const { outputTrimDb: _previousTrim, ...withoutTrim } = fx;
+        return outputTrimDb === 0
+          ? { ...withoutTrim, params: { ...params } }
+          : { ...withoutTrim, params: { ...params }, outputTrimDb };
+      }),
     );
 
   return {
     type: "resetEffect",
     label: `Reset ${EFFECT_DEFS[target.type].name}`,
-    execute: (d) => apply(d, nextParams),
-    undo: (d) => apply(d, previousParams),
+    execute: (d) => apply(d, nextParams, 0),
+    undo: (d) => apply(d, previousParams, previousTrim),
   };
 }
 

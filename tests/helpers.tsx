@@ -36,6 +36,7 @@ export function mockServices(doc?: ProjectDocument): Services {
   const libraryState = { favoriteAssets: [], recentAssets: [], favoritePresets: [], recentPresets: [] };
   const captureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
   const mockTransport = new Transport({ now: () => 0 }, 120);
+  let effectIntentPreviewEnded: ((reason: "manual" | "projectChanged" | "transportStarted") => void) | undefined;
   let countInBars = 0;
   let preRollBars = 0;
   let metronome = false;
@@ -56,6 +57,15 @@ export function mockServices(doc?: ProjectDocument): Services {
         trigger: vi.fn(),
         noteOn: vi.fn(),
         preview: vi.fn(),
+        beginEffectIntentPreview: vi.fn((_trackId: string, _fxId: string, _values: Record<string, number>, onEnded?: typeof effectIntentPreviewEnded) => {
+          effectIntentPreviewEnded = onEnded;
+          return true;
+        }),
+        cancelEffectIntentPreview: vi.fn(() => {
+          const onEnded = effectIntentPreviewEnded;
+          effectIntentPreviewEnded = undefined;
+          onEnded?.("manual");
+        }),
         previewSlice: vi.fn(),
         previewAsset: vi.fn(),
         previewInstrumentPreset: vi.fn(),
@@ -180,6 +190,15 @@ export function mockServices(doc?: ProjectDocument): Services {
       ensureContext: vi.fn(() => mockAudioContext()),
       panic: vi.fn(),
       preview: vi.fn(),
+      beginEffectIntentPreview: vi.fn((_trackId: string, _fxId: string, _values: Record<string, number>, onEnded?: typeof effectIntentPreviewEnded) => {
+        effectIntentPreviewEnded = onEnded;
+        return true;
+      }),
+      cancelEffectIntentPreview: vi.fn(() => {
+        const onEnded = effectIntentPreviewEnded;
+        effectIntentPreviewEnded = undefined;
+        onEnded?.("manual");
+      }),
       previewSlice: vi.fn(),
       previewAsset: vi.fn(),
       previewInstrumentPreset: vi.fn(),

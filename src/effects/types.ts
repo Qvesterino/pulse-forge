@@ -31,7 +31,9 @@ export interface EffectRuntime {
    */
   setSteps?(volume: readonly number[] | undefined, pitch: readonly number[] | undefined): void;
   syncBpm?(bpm: number): void;
-  onTransportStarted?(time: number, beatPhase: number): void;
+  onTransportStarted?(time: number, beatPhase: number, positionBeats?: number): void;
+  /** Engine-owned post-effect gain used for preset level matching and output trim. */
+  setOutputTrimDb?(gainDb: number): void;
   /**
    * Optional sidechain feed for sidechain-aware effects (e.g. Sidechain Compressor).
    * Engine calls this once after construction (when `EffectInstance.sidechainTrackId`

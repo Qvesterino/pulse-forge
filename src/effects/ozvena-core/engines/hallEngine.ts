@@ -561,6 +561,17 @@ export function createHallEngine(): HallEngine {
 
       const fb = feedbackGain;
       const fbEff = freeze_ ? 1.0 : fb;
+      // FREEZE per-band safety. The non-freeze loop gain cap (gCap =
+      // 0.995/fb) permits band gains up to 2.5 because the feedback gain
+      // multiplies them DOWN; under freeze the loop runs at unity
+      // (fbEff = 1.0), so a band gain above 1 is a per-pass gain above 1
+      // and the tail grows until the output limiter pins it at the
+      // ceiling — measured 0.38–0.48 RMS sustained at bassDecay ≥ 2
+      // instead of the documented infinite hold. Clamp every band to
+      // unity in freeze: the hold is then a true repeat (no growth).
+      // (Reconciled from Pulse Forge audit, 2026-09-19.)
+      const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
+      const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
       // Direct-feedback weight from the shimmer stability guard (1.0 when
       // shimmer is off or inside the stable region — bit-identical path).
       const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
@@ -732,7 +743,7 @@ export function createHallEngine(): HallEngine {
             mlp[l] += midAlpha * (lowHp - mlp[l]);
             mlp[l] = flushDenormal(mlp[l]);
             const midBand = sanitize(mlp[l]);
-            let shelved = lowBand * bassGain + midBand * midBandGain + (lowHp - midBand);
+            let shelved = lowBand * bassGainF + midBand * midBandGainF + (lowHp - midBand);
             if (driveGain > 1.0001) {
               const hot = shelved * driveGain;
               const hot2 = hot * hot;

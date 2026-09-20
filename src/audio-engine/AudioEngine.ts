@@ -14,7 +14,7 @@ import { hashString } from "../shared/rng";
 import { defaultMasterConfig } from "../project-model/schema";
 import { PPQ, BAR_TICKS } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
-import { EFFECT_DEFS } from "../effects/registry";
+import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
 import { clampInstrumentParam, INSTRUMENT_DEFS } from "../instruments/registry";
 import { dbToLinear, presetNormalizationGainDb } from "../presets/normalization";
@@ -125,6 +125,16 @@ interface FxChainState {
    * tracks latency without waiting for the next document sync.
    */
   latencySubs: Array<() => void>;
+}
+
+export type EffectIntentPreviewEndReason = "manual" | "projectChanged" | "transportStarted";
+
+interface EffectIntentPreviewSession {
+  trackId: string;
+  fxId: string;
+  effectType: EffectInstance["type"];
+  paramIds: string[];
+  onEnded?: (reason: EffectIntentPreviewEndReason) => void;
 }
 
 interface TrackNodes {
@@ -403,6 +413,7 @@ export class AudioEngine {
   private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
+  private effectIntentPreview: EffectIntentPreviewSession | null = null;
   private synthNoise: AudioBuffer | null = null;
 
   private ensureSynthNoise(): AudioBuffer | null {
@@ -520,6 +531,7 @@ export class AudioEngine {
   }
 
   useContext(ctx: BaseAudioContext): void {
+    this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
     const previousContext = this.ctx;
     if (previousContext && previousContext !== ctx) {
       try {
@@ -1351,6 +1363,7 @@ export class AudioEngine {
   }
 
   setProject(doc: ProjectDocument): void {
+    this.cancelEffectIntentPreview(doc, "projectChanged");
     if (this.meterProjectId !== null && this.meterProjectId !== doc.id) this.resetMeterHistory();
     this.meterProjectId = doc.id;
     if (this.stretchProjectId !== doc.id) {
@@ -1367,13 +1380,14 @@ export class AudioEngine {
     if (this.ctx) this.syncProject(doc);
   }
 
-  transportStarted(time: number, beatPhase: number): void {
+  transportStarted(time: number, beatPhase: number, positionBeats = beatPhase): void {
+    this.cancelEffectIntentPreview(this.doc ?? undefined, "transportStarted");
     // Groups and returns carry tempo-synced / phase-locked FX too (Pump,
     // Step Gate, SYNC delays) — skipping them left bus effects out of phase
     // with the transport for the whole play.
     for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
       for (const rt of nodes.fx.runtimes.values()) {
-        rt.onTransportStarted?.(time, beatPhase);
+        rt.onTransportStarted?.(time, beatPhase, positionBeats);
       }
     }
   }
@@ -1487,7 +1501,31 @@ export class AudioEngine {
           });
       }
       const seed = this.doc ? hashString(`${this.doc.id}|${ownerId}|${fx.id}|fx-dsp-v1`) : undefined;
-      const rt = def.factory(ctx, fx, { bpm, seed });
+      const rawRuntime = def.factory(ctx, fx, { bpm, seed });
+      const trimGain = ctx.createGain();
+      trimGain.gain.value = dbToLinear(fx.outputTrimDb ?? 0);
+      rawRuntime.output.connect(trimGain);
+      const rt = new Proxy(rawRuntime, {
+        get(target, property, receiver) {
+          if (property === "output") return trimGain;
+          if (property === "setOutputTrimDb") {
+            return (gainDb: number) => {
+              const safe = Number.isFinite(gainDb) ? Math.max(-18, Math.min(12, gainDb)) : 0;
+              trimGain.gain.setTargetAtTime(dbToLinear(safe), ctx.currentTime, 0.015);
+            };
+          }
+          if (property === "dispose") {
+            return () => {
+              try {
+                target.dispose();
+              } finally {
+                trimGain.disconnect();
+              }
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }) as EffectRuntime;
       // PRISM's runtime morph slots are intentionally transient audio state,
       // but their source snapshots are document-owned. Rehydrate them here so
       // a lazy worklet swap or chain rebuild cannot silently empty A/B.
@@ -1524,7 +1562,7 @@ export class AudioEngine {
       head.connect(rt.input);
       head = rt.output;
       state.runtimes.set(fx.id, rt);
-      state.params.set(fx.id, { ...fx.params });
+      state.params.set(fx.id, { ...fx.params, __outputTrimDb: fx.outputTrimDb ?? 0 });
       // Metering defaults to off; re-apply the panel's desired state after a
       // rebuild swapped the runtime.
       rt.setMetersEnabled?.(this.fxMetersEnabled.get(fx.id) ?? false);
@@ -1557,6 +1595,8 @@ export class AudioEngine {
         for (const [k, v] of Object.entries(fx.params)) {
           if (cached[k] !== v) rt.setParameter(k, v);
         }
+        const outputTrimDb = fx.outputTrimDb ?? 0;
+        if (cached.__outputTrimDb !== outputTrimDb) rt.setOutputTrimDb?.(outputTrimDb);
         // Step-envelope sync (beatMangler): the runtime reference-compares
         // and ignores identical arrays, so untouched envelopes never
         // re-upload to the audio thread.
@@ -1564,7 +1604,7 @@ export class AudioEngine {
       } finally {
         rt.endParamSync?.();
       }
-      state.params.set(fx.id, { ...fx.params });
+      state.params.set(fx.id, { ...fx.params, __outputTrimDb: fx.outputTrimDb ?? 0 });
     }
   }
 
@@ -4635,6 +4675,85 @@ export class AudioEngine {
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
     rt?.setParameter?.(paramId, value);
+  }
+
+  /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */
+  beginEffectIntentPreview(
+    trackId: string,
+    fxId: string,
+    values: Record<string, number>,
+    onEnded?: (reason: EffectIntentPreviewEndReason) => void,
+  ): boolean {
+    const doc = this.doc;
+    const effect = doc ? targetOwner(doc, trackId)?.effects.find((candidate) => candidate.id === fxId) : undefined;
+    if (!effect || effect.bypassed || Object.keys(values).length === 0) return false;
+    if (this.effectIntentPreview) this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
+
+    const restoreValues: Record<string, number> = {};
+    for (const [paramId, value] of Object.entries(values)) {
+      const def = EFFECT_DEFS[effect.type].params.find((candidate) => candidate.id === paramId);
+      if (!def || !Number.isFinite(value) || clampEffectParam(effect.type, paramId, value) !== value) return false;
+      if (def.options && !def.options.some((option) => option.value === value)) return false;
+      restoreValues[paramId] = effect.params[paramId] ?? def.default;
+    }
+
+    if (!this.previewFxParams(trackId, fxId, values, restoreValues)) return false;
+    this.effectIntentPreview = { trackId, fxId, effectType: effect.type, paramIds: Object.keys(values), onEnded };
+    return true;
+  }
+
+  /** Restore the current document values and close the single active FX intent audition. */
+  cancelEffectIntentPreview(
+    nextDoc: ProjectDocument | undefined = this.doc ?? undefined,
+    reason: EffectIntentPreviewEndReason = "manual",
+  ): void {
+    const active = this.effectIntentPreview;
+    if (!active) return;
+    this.effectIntentPreview = null;
+    const current = nextDoc ? targetOwner(nextDoc, active.trackId)?.effects.find((effect) => effect.id === active.fxId) : undefined;
+    if (current?.type === active.effectType) {
+      const values = Object.fromEntries(
+        active.paramIds.map((paramId) => {
+          const def = EFFECT_DEFS[current.type].params.find((candidate) => candidate.id === paramId);
+          return [paramId, current.params[paramId] ?? def?.default ?? 0];
+        }),
+      );
+      this.previewFxParams(active.trackId, active.fxId, values);
+    }
+    active.onEnded?.(reason);
+  }
+
+  /**
+   * Apply a transient, multi-parameter audition directly to one live effect
+   * runtime. No project state, autosave or undo history is touched. If one
+   * runtime setter throws, the caller-provided rollback map is replayed.
+   */
+  private previewFxParams(
+    trackId: string,
+    fxId: string,
+    values: Record<string, number>,
+    rollbackValues: Record<string, number> = {},
+  ): boolean {
+    if (Object.keys(values).length === 0 || Object.values(values).some((value) => !Number.isFinite(value))) return false;
+    const runtime =
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    if (!runtime) return false;
+    try {
+      for (const [paramId, value] of Object.entries(values)) runtime.setParameter(paramId, value);
+      return true;
+    } catch {
+      for (const [paramId, value] of Object.entries(rollbackValues)) {
+        try {
+          runtime.setParameter(paramId, value);
+        } catch {
+          // The project/document remains authoritative; a later engine sync
+          // will restore parameters if a plugin runtime is already failing.
+        }
+      }
+      return false;
+    }
   }
 
   getMasterLevel(): number {

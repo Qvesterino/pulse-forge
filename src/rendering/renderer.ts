@@ -15,6 +15,15 @@ export interface RenderOptions {
   sampleRate: number;
   tailSeconds?: number;
   /**
+   * Disable the project master stage for stem renders. Track, group and
+   * return processing stay intact; only the final master gain / tonal /
+   * glue / clipper / limiter stage is neutralized. The full mix should
+   * still be exported separately because nonlinear master processing
+   * cannot be reconstructed by summing isolated stems.
+   * Defaults to true for backward compatibility.
+   */
+  masterProcessing?: boolean;
+  /**
    * Global Live/Export quality switch. "studio" (default in the export UI)
    * bumps every PRISM instance to 8× saturation oversampling and every
    * default-tier VØID instance to the render tier for the duration of THIS
@@ -317,7 +326,32 @@ export async function renderProject(
   // instrument track dropped every note and a frozen drum track rendered
   // dry — the frozen buffer itself was rendered from the track's real
   // chain, so live-chain rendering is the correct export content.
-  engine.setProject(unfreezeDoc(doc));
+  const renderDoc = unfreezeDoc(doc);
+  if (options.masterProcessing === false) {
+    // Transfer stems are intended to be rebalanced in another DAW. Preserve
+    // each source's instrument, channel, group and return processing, but do
+    // not bake the same nonlinear master chain onto every isolated render.
+    // Keep this on a fresh document object: export must never mutate the
+    // user's live project or its serialized master settings.
+    engine.setProject({
+      ...renderDoc,
+      master: {
+        ...renderDoc.master,
+        masterGain: 1,
+        limiterEnabled: false,
+        clipperEnabled: false,
+        tapeEnabled: false,
+        msEnabled: false,
+        msMidGain: 0,
+        msSideGain: 0,
+        glueEnabled: false,
+        bassMonoEnabled: false,
+        tiltDb: 0,
+      },
+    });
+  } else {
+    engine.setProject(renderDoc);
+  }
 
   // Global Live/Export quality switch (opt-in): push the runtime quality
   // bumps AFTER the project sync so they win over the document values

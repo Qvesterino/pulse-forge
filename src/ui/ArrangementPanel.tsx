@@ -235,11 +235,14 @@ export function ArrangementPanel() {
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
   // ── Timeline recording: arm a track, REC the mic straight into the song ──
   const [armedTrackId, setArmedTrackId] = useState<string>("");
-  const [recState, setRecState] = useState<"idle" | "recording" | "saving">("idle");
+  const [recState, setRecState] = useState<"idle" | "starting" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [micMonitoring, setMicMonitoring] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
+  const recStartPendingRef = useRef(false);
+  const recStartAttemptRef = useRef(0);
+  const recPanelMountedRef = useRef(true);
   const stoppingRecRef = useRef(false);
   const recoveryRepoRef = useRef(services.recordingRecovery);
   const [recoverableTakes, setRecoverableTakes] = useState<RecordingSession[]>([]);
@@ -333,8 +336,12 @@ export function ArrangementPanel() {
 
   // A recorder left running at unmount (panel switch, project close) would
   // keep the mic stream and its chunk buffer alive forever.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    recPanelMountedRef.current = true;
+    return () => {
+      recPanelMountedRef.current = false;
+      recStartAttemptRef.current++;
+      recStartPendingRef.current = false;
       const recorder = recRef.current;
       recRef.current = null;
       if (recorder) {
@@ -343,25 +350,30 @@ export function ArrangementPanel() {
       }
       sliceAnalysisRef.current?.abort();
       sliceAnalysisRef.current = null;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const startRec = async () => {
-    if (!armedTrackId || recState !== "idle" || recRef.current) return;
+    if (!armedTrackId || recState !== "idle" || recRef.current || recStartPendingRef.current) return;
+    recStartPendingRef.current = true;
+    const attempt = ++recStartAttemptRef.current;
+    setRecState("starting");
     setRecError(null);
+    let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
     try {
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
       if (!ctx) throw new Error("Audio engine is not ready");
       // Load the PCM capture engine only when the user starts a vocal take.
       const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
-      const rec = new PcmMicRecorder({ ctx, recovery: recoveryRepoRef.current! });
+      // The component may have unmounted while the lazy module was loading.
+      if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current) return;
+      recorder = new PcmMicRecorder({ ctx, recovery: recoveryRepoRef.current! });
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
-      recRef.current = rec;
-      rec.setMonitoring(micMonitoring);
-      const startPromise = rec.start(() => {
+      recRef.current = recorder;
+      recorder.setMonitoring(micMonitoring);
+      const startPromise = recorder.start(() => {
         const currentDoc = services.store.doc;
         const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
         if (!track) return null;
@@ -376,7 +388,7 @@ export function ArrangementPanel() {
           recordingInputOffsetMs: recordingAlignment.getSnapshot(),
         };
       });
-      rec.onError = (message) => {
+      recorder.onError = (message) => {
         setRecError(message);
         void stopRec();
       };
@@ -385,19 +397,25 @@ export function ArrangementPanel() {
       // stopRec, which cleared the recorder slot. If start() resolved anyway
       // (late permission/resume), don't resurrect the recording state or the
       // recorder — a fresh take may already own the slot.
-      if (recRef.current !== rec) {
-        void rec.cancel();
+      if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current || recRef.current !== recorder) {
+        void recorder.cancel();
         return;
       }
-      recRef.current = rec;
       setRecSeconds(0);
       setRecState("recording");
       // Performers record against the backing track — roll the transport.
       if (!services.transport.playing) services.playback.playPause();
     } catch (error) {
-      void recRef.current?.cancel();
-      recRef.current = null;
-      setRecError(error instanceof Error ? error.message : String(error));
+      if (recorder) {
+        if (recRef.current === recorder) recRef.current = null;
+        void recorder.cancel();
+      }
+      if (recPanelMountedRef.current && attempt === recStartAttemptRef.current) {
+        setRecState("idle");
+        setRecError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (attempt === recStartAttemptRef.current) recStartPendingRef.current = false;
     }
   };
 
@@ -1274,12 +1292,13 @@ export function ArrangementPanel() {
                 type="button"
                 className="btn btn-small btn-rec"
                 title="Record the mic straight onto the armed track at the playhead (rolls the transport)"
-                disabled={!armedTrackId || recState === "saving"}
+                disabled={!armedTrackId || recState !== "idle"}
                 onClick={() => void startRec()}
               >
-                ● REC
+                {recState === "starting" ? "◌ MIC…" : "● REC"}
               </button>
             )}
+            {recState === "starting" && <span className="arr-rec-saving">opening microphone…</span>}
             {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
             {recError && (
               <span className="arr-rec-error" role="alert">

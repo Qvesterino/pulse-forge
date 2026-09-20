@@ -8,6 +8,13 @@ export const systemClock: Clock = { now: () => performance.now() / 1000 };
 
 /** Default ticks per bar (4/4). Projects can provide their actual bar length. */
 const BAR_TICKS_ = PPQ * 4;
+const MIN_BPM = 20;
+const MAX_BPM = 300;
+const FALLBACK_BPM = 120;
+
+function clampTransportBpm(bpm: number): number {
+  return Math.min(MAX_BPM, Math.max(MIN_BPM, bpm));
+}
 
 export class Transport {
   private bpm_: number;
@@ -42,7 +49,7 @@ export class Transport {
     private clock: Clock,
     bpm = 124,
   ) {
-    this.bpm_ = bpm;
+    this.bpm_ = Number.isFinite(bpm) ? clampTransportBpm(bpm) : FALLBACK_BPM;
   }
 
   get bpm(): number {
@@ -85,6 +92,9 @@ export class Transport {
    * it (remote sync and other already-timed surfaces).
    */
   play(fromTick = this.pauseTick, options: { leadIn?: boolean } = {}): void {
+    // Negative finite ticks are intentional for count-in/pre-roll; non-finite
+    // anchors poison the transport time map and every later scheduler window.
+    if (!Number.isFinite(fromTick)) return;
     const now = this.clock.now();
     // When loop is enabled, snap the play start to loopStart so a manual
     // play from a position before the loop doesn't immediately wrap.
@@ -138,18 +148,20 @@ export class Transport {
   }
 
   setBpm(bpm: number): void {
+    if (!Number.isFinite(bpm)) return;
+    const nextBpm = clampTransportBpm(bpm);
     // setBpm is called on every onDocChanged (the project BPM is re-applied
     // each time the store mutates). A no-op rebase is harmless mathematically
     // (the resulting position is identical) but it is wasted work and
     // clutters the diagnostics trail. Skip the rebase when the value did
     // not actually change.
-    if (Math.abs(bpm - this.bpm_) < 0.001) return;
+    if (Math.abs(nextBpm - this.bpm_) < 0.001) return;
     if (this.playing_) {
       const current = this.tickAt(this.clock.now());
       this.anchorTick = current;
       this.anchorTime = this.clock.now();
     }
-    this.bpm_ = bpm;
+    this.bpm_ = nextBpm;
   }
 
   /**
@@ -166,7 +178,7 @@ export class Transport {
     if (!Number.isFinite(anchorTick) || !Number.isFinite(anchorTime)) return;
     this.anchorTick = anchorTick;
     this.anchorTime = anchorTime;
-    this.bpm_ = bpm;
+    this.bpm_ = clampTransportBpm(bpm);
   }
 
   /**
@@ -176,6 +188,7 @@ export class Transport {
    * resolved by the scheduler based on the project model.
    */
   setLoop(enabled: boolean, start: number, end: number): void {
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     const safeStart = Math.max(0, Math.floor(start));
     const safeEnd = end > 0 ? Math.max(safeStart, Math.floor(end)) : 0;
     this.loopStart_ = safeStart;
@@ -195,6 +208,7 @@ export class Transport {
   }
 
   setCountIn(bars: number): void {
+    if (!Number.isFinite(bars)) return;
     this.countInBars_ = Math.max(0, Math.min(2, Math.round(bars)));
   }
 
@@ -213,6 +227,7 @@ export class Transport {
   }
 
   setPreRoll(bars: number): void {
+    if (!Number.isFinite(bars)) return;
     this.preRollBars_ = Math.max(0, Math.min(1, Math.round(bars)));
   }
 

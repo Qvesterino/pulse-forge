@@ -15,6 +15,7 @@ export function createBeatManglerNode(
   ctx: BaseAudioContext,
   instance: { params: Record<string, number>; id?: string; volumeSteps?: number[]; pitchSteps?: number[] },
   bpm: number,
+  seed = 0,
 ): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "beatmangler-processor", {
     numberOfInputs: 1,
@@ -28,7 +29,10 @@ export function createBeatManglerNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
+  for (const id of ["mix", "trigger", "interval", "offset", "chance", "gate"]) {
+    const fallback = id === "mix" || id === "chance" ? 1 : id === "gate" ? 2 : 0;
+    safeApplyAudioParam(node, id, instance.params[id] ?? fallback);
+  }
 
   let lastVolume: readonly number[] | undefined;
   let lastPitch: readonly number[] | undefined;
@@ -44,6 +48,7 @@ export function createBeatManglerNode(
   };
   pushSteps(instance.volumeSteps, instance.pitchSteps);
   node.port.postMessage({ type: "bpm", bpm });
+  node.port.postMessage({ type: "seed", seed });
 
   let lastMode = instance.params.playMode ?? 0;
   let lastFill = instance.params.repeatFill ?? 0;
@@ -60,8 +65,8 @@ export function createBeatManglerNode(
       } else if (id === "repeatFill") {
         lastFill = v;
         pushMode();
-      } else if (id === "mix") {
-        safeApplyAudioParam(node, "mix", v, ctx.currentTime);
+      } else if (["mix", "trigger", "interval", "offset", "chance", "gate"].includes(id)) {
+        safeApplyAudioParam(node, id, v, ctx.currentTime);
       }
     },
     setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
@@ -69,6 +74,12 @@ export function createBeatManglerNode(
     setSteps: (volume: readonly number[] | undefined, pitch: readonly number[] | undefined) =>
       pushSteps(volume as number[] | undefined, pitch as number[] | undefined),
     syncBpm: (next) => node.port.postMessage({ type: "bpm", bpm: next }),
+    onTransportStarted: (_time, beatPhase, positionBeats) =>
+      node.port.postMessage({
+        type: "align",
+        phase: beatPhase,
+        positionBeats: Number.isFinite(positionBeats) ? positionBeats : beatPhase,
+      }),
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

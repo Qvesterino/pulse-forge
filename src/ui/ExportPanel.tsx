@@ -4,6 +4,7 @@ import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
+import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
@@ -77,6 +78,7 @@ export function ExportPanel({
   // choices are respected) are free. LIVE renders exactly what you hear,
   // faster. Freeze/bounce stay on the live tier by default.
   const [quality, setQuality] = useState<"live" | "studio">("studio");
+  const [includeTrackStems, setIncludeTrackStems] = useState(true);
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const markerCount = markers.length;
@@ -297,6 +299,34 @@ export function ExportPanel({
       });
     } catch (error) {
       cancelOrElse(error, "Scorepack failed: {err}");
+    }
+  };
+
+  const exportZyvoTransfer = async () => {
+    const signal = beginExport();
+    setStatus({ kind: "busy", label: "Preparing KYX → ZYVO transfer…" });
+    try {
+      const result = await buildZyvoTransfer(
+        doc,
+        services.bank,
+        (progress) => setStatus({ kind: "busy", label: `ZYVO transfer: ${progress.phase}…` }),
+        signal,
+        { quality, includeTrackStems },
+      );
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL?.(url), 30_000);
+      setStatus({
+        kind: "done",
+        label: `ZYVO transfer ready (${result.manifest.stems.length} stems · ${result.blob.size.toLocaleString()} bytes)`,
+        summary: result.masterSummary,
+      });
+    } catch (error) {
+      cancelOrElse(error, "ZYVO transfer failed: {err}");
     }
   };
 
@@ -587,6 +617,24 @@ export function ExportPanel({
           onClick={() => void exportScorepack()}
         >
           EXPORT SCOREPACK
+        </button>
+        <label className="export-policy" title="Track stems are rendered in 24-bit PCM and can make the transfer much larger.">
+          <input
+            type="checkbox"
+            checked={includeTrackStems}
+            disabled={busy}
+            onChange={(event) => setIncludeTrackStems(event.target.checked)}
+          />
+          INCLUDE TRACK STEMS
+        </label>
+        <button
+          type="button"
+          className="btn btn-export btn-export-scorepack"
+          disabled={busy}
+          title="Create a VocalForge / ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
+          onClick={() => void exportZyvoTransfer()}
+        >
+          EXPORT TO ZYVO
         </button>
         <button
           type="button"

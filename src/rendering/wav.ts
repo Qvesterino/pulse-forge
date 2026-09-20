@@ -55,7 +55,10 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
         view.setInt16(offset, quantizeInt16Sample(input, ditherRand), true);
         offset += 2;
       } else {
-        const sample = softClipSample(input);
+        // 32-bit float is the interchange/mastering format: retain finite
+        // over-range samples and let the receiving DAW preserve the headroom.
+        // Integer PCM still uses the export soft-knee to avoid hard clipping.
+        const sample = bitDepth === 32 ? input : softClipSample(input);
         if (bitDepth === 24) {
           const value = Math.round(sample * (sample < 0 ? 0x800000 : 0x7fffff));
           view.setUint8(offset, value & 0xff);

@@ -5,7 +5,7 @@
  * unsupported-capability path; recorder persistence is tested separately.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import {
   addRecordedAudioClip,
@@ -123,6 +123,93 @@ describe("arrangement REC wiring", () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  it("serializes rapid REC clicks while the microphone is opening", async () => {
+    let unblockStart!: () => void;
+    const startGate = new Promise<void>((resolve) => {
+      unblockStart = resolve;
+    });
+    let startCount = 0;
+    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
+      PcmMicRecorder: class {
+        onError = null;
+        setMonitoring() {}
+        async start() {
+          startCount++;
+          await startGate;
+        }
+        async cancel() {}
+        async stop() {
+          return null;
+        }
+      },
+    }));
+
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+
+      renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      const recButton = screen.getByRole("button", { name: "● REC" });
+      act(() => {
+        fireEvent.click(recButton);
+        fireEvent.click(recButton);
+      });
+
+      const openingButton = await screen.findByRole("button", { name: "◌ MIC…" });
+      expect(openingButton).toBeDisabled();
+      await vi.waitFor(() => expect(startCount).toBe(1));
+
+      unblockStart();
+      await screen.findByRole("button", { name: /STOP/ });
+      expect(startCount).toBe(1);
+    } finally {
+      unblockStart();
+      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+    }
+  });
+
+  it("does not open the microphone if the arrangement unmounts while REC is loading", async () => {
+    const startSpy = vi.fn();
+    const cancelSpy = vi.fn();
+    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
+      PcmMicRecorder: class {
+        onError = null;
+        setMonitoring() {}
+        async start() {
+          startSpy();
+        }
+        async cancel() {
+          cancelSpy();
+        }
+      },
+    }));
+
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+
+      const { unmount } = renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      unmount();
+      await vi.dynamicImportSettled();
+
+      expect(startSpy).not.toHaveBeenCalled();
+      expect(cancelSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+    }
+  });
+
   it("warns when the take is usable now but its audio could not be persisted", async () => {
     vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
       PcmMicRecorder: class {
@@ -166,7 +253,7 @@ describe("arrangement REC wiring", () => {
       expect(services.bank.add).toHaveBeenCalledOnce();
       expect(services.store.execute).toHaveBeenCalledOnce();
     } finally {
-      vi.doUnmock("../../src/audio-engine/recorder");
+      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
     }
   });
 });

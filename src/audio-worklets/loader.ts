@@ -69,6 +69,7 @@ const CORE_TYPES = [
   "pitchShift",
   "vinyl",
   "beatMangler",
+  "vocoder",
 ] as const;
 
 export type WorkletType = (typeof CORE_TYPES)[number] | PluginWorkletType;

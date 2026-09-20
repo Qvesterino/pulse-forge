@@ -43,6 +43,59 @@ describe("Transport", () => {
     expect(transport.position).toBe(480);
   });
 
+  it("rejects non-finite play anchors but preserves negative count-in anchors", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setCountIn(1);
+    transport.play(-4 * PPQ);
+    expect(transport.position).toBe(-4 * PPQ);
+    expect(transport.anchorTickBeforePreRoll()).toBe(0);
+
+    advance(0.25);
+    const beforeInvalidPlay = transport.position;
+    transport.play(Number.NaN);
+    expect(transport.position).toBeCloseTo(beforeInvalidPlay, 8);
+    expect(transport.playing).toBe(true);
+    transport.play(Number.POSITIVE_INFINITY);
+    expect(Number.isFinite(transport.position)).toBe(true);
+    expect(transport.position).toBeCloseTo(beforeInvalidPlay, 8);
+  });
+
+  it("keeps BPM finite and inside the supported transport range", () => {
+    const { clock } = controlledClock();
+    expect(new Transport(clock, Number.NaN).bpm).toBe(120);
+
+    const transport = new Transport(clock, 120);
+    transport.setBpm(Number.NaN);
+    transport.setBpm(Number.POSITIVE_INFINITY);
+    transport.setBpm(Number.NEGATIVE_INFINITY);
+    expect(transport.bpm).toBe(120);
+
+    transport.setBpm(-10);
+    expect(transport.bpm).toBe(20);
+    transport.setBpm(301);
+    expect(transport.bpm).toBe(300);
+  });
+
+  it("ignores non-finite loop and count-in settings without corrupting valid settings", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.setLoop(true, PPQ, 3 * PPQ);
+    transport.setLoop(false, Number.NaN, 0);
+    transport.setLoop(false, 0, Number.POSITIVE_INFINITY);
+    expect(transport.loopEnabled).toBe(true);
+    expect(transport.loopStart).toBe(PPQ);
+    expect(transport.loopEnd).toBe(3 * PPQ);
+
+    transport.setCountIn(1);
+    transport.setPreRoll(1);
+    transport.setCountIn(Number.NaN);
+    transport.setPreRoll(Number.POSITIVE_INFINITY);
+    expect(transport.countInBars).toBe(1);
+    expect(transport.preRollBars).toBe(1);
+    expect(transport.leadInBars()).toBe(2);
+  });
+
   it("clamps count-in and pre-roll settings and exposes their combined lead-in", () => {
     const { clock } = controlledClock();
     const transport = new Transport(clock, 120);

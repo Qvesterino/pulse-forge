@@ -1,65 +1,94 @@
 /**
- * Beat Mangler AudioWorkletProcessor — Gross-Beat style bar-synced mangler.
+ * Beat Mangler AudioWorkletProcessor.
  *
- * A ring buffer records the live stream continuously. A tape-style read head
- * loops the LAST recorded bar under two step envelopes (16/32 steps):
- *  - volumeSteps[]  — gain per step (0..1)
- *  - pitchSteps[]   — read-speed multiplier per step (±24 semitones, tape-style)
- * plus play modes normal / HALF (0.5×) / DOUBLE (2×) / REVERSE and a
- * repeat-fill that loops the bar's final segment to build fill bridges.
- *
- * Steps + BPM arrive over the message port (`{ type: "steps" | "bpm" | "mode" }`)
- * — envelope data is document state, not an AudioParam. All reads derive from
- * the write clock (no RNG) → deterministic renders.
+ * The effect keeps the original continuous bar mangler when TRIGGER is off.
+ * Trigger mode turns it into a musical beat-repeat: on each interval boundary
+ * it makes one deterministic chance decision, captures the most recent gate
+ * window, then loops that window for the gate duration. All clocks are in
+ * quarter-note beats, so live transport, seek, BPM changes and offline render
+ * use the same phase model.
  *
  * NOTE: served as part of core-worklet.js — plain JavaScript only.
  */
+const REPEAT_INTERVAL_BEATS = [
+  4, 2, 1, 0.5, 0.25, 0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
+  3, 4 / 3, 1.5, 2 / 3, 0.75, 1 / 3, 0.375, 1 / 6, 0.1875, 1 / 12,
+];
+const REPEAT_GATE_BEATS = [
+  4, 2, 1, 0.5, 0.25, 0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
+  3, 4 / 3, 1.5, 2 / 3, 0.75, 1 / 3, 0.375, 1 / 6, 0.1875, 1 / 12,
+];
+
 class BeatManglerProcessor extends AudioWorkletProcessor {
-  constructor(options) {
+  constructor() {
     super();
     const sr = globalThis.sampleRate || 44100;
     this.sr = sr;
-    this.bufferLen = sr * 12; // 2 bars @ 80 BPM + headroom
+    // 13 seconds covers a four-beat gate at the supported 20 BPM floor with
+    // one second left so the ring writer cannot overwrite its captured loop.
+    this.bufferLen = Math.ceil(sr * 13);
     this.bufL = new Float32Array(this.bufferLen);
     this.bufR = new Float32Array(this.bufferLen);
     this.writePos = 0;
 
     this.bpm = 120;
     this.barSamples = (60 / this.bpm) * 4 * sr;
-    this.volumeSteps = null; // number[] | null (null = unity envelope)
+    this.transportBeat = 0;
+    this.volumeSteps = null;
     this.pitchSteps = null;
     this.stepsPerBar = 16;
     this.playMode = 0; // 0 normal, 1 half, 2 double, 3 reverse
     this.repeatFill = 0;
-    this.readPos = null; // stateful tape head (absolute sample position)
+    this.readPos = null;
+    this.seed = 0;
+    this.lastEventIndex = null;
+    this.lastIntervalIndex = -1;
+    this.lastOffsetIndex = -1;
+    this.repeatActive = false;
+    this.repeatStart = 0;
+    this.repeatLength = 0;
+    this.repeatReadPos = 0;
+    this.repeatElapsed = 0;
+    this.repeatDuration = 0;
 
     this.port.onmessage = (event) => {
       const data = event.data ?? {};
       if (data.type === "steps") {
-        // Envelope data crosses from the control thread — a single non-finite
-        // entry would poison `speed`/`readPos` with NaN and mute the effect
-        // for good, so coerce at the boundary.
         const clean = (arr, fallback) =>
           Array.isArray(arr) && arr.length > 0
-            ? arr.map((v) => (typeof v === "number" && Number.isFinite(v) ? v : fallback))
+            ? arr.slice(0, 32).map((v) => (typeof v === "number" && Number.isFinite(v) ? v : fallback))
             : null;
         this.volumeSteps = clean(data.volume, 1);
         this.pitchSteps = clean(data.pitch, 0);
-        const len = this.volumeSteps ? this.volumeSteps.length : this.pitchSteps ? this.pitchSteps.length : 16;
-        this.stepsPerBar = len;
+        this.stepsPerBar = this.volumeSteps?.length ?? this.pitchSteps?.length ?? 16;
       } else if (data.type === "bpm" && Number.isFinite(data.bpm) && data.bpm > 0) {
-        this.bpm = data.bpm;
+        this.bpm = Math.max(20, Math.min(300, data.bpm));
         this.barSamples = (60 / this.bpm) * 4 * sr;
-        this.readPos = null; // re-anchor on the next bar
+        this.readPos = null;
       } else if (data.type === "mode") {
-        if (Number.isFinite(data.playMode)) this.playMode = data.playMode;
+        if (Number.isFinite(data.playMode)) this.playMode = Math.max(0, Math.min(3, Math.round(data.playMode)));
         if (Number.isFinite(data.repeatFill)) this.repeatFill = Math.max(0, Math.min(8, Math.round(data.repeatFill)));
+      } else if (data.type === "seed" && Number.isFinite(data.seed)) {
+        this.seed = data.seed | 0;
+      } else if (data.type === "align") {
+        const beat = Number.isFinite(data.positionBeats) ? data.positionBeats : Number(data.phase) || 0;
+        this.transportBeat = Math.max(0, beat);
+        this.lastEventIndex = null;
+        this.repeatActive = false;
+        this.readPos = null;
       }
     };
   }
 
   static get parameterDescriptors() {
-    return [{ name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" }];
+    return [
+      { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "trigger", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "interval", defaultValue: 0, minValue: 0, maxValue: REPEAT_INTERVAL_BEATS.length - 1, automationRate: "k-rate" },
+      { name: "offset", defaultValue: 0, minValue: 0, maxValue: 15, automationRate: "k-rate" },
+      { name: "chance", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "gate", defaultValue: 2, minValue: 0, maxValue: REPEAT_GATE_BEATS.length - 1, automationRate: "k-rate" },
+    ];
   }
 
   readAt(absPos, channel) {
@@ -72,6 +101,28 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     return buf[i0] * (1 - frac) + buf[i1] * frac;
   }
 
+  randomForEvent(eventIndex) {
+    let x = (this.seed ^ Math.imul(eventIndex | 0, 0x9e3779b1)) >>> 0;
+    x ^= x >>> 16;
+    x = Math.imul(x, 0x7feb352d);
+    x ^= x >>> 15;
+    x = Math.imul(x, 0x846ca68b);
+    x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  startRepeat(gateSamples) {
+    const length = Math.max(1, Math.min(this.bufferLen - 1, Math.round(gateSamples)));
+    if (this.writePos < length) return false; // need a complete captured window
+    this.repeatLength = length;
+    this.repeatStart = this.writePos - length;
+    this.repeatReadPos = this.playMode === 3 ? this.repeatStart + length - 1 : this.repeatStart;
+    this.repeatElapsed = 0;
+    this.repeatDuration = length;
+    this.repeatActive = true;
+    return true;
+  }
+
   process(inputs, outputs, parameters) {
     const output = outputs[0];
     if (!output || !output[0]) return true;
@@ -81,76 +132,102 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     const inL = input && input[0] && input[0].length ? input[0] : null;
     const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
     const len = outL.length;
-    const first = this.writePos;
+    const sr = this.sr;
+    const mix = Math.max(0, Math.min(1, parameters.mix[0]));
+    const triggered = parameters.trigger[0] >= 0.5;
+    const intervalIndex = Math.max(0, Math.min(REPEAT_INTERVAL_BEATS.length - 1, Math.round(parameters.interval[0])));
+    const offsetIndex = Math.max(0, Math.min(15, Math.round(parameters.offset[0])));
+    const chance = Math.max(0, Math.min(1, parameters.chance[0]));
+    const gateIndex = Math.max(0, Math.min(REPEAT_GATE_BEATS.length - 1, Math.round(parameters.gate[0])));
+    const intervalBeats = REPEAT_INTERVAL_BEATS[intervalIndex];
+    const offsetBeats = (offsetIndex * 0.25) % intervalBeats;
+    const gateSamples = (REPEAT_GATE_BEATS[gateIndex] * 60 * sr) / this.bpm;
+    const modeMult = this.playMode === 1 ? 0.5 : this.playMode === 2 ? 2 : this.playMode === 3 ? -1 : 1;
 
-    // Record continuously — the mangler replays what it just heard.
-    for (let i = 0; i < len; i++) {
-      this.bufL[(first + i) % this.bufferLen] = inL ? inL[i] : 0;
-      this.bufR[(first + i) % this.bufferLen] = inR && inR.length > i ? inR[i] : inL ? inL[i] : 0;
+    if (intervalIndex !== this.lastIntervalIndex || offsetIndex !== this.lastOffsetIndex) {
+      this.lastIntervalIndex = intervalIndex;
+      this.lastOffsetIndex = offsetIndex;
+      this.lastEventIndex = Math.ceil((this.transportBeat - offsetBeats) / intervalBeats) - 1;
     }
-    this.writePos = first + len;
 
     const hasVol = !!this.volumeSteps;
     const hasPitch = !!this.pitchSteps;
     const idle = !hasVol && !hasPitch && this.playMode === 0 && this.repeatFill === 0;
-    const barStart = this.writePos - this.barSamples;
     const full = this.writePos >= this.barSamples;
-    if (!full) {
-      // First bar still filling — passthrough until there is a bar to loop.
-      for (let i = 0; i < len; i++) {
-        outL[i] = inL ? inL[i] : 0;
-        if (outR) outR[i] = inR && inR.length > i ? inR[i] : inL ? inL[i] : 0;
-      }
-      return true;
-    }
-    if (idle) {
-      this.readPos = null;
-      for (let i = 0; i < len; i++) {
-        outL[i] = inL ? inL[i] : 0;
-        if (outR) outR[i] = inR && inR.length > i ? inR[i] : inL ? inL[i] : 0;
-      }
-      return true;
-    }
-    // (Re-)anchor the head at the bar start when engaging or after BPM change.
-    if (this.readPos === null || this.readPos < barStart - this.barSamples || this.readPos > this.writePos) {
-      this.readPos = barStart;
-    }
-
-    const modeMult = this.playMode === 1 ? 0.5 : this.playMode === 2 ? 2 : this.playMode === 3 ? -1 : 1;
-    // Mix is the k-rate AudioParam — the standard contract the node's
-    // setParameter path drives (a port-message mix would never fire).
-    const mix = Math.max(0, Math.min(1, parameters.mix[0]));
-    // The bar window anchors on the LAST COMPLETED bar boundary before the
-    // write head — stable within a block, advancing one bar per boundary so
-    // the loop always plays the freshest full bar (never a sliding freeze).
     const windowStart = Math.floor((this.writePos - this.barSamples) / this.barSamples) * this.barSamples;
 
     for (let i = 0; i < len; i++) {
       const live = inL ? inL[i] : 0;
       const liveR = inR && inR.length > i ? inR[i] : live;
 
-      const phase = (this.readPos - windowStart) / this.barSamples; // 0..1 across the bar
-      const stepIdx = Math.min(this.stepsPerBar - 1, Math.max(0, Math.floor(phase * this.stepsPerBar)));
-      const vol = hasVol ? Math.max(0, Math.min(1, this.volumeSteps[stepIdx])) : 1;
-      const pitch = hasPitch ? Math.max(-24, Math.min(24, this.pitchSteps[stepIdx])) : 0;
-      const speed = modeMult * Math.pow(2, pitch / 12);
+      // Record before capture: each event includes the sample immediately
+      // before its boundary, and a gate can never read future input.
+      this.bufL[this.writePos % this.bufferLen] = live;
+      this.bufR[this.writePos % this.bufferLen] = liveR;
+      this.writePos++;
 
-      const wetL = this.readAt(this.readPos, 0) * vol;
-      const wetR = this.readAt(this.readPos, 1) * vol;
-      outL[i] = live * (1 - mix) + wetL * mix;
-      if (outR) outR[i] = liveR * (1 - mix) + wetR * mix;
+      let out = live;
+      let outRight = liveR;
+      if (triggered) {
+        const eventIndex = Math.floor((this.transportBeat - offsetBeats + 1e-9) / intervalBeats);
+        if (eventIndex > this.lastEventIndex) {
+          this.lastEventIndex = eventIndex;
+          if (eventIndex >= 0 && this.randomForEvent(eventIndex) < chance) this.startRepeat(gateSamples);
+        }
 
-      this.readPos += speed;
-      // Wrap within [windowStart, writePos). Repeat-fill re-enters at the
-      // bar's final 1/N segment (fill bridge) instead of the bar start.
-      if (this.repeatFill >= 2 && this.readPos >= this.writePos) {
-        this.readPos = this.writePos - this.barSamples / this.repeatFill;
-      } else if (this.readPos >= this.writePos) {
-        this.readPos = windowStart + ((this.readPos - this.writePos) % this.barSamples);
-      } else if (this.readPos < windowStart) {
-        this.readPos = this.writePos - 1;
+        if (this.repeatActive) {
+          const span = this.repeatLength;
+          let relative = this.repeatReadPos - this.repeatStart;
+          if (this.repeatFill >= 2) {
+            const fillLength = Math.max(1, span / this.repeatFill);
+            const fillStart = span - fillLength;
+            relative = fillStart + ((((relative - fillStart) % fillLength) + fillLength) % fillLength);
+          } else {
+            relative = ((((relative % span) + span) % span));
+          }
+          const phase = Math.max(0, Math.min(0.999999, relative / span));
+          const stepIdx = Math.min(this.stepsPerBar - 1, Math.max(0, Math.floor(phase * this.stepsPerBar)));
+          const vol = hasVol ? Math.max(0, Math.min(1, this.volumeSteps[stepIdx])) : 1;
+          const pitch = hasPitch ? Math.max(-24, Math.min(24, this.pitchSteps[stepIdx])) : 0;
+          const speed = modeMult * Math.pow(2, pitch / 12);
+          const readPosition = this.repeatStart + relative;
+          const wetL = this.readAt(readPosition, 0) * vol;
+          const wetR = this.readAt(readPosition, 1) * vol;
+          out = live * (1 - mix) + wetL * mix;
+          outRight = liveR * (1 - mix) + wetR * mix;
+          this.repeatReadPos += speed;
+          this.repeatElapsed++;
+          if (this.repeatElapsed >= this.repeatDuration) this.repeatActive = false;
+        }
+      } else if (!idle && full) {
+        if (this.readPos === null || this.readPos < windowStart - this.barSamples || this.readPos > this.writePos) {
+          this.readPos = windowStart;
+        }
+        const phase = (this.readPos - windowStart) / this.barSamples;
+        const stepIdx = Math.min(this.stepsPerBar - 1, Math.max(0, Math.floor(phase * this.stepsPerBar)));
+        const vol = hasVol ? Math.max(0, Math.min(1, this.volumeSteps[stepIdx])) : 1;
+        const pitch = hasPitch ? Math.max(-24, Math.min(24, this.pitchSteps[stepIdx])) : 0;
+        const speed = modeMult * Math.pow(2, pitch / 12);
+        const wetL = this.readAt(this.readPos, 0) * vol;
+        const wetR = this.readAt(this.readPos, 1) * vol;
+        out = live * (1 - mix) + wetL * mix;
+        outRight = liveR * (1 - mix) + wetR * mix;
+        this.readPos += speed;
+        if (this.repeatFill >= 2 && this.readPos >= this.writePos) {
+          this.readPos = this.writePos - this.barSamples / this.repeatFill;
+        } else if (this.readPos >= this.writePos) {
+          this.readPos = windowStart + ((this.readPos - this.writePos) % this.barSamples);
+        } else if (this.readPos < windowStart) {
+          this.readPos = this.writePos - 1;
+        }
       }
+
+      outL[i] = out;
+      if (outR) outR[i] = outRight;
+      this.transportBeat += this.bpm / (60 * sr);
     }
+
+    if (idle && !triggered) this.readPos = null;
     return true;
   }
 }

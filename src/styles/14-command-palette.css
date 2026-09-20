@@ -745,6 +745,18 @@ a.brand:hover .brand-mark {
   font: 700 9px var(--mono);
 }
 
+.devices-add-chain {
+  flex: none;
+  height: 25px;
+  max-width: 150px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-soft));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  color: var(--text);
+  font: 700 9px var(--mono);
+}
+
 .device-surface {
   display: flex;
   flex: 1 1 0;
@@ -940,6 +952,31 @@ a.brand:hover .brand-mark {
 .device-editor .fx-device-params .slider,
 .device-editor .floating-plugin-grid .slider {
   min-width: 0;
+}
+
+.fx-output-trim-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  padding: 2px 8px 3px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--bg-raise) 55%, transparent);
+}
+
+.fx-output-trim-row .slider {
+  flex: 1 1 220px;
+  min-width: 160px;
+  max-width: 360px;
+}
+
+.fx-output-trim-note {
+  flex: none;
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .device-param-pager {

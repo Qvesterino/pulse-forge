@@ -173,7 +173,7 @@ export class PlaybackController {
       }
       const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
       const beatPhase = pos / PPQ;
-      this.engine.transportStarted(this.engine.currentTime, beatPhase);
+      this.engine.transportStarted(this.engine.currentTime, beatPhase, this.transport.position / PPQ);
       // Frozen playback is transport-aware: sources are torn down by
       // panic() on pause/stop and resurrected here on every play.
       this.engine.restartFrozenSources(this.transport.position);
@@ -198,6 +198,8 @@ export class PlaybackController {
     this.transport.seek(Math.max(0, tick));
     if (this.transport.playing) {
       this.engine.panic();
+      const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
+      this.engine.transportStarted(this.engine.currentTime, pos / PPQ, this.transport.position / PPQ);
       this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.resync();
     }

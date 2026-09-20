@@ -28,6 +28,7 @@ export type EffectType =
   | "vowel"
   | "duckDelay"
   | "multiTapDelay"
+  | "vocoder"
   | "kaskada"
   | "ringMod"
   | "tapeStop"
@@ -77,6 +78,8 @@ export interface EffectInstance {
   type: EffectType;
   bypassed: boolean;
   params: Record<string, number>;
+  /** Post-effect gain trim, stored separately from processor parameters. */
+  outputTrimDb?: number;
   /**
    * Step pattern for step-sequenced effects (stepGate): 8/16/32 values in
    * 0..1 (gate open amounts). Sanitized by normalizeEffects.

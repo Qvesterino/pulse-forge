@@ -4,12 +4,14 @@ import type { EffectType, Track } from "../project-model/types";
 import {
   addEffect,
   applyEffectPreset,
+  applyEffectChainPreset,
   applyFxEqPreset,
   moveEffect,
   moveEffectToIndex,
   removeEffect,
   resetEffect,
   setEffectParam,
+  setEffectOutputTrimDb,
   setEffectSidechainSource,
   setEffectSteps,
   setFxEqParam,
@@ -39,6 +41,7 @@ const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
+import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
@@ -47,6 +50,8 @@ import { DockedPlugin } from "./FloatingPlugin";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { effectEditorSpec } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
+import { EffectIntentAssistant } from "./EffectIntentAssistant";
+import { Slider } from "./controls";
 
 type EffectRackProps = {
   track: Track;
@@ -255,6 +260,29 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               </optgroup>
             ))}
           </select>
+          <select
+            className="devices-add-chain"
+            value=""
+            title="Add a short beatmaking effect chain after the selected device"
+            aria-label="Add a beatmaking effect chain"
+            onChange={(event) => {
+              const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === event.target.value);
+              if (!chain) return;
+              const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+              const insertionIndex =
+                selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+              const command = applyEffectChainPreset(doc, track.id, chain, insertionIndex);
+              services.store.execute(command);
+              setSelectedDeviceId(command.firstEffectId);
+            }}
+          >
+            <option value="">+ CHAIN</option>
+            {BEATMAKING_EFFECT_CHAINS.map((chain) => (
+              <option key={chain.id} value={chain.id} title={chain.description}>
+                {chain.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="device-surface">
           {activeDeviceId === "instrument" && hasInstrument ? (
@@ -390,6 +418,8 @@ function Device({
       ? def.params.filter((param) => !/^band\d+\./.test(param.id))
       : fx.type === "ultina" || fx.type === "ozvena"
         ? def.params.filter((param) => param.id.startsWith("global."))
+        : fx.type === "beatMangler"
+          ? def.params.filter((param) => !["trigger", "interval", "offset", "chance", "gate"].includes(param.id))
         : def.params
     : def.params;
   const usableParams = genericParams.filter(
@@ -546,6 +576,7 @@ function Device({
       </div>
       {expanded && (
         <div id={contentId} className="fx-device-content">
+          <EffectIntentAssistant trackId={track.id} effect={fx} fallbackReason={fallbackReason} />
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
           {(fx.type === "limiter" || fx.type === "compressor" || fx.type === "drumBuss" || fx.type === "bassBuss") && (
             <div className="fx-gr" aria-label="Gain reduction">
@@ -753,6 +784,21 @@ function Device({
             paged={devicesMode}
             onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
           />
+          <div className="fx-output-trim-row" aria-label="Effect output level">
+            <Slider
+              compact
+              label="OUT"
+              min={-18}
+              max={12}
+              defaultValue={0}
+              value={fx.outputTrimDb ?? 0}
+              format={(value) => `${value >= 0 ? "+" : ""}${value.toFixed(1)} dB`}
+              onCommit={(value) =>
+                services.store.execute(setEffectOutputTrimDb(services.store.getDoc(), track.id, fx.id, value))
+              }
+            />
+            <span className="fx-output-trim-note">Preset match</span>
+          </div>
         </div>
       )}
     </div>

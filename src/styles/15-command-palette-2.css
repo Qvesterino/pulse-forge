@@ -817,6 +817,29 @@
   padding: 6px 0;
 }
 
+.beatmangler-repeat-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  align-items: end;
+  gap: 6px;
+  padding: 7px 8px 8px;
+  border: 1px solid color-mix(in srgb, #c084fc 35%, var(--border-soft));
+  border-radius: 5px;
+  background: color-mix(in srgb, #c084fc 5%, var(--bg-panel));
+}
+
+.beatmangler-repeat-controls .fx-param-select {
+  min-width: 0;
+}
+
+.beatmangler-repeat-controls .slider {
+  min-width: 0;
+}
+
+.beatmangler-repeat-controls select:disabled {
+  opacity: 0.46;
+}
+
 /* Preset shelf: the signature shapes as one-click chips. */
 .beatmangler-shelf {
   display: flex;
@@ -876,4 +899,16 @@
   align-self: stretch;
   background: var(--border-soft);
   margin: 0 4px;
+}
+
+@container bottom-dock-slot (max-width: 620px) {
+  .beatmangler-repeat-controls {
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+  }
+}
+
+@container bottom-dock-slot (max-width: 400px) {
+  .beatmangler-repeat-controls {
+    grid-template-columns: repeat(2, minmax(72px, 1fr));
+  }
 }

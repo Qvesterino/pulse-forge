@@ -7,6 +7,11 @@ export interface EffectPreset {
   params: Record<string, number>;
   /** Step pattern for step-sequenced effects. */
   steps?: number[];
+  /** Beat Mangler envelopes are distinct project fields from gate patterns. */
+  volumeSteps?: number[];
+  pitchSteps?: number[];
+  /** Per-preset output compensation in dB; generated measurements fill gaps. */
+  outputTrimDb?: number;
 }
 
 const preset = (id: string, name: string, type: EffectType, params: Record<string, number>): EffectPreset => ({
@@ -22,6 +27,13 @@ const stepPreset = (
   params: Record<string, number>,
   steps: number[],
 ): EffectPreset => ({ id, name, type, params, steps });
+const manglerPreset = (
+  id: string,
+  name: string,
+  params: Record<string, number>,
+  volumeSteps: number[],
+  pitchSteps?: number[],
+): EffectPreset => ({ id, name, type: "beatMangler", params, volumeSteps, pitchSteps });
 
 export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("eq-clean", "Clean", "eq", { lowShelfGain: 0, lowMidGain: 0, highMidGain: 0, highShelfGain: 0 }),
@@ -31,6 +43,8 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("transient-punch", "Punch", "transient", { attack: 0.55, sustain: -0.15, sensitivity: 0.65 }),
   preset("transient-tight", "Tight", "transient", { attack: 0.2, sustain: -0.55, sensitivity: 0.7 }),
   preset("transient-body", "Body", "transient", { attack: -0.2, sustain: 0.45, sensitivity: 0.45 }),
+  preset("clipper-soft", "Soft Clip", "clipper", { drive: 0.16, ceiling: -1, softness: 0.42, output: -1 }),
+  preset("clipper-kick", "Kick Ceiling", "clipper", { drive: 0.24, ceiling: -1, softness: 0.24, output: -2 }),
   preset("limiter-safety", "Safety", "limiter", {
     ceiling: -1,
     threshold: -1.5,
@@ -238,6 +252,13 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("tape-warm", "Warm Tape", "tapeSat", { drive: 0.35, hysteresis: 0.25, tone: 6500, mix: 1, output: 0 }),
   preset("tape-hot", "Hot Tape", "tapeSat", { drive: 0.65, hysteresis: 0.55, tone: 5000, mix: 1, output: -1 }),
   preset("tape-crunch", "Tape Crunch", "tapeSat", { drive: 0.8, hysteresis: 0.45, tone: 8000, mix: 0.85, output: 0 }),
+  preset("tape-808-harmonics", "808 Harmonics", "tapeSat", {
+    drive: 0.48,
+    hysteresis: 0.16,
+    tone: 7600,
+    mix: 0.72,
+    output: -2,
+  }),
   preset("mseq-vocal", "Vocal Clarity", "msEq", {
     midLowGain: -1,
     midHighGain: 1.5,
@@ -631,19 +652,87 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     tone: 4000,
     mix: 0.3,
   }),
+  // Vocoder — carrier (this track) sculpted by the routed modulator track.
+  preset("vocoder-robot", "Robot", "vocoder", {
+    bands: 16,
+    loFreq: 120,
+    hiFreq: 7000,
+    q: 5,
+    attack: 0.003,
+    release: 0.05,
+    shift: 0,
+    sibilance: 0.3,
+    stereo: 0.4,
+    level: 0,
+    mix: 1,
+  }),
+  preset("vocoder-choir", "Choir Pad", "vocoder", {
+    // Wide, slow, low-sharpness: a lush evolving choir from any carrier.
+    bands: 12,
+    loFreq: 150,
+    hiFreq: 5500,
+    q: 2.2,
+    attack: 0.03,
+    release: 0.35,
+    shift: 0,
+    sibilance: 0.15,
+    stereo: 1,
+    level: -2,
+    mix: 0.85,
+  }),
+  preset("vocoder-deep-robot", "Deep Robot", "vocoder", {
+    // Formant shifted down: monster/deep-voice character.
+    bands: 16,
+    loFreq: 80,
+    hiFreq: 4500,
+    q: 6,
+    attack: 0.005,
+    release: 0.08,
+    shift: -12,
+    sibilance: 0.45,
+    stereo: 0.3,
+    level: 1,
+    mix: 1,
+  }),
+  preset("vocoder-whisper", "Whisper", "vocoder", {
+    // Sibilance-dominant: breathy, voice-forward texture.
+    bands: 16,
+    loFreq: 200,
+    hiFreq: 9000,
+    q: 8,
+    attack: 0.001,
+    release: 0.03,
+    shift: 0,
+    sibilance: 0.9,
+    stereo: 0.7,
+    level: -3,
+    mix: 0.75,
+  }),
+  preset("vocoder-talkbox", "Talkbox", "vocoder", {
+    // Tight bands + fast envelopes: classic funk talkbox articulation.
+    bands: 16,
+    loFreq: 180,
+    hiFreq: 5000,
+    q: 12,
+    attack: 0.002,
+    release: 0.04,
+    shift: 5,
+    sibilance: 0.6,
+    stereo: 0.2,
+    level: 0,
+    mix: 1,
+  }),
 
-  stepPreset(
+  manglerPreset(
     "beatmangler-halftime",
     "Halftime",
-    "beatMangler",
-    { playMode: 0, repeatFill: 0, mix: 1 },
+    { playMode: 0, repeatFill: 0, trigger: 1, interval: 0, offset: 0, chance: 1, gate: 2, mix: 0.8 },
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ),
-  stepPreset(
+  manglerPreset(
     "beatmangler-skip",
     "Skip 16ths",
-    "beatMangler",
-    { playMode: 0, repeatFill: 0, mix: 1 },
+    { playMode: 0, repeatFill: 0, trigger: 1, interval: 4, offset: 0, chance: 0.75, gate: 4, mix: 0.75 },
     [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
   ),
 ];

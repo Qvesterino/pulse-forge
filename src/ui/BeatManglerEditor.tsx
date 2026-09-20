@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useDoc, useServices } from "./context";
-import { setBeatManglerSteps } from "../commands/commands";
+import { setBeatManglerSteps, setEffectParam } from "../commands/commands";
 import { StepGridEditor } from "./StepGridEditor";
+import { Slider } from "./controls";
+import { BEATMANGLE_GATE_DIVISIONS, BEATMANGLE_OFFSETS, BEATMANGLE_REPEAT_DIVISIONS } from "../effects/registry";
 
 /**
  * Beat Mangler envelope editor (FX expansion, phase 3b).
@@ -105,6 +107,9 @@ export function BeatManglerEditor({ trackId, fxId }: { trackId: string; fxId: st
     setLastPreset(preset.id);
     commit({ volume: [...preset.volume], ...(preset.pitch ? { pitch: [...preset.pitch] } : {}) });
   };
+  const commitParam = (id: string, value: number) => {
+    services.store.execute(setEffectParam(services.store.getDoc(), trackId, fxId, id, value));
+  };
 
   /** Shift both lanes to the given length (16/32) by tiling the existing shape. */
   const resize = (length: number) => {
@@ -122,9 +127,73 @@ export function BeatManglerEditor({ trackId, fxId }: { trackId: string; fxId: st
     commit({ pitch: volume.map((v) => Math.round((v * 48 - 24) * 10) / 10) });
   };
   const resetLanes = () => commit({ volume: Array(volume.length).fill(1), pitch: Array(pitch.length).fill(0) });
+  if (!fx) return null;
+  const trigger = fx.params.trigger ?? 0;
 
   return (
     <div className="beatmangler-editor">
+      <div className="beatmangler-repeat-controls" role="group" aria-label="Tempo-triggered beat repeat">
+        <label className="fx-param-select" title="Enable chance-based repeats locked to the transport grid">
+          <span className="slider-label">REPEAT</span>
+          <select value={trigger} onChange={(event) => commitParam("trigger", Number(event.target.value))}>
+            <option value={0}>OFF</option>
+            <option value={1}>TRIGGERED</option>
+          </select>
+        </label>
+        <label className="fx-param-select" title="Time between repeat events, synced to the project tempo">
+          <span className="slider-label">INTERVAL</span>
+          <select
+            value={fx.params.interval ?? 0}
+            disabled={trigger < 0.5}
+            onChange={(event) => commitParam("interval", Number(event.target.value))}
+          >
+            {BEATMANGLE_REPEAT_DIVISIONS.map((division) => (
+              <option key={division.value} value={division.value}>
+                {division.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fx-param-select" title="Shift the repeat grid by 1/16-note steps inside the bar">
+          <span className="slider-label">OFFSET</span>
+          <select
+            value={fx.params.offset ?? 0}
+            disabled={trigger < 0.5}
+            onChange={(event) => commitParam("offset", Number(event.target.value))}
+          >
+            {BEATMANGLE_OFFSETS.map((offset) => (
+              <option key={offset.value} value={offset.value}>
+                {offset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Slider
+          compact
+          label="CHANCE"
+          min={0}
+          max={1}
+          defaultValue={1}
+          value={fx.params.chance ?? 1}
+          format={(value) => `${Math.round(value * 100)}%`}
+          disabled={trigger < 0.5}
+          onCommit={(value) => commitParam("chance", value)}
+        />
+        <label className="fx-param-select" title="Length of each captured repeat gate">
+          <span className="slider-label">GATE</span>
+          <select
+            value={fx.params.gate ?? 2}
+            disabled={trigger < 0.5}
+            onChange={(event) => commitParam("gate", Number(event.target.value))}
+          >
+            {BEATMANGLE_GATE_DIVISIONS.map((division) => (
+              <option key={division.value} value={division.value}>
+                {division.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div className="beatmangler-shelf" role="group" aria-label="Beat mangler envelope presets">
         {MANGLER_PRESETS.map((preset) => (
           <button

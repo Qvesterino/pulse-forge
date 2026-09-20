@@ -634,6 +634,11 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       // Plugin editor state (A/B snapshots…) — validated per kind; unknown
       // kinds fail closed so a plugin must ship its own validator.
       const deviceState = sanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
+      const rawOutputTrimDb = (item as { outputTrimDb?: unknown }).outputTrimDb;
+      const outputTrimDb =
+        typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb)
+          ? Math.max(-18, Math.min(12, Math.round(rawOutputTrimDb * 10) / 10))
+          : 0;
       // Step-sequenced effects (stepGate) carry an editable pattern array.
       const steps =
         type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
@@ -648,6 +653,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
         type,
         bypassed: item.bypassed === true,
         params,
+        ...(outputTrimDb !== 0 ? { outputTrimDb } : {}),
         ...(steps ? { steps } : {}),
         ...(volumeSteps && volumeSteps.length > 0 ? { volumeSteps } : {}),
         ...(pitchSteps && pitchSteps.length > 0 ? { pitchSteps } : {}),

@@ -61,7 +61,7 @@ export class GhostPreviewPlayer {
     this.transport.play();
     const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
     const beatPhase = pos / PPQ;
-    this.engine.transportStarted(this.engine.currentTime, beatPhase);
+    this.engine.transportStarted(this.engine.currentTime, beatPhase, this.transport.position / PPQ);
     this.windowStart = 0;
     this.playing = true;
     this.engine.ensureContext();
