@@ -410,7 +410,16 @@ export class MorphDynamicsProcessor {
 
     // Non-finite sentinel: one bad sample means a recursive stage diverged
     // — reset instead of propagating (an audible glitch beats dead silence).
-    if (!Number.isFinite(L[0]) || !Number.isFinite(R[0])) {
+    // Check BOTH endpoints so a divergence that starts mid-block is caught in
+    // the SAME block rather than waiting for the next call. First-sample-only
+    // leaves the corrupted samples for the surrounding hardware to absorb.
+    const last = frames - 1;
+    if (
+      !Number.isFinite(L[0]) ||
+      !Number.isFinite(R[0]) ||
+      !Number.isFinite(L[last]) ||
+      !Number.isFinite(R[last])
+    ) {
       this.reset();
       for (let i = 0; i < frames; i++) {
         L[i] = 0;

@@ -36,6 +36,11 @@ export function compensateRecordingStartBar(startBar: number, inputOffsetMs: num
   return Math.max(0, safeStartBar - safeOffsetMs / (secondsPerBar(bpm) * 1000));
 }
 
+/** A recovered recording may already have a timeline clip after a failed library commit. */
+export function recordedTakeAlreadyPlaced(doc: ProjectDocument, bufferId: string): boolean {
+  return (doc.arrangement.audioClips ?? []).some((clip) => clip.bufferId === bufferId);
+}
+
 /**
  * Mic takes need sample-accurate timeline placement. The general-purpose
  * addAudioClip command keeps its centibar behavior for editing; this lazy

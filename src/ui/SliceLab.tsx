@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { useServices } from "./context";
 import { SampleBrowser } from "./SampleBrowser";
 import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/commands";
-import { gridSlicePoints, pointsToSlices, snapToGrid } from "../audio-engine/transients";
+import { gridSlicePoints, pointsToSlices, snapToGrid, zeroCrossSnap } from "../audio-engine/transients";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
@@ -25,34 +25,6 @@ function makeDrafts(points: number[], duration: number): DraftSlice[] {
     fadeOut: 0,
     reverse: false,
   }));
-}
-
-function zeroCrossSnap(data: Float32Array, sampleRate: number, seconds: number): number {
-  const idx = Math.floor(seconds * sampleRate);
-  const search = 256;
-  let bestIdx = idx;
-  let bestDist = Infinity;
-  const start = Math.max(1, idx - search);
-  const end = Math.min(data.length - 1, idx + search);
-  for (let i = start; i < end; i++) {
-    if (data[i] === 0) {
-      const dist = Math.abs(i - idx);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    } else if (data[i] * data[i + 1] < 0 || data[i] * data[i + 1] === 0) {
-      // Linear interpolate zero crossing between i and i+1
-      const t = Math.abs(data[i]) / (Math.abs(data[i]) + Math.abs(data[i + 1]));
-      const interp = i + t;
-      const dist = Math.abs(interp - idx);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = Math.round(interp);
-      }
-    }
-  }
-  return bestDist === Infinity ? seconds : bestIdx / sampleRate;
 }
 
 function sourceLabel(id: string | null, userAssets: UserSampleAsset[]): string {

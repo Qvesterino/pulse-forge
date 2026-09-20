@@ -1,4 +1,4 @@
-import type { MusicalKey, ProjectDocument } from "../project-model/types";
+import type { MusicalKey } from "../project-model/types";
 import { MUSICAL_KEYS } from "../project-model/types";
 
 /**

@@ -1,6 +1,11 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-import { UserSampleRepository, restoreUserSampleAudio, userSampleId } from "../../src/persistence/UserSampleRepository";
+import {
+  UserSampleRepository,
+  recordedTakeSampleId,
+  restoreUserSampleAudio,
+  userSampleId,
+} from "../../src/persistence/UserSampleRepository";
 
 describe("userSampleId", () => {
   it("generates a user.* id from filename", () => {
@@ -34,6 +39,17 @@ describe("userSampleId", () => {
     const longName = "a".repeat(200) + ".wav";
     const id = userSampleId(longName);
     expect(id.length).toBeLessThan(250);
+  });
+});
+
+describe("recordedTakeSampleId", () => {
+  it("is stable for retries and unique across recording sessions", () => {
+    expect(recordedTakeSampleId("recording.session-123")).toBe(recordedTakeSampleId("recording.session-123"));
+    expect(recordedTakeSampleId("recording.session-123")).not.toBe(recordedTakeSampleId("recording.session-456"));
+  });
+
+  it("rejects an empty recording identity", () => {
+    expect(() => recordedTakeSampleId("---")).toThrow(/recording id is required/i);
   });
 });
 

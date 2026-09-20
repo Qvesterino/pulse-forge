@@ -29,6 +29,23 @@ describe("recording input selection", () => {
     expect(loadRecordingInputDeviceId(storage)).toBe("");
   });
 
+  it("treats blocked local storage as an optional preference instead of a recording failure", () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error("storage denied");
+      },
+      setItem: () => {
+        throw new Error("storage denied");
+      },
+      removeItem: () => {
+        throw new Error("storage denied");
+      },
+    };
+
+    expect(loadRecordingInputDeviceId(blocked)).toBe("");
+    expect(() => saveRecordingInputDeviceId("interface-input-2", blocked)).not.toThrow();
+  });
+
   it("lists only distinct named audio inputs and gives anonymous devices stable labels", async () => {
     const devices = await listRecordingInputDevices({
       enumerateDevices: async () =>

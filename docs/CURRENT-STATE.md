@@ -25,7 +25,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets | 199 | `FACTORY_PRESETS` |
 | └─ drum-synth presets | 6 | `DRUM_FACTORY_PRESETS` |
 | **Architecture decision records** | **13** | `docs/adr/` (0001–0011, plus 0006/0007 each have two companion files) |
-| **Vitest spec files** | **348** | `tests/` files matching `*.test.*` in the current working tree |
+| **Vitest spec files** | **347** | `tests/` files matching `*.test.*` in the current working tree |
 
 ## Flagship plugin implementations
 
@@ -56,23 +56,25 @@ All three are loaded lazily in dedicated Web Workers with bounded timeouts + cir
 - **Safari / iOS Safari** — manual smoke only; not covered by automated browser verifier.
 - **macOS / Linux desktop** — not shipped (ADR 0010 is Windows-only by current target list).
 
-## Test gates
+## Prior test-gate baseline — not verified on the current revision
 
-| Gate | Latest known result | Source |
+The following historical results were recorded against candidate `b8c7a00` on 2026-09-14. The referenced `RELEASE_READINESS_REPORT.md` is not present in this checkout, so these figures are context only, not release evidence for the current revision. Re-run each gate before relying on it.
+
+| Gate | Historical result | Source |
 |---|---|---|
-| `npm run typecheck` | PASS (clean `tsc --noEmit`) | `RELEASE_READINESS_REPORT.md` |
-| Full Vitest suite | **239 files / 2351 tests passed / 103 skipped / 2454 total** (`424.94s`) | `RELEASE_READINESS_REPORT.md` (2026-09-14, candidate `b8c7a00`) |
-| Real-browser verifier | **226/226 in Chromium, Firefox and Edge** | `RELEASE_READINESS_REPORT.md` |
-| Factory preset audio QA | **199/199** | `npm run test:browser:factory-presets` |
-| 300 s plugin soaks (PRISM/VLYX/VØID) | PASS (≤ 6 MB heap growth, ≤ 0.003 dB drift, zero tail peak) | `RELEASE_READINESS_REPORT.md` |
-| `npm audit --omit=dev` | 0 vulnerabilities | `RELEASE_READINESS_REPORT.md` |
+| `npm run typecheck` | PASS (clean `tsc --noEmit`) | candidate `b8c7a00`, 2026-09-14 |
+| Full Vitest suite | **239 files / 2351 tests passed / 103 skipped / 2454 total** (`424.94s`) | candidate `b8c7a00`, 2026-09-14 |
+| Real-browser verifier | **226/226 in Chromium, Firefox and Edge** | candidate `b8c7a00`, 2026-09-14 |
+| Factory preset audio QA | **199/199** | candidate `b8c7a00`, 2026-09-14 |
+| 300 s plugin soaks (PRISM/VLYX/VØID) | PASS (≤ 6 MB heap growth, ≤ 0.003 dB drift, zero tail peak) | candidate `b8c7a00`, 2026-09-14 |
+| `npm audit --omit=dev` | 0 vulnerabilities | candidate `b8c7a00`, 2026-09-14 |
 | `npm run format:check` | **DEVIATIONS DOCUMENTED — owner gate open** | `docs/FORMAT-CHECK-DEVIATIONS.md` |
 
 The numbers above are point-in-time and may drift between candidate revisions; the document is re-verified manually after each release-readiness review.
 
 ## Owner gates still open
 
-These are release-blocking per `RELEASE_READINESS_REPORT.md` §1, not feature-blocking:
+These remain unverified for the current revision:
 
 1. Manual browser/device checks (Firefox, Safari, iOS Safari, physical audio-device lifecycle).
 2. Deployed smoke against a real `KYX_DEPLOY_URL` (`npm run release:deployed-smoke`).

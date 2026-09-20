@@ -189,6 +189,13 @@ export function MasterMeter() {
               services.engine as unknown as { getMasterSpectrogramAnalyser?: () => AnalyserNode | null }
             ).getMasterSpectrogramAnalyser?.() ?? null
           }
+          taps={
+            (
+              services.engine as unknown as {
+                getMasterSpectrogramTaps?: () => { low: AnalyserNode; mid: AnalyserNode; high: AnalyserNode } | null;
+              }
+            ).getMasterSpectrogramTaps?.() ?? null
+          }
           transport={services.transport}
           id="master"
         />

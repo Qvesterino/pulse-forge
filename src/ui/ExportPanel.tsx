@@ -24,7 +24,9 @@ import type { MaterializedPcmTake } from "../audio-engine/pcmRecording";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
-import { setMasterConfig } from "../commands/commands";
+import { setMasterConfig, chopSampleToPads } from "../commands/commands";
+import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
+import { slicesFromOnsets } from "../audio-engine/transients";
 
 type Status =
   | { kind: "idle" }
@@ -105,6 +107,10 @@ export function ExportPanel({
   const [recError, setRecError] = useState<string | null>(null);
   const recorderRef = useRef<LiveRecorder | PcmMicRecorder | null>(null);
   const stoppingRecordingRef = useRef(false);
+  /** Last finished take — kept for one-click AUTO-CHOP to pads. */
+  const [lastTake, setLastTake] = useState<{ assetId: string; name: string; buffer: AudioBuffer } | null>(null);
+  const [chopping, setChopping] = useState(false);
+  const [chopNote, setChopNote] = useState<string | null>(null);
 
   const busy = status.kind === "busy";
   const baseName = sanitizeFilename(doc.name);
@@ -462,6 +468,8 @@ export function ExportPanel({
         label: `Resampled → "${asset.name}" in Samples (${buffer.duration.toFixed(1)}s) — click it in the browser to flip onto a pad`,
         summary: summarizeBuffer(buffer),
       });
+      setLastTake({ assetId: id, name: asset.name, buffer });
+      setChopNote(null);
       setRecState("idle");
     } catch (error) {
       setRecError(error instanceof Error ? error.message : "Could not finish the recording");
@@ -492,6 +500,53 @@ export function ExportPanel({
     },
     [],
   );
+
+  /**
+   * One-click AUTO-CHOP: onset-detect the last take (worker, off the UI
+   * thread), zero-cross-snapped slices → drum pads + a diagonal pattern.
+   * One undoable command, same chop path as SliceLab's manual flow.
+   */
+  const autoChop = async () => {
+    if (!lastTake || chopping) return;
+    setChopping(true);
+    setChopNote(null);
+    try {
+      const channelData = lastTake.buffer.getChannelData(0);
+      const times = await detectTransientsAsync(channelData, lastTake.buffer.sampleRate, 1);
+      const slices = slicesFromOnsets(times, lastTake.buffer.duration, channelData, lastTake.buffer.sampleRate);
+      if (slices.length < 2) {
+        setChopNote("No transients found — try a busier take.");
+        return;
+      }
+      const doc = services.store.getDoc();
+      const target =
+        doc.tracks.find((track) => track.id === selectedTrackId && track.kind === "drum") ??
+        doc.tracks.find((track) => track.kind === "drum");
+      if (!target || target.kind !== "drum") {
+        setChopNote("AUTO-CHOP needs a drum track — create one first.");
+        return;
+      }
+      const fit = slices.slice(0, target.pads.length);
+      services.store.execute(
+        chopSampleToPads(doc, {
+          trackId: target.id,
+          assetId: lastTake.assetId,
+          sourceName: lastTake.name,
+          slices: fit.map((slice) => ({ ...slice, fadeIn: 0, fadeOut: 0, reverse: false })),
+          createPattern: true,
+        }),
+      );
+      setChopNote(
+        fit.length < slices.length
+          ? `Chopped first ${fit.length} of ${slices.length} slices → ${target.name} + pattern`
+          : `${fit.length} slices → ${target.name} + pattern`,
+      );
+    } catch (error) {
+      setChopNote(error instanceof Error ? error.message : "Auto-chop failed — try again");
+    } finally {
+      setChopping(false);
+    }
+  };
 
   return (
     <section className="export-panel" aria-label="Export">
@@ -702,6 +757,24 @@ export function ExportPanel({
           {recState === "saving" && <span className="export-resample-saving">saving…</span>}
         </div>
         {recError && <div className="export-resample-error">{recError}</div>}
+        {lastTake && recState !== "recording" && (
+          <div className="export-resample-row">
+            <button
+              type="button"
+              className="btn btn-rec"
+              disabled={chopping}
+              title="Detect onsets in the last take and chop zero-cross-snapped slices to drum pads + pattern (one undoable step)"
+              onClick={() => void autoChop()}
+            >
+              {chopping ? "CHOPPING…" : `AUTO-CHOP "${lastTake.name.toUpperCase()}" → PADS`}
+            </button>
+          </div>
+        )}
+        {chopNote && (
+          <div className="export-resample-hint" role="status">
+            {chopNote}
+          </div>
+        )}
         <div className="export-resample-hint">
           Realtime capture through the full live chain. The take lands in Samples — click it to flip onto a pad.
         </div>

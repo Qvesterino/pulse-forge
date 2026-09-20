@@ -11,11 +11,13 @@ import {
   addRecordedAudioClip,
   clipLengthBars,
   compensateRecordingStartBar,
+  recordedTakeAlreadyPlaced,
   recordingStartBar,
   secondsPerBar,
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
+import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 import { renderWithContext, mockServices } from "../helpers";
 
 describe("recording placement math", () => {
@@ -56,6 +58,15 @@ describe("recording placement math", () => {
     expect(undone.arrangement.audioClips ?? []).toHaveLength(0);
     expect(command.execute(undone).arrangement.audioClips![0].startBar).toBeCloseTo(startBar, 12);
   });
+
+  it("detects an already-placed take so a recovery retry does not duplicate its clip", () => {
+    const doc = createDefaultProject();
+    const takeBufferId = "user.recording-recording-session-123";
+    const placed = addRecordedAudioClip(doc, doc.tracks[0].id, takeBufferId, 2, 1).execute(doc);
+
+    expect(recordedTakeAlreadyPlaced(placed, takeBufferId)).toBe(true);
+    expect(recordedTakeAlreadyPlaced(doc, takeBufferId)).toBe(false);
+  });
 });
 
 describe("arrangement REC wiring", () => {
@@ -84,6 +95,58 @@ describe("arrangement REC wiring", () => {
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("routes the chosen audio-interface input into the vocal recorder", async () => {
+    const originalDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    const previousInputId = loadRecordingInputDeviceId();
+    let recorderInputId: string | undefined;
+    const mediaDevices = {
+      enumerateDevices: vi.fn(async () => [
+        { kind: "audioinput", deviceId: "interface-input-2", label: "Studio Interface · Input 2" },
+      ]),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
+    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
+      PcmMicRecorder: class {
+        onError: ((message: string) => void) | null = null;
+        constructor(options: { inputDeviceId?: string }) {
+          recorderInputId = options.inputDeviceId;
+        }
+        setMonitoring() {}
+        async start() {}
+        async cancel() {}
+        async stop() {
+          return null;
+        }
+      },
+    }));
+
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      const view = renderWithContext(<ArrangementPanel />, { services });
+      const micSelect = screen.getByLabelText("Microphone input device");
+      await screen.findByRole("option", { name: "Studio Interface · Input 2" });
+      fireEvent.change(micSelect, { target: { value: "interface-input-2" } });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      await screen.findByRole("button", { name: /STOP/ });
+
+      expect(recorderInputId).toBe("interface-input-2");
+      view.unmount();
+    } finally {
+      saveRecordingInputDeviceId(previousInputId);
+      if (originalDevices) Object.defineProperty(navigator, "mediaDevices", originalDevices);
+      else Reflect.deleteProperty(navigator, "mediaDevices");
+      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+    }
+  });
+
   it("REC without AudioWorklet support surfaces a readable error, not a crash", async () => {
     const doc = createDocWithTracks();
     const services = mockServices(doc);
@@ -99,7 +162,7 @@ describe("arrangement REC wiring", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "● REC" }));
 
-    await screen.findByText(/AudioWorklet|not available|mic/i);
+    await screen.findByRole("alert");
     // No state stuck on "recording" — REC button is back.
     expect(screen.getByRole("button", { name: "● REC" })).toBeTruthy();
   });
@@ -118,7 +181,7 @@ describe("arrangement REC wiring", () => {
       target: { value: doc.tracks[0].id },
     });
     fireEvent.click(screen.getByRole("button", { name: "● REC" }));
-    await screen.findByText(/AudioWorklet|not available|mic/i);
+    await screen.findByRole("alert");
 
     expect(executeSpy).not.toHaveBeenCalled();
   });

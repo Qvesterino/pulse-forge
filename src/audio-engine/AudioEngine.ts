@@ -494,8 +494,13 @@ export class AudioEngine {
    * Dedicated post-limiter sink for the spectrogram view. Kept separate from
    * masterAnalyser so the spectrogram's larger fftSize never perturbs the
    * spectrum-curve and goniometer consumers reading the shared 2048 node.
+   * Low/high are the multi-resolution companions: the long window (8192)
+   * resolves sub-bass down to ~5.4 Hz, the short window (1024) keeps
+   * hi-hat transients crisp in time.
    */
   private masterSpectrogramAnalyser: AnalyserNode | null = null;
+  private masterSpectrogramLow: AnalyserNode | null = null;
+  private masterSpectrogramHigh: AnalyserNode | null = null;
   private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
   private masterPeakHold = new PeakHold(0.4);
@@ -803,6 +808,16 @@ export class AudioEngine {
     }
     try {
       this.masterSpectrogramAnalyser?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterSpectrogramLow?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.masterSpectrogramHigh?.disconnect();
     } catch {
       /* already disconnected */
     }
@@ -1238,6 +1253,21 @@ export class AudioEngine {
     this.masterSpectrogramAnalyser.channelCount = 2;
     this.masterSpectrogramAnalyser.channelCountMode = "explicit";
     this.masterLimiter.connect(this.masterSpectrogramAnalyser);
+    // Multi-resolution companions (same sink pattern): the long window
+    // resolves sub-bass, the short one buys transient snap. Smoothing is
+    // per band — lows steadier, highs snappier.
+    this.masterSpectrogramLow = ctx.createAnalyser();
+    this.masterSpectrogramLow.fftSize = 8192;
+    this.masterSpectrogramLow.smoothingTimeConstant = 0.6;
+    this.masterSpectrogramLow.channelCount = 2;
+    this.masterSpectrogramLow.channelCountMode = "explicit";
+    this.masterLimiter.connect(this.masterSpectrogramLow);
+    this.masterSpectrogramHigh = ctx.createAnalyser();
+    this.masterSpectrogramHigh.fftSize = 1024;
+    this.masterSpectrogramHigh.smoothingTimeConstant = 0.35;
+    this.masterSpectrogramHigh.channelCount = 2;
+    this.masterSpectrogramHigh.channelCountMode = "explicit";
+    this.masterLimiter.connect(this.masterSpectrogramHigh);
     // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
     if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
   }
@@ -4950,6 +4980,15 @@ export class AudioEngine {
   /** Dedicated post-limiter analyser for the spectrogram waterfall (read-only observer). */
   getMasterSpectrogramAnalyser(): AnalyserNode | null {
     return this.masterSpectrogramAnalyser;
+  }
+
+  /**
+   * Multi-resolution spectrogram taps (low 8192 / mid 4096 / high 1024) off
+   * the same post-limiter sink point. Null until the master graph exists.
+   */
+  getMasterSpectrogramTaps(): { low: AnalyserNode; mid: AnalyserNode; high: AnalyserNode } | null {
+    if (!this.masterSpectrogramLow || !this.masterSpectrogramAnalyser || !this.masterSpectrogramHigh) return null;
+    return { low: this.masterSpectrogramLow, mid: this.masterSpectrogramAnalyser, high: this.masterSpectrogramHigh };
   }
 
   /**

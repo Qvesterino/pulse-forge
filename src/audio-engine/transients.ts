@@ -121,3 +121,58 @@ export function pointsToSlices(points: number[], durationSec: number): { start: 
     end: i + 1 < points.length ? points[i + 1] : durationSec,
   }));
 }
+
+/**
+ * Snap a slice point to the nearest zero crossing (±256 samples) so chops
+ * never start mid-cycle with a click. Falls back to the input position when
+ * no crossing is found.
+ */
+export function zeroCrossSnap(data: Float32Array, sampleRate: number, seconds: number): number {
+  const idx = Math.floor(seconds * sampleRate);
+  const search = 256;
+  let bestIdx = idx;
+  let bestDist = Infinity;
+  const start = Math.max(1, idx - search);
+  const end = Math.min(data.length - 1, idx + search);
+  for (let i = start; i < end; i++) {
+    if (data[i] === 0) {
+      const dist = Math.abs(i - idx);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    } else if (data[i] * data[i + 1] < 0 || data[i] * data[i + 1] === 0) {
+      // Linear interpolate zero crossing between i and i+1
+      const t = Math.abs(data[i]) / (Math.abs(data[i]) + Math.abs(data[i + 1]));
+      const interp = i + t;
+      const dist = Math.abs(interp - idx);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = Math.round(interp);
+      }
+    }
+  }
+  return bestDist === Infinity ? seconds : bestIdx / sampleRate;
+}
+
+/**
+ * One-click auto-chop: detector onset times → zero-cross-snapped [start,end)
+ * slice regions covering the whole take. Pure — shared by SliceLab-adjacent
+ * flows and the resample AUTO-CHOP button.
+ */
+export function slicesFromOnsets(
+  times: number[],
+  durationSec: number,
+  data?: Float32Array,
+  sampleRate?: number,
+): { start: number; end: number }[] {
+  const duration = Math.max(0, durationSec);
+  const points = [0, ...times].filter((t) => Number.isFinite(t) && t >= 0 && t <= duration);
+  const unique = [...new Set(points.map((t) => +t.toFixed(6)))].sort((a, b) => a - b);
+  const snapped =
+    data && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0
+      ? unique.map((t) => zeroCrossSnap(data, sampleRate, t))
+      : unique;
+  const ordered = [...new Set(snapped.map((t) => +t.toFixed(6)))].sort((a, b) => a - b);
+  return pointsToSlices(ordered, duration).filter((slice) => slice.end > slice.start);
+}

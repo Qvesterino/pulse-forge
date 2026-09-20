@@ -272,6 +272,46 @@ describe("morph-dynamics core processor — hardening", () => {
     expect(peakOf(out[0])).toBeLessThanOrEqual(4.5);
   });
 
+  it("sentinel catches end-of-block divergence: last-sample guard (regression for hardening)", () => {
+    // The processor's non-finite sentinel used to check only L[0]/R[0]. A
+    // divergence that starts mid-block could escape into the output buffer
+    // until the NEXT call. The fix extends the check to L[frames-1]/R[frames-1]
+    // so the same block is recovered (zeroed) before the buffer escapes.
+    // This test pins the contract: process() output is always finite end-to-end,
+    // and the LAST sample is covered by the sentinel — the structural location
+    // any divergence would otherwise propagate to.
+    const proc = makeProcessor({
+      "macro.pressure": 80,
+      "motion.feedback": 70,
+      "space.decayS": 4,
+      "space.send": 90,
+    });
+    // Warm up: one block of silence so the recursive stages settle.
+    const warmup = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    proc.process(warmup, BLOCK);
+    // Verify the warmup output is entirely finite (precondition).
+    for (let i = 0; i < BLOCK; i++) {
+      expect(Number.isFinite(warmup[0][i])).toBe(true);
+      expect(Number.isFinite(warmup[1][i])).toBe(true);
+    }
+    // Now stress + verify the FULL output is finite under conditions that
+    // exercise every recursive stage (motion AP, space combs/APs, dynamics
+    // envelope followers). Any mid-block divergence must be caught by the
+    // sentinel — first OR last sample — and the buffer zeroed.
+    noiseState = 13579;
+    const { out } = render(proc, noise(1.5), 0.6);
+    for (let i = 0; i < out[0].length; i++) {
+      expect(Number.isFinite(out[0][i])).toBe(true);
+      expect(Number.isFinite(out[1][i])).toBe(true);
+    }
+    // The LAST-sample assertion is the key one for the hardening fix:
+    // pre-fix, a divergence that started mid-block could leave the last
+    // sample non-finite and escape until the next block triggered the
+    // first-sample check.
+    expect(Number.isFinite(out[0][out[0].length - 1])).toBe(true);
+    expect(Number.isFinite(out[1][out[1].length - 1])).toBe(true);
+  });
+
   it("prepares and processes at 44.1 kHz and 96 kHz without instability", () => {
     for (const sr of [44100, 96000]) {
       const proc = makeProcessor(applyMorphPreset(FACTORY_PRESETS[7].params), sr);

@@ -44,12 +44,23 @@ function makeRng(seed: number) {
   };
 }
 
-function render(proc: ProcShape, seconds: number, seed = 0x5eed): Float32Array[] {
+function render(
+  proc: ProcShape,
+  seconds: number,
+  seed = 0x5eed,
+  freezeAtSec: number | null = null,
+): Float32Array[] {
   const rng = makeRng(seed);
   const blocks = Math.ceil((seconds * SR) / BLOCK);
   const outL = new Float32Array(blocks * BLOCK);
   const outR = new Float32Array(blocks * BLOCK);
+  let frozen = false;
   for (let b = 0; b < blocks; b++) {
+    const t = (b * BLOCK) / SR;
+    if (freezeAtSec !== null && !frozen && t >= freezeAtSec) {
+      sendParam(proc, "global.freeze", 1);
+      frozen = true;
+    }
     const inL = new Float32Array(BLOCK);
     const inR = new Float32Array(BLOCK);
     if (b * BLOCK < 0.3 * SR) {
@@ -88,6 +99,27 @@ function peak(chans: Float32Array[], fromSec: number, toSec: number): number {
 
 const sendParam = (proc: ProcShape, id: string, value: unknown) => proc.port.onmessage?.({ data: { type: "param", id, value } });
 
+describe("VØID probe diagnostics", () => {
+  it("default state produces wet output for an impulse train", () => {
+    const proc = new Processor();
+    console.log("e1.enabled:", (proc.state.engines as any).e1.enabled);
+    console.log("e2.enabled:", (proc.state.engines as any).e2.enabled);
+    console.log("e3.enabled:", (proc.state.engines as any).e3.enabled);
+    console.log("dryWet:", (proc.state.global as any).dryWet);
+    const out = render(proc, 1.0);
+    console.log("default-state energy 0-0.5s:", energy(out, 0, 0.5).toFixed(4));
+    console.log("default-state rms 0.3-1.0s:", rms(out, 0.3, 1.0).toFixed(4));
+  });
+});
+
+function energy(chans: Float32Array[], fromSec: number, toSec: number): number {
+  const from = Math.floor(fromSec * SR);
+  const to = Math.min(chans[0].length, Math.floor(toSec * SR));
+  let sum = 0;
+  for (const ch of chans) for (let i = from; i < to; i++) sum += ch[i] * ch[i];
+  return sum;
+}
+
 describe("VØID freeze runaway", () => {
   it("E2 freeze with bassDecay 2 holds instead of pinning the limiter", () => {
     const proc = new Processor();
@@ -100,8 +132,7 @@ describe("VØID freeze runaway", () => {
     sendParam(proc, "blendPad.x", 1);
     sendParam(proc, "blendPad.y", 0);
     sendParam(proc, "preDelay.ms", 0);
-    sendParam(proc, "global.freeze", 1);
-    const out = render(proc, 6);
+    const out = render(proc, 6, 0x5eed, 1.0);
     console.log("E2 freeze rms 2-3s:", rms(out, 2, 3).toFixed(4));
     console.log("E2 freeze rms 5-6s:", rms(out, 5, 6).toFixed(4));
     console.log("E2 freeze peak:", peak(out, 0, 6).toFixed(4));
@@ -116,11 +147,10 @@ describe("VØID freeze runaway", () => {
     sendParam(proc, "engines.e3.bassDecay", 4);
     sendParam(proc, "engines.e3.time", 5000);
     sendParam(proc, "engines.e3.mix", 100);
-    sendParam(proc, "blendPad.x", 1);
-    sendParam(proc, "blendPad.y", 1);
+    sendParam(proc, "blendPad.x", 0.5);
+    sendParam(proc, "blendPad.y", 0.866);
     sendParam(proc, "preDelay.ms", 0);
-    sendParam(proc, "global.freeze", 1);
-    const out = render(proc, 6);
+    const out = render(proc, 6, 0x5eed, 1.0);
     console.log("E3 freeze rms 2-3s:", rms(out, 2, 3).toFixed(4));
     console.log("E3 freeze rms 5-6s:", rms(out, 5, 6).toFixed(4));
     console.log("E3 freeze peak:", peak(out, 0, 6).toFixed(4));

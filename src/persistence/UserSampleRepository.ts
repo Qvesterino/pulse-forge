@@ -166,6 +166,13 @@ export function userSampleId(fileName: string): string {
   return `user.${slug}-${Date.now().toString(36)}`;
 }
 
+/** Stable sample identity for a recording session, so retry/recovery repairs the same clip reference. */
+export function recordedTakeSampleId(recordingId: string): string {
+  const slug = recordingId.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase().replace(/^-+|-+$/g, "");
+  if (!slug) throw new Error("Recording ID is required to create a stable sample ID");
+  return `user.recording-${slug}`;
+}
+
 /**
  * Decode persisted user-sample audio back into the SampleBank after a reload.
  * Fire-and-forget: the app runs fine before this completes — samples simply

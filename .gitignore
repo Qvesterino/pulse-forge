@@ -42,3 +42,9 @@ public/models/semantic/
 
 # Golden review pack (human listening) — local-only, not served
 golden-review/
+
+# Local browser profiling artifacts. Browser profiles can contain cookies,
+# IndexedDB projects, local preferences and cache data; never commit them.
+tmp-spectro-profile/
+tmp-spectro-shots/
+tmp-spectro-*.mjs

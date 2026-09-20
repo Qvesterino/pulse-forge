@@ -93,6 +93,8 @@ import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
+import { classifyPads } from "../assist/patternOps";
+import type { ExactIntentPlan, ExactOp } from "../intent/exact";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import {
@@ -4480,19 +4482,7 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
  */
 export function applyExactIntentCommand(
   doc: ProjectDocument,
-  plan: {
-    label: string;
-    ops: (
-      | { kind: "tempo"; bpm: number }
-      | { kind: "key"; key: MusicalKey }
-      | { kind: "mute"; target: string; value: boolean }
-      | { kind: "solo"; target: string; value: boolean }
-      | { kind: "pan"; target: string; value: number }
-      | { kind: "gainDb"; target: string; deltaDb: number }
-      | { kind: "transpose"; target: string; semitones: number }
-      | { kind: "patternLength"; steps: number }
-    )[];
-  },
+  plan: ExactIntentPlan,
 ): Command {
   let next = doc;
   const resolve = (target: string): string[] => {
@@ -4509,7 +4499,7 @@ export function applyExactIntentCommand(
     if (!track || track.kind === "group") return null;
     if (op.kind === "mute") return { mute: op.value };
     if (op.kind === "solo") return { solo: op.value };
-    if (op.kind === "pan") return { pan: Math.max(-1, Math.min(1, op.value)) };
+    if (op.kind === "pan") return { pan: Math.max(-1, Math.min(1, op.value as number)) };
     return null;
   };
   for (const op of plan.ops) {
@@ -4570,17 +4560,17 @@ export function applyExactIntentCommand(
         op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
       for (const pad of familyPads) {
         if (op.kind === "mute") {
-          next = setPadParams(next, pad.id, { mute: op.value }).execute(next);
+          next = setPadParams(next, pad.id, { mute: op.value as boolean }).execute(next);
         } else if (op.kind === "solo") {
-          next = setPadParams(next, pad.id, { solo: op.value }).execute(next);
+          next = setPadParams(next, pad.id, { solo: op.value as boolean }).execute(next);
         } else if (op.kind === "pan") {
-          next = setPadParams(next, pad.id, { pan: Math.max(-1, Math.min(1, op.value)) }).execute(next);
+          next = setPadParams(next, pad.id, { pan: Math.max(-1, Math.min(1, op.value as number)) }).execute(next);
         }
       }
       continue;
     }
     for (const trackId of resolve(op.target)) {
-      const params = paramFor(trackId, op);
+      const params = paramFor(trackId, op as ExactOp);
       if (params) next = setTrackParams(next, trackId, params).execute(next);
     }
   }

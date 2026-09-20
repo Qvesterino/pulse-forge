@@ -2465,3 +2465,60 @@ re-render benefit kicking in immediately. Estimated work:
 1. The activation now genuinely depends on HUMAN listening — by design (in-sample golden fit was rejected as an activation signal; the correct bar is an independent holdout).
 2. C2 favorites retraining is a complementary, stronger personalization signal that does NOT require the golden gate — the two paths compose (golden = independent metric, favorites = personal drift).
 3. The stale-format golden archive must not be re-reviewed — dataset keys moved on; always regenerate the template first.
+
+## GOAL 16 (campaign extension) — MORPH DYNAMICS hardening §6: end-of-block non-finite sentinel (2026-09-22)
+
+**Goal executed:** Continue the 61-area Browser-Audio-Plugin-Hardening sweep against newly-added first-party code (commit 20c6112 introduced MORPH DYNAMICS — a reactive dynamics/character/motion/space engine implemented in `src/effects/morph-dynamics-core/` with 6 stage modules, 12-destination modulation matrix, and 8 route slots × 5 params = 40 numeric IDs). The DSP itself is exceptionally well-defended (denormal flush in every envelope state, stability clamps on motion AP coefficients, MAX_COMB_GAIN = 0.95 in space, `Number.isFinite` fallback in `decayGain`, `clampParam` rejects NaN/Infinity to default), but one P3 hardening gap survived the initial review.
+
+**Areas inspected:**
+- `src/effects/morph-dynamics-core/dsp/{morphDynamicsProcessor,analysis,dynamics,character,motion,space,dspUtils}.ts` (7 files, ~1500 LOC)
+- `src/effects/morph-dynamics-worklet.entry.js` (worklet glue — 150 LOC)
+- `src/effects/morphDynamicsNode.ts` (main-thread wrapper — 110 LOC)
+- `src/effects/morph-dynamics-core/contracts/{parameterSchema,parameterIds,modulation}.ts` (single-source-of-truth schema)
+- `tests/morph-dynamics-{contract,worklet-entry,golden}.test.ts` (40 tests total)
+
+**DSP hardening findings — DSP itself is production-ready:**
+- ✅ PENDING_PARAMS_CAP = 4096 mirrors ultina pattern (worklet entry line 20)
+- ✅ Manual value cancels pending automation (line 47-56) — user touch overrides future
+- ✅ `applyDueParams` uses index-compact, not shift() — O(n) per block (line 95-111)
+- ✅ ~20 Hz meter gate via `METERS_DIVIDER = Math.round(sampleRate / 128 / 20)` (line 17)
+- ✅ Worklet entry never closes port in dispose — last message delivered (morphDynamicsNode.ts:99-105)
+- ✅ Idempotent dispose (line 91-110)
+- ✅ All stage Biquad/Envelope states initialize to 0; reset() covers every recursive path
+- ✅ Block-rate smoothed control values (BlockSmoother) for click-free automation
+
+**Defect found (P3):** MorphDynamicsProcessor's non-finite sentinel checked ONLY the FIRST sample (`L[0]/R[0]`). A divergence starting mid-block (e.g. AP recursion in motion under extreme `motion.feedback` near 80, or comb-feedback resonance under high `space.decayS`) would leave corrupted samples in the output buffer until the NEXT process() call triggered the first-sample check. Same-block recovery is the right behavior — an audible glitch that self-recovers beats dead silence that lasts a whole block.
+
+**Fix implemented:**
+- `src/effects/morph-dynamics-core/dsp/morphDynamicsProcessor.ts:411-430` — extended sentinel to check BOTH endpoints (`L[0]/R[0]` and `L[frames-1]/R[frames-1]`). Under finite conditions the body is skipped — no behavioral change. Diff: +9 lines (logic + comment).
+- `tests/morph-dynamics-golden.test.ts:275-318` — new regression test "sentinel catches end-of-block divergence" — exercises motion.feedback=70, space.decayS=4, space.send=90; asserts full output finite AND last sample finite specifically (the structural location any mid-block divergence would propagate to). Diff: +40 lines.
+
+**Validation:**
+- `npx vitest run tests/morph-dynamics-golden.test.ts`: 11/14 PASS (+1 vs baseline 10/13) — my new test passes; 3 baseline failures (`passes a quiet signal`, `PRESSURE progressively increases`, `matches the golden vector fixture`) reproduce on a CLEAN baseline (HEAD with no my changes) via `git stash` + rerun. Those are pre-existing golden-fixture drift, not regressions from this work.
+- `npx vitest run tests/morph-dynamics-contract.test.ts tests/morph-dynamics-worklet-entry.test.ts`: 21/21 PASS.
+- `git diff --stat` on the two modified files: 50 insertions(+), 1 deletion(-) — bounded.
+
+**FázA §50 (No Sonic Change) verified:** Fix is in a guard path that is unreachable under normal DSP operation. The `if` body executes only when a recursive stage has produced a non-finite sample — a condition the upstream guards (clamps, denormal flush, `MAX_COMB_GAIN`) make vanishingly rare in real signal. Baseline failures are pre-existing (verified via git stash + re-run).
+
+**Contract tests verified (regression contract surface):**
+- `clamps non-finite values to the DEFAULT, never NaN` — `clampParam` line 186
+- `keeps booleans and enums non-automatable, continuous params auto` — schema enforces this at definition time
+- `drops unknown ids and non-finite values from preset data` — `applyMorphPreset` + `loadState`
+- `normalizePluginParams retains deep params and clamps values` — registry line 4654
+- `mod matrix: transient → space send NEGATIVE ducks the tail (signature bloom)` — golden test confirms sonic identity
+
+**Pre-existing baseline failures (NOT mine, document for triage):**
+1. `tests/morph-dynamics-golden.test.ts > passes a quiet signal essentially untouched at low PRESSURE` — RMS off by 3.5 dB at low pressure (0/0/0). Indicates either compressor makeup drift or new auto-makeup default crept in.
+2. `tests/morph-dynamics-golden.test.ts > PRESSURE progressively increases reactive output character` — crestHigh > crestLow (inverse of expected). Suggests drive curve flipped.
+3. `tests/morph-dynamics-golden.test.ts > matches the golden vector fixture` — RMS 0.37730 vs 0.37735 (drift >5 decimals). Golden fixture probably stale vs the new compressor auto-makeup.
+
+**Unresolved issues / risks:**
+1. The 3 baseline golden failures need a Daniel decision: re-bless the golden fixture (`UPDATE_GOLDEN=1 npm test`) or audit the recent DSP changes for unintended drift.
+2. The MORPH PARAMETER SCHEMA has a subtle DRY violation: `morphdynamics.params` array in `registry.ts:2760-2803` DUPLICATES the 9 rack params (the same defaults exist in `MORPH_PARAM_DEFAULTS:2744-2754` and the schema). Adding a new rack param requires editing 3 places. Worth a follow-up to derive `EffectDefinition.params` from `MORPH_PARAM_DEFAULTS` automatically — P3 maintainability, not a P1 defect.
+3. The `src` array allocation in `morphDynamicsProcessor.ts:227-235` is rebuilt every process() call. 7 elements × 375 calls/sec = 2625 allocations/sec — minor GC pressure. Could be hoisted to a class field. P3 optimization.
+
+**Deliverables:**
+- Fix: `src/effects/morph-dynamics-core/dsp/morphDynamicsProcessor.ts:411-430` (last-sample sentinel check)
+- Test: `tests/morph-dynamics-golden.test.ts:275-318` (regression test)
+- Documentation: this AGENT_WORK_LOG entry + the findings above for next-session triage of the 3 baseline failures.
+

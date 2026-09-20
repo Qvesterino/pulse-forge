@@ -65,7 +65,7 @@ import { nearestOnset } from "../audio-workers/onset-detector";
 import { extractGroove } from "../audio-engine/groove-extract";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
-import { userSampleId } from "../persistence/UserSampleRepository";
+import { recordedTakeSampleId, userSampleId } from "../persistence/UserSampleRepository";
 import { RECORDING_OWNER_ID, type RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
 import { recordingAlignment } from "../audio-engine/recordingAlignment";
@@ -78,7 +78,13 @@ import {
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
-import { addRecordedAudioClip, clipLengthBars, compensateRecordingStartBar, recordingStartBar } from "./timelineRec";
+import {
+  addRecordedAudioClip,
+  clipLengthBars,
+  compensateRecordingStartBar,
+  recordedTakeAlreadyPlaced,
+  recordingStartBar,
+} from "./timelineRec";
 import { usePlayheadBar } from "./playhead";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
@@ -96,6 +102,13 @@ const warpOnsetInflight = new Set<string>();
 const WARP_SNAP_SEC = 0.06;
 /** Shared in-flight onset renders so parallel warmers/hooks never double-detect. */
 const warpOnsetPromises = new Map<string, Promise<number[]>>();
+
+function sameRecordingInputDevices(a: RecordingInputDevice[], b: RecordingInputDevice[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((device, index) => device.deviceId === b[index].deviceId && device.label === b[index].label)
+  );
+}
 
 /** Parse `#rrggbb` (or `#rgb`) into [r, g, b]; null when unparseable. */
 function hexToRgb(hex: string): [number, number, number] | null {
@@ -263,7 +276,7 @@ export function ArrangementPanel() {
     try {
       const devices = await listRecordingInputDevices();
       if (recPanelMountedRef.current) {
-        setRecordingInputDevices(devices);
+        setRecordingInputDevices((current) => (sameRecordingInputDevices(current, devices) ? current : devices));
         setRecordingInputListError(false);
       }
     } catch {
@@ -278,7 +291,7 @@ export function ArrangementPanel() {
       try {
         const devices = await listRecordingInputDevices(mediaDevices ?? null);
         if (live) {
-          setRecordingInputDevices(devices);
+          setRecordingInputDevices((current) => (sameRecordingInputDevices(current, devices) ? current : devices));
           setRecordingInputListError(false);
         }
       } catch {
@@ -479,7 +492,7 @@ export function ArrangementPanel() {
         return;
       }
       const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const bufferId = userSampleId(`rec-${stamp}`);
+      const bufferId = recordedTakeSampleId(take.session.id);
       const asset = {
         id: bufferId,
         name: `REC ${stamp}`,
@@ -561,7 +574,7 @@ export function ArrangementPanel() {
       // blocks, so a still-open source tab cannot extend it mid-recovery.
       await recoveryRepoRef.current!.markRecoverable(session.id);
       const take = await materializePcmTake(recoveryRepoRef.current!, session.id, ctx);
-      const bufferId = userSampleId(`recovered-rec-${new Date(session.createdAt).getTime()}`);
+      const bufferId = recordedTakeSampleId(session.id);
       const asset = {
         id: bufferId,
         name: `RECOVERED ${session.trackName}`,
@@ -582,6 +595,11 @@ export function ArrangementPanel() {
         currentDoc.id === session.projectId &&
         currentDoc.tracks.some((track) => track.id === session.trackId);
       if (originalTrackExists) {
+        if (recordedTakeAlreadyPlaced(currentDoc, bufferId)) {
+          setRecError(`Recovered ${session.trackName}; its existing timeline clip now has restored audio.`);
+          await refreshRecoverableTakes();
+          return;
+        }
         try {
           services.store.execute(
             addRecordedAudioClip(
