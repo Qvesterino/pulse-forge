@@ -4,7 +4,7 @@ import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { applyGenerationResultCommand } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import { buildSong, applySongCommand } from "../intent/song";
+import { buildSong, applySongCommand, reviseSection, replacePatternInPlaceCommand } from "../intent/song";
 import { applyMixIntent, planMixProfile } from "../intent/mix";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
@@ -242,7 +242,18 @@ export function IntentPanel() {
         const last = lastIntentRef.current;
         const delta = route.direction === "more" ? REVISE_DELTA : -REVISE_DELTA;
         const fallbackDefaults: Record<ReviseAttribute, number> = { energy: 0.7, density: 0.5 };
-        if (last) {
+        if (route.targetRole) {
+          // C3 TARGETED revise: the role word names the section — regenerate
+          // THAT scene's pattern from its own provenance intent (same seed).
+          const attribute = route.attribute as "energy" | "density";
+          const outcome = reviseSection(doc, route.targetRole as never, attribute, delta);
+          if (!outcome.ok) {
+            setStatus(`⚡ ${outcome.error}`);
+            return;
+          }
+          services.store.execute(replacePatternInPlaceCommand(doc, outcome.patternId, outcome.pattern));
+          setStatus(`⚡ ${outcome.label}`);
+        } else if (last) {
           const current = last[route.attribute] ?? fallbackDefaults[route.attribute];
           await runGeneration({ ...last, [route.attribute]: Math.max(0, Math.min(1, current + delta)) }, controller);
           setStatus(`⚡ ${route.attribute} ${route.direction === "more" ? "+0.15" : "−0.15"} — same seed`);

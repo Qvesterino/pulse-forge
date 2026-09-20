@@ -5,6 +5,7 @@ import type { ProjectDocument } from "./project-model/types";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
+import { stashIntentPrefill, takePendingHandoff } from "./landing/handoff";
 import { initSwUpdate } from "./sw-update";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
@@ -136,12 +137,20 @@ function Boot() {
         // into the studio, skipping the browser. Reject corrupt links before
         // loading the audio engine; they do not need services to explain the
         // problem to the user.
-        const code = new URLSearchParams(location.search).get("import");
+        // Landing handoff (viral growth plan A1): a beat forged on the
+        // landing page travels through sessionStorage and opens through the
+        // SAME openProject path — an explicit ?import= link wins when both
+        // exist. A corrupt LINK is a user-visible error; a corrupt HANDOFF
+        // just falls back to normal studio entry.
+        const linkCode = new URLSearchParams(location.search).get("import");
+        const pending = linkCode ? null : takePendingHandoff();
+        const code = linkCode ?? pending?.code ?? null;
         const imported = code ? decodeShareCode(code) : null;
-        if (code && !imported) {
+        if (linkCode && !imported) {
           setScreen({ kind: "error", message: "This beat link is invalid or corrupted." });
           return;
         }
+        if (pending?.prompt) stashIntentPrefill(pending.prompt);
 
         const { createCoreServices, openProject } = await import("./services");
         if (cancelled) return;

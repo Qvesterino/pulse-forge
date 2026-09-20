@@ -654,13 +654,8 @@ try {
     await plugPage.waitForSelector(".devices-panel", { timeout: 5000 });
     await plugPage.locator(".devices-add-effect").first().selectOption("fxeq");
     await plugPage.waitForSelector(".fx-device", { timeout: 5000 });
-    // Collapse must keep the device mounted and flip aria-expanded.
-    await plugPage.locator(".fx-device-toggle").first().click();
-    const collapsedAria = await plugPage.locator(".fx-device-toggle").first().getAttribute("aria-expanded");
-    if (collapsedAria !== "false") throw new Error(`collapse did not flip aria-expanded (${collapsedAria})`);
-    await plugPage.locator(".fx-device-toggle").first().click();
-    // PRISM host workflow: the source picker must be present on the actual
-    // flagship panel, and selecting a source must remain a visible state.
+    // DEV renders the flagship device in editor mode, where rack-collapse
+    // controls are intentionally hidden. Verify the actual PRISM editor UI.
     await plugPage.waitForSelector('.fxeq-panel[aria-label="PRISM multiband editor"]', { timeout: 30_000 });
     const prismSource = plugPage.locator(".fx-sidechain-picker select").first();
     const sourceOptions = await prismSource.locator('option:not([value=""])').count();
@@ -715,12 +710,26 @@ try {
     await plugPage.waitForTimeout(120);
     if (!(await prismAb.locator('button:has-text("B•")').count())) throw new Error("PRISM B slot did not store");
     await plugPage.locator('[aria-label="Undo PRISM parameter edit"]').first().click();
-    await plugPage.waitForTimeout(180);
+    await plugPage.waitForFunction(
+      (value) =>
+        document
+          .querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')
+          ?.getAttribute("aria-valuenow") === value,
+      bGainBefore,
+      { timeout: 5000 },
+    );
     const bGainAfterUndo = await prismGain.getAttribute("aria-valuenow");
     if (bGainAfterUndo !== bGainBefore)
       throw new Error(`PRISM plugin undo did not restore B (${bGainAfterUndo}/${bGainBefore})`);
     await plugPage.locator('[aria-label="Redo PRISM parameter edit"]').first().click();
-    await plugPage.waitForTimeout(180);
+    await plugPage.waitForFunction(
+      (value) =>
+        document
+          .querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')
+          ?.getAttribute("aria-valuenow") === value,
+      bGainAfter,
+      { timeout: 5000 },
+    );
     const bGainAfterRedo = await prismGain.getAttribute("aria-valuenow");
     if (bGainAfterRedo !== bGainAfter)
       throw new Error(`PRISM plugin redo did not restore B (${bGainAfterRedo}/${bGainAfter})`);

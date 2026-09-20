@@ -20,7 +20,14 @@ export function EmbedApp({
   code: codeProp,
   inline = false,
   hideBrand = false,
-}: { code?: string; inline?: boolean; hideBrand?: boolean } = {}) {
+  onPlayed,
+}: {
+  code?: string;
+  inline?: boolean;
+  hideBrand?: boolean;
+  /** Fired when playback actually starts (autoplay-safe: always a user click). */
+  onPlayed?: () => void;
+} = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: "decoding" });
   const [meta, setMeta] = useState<{ name: string; bpm: number; code: string } | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
@@ -116,7 +123,12 @@ export function EmbedApp({
     sourceRef.current = source;
     playingRef.current = true;
     setPlaying(true);
-  }, [stopSource]);
+    try {
+      onPlayed?.();
+    } catch {
+      /* observer must not break playback */
+    }
+  }, [stopSource, onPlayed]);
 
   const pause = useCallback(() => {
     const ctx = ctxRef.current;

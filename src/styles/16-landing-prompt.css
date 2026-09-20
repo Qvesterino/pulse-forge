@@ -1,0 +1,125 @@
+/* Landing prompt box (viral growth plan A1) — describe → forge → hear.
+   Visual language follows the existing landing section (11-floating…css). */
+
+.landing-hero-player-col {
+  width: 100%;
+  max-width: 460px;
+  justify-self: end;
+}
+
+.landing-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #2c313c;
+  border-radius: 16px;
+  background: var(--bg-panel);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.landing-prompt-row {
+  display: flex;
+  gap: 10px;
+}
+
+.landing-prompt-input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid #2c313c;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 14.5px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.landing-prompt-input::placeholder {
+  color: var(--text-faint);
+}
+
+.landing-prompt-input:focus {
+  border-color: rgba(245, 158, 11, 0.55);
+}
+
+.landing-forge-btn {
+  white-space: nowrap;
+}
+
+.landing-forge-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.landing-prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.landing-chip {
+  padding: 5px 11px;
+  border: 1px solid #2c313c;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.landing-chip:hover:not(:disabled) {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--text);
+}
+
+.landing-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.landing-prompt-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.landing-prompt-error {
+  margin: 0;
+  font-size: 13px;
+  color: #f87171;
+}
+
+/* The forged preview reuses the hero player chrome. */
+.landing-prompt .landing-hero-player {
+  display: block;
+  margin-top: 8px;
+}
+
+.landing-prompt .landing-hero-player .embed-root {
+  position: static;
+  height: 250px;
+  border: 1px solid #2c313c;
+  border-radius: 14px;
+  background: var(--bg-panel);
+}
+
+.landing-prompt .landing-hero-player .embed-main {
+  padding: 16px 18px 6px;
+}
+
+.landing-prompt .landing-hero-player .embed-footer {
+  padding: 6px 18px 14px;
+}
+
+.landing-prompt-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}

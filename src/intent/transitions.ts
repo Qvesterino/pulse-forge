@@ -75,7 +75,9 @@ function treat(pattern: Pattern, doc: ProjectDocument, treatment: TransitionTrea
   const stepCount = pattern.stepCount;
   if (stepCount < LAST_BAR_STEPS) return pattern;
   const groups = padGroupsOf(doc);
-  if (groups.roll.length === 0) return pattern; // no roll voice — nothing to do
+  // The roll voice gates only the treatments that PLAY it — dropout is pure
+  // removal (zero the last bar) and must fire even on kits without snare/clap.
+  if (treatment !== "dropout" && groups.roll.length === 0) return pattern;
 
   const rows: Record<string, number[]> = {};
   for (const [padId, row] of Object.entries(pattern.rows ?? {})) {

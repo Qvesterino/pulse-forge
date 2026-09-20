@@ -188,6 +188,76 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
   };
 }
 
+/**
+ * FX expansion (docs/FX-EXPANSION-ROADMAP.md): each new beatmaking effect
+ * must (a) render audible output through its real worklet chain and
+ * (b) render deterministically — two identical renders stay bit-identical
+ * (offline-parity contract). ringMod/tapeStop/freqShifter/pitchShift/vinyl
+ * are probed with a drum-ish tone; beatMangler needs a full bar recorded
+ * before its mangled pass, so it fills one bar at the project tempo first.
+ */
+export async function auditFxExpansion(bank: SampleBank): Promise<CheckResult> {
+  const failures: string[] = [];
+  const types: EffectType[] = ["ringMod", "tapeStop", "freqShifter", "pitchShift", "vinyl", "beatMangler"];
+  const sr = 44100;
+  const template = createProjectFromTemplate("house");
+  const drumTrack = template.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  if (!drumTrack) throw new Error("fx expansion: house template lost its drum track");
+
+  for (const type of types) {
+    try {
+      const doc: ProjectDocument = { ...template, bpm: 120 };
+      const fxId = `fxe-${type}`;
+      doc.tracks = [
+        {
+          ...drumTrack,
+          id: "fxe-drums",
+          effects: [{ id: fxId, type, bypassed: false, params: defaultParamsOf(type) }],
+        },
+      ];
+      const barSamples = Math.round((60 / doc.bpm) * 4 * sr) + 4096;
+      const ctx = new OfflineAudioContext(2, barSamples * 2, sr);
+      await loadCoreWorklets(ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      engine.trigger("fxe-drums", drumTrack.pads[0], 0.03, 1);
+      engine.trigger("fxe-drums", drumTrack.pads[4] ?? drumTrack.pads[0], barSamples / sr - 0.2, 1);
+      const buffer = await ctx.startRendering();
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch));
+      const metrics = measurePreviewAudio(channels);
+      if (!passesPreviewAudio(metrics)) {
+        failures.push(`${type}: peak=${metrics.peak.toFixed(4)} clipped=${(metrics.clippedRatio * 100).toFixed(2)}%`);
+        continue;
+      }
+      // Determinism: same doc rendered again must be sample-identical.
+      const ctx2 = new OfflineAudioContext(2, barSamples * 2, sr);
+      await loadCoreWorklets(ctx2);
+      const engine2 = new AudioEngine();
+      engine2.attachBank(bank);
+      engine2.useContext(ctx2);
+      engine2.setProject(doc);
+      engine2.trigger("fxe-drums", drumTrack.pads[0], 0.03, 1);
+      engine2.trigger("fxe-drums", drumTrack.pads[4] ?? drumTrack.pads[0], barSamples / sr - 0.2, 1);
+      const buffer2 = await ctx2.startRendering();
+      const ch1 = buffer.getChannelData(0);
+      const ch2 = buffer2.getChannelData(0);
+      let maxDiff = 0;
+      for (let i = 0; i < ch1.length; i++) maxDiff = Math.max(maxDiff, Math.abs(ch1[i] - ch2[i]));
+      if (maxDiff > 1e-6) failures.push(`${type}: non-deterministic render (maxDiff=${maxDiff.toExponential(2)})`);
+    } catch (error) {
+      failures.push(`${type}: ${String(error)}`);
+    }
+  }
+
+  return {
+    name: "fx expansion: ringMod/tapeStop/freqShifter/pitchShift/vinyl/beatMangler audible + deterministic",
+    ok: failures.length === 0,
+    message: failures.length === 0 ? `passed=${types.length}/${types.length}` : failures.slice(0, 6).join(" | "),
+  };
+}
+
 export async function runChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const check = (name: string, ok: boolean, message = "") =>
@@ -213,6 +283,7 @@ export async function runChecks(): Promise<CheckResult[]> {
   // fallback. Sampler/texture probes sample curated overrides directly.
   await loadCuratedLayer(bank);
   results.push(await auditFactoryPresetAudio(bank));
+  results.push(await auditFxExpansion(bank));
 
   {
     // Curated factory layer (VISION §5): the seeds in public/samples must
@@ -1205,55 +1276,58 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("pdc: limiter track stays aligned with dry track (<2 ms)", false, String(error));
   }
 
-  // Send PDC: a track inside a look-ahead-limited group sends to an empty
-  // return. The send tap rides the track's own PDC, so the per-send delay
-  // only has to cover the downstream group latency — wet must land exactly
-  // on dry (trigger + 5 ms). Without send compensation the return hears the
-  // hit a full look-ahead early (≈trigger + 0 ms). Master limiter is off so
-  // the absolute expectation needs no extra uniform shift.
+  // Send PDC: compare the same kick through the group's look-ahead-limited
+  // dry path and through a zero-latency return. Relative onsets must align;
+  // absolute timing also includes the instrument's sample attack and is not
+  // a stable proxy for send compensation.
   try {
-    const doc = createProjectFromTemplate("empty");
-    const group = createGroupTrackModel("SendBus");
-    group.effects = [
-      {
-        id: "sendgrp-lim",
-        type: "limiter",
-        bypassed: false,
-        params: { ...defaultParamsOf("limiter"), lookaheadMs: 5 },
-      },
-    ];
-    const drum = doc.tracks.find((t) => t.kind === "drum");
-    if (!drum || drum.kind !== "drum") throw new Error("template drift: expected a drum track");
-    const grouped = { ...drum, groupId: group.id, sends: { "send-ret": 1 } };
-    doc.tracks = [...doc.tracks.map((t) => (t.id === drum.id ? grouped : t)), group];
-    doc.returns = [{ id: "send-ret", kind: "return", name: "SendRet", gain: 1, effects: [] }];
-    doc.master = { ...doc.master, limiterEnabled: false };
-    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.6), SR);
-    await loadAllWorklets(ctx);
-    const engine = new AudioEngine();
-    engine.attachBank(bank);
-    engine.useContext(ctx);
-    engine.setProject(doc);
-    engine.trigger(drum.id, drum.pads[0], 0.03, 1);
-    const rendered = await ctx.startRendering();
-    const ch = rendered.getChannelData(0);
-    let onset = -1;
-    for (let i = 0; i < ch.length; i++) {
-      if (Math.abs(ch[i]) > 0.02) {
-        onset = i;
-        break;
+    const renderPath = async (sendOnly: boolean): Promise<number> => {
+      const doc = createProjectFromTemplate("empty");
+      const group = createGroupTrackModel("SendBus");
+      group.effects = [
+        {
+          id: "sendgrp-lim",
+          type: "limiter",
+          bypassed: false,
+          params: { ...defaultParamsOf("limiter"), lookaheadMs: 5 },
+        },
+      ];
+      // In the send-only pass, silence the group output without touching the
+      // pre-group send tap. That leaves the compensated return as the sole
+      // audible route; the second pass is the corresponding dry group route.
+      group.gain = sendOnly ? 0 : 1;
+      const drum = doc.tracks.find((t) => t.kind === "drum");
+      if (!drum || drum.kind !== "drum") throw new Error("template drift: expected a drum track");
+      const sends: Record<string, number> = sendOnly ? { "send-ret": 1 } : {};
+      const grouped = { ...drum, groupId: group.id, sends };
+      doc.tracks = [...doc.tracks.map((t) => (t.id === drum.id ? grouped : t)), group];
+      doc.returns = [{ id: "send-ret", kind: "return", name: "SendRet", gain: 1, effects: [] }];
+      doc.master = { ...doc.master, limiterEnabled: false };
+      const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.6), SR);
+      await loadAllWorklets(ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      engine.trigger(drum.id, drum.pads[0], 0.03, 1);
+      const rendered = await ctx.startRendering();
+      const left = rendered.getChannelData(0);
+      const right = rendered.getChannelData(1);
+      for (let i = 0; i < left.length; i++) {
+        if (Math.max(Math.abs(left[i]), Math.abs(right[i])) > 0.02) return i;
       }
-    }
-    const onsetSec = onset >= 0 ? onset / SR : Number.NaN;
-    // Dry = trigger + 5 ms group look-ahead; wet must match it, not the
-    // uncompensated trigger + 0 ms (≈5 ms early = missing send PDC).
+      return -1;
+    };
+    const dryOnset = await renderPath(false);
+    const sendOnset = await renderPath(true);
+    const onsetSkewSamples = dryOnset >= 0 && sendOnset >= 0 ? Math.abs(dryOnset - sendOnset) : Number.POSITIVE_INFINITY;
     check(
-      "pdc: grouped send via return lands on dry (trigger+5ms ±3ms)",
-      Number.isFinite(onsetSec) && onsetSec >= 0.032 && onsetSec <= 0.039,
-      `onset=${Number.isFinite(onsetSec) ? `${(onsetSec * 1000).toFixed(1)}ms` : "none"} (expected ≈35.0ms; ≈30ms means send PDC inactive)`,
+      "pdc: grouped return send aligns to the dry group path (within 128 samples)",
+      onsetSkewSamples <= 128,
+      `dry=${dryOnset} send=${sendOnset} skew=${Number.isFinite(onsetSkewSamples) ? onsetSkewSamples : "none"} samples`,
     );
   } catch (error) {
-    check("pdc: grouped send via return lands on dry (trigger+5ms ±3ms)", false, String(error));
+    check("pdc: grouped return send aligns to the dry group path (within 128 samples)", false, String(error));
   }
 
   // Groups: a track moved between groups must feed ONLY the new group.

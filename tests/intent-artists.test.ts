@@ -61,16 +61,23 @@ describe("revise intent (C2)", () => {
     expect(parseReviseIntent("more energetic")).toEqual({
       attribute: "energy",
       direction: "more",
-      detected: ["energy ↑"],
+      detected: [],
+      targetRole: null,
     });
     expect(parseReviseIntent("more energic")?.attribute).toBe("energy");
     expect(parseReviseIntent("menej husty")).toEqual({
       attribute: "density",
       direction: "less",
-      detected: ["density ↓"],
+      detected: [],
+      targetRole: null,
     });
     expect(parseReviseIntent("busier drums")?.attribute).toBe("density");
-    expect(parseReviseIntent("calmer")).toEqual({ attribute: "energy", direction: "less", detected: ["energy ↓"] });
+    expect(parseReviseIntent("calmer")).toEqual({
+      attribute: "energy",
+      direction: "less",
+      detected: [],
+      targetRole: null,
+    });
   });
 
   it("non-revise text returns null", () => {
@@ -120,5 +127,32 @@ describe("revise execution — same seed identity (C2)", () => {
     expect(resultB2.proposal!.pattern.generation?.outputContentHash).toBe(
       resultB.proposal!.pattern.generation?.outputContentHash,
     );
+  });
+});
+
+describe("targeted section revise (C3)", () => {
+  it("role words make the revise TARGETED", () => {
+    expect(parseReviseIntent("make bridge more energic")).toEqual({
+      attribute: "energy",
+      direction: "more",
+      detected: ["bridge §"],
+      targetRole: "bridge",
+    });
+    expect(parseReviseIntent("sprav most menej husty")?.targetRole).toBe("bridge");
+    expect(parseReviseIntent("chorus busier")?.targetRole).toBe("chorus");
+    // global revise stays global
+    expect(parseReviseIntent("more energetic")?.targetRole).toBeNull();
+    // plain role word without comparative is NOT a revise
+    expect(parseReviseIntent("bridge")).toBeNull();
+  });
+
+  it("router keeps the role through routing", () => {
+    const doc = testDoc();
+    const route = routeIntentText("make bridge more energic", doc);
+    expect(route.kind).toBe("revise");
+    if (route.kind === "revise") {
+      expect(route.targetRole).toBe("bridge");
+      expect(route.attribute).toBe("energy");
+    }
   });
 });

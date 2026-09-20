@@ -197,8 +197,7 @@ export function App({
   // Add-effect flows must REVEAL the device UI, not toggle: no-op when the
   // device chain is already docked in either slot.
   const openDevicesPanel = () => {
-    setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));
-    setSheetCollapsed(false);
+    setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));    setSheetCollapsed(false);
   };
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();

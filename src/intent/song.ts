@@ -11,6 +11,9 @@ import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent } from "./plan";
 import { generateLocalResult } from "./pipeline";
 import { applyTransitionToPattern } from "./transitions";
+import type { Command } from "../commands/types";
+import { sceneRoleOf } from "../project-model/schema";
+import { snapshot } from "../commands/commands";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 
 /**
@@ -612,3 +615,77 @@ export function previewSongForm(
 
 // Re-exported for the UI's convenience (same canonical pipeline entry points).
 export { intentFromGenerateOptions, generateOptionsFromIntent };
+
+
+// ── C3: TARGETED SECTION REVISE ─────────────────────────────────────────────
+// "make bridge more energic" — the section role names the TARGET: the
+// pattern's provenance carries its full generation intent + seed, so we
+// shift one slider and RE-GENERATE with the same seed (identity kept),
+// then swap the pattern in place (scene + clip untouched, one undo step).
+
+export type ReviseSectionAttribute = "energy" | "density";
+
+export type SectionReviseOutcome =
+  | { ok: true; patternId: string; pattern: Pattern; label: string }
+  | { ok: false; error: string };
+
+/**
+ * Re-generate ONE section's pattern with a shifted content slider. Reads the
+ * intent snapshot from the pattern's provenance (stored by the engine at
+ * generation time), applies the delta, regenerates deterministically with
+ * the SAME seed, and returns the replacement keeping the existing pattern id
+ * (scenes and clips stay bound to it).
+ */
+export function reviseSection(
+  doc: ProjectDocument,
+  targetRole: SceneRole,
+  attribute: ReviseSectionAttribute,
+  delta: number,
+): SectionReviseOutcome {
+  const scene = doc.scenes.find((candidate) => sceneRoleOf(candidate) === targetRole);
+  if (!scene) return { ok: false, error: `no ${targetRole} section in the project — build a song first` };
+  const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  if (!pattern) return { ok: false, error: `${targetRole} scene has no pattern` };
+  const snapshotIntent = pattern.generation?.intent;
+  if (!snapshotIntent || typeof snapshotIntent !== "object") {
+    return { ok: false, error: `${targetRole} pattern has no intent provenance to revise` };
+  }
+  try {
+    const intent = normalizeIntent(snapshotIntent);
+    const fallback = attribute === "energy" ? 0.7 : 0.5;
+    const current = typeof intent[attribute] === "number" ? (intent[attribute] as number) : fallback;
+    const revised = normalizeIntent({
+      ...intent,
+      [attribute]: Math.max(0, Math.min(1, current + delta)),
+    });
+    const result = generateLocalResult(doc, revised, "apply");
+    if (!result.proposal) {
+      return { ok: false, error: `revision rejected: ${result.diagnostics.errors[0] ?? "unknown"}` };
+    }
+    // keep the EXISTING id and scene-facing name — the swap is in-place
+    const next: Pattern = { ...result.proposal.pattern, id: pattern.id, name: pattern.name };
+    return {
+      ok: true,
+      patternId: pattern.id,
+      pattern: next,
+      label: `${targetRole}: ${attribute} ${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(2)} — same seed`,
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Swap an existing pattern's content IN PLACE (id preserved — scenes and
+ * arrangement clips stay bound). One undo step.
+ */
+export function replacePatternInPlaceCommand(doc: ProjectDocument, patternId: string, next: Pattern): Command {
+  const existing = doc.patterns.find((candidate) => candidate.id === patternId);
+  if (!existing) throw new Error(`Pattern ${patternId} not found`);
+  const replacement: Pattern = { ...next, id: patternId };
+  const nextDoc: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((candidate) => (candidate.id === patternId ? replacement : candidate)),
+  };
+  return snapshot("replacePatternInPlace", `Revise ${replacement.name}`, doc, nextDoc);
+}

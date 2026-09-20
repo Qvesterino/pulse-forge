@@ -64,13 +64,17 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 
     const ratio = Math.pow(2, (semis + fine / 100) / 12);
     const H = Math.max(4, Math.round((grainMs / 1000) * sr) / 2); // half-grain hop
-    const first = this.writePos - len;
+    const first = this.writePos;
 
-    // Fill the ring buffer for this block.
+    // Fill the ring buffer for this block, then advance the absolute write
+    // cursor — without this the cursor never moves, every write lands at a
+    // negative ring index (dropped), and the processor stays in its startup
+    // passthrough branch forever.
     for (let i = 0; i < len; i++) {
       this.bufL[(first + i) % this.bufferLen] = inL ? inL[i] : 0;
       this.bufR[(first + i) % this.bufferLen] = inR && inR.length > i ? inR[i] : inL ? inL[i] : 0;
     }
+    this.writePos = first + len;
     if (!this.initialized && this.writePos > 0) this.initialized = true;
 
     for (let i = 0; i < len; i++) {
@@ -86,18 +90,22 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
       let wetL = 0;
       let wetR = 0;
       let windowSum = 0;
-      // Two overlapping grains: the current grain k and the previous one —
-      // at 50% hop their Hann windows sum to unity across the grain.
+      // Two overlapping grains of length 2H at hop H: at any instant the
+      // current grain covers phase u ∈ [0,1) and the previous one u ∈ [1,2),
+      // and their Hann windows sum to unity (COLA). Each grain reads the
+      // PAST at slope `ratio` — shift-up grains are pinned to end at the
+      // write line, so no read ever crosses it (future samples don't exist).
       const k = Math.floor(A / H);
+      const half = width * 0.5 * H; // R-channel grain offset for stereo width
       for (let g = k; g >= k - 1; g--) {
-        const p = A / H - g; // 0..1 within this grain
-        if (p < 0 || p > 1) continue;
-        const window = 0.5 * (1 - Math.cos(2 * Math.PI * p));
-        // Read position: without shifting, read head sits at the write line
-        // (ratio 1 → A). With ratio ≠ 1 the read drifts by p·H·(ratio−1).
-        const readL = A + p * H * (ratio - 1);
-        if (readL < 0 || readL > this.writePos) continue;
-        const readR = A + (p + width * 0.5) * H * (ratio - 1);
+        const u = A / H - g; // 0..2 within this grain
+        if (u < 0 || u > 2) continue;
+        const window = 0.5 * (1 - Math.cos(Math.PI * u));
+        const grainStart = g * H;
+        const base = ratio >= 1 ? grainStart + 2 * H * (1 - ratio) : grainStart;
+        const readL = base + (A - grainStart) * ratio;
+        const readR = base + (A - grainStart - half) * ratio;
+        if (readL < 0 || readL > this.writePos || readR < 0) continue;
         wetL += this.readAt(readL, 0) * window;
         wetR += this.readAt(readR, 1) * window;
         windowSum += window;

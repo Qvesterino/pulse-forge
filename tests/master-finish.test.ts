@@ -120,7 +120,7 @@ describe("master finish chain", () => {
       masterGlueNative: { threshold: { value: number }; ratio: { value: number } } | null;
     };
     // No AudioWorklet in the mock → native fallback with glue settings.
-    expect(anyEngine.masterGlueNative?.threshold.value).toBe(-12);
+    expect(anyEngine.masterGlueNative?.threshold.value).toBe(-6);
     expect(anyEngine.masterGlueNative?.ratio.value).toBe(2);
     engine.setProject(masterDoc(false) as never);
     expect(anyEngine.masterGlueNative?.threshold.value).toBe(0);

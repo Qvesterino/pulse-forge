@@ -149,7 +149,9 @@ describe("ranker provenance through the canonical path", () => {
   });
 
   it("model unavailable: heuristic winner selected, provenance truthfully records fallback", async () => {
-    // default mode is "active"; jsdom has no Worker → controlled model fallback
+    // default mode is "active"; jsdom has no Worker → controlled model fallback.
+    // Explicit reset — other test files may leave the flag set (order-independent).
+    localStorage.removeItem("pf:intent-ranker");
     const doc = createDefaultProject();
     const result = await generateAsyncResult(doc, INTENT);
     const heuristic = generateLocalResult(doc, INTENT); // sync path = pure heuristic

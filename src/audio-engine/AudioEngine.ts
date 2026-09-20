@@ -135,6 +135,8 @@ interface TrackNodes {
   modAutoPan: StereoPannerNode;
   modMacroGain: GainNode;
   modMacroPan: StereoPannerNode;
+  /** Exact downstream owner for the track output (master or one group input). */
+  routeDestination: AudioNode;
   analyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
@@ -1098,7 +1100,7 @@ export class AudioEngine {
       this.masterGlueNative = null;
       this.masterGlue = createCompressorNode(ctx, {
         params: {
-          threshold: -12,
+          threshold: -6,
           ratio: 2,
           attack: 0.03,
           release: 0.3,
@@ -1111,7 +1113,7 @@ export class AudioEngine {
       });
     } else {
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -12;
+      comp.threshold.value = -6;
       comp.knee.value = 6;
       comp.ratio.value = 2;
       comp.attack.value = 0.03;
@@ -1230,7 +1232,7 @@ export class AudioEngine {
       // so it parks at threshold 0 / ratio 1 like the disabled limiter below.
       const enabled = config.glueEnabled ?? true;
       if (this.masterGlueNative) {
-        this.masterGlueNative.threshold.setTargetAtTime(enabled ? -12 : 0, now, 0.02);
+        this.masterGlueNative.threshold.setTargetAtTime(enabled ? -6 : 0, now, 0.02);
         this.masterGlueNative.ratio.setTargetAtTime(enabled ? 2 : 1, now, 0.02);
       } else {
         this.masterGlue.setParameter("mix", enabled ? 1 : 0);
@@ -1812,6 +1814,7 @@ export class AudioEngine {
           modAutoPan,
           modMacroGain,
           modMacroPan,
+          routeDestination: this.master,
           analyser,
           fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
@@ -1898,30 +1901,23 @@ export class AudioEngine {
     // PRISM/compressor target in document order.
     this.syncFxSidechains(doc);
 
-    // Route child tracks through their group instead of master. Disconnect
-    // every previous destination first — a track moved between groups used
-    // to keep feeding the old group's input (doubled audio). The track
-    // analyser tap must survive, so disconnect selectively instead of a
-    // bare disconnect().
+    // Route child tracks through their group instead of master. Keep exact
+    // edge ownership per track so moving a track (or deleting its old group)
+    // can always disconnect the prior destination, even after that group has
+    // already left groupNodes. Unchanged routes are left untouched.
     for (const track of doc.tracks) {
       if (track.kind === "group") continue;
       const nodes = this.trackNodes.get(track.id);
       if (!nodes) continue;
-      const groupDest = track.groupId ? this.groupNodes.get(track.groupId) : null;
+      const nextDestination = (track.groupId ? this.groupNodes.get(track.groupId)?.input : null) ?? this.master;
+      if (nodes.routeDestination === nextDestination) continue;
       try {
-        nodes.modMacroPan.disconnect(this.master);
+        nodes.modMacroPan.disconnect(nodes.routeDestination);
       } catch {
-        /* not connected */
+        /* prior edge was already disconnected */
       }
-      for (const gn of this.groupNodes.values()) {
-        try {
-          nodes.modMacroPan.disconnect(gn.input);
-        } catch {
-          /* not connected */
-        }
-      }
-      if (groupDest) nodes.modMacroPan.connect(groupDest.input);
-      else nodes.modMacroPan.connect(this.master);
+      nodes.modMacroPan.connect(nextDestination);
+      nodes.routeDestination = nextDestination;
     }
 
     this.syncLfos(doc);

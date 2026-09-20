@@ -31,14 +31,20 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     this.stepsPerBar = 16;
     this.playMode = 0; // 0 normal, 1 half, 2 double, 3 reverse
     this.repeatFill = 0;
-    this.mix = 1;
     this.readPos = null; // stateful tape head (absolute sample position)
 
     this.port.onmessage = (event) => {
       const data = event.data ?? {};
       if (data.type === "steps") {
-        this.volumeSteps = Array.isArray(data.volume) && data.volume.length > 0 ? data.volume.slice() : null;
-        this.pitchSteps = Array.isArray(data.pitch) && data.pitch.length > 0 ? data.pitch.slice() : null;
+        // Envelope data crosses from the control thread — a single non-finite
+        // entry would poison `speed`/`readPos` with NaN and mute the effect
+        // for good, so coerce at the boundary.
+        const clean = (arr, fallback) =>
+          Array.isArray(arr) && arr.length > 0
+            ? arr.map((v) => (typeof v === "number" && Number.isFinite(v) ? v : fallback))
+            : null;
+        this.volumeSteps = clean(data.volume, 1);
+        this.pitchSteps = clean(data.pitch, 0);
         const len = this.volumeSteps ? this.volumeSteps.length : this.pitchSteps ? this.pitchSteps.length : 16;
         this.stepsPerBar = len;
       } else if (data.type === "bpm" && Number.isFinite(data.bpm) && data.bpm > 0) {
@@ -48,7 +54,6 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
       } else if (data.type === "mode") {
         if (Number.isFinite(data.playMode)) this.playMode = data.playMode;
         if (Number.isFinite(data.repeatFill)) this.repeatFill = Math.max(0, Math.min(8, Math.round(data.repeatFill)));
-        if (Number.isFinite(data.mix)) this.mix = data.mix;
       }
     };
   }
@@ -112,6 +117,9 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     }
 
     const modeMult = this.playMode === 1 ? 0.5 : this.playMode === 2 ? 2 : this.playMode === 3 ? -1 : 1;
+    // Mix is the k-rate AudioParam — the standard contract the node's
+    // setParameter path drives (a port-message mix would never fire).
+    const mix = Math.max(0, Math.min(1, parameters.mix[0]));
     // The bar window anchors on the LAST COMPLETED bar boundary before the
     // write head — stable within a block, advancing one bar per boundary so
     // the loop always plays the freshest full bar (never a sliding freeze).
@@ -129,8 +137,8 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
 
       const wetL = this.readAt(this.readPos, 0) * vol;
       const wetR = this.readAt(this.readPos, 1) * vol;
-      outL[i] = live * (1 - this.mix) + wetL * this.mix;
-      if (outR) outR[i] = liveR * (1 - this.mix) + wetR * this.mix;
+      outL[i] = live * (1 - mix) + wetL * mix;
+      if (outR) outR[i] = liveR * (1 - mix) + wetR * mix;
 
       this.readPos += speed;
       // Wrap within [windowStart, writePos). Repeat-fill re-enters at the

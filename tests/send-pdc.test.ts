@@ -27,11 +27,17 @@ describe("sendPdcDelaySec", () => {
 /* ── Engine wiring with a mocked audio context (no DSP, no worklets) ── */
 
 function mockNode() {
+  const connections = new Set<unknown>();
   const chainable = {
-    connect() {
+    connections,
+    connect(destination?: unknown) {
+      if (destination !== undefined) connections.add(destination);
       return chainable;
     },
-    disconnect() {},
+    disconnect(destination?: unknown) {
+      if (destination === undefined) connections.clear();
+      else connections.delete(destination);
+    },
   };
   const param = (initial = 0) => {
     let value = initial;
@@ -172,5 +178,47 @@ describe("engine send-PDC wiring", () => {
     expect(trackNodes.get(trackId)!.sendDelays.size).toBe(1);
     engine.setProject({ ...doc, tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, sends: {} } : t)) });
     expect(trackNodes.get(trackId)!.sendDelays.size).toBe(0);
+  });
+
+  it("disconnects the exact previous group route when moving or deleting a group", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    const { doc, groupId, trackId } = docWithSend();
+    const groupB = createGroupTrackModel("Bus B");
+    const groupA = doc.tracks.find((track) => track.id === groupId)!;
+    const withBothGroups = { ...doc, tracks: [...doc.tracks, groupB] };
+    engine.setProject(withBothGroups);
+
+    const internals = engine as unknown as {
+      master: unknown;
+      trackNodes: Map<string, { modMacroPan: { connections: Set<unknown> }; routeDestination: unknown }>;
+      groupNodes: Map<string, { input: unknown }>;
+    };
+    const output = internals.trackNodes.get(trackId)!.modMacroPan;
+    const inputA = internals.groupNodes.get(groupA.id)!.input;
+    const inputB = internals.groupNodes.get(groupB.id)!.input;
+    expect(output.connections.has(inputA)).toBe(true);
+    expect(output.connections.has(internals.master)).toBe(false);
+
+    const moved = {
+      ...withBothGroups,
+      tracks: withBothGroups.tracks.map((track) => (track.id === trackId ? { ...track, groupId: groupB.id } : track)),
+    };
+    engine.setProject(moved);
+    expect(output.connections.has(inputA)).toBe(false);
+    expect(output.connections.has(inputB)).toBe(true);
+    expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(inputB);
+
+    const ungrouped = {
+      ...moved,
+      tracks: moved.tracks
+        .filter((track) => track.id !== groupB.id)
+        .map((track) => (track.id === trackId ? { ...track, groupId: undefined } : track)),
+    };
+    engine.setProject(ungrouped);
+    expect(output.connections.has(inputB)).toBe(false);
+    expect(output.connections.has(internals.master)).toBe(true);
+    expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(internals.master);
   });
 });

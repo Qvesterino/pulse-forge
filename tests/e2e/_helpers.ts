@@ -10,14 +10,17 @@ import type { Page } from "playwright/test";
  * not drag a scripts/-only import into their world.
  */
 export async function clickPanelAction(page: Page, label: string): Promise<void> {
-  const direct = page.locator(`.topbar button:has-text("${label}")`).first();
+  // The effect-chain panel is called DEV in the current topbar UI; retain the
+  // FX alias in test scenarios because the rack itself is still the FX dock.
+  const actionLabel = label === "FX" ? "DEV" : label;
+  const direct = page.locator(`.topbar button:has-text("${actionLabel}")`).first();
   if (await direct.isVisible().catch(() => false)) {
     await direct.click();
     return;
   }
   const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
   await trigger.click();
-  await page.locator(`#topbar-overflow-menu button:has-text("${label}")`).first().click();
+  await page.locator(`#topbar-overflow-menu button:has-text("${actionLabel}")`).first().click();
   // Close the menu so the next action starts from a clean state.
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);

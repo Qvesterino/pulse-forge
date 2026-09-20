@@ -85,6 +85,8 @@ export function parseMixIntent(text: string): MixParse {
 // its identity (same seed), just shift a content slider. Deliberately
 // SEPARATE from mix: tone words are SOUND processing, energy/density words
 // are NOTE CONTENT.
+// C3 targeted revise: a SECTION ROLE word in the text ("make bridge more
+// energic") targets that scene instead of the last result.
 export type ReviseAttribute = "energy" | "density";
 export type ReviseDirection = "more" | "less";
 
@@ -92,6 +94,8 @@ export interface ReviseParse {
   attribute: ReviseAttribute;
   direction: ReviseDirection;
   detected: string[];
+  /** Section role named in the text — null = global (last result). */
+  targetRole: string | null;
 }
 
 /** Per-revise slider step (clamped at apply time). */
@@ -104,20 +108,41 @@ const REVISE_ENERGY_LESS =
 const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejsi\b|\bviac prvkov\b/;
 const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
 
+/** Section-role words that turn a global revise into a TARGETED one. */
+const REVISE_ROLE_WORDS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["bridge", /\b(bridge|most|mostik)\b/],
+  ["chorus", /\b(chorus|hook|refren)\b/],
+  ["verse", /\b(verse|zloh)/],
+  ["intro", /\bintro\b/],
+  ["outro", /\b(outro|zaver|koncovka)\b/],
+  ["build", /\b(build|buildup|stavb)/],
+  ["break", /\b(break|breakdown|brejk)\b/],
+  ["drop", /\bdrop\b/],
+];
+
+function reviseRoleIn(lower: string): string | null {
+  for (const [role, re] of REVISE_ROLE_WORDS) {
+    if (re.test(lower)) return role;
+  }
+  return null;
+}
+
 /** Parse "more energetic"-style content revisions. Null = not a revise. */
 export function parseReviseIntent(text: string): ReviseParse | null {
   const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `;
+  const targetRole = reviseRoleIn(lower);
+  const detected = targetRole ? [`${targetRole} §`] : [];
   if (REVISE_ENERGY_MORE.test(lower)) {
-    return { attribute: "energy", direction: "more", detected: ["energy ↑"] };
+    return { attribute: "energy", direction: "more", detected, targetRole };
   }
   if (REVISE_ENERGY_LESS.test(lower)) {
-    return { attribute: "energy", direction: "less", detected: ["energy ↓"] };
+    return { attribute: "energy", direction: "less", detected, targetRole };
   }
   if (REVISE_DENSITY_MORE.test(lower)) {
-    return { attribute: "density", direction: "more", detected: ["density ↑"] };
+    return { attribute: "density", direction: "more", detected, targetRole };
   }
   if (REVISE_DENSITY_LESS.test(lower)) {
-    return { attribute: "density", direction: "less", detected: ["density ↓"] };
+    return { attribute: "density", direction: "less", detected, targetRole };
   }
   return null;
 }
@@ -125,7 +150,7 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
-  | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[] }
+  | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[]; targetRole: string | null }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
 /**

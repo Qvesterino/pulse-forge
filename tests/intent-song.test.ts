@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { testDoc } from "./fixtures/doc";
-import { planSongForm, buildSong, applySongCommand, previewSongForm, type SongBuild } from "../src/intent/song";
+import {
+  planSongForm,
+  buildSong,
+  applySongCommand,
+  previewSongForm,
+  reviseSection,
+  replacePatternInPlaceCommand,
+  type SongBuild,
+} from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { getActivePattern } from "../src/project-model/types";
 import type { Pattern, Scene } from "../src/project-model/types";
@@ -251,3 +259,53 @@ describe("scene role persistence (A2 v2)", () => {
     expect(inferSceneRole("Drop A")).toBe("drop");
   });
 });
+
+describe("targeted section revise (C3)", () => {
+  it("regenerates ONE section in place from its provenance intent", async () => {
+    const doc = testDoc();
+    const build = await buildSong(doc, normalizeIntent({ genre: "trap", seed: "c3", bpmRange: [140, 140] }), {
+      yieldBetweenSections: false,
+    });
+    // install the song so the doc has real scenes bound to patterns
+    const withSong = applySongCommand(doc, build).execute(withDocBpm(doc, build));
+    // NB: use a section WITH drums — density shifts ghostWeight, which the
+    // drum engine honors. Energy on a melodic-only section (bridge) is a
+    // known mapping gap (melodic velocities don't read velocityVariation yet).
+    const verseScene = withSong.scenes.find((scene) => scene.role === "verse")!;
+    const verseBefore = withSong.patterns.find((pattern) => pattern.id === verseScene.patternId)!;
+    const seedBefore = verseBefore.generation?.seed;
+    const densityBefore = (verseBefore.generation?.intent as { density: number }).density;
+
+    const outcome = reviseSection(withSong, "verse", "density", 0.15);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    // identity: SAME id, SAME seed; character: density moved, content changed
+    expect(outcome.patternId).toBe(verseScene.patternId);
+    expect(outcome.pattern.id).toBe(verseScene.patternId);
+    expect(outcome.pattern.generation?.seed).toBe(seedBefore);
+    const densityAfter = (outcome.pattern.generation?.intent as { density: number }).density;
+    expect(densityAfter).toBeCloseTo(densityBefore + 0.15, 5);
+    expect(outcome.pattern.generation?.outputContentHash).not.toBe(verseBefore.generation?.outputContentHash);
+
+    const command = replacePatternInPlaceCommand(withSong, outcome.patternId, outcome.pattern);
+    const next = command.execute(withSong);
+    // scene + clip stay bound to the SAME pattern id
+    expect(next.scenes.find((scene) => scene.id === verseScene.id)!.patternId).toBe(verseScene.patternId);
+    const revised = next.patterns.find((pattern) => pattern.id === verseScene.patternId)!;
+    expect(revised.generation?.outputContentHash).toBe(outcome.pattern.generation?.outputContentHash);
+    // ONE undo restores the pre-revision content
+    const undone = command.undo(next);
+    const restored = undone.patterns.find((pattern) => pattern.id === verseScene.patternId)!;
+    expect(restored.generation?.outputContentHash).toBe(verseBefore.generation?.outputContentHash);
+  }, 60_000);
+
+  it("reports a friendly error when the role does not exist", () => {
+    const outcome = reviseSection(testDoc(), "bridge", "energy", 0.15);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.error).toContain("no bridge section");
+  });
+});
+
+function withDocBpm(doc: Parameters<typeof applySongCommand>[0], build: { resolvedBpm: number | null }) {
+  return build.resolvedBpm != null ? { ...doc, bpm: build.resolvedBpm } : doc;
+}

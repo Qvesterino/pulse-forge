@@ -159,6 +159,35 @@ describe("fx expansion processors", () => {
     }
   });
 
+  it("pitchShift: +12 st on 330 Hz actually shifts content near 660 Hz", () => {
+    // Regression: the write cursor never advanced, so every render stayed in
+    // the startup passthrough branch and the effect was silently inert —
+    // and the old grain loop read ahead of the write line, so shift-up
+    // collapsed even after the cursor fix.
+    const fx = pitchShiftFactory({ processorOptions: { seed: 42 } });
+    const blocks = 8;
+    const n = 1024;
+    const tail: number[] = [];
+    for (let b = 0; b < blocks; b++) {
+      const input = stereoBuffer(n, (i) => Math.sin((2 * Math.PI * 330 * (b * n + i)) / SR) * 0.5);
+      const output: Float32Array[][] = [[]];
+      output[0] = [new Float32Array(n), new Float32Array(n)];
+      fx.process([input], output, param({ semitones: 12, fine: 0, grainMs: 55, width: 0.5, mix: 1 }));
+      for (const ch of output[0]) {
+        for (let i = 0; i < n; i++) expect(Number.isFinite(ch[i])).toBe(true);
+      }
+      if (b >= blocks - 4) for (let i = 0; i < n; i++) tail.push(output[0][0][i]);
+    }
+    // Zero-crossing pitch estimate over the concatenated voiced tail.
+    let crossings = 0;
+    for (let i = 1; i < tail.length; i++) {
+      if (tail[i - 1] <= 0 && tail[i] > 0) crossings++;
+    }
+    const estimate = (crossings * SR) / tail.length;
+    expect(estimate).toBeGreaterThan(660 * 0.8);
+    expect(estimate).toBeLessThan(660 * 1.2);
+  });
+
   it("vinyl: amount 1 adds crackle/dust energy over amount 0", () => {
     const render = (amount: number) => {
       const fx = vinylFactory({ processorOptions: { seed: 7 } });
@@ -195,6 +224,37 @@ describe("fx expansion processors", () => {
     expect(mutedEnergy).toBeLessThan(0.001);
     void unityEnergy;
     void mutedEnergy;
+  });
+
+  it("beatMangler: the mix AudioParam is honored (mix 0 = passthrough even with muted envelope)", () => {
+    // Regression: the processor only read a port-message `mix` nobody sent,
+    // so the node's mix AudioParam was dead and the effect was stuck full-wet.
+    const bar = Math.round((60 / 120) * 4 * SR);
+    const fx = beatManglerFactory() as ReturnType<typeof beatManglerFactory> & { port: FakePort };
+    fx.port.onmessage?.({ data: { type: "steps", volume: Array(16).fill(0), pitch: null } });
+    fx.port.onmessage?.({ data: { type: "bpm", bpm: 120 } });
+    const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
+    const output: Float32Array[][] = [[]];
+    output[0] = [new Float32Array(bar), new Float32Array(bar)];
+    fx.process([input], output, param({ mix: 0 }));
+    for (let i = 0; i < bar; i++) {
+      expect(output[0][0][i]).toBeCloseTo(input[0][i], 5);
+      expect(output[0][1][i]).toBeCloseTo(input[1][i], 5);
+    }
+  });
+
+  it("beatMangler: a non-finite envelope entry cannot poison the tape head with NaN", () => {
+    const bar = Math.round((60 / 120) * 4 * SR);
+    const fx = beatManglerFactory() as ReturnType<typeof beatManglerFactory> & { port: FakePort };
+    fx.port.onmessage?.({ data: { type: "steps", volume: [1, Number.NaN, 0.5, 1], pitch: [0, Number.NaN, 12, 0] } });
+    fx.port.onmessage?.({ data: { type: "bpm", bpm: 120 } });
+    const input = stereoBuffer(bar, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.6);
+    const output: Float32Array[][] = [[]];
+    output[0] = [new Float32Array(bar), new Float32Array(bar)];
+    fx.process([input], output, param({ mix: 1 }));
+    for (const ch of output[0]) {
+      for (let i = 0; i < ch.length; i++) expect(Number.isFinite(ch[i])).toBe(true);
+    }
   });
 
   it("beatMangler never logs or crashes in the audio thread when a stale debug flag is set", () => {

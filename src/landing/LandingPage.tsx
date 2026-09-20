@@ -1,7 +1,7 @@
-import { useMemo, type ReactNode } from "react";
-import { EmbedApp } from "../embed/EmbedApp";
+import { type ReactNode } from "react";
 import { encodeShareCode } from "../export/shareCode";
 import { createProjectFromTemplate } from "../project-model/templates";
+import { LandingPrompt } from "./LandingPrompt";
 
 /* Inline stroke icons — one visual language instead of mixed emoji. */
 function Icon({ children }: { children: ReactNode }) {
@@ -74,6 +74,11 @@ const IconGlobe = () => (
 
 const FEATURES = [
   {
+    icon: <IconLayers />,
+    title: "Type a beat into existence",
+    text: "Describe it — “dark trap 140” — and the intent engine composes the drums and bass instantly. Slovak or English. Then tweak it, revise it, own it.",
+  },
+  {
     icon: <IconScissors />,
     title: "Chop beats",
     text: "Drop an MP3 — transient detection slices it onto 16 MPC-style pads. Retrigger, pitch, program.",
@@ -82,11 +87,6 @@ const FEATURES = [
     icon: <IconSliders />,
     title: "Mix & pattern assist",
     text: "The assistant analyzes your track, proposes mix settings and iterates on patterns with you. Every step stays undoable.",
-  },
-  {
-    icon: <IconLayers />,
-    title: "Pro plugin suites",
-    text: "PRISM spectral EQ, VLYX intelligent mixing, VØID spatial reverb and RYFT spectral delay. Bit-exact DSP, zero install.",
   },
   {
     icon: <IconUsers />,
@@ -108,13 +108,13 @@ const FEATURES = [
 const STEPS = [
   {
     n: 1,
-    title: "Open a template",
-    text: "House, techno, trap or ambient — or start from empty. Everything renders instantly in your browser.",
+    title: "Describe it",
+    text: "Type one sentence — “dark trap 140”. The intent engine composes your beat right on this page.",
   },
   {
     n: 2,
     title: "Chop & program",
-    text: "Drop a loop, auto-chop it to pads, program the sequencer. Groove engine included.",
+    text: "Open the studio: tweak the generated beat, drop a loop, auto-chop it to pads. Groove engine included.",
   },
   {
     n: 3,
@@ -128,9 +128,6 @@ const STEPS = [
  * Returning users skip straight to the studio via main.tsx routing.
  */
 export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
-  // Hero player: a real house template through the real embed renderer.
-  const heroCode = useMemo(() => encodeShareCode(createProjectFromTemplate("house")), []);
-
   return (
     <div className="landing" role="document" aria-label="KYX landing">
       <nav className="landing-nav">
@@ -160,18 +157,15 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
               Free · No account · Runs offline
             </span>
             <h1>
-              Make beats
+              Describe it.
               <br />
-              in your browser.
+              Hear it. Own it.
             </h1>
             <p className="landing-sub">
-              A full beat studio — chop samples, program drums, mix with AI assist. Everything renders locally in this
-              tab; your audio never leaves the device.
+              Type one sentence — “dark trap 140” — and the built-in intent engine composes your beat right here, in
+              this tab. Then open the full studio to chop, program and mix. Your audio never leaves the device.
             </p>
             <div className="landing-hero-actions">
-              <button type="button" className="landing-btn landing-btn-primary landing-btn-lg" onClick={onEnterStudio}>
-                Start forging — it&apos;s free
-              </button>
               <a className="landing-btn landing-btn-ghost landing-btn-lg" href="/gallery">
                 Explore the gallery
               </a>
@@ -180,8 +174,8 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
               No install · Works offline · <a href="/download">Prefer a desktop app? Download for Windows</a>
             </span>
           </div>
-          <div className="landing-hero-player" aria-label="Live beat preview">
-            <EmbedApp code={heroCode} inline hideBrand />
+          <div className="landing-hero-player-col" aria-label="Forge a beat">
+            <LandingPrompt onEnterStudio={onEnterStudio} />
           </div>
         </div>
       </header>
@@ -208,7 +202,7 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
         <div className="landing-shell">
           <div className="landing-section-head">
             <p className="landing-eyebrow">How it works</p>
-            <h2>60 seconds to your first beat</h2>
+            <h2>30 seconds to your first beat</h2>
           </div>
           <div className="landing-grid landing-grid-3">
             {STEPS.map((s) => (
