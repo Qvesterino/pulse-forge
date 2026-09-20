@@ -305,6 +305,13 @@ export interface MasterConfig {
   bassMonoEnabled?: boolean;
   /** Bass Mono corner frequency, 60…400 Hz (default 120). */
   bassMonoFreq?: number;
+  /**
+   * Master tonal tilt in dB (−4…+4, default 0 = transparent). Positive tilts
+   * dark (more low, less high), negative tilts bright — two complementary
+   * shelves (150 Hz low / 5 kHz high, ±tilt/2 each) keep overall energy
+   * roughly constant. Consumed by the intent mix chain ("sound like X").
+   */
+  tiltDb?: number;
 }
 
 export interface NoteEvent {

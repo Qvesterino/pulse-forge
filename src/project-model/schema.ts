@@ -196,6 +196,7 @@ export function defaultMasterConfig(): MasterConfig {
     bassMonoEnabled: false,
     bassMonoFreq: 120,
     glueEnabled: true,
+    tiltDb: 0,
   };
 }
 

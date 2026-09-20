@@ -14,6 +14,7 @@ import { generateLocalResult } from "./pipeline";
 import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreKitToDoc } from "./genre-kit";
+import { genreMasterTiltDb } from "./mix";
 import type { Command } from "../commands/types";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
 import { snapshot } from "../commands/commands";
@@ -994,6 +995,15 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
       sampleId: null,
     };
   const cueClips = buildTransitionCueClips(seams, build.resolvedBpm ?? doc.bpm, fxTrack.id);
+
+  // Genre master tilt (sound-quality pass): character genres ride the master
+  // EQ shelves toward their tone (drill dark, phonk warm, jersey bright);
+  // legacy genres leave the document's tilt untouched. Re-generating with a
+  // different character genre re-targets the tilt.
+  const masterTilt = genreMasterTiltDb(build.baseIntent.genre);
+  if (masterTilt !== undefined) {
+    next = { ...next, master: { ...next.master, tiltDb: masterTilt } };
+  }
 
   const bpmUpdate = build.resolvedBpm != null ? { bpm: build.resolvedBpm } : {};
   next = {

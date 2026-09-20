@@ -337,3 +337,15 @@ export function clearDiceFx(doc: ProjectDocument, drumTrackId?: string): Project
     }),
   };
 }
+
+/** Apply the seeded FX decision while keeping a locked chain byte-for-byte intact. */
+export function applyDiceFxForRoll(
+  doc: ProjectDocument,
+  seed: string,
+  locks: DiceLocks,
+  drumTrackId?: string,
+): ProjectDocument {
+  if (locks.fx) return doc;
+  const card = pickDiceFx(seed, locks);
+  return card ? applyDiceFxToDoc(doc, card, drumTrackId) : clearDiceFx(doc, drumTrackId);
+}

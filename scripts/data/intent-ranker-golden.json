@@ -1,56 +1,13 @@
 {
-  "version": "golden.v1",
-  "reviewed": true,
-  "reviewedBy": "KYX",
-  "reviewedAt": "2026-09-17",
+  "reviewed": false,
+  "reviewedBy": "",
+  "reviewedAt": "",
+  "datasetVersion": "intent-ranker-ds.v2",
+  "note": "Poradie kandidátov (indexov) pre každý combo — najlepší PRVÝ. Pack: public/golden-review/",
   "combos": [
     {
-      "combo": "house:classic",
-      "order": [
-        2,
-        1,
-        3,
-        0
-      ]
-    },
-    {
-      "combo": "house:deep",
-      "order": [
-        0,
-        2,
-        1,
-        3
-      ]
-    },
-    {
-      "combo": "house:organs",
-      "order": [
-        0,
-        2,
-        1,
-        3
-      ]
-    },
-    {
-      "combo": "techno:drive",
-      "order": [
-        0,
-        1,
-        3,
-        2
-      ]
-    },
-    {
-      "combo": "techno:acid",
-      "order": [
-        2,
-        3,
-        1,
-        2
-      ]
-    },
-    {
-      "combo": "trap:roll",
+      "combo": "house:Afro House",
+      "groupKey": "house:Afro House:ds-house-Afro_House-0",
       "order": [
         3,
         0,
@@ -59,12 +16,63 @@
       ]
     },
     {
-      "combo": "ambient:drift",
+      "combo": "techno:Acid",
+      "groupKey": "techno:Acid:ds-techno-Acid-0",
       "order": [
         2,
-        0,
         1,
+        0,
         3
+      ]
+    },
+    {
+      "combo": "trap:Bouncy",
+      "groupKey": "trap:Bouncy:ds-trap-Bouncy-0",
+      "order": [
+        2,
+        3,
+        0,
+        1
+      ]
+    },
+    {
+      "combo": "ambient:Drifting",
+      "groupKey": "ambient:Drifting:ds-ambient-Drifting-0",
+      "order": [
+        2,
+        1,
+        3,
+        0
+      ]
+    },
+    {
+      "combo": "house:Deep",
+      "groupKey": "house:Deep:ds-house-Deep-0",
+      "order": [
+        3,
+        2,
+        1,
+        0
+      ]
+    },
+    {
+      "combo": "techno:Ambient Techno",
+      "groupKey": "techno:Ambient Techno:ds-techno-Ambient_Techno-0",
+      "order": [
+        2,
+        3,
+        0,
+        1
+      ]
+    },
+    {
+      "combo": "trap:Classic",
+      "groupKey": "trap:Classic:ds-trap-Classic-0",
+      "order": [
+        0,
+        2,
+        3,
+        1
       ]
     }
   ]

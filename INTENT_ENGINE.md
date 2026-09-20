@@ -222,7 +222,8 @@ sa pripojať ako *proposal source* — žiadne priame mutácie projektu.
   manifestu. Timeouty: score 400 ms, load 3 s, manifest 1.5 s. Circuit breaker:
   3 zlyhania → worker vypnutý na session. Všetky chyby = kontrolovaný fallback.
 - **Režimy**: `off | shadow | active`, flag `localStorage["pf:intent-ranker"]`,
-  default **active** (po golden gate).
+  default **shadow** (aktívny stav čaká na nezávislý golden holdout —
+  pozri activation status nižšie).
 - **Kombinácia (active)**: `finalScore = 0.6·heuristic + 0.4·model`, stable sort
   (score desc → candidateIndex asc → contentHash asc). Hard gate má vždy
   prioritu — model vidí len validných kandidátov.
@@ -566,6 +567,32 @@ Revise dostal CIEL: rola v texte zvolí konkrétnu sekciu aranžmánu.
 
 - Testy: intent-artists 13 (rola v routeri, global vs targeted), song 13
   (in-place regenerácia: id/seed/scene väzba, undo, friendly error).
+
+### 5.12 RANKER ACTIVATION STATUS — shadow je KOREKTNÝ, activation čaká na tvoje uši
+
+Forenza (git + dáta): default bol flipsnutý active→shadow v commite "uha",
+ktorý tiež pridal nezávislý golden validátor. **Dôvod bol methodologicky
+správny**: pôvodný "ready-for-active" verdikt stál na in-sample golden fit
+(prefix matching, starý dataset) — nový režim to odmietol
+(`invalid-golden-data`), lebo tvoje staré počúvanie (7 combos, reviewed by
+KYX) referencovalo dataset skupiny, ktoré po regenerácii už neexistujú.
+
+**Pripravené pre re-aktiváciu** (human-in-the-loop, ~15 min počúvania):
+1. `npm run ranker:golden-template` — čerstvý nereviewovaný template
+   viazaný na AKTUÁLNY dataset (7 combos: house Afro/Deep, techno Acid/
+   Ambient Techno, trap Bouncy/Classic, ambient Drifting; exaktné groupKeys)
+2. `node scripts/render-golden-review-pack.mjs` — 28 WAVov (4 kandidáti ×
+   7 combos) cez reálny engine → `golden-review/` (mimo public/ — bez
+   precache balastu) + LISTENING.md s heuristickým poradím
+3. **TY**: prepočuj, prepíš `order` per combo (indexy, najlepší prvý),
+   `reviewed: true` + meno + dátum
+4. `npm run ranker:train` → nový prísny režim (exaktné groupKeys, golden
+   skupiny s position labels) → verdikt
+5. `npm run ranker:activate` → flip na "active" + typecheck + testy
+
+Poznámka: C2 favorites retraining je DRUHÝ, silnejší signál — preferenčné
+skupiny z tvojich ★ idú priamo do tréningu (GOAL 08); golden holdout ostáva
+nezávislou metrikou.
 
 ## 6. Kvalita, testy, determinizmus
 

@@ -2431,3 +2431,37 @@ re-render benefit kicking in immediately. Estimated work:
 1. **Remaining 60 audit areas** are documented as P2/P3 follow-ups in `PLUGIN_HARDENING_AUDIT.md`. Each item that isn't already covered by a previous campaign's "Defect X.Y" comment (`AudioEngine.ts:516-705` for useContext disposal, `ultina-worklet.entry.js:14-39` for preallocated scratch, `fxeq-node.ts:115` for `onLatencyChange`, etc.) would be a multi-hour investigation on its own.
 2. **`compressor-node.ts` inline guard** is functionally identical to `safeApplyAudioParam` but the cosmetic unification is deferred — risk = 0, benefit = consistency.
 3. **`clampEffectParam`** is applied at the doc-write boundary (`commands.ts`, `schema.ts`, `registry.ts`, `targets.ts`, `mix.ts`) but NOT at the runtime sync boundary (`AudioEngine.syncFxParams` iterates `fx.params` directly). The new helper defends against the spec throw, but out-of-spec values still reach the AudioParam — a focused 2-4 h follow-up could add a `clampBeforeForwarded` wrapper for symmetry with the doc-write path.
+
+
+---
+
+## GOAL 16 (campaign restart) — Ranker activation forensics: shadow is CORRECT, activation path prepared (2026-09-19)
+
+**Goal executed:** User asked "čo tu je zle?" about DEFAULT_RANKER_MODE active→shadow. Forensic answer: NOTHING is broken — the flip was a methodological correction, and the honest path back to "active" is a REDO of the human golden review against the CURRENT dataset. Full activation kit prepared.
+
+**Forensic findings (git + data):**
+
+1. Commit 765e91a activated the ranker (golden gate "ready-for-active"), commit de83647 ("uha") flipped back to shadow AND shipped a stricter regime: independent golden validator (`validate-intent-ranker-golden.mjs` — demands reviewedBy/reviewedAt, EXACT dataset groupKeys per combo, complete candidate permutations; "prefix reuse is unsafe"), trainer hardening (golden groups need exact keys + metadata), plus a new gate test.
+2. Root cause of the demotion: the CURRENT dataset (regenerated Sep 17 21:41, AFTER the review at 21:09) has different group keys (`house:Afro House:ds-…`, styles renamed/capitalized) — the golden review's prefix-bound orders (`house:classic`…) reference groups that NO LONGER EXIST. New trainer verdict: `invalid-golden-data`. Shadow-by-default is therefore the CORRECT conservative state, not a regression.
+3. The user's listening work (7 combos, reviewed by KYX) is archived at `scripts/data/intent-ranker-golden.v1-archive.json`.
+
+**Fixes implemented (activation kit):**
+
+- `scripts/generate-golden-template.mts` + `npm run ranker:golden-template` — fresh UNREVIEWED template bound to CURRENT dataset exact groupKeys; 7 combos spread round-robin across genres (house Afro/Deep, techno Acid/Ambient Techno, trap Bouncy/Classic, ambient Drifting), order pre-filled with the heuristic ranking as the starting point.
+- `render-golden-review-pack.mjs`: output moved OUT of public/ to `golden-review/` at repo root (28 review WAVs ≈ 11 MB must not enter the PWA precache or the served bundle; the precache glob includes *.wav), gitignored; also must run under plain `node` (vite-node rewrites the in-page dynamic imports → `__vite_ssr_dynamic_import__` ReferenceError inside page.evaluate).
+- Stale review folders cleaned; fresh pack verified: 7 combos × 4 candidates, LISTENING.md with heuristic-rank table and per-combo instructions.
+- `intent-async-pipeline.test.ts`: "model unavailable" test now PINS `pf:intent-ranker = active` explicitly (was relying on the code default, which is a product decision that may shift).
+
+**Important files changed:** scripts/{generate-golden-template.mts,render-golden-review-pack.mjs}, package.json (`ranker:golden-template`), .gitignore, tests/intent-async-pipeline.test.ts, INTENT_ENGINE.md (§5.12 + ranker modes row), golden-review/ (gitignored, local only).
+
+**Validation:** golden-template generates a validator-clean unreviewed template bound to 7 existing dataset groups; review pack renders 28 WAVs through the real engine (436 kB avg); intent-area spot regression 41/41; typecheck clean.
+
+**The activation path (human-in-the-loop, ~15 min of listening):**
+
+1. `npm run ranker:golden-template` (already run) → 2. `node scripts/render-golden-review-pack.mjs` (already run — pack in `golden-review/`) → 3. USER: listen to `golden-review/<combo>/cand-*.wav`, reorder `order` arrays in `scripts/data/intent-ranker-golden.json` (indices, best first), set `reviewed: true` + name + date → 4. `npm run ranker:train` (new strict regime: exact groupKeys, position-derived labels, golden groups held out) → 5. read the verdict → 6. `npm run ranker:activate` (flips DEFAULT_RANKER_MODE + typecheck + ranker tests).
+
+**Unresolved issues / risks:**
+
+1. The activation now genuinely depends on HUMAN listening — by design (in-sample golden fit was rejected as an activation signal; the correct bar is an independent holdout).
+2. C2 favorites retraining is a complementary, stronger personalization signal that does NOT require the golden gate — the two paths compose (golden = independent metric, favorites = personal drift).
+3. The stale-format golden archive must not be re-reviewed — dataset keys moved on; always regenerate the template first.

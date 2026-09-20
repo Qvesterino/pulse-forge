@@ -371,6 +371,12 @@ export class AudioEngine {
   private masterGlue: EffectRuntime | null = null;
   /** Native fallback node behind masterGlue (null on the worklet path). */
   private masterGlueNative: DynamicsCompressorNode | null = null;
+  /**
+   * Master tonal tilt (complementary shelf pair, ±tilt/2 at 150 Hz / 5 kHz).
+   * Always in the chain; 0 dB = transparent, so legacy mixes are untouched.
+   */
+  private masterTiltLow: BiquadFilterNode | null = null;
+  private masterTiltHigh: BiquadFilterNode | null = null;
 
   /**
    * Bass Mono stage (FX expansion): M/S matrix whose SIDE branch passes
@@ -804,6 +810,14 @@ export class AudioEngine {
       /* already disconnected */
     }
     this.masterDc = null;
+    try {
+      this.masterTiltLow?.disconnect();
+      this.masterTiltHigh?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterTiltLow = null;
+    this.masterTiltHigh = null;
     this.masterGlue?.dispose();
     this.masterGlue = null;
     this.masterGlueNative = null;
@@ -1093,6 +1107,17 @@ export class AudioEngine {
     this.masterDc.type = "highpass";
     this.masterDc.frequency.value = 12;
     this.masterDc.Q.value = 0.5;
+    // Master tonal tilt (genre color, mix-chain driven): complementary shelf
+    // pair at ±tilt/2 so the spectral energy stays roughly constant. Always
+    // wired; 0 dB config = transparent.
+    this.masterTiltLow = ctx.createBiquadFilter();
+    this.masterTiltLow.type = "lowshelf";
+    this.masterTiltLow.frequency.value = 150;
+    this.masterTiltLow.gain.value = 0;
+    this.masterTiltHigh = ctx.createBiquadFilter();
+    this.masterTiltHigh.type = "highshelf";
+    this.masterTiltHigh.frequency.value = 5000;
+    this.masterTiltHigh.gain.value = 0;
     // Master buss glue (gentle 2:1 RMS leveling, post-M/S pre-clipper).
     // Worklet compressor when DSP is ready; the native DCN mapping below is
     // the degraded fallback (same settings, coarse GR).
@@ -1154,7 +1179,9 @@ export class AudioEngine {
     this.masterTape!.output.connect(this.masterMs!.input);
     this.masterMs!.output.connect(this.masterBassMono!.input);
     this.masterBassMono!.output.connect(this.masterDc!);
-    this.masterDc!.connect(this.masterGlue!.input);
+    this.masterDc!.connect(this.masterTiltLow!);
+    this.masterTiltLow!.connect(this.masterTiltHigh!);
+    this.masterTiltHigh!.connect(this.masterGlue!.input);
     this.masterGlue!.output.connect(this.masterClipper);
     const attached = this.masterLimiterWorklet as EffectRuntime | null;
     if (attached) {
@@ -1225,6 +1252,12 @@ export class AudioEngine {
       this.masterBassMono.sideLP.frequency.setTargetAtTime(freq, now, 0.02);
       this.masterBassMono.sideWet.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.02);
       this.masterBassMono.sideDry.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.02);
+    }
+    if (this.masterTiltLow && this.masterTiltHigh) {
+      // Complementary shelves: positive tilt = dark (more low, less high).
+      const tilt = Math.min(4, Math.max(-4, config.tiltDb ?? 0));
+      this.masterTiltLow.gain.setTargetAtTime(tilt / 2, now, 0.05);
+      this.masterTiltHigh.gain.setTargetAtTime(-tilt / 2, now, 0.05);
     }
     if (this.masterGlue) {
       // Buss glue: mix 1/0 on the worklet path (threshold/ratio stay put so

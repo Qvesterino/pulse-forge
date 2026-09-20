@@ -21,7 +21,9 @@ import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5235;
 const goldenPath = path.join(ROOT, "scripts", "data", "intent-ranker-golden.json");
-const outRoot = path.join(ROOT, "public", "golden-review");
+// OUTSIDE public/ — review WAVs must not enter the PWA precache or the
+// served bundle; the curator opens them from the filesystem.
+const outRoot = path.join(ROOT, "golden-review");
 
 const golden = JSON.parse(readFileSync(goldenPath, "utf8"));
 const dataset = JSON.parse(readFileSync(path.join(ROOT, "scripts", "data", "intent-ranker-dataset.json"), "utf8"));

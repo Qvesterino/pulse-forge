@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { nextSeed, seedAt, jitterControls, pickStyle, throwDice } from "../src/shared/dice";
 import type { IntentControls } from "../src/intent/types";
 import {
+  applyDiceFxForRoll,
   applyDiceFxToDoc,
   clearDiceFx,
   DEFAULT_DICE_LOCKS,
@@ -76,7 +77,9 @@ describe("dice core", () => {
 
 describe("DICE FX cards", () => {
   it("selects a stable card per seed and respects the FX lock", () => {
-    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) => pickDiceFx(value, DEFAULT_DICE_LOCKS));
+    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) =>
+      pickDiceFx(value, DEFAULT_DICE_LOCKS),
+    );
     expect(seed).toBeDefined();
     const card = pickDiceFx(seed!, DEFAULT_DICE_LOCKS);
     expect(card).not.toBeNull();
@@ -93,7 +96,9 @@ describe("DICE FX cards", () => {
     const userFx = { id: "user-eq", type: "eq" as const, bypassed: false, params: { lowGain: 1 } };
     const doc = {
       ...source,
-      tracks: source.tracks.map((track) => (track.id === drum.id ? { ...track, effects: [userFx] } : track)).concat(secondDrum),
+      tracks: source.tracks
+        .map((track) => (track.id === drum.id ? { ...track, effects: [userFx] } : track))
+        .concat(secondDrum),
     };
 
     const first = applyDiceFxToDoc(doc, DICE_FX_CARDS[0], drum.id);
@@ -106,7 +111,9 @@ describe("DICE FX cards", () => {
 
     const replaced = applyDiceFxToDoc(first, DICE_FX_CARDS[1], drum.id);
     expect(replaced.tracks.find((track) => track.id === drum.id)?.effects).toHaveLength(2);
-    expect(replaced.tracks.find((track) => track.id === drum.id)?.effects[1].id).toBe(diceFxInstanceId(DICE_FX_CARDS[1]));
+    expect(replaced.tracks.find((track) => track.id === drum.id)?.effects[1].id).toBe(
+      diceFxInstanceId(DICE_FX_CARDS[1]),
+    );
 
     const cleared = clearDiceFx(replaced, drum.id);
     expect(cleared.tracks.find((track) => track.id === drum.id)?.effects).toEqual([userFx]);
@@ -118,5 +125,30 @@ describe("DICE FX cards", () => {
     const doc = { ...project, tracks: project.tracks.filter((track) => track.kind !== "drum") };
     expect(applyDiceFxToDoc(doc, DICE_FX_CARDS[0])).toBe(doc);
     expect(clearDiceFx(doc)).toBe(doc);
+  });
+
+  it("clears stale dice FX on a clean roll but preserves the chain when FX is locked", () => {
+    const source = createProjectFromTemplate("house");
+    const drum = source.tracks.find((track) => track.kind === "drum");
+    expect(drum?.kind).toBe("drum");
+    if (!drum || drum.kind !== "drum") return;
+    const userFx = { id: "user-eq", type: "eq" as const, bypassed: false, params: { lowGain: 1 } };
+    const withUserFx = {
+      ...source,
+      tracks: source.tracks.map((track) => (track.id === drum.id ? { ...track, effects: [userFx] } : track)),
+    };
+    const withDiceFx = applyDiceFxToDoc(withUserFx, DICE_FX_CARDS[0], drum.id);
+    const cleanSeed = Array.from({ length: 1000 }, (_, i) => `clean-${i}`).find(
+      (seed) => pickDiceFx(seed, DEFAULT_DICE_LOCKS) === null,
+    );
+    const fxSeed = Array.from({ length: 1000 }, (_, i) => `fx-${i}`).find(
+      (seed) => pickDiceFx(seed, DEFAULT_DICE_LOCKS) !== null,
+    );
+    expect(cleanSeed).toBeDefined();
+    expect(fxSeed).toBeDefined();
+
+    const clean = applyDiceFxForRoll(withDiceFx, cleanSeed!, DEFAULT_DICE_LOCKS, drum.id);
+    expect(clean.tracks.find((track) => track.id === drum.id)?.effects).toEqual([userFx]);
+    expect(applyDiceFxForRoll(withDiceFx, fxSeed!, { ...DEFAULT_DICE_LOCKS, fx: true }, drum.id)).toBe(withDiceFx);
   });
 });

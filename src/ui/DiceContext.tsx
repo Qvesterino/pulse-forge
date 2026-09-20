@@ -23,8 +23,7 @@ import {
   diceCurrentSeed,
   jitteredIntentForSeed,
   pickDiceFx,
-  applyDiceFxToDoc,
-  clearDiceFx,
+  applyDiceFxForRoll,
   type DiceSession,
   type DiceLocks,
   type DiceMode,
@@ -575,7 +574,6 @@ export function DiceProvider({
   const apply = useCallback(
     (services: Services, currentDoc: ProjectDocument) => {
       const seed = diceCurrentSeed(session);
-      const fxCard = target === "drums" && session.mode === "full" ? pickDiceFx(seed, session.locks) : null;
       const jittered = jitteredIntentForSeed(session.intent, seed, session.jitter);
       if (target === "melodic") {
         // MELODIC apply: write the seeded phrase into the active pattern for
@@ -641,11 +639,7 @@ export function DiceProvider({
         };
         const generated = generatePatternCommand(currentDoc, opts).execute(currentDoc);
         const drumTrackId = currentDoc.tracks.find((track) => track.kind === "drum")?.id;
-        const withDiceFx = session.locks.fx
-          ? generated
-          : fxCard
-            ? applyDiceFxToDoc(generated, fxCard, drumTrackId)
-            : clearDiceFx(generated, drumTrackId);
+        const withDiceFx = applyDiceFxForRoll(generated, seed, session.locks, drumTrackId);
         services.store.execute(snapshot("diceFull", `Dice FULL ${seed}`, currentDoc, withDiceFx));
         return;
       }
@@ -688,9 +682,7 @@ export function DiceProvider({
         activePatternId: lockedPattern.id,
       };
       const drumTrackId = nextDoc.tracks.find((track) => track.kind === "drum")?.id;
-      if (!session.locks.fx) {
-        nextDoc = fxCard ? applyDiceFxToDoc(nextDoc, fxCard, drumTrackId) : clearDiceFx(nextDoc, drumTrackId);
-      }
+      nextDoc = applyDiceFxForRoll(nextDoc, seed, session.locks, drumTrackId);
       services.store.execute(snapshot("diceFullLocked", `Dice FULL ${seed}`, currentDoc, nextDoc));
     },
     [session, target],

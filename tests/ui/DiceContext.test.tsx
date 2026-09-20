@@ -107,7 +107,9 @@ describe("DiceContext", () => {
 
   it("previews and commits a deterministic FX card in the same undoable FULL roll", () => {
     const doc = createProjectFromTemplate("house");
-    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) => pickDiceFx(value, DEFAULT_DICE_LOCKS));
+    const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) =>
+      pickDiceFx(value, DEFAULT_DICE_LOCKS),
+    );
     expect(seed).toBeDefined();
     const card = pickDiceFx(seed!, DEFAULT_DICE_LOCKS)!;
     const services = mockServices(doc);
@@ -117,8 +119,12 @@ describe("DiceContext", () => {
       return (
         <div>
           <div data-testid="fx-card">{dice.preview.fxCard?.key ?? "clean"}</div>
-          <button type="button" onClick={() => dice.setSeed(seed!)}>setFxSeed</button>
-          <button type="button" onClick={() => dice.apply(services, doc)}>apply</button>
+          <button type="button" onClick={() => dice.setSeed(seed!)}>
+            setFxSeed
+          </button>
+          <button type="button" onClick={() => dice.apply(services, doc)}>
+            apply
+          </button>
         </div>
       );
     }

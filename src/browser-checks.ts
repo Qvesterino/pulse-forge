@@ -1326,7 +1326,8 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     };
     const dryOnset = await renderPath(false);
     const sendOnset = await renderPath(true);
-    const onsetSkewSamples = dryOnset >= 0 && sendOnset >= 0 ? Math.abs(dryOnset - sendOnset) : Number.POSITIVE_INFINITY;
+    const onsetSkewSamples =
+      dryOnset >= 0 && sendOnset >= 0 ? Math.abs(dryOnset - sendOnset) : Number.POSITIVE_INFINITY;
     check(
       "pdc: grouped return send aligns to the dry group path (within 128 samples)",
       onsetSkewSamples <= 128,

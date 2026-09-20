@@ -55,4 +55,13 @@ describe("DiceTray", () => {
       setPadKeysArmed(false);
     }
   });
+
+  it("exposes an accessible FX lock with a truthful pressed state", () => {
+    const { container } = renderTray();
+    const lock = container.querySelector<HTMLButtonElement>('button[title^="Lock FX"]');
+    expect(lock).not.toBeNull();
+    expect(lock).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(lock!);
+    expect(lock).toHaveAttribute("aria-pressed", "true");
+  });
 });

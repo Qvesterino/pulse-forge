@@ -29,6 +29,7 @@
     "prior:favorites": "vite-node scripts/export-favorites-training.mts",
     "favorites:retrain": "vite-node scripts/export-favorites-training.mts",
     "semantic:fetch": "node scripts/fetch-semantic-model.mjs",
+    "ranker:golden-template": "vite-node scripts/generate-golden-template.mts",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",
     "ranker:activate": "node scripts/activate-intent-ranker.mjs",
     "test:browser:production": "node scripts/verify-production-browser.mjs",

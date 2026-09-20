@@ -460,28 +460,28 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     level: -6,
   }),
 
-/* ────────────── FX Expansion (beatmaking pass) ────────────── */
+  /* ────────────── FX Expansion (beatmaking pass) ────────────── */
 
-preset("ringmod-steel", "Steel Perc", "ringMod", { frequency: 830, feedback: 0, mix: 1 }),
-preset("ringmod-robot", "Robot Ring", "ringMod", { frequency: 95, feedback: 0.4, mix: 1 }),
-preset("ringmod-arc", "Arc Ring", "ringMod", { frequency: 1400, feedback: 0.7, mix: 0.8 }),
+  preset("ringmod-steel", "Steel Perc", "ringMod", { frequency: 830, feedback: 0, mix: 1 }),
+  preset("ringmod-robot", "Robot Ring", "ringMod", { frequency: 95, feedback: 0.4, mix: 1 }),
+  preset("ringmod-arc", "Arc Ring", "ringMod", { frequency: 1400, feedback: 0.7, mix: 0.8 }),
 
-stepPreset(
-  "tapestop-8th",
-  "Stop 1/2 Bar",
-  "tapeStop",
-  { engaged: 1, time: 0.6, curve: 0, spin: 0, mix: 1 },
-  [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-),
-preset("tapestop-slow", "Slow Stop", "tapeStop", { engaged: 1, time: 4, curve: 0, spin: 0, mix: 1 }),
-preset("tapest-op-rev", "Rev Spin", "tapeStop", { engaged: 1, time: 2, curve: 1, spin: 1, mix: 1 }),
+  stepPreset(
+    "tapestop-8th",
+    "Stop 1/2 Bar",
+    "tapeStop",
+    { engaged: 1, time: 0.6, curve: 0, spin: 0, mix: 1 },
+    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  ),
+  preset("tapestop-slow", "Slow Stop", "tapeStop", { engaged: 1, time: 4, curve: 0, spin: 0, mix: 1 }),
+  preset("tapest-op-rev", "Rev Spin", "tapeStop", { engaged: 1, time: 2, curve: 1, spin: 1, mix: 1 }),
 
-preset("freqshift-sub", "Sub Drift", "freqShifter", { shift: -38, mix: 1 }),
-preset("freqshift-metal", "Metal Air", "freqShifter", { shift: 620, mix: 0.7 }),
+  preset("freqshift-sub", "Sub Drift", "freqShifter", { shift: -38, mix: 1 }),
+  preset("freqshift-metal", "Metal Air", "freqShifter", { shift: 620, mix: 0.7 }),
 
-preset("pitchshift-down", "Chop −3", "pitchShift", { semitones: -3, fine: 0, grainMs: 45, width: 0.6, mix: 1 }),
-preset("pitchshift-up", "Chop +4", "pitchShift", { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 }),
-preset("pitchshift-wide", "Wide Detune", "pitchShift", { semitones: 0, fine: 12, grainMs: 70, width: 1, mix: 0.5 }),
+  preset("pitchshift-down", "Chop −3", "pitchShift", { semitones: -3, fine: 0, grainMs: 45, width: 0.6, mix: 1 }),
+  preset("pitchshift-up", "Chop +4", "pitchShift", { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 }),
+  preset("pitchshift-wide", "Wide Detune", "pitchShift", { semitones: 0, fine: 12, grainMs: 70, width: 1, mix: 0.5 }),
 
   // Vinyl Suite — the presets lean on the individual module controls so they
   // are audibly distinct (AGE alone scales everything uniformly).
@@ -609,44 +609,43 @@ preset("pitchshift-wide", "Wide Detune", "pitchShift", { semitones: 0, fine: 12,
     mix: 1,
   }),
 
+  preset("multitap-quarter", "Quarters", "multiTapDelay", {
+    taps: 3,
+    t1Div: 2,
+    t2Div: 4,
+    t3Div: 6,
+    t4Div: 0,
+    spread: 0.8,
+    feedback: 0.25,
+    tone: 5000,
+    mix: 0.35,
+  }),
+  preset("multitap-wide", "Wide Eighths", "multiTapDelay", {
+    taps: 4,
+    t1Div: 4,
+    t2Div: 4,
+    t3Div: 4,
+    t4Div: 2,
+    spread: 1,
+    feedback: 0.35,
+    tone: 4000,
+    mix: 0.3,
+  }),
 
-preset("multitap-quarter", "Quarters", "multiTapDelay", {
-  taps: 3,
-  t1Div: 2,
-  t2Div: 4,
-  t3Div: 6,
-  t4Div: 0,
-  spread: 0.8,
-  feedback: 0.25,
-  tone: 5000,
-  mix: 0.35,
-}),
-preset("multitap-wide", "Wide Eighths", "multiTapDelay", {
-  taps: 4,
-  t1Div: 4,
-  t2Div: 4,
-  t3Div: 4,
-  t4Div: 2,
-  spread: 1,
-  feedback: 0.35,
-  tone: 4000,
-  mix: 0.3,
-}),
-
-stepPreset(
-  "beatmangler-halftime",
-  "Halftime",
-  "beatMangler",
-  { playMode: 0, repeatFill: 0, mix: 1 },
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-),
-stepPreset(
-  "beatmangler-skip",
-  "Skip 16ths",
-  "beatMangler",
-  { playMode: 0, repeatFill: 0, mix: 1 },
-  [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
-),
+  stepPreset(
+    "beatmangler-halftime",
+    "Halftime",
+    "beatMangler",
+    { playMode: 0, repeatFill: 0, mix: 1 },
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ),
+  stepPreset(
+    "beatmangler-skip",
+    "Skip 16ths",
+    "beatMangler",
+    { playMode: 0, repeatFill: 0, mix: 1 },
+    [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
+  ),
 ];
 
 export function presetsForEffect(type: EffectType): EffectPreset[] {

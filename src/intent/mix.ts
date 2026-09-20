@@ -40,6 +40,13 @@ export interface MixProfile {
   decisions: MixDecision[];
   /** Human-readable lines for status/diagnostics. */
   summary: string[];
+  /**
+   * Master tilt in dB for the master EQ shelves (sound-quality pass) —
+   * undefined = leave the document's master tilt untouched. Emitted only for
+   * the character genres (drill/phonk/jersey/dnb), so legacy mixes keep
+   * their exact sound.
+   */
+  masterTiltDb?: number;
 }
 
 export interface MixOverrides {
@@ -65,6 +72,37 @@ const moodTone = (intent: IntentSpec): MixOverrides["tone"] | null => {
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 /**
+ * Resolved tone → master tilt (dB, sound-quality pass). Positive = dark,
+ * negative = bright — the master shelves nudge the WHOLE mix (drums
+ * included, which per-track tone EQ skips) toward the requested color.
+ * Modest by design: the shelves are complementary (±tilt/2), so ±2 dB here
+ * is a gentle lean, not an EQ slam.
+ */
+const TONE_MASTER_TILT_DB: Record<"dark" | "bright" | "warm" | "cold", number> = {
+  dark: 2,
+  warm: 1.5,
+  bright: -1.5,
+  cold: -1,
+};
+
+/** Genre → tone default (kept in one place with the mix character above). */
+const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_MASTER_TILT_DB>> = {
+  drill: "dark",
+  phonk: "warm",
+  jersey: "bright",
+};
+
+/**
+ * Master tilt a genre's SONG should carry (consumed by applySongCommand).
+ * Character genres get their tone default's tilt; legacy genres return
+ * undefined = the document's master tilt is left untouched.
+ */
+export function genreMasterTiltDb(genre: IntentSpec["genre"]): number | undefined {
+  const tone = GENRE_TONE_DEFAULT[genre];
+  return tone === undefined ? undefined : TONE_MASTER_TILT_DB[tone];
+}
+
+/**
  * Deterministic intent → mix profile. Only decisions the intent actually
  * calls for: tone (mood/override), punch (energy/punch override), space
  * (genre/mood/reverb override), pump (house/techno energy or override).
@@ -75,14 +113,10 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
   // the mood asked for a tone/punch, the genre itself defines the color —
   // drill reads dark and driven, phonk warm (tape-ish), jersey bright and
   // club-pumping; dnb carries no tone default (its splits run sub-heavy AND
-  // top-bright) but always punches.
-  const CHARACTER_TONE: Partial<Record<typeof genre, NonNullable<MixOverrides["tone"]>>> = {
-    drill: "dark",
-    phonk: "warm",
-    jersey: "bright",
-  };
+  // top-bright) but always punches. GENRE_TONE_DEFAULT (above) is the single
+  // source for the tone defaults AND the master tilt mapping.
   const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
-  const tone = overrides.tone ?? moodTone(intent) ?? (CHARACTER_TONE[genre] ?? null);
+  const tone = overrides.tone ?? moodTone(intent) ?? (GENRE_TONE_DEFAULT[genre] ?? null);
   const punch: MixOverrides["punch"] | null =
     overrides.punch ??
     (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
@@ -186,7 +220,17 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
     summary.push(`pump: sidechain ${Math.round(amount * 100)}%`);
   }
 
-  return { decisions, summary };
+  // Master tilt (sound-quality pass): ONLY for the character genres, so a
+  // "dark techno" or "warm ambient" never changes the master sound of
+  // existing material. Follows the RESOLVED tone — an explicit override
+  // ("bright drill") steers the tilt away from the genre default.
+  let masterTiltDb: number | undefined;
+  if (characterGenre && tone !== null && tone in TONE_MASTER_TILT_DB) {
+    masterTiltDb = TONE_MASTER_TILT_DB[tone as keyof typeof TONE_MASTER_TILT_DB];
+    summary.push(`master tilt ${masterTiltDb > 0 ? "+" : ""}${masterTiltDb} dB`);
+  }
+
+  return { decisions, summary, masterTiltDb };
 }
 
 /** Resolve a mix target to concrete track ids in THIS document. */
@@ -247,7 +291,17 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
     }
   }
 
-  if (updates === 0) throw new Error("Mix profile changed nothing — the mix already matches");
+  if (updates === 0 && profile.masterTiltDb === undefined)
+    throw new Error("Mix profile changed nothing — the mix already matches");
+
+  // Master tilt rides the same undoable snapshot as the track effects.
+  if (profile.masterTiltDb !== undefined && cursor.master.tiltDb !== profile.masterTiltDb) {
+    cursor = {
+      ...cursor,
+      master: { ...cursor.master, tiltDb: profile.masterTiltDb },
+    };
+    labelParts.push("master tilt");
+  }
 
   return snapshot("applyMixIntent", `Mix: ${labelParts.join(", ") || `${updates} updates`}`, doc, cursor);
 }

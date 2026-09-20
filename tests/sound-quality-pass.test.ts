@@ -12,7 +12,7 @@ import { applyGenreKitToDoc, GENRE_KIT_SWAPS } from "../src/intent/genre-kit";
 import { applySongCommand, buildSong, planSongForm } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { parseIntentText } from "../src/intent/text-parser";
-import { planMixProfile } from "../src/intent/mix";
+import { applyMixIntent, genreMasterTiltDb, planMixProfile } from "../src/intent/mix";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { GROOVE_LIBRARY, getGroovesForGenre } from "../src/ai/grooves";
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../src/ai/types";
@@ -428,5 +428,73 @@ describe("jersey + dnb genre plumbing (wave 2)", () => {
     expect(dnbPads[9].assetId).toBe("factory.hat.pedal");
 
     expect(applyGenreKitToDoc(dnb, "dnb")).toBe(dnb);
+  });
+});
+
+describe("master tilt EQ consumption (sound-quality wave 3)", () => {
+  it("mix profile emits master tilt ONLY for character genres, following the resolved tone", () => {
+    expect(planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" })).masterTiltDb).toBe(2); // dark
+    expect(planMixProfile(normalizeIntent({ genre: "phonk", seed: "sq" })).masterTiltDb).toBe(1.5); // warm
+    expect(planMixProfile(normalizeIntent({ genre: "jersey", seed: "sq" })).masterTiltDb).toBe(-1.5); // bright
+    // dnb has no tone default → no tilt unless the user asks for a tone
+    expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" })).masterTiltDb).toBeUndefined();
+    expect(
+      planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq", mood: "dark" })).masterTiltDb,
+    ).toBe(2);
+
+    // Legacy gate: even an explicit mood word never tilts legacy genres'
+    // master — their sound is pinned by rule 50.
+    expect(
+      planMixProfile(normalizeIntent({ genre: "house", seed: "sq", mood: "dark" })).masterTiltDb,
+    ).toBeUndefined();
+
+    // An explicit tone override steers a character genre's tilt.
+    expect(
+      planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" }), { tone: "bright" }).masterTiltDb,
+    ).toBe(-1.5);
+  });
+
+  it("genreMasterTiltDb agrees with the mix tone defaults", () => {
+    expect(genreMasterTiltDb("drill")).toBe(2);
+    expect(genreMasterTiltDb("phonk")).toBe(1.5);
+    expect(genreMasterTiltDb("jersey")).toBe(-1.5);
+    expect(genreMasterTiltDb("dnb")).toBeUndefined();
+    for (const legacy of ["house", "techno", "trap", "ambient"] as const) {
+      expect(genreMasterTiltDb(legacy)).toBeUndefined();
+    }
+  });
+
+  it("applyMixIntent writes the tilt into doc.master inside the undoable snapshot", () => {
+    const doc = testDoc();
+    const profile = planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" }));
+    const command = applyMixIntent(doc, profile);
+    const next = command.execute(doc);
+    expect(next.master.tiltDb).toBe(2);
+    expect(command.undo(doc)).toBe(doc);
+  });
+
+  it("applySongCommand carries the genre tilt; legacy genres leave it untouched", () => {
+    const drill = applySongCommand(testDoc(), fakeBuild("drill", "a", 140)).execute(testDoc());
+    expect(drill.master.tiltDb).toBe(2);
+
+    // house song: whatever the user had (even a custom tilt) survives
+    const custom = { ...testDoc(), master: { ...testDoc().master, tiltDb: -2.5 } };
+    const house = applySongCommand(custom, fakeBuild("house", "a", 124)).execute(custom);
+    expect(house.master.tiltDb).toBe(-2.5);
+  });
+
+  it("engine source pins: shelf pair wired DC→low→high→glue, clamped ±4 in applyMasterConfig", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+    expect(source).toMatch(/masterTiltLow\.type = "lowshelf"/);
+    expect(source).toMatch(/masterTiltLow\.frequency\.value = 150/);
+    expect(source).toMatch(/masterTiltHigh\.type = "highshelf"/);
+    expect(source).toMatch(/masterTiltHigh\.frequency\.value = 5000/);
+    // Complementary wiring order (tone shapes the glue/limiter detection).
+    const wiring = source.indexOf("this.masterDc!.connect(this.masterTiltLow!)");
+    const glueIn = source.indexOf("this.masterTiltHigh!.connect(this.masterGlue!.input)");
+    expect(wiring).toBeGreaterThan(0);
+    expect(glueIn).toBeGreaterThan(wiring);
+    // Clamp keeps a bad document from slamming the master.
+    expect(source).toMatch(/Math\.min\(4, Math\.max\(-4, config\.tiltDb \?\? 0\)\)/);
   });
 });
