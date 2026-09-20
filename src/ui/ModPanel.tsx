@@ -55,7 +55,7 @@ import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
 import { StepGridEditor } from "./StepGridEditor";
 import { newModulatorSeed, stealGrooveIntoPattern } from "../commands/commands";
-import { GroovePoolRepository, type GroovePoolEntry } from "../persistence/GroovePoolRepository";
+import type { GroovePoolEntry } from "../persistence/GroovePoolRepository";
 import { formatMacroValue } from "./MacroPerformanceBar";
 
 const LFO_WAVES: { value: LfoWave; label: string }[] = [

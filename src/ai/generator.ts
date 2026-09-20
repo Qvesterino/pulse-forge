@@ -23,7 +23,12 @@ export function resolveGroove(genre: GenerateOptions["genre"], style?: string, r
   }
 
   // Pick a random groove from the genre (deterministic if rand provided)
-  const grooves = getGroovesForGenre(genre);
+  let grooves = getGroovesForGenre(genre);
+  if (grooves.length === 0) {
+    // Fallback for unknown / mistyped genres — never let the indexed lookup
+    // dereference `undefined.id` and throw into the generator pipeline.
+    grooves = getGroovesForGenre("house");
+  }
   const idx = rand ? Math.floor(rand() * grooves.length) : 0;
   return grooves[idx];
 }
@@ -72,6 +77,13 @@ function isDrumPadLocked(padIndex: number, padNames: readonly string[] | undefin
 export function generatePattern(doc: ProjectDocument, options: GenerateOptions, diceLocks?: DiceLocks): Pattern {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
+
+  // Defensive: clamp stepCount to a finite positive value so downstream
+  // array allocations (new Array(stepCount)) never throw on negative/NaN input.
+  const safeStepCount =
+    Number.isFinite(options.stepCount) && options.stepCount > 0
+      ? Math.min(256, Math.floor(options.stepCount))
+      : 16;
 
   // Groove choice and every generation subsystem receive independent streams.
   const groove = resolveGrooveForGeneration(doc, options);
@@ -139,10 +151,11 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
           : groove.swing;
 
   // Generate drum pattern
+  const safeOptions = { ...options, stepCount: safeStepCount };
   const { rows: rawRows, meta } = drumsEnabled
     ? generateDrumPattern(
         groove,
-        options,
+        safeOptions,
         drumRand,
         {
           variation: drumVariationRand,
@@ -235,18 +248,18 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   const pattern: Pattern = {
     id: uid("pattern"),
     name: `${groove.genre} - ${groove.name}`,
-    stepCount: options.stepCount,
+    stepCount: safeStepCount,
     rows,
     notes: notesRecord,
     stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
-    phrasePlan: buildPhrasePlan(options.stepCount),
+    phrasePlan: buildPhrasePlan(safeStepCount),
   };
 
   const outputContentHash = contentHash(canonicalizePattern(doc, pattern));
   const padRoles = Array.from({ length: rawRows.length }, (_, index) => inferPadRole(padNames?.[index], index));
-  const drumQuality = measureDrumQuality(groove, rawRows, padRoles, options.stepCount);
-  const styleGate = evaluateStyleDistance(groove, rawRows, options.stepCount);
-  const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), options.stepCount, effectiveKey);
+  const drumQuality = measureDrumQuality(groove, rawRows, padRoles, safeStepCount);
+  const styleGate = evaluateStyleDistance(groove, rawRows, safeStepCount);
+  const melodicQuality = measureMelodicQuality(Object.values(notesRecord).flat(), safeStepCount, effectiveKey);
   return {
     ...pattern,
     generation: {

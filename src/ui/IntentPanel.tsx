@@ -3,8 +3,12 @@ import { useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseProductionIntent } from "../intent/production";
-import { applyProductionIntentCommand } from "../commands/commands";
-import { applyGenerationResultCommand } from "../commands/commands";
+import { parseSectionRequests, type SectionParse } from "../intent/sections";
+import {
+  applyGenerationResultCommand,
+  applyGenerationResultWithFxCommand,
+  applyProductionIntentCommand,
+} from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { buildSong, applySongCommand, reviseSection, replacePatternInPlaceCommand } from "../intent/song";
 import { applyMixIntent, planMixProfile } from "../intent/mix";
@@ -171,9 +175,17 @@ export function IntentPanel() {
     // Production intents (master doc §4.3): "make the bass deeper" tweaks the
     // EXISTING track's sound through effects — one undoable command group —
     // instead of generating a new pattern. Detection is comparative/
-    // imperative phrasing, so "dark techno" still generates.
+    // imperative phrasing, so "dark techno" still generates. A GENRE signal
+    // (or section vocabulary) flips the same FX words into generation-time
+    // FX instead: "wobbly drill" GENERATES with the mangler, it doesn't
+    // re-tune the old pattern.
     const production = parseProductionIntent(text);
-    if (production) {
+    const sectionParse = parseSectionRequests(text);
+    const remainingFxText = sectionParse?.remainingText ?? text;
+    const genreSignal = Boolean(
+      parsed?.input.genre || parsed?.detected.some((chip) => chip.startsWith("♪")),
+    );
+    if (production && !genreSignal && !sectionParse) {
       try {
         const cmd = applyProductionIntentCommand(doc, production);
         services.store.execute(cmd);
@@ -184,10 +196,22 @@ export function IntentPanel() {
       setBusy(false);
       return;
     }
+    // Section vocabulary in the sentence → the SONG path directly
+    // ("wobbly drill with a 16-bar intro and a vinyl break" is a song
+    // request, not a one-bar pattern).
+    if (sectionParse) {
+      setBusy(false);
+      await runSongBuild(sectionParse);
+      return;
+    }
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
     const intentInput = parsed?.input ?? {};
+    // Wave 1 — FX words remaining after section parsing ride WITH the
+    // generation ("wobbly drill"): candidates carry them, USE applies
+    // pattern + FX as one step.
+    const globalFx = genreSignal ? parseProductionIntent(remainingFxText) : null;
     // T1 krok 2 semantic layer: when the keyword parse is WEAK (no genre
     // word, no artist preset), ask the embedding model for the nearest
     // curated reference. Confident keyword parses skip it — zero latency
@@ -206,6 +230,7 @@ export function IntentPanel() {
     } else {
       setSemanticChip(null);
     }
+    if (globalFx) finalInput = { ...finalInput, fx: globalFx };
     await runGeneration(finalInput, controller);
   };
 
@@ -241,11 +266,18 @@ export function IntentPanel() {
     stopAudition();
     setPlayingIndex(null);
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
-    services.store.execute(applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined));
+    const fx = picked.plan.intent.fx ?? null;
+    services.store.execute(
+      fx
+        ? applyGenerationResultWithFxCommand(doc, picked, picked.plan.intent.genre || undefined)
+        : applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined),
+    );
     setBankResult(null);
     buffersRef.current = new Map();
     setStatus(
-      candidate ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})` : `✓ pattern applied`,
+      candidate
+        ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})${fx ? " + FX" : ""}`
+        : `✓ pattern applied${fx ? " + FX" : ""}`,
     );
     // A3: the applied beat is the share moment — reveal Publish/Video/Copy.
     setJustApplied(true);
@@ -296,10 +328,11 @@ export function IntentPanel() {
   };
 
   // A2 song builder: one intent → full arranged song (one undo step).
+  // Wave 2+3 — the sentence's section vocabulary shapes the form ("16-bar
+  // intro", "chorus twice", "no break") and scopes FX ("vinyl break"); the
+  // intent's remaining FX words become global song chains.
   const [songBusy, setSongBusy] = useState(false);
-  const generateSong = async () => {
-    if (!text.trim() || songBusy || busy) return;
-    setSongBusy(true);
+  const runSongBuild = async (sections?: SectionParse) => {
     setError(null);
     setStatus(null);
     setBankResult(null);
@@ -307,24 +340,32 @@ export function IntentPanel() {
     stopAudition();
     try {
       const intentInput = parsed?.input ?? {};
+      const globalFx = parseProductionIntent(sections?.remainingText ?? text);
       const build = await buildSong(
         doc,
         {
           ...intentInput,
+          ...(globalFx ? { fx: globalFx } : {}),
           seed: `song-${Date.now()}`,
           roles: intentInput.roles ?? ["drums", "bass", "chords", "lead"],
         },
         {
+          ...(sections ? { sections } : {}),
           onProgress: (done, label, total) => setStatus(`♪ building song — ${label} (${done}/${total})`),
         },
       );
       services.store.execute(applySongCommand(doc, build));
-      setStatus(`✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars (one undo step)`);
+      const fxNote = build.baseIntent.fx || build.sections.some((s) => s.fx) ? " + FX" : "";
+      setStatus(`✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars${fxNote} (one undo step)`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSongBusy(false);
     }
+  };
+  const generateSong = async () => {
+    if (!text.trim() || songBusy || busy) return;
+    setSongBusy(true);
+    await runSongBuild(parseSectionRequests(text) ?? undefined);
+    setSongBusy(false);
   };
 
   // D3 unified bar: route the text to the right executor — arrange ops,

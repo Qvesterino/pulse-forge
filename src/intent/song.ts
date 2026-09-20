@@ -30,8 +30,9 @@ import {
   trackEffectsOf,
 } from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
-import type { EffectType, IntentInput, IntentRole, IntentSpec } from "./types";
+import type { IntentInput, IntentRole, IntentSpec } from "./types";
 import { planProductionActions, resolveProductionTargets, type ProductionAction, type ProductionIntent } from "./production";
+import { applySectionRequests, type SectionParse } from "./sections";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -793,6 +794,94 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
  * Plan the song form for an intent — deterministic (same intent ⇒ same form).
  * Section sliders are the BASE intent shifted by role deltas and clamped.
  */
+/**
+ * Wave 3 — per-role sound dramaturgy: sections don't just PLAY differently
+ * (instrumentation, energy), they SOUND differently. Each recipe installs
+ * its effect on the role's track and scopes it to the section via
+ * sceneAutomation: `gated` holds a param at `active` inside the section and
+ * `neutral` everywhere else (vinyl only in the break); `ramps` sweep a
+ * param across the section's bars (the build's filter riser, the outro's
+ * filter closing). Lanes are written for EVERY generated scene — the
+ * scheduler applies a lane only while its scene is active, so a lane
+ * missing from a scene would leak the previous section's value into it.
+ */
+interface SectionFxRecipe {
+  type: EffectType;
+  targetRole: "drums" | "bass" | "chords" | "lead";
+  /** Static params folded over the effect defaults at install time. */
+  params?: Record<string, number>;
+  gated?: { paramId: string; active: number; neutral: number }[];
+  ramps?: { paramId: string; from: number; to: number; neutral: number }[];
+}
+
+const SECTION_FX_RECIPES: Partial<Record<SceneRole, SectionFxRecipe[]>> = {
+  intro: [
+    // Muffled canvas opening up across the intro.
+    {
+      type: "svFilter",
+      targetRole: "chords",
+      params: { mode: 0, resonance: 0.2 },
+      ramps: [{ paramId: "cutoff", from: 600, to: 16000, neutral: 16000 }],
+    },
+  ],
+  build: [
+    // The riser — music closing, then snapping open at the drop.
+    {
+      type: "svFilter",
+      targetRole: "chords",
+      params: { mode: 0, resonance: 0.25 },
+      ramps: [{ paramId: "cutoff", from: 300, to: 16000, neutral: 16000 }],
+    },
+    {
+      type: "svFilter",
+      targetRole: "bass",
+      params: { mode: 0 },
+      ramps: [{ paramId: "cutoff", from: 200, to: 9000, neutral: 16000 }],
+    },
+  ],
+  drop: [
+    {
+      type: "transient",
+      targetRole: "drums",
+      params: { attack: 0.65, sustain: -0.25 },
+      gated: [{ paramId: "mix", active: 1, neutral: 0 }],
+    },
+  ],
+  chorus: [
+    {
+      type: "transient",
+      targetRole: "drums",
+      params: { attack: 0.6, sustain: -0.2 },
+      gated: [{ paramId: "mix", active: 1, neutral: 0 }],
+    },
+  ],
+  bridge: [
+    {
+      type: "haasWidener",
+      targetRole: "chords",
+      params: { delayMs: 14 },
+      gated: [{ paramId: "width", active: 0.6, neutral: 0 }],
+    },
+  ],
+  break: [
+    {
+      type: "vinyl",
+      targetRole: "drums",
+      params: { amount: 0.7, crackle: 0.5, wow: 0.6, year: 0.7 },
+      gated: [{ paramId: "mix", active: 1, neutral: 0 }],
+    },
+  ],
+  outro: [
+    // Everything slowly closing down.
+    {
+      type: "svFilter",
+      targetRole: "chords",
+      params: { mode: 0 },
+      ramps: [{ paramId: "cutoff", from: 16000, to: 500, neutral: 16000 }],
+    },
+  ],
+};
+
 export function planSongForm(intent: IntentSpec, overrides?: SectionParse): {
   genre: IntentSpec["genre"];
   sections: SongSectionSpec[];
@@ -1010,6 +1099,132 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     bar += section.bars;
   }
 
+  // ── Section FX (wave 3) ───────────────────────────────────────────────
+  // Three FX sources, in increasing scope: per-role recipes (the form's
+  // sound dramaturgy), section-scoped requests ("vinyl break") and the
+  // intent's GLOBAL fx ("wobbly drill") as always-on static chains. Section
+  // FX are gated to their section with sceneAutomation lanes written for
+  // EVERY generated scene (see SectionFxRecipe). FX is garnish — any
+  // unresolvable track or param skips silently, never kills the song.
+  const fxLanes: ProjectDocument["sceneAutomation"] = [];
+  const touchedFxIds = new Set<string>();
+
+  const laneFx = (
+    trackId: string,
+    fxId: string,
+    paramId: string,
+    neutral: number,
+    targetSection: SongBuildSection,
+    inner: { active: number } | { from: number; to: number },
+  ): void => {
+    const target = { kind: "fxParam" as const, trackId, fxId, paramId };
+    for (const section of build.sections) {
+      const span = section.bars * BAR_TICKS;
+      const points =
+        section === targetSection
+          ? "active" in inner
+            ? [
+                { tick: 0, value: inner.active },
+                { tick: span, value: inner.active },
+              ]
+            : [
+                { tick: 0, value: inner.from },
+                { tick: span, value: inner.to },
+              ]
+          : [{ tick: 0, value: neutral }];
+      fxLanes.push({
+        id: `sceneAuto-${fxId}-${paramId}-${section.pattern.id}`,
+        sceneId: `scene-${section.pattern.id}`,
+        target,
+        points,
+      });
+    }
+  };
+
+  const foldAction = (action: ProductionAction): string | null => {
+    try {
+      const existing = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
+      if (!existing) {
+        const add = addEffect(next, action.trackId, action.type);
+        next = add.execute(next);
+      }
+      const instance = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
+      if (!instance) return null;
+      for (const [paramId, value] of Object.entries(action.params)) {
+        next = setEffectParam(next, action.trackId, instance.id, paramId, value).execute(next);
+      }
+      if (action.volumeSteps || action.pitchSteps) {
+        next = setBeatManglerSteps(next, action.trackId, instance.id, {
+          volume: action.volumeSteps,
+          pitch: action.pitchSteps,
+        }).execute(next);
+      }
+      return instance.id;
+    } catch {
+      return null;
+    }
+  };
+
+  for (const section of build.sections) {
+    // a) scoped request — "vinyl break": chain installed, mix gated to the
+    //    section (neutral 0 = dry everywhere else).
+    if (section.fx) {
+      try {
+        const { actions } = planProductionActions(next, section.fx);
+        for (const action of actions) {
+          const fxId = foldAction(action);
+          if (!fxId) continue;
+          touchedFxIds.add(fxId);
+          const active = action.params.mix ?? 1;
+          next = setEffectParam(next, action.trackId, fxId, "mix", 0).execute(next);
+          laneFx(action.trackId, fxId, "mix", 0, section, { active });
+        }
+      } catch {
+        /* garnish */
+      }
+    }
+    // b) role recipes — gated/ramped per the recipe table.
+    for (const recipe of SECTION_FX_RECIPES[section.role] ?? []) {
+      try {
+        const [trackId] = resolveProductionTargets(next, [recipe.targetRole]);
+        if (!trackId) continue;
+        const fxId = foldAction({ trackId, type: recipe.type, params: recipe.params ?? {} });
+        if (!fxId) continue;
+        touchedFxIds.add(fxId);
+        // Neutral base values first; lanes only when EVERY entry applied —
+        // a half-gated effect would be stuck audible (or stuck silent).
+        for (const g of recipe.gated ?? []) {
+          next = setEffectParam(next, trackId, fxId, g.paramId, g.neutral).execute(next);
+        }
+        for (const r of recipe.ramps ?? []) {
+          next = setEffectParam(next, trackId, fxId, r.paramId, r.neutral).execute(next);
+        }
+        for (const g of recipe.gated ?? []) {
+          laneFx(trackId, fxId, g.paramId, g.neutral, section, { active: g.active });
+        }
+        for (const r of recipe.ramps ?? []) {
+          laneFx(trackId, fxId, r.paramId, r.neutral, section, { from: r.from, to: r.to });
+        }
+      } catch {
+        /* garnish */
+      }
+    }
+  }
+
+  // c) global intent FX — "wobbly drill": static chains, audible in every
+  //    section (that's the distinction from section FX).
+  if (build.baseIntent.fx) {
+    try {
+      const { actions } = planProductionActions(next, build.baseIntent.fx);
+      for (const action of actions) {
+        const fxId = foldAction(action);
+        if (fxId) touchedFxIds.add(fxId);
+      }
+    } catch {
+      /* garnish */
+    }
+  }
+
   // FX cue lane: one instrument track named "FX Cues", reused across song
   // re-generations (no track stacking). Cue clips are plain audioClips, so
   // the live scheduler and the offline renderer play them unchanged.
@@ -1055,6 +1270,12 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   next = {
     ...next,
     tracks: existingFx ? next.tracks : [...next.tracks, fxTrack],
+    // Section FX lanes replace only lanes targeting fx ids THIS build
+    // touches — user automation on other devices survives a re-generate.
+    sceneAutomation: [
+      ...next.sceneAutomation.filter((lane) => !touchedFxIds.has(lane.target.fxId ?? "")),
+      ...fxLanes,
+    ],
     arrangement: {
       ...next.arrangement,
       clips,

@@ -43,6 +43,14 @@ export interface HumNoteOptions {
   quantize?: boolean;
   /** Pattern length in ticks — notes beyond it are clamped into the last step. */
   patternLengthTicks: number;
+  /**
+   * Transport tick at the moment the TAKE started (beat-synced hum). When
+   * present, frame times map from THIS position and wrap modulo the pattern
+   * length — humming "bar 5" of a looping 4-bar pattern lands on bar 1,
+   * exactly like MIDI pattern-record. Absent = free-time take (legacy:
+   * tick 0 = take start).
+   */
+  transportStartTick?: number;
 }
 
 export interface HumToNotesTarget {
@@ -105,8 +113,19 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   }
 
   // Runs → tick-space drafts (time from the FIRST voiced frame index).
+  // Beat-synced takes anchor at the transport tick where recording began;
+  // drafts stay in UNWRAPPED (absolute) tick space so bridging and duration
+  // math stay correct across loop boundaries — wrapping happens per-note at
+  // the end (the transport loops the pattern, so a hum "one loop later"
+  // lands on the same grid slots).
   const maxRms = runs.reduce((max, r) => Math.max(max, r.rmsMax), 1e-9);
   const secPerTick = 60 / (bpm * PPQ);
+  const beatSynced =
+    options.transportStartTick !== undefined && Number.isFinite(options.transportStartTick);
+  const anchor = beatSynced ? Math.max(0, options.transportStartTick!) : 0;
+  const patternLen = options.patternLengthTicks;
+  const wrapTick = (tick: number): number => ((tick % patternLen) + patternLen) % patternLen;
+
   const raw: Array<{ pitch: number; startTick: number; endTick: number; velocity: number }> = [];
   for (const run of runs) {
     const t0 = voiced[run.startIdx].timeSec;
@@ -116,8 +135,8 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     if (pitch < 12 || pitch > 120) continue;
     raw.push({
       pitch,
-      startTick: Math.round(t0 / secPerTick),
-      endTick: Math.round(t1 / secPerTick),
+      startTick: anchor + Math.round(t0 / secPerTick),
+      endTick: anchor + Math.round(t1 / secPerTick),
       velocity: 0.45 + 0.45 * Math.min(1, run.rmsMax / maxRms),
     });
   }
@@ -142,25 +161,43 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   const quantize = options.quantize !== false;
   const notes: NoteEvent[] = [];
   for (const draft of bridged) {
-    let startTick = draft.startTick;
-    let endTick = Math.max(draft.endTick, startTick + 1);
+    const durationTicks = Math.max(1, draft.endTick - draft.startTick);
+    let startTick = beatSynced ? wrapTick(draft.startTick) : draft.startTick;
+    let duration = durationTicks;
     if (quantize) {
       startTick = Math.round(startTick / STEP_TICKS) * STEP_TICKS;
-      endTick = Math.round(endTick / STEP_TICKS) * STEP_TICKS;
-      if (endTick <= startTick) endTick = startTick + STEP_TICKS;
+      duration = Math.round(duration / STEP_TICKS) * STEP_TICKS;
+      if (duration < STEP_TICKS) duration = STEP_TICKS;
     }
     let pitch = draft.pitch;
     if (options.key) pitch = snapToScale(pitch, options.key);
-    // Clamp into the pattern: drop notes entirely past the end, trim tails.
-    if (startTick >= options.patternLengthTicks) continue;
-    if (endTick > options.patternLengthTicks) endTick = options.patternLengthTicks;
+    // Clamp into the pattern. Free-time keeps the legacy semantics (drop
+    // past-the-end notes); beat-synced wraps, so rounding that reaches the
+    // end boundary lands at the pattern start instead.
+    if (beatSynced) {
+      if (startTick >= patternLen) startTick = 0;
+    } else if (startTick >= patternLen) {
+      continue;
+    }
+    let endTick = startTick + duration;
+    if (endTick > patternLen) endTick = patternLen;
     if (endTick - startTick < (quantize ? STEP_TICKS : 1)) continue;
 
-    const last = notes[notes.length - 1];
-    if (last && last.pitch === pitch && startTick < last.start + last.duration) {
-      // Overlap after quantize/key-snap — trim the earlier note, keep both.
-      last.duration = Math.max(STEP_TICKS, startTick - last.start);
-      if (last.duration <= 0) notes.pop();
+    if (beatSynced) {
+      // Humming across loops can land the same pitch on the same grid slot
+      // twice — the second pass REINFORCES the first (keep the longer note).
+      const dup = notes.find((n) => n.pitch === pitch && n.start === startTick);
+      if (dup) {
+        dup.duration = Math.max(dup.duration, endTick - startTick);
+        continue;
+      }
+    } else {
+      const last = notes[notes.length - 1];
+      if (last && last.pitch === pitch && startTick < last.start + last.duration) {
+        // Overlap after quantize/key-snap — trim the earlier note, keep both.
+        last.duration = Math.max(STEP_TICKS, startTick - last.start);
+        if (last.duration <= 0) notes.pop();
+      }
     }
     notes.push({
       id: uid("note"),
@@ -171,7 +208,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     });
     if (notes.length >= MAX_NOTES) break;
   }
-  return notes;
+  return notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
 }
 
 /**
@@ -218,4 +255,49 @@ export function humToNotesCommand(
 /** Pattern length in ticks (shared with the piano roll's grid math). */
 export function patternLengthTicks(pattern: Pattern): number {
   return pattern.stepCount * STEP_TICKS;
+}
+
+/**
+ * Shift the hummed draft by whole octaves (±1 keeps scale membership — the
+ * pitch class never moves). Pitches pushed out of the MIDI range 12..120 are
+ * dropped; if everything would drop, the ORIGINAL drafts come back (a
+ * preview must never become empty by accident).
+ */
+export function shiftNotesOctave(notes: readonly NoteEvent[], octaves: number): NoteEvent[] {
+  const delta = Math.round(octaves) * 12;
+  if (delta === 0) return [...notes];
+  const shifted = notes
+    .map((note) => ({ ...note, pitch: note.pitch + delta }))
+    .filter((note) => note.pitch >= 12 && note.pitch <= 120);
+  return shifted.length > 0 ? shifted : [...notes];
+}
+
+export interface AuditionTiming {
+  /** Milliseconds from audition start until this note fires. */
+  delayMs: number;
+  pitch: number;
+  velocity: number;
+  /** Sounding length in seconds (>= 50 ms). */
+  durationSec: number;
+}
+
+/**
+ * Pure timing plan for the pre-apply AUDITION: one entry per note, delays
+ * anchored to a single t0 (no accumulated drift). The panel fires each note
+ * through engine.noteOn at its delay — nothing is scheduled ahead inside the
+ * engine, so STOP is instant silence with no dangling notes.
+ */
+export function auditionTimings(
+  notes: readonly NoteEvent[],
+  bpm: number,
+  leadInSec = 0.12,
+): AuditionTiming[] {
+  const effectiveBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
+  const secPerTick = 60 / (effectiveBpm * PPQ);
+  return notes.map((note) => ({
+    delayMs: Math.max(0, (leadInSec + note.start * secPerTick) * 1000),
+    pitch: note.pitch,
+    velocity: note.velocity,
+    durationSec: Math.max(0.05, note.duration * secPerTick),
+  }));
 }

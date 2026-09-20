@@ -1,8 +1,7 @@
 import { useDoc } from "../ui/context";
-import { encodeProjectForGallery, setRemixParent } from "./galleryApi";
+import { encodeProjectForGallery, PUBLISH_CODE_KEY, setRemixParent } from "./galleryApi";
 import { funnelEvent } from "../services/funnel";
 
-const PUBLISH_CODE_KEY = "pf-publish-code";
 
 /**
  * PUBLISH TO GALLERY — hands the current project to /gallery via

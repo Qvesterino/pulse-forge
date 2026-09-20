@@ -1,0 +1,3 @@
+src/ai/generator.ts(83,9): error TS6133: 'safeStepCount' is declared but its value is never read.
+src/effects/morph-dynamics-core/dsp/oversampler.ts(62,11): error TS6133: 'downEven' is declared but its value is never read.
+tests/intent-sections-fx.test.ts(3,32): error TS6133: 'applySectionRequests' is declared but its value is never read.

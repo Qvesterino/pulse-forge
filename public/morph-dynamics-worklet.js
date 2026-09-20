@@ -379,8 +379,12 @@
       this.slopeCoef = tcToCoef(8e-3, sampleRate2);
       this.levelUpCoef = tcToCoef(2, sampleRate2);
       this.levelDownCoef = tcToCoef(6, sampleRate2);
-      this.ecoDivisor = qualityMode === 0 ? 2 : 1;
+      this.setQuality(qualityMode);
       this.reset();
+    }
+    /** Quality mode → analysis resolution (ECO halves the band-tap rate). */
+    setQuality(qualityMode) {
+      this.ecoDivisor = qualityMode === 0 ? 2 : 1;
     }
     setSensitivities(sens) {
       this.sens = sens;
@@ -568,24 +572,155 @@
     }
   };
 
+  // src/effects/morph-dynamics-core/dsp/oversampler.ts
+  var TAPS = 17;
+  var HALF = (TAPS - 1) / 2;
+  var EVEN_DELAY = 4;
+  var OS2_LATENCY = HALF;
+  function designHalfband() {
+    const full = new Float64Array(TAPS);
+    let sum = 0;
+    for (let n = 0; n < TAPS; n++) {
+      const m = n - HALF;
+      const v = m === 0 ? 0.5 : Math.sin(Math.PI * m / 2) / (Math.PI * m);
+      const w = 0.42 + 0.5 * Math.cos(Math.PI * m / HALF) + 0.08 * Math.cos(2 * Math.PI * m / HALF);
+      full[n] = v * w;
+      sum += full[n];
+    }
+    const odd = new Float64Array(HALF);
+    for (let k = 0; k < HALF; k++) odd[k] = full[2 * k + 1] / sum;
+    return { odd, center: full[HALF] / sum };
+  }
+  var HalfbandStage = class {
+    odd;
+    center;
+    xEven = new Float32Array(EVEN_DELAY);
+    // x[i−1..i−4]
+    xOdd = new Float32Array(HALF);
+    // x[i−1..i−8]
+    wEven = new Float32Array(EVEN_DELAY);
+    // w1(i−1..i−4)
+    wOdd = new Float32Array(HALF);
+    // w2(i−1..i−8)
+    constructor() {
+      const { odd, center } = designHalfband();
+      this.odd = odd;
+      this.center = center;
+    }
+    /**
+     * Process one base-rate input sample; returns the base-rate output sample
+     * delayed by OS2_LATENCY. `apply2x` runs the nonlinear stage on both 2×
+     * samples — the caller closes over the character transform.
+     */
+    process(x, apply2x) {
+      const upEven = 2 * this.center * this.xEven[EVEN_DELAY - 1];
+      let acc = this.odd[0] * x;
+      for (let k = 1; k < HALF; k++) acc += this.odd[k] * this.xOdd[k - 1];
+      const upOdd = 2 * acc;
+      for (let k = EVEN_DELAY - 1; k > 0; k--) this.xEven[k] = this.xEven[k - 1];
+      this.xEven[0] = x;
+      for (let k = HALF - 1; k > 0; k--) this.xOdd[k] = this.xOdd[k - 1];
+      this.xOdd[0] = x;
+      const w1 = apply2x(upEven);
+      const w2 = apply2x(upOdd);
+      let acc2 = this.center * this.wEven[EVEN_DELAY - 1];
+      for (let k = 0; k < HALF; k++) acc2 += this.odd[k] * this.wOdd[k];
+      for (let k = EVEN_DELAY - 1; k > 0; k--) this.wEven[k] = this.wEven[k - 1];
+      this.wEven[0] = w1;
+      for (let k = HALF - 1; k > 0; k--) this.wOdd[k] = this.wOdd[k - 1];
+      this.wOdd[0] = w2;
+      return acc2;
+    }
+    reset() {
+      this.xEven.fill(0);
+      this.xOdd.fill(0);
+      this.wEven.fill(0);
+      this.wOdd.fill(0);
+    }
+  };
+
   // src/effects/morph-dynamics-core/dsp/character.ts
+  var TONE_HZ = 900;
   var CharacterStage = class {
-    lp = new OnePoleLP();
-    hp = new OnePoleHP();
+    sampleRate = 48e3;
+    // Per-channel tone filters — sharing one one-pole pair across L and R
+    // (an earlier revision) interleaves their states and smears the stereo
+    // image; filters are stateful per channel by definition.
+    lpL = new OnePoleLP();
+    hpL = new OnePoleHP();
+    lpR = new OnePoleLP();
+    hpR = new OnePoleHP();
     params = { drive: 0, tone: 0, asym: 0, clip: 0 };
     /** Fully bypassed when every nonlinear control is at zero. */
     bypassed = true;
+    /** 0 = 1× (eco), 1 = 2× halfband (normal/high). */
+    osStages = 0;
+    chainL = null;
+    chainR = null;
     prepare(sampleRate2) {
-      this.lp.setFreq(900, sampleRate2);
-      this.hp.setFreq(900, sampleRate2);
+      this.sampleRate = sampleRate2;
+      this.applyToneRates();
+    }
+    /**
+     * Quality-mode hook. 1×/2× only for now: 4× (docs "high") needs a
+     * cascaded up/transform/down topology and is deferred — the audible
+     * alias win is the 1×→2× step. Rebuilding the halfband allocates, so it
+     * happens only when the mode actually changes (param handler, not the
+     * audio loop).
+     */
+    setQuality(qualityMode) {
+      const stages = qualityMode >= 1 ? 1 : 0;
+      if (stages !== this.osStages) {
+        this.osStages = stages;
+        this.chainL = stages > 0 ? new HalfbandStage() : null;
+        this.chainR = stages > 0 ? new HalfbandStage() : null;
+      }
+      this.applyToneRates();
+    }
+    /** Tone filters run INSIDE the 2× transform — they see the OS rate. */
+    applyToneRates() {
+      const rate = this.sampleRate * Math.pow(2, this.osStages);
+      this.lpL.setFreq(TONE_HZ, rate);
+      this.hpL.setFreq(TONE_HZ, rate);
+      this.lpR.setFreq(TONE_HZ, rate);
+      this.hpR.setFreq(TONE_HZ, rate);
+    }
+    /** Group delay added by the active oversampling, in base-rate samples. */
+    get latencySamples() {
+      return this.osStages > 0 ? OS2_LATENCY : 0;
     }
     setParams(p2) {
       this.params = p2;
-      this.bypassed = p2.drive < 1e-3 && p2.asym < 1e-3 && p2.clip < 1e-3;
+      const next = p2.drive < 1e-3 && p2.asym < 1e-3 && p2.clip < 1e-3;
+      if (next && !this.bypassed) this.reset();
+      this.bypassed = next;
     }
     reset() {
-      this.lp.reset();
-      this.hp.reset();
+      this.lpL.reset();
+      this.hpL.reset();
+      this.lpR.reset();
+      this.hpR.reset();
+      this.chainL?.reset();
+      this.chainR?.reset();
+    }
+    /** The nonlinear transform for one channel's sample (runs at 1× or 2×). */
+    nonlinear(ch, y) {
+      const p2 = this.params;
+      const driveK = 1 + p2.drive * 7;
+      let v = Math.tanh(y * driveK) / Math.tanh(driveK);
+      v = y * (1 - p2.drive) + v * p2.drive;
+      if (p2.asym > 1e-3) {
+        v += p2.asym * 0.5 * (v * v - v * Math.abs(v) * 0.5);
+      }
+      if (Math.abs(p2.tone) > 1e-3) {
+        const low = ch === 0 ? this.lpL.process(v) : this.lpR.process(v);
+        const high = ch === 0 ? this.hpL.process(v) : this.hpR.process(v);
+        v = p2.tone > 0 ? low + (1 + 2 * p2.tone) * high : (1 - 2 * p2.tone) * low + high;
+      }
+      if (p2.clip > 1e-3) {
+        v = softClip(v, 1 - p2.clip * 0.65);
+      }
+      return Math.max(-4, Math.min(4, v));
     }
     processFrame(l, r, out) {
       if (this.bypassed) {
@@ -593,34 +728,13 @@
         out.r = r;
         return;
       }
-      const p2 = this.params;
-      const driveK = 1 + p2.drive * 7;
-      const norm = 1 / Math.tanh(driveK);
-      let dl = Math.tanh(l * driveK) * norm;
-      let dr = Math.tanh(r * driveK) * norm;
-      dl = l * (1 - p2.drive) + dl * p2.drive;
-      dr = r * (1 - p2.drive) + dr * p2.drive;
-      if (p2.asym > 1e-3) {
-        const al = dl + p2.asym * 0.5 * (dl * dl - dl * Math.abs(dl) * 0.5);
-        const ar = dr + p2.asym * 0.5 * (dr * dr - dr * Math.abs(dr) * 0.5);
-        dl = al;
-        dr = ar;
+      if (this.chainL && this.chainR) {
+        out.l = this.chainL.process(l, (y) => this.nonlinear(0, y));
+        out.r = this.chainR.process(r, (y) => this.nonlinear(1, y));
+        return;
       }
-      if (Math.abs(p2.tone) > 1e-3) {
-        const low = this.lp.process(dl);
-        const high = this.hp.process(dl);
-        dl = p2.tone > 0 ? low + (1 + 2 * p2.tone) * high : (1 - 2 * p2.tone) * low + high;
-        const lowR = this.lp.process(dr);
-        const highR = this.hp.process(dr);
-        dr = p2.tone > 0 ? lowR + (1 + 2 * p2.tone) * highR : (1 - 2 * p2.tone) * lowR + highR;
-      }
-      if (p2.clip > 1e-3) {
-        const t = 1 - p2.clip * 0.65;
-        dl = softClip(dl, t);
-        dr = softClip(dr, t);
-      }
-      out.l = Math.max(-4, Math.min(4, dl));
-      out.r = Math.max(-4, Math.min(4, dr));
+      out.l = this.nonlinear(0, l);
+      out.r = this.nonlinear(1, r);
     }
   };
 
@@ -923,6 +1037,13 @@
     inPeakHold = 0;
     outPeakHold = 0;
     disposed = false;
+    // Dry-path compensation delay (phase-conscious dry/wet): when the 2×
+    // character halfband is active it delays the wet chain by 8 samples —
+    // the mix/delta dry reference must be delayed identically or every
+    // blended output combs.
+    dryBufL = new Float32Array(16);
+    dryBufR = new Float32Array(16);
+    dryPos = 0;
     prepare(sampleRate2, _channelCount, maxBlockSize, qualityMode) {
       const controlRate = sampleRate2 / Math.max(1, maxBlockSize);
       for (const smoother of Object.values(this.sm)) {
@@ -939,6 +1060,7 @@
       this.space.prepare(sampleRate2);
       this.dcL.setFreq(9, sampleRate2);
       this.dcR.setFreq(9, sampleRate2);
+      this.applyQuality();
       this.pushStaticParams();
     }
     setMetersEnabled(enabled) {
@@ -955,11 +1077,12 @@
       }
     }
     getLatencySamples() {
-      return 0;
+      return this.character.latencySamples;
     }
     setParameter(id, value) {
       if (!PARAM_BY_ID.has(id)) return;
       this.params[id] = clampParam(id, value);
+      if (id === GLOBAL_QUALITY_ID) this.applyQuality();
       this.pushStaticParams();
     }
     getParameter(id) {
@@ -984,7 +1107,17 @@
       this.space.reset();
       this.dcL.reset();
       this.dcR.reset();
+      this.dryBufL.fill(0);
+      this.dryBufR.fill(0);
       for (const s of this.sm.mod) s.snap();
+    }
+    /** Quality mode → analysis resolution + character oversampling (+ its
+     * dry-path compensation delay). Called from prepare and whenever the
+     * global.quality param changes. */
+    applyQuality() {
+      const mode = Math.round(this.params[GLOBAL_QUALITY_ID] ?? 1);
+      this.analysis.setQuality(mode);
+      this.character.setQuality(mode);
     }
     dispose() {
       this.disposed = true;

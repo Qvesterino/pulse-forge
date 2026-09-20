@@ -77,6 +77,7 @@ const DYN_PARAMS: MorphParamDef[] = [
   p(P.DYN_KNEE_DB_ID, "Knee", 6, 0, 24, "db"),
   p(P.DYN_DETECTOR_BLEND_ID, "Detector", 50, 0, 100, "percent"),
   p(P.DYN_SIDECHAIN_HPF_HZ_ID, "SC HPF", 60, 20, 500, "hz", true, { taper: "log" }),
+  p(P.DYN_SIDECHAIN_EXT_ID, "Sidechain EXT", 0, 0, 1, "boolean", false),
   p(P.DYN_MAKEUP_DB_ID, "Makeup", 0, -12, 24, "db"),
   p(P.DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean", false),
 ];

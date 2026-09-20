@@ -4,7 +4,13 @@ import { pitchName } from "../project-model/types";
 import { useServices } from "./context";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { trackPitchAsync } from "../audio-workers/pitch-tracker-client";
-import { framesToNotes, humToNotesCommand, patternLengthTicks } from "../midi/hum-to-notes";
+import {
+  auditionTimings,
+  framesToNotes,
+  humToNotesCommand,
+  patternLengthTicks,
+  shiftNotesOctave,
+} from "../midi/hum-to-notes";
 
 /**
  * HUM-TO-MELODY panel (piano roll toolbar → HUM).
@@ -35,10 +41,69 @@ export function HumToMelodyPanel({
   const [elapsed, setElapsed] = useState(0);
   const [notes, setNotes] = useState<NoteEvent[]>([]);
   const [mode, setMode] = useState<"replace" | "merge">("replace");
+  const [toBeat, setToBeat] = useState(true);
+  const [auditioning, setAuditioning] = useState(false);
   const recRef = useRef<PcmMicRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
+  /** Pending AUDITION timeouts — cleared for instant stop (nothing is ever
+   *  scheduled ahead inside the engine, so clearing = silence). */
+  const auditionTimersRef = useRef<number[]>([]);
+  /** Transport tick sampled at recording start (beat-synced mapping). */
+  const humStartTickRef = useRef<number | null>(null);
+  /** Transport lifecycle WE started — restored when the hum ends. */
+  const transportRestoreRef = useRef<{ startedByHum: boolean; metronomeBefore: boolean } | null>(null);
 
-  // Leftover recorder at unmount would keep the mic stream alive.
+  const restoreTransport = () => {
+    const restore = transportRestoreRef.current;
+    transportRestoreRef.current = null;
+    if (!restore) return;
+    if (restore.startedByHum && services.transport.playing) services.playback.playPause();
+    if (restore.startedByHum || !services.transport.playing) {
+      services.transport.setMetronome(restore.metronomeBefore);
+    }
+  };
+
+  /** Clear pending audition notes — instant silence (nothing is scheduled
+   *  ahead inside the engine, only our own timeouts fire noteOn). */
+  const stopAudition = () => {
+    for (const t of auditionTimersRef.current) clearTimeout(t);
+    auditionTimersRef.current = [];
+    setAuditioning(false);
+  };
+
+  const startAudition = () => {
+    if (notes.length === 0) return;
+    stopAudition();
+    const ctx = services.engine.getLiveAudioContext();
+    if (!ctx) return;
+    const timings = auditionTimings(notes, services.store.getDoc().bpm);
+    const lastMs = timings.length > 0 ? Math.max(...timings.map((t) => t.delayMs)) : 0;
+    // Absolute anchor t0 for every note (one clock read, no drift chain);
+    // each timeout fires noteOn at its own remaining delay.
+    const t0 = ctx.currentTime + timings[0]!.delayMs / 1000;
+    auditionTimersRef.current = timings.map((timing) =>
+      window.setTimeout(
+        () => {
+          const when = Math.max(t0 + timing.delayMs / 1000, ctx.currentTime + 0.005);
+          services.engine.noteOn(track.id, timing.pitch, timing.velocity, when, timing.durationSec);
+        },
+        Math.max(0, timing.delayMs - timings[0]!.delayMs),
+      ),
+    );
+    setAuditioning(true);
+    // Self-stop when the melody finishes (keep the timer array for cleanup).
+    auditionTimersRef.current.push(
+      window.setTimeout(() => setAuditioning(false), lastMs - timings[0]!.delayMs + 250),
+    );
+  };
+
+  const shiftOctave = (octaves: number) => {
+    stopAudition();
+    setNotes((current) => shiftNotesOctave(current, octaves));
+  };
+
+  // Leftover recorder at unmount would keep the mic stream alive — and a
+  // transport WE started must stop with the panel (pending audition notes too).
   useEffect(
     () => () => {
       const rec = recRef.current;
@@ -48,7 +113,11 @@ export function HumToMelodyPanel({
         void rec.cancel();
       }
       if (timerRef.current !== null) clearInterval(timerRef.current);
+      for (const t of auditionTimersRef.current) clearTimeout(t);
+      auditionTimersRef.current = [];
+      restoreTransport();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -60,6 +129,27 @@ export function HumToMelodyPanel({
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
       if (!ctx) throw new Error("Audio engine is not ready");
+
+      // Beat-synced hum: roll the transport first so there IS a beat to hum
+      // to — with the click on when we started it (the user needs a pulse;
+      // if the transport was already playing we leave their click alone).
+      // Song mode is skipped: arrangement ticks do not map onto this
+      // pattern's grid, so the free-time mapping stays the honest one.
+      const beatSync =
+        toBeat && services.playback.mode === "pattern" && typeof services.transport.position === "number";
+      humStartTickRef.current = null;
+      if (beatSync) {
+        const startedByHum = !services.transport.playing;
+        transportRestoreRef.current = {
+          startedByHum,
+          metronomeBefore: services.transport.metronome,
+        };
+        if (startedByHum) {
+          services.transport.setMetronome(true);
+          services.playback.playPause();
+        }
+      }
+
       const rec = new PcmMicRecorder({ ctx, recovery: services.recordingRecovery });
       recRef.current = rec;
       rec.setMonitoring(false);
@@ -67,19 +157,27 @@ export function HumToMelodyPanel({
         setError(message);
         setPhase("error");
         void teardownRecorder();
+        restoreTransport();
       };
-      await rec.start(() => ({
-        projectId: services.store.getDoc().id,
-        trackId: track.id,
-        trackName: track.name,
-        placeOnTimeline: false,
-        startBar: 0,
-        bpm: services.store.getDoc().bpm,
-      }));
+      await rec.start(() => {
+        // Runs at take start — sample the transport tick as close to the
+        // first captured sample as the recorder lets us (scheduler ticks at
+        // 25 ms; the 16th-grid quantize absorbs the residue).
+        if (beatSync) humStartTickRef.current = Math.max(0, services.transport.position);
+        return {
+          projectId: services.store.getDoc().id,
+          trackId: track.id,
+          trackName: track.name,
+          placeOnTimeline: false,
+          startBar: 0,
+          bpm: services.store.getDoc().bpm,
+        };
+      });
       if (recRef.current !== rec) {
         // An error during "starting" already reset the panel — a late start
         // resolution must not resurrect the recording state.
         void rec.cancel();
+        restoreTransport();
         return;
       }
       setElapsed(0);
@@ -90,6 +188,7 @@ export function HumToMelodyPanel({
       recRef.current = null;
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
+      restoreTransport();
     }
   };
 
@@ -107,6 +206,11 @@ export function HumToMelodyPanel({
     if (phase !== "recording") return;
     setPhase("analyzing");
     const rec = await teardownRecorder();
+    // The hum is over — hand the transport back (stop it if we started it,
+    // restore the click state we found).
+    const startTick = humStartTickRef.current;
+    humStartTickRef.current = null;
+    restoreTransport();
     if (!rec) {
       setPhase("idle");
       return;
@@ -131,6 +235,7 @@ export function HumToMelodyPanel({
         key: docKey,
         quantize: true,
         patternLengthTicks: patternLengthTicks(pattern),
+        ...(startTick !== null ? { transportStartTick: startTick } : {}),
       });
       if (extracted.length === 0) {
         setPhase("error");
@@ -171,9 +276,19 @@ export function HumToMelodyPanel({
       {(phase === "idle" || phase === "starting" || phase === "error") && (
         <>
           <p className="hum-hint">
-            Hum the melody ({pattern.stepCount} steps @ {services.store.getDoc().bpm} BPM
-            {docKey ? `, snapped to ${docKey}` : ""}).
+            {toBeat
+              ? `Hum to the beat — the transport rolls with the click and notes land where you sing (${pattern.stepCount} steps @ ${services.store.getDoc().bpm} BPM${docKey ? `, ${docKey}` : ""}).`
+              : `Hum the melody free-time (${pattern.stepCount} steps @ ${services.store.getDoc().bpm} BPM${docKey ? `, snapped to ${docKey}` : ""}).`}
           </p>
+          <label className="hum-mode" title="Beat-synced: start the transport with a click and map hummed timing from the transport position. Off: take time maps from tick 0.">
+            <input
+              type="checkbox"
+              checked={toBeat}
+              onChange={(e) => setToBeat(e.target.checked)}
+              disabled={phase === "starting"}
+            />
+            TO BEAT
+          </label>
           <button
             type="button"
             className="btn btn-small"

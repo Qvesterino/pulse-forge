@@ -1,7 +1,7 @@
 import { useSyncExternalStore, useEffect, useRef, useState } from "react";
 import { openProject, type Services } from "../services";
 import { defaultServerUrl, randomRoomId, shareUrl } from "../collab/collabShared";
-import { encodeProjectForGallery, setRemixParent } from "../gallery/galleryApi";
+import { encodeProjectForGallery, PUBLISH_CODE_KEY, setRemixParent } from "../gallery/galleryApi";
 import { Slider } from "./controls";
 import { JAM_ROLES, normalizeJamRole, type JamRole } from "../collab/jamRoles";
 import { useServices } from "./context";
@@ -87,7 +87,7 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
    *  as the studio PUBLISH button — the gallery opens pre-filled. */
   const publishJam = () => {
     try {
-      sessionStorage.setItem("pf-publish-code", encodeProjectForGallery(doc));
+      sessionStorage.setItem(PUBLISH_CODE_KEY, encodeProjectForGallery(doc));
     } catch {
       // storage blocked — the gallery paste box still works
     }

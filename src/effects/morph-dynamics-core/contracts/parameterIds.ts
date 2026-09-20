@@ -58,6 +58,10 @@ export const DYN_KNEE_DB_ID = "dyn.kneeDb" as const;
 /** 0 = peak … 100 = RMS detector blend. */
 export const DYN_DETECTOR_BLEND_ID = "dyn.detectorBlend" as const;
 export const DYN_SIDECHAIN_HPF_HZ_ID = "dyn.sidechainHpfHz" as const;
+/** External sidechain: detector AND analysis tap follow the sidechain feed
+ * (setSidechainInput) instead of the main signal — kick/vocal chop drives
+ * the ducking while the main audio stays in place. */
+export const DYN_SIDECHAIN_EXT_ID = "dyn.sidechainExt" as const;
 export const DYN_MAKEUP_DB_ID = "dyn.makeupDb" as const;
 export const DYN_MAKEUP_AUTO_ID = "dyn.makeupAuto" as const;
 

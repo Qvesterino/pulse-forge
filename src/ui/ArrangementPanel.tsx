@@ -11,6 +11,7 @@ import {
   useTracks,
 } from "./context";
 import { useActivePatternId } from "./context";
+import { SpectralEditPanel } from "./SpectralEditPanel";
 import {
   addArrangementClip,
   addArrangementTransition,
@@ -668,6 +669,8 @@ export function ArrangementPanel() {
   );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  // Spectral Lab (RX-style clip surgery) — open from the AUDIO CLIP menu.
+  const [spectralEditClipId, setSpectralEditClipId] = useState<string | null>(null);
   useEffect(() => {
     if (!audioMenu) return;
     const onDown = (e: MouseEvent) => {
@@ -2188,6 +2191,17 @@ export function ArrangementPanel() {
             <button
               type="button"
               role="menuitem"
+              title="RX-style spectral surgery — select a time×frequency region and attenuate or boost it"
+              onClick={() => {
+                setSpectralEditClipId(audioMenu.clipId);
+                setAudioMenu(null);
+              }}
+            >
+              Spectral Edit…
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               onClick={() => {
                 const c = audioClips.find((x) => x.id === audioMenu.clipId);
                 if (c) execute(updateAudioClip(services.store.doc, c.id, { reverse: !c.reverse }));
@@ -2655,6 +2669,13 @@ export function ArrangementPanel() {
             {actionError}
           </div>
         )}
+        {spectralEditClipId &&
+          (() => {
+            const c = audioClips.find((x) => x.id === spectralEditClipId);
+            const buf = c ? services.bank.get(c.bufferId) : null;
+            if (!c || !buf) return null;
+            return <SpectralEditPanel clip={c} buffer={buf} onClose={() => setSpectralEditClipId(null)} />;
+          })()}
       </div>
     </section>
   );

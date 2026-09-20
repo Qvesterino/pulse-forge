@@ -28,6 +28,7 @@ import { uid } from "../shared/ids";
 import { defaultInstrumentParams, INSTRUMENT_DEFS } from "../instruments/registry";
 import { createProjectFromTemplate } from "./templates";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
+import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
 export const SCHEMA_VERSION = 1;
@@ -637,9 +638,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       const deviceState = sanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
       const rawOutputTrimDb = (item as { outputTrimDb?: unknown }).outputTrimDb;
       const outputTrimDb =
-        typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb)
-          ? Math.max(-18, Math.min(12, Math.round(rawOutputTrimDb * 10) / 10))
-          : 0;
+        typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb) ? clampFxOutputTrimDb(rawOutputTrimDb) : 0;
       // Step-sequenced effects (stepGate) carry an editable pattern array.
       const steps =
         type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;

@@ -135,7 +135,12 @@ export function evaluateStyleDistance(
   stepCount: number,
 ): StyleGateResult {
   const profile = getStyleQualityProfile(groove.genre, groove.name);
-  const metrics = rowMetrics(rows, stepCount);
+  // Defensive sanitization: NaN/Infinity velocities propagate to the distance
+  // metric through density / syncopation / velocityMean arithmetic.
+  const safeRows = rows.map((row) =>
+    row ? row.map((value) => (Number.isFinite(value) && value > 0 ? value : 0)) : row,
+  );
+  const metrics = rowMetrics(safeRows, stepCount);
   const reference = referenceMetrics(groove, stepCount);
   const densityDistance = Math.abs(metrics.density - reference.density) / Math.max(0.08, reference.density);
   const syncDistance = Math.abs(metrics.syncopation - reference.syncopation) / 0.5;

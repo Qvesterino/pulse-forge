@@ -13,7 +13,6 @@ import {
 } from "../commands/commands";
 import { decodeBindsCode, encodeBindsCode } from "../export/bindsCode";
 import { decodePackCode, encodePackCode, type SharedPack } from "../export/packCode";
-import { GroovePoolRepository } from "../persistence/GroovePoolRepository";
 import { getThemeSnapshot, setTheme } from "./theme";
 import { decodeKitCode, encodeKitCode } from "../export/kitCode";
 import type { UserKit } from "../persistence/KitRepository";

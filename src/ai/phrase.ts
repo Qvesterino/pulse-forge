@@ -11,7 +11,8 @@ export interface PhraseBar {
 
 /** Build a deterministic phrase plan instead of silently tiling one bar. */
 export function buildPhrasePlan(stepCount: number): PhraseBar[] {
-  const bars = Math.max(0, Math.ceil(stepCount / 16));
+  const safeStepCount = Number.isFinite(stepCount) ? Math.max(0, Math.floor(stepCount)) : 0;
+  const bars = Math.max(0, Math.ceil(safeStepCount / 16));
   return Array.from({ length: bars }, (_, bar) => {
     const isFinalBar = bar === bars - 1;
     const isPenultimateBar = bar === bars - 2;
@@ -34,7 +35,7 @@ export function buildPhrasePlan(stepCount: number): PhraseBar[] {
     return {
       bar,
       startStep: bar * 16,
-      endStep: Math.min(stepCount, (bar + 1) * 16),
+      endStep: Math.min(safeStepCount, (bar + 1) * 16),
       section,
     };
   });

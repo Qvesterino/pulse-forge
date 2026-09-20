@@ -6,7 +6,7 @@ import {
   setEffectSidechainSource,
   snapshot,
 } from "../commands/commands";
-import { clampEffectParam } from "../effects/registry";
+import { clampEffectParam, EFFECT_DEFS } from "../effects/registry";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { roleForTrack } from "./favorites";
 import type { IntentSpec } from "./types";
@@ -386,7 +386,7 @@ const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
   [/\bdrum|\bbic/, "drums"],
   [/\bbass\b|\bbas(?:a|u|y|ou|ov)?\b|\b808\b/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],
-  [/\blead(?:om|u|a)?\b|\bmelod/, "lead"],
+  [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
 ];
 
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
@@ -415,7 +415,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   }
   // scene-role targets expand to their instrumentation
   for (const [role, expanded] of Object.entries(ROLE_TARGETS)) {
-    if (new RegExp(`\b${role}\b`).test(lower)) {
+    if (new RegExp(`\\b${role}\\b`).test(lower)) {
       for (const target of expanded) targets.add(target);
     }
   }
@@ -446,3 +446,69 @@ export function effectKnobDelta(intent: EffectIntent): number {
 }
 
 /* sentinel-test */
+
+
+/** Per-effect knob delta multipliers for targeted requests (pre-clamp). */
+const TARGETED_KNOB_DELTA: Partial<Record<EffectType, number>> = {
+  eq: 2, // dB on shelf gains
+  compressor: 2, // ratio turns
+};
+
+/**
+ * Apply a TARGETED effect request as ONE undoable command: add the effect to
+ * each target track if missing, turn its knob by the parsed amount/direction
+ * (clamped against the effect's own param defs), or REMOVE it on direction
+ * "remove". Effects whose knob the intent does not know are skipped.
+ */
+export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): ReturnType<typeof snapshot> {
+  const knob = EFFECT_KNOB[intent.effectType];
+  if (!knob) {
+    throw new Error(`no knob mapped for effect "${intent.effectType}" — intent understood, effect unsupported`);
+  }
+  const scale = AMOUNT_SCALE[intent.amount];
+  const trackIds = intent.targets.flatMap((target) => trackIdsForTarget(doc, target));
+  if (trackIds.length === 0) {
+    throw new Error(`no tracks match the target (${intent.targets.join(", ")})`);
+  }
+
+  let cursor = doc;
+  let updates = 0;
+  const parts: string[] = [];
+
+  for (const trackId of trackIds) {
+    if (intent.direction === "remove") {
+      if (cursor.tracks.find((track) => track.id === trackId)?.effects.some((fx) => fx.type === intent.effectType)) {
+        cursor = removeEffectFromTracks(cursor, [trackId], intent.effectType).execute(cursor);
+        parts.push(`−${intent.effectType}`);
+        updates += 1;
+      }
+      continue;
+    }
+    let fx = cursor.tracks.find((track) => track.id === trackId)?.effects.find((fx) => fx.type === intent.effectType);
+    if (!fx) {
+      cursor = addEffectToTracks(cursor, [trackId], intent.effectType).execute(cursor);
+      fx = cursor.tracks.find((track) => track.id === trackId)?.effects.find((effect) => effect.type === intent.effectType);
+      if (!fx) continue;
+      parts.push(`+${intent.effectType}`);
+      updates += 1;
+    }
+    const knobDef = EFFECT_DEFS[intent.effectType].params.find((param: { id: string }) => param.id === knob);
+    if (!knobDef) continue;
+    const base = fx.params[knob] ?? knobDef.default;
+    const step = (TARGETED_KNOB_DELTA[intent.effectType] ?? 0.16 * (knobDef.max - knobDef.min) * 0.25) * scale;
+    const value = intent.direction === "more" ? base + step : base - step;
+    const clamped = clampEffectParam(intent.effectType, knob, value);
+    if (fx.params[knob] === clamped) continue;
+    cursor = setEffectParam(cursor, trackId, fx.id, knob, clamped).execute(cursor);
+    updates += 1;
+  }
+
+  if (updates === 0) throw new Error("effect intent changed nothing — the mix already matches");
+
+  return snapshot(
+    "applyEffectIntent",
+    `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ×${scale}`].join(", ")}`,
+    doc,
+    cursor,
+  );
+}

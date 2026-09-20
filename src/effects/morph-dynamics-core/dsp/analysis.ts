@@ -113,8 +113,13 @@ export class FeatureExtractor {
     this.levelDownCoef = tcToCoef(6, sampleRate);
     // ECO halves the band-tap evaluation rate (analysis CPU), NORMAL/HIGH run
     // full rate. Scores themselves stay smooth via the output envelopes.
-    this.ecoDivisor = qualityMode === 0 ? 2 : 1;
+    this.setQuality(qualityMode);
     this.reset();
+  }
+
+  /** Quality mode → analysis resolution (ECO halves the band-tap rate). */
+  setQuality(qualityMode: number): void {
+    this.ecoDivisor = qualityMode === 0 ? 2 : 1;
   }
 
   setSensitivities(sens: AnalysisSensitivities): void {

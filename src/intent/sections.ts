@@ -102,13 +102,28 @@ const ACCENTS: Record<string, string> = {
   z: "[zž]",
 };
 
-const w = (word: string): string =>
+const deacc = (word: string): string =>
   word
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const w = (word: string): string =>
+  // De-accent FIRST so accented vocabulary ("mostík") expands into classes
+  // and matches both spellings — the ACCENTS map keys are base letters.
+  deacc(word)
     .split("")
     .map((ch) => ACCENTS[ch] ?? ch)
     .join("");
 
 const wordList = (words: readonly string[]): string => words.map(w).join("|");
+
+/**
+ * Role atom — the vocabulary plus one optional SK declension suffix
+ * ("bez breaku", "dlhý mostík"). roleForWord strips the suffix again when
+ * canonicalizing the match.
+ */
+const ROLE_ATOM = `((?:${wordList(ALL_ROLE_WORDS)})(?:u|a|om|e|y|i)?)`;
 
 const deacc = (word: string): string =>
   word
@@ -116,8 +131,16 @@ const deacc = (word: string): string =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-const roleForWord = (de: string): SceneRole | null =>
-  ROLE_WORDS.find((r) => r.words.some((word) => deacc(word) === de))?.role ?? null;
+/**
+ * SK declensions ("bez breaku", "dlhý mostík", "dva chorussy") append a
+ * short suffix to the role word — match the vocabulary with one trailing
+ * suffix stripped.
+ */
+const roleForWord = (de: string): SceneRole | null => {
+  const find = (candidate: string): SceneRole | null =>
+    ROLE_WORDS.find((r) => r.words.some((word) => deacc(word) === candidate))?.role ?? null;
+  return find(de) ?? find(de.replace(/(?:ua|u|a|om|e|y|i|s)$/i, ""));
+};
 
 const conceptForWord = (de: string): ProductionConcept | null =>
   FX_WORDS.find((f) => deacc(f.word) === de)?.concept ?? null;
@@ -147,7 +170,7 @@ export function parseSectionRequests(text: string): SectionParse | null {
   // 1) Scoped FX — "vinyl break", optional bar count between the words
   //    ("vinyl 8-bar break"). One request per (concept, role).
   const scopedRe = new RegExp(
-    `\\b(${wordList(ALL_FX_WORDS)})\\s+(?:(?:\\d{1,3})[\\s-]*(?:${BAR_UNITS})\\s+)?(${wordList(ALL_ROLE_WORDS)})\\b`,
+    `\\b(${wordList(ALL_FX_WORDS)})\\s+(?:(?:\\d{1,3})[\\s-]*(?:${BAR_UNITS})\\s+)?${ROLE_ATOM}\\b`,
     "i",
   );
   for (let match = working.match(scopedRe); match; match = working.match(scopedRe)) {
@@ -167,7 +190,7 @@ export function parseSectionRequests(text: string): SectionParse | null {
   }
 
   // 2) Omit — "no break", "without intro", "bez breaku", "žiadny drop".
-  const omitRe = new RegExp(`\\b(?:${wordList(OMIT_WORDS)})\\s+(${wordList(ALL_ROLE_WORDS)})\\b`, "i");
+  const omitRe = new RegExp(`\\b(?:${wordList(OMIT_WORDS)})\\s+${ROLE_ATOM}\\b`, "i");
   for (let match = working.match(omitRe); match; match = working.match(omitRe)) {
     const role = roleForWord(de(match[1]!));
     if (role && !requests.some((r) => r.role === role)) requests.push({ role, omit: true });
@@ -177,15 +200,18 @@ export function parseSectionRequests(text: string): SectionParse | null {
   // 3) Repeats — "chorus twice", "2x drop", "drop 3x", "refren dvakrát".
   const N = "\\d{1,2}";
   const X = `(?:(${N})\\s*x|x\\s*(${N})|twice|dvakrát)`;
-  const repeatsAfter = new RegExp(`\\b(${wordList(ALL_ROLE_WORDS)})\\s+${X}\\b`, "i");
-  const repeatsBefore = new RegExp(`\\b${X}\\s+(${wordList(ALL_ROLE_WORDS)})\\b`, "i");
-  for (const [re, roleIdx] of [
-    [repeatsAfter, 1],
-    [repeatsBefore, 3],
+  const repeatsAfter = new RegExp(`\\b${ROLE_ATOM}\\s+${X}\\b`, "i");
+  const repeatsBefore = new RegExp(`\\b${X}\\s+${ROLE_ATOM}\\b`, "i");
+  // Per-pass group maps: [roleIdx, firstNumIdx, secondNumIdx] — the number
+  // groups sit BEFORE the role group in the "2x drop" form and after it in
+  // "drop 3x", so a shared index would read the role word as a number.
+  for (const [re, roleIdx, num1Idx, num2Idx] of [
+    [repeatsAfter, 1, 2, 3],
+    [repeatsBefore, 3, 1, 2],
   ] as const) {
     for (let match = working.match(re); match; match = working.match(re)) {
       const role = roleForWord(de(match[roleIdx]!));
-      const n = Number(match[2] ?? match[3] ?? 2);
+      const n = Number(match[num1Idx] ?? match[num2Idx] ?? 2);
       if (role && n >= 2 && n <= 8 && !requests.some((r) => r.role === role && r.repeats)) {
         requests.push({ role, repeats: n });
       }
@@ -196,11 +222,8 @@ export function parseSectionRequests(text: string): SectionParse | null {
   // 4) Bars — "16-bar intro", "16 bar intro", "16 taktov intro",
   //    "intro 16 bars", "intro 16 taktov".
   const NUM = "\\d{1,3}";
-  const barsBefore = new RegExp(`\\b(?:(${NUM})[\\s-]*(?:${BAR_UNITS})?[\\s-]+)(${wordList(ALL_ROLE_WORDS)})\\b`, "i");
-  const barsAfter = new RegExp(
-    `\\b(${wordList(ALL_ROLE_WORDS)})\\s+(?:(${NUM})[\\s-]*(?:${BAR_UNITS}))\\b`,
-    "i",
-  );
+  const barsBefore = new RegExp(`\\b(?:(${NUM})[\\s-]*(?:${BAR_UNITS})?[\\s-]+)${ROLE_ATOM}\\b`, "i");
+  const barsAfter = new RegExp(`\\b${ROLE_ATOM}\\s+(?:(${NUM})[\\s-]*(?:${BAR_UNITS}))\\b`, "i");
   for (const [re, roleIdx, numIdx] of [
     [barsBefore, 2, 1],
     [barsAfter, 1, 2],
@@ -220,9 +243,12 @@ export function parseSectionRequests(text: string): SectionParse | null {
     }
   }
 
+  // An EMPTY remainder is correct when the sentence was pure section
+  // vocabulary ("vinyl break") — falling back to the full text would make
+  // the downstream production parse double-apply the same fx words.
   const remainingText = working.replace(/\s+/g, " ").trim();
   if (requests.length === 0 && scopedFx.length === 0) return null;
-  return { requests, scopedFx, remainingText: remainingText.length > 0 ? remainingText : text };
+  return { requests, scopedFx, remainingText };
 }
 
 /**
@@ -255,7 +281,26 @@ export function applySectionRequests(sections: SongSectionSpec[], parse: Section
   }
   for (const scoped of parse.scopedFx) {
     const index = out.findIndex((s) => s.role === scoped.role);
-    if (index === -1) continue;
+    if (index === -1) {
+      // The sentence asks for a section the genre form doesn't have
+      // ("vinyl break" on a drill form) — insert a small one before the
+      // outro instead of silently dropping the request.
+      const insertAt = Math.max(0, out.length - 1);
+      const section: SongSectionSpec = {
+        role: scoped.role,
+        label: `${scoped.role.charAt(0).toUpperCase()}${scoped.role.slice(1)}`,
+        bars: 4,
+        intensity: 0.45,
+        transitionIn: scoped.role === "break" ? "break" : null,
+        energyDelta: 0.5,
+        densityDelta: 0.45,
+        complexityDelta: 0.5,
+        instrumentation: ["drums", "bass", "chords", "lead"],
+        fx: scoped.fx,
+      };
+      out = [...out.slice(0, insertAt), section, ...out.slice(insertAt)];
+      continue;
+    }
     out = out.map((s, i) => (i === index ? { ...s, fx: scoped.fx } : s));
   }
   return out;

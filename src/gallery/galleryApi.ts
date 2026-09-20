@@ -43,6 +43,13 @@ export interface PublishInput {
 const API_KEY = "pf-gallery-api";
 
 /**
+ * sessionStorage handoff key studio→gallery: the publisher stashes a
+ * prepared code, the gallery picks it up. Single source — every writer and
+ * reader imports this (CollabPanel included).
+ */
+export const PUBLISH_CODE_KEY = "pf-publish-code";
+
+/**
  * Where the gallery server lives. The studio may be served from a static
  * host while the collab server runs elsewhere, so:
  *   1. localStorage override (set by collab panel conventions)

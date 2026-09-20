@@ -22,6 +22,9 @@ const PENDING_PARAMS_CAP = 4096;
 class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
   proc = new MorphDynamicsProcessor();
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+  // External sidechain feed (node input 2) — copied per block; the DSP
+  // consumes it only when dyn.sidechainExt is on.
+  scScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
   lastLatencyPosted = -1;
   blockCount = 0;
   metersEnabled = true;
@@ -55,6 +58,9 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
           q.length = w;
         }
         this.proc.setParameter(msg.id, msg.value);
+        // Quality changes reconfigure the character oversampling and thus
+        // the chain latency — postLatency() no-ops unless the value moved.
+        this.postLatency();
       } else if (msg.type === "paramAt") {
         const when = Number(msg.when);
         if (!Number.isFinite(when)) {
@@ -131,8 +137,16 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
         } else {
           buf.fill(0, 0, frames);
         }
+        // Sidechain feed: node input 2, optional (nothing connected → zeros).
+        const scBuf = this.scScratch[c];
+        const scCh = input && input[CHANNELS + c];
+        if (scCh && scCh.length >= offset + frames) {
+          scBuf.set(scCh.subarray(offset, offset + frames));
+        } else {
+          scBuf.fill(0, 0, frames);
+        }
       }
-      this.proc.process(this.scratch, frames);
+      this.proc.process(this.scratch, frames, this.scScratch);
       for (let c = 0; c < CHANNELS; c++) {
         output[c].set(this.scratch[c].subarray(0, frames), offset);
       }

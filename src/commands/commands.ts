@@ -4558,7 +4558,7 @@ export function applyExactIntentCommand(
       if (!drum || drum.kind !== "drum") continue;
       const families = classifyPads(drum.pads);
       const familyPads =
-        op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
+        padFamily === "hats" ? families.hats : padFamily === "snare" ? families.snares : families.kicks;
       for (const pad of familyPads) {
         if (op.kind === "mute") {
           next = setPadParams(next, pad.id, { mute: op.value as boolean }).execute(next);
@@ -4588,16 +4588,20 @@ export function applyExactIntentCommand(
  * params. This is the commit path for "make the bass deeper" style requests;
  * the language layer never touches AudioNodes directly.
  */
-export function applyProductionIntentCommand(doc: ProjectDocument, intent: ProductionIntent): Command {
+/**
+ * Shared fold for a production plan: existing same-type effects are
+ * re-tuned in place, missing ones added; beatMangler envelopes ride the
+ * same fold. Used by applyProductionIntentCommand AND the generation-side
+ * FX path (candidate USE, song builds).
+ */
+function foldProductionIntent(doc: ProjectDocument, intent: ProductionIntent): ProjectDocument {
   const { plan } = planProductionActions(doc, intent);
   let next = doc;
-  const added: { trackId: string; fxId: string; type: EffectType }[] = [];
   for (const action of plan.actions) {
     const existing = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
     if (!existing) {
       const add = addEffect(next, action.trackId, action.type);
       next = add.execute(next);
-      added.push({ trackId: action.trackId, fxId: add.effectId, type: action.type });
     }
   }
   for (const action of plan.actions) {
@@ -4617,6 +4621,12 @@ export function applyProductionIntentCommand(doc: ProjectDocument, intent: Produ
       next = steps.execute(next);
     }
   }
+  return next;
+}
+
+export function applyProductionIntentCommand(doc: ProjectDocument, intent: ProductionIntent): Command {
+  const { plan } = planProductionActions(doc, intent);
+  const next = foldProductionIntent(doc, intent);
   // Production intents are deterministic — undo restores the exact previous
   // chain state, and a redo replays the same folded operations.
   return snapshot("applyProductionIntent", plan.label, doc, next);
@@ -5490,6 +5500,24 @@ export function applyGenerationResultCommand(
     ...projectUpdates,
   };
   return snapshot("generatePattern", `Generate ${pattern.name}`, doc, next);
+}
+
+/**
+ * Wave 1 — apply a generation result TOGETHER with the FX requests riding
+ * its intent (`result.plan.intent.fx`, e.g. "wobbly drill"): pattern fold +
+ * production fold in ONE undoable snapshot. Preview parity holds — the
+ * candidate carries the same fx field the USE path applies.
+ */
+export function applyGenerationResultWithFxCommand(
+  doc: ProjectDocument,
+  result: GenerationResult,
+  patternName?: string,
+): Command {
+  const patternCmd = applyGenerationResultCommand(doc, result, patternName);
+  const fx = result.plan.intent.fx ?? null;
+  if (!fx) return patternCmd;
+  const next = foldProductionIntent(patternCmd.execute(doc), fx);
+  return snapshot("applyGenerationWithFx", `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`, doc, next);
 }
 
 /**

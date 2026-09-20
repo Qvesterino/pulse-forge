@@ -34,6 +34,7 @@ export function encodeMelodicState(degree: number, duration: number): number {
 }
 
 function safeMelodicStateIndex(index: number): number {
+  if (!Number.isFinite(index)) return 0;
   return Math.max(0, Math.min(NUM_STATES - 1, Math.trunc(index)));
 }
 

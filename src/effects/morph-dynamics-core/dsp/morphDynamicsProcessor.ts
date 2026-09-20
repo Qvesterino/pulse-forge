@@ -105,6 +105,13 @@ export class MorphDynamicsProcessor {
   private inPeakHold = 0;
   private outPeakHold = 0;
   private disposed = false;
+  // Dry-path compensation delay (phase-conscious dry/wet): when the 2×
+  // character halfband is active it delays the wet chain by 8 samples —
+  // the mix/delta dry reference must be delayed identically or every
+  // blended output combs.
+  private dryBufL = new Float32Array(16);
+  private dryBufR = new Float32Array(16);
+  private dryPos = 0;
 
   prepare(sampleRate: number, _channelCount: number, maxBlockSize: number, qualityMode: number): void {
     // BlockSmoother advances once per render quantum; its update rate is the
@@ -124,6 +131,7 @@ export class MorphDynamicsProcessor {
     this.space.prepare(sampleRate);
     this.dcL.setFreq(9, sampleRate);
     this.dcR.setFreq(9, sampleRate);
+    this.applyQuality();
     this.pushStaticParams();
   }
 
@@ -142,13 +150,20 @@ export class MorphDynamicsProcessor {
   }
 
   getLatencySamples(): number {
-    // Zero-latency by design (no lookahead, no oversampling delay).
-    return 0;
+    // Zero in ECO; the 2× character halfband adds 8 base samples in
+    // NORMAL/HIGH. The dry/mix path is delayed by the same amount inside
+    // process() (phase-conscious dry/wet), so the reported latency is
+    // purely informational for host PDC alignment.
+    return this.character.latencySamples;
   }
 
   setParameter(id: string, value: number): void {
     if (!PARAM_BY_ID.has(id)) return;
     this.params[id] = clampParam(id, value);
+    // Quality changes reconfigure the character oversampling (and thus the
+    // chain latency) — the entry's change-guarded postLatency picks the new
+    // value up right after this message.
+    if (id === P.GLOBAL_QUALITY_ID) this.applyQuality();
     this.pushStaticParams();
   }
 
@@ -176,7 +191,18 @@ export class MorphDynamicsProcessor {
     this.space.reset();
     this.dcL.reset();
     this.dcR.reset();
+    this.dryBufL.fill(0);
+    this.dryBufR.fill(0);
     for (const s of this.sm.mod) s.snap();
+  }
+
+  /** Quality mode → analysis resolution + character oversampling (+ its
+   * dry-path compensation delay). Called from prepare and whenever the
+   * global.quality param changes. */
+  private applyQuality(): void {
+    const mode = Math.round(this.params[P.GLOBAL_QUALITY_ID] ?? 1);
+    this.analysis.setQuality(mode);
+    this.character.setQuality(mode);
   }
 
   dispose(): void {
@@ -208,7 +234,13 @@ export class MorphDynamicsProcessor {
    * Process one block of stereo. inputs[0]/[1] must hold `frames` samples;
    * they are overwritten with the output.
    */
-  process(inputs: Float32Array[], frames: number): void {
+  /**
+   * Process one block of stereo. inputs[0]/[1] must hold `frames` samples;
+   * they are overwritten with the output. `sc` is the optional external
+   * sidechain feed (same length) — consumed only when dyn.sidechainExt is
+   * on; pass null otherwise.
+   */
+  process(inputs: Float32Array[], frames: number, sc?: Float32Array[] | null): void {
     if (this.disposed) {
       for (const ch of inputs) ch.fill(0, 0, frames);
       return;
@@ -361,22 +393,30 @@ export class MorphDynamicsProcessor {
     const motionOut = { l: 0, r: 0 };
     const spaceOut = { l: 0, r: 0 };
     let sig: AnalysisSignals = this.analysis.processFrame(0, 0);
+    // External sidechain (dyn.sidechainExt): the DETECTOR and the ANALYSIS
+    // tap follow the sidechain feed instead of the main signal — a kick or
+    // vocal chop drives the ducking/gain while the main audio stays put.
+    const scLArr = sc?.[0];
+    const scRArr = sc?.[1];
+    const extSc = q[P.DYN_SIDECHAIN_EXT_ID] >= 0.5 && scLArr !== undefined && scRArr !== undefined;
+    const dryDelay = this.character.latencySamples;
     for (let i = 0; i < frames; i++) {
-      const dryL = L[i] * inputGain;
-      const dryR = R[i] * inputGain;
+      const detL = (extSc ? scLArr![i] : L[i]) * inputGain;
+      const detR = (extSc ? scRArr![i] : R[i]) * inputGain;
 
       // Analysis tap (post input gain — IN trim calibrates reactivity).
-      sig = this.analysis.processFrame(dryL, dryR);
+      sig = this.analysis.processFrame(detL, detR);
 
-      // Dynamics.
-      this.dyn.processFrame(dryL, dryR, punch, sig.transient, dynOut);
-      let wetL = dryL * dynOut.gl * dynOut.makeup;
-      let wetR = dryR * dynOut.gl * dynOut.makeup;
+      // Dynamics: the detector listens to (detL, detR); the gain applies to
+      // the AUDIBLE main path (which stays untouched in EXT mode).
+      this.dyn.processFrame(detL, detR, punch, sig.transient, dynOut);
+      let wetL = L[i] * inputGain * dynOut.gl * dynOut.makeup;
+      let wetR = R[i] * inputGain * dynOut.gl * dynOut.makeup;
       // Parallel transient path (PUNCH).
       if (transientPathTrim !== 0) {
         const t = sig.transient * transientPathTrim;
-        wetL += dryL * t;
-        wetR += dryR * t;
+        wetL += detL * t;
+        wetR += detR * t;
       }
 
       // Character.
@@ -397,21 +437,28 @@ export class MorphDynamicsProcessor {
       // Safety: per-channel DC block + soft ceiling, then mix vs dry.
       wetL = softClip(this.dcL.process(wetL), 0.95);
       wetR = softClip(this.dcR.process(wetR), 0.95);
-      let outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
-      let outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
-      // Delta listen (zero latency, so delta is a plain difference): output
-      // carries ONLY what the whole chain changed. inputGain multiplies both
-      // paths and cancels; outputGain still trims the monitoring level.
+      // Dry reference for mix/delta — delayed by the character OS latency so
+      // the wet chain (2× halfband) never combs against it.
+      this.dryBufL[this.dryPos] = detL;
+      this.dryBufR[this.dryPos] = detR;
+      const rd = (this.dryPos - dryDelay + 16) % 16;
+      const mixDryL = this.dryBufL[rd];
+      const mixDryR = this.dryBufR[rd];
+      this.dryPos = (this.dryPos + 1) % 16;
+      let outL = (mixDryL * (1 - mix) + wetL * mix) * outputGain;
+      let outR = (mixDryR * (1 - mix) + wetR * mix) * outputGain;
+      // Delta listen: output carries ONLY what the whole chain changed
+      // (phase-aligned — both paths share inputGain and the OS delay).
       if (deltaOn) {
-        outL = (wetL - dryL) * outputGain;
-        outR = (wetR - dryR) * outputGain;
+        outL = (wetL - mixDryL) * outputGain;
+        outR = (wetR - mixDryR) * outputGain;
       }
 
       L[i] = outL;
       R[i] = outR;
 
       if (this.metersEnabled) {
-        const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
+        const aIn = Math.abs(detL) > Math.abs(detR) ? Math.abs(detL) : Math.abs(detR);
         const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
         if (aIn > inPeak) inPeak = aIn;
         if (aOut > outPeak) outPeak = aOut;

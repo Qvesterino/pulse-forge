@@ -15,6 +15,7 @@ import {
   saveCreatorHandle,
   setRemixParent,
   publishBeat,
+  PUBLISH_CODE_KEY,
   type GalleryItem,
   type RemixParent,
 } from "./galleryApi";
@@ -24,7 +25,6 @@ import { randomRoomId } from "../collab/collabShared";
 
 type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
 
-const PUBLISH_CODE_KEY = "pf-publish-code";
 
 /**
  * /gallery — the Beat Gallery. A feed of community beats (share codes +

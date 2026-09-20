@@ -25,8 +25,9 @@ export function enforceDrumAnchors(row: number[], references: readonly number[][
 
 /** Repair row shape and velocity values after all stochastic transformations. */
 export function repairDrumRow(row: number[] | undefined, stepCount: number): number[] {
-  const repaired = new Array<number>(stepCount).fill(0);
-  for (let step = 0; step < stepCount; step++) {
+  const safeStepCount = Number.isFinite(stepCount) && stepCount > 0 ? Math.min(256, Math.floor(stepCount)) : 16;
+  const repaired = new Array<number>(safeStepCount).fill(0);
+  for (let step = 0; step < safeStepCount; step++) {
     repaired[step] = clampVelocity(row?.[step] ?? 0);
   }
   return repaired;

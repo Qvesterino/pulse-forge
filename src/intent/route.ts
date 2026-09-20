@@ -1,7 +1,8 @@
 import type { ProjectDocument } from "../project-model/types";
 import { parseArrangeIntent, type ArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
-import type { MixOverrides } from "./mix";
+import { parseEffectIntent } from "./mix";
+import type { EffectIntent, MixOverrides } from "./mix";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -149,20 +150,24 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
+  | { kind: "effectIntent"; intent: EffectIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
   | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[]; targetRole: string | null }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
 /**
- * UNIFIED INTENT BAR router (INTENT_ENGINE.md D3): one text input, four
+ * UNIFIED INTENT BAR router (INTENT_ENGINE.md D3): one text input, five
  * executors. Priority:
  *   1. ARRANGE — the doc has scenes and the text parses into arrangement ops
  *      ("shorten the intro", "add a break before the drop").
- *   2. MIX — mix nouns/verbs or tone comparatives ("more reverb",
- *      "punchier", "darker mix") — SOUND processing.
- *   3. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
+ *   2. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
+ *      target × direction ("viac delayu na leade", "remove reverb from the
+ *      bass") — more specific than the mix profile, so it wins over it.
+ *   3. MIX — mix nouns/verbs or tone comparatives without a target ("more
+ *      reverb", "punchier", "darker mix") — SOUND processing.
+ *   4. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
  *      result, same seed (identity preserved).
- *   4. PATTERN — everything else is a generation intent (default).
+ *   5. PATTERN — everything else is a generation intent (default).
  * Ambiguity is resolved toward the LEAST destructive interpretation: arrange
  * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
  * revise only on comparative + attribute pairs.
@@ -173,6 +178,10 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
     if (arrange.ops.length > 0) {
       return { kind: "arrange", ops: arrange.ops, unrecognized: arrange.unrecognized };
     }
+  }
+  const effectIntent = parseEffectIntent(text);
+  if (effectIntent) {
+    return { kind: "effectIntent", intent: effectIntent };
   }
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);

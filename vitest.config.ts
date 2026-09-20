@@ -51,5 +51,30 @@ export default defineConfig({
       "**/.kilo/**",
       "tests/e2e/**",
     ],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "json-summary"],
+      reportsDirectory: "./coverage",
+      // Don't try to cover vendored DSP cores — those have golden-vector
+      // suites under `tests/<name>-vectors/` and `tests/*-golden.test.ts`
+      // and are exercised via integration, not unit coverage.
+      exclude: [
+        "node_modules/",
+        "dist/",
+        "coverage/",
+        "tests/",
+        "**/*.d.ts",
+        // Vendored plugin cores (upstream-mirrored, golden-vector tested)
+        "src/effects/fxeq-core/**",
+        "src/effects/ultina-core/**",
+        "src/effects/ozvena-core/**",
+        "src/effects/morph-dynamics-core/**",
+        // Plain-JS worklet processors (typed via .d.ts shims only)
+        "src/audio-worklets/*.js",
+        "src/audio-workers/*.ts",
+        // Test fixtures and the project harness itself
+        "src/test-fixtures/**",
+      ],
+    },
   },
 });

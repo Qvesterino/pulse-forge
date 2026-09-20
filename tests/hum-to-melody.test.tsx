@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { renderWithContext, mockServices } from "./helpers";
+import { HumToMelodyPanel } from "../src/ui/HumToMelody";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { trackPitch, PITCH_CLARITY_GATE } from "../src/audio-workers/pitch-tracker";
@@ -147,6 +151,101 @@ describe("framesToNotes — segmentation, key snap, quantize", () => {
     const data = sine(220, SR);
     const viaClient = await trackPitchAsync(data, SR);
     expect(viaClient).toEqual(trackPitch(data, SR));
+  });
+});
+
+describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () => {
+  const base = { bpm: 120, quantize: true };
+
+  it('anchors hummed timing to the transport position at take start', () => {
+    // Transport at bar 2 (tick 1920) when recording began; hum at 0.39 s
+    // (≈374 ticks → quantized +360 offset) in a 4-bar pattern.
+    const audio = concat(
+      silence(Math.round(sec * 0.4)),
+      sine(220, Math.round(sec * 0.7)),
+      silence(sec),
+    );
+    const notes = framesToNotes(trackPitch(audio, SR), {
+      ...base,
+      transportStartTick: 1920,
+      patternLengthTicks: 1920 * 4,
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.start).toBe(1920 + 360);
+    expect(notes[0]!.pitch).toBe(57);
+  });
+
+  it('wraps a hum past the loop end onto the pattern start (loop semantics)', () => {
+    // 1-bar pattern (1920 ticks = 2 s @120). Hum at 0.39 s while the
+    // transport was at bar 2 → absolute 2294 → wraps to 374 → 360.
+    const audio = concat(
+      silence(Math.round(sec * 0.4)),
+      sine(220, Math.round(sec * 0.7)),
+      silence(sec),
+    );
+    const notes = framesToNotes(trackPitch(audio, SR), {
+      ...base,
+      transportStartTick: 1920,
+      patternLengthTicks: 1920,
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.start).toBe(360);
+  });
+
+  it('humming the same slot on a second loop REINFORCES the note instead of duplicating', () => {
+    // Two A3 runs 2 s apart (one 1-bar loop later), same wrapped start.
+    const audio = concat(
+      silence(Math.round(sec * 0.4)),
+      sine(220, Math.round(sec * 0.2)),
+      silence(Math.round(sec * 1.8)),
+      sine(220, Math.round(sec * 0.35)),
+      silence(sec),
+    );
+    const notes = framesToNotes(trackPitch(audio, SR), {
+      ...base,
+      transportStartTick: 0,
+      patternLengthTicks: 1920,
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.start).toBe(360);
+    // The second (longer) pass wins the duration.
+    expect(notes[0]!.duration).toBeGreaterThanOrEqual(240);
+  });
+
+  it('clamps a note crossing the pattern end into the last step', () => {
+    // Hum starts 1.79 s in (≈1718 ticks) and lasts past the 2 s pattern.
+    const audio = concat(
+      silence(Math.round(sec * 1.79)),
+      sine(220, Math.round(sec * 0.6)),
+      silence(sec),
+    );
+    const notes = framesToNotes(trackPitch(audio, SR), {
+      ...base,
+      transportStartTick: 0,
+      patternLengthTicks: 1920,
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.start).toBe(1680);
+    expect(notes[0]!.start + notes[0]!.duration).toBeLessThanOrEqual(1920);
+  });
+});
+
+describe('HumToMelodyPanel — TO BEAT toggle', () => {
+  it('defaults to beat-synced with the click hint; toggling switches to free-time', async () => {
+    const doc = createProjectFromTemplate('house');
+    const track = doc.tracks.find((t): t is Extract<(typeof doc.tracks)[number], { kind: 'instrument' }> => t.kind === 'instrument')!;
+    const pattern = doc.patterns[0]!;
+    renderWithContext(<HumToMelodyPanel track={track} pattern={pattern} docKey={doc.key ?? null} onClose={() => {}} />, {
+      services: mockServices(doc),
+    });
+
+    const toggle = screen.getByRole('checkbox', { name: 'TO BEAT' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText(/Hum to the beat/i)).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(toggle);
+    expect(screen.getByText(/free-time/i)).toBeInTheDocument();
   });
 });
 
