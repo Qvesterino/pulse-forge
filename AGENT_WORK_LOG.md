@@ -2365,3 +2365,32 @@ re-render benefit kicking in immediately. Estimated work:
 1. Risers are DRUM-language builds (rolls), not synthesized noise sweeps — true riser WAV assets need sample-bank + AudioClip persistence infrastructure (the last open T3/T4-horizon item).
 2. Transition fills may stack with the generator's own mild phrase fills in the last bar — intentional (the transition roll dominates), verified non-breaking.
 3. House Break section suppresses its launch fill (drum-free rule) — musically debatable; if it bothers ears, the rule can become "bridge-only suppression" later.
+
+
+---
+
+## GOAL 15 (campaign restart) — Intent Engine C3: targeted section revise (2026-09-19)
+
+**Goal executed:** User probing question: "keď napíšem 'make bridge more energic', pochopí že kde je bridge?" — honest answer was NO (revise was global, section role ignored, and a song build leaves no last-pattern intent at all). This goal added C3: the section role word TARGETS that scene.
+
+**Fixes implemented:**
+
+- `route.ts`: `parseReviseIntent` detects a section ROLE word (bridge/most, chorus/refren/hook, verse/zloha, intro, outro, build, break/brejk, drop) → `ReviseParse.targetRole`; RoutedIntent revise member carries it. No role word = global revise (C2 behavior unchanged). Plain role word without a comparative is NOT a revise.
+- `song.ts` `reviseSection(doc, targetRole, attribute, delta)`: finds the scene by `sceneRoleOf`, reads the FULL intent snapshot from the pattern's provenance (`generation.intent` — stored by the engine since Fáza 3), shifts the slider (clamp 0..1), re-generates deterministically with the SAME seed via the canonical sync path, returns the replacement keeping the EXISTING pattern id (scenes + arrangement clips stay bound). Friendly errors: "no bridge section — build a song first", "no intent provenance to revise" (hand-drawn patterns are left alone).
+- `commands.ts`-style snapshot via `replacePatternInPlaceCommand` (in song.ts): swaps the pattern in place, id preserved, ONE undo step.
+- IntentPanel: revise branch — targeted path when `route.targetRole` present, status "⚡ bridge: energy +0.15 — same seed"; global path unchanged.
+- Tests: intent-artists 13/13 (targeted vs global parsing, SK most, router passthrough); intent-song 13/13 — C3 integration: build trap pop song → install → reviseSection("verse", density) → same pattern id + same generation seed + moved density in provenance + different content hash → replacePatternInPlaceCommand keeps scene binding → ONE undo restores the pre-revision hash; friendly error on missing role.
+
+**Incident + honest finding:**
+
+1. **Concurrent session changed `DEFAULT_RANKER_MODE` from "active" back to "shadow"** (ranker-client.ts) — this broke the async-pipeline test that assumed the active default and, MORE IMPORTANTLY, means user-facing generation no longer uses the ONNX ranker by default (the golden gate had flipped it to active). Not reverted — it is the other stream's product decision — but FLAGGED here for the release conversation.
+2. **Engine mapping gap found by the C3 test**: the energy slider only reaches the DRUM layer (velocityVariation/ghostWeight); melodic velocities don't read it, so an energy revise on a melodic-only section (bridge) is a content no-op. Documented; density revises everywhere (ghost notes). Candidate for engine v2 (melodic velocity scaling).
+
+**Important files changed:** src/intent/{route,song}.ts, src/ui/IntentPanel.tsx, tests/{intent-artists,intent-song}.test.ts, tests/intent-async-pipeline.test.ts (mode pinned explicitly — order-independent), INTENT_ENGINE.md (§5.11).
+
+**Validation:** artist/song/transition trio 34/34; full intent-area regression 173/173 across 18 files; typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. The concurrent session's default-ranker-mode flip (active→shadow) needs a product decision — with the golden gate passed, shadow-by-default silently disables the trained ranker for users.
+2. Energy revise on melodic-only sections is a no-op (mapping gap above) — either scale melodic velocities by energy in the engine, or have reviseSection fall back to density with a status note.

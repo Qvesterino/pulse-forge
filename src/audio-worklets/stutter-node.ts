@@ -16,6 +16,7 @@ export function createStutterNode(
   const node = new AudioWorkletNode(ctx, "stutter-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

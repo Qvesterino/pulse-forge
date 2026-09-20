@@ -2107,7 +2107,12 @@ function createWorkletRuntime(
   readyType: "transient" | "gate",
 ): EffectRuntime | null {
   if (!isWorkletReady(readyType, ctx)) return null;
-  const node = new AudioWorkletNode(ctx, processor, { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2 });
+  const node = new AudioWorkletNode(ctx, processor, {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+    channelCount: 2,
+  });
   const input = ctx.createGain();
   const output = ctx.createGain();
   input.connect(node).connect(output);

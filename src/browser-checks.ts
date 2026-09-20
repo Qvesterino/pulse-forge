@@ -22,6 +22,7 @@ import { AudioEngine } from "./audio-engine/AudioEngine";
 import { LiveRecorder } from "./audio-engine/recorder";
 import { detectTransients } from "./audio-engine/transients";
 import { createFxEqProcessor } from "./effects/fxeq-core/core/fxEqProcessor";
+import { createFxEqNode } from "./effects/fxeqNode";
 import { UltinaProcessor } from "./effects/ultina-core/dsp/ultinaProcessor";
 import { createOzvenaProcessor } from "./effects/ozvena-core/core/ozvenaProcessor";
 import { defaultOzvenaStateV1 } from "./effects/ozvena-core/v2/types";
@@ -37,6 +38,7 @@ import { canonicalizePattern, contentHash } from "./ai/evaluation";
 import { inspectPatternInvariants } from "./ai/invariants";
 import { autoMapVelocityLayers } from "./samples/autoMap";
 import { measurePreviewAudio, passesPreviewAudio, previewNoteDuration } from "./presets/audioQuality";
+import { hashString } from "./shared/rng";
 
 export interface CheckResult {
   name: string;
@@ -258,10 +260,14 @@ export async function auditFxExpansion(bank: SampleBank): Promise<CheckResult> {
   };
 }
 
-export async function runChecks(): Promise<CheckResult[]> {
+export async function runChecks(onProgress?: (result: CheckResult) => void): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  const record = (result: CheckResult) => {
+    results.push(result);
+    onProgress?.(result);
+  };
   const check = (name: string, ok: boolean, message = "") =>
-    results.push({ name, ok, message: message || (ok ? "ok" : "failed") });
+    record({ name, ok, message: message || (ok ? "ok" : "failed") });
 
   const bank = await generateFactoryBank();
   const rrIds = Object.entries(RR_VARIATIONS).flatMap(([base, vars]) => vars.map((_, i) => `${base}.rr${i + 2}`));
@@ -282,8 +288,8 @@ export async function runChecks(): Promise<CheckResult[]> {
   // preset audit must measure the sound users actually hear, not the synth
   // fallback. Sampler/texture probes sample curated overrides directly.
   await loadCuratedLayer(bank);
-  results.push(await auditFactoryPresetAudio(bank));
-  results.push(await auditFxExpansion(bank));
+  record(await auditFactoryPresetAudio(bank));
+  record(await auditFxExpansion(bank));
 
   {
     // Curated factory layer (VISION §5): the seeds in public/samples must
@@ -4208,10 +4214,13 @@ export async function runChecks(): Promise<CheckResult[]> {
     check("fxeq: real-browser suite (worklet/PDC/mix/meters/transparency/CPU)", false, String(error));
   }
 
-  // PRISM export determinism: exercise the actual browser AudioWorklet path,
-  // then round-trip the project through the same JSON/migration boundary used
-  // by project import. Stable project/track/effect IDs must reproduce the same
-  // host-derived seed for both PRISM instances after the reload equivalent.
+  // PRISM determinism: isolate the actual browser AudioWorklet from the rest
+  // of the native Web Audio mix graph. Native oscillator/compressor output can
+  // differ slightly across independent OfflineAudioContexts even when the
+  // project is identical, so comparing full-project bounces here would blame
+  // PRISM for unrelated platform-level float variation. Round-trip the effect
+  // through project JSON/migration and verify the stable host seed reproduces
+  // the same processor output from an identical deterministic input buffer.
   try {
     const doc = createProjectFromTemplate("house");
     doc.id = "browser-prism-determinism";
@@ -4236,10 +4245,40 @@ export async function runChecks(): Promise<CheckResult[]> {
       { id: "browser-prism-b", type: "fxeq", bypassed: false, params: { ...prismParams } },
     ];
     const restored = migrateProject(JSON.parse(JSON.stringify(doc)));
-    const [first, afterReload] = await Promise.all([
-      renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 }),
-      renderProject(restored, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 }),
-    ]);
+    const restoredTrack = restored.tracks.find((candidate) => candidate.id === track.id);
+    const restoredEffect = restoredTrack?.effects.find((effect) => effect.id === "browser-prism-a");
+    if (!restoredEffect) throw new Error("PRISM effect was lost during the JSON/migration round-trip");
+    const originalEffect = track.effects[0];
+    const seed = hashString(`${doc.id}|${track.id}|${originalEffect.id}|fx-dsp-v1`);
+    const length = 94_175;
+    const renderPrism = async (effect: typeof originalEffect) => {
+      const ctx = new OfflineAudioContext(2, length, SR);
+      await loadAllWorklets(ctx);
+      const runtime = createFxEqNode(ctx, effect, defaultParamsOf("fxeq"), seed);
+      const input = ctx.createBuffer(2, length, SR);
+      for (let channel = 0; channel < 2; channel++) {
+        const samples = input.getChannelData(channel);
+        let state = (0x12345678 + channel) >>> 0;
+        for (let i = 0; i < length; i++) {
+          state ^= state << 13;
+          state ^= state >>> 17;
+          state ^= state << 5;
+          const noise = (state >>> 0) / 0x1_0000_0000 - 0.5;
+          samples[i] = Math.sin((2 * Math.PI * (220 + 37 * channel) * i) / SR) * 0.15 + noise * 0.04;
+        }
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = input;
+      source.connect(runtime.input);
+      runtime.output.connect(ctx.destination);
+      source.start(0);
+      try {
+        return await ctx.startRendering();
+      } finally {
+        runtime.dispose();
+      }
+    };
+    const [first, afterReload] = await Promise.all([renderPrism(originalEffect), renderPrism(restoredEffect)]);
     let maxDiff = 0;
     const sameShape = first.numberOfChannels === afterReload.numberOfChannels && first.length === afterReload.length;
     if (sameShape) {
@@ -4251,10 +4290,9 @@ export async function runChecks(): Promise<CheckResult[]> {
     }
     check(
       "prism: two browser worklet instances stay deterministic after JSON reload",
-      sameShape && maxDiff <= 1e-4,
-      // 1e-4 = the documented determinism contract (KNOWN_LIMITATIONS): a
-      // Float32 JSON roundtrip carries LSB noise that grows under load
-      // (observed 7e-7…1.1e-4). 1e-5 was 10× tighter than the contract.
+      sameShape && maxDiff <= 1e-6,
+      // The isolated seeded worklet is expected to be bit-identical. Keep a
+      // tiny tolerance only for browser engines that differ in Float32 math.
       `sameShape=${sameShape} maxDiff=${maxDiff.toExponential(2)} length=${first.length}`,
     );
   } catch (error) {

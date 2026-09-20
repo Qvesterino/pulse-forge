@@ -5,7 +5,7 @@ import type { ProjectDocument } from "./project-model/types";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { ProjectBrowser } from "./ui/ProjectBrowser";
 import { decodeShareCode } from "./export/shareCode";
-import { stashIntentPrefill, takePendingHandoff } from "./landing/handoff";
+import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill } from "./landing/handoff";
 import { initSwUpdate } from "./sw-update";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
@@ -143,11 +143,16 @@ function Boot() {
         // exist. A corrupt LINK is a user-visible error; a corrupt HANDOFF
         // just falls back to normal studio entry.
         const linkCode = new URLSearchParams(location.search).get("import");
-        const pending = linkCode ? null : takePendingHandoff();
+        // PEEK, not take: StrictMode mounts this effect twice in dev — a
+        // take-and-clear on the first (cancelled) run would swallow the
+        // handoff. The winning run clears it once the studio is up, so a
+        // reload never re-imports an already-opened handoff.
+        const pending = linkCode ? null : peekPendingHandoff();
         const code = linkCode ?? pending?.code ?? null;
         const imported = code ? decodeShareCode(code) : null;
         if (linkCode && !imported) {
           setScreen({ kind: "error", message: "This beat link is invalid or corrupted." });
+          clearPendingHandoff();
           return;
         }
         if (pending?.prompt) stashIntentPrefill(pending.prompt);
@@ -158,7 +163,9 @@ function Boot() {
         if (cancelled) return;
         if (imported) {
           const services = await openProject(core, imported);
-          if (!cancelled) setScreen({ kind: "studio", services });
+          if (cancelled) return;
+          clearPendingHandoff();
+          setScreen({ kind: "studio", services });
         } else {
           setScreen({ kind: "browser", core });
         }

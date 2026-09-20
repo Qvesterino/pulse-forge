@@ -4117,6 +4117,10 @@
   function createFxEqProcessor(params, options) {
     let bandCount = 6;
     let schema = buildSchema(bandCount);
+    if (params && typeof params["bandCount"] === "number" && Number.isFinite(params["bandCount"]) && Math.round(params["bandCount"]) !== bandCount) {
+      bandCount = Math.max(2, Math.min(MAX_BANDS, Math.round(params["bandCount"])));
+      schema = buildSchema(bandCount);
+    }
     let values = { ...schema.defaultParams };
     if (params) {
       for (const id of Object.keys(values)) {

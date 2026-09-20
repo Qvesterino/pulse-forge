@@ -23,6 +23,10 @@ export function createCompressorNode(
   const node = new AudioWorkletNode(ctx, "compressor-processor", {
     numberOfInputs: 2,
     numberOfOutputs: 1,
+    // AudioWorklet outputs default to mono even when channelCount is stereo.
+    // The processor preserves L/R independently, so make the output shape
+    // explicit or a hard-panned right signal is dropped before the master.
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

@@ -99,6 +99,26 @@ export function createFxEqProcessor(params?: Record<string, number>, options?: F
   let bandCount = 6;
   let schema = buildSchema(bandCount);
 
+  // Constructor params carry the document's full parameter map, bandCount
+  // included. The old code clamped bandCount into `values` but never
+  // rebuilt the schema/crossover, so a saved 2/4-band instance rendered at
+  // the default 6-band layout until the user nudged BANDS — silent wrong
+  // audio on project load. The host path is worse: syncFxParams seeds its
+  // cache from the document and only pushes CHANGED keys, so the worklet
+  // never learns the real bandCount at all. Rebuild up front (same
+  // non-finite guard as the setter path).
+  if (
+    params &&
+    typeof params["bandCount"] === "number" &&
+    Number.isFinite(params["bandCount"]) &&
+    Math.round(params["bandCount"]) !== bandCount
+  ) {
+    // Mirror rebuildForBandCount's clamp (defined below) without the merge —
+    // `values` is not initialized yet.
+    bandCount = Math.max(2, Math.min(MAX_BANDS, Math.round(params["bandCount"])));
+    schema = buildSchema(bandCount);
+  }
+
   // Flat value store.
   let values: Record<string, number> = { ...schema.defaultParams };
   if (params) {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ProjectBrowser } from "../../src/ui/ProjectBrowser";
 import type { CoreServices } from "../../src/services";
+import type { IncompatibleProjectMeta } from "../../src/persistence/ProjectRepository";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -30,6 +31,7 @@ function makeCore(saved: ProjectDocument[]): CoreServices {
     bank: {} as CoreServices["bank"],
     repo: {
       listAll: vi.fn(async () => []),
+      listIncompatible: vi.fn(async () => []),
       load: vi.fn(async () => null),
       loadMostRecent: vi.fn(async () => null),
       save: vi.fn(async (doc: ProjectDocument) => {
@@ -69,5 +71,29 @@ describe("ProjectBrowser — import does not overwrite by embedded id", () => {
     expect(saved[0].name).toBe("Imported Copy");
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect((onOpen.mock.calls[0][0] as ProjectDocument).id).toBe(saved[0].id);
+  });
+
+  it("shows newer-version projects without offering open, and still allows explicit deletion", async () => {
+    const saved: ProjectDocument[] = [];
+    const onOpen = vi.fn();
+    const core = makeCore(saved);
+    const incompatible: IncompatibleProjectMeta = {
+      id: "future-project",
+      name: "Future Project",
+      updatedAt: new Date().toISOString(),
+      schemaVersion: 999,
+    };
+    vi.mocked(core.repo.listIncompatible).mockResolvedValueOnce([incompatible]);
+
+    render(<ProjectBrowser core={core} onOpen={onOpen} />);
+
+    expect(await screen.findByText("Future Project")).toBeTruthy();
+    expect(screen.getByText("NEWER VERSION")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^OPEN$/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^DEL$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^DELETE\?$/ }));
+    await waitFor(() => expect(core.repo.delete).toHaveBeenCalledWith(incompatible.id));
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

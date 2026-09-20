@@ -9,6 +9,7 @@ export function createTapeStopNode(ctx: BaseAudioContext, instance: { params: Re
   const node = new AudioWorkletNode(ctx, "tapestop-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
     processorOptions: { seed: 1 },

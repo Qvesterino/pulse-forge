@@ -12,7 +12,7 @@ test.describe("01 — landing to studio", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Make beats in your browser." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /describe it/i })).toBeVisible();
     // The page load event includes statically imported entry dependencies; the
     // preview may finish its own asynchronous render later.
     expect(serviceRequests).toEqual([]);
@@ -43,5 +43,31 @@ test.describe("01 — landing to studio", () => {
     // Filter the same AudioContext/autoplay noise the smoke script tolerates.
     const fatal = consoleErrors.filter((e) => !/AudioContext|autoplay|user gesture/i.test(e));
     expect(fatal, `unexpected console errors: ${fatal.slice(0, 3).join(" | ")}`).toEqual([]);
+  });
+
+  test("landing prompt forges a beat, opens the studio with it and pre-fills INTENT (A1+A2)", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/");
+    await page.waitForSelector(".landing-prompt", { timeout: 60_000 });
+
+    // One sentence is the whole funnel: type → forge.
+    await page.fill(".landing-prompt-input", "dark trap 140");
+    await page.getByRole("button", { name: "Forge it" }).click();
+
+    // Generation is real (client-side intent engine); the preview player
+    // enables once the offline render of the forged beat completes.
+    const openInStudio = page.getByRole("button", { name: /open in studio/i });
+    await expect(openInStudio).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".landing-prompt .landing-hero-player .embed-play")).toBeEnabled({
+      timeout: 60_000,
+    });
+
+    // Carry the beat into the studio through the handoff (skips the browser).
+    await openInStudio.click();
+    await page.waitForSelector(".topbar", { timeout: 60_000 });
+
+    // A2: the intent panel opened by default, pre-filled with the prompt
+    // that produced the beat now loaded in the project.
+    await expect(page.locator(".intent-textarea")).toHaveValue("dark trap 140");
   });
 });

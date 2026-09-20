@@ -9,6 +9,7 @@ export function createSvFilterNode(ctx: BaseAudioContext, instance: { params: Re
   const node = new AudioWorkletNode(ctx, "svfilter-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

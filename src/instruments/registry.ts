@@ -166,6 +166,7 @@ function createVoiceFilter(
     const node = new AudioWorkletNode(ctx, "svfilter-processor", {
       numberOfInputs: 1,
       numberOfOutputs: 1,
+      outputChannelCount: [2],
       channelCount: 2,
     });
     const cutoffParam = node.parameters.get("cutoff")!;

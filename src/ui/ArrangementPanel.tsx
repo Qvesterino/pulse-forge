@@ -66,7 +66,7 @@ import { extractGroove } from "../audio-engine/groove-extract";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../ai/flip";
 import { userSampleId } from "../persistence/UserSampleRepository";
-import type { RecordingSession } from "../persistence/RecordingRecoveryRepository";
+import { RECORDING_OWNER_ID, type RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
 import { recordingAlignment } from "../audio-engine/recordingAlignment";
 import { buildBounceZoneDoc } from "../rendering/bounce";
@@ -265,7 +265,7 @@ export function ArrangementPanel() {
 
   const refreshRecoverableTakes = useCallback(async (): Promise<void> => {
     try {
-      publishRecoverableTakes(await recoveryRepoRef.current!.listRecoverable());
+      publishRecoverableTakes(await recoveryRepoRef.current!.listRecoverable(Date.now(), RECORDING_OWNER_ID));
     } catch {
       setRecError("Could not check local recording recovery storage. Your current project is unchanged.");
     }
@@ -274,7 +274,7 @@ export function ArrangementPanel() {
   useEffect(() => {
     let live = true;
     const refresh = () => {
-      void recoveryRepoRef.current!.listRecoverable().then(
+      void recoveryRepoRef.current!.listRecoverable(Date.now(), RECORDING_OWNER_ID).then(
         (sessions) => {
           if (live) publishRecoverableTakes(sessions);
         },
@@ -381,6 +381,14 @@ export function ArrangementPanel() {
         void stopRec();
       };
       await startPromise;
+      // An error during the "starting" phase already routed this take through
+      // stopRec, which cleared the recorder slot. If start() resolved anyway
+      // (late permission/resume), don't resurrect the recording state or the
+      // recorder — a fresh take may already own the slot.
+      if (recRef.current !== rec) {
+        void rec.cancel();
+        return;
+      }
       recRef.current = rec;
       setRecSeconds(0);
       setRecState("recording");

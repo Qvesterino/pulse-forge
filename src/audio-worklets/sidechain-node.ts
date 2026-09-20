@@ -19,6 +19,7 @@ export function createSidechainNode(
   const workletNode = new AudioWorkletNode(ctx, "sidechain-processor", {
     numberOfInputs: 2, // [0]=main, [1]=sidechain
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

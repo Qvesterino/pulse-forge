@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   ensureWorkletsForDoc,
   isWorkletReady,
@@ -121,6 +123,47 @@ describe("AudioWorklet loader", () => {
 
   it("resolves silently without audioWorklet (jsdom)", async () => {
     await expect(loadCoreWorklets({} as BaseAudioContext)).resolves.toBeUndefined();
+  });
+});
+
+describe("AudioWorklet stereo output contract", () => {
+  it("declares stereo output for every stereo FX worklet wrapper", () => {
+    const directory = resolve(process.cwd(), "src/audio-worklets");
+    // Envelope follower emits a mono control signal; all other signal FX
+    // wrappers in this directory are stereo processors. AudioWorkletNode's
+    // `channelCount: 2` configures inputs only and does not make its output
+    // stereo, so each signal processor must declare outputChannelCount.
+    const monoControlNodes = new Set(["envfollower-node.ts"]);
+    const files = readdirSync(directory).filter(
+      (file) => file.endsWith("-node.ts") && !monoControlNodes.has(file),
+    );
+
+    for (const file of files) {
+      const source = readFileSync(resolve(directory, file), "utf8");
+      if (!/numberOfOutputs:\s*1/.test(source)) continue;
+      expect(source, `${file} must explicitly declare two output channels`).toMatch(
+        /outputChannelCount:\s*\[\s*2\s*\]/,
+      );
+    }
+  });
+
+  it("keeps direct FX and instrument worklet constructors stereo too", () => {
+    for (const [path, worklet] of [
+      ["src/effects/fxeqNode.ts", "fxeq"],
+      ["src/effects/ultinaNode.ts", "ultina"],
+      ["src/effects/ozvenaNode.ts", "ozvena"],
+    ]) {
+      const source = readFileSync(resolve(process.cwd(), path), "utf8");
+      expect(source, `${worklet} constructor must declare stereo output`).toMatch(
+        /outputChannelCount:\s*\[\s*2\s*\]/,
+      );
+    }
+
+    const instrumentSource = readFileSync(resolve(process.cwd(), "src/instruments/registry.ts"), "utf8");
+    const svFilterOptions = instrumentSource.match(
+      /new AudioWorkletNode\(ctx,\s*"svfilter-processor",\s*\{([\s\S]*?)\}\)/,
+    )?.[1];
+    expect(svFilterOptions, "SV Filter instrument node options").toMatch(/outputChannelCount:\s*\[\s*2\s*\]/);
   });
 });
 

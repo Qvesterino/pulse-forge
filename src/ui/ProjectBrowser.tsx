@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoreServices } from "../services";
-import type { SavedProjectMeta } from "../persistence/ProjectRepository";
+import type { IncompatibleProjectMeta, SavedProjectMeta } from "../persistence/ProjectRepository";
 import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
 import { importProject } from "../export/project-io";
 import { uid } from "../shared/ids";
+
+/** One row of the library: openable, or written by a newer app version. */
+type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
+
+const mergeRows = (openable: SavedProjectMeta[], newer: IncompatibleProjectMeta[]): ProjectRow[] =>
+  [
+    ...openable.map((meta): ProjectRow => ({ kind: "ok", meta })),
+    ...newer.map((meta): ProjectRow => ({ kind: "newer", meta })),
+  ].sort((a, b) => (a.meta.updatedAt < b.meta.updatedAt ? 1 : -1));
 
 function formatRelative(iso: string): string {
   const then = Date.parse(iso);
@@ -24,6 +33,7 @@ function formatRelative(iso: string): string {
 
 export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (doc: ProjectDocument) => void }) {
   const [projects, setProjects] = useState<SavedProjectMeta[] | null>(null);
+  const [newerProjects, setNewerProjects] = useState<IncompatibleProjectMeta[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -33,31 +43,45 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [listError, setListError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = useCallback(() => {
-    core.repo
-      .listAll()
-      .then((list) => {
-        setListError(null);
-        setProjects(list);
-      })
+  const applyLists = useCallback(
+    (list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
+      setListError(null);
+      setProjects(list);
+      setNewerProjects(newer);
+    },
+    [],
+  );
+
+  const fetchLists = useCallback(async (): Promise<void> => {
+    // Newer-version rows are additive — if that probe fails, still show the
+    // openable library rather than blocking on it.
+    const newer = await core.repo
+      .listIncompatible()
       .catch((err) => {
-        // A blocked/corrupted/unavailable DB must not masquerade as a
-        // first-run machine — the user would believe their projects are
-        // gone and start over. Show the storage failure instead.
-        console.error("[ProjectBrowser] project list failed:", err);
-        setListError(err instanceof Error ? err.message : "Storage is unavailable");
-        setProjects([]);
+        console.warn("[ProjectBrowser] incompatible project list failed:", err);
+        return [] as IncompatibleProjectMeta[];
       });
-  }, [core]);
+    applyLists(await core.repo.listAll(), newer);
+  }, [core, applyLists]);
+
+  const refresh = useCallback(() => {
+    fetchLists().catch((err) => {
+      // A blocked/corrupted/unavailable DB must not masquerade as a
+      // first-run machine — the user would believe their projects are
+      // gone and start over. Show the storage failure instead.
+      console.error("[ProjectBrowser] project list failed:", err);
+      setListError(err instanceof Error ? err.message : "Storage is unavailable");
+      setProjects([]);
+      setNewerProjects([]);
+    });
+  }, [fetchLists]);
 
   useEffect(() => {
     let cancelled = false;
-    core.repo
-      .listAll()
-      .then((list) => {
+    fetchLists()
+      .then(() => {
         if (cancelled) return;
         setListError(null);
-        setProjects(list);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -67,11 +91,12 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
         console.error("[ProjectBrowser] project list failed:", err);
         setListError(err instanceof Error ? err.message : "Storage is unavailable");
         setProjects([]);
+        setNewerProjects([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [core]);
+  }, [fetchLists]);
 
   // IndexedDB failures (quota, private browsing, corrupted record) would
   // otherwise surface only as unhandled rejections while the UI sits dead.
@@ -175,7 +200,8 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       refresh();
     });
 
-  const firstRun = projects !== null && projects.length === 0;
+  const firstRun = projects !== null && projects.length === 0 && newerProjects.length === 0;
+  const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
 
   return (
@@ -270,9 +296,45 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           {firstRun && !listError && (
             <p className="pb-empty">No projects yet — everything you create is saved automatically.</p>
           )}
-          {projects !== null && projects.length > 0 && (
+          {projects !== null && rows !== null && rows.length > 0 && (
             <div className="pb-list">
-              {projects.map((project) => (
+              {rows.map((row) => {
+                if (row.kind === "newer") {
+                  const project = row.meta;
+                  return (
+                    <div key={project.id} className="pb-row pb-row-newer">
+                      <span className="pb-row-name pb-row-name-static" title="This project was made in a newer app version. Update KYX to open it.">
+                        {project.name}
+                      </span>
+                      <span className="pb-row-meta">
+                        <span className="pb-badge-newer">NEWER VERSION</span> · saved {formatRelative(project.updatedAt)}
+                      </span>
+                      <div className="pb-row-actions">
+                        {confirmDeleteId === project.id ? (
+                          <>
+                            <button type="button" className="btn btn-danger" onClick={() => void remove(project.id)}>
+                              DELETE?
+                            </button>
+                            <button type="button" className="btn btn-ghost" onClick={() => setConfirmDeleteId(null)}>
+                              NO
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setConfirmDeleteId(project.id)}
+                            title="Delete project"
+                          >
+                            DEL
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                const project = row.meta;
+                return (
                 <div key={project.id} className="pb-row">
                   {renamingId === project.id ? (
                     <input
@@ -348,7 +410,8 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

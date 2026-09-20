@@ -23,12 +23,18 @@ export function semanticMode(): SemanticMode {
   return "on";
 }
 
-const EMBED_TIMEOUT_MS = 20_000; // batched q8 inference; first call also loads the model
+const EMBED_TIMEOUT_MS = 20_000; // batched q8 inference, model already warm
+// First call also loads the ~118 MB q8 model — slow disks / AV scans can
+// legitimately exceed the warm budget. A cold timeout must NOT trip the
+// circuit breaker: the worker keeps loading in the background and later
+// calls succeed once the model is resident.
+const COLD_EMBED_TIMEOUT_MS = 60_000;
 const MAX_FAILURES = 2;
 
 let worker: Worker | null = null;
 let workerFailures = 0;
 let workerDisabled = false;
+let modelLoaded = false;
 let unavailable = false; // manifest probe failed — model not fetched
 let nextRequestId = 1;
 
@@ -53,7 +59,11 @@ function spawnWorker(): Worker | null {
   }
 }
 
-function request(request: SemanticRequest, timeoutMs: number): Promise<SemanticResponse> {
+function request(
+  request: SemanticRequest,
+  timeoutMs: number,
+  timeoutCountsTowardFailure = true,
+): Promise<SemanticResponse> {
   const active = spawnWorker();
   if (!active) return Promise.resolve({ ...request, ok: false, error: "worker-unavailable" } as SemanticResponse);
   return new Promise((resolve) => {
@@ -64,15 +74,15 @@ function request(request: SemanticRequest, timeoutMs: number): Promise<SemanticR
       active.removeEventListener("error", onError);
       active.removeEventListener("messageerror", onMessageError);
     };
-    const fail = (error: string) => {
+    const fail = (error: string, counts = true) => {
       if (settled) return;
       settled = true;
       cleanup();
-      recordWorkerFailure(active);
+      if (counts) recordWorkerFailure(active);
       resolve({ ...request, ok: false, error } as SemanticResponse);
     };
     const timer = setTimeout(() => {
-      fail("timeout");
+      fail("timeout", timeoutCountsTowardFailure);
     }, timeoutMs);
     const onMessage = (event: MessageEvent<SemanticResponse>) => {
       if (event.data?.requestId !== request.requestId || settled) return;
@@ -122,13 +132,18 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[] | null
     if (!(await semanticAvailable())) return null;
     const active = spawnWorker();
     if (!active) return null;
+    // Cold start (model not yet loaded) gets the long budget, and its
+    // timeout alone never wedges the feature for the session.
+    const cold = !modelLoaded;
     const response = await request(
       { type: "embed", requestId: nextRequestId++, texts },
-      EMBED_TIMEOUT_MS + texts.length * 200,
+      (cold ? COLD_EMBED_TIMEOUT_MS : EMBED_TIMEOUT_MS) + texts.length * 200,
+      !cold,
     );
     if (!response.ok || response.type !== "embed" || !response.vectors || !response.rowCount) {
       return null;
     }
+    modelLoaded = true;
     const { vectors, rowCount } = response;
     const dim = vectors.length / rowCount;
     if (!Number.isInteger(dim) || dim === 0) return null;
@@ -148,6 +163,7 @@ export function resetSemanticClient(): void {
   worker = null;
   workerFailures = 0;
   workerDisabled = false;
+  modelLoaded = false;
   unavailable = false;
   nextRequestId = 1;
 }

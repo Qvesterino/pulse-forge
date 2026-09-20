@@ -18,6 +18,7 @@ export function createBeatManglerNode(
   const node = new AudioWorkletNode(ctx, "beatmangler-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

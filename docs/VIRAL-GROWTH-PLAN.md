@@ -69,12 +69,14 @@ Všetky diely existujú; Fáza A je **wiring + UI**. Cieľ: typu „napíš → 
 Nový malý modul `src/services/funnel.ts`: `funnelEvent(name)` → `localStorage` čítače + `console.debug`. Eventy: `landing_prompt_played`, `landing_forged`, `studio_first_apply`, `share_clicked` (s variantom). Diagnostics panel si ich neskôr vypíše.
 
 ### Akceptačné kritériá Fázy A
-- [ ] Z landing page: napíšem prompt → klik → počujem beat. **Bez vstupu do štúdia.**
-- [ ] Klik na Forge it → štúdio sa otvorí s týmto beatom, IntentPanel je otvorený a predvyplnený.
-- [ ] Úplne prvá návšteva štúdia (bez promptu) → IntentPanel otvorený, pole má focus.
-- [ ] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz.
-- [ ] Funnel eventy sa zapisujú; landing bundle sa nezväčší o model ani engine navýše existujúceho EmbedApp path.
-- [ ] E2E smoke: landing prompt → studio → USE (rozšírenie existujúceho `01-landing-to-studio`).
+- [x] Z landing page: napíšem prompt → klik → počujem beat. **Bez vstupu do štúdia.** *(A1 dodané 2026-09-20)*
+- [x] Klik na Forge it → štúdio sa otvorí s týmto beatom, IntentPanel je otvorený a predvyplnený. *(A1+A2 dodané)*
+- [x] Úplne prvá návšteva štúdia (bez promptu) → IntentPanel otvorený, pole má focus. *(A2)*
+- [ ] Po každom USE sú viditeľné tri share akcie; každá funguje ako doteraz. *(A3 — ešte nie)*
+- [x] Funnel eventy sa zapisujú (`pf-funnel-v1`); landing bundle sa nezväčší o model ani engine navýše existujúceho EmbedApp path. *(A4-lite)*
+- [x] E2E smoke: landing prompt → studio (rozšírený `01-landing-to-studio`, plný forge test v Chromium).
+
+**Poznámky z implementácie (2026-09-20):** handoff beží peek+clear-po-úspechu (StrictMode dvojité mountnutie Bootu by take-and-clear prehltil); corrupt handoff padá na normálne otvorenie štúdia; corrupt `?import=` link zostáva viditeľná chyba. E2E helpery seedujú `pf-intent-opened`, nech generické špecy držia klasický default dock — auto-open pokrýva dedikovaný forge špec.
 
 ---
 

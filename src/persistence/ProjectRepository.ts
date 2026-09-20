@@ -1,5 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
-import { migrateProject, validateProjectShape } from "../project-model/schema";
+import { SCHEMA_VERSION, migrateProject, validateProjectShape } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { STORE_META, STORE_PROJECTS, openDb, tx } from "./db";
 
@@ -12,6 +12,18 @@ export interface SavedProjectMeta {
   trackCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A project written by a NEWER app version: it exists in storage and must be
+ * visible (it is the user's work), but it cannot be opened, renamed, or
+ * duplicated until the app is updated. Deletion stays available.
+ */
+export interface IncompatibleProjectMeta {
+  id: string;
+  name: string;
+  updatedAt: string;
+  schemaVersion: number;
 }
 
 function metaOf(doc: ProjectDocument): SavedProjectMeta {
@@ -81,6 +93,30 @@ export class ProjectRepository {
     return all
       .map((doc) => this.safeMigrate(doc))
       .filter((meta): meta is SavedProjectMeta => meta !== null)
+      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+
+  /**
+   * Projects saved by a newer app version. They are skipped by listAll/load
+   * (they cannot be migrated), but silently HIDING the user's own work makes
+   * it look lost — the browser lists these with a "newer version" badge.
+   */
+  async listIncompatible(): Promise<IncompatibleProjectMeta[]> {
+    const db = await this.db();
+    const all = await tx<ProjectDocument[]>(db, STORE_PROJECTS, "readonly", (store) => store.getAll());
+    return all
+      .filter(
+        (doc) =>
+          validateProjectShape(doc) &&
+          typeof doc.schemaVersion === "number" &&
+          doc.schemaVersion > SCHEMA_VERSION,
+      )
+      .map((doc) => ({
+        id: doc.id,
+        name: typeof doc.name === "string" && doc.name.length > 0 ? doc.name : "Untitled project",
+        updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : new Date(0).toISOString(),
+        schemaVersion: doc.schemaVersion as number,
+      }))
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }
 

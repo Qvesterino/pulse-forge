@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
 import { encodeShareCode } from "../export/shareCode";
+import { createProjectFromTemplate } from "../project-model/templates";
 import { generateLandingBeat } from "./landingBeat";
 import { savePendingHandoff } from "./handoff";
 import { funnelEvent } from "../services/funnel";
@@ -90,12 +91,11 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
         </button>
       </form>
 
-      <div className="landing-prompt-chips" role="list" aria-label="Prompt ideas">
+      <div className="landing-prompt-chips" aria-label="Prompt ideas">
         {PROMPT_CHIPS.map((chip) => (
           <button
             key={chip}
             type="button"
-            role="listitem"
             className="landing-chip"
             disabled={phase.kind === "busy"}
             onClick={() => {
@@ -110,12 +110,14 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
 
       <div className="landing-prompt-result">
         {phase.kind === "idle" && demoUntilForge && (
-          <p className="landing-prompt-hint">
-            Or press play to hear a demo — then type your own and forge it.
+          <>
+            <p className="landing-prompt-hint">Or press play to hear a demo — then type your own and forge it.</p>
+            {/* Block-level player: must NOT sit inside the <p> above (invalid
+                div-in-p nesting trips React's validateDOMNesting warning). */}
             <span className="landing-hero-player landing-prompt-demo">
               <DemoPlayer />
             </span>
-          </p>
+          </>
         )}
         {phase.kind === "busy" && <p className="landing-prompt-hint">Composing your beat…</p>}
         {phase.kind === "error" && (
@@ -135,7 +137,6 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
               <button
                 type="button"
                 className="landing-btn landing-btn-ghost"
-                disabled={phase.kind === "busy"}
                 onClick={() => void forge(prompt)}
               >
                 Forge another
@@ -150,16 +151,8 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
 
 /** The pre-forge demo — same house template hero player as before. */
 function DemoPlayer() {
-  const [code, setCode] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void import("../project-model/templates").then(({ createProjectFromTemplate }) => {
-      if (!cancelled) setCode(encodeShareCode(createProjectFromTemplate("house")));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  if (!code) return null;
+  // Sync: the template import is already in this chunk's graph (landingBeat),
+  // so the demo player paints in the first commit — no late flash.
+  const code = useMemo(() => encodeShareCode(createProjectFromTemplate("house")), []);
   return <EmbedApp code={code} inline hideBrand />;
 }

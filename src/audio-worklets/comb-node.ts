@@ -9,6 +9,7 @@ export function createCombNode(ctx: BaseAudioContext, instance: { params: Record
   const node = new AudioWorkletNode(ctx, "comb-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

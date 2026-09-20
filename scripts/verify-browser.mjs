@@ -59,6 +59,7 @@ try {
   const consoleErrors = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
+    else if (msg.type() === "log" && msg.text().startsWith("[check] ")) console.log(msg.text().slice(8));
   });
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
@@ -83,7 +84,9 @@ try {
     try {
       results = await page.evaluate(async () => {
         const mod = await import("/src/browser-checks.ts");
-        return mod.runChecks();
+        return mod.runChecks((result) => {
+          console.log(`[check] ${result.ok ? "PASS" : "FAIL"} ${result.name}${result.message ? ` — ${result.message}` : ""}`);
+        });
       });
     } catch (error) {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
@@ -744,8 +747,9 @@ try {
     await plugPage.waitForTimeout(180);
     const morphAfter = await prismMorph.inputValue();
     if (morphBefore === morphAfter) throw new Error("PRISM morph did not move on ArrowRight");
-    await plugPage.locator(".fx-device-toggle").first().click();
-    await plugPage.locator(".fx-device-toggle").first().click();
+    // DEV mode is the active editor surface and intentionally has no rack
+    // collapse toggles. Keep PRISM mounted so the reload check below verifies
+    // its persisted editor state instead of clicking a hidden legacy control.
     await plugPage.waitForSelector(".fxeq-panel .effect-ab", { timeout: 5000 });
     // Reload is the user-facing persistence boundary: source, both snapshots
     // and the enabled morph control must survive the project rehydrate.

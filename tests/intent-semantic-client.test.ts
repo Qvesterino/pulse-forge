@@ -93,4 +93,44 @@ describe("semantic worker client failure handling", () => {
     await expect(embedTexts(["after circuit opens"])).resolves.toBeNull();
     expect(FakeWorker.instances).toHaveLength(1);
   });
+
+  it("cold-start timeouts resolve to null WITHOUT tripping the circuit breaker", async () => {
+    // Regression: the first embed also loads the ~118 MB model; a slow disk
+    // could exceed the 20 s budget twice and silently kill the semantic path
+    // for the whole session. Cold timeouts must leave the worker loading.
+    vi.useFakeTimers();
+    try {
+      const { embedTexts } = await import("../src/ai/semantic/semantic-client");
+      const pending = embedTexts(["slow first load"]);
+      await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+      const worker = FakeWorker.instances[0];
+      await vi.waitFor(() => expect(worker.messages).toHaveLength(1));
+
+      await vi.advanceTimersByTimeAsync(60_000 + 200 + 1);
+      await expect(pending).resolves.toBeNull();
+      expect(worker.terminated).toBe(false);
+
+      // Still alive after two cold timeouts — the breaker must not have opened.
+      const second = embedTexts(["second attempt"]);
+      await vi.waitFor(() => expect(worker.messages).toHaveLength(2));
+      await vi.advanceTimersByTimeAsync(60_000 + 200 + 1);
+      await expect(second).resolves.toBeNull();
+      expect(worker.terminated).toBe(false);
+
+      // Warm failures still count: two explicit errors trip the breaker.
+      const third = embedTexts(["third"]);
+      await vi.waitFor(() => expect(worker.messages).toHaveLength(3));
+      const { requestId: id3 } = worker.messages[2] as { requestId: number };
+      worker.emitMessage({ type: "embed", requestId: id3, ok: false, error: "model-failed" });
+      await expect(third).resolves.toBeNull();
+      const fourth = embedTexts(["fourth"]);
+      await vi.waitFor(() => expect(worker.messages).toHaveLength(4));
+      const { requestId: id4 } = worker.messages[3] as { requestId: number };
+      worker.emitMessage({ type: "embed", requestId: id4, ok: false, error: "model-failed" });
+      await expect(fourth).resolves.toBeNull();
+      expect(worker.terminated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

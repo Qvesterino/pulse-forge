@@ -126,7 +126,8 @@ export function ExportPanel({
         mode,
         sampleRate,
         quality,
-      });
+        signal,
+        });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
 
@@ -190,7 +191,8 @@ export function ExportPanel({
           mode,
           sampleRate,
           quality,
-        });
+          signal,
+          });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
       }
@@ -220,7 +222,8 @@ export function ExportPanel({
           mode,
           sampleRate,
           quality,
-        });
+          signal,
+          });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
       }

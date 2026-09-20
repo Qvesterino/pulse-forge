@@ -13,6 +13,7 @@ export function createStockDelayNode(
   const node = new AudioWorkletNode(ctx, "stock-delay-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

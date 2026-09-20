@@ -9,6 +9,7 @@ export function createAutowahNode(ctx: BaseAudioContext, instance: { params: Rec
   const node = new AudioWorkletNode(ctx, "autowah-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

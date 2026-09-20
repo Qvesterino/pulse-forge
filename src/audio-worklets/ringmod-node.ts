@@ -9,6 +9,7 @@ export function createRingModNode(ctx: BaseAudioContext, instance: { params: Rec
   const node = new AudioWorkletNode(ctx, "ringmod-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

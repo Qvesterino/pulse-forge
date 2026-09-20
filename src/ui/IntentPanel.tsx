@@ -12,6 +12,7 @@ import type { IntentInput } from "../intent/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
+import { takeIntentPrefill } from "../landing/handoff";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 
 /**
@@ -50,6 +51,18 @@ export function IntentPanel() {
       abortRef.current?.abort();
       stopAudition();
     };
+  }, []);
+
+  // Landing handoff (viral growth plan A2): the prompt that forged the beat
+  // now playing pre-fills the field, so "tweak it and Forge another" is one
+  // edit away. Take-semantics — the stash clears on read.
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const prefill = takeIntentPrefill();
+    if (!prefill) return;
+    setText(prefill);
+    setStatus("Your beat is loaded below — tweak the prompt or forge another.");
+    promptInputRef.current?.focus();
   }, []);
 
   /** Live parse preview — shows what the engine understood from the text. */
@@ -283,6 +296,7 @@ export function IntentPanel() {
         <span className="intent-subtitle">describe → audition → choose</span>
       </div>
       <textarea
+        ref={promptInputRef}
         className="intent-textarea"
         placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
         value={text}

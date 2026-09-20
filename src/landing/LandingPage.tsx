@@ -1,6 +1,4 @@
 import { type ReactNode } from "react";
-import { encodeShareCode } from "../export/shareCode";
-import { createProjectFromTemplate } from "../project-model/templates";
 import { LandingPrompt } from "./LandingPrompt";
 
 /* Inline stroke icons — one visual language instead of mixed emoji. */

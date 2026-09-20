@@ -542,6 +542,31 @@ buildSong (jedna undo, reprodukovateľné hashe).
 - Ostáva (T4/far horizon): syntetizované riser WAV assety cez sample bank
   (potrebné bank/persist infra), audio embedding pre transition výber.
 
+### 5.11 TARGETED SECTION REVISE (C3 — "make bridge more energic", HOTOVÉ)
+
+Revise dostal CIEL: rola v texte zvolí konkrétnu sekciu aranžmánu.
+
+- **Router**: `parseReviseIntent` rozpozná rolu (bridge/most, chorus/refren/
+  hook, verse/zloha, intro, outro, build, break/brejk, drop) →
+  `revise` route nesie `targetRole`. Bez roly = global revise (posledný
+  výsledok, C2správanie).
+- **Exekúcia** (`reviseSection` v song.ts): scéna s rolou → jej pattern
+  nesie **plný intent snapshot v provenancii** (ukladá ho engine od Fázy 3)
+  → posun slidera ±0.15 v TOM intsne → re-generácia s ROVNAKÝM SEEDOM
+  (identita sekcie zachovaná) → `replacePatternInPlaceCommand` vymení
+  pattern IN-PLACE (id zachované — scény aj klipy ostanú naviazané),
+  jeden undo krok.
+- **Chyby ako správy**: "no bridge section — build a song first",
+  "pattern has no intent provenance" (ručne kreslené patterny sa
+  ne-revizujú, nechá sa im ich obsah).
+- **Známe mapping obmedzenie**: energy slider ovplyvňuje len drum vrstvu
+  (velocityVariation/ghostWeight); na melodic-only sekcii (bridge) je
+  energy revise obsahovo no-op — engine v2 kandidát (melodic velocity
+  scaling). density prejaví sa všade (ghost notes).
+
+- Testy: intent-artists 13 (rola v routeri, global vs targeted), song 13
+  (in-place regenerácia: id/seed/scene väzba, undo, friendly error).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
@@ -682,7 +707,7 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 ---
 
 *Posledná úplná revízia mapy: 2026-09-19 (T1 + krok 2 semantic layer, parser v3
-EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain, A1 audition, A2 song
-builder + v2 roles + transition sounds, D1 mix chain, D3 unified bar, C1
-artist slovník + C2 revise routing). Dokument sa dopĺňa pri každej zmene
-Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*
+EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain + artist slovník + revise
+routing, A1 audition, A2 song builder + v2 roles + transition sounds, D1 mix
+chain, D3 unified bar, C3 targeted section revise). Dokument sa dopĺňa pri
+každej zmene Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*

@@ -20,6 +20,7 @@ export function createPitchShiftNode(
   const node = new AudioWorkletNode(ctx, "pitchshift-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
     processorOptions: { seed: Math.abs(seed) || 1 },

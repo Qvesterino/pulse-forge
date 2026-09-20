@@ -862,9 +862,7 @@ export class AudioEngine {
       const sideDry = ctx.createGain();
       sideWet.gain.value = 0;
       sideDry.gain.value = 1;
-      const invL = ctx.createGain();
       const invR = ctx.createGain();
-      invL.gain.value = -1;
       invR.gain.value = -1;
       midL.gain.value = 0.5;
       midR.gain.value = 0.5;
@@ -885,8 +883,10 @@ export class AudioEngine {
       midSum.connect(merger, 0, 1);
       // Side: sum, then wet (lowpassed) + dry crossfade.
       sideL.connect(sideSum);
-      sideR.connect(invL);
-      invL.connect(sideSum);
+      // sideR already carries the required -0.5 encoding polarity. A second
+      // inversion here turns (L-R)/2 into (L+R)/2 and makes the disabled
+      // Bass Mono stage swap a hard-right signal to the left output.
+      sideR.connect(sideSum);
       sideSum.connect(sideLP);
       sideSum.connect(sideDry);
       sideLP.connect(sideWet);

@@ -34,6 +34,19 @@ export interface RenderOptions {
    * When `quality` is set this is ignored.
    */
   ozvenaRenderQuality?: boolean;
+  /**
+   * Cancellation for the PRE-RENDER phase (curated-layer wait, worklet load,
+   * graph build, scheduling). An OfflineAudioContext render itself cannot be
+   * aborted once `startRendering` is called — the signal is checked again
+   * right before that point, so cancelling during the (possibly multi-second)
+   * setup fails fast instead of rendering a buffer the caller throws away.
+   */
+  signal?: AbortSignal;
+}
+
+/** @throws AbortError when the export was cancelled during setup. */
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
 }
 
 /**
@@ -270,10 +283,12 @@ export async function renderProject(
   if (typeof OfflineAudioContext === "undefined") {
     throw new Error("OfflineAudioContext is not available in this environment — offline export is unsupported.");
   }
+  throwIfAborted(options.signal);
   // Curated factory layer (same-id override, memoized per bank): exports wait
   // briefly for the curated sound so "what you hear is what you export" —
   // after the timeout the synthesized fallback renders (offline installs).
   await curatedReadyWithin(bank, 2000);
+  throwIfAborted(options.signal);
   const tail = options.tailSeconds ?? 2;
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);
@@ -373,6 +388,8 @@ export async function renderProject(
     }
   }
 
+  // Last cancellation window before the un-abortable render begins.
+  throwIfAborted(options.signal);
   return ctx.startRendering();
 }
 

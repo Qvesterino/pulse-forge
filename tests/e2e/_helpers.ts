@@ -55,6 +55,16 @@ export async function completeOnboardingTourIfPresent(page: Page): Promise<void>
  * sequencer is rendered and the topbar is interactive.
  */
 export async function openHouseTemplateFromLanding(page: Page): Promise<void> {
+  // The A2 default-open INTENT panel is exercised by the dedicated landing
+  // forge spec; these generic helpers seed the flag so the dozens of specs
+  // built on them keep the classic default dock (MIXER in slot A).
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("pf-intent-opened", "1");
+    } catch {
+      /* storage blocked — nothing to seed */
+    }
+  });
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
   // First-time visitors get the landing page — returning visitors hit the
   // browser straight away. Wait for either before deciding.
@@ -82,9 +92,12 @@ export async function openHouseTemplate(page: Page): Promise<void> {
   // This helper presumes a RETURNING visitor (project browser directly at "/").
   // Playwright contexts are fresh, so seed the onboarded flag the Entry gate
   // checks — otherwise the first-visit landing page hides .project-browser.
+  // pf-intent-opened keeps the A2 auto-open out of these generic flows (the
+  // dedicated landing forge spec covers it).
   await page.addInitScript(() => {
     try {
       localStorage.setItem("pf-onboarded", "1");
+      localStorage.setItem("pf-intent-opened", "1");
     } catch {
       /* storage blocked — nothing to seed */
     }

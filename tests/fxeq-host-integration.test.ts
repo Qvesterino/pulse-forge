@@ -274,3 +274,49 @@ describe("fxeq node post-dispose guards", () => {
     expect(port.posted).toEqual([]);
   });
 });
+
+/**
+ * 2026-09-19 audit fixes.
+ */
+describe("FXEQ host-integration audit fixes (2026-09-19)", () => {
+  it("the constructor honours a document bandCount (2/4/6 layouts)", () => {
+    for (const count of [2, 4, 6] as const) {
+      const proc = createFxEqProcessor({ bandCount: count });
+      proc.prepare(SR, 1, 128);
+      expect(proc.getParameter("bandCount"), `bandCount ${count}`).toBe(count);
+      expect(proc.getBandPeaks().length, `peaks ${count}`).toBe(count);
+    }
+  });
+
+  it("a 2-band document renders 2 bands on the FIRST build (no nudge required)", () => {
+    const render = (band2Gain: number) => {
+      const proc = createFxEqProcessor({
+        bandCount: 2,
+        crossoverFreq2: 400,
+        limiterEnabled: 0,
+        "band2.gainDb": band2Gain,
+      });
+      proc.prepare(SR, 1, 256);
+      let peak = 0;
+      for (let b = 0; b < 20; b++) {
+        const buf = new Float32Array(256);
+        for (let i = 0; i < 256; i++) buf[i] = 0.3 * Math.sin((2 * Math.PI * 5000 * (b * 256 + i)) / SR);
+        proc.process([buf], 256);
+        if (b >= 18) for (let i = 0; i < 256; i++) peak = Math.max(peak, Math.abs(buf[i]));
+      }
+      return 20 * Math.log10(peak / 0.3);
+    };
+    expect(render(0)).toBeGreaterThan(-1);
+    expect(render(-24)).toBeLessThan(-15);
+  });
+
+  it("normalizePluginParams keeps the rack `mix` and mirrors it to globalMix", () => {
+    const out = normalizePluginParams("fxeq", { bandCount: 4, mix: 42, inputGainDb: -6 });
+    expect(out).not.toBeNull();
+    expect(out!.mix).toBe(42);
+    expect(out!.globalMix).toBe(42);
+    expect(out!.inputGainDb).toBe(-6);
+    expect(normalizePluginParams("fxeq", { mix: 500 })!.mix).toBe(100);
+    expect(normalizePluginParams("fxeq", { mix: -20 })!.mix).toBe(0);
+  });
+});

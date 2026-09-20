@@ -183,6 +183,15 @@ describe("ProjectRepository", () => {
       expect(list.map((m) => m.name)).toContain("Good Project");
       expect(list.map((m) => m.name)).not.toContain("Future Project");
 
+      // The future-version project must be VISIBLE via listIncompatible —
+      // silently hiding the user's own work makes it look lost.
+      const incompatible = await repo.listIncompatible();
+      const future = incompatible.find((m) => m.id === poisoned.id);
+      expect(future).toBeDefined();
+      expect(future!.name).toBe("Future Project");
+      expect(future!.schemaVersion).toBe(SCHEMA_VERSION + 1);
+      expect(incompatible.map((m) => m.name)).not.toContain("Good Project");
+
       expect(await repo.load(poisoned.id)).toBeNull(); // null, not throw
 
       const recent = await repo.loadMostRecent();

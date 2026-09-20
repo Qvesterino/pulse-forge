@@ -82,6 +82,19 @@ import { JamGate } from "./JamGate";
  * dropout number is the honest "audio could not keep up" signal that used to
  * live only inside the Diagnostics panel.
  */
+/** First-run detector for the A2 default-open INTENT panel (see useEffect
+    below). Storage-blocked browsers return false — never override a dock we
+    could not have saved anyway. */
+function intentPanelFirstRun(): boolean {
+  try {
+    if (localStorage.getItem("pf-intent-opened") === "1") return false;
+    localStorage.setItem("pf-intent-opened", "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function PerformanceReadout({ engine, scheduler }: { engine: Services["engine"]; scheduler: Services["scheduler"] }) {
   const voicesRef = useRef<HTMLSpanElement>(null);
   const dropoutsRef = useRef<HTMLSpanElement>(null);
@@ -197,8 +210,20 @@ export function App({
   // Add-effect flows must REVEAL the device UI, not toggle: no-op when the
   // device chain is already docked in either slot.
   const openDevicesPanel = () => {
-    setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));    setSheetCollapsed(false);
+    setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));
+    setSheetCollapsed(false);
   };
+  // Viral growth plan A2: a brand-new visitor lands in a studio whose INTENT
+  // panel is already open — the engine is the product, the demo beat under
+  // it proves sound works. Once per browser (flag); never overrides a
+  // returning user's saved dock.
+  const firstRunIntentRef = useRef(false);
+  useEffect(() => {
+    if (firstRunIntentRef.current) return;
+    firstRunIntentRef.current = true;
+    if (!intentPanelFirstRun()) return;
+    setBottomPanel("intent");
+  }, []);
   const startDockResize = (event: React.PointerEvent) => {
     event.preventDefault();
     const startY = event.clientY;

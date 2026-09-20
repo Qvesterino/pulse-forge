@@ -20,6 +20,7 @@ export function createVinylNode(
   const node = new AudioWorkletNode(ctx, "vinyl-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
     processorOptions: { seed: Math.abs(seed) || 7 },

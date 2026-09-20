@@ -1,5 +1,6 @@
 import { materializePcmTake, type MaterializedPcmTake } from "./pcmRecording";
 import {
+  RECORDING_OWNER_ID,
   RecordingRecoveryRepository,
   type RecordingPcmChunk,
   type RecordingSession,
@@ -168,6 +169,7 @@ export class PcmMicRecorder {
       const now = new Date();
       const session: RecordingSession = {
         id: createSessionId(),
+        ownerId: RECORDING_OWNER_ID,
         ...metadata,
         sampleRate: ready.sampleRate,
         channels: ready.channels,

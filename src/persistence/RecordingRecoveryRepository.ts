@@ -10,6 +10,8 @@ import type { PcmRecordingAudioRef, UserSampleAsset } from "./UserSampleReposito
 
 export interface RecordingSession {
   id: string;
+  /** Identifies the browser context that created the take (stable per tab load). */
+  ownerId?: string;
   projectId: string;
   trackId: string;
   trackName: string;
@@ -38,6 +40,20 @@ export interface RecordingPcmChunk {
 }
 
 const RECOVERY_STALE_MS = 5_000;
+
+/**
+ * Identifies this browser context (tab load) so `listRecoverable` can hide
+ * the tab's own still-live take. A crash keeps the row with the old owner id,
+ * so after a reload (new id) the interrupted take remains recoverable.
+ */
+export const RECORDING_OWNER_ID: string = (() => {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch {
+    /* fall through */
+  }
+  return `owner-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+})();
 
 /**
  * Durable, append-only staging for live microphone takes. A chunk is only
@@ -115,14 +131,19 @@ export class RecordingRecoveryRepository {
   /**
    * Only expose sessions that have audio and are known stopped or stale.
    * An actively recording second tab refreshes updatedAt once per block.
+   * This tab's own still-live take (`status === "recording"` under the
+   * current owner id) is never offered for recovery — recovering it would
+   * abort the in-flight appendChunk sequence and kill the take.
    */
-  async listRecoverable(now = Date.now()): Promise<RecordingSession[]> {
+  async listRecoverable(now = Date.now(), excludeOwnerId?: string): Promise<RecordingSession[]> {
     const db = await this.openDatabase();
     const sessions = await tx<RecordingSession[]>(db, STORE_RECORDING_SESSIONS, "readonly", (store) => store.getAll());
     return (sessions ?? [])
       .filter(
         (session) =>
-          session.totalFrames > 0 && (session.status === "recoverable" || now - session.updatedAt >= RECOVERY_STALE_MS),
+          session.totalFrames > 0 &&
+          !(excludeOwnerId !== undefined && session.ownerId === excludeOwnerId && session.status === "recording") &&
+          (session.status === "recoverable" || now - session.updatedAt >= RECOVERY_STALE_MS),
       )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }

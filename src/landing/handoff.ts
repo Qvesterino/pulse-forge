@@ -43,8 +43,16 @@ export function savePendingHandoff(handoff: LandingHandoff): void {
   }
 }
 
-/** Take (and clear) a pending handoff. Returns null when absent/corrupt. */
-export function takePendingHandoff(): LandingHandoff | null {
+/**
+ * Peek at a pending handoff WITHOUT clearing it.
+ *
+ * `Boot` must peek (not take): React StrictMode mounts effects twice in dev
+ * — a take-and-clear on the first (immediately cancelled) run would swallow
+ * the handoff before the second run ever sees it. The successful run clears
+ * explicitly once the studio is up, which also gives reload-retry semantics
+ * if openProject fails mid-boot.
+ */
+export function peekPendingHandoff(): LandingHandoff | null {
   const storage = session();
   if (!storage) return null;
   let raw: string | null = null;
@@ -54,11 +62,6 @@ export function takePendingHandoff(): LandingHandoff | null {
     return null;
   }
   if (!raw) return null;
-  try {
-    storage.removeItem(HANDOFF_KEY);
-  } catch {
-    /* best-effort clear */
-  }
   try {
     const parsed: unknown = JSON.parse(raw);
     if (
@@ -73,6 +76,24 @@ export function takePendingHandoff(): LandingHandoff | null {
   } catch {
     return null;
   }
+}
+
+/** Drop a consumed (or unreadable) handoff. Best-effort. */
+export function clearPendingHandoff(): void {
+  const storage = session();
+  if (!storage) return;
+  try {
+    storage.removeItem(HANDOFF_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Take (and clear) a pending handoff. Returns null when absent/corrupt. */
+export function takePendingHandoff(): LandingHandoff | null {
+  const handoff = peekPendingHandoff();
+  if (handoff) clearPendingHandoff();
+  return handoff;
 }
 
 /**

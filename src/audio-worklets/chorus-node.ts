@@ -9,6 +9,7 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
   const node = new AudioWorkletNode(ctx, "chorus-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

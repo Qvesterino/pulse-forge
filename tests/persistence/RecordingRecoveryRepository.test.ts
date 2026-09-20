@@ -94,6 +94,38 @@ describe("RecordingRecoveryRepository", () => {
     await expect(recovery.get(take.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
   });
 
+  it("hides the owner tab's own live take but still lists it once stopped", async () => {
+    // Regression: a main-thread stall >5s while THIS tab recorded used to
+    // surface the tab's own active take as recoverable; recovering it aborted
+    // the in-flight appendChunk sequence and killed the take.
+    const live = { ...session("recording-own-live"), ownerId: "tab-1", totalFrames: 0 };
+    await recovery.begin(live);
+    await recovery.appendChunk(block(live.id, 0, [0.5], [-0.5]));
+
+    // Fresh (not stale), still "recording", owned by this tab → hidden.
+    await expect(recovery.listRecoverable(Date.now(), "tab-1")).resolves.toEqual([]);
+    // Another tab (different owner id) must still see it as stale-recoverable
+    // after the staleness window.
+    await expect(recovery.listRecoverable(Date.now() + 6_000, "tab-2")).resolves.toMatchObject([
+      { id: live.id, totalFrames: 1 },
+    ]);
+
+    await recovery.markRecoverable(live.id);
+    // Explicitly stopped takes remain listed for their own tab (recover-place flow).
+    await expect(recovery.listRecoverable(Date.now(), "tab-1")).resolves.toMatchObject([{ id: live.id }]);
+  });
+
+  it("offers a crashed own-tab take (stale, old owner id) after reload", async () => {
+    const crashed = { ...session("recording-own-crashed"), ownerId: "previous-tab-load", totalFrames: 0 };
+    await recovery.begin(crashed);
+    await recovery.appendChunk(block(crashed.id, 0, [0.25], [-0.25]));
+    // New tab load owns a different id → the stale crashed take is visible
+    // even though it is still marked "recording".
+    await expect(recovery.listRecoverable(Date.now() + 6_000, "new-tab-load")).resolves.toMatchObject([
+      { id: crashed.id, ownerId: "previous-tab-load" },
+    ]);
+  });
+
   it("materializes exact float PCM and atomically promotes it to a user sample", async () => {
     const take = session("recording-finalize");
     await recovery.begin(take);

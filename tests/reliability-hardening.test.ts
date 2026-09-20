@@ -325,6 +325,34 @@ describe("renderer — export content correctness", () => {
     const source = readFileSync(resolve(process.cwd(), "src/rendering/renderer.ts"), "utf8");
     expect(source.indexOf('options.mode === "song" && doc.arrangement.audioClips')).toBeGreaterThan(0);
   });
+
+  it("renderProject honours an aborted signal BEFORE the un-abortable render begins", async () => {
+    // The cancel button used to do nothing until startRendering() resolved;
+    // the curated-layer wait (up to 2s) + worklet load + graph build are
+    // seconds of setup during which an abort must fail fast with AbortError.
+    class StubOfflineAudioContext {
+      constructor(public channels: number, public length: number, public sampleRate: number) {}
+    }
+    const globalRef = globalThis as { OfflineAudioContext?: unknown };
+    const hadOac = "OfflineAudioContext" in globalRef;
+    const previousOac = globalRef.OfflineAudioContext;
+    globalRef.OfflineAudioContext = StubOfflineAudioContext;
+    try {
+      const { renderProject } = await import("../src/rendering/renderer");
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        renderProject(createDefaultProject(), {} as never, {
+          mode: "song",
+          sampleRate: 44_100,
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      if (hadOac) globalRef.OfflineAudioContext = previousOac;
+      else delete globalRef.OfflineAudioContext;
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -51,6 +51,7 @@ export function createEqNode(ctx: BaseAudioContext, instance: { params: Record<s
   const node = new AudioWorkletNode(ctx, "eq-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
+    outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
   });

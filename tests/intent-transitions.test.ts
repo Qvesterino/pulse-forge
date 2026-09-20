@@ -96,6 +96,29 @@ describe("transition treatments (T3)", () => {
     expect(barHits(dropped, 0)).toEqual(barHits(pattern, 0));
   });
 
+  it("break: dropout fires even on kits without a roll voice (snare/clap)", () => {
+    // Regression: the roll-voice gate used to run before the dropout branch,
+    // so kits without snare/clap silently skipped the break transition —
+    // contradicting "dropout always applies (it removes, never adds)".
+    const noRollDoc: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((track) => {
+        if (track.kind !== "drum") return track;
+        return {
+          ...track,
+          pads: track.pads.map((pad, index) =>
+            ["snare", "clap"].includes(inferPadRole(pad.name, index)) ? { ...pad, name: "tom" } : pad,
+          ),
+        };
+      }),
+    };
+    const pattern = makePattern(64);
+    expect(barHits(pattern, 3).count).toBeGreaterThan(0);
+    const dropped = applyTransitionToPattern(noRollDoc, pattern, "break");
+    expect(barHits(dropped, 3).count).toBe(0);
+    expect(barHits(dropped, 2).count).toBeGreaterThan(0);
+  });
+
   it("non-sounding types return the pattern unchanged", () => {
     const pattern = makePattern(16);
     expect(applyTransitionToPattern(doc, pattern, "drop")).toBe(pattern);
