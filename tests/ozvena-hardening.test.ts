@@ -708,3 +708,86 @@ describe("Ozvena hardening — reset() restores a freshly-prepared processor", (
     expect(energy(out, 0, 0.2)).toBeGreaterThan(0);
   });
 });
+
+describe("Ozvena hardening — freeze loop-gain safety (2026-09-19 audit)", () => {
+  // FREEZE runs the FDN loop at unity feedback (fbEff = 1.0), but the
+  // per-band decay gains were capped against the NON-freeze feedback
+  // (gCap = 0.995/fb). With bassDecay > 1 the low band gain could reach
+  // ~2, so 1.0 x gain in freeze was a per-pass gain > 1 and the frozen
+  // tail grew exponentially until the output limiter pinned it at the
+  // ceiling (measured pre-fix: 0.38-0.48 RMS sustained, peak 0.966).
+  // The fix clamps every band to unity in freeze: a true hold, no growth.
+  function renderFreeze(
+    proc: ProcShape,
+    freezeAtSec: number,
+    seconds: number,
+  ): Float32Array[] {
+    const rng = makeRng(0x5eed);
+    setTime(0);
+    const blocks = Math.ceil((seconds * SR) / BLOCK);
+    const outL = new Float32Array(blocks * BLOCK);
+    const outR = new Float32Array(blocks * BLOCK);
+    let frozen = false;
+    for (let b = 0; b < blocks; b++) {
+      if (!frozen && (b * BLOCK) / SR >= freezeAtSec) {
+        sendParam(proc, "global.freeze", 1);
+        frozen = true;
+      }
+      const inL = new Float32Array(BLOCK);
+      const inR = new Float32Array(BLOCK);
+      if (b * BLOCK < 0.3 * SR) {
+        inL[0] = (rng() * 2 - 1) * 0.5;
+        inR[0] = (rng() * 2 - 1) * 0.5;
+      }
+      proc.process(
+        [[inL, inR]],
+        [[outL.subarray(b * BLOCK, b * BLOCK + BLOCK), outR.subarray(b * BLOCK, b * BLOCK + BLOCK)]],
+      );
+      setTime(((b + 1) * BLOCK) / SR);
+    }
+    return [outL, outR];
+  }
+
+  function peak(chans: Float32Array[], fromSec: number, toSec: number): number {
+    const from = Math.floor(fromSec * SR);
+    const to = Math.min(chans[0].length, Math.floor(toSec * SR));
+    let m = 0;
+    for (const ch of chans) for (let i = from; i < to; i++) m = Math.max(m, Math.abs(ch[i]));
+    return m;
+  }
+
+  it("E2 freeze with bassDecay 2 holds instead of pinning the limiter", () => {
+    const proc = new Processor();
+    sendParam(proc, "engines.e1.enabled", 0);
+    sendParam(proc, "engines.e2.enabled", 1);
+    sendParam(proc, "engines.e3.enabled", 0);
+    sendParam(proc, "engines.e2.bassDecay", 2);
+    sendParam(proc, "engines.e2.time", 1400);
+    sendParam(proc, "engines.e2.mix", 100);
+    sendParam(proc, "blendPad.x", 1);
+    sendParam(proc, "blendPad.y", 0);
+    sendParam(proc, "preDelay.ms", 0);
+    const out = renderFreeze(proc, 1.0, 6.0);
+    expect(countNonFinite(out)).toBe(0);
+    // Pre-fix: sustained 0.38-0.48 RMS with peak 0.966 (limiter ceiling).
+    expect(rms(out, 5.0, 6.0)).toBeLessThan(0.05);
+    expect(peak(out, 0, 6.0)).toBeLessThan(0.5);
+  });
+
+  it("E3 freeze with bassDecay 4 holds", () => {
+    const proc = new Processor();
+    sendParam(proc, "engines.e1.enabled", 0);
+    sendParam(proc, "engines.e2.enabled", 0);
+    sendParam(proc, "engines.e3.enabled", 1);
+    sendParam(proc, "engines.e3.bassDecay", 4);
+    sendParam(proc, "engines.e3.time", 5000);
+    sendParam(proc, "engines.e3.mix", 100);
+    sendParam(proc, "blendPad.x", 0.5);
+    sendParam(proc, "blendPad.y", 0.866);
+    sendParam(proc, "preDelay.ms", 0);
+    const out = renderFreeze(proc, 1.0, 6.0);
+    expect(countNonFinite(out)).toBe(0);
+    expect(rms(out, 5.0, 6.0)).toBeLessThan(0.05);
+    expect(peak(out, 0, 6.0)).toBeLessThan(0.5);
+  });
+});

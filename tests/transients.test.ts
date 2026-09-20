@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detectTransients, gridSlicePoints, snapToGrid, pointsToSlices } from "../src/audio-engine/transients";
+import {
+  detectTransients,
+  gridSlicePoints,
+  snapToGrid,
+  pointsToSlices,
+  slicesFromOnsets,
+  zeroCrossSnap,
+} from "../src/audio-engine/transients";
 
 const SR = 44100;
 
@@ -81,5 +88,35 @@ describe("grid + slice helpers", () => {
       { start: 0.25, end: 0.5 },
       { start: 0.5, end: 1.0 },
     ]);
+  });
+
+  it("zeroCrossSnap lands on a crossing, falls back when silent", () => {
+    const data = new Float32Array(44100);
+    for (let i = 0; i < data.length; i++) data[i] = Math.sin((2 * Math.PI * 440 * i) / SR);
+    // 0.1 s is mid-cycle for 440 Hz — snap must move to a nearby crossing.
+    const snapped = zeroCrossSnap(data, SR, 0.1);
+    expect(Math.abs(snapped - 0.1)).toBeLessThan(256 / SR + 1e-9);
+    const idx = Math.round(snapped * SR);
+    expect(Math.abs(data[Math.max(0, idx - 1)]) + Math.abs(data[Math.min(data.length - 1, idx)])).toBeLessThan(0.2);
+    expect(zeroCrossSnap(new Float32Array(44100), SR, 0.5)).toBe(0.5);
+  });
+
+  it("slicesFromOnsets leads with zero, dedupes and snaps", () => {
+    const data = new Float32Array(SR);
+    for (let i = 0; i < data.length; i++) data[i] = Math.sin((2 * Math.PI * 220 * i) / SR);
+    const slices = slicesFromOnsets([0.25, 0.25, 0.5, NaN, 99], 1.0, data, SR);
+    expect(slices[0].start).toBe(0);
+    expect(slices[slices.length - 1].end).toBe(1.0);
+    // 0.25/0.25 deduped, NaN + out-of-range dropped → starts {0, ~0.25, ~0.5}.
+    expect(slices.map((s) => s.start)).toHaveLength(3);
+    for (const slice of slices) expect(slice.end).toBeGreaterThan(slice.start);
+  });
+
+  it("slicesFromOnsets works without audio (grid fallback path)", () => {
+    expect(slicesFromOnsets([0.5], 1.0)).toEqual([
+      { start: 0, end: 0.5 },
+      { start: 0.5, end: 1.0 },
+    ]);
+    expect(slicesFromOnsets([], 1.0)).toEqual([{ start: 0, end: 1.0 }]);
   });
 });

@@ -101,8 +101,7 @@ export class DynamicsStage {
     // Punch>0 slows release slightly through transients (let hits ring out
     // of the compressor); punch<0 speeds it (denser grab).
     if (punch !== 0 && transientScore > 0.05) {
-      const relSec =
-        (p.releaseMs / 1000) * (1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore);
+      const relSec = (p.releaseMs / 1000) * (1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore);
       aRel = tcToCoef(Math.max(relSec, 0.002), this.sampleRate);
     }
 
@@ -112,9 +111,11 @@ export class DynamicsStage {
     if (overDb <= -p.kneeDb / 2) {
       targetGainDb = 0;
     } else if (overDb < p.kneeDb / 2) {
-      // Quadratic knee interpolation.
+      // Quadratic knee: out = in − (1 − 1/ratio)·(in + knee/2)² / (2·knee).
+      // The sign matters — flipping it turns the knee into an UPWARD
+      // expander that inflates crest and pumps quiet material.
       const x = overDb + p.kneeDb / 2;
-      targetGainDb = -((1 / p.ratio - 1) * x * x) / (2 * p.kneeDb);
+      targetGainDb = -((1 - 1 / p.ratio) * x * x) / (2 * p.kneeDb);
     } else {
       targetGainDb = -(1 - 1 / p.ratio) * overDb;
     }
@@ -129,11 +130,14 @@ export class DynamicsStage {
     const a = targetLin < this.gain ? this.atkCoef : aRel;
     this.gain = targetLin + a * (this.gain - targetLin);
 
-    // Makeup: auto ≈ what a static mix of the curve would eat at nominal
-    // depth (threshold/ratio heuristic), plus manual trim.
-    const autoDb = p.makeupAuto ? Math.max(0, -p.thresholdDb) * 0.12 * (1 - 1 / p.ratio) * 2 : 0;
-    const makeup = dbToLin(autoDb + p.makeupDb);
     this.grDb = -20 * Math.log10(Math.max(this.gain, 1e-6));
+    // Automatic makeup follows actual smoothed gain reduction — the nominal
+    // heuristic is a CEILING, not a fixed idle boost: a signal that never
+    // compresses must stay untouched (a static auto-makeup idle-boosts every
+    // signal by up to the full curve amount, which also breaks delta listen).
+    const autoCapDb = p.makeupAuto ? Math.max(0, -p.thresholdDb) * 0.12 * (1 - 1 / p.ratio) * 2 : 0;
+    const autoDb = Math.min(autoCapDb, this.grDb * 0.5);
+    const makeup = dbToLin(autoDb + p.makeupDb);
     this.grNorm = Math.min(1, this.grDb / 24);
     // Smooth the REPORTED GR slightly so meters/matrix don't strobe.
     this.gainDbSmoothed = this.grNorm + 0.7 * (this.gainDbSmoothed - this.grNorm);

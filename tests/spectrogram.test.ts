@@ -226,4 +226,9 @@ describe("spectrogram engine taps", () => {
     expect(engine.getMasterSpectrumAnalyser()).toBeNull();
     expect(engine.getMasterStereoAnalysers()).toBeNull();
   });
+
+  it("resolves no track analyser for unknown sources before a graph exists", () => {
+    const engine = new AudioEngine();
+    expect(engine.getSpectrogramTrackAnalyser("ghost-track")).toBeNull();
+  });
 });

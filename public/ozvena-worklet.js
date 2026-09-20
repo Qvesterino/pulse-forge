@@ -2672,8 +2672,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
-        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
-        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
+        const bassGainF = bassGain;
+        const midBandGainF = midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const t = algoTuning(params.algo);
         const effectiveDepth = modDepthSamples * t.modDepthMult;
@@ -3203,8 +3203,8 @@
         }
         const fb = feedbackGain;
         const fbEff = freeze_ ? 1 : fb;
-        const bassGainF = freeze_ ? Math.min(bassGain, 1) : bassGain;
-        const midBandGainF = freeze_ ? Math.min(midBandGain, 1) : midBandGain;
+        const bassGainF = bassGain;
+        const midBandGainF = midBandGain;
         const shDirWCur = freeze_ ? shDirWFreeze : shDirW;
         const effectiveDepth = modDepthSamples;
         const width = clamp(params.stereoWidth, 0, 1);

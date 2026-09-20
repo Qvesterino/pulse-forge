@@ -6,6 +6,7 @@
   var GLOBAL_OUTPUT_GAIN_DB_ID = "global.outputGainDb";
   var GLOBAL_MIX_ID = "global.mix";
   var GLOBAL_QUALITY_ID = "global.quality";
+  var GLOBAL_DELTA_ID = "global.delta";
   var MACRO_PRESSURE_ID = "macro.pressure";
   var MACRO_PUNCH_ID = "macro.punch";
   var MACRO_BODY_ID = "macro.body";
@@ -15,6 +16,7 @@
   var ANALYSIS_TRANSIENT_SENSITIVITY_ID = "analysis.transientSensitivity";
   var ANALYSIS_BODY_SENSITIVITY_ID = "analysis.bodySensitivity";
   var ANALYSIS_TEXTURE_SENSITIVITY_ID = "analysis.textureSensitivity";
+  var ANALYSIS_ADAPTIVE_LEVEL_ID = "analysis.adaptiveLevel";
   var DYN_THRESHOLD_DB_ID = "dyn.thresholdDb";
   var DYN_RATIO_ID = "dyn.ratio";
   var DYN_ATTACK_MS_ID = "dyn.attackMs";
@@ -80,7 +82,8 @@
     p(GLOBAL_INPUT_GAIN_DB_ID, "Input Gain", 0, -24, 24, "db"),
     p(GLOBAL_OUTPUT_GAIN_DB_ID, "Output Gain", 0, -24, 24, "db"),
     p(GLOBAL_MIX_ID, "Mix", 100, 0, 100, "percent"),
-    p(GLOBAL_QUALITY_ID, "Quality", 1, 0, 2, "enum", false)
+    p(GLOBAL_QUALITY_ID, "Quality", 1, 0, 2, "enum", false),
+    p(GLOBAL_DELTA_ID, "Delta Listen", 0, 0, 1, "boolean", false)
   ];
   var MACRO_PARAMS = [
     p(MACRO_PRESSURE_ID, "Pressure", 35, 0, 100, "percent"),
@@ -93,7 +96,8 @@
   var ANALYSIS_PARAMS = [
     p(ANALYSIS_TRANSIENT_SENSITIVITY_ID, "Transient Sensitivity", 100, 0, 200, "percent"),
     p(ANALYSIS_BODY_SENSITIVITY_ID, "Body Sensitivity", 100, 0, 200, "percent"),
-    p(ANALYSIS_TEXTURE_SENSITIVITY_ID, "Texture Sensitivity", 100, 0, 200, "percent")
+    p(ANALYSIS_TEXTURE_SENSITIVITY_ID, "Texture Sensitivity", 100, 0, 200, "percent"),
+    p(ANALYSIS_ADAPTIVE_LEVEL_ID, "Adaptive Level", 1, 0, 1, "boolean", false)
   ];
   var DYN_PARAMS = [
     p(DYN_THRESHOLD_DB_ID, "Threshold", -24, -60, 0, "db"),
@@ -104,7 +108,7 @@
     p(DYN_DETECTOR_BLEND_ID, "Detector", 50, 0, 100, "percent"),
     p(DYN_SIDECHAIN_HPF_HZ_ID, "SC HPF", 60, 20, 500, "hz", true, { taper: "log" }),
     p(DYN_MAKEUP_DB_ID, "Makeup", 0, -12, 24, "db"),
-    p(DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean")
+    p(DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean", false)
   ];
   var CHAR_PARAMS = [
     // Stages default ON: at default macro values the character/motion/space
@@ -112,21 +116,21 @@
     // PRESSURE reveal reactive behavior immediately (the thesis demands a
     // meaningful result seconds after loading — a fresh device must not be
     // three toggles away from it).
-    p(CHAR_ENABLED_ID, "Character", 1, 0, 1, "boolean"),
+    p(CHAR_ENABLED_ID, "Character", 1, 0, 1, "boolean", false),
     p(CHAR_DRIVE_ID, "Drive", 0, 0, 100, "percent"),
     p(CHAR_TONE_ID, "Tone", 0, -100, 100, "percent"),
     p(CHAR_ASYM_ID, "Harmonics", 0, 0, 100, "percent"),
     p(CHAR_CLIP_ID, "Clip", 0, 0, 100, "percent")
   ];
   var MOTION_PARAMS = [
-    p(MOTION_ENABLED_ID, "Motion Stage", 1, 0, 1, "boolean"),
+    p(MOTION_ENABLED_ID, "Motion Stage", 1, 0, 1, "boolean", false),
     p(MOTION_DEPTH_ID, "Depth", 40, 0, 100, "percent"),
     p(MOTION_RATE_HZ_ID, "Drift", 0.2, 0, 5, "hz"),
     p(MOTION_FEEDBACK_ID, "Feedback", 30, -80, 80, "percent"),
     p(MOTION_CENTER_HZ_ID, "Center", 900, 200, 4e3, "hz", true, { taper: "log" })
   ];
   var SPACE_PARAMS = [
-    p(SPACE_ENABLED_ID, "Space Stage", 1, 0, 1, "boolean"),
+    p(SPACE_ENABLED_ID, "Space Stage", 1, 0, 1, "boolean", false),
     p(SPACE_SEND_ID, "Send", 25, 0, 100, "percent"),
     p(SPACE_PREDELAY_MS_ID, "Pre-delay", 12, 0, 80, "ms"),
     p(SPACE_DIFFUSION_ID, "Diffusion", 60, 0, 100, "percent"),
@@ -138,7 +142,7 @@
   function routeParams() {
     const defs = [];
     for (let slot = 0; slot < ROUTE_COUNT; slot++) {
-      defs.push(p(routeParamId(slot, "enabled"), `Route ${slot + 1} On`, 0, 0, 1, "boolean"));
+      defs.push(p(routeParamId(slot, "enabled"), `Route ${slot + 1} On`, 0, 0, 1, "boolean", false));
       defs.push(
         p(
           routeParamId(slot, "source"),
@@ -311,7 +315,7 @@
   }
 
   // src/effects/morph-dynamics-core/dsp/analysis.ts
-  var FeatureExtractor = class {
+  var FeatureExtractor = class _FeatureExtractor {
     // Multi-timescale envelopes on the (rectified) mono analysis tap.
     fast = new EnvelopeFollower();
     // ~1 ms attack — transient edge
@@ -342,6 +346,24 @@
     sens = { transient: 1, body: 1, texture: 1 };
     ecoDivisor = 1;
     ecoCounter = 0;
+    // ── Adaptive level reference (AGC on the analysis tap) ─────────────
+    // Tracks the LONG-TERM level (2 s up / 6 s down) so the score
+    // normalizations follow the material's level, not a fixed one: a
+    // quietly-recorded vocal must drive the engine as hard as a hot one.
+    // Short-term reactivity stays fully intact (the fast envelopes still
+    // move — only the BASELINE normalizes). The clamp window caps the boost
+    // at +24 dB and never desensitizes a loud mix beyond −8 dB; silence
+    // decays to the floor instead of cranking gain toward infinity.
+    levelRef = 0;
+    // 0 = not yet initialized (snaps on first signal)
+    levelUpCoef = 0;
+    levelDownCoef = 0;
+    adaptiveLevel = true;
+    static REF_NOMINAL = 0.1;
+    static REF_FLOOR = 625e-5;
+    // +24 dB max boost
+    static REF_CEILING = 0.25;
+    // −8 dB max desensitize
     // Published scores (persist between blocks so meters never strobe).
     signals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
     prepare(sampleRate2, qualityMode) {
@@ -359,11 +381,17 @@
       this.outBody.setTimes(0.03, 0.25, sampleRate2);
       this.outTexture.setTimes(0.02, 0.3, sampleRate2);
       this.slopeCoef = tcToCoef(8e-3, sampleRate2);
+      this.levelUpCoef = tcToCoef(2, sampleRate2);
+      this.levelDownCoef = tcToCoef(6, sampleRate2);
       this.ecoDivisor = qualityMode === 0 ? 2 : 1;
       this.reset();
     }
     setSensitivities(sens) {
       this.sens = sens;
+    }
+    /** Toggle the adaptive level reference (analysis.adaptiveLevel). */
+    setAdaptiveLevel(on) {
+      this.adaptiveLevel = on;
     }
     reset() {
       this.fast.reset();
@@ -382,6 +410,7 @@
       this.prevMid = 0;
       this.slope = 0;
       this.ecoCounter = 0;
+      this.levelRef = 0;
     }
     /**
      * Process one interleaved stereo frame (post input-gain tap). Returns the
@@ -408,7 +437,14 @@
         texBand = this.textureEnv.processAbs(0.5 * (Math.abs(textureL) + Math.abs(textureR)));
         texPeak = this.texturePeak.processAbs(Math.max(Math.abs(textureL), Math.abs(textureR)));
       }
-      const ref = 0.1;
+      if (this.levelRef === 0 && mono > 1e-6) {
+        this.levelRef = mono;
+      } else if (mono >= this.levelRef) {
+        this.levelRef += (mono - this.levelRef) * (1 - this.levelUpCoef);
+      } else {
+        this.levelRef += (mono - this.levelRef) * (1 - this.levelDownCoef);
+      }
+      const ref = this.adaptiveLevel ? Math.min(_FeatureExtractor.REF_CEILING, Math.max(_FeatureExtractor.REF_FLOOR, this.levelRef)) : _FeatureExtractor.REF_NOMINAL;
       const inputEnergy = clamp01(fastV / (ref * 2));
       const density = clamp01(slowV / (ref * 1.5));
       const divergence = slowV > 1e-6 ? Math.max(0, (fastV - slowV) / (fastV + slowV)) : 0;
@@ -504,7 +540,7 @@
         targetGainDb = 0;
       } else if (overDb < p2.kneeDb / 2) {
         const x = overDb + p2.kneeDb / 2;
-        targetGainDb = -((1 / p2.ratio - 1) * x * x) / (2 * p2.kneeDb);
+        targetGainDb = -((1 - 1 / p2.ratio) * x * x) / (2 * p2.kneeDb);
       } else {
         targetGainDb = -(1 - 1 / p2.ratio) * overDb;
       }
@@ -514,9 +550,10 @@
       const targetLin = dbToLin(targetGainDb);
       const a = targetLin < this.gain ? this.atkCoef : aRel;
       this.gain = targetLin + a * (this.gain - targetLin);
-      const autoDb = p2.makeupAuto ? Math.max(0, -p2.thresholdDb) * 0.12 * (1 - 1 / p2.ratio) * 2 : 0;
-      const makeup = dbToLin(autoDb + p2.makeupDb);
       this.grDb = -20 * Math.log10(Math.max(this.gain, 1e-6));
+      const autoCapDb = p2.makeupAuto ? Math.max(0, -p2.thresholdDb) * 0.12 * (1 - 1 / p2.ratio) * 2 : 0;
+      const autoDb = Math.min(autoCapDb, this.grDb * 0.5);
+      const makeup = dbToLin(autoDb + p2.makeupDb);
       this.grNorm = Math.min(1, this.grDb / 24);
       this.gainDbSmoothed = this.grNorm + 0.7 * (this.gainDbSmoothed - this.grNorm);
       this.grNorm = this.gainDbSmoothed;
@@ -954,6 +991,7 @@
         body: q[ANALYSIS_BODY_SENSITIVITY_ID] / 100,
         texture: q[ANALYSIS_TEXTURE_SENSITIVITY_ID] / 100
       });
+      this.analysis.setAdaptiveLevel(q[ANALYSIS_ADAPTIVE_LEVEL_ID] >= 0.5);
       this.space.setParams({
         send: q[SPACE_SEND_ID] / 100,
         predelayMs: q[SPACE_PREDELAY_MS_ID],
@@ -1083,6 +1121,7 @@
       const inputGain = this.sm.inputGain.tick();
       const outputGain = this.sm.outputGain.tick();
       const mix = this.sm.mix.tick();
+      const deltaOn = q[GLOBAL_DELTA_ID] >= 0.5;
       const transientPathTrim = punch > 0 ? punch * 0.35 : punch * 0.18;
       let inPeak = 0;
       let outPeak = 0;
@@ -1114,8 +1153,12 @@
         wetR = spaceOut.r;
         wetL = softClip(this.dcL.process(wetL), 0.95);
         wetR = softClip(this.dcR.process(wetR), 0.95);
-        const outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
-        const outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
+        let outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
+        let outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
+        if (deltaOn) {
+          outL = (wetL - dryL) * outputGain;
+          outR = (wetR - dryR) * outputGain;
+        }
         L[i] = outL;
         R[i] = outR;
         if (this.metersEnabled) {
@@ -1125,7 +1168,8 @@
           if (aOut > outPeak) outPeak = aOut;
         }
       }
-      if (!Number.isFinite(L[0]) || !Number.isFinite(R[0])) {
+      const last = frames - 1;
+      if (!Number.isFinite(L[0]) || !Number.isFinite(R[0]) || !Number.isFinite(L[last]) || !Number.isFinite(R[last])) {
         this.reset();
         for (let i = 0; i < frames; i++) {
           L[i] = 0;

@@ -52,9 +52,25 @@ describe("parseProductionIntent", () => {
     expect(concepts).toContain("warmer");
   });
 
-  it("generation intents stay null — 'dark rolling techno at 140'", () => {
+  it("generation intents stay null — 'dark techno at 140'", () => {
     expect(parseProductionIntent("dark rolling techno at 140")).toBeNull();
     expect(parseProductionIntent("deep house with organic hats")).toBeNull();
+  });
+
+  it("FX-expansion vocabulary: wobbly / robotic / metallic route to the new effects", () => {
+    const wobbly = parseProductionIntent("make the drums wobbly")!;
+    expect(wobbly.goals[0].concept).toBe("wobbly");
+    expect(wobbly.targets).toContain("drums");
+
+    const robotic = parseProductionIntent("make the lead robotic")!;
+    expect(robotic.goals[0].concept).toBe("robotic");
+    expect(robotic.targets).toContain("lead");
+
+    const metallic = parseProductionIntent("metallic hats")!;
+    expect(metallic.goals[0].concept).toBe("metallic");
+
+    const sk = parseProductionIntent("houpavý zvuk")!;
+    expect(sk.goals[0].concept).toBe("wobbly");
   });
 });
 
@@ -149,5 +165,26 @@ describe("applyProductionIntentCommand", () => {
     const types = bass.effects.map((fx) => fx.type);
     expect(types).toContain("pitchShift");
     expect(types).toContain("tapeSat");
+  });
+
+  it("wobbly plants beatMangler with a 16-step envelope on the drums track", () => {
+    const d = doc();
+    const next = applyProductionIntentCommand(d, parseProductionIntent("make the drums wobbly")!).execute(d);
+    const drumTrack = next.tracks.find((t) => t.kind === "drum");
+    const fx = drumTrack && "effects" in drumTrack ? drumTrack.effects.find((f) => f.type === "beatMangler") : undefined;
+    expect(fx).toBeDefined();
+    expect(fx!.volumeSteps).toHaveLength(16);
+    expect(fx!.pitchSteps).toHaveLength(16);
+    expect(fx!.pitchSteps!.some((s) => s !== 0)).toBe(true);
+  });
+
+  it("robotic adds ringMod on the lead, metallic adds freqShifter on the drums", () => {
+    const d = doc();
+    let next = applyProductionIntentCommand(d, parseProductionIntent("make the lead robotic")!).execute(d);
+    next = applyProductionIntentCommand(next, parseProductionIntent("metallic drums")!).execute(next);
+    const lead = next.tracks.find((t) => t.kind === "instrument" && /\b(lead|synth|pluck)\b/i.test(t.name));
+    const drums = next.tracks.find((t) => t.kind === "drum");
+    expect(lead && "effects" in lead ? lead.effects.some((f) => f.type === "ringMod") : false).toBe(true);
+    expect(drums && "effects" in drums ? drums.effects.some((f) => f.type === "freqShifter") : false).toBe(true);
   });
 });

@@ -14,7 +14,18 @@ import { hashString } from "../shared/rng";
  */
 
 export type ProductionConcept =
-  "deeper" | "punchier" | "warmer" | "darker" | "brighter" | "wider" | "grittier" | "glue" | "lofi";
+  | "deeper"
+  | "punchier"
+  | "warmer"
+  | "darker"
+  | "brighter"
+  | "wider"
+  | "grittier"
+  | "glue"
+  | "lofi"
+  | "wobbly"
+  | "robotic"
+  | "metallic";
 
 export type ProductionTarget = "drums" | "bass" | "lead" | "chords";
 
@@ -34,6 +45,9 @@ export interface ProductionAction {
   trackId: string;
   type: EffectType;
   params: Record<string, number>;
+  /** beatMangler only — 16-step volume/pitch envelope planted with the instance. */
+  volumeSteps?: number[];
+  pitchSteps?: number[];
 }
 
 export interface ProductionPlan {
@@ -101,6 +115,21 @@ const CONCEPTS: ConceptDef[] = [
     concept: "lofi",
     defaultTarget: "drums",
     patterns: [/\blo-?fi(er)?\b/, /\bvinyl(?:-?ier)?\b/, /\bvintage(?:-?r)?\b/, /\bstar\u0161\u00ed zvuk\b/],
+  },
+  {
+    concept: "wobbly",
+    defaultTarget: "drums",
+    patterns: [/\bwobbl/i, /\bhoupav/i, /\bweird(er)?\b/i, /\bskreslen/i],
+  },
+  {
+    concept: "robotic",
+    defaultTarget: "lead",
+    patterns: [/\brobot/i, /\brobotick/i, /\bmachine-?like\b/i],
+  },
+  {
+    concept: "metallic",
+    defaultTarget: "drums",
+    patterns: [/\bmetallic/i, /\bkovov/i, /\bmetalov/i],
   },
 ];
 
@@ -265,6 +294,29 @@ export function planProductionActions(
             trackId,
             type: "vinyl",
             params: { amount: Math.min(1, 0.3 + goal.amount * 0.6), crackle: 0.5, wow: 0.5, year: 0.7, mix: 1 },
+          });
+          break;
+        case "wobbly":
+          actions.push({
+            trackId,
+            type: "beatMangler",
+            params: { playMode: 0, repeatFill: 4, mix: 1 },
+            volumeSteps: [1, 0.35, 1, 0.55, 1, 0.35, 1, 0.55, 1, 0.35, 1, 0.55, 1, 0.35, 1, 0.55],
+            pitchSteps: [0, 0, 12, 0, 0, -12, 0, 0, 0, 0, 12, 0, -12, 0, 0, 0],
+          });
+          break;
+        case "robotic":
+          actions.push({
+            trackId,
+            type: "ringMod",
+            params: { frequency: 95, feedback: 0.4, mix: 0.9 },
+          });
+          break;
+        case "metallic":
+          actions.push({
+            trackId,
+            type: "freqShifter",
+            params: { shift: Math.round(300 + goal.amount * 500), mix: 0.9 },
           });
           break;
       }

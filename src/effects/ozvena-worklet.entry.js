@@ -224,7 +224,11 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           // Load only if the selection still points here. Stale replies are
           // deliberately not cached in the worklet: the next selection must
           // receive a fresh mutable blockSpectra ring from the main thread.
-          if (this.state.convolution?.irId === msg.irId) {
+          // A user IR loaded after the factory request was posted wins over
+          // the late reply — without this, the reply clobbers the user IR
+          // (the selection id is unchanged, so the check above passes).
+          // (Reconciled from Pulse Forge audit, 2026-09-19.)
+          if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
             this.proc.loadPrecomputedIr(sets, channels);
             this.postLatency();
           }
@@ -236,7 +240,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         const samples = msg.samples;
         if (!(samples instanceof Float32Array) || samples.length === 0) return;
         if (channels > 1 && samples.length % channels !== 0) return;
-        if (this.state.convolution?.irId === msg.irId) {
+        if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
           this.proc.loadUserIr(samples, channels);
           this.postLatency();
         }

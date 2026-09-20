@@ -169,10 +169,13 @@ export function slicesFromOnsets(
   const duration = Math.max(0, durationSec);
   const points = [0, ...times].filter((t) => Number.isFinite(t) && t >= 0 && t <= duration);
   const unique = [...new Set(points.map((t) => +t.toFixed(6)))].sort((a, b) => a - b);
-  const snapped =
+  // The leading zero stays exactly at 0 (never trim a take's attack); the
+  // remaining points snap to zero crossings when audio is provided.
+  const snap =
     data && sampleRate && Number.isFinite(sampleRate) && sampleRate > 0
-      ? unique.map((t) => zeroCrossSnap(data, sampleRate, t))
-      : unique;
+      ? (t: number) => zeroCrossSnap(data, sampleRate, t)
+      : (t: number) => t;
+  const snapped = unique.map((t, i) => (i === 0 ? t : snap(t)));
   const ordered = [...new Set(snapped.map((t) => +t.toFixed(6)))].sort((a, b) => a - b);
   return pointsToSlices(ordered, duration).filter((slice) => slice.end > slice.start);
 }

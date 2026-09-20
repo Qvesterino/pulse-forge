@@ -344,8 +344,13 @@ export function createReflectionsEngine(): ReflectionsEngine {
         // Engine produces the tail only — no internal mix gain.
         if (wetL) wetL[i] = sumL;
         if (wetR) wetR[i] = sumR;
+        // Tap-crossfade clock: per-SAMPLE like the FDN engines. The old
+        // code decremented once per BLOCK, so the 20 ms fade stretched to
+        // 128x its length (2.56 s at 128-frame blocks) and scaled with the
+        // host block size — E1 TIME automation audibly morphed for seconds.
+        // (Reconciled from Pulse Forge audit, 2026-09-19.)
+        if (tapFadeRemaining > 0) tapFadeRemaining--;
       }
-      if (tapFadeRemaining > 0) tapFadeRemaining--;
       writePosL = wl;
       writePosR = wr;
       hasRendered = true;

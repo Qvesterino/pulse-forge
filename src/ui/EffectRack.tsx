@@ -754,6 +754,19 @@ function Device({
               />
             )}
           </Suspense>
+          {fx.type === "morphdynamics" && (
+            <EffectAbControls
+              effectName={def.name}
+              params={fx.params}
+              deviceState={fx.deviceState?.kind === "effect-ab-v1" ? fx.deviceState : undefined}
+              onStateChange={(next: EffectAbState) =>
+                services.store.execute(
+                  setDeviceState(doc, track.id, fx.id, { kind: "effect-ab-v1", data: { ...next } }),
+                )
+              }
+              onLoad={(slot) => services.store.execute(loadEffectAbSlot(doc, track.id, fx.id, slot))}
+            />
+          )}
           {fx.type === "ozvena" && (
             <EffectAbControls
               effectName={def.name}

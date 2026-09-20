@@ -4607,6 +4607,15 @@ export function applyProductionIntentCommand(doc: ProjectDocument, intent: Produ
       const param = setEffectParam(next, action.trackId, instance.id, paramId, value);
       next = param.execute(next);
     }
+    // beatMangler envelope rides with the same plan action so one production
+    // intent stays ONE undo step even when it plants step envelopes.
+    if (action.volumeSteps || action.pitchSteps) {
+      const steps = setBeatManglerSteps(next, action.trackId, instance.id, {
+        volume: action.volumeSteps,
+        pitch: action.pitchSteps,
+      });
+      next = steps.execute(next);
+    }
   }
   // Production intents are deterministic — undo restores the exact previous
   // chain state, and a redo replays the same folded operations.

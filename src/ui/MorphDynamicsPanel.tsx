@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ANALYSIS_ADAPTIVE_LEVEL_ID,
   ANALYSIS_BODY_SENSITIVITY_ID,
   ANALYSIS_TEXTURE_SENSITIVITY_ID,
   ANALYSIS_TRANSIENT_SENSITIVITY_ID,
@@ -17,6 +18,7 @@ import {
   DYN_RELEASE_MS_ID,
   DYN_SIDECHAIN_HPF_HZ_ID,
   DYN_THRESHOLD_DB_ID,
+  GLOBAL_DELTA_ID,
   GLOBAL_INPUT_GAIN_DB_ID,
   GLOBAL_MIX_ID,
   GLOBAL_OUTPUT_GAIN_DB_ID,
@@ -46,6 +48,11 @@ import { MOD_DESTINATIONS, MOD_SOURCES } from "../effects/morph-dynamics-core/co
 import type { MorphMeters } from "../effects/morph-dynamics-core/contracts/meters";
 import { clampParam } from "../effects/morph-dynamics-core/contracts/parameterSchema";
 import { FACTORY_PRESETS, applyMorphPreset } from "../effects/morph-dynamics-core/presets/factoryPresets";
+import {
+  MorphPresetRepository,
+  MORPH_PRESET_SCHEMA_VERSION,
+  type MorphPresetEntry,
+} from "../persistence/MorphPresetRepository";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 
@@ -106,9 +113,24 @@ export function MorphDynamicsPanel({
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
 }) {
   const services = useServices();
-  const [presetId, setPresetId] = useState<string>("");
   const [showEngine, setShowEngine] = useState(false);
   const [showMatrix, setShowMatrix] = useState(false);
+  // ── USER PRESETS: named snapshots of the full parameter map ──────────
+  const [userPresets, setUserPresets] = useState<MorphPresetEntry[]>([]);
+  const [selectedUserPresetId, setSelectedUserPresetId] = useState<string | null>(null);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void new MorphPresetRepository()
+      .list()
+      .then((presets) => {
+        if (!cancelled) setUserPresets(presets);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const valueOf = (id: string): number => params[id] ?? 0;
 
@@ -119,11 +141,58 @@ export function MorphDynamicsPanel({
     services.engine.previewFxParam?.(trackId, fxId, paramId, clampParam(paramId, value));
   };
 
-  const applyPreset = (id: string) => {
-    const preset = FACTORY_PRESETS.find((p) => p.id === id);
-    if (!preset) return;
-    setPresetId(id);
-    onApplyPreset(preset.name, applyMorphPreset(preset.params));
+  const saveUserPreset = async () => {
+    const name = (window.prompt("User preset name:", "") ?? "").trim();
+    if (!name) return;
+    const existing = userPresets.find((p) => p.name === name);
+    if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
+    try {
+      const repo = new MorphPresetRepository();
+      await repo.save({
+        id: existing?.id ?? `morph-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        params: { ...params },
+        createdAt: new Date().toISOString(),
+        schemaVersion: MORPH_PRESET_SCHEMA_VERSION,
+      });
+      setUserPresets(await repo.list());
+      setPresetError(null);
+    } catch (err) {
+      console.error("[MorphDynamicsPanel] preset save failed:", err);
+      setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+    }
+  };
+
+  const renameUserPreset = async () => {
+    const current = userPresets.find((p) => p.id === selectedUserPresetId);
+    if (!current) return;
+    const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
+    if (!name || name === current.name) return;
+    try {
+      const repo = new MorphPresetRepository();
+      await repo.save({ ...current, name });
+      setUserPresets(await repo.list());
+      setPresetError(null);
+    } catch (err) {
+      console.error("[MorphDynamicsPanel] preset rename failed:", err);
+      setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+    }
+  };
+
+  const deleteUserPreset = async () => {
+    const current = userPresets.find((p) => p.id === selectedUserPresetId);
+    if (!current) return;
+    if (!window.confirm(`Delete preset "${current.name}"?`)) return;
+    try {
+      const repo = new MorphPresetRepository();
+      await repo.remove(current.id);
+      setSelectedUserPresetId(null);
+      setUserPresets(await repo.list());
+      setPresetError(null);
+    } catch (err) {
+      console.error("[MorphDynamicsPanel] preset delete failed:", err);
+      setPresetError(err instanceof Error ? err.message : "Preset storage failed");
+    }
   };
 
   // ── Live meters: polled while mounted; engine gates the worklet cost ──
@@ -217,7 +286,15 @@ export function MorphDynamicsPanel({
     </div>
   );
 
-  const engineSlider = (id: string, label: string, min: number, max: number, format: (v: number) => string, taper?: "linear" | "log", defaultValue?: number) => (
+  const engineSlider = (
+    id: string,
+    label: string,
+    min: number,
+    max: number,
+    format: (v: number) => string,
+    taper?: "linear" | "log",
+    defaultValue?: number,
+  ) => (
     <Slider
       compact
       label={label}
@@ -247,11 +324,36 @@ export function MorphDynamicsPanel({
       <div className="morph-header">
         <select
           className="morph-preset-select"
-          value={presetId}
           aria-label="MORPH DYNAMICS preset"
-          onChange={(e) => applyPreset(e.target.value)}
+          defaultValue=""
+          onChange={(e) => {
+            // User presets first (their ids live in a different namespace
+            // than factory ids, but the check is explicit for clarity).
+            const user = userPresets.find((p) => p.id === e.target.value);
+            if (user) {
+              onApplyPreset(user.name, applyMorphPreset(user.params));
+              setSelectedUserPresetId(user.id);
+              e.target.value = "";
+              return;
+            }
+            const preset = FACTORY_PRESETS.find((p) => p.id === e.target.value);
+            if (preset) {
+              onApplyPreset(preset.name, applyMorphPreset(preset.params));
+              setSelectedUserPresetId(null);
+            }
+            e.target.value = "";
+          }}
         >
           <option value="">PRESET…</option>
+          {userPresets.length > 0 && (
+            <optgroup label="USER">
+              {userPresets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
           {groupedPresets.map((g) => (
             <optgroup key={g.key} label={g.label}>
               {g.presets.map((p) => (
@@ -262,10 +364,53 @@ export function MorphDynamicsPanel({
             </optgroup>
           ))}
         </select>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Save user preset"
+          title="Save the current settings as a user preset"
+          onClick={() => void saveUserPreset()}
+        >
+          SAVE
+        </button>
+        {selectedUserPresetId && (
+          <>
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Rename user preset"
+              onClick={() => void renameUserPreset()}
+            >
+              RENAME
+            </button>
+            <button
+              type="button"
+              className="btn btn-small btn-danger"
+              aria-label="Delete user preset"
+              onClick={() => void deleteUserPreset()}
+            >
+              DEL
+            </button>
+          </>
+        )}
+        {presetError && (
+          <span className="ultina-preset-error" role="alert">
+            {presetError}
+          </span>
+        )}
         <div className="morph-io">
           {engineSlider(GLOBAL_INPUT_GAIN_DB_ID, "IN", -24, 24, dbFmt, "linear", 0)}
           {engineSlider(GLOBAL_OUTPUT_GAIN_DB_ID, "OUT", -24, 24, dbFmt, "linear", 0)}
           {engineSlider(GLOBAL_MIX_ID, "MIX", 0, 100, pctFmt, "linear", 100)}
+          <button
+            type="button"
+            className={`morph-stage-toggle ${valueOf(GLOBAL_DELTA_ID) >= 0.5 ? "on" : ""}`}
+            aria-label="Delta listen — hear only what the processor changes"
+            title="Delta listen: output = wet − dry"
+            onClick={() => onParam(GLOBAL_DELTA_ID, valueOf(GLOBAL_DELTA_ID) >= 0.5 ? 0 : 1)}
+          >
+            DELTA
+          </button>
         </div>
       </div>
 
@@ -340,7 +485,20 @@ export function MorphDynamicsPanel({
               {engineSlider(SPACE_DUCK_ID, "TRN DUCK", 0, 100, pctFmt, "linear", 50)}
             </div>
             <div className="morph-module">
-              <div className="morph-module-title">ANALYSIS SENSITIVITY</div>
+              <div className="morph-module-title">
+                ANALYSIS SENSITIVITY
+                <button
+                  type="button"
+                  className={`morph-stage-toggle ${valueOf(ANALYSIS_ADAPTIVE_LEVEL_ID) >= 0.5 ? "on" : ""}`}
+                  aria-label="Adaptive level — analyze the performance, not the recording level"
+                  title="Adaptive level: T/B/T follow the performance, not the recording level"
+                  onClick={() =>
+                    onParam(ANALYSIS_ADAPTIVE_LEVEL_ID, valueOf(ANALYSIS_ADAPTIVE_LEVEL_ID) >= 0.5 ? 0 : 1)
+                  }
+                >
+                  AGC
+                </button>
+              </div>
               {engineSlider(ANALYSIS_TRANSIENT_SENSITIVITY_ID, "TRANSIENT", 0, 200, pctFmt, "linear", 100)}
               {engineSlider(ANALYSIS_BODY_SENSITIVITY_ID, "BODY", 0, 200, pctFmt, "linear", 100)}
               {engineSlider(ANALYSIS_TEXTURE_SENSITIVITY_ID, "TEXTURE", 0, 200, pctFmt, "linear", 100)}

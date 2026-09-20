@@ -4992,6 +4992,16 @@ export class AudioEngine {
   }
 
   /**
+   * Post-fader analyser branch for one track or group — the spectrogram's
+   * per-source view. Reuses the track's own metering analyser (the chain
+   * tail already feeds it), so a track view costs zero extra FFT work.
+   * Read-only observer; null for unknown ids.
+   */
+  getSpectrogramTrackAnalyser(sourceId: string): AnalyserNode | null {
+    return this.trackNodes.get(sourceId)?.analyser ?? this.groupNodes.get(sourceId)?.analyser ?? null;
+  }
+
+  /**
    * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
    * intersample peaks that the old parabolic estimate missed. Delegates to
    * the shared pure implementation in metering.ts.

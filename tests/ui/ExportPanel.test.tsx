@@ -26,6 +26,45 @@ vi.mock("../../src/rendering/wav", async (importOriginal) => {
   return { ...mod, downloadWav: vi.fn() };
 });
 
+// Rhythmic take: four decaying 60 Hz bursts (detector-grade attacks).
+function impulseTake(): { buffer: AudioBuffer; blob: Blob } {
+  const sr = 44100;
+  const data = new Float32Array(sr);
+  for (const t of [0, 0.25, 0.5, 0.75]) {
+    const start = Math.floor(t * sr);
+    for (let i = 0; i < 0.05 * sr; i++) {
+      const idx = start + i;
+      if (idx >= data.length) break;
+      data[idx] += 0.9 * Math.exp(-i / (0.004 * sr)) * Math.sin((2 * Math.PI * 60 * i) / sr);
+    }
+  }
+  return {
+    buffer: {
+      duration: 1,
+      sampleRate: sr,
+      numberOfChannels: 1,
+      length: data.length,
+      getChannelData: () => data,
+    } as unknown as AudioBuffer,
+    blob: { type: "audio/webm", arrayBuffer: async () => new ArrayBuffer(8) } as unknown as Blob,
+  };
+}
+
+vi.mock("../../src/audio-engine/recorder", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../src/audio-engine/recorder")>();
+  return {
+    ...mod,
+    LiveRecorder: vi.fn().mockImplementation(() => ({
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => impulseTake()),
+      cancel: vi.fn(async () => {}),
+      get elapsedSeconds() {
+        return 1;
+      },
+    })),
+  };
+});
+
 describe("ExportPanel", () => {
   it("renders the export region with the default FORMAT select", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
@@ -96,5 +135,27 @@ describe("ExportPanel", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     await user.selectOptions(screen.getByLabelText("QUALITY"), "live");
     expect(screen.getByLabelText("QUALITY")).toHaveValue("live");
+  });
+
+  it("no AUTO-CHOP button before any take", () => {
+    renderWithContext(<ExportPanel />, { services: mockServices() });
+    expect(screen.queryByRole("button", { name: /^AUTO-CHOP/ })).toBeNull();
+  });
+
+  it("recorded take offers AUTO-CHOP that maps onsets to drum pads + pattern", async () => {
+    const user = userEvent.setup();
+    const services = mockServices();
+    (services.engine as unknown as { getLiveAudioContext?: () => unknown }).getLiveAudioContext = vi.fn(() => ({}));
+    renderWithContext(<ExportPanel />, { services });
+    await user.click(screen.getByRole("button", { name: /● REC/ }));
+    await user.click(await screen.findByRole("button", { name: /■ STOP/ }));
+
+    const chop = await screen.findByRole("button", { name: /^AUTO-CHOP/ });
+    await user.click(chop);
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((c) => c.type === "chopSampleToPads")).toBe(true);
+    expect(await screen.findByText(/slices → .* \+ pattern/)).toBeInTheDocument();
   });
 });

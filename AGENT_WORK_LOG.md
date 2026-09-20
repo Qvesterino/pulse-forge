@@ -2522,3 +2522,38 @@ re-render benefit kicking in immediately. Estimated work:
 - Test: `tests/morph-dynamics-golden.test.ts:275-318` (regression test)
 - Documentation: this AGENT_WORK_LOG entry + the findings above for next-session triage of the 3 baseline failures.
 
+
+---
+
+## GOAL 01 (campaign re-run 3) — Repository reconnaissance & system map refresh (2026-09-20)
+
+**Goal executed:** Full re-verification of SYSTEM_AUDIT_MAP.md against HEAD `20c6112` + working tree (108 commits since the 2026-09-13 audited baseline `dfaf230`), plus fixing immediately dangerous issues found en route. A concurrent agent session was live-editing morph-dynamics + exact-intent work throughout; attribution below respects that.
+
+**Areas inspected (3 parallel recon agents + direct verification):**
+
+- Product surfaces: routing (`/embed`, `/gallery`, `/download`, landing gate `pf-onboarded`), landing handoff chain, gallery feed (REGEN/REMIX/JAM/FORK), embed player, PWA precache constraints, desktop Electron shell.
+- Intent stack: IntentPanel routing order (arrange→mix→revise→generate), production intents, exact intents (landed mid-session by concurrent session), pipeline + candidate bank, ranker (shadow), semantic fallback, song builder/transitions/C3.
+- Audio/DSP: 45-kind effect registry, kaskada unmask solver, FX expansion fleet, master chain (tilt EQ, bassMono), cue sounds, curated 41-slot sample layer, preset loudness normalization, PCM mic recorder + recovery, safeAudioParam fleet.
+- Infra: services composition, persistence (DB v11, 14 stores), collab/gallery server endpoints+limits, test inventory (345 files), vite budgets, worklet build chain (5 bundles), docs drift.
+
+**Confirmed problems & fixes:**
+
+1. **Intent-provenance reader/writer seam (functional dead path, FIXED):** the engine stamps `pattern.generation.intent` (`attachProvenance`, src/intent/providers/local.ts), but ALL THREE regen/consumption readers read top-level `pattern.intent`, which NO engine code writes: `src/embed/EmbedApp.tsx` (REMIX IN KYX CTA), `src/gallery/intentCarry.ts` (`intentSnapshotOfDoc` — studio `?regen=1` auto-regen + IntentPanel prefill), `server/collab-server.mjs` (gallery genre chips + regenerable extraction). Tests hand-stamped the wrong shape (`withIntents` helper literally commented "as the engine does"), masking the seam — on real generated beats, REGEN/REMIX/genre chips were dead and `?regen=1` fell to "no intent provenance". Root cause: viral-plan Fáza B shipped readers against a fixture shape the writer never produced. FIX: all readers now read `generation.intent` with legacy top-level fallback (EmbedApp consolidated onto the tested `intentSnapshotOfDoc`); 4 new regression tests stamp the REAL writer shape (intent-carry: engine shape + both-shapes precedence + legacy fallback; gallery-server: engine shape publish). Verified the field survives every round trip (normalizeProject is spread-preserving; share-code = whole-doc JSON; C3 revise path already read it).
+
+**Validation:** gallery suites 29/29 + remix 4/4 PASS; filtered `tsc --noEmit` clean for all touched files; full-tree tsc PASS at 18:08 snapshot (concurrent session's exact-intent landing observed mid-flight, resolved by them cleanly).
+
+**Important files changed:** src/embed/EmbedApp.tsx, src/gallery/intentCarry.ts, server/collab-server.mjs, tests/gallery-intent-carry.test.ts, tests/gallery-server.test.ts, SYSTEM_AUDIT_MAP.md (full rewrite for 2026-09-20 state).
+
+**Recorded (not fixed, with reasons):**
+
+- Intent routing overlap: "make the drums darker/brighter/warmer" is captured by the MIX branch (global master tilt) before production.ts can target the drums track — GOAL 03 candidate (needs a routing-precedence decision, behavior change).
+- `src/intent/genre-reference.generated.ts` is a committed neutral placeholder → genre loudness/tilt consumption inert; `scripts/measure-genre-references.mjs` modified in-tree = concurrent session owns this — left alone.
+- README "36 effects" vs actual 45; KNOWN_LIMITATIONS 32-float soft-knee claim stale (float path deliberately retains over-range samples); README is hot (concurrent session edits it) — recorded in map §13 for a cool-tree pass.
+- Funnel telemetry (`src/services/funnel.ts`) has no reader — data ships unread.
+- Full Vitest baseline: **still running at close-out** (99+ min, workers healthy at 67–89% CPU; 345 files vs historical 235/33 min on a machine shared with the concurrent session) — result to be appended on completion notification; attribution rule: failures inside morph-dynamics-*/in-flight files belong to the concurrent session.
+
+**Unresolved issues:** none new beyond the recorded list; all map §16 queue items carry owners/goals.
+
+**Remaining risks:** the tree is hot (two sessions); line numbers in the map are snapshot-approximate; `npm run build` + browser suites not re-run this session (GOAL 12 gate).
+
+**Recommendations for next session (GOAL 02):** architecture consistency — verify the newly-wired exact-intent + production-intent command paths keep command-layer exclusivity (no doc mutation outside store.execute); check `src/intent/route.ts` precedence design (mix vs production overlap) as an ownership question; confirm EmbedApp→intentCarry import does not regress the 600 KB landing-route closure budget (`npm run build` + check-bundle-size); audit the gallery intent metadata for a schema contract test (server JS + client TS both read the same untyped field).

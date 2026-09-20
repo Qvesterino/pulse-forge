@@ -54,4 +54,26 @@ describe("Mixer performance workflow", () => {
     );
     expect(executed.some((c) => c.type === "setMasterConfig")).toBe(true);
   });
+
+  it("shows the master TILT/TRIM knobs with the document's current values", () => {
+    // Sound-quality pass: the song builder pre-sets tilt (genre tone) and the
+    // loudness trim (genre reference) — the master strip must DISPLAY them.
+    const doc = createProjectFromTemplate("house");
+    const withKnobs = {
+      ...doc,
+      master: { ...doc.master, tiltDb: 1.5, loudnessTrimDb: -5.7 },
+    };
+    renderWithContext(<Mixer />, { services: mockServices(withKnobs) });
+
+    expect(screen.getByRole("slider", { name: "TILT" })).toHaveAttribute("aria-valuenow", "1.5");
+    expect(screen.getByRole("slider", { name: "TRIM" })).toHaveAttribute("aria-valuenow", "-5.7");
+  });
+
+  it("TILT/TRIM read 0 on a project that never touched the sound-quality pass", () => {
+    const doc = createProjectFromTemplate("house");
+    renderWithContext(<Mixer />, { services: mockServices(doc) });
+
+    expect(screen.getByRole("slider", { name: "TILT" })).toHaveAttribute("aria-valuenow", "0");
+    expect(screen.getByRole("slider", { name: "TRIM" })).toHaveAttribute("aria-valuenow", "0");
+  });
 });

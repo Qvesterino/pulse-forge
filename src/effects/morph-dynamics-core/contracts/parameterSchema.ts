@@ -50,6 +50,7 @@ const GLOBAL_PARAMS: MorphParamDef[] = [
   p(P.GLOBAL_OUTPUT_GAIN_DB_ID, "Output Gain", 0, -24, 24, "db"),
   p(P.GLOBAL_MIX_ID, "Mix", 100, 0, 100, "percent"),
   p(P.GLOBAL_QUALITY_ID, "Quality", 1, 0, 2, "enum", false),
+  p(P.GLOBAL_DELTA_ID, "Delta Listen", 0, 0, 1, "boolean", false),
 ];
 
 const MACRO_PARAMS: MorphParamDef[] = [
@@ -65,6 +66,7 @@ const ANALYSIS_PARAMS: MorphParamDef[] = [
   p(P.ANALYSIS_TRANSIENT_SENSITIVITY_ID, "Transient Sensitivity", 100, 0, 200, "percent"),
   p(P.ANALYSIS_BODY_SENSITIVITY_ID, "Body Sensitivity", 100, 0, 200, "percent"),
   p(P.ANALYSIS_TEXTURE_SENSITIVITY_ID, "Texture Sensitivity", 100, 0, 200, "percent"),
+  p(P.ANALYSIS_ADAPTIVE_LEVEL_ID, "Adaptive Level", 1, 0, 1, "boolean", false),
 ];
 
 const DYN_PARAMS: MorphParamDef[] = [
@@ -76,7 +78,7 @@ const DYN_PARAMS: MorphParamDef[] = [
   p(P.DYN_DETECTOR_BLEND_ID, "Detector", 50, 0, 100, "percent"),
   p(P.DYN_SIDECHAIN_HPF_HZ_ID, "SC HPF", 60, 20, 500, "hz", true, { taper: "log" }),
   p(P.DYN_MAKEUP_DB_ID, "Makeup", 0, -12, 24, "db"),
-  p(P.DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean"),
+  p(P.DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean", false),
 ];
 
 const CHAR_PARAMS: MorphParamDef[] = [
@@ -85,7 +87,7 @@ const CHAR_PARAMS: MorphParamDef[] = [
   // PRESSURE reveal reactive behavior immediately (the thesis demands a
   // meaningful result seconds after loading — a fresh device must not be
   // three toggles away from it).
-  p(P.CHAR_ENABLED_ID, "Character", 1, 0, 1, "boolean"),
+  p(P.CHAR_ENABLED_ID, "Character", 1, 0, 1, "boolean", false),
   p(P.CHAR_DRIVE_ID, "Drive", 0, 0, 100, "percent"),
   p(P.CHAR_TONE_ID, "Tone", 0, -100, 100, "percent"),
   p(P.CHAR_ASYM_ID, "Harmonics", 0, 0, 100, "percent"),
@@ -93,7 +95,7 @@ const CHAR_PARAMS: MorphParamDef[] = [
 ];
 
 const MOTION_PARAMS: MorphParamDef[] = [
-  p(P.MOTION_ENABLED_ID, "Motion Stage", 1, 0, 1, "boolean"),
+  p(P.MOTION_ENABLED_ID, "Motion Stage", 1, 0, 1, "boolean", false),
   p(P.MOTION_DEPTH_ID, "Depth", 40, 0, 100, "percent"),
   p(P.MOTION_RATE_HZ_ID, "Drift", 0.2, 0, 5, "hz"),
   p(P.MOTION_FEEDBACK_ID, "Feedback", 30, -80, 80, "percent"),
@@ -101,7 +103,7 @@ const MOTION_PARAMS: MorphParamDef[] = [
 ];
 
 const SPACE_PARAMS: MorphParamDef[] = [
-  p(P.SPACE_ENABLED_ID, "Space Stage", 1, 0, 1, "boolean"),
+  p(P.SPACE_ENABLED_ID, "Space Stage", 1, 0, 1, "boolean", false),
   p(P.SPACE_SEND_ID, "Send", 25, 0, 100, "percent"),
   p(P.SPACE_PREDELAY_MS_ID, "Pre-delay", 12, 0, 80, "ms"),
   p(P.SPACE_DIFFUSION_ID, "Diffusion", 60, 0, 100, "percent"),
@@ -115,17 +117,9 @@ const SPACE_PARAMS: MorphParamDef[] = [
 function routeParams(): MorphParamDef[] {
   const defs: MorphParamDef[] = [];
   for (let slot = 0; slot < P.ROUTE_COUNT; slot++) {
-    defs.push(p(P.routeParamId(slot, "enabled"), `Route ${slot + 1} On`, 0, 0, 1, "boolean"));
+    defs.push(p(P.routeParamId(slot, "enabled"), `Route ${slot + 1} On`, 0, 0, 1, "boolean", false));
     defs.push(
-      p(
-        P.routeParamId(slot, "source"),
-        `Route ${slot + 1} Source`,
-        0,
-        0,
-        MOD_SOURCES.length - 1,
-        "enum",
-        false,
-      ),
+      p(P.routeParamId(slot, "source"), `Route ${slot + 1} Source`, 0, 0, MOD_SOURCES.length - 1, "enum", false),
     );
     defs.push(
       p(

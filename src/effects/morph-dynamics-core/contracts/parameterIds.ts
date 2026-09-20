@@ -24,6 +24,8 @@ export const GLOBAL_OUTPUT_GAIN_DB_ID = "global.outputGainDb" as const;
 export const GLOBAL_MIX_ID = "global.mix" as const;
 /** 0 = eco, 1 = normal, 2 = high (analysis resolution; no DSP character change). */
 export const GLOBAL_QUALITY_ID = "global.quality" as const;
+/** Delta listen: output = wet − dry (hear only what the processor changes). */
+export const GLOBAL_DELTA_ID = "global.delta" as const;
 
 // ── Primary macros (the product surface) ───────────────────
 // PRESSURE scales the depth of REACTIVE transformation (curated, nonlinear
@@ -42,6 +44,9 @@ export const MACRO_SPACE_ID = "macro.space" as const; // 0..100
 export const ANALYSIS_TRANSIENT_SENSITIVITY_ID = "analysis.transientSensitivity" as const; // 0..200 %
 export const ANALYSIS_BODY_SENSITIVITY_ID = "analysis.bodySensitivity" as const; // 0..200 %
 export const ANALYSIS_TEXTURE_SENSITIVITY_ID = "analysis.textureSensitivity" as const; // 0..200 %
+/** Adaptive level reference on the analysis tap (AGC) — T/B/T react to
+ * PERFORMANCE, not recording level. 0 = fixed reference (legacy). */
+export const ANALYSIS_ADAPTIVE_LEVEL_ID = "analysis.adaptiveLevel" as const;
 
 // ── Dynamics engine ─────────────────────────────────────────
 

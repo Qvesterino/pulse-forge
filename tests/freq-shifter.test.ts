@@ -19,11 +19,7 @@ class FakeAudioWorkletProcessor {
 }
 
 interface FreqShiftLike {
-  process: (
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    parameters: Record<string, Float32Array>,
-  ) => boolean;
+  process: (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) => boolean;
 }
 
 const SR = 44100;
@@ -172,11 +168,7 @@ describe("FreqShift processor", () => {
       r[i] = Math.cos((2 * Math.PI * 330 * i) / SR) * 0.3;
     }
     const out: Float32Array[][] = [[new Float32Array(n), new Float32Array(n)]];
-    fx.process(
-      [[l, r]],
-      out,
-      param({ ...BASE, shift: 500, lfoDepth: 200, feedback: 0.5, drive: 0.8, mix: 0 }),
-    );
+    fx.process([[l, r]], out, param({ ...BASE, shift: 500, lfoDepth: 200, feedback: 0.5, drive: 0.8, mix: 0 }));
     for (let i = 0; i < n; i++) {
       expect(out[0][0][i]).toBe(l[i]);
       expect(out[0][1][i]).toBe(r[i]);

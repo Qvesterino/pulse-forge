@@ -136,6 +136,13 @@ export interface OzvenaProcessor {
   isIrLoaded(): boolean;
   /** Channel count of the loaded IR (1/2/4), 0 when empty. */
   getIrChannels(): 1 | 2 | 4 | 0;
+  /**
+   * True while a USER IR (not the factory selection) is armed. The worklet
+   * entry uses this to refuse late factory-IR replies that would otherwise
+   * clobber a user IR loaded after the factory request was posted.
+   * (Reconciled from Pulse Forge audit, 2026-09-19.)
+   */
+  isUserIrActive(): boolean;
 }
 
 export function createOzvenaProcessor(): OzvenaProcessor {
@@ -290,7 +297,16 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   }
 
   function clearUserIr(): void {
+    if (!userIrActive) return;
     userIrActive = false;
+    // Force the factory selection to be re-resolved: loadedIrId still names
+    // the (factory) selection the user IR temporarily replaced while it was
+    // loaded, so syncConvolutionIr()'s "already loaded" early-return would
+    // otherwise keep the user IR armed — clear was a silent no-op whenever
+    // a factory IR was selected (which is the common case).
+    // (Reconciled from Pulse Forge audit, 2026-09-19.)
+    loadedIrId = null;
+    loadedIrRate = 0;
     syncConvolutionIr();
   }
 
@@ -915,6 +931,10 @@ export function createOzvenaProcessor(): OzvenaProcessor {
 
     getIrChannels() {
       return convolution.getIrChannels();
+    },
+
+    isUserIrActive() {
+      return userIrActive;
     },
 
     loadUserIr(samples, channels) {

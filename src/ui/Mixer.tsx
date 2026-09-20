@@ -377,6 +377,36 @@ function MasterStrip() {
               />
             </>
           )}
+          {/* Tonal tilt (sound-quality pass): complementary master shelves,
+              + dark / − bright. Songs generated for a character genre land
+              here pre-set (drill +2, phonk +1.5, jersey −1.5). */}
+          <Slider
+            compact
+            label="TILT"
+            value={master.tiltDb ?? 0}
+            min={-4}
+            max={4}
+            defaultValue={0}
+            format={(v) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`)}
+            onCommit={(tiltDb) =>
+              services.store.execute(setMasterConfig(doc, { tiltDb: Math.round(tiltDb * 2) / 2 }))
+            }
+          />
+          {/* Genre loudness trim: auto-written by the song builder from the
+              measured genre references so exports land at ≈ −14 LUFS; drag to
+              offset further (re-generating a song re-computes it). */}
+          <Slider
+            compact
+            label="TRIM"
+            value={master.loudnessTrimDb ?? 0}
+            min={-6}
+            max={6}
+            defaultValue={0}
+            format={(v) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`)}
+            onCommit={(loudnessTrimDb) =>
+              services.store.execute(setMasterConfig(doc, { loudnessTrimDb: Math.round(loudnessTrimDb * 10) / 10 }))
+            }
+          />
           {/* Stereo indicators fill the strip's dead space under the controls. */}
           <MasterStereoMeters />
         </div>

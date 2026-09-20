@@ -2759,6 +2759,7 @@ const morphdynamics: EffectDefinition = {
   category: "dynamics",
   params: [
     { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+    { id: "global.mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
     {
       id: "macro.pressure",
       label: "PRESSURE",

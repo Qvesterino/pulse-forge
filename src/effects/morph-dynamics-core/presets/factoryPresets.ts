@@ -16,14 +16,7 @@ import { buildDefaultParams, clampParam, PARAM_BY_ID } from "../contracts/parame
 
 export const MORPH_PRESET_SCHEMA_VERSION = 1;
 
-export type MorphPresetSource =
-  | "vocal"
-  | "drums"
-  | "bass"
-  | "synth"
-  | "instrument"
-  | "bus"
-  | "creative";
+export type MorphPresetSource = "vocal" | "drums" | "bass" | "synth" | "instrument" | "bus" | "creative";
 
 export type MorphPresetIntensity = "subtle" | "moderate" | "strong" | "extreme";
 
@@ -756,6 +749,145 @@ export const FACTORY_PRESETS: readonly MorphFactoryPreset[] = [
       [R.source(2)]: 1, // Gain Reduction
       [R.dest(2)]: 11, // → Width
       [R.amount(2)]: -50,
+    },
+  ),
+
+  // ── Scene presets (drill / phonk / jersey / dnb — app-native genres) ──
+  preset(
+    "morph-drill-bus-pressure",
+    "Drill Bus Pressure",
+    "drums",
+    "Punch",
+    "strong",
+    "Drum bus glue tuned for drill: sliding 808s stay glued, hats sizzle wide, and every hit ducks the tail clean.",
+    {
+      "macro.pressure": 55,
+      "macro.punch": 45,
+      "macro.body": 55,
+      "macro.texture": 65,
+      "macro.motion": 0,
+      "macro.space": 30,
+      "dyn.thresholdDb": -22,
+      "dyn.ratio": 3.2,
+      "dyn.attackMs": 10,
+      "dyn.releaseMs": 130,
+      "char.drive": 14,
+      "char.tone": -15,
+      "space.send": 22,
+      "space.duck": 80,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 2, // Transient
+      [R.dest(0)]: 8, // → Space Send
+      [R.amount(0)]: -70,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 3, // Body
+      [R.dest(1)]: 2, // → Drive
+      [R.amount(1)]: 35,
+      [R.enabled(2)]: 1,
+      [R.source(2)]: 4, // Texture
+      [R.dest(2)]: 11, // → Width
+      [R.amount(2)]: 50,
+    },
+  ),
+  preset(
+    "morph-phonk-808-weight",
+    "Phonk 808 Weight",
+    "bass",
+    "Dense",
+    "strong",
+    "Cowbell-melody-safe 808 weight: slow-grab density on the sub, growl only when the performance digs in, stereo untouched.",
+    {
+      "macro.pressure": 55,
+      "macro.punch": 20,
+      "macro.body": 75,
+      "macro.texture": 15,
+      "macro.motion": 0,
+      "macro.space": 0,
+      "dyn.thresholdDb": -26,
+      "dyn.ratio": 3.4,
+      "dyn.attackMs": 28,
+      "dyn.releaseMs": 260,
+      "dyn.sidechainHpfHz": 30,
+      "dyn.kneeDb": 9,
+      "char.drive": 12,
+      "char.asym": 20,
+      "space.width": 100,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 2, // → Drive
+      [R.amount(0)]: 45,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 0, // Input Energy
+      [R.dest(1)]: 0, // → Comp Threshold
+      [R.amount(1)]: 35,
+    },
+  ),
+  preset(
+    "morph-jersey-vocal-bark",
+    "Jersey Vocal Bark",
+    "vocal",
+    "Aggressive",
+    "strong",
+    "Club-vocal bark: GR feeds the clipper so loud phrases bite through, consonants keep a fast transient exit.",
+    {
+      "macro.pressure": 70,
+      "macro.punch": 40,
+      "macro.body": 60,
+      "macro.texture": 30,
+      "macro.motion": 0,
+      "macro.space": 10,
+      "dyn.thresholdDb": -24,
+      "dyn.ratio": 3.6,
+      "dyn.attackMs": 2,
+      "dyn.releaseMs": 90,
+      "char.drive": 18,
+      "char.clip": 24,
+      "char.tone": 20,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 1, // Gain Reduction
+      [R.dest(0)]: 4, // → Clip
+      [R.amount(0)]: 55,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 2, // Transient
+      [R.dest(1)]: 3, // → Tone
+      [R.amount(1)]: 30,
+    },
+  ),
+  preset(
+    "morph-dnb-punch-glue",
+    "DnB Punch Glue",
+    "drums",
+    "Punch",
+    "strong",
+    "Breakbeat glue with a fast transient exit: the break punches through, the air blooms behind it, nothing smears.",
+    {
+      "macro.pressure": 60,
+      "macro.punch": 55,
+      "macro.body": 50,
+      "macro.texture": 60,
+      "macro.motion": 10,
+      "macro.space": 35,
+      "dyn.thresholdDb": -20,
+      "dyn.ratio": 2.8,
+      "dyn.attackMs": 4,
+      "dyn.releaseMs": 110,
+      "char.drive": 10,
+      "char.clip": 8,
+      "space.send": 26,
+      "space.duck": 85,
+      "space.decayS": 1,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 2, // Transient
+      [R.dest(0)]: 8, // → Space Send
+      [R.amount(0)]: -75,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 4, // Texture
+      [R.dest(1)]: 9, // → Diffusion
+      [R.amount(1)]: 45,
+      [R.enabled(2)]: 1,
+      [R.source(2)]: 3, // Body
+      [R.dest(2)]: 2, // → Drive
+      [R.amount(2)]: 30,
     },
   ),
 ];

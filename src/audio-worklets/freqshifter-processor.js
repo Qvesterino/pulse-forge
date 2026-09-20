@@ -203,8 +203,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
 
       const shiftL = shift + fine + sweep;
       const shiftR = shiftRBase + fine + sweep;
-      this.phaseL += (-2 * Math.PI * shiftL) / sr;
-      this.phaseR += (-2 * Math.PI * shiftR) / sr;
+      // Positive shift moves partials UP (Bode/Ableton convention): with
+      // xa ~ sin(wt) and xb ~ -cos(wt), xa*cos - xb*sin = sin((w+wc)t).
+      this.phaseL += (2 * Math.PI * shiftL) / sr;
+      this.phaseR += (2 * Math.PI * shiftR) / sr;
       if (this.phaseL > 2 * Math.PI) this.phaseL -= 2 * Math.PI;
       else if (this.phaseL < -2 * Math.PI) this.phaseL += 2 * Math.PI;
       if (this.phaseR > 2 * Math.PI) this.phaseR -= 2 * Math.PI;

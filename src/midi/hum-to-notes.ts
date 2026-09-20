@@ -1,0 +1,222 @@
+import type { NoteEvent, MusicalKey, Pattern, ProjectDocument } from "../project-model/types";
+import { PPQ, STEP_TICKS } from "../project-model/types";
+import { snapToScale } from "../project-model/scales";
+import { uid } from "../shared/ids";
+import { snapshot } from "../commands/commands";
+import type { PitchFrame } from "../audio-workers/pitch-tracker";
+
+/**
+ * HUM-TO-MELODY (sound-quality wave: the signature beginner feature).
+ *
+ * Hummed/sung audio → pitch frames (pitch-tracker worker) → NOTE EVENTS in
+ * the current pattern, snapped to the project key and the 16th-note grid.
+ * Pure and deterministic: the same recording + settings produce the same
+ * notes, so the flow is unit-testable end to end without a microphone.
+ *
+ * Segmentation is tuned for HUMMING specifically: one voice, slow glides,
+ * shallow vibrato. Pitch changes only split notes when the new pitch is
+ * stable for several frames (a glide toward the next note must not shatter
+ * into chromatic fragments), and short dropouts (breath) bridge instead of
+ * cutting.
+ */
+
+/** Frames below this clarity are treated as unvoiced even if the tracker guessed. */
+const CLARITY_GATE = 0.55;
+/** Absolute silence floor (≈ −48 dBFS) — room tone must not become notes. */
+const RMS_FLOOR = 0.004;
+/** A pitch change splits a note only after it is stable this many frames (~40 ms). */
+const SPLIT_STABLE_FRAMES = 4;
+/** Pitch distance (semitones) that counts as "moved to a new note". */
+const SPLIT_SEMITONES = 0.7;
+/** Dropouts up to this length bridge instead of cutting a hummed note. */
+const BRIDGE_SEC = 0.08;
+/** Minimum voiced run to become a note. */
+const MIN_NOTE_SEC = 0.1;
+/** Upper bound — a stuck detector must not flood the pattern. */
+const MAX_NOTES = 64;
+
+export interface HumNoteOptions {
+  bpm: number;
+  /** Snap pitches to the project scale (default: yes). */
+  key?: MusicalKey | null;
+  /** Snap starts/durations to the 16th grid (default: yes). */
+  quantize?: boolean;
+  /** Pattern length in ticks — notes beyond it are clamped into the last step. */
+  patternLengthTicks: number;
+}
+
+export interface HumToNotesTarget {
+  trackId: string;
+  patternId: string;
+  mode: "replace" | "merge";
+}
+
+/**
+ * Pitch frames → note drafts (ticks, snapped). Deterministic.
+ */
+export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOptions): NoteEvent[] {
+  const bpm = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
+  const voiced = frames.filter((f) => f.clarity >= CLARITY_GATE && f.rms >= RMS_FLOOR && f.midi > 0);
+  if (voiced.length === 0) return [];
+
+  // Median-of-5 on the voiced pitch curve — kills single-frame octave flips
+  // and takes the edge off vibrato before run splitting.
+  const midi = voiced.map((f) => f.midi);
+  const smoothed = midi.map((value, i) => {
+    const window = midi.slice(Math.max(0, i - 2), i + 3).sort((a, b) => a - b);
+    return window[Math.floor(window.length / 2)];
+  });
+
+  // Split the voiced timeline into runs at sustained pitch changes.
+  interface Run {
+    startIdx: number;
+    endIdx: number; // inclusive
+    pitchSum: number;
+    count: number;
+    rmsMax: number;
+  }
+  const runs: Run[] = [];
+  let current: Run | null = null;
+  let pendingSplit = 0;
+  let splitRef = 0;
+  for (let i = 0; i < voiced.length; i++) {
+    const t = voiced[i].timeSec;
+    const pitch = smoothed[i];
+    if (current && Math.abs(pitch - splitRef) >= SPLIT_SEMITONES) {
+      pendingSplit += 1;
+      if (pendingSplit >= SPLIT_STABLE_FRAMES) {
+        // Close the previous run BEFORE the stable change began.
+        current.endIdx = i - pendingSplit;
+        current = null;
+      }
+    } else {
+      pendingSplit = 0;
+    }
+    if (!current) {
+      current = { startIdx: i, endIdx: i, pitchSum: 0, count: 0, rmsMax: 0 };
+      runs.push(current);
+      splitRef = pitch;
+      pendingSplit = 0;
+    }
+    current.endIdx = i;
+    current.pitchSum += pitch;
+    current.count += 1;
+    current.rmsMax = Math.max(current.rmsMax, voiced[i].rms);
+    splitRef = splitRef * 0.8 + pitch * 0.2; // slow reference follows glides
+  }
+
+  // Runs → tick-space drafts (time from the FIRST voiced frame index).
+  const maxRms = runs.reduce((max, r) => Math.max(max, r.rmsMax), 1e-9);
+  const secPerTick = 60 / (bpm * PPQ);
+  const raw: Array<{ pitch: number; startTick: number; endTick: number; velocity: number }> = [];
+  for (const run of runs) {
+    const t0 = voiced[run.startIdx].timeSec;
+    const t1 = voiced[run.endIdx].timeSec + 0.01; // hop width tail
+    if (t1 - t0 < MIN_NOTE_SEC) continue;
+    const pitch = Math.round(run.pitchSum / Math.max(1, run.count));
+    if (pitch < 12 || pitch > 120) continue;
+    raw.push({
+      pitch,
+      startTick: Math.round(t0 / secPerTick),
+      endTick: Math.round(t1 / secPerTick),
+      velocity: 0.45 + 0.45 * Math.min(1, run.rmsMax / maxRms),
+    });
+  }
+  if (raw.length === 0) return [];
+
+  // Bridge tiny gaps between adjacent runs (breath) BEFORE quantizing.
+  const bridged: typeof raw = [];
+  for (const note of raw) {
+    const prev = bridged[bridged.length - 1];
+    if (
+      prev &&
+      note.pitch === prev.pitch &&
+      (note.startTick - prev.endTick) * secPerTick < BRIDGE_SEC
+    ) {
+      prev.endTick = note.endTick;
+      prev.velocity = Math.max(prev.velocity, note.velocity);
+      continue;
+    }
+    bridged.push({ ...note });
+  }
+
+  const quantize = options.quantize !== false;
+  const notes: NoteEvent[] = [];
+  for (const draft of bridged) {
+    let startTick = draft.startTick;
+    let endTick = Math.max(draft.endTick, startTick + 1);
+    if (quantize) {
+      startTick = Math.round(startTick / STEP_TICKS) * STEP_TICKS;
+      endTick = Math.round(endTick / STEP_TICKS) * STEP_TICKS;
+      if (endTick <= startTick) endTick = startTick + STEP_TICKS;
+    }
+    let pitch = draft.pitch;
+    if (options.key) pitch = snapToScale(pitch, options.key);
+    // Clamp into the pattern: drop notes entirely past the end, trim tails.
+    if (startTick >= options.patternLengthTicks) continue;
+    if (endTick > options.patternLengthTicks) endTick = options.patternLengthTicks;
+    if (endTick - startTick < (quantize ? STEP_TICKS : 1)) continue;
+
+    const last = notes[notes.length - 1];
+    if (last && last.pitch === pitch && startTick < last.start + last.duration) {
+      // Overlap after quantize/key-snap — trim the earlier note, keep both.
+      last.duration = Math.max(STEP_TICKS, startTick - last.start);
+      if (last.duration <= 0) notes.pop();
+    }
+    notes.push({
+      id: uid("note"),
+      pitch,
+      start: startTick,
+      duration: endTick - startTick,
+      velocity: Math.round(draft.velocity * 100) / 100,
+    });
+    if (notes.length >= MAX_NOTES) break;
+  }
+  return notes;
+}
+
+/**
+ * Install hummed notes as ONE undoable command (snapshot delta — concurrent
+ * edits between record and apply survive undo). Replace swaps the track's
+ * note list; merge appends (identical pitch+start deduped).
+ */
+export function humToNotesCommand(
+  doc: ProjectDocument,
+  notes: readonly NoteEvent[],
+  target: HumToNotesTarget,
+): ReturnType<typeof snapshot> {
+  const pattern = doc.patterns.find((p) => p.id === target.patternId);
+  if (!pattern) throw new Error("The target pattern no longer exists");
+  if (!doc.tracks.some((t) => t.id === target.trackId)) throw new Error("The target track no longer exists");
+  if (notes.length === 0) throw new Error("No hummed notes to apply");
+
+  const existing = pattern.notes[target.trackId] ?? [];
+  const nextNotes =
+    target.mode === "merge"
+      ? [
+          ...existing,
+          ...notes.filter(
+            (note) => !existing.some((e) => e.pitch === note.pitch && e.start === note.start),
+          ),
+        ]
+      : [...notes];
+  const sorted = [...nextNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((p) =>
+      p.id === target.patternId ? { ...p, notes: { ...p.notes, [target.trackId]: sorted } } : p,
+    ),
+  };
+  return snapshot(
+    "humToNotes",
+    `Hum → notes: ${notes.length} note${notes.length === 1 ? "" : "s"} (${target.mode})`,
+    doc,
+    next,
+  );
+}
+
+/** Pattern length in ticks (shared with the piano roll's grid math). */
+export function patternLengthTicks(pattern: Pattern): number {
+  return pattern.stepCount * STEP_TICKS;
+}

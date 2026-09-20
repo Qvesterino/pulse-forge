@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMaster, useServices } from "./context";
+import { useMaster, useServices, useTracks } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { evaluateMasterVerdict, evaluateMixCheck, MIN_DB } from "../audio-engine/metering";
@@ -41,6 +41,16 @@ export function MasterMeter() {
   const services = useServices();
   // Fine-grained selector (GOAL 04): MasterMeter only reads master config.
   const master = useMaster();
+  // Spectrogram source picker: tracks + buses (useTracks is already typed
+  // to exclude returns — those are FX sends, not mix content). "" = master.
+  const tracks = useTracks();
+  const spectroSources = tracks.map((t) => ({
+    id: t.id,
+    name: t.kind === "group" ? `BUS · ${t.name}` : t.name,
+  }));
+  const [spectroSource, setSpectroSource] = useState("");
+  // A deleted track must not leave the select pointing at a ghost.
+  const effectiveSpectroSource = spectroSources.some((s) => s.id === spectroSource) ? spectroSource : "";
   const ceilingDb = master.ceilingDb;
   const lufsTarget = master.lufsTarget ?? -14;
   const [state, setState] = useState<ReadState>({
@@ -195,6 +205,14 @@ export function MasterMeter() {
                 getMasterSpectrogramTaps?: () => { low: AnalyserNode; mid: AnalyserNode; high: AnalyserNode } | null;
               }
             ).getMasterSpectrogramTaps?.() ?? null
+          }
+          sources={spectroSources}
+          sourceId={effectiveSpectroSource}
+          onSourceChange={setSpectroSource}
+          getTrackAnalyser={
+            (services.engine as unknown as {
+              getSpectrogramTrackAnalyser?: (id: string) => AnalyserNode | null;
+            }).getSpectrogramTrackAnalyser?.bind(services.engine) ?? (() => null)
           }
           transport={services.transport}
           id="master"

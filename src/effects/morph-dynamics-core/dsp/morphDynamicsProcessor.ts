@@ -190,6 +190,7 @@ export class MorphDynamicsProcessor {
       body: q[P.ANALYSIS_BODY_SENSITIVITY_ID] / 100,
       texture: q[P.ANALYSIS_TEXTURE_SENSITIVITY_ID] / 100,
     });
+    this.analysis.setAdaptiveLevel(q[P.ANALYSIS_ADAPTIVE_LEVEL_ID] >= 0.5);
     this.space.setParams({
       send: q[P.SPACE_SEND_ID] / 100,
       predelayMs: q[P.SPACE_PREDELAY_MS_ID],
@@ -346,6 +347,7 @@ export class MorphDynamicsProcessor {
     const inputGain = this.sm.inputGain.tick();
     const outputGain = this.sm.outputGain.tick();
     const mix = this.sm.mix.tick();
+    const deltaOn = q[P.GLOBAL_DELTA_ID] >= 0.5;
     // PUNCH>0 adds a short parallel transient lift after the compressor
     // (phase-safe — pure gain); PUNCH<0 trims transient peaks slightly.
     const transientPathTrim = punch > 0 ? punch * 0.35 : punch * 0.18;
@@ -394,8 +396,15 @@ export class MorphDynamicsProcessor {
       // Safety: per-channel DC block + soft ceiling, then mix vs dry.
       wetL = softClip(this.dcL.process(wetL), 0.95);
       wetR = softClip(this.dcR.process(wetR), 0.95);
-      const outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
-      const outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
+      let outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
+      let outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
+      // Delta listen (zero latency, so delta is a plain difference): output
+      // carries ONLY what the whole chain changed. inputGain multiplies both
+      // paths and cancels; outputGain still trims the monitoring level.
+      if (deltaOn) {
+        outL = (wetL - dryL) * outputGain;
+        outR = (wetR - dryR) * outputGain;
+      }
 
       L[i] = outL;
       R[i] = outR;
@@ -414,12 +423,7 @@ export class MorphDynamicsProcessor {
     // the SAME block rather than waiting for the next call. First-sample-only
     // leaves the corrupted samples for the surrounding hardware to absorb.
     const last = frames - 1;
-    if (
-      !Number.isFinite(L[0]) ||
-      !Number.isFinite(R[0]) ||
-      !Number.isFinite(L[last]) ||
-      !Number.isFinite(R[last])
-    ) {
+    if (!Number.isFinite(L[0]) || !Number.isFinite(R[0]) || !Number.isFinite(L[last]) || !Number.isFinite(R[last])) {
       this.reset();
       for (let i = 0; i < frames; i++) {
         L[i] = 0;

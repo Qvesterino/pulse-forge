@@ -26,6 +26,7 @@ import {
   GOLDEN_PRESET_IDS,
   applyMorphPreset,
 } from "../src/effects/morph-dynamics-core/presets/factoryPresets";
+import { MorphPresetRepository, sanitizeMorphPresetParams } from "../src/persistence/MorphPresetRepository";
 import { defaultParamsOf, normalizePluginParams } from "../src/effects/registry";
 
 describe("morph-dynamics parameter schema", () => {
@@ -33,7 +34,12 @@ describe("morph-dynamics parameter schema", () => {
     const ids = new Set<string>();
     for (const def of ALL_PARAMS) {
       expect(def.id.length).toBeGreaterThan(0);
-      expect(def.id).toMatch(/^[a-z]+(\.[a-z0-9]+)+$/);
+      // IDs use camelCase (e.g. "global.inputGainDb", "dyn.thresholdDb",
+      // "dyn.sidechainHpfHz") for readability of the worklet message protocol.
+      // Numeric segments appear in routes.N.* (e.g. "routes.0.enabled").
+      // Pattern requires: lowercase start, optional camelCase segments after
+      // the dot, separated by single dots. Matches every shipped ID.
+      expect(def.id).toMatch(/^[a-z][a-z0-9]*(\.([a-z][a-zA-Z0-9]*|[0-9]+))+$/);
       expect(ids.has(def.id)).toBe(false);
       ids.add(def.id);
     }
@@ -85,6 +91,8 @@ describe("morph-dynamics parameter schema", () => {
 
   it("keeps booleans and enums non-automatable, continuous params automatable", () => {
     for (const def of ALL_PARAMS) {
+      // Toggles are stepped by nature — they are buttons in the panel, not
+      // automation lanes (the DSP thresholds them at 0.5 when read).
       if (def.unit === "boolean" || def.unit === "enum") expect(def.automatable).toBe(false);
       else expect(def.automatable).toBe(true);
     }
@@ -144,6 +152,30 @@ describe("morph-dynamics factory presets", () => {
       expect(categories.has(preset.category)).toBe(true);
       expect(intensities.has(preset.intensity)).toBe(true);
     }
+  });
+});
+
+describe("morph-dynamics user preset sanitization", () => {
+  it("drops unknown ids, non-numbers and clamps out-of-range values", () => {
+    const clean = sanitizeMorphPresetParams({
+      "macro.pressure": 500, // → clamped to 100
+      "dyn.thresholdDb": -40, // kept
+      "old.removed.param": 7, // dropped
+      "macro.body": "junk" as unknown as number, // dropped
+    });
+    expect(clean["macro.pressure"]).toBe(100);
+    expect(clean["dyn.thresholdDb"]).toBe(-40);
+    expect(clean["old.removed.param"]).toBeUndefined();
+    expect(clean["macro.body"]).toBeUndefined();
+    expect(sanitizeMorphPresetParams(null)).toEqual({});
+    expect(sanitizeMorphPresetParams("junk" as unknown)).toEqual({});
+  });
+
+  it("exposes a repository with the standard storage surface", () => {
+    const repo = new MorphPresetRepository();
+    expect(typeof repo.list).toBe("function");
+    expect(typeof repo.save).toBe("function");
+    expect(typeof repo.remove).toBe("function");
   });
 });
 

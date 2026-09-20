@@ -67,12 +67,22 @@ export function Spectrogram({
   taps,
   transport,
   id,
+  sources,
+  sourceId,
+  onSourceChange,
+  getTrackAnalyser,
   bodyHeight = 140,
 }: {
   analyser: AnalyserNode | null;
   taps: SpectroTaps | null;
   transport: Transport;
   id: string;
+  /** Selectable analysis sources (tracks + buses); "" in sourceId = master. */
+  sources: Array<{ id: string; name: string }>;
+  sourceId: string;
+  onSourceChange: (id: string) => void;
+  /** Resolves one track/bus to its post-fader analyser (engine getter). */
+  getTrackAnalyser: (id: string) => AnalyserNode | null;
   bodyHeight?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -100,6 +110,12 @@ export function Spectrogram({
   const tapLow = taps?.low ?? null;
   const tapMid = taps?.mid ?? null;
   const tapHigh = taps?.high ?? null;
+  // Track/bus source: reuse that chain's own metering analyser (zero extra
+  // FFT cost). Its fftSize is fixed (2048) and shared with the meters, so
+  // track views always run single-FFT; MULTI stays a master feature.
+  const trackAnalyser = sourceId ? getTrackAnalyser(sourceId) : null;
+  const effectiveAnalyser = sourceId ? trackAnalyser : analyser;
+  const effectiveMulti = multi && !sourceId;
 
   useEffect(() => {
     if (!open) return;
@@ -115,7 +131,7 @@ export function Spectrogram({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !analyser) return;
+    if (!open || !effectiveAnalyser) return;
     const dataCanvas = canvasRef.current;
     const overlayCanvas = overlayRef.current;
     if (!dataCanvas || !overlayCanvas) return;
@@ -125,22 +141,28 @@ export function Spectrogram({
 
     const w = backing.w;
     const h = backing.h;
-    const sampleRate = analyser.context.sampleRate;
+    const sampleRate = effectiveAnalyser.context.sampleRate;
     const trueNyquist = sampleRate / 2;
     const fMin = Math.max(SPECTRO_MIN_FREQ, Math.min(zoom.min, trueNyquist - ZOOM_MIN_SPAN_HZ));
     const fTop = zoom.max === 0 ? trueNyquist : Math.min(trueNyquist, Math.max(fMin + ZOOM_MIN_SPAN_HZ, zoom.max));
 
-    // Active analysers + their window sizes. MULTI enforces the canonical
-    // sizes on entry so a custom SINGLE fftSize can never leak into the
-    // shared mid tap.
-    const useMulti = multi && !!tapLow && !!tapMid && !!tapHigh;
+    // Active analysers + their window sizes. MULTI (master only) enforces
+    // the canonical sizes on entry so a custom SINGLE fftSize can never
+    // leak into the shared mid tap. A track/bus source keeps its own
+    // metering analyser untouched — whatever fftSize it already runs.
+    const useMulti = effectiveMulti && !!tapLow && !!tapMid && !!tapHigh;
     const sources: Array<{ node: AnalyserNode; fft: number }> = useMulti
       ? [
           { node: tapLow, fft: 8192 },
           { node: tapMid, fft: 4096 },
           { node: tapHigh, fft: 1024 },
         ]
-      : [{ node: analyser, fft: fftSize }];
+      : [
+          // Master single: the user's fftSize choice writes into the
+          // dedicated mid tap. Track/bus single: keep the chain's own
+          // analyser exactly as its meters expect it.
+          { node: effectiveAnalyser, fft: sourceId ? effectiveAnalyser.fftSize : fftSize },
+        ];
     for (const src of sources) {
       if (src.node.fftSize !== src.fft) src.node.fftSize = src.fft;
     }
@@ -355,7 +377,7 @@ export function Spectrogram({
     // LUT-mapped with the previous mapping, so a rebuild keeps the view
     // honest rather than repainting mixed mappings).
   }, [
-    analyser,
+    effectiveAnalyser,
     tapLow,
     tapMid,
     tapHigh,
@@ -366,7 +388,8 @@ export function Spectrogram({
     floorDb,
     ceilDb,
     lutName,
-    multi,
+    effectiveMulti,
+    sourceId,
     zoom,
     backing.w,
     backing.h,
@@ -400,11 +423,29 @@ export function Spectrogram({
         </button>
         {open && (
           <>
-            <label className="spectrogram-ctl" title="Multi-resolution: long window for sub-bass, short for transients">
+            <label className="spectrogram-ctl" title="Analyse the master output or one track/bus">
+              SRC
+              <select
+                value={sourceId}
+                onChange={(e) => onSourceChange(e.target.value)}
+                aria-label="Spectrogram source"
+              >
+                <option value="">MASTER</option>
+                {sources.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              className="spectrogram-ctl"
+              title={sourceId ? "MULTI resolution is a master view — tracks run their own single window" : "Multi-resolution: long window for sub-bass, short for transients"}
+            >
               RES
               <select
-                value={multi ? "multi" : "single"}
-                disabled={!taps}
+                value={effectiveMulti ? "multi" : "single"}
+                disabled={!taps || !!sourceId}
                 onChange={(e) => setMulti(e.target.value === "multi")}
                 aria-label="Spectrogram resolution mode"
               >
@@ -416,7 +457,7 @@ export function Spectrogram({
               FFT
               <select
                 value={fftSize}
-                disabled={multi}
+                disabled={effectiveMulti || !!sourceId}
                 onChange={(e) => setFftSize(Number(e.target.value))}
                 aria-label="Spectrogram FFT size"
               >

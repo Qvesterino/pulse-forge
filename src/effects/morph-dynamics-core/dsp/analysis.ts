@@ -38,7 +38,6 @@ export interface AnalysisSignals {
 }
 
 export class FeatureExtractor {
-
   // Multi-timescale envelopes on the (rectified) mono analysis tap.
   private fast = new EnvelopeFollower(); // ~1 ms attack — transient edge
   private mid = new EnvelopeFollower(); // ~10 ms — musical dynamics
@@ -67,6 +66,22 @@ export class FeatureExtractor {
   private ecoDivisor = 1;
   private ecoCounter = 0;
 
+  // ── Adaptive level reference (AGC on the analysis tap) ─────────────
+  // Tracks the LONG-TERM level (2 s up / 6 s down) so the score
+  // normalizations follow the material's level, not a fixed one: a
+  // quietly-recorded vocal must drive the engine as hard as a hot one.
+  // Short-term reactivity stays fully intact (the fast envelopes still
+  // move — only the BASELINE normalizes). The clamp window caps the boost
+  // at +24 dB and never desensitizes a loud mix beyond −8 dB; silence
+  // decays to the floor instead of cranking gain toward infinity.
+  private levelRef = 0; // 0 = not yet initialized (snaps on first signal)
+  private levelUpCoef = 0;
+  private levelDownCoef = 0;
+  private adaptiveLevel = true;
+  private static readonly REF_NOMINAL = 0.1;
+  private static readonly REF_FLOOR = 0.00625; // +24 dB max boost
+  private static readonly REF_CEILING = 0.25; // −8 dB max desensitize
+
   // Published scores (persist between blocks so meters never strobe).
   private signals: AnalysisSignals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
 
@@ -87,6 +102,11 @@ export class FeatureExtractor {
     // Positive-slope smoother: ~8 ms — fast enough for strikes, slow enough
     // to reject single-sample zigzag.
     this.slopeCoef = tcToCoef(0.008, sampleRate);
+    // AGC reference trackers: slow attack (2 s), slower release (6 s) —
+    // fast enough to settle within a phrase, slow enough to never pump
+    // with the music.
+    this.levelUpCoef = tcToCoef(2, sampleRate);
+    this.levelDownCoef = tcToCoef(6, sampleRate);
     // ECO halves the band-tap evaluation rate (analysis CPU), NORMAL/HIGH run
     // full rate. Scores themselves stay smooth via the output envelopes.
     this.ecoDivisor = qualityMode === 0 ? 2 : 1;
@@ -95,6 +115,11 @@ export class FeatureExtractor {
 
   setSensitivities(sens: AnalysisSensitivities): void {
     this.sens = sens;
+  }
+
+  /** Toggle the adaptive level reference (analysis.adaptiveLevel). */
+  setAdaptiveLevel(on: boolean): void {
+    this.adaptiveLevel = on;
   }
 
   reset(): void {
@@ -114,6 +139,7 @@ export class FeatureExtractor {
     this.prevMid = 0;
     this.slope = 0;
     this.ecoCounter = 0;
+    this.levelRef = 0; // re-snap on the first signal frame after a reset
   }
 
   /**
@@ -147,11 +173,29 @@ export class FeatureExtractor {
       texPeak = this.texturePeak.processAbs(Math.max(Math.abs(textureL), Math.abs(textureR)));
     }
 
+    // ── Adaptive level reference ─────────────────────────────
+    // Track long-term level, then normalize scores by it (clamped). The
+    // first non-silent frame SNAPS the reference — without that, the first
+    // seconds after reset would read a hot take through a cold reference
+    // and scores would pin at 1 until the slow tracker caught up.
+    if (this.levelRef === 0 && mono > 1e-6) {
+      this.levelRef = mono;
+    } else if (mono >= this.levelRef) {
+      this.levelRef += (mono - this.levelRef) * (1 - this.levelUpCoef);
+    } else {
+      this.levelRef += (mono - this.levelRef) * (1 - this.levelDownCoef);
+    }
+
     // ── Score synthesis ─────────────────────────────────────
-    // Normalizations: envelopes are linear-amplitude; map to 0..1 with a
-    // fixed reference where ~-20 dBFS sustained ≈ 0.5. Deterministic and
-    // level-dependent by design — louder IS more reactive (the thesis).
-    const ref = 0.1;
+    // Normalizations: envelopes are linear-amplitude; map to 0..1 against
+    // the reference. With adaptiveLevel on, the reference follows the
+    // material (clamped — boost capped at +24 dB); with it off, the fixed
+    // −20 dBFS legacy reference applies. Even in adaptive mode, louder
+    // short-term IS still more reactive — the fast envelopes move with the
+    // performance; only the slow baseline is normalized away.
+    const ref = this.adaptiveLevel
+      ? Math.min(FeatureExtractor.REF_CEILING, Math.max(FeatureExtractor.REF_FLOOR, this.levelRef))
+      : FeatureExtractor.REF_NOMINAL;
     const inputEnergy = clamp01(fastV / (ref * 2));
     const density = clamp01(slowV / (ref * 1.5));
 

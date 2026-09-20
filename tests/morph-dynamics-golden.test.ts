@@ -53,11 +53,7 @@ function noise(amplitude: number): (i: number) => number {
   };
 }
 
-function render(
-  proc: MorphDynamicsProcessor,
-  gen: (i: number) => number,
-  seconds: number,
-): Render {
+function render(proc: MorphDynamicsProcessor, gen: (i: number) => number, seconds: number): Render {
   const frames = Math.floor(seconds * SR);
   const blocks = Math.ceil(frames / BLOCK);
   const outL = new Float32Array(blocks * BLOCK);
@@ -137,27 +133,39 @@ describe("morph-dynamics core processor — thesis behavior", () => {
     expect(hissScores.texture).toBeGreaterThan(toneScores.texture + 0.05);
   });
 
-  it("PRESSURE progressively increases reactive output character", () => {
-    const driven = (pressure: number): number => {
+  it("PRESSURE progressively increases harmonic response (the f2 curve)", () => {
+    // Drive a clean sine and measure the 3rd harmonic (Goertzel) — more
+    // reactive drive under PRESSURE must generate more harmonics, which is
+    // exactly the "increasing harmonic response" band of the product curve.
+    // (Crest-based assertions are wrong here BY DESIGN: peak-normalized
+    // tanh drive raises the crest of noise — it lifts rms more than peaks.)
+    const thirdHarmonic = (pressure: number): number => {
       const proc = makeProcessor({
         "macro.pressure": pressure,
         "macro.body": 70,
         "char.enabled": 1,
         "macro.motion": 0,
         "macro.space": 0,
-        "dyn.thresholdDb": -28,
-        "dyn.ratio": 4,
+        "macro.punch": 0,
+        "dyn.thresholdDb": -10,
+        "dyn.ratio": 1.5,
       });
-      noiseState = 4444;
-      const { out } = render(proc, noise(0.4), 0.5);
-      // Harmonic drive reshapes the waveform: measure crest flattening via
-      // peak/rms — more drive → lower crest (denser).
-      const r = rms(out[0], Math.floor(0.3 * SR));
-      return peakOf(out[0].subarray(Math.floor(0.3 * SR))) / Math.max(r, 1e-6);
+      const { out } = render(proc, sine(220, 0.3), 0.5);
+      const from = Math.floor(0.25 * SR);
+      let re = 0;
+      let im = 0;
+      const f = 660; // 3rd harmonic of 220
+      const w = (2 * Math.PI * f) / SR;
+      for (let i = from; i < out[0].length; i++) {
+        re += out[0][i] * Math.cos(w * i);
+        im -= out[0][i] * Math.sin(w * i);
+      }
+      const n = out[0].length - from;
+      return (2 * Math.sqrt(re * re + im * im)) / n;
     };
-    const crestLow = driven(5);
-    const crestHigh = driven(95);
-    expect(crestHigh).toBeLessThan(crestLow * 1.02);
+    const low = thirdHarmonic(5);
+    const high = thirdHarmonic(95);
+    expect(high).toBeGreaterThan(low * 1.5);
   });
 
   it("mod matrix: transient → space send NEGATIVE ducks the tail (signature bloom)", () => {
@@ -206,6 +214,64 @@ describe("morph-dynamics core processor — thesis behavior", () => {
     expect(meters.pressureActive).toBeGreaterThan(0.3);
     expect(meters.routes[0]).toBeGreaterThan(0);
     expect(meters.routes.length).toBe(8);
+  });
+
+  it("AGC: a quietly-recorded tone still drives ENERGY/DENSITY (adaptive level)", () => {
+    // −36 dBFS sustained tone. The level-RELATIVE normalizations
+    // (inputEnergy, density, transient slope) barely score against the
+    // legacy fixed reference; with the adaptive reference (default) the
+    // AGC has 4.5 s to settle and the same performance must light them up.
+    // (BODY is share-based and level-robust by construction — not asserted.)
+    const metersAt = (adaptive: boolean) => {
+      const proc = makeProcessor({ "analysis.adaptiveLevel": adaptive ? 1 : 0 });
+      const { meters } = render(proc, sine(110, 0.015), 4.5);
+      return meters;
+    };
+    const adaptive = metersAt(true);
+    const fixed = metersAt(false);
+    expect(adaptive.inputEnergy).toBeGreaterThan(fixed.inputEnergy * 2.5);
+    expect(adaptive.density).toBeGreaterThan(fixed.density * 2.5);
+    expect(adaptive.density).toBeGreaterThan(0.2);
+  });
+
+  it("AGC: silence never runs away — a whisper after long silence stays bounded", () => {
+    const proc = makeProcessor();
+    render(proc, () => 0, 3); // long silence → ref decays toward the floor
+    noiseState = 31;
+    const { out } = render(proc, noise(1e-4), 1); // −80 dBFS whisper
+    for (let i = 0; i < out[0].length; i++) {
+      expect(Number.isFinite(out[0][i])).toBe(true);
+      expect(Math.abs(out[0][i])).toBeLessThanOrEqual(1.001); // safety ceiling
+    }
+  });
+
+  it("delta listen: ~identity chain outputs ≈ 0, processing outputs a difference", () => {
+    // Near-identity chain: no GR (tone below threshold), stages off.
+    const quiet = makeProcessor({
+      "global.delta": 1,
+      "macro.pressure": 0,
+      "macro.punch": 0,
+      "macro.motion": 0,
+      "macro.space": 0,
+      "char.enabled": 0,
+      "dyn.thresholdDb": -10,
+    });
+    const { out } = render(quiet, sine(1000, 0.05), 0.8);
+    expect(rms(out[0], Math.floor(0.3 * SR))).toBeLessThan(0.002);
+
+    // Driven chain: the delta must be clearly non-zero and finite.
+    const driven = makeProcessor({
+      "global.delta": 1,
+      "macro.pressure": 80,
+      "char.drive": 60,
+      "char.asym": 40,
+      "dyn.thresholdDb": -30,
+      "dyn.ratio": 5,
+    });
+    noiseState = 4242;
+    const drivenRun = render(driven, noise(0.4), 0.8);
+    expect(rms(drivenRun.out[0], Math.floor(0.3 * SR))).toBeGreaterThan(0.01);
+    expect(Number.isFinite(drivenRun.out[0][drivenRun.out[0].length - 1])).toBe(true);
   });
 });
 
