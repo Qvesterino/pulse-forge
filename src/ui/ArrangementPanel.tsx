@@ -69,6 +69,12 @@ import { userSampleId } from "../persistence/UserSampleRepository";
 import { RECORDING_OWNER_ID, type RecordingSession } from "../persistence/RecordingRecoveryRepository";
 import { materializePcmTake } from "../audio-engine/pcmRecording";
 import { recordingAlignment } from "../audio-engine/recordingAlignment";
+import {
+  listRecordingInputDevices,
+  loadRecordingInputDeviceId,
+  saveRecordingInputDeviceId,
+  type RecordingInputDevice,
+} from "../audio-engine/recordingInput";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
@@ -238,6 +244,9 @@ export function ArrangementPanel() {
   const [recState, setRecState] = useState<"idle" | "starting" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [micMonitoring, setMicMonitoring] = useState(false);
+  const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
+  const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
+  const [recordingInputListError, setRecordingInputListError] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
   const recStartPendingRef = useRef(false);
@@ -249,6 +258,40 @@ export function ArrangementPanel() {
   const recoverableTakesRef = useRef<RecordingSession[]>([]);
   const [recoveringTakeId, setRecoveringTakeId] = useState<string | null>(null);
   const sliceAnalysisRef = useRef<AbortController | null>(null);
+
+  const refreshRecordingInputs = useCallback(async (): Promise<void> => {
+    try {
+      const devices = await listRecordingInputDevices();
+      if (recPanelMountedRef.current) {
+        setRecordingInputDevices(devices);
+        setRecordingInputListError(false);
+      }
+    } catch {
+      if (recPanelMountedRef.current) setRecordingInputListError(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const mediaDevices = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    const refresh = async () => {
+      try {
+        const devices = await listRecordingInputDevices(mediaDevices ?? null);
+        if (live) {
+          setRecordingInputDevices(devices);
+          setRecordingInputListError(false);
+        }
+      } catch {
+        if (live) setRecordingInputListError(true);
+      }
+    };
+    void refresh();
+    mediaDevices?.addEventListener?.("devicechange", refresh);
+    return () => {
+      live = false;
+      mediaDevices?.removeEventListener?.("devicechange", refresh);
+    };
+  }, []);
 
   const publishRecoverableTakes = useCallback((sessions: RecordingSession[]): void => {
     const current = recoverableTakesRef.current;
@@ -368,7 +411,11 @@ export function ArrangementPanel() {
       const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
       // The component may have unmounted while the lazy module was loading.
       if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current) return;
-      recorder = new PcmMicRecorder({ ctx, recovery: recoveryRepoRef.current! });
+      recorder = new PcmMicRecorder({
+        ctx,
+        recovery: recoveryRepoRef.current!,
+        inputDeviceId: recordingInputDeviceId,
+      });
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
       recRef.current = recorder;
@@ -403,6 +450,7 @@ export function ArrangementPanel() {
       }
       setRecSeconds(0);
       setRecState("recording");
+      void refreshRecordingInputs();
       // Performers record against the backing track — roll the transport.
       if (!services.transport.playing) services.playback.playPause();
     } catch (error) {
@@ -1270,6 +1318,28 @@ export function ArrangementPanel() {
                 </option>
               ))}
             </select>
+            <select
+              className="arr-arm-select"
+              aria-label="Microphone input device"
+              title="Choose the microphone or audio-interface input for recording. Names may be hidden until mic permission is granted."
+              value={recordingInputDeviceId}
+              disabled={recState !== "idle"}
+              onChange={(event) => {
+                const deviceId = event.target.value;
+                setRecordingInputDeviceId(deviceId);
+                saveRecordingInputDeviceId(deviceId);
+              }}
+            >
+              <option value="">MIC: system default</option>
+              {recordingInputDeviceId && !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
+                <option value={recordingInputDeviceId}>Saved microphone (not listed)</option>
+              )}
+              {recordingInputDevices.map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
@@ -1300,6 +1370,11 @@ export function ArrangementPanel() {
             )}
             {recState === "starting" && <span className="arr-rec-saving">opening microphone…</span>}
             {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
+            {recordingInputListError && (
+              <span className="arr-rec-saving" role="status" aria-live="polite">
+                mic list unavailable; system default remains usable
+              </span>
+            )}
             {recError && (
               <span className="arr-rec-error" role="alert">
                 {recError}
@@ -1474,6 +1549,11 @@ export function ArrangementPanel() {
                   <span>
                     {session.trackName} · {new Date(session.createdAt).toLocaleString()} ·{" "}
                     {(session.totalFrames / session.sampleRate).toFixed(1)}s
+                    {session.status === "recording" && (
+                      <span className="arr-rec-saving" role="status">
+                        {" "}· interrupted capture; the final uncommitted audio may be incomplete
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"

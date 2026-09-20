@@ -5,6 +5,7 @@ import {
   type RecordingPcmChunk,
   type RecordingSession,
 } from "../persistence/RecordingRecoveryRepository";
+import { loadRecordingInputDeviceId } from "./recordingInput";
 
 export interface PcmRecordingMetadata {
   projectId: string;
@@ -19,7 +20,9 @@ export interface PcmRecordingMetadata {
 export type PcmRecorderState = "idle" | "starting" | "recording" | "stopping";
 
 const PROCESSOR_NAME = "pulse-forge-pcm-capture";
-const CHUNK_SECONDS = 1;
+// Short durable blocks reduce the amount of a take that can be lost if the
+// browser or device disappears before the next IndexedDB commit.
+const CHUNK_SECONDS = 0.5;
 const STOP_TIMEOUT_MS = 2_000;
 const READY_TIMEOUT_MS = 8_000;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
@@ -27,6 +30,8 @@ const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 export interface PcmMicRecorderDependencies {
   ctx: AudioContext;
   recovery?: RecordingRecoveryRepository;
+  /** Empty string explicitly selects the system default; omitted uses the saved user preference. */
+  inputDeviceId?: string;
   getUserMedia?: MediaDevices["getUserMedia"];
   addWorkletModule?: (ctx: AudioContext) => Promise<void>;
 }
@@ -68,9 +73,11 @@ export class PcmMicRecorder {
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly recovery: RecordingRecoveryRepository;
+  private readonly inputDeviceId: string;
 
   constructor(private readonly deps: PcmMicRecorderDependencies) {
     this.recovery = deps.recovery ?? new RecordingRecoveryRepository();
+    this.inputDeviceId = deps.inputDeviceId ?? loadRecordingInputDeviceId();
   }
 
   get state(): PcmRecorderState {
@@ -124,8 +131,14 @@ export class PcmMicRecorder {
           : undefined);
       if (!getUserMedia) throw new Error("Microphone capture is not available in this browser");
       try {
+        const audio: MediaTrackConstraints = {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        };
+        if (this.inputDeviceId) audio.deviceId = { exact: this.inputDeviceId };
         this.stream = await getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          audio,
         });
       } catch (error) {
         const name = error instanceof Error ? error.name : "";
@@ -133,7 +146,13 @@ export class PcmMicRecorder {
           throw new Error("Microphone access denied — allow the mic and try again");
         }
         if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+          if (this.inputDeviceId) {
+            throw new Error("The selected microphone is unavailable — choose another input or System default");
+          }
           throw new Error("No microphone is available");
+        }
+        if (name === "OverconstrainedError" && this.inputDeviceId) {
+          throw new Error("The selected microphone is unavailable — choose another input or System default");
         }
         throw new Error(`Could not start microphone capture${error instanceof Error ? `: ${error.message}` : ""}`);
       }

@@ -3,7 +3,7 @@ class PulseForgePcmCaptureProcessor extends AudioWorkletProcessor {
     super();
     const requested = options?.processorOptions?.chunkFrames;
     this.chunkFrames = Number.isInteger(requested) && requested >= 128 ? requested : sampleRate;
-    // A few seconds of headroom absorbs normal IndexedDB jitter; if the UI
+    // About 1.5 seconds of headroom absorbs normal IndexedDB jitter; if the UI
     // thread stays stalled, fail closed instead of retaining an unbounded take.
     this.maxInFlight = 3;
     this.buffers = null;

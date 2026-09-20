@@ -1,7 +1,7 @@
 # Current State — single source of truth
 
-**Last verified:** 2026-09-19
-**Verified by:** direct count against the working tree (`grep`, `Get-ChildItem`).
+**Last verified:** 2026-09-20
+**Verified by:** direct count against `src/effects/registry.ts` and `src/instruments/registry.ts`.
 
 This document is the **single source of truth** for the headline numbers about KYX / Pulse Forge. Older documents in this repo (`RELEASE_ROADMAP.md`, `DSP-ROADMAP.md`, `EDIT-ROADMAP.md`, `INSTRUMENT-ROADMAP.md`, `SCENE-MODE-ROADMAP.md`, `INTENT_ENGINE.md`, `KYX_CURRENT_STATE.md`, `MAINTENANCE_AUDIT_PROGRESS.md`, `PERFORMANCE.md`) may carry their own point-in-time numbers; when those disagree with the figures below, **this document wins** for the question "how many / what ships today?".
 
@@ -14,9 +14,10 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | What | Count | Source of truth |
 |---|---:|---|
 | **Instruments** (melodic track kind) | **14** | `INSTRUMENT_ORDER` in `src/instruments/registry.ts` |
-| **Effects** (registry entries) | **36** | `EFFECT_DEFS` in `src/effects/registry.ts` |
-| └─ core effects | 32 | `CORE_EFFECT_ORDER` in same file |
-| └─ flagship plugin suites | **4** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`) |
+| **Effects** (registry entries) | **45** | `EFFECT_ORDER` in `src/effects/registry.ts` |
+| └─ native/core effects | 40 | `EFFECT_ORDER` excluding flagship suites |
+| └─ primary Add Effect choices | 24 | `CORE_EFFECT_ORDER` in same file |
+| └─ flagship plugin suites | **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`) |
 | **Project templates** | **12** | `TemplateId` union in `src/project-model/templates.ts` |
 | **Factory assets** (drum / tonal / FX) | **41** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts` |
 | └─ curated WAV overrides | 41 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure) |
@@ -24,18 +25,19 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets | 199 | `FACTORY_PRESETS` |
 | └─ drum-synth presets | 6 | `DRUM_FACTORY_PRESETS` |
 | **Architecture decision records** | **13** | `docs/adr/` (0001–0011, plus 0006/0007 each have two companion files) |
-| **Vitest spec files** | ~219 | `tests/**/*.test.ts` |
+| **Vitest spec files** | **348** | `tests/` files matching `*.test.*` in the current working tree |
 
-## Vendored plugin cores
+## Flagship plugin implementations
 
-| Plugin suite | Brand | Vendored core | Worklet bundle |
+| Plugin suite | Brand | DSP core / ownership | Worklet bundle |
 |---|---|---|---|
 | `fxeq` | **PRISM** | `src/effects/fxeq-core/` | `public/fxeq-worklet.js` |
 | `ultina` | **VLYX** | `src/effects/ultina-core/` | `public/ultina-worklet.js` |
 | `ozvena` | **VØID** | `src/effects/ozvena-core/` | `public/ozvena-worklet.js` |
 | `kaskada` | **Kaskáda Delay** | bundled via `src/audio-worklets/` (no separate vendored core) | `public/core-worklet.js` |
+| `morphdynamics` | **MORPH** | `src/effects/morph-dynamics-core/` (first-party DSP) | `public/morph-dynamics-worklet.js` |
 
-All four plugins use AudioWorklet DSP and have golden-vector test suites. Kaskáda is the only flagship that doesn't ship as a separately vendored upstream core (its DSP is owned in-tree).
+All five flagship suites use AudioWorklet DSP. PRISM, VLYX and VØID include separately vendored cores; Kaskáda and MORPH are first-party DSP owned in-tree. Relevant plugin-specific regression/golden tests are under `tests/`.
 
 ## AI models shipped in the browser
 
@@ -49,7 +51,7 @@ All three are loaded lazily in dedicated Web Workers with bounded timeouts + cir
 
 ## Platform reach
 
-- **Browser** — Chromium-family, Firefox, Microsoft Edge. The full real-browser verifier passes 226/226 in each (`RELEASE_READINESS_REPORT.md`).
+- **Browser** — Chromium-family, Firefox and Microsoft Edge are target environments. The last recorded 226/226-per-browser result is a historical baseline from 2026-09-14, not verification of the current revision.
 - **Desktop** — Windows x64 only (NSIS installer + portable exe via `electron-builder`). Auto-update through GitHub Releases (ADR 0011).
 - **Safari / iOS Safari** — manual smoke only; not covered by automated browser verifier.
 - **macOS / Linux desktop** — not shipped (ADR 0010 is Windows-only by current target list).

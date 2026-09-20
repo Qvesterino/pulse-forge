@@ -4,7 +4,7 @@
 
 KYX (internally known as **Pulse Forge**, the repository name) is a production-oriented digital audio workstation that runs entirely in the browser. It is built around six product pillars — **Sound, Rhythm, Composition, Processing, Arrangement, and Export** — and is designed to deliver a finished track without ever leaving the tab.
 
-It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 14 native instruments, 36 native effects (including 4 vendored flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
+It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 14 native instruments, 45 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
 
 The web build also ships as a standalone Windows desktop app (ADR 0010/0011) — the same code, served from a thin Electron shell — with auto-update through GitHub Releases.
 
@@ -96,9 +96,9 @@ It explicitly avoids: simultaneous multi-input studio recording, VST/AU plugin h
 
 Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke groups) and a separate **7-voice synth drum kit** that the rack's pads map onto. All instruments support mod matrix routes (MOD A / B with ENV/LFO/VEL/PRESS → CUTOFF/AMP/MORPH), MPE poly aftertouch and per-note timbre (CC74), and live parameter changes that propagate to sounding voices.
 
-### 36 effects — 32 core + 4 flagship (`src/effects/registry.ts`)
+### 45 effects — 40 native/core + 5 flagship (`src/effects/registry.ts`)
 
-**Flagship plugin suites** (vendored AudioWorklet DSP, vendored core mirrored from upstream, golden-vector tested):
+**Flagship plugin suites** (AudioWorklet DSP with dedicated regression/golden coverage):
 
 | Type | Brand name | Notes |
 |---|---|---|
@@ -106,8 +106,9 @@ Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke
 | `ultina` | **VLYX** | intelligent mixing suite (comp / transient / exciter / unmask stages) |
 | `ozvena` | **VØID** | spatial convolution reverb with three engines, blend-pad routing, true-stereo factory IRs, precomputed FFT spectra |
 | `kaskada` | **Kaskáda Delay** | tempo-synced multi-tap delay |
+| `morphdynamics` | **MORPH** | macro-driven dynamics, character, motion and space processing |
 
-**Core mix effects** (native Web Audio / AudioWorklet — 32 of them): EQ, M/S EQ, Multiband, Haas Widener, Compressor, Saturation, Tape Sat, Clipper, Reverb, Delay, Pump, Distortion, Bitcrusher, Chorus, Phaser, Sidechain, Transient Shaper, Gate, Shimmer, Drum Buss, Bass Buss, Utility, Limiter, Step Gate, SV Filter, Flanger, Tremolo, Autowah, Stutter, Comb, Vowel, Duck Delay.
+**Native/core mix effects** (native Web Audio / AudioWorklet — 40 of them): EQ, M/S EQ, Multiband, Haas Widener, Compressor, Saturation, Tape Sat, Clipper, Reverb, Delay, Pump, Distortion, Bitcrusher, Chorus, Phaser, Sidechain, Transient Shaper, Gate, Shimmer, Drum Buss, Bass Buss, Utility, Limiter, Step Gate, SV Filter, Flanger, Tremolo, Autowah, Stutter, Comb, Vowel, Duck Delay, Multi-Tap Delay, Ring Mod, Tape Stop, Frequency Shifter, Pitch Shift, Vinyl, Beat Mangler, Vocoder.
 
 Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain changes rebuild the runtime, parameter tweaks are diffed and applied smoothly; track deletion disposes nodes and runtimes; BPM changes propagate `syncBpm` to tempo-synced runtimes.
 
@@ -133,7 +134,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 - **12 starter templates** — House (4-on-the-floor + sub bass + chords), Techno (two loop variations), Trap (half-time snare + rolling hats + 808 + sparse lead), Ambient (evolving pads), Scene Score (INTRO/BUILD/DROP/BREAK/OUTRO pre-placed on a 24-bar timeline), UK Garage, Jersey Club, Phonk, Drill, Lo-Fi House, Reggaeton, Empty.
 - **Schema-versioned project model** — `schemaVersion: 1`, pure serializable data, JSON round-trip tested, loading auto-normalizes pattern rows.
 - **Autosave** — debounced 800 ms with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`), flush on tab-hide and page close.
-- **IndexedDB stores** — projects, user presets, user sample audio, frozen track buffers, kits, library, groove pool, ultina presets. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and decode back into the sample bank on boot.
+- **IndexedDB stores** — projects, user presets, user sample audio, frozen track buffers, kits, library, groove pool, recording-recovery sessions and Float32 PCM chunks. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and decode back into the sample bank on boot. Vocal recording uses half-second durable blocks; the selected input device is a browser-local preference, not project data.
 - **Command system** — every mutation flows through commands with full undo/redo (`Ctrl+Z` / `Ctrl+Y`). Local undo stack is bounded only by available memory; reload resets it.
 
 ### Sounds

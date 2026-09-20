@@ -84,7 +84,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
   // Tempo: "set tempo to 142", "142 bpm", "tempo 138"
   const tempo =
-    /(?:tempo|bpm)\s*(?:to|=|:)?\s*(\d{2,3})\b/.exec(lower) ?? /\b(\d{2,3})\s*bpm\b/.exec(lower);
+    /(?:tempo|bpm)\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower);
   if (tempo) {
     const bpm = Math.min(300, Math.max(20, Number(tempo[1])));
     ops.push({ kind: "tempo", bpm });
@@ -162,7 +162,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   }
 
   // Pattern length: "pattern length to 32", "length to 64"
-  const length = /(?:pattern\s+)?length\s*(?:to|=|:)?\s*(\d{2,3})\b/.exec(lower);
+  const length = /(?:pattern\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
   if (length) {
     const steps = Number(length[1]);
     if ([16, 32, 64, 128, 256].includes(steps)) ops.push({ kind: "patternLength", steps });

@@ -5,6 +5,10 @@ import { safeApplyAudioParam } from "./safeAudioParam";
  * Create a Frequency Shifter AudioWorkletNode synchronously.
  * The processor module MUST be pre-loaded via `loadCoreWorklets()` first —
  * callers gate construction behind `isWorkletReady("freqShifter", ctx)`.
+ *
+ * Single-sideband Hilbert shifter (Bode-style): shift + fine detune the
+ * spectrum without preserving harmonic ratios, with a pro sideband select,
+ * sweep LFO, feedback delay loop, drive, wet tone trim and stereo spread.
  */
 export function createFreqShiftNode(
   ctx: BaseAudioContext,
@@ -22,8 +26,24 @@ export function createFreqShiftNode(
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
-  safeApplyAudioParam(node, "shift", instance.params.shift ?? 0);
-  safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
+  // Replay every descriptor parameter present in the instance so partial
+  // documents (older schemas, presets) keep their defaults from the worklet.
+  for (const param of [
+    "shift",
+    "fine",
+    "side",
+    "lfoRate",
+    "lfoDepth",
+    "feedback",
+    "delayTime",
+    "drive",
+    "tone",
+    "spread",
+    "mix",
+  ] as const) {
+    const v = instance.params[param];
+    if (Number.isFinite(v)) safeApplyAudioParam(node, param, v);
+  }
 
   return {
     input,

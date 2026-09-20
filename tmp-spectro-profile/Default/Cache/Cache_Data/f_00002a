@@ -1,0 +1,567 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/landing/LandingPage.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=286c378e"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/pulse-forge/src/landing/LandingPage.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import "/node_modules/.vite/deps/react.js?v=286c378e";
+import { LandingPrompt } from "/src/landing/LandingPrompt.tsx?t=1789922364351";
+function Icon({ children }) {
+  return /* @__PURE__ */ jsxDEV(
+    "svg",
+    {
+      viewBox: "0 0 24 24",
+      width: 20,
+      height: 20,
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.6,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": "true",
+      children
+    },
+    void 0,
+    false,
+    {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 26,
+      columnNumber: 5
+    },
+    this
+  );
+}
+_c = Icon;
+const IconScissors = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("circle", { cx: "6", cy: "6", r: "3" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 44,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("circle", { cx: "6", cy: "18", r: "3" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 45,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M20 4 8.12 15.88" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 46,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M14.47 14.48 20 20" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 47,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M8.12 8.12 12 12" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 48,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 43,
+  columnNumber: 1
+}, this);
+_c2 = IconScissors;
+const IconSliders = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("path", { d: "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 54,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M14 2v4M8 10v4M16 18v4" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 55,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 53,
+  columnNumber: 1
+}, this);
+_c3 = IconSliders;
+const IconLayers = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("path", { d: "m12 2 9 5-9 5-9-5 9-5z" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 61,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "m3 12 9 5 9-5" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 62,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "m3 17 9 5 9-5" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 63,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 60,
+  columnNumber: 1
+}, this);
+_c4 = IconLayers;
+const IconUsers = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 69,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("circle", { cx: "9", cy: "7", r: "4" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 70,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M22 21v-2a4 4 0 0 0-3-3.87" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 71,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M16 3.13a4 4 0 0 1 0 7.75" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 72,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 68,
+  columnNumber: 1
+}, this);
+_c5 = IconUsers;
+const IconExport = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 78,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "m17 8-5-5-5 5" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 79,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M12 3v12" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 80,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 77,
+  columnNumber: 1
+}, this);
+_c6 = IconExport;
+const IconGlobe = () => /* @__PURE__ */ jsxDEV(Icon, { children: [
+  /* @__PURE__ */ jsxDEV("circle", { cx: "12", cy: "12", r: "10" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 86,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M2 12h20" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 87,
+    columnNumber: 5
+  }, this),
+  /* @__PURE__ */ jsxDEV("path", { d: "M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" }, void 0, false, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 88,
+    columnNumber: 5
+  }, this)
+] }, void 0, true, {
+  fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+  lineNumber: 85,
+  columnNumber: 1
+}, this);
+_c7 = IconGlobe;
+const FEATURES = [
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconLayers, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 94,
+      columnNumber: 9
+    }, this),
+    title: "Type a beat into existence",
+    text: "Describe it — “dark trap 140” — and the intent engine composes the drums and bass instantly. Slovak or English. Then tweak it, revise it, own it."
+  },
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconScissors, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 99,
+      columnNumber: 9
+    }, this),
+    title: "Chop beats",
+    text: "Drop an MP3 — transient detection slices it onto 16 MPC-style pads. Retrigger, pitch, program."
+  },
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconSliders, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 104,
+      columnNumber: 9
+    }, this),
+    title: "Mix & pattern assist",
+    text: "The assistant analyzes your track, proposes mix settings and iterates on patterns with you. Every step stays undoable."
+  },
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconUsers, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 109,
+      columnNumber: 9
+    }, this),
+    title: "Live jam sessions",
+    text: "Share a room link — everyone edits the same project in real time. Undo stays user-scoped."
+  },
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconExport, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 114,
+      columnNumber: 9
+    }, this),
+    title: "Export anywhere",
+    text: "WAV, MP3, video for Reels and TikTok, stems, scorepacks — or a share link that opens the whole project."
+  },
+  {
+    icon: /* @__PURE__ */ jsxDEV(IconGlobe, {}, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 119,
+      columnNumber: 9
+    }, this),
+    title: "Millions of sounds",
+    text: "A built-in procedural kit plus one-click CC0 imports from freesound.org. No licensing traps."
+  }
+];
+const STEPS = [
+  {
+    n: 1,
+    title: "Describe it",
+    text: "Type one sentence — “dark trap 140”. The intent engine composes your beat right on this page."
+  },
+  {
+    n: 2,
+    title: "Chop & program",
+    text: "Open the studio: tweak the generated beat, drop a loop, auto-chop it to pads. Groove engine included."
+  },
+  {
+    n: 3,
+    title: "Export & share",
+    text: "MP3, WAV, video — or a share link that opens the whole project for a friend."
+  }
+];
+export function LandingPage({ onEnterStudio }) {
+  return /* @__PURE__ */ jsxDEV("div", { className: "landing", role: "document", "aria-label": "KYX landing", children: [
+    /* @__PURE__ */ jsxDEV("nav", { className: "landing-nav", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell landing-nav-inner", children: [
+      /* @__PURE__ */ jsxDEV("span", { className: "landing-brand", children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "embed-brand-mark", children: "KX" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 153,
+          columnNumber: 13
+        }, this),
+        " KYX"
+      ] }, void 0, true, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 152,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-nav-actions", children: [
+        /* @__PURE__ */ jsxDEV("a", { className: "landing-btn landing-btn-ghost landing-btn-sm", href: "/download", children: "Download" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 156,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("a", { className: "landing-btn landing-btn-ghost landing-btn-sm", href: "/gallery", children: "Beat gallery" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 159,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("button", { type: "button", className: "landing-btn landing-btn-primary landing-btn-sm", onClick: onEnterStudio, children: "Open the studio" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 162,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 155,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 151,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 150,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("header", { className: "landing-hero", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell landing-hero-inner", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-hero-copy", children: [
+        /* @__PURE__ */ jsxDEV("span", { className: "landing-badge", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "landing-badge-dot" }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 173,
+            columnNumber: 15
+          }, this),
+          "Free · No account · Runs offline"
+        ] }, void 0, true, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 172,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("h1", { children: [
+          "Describe it.",
+          /* @__PURE__ */ jsxDEV("br", {}, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 178,
+            columnNumber: 15
+          }, this),
+          "Hear it. Own it."
+        ] }, void 0, true, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 176,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { className: "landing-sub", children: "Type one sentence — “dark trap 140” — and the built-in intent engine composes your beat right here, in this tab. Then open the full studio to chop, program and mix. Your audio never leaves the device." }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 181,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "landing-hero-actions", children: /* @__PURE__ */ jsxDEV("a", { className: "landing-btn landing-btn-ghost landing-btn-lg", href: "/gallery", children: "Explore the gallery" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 186,
+          columnNumber: 15
+        }, this) }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 185,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { className: "landing-hint", children: [
+          "No install · Works offline · ",
+          /* @__PURE__ */ jsxDEV("a", { href: "/download", children: "Prefer a desktop app? Download for Windows" }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 191,
+            columnNumber: 44
+          }, this)
+        ] }, void 0, true, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 190,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 171,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-hero-player-col", "aria-label": "Forge a beat", children: /* @__PURE__ */ jsxDEV(LandingPrompt, { onEnterStudio }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 195,
+        columnNumber: 13
+      }, this) }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 194,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 170,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 169,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("section", { className: "landing-section", "aria-label": "Features", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-section-head", children: [
+        /* @__PURE__ */ jsxDEV("p", { className: "landing-eyebrow", children: "Why KYX" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 203,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { children: "Everything a beat needs" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 204,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 202,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-grid", children: FEATURES.map(
+        (f) => /* @__PURE__ */ jsxDEV("div", { className: "landing-card", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "landing-card-icon", children: f.icon }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 209,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("h3", { children: f.title }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 210,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: f.text }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 211,
+            columnNumber: 17
+          }, this)
+        ] }, f.title, true, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 208,
+          columnNumber: 13
+        }, this)
+      ) }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 206,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 201,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 200,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("section", { className: "landing-section landing-section-tight", "aria-label": "How it works", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-section-head", children: [
+        /* @__PURE__ */ jsxDEV("p", { className: "landing-eyebrow", children: "How it works" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 221,
+          columnNumber: 13
+        }, this),
+        /* @__PURE__ */ jsxDEV("h2", { children: "30 seconds to your first beat" }, void 0, false, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 222,
+          columnNumber: 13
+        }, this)
+      ] }, void 0, true, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 220,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "landing-grid landing-grid-3", children: STEPS.map(
+        (s) => /* @__PURE__ */ jsxDEV("div", { className: "landing-card", children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "landing-step-n", children: s.n }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 227,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("h3", { children: s.title }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 228,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: s.text }, void 0, false, {
+            fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+            lineNumber: 229,
+            columnNumber: 17
+          }, this)
+        ] }, s.n, true, {
+          fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+          lineNumber: 226,
+          columnNumber: 13
+        }, this)
+      ) }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 224,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 219,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 218,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("section", { className: "landing-cta-band", "aria-label": "Get started", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-cta-panel", children: [
+      /* @__PURE__ */ jsxDEV("h2", { children: "Ready to forge your first beat?" }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 239,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { children: "Open the studio with the demo project loaded — no signup, nothing to install." }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 240,
+        columnNumber: 13
+      }, this),
+      /* @__PURE__ */ jsxDEV("button", { type: "button", className: "landing-btn landing-btn-primary landing-btn-lg", onClick: onEnterStudio, children: "Open the studio →" }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 241,
+        columnNumber: 13
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 238,
+      columnNumber: 11
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 237,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 236,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("footer", { className: "landing-footer", children: /* @__PURE__ */ jsxDEV("div", { className: "landing-shell landing-footer-inner", children: [
+      /* @__PURE__ */ jsxDEV("span", { children: "KYX — browser beat studio" }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 250,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: "Built on Web Audio · Works best in Chrome · Installable as a PWA" }, void 0, false, {
+        fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+        lineNumber: 251,
+        columnNumber: 11
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 249,
+      columnNumber: 9
+    }, this) }, void 0, false, {
+      fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+      lineNumber: 248,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/pulse-forge/src/landing/LandingPage.tsx",
+    lineNumber: 149,
+    columnNumber: 5
+  }, this);
+}
+_c8 = LandingPage;
+var _c, _c2, _c3, _c4, _c5, _c6, _c7, _c8;
+$RefreshReg$(_c, "Icon");
+$RefreshReg$(_c2, "IconScissors");
+$RefreshReg$(_c3, "IconSliders");
+$RefreshReg$(_c4, "IconLayers");
+$RefreshReg$(_c5, "IconUsers");
+$RefreshReg$(_c6, "IconExport");
+$RefreshReg$(_c7, "IconGlobe");
+$RefreshReg$(_c8, "LandingPage");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/pulse-forge/src/landing/LandingPage.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/pulse-forge/src/landing/LandingPage.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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Z0ZBQU47QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUFzRTtBQUFBLFNBRnhFO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FHQSxLQUpGO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FLQTtBQUFBLE9BeEdGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0F5R0E7QUFFSjtBQUFDSSxNQTdHZUw7QUFBVyxJQUFBbkIsSUFBQUUsS0FBQUUsS0FBQUUsS0FBQUUsS0FBQUUsS0FBQUUsS0FBQVk7QUFBQSxhQUFBeEIsSUFBQTtBQUFBLGFBQUFFLEtBQUE7QUFBQSxhQUFBRSxLQUFBO0FBQUEsYUFBQUUsS0FBQTtBQUFBLGFBQUFFLEtBQUE7QUFBQSxhQUFBRSxLQUFBO0FBQUEsYUFBQUUsS0FBQTtBQUFBLGFBQUFZLEtBQUEiLCJuYW1lcyI6WyJMYW5kaW5nUHJvbXB0IiwiSWNvbiIsImNoaWxkcmVuIiwiX2MiLCJJY29uU2Npc3NvcnMiLCJfYzIiLCJJY29uU2xpZGVycyIsIl9jMyIsIkljb25MYXllcnMiLCJfYzQiLCJJY29uVXNlcnMiLCJfYzUiLCJJY29uRXhwb3J0IiwiX2M2IiwiSWNvbkdsb2JlIiwiX2M3IiwiRkVBVFVSRVMiLCJpY29uIiwidGl0bGUiLCJ0ZXh0IiwiU1RFUFMiLCJuIiwiTGFuZGluZ1BhZ2UiLCJvbkVudGVyU3R1ZGlvIiwibWFwIiwiZiIsInMiLCJfYzgiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiTGFuZGluZ1BhZ2UudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHR5cGUgUmVhY3ROb2RlIH0gZnJvbSBcInJlYWN0XCI7XG5pbXBvcnQgeyBMYW5kaW5nUHJvbXB0IH0gZnJvbSBcIi4vTGFuZGluZ1Byb21wdFwiO1xuXG4vKiBJbmxpbmUgc3Ryb2tlIGljb25zIOKAlCBvbmUgdmlzdWFsIGxhbmd1YWdlIGluc3RlYWQgb2YgbWl4ZWQgZW1vamkuICovXG5mdW5jdGlvbiBJY29uKHsgY2hpbGRyZW4gfTogeyBjaGlsZHJlbjogUmVhY3ROb2RlIH0pIHtcbiAgcmV0dXJuIChcbiAgICA8c3ZnXG4gICAgICB2aWV3Qm94PVwiMCAwIDI0IDI0XCJcbiAgICAgIHdpZHRoPXsyMH1cbiAgICAgIGhlaWdodD17MjB9XG4gICAgICBmaWxsPVwibm9uZVwiXG4gICAgICBzdHJva2U9XCJjdXJyZW50Q29sb3JcIlxuICAgICAgc3Ryb2tlV2lkdGg9ezEuNn1cbiAgICAgIHN0cm9rZUxpbmVjYXA9XCJyb3VuZFwiXG4gICAgICBzdHJva2VMaW5lam9pbj1cInJvdW5kXCJcbiAgICAgIGFyaWEtaGlkZGVuPVwidHJ1ZVwiXG4gICAgPlxuICAgICAge2NoaWxkcmVufVxuICAgIDwvc3ZnPlxuICApO1xufVxuXG5jb25zdCBJY29uU2Npc3NvcnMgPSAoKSA9PiAoXG4gIDxJY29uPlxuICAgIDxjaXJjbGUgY3g9XCI2XCIgY3k9XCI2XCIgcj1cIjNcIiAvPlxuICAgIDxjaXJjbGUgY3g9XCI2XCIgY3k9XCIxOFwiIHI9XCIzXCIgLz5cbiAgICA8cGF0aCBkPVwiTTIwIDQgOC4xMiAxNS44OFwiIC8+XG4gICAgPHBhdGggZD1cIk0xNC40NyAxNC40OCAyMCAyMFwiIC8+XG4gICAgPHBhdGggZD1cIk04LjEyIDguMTIgMTIgMTJcIiAvPlxuICA8L0ljb24+XG4pO1xuXG5jb25zdCBJY29uU2xpZGVycyA9ICgpID0+IChcbiAgPEljb24+XG4gICAgPHBhdGggZD1cIk0yMSA0aC03TTEwIDRIM00yMSAxMmgtOU04IDEySDNNMjEgMjBoLTVNMTIgMjBIM1wiIC8+XG4gICAgPHBhdGggZD1cIk0xNCAydjRNOCAxMHY0TTE2IDE4djRcIiAvPlxuICA8L0ljb24+XG4pO1xuXG5jb25zdCBJY29uTGF5ZXJzID0gKCkgPT4gKFxuICA8SWNvbj5cbiAgICA8cGF0aCBkPVwibTEyIDIgOSA1LTkgNS05LTUgOS01elwiIC8+XG4gICAgPHBhdGggZD1cIm0zIDEyIDkgNSA5LTVcIiAvPlxuICAgIDxwYXRoIGQ9XCJtMyAxNyA5IDUgOS01XCIgLz5cbiAgPC9JY29uPlxuKTtcblxuY29uc3QgSWNvblVzZXJzID0gKCkgPT4gKFxuICA8SWNvbj5cbiAgICA8cGF0aCBkPVwiTTE2IDIxdi0yYTQgNCAwIDAgMC00LTRINmE0IDQgMCAwIDAtNCA0djJcIiAvPlxuICAgIDxjaXJjbGUgY3g9XCI5XCIgY3k9XCI3XCIgcj1cIjRcIiAvPlxuICAgIDxwYXRoIGQ9XCJNMjIgMjF2LTJhNCA0IDAgMCAwLTMtMy44N1wiIC8+XG4gICAgPHBhdGggZD1cIk0xNiAzLjEzYTQgNCAwIDAgMSAwIDcuNzVcIiAvPlxuICA8L0ljb24+XG4pO1xuXG5jb25zdCBJY29uRXhwb3J0ID0gKCkgPT4gKFxuICA8SWNvbj5cbiAgICA8cGF0aCBkPVwiTTIxIDE1djRhMiAyIDAgMCAxLTIgMkg1YTIgMiAwIDAgMS0yLTJ2LTRcIiAvPlxuICAgIDxwYXRoIGQ9XCJtMTcgOC01LTUtNSA1XCIgLz5cbiAgICA8cGF0aCBkPVwiTTEyIDN2MTJcIiAvPlxuICA8L0ljb24+XG4pO1xuXG5jb25zdCBJY29uR2xvYmUgPSAoKSA9PiAoXG4gIDxJY29uPlxuICAgIDxjaXJjbGUgY3g9XCIxMlwiIGN5PVwiMTJcIiByPVwiMTBcIiAvPlxuICAgIDxwYXRoIGQ9XCJNMiAxMmgyMFwiIC8+XG4gICAgPHBhdGggZD1cIk0xMiAyYTE1LjMgMTUuMyAwIDAgMSA0IDEwIDE1LjMgMTUuMyAwIDAgMS00IDEwIDE1LjMgMTUuMyAwIDAgMS00LTEwIDE1LjMgMTUuMyAwIDAgMSA0LTEwelwiIC8+XG4gIDwvSWNvbj5cbik7XG5cbmNvbnN0IEZFQVRVUkVTID0gW1xuICB7XG4gICAgaWNvbjogPEljb25MYXllcnMgLz4sXG4gICAgdGl0bGU6IFwiVHlwZSBhIGJlYXQgaW50byBleGlzdGVuY2VcIixcbiAgICB0ZXh0OiBcIkRlc2NyaWJlIGl0IOKAlCDigJxkYXJrIHRyYXAgMTQw4oCdIOKAlCBhbmQgdGhlIGludGVudCBlbmdpbmUgY29tcG9zZXMgdGhlIGRydW1zIGFuZCBiYXNzIGluc3RhbnRseS4gU2xvdmFrIG9yIEVuZ2xpc2guIFRoZW4gdHdlYWsgaXQsIHJldmlzZSBpdCwgb3duIGl0LlwiLFxuICB9LFxuICB7XG4gICAgaWNvbjogPEljb25TY2lzc29ycyAvPixcbiAgICB0aXRsZTogXCJDaG9wIGJlYXRzXCIsXG4gICAgdGV4dDogXCJEcm9wIGFuIE1QMyDigJQgdHJhbnNpZW50IGRldGVjdGlvbiBzbGljZXMgaXQgb250byAxNiBNUEMtc3R5bGUgcGFkcy4gUmV0cmlnZ2VyLCBwaXRjaCwgcHJvZ3JhbS5cIixcbiAgfSxcbiAge1xuICAgIGljb246IDxJY29uU2xpZGVycyAvPixcbiAgICB0aXRsZTogXCJNaXggJiBwYXR0ZXJuIGFzc2lzdFwiLFxuICAgIHRleHQ6IFwiVGhlIGFzc2lzdGFudCBhbmFseXplcyB5b3VyIHRyYWNrLCBwcm9wb3NlcyBtaXggc2V0dGluZ3MgYW5kIGl0ZXJhdGVzIG9uIHBhdHRlcm5zIHdpdGggeW91LiBFdmVyeSBzdGVwIHN0YXlzIHVuZG9hYmxlLlwiLFxuICB9LFxuICB7XG4gICAgaWNvbjogPEljb25Vc2VycyAvPixcbiAgICB0aXRsZTogXCJMaXZlIGphbSBzZXNzaW9uc1wiLFxuICAgIHRleHQ6IFwiU2hhcmUgYSByb29tIGxpbmsg4oCUIGV2ZXJ5b25lIGVkaXRzIHRoZSBzYW1lIHByb2plY3QgaW4gcmVhbCB0aW1lLiBVbmRvIHN0YXlzIHVzZXItc2NvcGVkLlwiLFxuICB9LFxuICB7XG4gICAgaWNvbjogPEljb25FeHBvcnQgLz4sXG4gICAgdGl0bGU6IFwiRXhwb3J0IGFueXdoZXJlXCIsXG4gICAgdGV4dDogXCJXQVYsIE1QMywgdmlkZW8gZm9yIFJlZWxzIGFuZCBUaWtUb2ssIHN0ZW1zLCBzY29yZXBhY2tzIOKAlCBvciBhIHNoYXJlIGxpbmsgdGhhdCBvcGVucyB0aGUgd2hvbGUgcHJvamVjdC5cIixcbiAgfSxcbiAge1xuICAgIGljb246IDxJY29uR2xvYmUgLz4sXG4gICAgdGl0bGU6IFwiTWlsbGlvbnMgb2Ygc291bmRzXCIsXG4gICAgdGV4dDogXCJBIGJ1aWx0LWluIHByb2NlZHVyYWwga2l0IHBsdXMgb25lLWNsaWNrIENDMCBpbXBvcnRzIGZyb20gZnJlZXNvdW5kLm9yZy4gTm8gbGljZW5zaW5nIHRyYXBzLlwiLFxuICB9LFxuXTtcblxuY29uc3QgU1RFUFMgPSBbXG4gIHtcbiAgICBuOiAxLFxuICAgIHRpdGxlOiBcIkRlc2NyaWJlIGl0XCIsXG4gICAgdGV4dDogXCJUeXBlIG9uZSBzZW50ZW5jZSDigJQg4oCcZGFyayB0cmFwIDE0MOKAnS4gVGhlIGludGVudCBlbmdpbmUgY29tcG9zZXMgeW91ciBiZWF0IHJpZ2h0IG9uIHRoaXMgcGFnZS5cIixcbiAgfSxcbiAge1xuICAgIG46IDIsXG4gICAgdGl0bGU6IFwiQ2hvcCAmIHByb2dyYW1cIixcbiAgICB0ZXh0OiBcIk9wZW4gdGhlIHN0dWRpbzogdHdlYWsgdGhlIGdlbmVyYXRlZCBiZWF0LCBkcm9wIGEgbG9vcCwgYXV0by1jaG9wIGl0IHRvIHBhZHMuIEdyb292ZSBlbmdpbmUgaW5jbHVkZWQuXCIsXG4gIH0sXG4gIHtcbiAgICBuOiAzLFxuICAgIHRpdGxlOiBcIkV4cG9ydCAmIHNoYXJlXCIsXG4gICAgdGV4dDogXCJNUDMsIFdBViwgdmlkZW8g4oCUIG9yIGEgc2hhcmUgbGluayB0aGF0IG9wZW5zIHRoZSB3aG9sZSBwcm9qZWN0IGZvciBhIGZyaWVuZC5cIixcbiAgfSxcbl07XG5cbi8qKlxuICogTGFuZGluZyBwYWdlIGZvciBmaXJzdC10aW1lIHZpc2l0b3JzIChgL2Agd2l0aG91dCB0aGUgb25ib2FyZGVkIGZsYWcpLlxuICogUmV0dXJuaW5nIHVzZXJzIHNraXAgc3RyYWlnaHQgdG8gdGhlIHN0dWRpbyB2aWEgbWFpbi50c3ggcm91dGluZy5cbiAqL1xuZXhwb3J0IGZ1bmN0aW9uIExhbmRpbmdQYWdlKHsgb25FbnRlclN0dWRpbyB9OiB7IG9uRW50ZXJTdHVkaW86ICgpID0+IHZvaWQgfSkge1xuICByZXR1cm4gKFxuICAgIDxkaXYgY2xhc3NOYW1lPVwibGFuZGluZ1wiIHJvbGU9XCJkb2N1bWVudFwiIGFyaWEtbGFiZWw9XCJLWVggbGFuZGluZ1wiPlxuICAgICAgPG5hdiBjbGFzc05hbWU9XCJsYW5kaW5nLW5hdlwiPlxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctc2hlbGwgbGFuZGluZy1uYXYtaW5uZXJcIj5cbiAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJsYW5kaW5nLWJyYW5kXCI+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJlbWJlZC1icmFuZC1tYXJrXCI+S1g8L3NwYW4+IEtZWFxuICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctbmF2LWFjdGlvbnNcIj5cbiAgICAgICAgICAgIDxhIGNsYXNzTmFtZT1cImxhbmRpbmctYnRuIGxhbmRpbmctYnRuLWdob3N0IGxhbmRpbmctYnRuLXNtXCIgaHJlZj1cIi9kb3dubG9hZFwiPlxuICAgICAgICAgICAgICBEb3dubG9hZFxuICAgICAgICAgICAgPC9hPlxuICAgICAgICAgICAgPGEgY2xhc3NOYW1lPVwibGFuZGluZy1idG4gbGFuZGluZy1idG4tZ2hvc3QgbGFuZGluZy1idG4tc21cIiBocmVmPVwiL2dhbGxlcnlcIj5cbiAgICAgICAgICAgICAgQmVhdCBnYWxsZXJ5XG4gICAgICAgICAgICA8L2E+XG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJsYW5kaW5nLWJ0biBsYW5kaW5nLWJ0bi1wcmltYXJ5IGxhbmRpbmctYnRuLXNtXCIgb25DbGljaz17b25FbnRlclN0dWRpb30+XG4gICAgICAgICAgICAgIE9wZW4gdGhlIHN0dWRpb1xuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9uYXY+XG5cbiAgICAgIDxoZWFkZXIgY2xhc3NOYW1lPVwibGFuZGluZy1oZXJvXCI+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibGFuZGluZy1zaGVsbCBsYW5kaW5nLWhlcm8taW5uZXJcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctaGVyby1jb3B5XCI+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJsYW5kaW5nLWJhZGdlXCI+XG4gICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImxhbmRpbmctYmFkZ2UtZG90XCIgLz5cbiAgICAgICAgICAgICAgRnJlZSDCtyBObyBhY2NvdW50IMK3IFJ1bnMgb2ZmbGluZVxuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgICAgPGgxPlxuICAgICAgICAgICAgICBEZXNjcmliZSBpdC5cbiAgICAgICAgICAgICAgPGJyIC8+XG4gICAgICAgICAgICAgIEhlYXIgaXQuIE93biBpdC5cbiAgICAgICAgICAgIDwvaDE+XG4gICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJsYW5kaW5nLXN1YlwiPlxuICAgICAgICAgICAgICBUeXBlIG9uZSBzZW50ZW5jZSDigJQg4oCcZGFyayB0cmFwIDE0MOKAnSDigJQgYW5kIHRoZSBidWlsdC1pbiBpbnRlbnQgZW5naW5lIGNvbXBvc2VzIHlvdXIgYmVhdCByaWdodCBoZXJlLCBpblxuICAgICAgICAgICAgICB0aGlzIHRhYi4gVGhlbiBvcGVuIHRoZSBmdWxsIHN0dWRpbyB0byBjaG9wLCBwcm9ncmFtIGFuZCBtaXguIFlvdXIgYXVkaW8gbmV2ZXIgbGVhdmVzIHRoZSBkZXZpY2UuXG4gICAgICAgICAgICA8L3A+XG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctaGVyby1hY3Rpb25zXCI+XG4gICAgICAgICAgICAgIDxhIGNsYXNzTmFtZT1cImxhbmRpbmctYnRuIGxhbmRpbmctYnRuLWdob3N0IGxhbmRpbmctYnRuLWxnXCIgaHJlZj1cIi9nYWxsZXJ5XCI+XG4gICAgICAgICAgICAgICAgRXhwbG9yZSB0aGUgZ2FsbGVyeVxuICAgICAgICAgICAgICA8L2E+XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImxhbmRpbmctaGludFwiPlxuICAgICAgICAgICAgICBObyBpbnN0YWxsIMK3IFdvcmtzIG9mZmxpbmUgwrcgPGEgaHJlZj1cIi9kb3dubG9hZFwiPlByZWZlciBhIGRlc2t0b3AgYXBwPyBEb3dubG9hZCBmb3IgV2luZG93czwvYT5cbiAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctaGVyby1wbGF5ZXItY29sXCIgYXJpYS1sYWJlbD1cIkZvcmdlIGEgYmVhdFwiPlxuICAgICAgICAgICAgPExhbmRpbmdQcm9tcHQgb25FbnRlclN0dWRpbz17b25FbnRlclN0dWRpb30gLz5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2hlYWRlcj5cblxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwibGFuZGluZy1zZWN0aW9uXCIgYXJpYS1sYWJlbD1cIkZlYXR1cmVzXCI+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibGFuZGluZy1zaGVsbFwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibGFuZGluZy1zZWN0aW9uLWhlYWRcIj5cbiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cImxhbmRpbmctZXllYnJvd1wiPldoeSBLWVg8L3A+XG4gICAgICAgICAgICA8aDI+RXZlcnl0aGluZyBhIGJlYXQgbmVlZHM8L2gyPlxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibGFuZGluZy1ncmlkXCI+XG4gICAgICAgICAgICB7RkVBVFVSRVMubWFwKChmKSA9PiAoXG4gICAgICAgICAgICAgIDxkaXYga2V5PXtmLnRpdGxlfSBjbGFzc05hbWU9XCJsYW5kaW5nLWNhcmRcIj5cbiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJsYW5kaW5nLWNhcmQtaWNvblwiPntmLmljb259PC9zcGFuPlxuICAgICAgICAgICAgICAgIDxoMz57Zi50aXRsZX08L2gzPlxuICAgICAgICAgICAgICAgIDxwPntmLnRleHR9PC9wPlxuICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICkpfVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvc2VjdGlvbj5cblxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwibGFuZGluZy1zZWN0aW9uIGxhbmRpbmctc2VjdGlvbi10aWdodFwiIGFyaWEtbGFiZWw9XCJIb3cgaXQgd29ya3NcIj5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsYW5kaW5nLXNoZWxsXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsYW5kaW5nLXNlY3Rpb24taGVhZFwiPlxuICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwibGFuZGluZy1leWVicm93XCI+SG93IGl0IHdvcmtzPC9wPlxuICAgICAgICAgICAgPGgyPjMwIHNlY29uZHMgdG8geW91ciBmaXJzdCBiZWF0PC9oMj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctZ3JpZCBsYW5kaW5nLWdyaWQtM1wiPlxuICAgICAgICAgICAge1NURVBTLm1hcCgocykgPT4gKFxuICAgICAgICAgICAgICA8ZGl2IGtleT17cy5ufSBjbGFzc05hbWU9XCJsYW5kaW5nLWNhcmRcIj5cbiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJsYW5kaW5nLXN0ZXAtblwiPntzLm59PC9zcGFuPlxuICAgICAgICAgICAgICAgIDxoMz57cy50aXRsZX08L2gzPlxuICAgICAgICAgICAgICAgIDxwPntzLnRleHR9PC9wPlxuICAgICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICAgICkpfVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L2Rpdj5cbiAgICAgIDwvc2VjdGlvbj5cblxuICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwibGFuZGluZy1jdGEtYmFuZFwiIGFyaWEtbGFiZWw9XCJHZXQgc3RhcnRlZFwiPlxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctc2hlbGxcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImxhbmRpbmctY3RhLXBhbmVsXCI+XG4gICAgICAgICAgICA8aDI+UmVhZHkgdG8gZm9yZ2UgeW91ciBmaXJzdCBiZWF0PzwvaDI+XG4gICAgICAgICAgICA8cD5PcGVuIHRoZSBzdHVkaW8gd2l0aCB0aGUgZGVtbyBwcm9qZWN0IGxvYWRlZCDigJQgbm8gc2lnbnVwLCBub3RoaW5nIHRvIGluc3RhbGwuPC9wPlxuICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwibGFuZGluZy1idG4gbGFuZGluZy1idG4tcHJpbWFyeSBsYW5kaW5nLWJ0bi1sZ1wiIG9uQ2xpY2s9e29uRW50ZXJTdHVkaW99PlxuICAgICAgICAgICAgICBPcGVuIHRoZSBzdHVkaW8g4oaSXG4gICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L3NlY3Rpb24+XG5cbiAgICAgIDxmb290ZXIgY2xhc3NOYW1lPVwibGFuZGluZy1mb290ZXJcIj5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJsYW5kaW5nLXNoZWxsIGxhbmRpbmctZm9vdGVyLWlubmVyXCI+XG4gICAgICAgICAgPHNwYW4+S1lYIOKAlCBicm93c2VyIGJlYXQgc3R1ZGlvPC9zcGFuPlxuICAgICAgICAgIDxzcGFuPkJ1aWx0IG9uIFdlYiBBdWRpbyDCtyBXb3JrcyBiZXN0IGluIENocm9tZSDCtyBJbnN0YWxsYWJsZSBhcyBhIFBXQTwvc3Bhbj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2Zvb3Rlcj5cbiAgICA8L2Rpdj5cbiAgKTtcbn1cbiJdLCJmaWxlIjoiRDovcHVsc2UtZm9yZ2Uvc3JjL2xhbmRpbmcvTGFuZGluZ1BhZ2UudHN4In0=

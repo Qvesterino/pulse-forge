@@ -11,7 +11,7 @@ export interface MaterializedPcmTake {
 
 /**
  * Materialize only after capture has stopped. The durable store is visited
- * one ~second block at a time; no full-take encoded file or lossy codec pass
+ * one half-second block at a time; no full-take encoded file or lossy codec pass
  * is created. Samples are copied unchanged into the AudioBuffer.
  */
 export async function materializePcmTake(

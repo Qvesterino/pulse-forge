@@ -9,6 +9,7 @@ let acknowledgeStop = true;
 
 class FakeWorkletNode {
   sent: Array<Record<string, unknown>> = [];
+  options: Record<string, unknown> | undefined;
   onprocessorerror: (() => void) | null = null;
   port = {
     onmessage: null as ((event: MessageEvent) => void) | null,
@@ -19,7 +20,8 @@ class FakeWorkletNode {
     close: vi.fn(),
   };
 
-  constructor() {
+  constructor(...args: unknown[]) {
+    this.options = args[2] as Record<string, unknown> | undefined;
     lastNode = this;
   }
 
@@ -31,7 +33,7 @@ class FakeWorkletNode {
   }
 }
 
-function createRecorder(options: { deferMicrophonePermission?: boolean } = {}) {
+function createRecorder(options: { deferMicrophonePermission?: boolean; inputDeviceId?: string } = {}) {
   const recovery = new RecordingRecoveryRepository();
   const track = new EventTarget() as MediaStreamTrack;
   Object.defineProperty(track, "readyState", { value: "live" });
@@ -95,6 +97,7 @@ function createRecorder(options: { deferMicrophonePermission?: boolean } = {}) {
   const recorder = new PcmMicRecorder({
     ctx: context,
     recovery,
+    inputDeviceId: options.inputDeviceId ?? "",
     addWorkletModule: vi.fn(async () => {}),
     getUserMedia,
   });
@@ -153,6 +156,31 @@ afterEach(async () => {
 });
 
 describe("PcmMicRecorder", () => {
+  it("pins the requested microphone instead of silently recording from the system default", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, getUserMedia } = createRecorder({ inputDeviceId: "interface-input-2" });
+    await recorder.start(metadata);
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        deviceId: { exact: "interface-input-2" },
+      },
+    });
+    await recorder.cancel();
+  });
+
+  it("explains when a previously selected microphone is no longer available", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, getUserMedia } = createRecorder({ inputDeviceId: "removed-input" });
+    getUserMedia.mockRejectedValueOnce(Object.assign(new Error("No device"), { name: "NotFoundError" }));
+
+    await expect(recorder.start(metadata)).rejects.toThrow(/selected microphone is unavailable/i);
+    expect(recorder.state).toBe("idle");
+  });
+
   it("keeps a cancelled permission request from overlapping a new take", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const { recorder, metadata, track, getUserMedia, resolveMicrophonePermission } = createRecorder({
@@ -177,6 +205,7 @@ describe("PcmMicRecorder", () => {
     const { recorder, recovery, metadata, samples, track, source, gains } = createRecorder();
     await recorder.start(metadata);
     expect(recorder.state).toBe("recording");
+    expect(lastNode?.options).toMatchObject({ processorOptions: { chunkFrames: 24_000 } });
     expect(gains[1].gain.value).toBe(0); // direct monitoring is opt-in
     recorder.setMonitoring(true);
     expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 1, 0.01);

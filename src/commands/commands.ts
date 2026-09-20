@@ -40,7 +40,7 @@ import {
 } from "../project-model/modulators";
 import {
   planProductionActions,
-  planProductionTargets,
+  resolveProductionTargets,
   type ProductionIntent,
 } from "../intent/production";
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
@@ -4499,12 +4499,12 @@ export function applyExactIntentCommand(
     if (target === "mix") return [];
     if (target === "all") return next.tracks.map((t) => t.id);
     try {
-      return planProductionTargets(next, [target as never]);
+      return resolveProductionTargets(next, [target as never]);
     } catch {
       return [];
     }
   };
-  const paramFor = (trackId: string, op: { kind: "mute" | "solo" | "pan"; value: boolean | number }) => {
+  const paramFor = (trackId: string, op: ExactOp): Partial<TrackParams> | null => {
     const track = next.tracks.find((t) => t.id === trackId);
     if (!track || track.kind === "group") return null;
     if (op.kind === "mute") return { mute: op.value };
@@ -4557,6 +4557,25 @@ export function applyExactIntentCommand(
                 },
           ),
         };
+      }
+      continue;
+    }
+    // Pad-family targets (hats/snare/kick) map to per-PAD params on the
+    // drum track — "Pan the hats 20% right" is literally a pad-level op.
+    if (op.target === "hats" || op.target === "snare" || op.target === "kick") {
+      const drum = next.tracks.find((t) => t.kind === "drum");
+      if (!drum || drum.kind !== "drum") continue;
+      const families = classifyPads(drum.pads);
+      const familyPads =
+        op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
+      for (const pad of familyPads) {
+        if (op.kind === "mute") {
+          next = setPadParams(next, pad.id, { mute: op.value }).execute(next);
+        } else if (op.kind === "solo") {
+          next = setPadParams(next, pad.id, { solo: op.value }).execute(next);
+        } else if (op.kind === "pan") {
+          next = setPadParams(next, pad.id, { pan: Math.max(-1, Math.min(1, op.value)) }).execute(next);
+        }
       }
       continue;
     }
