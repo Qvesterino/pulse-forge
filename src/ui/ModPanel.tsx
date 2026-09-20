@@ -42,6 +42,7 @@ import { DEFAULT_STEP_PATTERN } from "../project-model/modulators";
 import { laneLabel } from "../project-model/automation";
 import { EFFECT_DEFS } from "../effects/registry";
 import { ultinaLaneRange, ultinaOptionGroups } from "../effects/ultinaAutomation";
+import { morphLaneRange, morphOptionGroups } from "../effects/morphDynamicsAutomation";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import {
   effectTargetParamDefs,
@@ -165,6 +166,11 @@ function laneRange(doc: ProjectDocument, target: AutomationTarget): ParamRange {
         const range = ultinaLaneRange(target.paramId);
         if (range) return range;
       }
+      // Same for MORPH DYNAMICS' first-party schema.
+      if (fx.type === "morphdynamics" && target.paramId) {
+        const range = morphLaneRange(target.paramId);
+        if (range) return range;
+      }
       const def = effectTargetParamDefs(fx).find((p) => p.id === target.paramId);
       if (def) return { min: def.min, max: def.max, format: def.format };
     }
@@ -256,7 +262,7 @@ export function ModPanel() {
       Boolean(
         addableTrack &&
         "effects" in addableTrack &&
-        addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq"),
+        addableTrack.effects.some((f) => f.type === "ultina" || f.type === "fxeq" || f.type === "morphdynamics"),
       ),
     [addableTrack],
   );
@@ -324,7 +330,17 @@ export function ModPanel() {
                         ))}
                       </optgroup>
                     ))
-                  : effectTargetParamDefs(fx)
+                  : fx.type === "morphdynamics"
+                    ? morphOptionGroups(fx.id, paramFilter).map(({ module, options }) => (
+                        <optgroup key={`${fx.id}:${module}`} label={`MORPH · ${module}`}>
+                          {options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                    : effectTargetParamDefs(fx)
                       .filter((p) => {
                         const query = paramFilter.trim().toLowerCase();
                         return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);

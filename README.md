@@ -1,10 +1,10 @@
 # KYX
 
-**A browser-native, fully offline-capable beat and scene-score workstation.**
+**A browser-native, fully offline-capable beat, vocal-recording, and scene-score workstation.**
 
-KYX (internally known as **Pulse Forge**, the repository name) is a production-oriented digital audio workstation that runs entirely in the browser. It is built around six product pillars — **Sound, Rhythm, Composition, Processing, Arrangement, and Export** — and is designed to deliver a finished instrumental track without ever leaving the tab.
+KYX (internally known as **Pulse Forge**, the repository name) is a production-oriented digital audio workstation that runs entirely in the browser. It is built around six product pillars — **Sound, Rhythm, Composition, Processing, Arrangement, and Export** — and is designed to deliver a finished track without ever leaving the tab.
 
-It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, no multitrack studio recording. In exchange, KYX ships a closed, carefully designed production environment containing 14 native instruments, 36 native effects (including 4 vendored flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
+It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 14 native instruments, 36 native effects (including 4 vendored flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
 
 The web build also ships as a standalone Windows desktop app (ADR 0010/0011) — the same code, served from a thin Electron shell — with auto-update through GitHub Releases.
 
@@ -43,11 +43,12 @@ Practically, that covers:
 - **Electronic music composition** — instruments, melodic and pad roles, piano-roll editing, scene-based launching, deterministic groove, generative dice/AI assist.
 - **Sound design** — wavetable, granular, FM, Karplus-Strong, additive spectral, sampler with time-stretch and reverse.
 - **Arrangement** — pattern mode vs. song mode, named scenes, per-scene tempo, scene intensity curve, scene automation, markers.
+- **Vocal recording** — record a microphone take onto one armed arrangement track at a time; capture is uncompressed Float32 PCM, staged in IndexedDB, and recoverable after a reload when blocks were committed.
 - **Mixing** — multi-track mixer, send/return buses, master chain (input → soft-clipper → look-ahead limiter → analyser), per-track peak meters, LUFS history, mix-check warnings.
 - **Export** — WAV (16/24/32-bit float), MP3, vertical MP4/WebM for Reels/Shorts/TikTok, per-track stems, grouped Drums/Bass/Music stems, share codes, embed player, **scorepacks** (`.scorepack` ZIPs with master + stems + cue WAVs + manifest).
 - **Visual / interactive scene composition** — scene intensity can drive any effect or instrument parameter through the same mapping lane as macros; the same project file powers both music and a synchronized visual layer.
 
-It explicitly avoids: vocal recording, multitrack studio recording, VST/AU plugin hosting, ASIO/device-driver management, advanced external warping, spectral restoration, large-scale mixing workflows, external plugin ecosystems.
+It explicitly avoids: simultaneous multi-input studio recording, VST/AU plugin hosting, ASIO/device-driver management, advanced external warping, spectral restoration, large-scale mixing workflows, external plugin ecosystems.
 
 ---
 
@@ -174,7 +175,8 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 - **Note Repeat** — hold a pad (mouse, QWERTY key or MIDI note) and the pad re-fires on a grid division (1/4–1/16T) with per-repeat velocity falloff. While the transport plays, repeats lock to the transport tick grid; while stopped they free-run.
 - **Ghost preview** — audition a pattern in isolation without touching the transport.
-- **Live recorder** — taps master post-limiter, a track's post-FX analyser, or the microphone into a `MediaStreamAudioDestinationNode` and records it via `MediaRecorder`; the take is decoded back into an `AudioBuffer` so it can be flipped onto a pad like any imported sample.
+- **Arrangement vocal recorder** — records the selected microphone as planar Float32 PCM in bounded AudioWorklet blocks. Each block is acknowledged only after its IndexedDB transaction commits; interrupted takes can be restored to the timeline or sample library. Audio not yet committed when the browser/device fails may be incomplete.
+- **Live resampler** — records the master post-limiter or a track's post-FX tap through `MediaRecorder`; the resulting take is decoded to an `AudioBuffer` for use as a sample. Microphone capture uses the PCM recorder above, not this encoded resampling path.
 - **Latency calibration wizard** — measures audio round-trip and jitter, persists to localStorage; informs downstream scheduling.
 
 ### Diagnostics

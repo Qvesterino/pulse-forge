@@ -1,0 +1,174 @@
+/* MORPH DYNAMICS panel (18) — reactive dynamics-morph flagship editor.
+   Loaded after the plugin shells so it can extend their variables. */
+
+.morph-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--panel-bg, #16181d);
+  border-radius: 8px;
+  color: var(--text-1, #d7dae0);
+}
+
+.morph-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.morph-preset-select {
+  background: #22252c;
+  color: inherit;
+  border: 1px solid #33363f;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  min-width: 150px;
+}
+
+.morph-io {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.morph-macros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 12px;
+}
+
+.morph-macro-pressure {
+  grid-column: 1 / -1;
+}
+
+.morph-live {
+  width: 100%;
+  max-width: 340px;
+  height: 66px;
+  align-self: center;
+  border-radius: 6px;
+  background: #101216;
+}
+
+.morph-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.morph-section-toggle {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid #33363f;
+  color: #9aa0aa;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.morph-section-toggle:hover {
+  color: inherit;
+  border-color: #4a4e59;
+}
+
+.morph-engine {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.morph-module {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #1b1e24;
+  border-radius: 6px;
+}
+
+.morph-module-title {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #9aa0aa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.morph-stage-toggle {
+  background: #262a32;
+  border: 1px solid #3a3f4b;
+  color: #9aa0aa;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.morph-stage-toggle.on {
+  color: #e8b04b;
+  border-color: #6b5a2e;
+}
+
+.morph-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.morph-route {
+  display: grid;
+  grid-template-columns: 24px minmax(90px, 1fr) 14px minmax(90px, 1fr) minmax(90px, 1.2fr) 10px;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.45;
+}
+
+.morph-route.on {
+  opacity: 1;
+}
+
+.morph-route-toggle {
+  width: 22px;
+  height: 18px;
+  font-size: 9px;
+  border-radius: 4px;
+  border: 1px solid #3a3f4b;
+  background: #262a32;
+  color: #9aa0aa;
+  cursor: pointer;
+}
+
+.morph-route-toggle.on {
+  color: #e8b04b;
+  border-color: #6b5a2e;
+}
+
+.morph-route select {
+  background: #22252c;
+  color: inherit;
+  border: 1px solid #33363f;
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 2px;
+  min-width: 0;
+}
+
+.morph-route-arrow {
+  color: #5f6470;
+  text-align: center;
+}
+
+.morph-route-activity {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3f4b;
+}

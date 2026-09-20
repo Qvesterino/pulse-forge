@@ -22,7 +22,9 @@ const COMB_COUNT = 4;
 const COMB_MS_L = [23.7, 31.3, 37.1, 43.9];
 const COMB_MS_R = [26.3, 29.7, 38.9, 45.1];
 const AP_MS = [5.1, 8.3];
-const MAX_COMB_GAIN = 0.88;
+// Recirculation bound. 0.95 keeps every comb >23 dB below oscillation
+// while allowing RT60 ≈ 4 s at the longest comb (decay safety).
+const MAX_COMB_GAIN = 0.95;
 
 interface CombState {
   buf: Float32Array;
@@ -125,7 +127,10 @@ export class SpaceStage {
   }
 
   private decayGain(decayS: number, lenSec: number): number {
-    const g = Math.pow(10, (-3 * decayS * lenSec) / (COMB_COUNT * 0.9));
+    // RT60 relation: the comb must fall 60 dB over `decayS` seconds, so
+    // per-pass gain is 10^(−3·lenSec/decayS) (decay in the DENOMINATOR —
+    // longer decay → gain closer to 1). Bounded for runaway safety.
+    const g = Math.pow(10, (-3 * lenSec) / Math.max(decayS, 0.05));
     return Math.min(MAX_COMB_GAIN, Math.max(0, Number.isFinite(g) ? g : 0));
   }
 

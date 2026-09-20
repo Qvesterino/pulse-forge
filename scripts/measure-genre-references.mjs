@@ -24,7 +24,7 @@ import { createServer } from "vite";
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5239;
@@ -46,19 +46,31 @@ await server.listen();
 const browser = await chromium.launch();
 const page = await browser.newPage();
 
-const isReloadRace = (error) => /context was destroyed|navigation|interrupted/i.test(String(error));
+const isReloadRace = (error) => /context was destroyed|navigation|interrupted|timeout/i.test(String(error));
+
+/**
+ * Resume support: the shared dev machine's Vite reloads kill evaluates at
+ * random — measured genres land in a partial JSON so a re-run skips them.
+ */
+const partialPath = path.join(root, "node_modules", ".cache", "genre-reference-partial.json");
+const partialDir = path.dirname(partialPath);
+if (!existsSync(partialDir)) {
+  const { mkdirSync } = await import("node:fs");
+  mkdirSync(partialDir, { recursive: true });
+}
+const partial = existsSync(partialPath) ? JSON.parse(readFileSync(partialPath, "utf8")) : {};
 
 async function gotoStudio() {
   // Direct studio route: bare "/" runs the landing Entry flow, which may
   // client-navigate mid-evaluate and destroy the execution context.
   for (let attempt = 1; ; attempt++) {
     try {
-      await page.goto(`http://127.0.0.1:${PORT}/studio`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+      await page.goto(`http://127.0.0.1:${PORT}/studio`, { waitUntil: "domcontentloaded", timeout: 240_000 });
       return;
     } catch (error) {
-      if (attempt >= 5 || !isReloadRace(error)) throw error;
-      console.log("[retry] goto interrupted (Vite full reload) — retrying");
-      await page.waitForTimeout(2000);
+      if (attempt >= 8 || !isReloadRace(error)) throw error;
+      console.log(`[retry] goto interrupted — retrying (${attempt}/8)`);
+      await page.waitForTimeout(5000);
     }
   }
 }
@@ -174,7 +186,15 @@ async function measureGenre(genre, seeds, targetLufs) {
 await gotoStudio();
 const measurements = [];
 for (const genre of GENRES) {
-  measurements.push(await measureGenre(genre, SEEDS, TARGET_LUFS));
+  if (partial[genre]) {
+    console.log(`[resume] ${genre}: cached from a previous run`);
+    measurements.push(partial[genre]);
+    continue;
+  }
+  const measured = await measureGenre(genre, SEEDS, TARGET_LUFS);
+  measurements.push(measured);
+  partial[genre] = measured;
+  writeFileSync(partialPath, JSON.stringify(partial, null, 1));
 }
 
 await browser.close();

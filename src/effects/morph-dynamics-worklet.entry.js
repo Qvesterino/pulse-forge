@@ -30,12 +30,7 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
-    this.proc.prepare({
-      sampleRate,
-      channelCount: CHANNELS,
-      maxBlockSize: MAX_BLOCK,
-      qualityMode: 1, // "normal"
-    });
+    this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK, 1); // normal quality
     const initial = options?.processorOptions?.params;
     if (initial) this.proc.loadState(initial);
     this.postLatency();

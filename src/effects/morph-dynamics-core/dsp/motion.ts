@@ -97,12 +97,19 @@ export class MotionStage {
     out.r = wr;
   }
 
+  /**
+   * Cascade of first-order all-pass sections, H(z) = (c + z⁻¹)/(1 + c·z⁻¹):
+   *   v = c·x + s,  s' = x − c·v   (s carries x[n−1] − c·y[n−1])
+   * The pole sits at −c, so |c| < 1 (clampUnit) is the stability bound and
+   * |H| ≡ 1 — the feedback loop around the cascade is gain-safe for |fb|<1.
+   */
   private apChain(coef: number[], state: number[], x: number): number {
     let y = x;
     for (let i = 0; i < STAGES; i++) {
       const c = coef[i];
-      const v = y + c * state[i];
+      const v = c * y + state[i];
       state[i] = y - c * v;
+      if (state[i] > -1e-20 && state[i] < 1e-20) state[i] = 0; // denormal flush
       y = v;
     }
     return y;

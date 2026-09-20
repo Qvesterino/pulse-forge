@@ -46,7 +46,6 @@ export class CharacterStage {
     if (this.bypassed) {
       out.l = l;
       out.r = r;
-      this.warm = false;
       return;
     }
     const p = this.params;

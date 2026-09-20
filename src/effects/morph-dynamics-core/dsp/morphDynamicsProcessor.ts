@@ -42,7 +42,6 @@ function smoothstep(x: number, a: number, b: number): number {
 }
 
 export class MorphDynamicsProcessor {
-  private sampleRate = 48000;
   private params: Record<string, number> = buildDefaultParams();
 
   private analysis = new FeatureExtractor();
@@ -87,7 +86,9 @@ export class MorphDynamicsProcessor {
   // Per-route activity for the matrix UI (post-modulation magnitude 0..1).
   private routeActivity = new Array<number>(ROUTE_SLOTS).fill(0);
 
-  private metersEnabled = false;
+  // Core users (offline render/tests) get meters by default. The AudioWorklet
+  // host disables them when no panel is observing this instance.
+  private metersEnabled = true;
   private meters: MorphMeters = {
     inputPeakDb: -100,
     outputPeakDb: -100,
@@ -105,7 +106,16 @@ export class MorphDynamicsProcessor {
   private disposed = false;
 
   prepare(sampleRate: number, _channelCount: number, maxBlockSize: number, qualityMode: number): void {
-    this.sampleRate = sampleRate;
+    // BlockSmoother advances once per render quantum; its update rate is the
+    // audio sample rate divided by the prepared block size.
+    const controlRate = sampleRate / Math.max(1, maxBlockSize);
+    for (const smoother of Object.values(this.sm)) {
+      if (Array.isArray(smoother)) {
+        for (const item of smoother) item.setSampleRate(controlRate);
+      } else {
+        smoother.setSampleRate(controlRate);
+      }
+    }
     this.analysis.prepare(sampleRate, qualityMode);
     this.dyn.prepare(sampleRate);
     this.character.prepare(sampleRate);
@@ -118,6 +128,16 @@ export class MorphDynamicsProcessor {
 
   setMetersEnabled(enabled: boolean): void {
     this.metersEnabled = enabled;
+    if (!enabled) {
+      this.inPeakHold = 0;
+      this.outPeakHold = 0;
+      this.meters.inputPeakDb = -100;
+      this.meters.outputPeakDb = -100;
+      this.meters.gainReductionDb = 0;
+      this.meters.pressureActive = 0;
+      this.routeActivity.fill(0);
+      this.meters.routes.fill(0);
+    }
   }
 
   getLatencySamples(): number {
@@ -227,7 +247,7 @@ export class MorphDynamicsProcessor {
       const amount = q[P.routeParamId(slot, "amount")] / 100;
       const delta = amount * s * dest.span * routeScale;
       this.rawDelta[destIdx] += delta;
-      this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
+      if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
     }
     const modDelta = this.sm.mod;
     for (let d = 0; d < modDelta.length; d++) {
@@ -380,10 +400,12 @@ export class MorphDynamicsProcessor {
       L[i] = outL;
       R[i] = outR;
 
-      const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
-      const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
-      if (aIn > inPeak) inPeak = aIn;
-      if (aOut > outPeak) outPeak = aOut;
+      if (this.metersEnabled) {
+        const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
+        const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
+        if (aIn > inPeak) inPeak = aIn;
+        if (aOut > outPeak) outPeak = aOut;
+      }
     }
 
     // Non-finite sentinel: one bad sample means a recursive stage diverged
@@ -399,18 +421,20 @@ export class MorphDynamicsProcessor {
     }
 
     // ── 5. Control-source bookkeeping (ALWAYS — matrix continuity) ─
-    this.inPeakHold = Math.max(inPeak, this.inPeakHold * 0.85);
-    this.outPeakHold = Math.max(outPeak, this.outPeakHold * 0.85);
-    this.meters.inputPeakDb = linToDbMeter(this.inPeakHold);
-    this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
-    this.meters.gainReductionDb = this.dyn.grDb;
+    if (this.metersEnabled) {
+      this.inPeakHold = Math.max(inPeak, this.inPeakHold * 0.85);
+      this.outPeakHold = Math.max(outPeak, this.outPeakHold * 0.85);
+      this.meters.inputPeakDb = linToDbMeter(this.inPeakHold);
+      this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
+      this.meters.gainReductionDb = this.dyn.grDb;
+      this.meters.pressureActive = routeScale;
+      for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
+    }
     this.meters.transient = this.meters.transient * 0.5 + sig.transient * 0.5;
     this.meters.body = this.meters.body * 0.7 + sig.body * 0.3;
     this.meters.texture = this.meters.texture * 0.7 + sig.texture * 0.3;
     this.meters.density = sig.density;
     this.meters.inputEnergy = sig.inputEnergy;
-    this.meters.pressureActive = routeScale;
-    for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
   }
 
   /** Route slot that most recently configured destination d's smoother. */

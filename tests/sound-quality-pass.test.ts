@@ -20,7 +20,7 @@ import {
 } from "../src/intent/genre-reference.generated";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { GROOVE_LIBRARY, getGroovesForGenre } from "../src/ai/grooves";
-import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../src/ai/types";
+import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../src/ai/types";
 import { FAMILY_REFERENCE } from "../src/presets/preset-loudness.generated";
 import { buildPhrasePlan } from "../src/ai/phrase";
 import type { Pattern, ProjectDocument } from "../src/project-model/types";
@@ -45,7 +45,7 @@ function makePattern(id: string, stepCount: number): Pattern {
 
 type ApplyBuild = Parameters<typeof applySongCommand>[1];
 
-function fakeBuild(genre: "drill" | "phonk" | "house", suffix: string, bpm: number | null): ApplyBuild {
+function fakeBuild(genre: GenerateOptions["genre"], suffix: string, bpm: number | null): ApplyBuild {
   const sections = [
     {
       role: "intro" as const,

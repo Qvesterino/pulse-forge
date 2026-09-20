@@ -19,6 +19,8 @@ import {
   applyUltinaPreset,
   applyUltinaProposal,
   applyOzvenaStatePatch,
+  setMorphDynamicsParam,
+  applyMorphDynamicsPreset,
   setDeviceState,
   loadUltinaAbSlot,
   loadEffectAbSlot,
@@ -39,6 +41,9 @@ const FxEqPanel = lazy(() => import("./FxEqPanel").then((m) => ({ default: m.FxE
 const UltinaPanel = lazy(() => import("./UltinaPanel").then((m) => ({ default: m.UltinaPanel })));
 const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m.OzvenaPanel })));
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
+const MorphDynamicsPanel = lazy(() =>
+  import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })),
+);
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
@@ -731,6 +736,20 @@ function Device({
                 docked={devicesMode}
                 onParam={(paramId, value) =>
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+                }
+              />
+            )}
+            {fx.type === "morphdynamics" && (
+              <MorphDynamicsPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                onParam={(paramId, value) =>
+                  services.store.execute(setMorphDynamicsParam(doc, track.id, fx.id, paramId, value))
+                }
+                onApplyPreset={(name, presetParams) =>
+                  services.store.execute(applyMorphDynamicsPreset(doc, track.id, fx.id, name, presetParams))
                 }
               />
             )}

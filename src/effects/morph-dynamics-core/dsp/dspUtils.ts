@@ -68,6 +68,10 @@ export class OnePoleLP {
 
   process(x: number): number {
     this.state = x + this.a * (this.state - x);
+    // Denormal flush: a decaying state crawling through denormal range
+    // costs 100× per multiply on x86 without FTZ and keeps tails "alive"
+    // for seconds after silence.
+    if (this.state > -1e-20 && this.state < 1e-20) this.state = 0;
     return this.state;
   }
 
@@ -155,6 +159,9 @@ export class BlockSmoother {
 export function softClip(x: number, t: number): number {
   const ax = Math.abs(x);
   if (ax <= t) return x;
+  // The cubic segment is defined only over [t, 1]. Without this boundary,
+  // hot but valid inputs make its cubic term run away instead of clipping.
+  if (ax >= 1) return Math.sign(x);
   const over = (ax - t) / (1 - t);
   const shaped = t + (1 - t) * (over - (over * over * over) / 3) * (3 / 2);
   return Math.sign(x) * Math.min(shaped, 1);

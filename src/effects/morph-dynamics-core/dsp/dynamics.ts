@@ -60,9 +60,11 @@ export class DynamicsStage {
   }
 
   setParams(p: DynParams): void {
-    // Coefficients derive per-block from the CURRENT params; attack/release
-    // changes are block-glided by the coefficient interpolation below.
+    // Attack/release are block-rate controls, so derive their coefficients
+    // once per block instead of calling exp() for every audio sample.
     this.params = p;
+    this.atkCoef = tcToCoef(p.attackMs / 1000, this.sampleRate);
+    this.relCoef = tcToCoef(Math.max(p.releaseMs / 1000, 0.002), this.sampleRate);
     this.scHP.setFreq(Math.max(p.sidechainHpfHz, 5), this.sampleRate);
   }
 
@@ -93,17 +95,16 @@ export class DynamicsStage {
     const rms = this.detectorEnv.processAbs(det);
     const level = peak * (1 - p.detectorBlend) + rms * p.detectorBlend;
 
-    // Coefficient interpolation: recompute from params each frame is fine
-    // (two Math.exp per frame is cheap and keeps automation click-free).
-    const attackSec = p.attackMs / 1000;
-    let relSec = p.releaseMs / 1000;
+    // Static attack/release coefficients were derived at block-rate in
+    // setParams(); only transient-weighted release needs a per-frame update.
+    let aRel = this.relCoef;
     // Punch>0 slows release slightly through transients (let hits ring out
     // of the compressor); punch<0 speeds it (denser grab).
     if (punch !== 0 && transientScore > 0.05) {
-      relSec *= 1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore;
+      const relSec =
+        (p.releaseMs / 1000) * (1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore);
+      aRel = tcToCoef(Math.max(relSec, 0.002), this.sampleRate);
     }
-    const aAtk = tcToCoef(attackSec, this.sampleRate);
-    const aRel = tcToCoef(Math.max(relSec, 0.002), this.sampleRate);
 
     // Soft-knee gain computer (static curve).
     const overDb = level > 1e-6 ? 20 * Math.log10(level) - p.thresholdDb : -120;
@@ -125,7 +126,7 @@ export class DynamicsStage {
     }
 
     const targetLin = dbToLin(targetGainDb);
-    const a = targetLin < this.gain ? aAtk : aRel;
+    const a = targetLin < this.gain ? this.atkCoef : aRel;
     this.gain = targetLin + a * (this.gain - targetLin);
 
     // Makeup: auto ≈ what a static mix of the curve would eat at nominal

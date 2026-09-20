@@ -38,7 +38,11 @@ import {
   sanitizeGateSteps,
   sanitizeManglerSteps,
 } from "../project-model/modulators";
-import { planProductionActions, type ProductionIntent } from "../intent/production";
+import {
+  planProductionActions,
+  planProductionTargets,
+  type ProductionIntent,
+} from "../intent/production";
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
@@ -4467,6 +4471,105 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
 }
 
 /** Replace the step pattern of a step-sequenced effect (stepGate) — one undo step per edit stroke. */
+/**
+ * Exact Intents (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.1): compile a
+ * parsed exact plan — tempo / key / mute / solo / pan / gain dB / transpose /
+ * pattern length — into ONE undoable command group by folding the existing
+ * canonical commands (setBpm, setProjectKey, setTrackParams,
+ * setPatternLength) over a working document and snapshotting the result.
+ */
+export function applyExactIntentCommand(
+  doc: ProjectDocument,
+  plan: {
+    label: string;
+    ops: (
+      | { kind: "tempo"; bpm: number }
+      | { kind: "key"; key: MusicalKey }
+      | { kind: "mute"; target: string; value: boolean }
+      | { kind: "solo"; target: string; value: boolean }
+      | { kind: "pan"; target: string; value: number }
+      | { kind: "gainDb"; target: string; deltaDb: number }
+      | { kind: "transpose"; target: string; semitones: number }
+      | { kind: "patternLength"; steps: number }
+    )[];
+  },
+): Command {
+  let next = doc;
+  const resolve = (target: string): string[] => {
+    if (target === "mix") return [];
+    if (target === "all") return next.tracks.map((t) => t.id);
+    try {
+      return planProductionTargets(next, [target as never]);
+    } catch {
+      return [];
+    }
+  };
+  const paramFor = (trackId: string, op: { kind: "mute" | "solo" | "pan"; value: boolean | number }) => {
+    const track = next.tracks.find((t) => t.id === trackId);
+    if (!track || track.kind === "group") return null;
+    if (op.kind === "mute") return { mute: op.value };
+    if (op.kind === "solo") return { solo: op.value };
+    if (op.kind === "pan") return { pan: Math.max(-1, Math.min(1, op.value)) };
+    return null;
+  };
+  for (const op of plan.ops) {
+    if (op.kind === "tempo") {
+      next = setBpm(next, op.bpm).execute(next);
+      continue;
+    }
+    if (op.kind === "key") {
+      next = setProjectKey(next, op.key).execute(next);
+      continue;
+    }
+    if (op.kind === "patternLength") {
+      next = setPatternLength(next, next.activePatternId, op.steps).execute(next);
+      continue;
+    }
+    if (op.kind === "gainDb") {
+      for (const trackId of op.target === "mix" ? [next.tracks[0]?.id ?? ""] : resolve(op.target)) {
+        const track = next.tracks.find((t) => t.id === trackId);
+        if (!track || track.kind === "group") continue;
+        const targetGain = Math.max(0, Math.min(1.5, track.gain * Math.pow(10, op.deltaDb / 20)));
+        next = setTrackParams(next, trackId, { gain: targetGain }).execute(next);
+      }
+      continue;
+    }
+    if (op.kind === "transpose") {
+      // Melodic notes only — drums have no pitch.
+      for (const track of next.tracks) {
+        if (track.kind !== "instrument") continue;
+        if (!resolve(op.target).includes(track.id)) continue;
+        const pattern = next.patterns.find((p) => p.id === next.activePatternId);
+        if (!pattern) continue;
+        const notes = pattern.notes[track.id];
+        if (!notes || notes.length === 0) continue;
+        next = {
+          ...next,
+          patterns: next.patterns.map((p) =>
+            p.id !== pattern.id
+              ? p
+              : {
+                  ...p,
+                  notes: {
+                    ...p.notes,
+                    [track.id]: notes.map((n) => ({ ...n, pitch: Math.max(0, Math.min(127, n.pitch + op.semitones)) })),
+                  },
+                },
+          ),
+        };
+      }
+      continue;
+    }
+    for (const trackId of resolve(op.target)) {
+      const params = paramFor(trackId, op);
+      if (params) next = setTrackParams(next, trackId, params).execute(next);
+    }
+  }
+  return snapshot("applyExactIntent", plan.label, doc, next);
+}
+
+/**
+ * Production Intent (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md Phase 1+2):
 /**
  * Production Intent (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md Phase 1+2):
  * compile a deterministic production plan — concept × target → effect ops —

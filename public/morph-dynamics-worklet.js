@@ -235,6 +235,7 @@
     }
     process(x) {
       this.state = x + this.a * (this.state - x);
+      if (this.state > -1e-20 && this.state < 1e-20) this.state = 0;
       return this.state;
     }
     reset() {
@@ -298,6 +299,7 @@
   function softClip(x, t) {
     const ax = Math.abs(x);
     if (ax <= t) return x;
+    if (ax >= 1) return Math.sign(x);
     const over = (ax - t) / (1 - t);
     const shaped = t + (1 - t) * (over - over * over * over / 3) * (3 / 2);
     return Math.sign(x) * Math.min(shaped, 1);
@@ -310,7 +312,6 @@
 
   // src/effects/morph-dynamics-core/dsp/analysis.ts
   var FeatureExtractor = class {
-    sampleRate = 48e3;
     // Multi-timescale envelopes on the (rectified) mono analysis tap.
     fast = new EnvelopeFollower();
     // ~1 ms attack — transient edge
@@ -319,10 +320,12 @@
     slow = new EnvelopeFollower();
     // ~60 ms — density/context
     // Band-limited taps for body/texture energy.
-    bodyLP = new OnePoleLP();
-    // 250 Hz body band
-    textureHP = new OnePoleHP();
-    // 4 kHz texture band
+    bodyL = new OnePoleLP();
+    // 250 Hz body band, independent stereo state
+    bodyR = new OnePoleLP();
+    textureL = new OnePoleHP();
+    // 4 kHz texture band, independent stereo state
+    textureR = new OnePoleHP();
     bodyEnv = new EnvelopeFollower();
     textureEnv = new EnvelopeFollower();
     texturePeak = new EnvelopeFollower();
@@ -342,12 +345,13 @@
     // Published scores (persist between blocks so meters never strobe).
     signals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
     prepare(sampleRate2, qualityMode) {
-      this.sampleRate = sampleRate2;
       this.fast.setTimes(1e-3, 0.04, sampleRate2);
       this.mid.setTimes(0.01, 0.12, sampleRate2);
       this.slow.setTimes(0.06, 0.4, sampleRate2);
-      this.bodyLP.setFreq(250, sampleRate2);
-      this.textureHP.setFreq(4e3, sampleRate2);
+      this.bodyL.setFreq(250, sampleRate2);
+      this.bodyR.setFreq(250, sampleRate2);
+      this.textureL.setFreq(4e3, sampleRate2);
+      this.textureR.setFreq(4e3, sampleRate2);
       this.bodyEnv.setTimes(0.01, 0.15, sampleRate2);
       this.textureEnv.setTimes(0.01, 0.2, sampleRate2);
       this.texturePeak.setTimes(5e-4, 0.03, sampleRate2);
@@ -368,11 +372,16 @@
       this.bodyEnv.reset();
       this.textureEnv.reset();
       this.texturePeak.reset();
+      this.bodyL.reset();
+      this.bodyR.reset();
+      this.textureL.reset();
+      this.textureR.reset();
       this.outTransient.reset();
       this.outBody.reset();
       this.outTexture.reset();
       this.prevMid = 0;
       this.slope = 0;
+      this.ecoCounter = 0;
     }
     /**
      * Process one interleaved stereo frame (post input-gain tap). Returns the
@@ -391,10 +400,13 @@
       let texBand = this.textureEnv.value;
       let texPeak = this.texturePeak.value;
       if (this.ecoCounter++ % this.ecoDivisor === 0) {
-        bodyBand = this.bodyEnv.processAbs(Math.abs(this.bodyLP.process(l)));
-        const hf = this.textureHP.process(l);
-        texBand = this.textureEnv.processAbs(Math.abs(hf));
-        texPeak = this.texturePeak.processAbs(Math.abs(hf) > Math.abs(r) ? hf : this.textureHP.process(r));
+        const bodyL = this.bodyL.process(l);
+        const bodyR = this.bodyR.process(r);
+        bodyBand = this.bodyEnv.processAbs(0.5 * (Math.abs(bodyL) + Math.abs(bodyR)));
+        const textureL = this.textureL.process(l);
+        const textureR = this.textureR.process(r);
+        texBand = this.textureEnv.processAbs(0.5 * (Math.abs(textureL) + Math.abs(textureR)));
+        texPeak = this.texturePeak.processAbs(Math.max(Math.abs(textureL), Math.abs(textureR)));
       }
       const ref = 0.1;
       const inputEnergy = clamp01(fastV / (ref * 2));
@@ -403,7 +415,7 @@
       const transientRaw = clamp01(6 * this.slope * (1 / (ref * 8)) + 1.4 * divergence);
       const transient = smoothScore(this.outTransient, transientRaw * this.sens.transient);
       const totalE = midV + 1e-9;
-      const lowShare = this.bodyEnv.value / totalE;
+      const lowShare = bodyBand / totalE;
       const sustain = clamp01(slowV / (totalE * 1.2));
       const bodyRaw = clamp01(2.2 * lowShare * sustain * (1 - 0.6 * transient));
       const body = smoothScore(this.outBody, bodyRaw * this.sens.body);
@@ -460,6 +472,8 @@
     }
     setParams(p2) {
       this.params = p2;
+      this.atkCoef = tcToCoef(p2.attackMs / 1e3, this.sampleRate);
+      this.relCoef = tcToCoef(Math.max(p2.releaseMs / 1e3, 2e-3), this.sampleRate);
       this.scHP.setFreq(Math.max(p2.sidechainHpfHz, 5), this.sampleRate);
     }
     reset() {
@@ -479,13 +493,11 @@
       const peak = det;
       const rms = this.detectorEnv.processAbs(det);
       const level = peak * (1 - p2.detectorBlend) + rms * p2.detectorBlend;
-      const attackSec = p2.attackMs / 1e3;
-      let relSec = p2.releaseMs / 1e3;
+      let aRel = this.relCoef;
       if (punch !== 0 && transientScore > 0.05) {
-        relSec *= 1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore;
+        const relSec = p2.releaseMs / 1e3 * (1 + (punch > 0 ? 0.8 * punch : 0.5 * punch) * transientScore);
+        aRel = tcToCoef(Math.max(relSec, 2e-3), this.sampleRate);
       }
-      const aAtk = tcToCoef(attackSec, this.sampleRate);
-      const aRel = tcToCoef(Math.max(relSec, 2e-3), this.sampleRate);
       const overDb = level > 1e-6 ? 20 * Math.log10(level) - p2.thresholdDb : -120;
       let targetGainDb;
       if (overDb <= -p2.kneeDb / 2) {
@@ -500,7 +512,7 @@
         targetGainDb *= 1 - Math.min(0.9, punch * transientScore * 0.85);
       }
       const targetLin = dbToLin(targetGainDb);
-      const a = targetLin < this.gain ? aAtk : aRel;
+      const a = targetLin < this.gain ? this.atkCoef : aRel;
       this.gain = targetLin + a * (this.gain - targetLin);
       const autoDb = p2.makeupAuto ? Math.max(0, -p2.thresholdDb) * 0.12 * (1 - 1 / p2.ratio) * 2 : 0;
       const makeup = dbToLin(autoDb + p2.makeupDb);
@@ -537,7 +549,6 @@
       if (this.bypassed) {
         out.l = l;
         out.r = r;
-        this.warm = false;
         return;
       }
       const p2 = this.params;
@@ -633,12 +644,19 @@
       out.l = wl;
       out.r = wr;
     }
+    /**
+     * Cascade of first-order all-pass sections, H(z) = (c + z⁻¹)/(1 + c·z⁻¹):
+     *   v = c·x + s,  s' = x − c·v   (s carries x[n−1] − c·y[n−1])
+     * The pole sits at −c, so |c| < 1 (clampUnit) is the stability bound and
+     * |H| ≡ 1 — the feedback loop around the cascade is gain-safe for |fb|<1.
+     */
     apChain(coef, state, x) {
       let y = x;
       for (let i = 0; i < STAGES; i++) {
         const c = coef[i];
-        const v = y + c * state[i];
+        const v = c * y + state[i];
         state[i] = y - c * v;
+        if (state[i] > -1e-20 && state[i] < 1e-20) state[i] = 0;
         y = v;
       }
       return y;
@@ -650,7 +668,7 @@
   var COMB_MS_L = [23.7, 31.3, 37.1, 43.9];
   var COMB_MS_R = [26.3, 29.7, 38.9, 45.1];
   var AP_MS = [5.1, 8.3];
-  var MAX_COMB_GAIN = 0.88;
+  var MAX_COMB_GAIN = 0.95;
   var SpaceStage = class {
     sampleRate = 48e3;
     combsL = [];
@@ -719,7 +737,7 @@
       this.preFrac = preSamples - Math.floor(preSamples);
     }
     decayGain(decayS, lenSec) {
-      const g = Math.pow(10, -3 * decayS * lenSec / (COMB_COUNT * 0.9));
+      const g = Math.pow(10, -3 * lenSec / Math.max(decayS, 0.05));
       return Math.min(MAX_COMB_GAIN, Math.max(0, Number.isFinite(g) ? g : 0));
     }
     reset() {
@@ -805,7 +823,6 @@
     return t * t * (3 - 2 * t);
   }
   var MorphDynamicsProcessor = class {
-    sampleRate = 48e3;
     params = buildDefaultParams();
     analysis = new FeatureExtractor();
     dyn = new DynamicsStage();
@@ -845,7 +862,9 @@
     rawDelta = new Array(MOD_DESTINATIONS.length).fill(0);
     // Per-route activity for the matrix UI (post-modulation magnitude 0..1).
     routeActivity = new Array(ROUTE_SLOTS).fill(0);
-    metersEnabled = false;
+    // Core users (offline render/tests) get meters by default. The AudioWorklet
+    // host disables them when no panel is observing this instance.
+    metersEnabled = true;
     meters = {
       inputPeakDb: -100,
       outputPeakDb: -100,
@@ -862,7 +881,14 @@
     outPeakHold = 0;
     disposed = false;
     prepare(sampleRate2, _channelCount, maxBlockSize, qualityMode) {
-      this.sampleRate = sampleRate2;
+      const controlRate = sampleRate2 / Math.max(1, maxBlockSize);
+      for (const smoother of Object.values(this.sm)) {
+        if (Array.isArray(smoother)) {
+          for (const item of smoother) item.setSampleRate(controlRate);
+        } else {
+          smoother.setSampleRate(controlRate);
+        }
+      }
       this.analysis.prepare(sampleRate2, qualityMode);
       this.dyn.prepare(sampleRate2);
       this.character.prepare(sampleRate2);
@@ -874,6 +900,16 @@
     }
     setMetersEnabled(enabled) {
       this.metersEnabled = enabled;
+      if (!enabled) {
+        this.inPeakHold = 0;
+        this.outPeakHold = 0;
+        this.meters.inputPeakDb = -100;
+        this.meters.outputPeakDb = -100;
+        this.meters.gainReductionDb = 0;
+        this.meters.pressureActive = 0;
+        this.routeActivity.fill(0);
+        this.meters.routes.fill(0);
+      }
     }
     getLatencySamples() {
       return 0;
@@ -969,7 +1005,7 @@
         const amount = q[routeParamId(slot, "amount")] / 100;
         const delta = amount * s * dest.span * routeScale;
         this.rawDelta[destIdx] += delta;
-        this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
+        if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
       }
       const modDelta = this.sm.mod;
       for (let d = 0; d < modDelta.length; d++) {
@@ -1082,10 +1118,12 @@
         const outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
         L[i] = outL;
         R[i] = outR;
-        const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
-        const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
-        if (aIn > inPeak) inPeak = aIn;
-        if (aOut > outPeak) outPeak = aOut;
+        if (this.metersEnabled) {
+          const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
+          const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
+          if (aIn > inPeak) inPeak = aIn;
+          if (aOut > outPeak) outPeak = aOut;
+        }
       }
       if (!Number.isFinite(L[0]) || !Number.isFinite(R[0])) {
         this.reset();
@@ -1096,18 +1134,20 @@
         inPeak = 0;
         outPeak = 0;
       }
-      this.inPeakHold = Math.max(inPeak, this.inPeakHold * 0.85);
-      this.outPeakHold = Math.max(outPeak, this.outPeakHold * 0.85);
-      this.meters.inputPeakDb = linToDbMeter(this.inPeakHold);
-      this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
-      this.meters.gainReductionDb = this.dyn.grDb;
+      if (this.metersEnabled) {
+        this.inPeakHold = Math.max(inPeak, this.inPeakHold * 0.85);
+        this.outPeakHold = Math.max(outPeak, this.outPeakHold * 0.85);
+        this.meters.inputPeakDb = linToDbMeter(this.inPeakHold);
+        this.meters.outputPeakDb = linToDbMeter(this.outPeakHold);
+        this.meters.gainReductionDb = this.dyn.grDb;
+        this.meters.pressureActive = routeScale;
+        for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
+      }
       this.meters.transient = this.meters.transient * 0.5 + sig.transient * 0.5;
       this.meters.body = this.meters.body * 0.7 + sig.body * 0.3;
       this.meters.texture = this.meters.texture * 0.7 + sig.texture * 0.3;
       this.meters.density = sig.density;
       this.meters.inputEnergy = sig.inputEnergy;
-      this.meters.pressureActive = routeScale;
-      for (let s = 0; s < ROUTE_SLOTS; s++) this.meters.routes[s] = this.routeActivity[s];
     }
     /** Route slot that most recently configured destination d's smoother. */
     routeSmoothOwner(d) {
@@ -1141,13 +1181,7 @@
     pendingParams = [];
     constructor(options) {
       super();
-      this.proc.prepare({
-        sampleRate,
-        channelCount: CHANNELS,
-        maxBlockSize: MAX_BLOCK,
-        qualityMode: 1
-        // "normal"
-      });
+      this.proc.prepare(sampleRate, CHANNELS, MAX_BLOCK, 1);
       const initial = options?.processorOptions?.params;
       if (initial) this.proc.loadState(initial);
       this.postLatency();

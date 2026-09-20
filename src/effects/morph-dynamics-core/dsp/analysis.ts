@@ -38,7 +38,6 @@ export interface AnalysisSignals {
 }
 
 export class FeatureExtractor {
-  private sampleRate = 48000;
 
   // Multi-timescale envelopes on the (rectified) mono analysis tap.
   private fast = new EnvelopeFollower(); // ~1 ms attack — transient edge
@@ -46,8 +45,10 @@ export class FeatureExtractor {
   private slow = new EnvelopeFollower(); // ~60 ms — density/context
 
   // Band-limited taps for body/texture energy.
-  private bodyLP = new OnePoleLP(); // 250 Hz body band
-  private textureHP = new OnePoleHP(); // 4 kHz texture band
+  private bodyL = new OnePoleLP(); // 250 Hz body band, independent stereo state
+  private bodyR = new OnePoleLP();
+  private textureL = new OnePoleHP(); // 4 kHz texture band, independent stereo state
+  private textureR = new OnePoleHP();
   private bodyEnv = new EnvelopeFollower();
   private textureEnv = new EnvelopeFollower();
   private texturePeak = new EnvelopeFollower(); // crest of the HF band
@@ -70,12 +71,13 @@ export class FeatureExtractor {
   private signals: AnalysisSignals = { inputEnergy: 0, transient: 0, body: 0, texture: 0, density: 0 };
 
   prepare(sampleRate: number, qualityMode: number): void {
-    this.sampleRate = sampleRate;
     this.fast.setTimes(0.001, 0.04, sampleRate);
     this.mid.setTimes(0.01, 0.12, sampleRate);
     this.slow.setTimes(0.06, 0.4, sampleRate);
-    this.bodyLP.setFreq(250, sampleRate);
-    this.textureHP.setFreq(4000, sampleRate);
+    this.bodyL.setFreq(250, sampleRate);
+    this.bodyR.setFreq(250, sampleRate);
+    this.textureL.setFreq(4000, sampleRate);
+    this.textureR.setFreq(4000, sampleRate);
     this.bodyEnv.setTimes(0.01, 0.15, sampleRate);
     this.textureEnv.setTimes(0.01, 0.2, sampleRate);
     this.texturePeak.setTimes(0.0005, 0.03, sampleRate);
@@ -102,11 +104,16 @@ export class FeatureExtractor {
     this.bodyEnv.reset();
     this.textureEnv.reset();
     this.texturePeak.reset();
+    this.bodyL.reset();
+    this.bodyR.reset();
+    this.textureL.reset();
+    this.textureR.reset();
     this.outTransient.reset();
     this.outBody.reset();
     this.outTexture.reset();
     this.prevMid = 0;
     this.slope = 0;
+    this.ecoCounter = 0;
   }
 
   /**
@@ -131,10 +138,13 @@ export class FeatureExtractor {
     let texBand = this.textureEnv.value;
     let texPeak = this.texturePeak.value;
     if (this.ecoCounter++ % this.ecoDivisor === 0) {
-      bodyBand = this.bodyEnv.processAbs(Math.abs(this.bodyLP.process(l)));
-      const hf = this.textureHP.process(l);
-      texBand = this.textureEnv.processAbs(Math.abs(hf));
-      texPeak = this.texturePeak.processAbs(Math.abs(hf) > Math.abs(r) ? hf : this.textureHP.process(r));
+      const bodyL = this.bodyL.process(l);
+      const bodyR = this.bodyR.process(r);
+      bodyBand = this.bodyEnv.processAbs(0.5 * (Math.abs(bodyL) + Math.abs(bodyR)));
+      const textureL = this.textureL.process(l);
+      const textureR = this.textureR.process(r);
+      texBand = this.textureEnv.processAbs(0.5 * (Math.abs(textureL) + Math.abs(textureR)));
+      texPeak = this.texturePeak.processAbs(Math.max(Math.abs(textureL), Math.abs(textureR)));
     }
 
     // ── Score synthesis ─────────────────────────────────────
@@ -152,7 +162,7 @@ export class FeatureExtractor {
 
     // Body: low-band share of total energy, gated by sustained-ness.
     const totalE = midV + 1e-9;
-    const lowShare = this.bodyEnv.value / totalE;
+    const lowShare = bodyBand / totalE;
     const sustain = clamp01(slowV / (totalE * 1.2));
     const bodyRaw = clamp01(2.2 * lowShare * sustain * (1 - 0.6 * transient));
     const body = smoothScore(this.outBody, bodyRaw * this.sens.body);
