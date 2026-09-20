@@ -47,7 +47,11 @@ import {
 import { MOD_DESTINATIONS, MOD_SOURCES } from "../effects/morph-dynamics-core/contracts/modulation";
 import type { MorphMeters } from "../effects/morph-dynamics-core/contracts/meters";
 import { clampParam } from "../effects/morph-dynamics-core/contracts/parameterSchema";
-import { FACTORY_PRESETS, applyMorphPreset } from "../effects/morph-dynamics-core/presets/factoryPresets";
+import {
+  FACTORY_PRESETS,
+  SCENE_PRESET_IDS,
+  applyMorphPreset,
+} from "../effects/morph-dynamics-core/presets/factoryPresets";
 import {
   MorphPresetRepository,
   MORPH_PRESET_SCHEMA_VERSION,
@@ -273,10 +277,24 @@ export function MorphDynamicsPanel({
   };
 
   const groupedPresets = useMemo(() => {
-    return PRESET_CATEGORIES.map((cat) => ({
-      ...cat,
-      presets: FACTORY_PRESETS.filter((p) => p.category === cat.key),
+    // SCENE presets (drill/phonk/jersey/dnb — the app-native genres) lead
+    // the list so the user's own material is one click away; source
+    // categories follow.
+    const scene = {
+      key: "scene",
+      label: "SCENE",
+      presets: SCENE_PRESET_IDS.map((id) => FACTORY_PRESETS.find((p) => p.id === id)).filter(
+        (p): p is (typeof FACTORY_PRESETS)[number] => p !== undefined,
+      ),
+    };
+    const categories = PRESET_CATEGORIES.map((cat) => ({
+      key: cat.key,
+      label: cat.label,
+      presets: FACTORY_PRESETS.filter(
+        (p) => p.category === cat.key && !(SCENE_PRESET_IDS as readonly string[]).includes(p.id),
+      ),
     })).filter((g) => g.presets.length > 0);
+    return scene.presets.length > 0 ? [scene, ...categories] : categories;
   }, []);
 
   const macro = (id: string, label: string, min: number, bipolar = false) => (

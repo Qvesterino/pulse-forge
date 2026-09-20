@@ -2,6 +2,7 @@ import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../ai/ty
 import { isMusicalKey } from "../project-model/types";
 import { INTENT_SCHEMA_VERSION, type IntentInput, type IntentRole, type IntentSpec } from "./types";
 import { assertIntentSpec } from "./schema";
+import { sanitizeFxIntent } from "./production";
 
 const DEFAULT_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
 
@@ -107,6 +108,9 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
       typeof source.sourcePatternId === "string" && source.sourcePatternId.length > 0 ? source.sourcePatternId : null,
     replaceMode: source.replaceMode === "replace" ? "replace" : "new",
     applyGrooveSettings: bool(source.applyGrooveSettings, false),
+    // FX riding with the generation — sanitized (invalid data drops to null,
+    // never rejects the intent).
+    fx: sanitizeFxIntent(source.fx),
   };
   assertIntentSpec(normalized);
   return normalized;

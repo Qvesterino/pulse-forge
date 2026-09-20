@@ -1,5 +1,6 @@
 import type {
   ArrangementTransitionType,
+  EffectType,
   InstrumentTrack,
   Marker,
   MusicalKey,
@@ -21,9 +22,16 @@ import {
   SONG_LOUDNESS_TRIM_LIMIT_DB,
 } from "./genre-reference.generated";
 import type { Command } from "../commands/types";
+import {
+  addEffect,
+  setBeatManglerSteps,
+  setEffectParam,
+  snapshot,
+  trackEffectsOf,
+} from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
-import { snapshot } from "../commands/commands";
-import type { IntentInput, IntentRole, IntentSpec } from "./types";
+import type { EffectType, IntentInput, IntentRole, IntentSpec } from "./types";
+import { planProductionActions, resolveProductionTargets, type ProductionAction, type ProductionIntent } from "./production";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -60,6 +68,12 @@ export interface SongSectionSpec {
    * arrangement is instrumentation, not just louder/quieter.
    */
   instrumentation: IntentRole[];
+  /**
+   * Wave 3 — an FX request scoped to THIS section ("vinyl break"). The
+   * effect chain is installed on the section's target track and gated to
+   * this section via sceneAutomation on its mix param.
+   */
+  fx?: ProductionIntent | null;
 }
 
 /** Per-genre song forms (bar counts + arrangement furniture). */
@@ -779,17 +793,21 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
  * Plan the song form for an intent — deterministic (same intent ⇒ same form).
  * Section sliders are the BASE intent shifted by role deltas and clamped.
  */
-export function planSongForm(intent: IntentSpec): {
+export function planSongForm(intent: IntentSpec, overrides?: SectionParse): {
   genre: IntentSpec["genre"];
   sections: SongSectionSpec[];
   totalBars: number;
 } {
-  const sections = SONG_FORMS[intent.genre].map((section) => ({
+  const planned = SONG_FORMS[intent.genre].map((section) => ({
     ...section,
     energyDelta: clamp01(intent.energy + section.energyDelta),
     densityDelta: clamp01(intent.density + section.densityDelta),
     complexityDelta: clamp01(intent.complexity + section.complexityDelta),
   }));
+  // Wave 2 — the sentence shapes the form: "16-bar intro", "chorus twice",
+  // "no break", "vinyl break". An over-eager request never empties the form
+  // (applySectionRequests guards the invariant).
+  const sections = overrides ? applySectionRequests(planned, overrides) : planned;
   return {
     genre: intent.genre,
     sections,
@@ -821,6 +839,12 @@ export interface BuildSongOptions {
   onProgress?: (done: number, label: string, total: number) => void;
   /** Yield control between sections (UI responsiveness). Default true. */
   yieldBetweenSections?: boolean;
+  /**
+   * Wave 2 — section requests parsed from the sentence ("16-bar intro",
+   * "no break", "vinyl break"). Applied to the planned form before
+   * generation; scoped FX ride on the sections into applySongCommand.
+   */
+  sections?: SectionParse;
 }
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -838,7 +862,7 @@ export async function buildSong(
   options: BuildSongOptions = {},
 ): Promise<SongBuild> {
   const baseIntent = normalizeIntent(input);
-  const form = planSongForm(baseIntent);
+  const form = planSongForm(baseIntent, options.sections);
   const sections: SongBuildSection[] = [];
   let resolvedBpm: number | null = null;
   let key: MusicalKey | null = baseIntent.key ?? doc.key ?? null;

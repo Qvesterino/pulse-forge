@@ -24,6 +24,7 @@ import { MOD_DESTINATIONS, MOD_SOURCES } from "../src/effects/morph-dynamics-cor
 import {
   FACTORY_PRESETS,
   GOLDEN_PRESET_IDS,
+  SCENE_PRESET_IDS,
   applyMorphPreset,
 } from "../src/effects/morph-dynamics-core/presets/factoryPresets";
 import { MorphPresetRepository, sanitizeMorphPresetParams } from "../src/persistence/MorphPresetRepository";
@@ -115,6 +116,17 @@ describe("morph-dynamics factory presets", () => {
     GOLDEN_PRESET_IDS.forEach((goldenId, index) => {
       expect(ids[index]).toBe(goldenId);
     });
+  });
+
+  it("contains the 4 SCENE presets (drill/phonk/jersey/dnb) as valid, applying presets", () => {
+    for (const sceneId of SCENE_PRESET_IDS) {
+      const preset = FACTORY_PRESETS.find((p) => p.id === sceneId);
+      expect(preset).toBeDefined();
+      expect(preset!.description.length).toBeGreaterThan(10);
+      const applied = applyMorphPreset(preset!.params);
+      expect(applied["macro.pressure"]).toBeGreaterThanOrEqual(0);
+      expect(applied["macro.pressure"]).toBeLessThanOrEqual(100);
+    }
   });
 
   it("applies every preset to a fully-clamped, complete param map", () => {

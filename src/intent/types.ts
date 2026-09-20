@@ -1,6 +1,7 @@
 import type { MusicalKey, Pattern, ProjectDocument, PatternGeneration } from "../project-model/types";
 import type { GenerateOptions, GrooveData } from "../ai/types";
 import type { CandidateBankEntry } from "./candidate-bank";
+import type { ProductionIntent } from "./production";
 
 export const INTENT_SCHEMA_VERSION = 1 as const;
 
@@ -55,6 +56,12 @@ export interface IntentSpec {
   sourcePatternId: string | null;
   replaceMode: GenerateOptions["replaceMode"];
   applyGrooveSettings: boolean;
+  /**
+   * FX requests riding WITH the generation (wave: "wobbly drill" — the
+   * character travels with the candidate, USE applies pattern + FX as one
+   * step). Sanitized by normalizeIntent; null = no FX requested.
+   */
+  fx?: ProductionIntent | null;
 }
 
 /** Untrusted/user input accepted by normalizeIntent. */

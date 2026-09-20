@@ -62,7 +62,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   // Median-of-5 on the voiced pitch curve — kills single-frame octave flips
   // and takes the edge off vibrato before run splitting.
   const midi = voiced.map((f) => f.midi);
-  const smoothed = midi.map((value, i) => {
+  const smoothed = midi.map((_value, i) => {
     const window = midi.slice(Math.max(0, i - 2), i + 3).sort((a, b) => a - b);
     return window[Math.floor(window.length / 2)];
   });
@@ -80,7 +80,6 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   let pendingSplit = 0;
   let splitRef = 0;
   for (let i = 0; i < voiced.length; i++) {
-    const t = voiced[i].timeSec;
     const pitch = smoothed[i];
     if (current && Math.abs(pitch - splitRef) >= SPLIT_SEMITONES) {
       pendingSplit += 1;

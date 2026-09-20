@@ -324,3 +324,125 @@ export function removeMixEffect(
   }
   return snapshot("removeMixEffect", `Remove ${effectType} from ${target}`, doc, cursor);
 }
+
+
+// ── D1 v2a: TARGETED EFFECT INTENTS ─────────────────────────────────────────
+// "viac delayu na leade", "add reverb to the bridge", "menej filtra na basi" —
+// effect × target × direction grammar above the profile-level mix. Targets
+// are TRACK roles; scene roles expand through the song-builder instrumentation
+// map (a bridge plays chords+lead, so reverb "on the bridge" lands there).
+
+export interface EffectIntent {
+  effectType: EffectType;
+  targets: MixTarget[];
+  direction: "more" | "less" | "remove";
+  amount: "subtle" | "medium" | "huge";
+  detected: string[];
+}
+
+/** Primary knob per effect — the one a "more/less X" request turns. */
+export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
+  delay: "mix",
+  reverb: "mix",
+  saturation: "drive",
+  distortion: "drive",
+  chorus: "mix",
+  flanger: "mix",
+  phaser: "mix",
+  tremolo: "mix",
+  bitcrusher: "mix",
+  compressor: "ratio",
+  pump: "amount",
+};
+
+const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
+  [/\breverb\b|\bdozvuk\b|\bozven/, "reverb"],
+  [/\bdelay\b|\bdelayu\b|\bdekou/, "delay"],
+  [/\bdistortion\b|\bdistort|\bsaturat|\bdrive\b|\bdriv/, "saturation"],
+  [/\bchorus\b|\bkorus/, "chorus"],
+  [/\bflanger\b/, "flanger"],
+  [/\bphaser\b|\bfazer/, "phaser"],
+  [/\btremolo\b/, "tremolo"],
+  [/\bbitcrusher\b|\bcrush/, "bitcrusher"],
+  [/\bcompress(?:ion|or)?\b|\bkompres/, "compressor"],
+  [/\bsidechain\b|\bpump(?:a|e|u)?\b/, "pump"],
+  [/\beq\b|\bfilter\b|\bfiltr/, "eq"],
+];
+
+/** Scene role → the tracks its instrumentation plays (song-builder map). */
+const ROLE_TARGETS: Record<string, MixTarget[]> = {
+  intro: ["drums", "bass"],
+  outro: ["drums", "bass"],
+  verse: ["drums", "bass", "chords"],
+  build: ["drums", "bass", "chords"],
+  break: ["chords", "lead"],
+  bridge: ["chords", "lead"],
+  chorus: ["drums", "bass", "chords", "lead"],
+  drop: ["drums", "bass", "chords", "lead"],
+  fill: ["drums"],
+};
+
+const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
+  [/\bdrum|\bbic/, "drums"],
+  [/\bbass\b|\bbas(?:a|u|y|ou|ov)?\b|\b808\b/, "bass"],
+  [/\bchord|\bakord|\bpad/, "chords"],
+  [/\blead(?:om|u|a)?\b|\bmelod/, "lead"],
+];
+
+/** Parse a TARGETED effect request. Null when no effect×sentence is present. */
+export function parseEffectIntent(text: string): EffectIntent | null {
+  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
+  let effectType: EffectType | null = null;
+  for (const [re, type] of EFFECT_WORDS) {
+    if (re.test(lower)) {
+      effectType = type;
+      break;
+    }
+  }
+  if (!effectType) return null;
+
+  // remove wins over add (explicit "remove X" / "bez X" / "menej X")
+  let direction: EffectIntent["direction"] = "more";
+  if (/\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\b|\bmenej (?:delay|dozvuk|ozven)/.test(lower)) {
+    direction = "remove";
+  } else if (/\bless\b|\bmenej/.test(lower)) {
+    direction = "less";
+  }
+
+  const targets = new Set<MixTarget>();
+  for (const [re, target] of TARGET_WORDS) {
+    if (re.test(lower)) targets.add(target);
+  }
+  // scene-role targets expand to their instrumentation
+  for (const [role, expanded] of Object.entries(ROLE_TARGETS)) {
+    if (new RegExp(`\b${role}\b`).test(lower)) {
+      for (const target of expanded) targets.add(target);
+    }
+  }
+  if (targets.size === 0) {
+    // no explicit target — every drum/instrument role (the whole beat)
+    targets.add("drums");
+    targets.add("bass");
+    targets.add("chords");
+    targets.add("lead");
+  }
+
+  let amount: EffectIntent["amount"] = "medium";
+  if (/\bsubtle\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
+  else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi/.test(lower)) amount = "huge";
+
+  const detected = [`${direction} ${effectType}`, `→ ${[...targets].join("+")}`];
+  if (amount !== "medium") detected.push(amount);
+  return { effectType, targets: [...targets], direction, amount, detected };
+}
+
+const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medium: 1, huge: 1.75 };
+
+/** The knob delta for one targeted adjustment (pre-clamp). */
+export function effectKnobDelta(intent: EffectIntent): number {
+  const scale = AMOUNT_SCALE[intent.amount];
+  const base = 0.16 * scale;
+  return intent.direction === "more" ? base : -base;
+}
+
+/* sentinel-test */

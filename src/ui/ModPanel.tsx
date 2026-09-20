@@ -1330,7 +1330,7 @@ function ScenePanel() {
   const sceneLanes = scene ? sceneAutomation.filter((l) => l.sceneId === scene.id) : [];
 
   // Groove pool: saved groove maps (from "Steal groove") applicable to any pattern.
-  const groovePoolRef = useRef(new GroovePoolRepository());
+  const groovePoolRef = useRef(services.groovePool);
   const [poolEntries, setPoolEntries] = useState<GroovePoolEntry[]>([]);
   const [poolStatus, setPoolStatus] = useState<string | null>(null);
   const refreshPool = () => void groovePoolRef.current.list().then(setPoolEntries);

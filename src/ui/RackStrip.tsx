@@ -310,7 +310,7 @@ export function RackStrip({
       const kitPads = captureKitFromTrack(doc, track.id);
       let grooves: SharedPack["grooves"];
       try {
-        const pool = await new GroovePoolRepository().list();
+        const pool = await services.groovePool.list();
         grooves = pool.slice(0, 8).map((g) => ({ name: g.name, timing: g.timing, accent: g.accent }));
       } catch {
         grooves = undefined;
@@ -349,7 +349,7 @@ export function RackStrip({
     if (pack.binds) importPadKeys(pack.binds);
     if (pack.theme) setTheme(pack.theme);
     if (pack.grooves?.length) {
-      const repo = new GroovePoolRepository();
+      const repo = services.groovePool;
       void Promise.all(
         pack.grooves.map((g) =>
           repo.save({

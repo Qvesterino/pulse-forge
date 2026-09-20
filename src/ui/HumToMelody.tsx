@@ -124,8 +124,6 @@ export function HumToMelodyPanel({
       } catch {
         /* recovery cleanup is best-effort — never block the flow */
       }
-      const ctx = services.engine.getLiveAudioContext();
-      const sampleRate = ctx?.sampleRate ?? take.buffer.sampleRate;
       const channel = take.buffer.getChannelData(0);
       const frames = await trackPitchAsync(channel, take.buffer.sampleRate);
       const extracted = framesToNotes(frames, {

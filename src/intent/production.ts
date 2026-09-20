@@ -64,7 +64,25 @@ interface ConceptDef {
   defaultTarget: ProductionTarget;
 }
 
-const CONCEPTS: ConceptDef[] = [
+export const PRODUCTION_CONCEPTS: readonly ProductionConcept[] = [
+  "deeper",
+  "punchier",
+  "warmer",
+  "darker",
+  "brighter",
+  "wider",
+  "grittier",
+  "glue",
+  "lofi",
+  "wobbly",
+  "robotic",
+  "metallic",
+];
+
+export const PRODUCTION_TARGETS: readonly ProductionTarget[] = ["drums", "bass", "lead", "chords"];
+
+/** Exposed for section-scoped FX parsing ("vinyl break") in intent/sections.ts. */
+export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "deeper",
     defaultTarget: "bass",
@@ -338,4 +356,32 @@ export function productionIntentHash(intent: ProductionIntent): string {
   return hashString(`${intent.sourceText}|${intent.goals.map((g) => `${g.concept}:${g.amount}`).join("|")}`).toString(
     36,
   );
+}
+
+/**
+ * Sanitize untrusted fx data (normalized intents carry it through share
+ * codes, song builds and candidate plans). Returns null unless the shape is
+ * a valid ProductionIntent with known concepts/targets — an invalid fx field
+ * must never reject the whole intent.
+ */
+export function sanitizeFxIntent(raw: unknown): ProductionIntent | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (!Array.isArray(r.targets) || !Array.isArray(r.goals)) return null;
+  const targets = [...new Set(r.targets.filter((t): t is ProductionTarget => PRODUCTION_TARGETS.includes(t as never)))];
+  const goals: ProductionGoal[] = [];
+  for (const goal of r.goals) {
+    if (typeof goal !== "object" || goal === null) continue;
+    const g = goal as Record<string, unknown>;
+    if (typeof g.concept !== "string" || !PRODUCTION_CONCEPTS.includes(g.concept as never)) continue;
+    const amount =
+      typeof g.amount === "number" && Number.isFinite(g.amount) ? Math.min(1, Math.max(0, g.amount)) : DEFAULT_AMOUNT;
+    goals.push({ concept: g.concept as ProductionConcept, amount });
+  }
+  if (goals.length === 0) return null;
+  return {
+    targets,
+    goals,
+    sourceText: typeof r.sourceText === "string" ? r.sourceText.slice(0, 500) : "",
+  };
 }

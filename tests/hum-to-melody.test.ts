@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { trackPitch, PITCH_CLARITY_GATE } from "../src/audio-workers/pitch-tracker";
@@ -108,12 +108,12 @@ describe("framesToNotes — segmentation, key snap, quantize", () => {
     const notes = framesToNotes(frames, { ...base, patternLengthTicks: 1920 * 8 });
     expect(notes.length).toBe(3);
     expect(notes.map((n) => n.pitch)).toEqual([57, 60, 64]);
-    // Quantized starts sit on the 16th grid; first note ≈ 0.4 s in (1.5 beats
-    // = 720 ticks); the dropout did not split it (duration ≈ 0.74 s ≈ 6 steps).
+    // Quantized starts sit on the 16th grid; first note starts ≈ 0.39 s in
+    // (≈ 374 ticks → quantized 360); the dropout did not split it (the run
+    // spans ≈ 0.75 s (0.39→1.14) ≈ 720 ticks quantized.
     for (const note of notes) expect(note.start % 120).toBe(0);
-    expect(notes[0]!.start).toBeGreaterThanOrEqual(600);
-    expect(notes[0]!.duration).toBeGreaterThanOrEqual(480);
-    expect(notes[0]!.duration).toBeLessThan(1080);
+    expect(notes[0]!.start).toBe(360);
+    expect(notes[0]!.duration).toBe(720);
     // Velocity ordering follows loudness — all segments use the same amp.
     for (const note of notes) expect(note.velocity).toBeCloseTo(0.9, 1);
   });
@@ -174,9 +174,9 @@ describe("humToNotesCommand", () => {
     const next = command.execute(docSeeded);
     const applied = next.patterns.find((p) => p.id === seeded.id)!.notes[track.id]!;
     expect(applied.map((n) => n.pitch)).toEqual([60, 64]);
-    // Undo restores the previous state (compare the affected slices — the
-    // delta path may reproduce the doc rather than return the same object).
-    const undone = command.undo(docSeeded);
+    // Undo applies the inverse patch to the EXECUTED state (delta snapshot
+    // contract — stale dispatch on the old doc must not corrupt anything).
+    const undone = command.undo(next);
     const undonePattern = undone.patterns.find((p) => p.id === seeded.id)!;
     expect(undonePattern.notes[track.id]).toEqual([note(72, 0)]);
     expect(undone.patterns).toHaveLength(docSeeded.patterns.length);

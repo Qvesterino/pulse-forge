@@ -44,6 +44,19 @@ export const GOLDEN_PRESET_IDS = [
   "morph-extreme-creative",
 ] as const;
 
+/**
+ * SCENE presets — factory presets written directly for the app-native
+ * genres (drill / phonk / jersey / dnb). Surfaced as their own group at
+ * the top of the panel's preset list so the user's material is one click
+ * away, not buried under source categories.
+ */
+export const SCENE_PRESET_IDS = [
+  "morph-drill-bus-pressure",
+  "morph-phonk-808-weight",
+  "morph-jersey-vocal-bark",
+  "morph-dnb-punch-glue",
+] as const;
+
 const R = {
   enabled: (slot: number) => `routes.${slot}.enabled`,
   source: (slot: number) => `routes.${slot}.source`,

@@ -4387,7 +4387,7 @@ function withTrackEffects(
   };
 }
 
-function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
+export function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
   const track = doc.tracks.find((t) => t.id === trackId);
   return track && "effects" in track ? track.effects : [];
 }
