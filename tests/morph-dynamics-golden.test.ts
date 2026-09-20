@@ -53,6 +53,19 @@ function noise(amplitude: number): (i: number) => number {
   };
 }
 
+/** Kick-like sidechain feed: 90 ms decaying 55 Hz thump each period. A
+ * single-sample impulse would be gone before the 5 ms attack engages and
+ * would never close the gain — real kicks have a body. */
+function kickTrain(periodSamples: number, amplitude: number): (i: number) => number {
+  const burst = Math.floor(0.09 * SR);
+  return (i: number) => {
+    const phase = i % periodSamples;
+    if (phase > burst) return 0;
+    const t = phase / SR;
+    return amplitude * Math.exp(-t / 0.02) * Math.sin(2 * Math.PI * 55 * t);
+  };
+}
+
 function render(proc: MorphDynamicsProcessor, gen: (i: number) => number, seconds: number): Render {
   const frames = Math.floor(seconds * SR);
   const blocks = Math.ceil(frames / BLOCK);
@@ -78,6 +91,37 @@ function rms(buf: Float32Array, from = 0, to = buf.length): number {
   let sum = 0;
   for (let i = from; i < to; i++) sum += buf[i] * buf[i];
   return Math.sqrt(sum / Math.max(1, to - from));
+}
+
+/** Like render(), with a parallel external sidechain feed. */
+function renderSc(
+  proc: MorphDynamicsProcessor,
+  genMain: (i: number) => number,
+  genSc: (i: number) => number,
+  seconds: number,
+): Render {
+  const frames = Math.floor(seconds * SR);
+  const blocks = Math.ceil(frames / BLOCK);
+  const outL = new Float32Array(blocks * BLOCK);
+  const outR = new Float32Array(blocks * BLOCK);
+  let meters = proc.getMeters();
+  for (let b = 0; b < blocks; b++) {
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const sc = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let i = 0; i < BLOCK; i++) {
+      const v = genMain(b * BLOCK + i);
+      input[0][i] = v;
+      input[1][i] = v;
+      const s = genSc(b * BLOCK + i);
+      sc[0][i] = s;
+      sc[1][i] = s;
+    }
+    proc.process(input, BLOCK, sc);
+    outL.set(input[0], b * BLOCK);
+    outR.set(input[1], b * BLOCK);
+    meters = proc.getMeters();
+  }
+  return { out: [outL, outR], meters };
 }
 
 function peakOf(buf: Float32Array): number {
@@ -291,9 +335,100 @@ describe("morph-dynamics core processor — thesis behavior", () => {
     expect(rms(drivenRun.out[0], Math.floor(0.3 * SR))).toBeGreaterThan(0.01);
     expect(Number.isFinite(drivenRun.out[0][drivenRun.out[0].length - 1])).toBe(true);
   });
+
+  it("2× oversampling kills the in-band alias of a hot high-frequency drive", () => {
+    // 13 kHz sine through heavy drive: the 3rd harmonic (39 kHz) exceeds the
+    // 48 kHz Nyquist — at 1× it FOLDS BACK to 9 kHz in-band; at 2× it is
+    // represented properly and the downsampling halfband removes it. Measure
+    // the 9 kHz ghost with a Goertzel window.
+    const ghost9k = (quality: number): number => {
+      const proc = makeProcessor({
+        "global.quality": quality,
+        "macro.pressure": 0,
+        "macro.punch": 0,
+        "macro.motion": 0,
+        "macro.space": 0,
+        "char.enabled": 1,
+        "char.drive": 70,
+        "dyn.thresholdDb": -10,
+        "dyn.ratio": 1.2,
+      });
+      const { out } = render(proc, sine(13000, 0.4), 0.4);
+      const from = Math.floor(0.2 * SR);
+      let re = 0;
+      let im = 0;
+      const f = 9000;
+      const w = (2 * Math.PI * f) / SR;
+      for (let i = from; i < out[0].length; i++) {
+        re += out[0][i] * Math.cos(w * i);
+        im -= out[0][i] * Math.sin(w * i);
+      }
+      const n = out[0].length - from;
+      return (2 * Math.sqrt(re * re + im * im)) / n;
+    };
+    const withoutOs = ghost9k(0);
+    const withOs = ghost9k(1);
+    expect(withOs).toBeLessThan(withoutOs * 0.2);
+  });
+
+  it("external sidechain: the feed drives the detector while the main path stays put", () => {
+    const base = {
+      "dyn.sidechainExt": 1,
+      "macro.pressure": 0,
+      "macro.punch": 0,
+      "macro.motion": 0,
+      "macro.space": 0,
+      "char.enabled": 0,
+      "dyn.thresholdDb": -40,
+      "dyn.ratio": 5,
+      "dyn.attackMs": 5,
+      "dyn.releaseMs": 300,
+    };
+    // Main: a very quiet sustained tone (below threshold — it never
+    // compresses itself). Feed: frequent kicks so the compression duty
+    // cycle is high.
+    const mainGen = sine(220, 0.008);
+    const scGen = kickTrain(Math.floor(SR / 6), 0.9);
+
+    // WITH feed: the kicks grab the EXT detector → the main path ducks.
+    const withFeed = makeProcessor(base);
+    const fedRun = renderSc(withFeed, mainGen, scGen, 1.2);
+
+    // WITHOUT a feed: same device state, but nothing is connected to the
+    // sidechain input (render() passes no sc) → the EXT detector sits
+    // silent → no compression → the tone passes at full level.
+    const withoutFeed = makeProcessor(base);
+    const bareRun = render(withoutFeed, mainGen, 1.2);
+
+    const tailFrom = Math.floor(0.6 * SR);
+    const fedRms = rms(fedRun.out[0], tailFrom);
+    const bareRms = rms(bareRun.out[0], tailFrom);
+    expect(fedRms).toBeLessThan(bareRms * 0.85);
+
+    // Sanity: with EXT off the same feed is ignored entirely (the main tone
+    // is below threshold → no self-compression → full level).
+    const intProc = makeProcessor({ ...base, "dyn.sidechainExt": 0 });
+    const intRun = renderSc(intProc, mainGen, scGen, 1.2);
+    expect(rms(intRun.out[0], tailFrom)).toBeGreaterThan(fedRms * 1.1);
+  });
 });
 
 describe("morph-dynamics core processor — hardening", () => {
+  it("reports the oversampling latency per state (drive off 0, drive on 8, eco 0)", () => {
+    const normal = makeProcessor(); // default quality 1, drive 0 → bypassed
+    expect(normal.getLatencySamples()).toBe(0);
+    normal.setParameter("char.drive", 70);
+    // The character's bypass state re-evaluates at block rate — run a block.
+    render(normal, () => 0, 0.01);
+    expect(normal.getLatencySamples()).toBe(8);
+    normal.setParameter("global.quality", 0);
+    render(normal, () => 0, 0.01);
+    expect(normal.getLatencySamples()).toBe(0);
+    normal.setParameter("global.quality", 1);
+    render(normal, () => 0, 0.01);
+    expect(normal.getLatencySamples()).toBe(8);
+  });
+
   it("is deterministic: identical runs are bit-identical", () => {
     const run = () => {
       const proc = makeProcessor(applyMorphPreset(FACTORY_PRESETS[3].params));

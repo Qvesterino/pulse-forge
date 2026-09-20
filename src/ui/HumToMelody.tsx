@@ -316,6 +316,32 @@ export function HumToMelodyPanel({
             {notes.length} notes · {range}
             {docKey ? ` · snapped to ${docKey}` : ""}
           </p>
+          <div className="hum-actions">
+            <button
+              type="button"
+              className={`btn btn-small${auditioning ? " active-solo" : ""}`}
+              title="Play the extracted notes through this track's instrument before applying"
+              onClick={() => (auditioning ? stopAudition() : startAudition())}
+            >
+              {auditioning ? "■ STOP" : "▶ AUDITION"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="Shift the whole take one octave down (people hum below the synth's comfortable range)"
+              onClick={() => shiftOctave(-1)}
+            >
+              OCT −
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="Shift the whole take one octave up"
+              onClick={() => shiftOctave(1)}
+            >
+              OCT +
+            </button>
+          </div>
           <label className="hum-mode">
             Mode{" "}
             <select value={mode} onChange={(e) => setMode(e.target.value as "replace" | "merge")}>
@@ -324,13 +350,21 @@ export function HumToMelodyPanel({
             </select>
           </label>
           <div className="hum-actions">
-            <button type="button" className="btn btn-small" onClick={apply}>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                stopAudition();
+                apply();
+              }}
+            >
               APPLY
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               onClick={() => {
+                stopAudition();
                 setNotes([]);
                 setPhase("idle");
               }}

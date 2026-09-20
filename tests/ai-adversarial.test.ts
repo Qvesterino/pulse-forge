@@ -254,7 +254,7 @@ describe("generator — adversarial inputs", () => {
   // TODO: src/ai/quality.ts:L28 — repairDrumRow does not clamp negative
   //       stepCount before `new Array(stepCount)`, leading to RangeError on
   //       negative input. Generator should pre-sanitize stepCount.
-  it.skip("survives negative stepCount without throwing", () => {
+  it("survives negative stepCount without throwing", () => { // re-enabled verification (see src/ai/quality.ts L27)
     const doc = freshDoc();
     expect(() => generatePattern(doc, makeOptions({ stepCount: -16 }))).not.toThrow();
   });
@@ -294,7 +294,7 @@ describe("generator — adversarial inputs", () => {
   //       genres: it dereferences `groove.id` on the result of an indexed
   //       lookup and throws when the genre isn't in the registry. Generator
   //       should fall back to a known genre instead.
-  it.skip("unknown genre string falls back without throwing", () => {
+  it("unknown genre string falls back without throwing", () => {
     const doc = freshDoc();
     expect(() => generatePattern(doc, makeOptions({ genre: "polka" as never }))).not.toThrow();
   });
@@ -415,7 +415,7 @@ describe("phrase — adversarial inputs", () => {
   // TODO: src/ai/phrase.ts:L14 — Math.ceil(stepCount/16) yields Infinity for Infinity
   //       input; Array.from({length: Infinity}) throws RangeError. BuildPhrasePlan
   //       should sanitize Infinity/NaN to a finite cap before allocating.
-  it.skip("buildPhrasePlan tolerates Infinity/NaN without throwing", () => {
+  it("buildPhrasePlan tolerates Infinity/NaN without throwing", () => {
     expect(() => buildPhrasePlan(Infinity)).not.toThrow();
     expect(() => buildPhrasePlan(NaN)).not.toThrow();
   });
@@ -617,7 +617,7 @@ describe("style-quality — adversarial inputs", () => {
   // TODO: src/ai/style-quality.ts:L137 — evaluateStyleDistance does not sanitize
   //       NaN/Infinity in the rows. A row of NaNs produces `distance = NaN` via
   //       `round(densityDistance * 0.4 + ...)`. Style gate should sanitize.
-  it.skip("evaluateStyleDistance on NaN/Infinity rows produces finite distance", () => {
+  it("evaluateStyleDistance on NaN/Infinity rows produces finite distance", () => {
     const groove = resolveGroove("techno", "Driving");
     const rows = [new Array(16).fill(NaN), new Array(16).fill(Infinity)];
     const result = evaluateStyleDistance(groove, rows, 16);

@@ -140,8 +140,17 @@ export function createReflectionsEngine(): ReflectionsEngine {
   }
 
   function recomputeLayout(): void {
-    const timeMs = clamp(params.time, 36.73, 250);
-    const diffusion = clamp(params.diffusion, 0, 100) / 100;
+    // Roadmap O1/O7: `space` and `size` are the documented macros ("adjusts
+    // time + size together", default 0.5). They were carried in the state,
+    // written by the assistant and exposed as automation targets, but read
+    // by NO engine — an automated "space" produced no sound change. Wire
+    // them as multiplicative offsets around the neutral 0.5 midpoint so
+    // existing projects (space/size = 0.5) stay bit-identical.
+    // (Reconciled from Pulse Forge audit, 2026-09-19.)
+    const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
+    const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.6;
+    const timeMs = clamp(params.time * spaceScale, 36.73, 250);
+    const diffusion = clamp((clamp(params.diffusion, 0, 100) / 100) * sizeScale, 0, 1);
     const angle = clamp(params.angle, 0, 100) / 100;
 
     // Use `diffusion` to decide how many taps are active. diffusion 0 = 4 taps,

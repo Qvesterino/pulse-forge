@@ -125,12 +125,6 @@ const wordList = (words: readonly string[]): string => words.map(w).join("|");
  */
 const ROLE_ATOM = `((?:${wordList(ALL_ROLE_WORDS)})(?:u|a|om|e|y|i)?)`;
 
-const deacc = (word: string): string =>
-  word
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
 /**
  * SK declensions ("bez breaku", "dlhý mostík", "dva chorussy") append a
  * short suffix to the role word — match the vocabulary with one trailing

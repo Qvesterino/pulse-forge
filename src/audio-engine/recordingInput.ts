@@ -1,4 +1,5 @@
 const STORAGE_KEY = "pf:recording-input-device";
+const GAIN_STORAGE_KEY = "pf:recording-input-gain-db";
 
 export interface RecordingInputDevice {
   deviceId: string;
@@ -34,6 +35,26 @@ export function saveRecordingInputDeviceId(
     else storage.removeItem(STORAGE_KEY);
   } catch {
     // Blocked/full preference storage must never prevent a vocal take.
+  }
+}
+
+/** Persisted input trim (dB) for the next mic session. */
+export function loadRecordingInputGainDb(storage: RecordingInputStorage | null = browserStorage()): number {
+  try {
+    const raw = storage?.getItem(GAIN_STORAGE_KEY);
+    const value = raw === null ? NaN : Number(raw);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveRecordingInputGainDb(gainDb: number, storage: RecordingInputStorage | null = browserStorage()): void {
+  try {
+    if (!storage) return;
+    storage.setItem(GAIN_STORAGE_KEY, String(Math.round(gainDb * 10) / 10));
+  } catch {
+    // Blocked storage must not prevent a vocal take.
   }
 }
 

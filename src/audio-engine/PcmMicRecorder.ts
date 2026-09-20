@@ -34,6 +34,17 @@ export interface PcmMicRecorderDependencies {
   inputDeviceId?: string;
   getUserMedia?: MediaDevices["getUserMedia"];
   addWorkletModule?: (ctx: AudioContext) => Promise<void>;
+  /** Pre-capture input trim in dB (-24..+12). Applied to monitor + capture. */
+  inputGainDb?: number;
+}
+
+/** Input trim clamps — must mirror the UI slider. */
+export const MIN_INPUT_GAIN_DB = -24;
+export const MAX_INPUT_GAIN_DB = 12;
+
+export function clampInputGainDb(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(MIN_INPUT_GAIN_DB, Math.min(MAX_INPUT_GAIN_DB, Math.round(value * 10) / 10));
 }
 
 /**
@@ -61,6 +72,13 @@ export class PcmMicRecorder {
   private muteGain: GainNode | null = null;
   private monitorGain: GainNode | null = null;
   private monitoringEnabled = false;
+  /** Pre-capture trim stage (inputGainNode → capture/monitor). */
+  private inputGainNode: GainNode | null = null;
+  /** Input level tap (post-trim) for the UI meter. */
+  private inputAnalyser: AnalyserNode | null = null;
+  private inputGainDb = 0;
+  /** Reused level buffer for getInputLevel. */
+  private levelBuf: Float32Array<ArrayBuffer> | null = null;
   private session: RecordingSession | null = null;
   private nextChunkSequence = 0;
   private writeTail: Promise<void> = Promise.resolve();
@@ -78,6 +96,7 @@ export class PcmMicRecorder {
   constructor(private readonly deps: PcmMicRecorderDependencies) {
     this.recovery = deps.recovery ?? new RecordingRecoveryRepository();
     this.inputDeviceId = deps.inputDeviceId ?? loadRecordingInputDeviceId();
+    this.inputGainDb = clampInputGainDb(deps.inputGainDb ?? 0);
   }
 
   get state(): PcmRecorderState {
@@ -92,6 +111,43 @@ export class PcmMicRecorder {
     const now = this.deps.ctx.currentTime;
     gain.cancelScheduledValues(now);
     gain.setTargetAtTime(enabled ? 1 : 0, now, 0.01);
+  }
+
+  /** Live input trim in dB (applies to capture AND monitor, takes effect immediately). */
+  setInputGainDb(db: number): void {
+    this.inputGainDb = clampInputGainDb(db);
+    const gain = this.inputGainNode?.gain;
+    if (!gain) return;
+    const now = this.deps.ctx.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setTargetAtTime(Math.pow(10, this.inputGainDb / 20), now, 0.01);
+  }
+
+  get inputGain(): number {
+    return this.inputGainDb;
+  }
+
+  /**
+   * Latest input peak/RMS (0..1, post-trim) for the UI meter; 0 when no mic
+   * session is wired. Cheap — one getFloatTimeDomainData poll per call.
+   */
+  getInputLevel(): { peak: number; rms: number } {
+    const analyser = this.inputAnalyser;
+    if (!analyser) return { peak: 0, rms: 0 };
+    if (!this.levelBuf || this.levelBuf.length !== analyser.fftSize) {
+      this.levelBuf = new Float32Array(new ArrayBuffer(analyser.fftSize * 4));
+    }
+    const buf = this.levelBuf;
+    analyser.getFloatTimeDomainData(buf);
+    let peak = 0;
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = buf[i];
+      const a = v < 0 ? -v : v;
+      if (a > peak) peak = a;
+      sumSq += v * v;
+    }
+    return { peak, rms: buf.length > 0 ? Math.sqrt(sumSq / buf.length) : 0 };
   }
 
   get elapsedSeconds(): number {
@@ -171,14 +227,22 @@ export class PcmMicRecorder {
       this.muteGain.gain.value = 0;
       this.monitorGain = ctx.createGain();
       this.monitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
+      // Pre-capture trim: source → inputGainNode → (capture worklet | monitor).
+      // getInputLevel taps post-trim so the meter reads what will be saved.
+      this.inputGainNode = ctx.createGain();
+      this.inputGainNode.gain.value = Math.pow(10, this.inputGainDb / 20);
+      this.inputAnalyser = ctx.createAnalyser();
+      this.inputAnalyser.fftSize = 1024;
       const readyPromise = this.waitUntilReady();
       this.node.port.onmessage = (event: MessageEvent) => this.handleWorkletMessage(event.data);
       this.node.onprocessorerror = () =>
         this.reportError("Audio capture stopped unexpectedly; saved audio is available for recovery");
-      this.source.connect(this.node);
+      this.source.connect(this.inputGainNode);
+      this.inputGainNode.connect(this.node);
+      this.inputGainNode.connect(this.inputAnalyser);
       this.node.connect(this.muteGain);
       this.muteGain.connect(ctx.destination);
-      this.source.connect(this.monitorGain);
+      this.inputGainNode.connect(this.monitorGain);
       this.monitorGain.connect(ctx.destination);
 
       const ready = await readyPromise;
@@ -449,20 +513,39 @@ export class PcmMicRecorder {
     this.onTrackEnded = null;
     this.onTrackMuted = null;
     this.onContextStateChange = null;
-    if (this.source && this.node) {
+    if (this.source && this.inputGainNode) {
       try {
-        this.source.disconnect(this.node);
+        this.source.disconnect(this.inputGainNode);
       } catch {
         /* already disconnected */
       }
     }
-    if (this.source && this.monitorGain) {
+    if (this.inputGainNode && this.node) {
       try {
-        this.source.disconnect(this.monitorGain);
+        this.inputGainNode.disconnect(this.node);
       } catch {
         /* already disconnected */
       }
     }
+    if (this.inputGainNode && this.monitorGain) {
+      try {
+        this.inputGainNode.disconnect(this.monitorGain);
+      } catch {
+        /* already disconnected */
+      }
+    }
+    try {
+      this.inputGainNode?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    try {
+      this.inputAnalyser?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.inputGainNode = null;
+    this.inputAnalyser = null;
     try {
       this.node?.disconnect();
     } catch {

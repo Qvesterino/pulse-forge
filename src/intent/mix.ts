@@ -356,17 +356,19 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
 };
 
 const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
-  [/\breverb\b|\bdozvuk\b|\bozven/, "reverb"],
-  [/\bdelay\b|\bdelayu\b|\bdekou/, "delay"],
-  [/\bdistortion\b|\bdistort|\bsaturat|\bdrive\b|\bdriv/, "saturation"],
-  [/\bchorus\b|\bkorus/, "chorus"],
-  [/\bflanger\b/, "flanger"],
-  [/\bphaser\b|\bfazer/, "phaser"],
-  [/\btremolo\b/, "tremolo"],
-  [/\bbitcrusher\b|\bcrush/, "bitcrusher"],
-  [/\bcompress(?:ion|or)?\b|\bkompres/, "compressor"],
-  [/\bsidechain\b|\bpump(?:a|e|u)?\b/, "pump"],
-  [/\beq\b|\bfilter\b|\bfiltr/, "eq"],
+  // PREFIX stems (no trailing \b) — SK/EN inflections ride on the stem
+  // ("reverbu", "delayu", "chorusu"…). Anchor \b at the start only.
+  [/\breverb|\bdozvuk|\bozven/, "reverb"],
+  [/\bdelay|\bdekou/, "delay"],
+  [/\bdistort|\bsaturat|\bdriv/, "saturation"],
+  [/\bchorus|\bkorus/, "chorus"],
+  [/\bflanger/, "flanger"],
+  [/\bphaser|\bfazer/, "phaser"],
+  [/\btremolo/, "tremolo"],
+  [/\bbitcrush|\bcrush/, "bitcrusher"],
+  [/\bcompress|\bkompres/, "compressor"],
+  [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
+  [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
 ];
 
 /** Scene role → the tracks its instrumentation plays (song-builder map). */
@@ -384,7 +386,7 @@ const ROLE_TARGETS: Record<string, MixTarget[]> = {
 
 const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
   [/\bdrum|\bbic/, "drums"],
-  [/\bbass\b|\bbas(?:a|u|y|ou|ov)?\b|\b808\b/, "bass"],
+  [/\bbass\b|\bbas(?:a|u|y|i|ou|ov)?\b|\b808\b/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],
   [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
 ];
@@ -403,7 +405,7 @@ export function parseEffectIntent(text: string): EffectIntent | null {
 
   // remove wins over add (explicit "remove X" / "bez X" / "menej X")
   let direction: EffectIntent["direction"] = "more";
-  if (/\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\b|\bmenej (?:delay|dozvuk|ozven)/.test(lower)) {
+  if (/\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\w*|\bmenej (?:delay|dozvuk|ozven)/.test(lower)) {
     direction = "remove";
   } else if (/\bless\b|\bmenej/.test(lower)) {
     direction = "less";
@@ -419,13 +421,9 @@ export function parseEffectIntent(text: string): EffectIntent | null {
       for (const target of expanded) targets.add(target);
     }
   }
-  if (targets.size === 0) {
-    // no explicit target — every drum/instrument role (the whole beat)
-    targets.add("drums");
-    targets.add("bass");
-    targets.add("chords");
-    targets.add("lead");
-  }
+  // No target word/role ⇒ NOT a targeted effect intent — generic "more
+  // reverb" belongs to the mix profile, not a track-scoped change.
+  if (targets.size === 0) return null;
 
   let amount: EffectIntent["amount"] = "medium";
   if (/\bsubtle\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";

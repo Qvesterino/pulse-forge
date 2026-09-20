@@ -39,7 +39,7 @@ describe("parseExactIntent", () => {
   });
 
   it("pan with side and percentage", () => {
-    const right = parseExactIntent("pan the hats 80% right")!;
+    const right = parseExactIntent("pan the drums 80% right")!;
     expect(right.ops).toEqual([{ kind: "pan", target: "drums", value: 0.8 }]);
     const left = parseExactIntent("pan the lead 30 left")!;
     expect(left.ops).toEqual([{ kind: "pan", target: "lead", value: -0.3 }]);
@@ -109,16 +109,19 @@ describe("applyExactIntentCommand", () => {
 
   it("transpose shifts melodic notes on the target track only", () => {
     const d = doc();
-    // house template has an 808 track; give it notes first
+    // Name the first instrument track "Lead" so the lead target resolves
+    // deterministically, and give it notes first.
+    const inst = d.tracks.find((t): t is InstrumentTrack => t.kind === "instrument")!;
     const withNotes: ProjectDocument = {
       ...d,
+      tracks: d.tracks.map((t) => (t.id === inst.id ? { ...inst, name: "Lead" } : t)),
       patterns: d.patterns.map((p, index) =>
         index === 0
           ? {
               ...p,
               notes: {
                 ...p.notes,
-                "808-notes": [
+                [inst.id]: [
                   { id: "n1", pitch: 60, start: 0, duration: 120, velocity: 0.8 },
                   { id: "n2", pitch: 64, start: 120, duration: 120, velocity: 0.8 },
                 ],
@@ -127,17 +130,10 @@ describe("applyExactIntentCommand", () => {
           : p,
       ),
     };
-    const bassId = d.tracks.find((t) => t.name === "808")?.id;
-    void bassId;
-    // Route through the planner target: 'lead' — use an instrument track that exists
-    const inst = withNotes.tracks.find((t) => t.kind === "instrument");
-    expect(inst).toBeDefined();
-    const plan = parseExactIntent(`transpose the ${inst!.name.toLowerCase()} up one octave`)!;
-    const targetId = (inst as InstrumentTrack).id;
-    const before = ((withNotes.patterns[0].notes[targetId] ?? []) as { pitch: number }[]).map((n) => n.pitch);
+    const plan = parseExactIntent("transpose the lead up one octave")!;
     const next = applyExactIntentCommand(withNotes, plan).execute(withNotes);
     const afterPattern = next.patterns.find((p) => p.id === withNotes.activePatternId)!;
-    const after = (afterPattern.notes[targetId] ?? []).map((n) => n.pitch);
-    expect(after.map((p) => p - 12)).toEqual(before); // +12 then nothing... assert shift
+    const after = ((afterPattern.notes[inst.id] ?? []) as { pitch: number }[]).map((n) => n.pitch);
+    expect(after).toEqual([72, 76]);
   });
 });

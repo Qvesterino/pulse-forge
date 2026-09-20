@@ -229,7 +229,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
           // (the selection id is unchanged, so the check above passes).
           // (Reconciled from Pulse Forge audit, 2026-09-19.)
           if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
-            this.proc.loadPrecomputedIr(sets, channels);
+            this.proc.loadPrecomputedIr(sets, channels, "factory");
             this.postLatency();
           }
           return;
@@ -241,7 +241,7 @@ class OzvenaWorkletProcessor extends AudioWorkletProcessor {
         if (!(samples instanceof Float32Array) || samples.length === 0) return;
         if (channels > 1 && samples.length % channels !== 0) return;
         if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
-          this.proc.loadUserIr(samples, channels);
+          this.proc.loadUserIr(samples, channels, "factory");
           this.postLatency();
         }
       } else if (msg.type === "clearIr") {

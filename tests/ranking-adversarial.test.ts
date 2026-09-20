@@ -668,7 +668,7 @@ describe("melodic — adversarial inputs", () => {
   // TODO: src/ai/melodic.ts:L37 — safeMelodicStateIndex does NOT sanitize NaN
   //       (Math.min(31, NaN) = NaN, Math.max(0, NaN) = NaN). decodeMelodicState
   //       returns NaN for NaN/Infinity inputs. Should fall back to a known state.
-  it.skip("decodeMelodicState on NaN/Infinity returns a finite state", () => {
+  it("decodeMelodicState on NaN/Infinity returns a finite state", () => {
     for (const idx of [NaN, Infinity, -Infinity]) {
       const decoded = decodeMelodicState(idx as never);
       expect(Number.isFinite(decoded.degree)).toBe(true);

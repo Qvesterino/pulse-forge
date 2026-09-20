@@ -145,4 +145,88 @@ describe("Morph Dynamics worklet and analysis", () => {
     expect(highLeft.texture).toBeGreaterThan(0.05);
     expect(highRight.texture).toBeCloseTo(highLeft.texture, 5);
   });
+
+  it("reports the character-oversampling latency and re-reports it when quality changes", () => {
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const proc = new Processor();
+    const latencyMessages = (): number | undefined => {
+      const lat = [...proc.port.posted].reverse().find((m) => (m as { type?: string }).type === "latency");
+      return (lat as { samples?: number } | undefined)?.samples;
+    };
+    // Fresh device: drive is 0 → the character stage hard-bypasses → no OS
+    // delay yet. Raising drive engages the 2× halfband → 8 base samples.
+    // The bypass state re-evaluates at block rate, so run a silent block
+    // after the param before reading the reported latency.
+    expect(latencyMessages()).toBe(0);
+    proc.port.onmessage?.({ data: { type: "param", id: "char.drive", value: 70 } });
+    processSine(proc, 48_000, 2);
+    expect(latencyMessages()).toBe(8);
+    // ECO drops the oversampling (and its delay) regardless of drive.
+    proc.port.onmessage?.({ data: { type: "param", id: "global.quality", value: 0 } });
+    processSine(proc, 48_000, 2);
+    expect(latencyMessages()).toBe(0);
+    proc.port.onmessage?.({ data: { type: "param", id: "global.quality", value: 1 } });
+    processSine(proc, 48_000, 2);
+    expect(latencyMessages()).toBe(8);
+  });
+
+  it("applies time-stamped params when the render clock reaches them (paramAt)", () => {
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const proc = new Processor();
+    const inputL = new Float32Array(BLOCK);
+    const inputR = new Float32Array(BLOCK);
+    const outputL = new Float32Array(BLOCK);
+    const outputR = new Float32Array(BLOCK);
+    const runBlock = (): number => {
+      for (let frame = 0; frame < BLOCK; frame++) {
+        const time = (workletTime * 48_000 + frame) / 48_000;
+        const sample = 0.25 * Math.sin(2 * Math.PI * 440 * time);
+        inputL[frame] = sample;
+        inputR[frame] = sample;
+      }
+      proc.process([[inputL, inputR]], [[outputL, outputR]]);
+      let sumSq = 0;
+      for (let frame = 0; frame < BLOCK; frame++) sumSq += outputL[frame] ** 2;
+      workletTime += BLOCK / 48_000;
+      return Math.sqrt(sumSq / BLOCK);
+    };
+    runBlock();
+    // Schedule a −24 dB output trim ~10 ms in the future.
+    proc.port.onmessage?.({
+      data: { type: "paramAt", id: "global.outputGainDb", value: -24, when: workletTime + 0.01 },
+    });
+    // Before `when`: level unchanged.
+    let early = 0;
+    for (let b = 0; b < 8; b++) early += runBlock();
+    early /= 8;
+    // After `when`: level trimmed (−24 dB ≈ ×0.063 linear). The 30 ms
+    // output-gain smoother is still gliding right after `when`, so sample
+    // only the LAST few blocks, past the glide.
+    let late = 0;
+    for (let b = 0; b < 24; b++) {
+      const blockRms = runBlock();
+      if (b >= 16) late += blockRms;
+    }
+    late /= 8;
+    expect(early).toBeGreaterThan(0.12);
+    // Relative assertion — the point is TIMING (the trim lands only after
+    // `when`), not the exact smoothed level math.
+    expect(late).toBeLessThan(early * 0.2);
+  });
+
+  it("stops rendering after dispose (process returns false, output silent)", () => {
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const proc = new Processor();
+    proc.port.onmessage?.({ data: { type: "dispose" } });
+    const inputL = new Float32Array(BLOCK).fill(0.5);
+    const inputR = new Float32Array(BLOCK).fill(0.5);
+    const outputL = new Float32Array(BLOCK);
+    const outputR = new Float32Array(BLOCK);
+    expect(proc.process([[inputL, inputR]], [[outputL, outputR]])).toBe(false);
+    expect(outputL[0]).toBe(0);
+    expect(outputR[0]).toBe(0);
+  });
 });

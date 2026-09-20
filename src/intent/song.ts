@@ -1108,6 +1108,9 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   // unresolvable track or param skips silently, never kills the song.
   const fxLanes: ProjectDocument["sceneAutomation"] = [];
   const touchedFxIds = new Set<string>();
+  // Scoped requests and role recipes can land on the SAME effect instance
+  // (both install vinyl on the break) — the lane key dedupes their gates.
+  const laneKeys = new Set<string>();
 
   const laneFx = (
     trackId: string,
@@ -1117,6 +1120,9 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     targetSection: SongBuildSection,
     inner: { active: number } | { from: number; to: number },
   ): void => {
+    const laneKey = `${fxId}|${paramId}`;
+    if (laneKeys.has(laneKey)) return;
+    laneKeys.add(laneKey);
     const target = { kind: "fxParam" as const, trackId, fxId, paramId };
     for (const section of build.sections) {
       const span = section.bars * BAR_TICKS;
@@ -1186,7 +1192,12 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     // b) role recipes — gated/ramped per the recipe table.
     for (const recipe of SECTION_FX_RECIPES[section.role] ?? []) {
       try {
-        const [trackId] = resolveProductionTargets(next, [recipe.targetRole]);
+        const [resolved] = resolveProductionTargets(next, [recipe.targetRole]);
+        // Genre templates name their music tracks freely (Stab, Pad, Lead…)
+        // — a music-role recipe falls back to the first instrument track so
+        // the dramaturgy survives every kit.
+        const trackId =
+          resolved ?? (recipe.targetRole === "drums" ? undefined : next.tracks.find((t) => t.kind === "instrument")?.id);
         if (!trackId) continue;
         const fxId = foldAction({ trackId, type: recipe.type, params: recipe.params ?? {} });
         if (!fxId) continue;

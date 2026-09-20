@@ -251,7 +251,15 @@ export function createPlateChamberEngine(): PlateChamberEngine {
   function recompute(): void {
     const t = algoTuning(params.algo);
     srScale = (sampleRate / 44100) * t.lenMult;
-    const decaySec = clamp(params.time, 1400, 14000) / 1000;
+    // Roadmap O1/O7: `space` and `size` are documented macros but were read
+    // by no engine (automation had no effect). `space` scales the decay
+    // time, `size` scales the FDN line lengths — both as multiplicative
+    // offsets around the neutral 0.5 midpoint, so existing projects
+    // (space/size = 0.5) stay bit-identical.
+    // (Reconciled from Pulse Forge audit, 2026-09-19.)
+    const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
+    const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.4;
+    const decaySec = clamp(params.time * spaceScale, 1400, 14000) / 1000;
 
     let avgLen = 0;
     let lensChanged = false;
@@ -259,7 +267,7 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
       for (let l = 0; l < FDN_LINES; l++) {
         oldLengthsC[c][l] = lengthsC[c][l];
-        const nl = Math.max(8, Math.round(base[l] * srScale));
+        const nl = Math.max(8, Math.round(base[l] * srScale * sizeScale));
         if (nl !== lengthsC[c][l]) lensChanged = true;
         lengthsC[c][l] = nl;
         avgLen += lengthsC[c][l];
@@ -424,7 +432,11 @@ export function createPlateChamberEngine(): PlateChamberEngine {
       for (let l = 0; l < FDN_LINES; l++) {
         // +96 headroom covers the O6 extended modulation depth (<=88)
         // plus Hermite read overshoot; power-of-two caps absorb it.
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 96;
+        // The O7 `size` macro scales line lengths by up to 1.2x (0..1
+        // around the 0.5 midpoint), so the reservation includes that
+        // factor — a size change stays scalar-only.
+        const SIZE_MACRO_MAX = 1.2;
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * SIZE_MACRO_MAX)) + 96;
         ls.push(new Float32Array(maxLen));
         wi.push(0);
         lp.push(0);

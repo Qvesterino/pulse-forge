@@ -59,11 +59,11 @@ describe("targeted effect intents (D1 v2a)", () => {
 describe("applyEffectIntent execution", () => {
   it("adds the effect to target tracks and turns the knob", () => {
     const doc = testDoc();
-    const intent = parseEffectIntent("add reverb to the lead")!;
+    const intent = parseEffectIntent("add reverb to the bass")!;
     const command = applyEffectIntent(doc, intent);
     const next = command.execute(doc);
-    const leadTrack = next.tracks.find((track) => track.name.toLowerCase().includes("lead"));
-    const reverb = leadTrack!.effects.find((fx) => fx.type === "reverb");
+    const bassTrack = next.tracks.find((track) => track.name.toLowerCase().includes("808"));
+    const reverb = bassTrack!.effects.find((fx) => fx.type === "reverb");
     expect(reverb).toBeDefined();
     // knob moved up from the default 0.3
     expect(reverb!.params.mix).toBeGreaterThan(0.3);
@@ -72,21 +72,21 @@ describe("applyEffectIntent execution", () => {
     expect(drumTrack.effects.some((fx) => fx.type === "reverb")).toBe(false);
     // ONE undo restores
     const undone = command.undo(next);
-    expect(undone.tracks.find((track) => track.id === leadTrack!.id)!.effects.length).toBe(0);
+    expect(undone.tracks.find((track) => track.id === bassTrack!.id)!.effects.length).toBe(0);
   });
 
   it("removes the effect on direction remove", () => {
     const doc = testDoc();
-    const addIntent = parseEffectIntent("add reverb to the lead")!;
+    const addIntent = parseEffectIntent("add reverb to the bass")!;
     const withReverb = applyEffectIntent(doc, addIntent).execute(doc);
-    const removeIntent = parseEffectIntent("remove the reverb from the lead")!;
+    const removeIntent = parseEffectIntent("remove the reverb from the bass")!;
     expect(removeIntent.direction).toBe("remove");
     const next = applyEffectIntent(withReverb, removeIntent).execute(withReverb);
-    const leadTrack = next.tracks.find((track) => track.name.toLowerCase().includes("lead"));
-    expect(leadTrack!.effects.some((fx) => fx.type === "reverb")).toBe(false);
+    const bassTrack = next.tracks.find((track) => track.name.toLowerCase().includes("808"));
+    expect(bassTrack!.effects.some((fx) => fx.type === "reverb")).toBe(false);
   });
 
-  it("respects user role requests: no-drums intent skips drum tracks", async () => {
+  it("respects user role requests: no-drums intent skips drum tracks", () => {
     // bridge-targeted reverb expands to chords+lead — never drums
     const intent = parseEffectIntent("reverb on the bridge")!;
     expect(intent.targets.every((target) => target !== "drums")).toBe(true);

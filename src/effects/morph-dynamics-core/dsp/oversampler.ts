@@ -41,8 +41,7 @@ function designHalfband(): { odd: Float64Array; center: number } {
     // 2× Nyquist). sin at even m ≠ 0 is zero — the halfband property.
     const v = m === 0 ? 0.5 : Math.sin((Math.PI * m) / 2) / (Math.PI * m);
     // Blackman window (deterministic; solid stopband for 17 taps).
-    const w =
-      0.42 + 0.5 * Math.cos((Math.PI * m) / HALF) + 0.08 * Math.cos((2 * Math.PI * m) / HALF);
+    const w = 0.42 + 0.5 * Math.cos((Math.PI * m) / HALF) + 0.08 * Math.cos((2 * Math.PI * m) / HALF);
     full[n] = v * w;
     sum += full[n];
   }

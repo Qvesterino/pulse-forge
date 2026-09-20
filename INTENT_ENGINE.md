@@ -594,6 +594,32 @@ Poznámka: C2 favorites retraining je DRUHÝ, silnejší signál — preferenčn
 skupiny z tvojich ★ idú priamo do tréningu (GOAL 08); golden holdout ostáva
 nezávislou metrikou.
 
+### 5.13 TARGETED EFFECT INTENTS (D1 v2a — "viac delayu na leade", HOTOVÉ engine-side)
+
+- **Gramatika** (`parseEffectIntent` v mix.ts): efekt stem (delay/reverb/
+  saturation/chorus/flanger/phaser/tremolo/bitcrusher/compressor/pump/eq —
+  prefixové, padajú SK/EN skloňovania "delayu/reverbu/filtra") × cieľ
+  (track roly + scene roly expandované cez inštrumentačnú mapu — "na
+  bridge" = chords+lead) × smer (more/less/remove; "bez X", "remove X")
+  × amount (subtle/medium/huge).
+- **Dôležité pravidlo**: bez explicitného cieľa ⇒ NIE je targeted effect
+  (generic "more reverb" patrí mix profilu — inak by hijackol mix route).
+- **applyEffectIntent**: add-if-missing + turn KNOB (primary param per
+  efekt: mix/drive/ratio/amount/highShelf) ± delta scaled by amount,
+  clamp proti EFFECT_DEFS; "remove" = removeEffectFromTracks; jeden undo
+  snapshot; idempotentný ("changed nothing").
+- **Router**: effectIntent má prioritu NAD mix profilom (targeted > generic).
+- **Panel wiring čaká na koordináciu** — paralelná session aktívne
+  prerába IntentPanel (section-parse + FX ride-along); engine API je
+  hotové a otestované, wiring je 10-riadková úprava keď sa ich storm
+  ustáli. v2b per-section mix: paralelná session to implementuje
+  komplexnejšie (FX track + sceneAutomation lanes + cue clips) —
+  NEDEDUPLIKOVAL som.
+
+- Testy: `tests/intent-effect-targets.test.ts` (11) — gramatika EN+SK,
+  scene-role expand, amount scaling, remove, router priorita, exekúcia
+  (add/knob/undo/remove), user-role respect.
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

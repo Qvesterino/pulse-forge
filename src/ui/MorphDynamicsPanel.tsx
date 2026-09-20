@@ -16,6 +16,7 @@ import {
   DYN_MAKEUP_DB_ID,
   DYN_RATIO_ID,
   DYN_RELEASE_MS_ID,
+  DYN_SIDECHAIN_EXT_ID,
   DYN_SIDECHAIN_HPF_HZ_ID,
   DYN_THRESHOLD_DB_ID,
   GLOBAL_DELTA_ID,
@@ -478,6 +479,15 @@ export function MorphDynamicsPanel({
               {engineSlider(DYN_KNEE_DB_ID, "KNEE", 0, 24, dbFmt, "linear", 6)}
               {engineSlider(DYN_DETECTOR_BLEND_ID, "PEAK↔RMS", 0, 100, pctFmt, "linear", 50)}
               {engineSlider(DYN_SIDECHAIN_HPF_HZ_ID, "SC HPF", 20, 500, hzFmt, "log", 60)}
+              <button
+                type="button"
+                className={`morph-stage-toggle ${valueOf(DYN_SIDECHAIN_EXT_ID) >= 0.5 ? "on" : ""}`}
+                aria-label="Sidechain source — external feed drives the detector and analysis"
+                title="EXT: the sidechain feed (rack SOURCE picker) drives detector + analysis; INT: the main signal"
+                onClick={() => onParam(DYN_SIDECHAIN_EXT_ID, valueOf(DYN_SIDECHAIN_EXT_ID) >= 0.5 ? 0 : 1)}
+              >
+                SC {valueOf(DYN_SIDECHAIN_EXT_ID) >= 0.5 ? "EXT" : "INT"}
+              </button>
               {engineSlider(DYN_MAKEUP_DB_ID, "MAKEUP", -12, 24, dbFmt, "linear", 0)}
               <button
                 type="button"

@@ -88,9 +88,14 @@ export interface OzvenaProcessor {
   /**
    * Load a USER impulse response (interleaved, `channels` 1/2/4) already
    * resampled to the host rate. Replaces the factory IR until the
-   * convolution selection changes.
+   * convolution selection changes. `source: "factory"` is used by hosts
+   * that resolve a factory selection through the same payload path (the
+   * precomputed-spectra reply); it arms the IR without marking a user IR
+   * active, so `clearUserIr()` still falls back to the factory selection
+   * instead of treating the factory IR as a user override.
+   * (Reconciled from Pulse Forge audit, 2026-09-19.)
    */
-  loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
+  loadUserIr(samples: Float32Array, channels: 1 | 2 | 4, source?: "user" | "factory"): void;
   /** Remove a user IR (falls back to the factory selection). */
   clearUserIr(): void;
   /**
@@ -100,7 +105,7 @@ export interface OzvenaProcessor {
    * convolution selection as satisfied exactly like loadUserIr.
    * (Reconciled from Pulse Forge, 2026-09-09.)
    */
-  loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4): void;
+  loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4, source?: "user" | "factory"): void;
   getSpectrumAnalyzer(): SpectrumAnalyzer;
   /**
    * Install a factory-IR acquisition hook (null restores the default
@@ -278,20 +283,24 @@ export function createOzvenaProcessor(): OzvenaProcessor {
     loadedIrRate = sampleRate;
   }
 
-  function loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void {
+  function loadUserIr(samples: Float32Array, channels: 1 | 2 | 4, source: "user" | "factory" = "user"): void {
     if (!prepared || samples.length === 0) return;
     convolution.loadIr(samples, sampleRate, channels);
-    userIrActive = true;
+    userIrActive = source === "user";
     loadedIrId = state?.convolution?.irId ?? null;
     loadedIrRate = sampleRate;
   }
 
   /** Precomputed-spectra twin of loadUserIr — the FFT batch already ran
    *  off the audio thread. (Reconciled from Pulse Forge, 2026-09-09.) */
-  function loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4): void {
+  function loadPrecomputedIr(
+    sets: PrecomputedIrSet[],
+    channels: 1 | 2 | 4,
+    source: "user" | "factory" = "user",
+  ): void {
     if (!prepared || sets.length === 0) return;
     convolution.loadIrPrecomputed(sets, channels);
-    userIrActive = true;
+    userIrActive = source === "user";
     loadedIrId = state?.convolution?.irId ?? null;
     loadedIrRate = sampleRate;
   }
@@ -299,12 +308,13 @@ export function createOzvenaProcessor(): OzvenaProcessor {
   function clearUserIr(): void {
     if (!userIrActive) return;
     userIrActive = false;
-    // Force the factory selection to be re-resolved: loadedIrId still names
-    // the (factory) selection the user IR temporarily replaced while it was
-    // loaded, so syncConvolutionIr()'s "already loaded" early-return would
-    // otherwise keep the user IR armed — clear was a silent no-op whenever
-    // a factory IR was selected (which is the common case).
-    // (Reconciled from Pulse Forge audit, 2026-09-19.)
+    // Drop the convolver NOW instead of waiting for the factory reply: the
+    // user pressed clear, so the user IR must stop immediately. Re-resolve
+    // the factory selection afterwards (which re-requests the payload when
+    // generation runs off-thread). Nulling loadedIrId is required so
+    // syncConvolutionIr()'s "already loaded" early-return cannot keep the
+    // (still-armed) user IR. (Reconciled from Pulse Forge audit, 2026-09-19.)
+    convolution.clearIr();
     loadedIrId = null;
     loadedIrRate = 0;
     syncConvolutionIr();
@@ -937,14 +947,13 @@ export function createOzvenaProcessor(): OzvenaProcessor {
       return userIrActive;
     },
 
-    loadUserIr(samples, channels) {
-      loadUserIr(samples, channels);
+    loadUserIr(samples, channels, source) {
+      loadUserIr(samples, channels, source);
     },
 
-    loadPrecomputedIr(sets, channels) {
-      loadPrecomputedIr(sets, channels);
+    loadPrecomputedIr(sets, channels, source) {
+      loadPrecomputedIr(sets, channels, source);
     },
-
     clearUserIr() {
       clearUserIr();
     },

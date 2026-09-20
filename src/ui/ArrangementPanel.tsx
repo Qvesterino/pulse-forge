@@ -73,9 +73,12 @@ import { recordingAlignment } from "../audio-engine/recordingAlignment";
 import {
   listRecordingInputDevices,
   loadRecordingInputDeviceId,
+  loadRecordingInputGainDb,
   saveRecordingInputDeviceId,
+  saveRecordingInputGainDb,
   type RecordingInputDevice,
 } from "../audio-engine/recordingInput";
+import { clampInputGainDb, MAX_INPUT_GAIN_DB, MIN_INPUT_GAIN_DB } from "../audio-engine/PcmMicRecorder";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";

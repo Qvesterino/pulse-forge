@@ -180,6 +180,8 @@ export class MorphDynamicsProcessor {
       next[id] = clampParam(id, value);
     }
     this.params = next;
+    this.applyQuality(); // quality is a CONFIG param — a loaded project/preset
+    // must reconfigure oversampling + analysis resolution, not just values.
     this.pushStaticParams();
   }
 
@@ -300,6 +302,11 @@ export class MorphDynamicsProcessor {
     };
 
     // ── 3. Effective (curated + modulated) stage values ───────────
+    // External sidechain intent (the feed itself is consumed in the sample
+    // loop): when EXT is on, AUTO MAKEUP stands down — reactive makeup would
+    // compensate exactly the ducking the user asked for. Manual makeup still
+    // applies.
+    const sidechainExt = q[P.DYN_SIDECHAIN_EXT_ID] >= 0.5;
     // f1 — dynamics deepen from the first percent of PRESSURE.
     this.sm.thresholdOffset.setTarget(-10 * Math.pow(dynScale, 1.2));
     this.sm.ratioBonus.setTarget(3.5 * Math.pow(dynScale, 1.6));
@@ -315,7 +322,7 @@ export class MorphDynamicsProcessor {
       detectorBlend: q[P.DYN_DETECTOR_BLEND_ID] / 100,
       sidechainHpfHz: q[P.DYN_SIDECHAIN_HPF_HZ_ID],
       makeupDb: q[P.DYN_MAKEUP_DB_ID] + this.sm.makeupBonus.current,
-      makeupAuto: q[P.DYN_MAKEUP_AUTO_ID] >= 0.5,
+      makeupAuto: q[P.DYN_MAKEUP_AUTO_ID] >= 0.5 && !sidechainExt,
     });
     this.sm.punch.setTarget(q[P.MACRO_PUNCH_ID] / 100);
     const punch = this.sm.punch.tick();
@@ -326,7 +333,10 @@ export class MorphDynamicsProcessor {
     const charOn = q[P.CHAR_ENABLED_ID] >= 0.5;
     const reactiveDrive = (this.meters.body * 30 + this.dyn.grNorm * 25) * charScale;
     this.sm.driveBase.setTarget(q[P.CHAR_DRIVE_ID] + (q[P.MACRO_BODY_ID] / 100) * 25 * charScale);
-    const driveEff = mod(2, this.sm.driveBase.current + reactiveDrive);
+    // tick() is what ADVANCES the smoother — reading .current without it
+    // pins the value at its initial 0 forever, silently bypassing the whole
+    // character stage (found by the alias-rejection test).
+    const driveEff = mod(2, this.sm.driveBase.tick() + reactiveDrive);
     const toneEff = mod(3, q[P.CHAR_TONE_ID] + (q[P.MACRO_BODY_ID] - 50) * 0.3);
     const clipEff = mod(4, q[P.CHAR_CLIP_ID] + q[P.MACRO_PUNCH_ID] * 0.15);
     this.sm.tone.setTarget(charOn ? toneEff / 100 : 0);
@@ -398,7 +408,7 @@ export class MorphDynamicsProcessor {
     // vocal chop drives the ducking/gain while the main audio stays put.
     const scLArr = sc?.[0];
     const scRArr = sc?.[1];
-    const extSc = q[P.DYN_SIDECHAIN_EXT_ID] >= 0.5 && scLArr !== undefined && scRArr !== undefined;
+    const extSc = sidechainExt && scLArr !== undefined && scRArr !== undefined;
     const dryDelay = this.character.latencySamples;
     for (let i = 0; i < frames; i++) {
       const detL = (extSc ? scLArr![i] : L[i]) * inputGain;

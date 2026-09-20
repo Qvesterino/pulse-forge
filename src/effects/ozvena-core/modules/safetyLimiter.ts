@@ -277,12 +277,22 @@ export function createSafetyLimiter(): SafetyLimiter {
         // toward unity, reactivating the set re-emits up to a full lookahead
         // window of STALE audio at ~unity gain — a loud clip of old
         // material on every eco→…→eco round trip. Zero the ring and the
-        // oversampler state instead: tens-of-KB fills, no allocation, and
-        // the first block after the switch renders with effLA=0 (no
-        // lookahead, correct output, envelope carried).
+        // oversampler state instead.
         // (Reconciled from Pulse Forge hardening audit, 2026-09-08.)
+        //
+        // 2026-09-19 audit: `fill` must NOT be reset to 0. `effLA =
+        // min(laOvs, fill)` in process() then collapses to 0 for the first
+        // block, so the ring read `op = (wp - upLen + i)` returns the
+        // JUST-WRITTEN samples — the output jumps forward in time by the
+        // whole lookahead window. On a 200 Hz tone at 48 kHz that is a
+        // 96-sample (144°) phase step, measured as a 0.45–0.76 sample jump
+        // (43–72x the natural slope) on every quality switch. Setting
+        // `fill = laOvs` keeps the read time-aligned; the zeroed ring makes
+        // those first lookahead samples silent (a ≤2 ms fade-in) instead of
+        // a stale replay. (Reconciled from Pulse Forge audit, 2026-09-19.)
+        const nextLaOvs = Math.round((LOOKAHEAD_MS / 1000) * sampleRate) * factor;
         n.wp = 0;
-        n.fill = 0;
+        n.fill = Math.min(n.ring.length, nextLaOvs);
         n.ring.fill(0);
         n.os.reset();
       }

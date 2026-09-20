@@ -631,7 +631,11 @@ function Device({
               <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
             </div>
           )}
-          {(fx.type === "sidechain" || fx.type === "compressor" || fx.type === "fxeq" || fx.type === "pump") && (
+          {(fx.type === "sidechain" ||
+            fx.type === "compressor" ||
+            fx.type === "fxeq" ||
+            fx.type === "pump" ||
+            fx.type === "morphdynamics") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
                 <span className="slider-label">SOURCE</span>

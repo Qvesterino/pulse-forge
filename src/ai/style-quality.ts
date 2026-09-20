@@ -142,10 +142,19 @@ export function evaluateStyleDistance(
   );
   const metrics = rowMetrics(safeRows, stepCount);
   const reference = referenceMetrics(groove, stepCount);
-  const densityDistance = Math.abs(metrics.density - reference.density) / Math.max(0.08, reference.density);
-  const syncDistance = Math.abs(metrics.syncopation - reference.syncopation) / 0.5;
-  const downbeatDistance = Math.abs(metrics.downbeatRatio - reference.downbeatRatio) / 0.5;
-  const velocityDistance = Math.abs(metrics.velocityMean - reference.velocityMean);
+  // NaN guard: a non-finite stepCount (e.g. NaN, Infinity) propagates through
+  // density/syncopation/velocityMean arithmetic and yields NaN distance metrics.
+  // Coerce each side to a finite scalar before subtracting so the result is
+  // well-defined even on degenerate inputs.
+  const safeSub = (a: number, b: number): number => {
+    const sa = Number.isFinite(a) ? a : 0;
+    const sb = Number.isFinite(b) ? b : 0;
+    return Math.abs(sa - sb);
+  };
+  const densityDistance = safeSub(metrics.density, reference.density) / Math.max(0.08, safeSub(0, reference.density));
+  const syncDistance = safeSub(metrics.syncopation, reference.syncopation) / 0.5;
+  const downbeatDistance = safeSub(metrics.downbeatRatio, reference.downbeatRatio) / 0.5;
+  const velocityDistance = safeSub(metrics.velocityMean, reference.velocityMean);
   const distance = round(densityDistance * 0.4 + syncDistance * 0.3 + downbeatDistance * 0.2 + velocityDistance * 0.1);
   const reasons: string[] = [];
   if (metrics.density < profile.densityRange[0] || metrics.density > profile.densityRange[1]) {

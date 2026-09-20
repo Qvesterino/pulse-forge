@@ -7,7 +7,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { trackPitch, PITCH_CLARITY_GATE } from "../src/audio-workers/pitch-tracker";
 import { trackPitchAsync } from "../src/audio-workers/pitch-tracker-client";
-import { framesToNotes, humToNotesCommand, patternLengthTicks } from "../src/midi/hum-to-notes";
+import {
+  auditionTimings,
+  framesToNotes,
+  humToNotesCommand,
+  patternLengthTicks,
+  shiftNotesOctave,
+} from "../src/midi/hum-to-notes";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { MusicalKey, Pattern, ProjectDocument } from "../src/project-model/types";
 
@@ -246,6 +252,47 @@ describe('HumToMelodyPanel — TO BEAT toggle', () => {
     const user = userEvent.setup();
     await user.click(toggle);
     expect(screen.getByText(/free-time/i)).toBeInTheDocument();
+  });
+});
+
+describe("audition helpers (pre-apply AUDITION + octave shift)", () => {
+  it("auditionTimings maps ticks to absolute delays and sounding seconds", () => {
+    const notes = [
+      { id: "a", pitch: 60, start: 0, duration: 240, velocity: 0.8 },
+      { id: "b", pitch: 64, start: 480, duration: 120, velocity: 0.6 },
+    ];
+    // 120 BPM → 960 ticks per second (480 ticks = a quarter = 0.5 s); lead-in 0.12 s.
+    const timings = auditionTimings(notes, 120);
+    expect(timings).toHaveLength(2);
+    expect(timings[0]!.delayMs).toBeCloseTo(120, 0);
+    expect(timings[1]!.delayMs).toBeCloseTo(120 + 500, 0);
+    expect(timings[0]!.durationSec).toBeCloseTo(0.25, 3);
+    expect(timings[1]!.durationSec).toBeCloseTo(0.125, 3);
+    expect(timings.map((t) => t.pitch)).toEqual([60, 64]);
+    // Degenerate durations never go silent-short.
+    const tiny = auditionTimings([{ id: "t", pitch: 60, start: 0, duration: 1, velocity: 1 }], 120);
+    expect(tiny[0]!.durationSec).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it("shiftNotesOctave moves whole octaves, drops out-of-range, never empties", () => {
+    const notes = [
+      { id: "a", pitch: 60, start: 0, duration: 120, velocity: 0.8 },
+      { id: "b", pitch: 15, start: 240, duration: 120, velocity: 0.7 },
+    ];
+    const up = shiftNotesOctave(notes, 1);
+    expect(up.map((n) => n.pitch)).toEqual([72, 27]);
+    expect(up.map((n) => n.id)).toEqual(["a", "b"]);
+
+    const down = shiftNotesOctave(notes, -1);
+    expect(down.map((n) => n.pitch)).toEqual([48]); // 15−12=3 drops (below MIDI 12)
+
+    // A shift that would drop EVERYTHING returns the original drafts.
+    const allLow = [{ id: "x", pitch: 14, start: 0, duration: 120, velocity: 0.5 }];
+    expect(shiftNotesOctave(allLow, -1)).toEqual(allLow);
+    // No-op shift returns a copy, not the same reference.
+    const same = shiftNotesOctave(notes, 0);
+    expect(same).toEqual(notes);
+    expect(same).not.toBe(notes);
   });
 });
 

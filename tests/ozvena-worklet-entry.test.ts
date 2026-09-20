@@ -36,6 +36,7 @@ interface ProcShape {
     getSpectrumAnalyzer(): { enabled: boolean };
     isIrLoaded(): boolean;
     getIrChannels(): number;
+    isUserIrActive(): boolean;
     loadUserIr(samples: Float32Array, channels: 1 | 2 | 4): void;
     loadPrecomputedIr(sets: unknown[], channels: 1 | 2 | 4): void;
     clearUserIr(): void;
@@ -398,6 +399,47 @@ describe("Ozvena worklet entry (message port ↔ DSP core wiring)", () => {
     // The selection can still be satisfied by a well-formed reply.
     replyFactoryIr(proc, "hall");
     expect(proc.proc.isIrLoaded()).toBe(true);
+  });
+
+  it("2026-09-19 audit: a late factory reply cannot clobber a user IR", () => {
+    // The user drags an IR file while a slow factory generation is in flight.
+    // The factory reply's only stale-guard is "selection still points here",
+    // which is true — so pre-fix it overwrote the just-loaded user IR.
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.mode", 1);
+    sendParam(proc, "convolution.irId", "hall"); // request in flight
+    expect(proc.proc.isIrLoaded()).toBe(false);
+
+    // User IR lands first.
+    const userIr = new Float32Array([1, 0.5, 0.25, 0.125]);
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: userIr, channels: 2 } });
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.isUserIrActive()).toBe(true);
+
+    // The late factory reply must be ignored.
+    replyFactoryIr(proc, "hall");
+    expect(proc.proc.isUserIrActive()).toBe(true);
+  });
+
+  it("2026-09-19 audit: clearIr falls back to the factory selection", () => {
+    const proc = freshIrProc();
+    sendParam(proc, "convolution.mode", 1);
+    sendParam(proc, "convolution.irId", "hall");
+    replyFactoryIr(proc, "hall");
+    expect(proc.proc.isIrLoaded()).toBe(true);
+    expect(proc.proc.isUserIrActive()).toBe(false);
+
+    const userIr = new Float32Array([1, 0.5, 0.25, 0.125]);
+    proc.port.onmessage?.({ data: { type: "loadIr", samples: userIr, channels: 2 } });
+    expect(proc.proc.isUserIrActive()).toBe(true);
+
+    // Clearing must re-resolve the factory selection. Pre-fix the early
+    // return saw irId === loadedIrId + isIrLoaded and kept the user IR.
+    proc.port.posted.length = 0;
+    proc.port.onmessage?.({ data: { type: "clearIr" } });
+    expect(proc.proc.isUserIrActive()).toBe(false);
+    expect(proc.proc.isIrLoaded()).toBe(false); // factory re-request pending
+    expect(proc.port.posted.some((m) => m.type === "irNeeded" && m.irId === "hall")).toBe(true);
   });
 
   it("switching factory IRs during playback stays finite, bounded and continuous (listening proxy)", () => {

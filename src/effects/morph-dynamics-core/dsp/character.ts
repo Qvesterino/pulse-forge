@@ -43,6 +43,11 @@ export class CharacterStage {
   private osStages = 0;
   private chainL: HalfbandStage | null = null;
   private chainR: HalfbandStage | null = null;
+  // Hoisted per-channel transforms — a fresh arrow per SAMPLE would be an
+  // audio-thread allocation (GC pressure at 96k allocs/s); these are built
+  // once per instance.
+  private nlL = (y: number): number => this.nonlinear(0, y);
+  private nlR = (y: number): number => this.nonlinear(1, y);
 
   prepare(sampleRate: number): void {
     this.sampleRate = sampleRate;
@@ -75,17 +80,23 @@ export class CharacterStage {
     this.hpR.setFreq(TONE_HZ, rate);
   }
 
-  /** Group delay added by the active oversampling, in base-rate samples. */
+  /**
+   * Group delay added by the ACTIVE oversampling path, in base-rate samples.
+   * When the nonlinear controls are all zero the stage hard-bypasses (input
+   * → output, no halfband), so the wet chain carries no delay and the dry
+   * compensation must be zero too — otherwise the delta/mix reference would
+   * shift against an undelayed wet path.
+   */
   get latencySamples(): number {
-    return this.osStages > 0 ? OS2_LATENCY : 0;
+    return this.osStages > 0 && !this.bypassed ? OS2_LATENCY : 0;
   }
 
   setParams(p: CharParams): void {
     this.params = p;
     const next = p.drive < 0.001 && p.asym < 0.001 && p.clip < 0.001;
-    if (next && !this.bypassed) this.reset(); // stale chain state must not
-    // wake up into the signal — flush to zero so the first driven block
-    // starts from rest.
+    if (next !== this.bypassed) this.reset(); // flush on either transition:
+    // waking from bypass must not pour stale chain state into the signal,
+    // and entering bypass should drop the halfband history entirely.
     this.bypassed = next;
   }
 
@@ -139,8 +150,8 @@ export class CharacterStage {
       return;
     }
     if (this.chainL && this.chainR) {
-      out.l = this.chainL.process(l, (y) => this.nonlinear(0, y));
-      out.r = this.chainR.process(r, (y) => this.nonlinear(1, y));
+      out.l = this.chainL.process(l, this.nlL);
+      out.r = this.chainR.process(r, this.nlR);
       return;
     }
     out.l = this.nonlinear(0, l);

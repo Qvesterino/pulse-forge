@@ -24,6 +24,7 @@
   var DYN_KNEE_DB_ID = "dyn.kneeDb";
   var DYN_DETECTOR_BLEND_ID = "dyn.detectorBlend";
   var DYN_SIDECHAIN_HPF_HZ_ID = "dyn.sidechainHpfHz";
+  var DYN_SIDECHAIN_EXT_ID = "dyn.sidechainExt";
   var DYN_MAKEUP_DB_ID = "dyn.makeupDb";
   var DYN_MAKEUP_AUTO_ID = "dyn.makeupAuto";
   var CHAR_ENABLED_ID = "char.enabled";
@@ -107,6 +108,7 @@
     p(DYN_KNEE_DB_ID, "Knee", 6, 0, 24, "db"),
     p(DYN_DETECTOR_BLEND_ID, "Detector", 50, 0, 100, "percent"),
     p(DYN_SIDECHAIN_HPF_HZ_ID, "SC HPF", 60, 20, 500, "hz", true, { taper: "log" }),
+    p(DYN_SIDECHAIN_EXT_ID, "Sidechain EXT", 0, 0, 1, "boolean", false),
     p(DYN_MAKEUP_DB_ID, "Makeup", 0, -12, 24, "db"),
     p(DYN_MAKEUP_AUTO_ID, "Auto Makeup", 1, 0, 1, "boolean", false)
   ];
@@ -657,6 +659,11 @@
     osStages = 0;
     chainL = null;
     chainR = null;
+    // Hoisted per-channel transforms — a fresh arrow per SAMPLE would be an
+    // audio-thread allocation (GC pressure at 96k allocs/s); these are built
+    // once per instance.
+    nlL = (y) => this.nonlinear(0, y);
+    nlR = (y) => this.nonlinear(1, y);
     prepare(sampleRate2) {
       this.sampleRate = sampleRate2;
       this.applyToneRates();
@@ -685,14 +692,20 @@
       this.lpR.setFreq(TONE_HZ, rate);
       this.hpR.setFreq(TONE_HZ, rate);
     }
-    /** Group delay added by the active oversampling, in base-rate samples. */
+    /**
+     * Group delay added by the ACTIVE oversampling path, in base-rate samples.
+     * When the nonlinear controls are all zero the stage hard-bypasses (input
+     * → output, no halfband), so the wet chain carries no delay and the dry
+     * compensation must be zero too — otherwise the delta/mix reference would
+     * shift against an undelayed wet path.
+     */
     get latencySamples() {
-      return this.osStages > 0 ? OS2_LATENCY : 0;
+      return this.osStages > 0 && !this.bypassed ? OS2_LATENCY : 0;
     }
     setParams(p2) {
       this.params = p2;
       const next = p2.drive < 1e-3 && p2.asym < 1e-3 && p2.clip < 1e-3;
-      if (next && !this.bypassed) this.reset();
+      if (next !== this.bypassed) this.reset();
       this.bypassed = next;
     }
     reset() {
@@ -729,8 +742,8 @@
         return;
       }
       if (this.chainL && this.chainR) {
-        out.l = this.chainL.process(l, (y) => this.nonlinear(0, y));
-        out.r = this.chainR.process(r, (y) => this.nonlinear(1, y));
+        out.l = this.chainL.process(l, this.nlL);
+        out.r = this.chainR.process(r, this.nlR);
         return;
       }
       out.l = this.nonlinear(0, l);
@@ -1097,6 +1110,7 @@
         next[id] = clampParam(id, value);
       }
       this.params = next;
+      this.applyQuality();
       this.pushStaticParams();
     }
     reset() {
@@ -1146,7 +1160,13 @@
      * Process one block of stereo. inputs[0]/[1] must hold `frames` samples;
      * they are overwritten with the output.
      */
-    process(inputs, frames) {
+    /**
+     * Process one block of stereo. inputs[0]/[1] must hold `frames` samples;
+     * they are overwritten with the output. `sc` is the optional external
+     * sidechain feed (same length) — consumed only when dyn.sidechainExt is
+     * on; pass null otherwise.
+     */
+    process(inputs, frames, sc) {
       if (this.disposed) {
         for (const ch of inputs) ch.fill(0, 0, frames);
         return;
@@ -1195,6 +1215,7 @@
         const dest = MOD_DESTINATIONS[destIdx];
         return Math.max(dest.min, Math.min(dest.max, base + modDelta[destIdx].current));
       };
+      const sidechainExt = q[DYN_SIDECHAIN_EXT_ID] >= 0.5;
       this.sm.thresholdOffset.setTarget(-10 * Math.pow(dynScale, 1.2));
       this.sm.ratioBonus.setTarget(3.5 * Math.pow(dynScale, 1.6));
       this.sm.makeupBonus.setTarget(1.5 * dynScale * dynScale);
@@ -1209,14 +1230,14 @@
         detectorBlend: q[DYN_DETECTOR_BLEND_ID] / 100,
         sidechainHpfHz: q[DYN_SIDECHAIN_HPF_HZ_ID],
         makeupDb: q[DYN_MAKEUP_DB_ID] + this.sm.makeupBonus.current,
-        makeupAuto: q[DYN_MAKEUP_AUTO_ID] >= 0.5
+        makeupAuto: q[DYN_MAKEUP_AUTO_ID] >= 0.5 && !sidechainExt
       });
       this.sm.punch.setTarget(q[MACRO_PUNCH_ID] / 100);
       const punch = this.sm.punch.tick();
       const charOn = q[CHAR_ENABLED_ID] >= 0.5;
       const reactiveDrive = (this.meters.body * 30 + this.dyn.grNorm * 25) * charScale;
       this.sm.driveBase.setTarget(q[CHAR_DRIVE_ID] + q[MACRO_BODY_ID] / 100 * 25 * charScale);
-      const driveEff = mod(2, this.sm.driveBase.current + reactiveDrive);
+      const driveEff = mod(2, this.sm.driveBase.tick() + reactiveDrive);
       const toneEff = mod(3, q[CHAR_TONE_ID] + (q[MACRO_BODY_ID] - 50) * 0.3);
       const clipEff = mod(4, q[CHAR_CLIP_ID] + q[MACRO_PUNCH_ID] * 0.15);
       this.sm.tone.setTarget(charOn ? toneEff / 100 : 0);
@@ -1269,17 +1290,21 @@
       const motionOut = { l: 0, r: 0 };
       const spaceOut = { l: 0, r: 0 };
       let sig = this.analysis.processFrame(0, 0);
+      const scLArr = sc?.[0];
+      const scRArr = sc?.[1];
+      const extSc = sidechainExt && scLArr !== void 0 && scRArr !== void 0;
+      const dryDelay = this.character.latencySamples;
       for (let i = 0; i < frames; i++) {
-        const dryL = L[i] * inputGain;
-        const dryR = R[i] * inputGain;
-        sig = this.analysis.processFrame(dryL, dryR);
-        this.dyn.processFrame(dryL, dryR, punch, sig.transient, dynOut);
-        let wetL = dryL * dynOut.gl * dynOut.makeup;
-        let wetR = dryR * dynOut.gl * dynOut.makeup;
+        const detL = (extSc ? scLArr[i] : L[i]) * inputGain;
+        const detR = (extSc ? scRArr[i] : R[i]) * inputGain;
+        sig = this.analysis.processFrame(detL, detR);
+        this.dyn.processFrame(detL, detR, punch, sig.transient, dynOut);
+        let wetL = L[i] * inputGain * dynOut.gl * dynOut.makeup;
+        let wetR = R[i] * inputGain * dynOut.gl * dynOut.makeup;
         if (transientPathTrim !== 0) {
           const t = sig.transient * transientPathTrim;
-          wetL += dryL * t;
-          wetR += dryR * t;
+          wetL += detL * t;
+          wetR += detR * t;
         }
         this.character.processFrame(wetL, wetR, charOut);
         wetL = charOut.l;
@@ -1292,16 +1317,22 @@
         wetR = spaceOut.r;
         wetL = softClip(this.dcL.process(wetL), 0.95);
         wetR = softClip(this.dcR.process(wetR), 0.95);
-        let outL = (dryL * (1 - mix) + wetL * mix) * outputGain;
-        let outR = (dryR * (1 - mix) + wetR * mix) * outputGain;
+        this.dryBufL[this.dryPos] = detL;
+        this.dryBufR[this.dryPos] = detR;
+        const rd = (this.dryPos - dryDelay + 16) % 16;
+        const mixDryL = this.dryBufL[rd];
+        const mixDryR = this.dryBufR[rd];
+        this.dryPos = (this.dryPos + 1) % 16;
+        let outL = (mixDryL * (1 - mix) + wetL * mix) * outputGain;
+        let outR = (mixDryR * (1 - mix) + wetR * mix) * outputGain;
         if (deltaOn) {
-          outL = (wetL - dryL) * outputGain;
-          outR = (wetR - dryR) * outputGain;
+          outL = (wetL - mixDryL) * outputGain;
+          outR = (wetR - mixDryR) * outputGain;
         }
         L[i] = outL;
         R[i] = outR;
         if (this.metersEnabled) {
-          const aIn = Math.abs(dryL) > Math.abs(dryR) ? Math.abs(dryL) : Math.abs(dryR);
+          const aIn = Math.abs(detL) > Math.abs(detR) ? Math.abs(detL) : Math.abs(detR);
           const aOut = Math.abs(outL) > Math.abs(outR) ? Math.abs(outL) : Math.abs(outR);
           if (aIn > inPeak) inPeak = aIn;
           if (aOut > outPeak) outPeak = aOut;
@@ -1358,6 +1389,9 @@
   var MorphDynamicsWorkletProcessor = class extends AudioWorkletProcessor {
     proc = new MorphDynamicsProcessor();
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+    // External sidechain feed (node input 2) — copied per block; the DSP
+    // consumes it only when dyn.sidechainExt is on.
+    scScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
     lastLatencyPosted = -1;
     blockCount = 0;
     metersEnabled = true;
@@ -1387,6 +1421,7 @@
             q.length = w;
           }
           this.proc.setParameter(msg.id, msg.value);
+          this.postLatency();
         } else if (msg.type === "paramAt") {
           const when = Number(msg.when);
           if (!Number.isFinite(when)) {
@@ -1449,8 +1484,15 @@
           } else {
             buf.fill(0, 0, frames);
           }
+          const scBuf = this.scScratch[c];
+          const scCh = input && input[CHANNELS + c];
+          if (scCh && scCh.length >= offset + frames) {
+            scBuf.set(scCh.subarray(offset, offset + frames));
+          } else {
+            scBuf.fill(0, 0, frames);
+          }
         }
-        this.proc.process(this.scratch, frames);
+        this.proc.process(this.scratch, frames, this.scScratch);
         for (let c = 0; c < CHANNELS; c++) {
           output[c].set(this.scratch[c].subarray(0, frames), offset);
         }

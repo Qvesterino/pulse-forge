@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { parseSectionRequests, applySectionRequests } from "../src/intent/sections";
+import { parseSectionRequests } from "../src/intent/sections";
 import { planSongForm, buildSong, applySongCommand } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
@@ -186,16 +186,21 @@ describe("song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl b
       else expect(activeValue).toBe(0);
     }
 
-    // Recipes: intro/build ramps land on the chords track as svFilter
-    // cutoff lanes scoped per scene.
-    const chords = applied.tracks.find(
-      (t): t is InstrumentTrack => t.kind === "instrument" && /\bchord/i.test(t.name),
+    // Recipes: intro/build ramps land on a music track as svFilter cutoff
+    // lanes scoped per scene (the drill template names its music tracks
+    // differently — target by installed effect, not by name).
+    const filterTrack = applied.tracks.find(
+      (t): t is InstrumentTrack => t.kind === "instrument" && t.effects.some((f) => f.type === "svFilter"),
     );
-    expect(chords).toBeDefined();
-    const filters = fxOf(applied, chords!.id).filter((f) => f.type === "svFilter");
+    expect(filterTrack).toBeDefined();
+    const filters = fxOf(applied, filterTrack!.id).filter((f) => f.type === "svFilter");
     expect(filters.length).toBeGreaterThanOrEqual(1);
     const rampLanes = applied.sceneAutomation.filter(
-      (lane) => lane.target.kind === "fxParam" && lane.target.fxId === filters[0]!.id && lane.target.paramId === "cutoff",
+      (lane) =>
+        lane.target.kind === "fxParam" &&
+        lane.target.fxId === filters[0]!.id &&
+        lane.target.paramId === "cutoff" &&
+        lane.target.trackId === filterTrack!.id,
     );
     expect(rampLanes.length).toBeGreaterThanOrEqual(1);
     const introRamp = rampLanes.find((lane) => lane.sceneId === `scene-${intro.pattern.id}`);
