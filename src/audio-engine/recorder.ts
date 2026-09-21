@@ -15,7 +15,15 @@ export type RecordSource = { kind: "master" } | { kind: "track"; trackId: string
 /** First supported MIME type, or null when MediaRecorder can't record audio. */
 export function pickMimeType(candidates: string[], isSupported: (type: string) => boolean): string | null {
   for (const type of candidates) {
-    if (isSupported(type)) return type;
+    // Wrap in try/catch: a vendor-specific MIME check may throw on
+    // an unfamiliar browser version (Safari, Firefox). The recorder
+    // must fall through to the next candidate rather than bubble
+    // the error up to the UI.
+    try {
+      if (isSupported(type)) return type;
+    } catch {
+      // Swallowed: the candidate is unknown to the browser; try the next one.
+    }
   }
   return null;
 }

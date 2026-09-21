@@ -1,0 +1,376 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for pulse-forge/src/audio-engine/groove-extract.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">pulse-forge/src/audio-engine</a> groove-extract.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/50</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/50</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" >/**<span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" ></span></span></span>
+ * Groove extraction — "steal the groove" from an imported loop.
+ *
+ * Detects onsets in the loop, folds them onto a 16th-step grid and produces:
+ *  - `timing[]`: per-step microtiming shift in the project's −1..1 range
+ *    (−1/+1 = ±MAX_MICRO_TIMING, i.e. ±30% of a step) — the loop's swing
+ *    and push/pull feel, ready for `stepMeta[pad][step].microtiming`.
+ *  - `accent[]`: per-step relative loudness 0..1 — the loop's velocity
+ *    dynamics, ready to scale existing pattern velocities.
+ *  - `swing`: fitted classic swing amount 0..1 (odd-16th delay), for display.
+ *
+ * The loop is folded: a 2-bar loop maps onto the grid twice — accents and
+ * shifts accumulate by taking the STRONGEST onset per step.
+ *
+ * Pure math on top of the shared transient detector — deterministic, no
+ * AudioContext required.
+ */
+import { detectTransients } from "./transients";
+&nbsp;
+export interface StealGrooveMap {
+  /** Per-step microtiming, −1..1 (project range: ±MAX_MICRO_TIMING of a step). */
+  timing: number[];
+  /** Per-step accent 0..1 (0 = no onset near this step in the loop). */
+  accent: number[];
+  /** Fitted classic swing 0..1 (odd-16th delay) — informational. */
+  swing: number;
+}
+&nbsp;
+/** Onset peak search window either side of the reported transient (seconds). */
+<span class="cstat-no" title="statement not covered" >const PEAK_WINDOW_SEC = 0.035;</span>
+/** Deviation (in steps) that maps to |timing| = 1. Matches the classic swing ceiling. */
+<span class="cstat-no" title="statement not covered" >const TIMING_FULL_SCALE_STEPS = 0.34;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >export function extractGroove(data: Float32Array, sampleRate: number, bpm: number, steps = 16): StealGrooveMap | null {</span>
+<span class="cstat-no" title="statement not covered" >  if (!Number.isFinite(bpm) || bpm &lt;= 0 || data.length &lt; sampleRate * 0.5) return null;</span>
+<span class="cstat-no" title="statement not covered" >  const onsets = detectTransients(data, sampleRate);</span>
+<span class="cstat-no" title="statement not covered" >  if (onsets.length &lt; 4) return null;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const duration = data.length / sampleRate;</span>
+<span class="cstat-no" title="statement not covered" >  const stepSec = 60 / bpm / 4;</span>
+<span class="cstat-no" title="statement not covered" >  const barSec = stepSec * steps;</span>
+<span class="cstat-no" title="statement not covered" >  if (barSec &lt;= 0 || duration &lt; barSec * 0.4) return null;</span>
+&nbsp;
+  // Refine each onset to the local |sample| peak. The flux detector reports
+  // onsets when the energy RISE begins — a few ms before the actual attack —
+  // which would otherwise bleed a systematic ~30 ms early bias into every
+  // timing value. The sample peak is exact.
+<span class="cstat-no" title="statement not covered" >  const refined = onsets.map((t) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const from = Math.max(0, Math.floor((t - PEAK_WINDOW_SEC) * sampleRate));</span>
+<span class="cstat-no" title="statement not covered" >    const to = Math.min(data.length, Math.ceil((t + PEAK_WINDOW_SEC) * sampleRate));</span>
+<span class="cstat-no" title="statement not covered" >    let best = from;</span>
+<span class="cstat-no" title="statement not covered" >    let bestV = 0;</span>
+<span class="cstat-no" title="statement not covered" >    for (let i = from; i &lt; to; i++) {</span>
+<span class="cstat-no" title="statement not covered" >      const v = Math.abs(data[i]);</span>
+<span class="cstat-no" title="statement not covered" >      if (v &gt; bestV) {</span>
+<span class="cstat-no" title="statement not covered" >        bestV = v;</span>
+<span class="cstat-no" title="statement not covered" >        best = i;</span>
+<span class="cstat-no" title="statement not covered" >      }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    return { time: best / sampleRate, strength: bestV };</span>
+<span class="cstat-no" title="statement not covered" >  });</span>
+<span class="cstat-no" title="statement not covered" >  const maxStrength = Math.max(...refined.map((r) =&gt; r.strength), 1e-9);</span>
+&nbsp;
+  // Bar phase: the strongest onset anchors step 0 (a loop's downbeat is its
+  // loudest attack far more often than its literal first sample).
+<span class="cstat-no" title="statement not covered" >  let anchor = 0;</span>
+<span class="cstat-no" title="statement not covered" >  for (let i = 0; i &lt; refined.length; i++) if (refined[i].strength &gt; refined[anchor].strength) anchor = i;</span>
+<span class="cstat-no" title="statement not covered" >  const barStart = refined[anchor].time;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const timing = new Array&lt;number&gt;(steps).fill(0);</span>
+<span class="cstat-no" title="statement not covered" >  const accent = new Array&lt;number&gt;(steps).fill(0);</span>
+<span class="cstat-no" title="statement not covered" >  const oddDeviations: number[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  for (const { time, strength } of refined) {</span>
+<span class="cstat-no" title="statement not covered" >    const pos = (((time - barStart) % barSec) + barSec) % barSec;</span>
+<span class="cstat-no" title="statement not covered" >    const stepFloat = pos / stepSec;</span>
+<span class="cstat-no" title="statement not covered" >    const k = ((Math.round(stepFloat) % steps) + steps) % steps;</span>
+<span class="cstat-no" title="statement not covered" >    const deviation = stepFloat - Math.round(stepFloat); // −0.5..0.5 steps</span>
+<span class="cstat-no" title="statement not covered" >    const level = strength / maxStrength;</span>
+    // Strongest onset wins the slot; timing follows the strongest claimant.
+<span class="cstat-no" title="statement not covered" >    if (level &gt;= accent[k]) {</span>
+<span class="cstat-no" title="statement not covered" >      accent[k] = level;</span>
+<span class="cstat-no" title="statement not covered" >      timing[k] = Math.max(-1, Math.min(1, deviation / TIMING_FULL_SCALE_STEPS));</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+    // 8th-note offbeats (slots ≡ 2 mod 4) are where classic swing lives.
+<span class="cstat-no" title="statement not covered" >    if (k % 4 === 2 &amp;&amp; level &gt; 0.25) oddDeviations.push(Math.max(0, deviation));</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // Classic swing fit: mean late shift of odd-16th onsets, where a full
+  // triplet delay (⅓ step) equals swing 1.
+<span class="cstat-no" title="statement not covered" >  let swing = 0;</span>
+<span class="cstat-no" title="statement not covered" >  if (oddDeviations.length &gt; 0) {</span>
+<span class="cstat-no" title="statement not covered" >    swing = Math.min(1, oddDeviations.reduce((a, b) =&gt; a + b, 0) / oddDeviations.length / (1 / 3));</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // Dead steps (no loop onset) contribute nothing: accent 0, timing 0.
+<span class="cstat-no" title="statement not covered" >  return { timing, accent, swing: Math.round(swing * 100) / 100 };</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-21T05:35:34.211Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

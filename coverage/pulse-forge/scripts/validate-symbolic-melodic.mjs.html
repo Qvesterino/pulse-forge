@@ -1,0 +1,307 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for pulse-forge/scripts/validate-symbolic-melodic.mjs</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">pulse-forge/scripts</a> validate-symbolic-melodic.mjs</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/74</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/74</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >/**</span></span></span>
+<span class="cstat-no" title="statement not covered" > * Validates the trained symbolic-melodic ONNX artifact with ONNX Runtime</span>
+<span class="cstat-no" title="statement not covered" > * (INTENT_ENGINE.md T2 v2): loads public/models/symbolic-melodic-v1.onnx,</span>
+<span class="cstat-no" title="statement not covered" > * checks input/output metadata against the manifest, runs a deterministic</span>
+<span class="cstat-no" title="statement not covered" > * probe batch and verifies both head outputs + finiteness + hash contract.</span>
+<span class="cstat-no" title="statement not covered" > *</span>
+<span class="cstat-no" title="statement not covered" > * Run: node scripts/validate-symbolic-melodic.mjs</span>
+<span class="cstat-no" title="statement not covered" > */</span>
+<span class="cstat-no" title="statement not covered" >import { createHash } from "node:crypto";</span>
+<span class="cstat-no" title="statement not covered" >import { readFileSync } from "node:fs";</span>
+<span class="cstat-no" title="statement not covered" >import path from "node:path";</span>
+<span class="cstat-no" title="statement not covered" >import { createServer } from "vite";</span>
+<span class="cstat-no" title="statement not covered" >import { fileURLToPath, pathToFileURL } from "node:url";</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");</span>
+<span class="cstat-no" title="statement not covered" >const modelsDir = path.join(ROOT, "public", "models");</span>
+<span class="cstat-no" title="statement not covered" >const manifest = JSON.parse(readFileSync(path.join(modelsDir, "symbolic-melodic-v1.manifest.json"), "utf8"));</span>
+<span class="cstat-no" title="statement not covered" >const modelPath = path.join(modelsDir, path.basename(manifest.modelPath));</span>
+<span class="cstat-no" title="statement not covered" >const modelBytes = readFileSync(modelPath);</span>
+<span class="cstat-no" title="statement not covered" >const actualHash = createHash("sha256").update(modelBytes).digest("hex");</span>
+<span class="cstat-no" title="statement not covered" >if (actualHash !== String(manifest.modelHash ?? "").toLowerCase()) throw new Error("model hash mismatch");</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >const server = await createServer({</span>
+<span class="cstat-no" title="statement not covered" >  root: ROOT,</span>
+<span class="cstat-no" title="statement not covered" >  logLevel: "error",</span>
+<span class="cstat-no" title="statement not covered" >  server: { port: 5241, host: "127.0.0.1", strictPort: true },</span>
+<span class="cstat-no" title="statement not covered" >});</span>
+<span class="cstat-no" title="statement not covered" >await server.listen();</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >try {</span>
+<span class="cstat-no" title="statement not covered" >  const ort = await import("onnxruntime-web");</span>
+<span class="cstat-no" title="statement not covered" >  ort.env.wasm.wasmPaths = pathToFileURL(path.join(ROOT, "node_modules", "onnxruntime-web", "dist", path.sep)).href;</span>
+<span class="cstat-no" title="statement not covered" >  ort.env.wasm.numThreads = 1;</span>
+<span class="cstat-no" title="statement not covered" >  const session = await ort.InferenceSession.create(new Uint8Array(modelBytes), {</span>
+<span class="cstat-no" title="statement not covered" >    executionProviders: ["wasm"],</span>
+<span class="cstat-no" title="statement not covered" >    graphOptimizationLevel: "all",</span>
+<span class="cstat-no" title="statement not covered" >  });</span>
+<span class="cstat-no" title="statement not covered" >  if (session.inputNames[0] !== manifest.inputName) throw new Error(`input name mismatch: ${session.inputNames[0]}`);</span>
+<span class="cstat-no" title="statement not covered" >  for (const name of [manifest.degreeOutputName, manifest.durationOutputName]) {</span>
+<span class="cstat-no" title="statement not covered" >    if (!session.outputNames.includes(name)) throw new Error(`missing output: ${name} (has ${session.outputNames.join(",")})`);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >  const featureCount = manifest.featureCount;</span>
+<span class="cstat-no" title="statement not covered" >  const rows = 4;</span>
+<span class="cstat-no" title="statement not covered" >  const probe = new ort.Tensor("float32", new Float32Array(featureCount * rows).fill(0.25), [rows, featureCount]);</span>
+<span class="cstat-no" title="statement not covered" >  const results = await session.run({ [manifest.inputName]: probe });</span>
+<span class="cstat-no" title="statement not covered" >  const degree = results[manifest.degreeOutputName].data;</span>
+<span class="cstat-no" title="statement not covered" >  const duration = results[manifest.durationOutputName].data;</span>
+<span class="cstat-no" title="statement not covered" >  if (degree.length !== rows * manifest.degreeClasses) throw new Error(`degree length ${degree.length}`);</span>
+<span class="cstat-no" title="statement not covered" >  if (duration.length !== rows * manifest.durationClasses) throw new Error(`duration length ${duration.length}`);</span>
+<span class="cstat-no" title="statement not covered" >  for (const value of [...degree, ...duration]) if (!Number.isFinite(value)) throw new Error("non-finite logit");</span>
+<span class="cstat-no" title="statement not covered" >  const again = await session.run({ [manifest.inputName]: probe });</span>
+<span class="cstat-no" title="statement not covered" >  for (let index = 0; index &lt; degree.length; index++) {</span>
+<span class="cstat-no" title="statement not covered" >    if (again[manifest.degreeOutputName].data[index] !== degree[index]) throw new Error("non-deterministic inference");</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  if (modelBytes.length &gt; 1024 * 1024) throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >  const softmaxAt = (data, row, size) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const slice = [...data.slice(row * size, (row + 1) * size)];</span>
+<span class="cstat-no" title="statement not covered" >    const max = Math.max(...slice);</span>
+<span class="cstat-no" title="statement not covered" >    const exp = slice.map((v) =&gt; Math.exp(v - max));</span>
+<span class="cstat-no" title="statement not covered" >    const sum = exp.reduce((s, v) =&gt; s + v, 0);</span>
+<span class="cstat-no" title="statement not covered" >    return exp.map((v) =&gt; v / sum);</span>
+<span class="cstat-no" title="statement not covered" >  };</span>
+<span class="cstat-no" title="statement not covered" >  const degreeDist = softmaxAt(degree, 0, manifest.degreeClasses);</span>
+<span class="cstat-no" title="statement not covered" >  const durationDist = softmaxAt(duration, 0, manifest.durationClasses);</span>
+<span class="cstat-no" title="statement not covered" >  console.log(</span>
+<span class="cstat-no" title="statement not covered" >    `[validate] OK — degree=[${degreeDist.map((p) =&gt; p.toFixed(3)).join(",")}] ` +</span>
+<span class="cstat-no" title="statement not covered" >      `duration=[${durationDist.map((p) =&gt; p.toFixed(3)).join(",")}] ` +</span>
+<span class="cstat-no" title="statement not covered" >      `size=${(modelBytes.length / 1024).toFixed(1)} kB sha256=${actualHash.slice(0, 16)}…`,</span>
+<span class="cstat-no" title="statement not covered" >  );</span>
+<span class="cstat-no" title="statement not covered" >} finally {</span>
+<span class="cstat-no" title="statement not covered" >  await server.close();</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-21T05:35:34.211Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

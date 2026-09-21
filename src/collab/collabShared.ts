@@ -40,16 +40,80 @@ export function defaultServerUrl(): string {
  * host. Overrides are limited to the SAME host as the app origin (ws/wss
  * only) — self-hosted relays on other hosts can be entered in the UI,
  * which stores them deliberately, instead of arriving via links.
+ *
+ * Beyond the same-host gate we additionally reject:
+ *   - `javascript:`, `blob:`, `data:`, `file:` (non-ws/ws schemes that
+ *     some browsers accept through `new URL`);
+ *   - loopback hostnames (`localhost`, `127.0.0.1`, `0.0.0.0`, `::1`)
+ *     when the app itself does NOT run on loopback — a crafted link on
+ *     the public site pointing at `wss://localhost` is the canonical
+ *     DNS-rebinding attack;
+ *   - IPv4 / IPv6 literals — same-host bypasses shouldn't depend on a
+ *     user typing `192.168.x.x` in a URL parameter;
+ *   - non-wss schemes when the app is served over https;
+ *   - ports other than the app's own port or the default relay port
+ *     for the scheme (no port-hopping on a same-host override).
  */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
+
+function isLoopback(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host.toLowerCase());
+}
+
+function isIpLiteral(host: string): boolean {
+  // IPv4 dotted-quad.
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+  // IPv6 in brackets (`url.hostname` keeps them in WHATWG URL) or bare.
+  if (host.startsWith("[") || host.includes(":")) return true;
+  return false;
+}
+
 function isAllowedServerUrl(raw: string): boolean {
+  let url: URL;
   try {
-    const url = new URL(raw);
-    if (url.protocol !== "ws:" && url.protocol !== "wss:") return false;
-    if (typeof location === "undefined") return url.hostname === "127.0.0.1" || url.hostname === "localhost";
-    return url.hostname === location.hostname;
+    url = new URL(raw);
   } catch {
     return false;
   }
+  // Only ws / wss. Some browsers route `javascript:` etc. through URL
+  // parsing, so we re-check the raw prefix as defence-in-depth.
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") return false;
+  const head = raw.trim().slice(0, 32).toLowerCase();
+  if (
+    head.startsWith("javascript:") ||
+    head.startsWith("data:") ||
+    head.startsWith("blob:") ||
+    head.startsWith("file:")
+  ) {
+    return false;
+  }
+  if (typeof location === "undefined") {
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  }
+  // Same-host is the only allowed override path. Hostname comparison is
+  // case-insensitive per RFC 3986 — normalise both sides.
+  if (url.hostname.toLowerCase() !== location.hostname.toLowerCase()) return false;
+  // Anti-DNS-rebinding: reject loopback overrides unless the app itself
+  // is served from loopback (dev scenario).
+  if (isLoopback(url.hostname) && !isLoopback(location.hostname)) return false;
+  // Reject IPv4 / IPv6 literals on the override.
+  if (isIpLiteral(url.hostname)) return false;
+  // Force wss when served from https (mixed-content relay).
+  if (location.protocol === "https:" && url.protocol !== "wss:") return false;
+  // Port must match either the app's own port or the default relay port
+  // for the scheme. Reject port-hopping on the same host.
+  //
+  // Note: URL ctor strips the scheme-default port — `ws://host:80`,
+  // `wss://host:443`, `http://host:80`, `https://host:443` all parse
+  // with `url.port === ""`. Treating that as "no explicit port" and
+  // silently accepting it would let an attacker slide a ws://same-host:80
+  // override past the gate; require an explicit port instead.
+  if (!url.port) return false;
+  const allowedPorts = new Set<string>();
+  if (location.port) allowedPorts.add(location.port);
+  allowedPorts.add(url.protocol === "wss:" ? "443" : "1234");
+  if (!allowedPorts.has(url.port)) return false;
+  return true;
 }
 
 /** Parse ?collab=<room>[&server=<url>] from a search string (pure for tests). */

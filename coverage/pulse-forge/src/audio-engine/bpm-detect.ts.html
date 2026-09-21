@@ -1,0 +1,502 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for pulse-forge/src/audio-engine/bpm-detect.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">pulse-forge/src/audio-engine</a> bpm-detect.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/84</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/84</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" >/**<span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" ></span></span></span>
+ * Loop tempo detection — the "Fit to project BPM" engine input.
+ *
+ * Pipeline (all pure math, deterministic, no AudioContext needed):
+ *  1. Onset detection via the shared transient detector (energy flux).
+ *  2. Onsets become an impulse train at 200 fps; unbiased autocorrelation
+ *     over lags for 60–240 BPM finds the dominant period.
+ *  3. Parabolic interpolation refines the lag below frame resolution.
+ *  4. The tempo folds into 70–180 BPM (half-time / double-time material —
+ *     8th-note hats, 2-bar kick patterns — lands on the musical tempo).
+ *  5. Inter-onset intervals consistent with the folded period (k·T) refine
+ *     the estimate with sample-accurate timing; rejected if it disagrees
+ *     with the autocorrelation by more than 5%.
+ *
+ * `confidence` is the autocorrelation peak over its mean — roughly ≥ 1.2
+ * means a steady pulse, near 1.0 means no clear tempo.
+ */
+import { detectTransients } from "./transients";
+&nbsp;
+export interface LoopBpm {
+  /** Rounded to 0.1 BPM. */
+  bpm: number;
+  /** Autocorrelation peak / mean. ≥ ~1.2 indicates a usable pulse. */
+  confidence: number;
+}
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const MIN_BPM = 60;</span>
+<span class="cstat-no" title="statement not covered" >const MAX_BPM = 240;</span>
+/** Musical tempo range — detections outside are folded by ×2 / ÷2. */
+<span class="cstat-no" title="statement not covered" >const PREFERRED_LOW = 70;</span>
+<span class="cstat-no" title="statement not covered" >const PREFERRED_HIGH = 180;</span>
+<span class="cstat-no" title="statement not covered" >const CONFIDENCE_GATE = 1.15;</span>
+<span class="cstat-no" title="statement not covered" >const FPS = 200;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >export function detectLoopBpm(data: Float32Array, sampleRate: number): LoopBpm | null {</span>
+<span class="cstat-no" title="statement not covered" >  if (!Number.isFinite(sampleRate) || sampleRate &lt;= 0 || data.length &lt; sampleRate * 1.5) return null;</span>
+<span class="cstat-no" title="statement not covered" >  const duration = data.length / sampleRate;</span>
+<span class="cstat-no" title="statement not covered" >  const onsets = detectTransients(data, sampleRate);</span>
+<span class="cstat-no" title="statement not covered" >  if (onsets.length &lt; 4) return null;</span>
+&nbsp;
+  // Impulse train, one bin per 5 ms frame, then max-blurred by ±2 frames.
+  // Onset times are quantized to the transient detector's hop grid (~6 ms),
+  // so a raw 0/1 train only correlates when lags align EXACTLY — the ±1 frame
+  // drift between quantization and the true period gutted sub-multiple peaks
+  // (a 0.3 s pulse train read as 2.6× stronger at 0.9 s than at 0.3 s). The
+  // blur tolerances the alignment without blurring distinct tempos apart.
+<span class="cstat-no" title="statement not covered" >  const n = Math.ceil(duration * FPS) + 1;</span>
+<span class="cstat-no" title="statement not covered" >  const raw = new Float32Array(n);</span>
+<span class="cstat-no" title="statement not covered" >  for (const t of onsets) {</span>
+<span class="cstat-no" title="statement not covered" >    const idx = Math.round(t * FPS);</span>
+<span class="cstat-no" title="statement not covered" >    if (idx &gt;= 0 &amp;&amp; idx &lt; n) raw[idx] = 1;</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  const train = new Float32Array(n);</span>
+<span class="cstat-no" title="statement not covered" >  for (let i = 0; i &lt; n; i++) {</span>
+<span class="cstat-no" title="statement not covered" >    if (raw[i] === 0) continue;</span>
+<span class="cstat-no" title="statement not covered" >    for (let j = Math.max(0, i - 2); j &lt;= Math.min(n - 1, i + 2); j++) train[j] = 1;</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // Unbiased autocorrelation across the tempo range. Dividing by the overlap
+  // length keeps long lags (few overlapping frames) comparable to short ones.
+<span class="cstat-no" title="statement not covered" >  const minLag = Math.max(1, Math.round((FPS * 60) / MAX_BPM));</span>
+<span class="cstat-no" title="statement not covered" >  const maxLag = Math.min(n - 2, Math.round((FPS * 60) / MIN_BPM));</span>
+<span class="cstat-no" title="statement not covered" >  if (maxLag &lt;= minLag) return null;</span>
+<span class="cstat-no" title="statement not covered" >  let bestLag = -1;</span>
+<span class="cstat-no" title="statement not covered" >  let bestVal = 0;</span>
+<span class="cstat-no" title="statement not covered" >  let sum = 0;</span>
+<span class="cstat-no" title="statement not covered" >  for (let lag = minLag; lag &lt;= maxLag; lag++) {</span>
+<span class="cstat-no" title="statement not covered" >    let acc = 0;</span>
+<span class="cstat-no" title="statement not covered" >    for (let i = 0; i + lag &lt; n; i++) acc += train[i] * train[i + lag];</span>
+<span class="cstat-no" title="statement not covered" >    const unbiased = acc / (n - lag);</span>
+<span class="cstat-no" title="statement not covered" >    sum += unbiased;</span>
+<span class="cstat-no" title="statement not covered" >    if (unbiased &gt; bestVal) {</span>
+<span class="cstat-no" title="statement not covered" >      bestVal = unbiased;</span>
+<span class="cstat-no" title="statement not covered" >      bestLag = lag;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  if (bestLag &lt; 0 || bestVal &lt;= 0) return null;</span>
+<span class="cstat-no" title="statement not covered" >  const confidence = bestVal / (sum / (maxLag - minLag + 1));</span>
+<span class="cstat-no" title="statement not covered" >  if (confidence &lt; CONFIDENCE_GATE) return null;</span>
+&nbsp;
+  // Harmonic walk-down: the unbiased ACF slightly favors longer lags, so a
+  // peak that is an integer multiple (×2, ×3) of an equally strong shorter
+  // period is a sub-harmonic (e.g. 3 IOIs of 8th-note hats read as a dotted
+  // beat). Prefer the shorter period when it explains the train just as well.
+<span class="cstat-no" title="statement not covered" >  const acfAt = (lag: number): number =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    lag = Math.round(lag);</span>
+<span class="cstat-no" title="statement not covered" >    if (lag &lt; 1 || lag &gt; n - 2) return 0;</span>
+<span class="cstat-no" title="statement not covered" >    let acc = 0;</span>
+<span class="cstat-no" title="statement not covered" >    for (let i = 0; i + lag &lt; n; i++) acc += train[i] * train[i + lag];</span>
+<span class="cstat-no" title="statement not covered" >    return acc / (n - lag);</span>
+<span class="cstat-no" title="statement not covered" >  };</span>
+<span class="cstat-no" title="statement not covered" >  let chosenLag = bestLag;</span>
+<span class="cstat-no" title="statement not covered" >  for (const k of [3, 2]) {</span>
+<span class="cstat-no" title="statement not covered" >    const cand = bestLag / k;</span>
+<span class="cstat-no" title="statement not covered" >    if (cand &lt; 2) break;</span>
+<span class="cstat-no" title="statement not covered" >    if (acfAt(cand) &gt;= 0.85 * bestVal) {</span>
+<span class="cstat-no" title="statement not covered" >      chosenLag = Math.round(cand);</span>
+<span class="cstat-no" title="statement not covered" >      break;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // Parabolic vertex around the chosen ACF peak — sub-frame lag precision.
+<span class="cstat-no" title="statement not covered" >  const y1 = acfAt(chosenLag - 1);</span>
+<span class="cstat-no" title="statement not covered" >  const y2 = acfAt(chosenLag);</span>
+<span class="cstat-no" title="statement not covered" >  const y3 = acfAt(chosenLag + 1);</span>
+<span class="cstat-no" title="statement not covered" >  const denom = y1 - 2 * y2 + y3;</span>
+<span class="cstat-no" title="statement not covered" >  const delta = denom !== 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (y1 - y3)) / denom)) : 0;</span>
+<span class="cstat-no" title="statement not covered" >  let bpm = (60 * FPS) / (chosenLag + delta);</span>
+&nbsp;
+  // Fold half-time / double-time detections onto the musical range. The 2%
+  // hysteresis keeps a true ~70 BPM groove sitting a hair under the boundary
+  // from being doubled into a non-musical ~140.
+<span class="cstat-no" title="statement not covered" >  while (bpm &lt; PREFERRED_LOW * 0.98) bpm *= 2;</span>
+<span class="cstat-no" title="statement not covered" >  while (bpm &gt; PREFERRED_HIGH * 1.02) bpm /= 2;</span>
+&nbsp;
+  // Interval refinement: consecutive onsets spaced k·T (k = 1..8, ±15%) vote
+  // with their exact sample-accurate spacing; the median wins if it agrees
+  // with the autocorrelation estimate.
+<span class="cstat-no" title="statement not covered" >  const T = 60 / bpm;</span>
+<span class="cstat-no" title="statement not covered" >  const votes: number[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  for (let i = 1; i &lt; onsets.length; i++) {</span>
+<span class="cstat-no" title="statement not covered" >    const d = onsets[i] - onsets[i - 1];</span>
+<span class="cstat-no" title="statement not covered" >    const k = Math.round(d / T);</span>
+<span class="cstat-no" title="statement not covered" >    if (k &gt;= 1 &amp;&amp; k &lt;= 8 &amp;&amp; Math.abs(d - k * T) &lt;= 0.15 * T) votes.push(d / k);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  if (votes.length &gt;= 2) {</span>
+<span class="cstat-no" title="statement not covered" >    votes.sort((a, b) =&gt; a - b);</span>
+<span class="cstat-no" title="statement not covered" >    const refined = 60 / votes[Math.floor(votes.length / 2)];</span>
+<span class="cstat-no" title="statement not covered" >    if (Math.abs(refined - bpm) &lt;= bpm * 0.05) bpm = refined;</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return { bpm: Math.round(bpm * 10) / 10, confidence: Math.round(confidence * 100) / 100 };</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+/** Rate that turns a loop detected at `loopBpm` into project tempo (clamped to the engine's 0.25–4 stretch range). */
+<span class="cstat-no" title="statement not covered" >export function fitRate(loopBpm: number, projectBpm: number): number {</span>
+<span class="cstat-no" title="statement not covered" >  const rate = loopBpm / projectBpm;</span>
+<span class="cstat-no" title="statement not covered" >  return Math.round(Math.min(4, Math.max(0.25, rate)) * 100) / 100;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-21T05:35:34.211Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

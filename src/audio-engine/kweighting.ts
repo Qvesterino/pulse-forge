@@ -106,6 +106,14 @@ const SUBBLOCK_SECONDS = 0.1; // 100 ms hop (75 % block overlap)
  * relative gate −10 LU, evaluated in the power domain.
  */
 export function analyzeLoudnessBuffer(channels: readonly Float32Array[], sampleRate: number): LoudnessReading {
+  // Guard before any arithmetic — a 0/NaN/Infinity sampleRate would make
+  // minSamples = 0 and length = MAX_SAFE_INTEGER (via the reduce), which
+  // produces a subblock = 1 loop that iterates MAX_SAFE_INTEGER times and
+  // returns measured=true with integrated=MIN_DB. The loudness loop would
+  // then chase the silence with gain adjustments.
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return { integrated: MIN_DB, momentaryMax: MIN_DB, shortTermMax: MIN_DB, measured: false };
+  }
   const length = channels.reduce((acc, ch) => Math.min(acc, ch.length), Number.MAX_SAFE_INTEGER);
   const minSamples = Math.ceil(0.4 * sampleRate);
   if (!Number.isFinite(length) || length < minSamples || channels.length === 0) {

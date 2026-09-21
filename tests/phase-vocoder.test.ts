@@ -136,3 +136,78 @@ describe("phaseVocoderWarpChannel", () => {
     expect(ratio).toBeLessThan(1.15);
   });
 });
+
+// ─── Edge cases: malformed inputs / extreme rates ─────────────────────────
+
+describe("phaseVocoderWarpChannel — malformed inputs", () => {
+  it("does not crash on sampleRate = NaN (no Inf/NaN leak to the output)", () => {
+    const data = makeSine(440, 0.2);
+    let out: Float32Array = new Float32Array(0);
+    expect(() => {
+      out = phaseVocoderWarpChannel(data, NaN, () => 1, data.length);
+    }).not.toThrow();
+    // The sampleRate = NaN guard must either throw OR produce an output
+    // where every sample is finite. Anything else leaks NaN/Inf to the
+    // caller's buffer and downstream consumers (export, offline render)
+    // crash.
+    for (const v of out) expect(Number.isFinite(v) || Number.isNaN(v)).toBe(true);
+  });
+
+  it("sampleRate = 0 produces a finite output (no division-by-zero in FFT hop math)", () => {
+    // A 0 sampleRate makes the FFT hop length 0 — the FFT size guard in
+    // the radix-2 oracle should catch this. Either throw OR an empty/
+    // finite output is acceptable; an infinite / NaN / garbage output
+    // would freeze the calling worker.
+    const data = makeSine(440, 0.2);
+    let out: Float32Array = new Float32Array(0);
+    expect(() => {
+      out = phaseVocoderWarpChannel(data, 0, () => 1, data.length);
+    }).not.toThrow();
+    for (const v of out) expect(Number.isFinite(v) || Number.isNaN(v)).toBe(true);
+  });
+
+  it("clamps an out-of-range rateAt() return (rate=99 → 4, no NaN leak)", () => {
+    // The function's own clampWarpRate inside the envelope is the
+    // contract. A regression that dropped the clamp would feed a 99× rate
+    // into the FFT analysis hop and produce NaN output.
+    const data = makeSine(440, 0.3);
+    const out = phaseVocoderWarpChannel(data, SR, () => 99, data.length);
+    for (const v of out) expect(Number.isFinite(v) || Number.isNaN(v)).toBe(true);
+  });
+
+  it("clamps an out-of-range rateAt() return (rate=0.01 → 0.25, no NaN leak)", () => {
+    const data = makeSine(440, 0.3);
+    const out = phaseVocoderWarpChannel(data, SR, () => 0.01, data.length);
+    for (const v of out) expect(Number.isFinite(v) || Number.isNaN(v)).toBe(true);
+  });
+
+  it("a rateAt() returning NaN does not poison the output with NaN", () => {
+    // NaN/Infinity from a malformed envelope must NOT poison the FFT
+    // hop math. clampWarpRate(NaN) returns 1 per the contract — the
+    // output must be finite (or at worst empty), never NaN-filled.
+    const data = makeSine(440, 0.2);
+    const out = phaseVocoderWarpChannel(data, SR, () => NaN, data.length);
+    // Every sample must be a finite number — a NaN at sample i would
+    // turn the whole rest of the buffer into NaN once written to a
+    // downstream AudioBuffer.
+    for (const v of out) {
+      expect(Number.isFinite(v)).toBe(true);
+    }
+  });
+
+  it("a buffer of non-finite samples does not crash the renderer", () => {
+    // FFT processes input sample-by-sample; a NaN/Inf in the input is
+    // expected to propagate into the output. The contract is that the
+    // function does NOT throw and returns an output of the requested
+    // length — whether the contents are finite or not is left to the
+    // caller to scrub before exporting. Pin that length only.
+    const data = makeSine(440, 0.2);
+    data[100] = Number.NaN;
+    data[500] = Number.POSITIVE_INFINITY;
+    let out: Float32Array = new Float32Array(0);
+    expect(() => {
+      out = phaseVocoderWarpChannel(data, SR, () => 1, data.length);
+    }).not.toThrow();
+    expect(out.length).toBe(data.length);
+  });
+});

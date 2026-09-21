@@ -120,3 +120,93 @@ describe("grid + slice helpers", () => {
     expect(slicesFromOnsets([], 1.0)).toEqual([{ start: 0, end: 1.0 }]);
   });
 });
+
+// ─── Edge cases: malformed inputs / extreme parameters ─────────────────────
+
+describe("transients — malformed inputs", () => {
+  it("detectTransients returns [] for sampleRate = NaN (poisoned rate)", () => {
+    // A NaN sampleRate would propagate into every window size and frame
+    // count, producing NaN envelopes and a NaN flux. Pin that the guard
+    // catches it before any arithmetic.
+    expect(detectTransients(makeBreak([0.1, 0.6, 1.1, 1.35]), NaN)).toEqual([]);
+  });
+
+  it("detectTransients returns [] for sampleRate = 0 (no window fits)", () => {
+    expect(detectTransients(makeBreak([0.1, 0.6, 1.1, 1.35]), 0)).toEqual([]);
+  });
+
+  it("detectTransients returns [] for sampleRate = Infinity", () => {
+    // Infinity sampleRate → 0 frames (data.length / Infinity = 0) → the
+    // frames < 4 guard catches it.
+    expect(detectTransients(makeBreak([0.1, 0.6, 1.1, 1.35]), Infinity)).toEqual([]);
+  });
+
+  it("detectTransients handles options.sensitivity at the boundaries", () => {
+    // sensitivity = 0 makes the threshold zero — every non-zero flux
+    // frame fires, which can return a huge list but must not throw.
+    // sensitivity = 100 effectively disables the detector (threshold
+    // higher than any realistic flux). Both are tolerated.
+    const data = makeBreak([0.1, 0.6, 1.1, 1.35]);
+    expect(() => detectTransients(data, SR, { sensitivity: 0 })).not.toThrow();
+    const insensitive = detectTransients(data, SR, { sensitivity: 100 });
+    expect(insensitive.length).toBeLessThanOrEqual(4);
+  });
+
+  it("detectTransients handles a buffer of non-finite samples without throwing", () => {
+    // FFT-style windowing on a NaN sample is a NaN — the envelope goes
+    // NaN and the detector returns an empty array (or a sparse list).
+    // Either way, the function must not crash.
+    const data = makeBreak([0.1, 0.6, 1.1, 1.35]);
+    data[100] = Number.NaN;
+    data[500] = Number.POSITIVE_INFINITY;
+    let onsets: number[] = [];
+    expect(() => {
+      onsets = detectTransients(data, SR);
+    }).not.toThrow();
+    expect(Array.isArray(onsets)).toBe(true);
+  });
+
+  it("gridSlicePoints handles BPM = 0 without divide-by-zero", () => {
+    // BPM = 0 would make `step = 60/0/divisions` = Infinity. The result
+    // would be a single point at 0 (no further ticks) — must not throw.
+    expect(() => gridSlicePoints(0, 4, 1.0)).not.toThrow();
+    expect(gridSlicePoints(0, 4, 1.0)).toEqual([]);
+  });
+
+  it("gridSlicePoints handles BPM = NaN without throwing", () => {
+    expect(() => gridSlicePoints(NaN, 4, 1.0)).not.toThrow();
+  });
+
+  it("snapToGrid handles BPM = 0 without poisoning the output with NaN", () => {
+    // BPM = 0 → step = 60/0/4 = Infinity → times.map would otherwise
+    // produce Math.round(0.05/Infinity)*Infinity = 0*Infinity = NaN.
+    // The guard collapses the result to an empty array (no valid grid
+    // line exists at "infinite step") rather than poisoning downstream
+    // consumers with NaN.
+    const out = snapToGrid([0.05, 0.14, 0.36], 0, 4);
+    for (const v of out) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  it("pointsToSlices handles a single-point array (one slice covering duration)", () => {
+    expect(pointsToSlices([0.5], 1.0)).toEqual([{ start: 0.5, end: 1.0 }]);
+  });
+
+  it("zeroCrossSnap on silent data falls back to the input time", () => {
+    // With no zero crossings the search window exhausts without a hit —
+    // the function must return the original time, not Infinity or NaN.
+    const silent = new Float32Array(1024);
+    const out = zeroCrossSnap(silent, SR, 0.5);
+    expect(Number.isFinite(out)).toBe(true);
+    expect(out).toBe(0.5);
+  });
+
+  it("slicesFromOnsets handles sampleRate = NaN (falls back to grid-only path)", () => {
+    // NaN sampleRate would skip the zero-cross snap (the guard checks
+    // Number.isFinite(sampleRate) && sampleRate > 0). The function must
+    // still produce valid grid-only slices.
+    const out = slicesFromOnsets([0.25, 0.5], 1.0, new Float32Array(SR), NaN);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0].start).toBe(0);
+    expect(out[out.length - 1].end).toBe(1.0);
+  });
+});

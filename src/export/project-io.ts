@@ -91,6 +91,14 @@ function parseAndValidate(json: string): ProjectDocument {
 function sanitizeFilename(name: string): string {
   return (
     name
+      // Explicitly strip control bytes, RTL marks, and zero-width /
+      // bidirectional-format characters before the regex gate below.
+      // \s in V8 matches U+FEFF (BOM), so a name like "my\uFEFFfile"
+      // would survive the negated [^\w\s-] check and turn into "my-file"
+      // — enough to break downloads on some platforms and to spoof
+      // filenames in copy/paste UIs. Strip these ranges up front so the
+      // downstream contract is "no control / format chars survive".
+      .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
       .replace(/[^\w\s-]/g, "")
       .replace(/\s+/g, "-")
       .slice(0, 60) || "project"

@@ -32,6 +32,12 @@ const PEAK_WINDOW_SEC = 0.035;
 const TIMING_FULL_SCALE_STEPS = 0.34;
 
 export function extractGroove(data: Float32Array, sampleRate: number, bpm: number, steps = 16): StealGrooveMap | null {
+  // Guard order: a non-finite or non-positive sampleRate silently bypasses
+  // the data.length < sampleRate*0.5 check (NaN comparisons are always
+  // false), which would feed garbage sample-rate math into the stepSec
+  // normaliser and produce NaN timing values that propagate into
+  // stepMeta.microtiming. Reject before any arithmetic.
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return null;
   if (!Number.isFinite(bpm) || bpm <= 0 || data.length < sampleRate * 0.5) return null;
   const onsets = detectTransients(data, sampleRate);
   if (onsets.length < 4) return null;

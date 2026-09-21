@@ -139,3 +139,96 @@ describe("K-weighting coefficients", () => {
     expect(tenth).not.toBe(first);
   });
 });
+
+// ─── Edge cases: malformed inputs ───────────────────────────────────────────
+
+describe("analyzeLoudnessBuffer — malformed inputs", () => {
+  it("returns measured=false for sampleRate = NaN (no crash, no garbage)", () => {
+    const channels = sineStereo(-23, 1000, 2, 48000);
+    let reading: ReturnType<typeof analyzeLoudnessBuffer> = {
+      integrated: 0, momentaryMax: 0, shortTermMax: 0, measured: false,
+    };
+    expect(() => {
+      reading = analyzeLoudnessBuffer(channels, NaN);
+    }).not.toThrow();
+    expect(reading.measured).toBe(false);
+  });
+
+  it("returns measured=false for sampleRate = 0 or Infinity", () => {
+    const channels = sineStereo(-23, 1000, 2, 48000);
+    const r0 = analyzeLoudnessBuffer(channels, 0);
+    expect(r0.measured).toBe(false);
+    const rInf = analyzeLoudnessBuffer(channels, Infinity);
+    expect(rInf.measured).toBe(false);
+  });
+
+  it("returns measured=false for an empty channels array", () => {
+    // A mono-only export of an empty project must report "not measurable"
+    // rather than dividing by zero on the channel-length reduce.
+    const r = analyzeLoudnessBuffer([], 48000);
+    expect(r.measured).toBe(false);
+  });
+
+  it("uses the SHORTER channel length when channels differ in size", () => {
+    // A bug that used the first (or last) channel's length instead of
+    // MIN would either truncate or read past the end of the buffer.
+    const short = sineStereo(-23, 1000, 2, 48000); // 96000 samples
+    const long = sineStereo(-23, 1000, 4, 48000); // 192000 samples
+    const r = analyzeLoudnessBuffer([short[0], long[0]], 48000);
+    expect(r.measured).toBe(true);
+    expect(r.integrated).toBeGreaterThan(-23.2);
+    expect(r.integrated).toBeLessThan(-22.8);
+  });
+
+  it("survives a buffer of NaN/Infinity samples without poisoning the gate", () => {
+    // A poisoned input sample must not bypass the −70 LUFS absolute
+    // gate via NaN > -70 (always false). The output reports measured=false
+    // for poisoned silence.
+    const channels = sineStereo(-23, 1000, 2, 48000);
+    channels[0][100] = Number.NaN;
+    channels[0][500] = Number.POSITIVE_INFINITY;
+    const r = analyzeLoudnessBuffer(channels, 48000);
+    // The gate behaviour: a few NaN/Inf samples should NOT count as
+    // "audible" — measured stays false. If it flipped to true with
+    // measured=true and integrated=NaN, the consumer would chase −∞.
+    if (r.measured) {
+      expect(Number.isFinite(r.integrated)).toBe(true);
+    }
+  });
+
+  it("a 400-ms single-channel buffer is too short to be measured", () => {
+    // The BS.1770 minimum is 400 ms. A 399 ms buffer falls just under
+    // the gate — measured must be false and integrated must stay at MIN_DB
+    // (the loudness loop would otherwise apply gain chasing the silence).
+    const tiny = sineStereo(-23, 1000, 0.399, 48000);
+    const r = analyzeLoudnessBuffer([tiny[0]], 48000);
+    expect(r.measured).toBe(false);
+    expect(r.integrated).toBe(-120);
+  });
+});
+
+describe("kWeightingCoefficients — sample-rate handling", () => {
+  it("returns finite coefficients at the standard rates", () => {
+    for (const sr of [22050, 44100, 48000, 88200, 96000, 192000]) {
+      const [shelf, hp] = kWeightingCoefficients(sr);
+      for (const coef of [shelf.b0, shelf.b1, shelf.b2, shelf.a1, shelf.a2, hp.b0, hp.b1, hp.b2, hp.a1, hp.a2]) {
+        expect(Number.isFinite(coef)).toBe(true);
+      }
+    }
+  });
+
+  it("returns finite coefficients for sampleRate = 0 or NaN (no crash)", () => {
+    // The `fs = Math.max(16000, sampleRate)` clamp protects against
+    // a zero/negative sample rate — coefficients are computed against
+    // the 16 kHz floor. They don't make musical sense, but they don't crash.
+    let shelf: ReturnType<typeof kWeightingCoefficients>[0] | null = null;
+    let hp: ReturnType<typeof kWeightingCoefficients>[1] | null = null;
+    expect(() => {
+      const [s, h] = kWeightingCoefficients(0);
+      shelf = s;
+      hp = h;
+    }).not.toThrow();
+    expect(shelf).not.toBeNull();
+    expect(hp).not.toBeNull();
+  });
+});

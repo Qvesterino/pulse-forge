@@ -134,6 +134,14 @@ export function detectLoopBpm(data: Float32Array, sampleRate: number): LoopBpm |
 
 /** Rate that turns a loop detected at `loopBpm` into project tempo (clamped to the engine's 0.25–4 stretch range). */
 export function fitRate(loopBpm: number, projectBpm: number): number {
+  // Guard against malformed inputs (NaN/Infinity propagate through the
+  // arithmetic and would silently poison the playbackRate AudioParam — a
+  // browser-side throw that takes the whole context down with it). An
+  // identity stretch (1.0) is the safest possible default: no time-stretch,
+  // no resampling artifacts, no audible surprise.
+  if (!Number.isFinite(loopBpm) || !Number.isFinite(projectBpm) || projectBpm === 0) {
+    return 1;
+  }
   const rate = loopBpm / projectBpm;
   return Math.round(Math.min(4, Math.max(0.25, rate)) * 100) / 100;
 }

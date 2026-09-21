@@ -42,6 +42,33 @@ export interface RecordingPcmChunk {
 const RECOVERY_STALE_MS = 5_000;
 
 /**
+ * Surfaced when `begin()` runs the IndexedDB out of disk budget while
+ * arming a recording session. UI can offer a "free up space" path; the
+ * recording tab must NOT silently retry.
+ */
+export class RecordingStorageQuotaError extends Error {
+  override readonly name = "RecordingStorageQuotaError";
+  constructor(
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message);
+    if (options?.cause !== undefined) (this as Error & { cause?: unknown }).cause = options.cause;
+  }
+}
+
+function isQuotaExceeded(err: unknown): boolean {
+  // DOMException (thrown by IndexedDB on quota exhaustion) is NOT an instanceof
+  // Error in jsdom/fake-indexeddb; check the name field on any object.
+  return !!err && typeof err === "object" && "name" in err && (err as { name?: string }).name === "QuotaExceededError";
+}
+
+function isConstraintError(err: unknown): boolean {
+  // Same as isQuotaExceeded — DOMException is the actual carrier.
+  return !!err && typeof err === "object" && "name" in err && (err as { name?: string }).name === "ConstraintError";
+}
+
+/**
  * Staged takes older than this are garbage on project open. A live take
  * refreshes `updatedAt` once per committed block (≤ CHUNK_SECONDS cadence),
  * so anything this stale is from a take whose tab died and whose recovery
@@ -75,7 +102,39 @@ export class RecordingRecoveryRepository {
 
   async begin(session: RecordingSession): Promise<void> {
     const db = await this.openDatabase();
-    await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => store.add(session));
+    try {
+      await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => store.add(session));
+      return;
+    } catch (err) {
+      if (isConstraintError(err)) {
+        // Re-arm collision (e.g. the user reloads mid-take with the same id
+        // pinned to the session). Idempotent overwrite: the session id is
+        // the contract, the metadata is the rebuild — keeping the same id
+        // means recovery flows downstream still find the staged PCM. If
+        // even the overwrite fails (typically QuotaExceededError under
+        // pressure), surface the typed error instead of letting the raw
+        // DOMException leak.
+        try {
+          await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => store.put(session));
+          return;
+        } catch (overwriteErr) {
+          if (isQuotaExceeded(overwriteErr)) {
+            throw new RecordingStorageQuotaError(
+              `IndexedDB quota exceeded while re-arming recording session ${session.id}`,
+              { cause: overwriteErr },
+            );
+          }
+          throw overwriteErr;
+        }
+      }
+      if (isQuotaExceeded(err)) {
+        throw new RecordingStorageQuotaError(
+          `IndexedDB quota exceeded while starting recording session ${session.id}`,
+          { cause: err },
+        );
+      }
+      throw err;
+    }
   }
 
   async appendChunk(chunk: RecordingPcmChunk): Promise<void> {

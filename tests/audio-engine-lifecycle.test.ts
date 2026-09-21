@@ -203,4 +203,56 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(body).toMatch(/this\.masterLimiter\.threshold\.value\s*=\s*ceilingDb/);
     expect(body).not.toMatch(/Math\.pow\(10,\s*config\.ceilingDb\s*\/\s*20\)/);
   });
+
+  it("attachBank() stores the bank reference without leaking the previous one", () => {
+    // Sample-bank swap (e.g. user imports a new pack) must hand the new bank
+    // straight to this.bank. A regression that drops the assignment leaves
+    // the engine pointing at a stale bank that no longer owns the loaded
+    // AudioBuffers — previewInstrumentPreset() then throws "no such asset".
+    const body = sliceFunction(readEngine(), /attachBank\s*\(/);
+    expect(body, "attachBank() not found in AudioEngine.ts").not.toBe("");
+    expect(body, "attachBank() must assign the bank to this.bank").toMatch(/this\.bank\s*=\s*bank/);
+  });
+
+  it("loadWorklets() delegates to the shared ensureWorkletsForDoc loader", () => {
+    // Per-context worklet modules are owned by the shared loader so a live
+    // and offline context can each preload the same processors without
+    // duplicate registration. A regression that inlines `addModule` here
+    // breaks the offline-render parity contract.
+    const body = sliceFunction(readEngine(), /async\s+loadWorklets\s*\(/);
+    expect(body, "loadWorklets() not found in AudioEngine.ts").not.toBe("");
+    expect(body, "loadWorklets() must delegate to ensureWorkletsForDoc").toMatch(
+      /await\s+ensureWorkletsForDoc\s*\(\s*this\.doc\s*,\s*ctx\s*\)/,
+    );
+  });
+
+  it("voiceCount getter exposes the live voice count for diagnostics", () => {
+    // The TopBar voice-count badge and the AudioUnlock overlay both read
+    // `voiceCount`. A regression that reads the wrong map (e.g. previewVoices)
+    // makes the badge say "0 voices" while audio still plays — confusing.
+    const body = sliceFunction(readEngine(), /get\s+voiceCount\s*\(\)/);
+    expect(body, "voiceCount getter not found in AudioEngine.ts").not.toBe("");
+    expect(body, "voiceCount must read from this.voices").toMatch(/this\.voices\.size/);
+  });
+
+  it("currentTime getter falls back to 0 when no context is bound", () => {
+    // Diagnostics and the latency calibration read engine.currentTime
+    // before ensureContext() has run. A regression that throws on null
+    // context crashes the OnboardingTour before it can paint.
+    const body = sliceFunction(readEngine(), /get\s+currentTime\s*\(\)/);
+    expect(body, "currentTime getter not found in AudioEngine.ts").not.toBe("");
+    expect(body, "currentTime must not throw when ctx is null").toMatch(/this\.ctx\?\.currentTime\s*\?\?\s*0/);
+  });
+
+  it("missingAssets getter returns a defensive copy of the missed-assets set", () => {
+    // The user-facing "missing sample" toast reads engine.missingAssets.
+    // If the getter leaks the internal Set, the toast can mutate it
+    // (delete / clear) and silently lose track of unresolved assets
+    // across renders. Pin the spread-copy here.
+    const body = sliceFunction(readEngine(), /get\s+missingAssets\s*\(\)/);
+    expect(body, "missingAssets getter not found in AudioEngine.ts").not.toBe("");
+    expect(body, "missingAssets must return a fresh array (no Set leakage)").toMatch(
+      /\[\.\.\.this\.missedAssets\]/,
+    );
+  });
 });

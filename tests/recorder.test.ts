@@ -37,6 +37,32 @@ describe("pickMimeType", () => {
   it("returns null when nothing is supported", () => {
     expect(pickMimeType(["audio/webm", "audio/mp4"], () => false)).toBeNull();
   });
+
+  it("returns null for an empty candidate list", () => {
+    // No MIME candidates (e.g. an unsupported platform) — the recorder
+    // must surface "nothing to record with" rather than crash.
+    expect(pickMimeType([], () => true)).toBeNull();
+  });
+
+  it("skips a candidate whose isSupported() throws", () => {
+    // A vendor-specific MIME check might throw on a different browser —
+    // the caller MUST recover and try the next candidate instead of
+    // bubbling the error up to the recorder UI.
+    const picked = pickMimeType(
+      ["audio/webm", "audio/ogg;codecs=opus"],
+      (type) => {
+        if (type.includes("webm")) throw new Error("vendor check failed");
+        return type.includes("ogg");
+      },
+    );
+    expect(picked).toBe("audio/ogg;codecs=opus");
+  });
+
+  it("is deterministic across re-evaluations (same input → same output)", () => {
+    const candidates = ["audio/webm;codecs=opus", "audio/mp4"];
+    const isSupported = (type: string) => type.includes("webm");
+    expect(pickMimeType(candidates, isSupported)).toBe(pickMimeType(candidates, isSupported));
+  });
 });
 
 describe("extensionForMime", () => {
@@ -46,6 +72,23 @@ describe("extensionForMime", () => {
     expect(extensionForMime("audio/mp4")).toBe(".m4a");
     expect(extensionForMime("audio/mpeg")).toBe(".mp3");
     expect(extensionForMime("")).toBe(".webm");
+  });
+
+  it("falls back to .webm for a truly unknown MIME type", () => {
+    // An exotic MIME the library hasn't been taught about — the recorder
+    // still saves a file with .webm so the browser can play it back
+    // rather than producing a nameless blob. Note: substrings "ogg",
+    // "mp4" and "mpeg" are checked first, so unknown types that happen
+    // to contain those tokens map to their known extension (ogg→ogg,
+    // mp4→m4a) — that's intentional, not a bug.
+    expect(extensionForMime("audio/x-matroska")).toBe(".webm");
+    expect(extensionForMime("audio/x-flac")).toBe(".webm");
+  });
+
+  it("prefers mp4 over mpeg when both substrings are present (mp4 checked first)", () => {
+    // The order of the substring checks matters — a future refactor that
+    // swaps them would silently mis-label m4a/mp3 files. Pin the order.
+    expect(extensionForMime("audio/mp4;codecs=mp4a.40.2")).toBe(".m4a");
   });
 });
 

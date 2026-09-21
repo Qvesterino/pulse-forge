@@ -209,6 +209,10 @@ export function mockServices(doc?: ProjectDocument): Services {
       setProject: vi.fn(),
       trigger: vi.fn(),
       noteOn: vi.fn(),
+      // Default `null` so UI tests reach the "Audio engine not running"
+      // safe path instead of throwing TypeError. Tests that need a real
+      // live context (spectral edit APPLY, export) override this.
+      getLiveAudioContext: vi.fn(() => null),
       getMasterLevels: vi.fn(() => ({
         left: { peak: 0, rms: 0, peakDb: -60, rmsDb: -70 },
         right: { peak: 0, rms: 0, peakDb: -60, rmsDb: -70 },

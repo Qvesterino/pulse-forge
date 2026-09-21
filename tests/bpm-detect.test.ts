@@ -97,6 +97,54 @@ describe("detectLoopBpm", () => {
     expect(detected).not.toBeNull();
     expect(Math.abs(detected!.bpm - 120)).toBeLessThanOrEqual(0.8);
   });
+
+  // ─── Edge cases: invalid sampleRate and pathological buffers ─────────────
+
+  it("returns null for sampleRate = NaN", () => {
+    expect(detectLoopBpm(makeClickTrack(120, 4), NaN)).toBeNull();
+  });
+
+  it("returns null for sampleRate = Infinity", () => {
+    expect(detectLoopBpm(makeClickTrack(120, 4), Infinity)).toBeNull();
+  });
+
+  it("returns null for sampleRate = 0", () => {
+    expect(detectLoopBpm(makeClickTrack(120, 4), 0)).toBeNull();
+  });
+
+  it("returns null for negative sampleRate", () => {
+    expect(detectLoopBpm(makeClickTrack(120, 4), -44100)).toBeNull();
+  });
+
+  it("returns null for empty buffer", () => {
+    expect(detectLoopBpm(new Float32Array(0), SR)).toBeNull();
+  });
+
+  it("returns null for buffer with non-finite samples (poisoned input)", () => {
+    const data = makeClickTrack(120, 4);
+    data[100] = Number.NaN;
+    data[500] = Number.POSITIVE_INFINITY;
+    // Either null (rejected) or a valid reading — must NOT throw or return
+    // a NaN/Infinity BPM (callers do `detected.bpm * sampleRate`).
+    const detected = detectLoopBpm(data, SR);
+    if (detected !== null) {
+      expect(Number.isFinite(detected.bpm)).toBe(true);
+      expect(Number.isFinite(detected.confidence)).toBe(true);
+    }
+  });
+
+  it("returns null for sampleRate = NaN even with otherwise valid audio", () => {
+    // Pin the guard order: the sampleRate check runs BEFORE the transient
+    // detection so a poisoned sampleRate can't make us scan arbitrary memory.
+    const data = makeClickTrack(120, 8);
+    expect(detectLoopBpm(data, NaN)).toBeNull();
+  });
+
+  it("refuses a buffer shorter than 1.5× sampleRate seconds (insufficient evidence)", () => {
+    // 1 second at 44100 Hz — well under the 1.5 s minimum needed for the
+    // autocorrelation to find a tempo at the lower end of the range.
+    expect(detectLoopBpm(makeClickTrack(120, 1), SR)).toBeNull();
+  });
 });
 
 describe("fitRate", () => {
@@ -116,5 +164,58 @@ describe("fitRate", () => {
     expect(fitRate(900, 60)).toBe(4);
     expect(fitRate(120, 120)).toBe(1);
     expect(Number.isInteger(fitRate(100, 124) * 100)).toBe(true);
+  });
+
+  // ─── Edge cases: divide-by-zero, non-finite BPM, negative loop tempo ──────
+
+  it("returns 1.0 when both BPMs are equal (identity stretch)", () => {
+    expect(fitRate(120, 120)).toBe(1);
+    expect(fitRate(60, 60)).toBe(1);
+  });
+
+  it("clamps to the upper stretch ceiling (rate = 4×)", () => {
+    expect(fitRate(240, 60)).toBe(4);
+    expect(fitRate(900, 60)).toBe(4);
+    expect(fitRate(100000, 1)).toBe(4);
+  });
+
+  it("clamps to the lower stretch floor (rate = 0.25×)", () => {
+    expect(fitRate(20, 124)).toBe(0.25);
+    expect(fitRate(1, 60)).toBe(0.25);
+    expect(fitRate(-50, 120)).toBe(0.25);
+  });
+
+  it("returns 1 (identity stretch) for projectBpm = 0 (avoids divide-by-zero)", () => {
+    // NaN/Infinity from 0/0 would silently poison the playbackRate AudioParam
+    // — a browser-side throw that takes the whole context down. The guard
+    // short-circuits to 1.0 (no time-stretch, no audible surprise).
+    expect(() => fitRate(120, 0)).not.toThrow();
+    expect(fitRate(120, 0)).toBe(1);
+    expect(fitRate(0, 0)).toBe(1);
+  });
+
+  it("returns 1 (identity stretch) for projectBpm = NaN or Infinity", () => {
+    // Same rationale as divide-by-zero: don't let malformed input reach the
+    // playbackRate AudioParam.
+    expect(fitRate(120, NaN)).toBe(1);
+    expect(fitRate(120, Infinity)).toBe(1);
+    expect(fitRate(120, -Infinity)).toBe(1);
+  });
+
+  it("returns 1 (identity stretch) for non-finite loopBpm", () => {
+    // The non-finite guard short-circuits before the clamp math can run, so
+    // both +Infinity and -Infinity collapse to the identity-stretch default.
+    // A regression that drops the guard would let NaN/Infinity leak into the
+    // playbackRate AudioParam and crash the AudioContext.
+    expect(fitRate(NaN, 120)).toBe(1);
+    expect(fitRate(Infinity, 120)).toBe(1);
+    expect(fitRate(-Infinity, 120)).toBe(1);
+  });
+
+  it("rounds intermediate results to 2 decimals (no long-floating-point residue)", () => {
+    // 100/124 = 0.80645… — must round to 0.81 so playbackRate stays in spec.
+    expect(fitRate(100, 124)).toBe(0.81);
+    expect(fitRate(140, 124)).toBe(1.13);
+    expect(fitRate(111, 120)).toBe(0.93);
   });
 });

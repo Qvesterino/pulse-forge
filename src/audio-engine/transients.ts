@@ -22,6 +22,11 @@ export interface TransientOptions {
 export function detectTransients(data: Float32Array, sampleRate: number, options: TransientOptions = {}): number[] {
   const sensitivity = options.sensitivity ?? 1;
 
+  // Guard before any arithmetic — NaN/Infinity sampleRate would produce
+  // NaN frame counts that bypass the `frames < 4` check (NaN comparisons
+  // are always false) and allocate Float64Array(NaN)-sized garbage.
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return [];
+
   const windowSize = 1024;
   const hop = 256;
   const frames = Math.max(0, Math.floor((data.length - windowSize) / hop) + 1);
@@ -97,6 +102,12 @@ export function detectTransients(data: Float32Array, sampleRate: number, options
 
 /** Grid slice boundaries (seconds) at `divisionsPerBeat` for a BPM. */
 export function gridSlicePoints(bpm: number, divisionsPerBeat: number, durationSec: number): number[] {
+  // BPM = 0 / NaN / Infinity → step is NaN or Infinity → the loop
+  // never advances. Return [] rather than an infinite / empty
+  // ambiguous array.
+  if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(divisionsPerBeat) || divisionsPerBeat <= 0) {
+    return [];
+  }
   const step = 60 / bpm / divisionsPerBeat;
   const points: number[] = [];
   for (let t = 0; t < durationSec - 1e-6; t += step) points.push(t);
@@ -108,6 +119,14 @@ export function gridSlicePoints(bpm: number, divisionsPerBeat: number, durationS
  * keeps only onsets, but each lands exactly on the grid.
  */
 export function snapToGrid(times: number[], bpm: number, divisionsPerBeat: number): number[] {
+  // BPM = 0 / NaN / Infinity → step is NaN → snap = NaN. Collapse every
+  // time to 0 (the grid step is "infinite" so all onsets land on the
+  // leading edge) — better than poisoning the result with NaN.
+  if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(divisionsPerBeat) || divisionsPerBeat <= 0) {
+    return times
+      .map((t) => Math.max(0, t))
+      .filter((t) => t === 0);
+  }
   const step = 60 / bpm / divisionsPerBeat;
   const snapped = times.map((t) => Math.max(0, Math.round(t / step) * step));
   // Deduplicate (two onsets can collapse onto one grid line).

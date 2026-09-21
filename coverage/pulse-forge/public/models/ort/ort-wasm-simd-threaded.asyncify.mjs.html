@@ -1,0 +1,448 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for pulse-forge/public/models/ort/ort-wasm-simd-threaded.asyncify.mjs</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../../prettify.css" />
+    <link rel="stylesheet" href="../../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../../index.html">All files</a> / <a href="index.html">pulse-forge/public/models/ort</a> ort-wasm-simd-threaded.asyncify.mjs</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/121</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/121</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >async function ortWasmThreaded(moduleArg={}){var moduleRtn;var g=moduleArg,aa=!!globalThis.window,ba=!!globalThis.WorkerGlobalScope,m=globalThis.process?.versions?.node&amp;&amp;"renderer"!=globalThis.process?.type,n=ba&amp;&amp;self.name?.startsWith("em-pthread");if(m){const {createRequire:a}=await import("module");var require=a(import.meta.url),ca=require("worker_threads");global.Worker=ca.Worker;n=(ba=!ca.Fe)&amp;&amp;"em-pthread"==ca.workerData}g.mountExternalData=(a,b)=&gt;{a.startsWith("./")&amp;&amp;(a=a.substring(2));(g.Yc||(g.Yc=new Map)).set(a,b)};</span></span></span>
+<span class="cstat-no" title="statement not covered" >g.unmountExternalData=()=&gt;{delete g.Yc;delete g.Ie;delete g.He;delete g.Je};var SharedArrayBuffer=globalThis.SharedArrayBuffer??(new WebAssembly.Memory({initial:0,maximum:0,shared:!0})).buffer.constructor;</span>
+<span class="cstat-no" title="statement not covered" >let ea=()=&gt;{const a=b=&gt;(...c)=&gt;{const d=r;c=b(...c);return r!=d?da():c};(b=&gt;{for(const c of b)g[c]=a(g[c])})(["_OrtAppendExecutionProvider","_OrtCreateSession","_OrtRun","_OrtRunWithBinding","_OrtBindInput"]);"undefined"!==typeof jsepRunAsync&amp;&amp;(g._OrtRun=jsepRunAsync(g._OrtRun),g._OrtRunWithBinding=jsepRunAsync(g._OrtRunWithBinding));ea=void 0};g.asyncInit=()=&gt;{ea?.()};var fa="./this.program",ia=(a,b)=&gt;{throw b;},ja=import.meta.url,ka="",la,ma;</span>
+<span class="cstat-no" title="statement not covered" >if(m){var fs=require("fs");ja.startsWith("file:")&amp;&amp;(ka=require("path").dirname(require("url").fileURLToPath(ja))+"/");ma=a=&gt;{a=na(a)?new URL(a):a;return fs.readFileSync(a)};la=async a=&gt;{a=na(a)?new URL(a):a;return fs.readFileSync(a,void 0)};1&lt;process.argv.length&amp;&amp;(fa=process.argv[1].replace(/\\/g,"/"));process.argv.slice(2);ia=(a,b)=&gt;{process.exitCode=a;throw b;}}else if(aa||ba){try{ka=(new URL(".",ja)).href}catch{}m||(ba&amp;&amp;(ma=a=&gt;{var b=new XMLHttpRequest;b.open("GET",a,!1);b.responseType="arraybuffer";</span>
+<span class="cstat-no" title="statement not covered" >b.send(null);return new Uint8Array(b.response)}),la=async a=&gt;{if(na(a))return new Promise((c,d)=&gt;{var e=new XMLHttpRequest;e.open("GET",a,!0);e.responseType="arraybuffer";e.onload=()=&gt;{200==e.status||0==e.status&amp;&amp;e.response?c(e.response):d(e.status)};e.onerror=d;e.send(null)});var b=await fetch(a,{credentials:"same-origin"});if(b.ok)return b.arrayBuffer();throw Error(b.status+" : "+b.url);})}var oa=console.log.bind(console),pa=console.error.bind(console);</span>
+<span class="cstat-no" title="statement not covered" >if(m){var qa=require("util"),ra=a=&gt;"object"==typeof a?qa.inspect(a):a;oa=(...a)=&gt;fs.writeSync(1,a.map(ra).join(" ")+"\n");pa=(...a)=&gt;fs.writeSync(2,a.map(ra).join(" ")+"\n")}var sa=oa,t=pa,ta,ua,va=!1,wa,na=a=&gt;a.startsWith("file://");function u(){v.buffer!=w.buffer&amp;&amp;xa()}var ya,Aa;</span>
+<span class="cstat-no" title="statement not covered" >if(m&amp;&amp;n){var Ba=ca.parentPort;Ba.on("message",a=&gt;global.onmessage?.({data:a}));Object.assign(globalThis,{self:global,postMessage:a=&gt;Ba.postMessage(a)});process.on("uncaughtException",a=&gt;{postMessage({Tc:"uncaughtException",error:a});process.exit(1)})}var Ca;</span>
+<span class="cstat-no" title="statement not covered" >if(n){var Da=!1;self.onunhandledrejection=b=&gt;{throw b.reason||b;};function a(b){try{var c=b.data,d=c.Tc;if("load"===d){let e=[];self.onmessage=f=&gt;e.push(f);Ca=()=&gt;{postMessage({Tc:"loaded"});for(let f of e)a(f);self.onmessage=a};for(const f of c.ke)if(!g[f]||g[f].proxy)g[f]=(...k)=&gt;{postMessage({Tc:"callHandler",je:f,args:k})},"print"==f&amp;&amp;(sa=g[f]),"printErr"==f&amp;&amp;(t=g[f]);v=c.qe;xa();ua=c.re;Ea();Fa()}else if("run"===d){Ga(c.Qc);Ha(c.Qc,0,0,1,0,0);Ia();Ja(c.Qc);Da||(Ka(),Da=!0);try{La(c.oe,c.$c)}catch(e){if("unwind"!=</span>
+<span class="cstat-no" title="statement not covered" >e)throw e;}}else"setimmediate"!==c.target&amp;&amp;("checkMailbox"===d?Da&amp;&amp;Ma():d&amp;&amp;(t(`worker: received unknown command ${d}`),t(c)))}catch(e){throw Na(),e;}}self.onmessage=a}var w,x,Oa,Pa,B,C,Qa,D,E,Ra,Sa=!1;function xa(){var a=v.buffer;g.HEAP8=w=new Int8Array(a);Oa=new Int16Array(a);g.HEAPU8=x=new Uint8Array(a);Pa=new Uint16Array(a);g.HEAP32=B=new Int32Array(a);g.HEAPU32=C=new Uint32Array(a);Qa=new Float32Array(a);D=new Float64Array(a);E=new BigInt64Array(a);Ra=new BigUint64Array(a)}</span>
+<span class="cstat-no" title="statement not covered" >function Ta(){Sa=!0;n?Ca():F.bc()}function G(a){a="Aborted("+a+")";t(a);va=!0;a=new WebAssembly.RuntimeError(a+". Build with -sASSERTIONS for more info.");Aa?.(a);throw a;}var Ua;async function Va(a){if(!ta)try{var b=await la(a);return new Uint8Array(b)}catch{}if(a==Ua&amp;&amp;ta)a=new Uint8Array(ta);else if(ma)a=ma(a);else throw"both async and sync fetching of the wasm failed";return a}</span>
+<span class="cstat-no" title="statement not covered" >async function Wa(a,b){try{var c=await Va(a);return await WebAssembly.instantiate(c,b)}catch(d){t(`failed to asynchronously prepare wasm: ${d}`),G(d)}}async function Xa(a){var b=Ua;if(!ta&amp;&amp;!na(b)&amp;&amp;!m)try{var c=fetch(b,{credentials:"same-origin"});return await WebAssembly.instantiateStreaming(c,a)}catch(d){t(`wasm streaming compile failed: ${d}`),t("falling back to ArrayBuffer instantiation")}return Wa(b,a)}</span>
+<span class="cstat-no" title="statement not covered" >function Ya(){Za={f:$a,J:ab,k:bb,p:cb,l:db,da:eb,b:fb,ba:gb,Ea:hb,q:ib,ca:jb,Ua:kb,ac:lb,Ca:mb,Va:nb,Sa:ob,La:pb,Ra:qb,oa:rb,Ba:sb,_b:tb,Ta:ub,$b:vb,_a:wb,Aa:xb,Vb:yb,Tb:Ab,za:Bb,N:Cb,I:Db,Ub:Eb,ia:Fb,Wb:Gb,Oa:Hb,Yb:Ib,Fa:Jb,Rb:Kb,ja:Lb,Na:Ja,Xa:Mb,U:Nb,n:Ob,c:Pb,ob:Qb,w:Rb,M:Sb,A:Tb,j:Ub,o:Vb,pb:Wb,G:Xb,T:Yb,g:Zb,u:$b,m:ac,i:bc,Ia:cc,Ja:dc,Ka:ec,Ga:fc,Ha:gc,Sb:hc,$a:ic,Za:jc,Y:kc,nb:lc,ka:mc,Ya:nc,ab:oc,Wa:pc,Zb:qc,O:rc,bb:sc,X:tc,Xb:uc,jb:vc,B:wc,qa:xc,pa:yc,lb:zc,W:Ac,v:Bc,ib:Cc,hb:Dc,gb:Ec,kb:Fc,</span>
+<span class="cstat-no" title="statement not covered" >eb:Gc,db:Hc,cb:Ic,Pa:Jc,Qa:Kc,Da:Lc,V:Mc,na:Nc,Ma:Oc,ma:Pc,Cb:Qc,ua:Rc,Eb:Sc,va:Tc,E:Uc,e:Vc,r:Wc,x:Xc,C:Yc,Fb:Zc,aa:$c,D:ad,wa:bd,_:cd,fa:dd,Hb:ed,Ib:fd,ya:gd,xa:hd,Jb:jd,ta:kd,$:ld,d:md,z:nd,s:od,Bb:pd,t:qd,y:rd,F:sd,H:td,K:ud,Kb:vd,P:wd,ha:xd,Z:yd,Mb:zd,Nb:Ad,Lb:Bd,h:Cd,a:v,Qb:Dd,Gb:Ed,ga:Fd,L:Gd,la:Hd,Db:Id,ra:Jd,Q:Kd,yb:Ld,zb:Md,tb:Nd,ub:Od,R:Pd,vb:Qd,wb:Rd,sa:Sd,Pb:Td,mb:Ud,S:Vd,fb:Wd,Ab:Xd,qb:Yd,rb:Zd,sb:$d,ea:ae,xb:be,Ob:ce};return{a:Za}}</span>
+<span class="cstat-no" title="statement not covered" >async function Ea(){function a(d,e){var f=F=d.exports;d={};for(let [k,h]of Object.entries(f))"function"==typeof h?(f=de(h),d[k]=f):d[k]=h;F=d;F=ee();fe.push(F.ld);d=F;ge=d.cc;Ka=d.dc;g._OrtInit=d.ec;g._OrtGetLastError=d.fc;g._OrtCreateSessionOptions=d.gc;g._OrtAppendExecutionProvider=d.hc;g._OrtAddFreeDimensionOverride=d.ic;g._OrtAddSessionConfigEntry=d.jc;g._OrtReleaseSessionOptions=d.kc;g._OrtCreateSession=d.lc;g._OrtReleaseSession=d.mc;g._OrtGetInputOutputCount=d.nc;g._OrtGetInputOutputMetadata=</span>
+<span class="cstat-no" title="statement not covered" >d.oc;g._OrtFree=d.pc;g._OrtCreateTensor=d.qc;g._OrtGetTensorData=d.rc;g._OrtReleaseTensor=d.sc;g._OrtCreateRunOptions=d.tc;g._OrtAddRunConfigEntry=d.uc;g._OrtReleaseRunOptions=d.vc;g._OrtCreateBinding=d.wc;g._OrtBindInput=d.xc;g._OrtBindOutput=d.yc;g._OrtClearBoundOutputs=d.zc;g._OrtReleaseBinding=d.Ac;g._OrtRunWithBinding=d.Bc;g._OrtRun=d.Cc;g._OrtEndProfiling=d.Dc;he=g._OrtGetWebGpuDevice=d.Ec;ie=d.Fc;H=g._free=d.Gc;je=g._malloc=d.Hc;ke=g._wgpuBufferRelease=d.Ic;le=g._wgpuCreateInstance=d.Jc;me=</span>
+<span class="cstat-no" title="statement not covered" >d.Kc;ne=d.Lc;oe=d.Mc;pe=d.Nc;qe=d.Oc;re=d.Rc;se=d.Sc;te=d.ad;ue=d.bd;ve=d.cd;we=d.ed;xe=d.fd;ye=d.gd;ze=d.hd;Ae=d.id;Be=d.jd;Ce=d.kd;Ha=d.nd;Na=d.od;De=d.pd;Ee=d.qd;Fe=d.rd;Ge=d.sd;He=d.td;Ie=d.ud;I=d.vd;Je=d.wd;Ke=d.xd;J=d.yd;Le=d.zd;K=d.Ad;Me=d.Bd;Ne=d.Cd;Oe=d.Dd;Pe=d.Ed;dynCall_vii=d.Fd;Qe=d.Gd;dynCall_v=d.Hd;Re=d.Id;Se=d.Jd;Te=d.Kd;dynCall_iii=d.Ld;Ue=d.Md;Ve=d.Nd;We=d.Od;dynCall_vi=d.Pd;Xe=d.Qd;Ye=d.Rd;Ze=d.Sd;$e=d.Td;af=d.Ud;bf=d.Vd;cf=d.Wd;df=d.Xd;ef=d.Yd;ff=d.Zd;gf=d.$d;hf=d.ae;jf=d.be;kf=</span>
+<span class="cstat-no" title="statement not covered" >d.ce;lf=d.de;mf=d.ee;nf=d.se;of=d.te;pf=d.ue;qf=d.ve;rf=d.we;sf=d.xe;tf=d.ye;uf=d.ze;vf=d.Ae;wf=d.Be;xf=d.Ce;yf=d.cf;zf=d.df;Af=d.ef;Bf=d.ff;ua=e;return F}var b=Ya();if(g.instantiateWasm)return new Promise(d=&gt;{g.instantiateWasm(b,(e,f)=&gt;{d(a(e,f))})});if(n){var c=new WebAssembly.Instance(ua,Ya());return a(c,ua)}Ua??=g.locateFile?g.locateFile?g.locateFile("ort-wasm-simd-threaded.asyncify.wasm",ka):ka+"ort-wasm-simd-threaded.asyncify.wasm":(new URL("ort-wasm-simd-threaded.asyncify.wasm",import.meta.url)).href;</span>
+<span class="cstat-no" title="statement not covered" >return function(d){return a(d.instance,d.module)}(await Xa(b))}class Cf{name="ExitStatus";constructor(a){this.message=`Program terminated with exit(${a})`;this.status=a}}</span>
+<span class="cstat-no" title="statement not covered" >var Df=a=&gt;{a.terminate();a.onmessage=()=&gt;{}},Ef=[],Ff=0,Gf=null,Mf=a=&gt;{0==Hf.length&amp;&amp;(If(),Jf(Hf[0]));var b=Hf.pop();if(!b)return 6;Kf.push(b);Lf[a.Qc]=b;b.Qc=a.Qc;var c={Tc:"run",oe:a.ne,$c:a.$c,Qc:a.Qc};m&amp;&amp;b.unref();b.postMessage(c,a.md);return 0},L=0,M=(a,b,...c)=&gt;{var d=16*c.length,e=K(),f=Le(d),k=f&gt;&gt;&gt;3,h;for(h of c)"bigint"==typeof h?((u(),E)[k++&gt;&gt;&gt;0]=1n,(u(),E)[k++&gt;&gt;&gt;0]=h):((u(),E)[k++&gt;&gt;&gt;0]=0n,(u(),D)[k++&gt;&gt;&gt;0]=h);a=De(a,0,d,f,b);J(e);return a};</span>
+<span class="cstat-no" title="statement not covered" >function Dd(a){if(n)return M(0,1,a);wa=a;if(!(0&lt;L)){for(var b of Kf)Df(b);for(b of Hf)Df(b);Hf=[];Kf=[];Lf={};va=!0}ia(a,new Cf(a))}function Nf(a){if(n)return M(1,0,a);Lc(a)}var Lc=a=&gt;{wa=a;if(n)throw Nf(a),"unwind";Dd(a)},Hf=[],Kf=[],fe=[],Lf={};function Of(){for(var a=g.numThreads-1;a--;)If();Ef.push(async()=&gt;{var b=Pf();Ff++;await b;Ff--;0==Ff&amp;&amp;Gf&amp;&amp;(b=Gf,Gf=null,b())})}var Qf=a=&gt;{var b=a.Qc;delete Lf[b];Hf.push(a);Kf.splice(Kf.indexOf(a),1);a.Qc=0;Ee(b)};function Ia(){fe.forEach(a=&gt;a())}</span>
+<span class="cstat-no" title="statement not covered" >var Jf=a=&gt;new Promise(b=&gt;{a.onmessage=f=&gt;{var k=f.data;f=k.Tc;if(k.Zc&amp;&amp;k.Zc!=ie()){var h=Lf[k.Zc];h?h.postMessage(k,k.md):t(`Internal error! Worker sent a message "${f}" to target pthread ${k.Zc}, but that thread no longer exists!`)}else if("checkMailbox"===f)Ma();else if("spawnThread"===f)Mf(k);else if("cleanupThread"===f)N(()=&gt;{Qf(Lf[k.pe])});else if("loaded"===f)a.loaded=!0,m&amp;&amp;!a.Qc&amp;&amp;a.unref(),b(a);else if("setimmediate"===k.target)a.postMessage(k);else if("uncaughtException"===f)a.onerror(k.error);</span>
+<span class="cstat-no" title="statement not covered" >else if("callHandler"===f)g[k.je](...k.args);else f&amp;&amp;t(`worker sent an unknown command ${f}`)};a.onerror=f=&gt;{t(`${"worker sent an error!"} ${f.filename}:${f.lineno}: ${f.message}`);throw f;};m&amp;&amp;(a.on("message",f=&gt;a.onmessage({data:f})),a.on("error",f=&gt;a.onerror(f)));var c=[],d=[],e;for(e of d)g.propertyIsEnumerable(e)&amp;&amp;c.push(e);a.postMessage({Tc:"load",ke:c,qe:v,re:ua})});async function Pf(){if(!n)return Promise.all(Hf.map(Jf))}</span>
+<span class="cstat-no" title="statement not covered" >function If(){var a=new Worker(new URL(import.meta.url),{type:"module",workerData:"em-pthread",name:"em-pthread"});Hf.push(a)}function Ga(a){var b=(u(),C)[a+52&gt;&gt;&gt;2&gt;&gt;&gt;0];a=(u(),C)[a+56&gt;&gt;&gt;2&gt;&gt;&gt;0];Ke(b,b-a);J(b)}var La=(a,b)=&gt;{L=0;a=Qe(a,b);0&lt;L?wa=a:Fe(a)},v,Rf=[],Sf=0,O=a=&gt;-9007199254740992&gt;a||9007199254740992&lt;a?NaN:Number(a);function $a(a){a&gt;&gt;&gt;=0;var b=new Tf(a);0==(u(),w)[b.Uc+12&gt;&gt;&gt;0]&amp;&amp;(Uf(b,!0),Sf--);Vf(b,!1);Rf.push(b);return Pe(a)}</span>
+<span class="cstat-no" title="statement not covered" >var Wf=0,ab=()=&gt;{I(0,0);var a=Rf.pop();Me(a.dd);Wf=0};function Uf(a,b){b=b?1:0;(u(),w)[a.Uc+12&gt;&gt;&gt;0]=b}function Vf(a,b){b=b?1:0;(u(),w)[a.Uc+13&gt;&gt;&gt;0]=b}class Tf{constructor(a){this.dd=a;this.Uc=a-24}}var Xf=a=&gt;{var b=Wf;if(!b)return Je(0),0;var c=new Tf(b);(u(),C)[c.Uc+16&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;var d=(u(),C)[c.Uc+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(!d)return Je(0),b;for(var e of a){if(0===e||e===d)break;if(Oe(e,d,c.Uc+16))return Je(e),b}Je(d);return b};function bb(){return Xf([])}function cb(a){return Xf([a&gt;&gt;&gt;0])}</span>
+<span class="cstat-no" title="statement not covered" >function db(a,b,c,d){return Xf([a&gt;&gt;&gt;0,b&gt;&gt;&gt;0,c&gt;&gt;&gt;0,d&gt;&gt;&gt;0])}var eb=()=&gt;{var a=Rf.pop();a||G("no exception to throw");var b=a.dd;0==(u(),w)[a.Uc+13&gt;&gt;&gt;0]&amp;&amp;(Rf.push(a),Vf(a,!0),Uf(a,!1),Sf++);Ne(b);Wf=b;throw Wf;};function fb(a,b,c){a&gt;&gt;&gt;=0;var d=new Tf(a);b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;(u(),C)[d.Uc+16&gt;&gt;&gt;2&gt;&gt;&gt;0]=0;(u(),C)[d.Uc+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;(u(),C)[d.Uc+8&gt;&gt;&gt;2&gt;&gt;&gt;0]=c;Ne(a);Wf=a;Sf++;throw Wf;}var gb=()=&gt;Sf;function Yf(a,b,c,d){return n?M(2,1,a,b,c,d):hb(a,b,c,d)}</span>
+<span class="cstat-no" title="statement not covered" >function hb(a,b,c,d){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;d&gt;&gt;&gt;=0;if(!globalThis.SharedArrayBuffer)return 6;var e=[];if(n&amp;&amp;0===e.length)return Yf(a,b,c,d);a={ne:c,Qc:a,$c:d,md:e};return n?(a.Tc="spawnThread",postMessage(a,e),0):Mf(a)}function ib(a){Wf||=a&gt;&gt;&gt;0;throw Wf;}</span>
+<span class="cstat-no" title="statement not covered" >var Zf=globalThis.TextDecoder&amp;&amp;new TextDecoder,$f=(a,b,c,d)=&gt;{c=b+c;if(d)return c;for(;a[b]&amp;&amp;!(b&gt;=c);)++b;return b},ag=(a,b=0,c,d)=&gt;{b&gt;&gt;&gt;=0;c=$f(a,b,c,d);if(16&lt;c-b&amp;&amp;a.buffer&amp;&amp;Zf)return Zf.decode(a.buffer instanceof ArrayBuffer?a.subarray(b,c):a.slice(b,c));for(d="";b&lt;c;){var e=a[b++];if(e&amp;128){var f=a[b++]&amp;63;if(192==(e&amp;224))d+=String.fromCharCode((e&amp;31)&lt;&lt;6|f);else{var k=a[b++]&amp;63;e=224==(e&amp;240)?(e&amp;15)&lt;&lt;12|f&lt;&lt;6|k:(e&amp;7)&lt;&lt;18|f&lt;&lt;12|k&lt;&lt;6|a[b++]&amp;63;65536&gt;e?d+=String.fromCharCode(e):(e-=65536,d+=String.fromCharCode(55296|</span>
+<span class="cstat-no" title="statement not covered" >e&gt;&gt;10,56320|e&amp;1023))}}else d+=String.fromCharCode(e)}return d},bg=(a,b,c)=&gt;(a&gt;&gt;&gt;=0)?ag((u(),x),a,b,c):"";function jb(a,b,c){return n?M(3,1,a,b,c):0}function kb(a,b){if(n)return M(4,1,a,b)}function lb(a,b){if(n)return M(5,1,a,b)}function mb(a,b,c){if(n)return M(6,1,a,b,c)}function nb(a,b,c){return n?M(7,1,a,b,c):0}function ob(a,b){if(n)return M(8,1,a,b)}function pb(a,b,c){if(n)return M(9,1,a,b,c)}function qb(a,b,c,d){if(n)return M(10,1,a,b,c,d)}function rb(a,b,c,d){if(n)return M(11,1,a,b,c,d)}</span>
+<span class="cstat-no" title="statement not covered" >function sb(a,b,c,d){if(n)return M(12,1,a,b,c,d)}function tb(a){if(n)return M(13,1,a)}function ub(a,b){if(n)return M(14,1,a,b)}function vb(a,b,c){if(n)return M(15,1,a,b,c)}var wb=()=&gt;G(""),P=a=&gt;{a&gt;&gt;&gt;=0;for(var b="";;){var c=(u(),x)[a++&gt;&gt;&gt;0];if(!c)return b;b+=String.fromCharCode(c)}},cg={},dg={},eg={},fg=class extends Error{constructor(a){super(a);this.name="BindingError"}};</span>
+<span class="cstat-no" title="statement not covered" >function gg(a,b,c={}){var d=b.name;if(!a)throw new fg(`type "${d}" must have a positive integer typeid pointer`);if(dg.hasOwnProperty(a)){if(c.le)return;throw new fg(`Cannot register type '${d}' twice`);}dg[a]=b;delete eg[a];cg.hasOwnProperty(a)&amp;&amp;(b=cg[a],delete cg[a],b.forEach(e=&gt;e()))}function Q(a,b,c={}){return gg(a,b,c)}</span>
+<span class="cstat-no" title="statement not covered" >var hg=(a,b,c)=&gt;{switch(b){case 1:return c?d=&gt;(u(),w)[d&gt;&gt;&gt;0]:d=&gt;(u(),x)[d&gt;&gt;&gt;0];case 2:return c?d=&gt;(u(),Oa)[d&gt;&gt;&gt;1&gt;&gt;&gt;0]:d=&gt;(u(),Pa)[d&gt;&gt;&gt;1&gt;&gt;&gt;0];case 4:return c?d=&gt;(u(),B)[d&gt;&gt;&gt;2&gt;&gt;&gt;0]:d=&gt;(u(),C)[d&gt;&gt;&gt;2&gt;&gt;&gt;0];case 8:return c?d=&gt;(u(),E)[d&gt;&gt;&gt;3&gt;&gt;&gt;0]:d=&gt;(u(),Ra)[d&gt;&gt;&gt;3&gt;&gt;&gt;0];default:throw new TypeError(`invalid integer width (${b}): ${a}`);}};</span>
+<span class="cstat-no" title="statement not covered" >function xb(a,b,c,d,e){a&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);d=0n===d;let f=k=&gt;k;if(d){const k=8*c;f=h=&gt;BigInt.asUintN(k,h);e=f(e)}Q(a,{name:b,Pc:f,Wc:(k,h)=&gt;{"number"==typeof h&amp;&amp;(h=BigInt(h));return h},Vc:hg(b,c,!d),Xc:null})}function yb(a,b,c,d){a&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);Q(a,{name:b,Pc:function(e){return!!e},Wc:function(e,f){return f?c:d},Vc:function(e){return this.Pc((u(),x)[e&gt;&gt;&gt;0])},Xc:null})}var ig=[],jg=[0,1,,1,null,1,!0,1,!1,1];function Pb(a){a&gt;&gt;&gt;=0;9&lt;a&amp;&amp;0===--jg[a+1]&amp;&amp;(jg[a]=void 0,ig.push(a))}</span>
+<span class="cstat-no" title="statement not covered" >var R=a=&gt;{if(!a)throw new fg(`Cannot use deleted val. handle = ${a}`);return jg[a]},S=a=&gt;{switch(a){case void 0:return 2;case null:return 4;case !0:return 6;case !1:return 8;default:const b=ig.pop()||jg.length;jg[b]=a;jg[b+1]=1;return b}};function kg(a){return this.Pc((u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0])}var lg={name:"emscripten::val",Pc:a=&gt;{var b=R(a);Pb(a);return b},Wc:(a,b)=&gt;S(b),Vc:kg,Xc:null};function Ab(a){return Q(a&gt;&gt;&gt;0,lg)}</span>
+<span class="cstat-no" title="statement not covered" >var mg=(a,b)=&gt;{switch(b){case 4:return function(c){return this.Pc((u(),Qa)[c&gt;&gt;&gt;2&gt;&gt;&gt;0])};case 8:return function(c){return this.Pc((u(),D)[c&gt;&gt;&gt;3&gt;&gt;&gt;0])};default:throw new TypeError(`invalid float width (${b}): ${a}`);}};function Bb(a,b,c){a&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);Q(a,{name:b,Pc:d=&gt;d,Wc:(d,e)=&gt;e,Vc:mg(b,c),Xc:null})}function Cb(a,b,c,d,e){a&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);let f=h=&gt;h;if(0===d){var k=32-8*c;f=h=&gt;h&lt;&lt;k&gt;&gt;&gt;k;e=f(e)}Q(a,{name:b,Pc:f,Wc:(h,l)=&gt;l,Vc:hg(b,c,0!==d),Xc:null})}</span>
+<span class="cstat-no" title="statement not covered" >function Db(a,b,c){function d(f){var k=(u(),C)[f&gt;&gt;&gt;2&gt;&gt;&gt;0];f=(u(),C)[f+4&gt;&gt;&gt;2&gt;&gt;&gt;0];return new e((u(),w).buffer,f,k)}a&gt;&gt;&gt;=0;var e=[Int8Array,Uint8Array,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array,BigInt64Array,BigUint64Array][b];c=P(c&gt;&gt;&gt;0);Q(a,{name:c,Pc:d,Vc:d},{le:!0})}</span>
+<span class="cstat-no" title="statement not covered" >var T=(a,b,c)=&gt;{var d=(u(),x);b&gt;&gt;&gt;=0;if(0&lt;c){var e=b;c=b+c-1;for(var f=0;f&lt;a.length;++f){var k=a.codePointAt(f);if(127&gt;=k){if(b&gt;=c)break;d[b++&gt;&gt;&gt;0]=k}else if(2047&gt;=k){if(b+1&gt;=c)break;d[b++&gt;&gt;&gt;0]=192|k&gt;&gt;6;d[b++&gt;&gt;&gt;0]=128|k&amp;63}else if(65535&gt;=k){if(b+2&gt;=c)break;d[b++&gt;&gt;&gt;0]=224|k&gt;&gt;12;d[b++&gt;&gt;&gt;0]=128|k&gt;&gt;6&amp;63;d[b++&gt;&gt;&gt;0]=128|k&amp;63}else{if(b+3&gt;=c)break;d[b++&gt;&gt;&gt;0]=240|k&gt;&gt;18;d[b++&gt;&gt;&gt;0]=128|k&gt;&gt;12&amp;63;d[b++&gt;&gt;&gt;0]=128|k&gt;&gt;6&amp;63;d[b++&gt;&gt;&gt;0]=128|k&amp;63;f++}}d[b&gt;&gt;&gt;0]=0;a=b-e}else a=0;return a},U=a=&gt;{for(var b=0,c=0;c&lt;a.length;++c){var d=</span>
+<span class="cstat-no" title="statement not covered" >a.charCodeAt(c);127&gt;=d?b++:2047&gt;=d?b+=2:55296&lt;=d&amp;&amp;57343&gt;=d?(b+=4,++c):b+=3}return b};</span>
+<span class="cstat-no" title="statement not covered" >function Eb(a,b){a&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);Q(a,{name:b,Pc(c){var d=(u(),C)[c&gt;&gt;&gt;2&gt;&gt;&gt;0];d=bg(c+4,d,!0);H(c);return d},Wc(c,d){d instanceof ArrayBuffer&amp;&amp;(d=new Uint8Array(d));var e="string"==typeof d;if(!(e||ArrayBuffer.isView(d)&amp;&amp;1==d.BYTES_PER_ELEMENT))throw new fg("Cannot pass non-string to std::string");var f=e?U(d):d.length;var k=je(4+f+1),h=k+4;(u(),C)[k&gt;&gt;&gt;2&gt;&gt;&gt;0]=f;e?T(d,h,f+1):(u(),x).set(d,h&gt;&gt;&gt;0);null!==c&amp;&amp;c.push(H,k);return k},Vc:kg,Xc(c){H(c)}})}</span>
+<span class="cstat-no" title="statement not covered" >var ng=globalThis.TextDecoder?new TextDecoder("utf-16le"):void 0,og=(a,b,c)=&gt;{a&gt;&gt;&gt;=1;b=$f((u(),Pa),a,b/2,c);if(16&lt;b-a&amp;&amp;ng)return ng.decode((u(),Pa).slice(a,b));for(c="";a&lt;b;++a){var d=(u(),Pa)[a&gt;&gt;&gt;0];c+=String.fromCharCode(d)}return c},pg=(a,b,c)=&gt;{c??=2147483647;if(2&gt;c)return 0;c-=2;var d=b;c=c&lt;2*a.length?c/2:a.length;for(var e=0;e&lt;c;++e){var f=a.charCodeAt(e);(u(),Oa)[b&gt;&gt;&gt;1&gt;&gt;&gt;0]=f;b+=2}(u(),Oa)[b&gt;&gt;&gt;1&gt;&gt;&gt;0]=0;return b-d},qg=a=&gt;2*a.length,rg=(a,b,c)=&gt;{var d="";a&gt;&gt;&gt;=2;for(var e=0;!(e&gt;=b/4);e++){var f=</span>
+<span class="cstat-no" title="statement not covered" >(u(),C)[a+e&gt;&gt;&gt;0];if(!f&amp;&amp;!c)break;d+=String.fromCodePoint(f)}return d},sg=(a,b,c)=&gt;{b&gt;&gt;&gt;=0;c??=2147483647;if(4&gt;c)return 0;var d=b;c=d+c-4;for(var e=0;e&lt;a.length;++e){var f=a.codePointAt(e);65535&lt;f&amp;&amp;e++;(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=f;b+=4;if(b+4&gt;c)break}(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=0;return b-d},tg=a=&gt;{for(var b=0,c=0;c&lt;a.length;++c)65535&lt;a.codePointAt(c)&amp;&amp;c++,b+=4;return b};</span>
+<span class="cstat-no" title="statement not covered" >function Fb(a,b,c){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;c=P(c);if(2===b){var d=og;var e=pg;var f=qg}else d=rg,e=sg,f=tg;Q(a,{name:c,Pc:k=&gt;{var h=(u(),C)[k&gt;&gt;&gt;2&gt;&gt;&gt;0];h=d(k+4,h*b,!0);H(k);return h},Wc:(k,h)=&gt;{if("string"!=typeof h)throw new fg(`Cannot pass non-string to C++ string type ${c}`);var l=f(h),p=je(4+l+b);(u(),C)[p&gt;&gt;&gt;2&gt;&gt;&gt;0]=l/b;e(h,p+4,l+b);null!==k&amp;&amp;k.push(H,p);return p},Vc:kg,Xc(k){H(k)}})}function Gb(a,b){a&gt;&gt;&gt;=0;b=P(b&gt;&gt;&gt;0);Q(a,{me:!0,name:b,Pc:()=&gt;{},Wc:()=&gt;{}})}</span>
+<span class="cstat-no" title="statement not covered" >function Hb(a){Ha(a&gt;&gt;&gt;0,!ba,1,!aa,131072,!1);Ia()}var N=a=&gt;{if(!va)try{if(a(),!(0&lt;L))try{n?ie()&amp;&amp;Fe(wa):Lc(wa)}catch(b){b instanceof Cf||"unwind"==b||ia(1,b)}}catch(b){b instanceof Cf||"unwind"==b||ia(1,b)}},ug=!Atomics.waitAsync||globalThis.navigator?.userAgent&amp;&amp;91&gt;Number((navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./)||[])[2]);function Ja(a){a&gt;&gt;&gt;=0;ug||(Atomics.waitAsync((u(),B),a&gt;&gt;&gt;2,a).value.then(Ma),a+=128,Atomics.store((u(),B),a&gt;&gt;&gt;2,1))}var Ma=()=&gt;N(()=&gt;{var a=ie();a&amp;&amp;(Ja(a),He())});</span>
+<span class="cstat-no" title="statement not covered" >function Ib(a,b){a&gt;&gt;&gt;=0;a==b&gt;&gt;&gt;0?setTimeout(Ma):n?postMessage({Zc:a,Tc:"checkMailbox"}):(a=Lf[a])&amp;&amp;a.postMessage({Tc:"checkMailbox"})}var vg=[];function Jb(a,b,c,d,e){b&gt;&gt;&gt;=0;e&gt;&gt;&gt;=0;vg.length=0;c=e&gt;&gt;&gt;3;for(d=e+d&gt;&gt;&gt;3;c&lt;d;){var f;(u(),E)[c++&gt;&gt;&gt;0]?f=(u(),E)[c++&gt;&gt;&gt;0]:f=(u(),D)[c++&gt;&gt;&gt;0];vg.push(f)}return(b?wg[b]:xg[a])(...vg)}var Kb=()=&gt;{L=0};function Lb(a){a&gt;&gt;&gt;=0;n?postMessage({Tc:"cleanupThread",pe:a}):Qf(Lf[a])}function Mb(a){m&amp;&amp;Lf[a&gt;&gt;&gt;0].ref()}var yg=a=&gt;{try{a()}catch(b){G(b)}};</span>
+<span class="cstat-no" title="statement not covered" >function de(a){var b=(...c)=&gt;{zg.push(a);try{return a(...c)}finally{va||(zg.pop(),r&amp;&amp;1===Ag&amp;&amp;0===zg.length&amp;&amp;(Ag=0,L+=1,yg(zf),"undefined"!=typeof Fibers&amp;&amp;Fibers.Le()))}};Bg.set(a,b);return b}var Ag=0,r=null,Cg=0,zg=[],Dg=new Map,Eg=new Map,Bg=new Map,Fg=0,Gg=null,Hg=[];function da(){return new Promise((a,b)=&gt;{Gg={resolve:a,reject:b}})}</span>
+<span class="cstat-no" title="statement not covered" >function Ig(){var a=je(65548),b=a+12;(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;(u(),C)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=b+65536;b=zg[0];if(!Dg.has(b)){var c=Fg++;Dg.set(b,c);Eg.set(c,b)}b=Dg.get(b);(u(),B)[a+8&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;return a}function Jg(){var a=(u(),B)[r+8&gt;&gt;&gt;2&gt;&gt;&gt;0];a=Eg.get(a);a=Bg.get(a);--L;return a()}</span>
+<span class="cstat-no" title="statement not covered" >function Kg(a){if(!va){if(0===Ag){var b=!1,c=!1;a((d=0)=&gt;{if(!va&amp;&amp;(Cg=d,b=!0,c)){Ag=2;yg(()=&gt;Af(r));"undefined"!=typeof MainLoop&amp;&amp;MainLoop.ie&amp;&amp;MainLoop.resume();d=!1;try{var e=Jg()}catch(h){e=h,d=!0}var f=!1;if(!r){var k=Gg;k&amp;&amp;(Gg=null,(d?k.reject:k.resolve)(e),f=!0)}if(d&amp;&amp;!f)throw e;}});c=!0;b||(Ag=1,r=Ig(),"undefined"!=typeof MainLoop&amp;&amp;MainLoop.ie&amp;&amp;MainLoop.pause(),yg(()=&gt;yf(r)))}else 2===Ag?(Ag=0,yg(Bf),H(r),r=null,Hg.forEach(N)):G(`invalid state: ${Ag}`);return Cg}}var Lg=a=&gt;Kg(b=&gt;{a().then(b)});</span>
+<span class="cstat-no" title="statement not covered" >function Nb(a){a&gt;&gt;&gt;=0;return Lg(async()=&gt;{var b=await R(a);return S(b)})}var Mg=[],Ng=a=&gt;{var b=Mg.length;Mg.push(a);return b},Og=(a,b)=&gt;{for(var c=Array(a),d=0;d&lt;a;++d){var e=d,f=(u(),C)[b+4*d&gt;&gt;&gt;2&gt;&gt;&gt;0],k=dg[f];if(void 0===k)throw a=`parameter ${d}`,f=ge(f),b=P(f),H(f),new fg(`${a} has unknown type ${b}`);c[e]=k}return c},Pg=(a,b,c)=&gt;{var d=[];a=a(d,c);d.length&amp;&amp;((u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=S(d));return a},Qg={},Rg=a=&gt;{var b=Qg[a];return void 0===b?P(a):b};</span>
+<span class="cstat-no" title="statement not covered" >function Ob(a,b,c){var [d,...e]=Og(a,b&gt;&gt;&gt;0);b=d.Wc.bind(d);var f=e.map(l=&gt;l.Vc.bind(l));a--;var k={toValue:R};a=f.map((l,p)=&gt;{var q=`argFromPtr${p}`;k[q]=l;return`${q}(args${p?"+"+8*p:""})`});switch(c){case 0:var h="toValue(handle)";break;case 2:h="new (toValue(handle))";break;case 3:h="";break;case 1:k.getStringOrSymbol=Rg,h="toValue(handle)[getStringOrSymbol(methodName)]"}h+=`(${a})`;d.me||(k.toReturnWire=b,k.emval_returnValue=Pg,h=`return emval_returnValue(toReturnWire, destructorsRef, ${h})`);</span>
+<span class="cstat-no" title="statement not covered" >h=`return function (handle, methodName, destructorsRef, args) {\n  ${h}\n  }`;c=(new Function(Object.keys(k),h))(...Object.values(k));h=`methodCaller&lt;(${e.map(l=&gt;l.name)}) =&gt; ${d.name}&gt;`;return Ng(Object.defineProperty(c,"name",{value:h}))}function Qb(a,b){b&gt;&gt;&gt;=0;a=R(a&gt;&gt;&gt;0);b=R(b);return a==b}function Rb(a){a&gt;&gt;&gt;=0;if(!a)return S(globalThis);a=Rg(a);return S(globalThis[a])}function Sb(a){a=Rg(a&gt;&gt;&gt;0);return S(g[a])}function Tb(a,b){b&gt;&gt;&gt;=0;a=R(a&gt;&gt;&gt;0);b=R(b);return S(a[b])}</span>
+<span class="cstat-no" title="statement not covered" >function Ub(a){a&gt;&gt;&gt;=0;9&lt;a&amp;&amp;(jg[a+1]+=1)}function Vb(a,b,c,d,e){return Mg[a&gt;&gt;&gt;0](b&gt;&gt;&gt;0,c&gt;&gt;&gt;0,d&gt;&gt;&gt;0,e&gt;&gt;&gt;0)}function Wb(a,b,c,d,e){return Vb(a&gt;&gt;&gt;0,b&gt;&gt;&gt;0,c&gt;&gt;&gt;0,d&gt;&gt;&gt;0,e&gt;&gt;&gt;0)}function Xb(){return S([])}function Yb(a){a=R(a&gt;&gt;&gt;0);for(var b=Array(a.length),c=0;c&lt;a.length;c++)b[c]=a[c];return S(b)}function Zb(a){return S(Rg(a&gt;&gt;&gt;0))}function $b(){return S({})}function ac(a){a&gt;&gt;&gt;=0;for(var b=R(a);b.length;){var c=b.pop();b.pop()(c)}Pb(a)}function bc(a,b,c){b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;a=R(a&gt;&gt;&gt;0);b=R(b);c=R(c);a[b]=c}</span>
+<span class="cstat-no" title="statement not covered" >function cc(a,b){a=O(a);b&gt;&gt;&gt;=0;a=new Date(1E3*a);(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCSeconds();(u(),B)[b+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCMinutes();(u(),B)[b+8&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCHours();(u(),B)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCDate();(u(),B)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCMonth();(u(),B)[b+20&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCFullYear()-1900;(u(),B)[b+24&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getUTCDay();a=(a.getTime()-Date.UTC(a.getUTCFullYear(),0,1,0,0,0,0))/864E5|0;(u(),B)[b+28&gt;&gt;&gt;2&gt;&gt;&gt;0]=a}</span>
+<span class="cstat-no" title="statement not covered" >var Sg=a=&gt;0===a%4&amp;&amp;(0!==a%100||0===a%400),Tg=[0,31,60,91,121,152,182,213,244,274,305,335],Ug=[0,31,59,90,120,151,181,212,243,273,304,334];</span>
+<span class="cstat-no" title="statement not covered" >function dc(a,b){a=O(a);b&gt;&gt;&gt;=0;a=new Date(1E3*a);(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getSeconds();(u(),B)[b+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getMinutes();(u(),B)[b+8&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getHours();(u(),B)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getDate();(u(),B)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getMonth();(u(),B)[b+20&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getFullYear()-1900;(u(),B)[b+24&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.getDay();var c=(Sg(a.getFullYear())?Tg:Ug)[a.getMonth()]+a.getDate()-1|0;(u(),B)[b+28&gt;&gt;&gt;2&gt;&gt;&gt;0]=c;(u(),B)[b+36&gt;&gt;&gt;2&gt;&gt;&gt;0]=-(60*a.getTimezoneOffset());c=(new Date(a.getFullYear(),6,1)).getTimezoneOffset();var d=(new Date(a.getFullYear(),</span>
+<span class="cstat-no" title="statement not covered" >0,1)).getTimezoneOffset();a=(c!=d&amp;&amp;a.getTimezoneOffset()==Math.min(d,c))|0;(u(),B)[b+32&gt;&gt;&gt;2&gt;&gt;&gt;0]=a}</span>
+<span class="cstat-no" title="statement not covered" >function ec(a){a&gt;&gt;&gt;=0;var b=new Date((u(),B)[a+20&gt;&gt;&gt;2&gt;&gt;&gt;0]+1900,(u(),B)[a+16&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),B)[a+12&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),B)[a+8&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),B)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),B)[a&gt;&gt;&gt;2&gt;&gt;&gt;0],0),c=(u(),B)[a+32&gt;&gt;&gt;2&gt;&gt;&gt;0],d=b.getTimezoneOffset(),e=(new Date(b.getFullYear(),6,1)).getTimezoneOffset(),f=(new Date(b.getFullYear(),0,1)).getTimezoneOffset(),k=Math.min(f,e);0&gt;c?(u(),B)[a+32&gt;&gt;&gt;2&gt;&gt;&gt;0]=Number(e!=f&amp;&amp;k==d):0&lt;c!=(k==d)&amp;&amp;(e=Math.max(f,e),b.setTime(b.getTime()+6E4*((0&lt;c?k:e)-d)));(u(),B)[a+24&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getDay();c=(Sg(b.getFullYear())?</span>
+<span class="cstat-no" title="statement not covered" >Tg:Ug)[b.getMonth()]+b.getDate()-1|0;(u(),B)[a+28&gt;&gt;&gt;2&gt;&gt;&gt;0]=c;(u(),B)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getSeconds();(u(),B)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getMinutes();(u(),B)[a+8&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getHours();(u(),B)[a+12&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getDate();(u(),B)[a+16&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getMonth();(u(),B)[a+20&gt;&gt;&gt;2&gt;&gt;&gt;0]=b.getYear();a=b.getTime();return BigInt(isNaN(a)?-1:a/1E3)}function fc(a,b,c,d,e,f,k){return n?M(16,1,a,b,c,d,e,f,k):-52}function gc(a,b,c,d,e,f){if(n)return M(17,1,a,b,c,d,e,f)}var Vg={},rc=()=&gt;performance.timeOrigin+performance.now();</span>
+<span class="cstat-no" title="statement not covered" >function hc(a,b){if(n)return M(18,1,a,b);Vg[a]&amp;&amp;(clearTimeout(Vg[a].id),delete Vg[a]);if(!b)return 0;var c=setTimeout(()=&gt;{delete Vg[a];N(()=&gt;Ge(a,performance.timeOrigin+performance.now()))},b);Vg[a]={id:c,Ke:b};return 0}</span>
+<span class="cstat-no" title="statement not covered" >function ic(a,b,c,d){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;d&gt;&gt;&gt;=0;var e=(new Date).getFullYear(),f=(new Date(e,0,1)).getTimezoneOffset();e=(new Date(e,6,1)).getTimezoneOffset();var k=Math.max(f,e);(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=60*k;(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=Number(f!=e);b=h=&gt;{var l=Math.abs(h);return`UTC${0&lt;=h?"-":"+"}${String(Math.floor(l/60)).padStart(2,"0")}${String(l%60).padStart(2,"0")}`};a=b(f);b=b(e);e&lt;f?(T(a,c,17),T(b,d,17)):(T(a,d,17),T(b,c,17))}var nc=()=&gt;Date.now(),Wg=1;</span>
+<span class="cstat-no" title="statement not covered" >function jc(a,b,c){c&gt;&gt;&gt;=0;if(!(0&lt;=a&amp;&amp;3&gt;=a))return 28;if(0===a)a=Date.now();else if(Wg)a=performance.timeOrigin+performance.now();else return 52;a=Math.round(1E6*a);(u(),E)[c&gt;&gt;&gt;3&gt;&gt;&gt;0]=BigInt(a);return 0}var Xg=[],Yg=(a,b)=&gt;{Xg.length=0;for(var c;c=(u(),x)[a++&gt;&gt;&gt;0];){var d=105!=c;d&amp;=112!=c;b+=d&amp;&amp;b%8?4:0;Xg.push(112==c?(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]:106==c?(u(),E)[b&gt;&gt;&gt;3&gt;&gt;&gt;0]:105==c?(u(),B)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]:(u(),D)[b&gt;&gt;&gt;3&gt;&gt;&gt;0]);b+=d?8:4}return Xg};function kc(a,b,c){a&gt;&gt;&gt;=0;b=Yg(b&gt;&gt;&gt;0,c&gt;&gt;&gt;0);return wg[a](...b)}</span>
+<span class="cstat-no" title="statement not covered" >function lc(a,b,c){a&gt;&gt;&gt;=0;b=Yg(b&gt;&gt;&gt;0,c&gt;&gt;&gt;0);return wg[a](...b)}var mc=()=&gt;{};function oc(a,b){return t(bg(a&gt;&gt;&gt;0,b&gt;&gt;&gt;0))}var pc=()=&gt;{L+=1;throw"unwind";};function qc(){return 4294901760}var sc=()=&gt;1,tc=()=&gt;m?require("os").cpus().length:navigator.hardwareConcurrency;</span>
+<span class="cstat-no" title="statement not covered" >function uc(a){a&gt;&gt;&gt;=0;var b=(u(),x).length;if(a&lt;=b||4294901760&lt;a)return!1;for(var c=1;4&gt;=c;c*=2){var d=b*(1+.2/c);d=Math.min(d,a+100663296);a:{d=(Math.min(4294901760,65536*Math.ceil(Math.max(a,d)/65536))-v.buffer.byteLength+65535)/65536|0;try{v.grow(d);xa();var e=1;break a}catch(f){}e=void 0}if(e)return!0}return!1}</span>
+<span class="cstat-no" title="statement not covered" >var V=a=&gt;{var b=U(a)+1,c=Le(b);T(a,c,b);return c},Zg=a=&gt;(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]+4294967296*(u(),B)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0],W=[],$g=(a,b)=&gt;{W[a&gt;&gt;&gt;0]=b},X=[],ah=[],bh=(a,b)=&gt;{ah[a]=new Promise(c=&gt;b.finally(()=&gt;c(a)))},Y=a=&gt;{if(a)return W[a&gt;&gt;&gt;0]},ch=(a,b=0)=&gt;{"unmapped"===a.mapState||G();b=te(b);W[b&gt;&gt;&gt;0]=a;return b},dh=(a,b=0)=&gt;{var c=ve(b);b=ue(b,c);W[c&gt;&gt;&gt;0]=a.queue;W[b&gt;&gt;&gt;0]=a;return b},eh=(a,b)=&gt;{for(a=(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];a;a=(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]){var c=(u(),B)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0];b[c](a)}},fh=(a,b,c)=&gt;{(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=</span>
+<span class="cstat-no" title="statement not covered" >b;(u(),C)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=c},gh=a=&gt;{var b=(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];a=(u(),C)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0];return bg(b,a)},Z=a=&gt;{var b=(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];a=(u(),C)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(b)return bg(b,a);if(0===a)return""},hh=a=&gt;{var b=Z(a+4);var c=(c=(u(),C)[a+12&gt;&gt;&gt;2&gt;&gt;&gt;0])?Y(c):"auto";if(a+=16){var d=Y((u(),C)[a+4&gt;&gt;&gt;2&gt;&gt;&gt;0]);var e=(u(),C)[a+16&gt;&gt;&gt;2&gt;&gt;&gt;0];var f=(u(),C)[a+20&gt;&gt;&gt;2&gt;&gt;&gt;0];if(e){for(var k={},h=0;h&lt;e;++h){var l=f+24*h,p=gh(l+4);k[p]=(u(),D)[l+16&gt;&gt;&gt;3&gt;&gt;&gt;0]}e=k}else e=void 0;a={module:d,constants:e,entryPoint:Z(a+8)}}else a=void 0;</span>
+<span class="cstat-no" title="statement not covered" >return{label:b,layout:c,compute:a}},ih=(a,b)=&gt;{function c(f,k,h,l=0){f=a[f]??l;(u(),C)[k+h&gt;&gt;&gt;2&gt;&gt;&gt;0]=f}function d(f,k,h,l=0){k+=h;f=a[f]??l;(u(),C)[k&gt;&gt;&gt;2&gt;&gt;&gt;0]=f;l=(u(),C)[k&gt;&gt;&gt;2&gt;&gt;&gt;0];(u(),C)[k+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=(f-l)/4294967296}var e=(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0];c("maxTextureDimension1D",b,4);c("maxTextureDimension2D",b,8);c("maxTextureDimension3D",b,12);c("maxTextureArrayLayers",b,16);c("maxBindGroups",b,20);c("maxBindGroupsPlusVertexBuffers",b,24);c("maxBindingsPerBindGroup",b,28);c("maxDynamicUniformBuffersPerPipelineLayout",</span>
+<span class="cstat-no" title="statement not covered" >b,32);c("maxDynamicStorageBuffersPerPipelineLayout",b,36);c("maxSampledTexturesPerShaderStage",b,40);c("maxSamplersPerShaderStage",b,44);c("maxStorageBuffersPerShaderStage",b,48);c("maxStorageTexturesPerShaderStage",b,52);c("maxUniformBuffersPerShaderStage",b,56);c("minUniformBufferOffsetAlignment",b,80);c("minStorageBufferOffsetAlignment",b,84);d("maxUniformBufferBindingSize",b,64);d("maxStorageBufferBindingSize",b,72);c("maxVertexBuffers",b,88);d("maxBufferSize",b,96);c("maxVertexAttributes",b,</span>
+<span class="cstat-no" title="statement not covered" >104);c("maxVertexBufferArrayStride",b,108);c("maxInterStageShaderVariables",b,112);c("maxColorAttachments",b,116);c("maxColorAttachmentBytesPerSample",b,120);c("maxComputeWorkgroupStorageSize",b,124);c("maxComputeInvocationsPerWorkgroup",b,128);c("maxComputeWorkgroupSizeX",b,132);c("maxComputeWorkgroupSizeY",b,136);c("maxComputeWorkgroupSizeZ",b,140);c("maxComputeWorkgroupsPerDimension",b,144);c("maxImmediateSize",b,148);0!==e&amp;&amp;(u(),c("maxStorageBuffersInVertexStage",e,8,a.maxStorageBuffersPerShaderStage),</span>
+<span class="cstat-no" title="statement not covered" >c("maxStorageBuffersInFragmentStage",e,16,a.maxStorageBuffersPerShaderStage),c("maxStorageTexturesInVertexStage",e,12,a.maxStorageTexturesPerShaderStage),c("maxStorageTexturesInFragmentStage",e,20,a.maxStorageTexturesPerShaderStage))},jh=[,,"uniform","storage","read-only-storage"],kh=[,"validation","out-of-memory","internal"],lh=[,"compatibility","core"],mh={1:"core-features-and-limits",2:"depth-clip-control",3:"depth32float-stencil8",4:"texture-compression-bc",5:"texture-compression-bc-sliced-3d",</span>
+<span class="cstat-no" title="statement not covered" >6:"texture-compression-etc2",7:"texture-compression-astc",8:"texture-compression-astc-sliced-3d",9:"timestamp-query",10:"indirect-first-instance",11:"shader-f16",12:"rg11b10ufloat-renderable",13:"bgra8unorm-storage",14:"float32-filterable",15:"float32-blendable",16:"clip-distances",17:"dual-source-blending",18:"subgroups",19:"texture-formats-tier1",20:"texture-formats-tier2",21:"primitive-index",22:"texture-component-swizzle",23:"subgroup-size-control",327692:"chromium-experimental-unorm16-texture-formats",</span>
+<span class="cstat-no" title="statement not covered" >327729:"chromium-experimental-multi-draw-indirect"},nh=[,"low-power","high-performance"],oh=[,"occlusion","timestamp"],ph=[,,"filtering","non-filtering","comparison"],qh=[,,"write-only","read-only","read-write"],rh=[,"r8unorm","r8snorm","r8uint","r8sint","r16unorm","r16snorm","r16uint","r16sint","r16float","rg8unorm","rg8snorm","rg8uint","rg8sint","r32float","r32uint","r32sint","rg16unorm","rg16snorm","rg16uint","rg16sint","rg16float","rgba8unorm","rgba8unorm-srgb","rgba8snorm","rgba8uint","rgba8sint",</span>
+<span class="cstat-no" title="statement not covered" >"bgra8unorm","bgra8unorm-srgb","rgb10a2uint","rgb10a2unorm","rg11b10ufloat","rgb9e5ufloat","rg32float","rg32uint","rg32sint","rgba16unorm","rgba16snorm","rgba16uint","rgba16sint","rgba16float","rgba32float","rgba32uint","rgba32sint","stencil8","depth16unorm","depth24plus","depth24plus-stencil8","depth32float","depth32float-stencil8","bc1-rgba-unorm","bc1-rgba-unorm-srgb","bc2-rgba-unorm","bc2-rgba-unorm-srgb","bc3-rgba-unorm","bc3-rgba-unorm-srgb","bc4-r-unorm","bc4-r-snorm","bc5-rg-unorm","bc5-rg-snorm",</span>
+<span class="cstat-no" title="statement not covered" >"bc6h-rgb-ufloat","bc6h-rgb-float","bc7-rgba-unorm","bc7-rgba-unorm-srgb","etc2-rgb8unorm","etc2-rgb8unorm-srgb","etc2-rgb8a1unorm","etc2-rgb8a1unorm-srgb","etc2-rgba8unorm","etc2-rgba8unorm-srgb","eac-r11unorm","eac-r11snorm","eac-rg11unorm","eac-rg11snorm","astc-4x4-unorm","astc-4x4-unorm-srgb","astc-5x4-unorm","astc-5x4-unorm-srgb","astc-5x5-unorm","astc-5x5-unorm-srgb","astc-6x5-unorm","astc-6x5-unorm-srgb","astc-6x6-unorm","astc-6x6-unorm-srgb","astc-8x5-unorm","astc-8x5-unorm-srgb","astc-8x6-unorm",</span>
+<span class="cstat-no" title="statement not covered" >"astc-8x6-unorm-srgb","astc-8x8-unorm","astc-8x8-unorm-srgb","astc-10x5-unorm","astc-10x5-unorm-srgb","astc-10x6-unorm","astc-10x6-unorm-srgb","astc-10x8-unorm","astc-10x8-unorm-srgb","astc-10x10-unorm","astc-10x10-unorm-srgb","astc-12x10-unorm","astc-12x10-unorm-srgb","astc-12x12-unorm","astc-12x12-unorm-srgb"],sh=[,,"float","unfilterable-float","depth","sint","uint"],th=[,"1d","2d","2d-array","cube","cube-array","3d"],uh={undefined:1,unknown:1,destroyed:2};</span>
+<span class="cstat-no" title="statement not covered" >function vc(a,b,c,d,e,f){b=O(b);c=O(c);d&gt;&gt;&gt;=0;e&gt;&gt;&gt;=0;f&gt;&gt;&gt;=0;var k=Y(a&gt;&gt;&gt;0);a={};if(f){var h=(u(),C)[f+12&gt;&gt;&gt;2&gt;&gt;&gt;0];if(h){var l=(u(),C)[f+16&gt;&gt;&gt;2&gt;&gt;&gt;0];a.requiredFeatures=Array.from((u(),C).subarray(l&gt;&gt;&gt;2&gt;&gt;&gt;0,l+4*h&gt;&gt;&gt;2&gt;&gt;&gt;0),q=&gt;mh[q])}if(h=(u(),C)[f+20&gt;&gt;&gt;2&gt;&gt;&gt;0]){l=(u(),C)[h&gt;&gt;&gt;2&gt;&gt;&gt;0];var p={};function q(z,A,ha,za=!1){A+=ha;A=(u(),C)[A&gt;&gt;&gt;2&gt;&gt;&gt;0];4294967295==A||za&amp;&amp;0==A||(p[z]=A)}function y(z,A,ha){A+=ha;ha=(u(),C)[A&gt;&gt;&gt;2&gt;&gt;&gt;0];var za=(u(),C)[A+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(4294967295!=ha||4294967295!=za)p[z]=Zg(A)}q("maxTextureDimension1D",</span>
+<span class="cstat-no" title="statement not covered" >h,4);q("maxTextureDimension2D",h,8);q("maxTextureDimension3D",h,12);q("maxTextureArrayLayers",h,16);q("maxBindGroups",h,20);q("maxBindGroupsPlusVertexBuffers",h,24);q("maxBindingsPerBindGroup",h,28);q("maxDynamicUniformBuffersPerPipelineLayout",h,32);q("maxDynamicStorageBuffersPerPipelineLayout",h,36);q("maxSampledTexturesPerShaderStage",h,40);q("maxSamplersPerShaderStage",h,44);q("maxStorageBuffersPerShaderStage",h,48);q("maxStorageTexturesPerShaderStage",h,52);q("maxUniformBuffersPerShaderStage",</span>
+<span class="cstat-no" title="statement not covered" >h,56);q("minUniformBufferOffsetAlignment",h,80);q("minStorageBufferOffsetAlignment",h,84);y("maxUniformBufferBindingSize",h,64);y("maxStorageBufferBindingSize",h,72);q("maxVertexBuffers",h,88);y("maxBufferSize",h,96);q("maxVertexAttributes",h,104);q("maxVertexBufferArrayStride",h,108);q("maxInterStageShaderVariables",h,112);q("maxColorAttachments",h,116);q("maxColorAttachmentBytesPerSample",h,120);q("maxComputeWorkgroupStorageSize",h,124);q("maxComputeInvocationsPerWorkgroup",h,128);q("maxComputeWorkgroupSizeX",</span>
+<span class="cstat-no" title="statement not covered" >h,132);q("maxComputeWorkgroupSizeY",h,136);q("maxComputeWorkgroupSizeZ",h,140);q("maxComputeWorkgroupsPerDimension",h,144);q("maxImmediateSize",h,148,!0);0!==l&amp;&amp;(u(),"maxStorageBuffersInVertexStage"in GPUSupportedLimits.prototype&amp;&amp;(q("maxStorageBuffersInVertexStage",l,8),q("maxStorageTexturesInVertexStage",l,12),q("maxStorageBuffersInFragmentStage",l,16),q("maxStorageTexturesInFragmentStage",l,20)));a.requiredLimits=p}if(h=(u(),C)[f+24&gt;&gt;&gt;2&gt;&gt;&gt;0])h={label:Z(h+4)},a.defaultQueue=h;a.label=Z(f+4)}L+=</span>
+<span class="cstat-no" title="statement not covered" >1;bh(b,k.requestDevice(a).then(q=&gt;{--L;N(()=&gt;{W[e&gt;&gt;&gt;0]=q.queue;W[d&gt;&gt;&gt;0]=q;L+=1;bh(c,q.lost.then(y=&gt;{N(()=&gt;{q.onuncapturederror=()=&gt;{};var z=K(),A=V(y.message);xe(c,uh[y.reason],A);J(z)});--L}));q.onuncapturederror=y=&gt;{var z=5;y.error instanceof GPUValidationError?z=2:y.error instanceof GPUOutOfMemoryError?z=3:y.error instanceof GPUInternalError&amp;&amp;(z=4);var A=K();y=V(y.error.message);Ce(d,z,y);J(A)};"adapterInfo"in q||(q.adapterInfo=k.info);Be(b,1,d,0)})},q=&gt;{--L;N(()=&gt;{var y=K(),z=V(q.message);Be(b,</span>
+<span class="cstat-no" title="statement not covered" >3,d,z);c&amp;&amp;xe(c,4,z);J(y)})}))}function wc(a){a&gt;&gt;&gt;=0;var b=Y(a),c=X[a];if(c){for(var d=0;d&lt;c.length;++d)c[d]();delete X[a]}b.destroy()}function xc(a,b,c){a&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;var d=Y(a);4294967295==c&amp;&amp;(c=void 0);try{var e=d.getMappedRange(b&gt;&gt;&gt;0,c)}catch(k){return 0}var f=Ie(16,e.byteLength);(u(),x).set(new Uint8Array(e),f&gt;&gt;&gt;0);X[a].push(()=&gt;H(f));return f}</span>
+<span class="cstat-no" title="statement not covered" >function yc(a,b,c){a&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;var d=Y(a);4294967295==c&amp;&amp;(c=void 0);try{var e=d.getMappedRange(b&gt;&gt;&gt;0,c)}catch(k){return 0}var f=Ie(16,e.byteLength);(u(),x).fill(0,f,e.byteLength);X[a].push(()=&gt;{(new Uint8Array(e)).set((u(),x).subarray(f&gt;&gt;&gt;0,f+e.byteLength&gt;&gt;&gt;0));H(f)});return f}</span>
+<span class="cstat-no" title="statement not covered" >function zc(a,b,c,d,e){a&gt;&gt;&gt;=0;b=O(b);c=O(c);e&gt;&gt;&gt;=0;var f=Y(a);X[a]=[];4294967295==e&amp;&amp;(e=void 0);L+=1;bh(b,f.mapAsync(c,d&gt;&gt;&gt;0,e).then(()=&gt;{--L;N(()=&gt;{ye(b,1,0)})},k=&gt;{--L;N(()=&gt;{K();var h=V(k.message);ye(b,"AbortError"===k.name?4:"OperationError"===k.name?3:0,h);delete X[a]})}))}function Ac(a){a&gt;&gt;&gt;=0;var b=Y(a),c=X[a];if(c){for(var d=0;d&lt;c.length;++d)c[d]();delete X[a];b.unmap()}}function Bc(a){delete W[a&gt;&gt;&gt;0]}</span>
+<span class="cstat-no" title="statement not covered" >function Cc(a,b,c){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;var d=!!(u(),C)[b+32&gt;&gt;&gt;2&gt;&gt;&gt;0];b={label:Z(b+4),usage:(u(),C)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0],size:Zg(b+24),mappedAtCreation:d};a=Y(a);try{var e=a.createBuffer(b)}catch(f){return!1}W[c&gt;&gt;&gt;0]=e;d&amp;&amp;(X[c]=[]);return!0}function Dc(a,b,c,d){a&gt;&gt;&gt;=0;b=O(b);d&gt;&gt;&gt;=0;c=hh(c&gt;&gt;&gt;0);a=Y(a);L+=1;bh(b,a.createComputePipelineAsync(c).then(e=&gt;{--L;N(()=&gt;{W[d&gt;&gt;&gt;0]=e;we(b,1,d,0)})},e=&gt;{--L;N(()=&gt;{var f=K(),k=V(e.message);we(b,"validation"===e.reason?3:"internal"===e.reason?4:0,d,k);J(f)})}))}</span>
+<span class="cstat-no" title="statement not covered" >function Ec(a,b,c){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;var d=(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0],e=(u(),B)[d+4&gt;&gt;&gt;2&gt;&gt;&gt;0];b={label:Z(b+4),code:""};switch(e){case 2:b.code=gh(d+8)}a=Y(a).createShaderModule(b);W[c&gt;&gt;&gt;0]=a}var Fc=a=&gt;{a=Y(a);a.onuncapturederror=null;a.destroy()};</span>
+<span class="cstat-no" title="statement not covered" >function Gc(a,b){b=O(b);a=Y(a&gt;&gt;&gt;0);L+=1;bh(b,a.popErrorScope().then(c=&gt;{--L;N(()=&gt;{var d=5;c?c instanceof GPUValidationError?d=2:c instanceof GPUOutOfMemoryError?d=3:c instanceof GPUInternalError&amp;&amp;(d=4):d=1;var e=K(),f=c?V(c.message):0;ze(b,1,d,f);J(e)})},c=&gt;{--L;N(()=&gt;{var d=K(),e=V(c.message);ze(b,1,5,e);J(d)})}))}</span>
+<span class="cstat-no" title="statement not covered" >function Hc(a,b,c,d){b=O(b);c&gt;&gt;&gt;=0;d&gt;&gt;&gt;=0;if(c){var e={featureLevel:lh[(u(),B)[c+4&gt;&gt;&gt;2&gt;&gt;&gt;0]],powerPreference:nh[(u(),B)[c+8&gt;&gt;&gt;2&gt;&gt;&gt;0]],forceFallbackAdapter:!!(u(),C)[c+12&gt;&gt;&gt;2&gt;&gt;&gt;0]};a=(u(),C)[c&gt;&gt;&gt;2&gt;&gt;&gt;0];0!==a&amp;&amp;(u(),e.Ne=!!(u(),C)[a+8&gt;&gt;&gt;2&gt;&gt;&gt;0])}"gpu"in navigator?(L+=1,bh(b,navigator.gpu.requestAdapter(e).then(f=&gt;{--L;N(()=&gt;{if(f)W[d&gt;&gt;&gt;0]=f,Ae(b,1,d,0);else{var k=K(),h=V("WebGPU not available on this browser (requestAdapter returned null)");Ae(b,3,d,h);J(k)}})},f=&gt;{--L;N(()=&gt;{var k=K(),h=V(f.message);</span>
+<span class="cstat-no" title="statement not covered" >Ae(b,4,d,h);J(k)})}))):(e=K(),a=V("WebGPU not available on this browser (navigator.gpu is not available)"),Ae(b,3,d,a),J(e))}function Ic(a,b,c){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;return Lg(async()=&gt;{var d=[];if(c){var e=(u(),B)[c&gt;&gt;&gt;2&gt;&gt;&gt;0];d.length=b+1;d[b]=new Promise(h=&gt;setTimeout(h,e,0))}else d.length=b;for(var f=0;f&lt;b;++f){var k=Zg(a+8*f);if(!(k in ah))return k;d[f]=ah[k]}d=await Promise.race(d);delete ah[d];return d})}</span>
+<span class="cstat-no" title="statement not covered" >var vh={},xh=()=&gt;{if(!wh){var a={USER:"web_user",LOGNAME:"web_user",PATH:"/",PWD:"/",HOME:"/home/web_user",LANG:(globalThis.navigator?.language??"C").replace("-","_")+".UTF-8",_:fa||"./this.program"},b;for(b in vh)void 0===vh[b]?delete a[b]:a[b]=vh[b];var c=[];for(b in a)c.push(`${b}=${a[b]}`);wh=c}return wh},wh;function Jc(a,b){if(n)return M(19,1,a,b);a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;var c=0,d=0,e;for(e of xh()){var f=b+c;(u(),C)[a+d&gt;&gt;&gt;2&gt;&gt;&gt;0]=f;c+=T(e,f,Infinity)+1;d+=4}return 0}</span>
+<span class="cstat-no" title="statement not covered" >function Kc(a,b){if(n)return M(20,1,a,b);a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;var c=xh();(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=c.length;a=0;for(var d of c)a+=U(d)+1;(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=a;return 0}function Mc(a){return n?M(21,1,a):52}function Nc(a,b,c,d){return n?M(22,1,a,b,c,d):52}function Oc(a,b,c,d){return n?M(23,1,a,b,c,d):70}var yh=[null,[],[]];</span>
+<span class="cstat-no" title="statement not covered" >function Pc(a,b,c,d){if(n)return M(24,1,a,b,c,d);b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;d&gt;&gt;&gt;=0;for(var e=0,f=0;f&lt;c;f++){var k=(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0],h=(u(),C)[b+4&gt;&gt;&gt;2&gt;&gt;&gt;0];b+=8;for(var l=0;l&lt;h;l++){var p=a,q=(u(),x)[k+l&gt;&gt;&gt;0],y=yh[p];0===q||10===q?((1===p?sa:t)(ag(y)),y.length=0):y.push(q)}e+=h}(u(),C)[d&gt;&gt;&gt;2&gt;&gt;&gt;0]=e;return 0}function Cd(a){return a&gt;&gt;&gt;0}function Ed(a,b){ih(Y(a&gt;&gt;&gt;0).limits,b&gt;&gt;&gt;0);return 1}function Fd(a,b){return Y(a&gt;&gt;&gt;0).features.has(mh[b])}function Gd(a){return BigInt(Y(a&gt;&gt;&gt;0).size)}</span>
+<span class="cstat-no" title="statement not covered" >function Hd(a){return BigInt(Y(a&gt;&gt;&gt;0).usage)}function Id(a,b){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;if(b){var c=Z(b+4);b=(u(),C)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0];b=0!==b?{querySet:Y((u(),C)[b+4&gt;&gt;&gt;2&gt;&gt;&gt;0]),beginningOfPassWriteIndex:(u(),C)[b+8&gt;&gt;&gt;2&gt;&gt;&gt;0],endOfPassWriteIndex:(u(),C)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0]}:void 0;c={label:c,timestampWrites:b}}b=Y(a);a=qe(0);c=b.beginComputePass(c);W[a&gt;&gt;&gt;0]=c;return a}function Jd(a,b,c,d){c=O(c);d=O(d);a=Y(a&gt;&gt;&gt;0);-1==d&amp;&amp;(d=void 0);a.clearBuffer(Y(b&gt;&gt;&gt;0),c,d)}</span>
+<span class="cstat-no" title="statement not covered" >function Kd(a,b,c,d,e,f){c=O(c);e=O(e);f=O(f);Y(a&gt;&gt;&gt;0).copyBufferToBuffer(Y(b&gt;&gt;&gt;0),c,Y(d&gt;&gt;&gt;0),e,f)}function Ld(a){var b=Y(a&gt;&gt;&gt;0);a=oe(0);b=b.finish();W[a&gt;&gt;&gt;0]=b;return a}function Md(a,b,c,d,e,f){f=O(f);Y(a&gt;&gt;&gt;0).resolveQuerySet(Y(b&gt;&gt;&gt;0),c,d,Y(e&gt;&gt;&gt;0),f)}function Nd(a,b,c,d){Y(a&gt;&gt;&gt;0).dispatchWorkgroups(b,c,d)}function Od(a,b,c){c=O(c);Y(a&gt;&gt;&gt;0).dispatchWorkgroupsIndirect(Y(b&gt;&gt;&gt;0),c)}function Pd(a){Y(a&gt;&gt;&gt;0).end()}</span>
+<span class="cstat-no" title="statement not covered" >function Qd(a,b,c,d,e){d&gt;&gt;&gt;=0;e&gt;&gt;&gt;=0;a=Y(a&gt;&gt;&gt;0);c=Y(c&gt;&gt;&gt;0);0==d?a.setBindGroup(b,c):a.setBindGroup(b,c,(u(),C),e&gt;&gt;&gt;2,d)}function Rd(a,b){Y(a&gt;&gt;&gt;0).setPipeline(Y(b&gt;&gt;&gt;0))}function Sd(a,b,c){Y(a&gt;&gt;&gt;0).Me(Y(b&gt;&gt;&gt;0),c)}</span>
+<span class="cstat-no" title="statement not covered" >function Td(a,b){function c(e){var f=(u(),C)[e+8&gt;&gt;&gt;2&gt;&gt;&gt;0],k=(u(),C)[e+32&gt;&gt;&gt;2&gt;&gt;&gt;0],h=(u(),C)[e+36&gt;&gt;&gt;2&gt;&gt;&gt;0],l=0;eh(e,{14:p=&gt;{l=(u(),C)[p+8&gt;&gt;&gt;2&gt;&gt;&gt;0]}});f?(k=Zg(e+24),-1==k&amp;&amp;(k=void 0),f={buffer:Y(f),offset:Zg(e+16),size:k}):f=Y(k||h||l);return{binding:(u(),C)[e+4&gt;&gt;&gt;2&gt;&gt;&gt;0],resource:f}}a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;b={label:Z(b+4),layout:Y((u(),C)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0]),entries:function(e,f){for(var k=[],h=0;h&lt;e;++h)k.push(c(f+40*h));return k}((u(),C)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),C)[b+20&gt;&gt;&gt;2&gt;&gt;&gt;0])};a=Y(a);var d=me(0);$g(d,a.createBindGroup(b));</span>
+<span class="cstat-no" title="statement not covered" >return d}</span>
+<span class="cstat-no" title="statement not covered" >function Ud(a,b){function c(l){var p=(u(),C)[l+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(p)return{type:jh[p],hasDynamicOffset:!!(u(),C)[l+8&gt;&gt;&gt;2&gt;&gt;&gt;0],minBindingSize:Zg(l+16)}}function d(l){if(l=(u(),C)[l+4&gt;&gt;&gt;2&gt;&gt;&gt;0])return{type:ph[l]}}function e(l){var p=(u(),C)[l+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(p)return{sampleType:sh[p],viewDimension:th[(u(),B)[l+8&gt;&gt;&gt;2&gt;&gt;&gt;0]],multisampled:!!(u(),C)[l+12&gt;&gt;&gt;2&gt;&gt;&gt;0]}}function f(l){var p=(u(),C)[l+4&gt;&gt;&gt;2&gt;&gt;&gt;0];if(p)return{access:qh[p],format:rh[(u(),B)[l+8&gt;&gt;&gt;2&gt;&gt;&gt;0]],viewDimension:th[(u(),B)[l+12&gt;&gt;&gt;2&gt;&gt;&gt;0]]}}function k(l){var p={binding:(u(),</span>
+<span class="cstat-no" title="statement not covered" >C)[l+4&gt;&gt;&gt;2&gt;&gt;&gt;0],visibility:(u(),C)[l+8&gt;&gt;&gt;2&gt;&gt;&gt;0],buffer:c(l+24),sampler:d(l+48),texture:e(l+56),storageTexture:f(l+72)};eh(l,{13:()=&gt;{p.externalTexture={}}});return p}a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;b={label:Z(b+4),entries:function(l,p){for(var q=[],y=0;y&lt;l;++y)q.push(k(p+88*y));return q}((u(),C)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0],(u(),C)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0])};a=Y(a);var h=ne(0);$g(h,a.createBindGroupLayout(b));return h}function Vd(a,b){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;var c;b&amp;&amp;(c={label:Z(b+4)});b=Y(a);a=pe(0);c=b.createCommandEncoder(c);W[a&gt;&gt;&gt;0]=c;return a}</span>
+<span class="cstat-no" title="statement not covered" >function Wd(a,b){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;for(var c=(u(),C)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0],d=(u(),C)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0],e=[],f=0;f&lt;c;++f)e.push(Y((u(),C)[d+4*f&gt;&gt;&gt;2&gt;&gt;&gt;0]));b={label:Z(b+4),bindGroupLayouts:e,immediateSize:(u(),C)[b+20&gt;&gt;&gt;2&gt;&gt;&gt;0]};c=Y(a);a=re(0);b=c.createPipelineLayout(b);W[a&gt;&gt;&gt;0]=b;return a}function Xd(a,b){a&gt;&gt;&gt;=0;b&gt;&gt;&gt;=0;b={type:oh[(u(),B)[b+12&gt;&gt;&gt;2&gt;&gt;&gt;0]],count:(u(),C)[b+16&gt;&gt;&gt;2&gt;&gt;&gt;0]};var c=Y(a);a=se(0);b=c.createQuerySet(b);W[a&gt;&gt;&gt;0]=b;return a}</span>
+<span class="cstat-no" title="statement not covered" >function Yd(a,b){a=Y(a&gt;&gt;&gt;0).adapterInfo;b&gt;&gt;&gt;=0;(u(),C)[b+52&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.subgroupMinSize;(u(),C)[b+56&gt;&gt;&gt;2&gt;&gt;&gt;0]=a.subgroupMaxSize;var c=a.vendor+a.architecture+a.device+a.description;var d=U(c)+1,e=je(d);e&amp;&amp;T(c,e,d);c=e;d=U(a.vendor);fh(b+4,c,d);c+=d;d=U(a.architecture);fh(b+12,c,d);c+=d;d=U(a.device);fh(b+20,c,d);fh(b+28,c+d,U(a.description));(u(),B)[b+36&gt;&gt;&gt;2&gt;&gt;&gt;0]=2;a=a.isFallbackAdapter?3:4;(u(),B)[b+40&gt;&gt;&gt;2&gt;&gt;&gt;0]=a;(u(),C)[b+44&gt;&gt;&gt;2&gt;&gt;&gt;0]=0;(u(),C)[b+48&gt;&gt;&gt;2&gt;&gt;&gt;0]=0;return 1}</span>
+<span class="cstat-no" title="statement not covered" >var zh={"core-features-and-limits":1,"depth-clip-control":2,"depth32float-stencil8":3,"texture-compression-bc":4,"texture-compression-bc-sliced-3d":5,"texture-compression-etc2":6,"texture-compression-astc":7,"texture-compression-astc-sliced-3d":8,"timestamp-query":9,"indirect-first-instance":10,"shader-f16":11,"rg11b10ufloat-renderable":12,"bgra8unorm-storage":13,"float32-filterable":14,"float32-blendable":15,"clip-distances":16,"dual-source-blending":17,subgroups:18,"texture-formats-tier1":19,"texture-formats-tier2":20,</span>
+<span class="cstat-no" title="statement not covered" >"primitive-index":21,"texture-component-swizzle":22,"subgroup-size-control":23,"chromium-experimental-unorm16-texture-formats":327692,"chromium-experimental-multi-draw-indirect":327729};function Zd(a,b){b&gt;&gt;&gt;=0;var c=Y(a&gt;&gt;&gt;0);a=je(4*c.features.size);var d=0,e=0;for(const f of c.features)c=zh[f],0&lt;=c&amp;&amp;((u(),B)[a+d&gt;&gt;&gt;2&gt;&gt;&gt;0]=c,d+=4,e++);(u(),C)[b+4&gt;&gt;&gt;2&gt;&gt;&gt;0]=a;(u(),C)[b&gt;&gt;&gt;2&gt;&gt;&gt;0]=e}function $d(a,b){ih(Y(a&gt;&gt;&gt;0).limits,b&gt;&gt;&gt;0);return 1}function ae(a,b){Y(a&gt;&gt;&gt;0).pushErrorScope(kh[b])}</span>
+<span class="cstat-no" title="statement not covered" >function be(a,b,c){b&gt;&gt;&gt;=0;c&gt;&gt;&gt;=0;a=Y(a&gt;&gt;&gt;0);b=Array.from((u(),B).subarray(c&gt;&gt;&gt;2&gt;&gt;&gt;0,c+4*b&gt;&gt;&gt;2&gt;&gt;&gt;0),d=&gt;Y(d));a.submit(b)}function ce(a,b,c,d,e){c=O(c);d&gt;&gt;&gt;=0;e&gt;&gt;&gt;=0;a=Y(a&gt;&gt;&gt;0);b=Y(b&gt;&gt;&gt;0);d=(u(),x).subarray(d&gt;&gt;&gt;0,d+e&gt;&gt;&gt;0);a.writeBuffer(b,c,d,0,e)}n||Of();n||(v=new WebAssembly.Memory({initial:256,maximum:65536,shared:!0}),xa());g.wasmBinary&amp;&amp;(ta=g.wasmBinary);g.stackSave=()=&gt;K();g.stackRestore=a=&gt;J(a);g.stackAlloc=a=&gt;Le(a);</span>
+<span class="cstat-no" title="statement not covered" >g.setValue=function(a,b,c="i8"){c.endsWith("*")&amp;&amp;(c="*");switch(c){case "i1":(u(),w)[a&gt;&gt;&gt;0]=b;break;case "i8":(u(),w)[a&gt;&gt;&gt;0]=b;break;case "i16":(u(),Oa)[a&gt;&gt;&gt;1&gt;&gt;&gt;0]=b;break;case "i32":(u(),B)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;break;case "i64":(u(),E)[a&gt;&gt;&gt;3&gt;&gt;&gt;0]=BigInt(b);break;case "float":(u(),Qa)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;break;case "double":(u(),D)[a&gt;&gt;&gt;3&gt;&gt;&gt;0]=b;break;case "*":(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0]=b;break;default:G(`invalid type for setValue: ${c}`)}};</span>
+<span class="cstat-no" title="statement not covered" >g.getValue=function(a,b="i8"){b.endsWith("*")&amp;&amp;(b="*");switch(b){case "i1":return(u(),w)[a&gt;&gt;&gt;0];case "i8":return(u(),w)[a&gt;&gt;&gt;0];case "i16":return(u(),Oa)[a&gt;&gt;&gt;1&gt;&gt;&gt;0];case "i32":return(u(),B)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];case "i64":return(u(),E)[a&gt;&gt;&gt;3&gt;&gt;&gt;0];case "float":return(u(),Qa)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];case "double":return(u(),D)[a&gt;&gt;&gt;3&gt;&gt;&gt;0];case "*":return(u(),C)[a&gt;&gt;&gt;2&gt;&gt;&gt;0];default:G(`invalid type for getValue: ${b}`)}};g.UTF8ToString=bg;g.stringToUTF8=T;g.lengthBytesUTF8=U;</span>
+<span class="cstat-no" title="statement not covered" >var xg=[Dd,Nf,Yf,jb,kb,lb,mb,nb,ob,pb,qb,rb,sb,tb,ub,vb,fc,gc,hc,Jc,Kc,Mc,Nc,Oc,Pc],wg={1131180:(a,b,c,d,e)=&gt;{if("undefined"==typeof g||!g.Yc)return 1;a=bg(Number(a&gt;&gt;&gt;0));a.startsWith("./")&amp;&amp;(a=a.substring(2));a=g.Yc.get(a);if(!a)return 2;b=Number(b&gt;&gt;&gt;0);c=Number(c&gt;&gt;&gt;0);d=Number(d&gt;&gt;&gt;0);if(b+c&gt;a.byteLength)return 3;try{const f=a.subarray(b,b+c);switch(e){case 0:(u(),x).set(f,d&gt;&gt;&gt;0);break;case 1:g.fe?g.fe(d,f):g.Ge(d,f);break;default:return 4}return 0}catch{return 4}},1132004:(a,b,c)=&gt;{g.he(a,(u(),</span>
+<span class="cstat-no" title="statement not covered" >x).subarray(b&gt;&gt;&gt;0,b+c&gt;&gt;&gt;0))},1132068:()=&gt;g.Ee(),1132110:a=&gt;{g.ge(a)},1132147:()=&gt;"undefined"!==typeof wasmOffsetConverter},ge,Ka,he,ie,H,je,ke,le,me,ne,oe,pe,qe,re,se,te,ue,ve,we,xe,ye,ze,Ae,Be,Ce,Ha,Na,De,Ee,Fe,Ge,He,Ie,I,Je,Ke,J,Le,K,Me,Ne,Oe,Pe,dynCall_vii,Qe,dynCall_v,Re,Se,Te,dynCall_iii,Ue,Ve,We,dynCall_vi,Xe,Ye,Ze,$e,af,bf,cf,df,ef,ff,gf,hf,jf,kf,lf,mf,nf,of,pf,qf,rf,sf,tf,uf,vf,wf,xf,yf,zf,Af,Bf,Za;</span>
+<span class="cstat-no" title="statement not covered" >function Xc(a,b,c,d){var e=K();try{return We(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function Wc(a,b,c){var d=K();try{return dynCall_iii(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0)}}function md(a){var b=K();try{dynCall_v(a)}catch(c){J(b);if(c!==c+0)throw c;I(1,0)}}function Vc(a,b){var c=K();try{return Qe(a,b)}catch(d){J(c);if(d!==d+0)throw d;I(1,0)}}function od(a,b,c){var d=K();try{dynCall_vii(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function nd(a,b){var c=K();try{dynCall_vi(a,b)}catch(d){J(c);if(d!==d+0)throw d;I(1,0)}}function ad(a,b,c,d,e,f,k){var h=K();try{return Te(a,b,c,d,e,f,k)}catch(l){J(h);if(l!==l+0)throw l;I(1,0)}}function sd(a,b,c,d,e,f){var k=K();try{Re(a,b,c,d,e,f)}catch(h){J(k);if(h!==h+0)throw h;I(1,0)}}function qd(a,b,c,d){var e=K();try{Ve(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function td(a,b,c,d,e,f,k){var h=K();try{Ye(a,b,c,d,e,f,k)}catch(l){J(h);if(l!==l+0)throw l;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function Ad(a,b,c,d,e,f,k){var h=K();try{Ze(a,b,c,d,e,f,k)}catch(l){J(h);if(l!==l+0)throw l;I(1,0)}}function zd(a,b,c,d,e,f,k,h){var l=K();try{jf(a,b,c,d,e,f,k,h)}catch(p){J(l);if(p!==p+0)throw p;I(1,0)}}function xd(a,b,c,d,e,f,k,h,l,p,q,y){var z=K();try{$e(a,b,c,d,e,f,k,h,l,p,q,y)}catch(A){J(z);if(A!==A+0)throw A;I(1,0)}}function Yc(a,b,c,d,e){var f=K();try{return Xe(a,b,c,d,e)}catch(k){J(f);if(k!==k+0)throw k;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function Bd(a,b,c,d,e,f){var k=K();try{kf(a,b,c,d,e,f)}catch(h){J(k);if(h!==h+0)throw h;I(1,0)}}function rd(a,b,c,d,e){var f=K();try{Se(a,b,c,d,e)}catch(k){J(f);if(k!==k+0)throw k;I(1,0)}}function ud(a,b,c,d,e,f,k,h){var l=K();try{Ue(a,b,c,d,e,f,k,h)}catch(p){J(l);if(p!==p+0)throw p;I(1,0)}}function Uc(a){var b=K();try{return lf(a)}catch(c){J(b);if(c!==c+0)throw c;I(1,0)}}function vd(a,b,c,d,e,f,k,h,l){var p=K();try{bf(a,b,c,d,e,f,k,h,l)}catch(q){J(p);if(q!==q+0)throw q;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function gd(a,b,c){var d=K();try{return mf(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0)}}function jd(a,b){var c=K();try{return xf(a,b)}catch(d){J(c);if(d!==d+0)throw d;I(1,0);return 0n}}function hd(a){var b=K();try{return af(a)}catch(c){J(b);if(c!==c+0)throw c;I(1,0);return 0n}}function fd(a,b,c,d){var e=K();try{return nf(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function ed(a,b,c,d,e){var f=K();try{return of(a,b,c,d,e)}catch(k){J(f);if(k!==k+0)throw k;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function dd(a,b,c,d,e,f){var k=K();try{return pf(a,b,c,d,e,f)}catch(h){J(k);if(h!==h+0)throw h;I(1,0)}}function $c(a,b,c,d,e,f){var k=K();try{return gf(a,b,c,d,e,f)}catch(h){J(k);if(h!==h+0)throw h;I(1,0)}}function Zc(a,b,c,d,e,f){var k=K();try{return qf(a,b,c,d,e,f)}catch(h){J(k);if(h!==h+0)throw h;I(1,0)}}function bd(a,b,c,d,e,f,k,h){var l=K();try{return hf(a,b,c,d,e,f,k,h)}catch(p){J(l);if(p!==p+0)throw p;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function ld(a,b,c,d,e){var f=K();try{return rf(a,b,c,d,e)}catch(k){J(f);if(k!==k+0)throw k;I(1,0);return 0n}}function Tc(a,b,c,d){var e=K();try{return sf(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function Rc(a,b,c,d){var e=K();try{return tf(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function cd(a,b,c,d,e,f,k,h,l,p,q,y){var z=K();try{return uf(a,b,c,d,e,f,k,h,l,p,q,y)}catch(A){J(z);if(A!==A+0)throw A;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function wd(a,b,c,d,e,f,k,h,l,p,q){var y=K();try{vf(a,b,c,d,e,f,k,h,l,p,q)}catch(z){J(y);if(z!==z+0)throw z;I(1,0)}}function yd(a,b,c,d,e,f,k,h,l,p,q,y,z,A,ha,za){var Ah=K();try{wf(a,b,c,d,e,f,k,h,l,p,q,y,z,A,ha,za)}catch(zb){J(Ah);if(zb!==zb+0)throw zb;I(1,0)}}function kd(a,b,c){var d=K();try{return df(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0);return 0n}}function Sc(a,b,c){var d=K();try{return cf(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0)}}</span>
+<span class="cstat-no" title="statement not covered" >function Qc(a,b,c){var d=K();try{return ef(a,b,c)}catch(e){J(d);if(e!==e+0)throw e;I(1,0)}}function pd(a,b,c,d){var e=K();try{ff(a,b,c,d)}catch(f){J(e);if(f!==f+0)throw f;I(1,0)}}function ee(){var a=F;a=Object.assign({},a);var b=d=&gt;e=&gt;d(e)&gt;&gt;&gt;0,c=d=&gt;()=&gt;d()&gt;&gt;&gt;0;a.cc=b(a.cc);a.Fc=c(a.Fc);a.Hc=b(a.Hc);a.ud=(d=&gt;(e,f)=&gt;d(e,f)&gt;&gt;&gt;0)(a.ud);a.zd=b(a.zd);a.Ad=c(a.Ad);a.Ed=b(a.Ed);return a}</span>
+<span class="cstat-no" title="statement not covered" >function Fa(){if(0&lt;Ff)Gf=Fa;else if(n)ya?.(g),Ta();else{for(var a=Ef;0&lt;a.length;)a.shift()(g);0&lt;Ff?Gf=Fa:(g.calledRun=!0,va||(Ta(),ya?.(g)))}}var F;n||(F=await (Ea()),Fa());g.PTR_SIZE=4;</span>
+<span class="cstat-no" title="statement not covered" >g.webgpuInit=a=&gt;{const b=new WeakMap;let c=1,d=void 0,e=void 0;g.webgpuRegisterDevice=h=&gt;{if(void 0!==e)throw Error("another WebGPU EP inference session is being created.");if(h){var l=b.get(h);if(!l){l=le(0);const p=dh(h,l);l=[c++,l,p];b.set(h,l)}d=h;e=l[0];return l}d=void 0;e=0};const f=new Map;g.webgpuOnCreateSession=h=&gt;{if(void 0!==e){var l=e;e=void 0;if(h){const p=he(l);f.set(h,p);0===l&amp;&amp;a(d??Y(p))}d=void 0}};g.webgpuOnReleaseSession=h=&gt;{f.delete(h)};const k=Symbol("gpuBufferMetadata");g.webgpuRegisterBuffer=</span>
+<span class="cstat-no" title="statement not covered" >(h,l,p)=&gt;{if(p)return h[k]=[p,NaN],p;if(p=h[k])return p[1]++,p[0];l=f.get(l);if(void 0===l)throw Error("Invalid session handle passed to webgpuRegisterBuffer");l=ch(h,l);h[k]=[l,1];return l};g.webgpuUnregisterBuffer=h=&gt;{const l=h[k];if(!l)throw Error("Buffer is not registered");l[1]--;0===l[1]&amp;&amp;(ke(l[0]),delete h[k])};g.webgpuGetBuffer=h=&gt;Y(h);g.webgpuCreateDownloader=(h,l,p)=&gt;{p=f.get(p);if(void 0===p)throw Error("Invalid session handle passed to webgpuRegisterBuffer");const q=Y(p),y=16*Math.ceil(Number(l)/</span>
+<span class="cstat-no" title="statement not covered" >16);return async()=&gt;{const z=q.createBuffer({size:y,usage:9});try{const A=q.createCommandEncoder();A.copyBufferToBuffer(h,0,z,0,y);q.queue.submit([A.finish()]);await z.mapAsync(GPUMapMode.READ);return z.getMappedRange().slice(0,l)}finally{z.destroy()}}};g.fe=(h,l)=&gt;{var p=l.buffer;const q=l.byteOffset,y=l.byteLength;l=16*Math.ceil(Number(y)/16);h=Y(h);if(!d){var z=he(e);d=Y(z)}z=d.createBuffer({mappedAtCreation:!0,size:l,usage:6});const A=z.getMappedRange();(new Uint8Array(A)).set(new Uint8Array(p,</span>
+<span class="cstat-no" title="statement not covered" >q,y));z.unmap();p=d.createCommandEncoder();p.copyBufferToBuffer(z,0,h,0,l);d.queue.submit([p.finish()]);z.destroy()}};</span>
+<span class="cstat-no" title="statement not covered" >g.webnnInit=a=&gt;{const b=a[0];[g.Ee,g.ge,g.webnnEnsureTensor,g.he,g.webnnDownloadTensor,g.De,g.webnnEnableTraceEvent]=a.slice(1);g.webnnReleaseTensorId=g.ge;g.webnnUploadTensor=g.he;g.webnnRegisterMLContext=g.De;g.webnnOnRunStart=c=&gt;b.onRunStart(c);g.webnnOnRunEnd=b.onRunEnd.bind(b);g.webnnOnReleaseSession=c=&gt;{b.onReleaseSession(c)};g.webnnCreateMLTensorDownloader=(c,d)=&gt;b.createMLTensorDownloader(c,d);g.webnnRegisterMLTensor=(c,d,e,f)=&gt;b.registerMLTensor(c,d,e,f);g.webnnCreateMLContext=c=&gt;b.createMLContext(c);</span>
+<span class="cstat-no" title="statement not covered" >g.webnnRegisterGraphInput=b.registerGraphInput.bind(b);g.webnnIsGraphInput=b.isGraphInput.bind(b);g.webnnRegisterGraphOutput=b.registerGraphOutput.bind(b);g.webnnIsGraphOutput=b.isGraphOutput.bind(b);g.webnnCreateTemporaryTensor=b.createTemporaryTensor.bind(b);g.webnnIsGraphInputOutputTypeSupported=b.isGraphInputOutputTypeSupported.bind(b)};Sa?moduleRtn=g:moduleRtn=new Promise((a,b)=&gt;{ya=a;Aa=b});</span>
+<span class="cstat-no" title="statement not covered" >;return moduleRtn}export default ortWasmThreaded;var isPthread=globalThis.self?.name?.startsWith("em-pthread");var isNode=globalThis.process?.versions?.node&amp;&amp;globalThis.process?.type!="renderer";if(isNode)isPthread=(await import("worker_threads")).workerData==="em-pthread";isPthread&amp;&amp;ortWasmThreaded();</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-21T05:35:34.211Z
+            </div>
+        <script src="../../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../../sorter.js"></script>
+        <script src="../../../../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -58,7 +58,6 @@ import {
   MORPH_SCENE_SLOTS,
   defaultMorphScenes,
   pickSceneParams,
-  readMorphScenesState,
   type MorphSceneSlot,
   type MorphScenesState,
 } from "../effects/morph-dynamics-core/contracts/state";
@@ -132,10 +131,10 @@ function PressureRing({
   onPreview,
 }: {
   value: number;
-  baseRef: React.RefObject<SVGCircleElement | null>;
-  activityRef: React.RefObject<SVGCircleElement | null>;
-  tickRef: React.RefObject<SVGCircleElement | null>;
-  textRef: React.RefObject<HTMLSpanElement | null>;
+  baseRef: React.RefObject<SVGCircleElement>;
+  activityRef: React.RefObject<SVGCircleElement>;
+  tickRef: React.RefObject<SVGCircleElement>;
+  textRef: React.RefObject<HTMLSpanElement>;
   onCommit: (v: number) => void;
   onPreview: (v: number) => void;
 }) {
@@ -317,14 +316,14 @@ export function MorphDynamicsPanel({
   };
 
   // ── Live meters: polled while mounted; engine gates the worklet cost ──
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const metersRef = useRef<MorphMeters | null>(null);
   // PRESSURE ring elements — updated imperatively in the poll (a React
   // state update per 66 ms tick would re-render the whole panel for a meter).
-  const pressureBaseRef = useRef<SVGCircleElement | null>(null);
-  const pressureActivityRef = useRef<SVGCircleElement | null>(null);
-  const pressureTickRef = useRef<SVGCircleElement | null>(null);
-  const pressureTextRef = useRef<HTMLSpanElement | null>(null);
+  const pressureBaseRef = useRef<SVGCircleElement>(null);
+  const pressureActivityRef = useRef<SVGCircleElement>(null);
+  const pressureTickRef = useRef<SVGCircleElement>(null);
+  const pressureTextRef = useRef<HTMLSpanElement>(null);
   const pressurePeakRef = useRef(0);
 
   useEffect(() => {

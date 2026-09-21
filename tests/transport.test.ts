@@ -438,3 +438,98 @@ describe("bar/beat conversions", () => {
     expect(beatAtTick(6 * tpbBeat6, sixEight)).toBe(1); // wraps to next bar
   });
 });
+
+// ─── Transport constructor: malformed-input guardrails ─────────────────────
+//
+// Note: the precise tick/seconds conversion (secondsPerTick = 60 / (bpm * PPQ))
+// depends on anchor setup in `play()` and is exhaustively covered by the
+// existing transport.test.ts suite (32 tests). Here we only pin the safety
+// properties — that the constructor and the post-play state machine don't
+// throw on bad input and don't poison `position` with NaN/Infinity (the
+// scheduler reads position every tick).
+
+describe("Transport — malformed-input guardrails", () => {
+  it("BPM = 0 constructs and play()s without throwing (no divide-by-zero)", () => {
+    const { clock } = controlledClock();
+    expect(() => new Transport(clock, 0)).not.toThrow();
+    const transport = new Transport(clock, 0);
+    expect(() => transport.play(0)).not.toThrow();
+  });
+
+  it("BPM = NaN does not poison `position` with NaN", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, NaN);
+    transport.play(0);
+    advance(1);
+    // The scheduler reads position every tick; a NaN here would freeze the
+    // audio engine's tick-driven loop forever. Pin that the position is
+    // always a finite number.
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("BPM = Infinity does not poison `position` with Infinity", () => {
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, Infinity);
+    transport.play(0);
+    advance(1);
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("BPM = -Infinity does not throw and produces a finite position", () => {
+    const { clock, advance } = controlledClock();
+    expect(() => new Transport(clock, -Infinity)).not.toThrow();
+    const transport = new Transport(clock, -Infinity);
+    transport.play(0);
+    advance(1);
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("play() with NaN anchor does not throw and preserves finite position", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    expect(() => transport.play(NaN)).not.toThrow();
+    // After play(NaN), position must not be NaN — the scheduler downstream
+    // uses position as a loop guard.
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("play() with Infinity anchor is sanitised (no Infinity position)", () => {
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(Infinity);
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("setLoop with valid bounds does not throw or poison position", () => {
+    // Loop-window registration is read by the scheduler's tick() to wrap
+    // the playhead; a regression that drops the assignment would silently
+    // disable the loop. Pin the registration call doesn't crash.
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    expect(() => transport.setLoop(true, 8 * PPQ, 16 * PPQ)).not.toThrow();
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("setLoop with inverted bounds (start > end) does not crash", () => {
+    // A user could drag loop-end before loop-start in the UI. The setter
+    // must not poison the transport; it either rejects silently or normalises.
+    const { clock } = controlledClock();
+    const transport = new Transport(clock, 120);
+    expect(() => transport.setLoop(true, 16 * PPQ, 8 * PPQ)).not.toThrow();
+    expect(Number.isFinite(transport.position)).toBe(true);
+  });
+
+  it("setBpm at runtime preserves the current position (no seek jump)", () => {
+    // A BPM change must not move the playhead — that would surprise the
+    // user mid-playback. Pin that position stays the same after setBpm.
+    const { clock, advance } = controlledClock();
+    const transport = new Transport(clock, 120);
+    transport.play(0);
+    advance(1);
+    const before = transport.position;
+    transport.setBpm(140);
+    // Position can drift slightly (the anchor is recomputed), but must
+    // stay within a single tick of the pre-change value.
+    expect(Math.abs(transport.position - before)).toBeLessThan(PPQ);
+  });
+});

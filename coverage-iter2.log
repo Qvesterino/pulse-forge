@@ -1,0 +1,1223 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+      [2mCoverage enabled with [22m[33mv8[39m
+
+ [32mÔťô[39m tests/audio-engine-lifecycle.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32mÔťô[39m tests/collab-transport.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32mÔťô[39m tests/time-stretch.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 720[2mms[22m[39m
+   [33m[2mÔťô[22m[39m timeStretch[2m > [22mis deterministic (same input -> same output) [33m314[2mms[22m[39m
+stderr | tests/transport.test.ts > Transport > seek ignores NaN
+[transport] ignored non-finite or negative seek: NaN
+
+stderr | tests/transport.test.ts > Transport > seek ignores Infinity
+[transport] ignored non-finite or negative seek: Infinity
+
+stderr | tests/transport.test.ts > Transport > seek ignores negative ticks
+[transport] ignored non-finite or negative seek: -1000
+
+ [32mÔťô[39m tests/transport.test.ts [2m([22m[2m32 tests[22m[2m)[22m[90m 46[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-meter.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 69[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-effect-intent-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+stderr | tests/scheduler.test.ts > scheduler ÔÇö recovery > does not throw when the active pattern id points to a deleted pattern
+[scheduler] cannot schedule pattern mode: active pattern deleted-pattern-id is not present in the project
+
+stderr | tests/scheduler.test.ts > scheduler ÔÇö recovery > clears a pending launch whose target pattern was removed from the doc
+[scheduler] dropping queued launch for missing pattern second-pattern
+
+ [32mÔťô[39m tests/scheduler.test.ts [2m([22m[2m46 tests[22m[2m)[22m[33m 678[2mms[22m[39m
+ [32mÔťô[39m tests/performance-hardening.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 63[2mms[22m[39m
+ [32mÔťô[39m tests/tempo-lane.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 83[2mms[22m[39m
+ [32mÔťô[39m tests/tempo-seam.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 338[2mms[22m[39m
+ [32mÔťô[39m tests/reliability-hardening.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 216[2mms[22m[39m
+ [32mÔťô[39m tests/state-collab-scheduler-adversarial.test.ts [2m([22m[2m23 tests[22m[2m)[22m[33m 1312[2mms[22m[39m
+   [33m[2mÔťô[22m[39m YDocStore ÔÇö listener race and double-dispatch[2m > [22mconcurrent subscribe/unsubscribe never leaks a callback [33m405[2mms[22m[39m
+   [33m[2mÔťô[22m[39m YDocStore ÔÇö listener race and double-dispatch[2m > [22mrapid undo/redo loop preserves the last-50 history labels [33m410[2mms[22m[39m
+ [32mÔťô[39m tests/services-close-race.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 361[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m13 passed[39m[22m[90m (13)[39m
+[2m      Tests [22m [1m[32m188 passed[39m[22m[90m (188)[39m
+[2m   Start at [22m 07:34:42
+[2m   Duration [22m 48.26s[2m (transform 13.79s, setup 33.02s, collect 72.82s, tests 4.00s, environment 125.37s, prepare 7.23s)[22m
+
+[34m % [39m[2mCoverage report from [22m[33mv8[39m
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |     5.1 |     51.3 |   21.29 |     5.1 |                   
+ pulse-forge       |       0 |    16.66 |   16.66 |       0 |                   
+  __debug_loop.mjs |       0 |        0 |       0 |       0 | 1-26              
+  ...ght.config.ts |       0 |        0 |       0 |       0 | 1-52              
+  quantize.cmd.ts  |       0 |      100 |     100 |       0 | 4-19              
+  ...-upstream.mjs |       0 |        0 |       0 |       0 | 1-85              
+  vite.config.ts   |       0 |        0 |       0 |       0 | 1-53              
+  vitest.config.ts |       0 |        0 |       0 |       0 | 1-80              
+ ...ddy-aletopelta |       0 |       25 |      25 |       0 |                   
+  __debug_loop.mjs |       0 |        0 |       0 |       0 | 1-26              
+  quantize.cmd.ts  |       0 |      100 |     100 |       0 | 4-19              
+  vite.config.ts   |       0 |        0 |       0 |       0 | 1-26              
+  vitest.config.ts |       0 |        0 |       0 |       0 | 1-12              
+ ...topelta/.zcode |       0 |        0 |       0 |       0 |                   
+  trace-ultina.mjs |       0 |        0 |       0 |       0 | 1-43              
+ ...letopelta/cdot |       0 |      100 |     100 |       0 |                   
+  ncommands.ts     |       0 |      100 |     100 |       0 | 4-240             
+ ...topelta/public |       0 |        0 |       0 |       0 |                   
+  fxeq-worklet.js  |       0 |        0 |       0 |       0 | 1-4318            
+  ...na-worklet.js |       0 |        0 |       0 |       0 | 1-4650            
+  ...na-worklet.js |       0 |        0 |       0 |       0 | 1-7625            
+ ...opelta/scripts |       0 |        0 |       0 |       0 |                   
+  ...e-browser.mjs |       0 |        0 |       0 |       0 | 1-58              
+  ai-baseline.mts  |       0 |        0 |       0 |       0 | 1-44              
+  ...rformance.mts |       0 |        0 |       0 |       0 | 1-27              
+  ...q-worklet.mjs |       0 |        0 |       0 |       0 | 1-23              
+  ...a-worklet.mjs |       0 |        0 |       0 |       0 | 1-20              
+  ...a-worklet.mjs |       0 |        0 |       0 |       0 | 1-20              
+  ...ndle-size.mjs |       0 |        0 |       0 |       0 | 1-58              
+  ozvena-exact.mjs |       0 |        0 |       0 |       0 | 1-199             
+  ...iew-smoke.mjs |       0 |        0 |       0 |       0 | 1-28              
+  ...ate-smoke.mjs |       0 |        0 |       0 |       0 | 1-141             
+  ...ebug-mode.mjs |       0 |        0 |       0 |       0 | 1-43              
+  qa-debug2.mjs    |       0 |        0 |       0 |       0 | 1-45              
+  ...vestigate.mjs |       0 |        0 |       0 |       0 | 1-74              
+  ...estigate2.mjs |       0 |        0 |       0 |       0 | 1-63              
+  qa-workflow.mjs  |       0 |        0 |       0 |       0 | 1-255             
+  setup-hooks.mjs  |       0 |        0 |       0 |       0 | 1-28              
+  ...p-profile.mjs |       0 |        0 |       0 |       0 | 1-74              
+  vendor-fxeq.mjs  |       0 |        0 |       0 |       0 | 1-94              
+  ...or-ozvena.mjs |       0 |        0 |       0 |       0 | 1-95              
+  ...or-ultina.mjs |       0 |        0 |       0 |       0 | 1-113             
+  ...y-browser.mjs |       0 |        0 |       0 |       0 | 1-561             
+ ...topelta/server |       0 |        0 |       0 |       0 |                   
+  ...ab-server.mjs |       0 |        0 |       0 |       0 | 1-452             
+ ...aletopelta/src |       0 |       20 |      20 |       0 |                   
+  ...ser-checks.ts |       0 |        0 |       0 |       0 | 1-3424            
+  main.tsx         |       0 |        0 |       0 |       0 | 1-183             
+  pwa.ts           |       0 |      100 |     100 |       0 | 11-54             
+  services.ts      |       0 |        0 |       0 |       0 | 1-635             
+  sw-update.ts     |       0 |        0 |       0 |       0 | 1-58              
+ ...topelta/src/ai |       0 |    38.46 |   38.46 |       0 |                   
+  drums.ts         |       0 |        0 |       0 |       0 | 1-311             
+  evaluation.ts    |       0 |        0 |       0 |       0 | 1-247             
+  flip.ts          |       0 |        0 |       0 |       0 | 1-70              
+  generator.ts     |       0 |        0 |       0 |       0 | 1-259             
+  invariants.ts    |       0 |        0 |       0 |       0 | 1-172             
+  markov.ts        |       0 |      100 |     100 |       0 | 3-178             
+  melodic.ts       |       0 |        0 |       0 |       0 | 1-320             
+  pad-roles.ts     |       0 |      100 |     100 |       0 | 4-65              
+  performance.ts   |       0 |        0 |       0 |       0 | 1-35              
+  phrase.ts        |       0 |      100 |     100 |       0 | 13-84             
+  quality.ts       |       0 |        0 |       0 |       0 | 1-184             
+  style-quality.ts |       0 |      100 |     100 |       0 | 25-224            
+  types.ts         |       0 |      100 |     100 |       0 | 59-91             
+ ...src/ai/grooves |       0 |    85.71 |   85.71 |       0 |                   
+  ambient.ts       |       0 |      100 |     100 |       0 | 3-164             
+  house.ts         |       0 |      100 |     100 |       0 | 3-319             
+  hybrid.ts        |       0 |      100 |     100 |       0 | 8-220             
+  index.ts         |       0 |        0 |       0 |       0 | 1-29              
+  melodic-data.ts  |       0 |      100 |     100 |       0 | 13-354            
+  techno.ts        |       0 |      100 |     100 |       0 | 3-287             
+  trap.ts          |       0 |      100 |     100 |       0 | 3-226             
+ ...rc/arrangement |       0 |        0 |       0 |       0 |                   
+  capture.ts       |       0 |        0 |       0 |       0 | 1-245             
+ ...lta/src/assist |       0 |    33.33 |   33.33 |       0 |                   
+  patternOps.ts    |       0 |        0 |       0 |       0 | 1-311             
+  pipeline.ts      |       0 |        0 |       0 |       0 | 1-41              
+  types.ts         |       0 |      100 |     100 |       0 | 15-16             
+ ...c/audio-engine |       0 |    30.76 |   30.76 |       0 |                   
+  AudioEngine.ts   |       0 |        0 |       0 |       0 | 1-3831            
+  ...viewPlayer.ts |       0 |        0 |       0 |       0 | 1-130             
+  NoteRepeat.ts    |       0 |        0 |       0 |       0 | 1-265             
+  bpm-detect.ts    |       0 |        0 |       0 |       0 | 1-139             
+  ...ve-extract.ts |       0 |        0 |       0 |       0 | 1-97              
+  kweighting.ts    |       0 |        0 |       0 |       0 | 1-176             
+  ...alibration.ts |       0 |        0 |       0 |       0 | 1-185             
+  latencyProbe.ts  |       0 |        0 |       0 |       0 | 1-184             
+  metering.ts      |       0 |        0 |       0 |       0 | 1-338             
+  recorder.ts      |       0 |      100 |     100 |       0 | 16-180            
+  synth-voices.ts  |       0 |      100 |     100 |       0 | 10-48             
+  time-stretch.ts  |       0 |      100 |     100 |       0 | 14-115            
+  transients.ts    |       0 |      100 |     100 |       0 | 22-123            
+ .../audio-workers |       0 |      100 |     100 |       0 |                   
+  ir-generator.ts  |       0 |      100 |     100 |       0 | 12-38             
+  ...t-detector.ts |       0 |      100 |     100 |       0 | 21-84             
+ ...audio-worklets |       0 |     42.5 |    42.5 |       0 |                   
+  autowah-node.ts  |       0 |      100 |     100 |       0 | 8-47              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-118             
+  ...usher-node.ts |       0 |      100 |     100 |       0 | 7-94              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-66              
+  comb-node.ts     |       0 |      100 |     100 |       0 | 8-43              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-97              
+  ...essor-node.ts |       0 |      100 |     100 |       0 | 19-109            
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-194             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-19              
+  ...delay-node.ts |       0 |      100 |     100 |       0 | 8-50              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-129             
+  ...lower-node.ts |       0 |      100 |     100 |       0 | 20-56             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-64              
+  flanger-node.ts  |       0 |      100 |     100 |       0 | 8-45              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-109             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-56              
+  kwmeter-node.ts  |       0 |        0 |       0 |       0 | 1-70              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-153             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-33              
+  limiter-node.ts  |       0 |      100 |     100 |       0 | 13-79             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-209             
+  loader.ts        |       0 |      100 |     100 |       0 | 26-185            
+  reverb-node.ts   |       0 |      100 |     100 |       0 | 8-58              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-170             
+  ...chain-node.ts |       0 |      100 |     100 |       0 | 15-80             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-182             
+  stepgate-node.ts |       0 |      100 |     100 |       0 | 18-69             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-97              
+  stutter-node.ts  |       0 |      100 |     100 |       0 | 12-65             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-107             
+  svfilter-node.ts |       0 |      100 |     100 |       0 | 8-44              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-215             
+  tape-node.ts     |       0 |      100 |     100 |       0 | 8-44              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-80              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-54              
+  tremolo-node.ts  |       0 |      100 |     100 |       0 | 8-44              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-88              
+  vowel-node.ts    |       0 |      100 |     100 |       0 | 8-42              
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-161             
+  ...-processor.js |       0 |        0 |       0 |       0 | 1-427             
+ .../src/benchmark |       0 |    33.33 |   33.33 |       0 |                   
+  index.ts         |       0 |        0 |       0 |       0 | 1-121             
+  performance.ts   |       0 |      100 |     100 |       0 | 67-186            
+  stress.ts        |       0 |        0 |       0 |       0 | 1-283             
+ ...lta/src/collab |       0 |    28.57 |   28.57 |       0 |                   
+  ...elProvider.ts |       0 |        0 |       0 |       0 | 1-112             
+  CollabSession.ts |       0 |        0 |       0 |       0 | 1-115             
+  ...onProvider.ts |       0 |        0 |       0 |       0 | 1-141             
+  YDocAdapter.ts   |       0 |        0 |       0 |       0 | 1-1211            
+  YDocStore.ts     |       0 |        0 |       0 |       0 | 1-317             
+  collabShared.ts  |       0 |      100 |     100 |       0 | 11-72             
+  jamRoles.ts      |       0 |      100 |     100 |       0 | 23-247            
+ ...a/src/commands |       0 |       50 |      50 |       0 |                   
+  commands.ts      |       0 |        0 |       0 |       0 | 1-5638            
+  docDelta.ts      |       0 |      100 |     100 |       0 | 41-318            
+  layerCommands.ts |       0 |        0 |       0 |       0 | 1-73              
+  types.ts         |       0 |      100 |     100 |       0 | 26-46             
+  yDocBridge.ts    |       0 |      100 |     100 |       0 | 22-32             
+  yDocHelpers.ts   |       0 |        0 |       0 |       0 | 1-100             
+ ...ta/src/effects |       0 |    54.54 |   54.54 |       0 |                   
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-125             
+  fxeqNode.ts      |       0 |      100 |     100 |       0 | 13-138            
+  ozvena-params.ts |       0 |      100 |     100 |       0 | 14-116            
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-225             
+  ozvenaNode.ts    |       0 |      100 |     100 |       0 | 10-129            
+  presets.ts       |       0 |      100 |     100 |       0 | 12-306            
+  registry.ts      |       0 |        0 |       0 |       0 | 1-3086            
+  types.ts         |       0 |        0 |       0 |       0 |                   
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-190             
+  ...Automation.ts |       0 |        0 |       0 |       0 | 1-127             
+  ultinaNode.ts    |       0 |      100 |     100 |       0 | 13-120            
+ ...fxeq-core/core |       0 |    28.57 |   28.57 |       0 |                   
+  bandEngine.ts    |       0 |        0 |       0 |       0 | 1-583             
+  ...andHistory.ts |       0 |      100 |     100 |       0 | 31-114            
+  crossover.ts     |       0 |        0 |       0 |       0 | 1-296             
+  fxEqProcessor.ts |       0 |        0 |       0 |       0 | 1-732             
+  ...eterSchema.ts |       0 |        0 |       0 |       0 | 1-151             
+  presets.ts       |       0 |      100 |     100 |       0 | 26-1052           
+  signalFlow.ts    |       0 |        0 |       0 |       0 | 1-95              
+ .../fxeq-core/dsp |       0 |    54.54 |   54.54 |       0 |                   
+  ...ckContract.ts |       0 |      100 |     100 |       0 | 30-154            
+  biquad.ts        |       0 |        0 |       0 |       0 | 1-197             
+  ...soverStage.ts |       0 |        0 |       0 |       0 | 1-111             
+  dynamics.ts      |       0 |      100 |     100 |       0 | 35-101            
+  envelope.ts      |       0 |      100 |     100 |       0 | 32-54             
+  lfo.ts           |       0 |      100 |     100 |       0 | 45-143            
+  mathUtils.ts     |       0 |      100 |     100 |       0 | 21-126            
+  ...Saturation.ts |       0 |        0 |       0 |       0 | 1-322             
+  oversampler.ts   |       0 |        0 |       0 |       0 | 1-465             
+  types.ts         |       0 |        0 |       0 |       0 |                   
+  waveshapers.ts   |       0 |        0 |       0 |       0 | 1-274             
+ ...q-core/modules |       0 |        0 |       0 |       0 |                   
+  bandEq.ts        |       0 |        0 |       0 |       0 | 1-131             
+  delay.ts         |       0 |        0 |       0 |       0 | 1-311             
+  dynamics.ts      |       0 |        0 |       0 |       0 | 1-458             
+  limiter.ts       |       0 |        0 |       0 |       0 | 1-696             
+  lofi.ts          |       0 |        0 |       0 |       0 | 1-339             
+  modulation.ts    |       0 |        0 |       0 |       0 | 1-334             
+  moduleHelpers.ts |       0 |        0 |       0 |       0 | 1-77              
+  reverb.ts        |       0 |        0 |       0 |       0 | 1-458             
+  saturation.ts    |       0 |        0 |       0 |       0 | 1-212             
+ ...vena-core/core |       0 |        0 |       0 |       0 |                   
+  blendPad.ts      |       0 |        0 |       0 |       0 | 1-173             
+  ...Controller.ts |       0 |        0 |       0 |       0 | 1-120             
+  ...aProcessor.ts |       0 |        0 |       0 |       0 | 1-858             
+  ...bAssistant.ts |       0 |        0 |       0 |       0 | 1-241             
+ ...zvena-core/dsp |       0 |     37.5 |    37.5 |       0 |                   
+  biquad.ts        |       0 |        0 |       0 |       0 | 1-248             
+  fft.ts           |       0 |      100 |     100 |       0 | 25-178            
+  ...artitioned.ts |       0 |        0 |       0 |       0 | 1-262             
+  math.ts          |       0 |      100 |     100 |       0 | 21-142            
+  oversampler.ts   |       0 |        0 |       0 |       0 | 1-283             
+  peakDetection.ts |       0 |      100 |     100 |       0 | 48-203            
+  smoother.ts      |       0 |        0 |       0 |       0 | 1-183             
+  ...umAnalyzer.ts |       0 |        0 |       0 |       0 | 1-197             
+ ...a-core/engines |       0 |        0 |       0 |       0 |                   
+  ...tionEngine.ts |       0 |        0 |       0 |       0 | 1-370             
+  hallEngine.ts    |       0 |        0 |       0 |       0 | 1-804             
+  ...mberEngine.ts |       0 |        0 |       0 |       0 | 1-862             
+  ...ionsEngine.ts |       0 |        0 |       0 |       0 | 1-393             
+ ...a-core/modules |       0 |    22.22 |   22.22 |       0 |                   
+  ...zerHelpers.ts |       0 |      100 |     100 |       0 | 23-83             
+  factoryIr.ts     |       0 |      100 |     100 |       0 | 35-263            
+  maskingMeter.ts  |       0 |        0 |       0 |       0 | 1-175             
+  modPad.ts        |       0 |        0 |       0 |       0 | 1-179             
+  preDelay.ts      |       0 |        0 |       0 |       0 | 1-240             
+  preEq.ts         |       0 |        0 |       0 |       0 | 1-326             
+  reverbEq.ts      |       0 |        0 |       0 |       0 | 1-281             
+  safetyLimiter.ts |       0 |        0 |       0 |       0 | 1-305             
+  smoother.ts      |       0 |        0 |       0 |       0 | 1-134             
+ ...ozvena-core/v2 |       0 |      100 |     100 |       0 |                   
+  ...utionTypes.ts |       0 |      100 |     100 |       0 | 40-49             
+  types.ts         |       0 |      100 |     100 |       0 | 31-711            
+  vocalForgeIpc.ts |       0 |      100 |     100 |       0 | 54-201            
+ ...-core/analysis |       0 |       30 |      30 |       0 |                   
+  assistant.ts     |       0 |      100 |     100 |       0 | 39-372            
+  explanation.ts   |       0 |      100 |     100 |       0 | 22-109            
+  ...eExtractor.ts |       0 |        0 |       0 |       0 | 1-587             
+  index.ts         |       0 |        0 |       0 |       0 | 1                 
+  ...Classifier.ts |       0 |        0 |       0 |       0 | 1-277             
+  mixAssistant.ts  |       0 |        0 |       0 |       0 | 1-197             
+  ...osalEngine.ts |       0 |        0 |       0 |       0 | 1-801             
+  targetLibrary.ts |       0 |      100 |     100 |       0 | 30-205            
+  tonalBalance.ts  |       0 |        0 |       0 |       0 | 1-224             
+  trackEnhance.ts  |       0 |        0 |       0 |       0 | 1-223             
+ ...core/contracts |       0 |    57.14 |   57.14 |       0 |                   
+  channelModes.ts  |       0 |      100 |     100 |       0 | 29-122            
+  meters.ts        |       0 |      100 |     100 |       0 | 205-233           
+  moduleGraph.ts   |       0 |        0 |       0 |       0 | 1-181             
+  moduleTypes.ts   |       0 |      100 |     100 |       0 | 21-136            
+  parameterIds.ts  |       0 |      100 |     100 |       0 | 50-460            
+  ...eterSchema.ts |       0 |        0 |       0 |       0 | 1-461             
+  state.ts         |       0 |        0 |       0 |       0 | 1-205             
+ ...ltina-core/dsp |       0 |    26.66 |   26.66 |       0 |                   
+  autoGain.ts      |       0 |        0 |       0 |       0 | 1-237             
+  ...soverLearn.ts |       0 |        0 |       0 |       0 | 1-377             
+  dryDelay.ts      |       0 |        0 |       0 |       0 | 1-157             
+  eqLearn.ts       |       0 |        0 |       0 |       0 | 1-262             
+  fft.ts           |       0 |      100 |     100 |       0 | 22-102            
+  lufsMeter.ts     |       0 |        0 |       0 |       0 | 1-569             
+  maskingMeter.ts  |       0 |        0 |       0 |       0 | 1-215             
+  ...eFactories.ts |       0 |        0 |       0 |       0 | 1-76              
+  ...aphRuntime.ts |       0 |        0 |       0 |       0 | 1-318             
+  multiband.ts     |       0 |        0 |       0 |       0 | 1-694             
+  oversampler.ts   |       0 |      100 |     100 |       0 | 23-148            
+  primitives.ts    |       0 |      100 |     100 |       0 | 27-842            
+  ...alRegistry.ts |       0 |        0 |       0 |       0 | 1-364             
+  ...umAnalyzer.ts |       0 |      100 |     100 |       0 | 26-263            
+  ...aProcessor.ts |       0 |        0 |       0 |       0 | 1-1016            
+ ...re/dsp/modules |       0 |        0 |       0 |       0 |                   
+  clipperModule.ts |       0 |        0 |       0 |       0 | 1-471             
+  compModule.ts    |       0 |        0 |       0 |       0 | 1-781             
+  densityModule.ts |       0 |        0 |       0 |       0 | 1-419             
+  eqModule.ts      |       0 |        0 |       0 |       0 | 1-744             
+  exciterModule.ts |       0 |        0 |       0 |       0 | 1-509             
+  gateModule.ts    |       0 |        0 |       0 |       0 | 1-452             
+  phaseModule.ts   |       0 |        0 |       0 |       0 | 1-424             
+  ...ptorModule.ts |       0 |        0 |       0 |       0 | 1-402             
+  ...ientModule.ts |       0 |        0 |       0 |       0 | 1-464             
+  unmaskModule.ts  |       0 |        0 |       0 |       0 | 1-560             
+ ...a-core/presets |       0 |        0 |       0 |       0 |                   
+  ...oryPresets.ts |       0 |        0 |       0 |       0 | 1-961             
+ ...elta/src/embed |       0 |        0 |       0 |       0 |                   
+  EmbedApp.tsx     |       0 |        0 |       0 |       0 | 1-253             
+ ...lta/src/export |       0 |    27.27 |   27.27 |       0 |                   
+  bindsCode.ts     |       0 |        0 |       0 |       0 | 1-33              
+  kitCode.ts       |       0 |        0 |       0 |       0 | 1-59              
+  mp3.ts           |       0 |        0 |       0 |       0 | 1-55              
+  packCode.ts      |       0 |        0 |       0 |       0 | 1-211             
+  project-io.ts    |       0 |        0 |       0 |       0 | 1-96              
+  quantize.ts      |       0 |      100 |     100 |       0 | 14-53             
+  scorepack.ts     |       0 |        0 |       0 |       0 | 1-190             
+  shareCode.ts     |       0 |        0 |       0 |       0 | 1-54              
+  themeCode.ts     |       0 |        0 |       0 |       0 | 1-41              
+  video.ts         |       0 |      100 |     100 |       0 | 11-281            
+  zip.ts           |       0 |      100 |     100 |       0 | 7-120             
+ ...ta/src/gallery |       0 |        0 |       0 |       0 |                   
+  GalleryPage.tsx  |       0 |        0 |       0 |       0 | 1-501             
+  ...ishButton.tsx |       0 |        0 |       0 |       0 | 1-35              
+  galleryApi.ts    |       0 |        0 |       0 |       0 | 1-211             
+  remix.ts         |       0 |        0 |       0 |       0 | 1-74              
+ ...rc/instruments |       0 |       50 |      50 |       0 |                   
+  envelope.ts      |       0 |      100 |     100 |       0 | 23-138            
+  randomize.ts     |       0 |        0 |       0 |       0 | 1-65              
+  registry.ts      |       0 |        0 |       0 |       0 | 1-4369            
+  types.ts         |       0 |        0 |       0 |       0 |                   
+  wavetables.ts    |       0 |      100 |     100 |       0 | 9-416             
+  wtvoiceNode.ts   |       0 |        0 |       0 |       0 | 1-91              
+ ...lta/src/intent |       0 |    22.22 |   22.22 |       0 |                   
+  dice.ts          |       0 |        0 |       0 |       0 | 1-204             
+  hash.ts          |       0 |        0 |       0 |       0 | 1-11              
+  index.ts         |       0 |        0 |       0 |       0 | 1-7               
+  mapping.ts       |       0 |      100 |     100 |       0 | 4-98              
+  normalize.ts     |       0 |        0 |       0 |       0 | 1-126             
+  pipeline.ts      |       0 |        0 |       0 |       0 | 1-41              
+  plan.ts          |       0 |        0 |       0 |       0 | 1-99              
+  schema.ts        |       0 |        0 |       0 |       0 | 1-88              
+  types.ts         |       0 |      100 |     100 |       0 | 4                 
+ ...tent/providers |       0 |        0 |       0 |       0 |                   
+  local.ts         |       0 |        0 |       0 |       0 | 1-48              
+ ...ta/src/landing |       0 |        0 |       0 |       0 |                   
+  LandingPage.tsx  |       0 |        0 |       0 |       0 | 1-128             
+ ...pelta/src/midi |       0 |    33.33 |   33.33 |       0 |                   
+  MidiClock.ts     |       0 |        0 |       0 |       0 | 1-134             
+  MidiInput.ts     |       0 |        0 |       0 |       0 | 1-492             
+  MidiOutput.ts    |       0 |      100 |     100 |       0 | 5-116             
+  creative.ts      |       0 |        0 |       0 |       0 | 1-590             
+  midiFile.ts      |       0 |      100 |     100 |       0 | 40-328            
+  midiProject.ts   |       0 |        0 |       0 |       0 | 1-273             
+ ...rc/persistence |       0 |     9.09 |    9.09 |       0 |                   
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-97              
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-45              
+  KitRepository.ts |       0 |        0 |       0 |       0 | 1-44              
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-104             
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-32              
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-176             
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-98              
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-82              
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-148             
+  db.ts            |       0 |        0 |       0 |       0 | 1-146             
+  ...-lifecycle.ts |       0 |      100 |     100 |       0 | 53-125            
+ ...ta/src/presets |       0 |      100 |     100 |       0 |                   
+  factory.ts       |       0 |      100 |     100 |       0 | 7-3385            
+  types.ts         |       0 |      100 |     100 |       0 | 7-9               
+ .../project-model |       0 |    35.71 |   35.71 |       0 |                   
+  automation.ts    |       0 |      100 |     100 |       0 | 3-38              
+  events.ts        |       0 |        0 |       0 |       0 | 1-89              
+  groove.ts        |       0 |        0 |       0 |       0 | 1-181             
+  intensity.ts     |       0 |      100 |     100 |       0 | 8-65              
+  kit-presets.ts   |       0 |      100 |     100 |       0 | 19-241            
+  markers.ts       |       0 |      100 |     100 |       0 | 8-21              
+  modulators.ts    |       0 |        0 |       0 |       0 | 1-327             
+  scales.ts        |       0 |      100 |     100 |       0 | 20-162            
+  schema.ts        |       0 |        0 |       0 |       0 | 1-1949            
+  targets.ts       |       0 |        0 |       0 |       0 | 1-205             
+  ...late-pack2.ts |       0 |        0 |       0 |       0 | 1-351             
+  templates.ts     |       0 |        0 |       0 |       0 | 1-738             
+  transform.ts     |       0 |        0 |       0 |       0 | 1-63              
+  types.ts         |       0 |        0 |       0 |       0 | 1-927             
+ .../src/rendering |       0 |       20 |      20 |       0 |                   
+  bounce.ts        |       0 |        0 |       0 |       0 | 1-75              
+  renderer.ts      |       0 |        0 |       0 |       0 | 1-416             
+  stems.ts         |       0 |      100 |     100 |       0 | 9-46              
+  ...k-renderer.ts |       0 |        0 |       0 |       0 | 1-80              
+  wav.ts           |       0 |        0 |       0 |       0 | 1-87              
+ ...sample-library |       0 |       50 |      50 |       0 |                   
+  factory.ts       |       0 |        0 |       0 |       0 | 1-838             
+  kit-pools.ts     |       0 |        0 |       0 |       0 | 1-177             
+  manifest.ts      |       0 |      100 |     100 |       0 | 16-364            
+  ...ity-layers.ts |       0 |      100 |     100 |       0 | 8-81              
+ ...ta/src/samples |       0 |      100 |     100 |       0 |                   
+  freesound.ts     |       0 |      100 |     100 |       0 | 19-136            
+ .../src/scheduler |       0 |        0 |       0 |       0 |                   
+  Scheduler.ts     |       0 |        0 |       0 |       0 | 1-837             
+ ...a/src/services |       0 |      100 |     100 |       0 |                   
+  rafLoop.ts       |       0 |      100 |     100 |       0 | 3-41              
+ ...lta/src/shared |       0 |    33.33 |   33.33 |       0 |                   
+  dice.ts          |       0 |        0 |       0 |       0 | 1-68              
+  ids.ts           |       0 |      100 |     100 |       0 | 8-36              
+  rng.ts           |       0 |        0 |       0 |       0 | 1-23              
+ ...elta/src/store |       0 |    66.66 |   66.66 |       0 |                   
+  ProjectStore.ts  |       0 |        0 |       0 |       0 | 1-238             
+  ...ctionStore.ts |       0 |      100 |     100 |       0 | 27-185            
+  ToolStore.ts     |       0 |      100 |     100 |       0 | 3-37              
+ .../src/transport |       0 |        0 |       0 |       0 |                   
+  Transport.ts     |       0 |        0 |       0 |       0 | 1-189             
+ ...topelta/src/ui |       0 |     2.89 |    2.89 |       0 |                   
+  App.tsx          |       0 |        0 |       0 |       0 | 1-1056            
+  ...mentPanel.tsx |       0 |        0 |       0 |       0 | 1-1713            
+  AssistPanel.tsx  |       0 |        0 |       0 |       0 | 1-216             
+  AudioUnlock.tsx  |       0 |        0 |       0 |       0 | 1-53              
+  CollabPanel.tsx  |       0 |        0 |       0 |       0 | 1-187             
+  CommandToast.tsx |       0 |        0 |       0 |       0 | 1-51              
+  ContextMenu.tsx  |       0 |        0 |       0 |       0 | 1-147             
+  Diagnostics.tsx  |       0 |        0 |       0 |       0 | 1-165             
+  DiceContext.tsx  |       0 |        0 |       0 |       0 | 1-539             
+  DiceTray.tsx     |       0 |        0 |       0 |       0 | 1-470             
+  DropZone.tsx     |       0 |        0 |       0 |       0 | 1-201             
+  ...bControls.tsx |       0 |        0 |       0 |       0 | 1-131             
+  EffectRack.tsx   |       0 |        0 |       0 |       0 | 1-485             
+  EnvEditor.tsx    |       0 |        0 |       0 |       0 | 1-194             
+  ...rBoundary.tsx |       0 |        0 |       0 |       0 | 1-65              
+  ExportPanel.tsx  |       0 |        0 |       0 |       0 | 1-582             
+  ...ingPlugin.tsx |       0 |        0 |       0 |       0 | 1-410             
+  ...ndSection.tsx |       0 |        0 |       0 |       0 | 1-195             
+  FreezeButton.tsx |       0 |        0 |       0 |       0 | 1-112             
+  FxEqPanel.tsx    |       0 |        0 |       0 |       0 | 1-380             
+  ...ateDialog.tsx |       0 |        0 |       0 |       0 | 1-424             
+  Goniometer.tsx   |       0 |        0 |       0 |       0 | 1-134             
+  HelpOverlay.tsx  |       0 |        0 |       0 |       0 | 1-167             
+  Inspector.tsx    |       0 |        0 |       0 |       0 | 1-517             
+  ...allPrompt.tsx |       0 |        0 |       0 |       0 | 1-75              
+  ...ionWizard.tsx |       0 |        0 |       0 |       0 | 1-306             
+  ...ssHistory.tsx |       0 |        0 |       0 |       0 | 1-119             
+  ...rmanceBar.tsx |       0 |        0 |       0 |       0 | 1-55              
+  MasterMeter.tsx  |       0 |        0 |       0 |       0 | 1-329             
+  Meter.tsx        |       0 |        0 |       0 |       0 | 1-42              
+  MidiPanel.tsx    |       0 |        0 |       0 |       0 | 1-1002            
+  Mixer.tsx        |       0 |        0 |       0 |       0 | 1-707             
+  ModPanel.tsx     |       0 |        0 |       0 |       0 | 1-1732            
+  ...rdingHint.tsx |       0 |        0 |       0 |       0 | 1-68              
+  ...rdingTour.tsx |       0 |        0 |       0 |       0 | 1-107             
+  OzvenaPanel.tsx  |       0 |        0 |       0 |       0 | 1-370             
+  ...teOverlay.tsx |       0 |        0 |       0 |       0 | 1-130             
+  PatternBar.tsx   |       0 |        0 |       0 |       0 | 1-390             
+  PianoRoll.tsx    |       0 |        0 |       0 |       0 | 1-1548            
+  ...etBrowser.tsx |       0 |        0 |       0 |       0 | 1-249             
+  ...ctBrowser.tsx |       0 |        0 |       0 |       0 | 1-311             
+  RackStrip.tsx    |       0 |        0 |       0 |       0 | 1-731             
+  ...leBrowser.tsx |       0 |        0 |       0 |       0 | 1-223             
+  ScalePanel.tsx   |       0 |        0 |       0 |       0 | 1-80              
+  ...eLauncher.tsx |       0 |        0 |       0 |       0 | 1-289             
+  Sequencer.tsx    |       0 |        0 |       0 |       0 | 1-1322            
+  SliceLab.tsx     |       0 |        0 |       0 |       0 | 1-818             
+  ...mAnalyzer.tsx |       0 |        0 |       0 |       0 | 1-156             
+  ...ridEditor.tsx |       0 |        0 |       0 |       0 | 1-117             
+  ThemePanel.tsx   |       0 |        0 |       0 |       0 | 1-155             
+  TopBar.tsx       |       0 |        0 |       0 |       0 | 1-704             
+  TrackTabs.tsx    |       0 |        0 |       0 |       0 | 1-139             
+  UltinaPanel.tsx  |       0 |        0 |       0 |       0 | 1-1107            
+  ...toryPanel.tsx |       0 |        0 |       0 |       0 | 1-194             
+  ...ablePanel.tsx |       0 |        0 |       0 |       0 | 1-220             
+  ...lePreview.tsx |       0 |        0 |       0 |       0 | 1-170             
+  ...andPalette.ts |       0 |        0 |       0 |       0 | 1-123             
+  context.ts       |       0 |        0 |       0 |       0 | 1-109             
+  controls.tsx     |       0 |        0 |       0 |       0 | 1-217             
+  dockLayout.ts    |       0 |        0 |       0 |       0 | 1-94              
+  helpContent.ts   |       0 |      100 |     100 |       0 | 16-54             
+  kitColors.ts     |       0 |        0 |       0 |       0 | 1-61              
+  padKeys.ts       |       0 |        0 |       0 |       0 | 1-163             
+  playhead.ts      |       0 |        0 |       0 |       0 | 1-89              
+  remoteCursors.ts |       0 |        0 |       0 |       0 | 1-46              
+  shortcuts.ts     |       0 |      100 |     100 |       0 | 50-270            
+  theme.ts         |       0 |        0 |       0 |       0 | 1-197             
+  timelineRec.ts   |       0 |        0 |       0 |       0 | 1-27              
+  useLongPress.ts  |       0 |        0 |       0 |       0 | 1-76              
+ ...etopelta/tests |       0 |        0 |       0 |       0 |                   
+  ...-gain.test.ts |       0 |        0 |       0 |       0 | 1-40              
+  ...eline.test.ts |       0 |        0 |       0 |       0 | 1-75              
+  ...tness.test.ts |       0 |        0 |       0 |       0 | 1-182             
+  ai-flip.test.ts  |       0 |        0 |       0 |       0 | 1-109             
+  ...arkov.test.ts |       0 |        0 |       0 |       0 | 1-796             
+  ...tions.test.ts |       0 |        0 |       0 |       0 | 1-203             
+  ...eline.test.ts |       0 |        0 |       0 |       0 | 1-125             
+  assist.test.ts   |       0 |        0 |       0 |       0 | 1-155             
+  ...indow.test.ts |       0 |        0 |       0 |       0 | 1-77              
+  ...cycle.test.ts |       0 |        0 |       0 |       0 | 1-176             
+  ...klets.test.ts |       0 |        0 |       0 |       0 | 1-207             
+  ...range.test.ts |       0 |        0 |       0 |       0 | 1-97              
+  ...ation.test.ts |       0 |        0 |       0 |       0 | 1-45              
+  bounce.test.ts   |       0 |        0 |       0 |       0 | 1-67              
+  ...etect.test.ts |       0 |        0 |       0 |       0 | 1-120             
+  ...cycle.test.ts |       0 |        0 |       0 |       0 | 1-34              
+  ...ompat.test.ts |       0 |        0 |       0 |       0 | 1-119             
+  ...ation.test.ts |       0 |        0 |       0 |       0 | 1-113             
+  ...arity.test.ts |       0 |        0 |       0 |       0 | 1-136             
+  ...ening.test.ts |       0 |        0 |       0 |       0 | 1-510             
+  ...ssion.test.ts |       0 |        0 |       0 |       0 | 1-118             
+  ...ation.test.ts |       0 |        0 |       0 |       0 | 1-274             
+  collab.test.ts   |       0 |        0 |       0 |       0 | 1-255             
+  commands.test.ts |       0 |        0 |       0 |       0 | 1-1091            
+  ...ation.test.ts |       0 |        0 |       0 |       0 | 1-163             
+  ...locks.test.ts |       0 |        0 |       0 |       0 | 1-37              
+  ...bseed.test.ts |       0 |        0 |       0 |       0 | 1-37              
+  dice.test.ts     |       0 |        0 |       0 |       0 | 1-66              
+  ...delta.test.ts |       0 |        0 |       0 |       0 | 1-493             
+  ...ayout.test.ts |       0 |        0 |       0 |       0 | 1-95              
+  effects.test.ts  |       0 |        0 |       0 |       0 | 1-311             
+  ...ntize.test.ts |       0 |        0 |       0 |       0 | 1-77              
+  ...-clip.test.ts |       0 |        0 |       0 |       0 | 1-69              
+  ...sound.test.ts |       0 |        0 |       0 |       0 | 1-153             
+  freeze.test.ts   |       0 |        0 |       0 |       0 | 1-172             
+  ...spose.test.ts |       0 |        0 |       0 |       0 | 1-152             
+  ...tency.test.ts |       0 |        0 |       0 |       0 | 1-187             
+  ...nd-eq.test.ts |       0 |        0 |       0 |       0 | 1-186             
+  ...ening.test.ts |       0 |        0 |       0 |       0 | 1-646             
+  ...uting.test.ts |       0 |        0 |       0 |       0 | 1-247             
+  ...olden.test.ts |       0 |        0 |       0 |       0 | 1-67              
+  ...morph.test.ts |       0 |        0 |       0 |       0 | 1-182             
+  ...gates.test.ts |       0 |        0 |       0 |       0 | 1-221             
+  ...ening.test.ts |       0 |        0 |       0 |       0 | 1-444             
+  ...tract.test.ts |       0 |        0 |       0 |       0 | 1-144             
+  ...sweep.test.ts |       0 |        0 |       0 |       0 | 1-109             
+  ...-sync.test.ts |       0 |        0 |       0 |       0 | 1-206             
+  ...remix.test.ts |       0 |        0 |       0 |       0 | 1-129             
+  ...erver.test.ts |       0 |        0 |       0 |       0 | 1-264             
+  ...ender.test.ts |       0 |        0 |       0 |       0 | 1-93              
+  granular.test.ts |       0 |        0 |       0 |       0 | 1-241             
+  ...mands.test.ts |       0 |        0 |       0 |       0 | 1-336             
+  ...steal.test.ts |       0 |        0 |       0 |       0 | 1-135             
+  groove.test.ts   |       0 |        0 |       0 |       0 | 1-283             
+  ...racks.test.ts |       0 |        0 |       0 |       0 | 1-213             
+  helpers.tsx      |       0 |        0 |       0 |       0 | 1-272             
+  ...ments.test.ts |       0 |        0 |       0 |       0 | 1-1143            
+  ...nsity.test.ts |       0 |        0 |       0 |       0 | 1-69              
+  ...pping.test.ts |       0 |        0 |       0 |       0 | 1-64              
+  ...eline.test.ts |       0 |        0 |       0 |       0 | 1-98              
+  ...roles.test.ts |       0 |        0 |       0 |       0 | 1-122             
+  ...hting.test.ts |       0 |        0 |       0 |       0 | 1-141             
+  landing.test.tsx |       0 |        0 |       0 |       0 | 1-31              
+  ...ation.test.ts |       0 |        0 |       0 |       0 | 1-87              
+  ...itory.test.ts |       0 |        0 |       0 |       0 | 1-50              
+  ...rgets.test.ts |       0 |        0 |       0 |       0 | 1-285             
+  ...aging.test.ts |       0 |        0 |       0 |       0 | 1-56              
+  metering.test.ts |       0 |        0 |       0 |       0 | 1-117             
+  ...ollab.test.ts |       0 |        0 |       0 |       0 | 1-79              
+  ...mmand.test.ts |       0 |        0 |       0 |       0 | 1-130             
+  ...ative.test.ts |       0 |        0 |       0 |       0 | 1-188             
+  ...-file.test.ts |       0 |        0 |       0 |       0 | 1-289             
+  ...batch.test.ts |       0 |        0 |       0 |       0 | 1-94              
+  ...ators.test.ts |       0 |        0 |       0 |       0 | 1-250             
+  ...epeat.test.ts |       0 |        0 |       0 |       0 | 1-477             
+  ...arity.test.ts |       0 |        0 |       0 |       0 | 1-119             
+  ...ating.test.ts |       0 |        0 |       0 |       0 | 1-67              
+  ...olden.test.ts |       0 |        0 |       0 |       0 | 1-139             
+  ...ening.test.ts |       0 |        0 |       0 |       0 | 1-493             
+  ...-soak.test.ts |       0 |        0 |       0 |       0 | 1-196             
+  ...entry.test.ts |       0 |        0 |       0 |       0 | 1-289             
+  ...roove.test.ts |       0 |        0 |       0 |       0 | 1-231             
+  pad-mod.test.ts  |       0 |        0 |       0 |       0 | 1-153             
+  ...gates.test.ts |       0 |        0 |       0 |       0 | 1-19              
+  ...xport.test.ts |       0 |        0 |       0 |       0 | 1-164             
+  presets.test.ts  |       0 |        0 |       0 |       0 | 1-146             
+  ...iants.test.ts |       0 |        0 |       0 |       0 | 1-263             
+  ...model.test.ts |       0 |        0 |       0 |       0 | 1-738             
+  ...itory.test.ts |       0 |        0 |       0 |       0 | 1-293             
+  ...store.test.ts |       0 |        0 |       0 |       0 | 1-288             
+  pwa.test.ts      |       0 |        0 |       0 |       0 | 1-87              
+  ...gates.test.ts |       0 |        0 |       0 |       0 | 1-94              
+  rafLoop.test.ts  |       0 |        0 |       0 |       0 | 1-94              
+  ...omize.test.ts |       0 |        0 |       0 |       0 | 1-52              
+  recorder.test.ts |       0 |        0 |       0 |       0 | 1-28              
+  ...arity.test.ts |       0 |        0 |       0 |       0 | 1-83              
+  renderer.test.ts |       0 |        0 |       0 |       0 | 1-122             
+  ...ttern.test.ts |       0 |        0 |       0 |       0 | 1-66              
+  ...cycle.test.ts |       0 |        0 |       0 |       0 | 1-155             
+  scales.test.ts   |       0 |        0 |       0 |       0 | 1-128             
+  ...duler.test.ts |       0 |        0 |       0 |       0 | 1-1226            
+  ...epack.test.ts |       0 |        0 |       0 |       0 | 1-55              
+  ...-race.test.ts |       0 |        0 |       0 |       0 | 1-149             
+  setup.ts         |       0 |        0 |       0 |       0 | 1-22              
+  ...yback.test.ts |       0 |        0 |       0 |       0 | 1-93              
+  ...shots.test.ts |       0 |        0 |       0 |       0 | 1-148             
+  ...ssion.test.ts |       0 |        0 |       0 |       0 | 1-221             
+  stems.test.ts    |       0 |        0 |       0 |       0 | 1-129             
+  stress.test.ts   |       0 |        0 |       0 |       0 | 1-320             
+  ...drive.test.ts |       0 |        0 |       0 |       0 | 1-115             
+  ...lates.test.ts |       0 |        0 |       0 |       0 | 1-187             
+  ...-lane.test.ts |       0 |        0 |       0 |       0 | 1-123             
+  ...-seam.test.ts |       0 |        0 |       0 |       0 | 1-305             
+  theme.test.ts    |       0 |        0 |       0 |       0 | 1-120             
+  ...retch.test.ts |       0 |        0 |       0 |       0 | 1-104             
+  ...ients.test.ts |       0 |        0 |       0 |       0 | 1-85              
+  ...sport.test.ts |       0 |        0 |       0 |       0 | 1-338             
+  ...tence.test.ts |       0 |        0 |       0 |       0 | 1-231             
+  ...stant.test.ts |       0 |        0 |       0 |       0 | 1-119             
+  ...ening.test.ts |       0 |        0 |       0 |       0 | 1-1098            
+  ...sover.test.ts |       0 |        0 |       0 |       0 | 1-126             
+  ...remes.test.ts |       0 |        0 |       0 |       0 | 1-242             
+  ...eters.test.ts |       0 |        0 |       0 |       0 | 1-140             
+  ...arity.test.ts |       0 |        0 |       0 |       0 | 1-209             
+  ...rates.test.ts |       0 |        0 |       0 |       0 | 1-163             
+  ...-soak.test.ts |       0 |        0 |       0 |       0 | 1-192             
+  ...ctors.test.ts |       0 |        0 |       0 |       0 | 1-124             
+  ...entry.test.ts |       0 |        0 |       0 |       0 | 1-345             
+  ...grity.test.ts |       0 |        0 |       0 |       0 | 1-222             
+  ...-clip.test.ts |       0 |        0 |       0 |       0 | 1-83              
+  ...-kits.test.ts |       0 |        0 |       0 |       0 | 1-120             
+  ux-audit.test.ts |       0 |        0 |       0 |       0 | 1-156             
+  ...ayers.test.ts |       0 |        0 |       0 |       0 | 1-307             
+  wav.test.ts      |       0 |        0 |       0 |       0 | 1-91              
+  ...table.test.ts |       0 |        0 |       0 |       0 | 1-279             
+  wtvoice.test.ts  |       0 |        0 |       0 |       0 | 1-236             
+ ..._debug_archive |       0 |        0 |       0 |       0 |                   
+  normalize.mjs    |       0 |        0 |       0 |       0 | 1-133             
+  renderer.mjs     |       0 |        0 |       0 |       0 | 1-16              
+  scheduler.mjs    |       0 |        0 |       0 |       0 | 1-70              
+ ...a/tests/export |       0 |        0 |       0 |       0 |                   
+  mp3.test.ts      |       0 |        0 |       0 |       0 | 1-90              
+  ...ct-io.test.ts |       0 |        0 |       0 |       0 | 1-96              
+  ...ender.test.ts |       0 |        0 |       0 |       0 | 1-154             
+  ...-code.test.ts |       0 |        0 |       0 |       0 | 1-80              
+ ...tests/fixtures |       0 |       80 |      80 |       0 |                   
+  ...e.expected.ts |       0 |      100 |     100 |       0 | 12-493            
+  ai-baseline.ts   |       0 |      100 |     100 |       0 | 3-74              
+  ...s.expected.ts |       0 |      100 |     100 |       0 | 12-493            
+  doc.ts           |       0 |        0 |       0 |       0 | 1-152             
+  ...r.expected.ts |       0 |      100 |     100 |       0 | 2-15              
+ ...ts/fxeq-golden |       0 |        0 |       0 |       0 |                   
+  cases.ts         |       0 |        0 |       0 |       0 | 1-167             
+  helpers.ts       |       0 |        0 |       0 |       0 | 1-261             
+ ...lta/tests/midi |       0 |        0 |       0 |       0 |                   
+  ...Clock.test.ts |       0 |        0 |       0 |       0 | 1-94              
+  ...Input.test.ts |       0 |        0 |       0 |       0 | 1-266             
+  ...utput.test.ts |       0 |        0 |       0 |       0 | 1-119             
+  ...mands.test.ts |       0 |        0 |       0 |       0 | 1-93              
+  ...sions.test.ts |       0 |        0 |       0 |       0 | 1-97              
+ ...ts/persistence |       0 |        0 |       0 |       0 |                   
+  ...itory.test.ts |       0 |        0 |       0 |       0 | 1-82              
+  ...itory.test.ts |       0 |        0 |       0 |       0 | 1-91              
+  ...itory.test.ts |       0 |        0 |       0 |       0 | 1-121             
+  db-retry.test.ts |       0 |        0 |       0 |       0 | 1-24              
+  ...grity.test.ts |       0 |        0 |       0 |       0 | 1-112             
+ ...pelta/tests/ui |       0 |        0 |       0 |       0 |                   
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-90              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-25              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-98              
+  ...oast.test.tsx |       0 |        0 |       0 |       0 | 1-57              
+  ...tics.test.tsx |       0 |        0 |       0 |       0 | 1-40              
+  ...rols.test.tsx |       0 |        0 |       0 |       0 | 1-55              
+  ...Rack.test.tsx |       0 |        0 |       0 |       0 | 1-423             
+  ...dary.test.tsx |       0 |        0 |       0 |       0 | 1-68              
+  ...tion.test.tsx |       0 |        0 |       0 |       0 | 1-84              
+  ...Page.test.tsx |       0 |        0 |       0 |       0 | 1-300             
+  ...rlay.test.tsx |       0 |        0 |       0 |       0 | 1-97              
+  ...ompt.test.tsx |       0 |        0 |       0 |       0 | 1-78              
+  ...zard.test.tsx |       0 |        0 |       0 |       0 | 1-29              
+  ...eter.test.tsx |       0 |        0 |       0 |       0 | 1-33              
+  Meter.test.tsx   |       0 |        0 |       0 |       0 | 1-41              
+  ...vity.test.tsx |       0 |        0 |       0 |       0 | 1-102             
+  Mixer.test.tsx   |       0 |        0 |       0 |       0 | 1-27              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-109             
+  ...Hint.test.tsx |       0 |        0 |       0 |       0 | 1-50              
+  ...Roll.test.tsx |       0 |        0 |       0 |       0 | 1-121             
+  ...wser.test.tsx |       0 |        0 |       0 |       0 | 1-73              
+  ...trip.test.tsx |       0 |        0 |       0 |       0 | 1-63              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-51              
+  ...cher.test.tsx |       0 |        0 |       0 |       0 | 1-25              
+  ...ncer.test.tsx |       0 |        0 |       0 |       0 | 1-103             
+  ...eLab.test.tsx |       0 |        0 |       0 |       0 | 1-57              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-46              
+  TopBar.test.tsx  |       0 |        0 |       0 |       0 | 1-194             
+  ...Tabs.test.tsx |       0 |        0 |       0 |       0 | 1-59              
+  ...sets.test.tsx |       0 |        0 |       0 |       0 | 1-110             
+  ...ette.test.tsx |       0 |        0 |       0 |       0 | 1-155             
+  ...rols.test.tsx |       0 |        0 |       0 |       0 | 1-223             
+  midi-io.test.tsx |       0 |        0 |       0 |       0 | 1-82              
+  ...yout.test.tsx |       0 |        0 |       0 |       0 | 1-82              
+  ...ents.test.tsx |       0 |        0 |       0 |       0 | 1-132             
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-98              
+  ...sors.test.tsx |       0 |        0 |       0 |       0 | 1-230             
+  ...tcuts.test.ts |       0 |        0 |       0 |       0 | 1-71              
+  ...anel.test.tsx |       0 |        0 |       0 |       0 | 1-96              
+  ...-rec.test.tsx |       0 |        0 |       0 |       0 | 1-107             
+  touch.test.tsx   |       0 |        0 |       0 |       0 | 1-130             
+ ...e-forge/.zcode |       0 |        0 |       0 |       0 |                   
+  trace-ultina.mjs |       0 |        0 |       0 |       0 | 1-43              
+ pulse-forge/cdot  |       0 |      100 |     100 |       0 |                   
+  ncommands.ts     |       0 |      100 |     100 |       0 | 4-240             
+ ...-forge/desktop |       0 |        0 |       0 |       0 |                   
+  main.cjs         |       0 |        0 |       0 |       0 | 1-291             
+  preload.cjs      |       0 |        0 |       0 |       0 | 1-11              
+ ...e-forge/public |       0 |        0 |       0 |       0 |                   
+  ...er-worklet.js |       0 |        0 |       0 |       0 | 1-2               
+  core-worklet.js  |       0 |        0 |       0 |       0 | 1-2               
+  fxeq-worklet.js  |       0 |        0 |       0 |       0 | 1-4833            
+  ...cs-worklet.js |       0 |        0 |       0 |       0 | 1-1561            
+  ...na-worklet.js |       0 |        0 |       0 |       0 | 1-4849            
+  ...re-worklet.js |       0 |        0 |       0 |       0 | 1-120             
+  ...na-worklet.js |       0 |        0 |       0 |       0 | 1-7674            
+ ...lic/models/ort |       0 |        0 |       0 |       0 |                   
+  ....asyncify.mjs |       0 |        0 |       0 |       0 | 1-121             
+  ...aded.jsep.mjs |       0 |        0 |       0 |       0 | 1-107             
+  ...aded.jspi.mjs |       0 |        0 |       0 |       0 | 1-117             
+  ...-threaded.mjs |       0 |        0 |       0 |       0 | 1-59              
+ ...forge/remotion |       0 |        0 |       0 |       0 |                   
+  ...orgePromo.tsx |       0 |        0 |       0 |       0 | 1-879             
+  Root.tsx         |       0 |        0 |       0 |       0 | 1-15              
+  index.ts         |       0 |        0 |       0 |       0 | 1-4               
+ ...-forge/scratch |       0 |        0 |       0 |       0 |                   
+  boot-probe.mjs   |       0 |        0 |       0 |       0 | 1-57              
+  ...y_upstream.ts |       0 |        0 |       0 |       0 | 1-258             
+  ...y_vendored.ts |       0 |        0 |       0 |       0 | 1-301             
+  ...gan-check.mjs |       0 |        0 |       0 |       0 | 1-95              
+  ...ive-check.mjs |       0 |        0 |       0 |       0 | 1-146             
+  ...lar-check.mjs |       0 |        0 |       0 |       0 | 1-116             
+  ...rix-check.mjs |       0 |        0 |       0 |       0 | 1-191             
+  ...-audit-v2.mjs |       0 |        0 |       0 |       0 | 1-182             
+  perf-audit.mjs   |       0 |        0 |       0 |       0 | 1-120             
+  ...-headroom.mjs |       0 |        0 |       0 |       0 | 1-110             
+  ...out-check.mjs |       0 |        0 |       0 |       0 | 1-124             
+ ...-forge/scripts |       0 |     1.66 |    1.66 |       0 |                   
+  ...nt-ranker.mjs |       0 |        0 |       0 |       0 | 1-85              
+  ...e-browser.mjs |       0 |        0 |       0 |       0 | 1-58              
+  ai-baseline.mts  |       0 |        0 |       0 |       0 | 1-44              
+  ...rformance.mts |       0 |        0 |       0 |       0 | 1-27              
+  ...dio-param.mjs |       0 |        0 |       0 |       0 | 1-125             
+  ...-worklets.mjs |       0 |        0 |       0 |       0 | 1-41              
+  ...q-worklet.mjs |       0 |        0 |       0 |       0 | 1-23              
+  ...s-worklet.mjs |       0 |        0 |       0 |       0 | 1-20              
+  ...a-worklet.mjs |       0 |        0 |       0 |       0 | 1-20              
+  ...a-worklet.mjs |       0 |        0 |       0 |       0 | 1-20              
+  ...ndle-size.mjs |       0 |        0 |       0 |       0 | 1-178             
+  desktop-dev.mjs  |       0 |        0 |       0 |       0 | 1-101             
+  ...p-package.mjs |       0 |        0 |       0 |       0 | 1-96              
+  ...top-smoke.mjs |       0 |        0 |       0 |       0 | 1-32              
+  ...-training.mts |       0 |        0 |       0 |       0 | 1-113             
+  ...dio-model.mjs |       0 |        0 |       0 |       0 | 1-47              
+  ...tic-model.mjs |       0 |        0 |       0 |       0 | 1-52              
+  ...-template.mts |       0 |        0 |       0 |       0 | 1-85              
+  ...r-dataset.mts |       0 |        0 |       0 |       0 | 1-173             
+  ...favorites.mts |       0 |        0 |       0 |       0 | 1-201             
+  ...er-golden.mts |       0 |        0 |       0 |       0 | 1-71              
+  ...c-dataset.mts |       0 |        0 |       0 |       0 | 1-118             
+  ...r-dataset.mts |       0 |        0 |       0 |       0 | 1-115             
+  ...romo-beat.mjs |       0 |        0 |       0 |       0 | 1-152             
+  ...-loudness.mjs |       0 |        0 |       0 |       0 | 1-353             
+  ...eferences.mjs |       0 |        0 |       0 |       0 | 1-258             
+  ...-loudness.mjs |       0 |        0 |       0 |       0 | 1-287             
+  ozvena-exact.mjs |       0 |        0 |       0 |       0 | 1-199             
+  ...iew-smoke.mjs |       0 |        0 |       0 |       0 | 1-28              
+  ...ate-smoke.mjs |       0 |        0 |       0 |       0 | 1-141             
+  ...ebug-mode.mjs |       0 |        0 |       0 |       0 | 1-43              
+  qa-debug2.mjs    |       0 |        0 |       0 |       0 | 1-45              
+  ...vestigate.mjs |       0 |        0 |       0 |       0 | 1-74              
+  ...estigate2.mjs |       0 |        0 |       0 |       0 | 1-63              
+  qa-workflow.mjs  |       0 |        0 |       0 |       0 | 1-255             
+  ...yed-smoke.mjs |       0 |        0 |       0 |       0 | 1-237             
+  ...preflight.mjs |       0 |        0 |       0 |       0 | 1-202             
+  ...ver-smoke.mjs |       0 |        0 |       0 |       0 | 1-102             
+  ...ted-seeds.mjs |       0 |        0 |       0 |       0 | 1-228             
+  ...view-pack.mjs |       0 |        0 |       0 |       0 | 1-133             
+  setup-hooks.mjs  |       0 |        0 |       0 |       0 | 1-28              
+  smoke-audio.mjs  |       0 |        0 |       0 |       0 | 1-127             
+  ...-semantic.mts |       0 |        0 |       0 |       0 | 1-90              
+  ...lic-prior.mts |       0 |        0 |       0 |       0 | 1-181             
+  split-styles.mjs |       0 |        0 |       0 |       0 | 1-144             
+  ...p-profile.mjs |       0 |        0 |       0 |       0 | 1-74              
+  ...rt-assets.mjs |       0 |        0 |       0 |       0 | 1-23              
+  ...-upstream.mjs |       0 |        0 |       0 |       0 | 1-41              
+  ...xt-parser.mts |       0 |        0 |       0 |       0 | 1-12              
+  ...-golden.d.mts |       0 |        0 |       0 |       0 |                   
+  ...er-golden.mjs |       0 |        0 |       0 |       0 | 1-103             
+  ...nt-ranker.mjs |       0 |        0 |       0 |       0 | 1-60              
+  ...c-melodic.mjs |       0 |        0 |       0 |       0 | 1-74              
+  ...lic-prior.mjs |       0 |        0 |       0 |       0 | 1-65              
+  vendor-fxeq.mjs  |       0 |        0 |       0 |       0 | 1-150             
+  ...or-ozvena.mjs |       0 |        0 |       0 |       0 | 1-168             
+  ...or-ultina.mjs |       0 |        0 |       0 |       0 | 1-225             
+  ...y-browser.mjs |       0 |        0 |       0 |       0 | 1-838             
+  ...y-presets.mjs |       0 |        0 |       0 |       0 | 1-33              
+  ...n-browser.mjs |       0 |        0 |       0 |       0 | 1-211             
+ ...e-forge/server |       0 |        0 |       0 |       0 |                   
+  ...ab-server.mjs |       0 |        0 |       0 |       0 | 1-851             
+ pulse-forge/src   |    5.32 |    52.27 |   15.06 |    5.32 |                   
+  ...ser-checks.ts |       0 |        0 |       0 |       0 | 1-4619            
+  main.tsx         |       0 |        0 |       0 |       0 | 1-247             
+  pwa.ts           |       0 |      100 |     100 |       0 | 11-64             
+  services.ts      |   48.09 |       55 |   14.49 |   48.09 | ...43-758,787-805 
+  sw-update.ts     |       0 |        0 |       0 |       0 | 1-87              
+ ...e-forge/src/ai |     8.6 |        0 |       0 |     8.6 |                   
+  drums.ts         |    0.86 |      100 |       0 |    0.86 | 23-88,92-328      
+  evaluation.ts    |    4.67 |      100 |       0 |    4.67 | ...84-210,213-250 
+  flip.ts          |       0 |        0 |       0 |       0 | 1-70              
+  generator.ts     |    2.84 |      100 |       0 |    2.84 | ...7,51-74,78-279 
+  invariants.ts    |    2.36 |      100 |       0 |    2.36 | 35-37,47-173      
+  markov.ts        |    9.88 |      100 |       0 |    9.88 | ...92-221,225-235 
+  melodic.ts       |    8.81 |      100 |       0 |    8.81 | ...43-346,350-358 
+  melodicDice.ts   |       0 |        0 |       0 |       0 | 1-75              
+  pad-roles.ts     |   36.84 |      100 |       0 |   36.84 | 25-37,40-41,45-65 
+  performance.ts   |       0 |        0 |       0 |       0 | 1-35              
+  phrase.ts        |    2.85 |      100 |       0 |    2.85 | 14-46,50-85       
+  quality.ts       |    3.49 |      100 |       0 |    3.49 | ...45-117,121-185 
+  style-quality.ts |   18.61 |      100 |       0 |   18.61 | ...33-204,208-245 
+  types.ts         |     100 |      100 |     100 |     100 |                   
+ ...e/src/ai/audio |       0 |      100 |     100 |       0 |                   
+  audio-client.ts  |       0 |      100 |     100 |       0 | 15-121            
+  audio-types.ts   |       0 |        0 |       0 |       0 |                   
+  audio-worker.ts  |       0 |      100 |     100 |       0 | 19-96             
+ ...rc/ai/features |   15.64 |      100 |       0 |   15.64 |                   
+  ...n-features.ts |   15.64 |      100 |       0 |   15.64 | 128-326,331-550   
+ ...src/ai/grooves |   99.63 |      100 |       0 |   99.63 |                   
+  ambient.ts       |     100 |      100 |     100 |     100 |                   
+  dnb.ts           |     100 |      100 |     100 |     100 |                   
+  drill.ts         |     100 |      100 |     100 |     100 |                   
+  house.ts         |     100 |      100 |     100 |     100 |                   
+  hybrid.ts        |     100 |      100 |     100 |     100 |                   
+  index.ts         |   71.42 |      100 |       0 |   71.42 | 26-27,31-32,36-37 
+  jersey.ts        |     100 |      100 |     100 |     100 |                   
+  melodic-data.ts  |     100 |      100 |     100 |     100 |                   
+  phonk.ts         |     100 |      100 |     100 |     100 |                   
+  techno.ts        |     100 |      100 |     100 |     100 |                   
+  trap.ts          |     100 |      100 |     100 |     100 |                   
+ ...src/ai/ranking |    5.35 |        0 |       0 |    5.35 |                   
+  ...candidates.ts |     3.7 |      100 |       0 |     3.7 | 32-123            
+  ranker-client.ts |   10.44 |      100 |       0 |   10.44 | ...72-173,177-183 
+  ranker-types.ts  |    5.26 |      100 |       0 |    5.26 | 62-80             
+  ranker-worker.ts |       0 |        0 |       0 |       0 | 1-134             
+ ...rc/ai/semantic |       0 |      100 |     100 |       0 |                   
+  ...tic-client.ts |       0 |      100 |     100 |       0 | 16-169            
+  ...ntic-types.ts |       0 |        0 |       0 |       0 |                   
+  ...tic-worker.ts |       0 |      100 |     100 |       0 | 24-165            
+ ...rc/ai/symbolic |   15.66 |        0 |       0 |   15.66 |                   
+  ...c-features.ts |   27.86 |      100 |       0 |   27.86 | ...89-117,121-122 
+  prior-client.ts  |    7.69 |      100 |       0 |    7.69 | ...54-240,244-250 
+  ...r-features.ts |   53.33 |      100 |       0 |   53.33 | ...33-134,142-152 
+  prior-types.ts   |    8.51 |      100 |       0 |    8.51 | ...19-136,140-142 
+  prior-worker.ts  |       0 |        0 |       0 |       0 | 1-193             
+ ...e/src/analysis |       0 |       50 |      50 |       0 |                   
+  ...ysisClient.ts |       0 |      100 |     100 |       0 | 8-127             
+  ...ysisWorker.ts |       0 |        0 |       0 |       0 | 1-89              
+ ...rc/arrangement |   23.72 |    71.42 |   33.33 |   23.72 |                   
+  capture.ts       |   23.72 |    71.42 |   33.33 |   23.72 | ...31-235,238-244 
+ ...rge/src/assist |   17.18 |      100 |       0 |   17.18 |                   
+  patternOps.ts    |   17.64 |      100 |       0 |   17.64 | ...34-264,269-311 
+  pipeline.ts      |    9.09 |      100 |       0 |    9.09 | 5-11,15-26,30-41  
+  types.ts         |     100 |      100 |     100 |     100 |                   
+ ...c/audio-engine |    8.94 |    64.33 |   13.55 |    8.94 |                   
+  AudioEngine.ts   |    7.94 |    61.29 |    7.53 |    7.94 | ...5361,5374-5385 
+  ...viewPlayer.ts |      25 |       50 |   33.33 |      25 | ...83-104,107-129 
+  MeterRing.ts     |   22.58 |    66.66 |   28.57 |   22.58 | ...92-105,109-111 
+  NoteRepeat.ts    |   20.46 |       75 |   16.66 |   20.46 | ...18-257,261-263 
+  ...icRecorder.ts |       0 |        0 |       0 |       0 | 1-595             
+  bpm-detect.ts    |       0 |        0 |       0 |       0 | 1-139             
+  ...ve-extract.ts |       0 |        0 |       0 |       0 | 1-97              
+  kweighting.ts    |   13.44 |      100 |       0 |   13.44 | ...,73-87,109-180 
+  ...alibration.ts |   36.02 |    17.64 |      20 |   36.02 | ...63-180,183-184 
+  latencyProbe.ts  |       0 |        0 |       0 |       0 | 1-192             
+  metering.ts      |   23.22 |    78.57 |   14.28 |   23.22 | ...01-434,474-493 
+  pcmRecording.ts  |       0 |      100 |     100 |       0 | 17-57             
+  phase-vocoder.ts |    3.25 |      100 |       0 |    3.25 | ...,54-87,105-193 
+  recorder.ts      |       0 |      100 |     100 |       0 | 16-222            
+  ...gAlignment.ts |       0 |        0 |       0 |       0 | 1-68              
+  ...rdingInput.ts |       0 |        0 |       0 |       0 | 1-78              
+  spectralEdit.ts  |       0 |      100 |     100 |       0 | 19-418            
+  spectrogram.ts   |       0 |      100 |     100 |       0 | 23-290            
+  synth-voices.ts  |       0 |      100 |     100 |       0 | 10-48             
+  time-stretch.ts  |     100 |      100 |     100 |     100 |                   
+  transients.ts    |       0 |      100 |     100 |       0 | 22-181            
+ ...audio-worklets |   10.55 |    71.42 |   10.25 |   10.55 |                   
+  autowah-node.ts  |    6.06 |      100 |       0 |    6.06 | 10-43             
+  ...ngler-node.ts |    2.77 |      100 |       0 |    2.77 | 15-90             
+  ...usher-node.ts |    2.46 |      100 |       0 |    2.46 | 9-96              
+  chorus-node.ts   |    4.34 |      100 |       0 |    4.34 | 10-58             
+  comb-node.ts     |    6.89 |      100 |       0 |    6.89 | 10-39             
+  ...essor-node.ts |    1.14 |      100 |       0 |    1.14 | 20-118            
+  ...delay-node.ts |    5.55 |      100 |       0 |    5.55 | 10-46             
+  ...lower-node.ts |    6.45 |      100 |       0 |    6.45 | 23-56             
+  eq-node.ts       |   34.66 |      100 |       0 |   34.66 | 39-49,52-97       
+  flanger-node.ts  |    6.45 |      100 |       0 |    6.45 | 10-41             
+  ...ifter-node.ts |    4.54 |      100 |       0 |    4.54 | 14-60             
+  ...reeze-node.ts |       4 |      100 |       0 |       4 | 15-67             
+  kaskada-node.ts  |    4.25 |      100 |       0 |    4.25 | 17-74             
+  kwmeter-node.ts  |    7.69 |      100 |       0 |    7.69 | 33-70             
+  limiter-node.ts  |    3.44 |      100 |       0 |    3.44 | 15-79             
+  loader.ts        |   55.88 |    71.42 |   57.14 |   55.88 | ...83-184,200-203 
+  ...shift-node.ts |    5.12 |      100 |       0 |    5.12 | 13-53             
+  reverb-node.ts   |    4.76 |      100 |       0 |    4.76 | 10-56             
+  ...swell-node.ts |    6.25 |      100 |       0 |    6.25 | 14-46             
+  ringmod-node.ts  |    7.14 |      100 |       0 |    7.14 | 10-39             
+  ...AudioParam.ts |    8.33 |      100 |       0 |    8.33 | 29-41             
+  ...chain-node.ts |    3.27 |      100 |       0 |    3.27 | 17-95             
+  stepgate-node.ts |    4.44 |      100 |       0 |    4.44 | 20-65             
+  ...delay-node.ts |    5.12 |      100 |       0 |    5.12 | 10-50             
+  stutter-node.ts  |    4.34 |      100 |       0 |    4.34 | 14-62             
+  svfilter-node.ts |    6.66 |      100 |       0 |    6.66 | 10-41             
+  tape-node.ts     |    6.45 |      100 |       0 |    6.45 | 10-45             
+  tapestop-node.ts |    6.45 |      100 |       0 |    6.45 | 10-42             
+  tremolo-node.ts  |    6.66 |      100 |       0 |    6.66 | 10-41             
+  vinyl-node.ts    |    3.44 |      100 |       0 |    3.44 | 14-74             
+  vocoder-node.ts  |    2.53 |      100 |       0 |    2.53 | 17-105            
+  vowel-node.ts    |    7.14 |      100 |       0 |    7.14 | 10-39             
+ .../src/benchmark |       0 |    33.33 |   33.33 |       0 |                   
+  index.ts         |       0 |        0 |       0 |       0 | 1-121             
+  performance.ts   |       0 |      100 |     100 |       0 | 67-186            
+  stress.ts        |       0 |        0 |       0 |       0 | 1-283             
+ ...rge/src/collab |   55.18 |    56.89 |   51.06 |   55.18 |                   
+  ...elProvider.ts |       0 |        0 |       0 |       0 | 1-112             
+  CollabSession.ts |       0 |        0 |       0 |       0 | 1-142             
+  ...onProvider.ts |       0 |        0 |       0 |       0 | 1-190             
+  YDocAdapter.ts   |   69.22 |    46.08 |   72.72 |   69.22 | ...1088,1105-1158 
+  YDocStore.ts     |   69.71 |    71.79 |   27.08 |   69.71 | ...49-351,354-369 
+  bandmate.ts      |   16.95 |    81.48 |   27.27 |   16.95 | ...57-335,343-491 
+  collabShared.ts  |   31.11 |    16.66 |   16.66 |   31.11 | ...31-53,61,68-72 
+  jamRoles.ts      |     100 |    83.33 |     100 |     100 | 245-246           
+  transportSync.ts |     100 |      100 |     100 |     100 |                   
+ ...e/src/commands |   10.43 |    69.89 |    12.4 |   10.43 |                   
+  commands.ts      |    7.67 |    60.71 |    6.89 |    7.67 | ...6253,6257-6281 
+  docDelta.ts      |   76.85 |    77.06 |   93.33 |   76.85 | ...77-289,308-318 
+  layerCommands.ts |       0 |        0 |       0 |       0 | 1-92              
+  types.ts         |       0 |      100 |     100 |       0 | 26-46             
+  yDocBridge.ts    |   71.42 |      100 |      50 |   71.42 | 31-32             
+  yDocHelpers.ts   |    8.45 |      100 |       0 |    8.45 | ...6,72-75,81-100 
+ ...e/src/download |       0 |        0 |       0 |       0 |                   
+  DownloadPage.tsx |       0 |        0 |       0 |       0 | 1-386             
+ .../effect-intent |       0 |       25 |      25 |       0 |                   
+  apply.ts         |       0 |        0 |       0 |       0 | 1-137             
+  canonical.ts     |       0 |        0 |       0 |       0 | 1-27              
+  capabilities.ts  |       0 |      100 |     100 |       0 | 9-144             
+  catalog.ts       |       0 |        0 |       0 |       0 | 1-545             
+  index.ts         |       0 |        0 |       0 |       0 | 1-7               
+  parser.ts        |       0 |        0 |       0 |       0 | 1-226             
+  planner.ts       |       0 |        0 |       0 |       0 | 1-282             
+  types.ts         |       0 |      100 |     100 |       0 | 3-5               
+ ...ge/src/effects |   43.75 |    83.94 |     6.7 |   43.75 |                   
+  chains.ts        |       0 |      100 |     100 |       0 | 16-71             
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-223             
+  fxeqNode.ts      |    2.65 |      100 |       0 |    2.65 | ...7,42-57,74-338 
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-171             
+  ...Automation.ts |       0 |        0 |       0 |       0 | 1-127             
+  ...namicsNode.ts |    1.04 |      100 |       0 |    1.04 | 12-142            
+  ozvena-params.ts |    91.3 |    93.75 |   33.33 |    91.3 | ...37-140,154-157 
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-338             
+  ozvenaNode.ts    |    2.32 |      100 |       0 |    2.32 | 47-124,133-276    
+  ....generated.ts |     100 |      100 |     100 |     100 |                   
+  ...etLoudness.ts |   36.36 |      100 |       0 |   36.36 | 5-7,10-11,14-15   
+  presets.ts       |   99.75 |      100 |      75 |   99.75 | 862-863           
+  registry.ts      |   45.79 |    80.32 |    3.35 |   45.79 | ...4809,4814-4824 
+  ...oDivisions.ts |       0 |      100 |     100 |       0 | 2-42              
+  types.ts         |       0 |        0 |       0 |       0 |                   
+  ...klet.entry.js |       0 |        0 |       0 |       0 | 1-228             
+  ...Automation.ts |       0 |        0 |       0 |       0 | 1-121             
+  ultinaNode.ts    |    1.31 |      100 |       0 |    1.31 | 14-122            
+ ...orge/src/embed |       0 |        0 |       0 |       0 |                   
+  EmbedApp.tsx     |       0 |        0 |       0 |       0 | 1-289             
+ ...rge/src/export |       0 |    30.76 |   30.76 |       0 |                   
+  bindsCode.ts     |       0 |        0 |       0 |       0 | 1-33              
+  download.ts      |       0 |      100 |     100 |       0 | 6-13              
+  kitCode.ts       |       0 |        0 |       0 |       0 | 1-59              
+  mp3.ts           |       0 |        0 |       0 |       0 | 1-55              
+  packCode.ts      |       0 |        0 |       0 |       0 | 1-211             
+  project-io.ts    |       0 |        0 |       0 |       0 | 1-98              
+  quantize.ts      |       0 |      100 |     100 |       0 | 14-58             
+  scorepack.ts     |       0 |        0 |       0 |       0 | 1-264             
+  shareCode.ts     |       0 |        0 |       0 |       0 | 1-54              
+  themeCode.ts     |       0 |        0 |       0 |       0 | 1-41              
+  video.ts         |       0 |      100 |     100 |       0 | 11-283            
+  zip.ts           |       0 |      100 |     100 |       0 | 7-120             
+  zyvo-transfer.ts |       0 |        0 |       0 |       0 | 1-423             
+ ...ge/src/gallery |       0 |        0 |       0 |       0 |                   
+  GalleryPage.tsx  |       0 |        0 |       0 |       0 | 1-621             
+  ...ishButton.tsx |       0 |        0 |       0 |       0 | 1-36              
+  galleryApi.ts    |       0 |        0 |       0 |       0 | 1-237             
+  intentCarry.ts   |       0 |        0 |       0 |       0 | 1-74              
+  remix.ts         |       0 |        0 |       0 |       0 | 1-74              
+ ...rc/instruments |    16.4 |     97.5 |   10.71 |    16.4 |                   
+  bandlimited.ts   |    14.7 |      100 |       0 |    14.7 | ...02-117,126-136 
+  envelope.ts      |    8.97 |      100 |       0 |    8.97 | 54-79,82-138      
+  granularNode.ts  |    3.57 |      100 |       0 |    3.57 | 12-36,49-116      
+  modmatrix.ts     |   15.07 |      100 |      20 |   15.07 | ...83-367,371-377 
+  randomize.ts     |       0 |        0 |       0 |       0 | 1-65              
+  registry.ts      |   15.53 |      100 |    1.35 |   15.53 | ...5208,5211-5212 
+  types.ts         |       0 |        0 |       0 |       0 |                   
+  wavetables.ts    |   40.43 |      100 |   47.05 |   40.43 | ...89-403,411-416 
+  wtvoiceNode.ts   |    3.07 |      100 |       0 |    3.07 | 15-87             
+ ...rge/src/intent |    2.79 |    22.22 |     5.4 |    2.79 |                   
+  arrangeWords.ts  |       0 |        0 |       0 |       0 | 1-402             
+  artists.ts       |       0 |      100 |     100 |       0 | 35-214            
+  audition.ts      |       0 |        0 |       0 |       0 | 1-125             
+  ...idate-bank.ts |    7.69 |      100 |       0 |    7.69 | 18-20,28-35,39-63 
+  dice.ts          |       0 |        0 |       0 |       0 | 1-416             
+  exact.ts         |       0 |        0 |       0 |       0 | 1-185             
+  favorites.ts     |       0 |        0 |       0 |       0 | 1-274             
+  genre-kit.ts     |       0 |      100 |     100 |       0 | 22-72             
+  ....generated.ts |       0 |      100 |     100 |       0 | 13-38             
+  hash.ts          |   42.85 |      100 |       0 |   42.85 | 6-7,10-11         
+  index.ts         |       0 |        0 |       0 |       0 | 1-8               
+  loudness.ts      |       0 |        0 |       0 |       0 | 1-163             
+  mapping.ts       |    3.27 |      100 |       0 |    3.27 | 4-9,24-84,91-98   
+  mix.ts           |       0 |        0 |       0 |       0 | 1-512             
+  normalize.ts     |     3.2 |      100 |       0 |     3.2 | ...61-117,120-145 
+  pipeline.ts      |    3.96 |      100 |       0 |    3.96 | ...25-130,141-192 
+  plan.ts          |    3.53 |      100 |       0 |    3.53 | ...49-122,126-129 
+  production.ts    |   33.91 |      100 |       0 |   33.91 | ...67-370,379-398 
+  quality.ts       |    2.12 |      100 |       0 |    2.12 | ...13-244,248-276 
+  route.ts         |       0 |        0 |       0 |       0 | 1-220             
+  schema.ts        |     7.6 |      100 |       0 |     7.6 | ...00-102,105-106 
+  sections.ts      |       0 |        0 |       0 |       0 | 1-301             
+  semantic.ts      |       0 |        0 |       0 |       0 | 1-168             
+  song.ts          |       0 |        0 |       0 |       0 | 1-1443            
+  text-parser.ts   |       0 |        0 |       0 |       0 | 1-376             
+  ...ition-cues.ts |       0 |      100 |     100 |       0 | 15-121            
+  transitions.ts   |       0 |        0 |       0 |       0 | 1-169             
+  types.ts         |     100 |      100 |     100 |     100 |                   
+ ...tent/providers |    5.55 |      100 |   15.78 |    5.55 |                   
+  local.ts         |    5.82 |      100 |   18.18 |    5.82 | ...13-375,378-380 
+  symbolic.ts      |    5.26 |      100 |    12.5 |    5.26 | ...15-356,364-386 
+ ...ge/src/landing |       0 |       25 |      25 |       0 |                   
+  LandingPage.tsx  |       0 |        0 |       0 |       0 | 1-237             
+  ...ingPrompt.tsx |       0 |        0 |       0 |       0 | 1-176             
+  handoff.ts       |       0 |      100 |     100 |       0 | 17-168            
+  landingBeat.ts   |       0 |        0 |       0 |       0 | 1-83              
+ ...forge/src/midi |    13.6 |    53.65 |   18.91 |    13.6 |                   
+  MidiClock.ts     |   34.06 |       60 |   27.27 |   34.06 | ...19-120,127-133 
+  MidiInput.ts     |   20.68 |       50 |   21.21 |   20.68 | ...58-567,570-589 
+  MidiOutput.ts    |   43.18 |    53.84 |    37.5 |   43.18 | ...,97-98,101-102 
+  creative.ts      |   11.81 |      100 |       0 |   11.81 | ...59-579,582-590 
+  hum-to-notes.ts  |       0 |        0 |       0 |       0 | 1-367             
+  midiFile.ts      |       0 |      100 |     100 |       0 | 40-328            
+  midiProject.ts   |       0 |        0 |       0 |       0 | 1-281             
+  ...rnRecorder.ts |   36.89 |    66.66 |   23.52 |   36.89 | ...68-175,178-180 
+ ...rc/persistence |   32.93 |    65.51 |   28.18 |   32.93 |                   
+  ...Repository.ts |   11.42 |      100 |   14.28 |   11.42 | ...1,54-61,69-104 
+  ...Repository.ts |   25.92 |        0 |       0 |   25.92 | 20-31,34-38,41-45 
+  KitRepository.ts |   25.92 |        0 |       0 |   25.92 | 19-30,33-37,40-44 
+  ...Repository.ts |   17.07 |        0 |       0 |   17.07 | ...98-102,105-109 
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-85              
+  ...Repository.ts |      25 |      100 |       0 |      25 | 10-16,19-26,29-31 
+  ...Repository.ts |   11.42 |        0 |       0 |   11.42 | ...76-189,192-211 
+  ...Repository.ts |    8.61 |    66.66 |    7.14 |    8.61 | ...51-358,361-365 
+  ...Repository.ts |   76.06 |    71.15 |    92.3 |   76.06 | ...56-257,317-318 
+  ...Repository.ts |       0 |        0 |       0 |       0 | 1-83              
+  ...Repository.ts |   32.84 |    56.25 |   23.07 |   32.84 | ...62-167,171-224 
+  ...-debouncer.ts |   31.16 |    42.85 |    37.5 |   31.16 | ...40-162,165-166 
+  db.ts            |   85.31 |    78.57 |   52.94 |   85.31 | ...08,154-156,179 
+  ...-lifecycle.ts |   58.33 |    66.66 |      50 |   58.33 | 83-84,91-109      
+ ...ge/src/presets |    9.78 |       75 |   27.27 |    9.78 |                   
+  audioQuality.ts  |   18.36 |      100 |       0 |   18.36 | ...39,42-71,74-80 
+  catalog.ts       |       0 |      100 |     100 |       0 | 3-116             
+  factory.ts       |       0 |      100 |     100 |       0 | 7-3918            
+  normalization.ts |   38.46 |      100 |       0 |   38.46 | 28-30,34-36,39-40 
+  ....generated.ts |     100 |      100 |     100 |     100 |                   
+  similar.ts       |       0 |        0 |       0 |       0 | 1-44              
+  types.ts         |       0 |      100 |     100 |       0 | 7-9               
+ .../project-model |   39.91 |    50.94 |   49.72 |   39.91 |                   
+  automation.ts    |    8.82 |      100 |       0 |    8.82 | 4-19,22-25,28-38  
+  events.ts        |   77.96 |    84.44 |      50 |   77.96 | 55,57,93-103      
+  groove.ts        |   90.29 |    71.83 |   88.88 |   90.29 | ...48-149,185-187 
+  intensity.ts     |    4.16 |      100 |       0 |    4.16 | 10-39,44-65       
+  kit-presets.ts   |       0 |      100 |     100 |       0 | 19-241            
+  markers.ts       |       0 |      100 |     100 |       0 | 8-21              
+  modulators.ts    |   11.36 |      100 |       0 |   11.36 | ...05-327,337-354 
+  scales.ts        |   35.83 |      100 |       0 |   35.83 | ...47-157,161-162 
+  scene-time.ts    |       0 |        0 |       0 |       0 | 1-25              
+  schema.ts        |   51.38 |    40.94 |   78.08 |   51.38 | ...1861,1931-1933 
+  targets.ts       |   44.96 |    68.57 |   45.45 |   44.96 | ...88-197,199-203 
+  ...late-pack2.ts |    2.45 |      100 |       0 |    2.45 | ...21-288,293-351 
+  templates.ts     |   35.95 |    48.27 |   66.66 |   35.95 | ...66,768,770,772 
+  transform.ts     |   51.56 |     62.5 |    37.5 |   51.56 | ...26,69-82,85-86 
+  types.ts         |   85.58 |       60 |   14.28 |   85.58 | ...-998,1001-1003 
+ .../src/reference |       0 |      100 |     100 |       0 |                   
+  types.ts         |       0 |      100 |     100 |       0 | 13-159            
+ .../reference/dsp |       0 |    66.66 |   66.66 |       0 |                   
+  ...orrelation.ts |       0 |      100 |     100 |       0 | 6-31              
+  chroma.ts        |       0 |        0 |       0 |       0 | 1-85              
+  fft.ts           |       0 |      100 |     100 |       0 | 9-89              
+  keyProfiles.ts   |       0 |      100 |     100 |       0 | 14-53             
+  spectralFlux.ts  |       0 |        0 |       0 |       0 | 1-125             
+  window.ts        |       0 |      100 |     100 |       0 | 2-8               
+ .../src/rendering |   14.02 |    51.72 |   19.23 |   14.02 |                   
+  bounce.ts        |       0 |        0 |       0 |       0 | 1-100             
+  renderer.ts      |   17.71 |    57.69 |   27.77 |   17.71 | ...68-679,696-712 
+  stems.ts         |   48.38 |      100 |       0 |   48.38 | 28-42,45-46       
+  ...k-renderer.ts |       0 |        0 |       0 |       0 | 1-81              
+  wav.ts           |       0 |        0 |       0 |       0 | 1-97              
+ ...sample-library |   38.39 |    91.17 |   59.61 |   38.39 |                   
+  audio-index.ts   |       0 |        0 |       0 |       0 | 1-231             
+  curated.ts       |   39.49 |      100 |       0 |   39.49 | 87-158,170-187    
+  factory.ts       |   27.87 |    96.77 |   68.18 |   27.87 | ...75-678,801-838 
+  kit-pools.ts     |       0 |        0 |       0 |       0 | 1-177             
+  manifest.ts      |     100 |      100 |     100 |     100 |                   
+  ...ity-layers.ts |       0 |      100 |     100 |       0 | 8-76              
+ ...ge/src/samples |       0 |       50 |      50 |       0 |                   
+  autoMap.ts       |       0 |        0 |       0 |       0 | 1-162             
+  freesound.ts     |       0 |      100 |     100 |       0 | 19-136            
+ .../src/scheduler |   76.84 |    86.69 |   82.14 |   76.84 |                   
+  Scheduler.ts     |   76.84 |    86.69 |   82.14 |   76.84 | ...04-914,917-963 
+ ...e/src/services |       0 |      100 |     100 |       0 |                   
+  funnel.ts        |       0 |      100 |     100 |       0 | 13-95             
+  rafLoop.ts       |       0 |      100 |     100 |       0 | 3-41              
+ ...rge/src/shared |   27.83 |    66.66 |   55.55 |   27.83 |                   
+  dice.ts          |       0 |        0 |       0 |       0 | 1-68              
+  ids.ts           |   58.33 |       50 |      50 |   58.33 | ...20-21,25-26,30 
+  rng.ts           |      65 |      100 |   66.66 |      65 | 4-8,22-23         
+  velocityFx.ts    |       0 |      100 |     100 |       0 | 8-24              
+ ...orge/src/store |   37.77 |    64.58 |   38.63 |   37.77 |                   
+  ProjectStore.ts  |   65.27 |    63.04 |   35.71 |   65.27 | ...45-346,349-363 
+  ...ctionStore.ts |       0 |      100 |     100 |       0 | 27-185            
+  ToolStore.ts     |       0 |      100 |     100 |       0 | 3-37              
+ .../src/transport |   97.57 |    94.36 |   93.54 |   97.57 |                   
+  Transport.ts     |   97.57 |    94.36 |   93.54 |   97.57 | 65-66,256-257     
+ ...e-forge/src/ui |    0.01 |     3.44 |    3.33 |    0.01 |                   
+  App.tsx          |       0 |        0 |       0 |       0 | 1-1427            
+  ...mentPanel.tsx |       0 |        0 |       0 |       0 | 1-3287            
+  AssistPanel.tsx  |       0 |        0 |       0 |       0 | 1-276             
+  AudioUnlock.tsx  |       0 |        0 |       0 |       0 | 1-53              
+  ...lerEditor.tsx |       0 |        0 |       0 |       0 | 1-286             
+  CollabPanel.tsx  |       0 |        0 |       0 |       0 | 1-275             
+  CommandToast.tsx |       0 |        0 |       0 |       0 | 1-51              
+  ContextMenu.tsx  |       0 |        0 |       0 |       0 | 1-164             
+  Diagnostics.tsx  |       0 |        0 |       0 |       0 | 1-165             
+  DiceContext.tsx  |       0 |        0 |       0 |       0 | 1-753             
+  DiceTray.tsx     |       0 |        0 |       0 |       0 | 1-591             
+  DropZone.tsx     |       0 |        0 |       0 |       0 | 1-213             
+  ...bControls.tsx |       0 |        0 |       0 |       0 | 1-137             
+  ...Assistant.tsx |       0 |        0 |       0 |       0 | 1-364             
+  ...meterGrid.tsx |       0 |        0 |       0 |       0 | 1-64              
+  EffectRack.tsx   |       0 |        0 |       0 |       0 | 1-911             
+  EnvEditor.tsx    |       0 |        0 |       0 |       0 | 1-207             
+  ...rBoundary.tsx |       0 |        0 |       0 |       0 | 1-91              
+  ExportPanel.tsx  |       0 |        0 |       0 |       0 | 1-912             
+  ...ingPlugin.tsx |       0 |        0 |       0 |       0 | 1-550             
+  ...ndSection.tsx |       0 |        0 |       0 |       0 | 1-195             
+  FreezeButton.tsx |       0 |        0 |       0 |       0 | 1-129             
+  FxEqPanel.tsx    |       0 |        0 |       0 |       0 | 1-1021            
+  ...ateDialog.tsx |       0 |        0 |       0 |       0 | 1-489             
+  Goniometer.tsx   |       0 |        0 |       0 |       0 | 1-156             
+  ...ularPanel.tsx |       0 |        0 |       0 |       0 | 1-164             
+  HelpOverlay.tsx  |       0 |        0 |       0 |       0 | 1-203             
+  HumToMelody.tsx  |       0 |        0 |       0 |       0 | 1-603             
+  Inspector.tsx    |       0 |        0 |       0 |       0 | 1-645             
+  ...allPrompt.tsx |       0 |        0 |       0 |       0 | 1-75              
+  IntentPanel.tsx  |       0 |        0 |       0 |       0 | 1-623             
+  JamGate.tsx      |       0 |        0 |       0 |       0 | 1-65              
+  KaskadaPanel.tsx |       0 |        0 |       0 |       0 | 1-440             
+  ...ionWizard.tsx |       0 |        0 |       0 |       0 | 1-334             
+  ...ssHistory.tsx |       0 |        0 |       0 |       0 | 1-135             
+  ...rmanceBar.tsx |       0 |        0 |       0 |       0 | 1-94              
+  MasterMeter.tsx  |       0 |        0 |       0 |       0 | 1-530             
+  Meter.tsx        |       0 |        0 |       0 |       0 | 1-69              
+  MidiPanel.tsx    |       0 |        0 |       0 |       0 | 1-1016            
+  Mixer.tsx        |       0 |        0 |       0 |       0 | 1-809             
+  ModMatrixRow.tsx |       0 |        0 |       0 |       0 | 1-111             
+  ModPanel.tsx     |       0 |        0 |       0 |       0 | 1-1905            
+  ...micsPanel.tsx |       0 |        0 |       0 |       0 | 1-811             
+  MpeIndicator.tsx |       0 |        0 |       0 |       0 | 1-60              
+  ...rdingHint.tsx |       0 |        0 |       0 |       0 | 1-68              
+  ...rdingTour.tsx |       0 |        0 |       0 |       0 | 1-107             
+  OzvenaPanel.tsx  |       0 |        0 |       0 |       0 | 1-480             
+  ...teOverlay.tsx |       0 |        0 |       0 |       0 | 1-130             
+  PatternBar.tsx   |       0 |        0 |       0 |       0 | 1-424             
+  PianoRoll.tsx    |       0 |        0 |       0 |       0 | 1-1857            
+  ...etBrowser.tsx |       0 |        0 |       0 |       0 | 1-401             
+  ...ctBrowser.tsx |       0 |        0 |       0 |       0 | 1-421             
+  RackStrip.tsx    |       0 |        0 |       0 |       0 | 1-787             
+  ...leBrowser.tsx |       0 |        0 |       0 |       0 | 1-251             
+  ScalePanel.tsx   |       0 |        0 |       0 |       0 | 1-82              
+  ...eLauncher.tsx |       0 |        0 |       0 |       0 | 1-366             
+  Sequencer.tsx    |       0 |        0 |       0 |       0 | 1-1835            
+  ...heatSheet.tsx |       0 |        0 |       0 |       0 | 1-109             
+  SliceLab.tsx     |       0 |        0 |       0 |       0 | 1-760             
+  ...EditPanel.tsx |       0 |        0 |       0 |       0 | 1-456             
+  Spectrogram.tsx  |       0 |        0 |       0 |       0 | 1-596             
+  ...mAnalyzer.tsx |       0 |        0 |       0 |       0 | 1-176             
+  ...ridEditor.tsx |       0 |        0 |       0 |       0 | 1-117             
+  ThemePanel.tsx   |       0 |        0 |       0 |       0 | 1-155             
+  TopBar.tsx       |       0 |        0 |       0 |       0 | 1-994             
+  TrackTabs.tsx    |       0 |        0 |       0 |       0 | 1-143             
+  UltinaPanel.tsx  |       0 |        0 |       0 |       0 | 1-1255            
+  ...toryPanel.tsx |       0 |        0 |       0 |       0 | 1-222             
+  ...ablePanel.tsx |       0 |        0 |       0 |       0 | 1-227             
+  ...lePreview.tsx |       0 |        0 |       0 |       0 | 1-170             
+  ...andPalette.ts |       0 |        0 |       0 |       0 | 1-123             
+  context.ts       |       0 |        0 |       0 |       0 | 1-176             
+  controls.tsx     |       0 |        0 |       0 |       0 | 1-555             
+  dockLayout.ts    |       0 |        0 |       0 |       0 | 1-123             
+  ...orRegistry.ts |       0 |        0 |       0 |       0 | 1-34              
+  fxeqCurve.ts     |       0 |        0 |       0 |       0 | 1-125             
+  gestureHints.tsx |       0 |        0 |       0 |       0 | 1-82              
+  helpContent.ts   |       0 |      100 |     100 |       0 | 16-82             
+  kitColors.ts     |       0 |        0 |       0 |       0 | 1-61              
+  melodicKeys.ts   |       0 |      100 |     100 |       0 | 16-157            
+  padKeys.ts       |       0 |        0 |       0 |       0 | 1-181             
+  playActivity.ts  |   33.33 |      100 |       0 |   33.33 | 16-18,21-25,28-29 
+  playhead.ts      |       0 |        0 |       0 |       0 | 1-89              
+  remoteCursors.ts |       0 |        0 |       0 |       0 | 1-40              
+  shortcuts.ts     |       0 |      100 |     100 |       0 | 50-369            
+  theme.ts         |       0 |        0 |       0 |       0 | 1-268             
+  timelineRec.ts   |       0 |        0 |       0 |       0 | 1-78              
+  useLongPress.ts  |       0 |        0 |       0 |       0 | 1-80              
+-------------------|---------|----------|---------|---------|-------------------
