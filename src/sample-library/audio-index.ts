@@ -164,3 +164,68 @@ export function searchAudioSamples(query: string, index: AudioSampleIndex): Audi
   }
   return results.sort((a, b) => b.score - a.score || a.assetId.localeCompare(b.assetId));
 }
+
+// ── localStorage cache — skip re-classification across sessions ────────────
+
+const CACHE_KEY = "pf:audio-index-cache";
+
+/** Deterministic bank fingerprint — changes when assets are added/removed. */
+export function bankSignature(bank: SampleBank): string {
+  const ids = bank.entries().map(([id]) => id).sort();
+  return `${ids.length}:${ids.slice(0, 3).join(",")}:${ids.slice(-3).join(",")}`;
+}
+
+export function cacheAudioIndex(index: AudioSampleIndex, bank: SampleBank): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      version: 1,
+      signature: bankSignature(bank),
+      index,
+    }));
+  } catch {
+    /* quota/blocked — cache is best-effort */
+  }
+}
+
+export function loadCachedAudioIndex(bank: SampleBank): AudioSampleIndex | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as { version: number; signature: string; index: AudioSampleIndex };
+    if (cached.version !== 1 || !cached.index) return null;
+    if (cached.signature !== bankSignature(bank)) return null;
+    return cached.index;
+  } catch {
+    return null;
+  }
+}
+
+let sessionIndex: AudioSampleIndex | null = null;
+
+/**
+ * Ensure an audio index exists: cached from localStorage, or built fresh
+ * (classify each bank asset). The result is cached in memory + localStorage.
+ * Returns null when the audio tagging model is unavailable.
+ */
+export async function ensureAudioIndex(
+  bank: SampleBank,
+  onProgress?: (done: number, total: number, name: string) => void,
+): Promise<AudioSampleIndex | null> {
+  if (sessionIndex) return sessionIndex;
+  const cached = loadCachedAudioIndex(bank);
+  if (cached) {
+    sessionIndex = cached;
+    return cached;
+  }
+  const index = await buildAudioIndex(bank, classifyAudio, onProgress);
+  if (index && index.entries.length > 0) {
+    sessionIndex = index;
+    cacheAudioIndex(index, bank);
+  }
+  return index;
+}
+
+/** Test hook: drop the session-level index cache. */
+export function resetSessionAudioIndex(): void {
+  sessionIndex = null;
+}

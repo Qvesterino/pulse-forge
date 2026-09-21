@@ -29,7 +29,7 @@ function fakeBuffer(channels: number, length: number, sampleRate: number, fill: 
 
 describe("audio prep (T4)", () => {
   it("downmix averages channels", () => {
-    const buffer = fakeBuffer(2, 4, 44100, (i, ch) => (ch === 0 ? 1 : 0.5));
+    const buffer = fakeBuffer(2, 4, 44100, (_i, ch) => (ch === 0 ? 1 : 0.5));
     const mono = downmixToMono(buffer);
     expect(mono.length).toBe(4);
     expect(mono[0]).toBeCloseTo(0.75);
@@ -126,5 +126,41 @@ describe("buildAudioIndex (injected classifier)", () => {
     expect(index!.entries.length).toBe(1); // the failed asset is skipped
     expect(index!.entries[0].assetId).toBe("factory.kick.deep");
     expect(progress).toEqual([1, 2]);
+  });
+});
+
+import { bankSignature, cacheAudioIndex, loadCachedAudioIndex } from "../src/sample-library/audio-index";
+
+describe("audio index localStorage cache", () => {
+  const makeBank = (ids: string[]) => ({
+    entries: () => ids.map((id) => [id, {} as AudioBuffer]),
+  }) as unknown as import("../src/sample-library/factory").SampleBank;
+
+  const makeIndex = () => ({
+    modelId: "test", builtAt: 1, entries: [
+      { assetId: "a", name: "a", labels: [{ label: "Kick", score: 0.9 }] },
+    ],
+  });
+
+  it("caches and loads with matching bank signature", () => {
+    const bank = makeBank(["a", "b", "c"]);
+    const index = makeIndex();
+    cacheAudioIndex(index, bank);
+    const loaded = loadCachedAudioIndex(bank);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.entries.length).toBe(1);
+  });
+
+  it("invalidates when the bank changes", () => {
+    const bank1 = makeBank(["a", "b", "c"]);
+    cacheAudioIndex(makeIndex(), bank1);
+    const bank2 = makeBank(["x", "y", "z"]);
+    expect(loadCachedAudioIndex(bank2)).toBeNull();
+  });
+
+  it("bankSignature is deterministic and order-independent", () => {
+    const s1 = bankSignature(makeBank(["c", "a", "b"]));
+    const s2 = bankSignature(makeBank(["a", "b", "c"]));
+    expect(s1).toBe(s2);
   });
 });

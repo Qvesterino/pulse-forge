@@ -101,3 +101,25 @@ export function playAuditionBuffer(buffer: AudioBuffer, onEnded?: () => void): v
   currentSource = source;
   void source.start();
 }
+
+/**
+ * A2: SONG AUDITION — render the WHOLE song (all sections, transitions,
+ * arrangement) offline and return the buffer for playback. Uses mode: "song"
+ * on the applied song doc so all clips, scene automation and FX are heard.
+ *
+ * NOTE on Worker boundary: OfflineAudioContext is main-thread-only, so the
+ * render itself CANNOT move to a worker. However, `startRendering()` is async
+ * — the UI is not blocked during the audio processing. The sync setup phase
+ * (scheduling) is bounded by the song length. For >64-bar songs a chunked
+ * section-by-section render is the optimization path.
+ */
+export async function renderSongAuditionBuffer(
+  bank: SampleBank,
+  songDoc: ProjectDocument,
+): Promise<AudioBuffer> {
+  return renderProject(songDoc, bank, {
+    mode: "song",
+    sampleRate: 44100,
+    tailSeconds: 1,
+  });
+}

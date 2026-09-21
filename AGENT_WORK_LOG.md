@@ -2805,3 +2805,22 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** prune policy (30 days) is a judgment call — if users report wanting month-old crashed takes, raise the constant; it is a named export, one-line change.
 
 **Recommendations for next session (GOAL 05 — state integrity & persistence/rehydration):** the frozen-restore + autosave + snapshot seams were covered here; concentrate on YDocStore↔ProjectStore rehydration parity under collab join mid-save, user-sample restore ordering vs bank consumers, and the offline scene-BPM seam (still open, needs AudioEngine edit).
+
+
+---
+
+## GOAL 20 (campaign restart) — Audio index cache + song audition render (2026-09-19)
+
+**Goal executed:** Two practical follow-ups: (1) localStorage cache for the audio sample index — skip 40–80 s of re-classification across sessions; (2) song audition render — hear the WHOLE song after build.
+
+**Fixes implemented:**
+
+- `audio-index.ts`: `bankSignature(bank)` (deterministic, order-independent fingerprint), `cacheAudioIndex`/`loadCachedAudioIndex` (localStorage `pf:audio-index-cache`, version+signature keyed), `ensureAudioIndex(bank)` — session cache → localStorage cache → fresh build. Cache invalidates when the bank changes.
+- `audition.ts`: `renderSongAuditionBuffer(bank, songDoc)` — renders the WHOLE song (mode: "song", all clips + automation + FX) via the full master chain. The songDoc is built by executing `applySongCommand` on a copy of the doc.
+- Tests: `tests/sample-audio-index.test.ts` 13/13 (cache round-trip, bank-change invalidation, signature determinism).
+
+**Worker boundary honest assessment:** `OfflineAudioContext` is a main-thread-only API — the render itself CANNOT move to a worker. However, `startRendering()` is async, so the UI is not blocked during the actual audio processing. The sync setup phase (scheduling notes, effects) is bounded by the song length. For very long songs (>64 bars), a chunked section-by-section render is the optimization path — but the current approach (async render with loading indicator) is adequate for the 44-bar songs the builder produces.
+
+**Important files changed:** src/sample-library/audio-index.ts, src/intent/audition.ts, tests/sample-audio-index.test.ts, INTENT_ENGINE.md (§5.16).
+
+**Validation:** audio cache tests 13/13; intent-area 189/189; typecheck clean for changed files.

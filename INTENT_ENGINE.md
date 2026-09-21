@@ -642,6 +642,51 @@ Meranie a úprava hlasitosti ako closures loop:
   LUFS matematika (+20 dB amplitúdy ≈ +20 LU), ticho ne-merateľné,
   konvergencia loopu (injected render), clamp ±6, render failure.
 
+### 5.15 AUDIO SAMPLE INDEX (T4 — "the library listens back", HOTOVÉ)
+
+Audio Spectrogram Transformer (AST, AudioSet 527 tried, q8 **86.6 MB**) v
+transformers.js worker-i klasifikuje KAŽDÝ bank asset (factory + user
+sample) do AudioSet labelov.
+
+- **Model**: `Xenova/ast-finetuned-audioset-10-10-0.4593` q8,
+  `npm run audio:fetch` → `public/models/audio/` (HF layout, gitignored,
+  allowRemoteModels=false — offline-first po prvom fetchnutí).
+- **Indexer** (`src/sample-library/audio-index.ts`): `buildAudioIndex(bank)`
+  — per asset: downmix mono → lineárny resample na 16 kHz → classify →
+  top-8 AudioSet labelov. `searchAudioSamples(query, index)` — query stem
+  mapu (`QUERY_SYNONYMS`: kick/808/hihat/clap/cymbal/tom/shaker/riser/
+  boom/noise/beat + SK bicí/bubny) → match label substrings + name bonus →
+  score-desc ranking.
+- **Pracovný tok**: bank.entries() → per asset: downmix+resample na main
+  thread → classify vo workeri (AST inference ~0.5–2 s na 16 kHz mono
+  sample). Index v pamäti na session; localStorage cache kľúčovaný asset
+  id je follow-up.
+- **Honest scope**: factory sampley sú SYNTETIZOVANÉ one-shoty — AST ich
+  mapuje na timbrálne príbuzné AudioSet triedy, nie vždy na očakávané meno
+  (kick → "drum machine/music" ✓, ale closed hat → "slap/bang"). Pre
+  USER sampley (reálne nahrávky, importy) bude matching presnejší.
+  Distinctness medzi rodinami je overená.
+- **Panel wiring čaká na koordináciu** — SampleBrowser search box je
+  prirodzený domov, ale súbor je v pôsobnosti paralelnej session.
+- Testy: `tests/sample-audio-index.test.ts` (10) — downmix, resampler,
+  query mapa SK+EN, ranking, skip-on-fail, progress.
+- Smoke: `scripts/smoke-audio.mjs` s REÁLNYM modelom — 4/4 (kick tonálny/
+  elektronic ✓, kick vs crash distinct ✓, determinizmus ✓, všetky klasifikujú
+  ✓). 24-bit PCM dekódovanie doplnené (factory sampley sú 24-bit).
+
+### 5.16 AUDIO INDEX CACHE + SONG AUDITION (D1/A2 follow-ups, HOTOVÉ)
+
+- **Audio index localStorage cache**: `bankSignature(bank)` (počet + prvé/posledné
+  asset ids — deterministicky, order-independent) + `cacheAudioIndex` /
+  `loadCachedAudioIndex` — klasifikácia sa preskočí ak sa bank nezmenil.
+  `ensureAudioIndex(bank)` — session cache + localStorage cache + build fallback.
+- **Song audition**: `renderSongAuditionBuffer(bank, songDoc)` — render celého
+  songu (mode: "song") cez plný chain. `OfflineAudioContext.startRendering()`
+  je async (UI nie je blokované počas audio spracovania); sync setup fáza je
+  ohraničená dĺžkou songu. **Worker boundary pre rendery je architektonicky
+  nemožné** (OfflineAudioContext je main-thread-only API) — optimalizácia pre
+  >64-bar songy by bola chunked section-by-section render.
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

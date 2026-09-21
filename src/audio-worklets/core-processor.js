@@ -30,3 +30,4 @@ import "./vinyl-processor.js";
 import "./beatmangler-processor.js";
 import "./vocoder-processor.js";
 import "./reverseswell-processor.js";
+import "./granularfreeze-processor.js";

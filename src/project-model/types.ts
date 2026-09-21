@@ -30,6 +30,7 @@ export type EffectType =
   | "multiTapDelay"
   | "vocoder"
   | "reverseSwell"
+  | "granularFreeze"
   | "kaskada"
   | "ringMod"
   | "tapeStop"

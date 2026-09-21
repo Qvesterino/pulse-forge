@@ -33,7 +33,9 @@ class FakeWorkletNode {
   }
 }
 
-function createRecorder(options: { deferMicrophonePermission?: boolean; inputDeviceId?: string } = {}) {
+function createRecorder(
+  options: { deferMicrophonePermission?: boolean; inputDeviceId?: string; inputGainDb?: number } = {},
+) {
   const recovery = new RecordingRecoveryRepository();
   const track = new EventTarget() as MediaStreamTrack;
   Object.defineProperty(track, "readyState", { value: "live" });
@@ -84,7 +86,10 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     }),
     createAnalyser: vi.fn(() => ({
       fftSize: 1024,
-      getFloatTimeDomainData: vi.fn(),
+      getFloatTimeDomainData: vi.fn((target: Float32Array) => {
+        const frame = (context as unknown as { __analyserFrame?: Float32Array }).__analyserFrame;
+        if (frame) target.set(frame.subarray(0, Math.min(frame.length, target.length)));
+      }),
       connect: vi.fn(),
       disconnect: vi.fn(),
     })),
@@ -106,6 +111,7 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     ctx: context,
     recovery,
     inputDeviceId: options.inputDeviceId ?? "",
+    inputGainDb: options.inputGainDb,
     addWorkletModule: vi.fn(async () => {}),
     getUserMedia,
   });
@@ -362,7 +368,8 @@ describe("PcmMicRecorder", () => {
     expect(track.stop).toHaveBeenCalledOnce();
   }, 5_000);
 
-  it("cleans up and preserves recovery data if the worklet port rejects the stop command", async () => {    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+  it("cleans up and preserves recovery data if the worklet port rejects the stop command", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const { recorder, recovery, metadata, track } = createRecorder();
     const onError = vi.fn();
     recorder.onError = onError;
@@ -384,5 +391,48 @@ describe("PcmMicRecorder", () => {
     await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
     expect(recorder.state).toBe("idle");
     expect(track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("applies the input trim to the capture graph and reports it back", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, gains } = createRecorder({ inputGainDb: -6 });
+    await recorder.start(metadata);
+    // gains[2] is the pre-capture trim stage (mute/monitor are gains[0]/[1]).
+    expect(gains[2].gain.value).toBeCloseTo(Math.pow(10, -6 / 20), 5);
+    expect(recorder.inputGain).toBe(-6);
+    recorder.setInputGainDb(3.7);
+    expect(recorder.inputGain).toBe(3.7);
+    expect(gains[2].gain.setTargetAtTime).toHaveBeenLastCalledWith(Math.pow(10, 3.7 / 20), 1, 0.01);
+    await recorder.cancel();
+  });
+
+  it("clamps the input trim to the UI range and ignores non-finite values", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata } = createRecorder();
+    expect(recorder.inputGain).toBe(0);
+    recorder.setInputGainDb(100);
+    expect(recorder.inputGain).toBe(12);
+    recorder.setInputGainDb(-100);
+    expect(recorder.inputGain).toBe(-24);
+    recorder.setInputGainDb(Number.NaN);
+    expect(recorder.inputGain).toBe(0);
+    await recorder.start(metadata);
+    expect(recorder.inputGain).toBe(0);
+    await recorder.cancel();
+  });
+
+  it("reads input peak/RMS from the post-trim tap, 0 when unwired", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, context } = createRecorder();
+    expect(recorder.getInputLevel()).toEqual({ peak: 0, rms: 0 });
+    // Wire a fake analyser that reports a fixed frame.
+    const frame = new Float32Array([0, 0.5, -0.25, 0.125]);
+    (context as unknown as { __analyserFrame?: Float32Array }).__analyserFrame = frame;
+    await recorder.start(metadata);
+    const level = recorder.getInputLevel();
+    expect(level.peak).toBeCloseTo(0.5, 5);
+    expect(level.rms).toBeCloseTo(Math.sqrt((0.25 + 0.0625 + 0.015625) / 4), 5);
+    await recorder.cancel();
+    expect(recorder.getInputLevel()).toEqual({ peak: 0, rms: 0 });
   });
 });
