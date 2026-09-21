@@ -175,10 +175,20 @@ class SvFilterProcessor extends AudioWorkletProcessor {
       return true;
     }
 
+    // Cutoff GLIDES (~5 ms one-pole) toward the target — an instantaneous
+    // coefficient change per block zippers on automated sweeps. Resonance
+    // follows the same smoothed cutoff; the stability clamp re-runs on the
+    // smoothed pair every block, so the glide can never leave the stable
+    // region (fast jumps are limited exactly like instant ones).
+    if (this.cutoffSmoothed === undefined) this.cutoffSmoothed = cutoff;
+    this.cutoffSmoothed += (cutoff - this.cutoffSmoothed) * (1 - Math.exp(-1 / (0.005 * sr)));
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
       this.lastRes = res;
-      this.f = 2 * Math.sin((Math.PI * Math.min(cutoff, sr * 0.24)) / sr);
+    }
+    {
+      const effCutoff = this.cutoffSmoothed;
+      this.f = 2 * Math.sin((Math.PI * Math.min(effCutoff, sr * 0.24)) / sr);
       this.q = 2 - 2 * res; // damping: 2 = max damping, 0 = self-osc
       // Numerical stability: the semi-implicit Chamberlin recursion diverges
       // when f*q >= (4 - f²)/2 — i.e. high cutoff combined with LOW resonance

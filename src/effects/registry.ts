@@ -2675,6 +2675,31 @@ const drumBuss: EffectDefinition = {
     const mix = mixBus(ctx);
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "4x";
+    // REAL transient stage: a transient-processor worklet between the shaper
+    // and the glue comp — the TRANSIENT knob now drives its attack/sustain
+    // (0–50% tames sustain, 50–100% boosts attack) in addition to nudging
+    // the comp attack, instead of only nudging comp attack.
+    const transientNode = isWorkletReady("transient", ctx)
+      ? new AudioWorkletNode(ctx, "transient-processor", {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          channelCount: 2,
+        })
+      : null;
+    const applyTransient = (value: number, when: number): void => {
+      if (!transientNode) return;
+      const t = Math.max(0, Math.min(1, value));
+      // 0..0.5 → attack −1..0 (soften), 0.5..1 → attack 0..+1 (boost).
+      const attackAmt = t < 0.5 ? t * 2 - 1 : (t - 0.5) * 2;
+      const write = (id: string, v: number): void => {
+        const param = transientNode.parameters.get(id);
+        if (param && Number.isFinite(v)) param.setValueAtTime(v, when);
+      };
+      write("attack", attackAmt);
+      write("sustain", t < 0.5 ? -t * 2 * 0.6 : 0);
+      write("mix", 1);
+    };
     // Glue through the custom worklet compressor (PEAK detector grabs drum
     // transients); legacy DCN mapping when the core bundle is missing.
     const glue = createBussComp(ctx, {
@@ -2690,7 +2715,11 @@ const drumBuss: EffectDefinition = {
     boom.type = "lowshelf";
     const out = ctx.createGain();
     mix.wet.connect(shaper);
-    shaper.connect(glue.input);
+    if (transientNode) {
+      shaper.connect(transientNode).connect(glue.input);
+    } else {
+      shaper.connect(glue.input);
+    }
     glue.output.connect(tone).connect(boom).connect(out).connect(mix.output);
     const apply = (id: string, value: number, when: number) => {
       switch (id) {
@@ -2698,6 +2727,7 @@ const drumBuss: EffectDefinition = {
           shaper.curve = bussCurve(value);
           break;
         case "transient":
+          applyTransient(value, when);
           glue.applyComp("attack", Math.max(0.001, 0.02 - value * 0.015), when);
           break;
         case "compressor":
@@ -2721,6 +2751,7 @@ const drumBuss: EffectDefinition = {
           break;
       }
     };
+    if (transientNode) applyTransient(instance.params.transient ?? 0.15, ctx.currentTime);
     for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
     return {
       input: mix.input,
@@ -2735,6 +2766,7 @@ const drumBuss: EffectDefinition = {
         mix.input.disconnect();
         mix.output.disconnect();
         shaper.disconnect();
+        transientNode?.disconnect();
         glue.dispose();
         tone.disconnect();
         boom.disconnect();
@@ -2789,6 +2821,26 @@ const bassBuss: EffectDefinition = {
     crossoverGain.gain.value = 0;
     const directGain = ctx.createGain();
     directGain.gain.value = 1;
+    // Sub-octave voice: a ÷2 zero-crossing divider off the (already low)
+    // shaper output — the generated sub joins AFTER the drive but BEFORE the
+    // glue comp, so it gets leveled with everything else. Rides the
+    // always-loaded core bundle (bassbuss-sub-processor).
+    let subOsc: AudioWorkletNode | null = null;
+    const subGain = ctx.createGain();
+    const subAmount = instance.params.subOsc ?? 0;
+    subGain.gain.value = subAmount * 0.7;
+    if (isWorkletReady("bitcrusher", ctx)) {
+      subOsc = new AudioWorkletNode(ctx, "bassbuss-sub-processor", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        channelCount: 2,
+        channelInterpretation: "speakers",
+      });
+      subOsc.port.postMessage({ type: "amount", value: subAmount });
+      low.connect(subOsc);
+      subOsc.connect(subGain).connect(out);
+    }
     mix.wet.connect(shaper);
     shaper.connect(glue.input);
     glue.output.connect(low).connect(out);
@@ -2816,6 +2868,10 @@ const bassBuss: EffectDefinition = {
           break;
         case "subEnhance":
           smooth(low.gain, value * 8, when);
+          break;
+        case "subOsc":
+          subOsc?.port.postMessage({ type: "amount", value });
+          subGain.gain.setTargetAtTime(value * 0.7, when, 0.05);
           break;
         case "subFrequency":
           smooth(low.frequency, value, when);
@@ -2877,6 +2933,8 @@ const bassBuss: EffectDefinition = {
         monoSum.disconnect();
         crossoverGain.disconnect();
         directGain.disconnect();
+        if (subOsc) subOsc.disconnect();
+        subGain.disconnect();
       },
     };
   },

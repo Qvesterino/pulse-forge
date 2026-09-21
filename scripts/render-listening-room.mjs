@@ -185,23 +185,28 @@ const packs = await page.evaluate(
   }
 
   // ── SCENES suite — genre presets on their OWN genre beats + bypasses ───
-  const scenePairs = [
-    { presetId: "morph-drill-bus-pressure", templateId: "drill" },
-    { presetId: "morph-phonk-808-weight", templateId: "phonk" },
-    { presetId: "morph-jersey-vocal-bark", templateId: "jersey" },
+  // Iterates SCENE_PRESET_IDS so NEW scene presets join automatically —
+  // register the preset→template pairing here (a missing pairing skips
+  // silently; add it when a matching TemplateId exists).
+  const SCENE_TEMPLATE_BY_ID = {
+    "morph-drill-bus-pressure": "drill",
+    "morph-phonk-808-weight": "phonk",
+    "morph-jersey-vocal-bark": "jersey",
     // No DnB template exists — the closest energetic pairing is drill.
-    { presetId: "morph-dnb-punch-glue", templateId: "drill" },
-  ];
-  for (const pair of scenePairs) {
-    const preset = FACTORY_PRESETS.find((p) => p.id === pair.presetId);
+    "morph-dnb-punch-glue": "drill",
+  };
+  for (const presetId of SCENE_PRESET_IDS) {
+    const templateId = SCENE_TEMPLATE_BY_ID[presetId];
+    if (!templateId) continue;
+    const preset = FACTORY_PRESETS.find((p) => p.id === presetId);
     if (!preset) continue;
-    const bypass = await renderDoc(createProjectFromTemplate(pair.templateId));
-    const wet = withMorphOnGenre(pair.templateId, preset.params);
+    const bypass = await renderDoc(createProjectFromTemplate(templateId));
+    const wet = withMorphOnGenre(templateId, preset.params);
     const wetAudio = await renderDoc(wet);
     out.scenes.push({
       id: preset.id,
       label: preset.label,
-      templateId: pair.templateId,
+      templateId,
       description: preset.description ?? "",
       bypass,
       wet: wetAudio,

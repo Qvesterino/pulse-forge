@@ -49,6 +49,11 @@
   var HARM_BODY_AMOUNT_ID = "harm.bodyAmount";
   var HARM_MIX_ID = "harm.mix";
   var HARM_DEV_FULL_SIGNAL_ID = "harm.devFullSignal";
+  var HARM_BLOOM_ID = "harm.bloom";
+  var HARM_SPREAD_ID = "harm.spread";
+  var HARM_WIDTH_ID = "harm.width";
+  var HARM_DIFFUSION_ID = "harm.diffusion";
+  var HARM_SPACE_ID = "harm.space";
   var HARM_VOICE_COUNT = 4;
   function harmVoiceParamId(voice, param) {
     return `harm.voice.${voice}.${param}`;
@@ -66,7 +71,11 @@
     "Body",
     "Texture",
     "Density",
-    "Pressure"
+    "Pressure",
+    // Experiment #3 (Phase III): the curved, enveloped spatial control
+    // signal (body score → bloom curve → attack/release). Append-only,
+    // index 7 — routes serialize sources by index.
+    "Bloom"
   ];
   var MOD_DESTINATIONS = [
     { label: "Comp Threshold", key: "dyn.thresholdDb", span: -12, min: -60, max: 0 },
@@ -83,7 +92,14 @@
     { label: "Width", key: "space.width", span: 80, min: 0, max: 200 },
     // Experiment #1 (Harmonic Bloom hook, §10): BODY energy opening the
     // harmony is a ROUTE, not hardcoded DSP — append-only, index 12.
-    { label: "Harmony Mix", key: "harm.mix", span: 100, min: 0, max: 100 }
+    { label: "Harmony Mix", key: "harm.mix", span: 100, min: 0, max: 100 },
+    // Experiment #3 (Phase III): the spatial bloom destinations. All four
+    // operate on the HARMONY BUS only. APPEND-ONLY (indices 13–16) —
+    // serialized routes store enum indices, never renumber.
+    { label: "Voice Spread", key: "harm.spread", span: 100, min: 0, max: 200 },
+    { label: "Harmony Width", key: "harm.width", span: 100, min: 0, max: 200 },
+    { label: "Harmony Diffusion", key: "harm.diffusion", span: 100, min: 0, max: 100 },
+    { label: "Harmony Space", key: "harm.space", span: 100, min: 0, max: 100 }
   ];
 
   // src/effects/morph-dynamics-core/contracts/parameterSchema.ts
@@ -180,7 +196,16 @@
       p(HARM_ENABLED_ID, "Body Harmonizer", 0, 0, 1, "boolean", false),
       p(HARM_BODY_AMOUNT_ID, "Body Amount", 100, 0, 100, "percent"),
       p(HARM_MIX_ID, "Harmony Mix", 50, 0, 100, "percent"),
-      p(HARM_DEV_FULL_SIGNAL_ID, "Dev Full-Signal A/B", 0, 0, 1, "boolean", false)
+      p(HARM_DEV_FULL_SIGNAL_ID, "Dev Full-Signal A/B", 0, 0, 1, "boolean", false),
+      // ── Spatial Bloom (Experiment #3) — IDENTITY defaults so existing
+      // sessions/presets render unchanged: spread/width at 100 % (voice
+      // pans / M/S passthrough), diffusion and space fully bypassed, and
+      // the bloom macro at 0 gating all spatial modulation depth.
+      p(HARM_BLOOM_ID, "Bloom", 0, 0, 100, "percent"),
+      p(HARM_SPREAD_ID, "Voice Spread", 100, 0, 200, "percent"),
+      p(HARM_WIDTH_ID, "Harmony Width", 100, 0, 200, "percent"),
+      p(HARM_DIFFUSION_ID, "Diffusion", 0, 0, 100, "percent"),
+      p(HARM_SPACE_ID, "Harmony Space", 0, 0, 100, "percent")
     ];
     const voiceDefaults = [
       [7, 70, -25, 0],
@@ -1028,7 +1053,7 @@
   }
   var HarmonyVoice = class {
     // Targets (host-facing) vs latched values (audio-facing).
-    cfg = { ratio: 1, panL: 0.7071, panR: 0.7071, level: 0, enabled: false };
+    cfg = { ratio: 1, level: 0, enabled: false };
     // Gain fades per sample (level × enable — one pole, ~12 ms).
     gain = 0;
     gainCoef = 1;
@@ -1042,9 +1067,6 @@
     setParams(p2, sampleRate2) {
       const semis = clamp(p2.interval, -24, 24) + clamp(p2.detune, -50, 50) / 100;
       this.cfg.ratio = Math.pow(2, semis / 12);
-      const theta = (clamp(p2.pan, -1, 1) + 1) * Math.PI / 4;
-      this.cfg.panL = Math.cos(theta);
-      this.cfg.panR = Math.sin(theta);
       this.cfg.level = clamp(p2.level, 0, 1.5);
       this.cfg.enabled = p2.enabled;
       this.gainCoef = tcToCoef(0.012, sampleRate2);
@@ -1059,19 +1081,18 @@
       this.lastGrain = -1;
     }
     /**
-     * Render one sample of this voice from the shared buffer. `a` is the
-     * absolute write counter (sample index since prepare), `writePos` its
-     * ring-free value, `h` the half-grain hop, `bufLen`/`bufMask` the ring
-     * geometry. Returns the PANNED mono grain pair into outL/outR.
+     * Render one MONO grain sample of this voice from the shared buffer.
+     * `a` is the absolute write counter (sample index since prepare),
+     * `writePos` its ring-free value, `h` the half-grain hop, `bufLen`/
+     * `bufMask` the ring geometry. Stereo position is applied by the
+     * harmonizer's spread stage, not here.
      */
-    render(a, writePos, h, buf, bufLen, out) {
+    render(a, writePos, h, buf, bufLen) {
       const target = this.cfg.enabled ? this.cfg.level : 0;
       this.gain += (target - this.gain) * (1 - this.gainCoef);
       if (this.gain < 1e-6 && target === 0) {
-        out.l = 0;
-        out.r = 0;
         this.lastGrain = Math.floor(a / h);
-        return;
+        return 0;
       }
       const k = Math.floor(a / h);
       if (k !== this.lastGrain) {
@@ -1098,11 +1119,13 @@
         windowSum += window;
       }
       const norm = windowSum > 1e-6 ? 1 / windowSum : 0;
-      const s = wet * norm * this.gain;
-      out.l = s * this.cfg.panL;
-      out.r = s * this.cfg.panR;
+      return wet * norm * this.gain;
     }
   };
+  var MAX_COMB_GAIN2 = 0.88;
+  var SPACE_COMB_MS = [29.3, 37.7, 43.1];
+  var SPACE_AP_MS = [5.1, 7.7];
+  var DIFF_AP_MS = [5.9, 8.7];
   var BodyHarmonizer = class {
     // ── Body mask (the audio-rate T/B/T decomposition) ──────────────
     lpToneHi = new OnePoleLP();
@@ -1132,17 +1155,54 @@
     // absolute sample counter (determinism)
     h = 1;
     // half-grain hop (samples)
+    // Voice pan positions: voicePan is the −1..+1 POSITION (spread scales
+    // it toward/away from center, clamped at the speakers — extrapolating
+    // the constant-power pair past ±1 would leak anti-phase content into
+    // the opposite channel); panL/panR is the precomputed pair at spread
+    // 100 % for the identity fast path.
+    voicePan = new Array(HARM_VOICE_COUNT2).fill(0);
+    panL = new Array(HARM_VOICE_COUNT2).fill(0.7071);
+    panR = new Array(HARM_VOICE_COUNT2).fill(0.7071);
     // ── Smoothed bus state ──────────────────────────────────────────
     mixGain = 0;
     // harmony bus gain (mix × 1/√n) — per-sample pole
     dryGain = 1;
     // dry-body duck gain
     mixCoef = 1;
+    // Layered spatial response poles (Phase III §9): faster up front,
+    // slower as the cloud deepens — one universal envelope would feel
+    // mechanical, so each stage owns its TC (constants, not user-facing V0).
+    spreadSm = 1;
+    // identity at start — no Phase III startup move
+    widthSm = 1;
+    diffSm = 0;
+    spaceSm = 0;
+    spreadCoef = 1;
+    widthCoef = 1;
+    diffCoef = 1;
+    spaceCoef = 1;
+    // Width side-channel HP (§13: low frequencies stay centered).
+    sideHP = new OnePoleHP();
+    // ── Diffusion network (2 series allpasses, phase-only) — separate
+    // state per channel with identical specs, so each channel passes
+    // through the same filter independently (sharing one state would
+    // interleave L/R into a single line). Phase-only → mono-safe by
+    // construction: the mono sum goes through the same rotation. ──────
+    diffApL = [];
+    diffApR = [];
+    // ── Micro space send/return ─────────────────────────────────────
+    spaceCombs = [];
+    spaceAp = [];
+    spaceTailQuiet = true;
     cfg = {
       enabled: false,
       bodyAmount: 1,
       mix: 0.5,
       fullSignal: false,
+      spread: 1,
+      width: 1,
+      diffusion: 0,
+      space: 0,
       voices: Array.from({ length: HARM_VOICE_COUNT2 }, () => ({
         enabled: false,
         interval: 0,
@@ -1152,8 +1212,6 @@
       }))
     };
     sampleRate = 48e3;
-    // Scratch for voice renders (no per-sample allocation).
-    vout = { l: 0, r: 0 };
     prepare(sampleRate2) {
       this.sampleRate = sampleRate2;
       this.h = Math.max(64, Math.round(0.025 * sampleRate2));
@@ -1175,23 +1233,59 @@
       this.maskEnv.setTimes(0.04, 2e-3, sampleRate2);
       this.presenceEnv.setTimes(2e-3, 0.025, sampleRate2);
       this.mixCoef = tcToCoef(0.03, sampleRate2);
+      this.spreadCoef = tcToCoef(0.04, sampleRate2);
+      this.widthCoef = tcToCoef(0.06, sampleRate2);
+      this.diffCoef = tcToCoef(0.09, sampleRate2);
+      this.spaceCoef = tcToCoef(0.14, sampleRate2);
+      this.sideHP.setFreq(150, sampleRate2);
+      this.diffApL = DIFF_AP_MS.map((ms) => this.makeAp(ms));
+      this.diffApR = DIFF_AP_MS.map((ms) => this.makeAp(ms));
+      this.spaceCombs = SPACE_COMB_MS.map((ms) => this.makeComb(ms));
+      this.spaceAp = SPACE_AP_MS.map((ms) => this.makeAp(ms));
+      for (const c of this.spaceCombs) {
+        const lenSec = c.buf.length / sampleRate2;
+        c.gain = Math.min(MAX_COMB_GAIN2, Math.pow(10, -3 * lenSec / 1.1));
+        c.dampCoef = tcToCoef(0.2, sampleRate2);
+      }
+      for (const ap of this.spaceAp) ap.g = 0.62;
       this.writePos = 0;
       this.mixGain = 0;
       this.dryGain = 1;
+      this.spreadSm = 1;
+      this.widthSm = 1;
+      this.diffSm = 0;
+      this.spaceSm = 0;
+      this.spaceTailQuiet = true;
       for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
         if (!this.voices[i]) this.voices[i] = new HarmonyVoice();
         this.voices[i].setParams(
           this.cfg.voices?.[i] ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
           sampleRate2
         );
+        this.applyVoicePan(i, this.cfg.voices?.[i]?.pan ?? 0);
         this.voices[i].reset();
       }
+    }
+    makeComb(ms) {
+      const len = Math.max(4, Math.ceil(this.sampleRate * ms / 1e3));
+      return { buf: new Float32Array(len), write: 0, dampState: 0, dampCoef: 0.3, gain: 0.7 };
+    }
+    makeAp(ms) {
+      const len = Math.max(4, Math.ceil(this.sampleRate * ms / 1e3));
+      return { buf: new Float32Array(len), write: 0, g: 0.6 };
+    }
+    applyVoicePan(i, pan) {
+      this.voicePan[i] = clamp(pan, -1, 1);
+      const theta = (this.voicePan[i] + 1) * (Math.PI / 4);
+      this.panL[i] = Math.cos(theta);
+      this.panR[i] = Math.sin(theta);
     }
     setParams(cfg) {
       this.cfg = cfg;
       for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
         const v = cfg.voices[i];
         this.voices[i].setParams(v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 }, this.sampleRate);
+        this.applyVoicePan(i, v?.pan ?? 0);
       }
     }
     /** The current body mask (observability / tests). */
@@ -1212,6 +1306,29 @@
       this.maskEnv.reset();
       this.mixGain = 0;
       this.dryGain = 1;
+      this.spreadSm = 1;
+      this.widthSm = 1;
+      this.diffSm = 0;
+      this.spaceSm = 0;
+      this.sideHP.reset();
+      this.spaceTailQuiet = true;
+      for (const ap of this.diffApL) {
+        ap.buf.fill(0);
+        ap.write = 0;
+      }
+      for (const ap of this.diffApR) {
+        ap.buf.fill(0);
+        ap.write = 0;
+      }
+      for (const c of this.spaceCombs) {
+        c.buf.fill(0);
+        c.dampState = 0;
+        c.write = 0;
+      }
+      for (const ap of this.spaceAp) {
+        ap.buf.fill(0);
+        ap.write = 0;
+      }
       for (const v of this.voices) v.reset();
     }
     /**
@@ -1242,6 +1359,7 @@
       }
       const mask = this.maskEnv.processAbs(rawMask);
       this.buf[this.writePos & this.bufMask] = tone * mask;
+      const a = this.writePos;
       this.writePos++;
       let nActive = 0;
       for (const v of this.voices) if (v.active) nActive++;
@@ -1250,24 +1368,80 @@
       this.mixGain += (busTarget - this.mixGain) * (1 - this.mixCoef);
       if (this.mixGain < 1e-9) this.mixGain = 0;
       this.dryGain = 1 - (1 - clamp(this.cfg.bodyAmount, 0, 1)) * mask;
+      this.spreadSm += (clamp(this.cfg.spread, 0, 2) - this.spreadSm) * (1 - this.spreadCoef);
+      this.widthSm += (clamp(this.cfg.width, 0, 2) - this.widthSm) * (1 - this.widthCoef);
+      this.diffSm += (clamp(this.cfg.diffusion, 0, 1) - this.diffSm) * (1 - this.diffCoef);
+      this.spaceSm += (clamp(this.cfg.space, 0, 1) - this.spaceSm) * (1 - this.spaceCoef);
+      if (this.diffSm < 1e-6) this.diffSm = 0;
+      if (this.spaceSm < 1e-6) this.spaceSm = 0;
       let busL = 0;
       let busR = 0;
-      if (this.mixGain > 1e-6) {
-        for (const v of this.voices) {
-          v.render(this.writePos - 1, this.writePos - 1, this.h, this.buf, this.bufLen, this.vout);
-          busL += this.vout.l;
-          busR += this.vout.r;
+      const spread = this.spreadSm;
+      if (spread === 1) {
+        for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
+          const s = this.voices[i].render(a, this.writePos - 1, this.h, this.buf, this.bufLen);
+          busL += s * this.panL[i];
+          busR += s * this.panR[i];
         }
       } else {
-        for (const v of this.voices) {
-          v.render(this.writePos - 1, this.writePos - 1, this.h, this.buf, this.bufLen, this.vout);
+        for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
+          const s = this.voices[i].render(a, this.writePos - 1, this.h, this.buf, this.bufLen);
+          const eff = clamp(this.voicePan[i] * spread, -1, 1);
+          const theta = (eff + 1) * (Math.PI / 4);
+          busL += s * Math.cos(theta);
+          busR += s * Math.sin(theta);
         }
+      }
+      if (this.mixGain <= 1e-6) {
         busL = 0;
         busR = 0;
       }
-      out.l = busL * this.mixGain;
-      out.r = busR * this.mixGain;
+      if (this.widthSm !== 1) {
+        const mid = 0.5 * (busL + busR);
+        const side = this.sideHP.process(0.5 * (busL - busR)) * this.widthSm;
+        busL = mid + side;
+        busR = mid - side;
+      }
+      if (this.diffSm > 0) {
+        const dL = this.apSeries(this.diffApL, busL);
+        const dR = this.apSeries(this.diffApR, busR);
+        busL += (dL - busL) * this.diffSm;
+        busR += (dR - busR) * this.diffSm;
+      }
+      let spaceL = 0;
+      let spaceR = 0;
+      if (this.spaceSm > 0 || !this.spaceTailQuiet) {
+        const send = (busL * 0.5 + busR * 0.5) * this.spaceSm;
+        let wet = 0;
+        for (const c of this.spaceCombs) wet += this.comb(c, send);
+        wet = this.apSeries(this.spaceAp, wet) * 0.5;
+        spaceL = wet;
+        spaceR = wet;
+        this.spaceTailQuiet = this.spaceSm === 0 && Math.abs(wet) < 1e-8;
+      }
+      out.l = (busL + spaceL) * this.mixGain;
+      out.r = (busR + spaceR) * this.mixGain;
       out.dry = this.dryGain;
+    }
+    comb(c, x) {
+      const read = c.buf[c.write];
+      c.dampState = read + c.dampCoef * (c.dampState - read);
+      c.buf[c.write] = x + c.dampState * c.gain;
+      c.write += 1;
+      if (c.write >= c.buf.length) c.write = 0;
+      return read;
+    }
+    /** Series allpass (both diffusion and space use it). */
+    apSeries(aps, x) {
+      let y = x;
+      for (const ap of aps) {
+        const read = ap.buf[ap.write];
+        ap.buf[ap.write] = y - ap.g * read;
+        y = read + ap.g * ap.buf[ap.write];
+        ap.write += 1;
+        if (ap.write >= ap.buf.length) ap.write = 0;
+      }
+      return y;
     }
   };
   function smooth01(x) {
@@ -1307,6 +1481,14 @@
       level: 0.7,
       pan: 0
     }));
+    // ── Spatial Bloom control signal (Experiment #3, §6) ────────────
+    // bloom = BODY score → curve (§3: nothing below ~0.2, rising through
+    // the musical range) → enveloped (attack ~80 ms, release ~450 ms — the
+    // field contracts gently when a phrase ends). Exposed as MOD SOURCE
+    // "Bloom" (index 7); the harm.bloom macro scales the spatial deltas.
+    bloom = 0;
+    bloomUp = 1;
+    bloomDown = 1;
     // Output safety (per channel — each keeps its own one-pole state).
     dcL = new OnePoleHP();
     dcR = new OnePoleHP();
@@ -1334,12 +1516,6 @@
       predelayMs: new BlockSmoother(12, 0.08),
       duck: new BlockSmoother(0.5, 0.08),
       harmonyMix: new BlockSmoother(0.5, 0.05),
-      /**
-       * Per-ROUTE smoothing (5..300 ms each): a transient route (wants ~5 ms)
-       * and a body route (wants ~150 ms) may share a destination — the route
-       * that owns the modulation owns its TC. The destination value is the SUM
-       * of the per-route smoothed deltas.
-       */
       route: Array.from({ length: ROUTE_SLOTS }, () => new BlockSmoother(0, 0.04))
     };
     /** Per-destination sum of SMOOTHED route deltas (plain units of the dest). */
@@ -1392,6 +1568,9 @@
       this.harmony.prepare(sampleRate2);
       this.dcL.setFreq(9, sampleRate2);
       this.dcR.setFreq(9, sampleRate2);
+      const blockSec = maxBlockSize / Math.max(1, sampleRate2);
+      this.bloomUp = 1 - Math.exp(-blockSec / 0.08);
+      this.bloomDown = 1 - Math.exp(-blockSec / 0.45);
       this.applyQuality();
       this.pushStaticParams();
     }
@@ -1549,6 +1728,8 @@
       const motionScale = smoothstep(Pn, 0.35, 0.9);
       const spaceScale = smoothstep(Pn, 0.25, 0.85);
       const routeScale = smoothstep(Pn, 0.15, 0.65);
+      const bloomRaw = smoothstep(this.meters.body, 0.2, 0.95);
+      this.bloom += (bloomRaw - this.bloom) * (bloomRaw > this.bloom ? this.bloomUp : this.bloomDown);
       const src = [
         this.meters.inputEnergy,
         this.dyn.grNorm,
@@ -1556,8 +1737,10 @@
         this.meters.body,
         this.meters.texture,
         this.meters.density,
-        routeScale
+        routeScale,
         // PRESSURE as a source = post-curve reactive depth
+        this.bloom
+        // Spatial Bloom (Experiment #3) — curved, enveloped body energy
       ];
       this.rawDelta.fill(0);
       for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
@@ -1656,11 +1839,16 @@
           vc.level = q[harmVoiceParamId(v, "level")] / 100;
           vc.pan = q[harmVoiceParamId(v, "pan")] / 100;
         }
+        const bloomScale = q[HARM_BLOOM_ID] / 100;
         this.harmony.setParams({
           enabled: true,
           bodyAmount: q[HARM_BODY_AMOUNT_ID] / 100,
           mix: this.sm.harmonyMix.tick() / 100,
           fullSignal: q[HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
+          spread: Math.max(0, Math.min(200, q[HARM_SPREAD_ID] + this.rawDelta[13] * bloomScale)) / 100,
+          width: Math.max(0, Math.min(200, q[HARM_WIDTH_ID] + this.rawDelta[14] * bloomScale)) / 100,
+          diffusion: Math.max(0, Math.min(100, q[HARM_DIFFUSION_ID] + this.rawDelta[15] * bloomScale)) / 100,
+          space: Math.max(0, Math.min(100, q[HARM_SPACE_ID] + this.rawDelta[16] * bloomScale)) / 100,
           voices
         });
       }

@@ -23,6 +23,7 @@ export function createRingModNode(ctx: BaseAudioContext, instance: { params: Rec
   safeApplyAudioParam(node, "frequency", instance.params.frequency ?? 220);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
+  safeApplyAudioParam(node, "xmode", instance.params.xmode ?? 0);
 
   return {
     input,

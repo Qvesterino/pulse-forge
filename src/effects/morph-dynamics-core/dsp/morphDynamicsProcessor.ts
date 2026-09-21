@@ -69,6 +69,14 @@ export class MorphDynamicsProcessor {
     level: 0.7,
     pan: 0,
   }));
+  // ── Spatial Bloom control signal (Experiment #3, §6) ────────────
+  // bloom = BODY score → curve (§3: nothing below ~0.2, rising through
+  // the musical range) → enveloped (attack ~80 ms, release ~450 ms — the
+  // field contracts gently when a phrase ends). Exposed as MOD SOURCE
+  // "Bloom" (index 7); the harm.bloom macro scales the spatial deltas.
+  private bloom = 0;
+  private bloomUp = 1;
+  private bloomDown = 1;
 
   // Output safety (per channel — each keeps its own one-pole state).
   private dcL = new OnePoleHP();
@@ -97,13 +105,12 @@ export class MorphDynamicsProcessor {
     width: new BlockSmoother(1.15, 0.06),
     predelayMs: new BlockSmoother(12, 0.08),
     duck: new BlockSmoother(0.5, 0.08),
-    harmonyMix: new BlockSmoother(0.5, 0.05),
-    /**
+    harmonyMix: new BlockSmoother(0.5, 0.05) /**
      * Per-ROUTE smoothing (5..300 ms each): a transient route (wants ~5 ms)
      * and a body route (wants ~150 ms) may share a destination — the route
      * that owns the modulation owns its TC. The destination value is the SUM
      * of the per-route smoothed deltas.
-     */
+     */,
     route: Array.from({ length: ROUTE_SLOTS }, () => new BlockSmoother(0, 0.04)),
   };
   /** Per-destination sum of SMOOTHED route deltas (plain units of the dest). */
@@ -161,6 +168,11 @@ export class MorphDynamicsProcessor {
     this.harmony.prepare(sampleRate);
     this.dcL.setFreq(9, sampleRate);
     this.dcR.setFreq(9, sampleRate);
+    // Bloom envelope per-block coefficients (attack/release in seconds,
+    // referenced to the control rate).
+    const blockSec = maxBlockSize / Math.max(1, sampleRate);
+    this.bloomUp = 1 - Math.exp(-blockSec / 0.08);
+    this.bloomDown = 1 - Math.exp(-blockSec / 0.45);
     this.applyQuality();
     this.pushStaticParams();
   }
@@ -349,6 +361,12 @@ export class MorphDynamicsProcessor {
     // ── 2. Modulation matrix evaluation (block-rate) ──────────────
     // Sources: control scores of the PREVIOUS block + normalized GR.
     // These update every block regardless of the metering gate.
+    // Spatial Bloom (Experiment #3 §3/§6): curve the BODY score —
+    // nothing below ~0.2 (intimate), rising through the musical range —
+    // then glide it (fast attack, slow release: the field contracts
+    // gently when a phrase ends, it does not collapse).
+    const bloomRaw = smoothstep(this.meters.body, 0.2, 0.95);
+    this.bloom += (bloomRaw - this.bloom) * (bloomRaw > this.bloom ? this.bloomUp : this.bloomDown);
     const src: number[] = [
       this.meters.inputEnergy,
       this.dyn.grNorm,
@@ -357,6 +375,7 @@ export class MorphDynamicsProcessor {
       this.meters.texture,
       this.meters.density,
       routeScale, // PRESSURE as a source = post-curve reactive depth
+      this.bloom, // Spatial Bloom (Experiment #3) — curved, enveloped body energy
     ];
     this.rawDelta.fill(0);
     for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
@@ -474,6 +493,11 @@ export class MorphDynamicsProcessor {
     // BODY Harmonizer (Experiment #1): mix is a MOD DESTINATION (route
     // "Harmony Mix" — the Harmonic Bloom hook drives it externally), the
     // module skipped ENTIRELY when off (bit-exact bypass, zero CPU).
+    // Spatial Bloom (Experiment #3): the four spatial depths are MOD
+    // DESTINATIONS 13–16 whose deltas are scaled by the harm.bloom macro
+    // (§15 — the macro scales reactive depth, base knobs stay honest).
+    // PRESSURE reaches them through the common routeScale like every
+    // other destination (§7 — no special-case PRESSURE wiring).
     const harmOn = q[P.HARM_ENABLED_ID] >= 0.5;
     if (harmOn) {
       this.sm.harmonyMix.setTarget(mod(12, q[P.HARM_MIX_ID]));
@@ -486,11 +510,16 @@ export class MorphDynamicsProcessor {
         vc.level = q[P.harmVoiceParamId(v, "level")] / 100;
         vc.pan = q[P.harmVoiceParamId(v, "pan")] / 100;
       }
+      const bloomScale = q[P.HARM_BLOOM_ID] / 100;
       this.harmony.setParams({
         enabled: true,
         bodyAmount: q[P.HARM_BODY_AMOUNT_ID] / 100,
         mix: this.sm.harmonyMix.tick() / 100,
         fullSignal: q[P.HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
+        spread: Math.max(0, Math.min(200, q[P.HARM_SPREAD_ID] + this.rawDelta[13]! * bloomScale)) / 100,
+        width: Math.max(0, Math.min(200, q[P.HARM_WIDTH_ID] + this.rawDelta[14]! * bloomScale)) / 100,
+        diffusion: Math.max(0, Math.min(100, q[P.HARM_DIFFUSION_ID] + this.rawDelta[15]! * bloomScale)) / 100,
+        space: Math.max(0, Math.min(100, q[P.HARM_SPACE_ID] + this.rawDelta[16]! * bloomScale)) / 100,
         voices,
       });
     }

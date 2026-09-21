@@ -32,6 +32,7 @@ class CompressorProcessor extends AudioWorkletProcessor {
     this.prevL1 = 0;
     this.prevR1 = 0; // stage 1 previous output (stage 2 input)
     this.grAccumulator = 0;
+    this.densitySmoothed = 0;
     this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
     this.postedGr = -1;
   }
@@ -47,6 +48,10 @@ class CompressorProcessor extends AudioWorkletProcessor {
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "detector", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0 = RMS, 1 = PEAK
       { name: "scHpf", defaultValue: 20, minValue: 20, maxValue: 500, automationRate: "k-rate" }, // Hz
+      // AUTO RELEASE: program-dependent — the release time-constant shortens
+      // when the input peaks arrive densely (fast program), relaxes on
+      // sparse material.
+      { name: "autoRelease", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -76,6 +81,20 @@ class CompressorProcessor extends AudioWorkletProcessor {
     const mix = parameters.mix[0];
     const peakMode = parameters.detector[0] >= 0.5;
     const hpfHz = parameters.scHpf[0];
+    const autoRel = (parameters.autoRelease ? parameters.autoRelease[0] : 0) >= 0.5;
+    // Program density: energy of the INPUT first-difference vs energy of the
+    // input (transient-rich signals have high diff/total). Smoothed per
+    // block; drives a 0.3×–1× multiplier on the release blend.
+    let diffEnergy = 0;
+    let totEnergy = 0;
+    {
+      const prevInL = this.prevInL;
+      const prevInR = this.prevInR;
+      const p0 = mainL ? mainL[0] : prevInL;
+      const p1 = mainR ? mainR[0] : prevInR;
+      diffEnergy += (p0 - prevInL) ** 2 + (p1 - prevInR) ** 2;
+      totEnergy += p0 * p0 + p1 * p1;
+    }
     const hpfOn = sideActive && hpfHz > 25;
     const dt = 1 / sr;
     const rc = hpfOn ? 1 / (2 * Math.PI * Math.max(20, hpfHz)) : 0;
@@ -157,10 +176,20 @@ class CompressorProcessor extends AudioWorkletProcessor {
       }
 
       // ---- gain smoothing: attack dives, release recovers ----
+      if (autoRel) {
+        const d = (mainL ? mainL[i] : 0) - (mainL && i > 0 ? mainL[i - 1] : 0);
+        const dd = (mainR ? mainR[i] : 0) - (mainR && i > 0 ? mainR[i - 1] : 0);
+        diffEnergy += d * d + dd * dd;
+        const xv = mainL ? mainL[i] : 0;
+        totEnergy += xv * xv;
+      }
+      // releaseBlendEff: dense transients shorten recovery (down to 0.3×),
+      // smooth program relaxes it back to the knob's value.
+      const releaseBlendEff = autoRel ? releaseBlend * (1 + 2.3 * Math.min(1, this.densitySmoothed)) : releaseBlend;
       this.gain =
         target < this.gain
           ? this.gain + (target - this.gain) * attackBlend
-          : this.gain + (target - this.gain) * releaseBlend;
+          : this.gain + (target - this.gain) * releaseBlendEff;
       if (Math.abs(this.gain) < 1e-20) this.gain = 0;
       else if (this.gain < 1e-10) this.gain = 0;
 
@@ -172,6 +201,14 @@ class CompressorProcessor extends AudioWorkletProcessor {
 
       const depth = 1 - this.gain;
       if (depth > this.grAccumulator) this.grAccumulator = depth;
+    }
+
+    // ---- program density smoothing (for the next block's autoRelease) ----
+    if (autoRel) {
+      const density = diffEnergy / Math.max(totEnergy, 1e-9);
+      this.densitySmoothed = 0.9 * this.densitySmoothed + 0.1 * Math.min(1, density * 4);
+    } else {
+      this.densitySmoothed = 0;
     }
 
     // ---- metering ----

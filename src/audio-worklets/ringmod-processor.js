@@ -20,6 +20,10 @@ class RingModProcessor extends AudioWorkletProcessor {
       { name: "frequency", defaultValue: 220, minValue: 0.1, maxValue: 2000, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0, minValue: 0, maxValue: 0.9, automationRate: "k-rate" },
+      // X-MODE: unipolar carrier (|sine|) keeps the carrier's own frequency
+      // in the output — the "X-mod"/octave-up robot character — while true
+      // ring modulation cancels it.
+      { name: "xmode", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -37,12 +41,14 @@ class RingModProcessor extends AudioWorkletProcessor {
     const freq = parameters.frequency[0];
     const mix = parameters.mix[0];
     const feedback = parameters.feedback[0];
+    const xmode = (parameters.xmode ? parameters.xmode[0] : 0) >= 0.5;
     const phaseInc = (2 * Math.PI * freq) / sr;
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
-      const mod = Math.sin(this.phase + this.lastOut * feedback * Math.PI);
+      let mod = Math.sin(this.phase + this.lastOut * feedback * Math.PI);
+      if (xmode) mod = Math.abs(mod);
       this.phase += phaseInc;
       if (this.phase > 2 * Math.PI) this.phase -= 2 * Math.PI;
 

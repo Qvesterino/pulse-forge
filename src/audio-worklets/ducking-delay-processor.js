@@ -27,6 +27,8 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     this.env = 0;
     this.dampL = 0;
     this.dampR = 0;
+    this.hpfL = 0; // loop-HPF LP state (hp = x − lp)
+    this.hpfR = 0;
   }
 
   static get parameterDescriptors() {
@@ -61,9 +63,12 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     const atkSec = Math.max(0.001, parameters.duckAttack[0]);
     const relSec = Math.max(0.02, parameters.duckRelease[0]);
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
+    const pingpong = (parameters.pingpong ? parameters.pingpong[0] : 0) >= 0.5;
+    const loopHpfHz = Math.max(20, Math.min(400, parameters.loopHpfHz ? parameters.loopHpfHz[0] : 40));
 
     const delaySamples = (delayMs * sr) / 1000;
     const toneAlpha = 1 - Math.exp((-2 * Math.PI * tone) / sr);
+    const hpfAlpha = Math.exp((-2 * Math.PI * loopHpfHz) / sr);
     const threshLin = Math.pow(10, threshDb / 20);
     const atkCoef = Math.exp(-1 / (sr * atkSec));
     const relCoef = Math.exp(-1 / (sr * relSec));
@@ -92,13 +97,18 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
       const delayedL = this.readCubic(this.bufL, readPos);
       const delayedR = this.readCubic(this.bufR, readPos);
 
-      // Damping LP on feedback path
+      // Damping LP on feedback path, then loop HPF (anti-mud): one-pole LP
+      // state per channel, hp = x − lp.
       this.dampL += toneAlpha * (delayedL - this.dampL);
       this.dampR += toneAlpha * (delayedR - this.dampR);
+      this.hpfL += (delayedL - this.hpfL) * (1 - hpfAlpha);
+      this.hpfR += (delayedR - this.hpfR) * (1 - hpfAlpha);
       if (Math.abs(this.dampL) < 1e-20) this.dampL = 0;
       if (Math.abs(this.dampR) < 1e-20) this.dampR = 0;
-      const dampL = this.dampL;
-      const dampR = this.dampR;
+      if (Math.abs(this.hpfL) < 1e-20) this.hpfL = 0;
+      if (Math.abs(this.hpfR) < 1e-20) this.hpfR = 0;
+      const dampL = this.dampL - this.hpfL;
+      const dampR = this.dampR - this.hpfR;
 
       const wetL = dampL * duckGain;
       const wetR = dampR * duckGain;
@@ -106,9 +116,15 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
       outL[i] = l * (1 - mix) + wetL * mix;
       if (outR) outR[i] = r * (1 - mix) + wetR * mix;
 
-      // Feedback write (feedback not ducked — tail preserves, only output ducks)
+      // Feedback write (feedback not ducked — tail preserves, only output
+      // ducks). Ping-pong crossfeeds: each write receives 0.7× the OTHER
+      // channel's loop content — the tail bounces L↔R.
       let wL = l + dampL * feedback;
       let wR = r + dampR * feedback;
+      if (pingpong) {
+        wL += dampR * feedback * 0.7;
+        wR += dampL * feedback * 0.7;
+      }
       if (Math.abs(wL) < 1e-20) wL = 0;
       if (Math.abs(wR) < 1e-20) wR = 0;
       this.bufL[this.writeIdx] = wL;

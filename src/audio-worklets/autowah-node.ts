@@ -26,6 +26,8 @@ export function createAutowahNode(ctx: BaseAudioContext, instance: { params: Rec
   safeApplyAudioParam(node, "release", instance.params.release ?? 0.15);
   safeApplyAudioParam(node, "sensitivity", instance.params.sensitivity ?? 1.5);
   safeApplyAudioParam(node, "mode", instance.params.mode ?? 0);
+  safeApplyAudioParam(node, "direction", instance.params.direction ?? 0);
+  safeApplyAudioParam(node, "drive", instance.params.drive ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   return {

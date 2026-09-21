@@ -153,6 +153,15 @@ function harmParams(): MorphParamDef[] {
     p(P.HARM_BODY_AMOUNT_ID, "Body Amount", 100, 0, 100, "percent"),
     p(P.HARM_MIX_ID, "Harmony Mix", 50, 0, 100, "percent"),
     p(P.HARM_DEV_FULL_SIGNAL_ID, "Dev Full-Signal A/B", 0, 0, 1, "boolean", false),
+    // ── Spatial Bloom (Experiment #3) — IDENTITY defaults so existing
+    // sessions/presets render unchanged: spread/width at 100 % (voice
+    // pans / M/S passthrough), diffusion and space fully bypassed, and
+    // the bloom macro at 0 gating all spatial modulation depth.
+    p(P.HARM_BLOOM_ID, "Bloom", 0, 0, 100, "percent"),
+    p(P.HARM_SPREAD_ID, "Voice Spread", 100, 0, 200, "percent"),
+    p(P.HARM_WIDTH_ID, "Harmony Width", 100, 0, 200, "percent"),
+    p(P.HARM_DIFFUSION_ID, "Diffusion", 0, 0, 100, "percent"),
+    p(P.HARM_SPACE_ID, "Harmony Space", 0, 0, 100, "percent"),
   ];
   // Voice defaults: interval / level / pan shape a ready-to-open stack —
   // A(+7, center-ish) B(−5, mirrored) C(+12, wide) D(−12, wide).

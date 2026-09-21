@@ -636,6 +636,15 @@ export const compressorParams: ParamDef[] = [
     ],
   },
   { id: "scHpf", label: "SC HPF", min: 20, max: 500, default: 20, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "autoRelease",
+    label: "AUTO REL",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+    kind: "toggle",
+  },
   { id: "makeup", label: "MAKEUP", min: 0, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
@@ -799,6 +808,29 @@ export const chorusParams: ParamDef[] = [
 
   { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "spread", label: "SPREAD", min: 0, max: 1, default: 1, format: formatPct },
+  { id: "feedback", label: "FEEDBK", min: 0, max: 0.85, default: 0, format: formatPct },
+  {
+    id: "voices",
+    label: "VOICES",
+    min: 2,
+    max: 4,
+    default: 2,
+    format: (v) => `${Math.round(v)}`,
+    kind: "discrete",
+    step: 1,
+  },
+  {
+    id: "lfoShape",
+    label: "LFO",
+    min: 0,
+    max: 2,
+    default: 0,
+    options: [
+      { value: 0, label: "SINE" },
+      { value: 1, label: "TRI" },
+      { value: 2, label: "S&H" },
+    ],
+  },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
 ];
@@ -1091,6 +1123,7 @@ export const drumBussParams: ParamDef[] = [
 export const bassBussParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.16, format: formatPct },
   { id: "subEnhance", label: "SUB", min: 0, max: 1, default: 0.2, format: formatPct },
+  { id: "subOsc", label: "SUB OSC", min: 0, max: 1, default: 0, format: formatPct },
   {
     id: "subFrequency",
     label: "SUB FREQ",
@@ -1159,6 +1192,15 @@ export const utilityParams: ParamDef[] = [
       { value: 0, label: "NORMAL" },
       { value: 1, label: "INVERT" },
     ],
+    kind: "toggle",
+  },
+  {
+    id: "dcBlock",
+    label: "DC BLOCK",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "ON" : "OFF"),
     kind: "toggle",
   },
 ];
@@ -1273,6 +1315,18 @@ export const autowahParams: ParamDef[] = [
   { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatMs },
   { id: "sensitivity", label: "SENSITIVITY", min: 0.5, max: 3, default: 1.5, format: (v) => v.toFixed(2) },
   { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: AUTOWAH_MODES },
+  {
+    id: "direction",
+    label: "DIRECTION",
+    min: 0,
+    max: 1,
+    default: 0,
+    options: [
+      { value: 0, label: "UP" },
+      { value: 1, label: "DOWN" },
+    ],
+  },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
 
@@ -1320,6 +1374,31 @@ export const duckDelayParams: ParamDef[] = [
   { id: "duckThresh", label: "THRESH", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
   { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
   { id: "duckRelease", label: "DUCK REL", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
+  {
+    id: "sync",
+    label: "SYNC",
+    min: 0,
+    max: 5,
+    default: 0,
+    options: [
+      { value: 0, label: "OFF" },
+      { value: 1, label: "1/4" },
+      { value: 2, label: "1/8" },
+      { value: 3, label: "1/8T" },
+      { value: 4, label: "1/16" },
+      { value: 5, label: "1/16T" },
+    ],
+  },
+  {
+    id: "pingpong",
+    label: "PING-PONG",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+    kind: "toggle",
+  },
+  { id: "loopHpfHz", label: "LOOP HPF", min: 20, max: 400, default: 40, unit: "Hz", format: formatHz, taper: "log" },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
 ];
 
@@ -1335,6 +1414,15 @@ export const ringModParams: ParamDef[] = [
     taper: "log",
   },
   { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
+  {
+    id: "xmode",
+    label: "X-MODE",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "X" : "RING"),
+    kind: "toggle",
+  },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
 

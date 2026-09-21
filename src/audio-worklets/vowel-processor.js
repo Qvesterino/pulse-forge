@@ -53,6 +53,12 @@ class VowelProcessor extends AudioWorkletProcessor {
     this.a2 = [0, 0, 0];
     this.lastVowel = -1;
     this.lastRes = -1;
+    // Glide targets (the active coefficients chase these).
+    this.tB0 = [1, 1, 1];
+    this.tB1 = [0, 0, 0];
+    this.tB2 = [0, 0, 0];
+    this.tA1 = [0, 0, 0];
+    this.tA2 = [0, 0, 0];
   }
 
   static get parameterDescriptors() {
@@ -78,7 +84,10 @@ class VowelProcessor extends AudioWorkletProcessor {
     const res = Math.max(0, Math.min(1, parameters.resonance[0]));
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
 
-    // Refresh biquad coeffs only when vowel or resonance moved (k-rate, cheap)
+    // Recompute TARGET biquad coeffs when vowel or resonance moved. The
+    // ACTIVE coefficients GLIDE toward the targets (~4 ms one-pole) — an
+    // instantaneous coefficient step inside a recursing biquad is an
+    // audible zipper on automated vowel sweeps.
     if (vowel !== this.lastVowel || res !== this.lastRes) {
       this.lastVowel = vowel;
       this.lastRes = res;
@@ -106,12 +115,23 @@ class VowelProcessor extends AudioWorkletProcessor {
         const a0 = 1 + alpha / A;
         const a1 = -2 * cosw0;
         const a2 = 1 - alpha / A;
-        // normalize by a0
-        this.b0[f] = b0 / a0;
-        this.b1[f] = b1 / a0;
-        this.b2[f] = b2 / a0;
-        this.a1[f] = a1 / a0;
-        this.a2[f] = a2 / a0;
+        // normalize by a0 → glide targets
+        this.tB0[f] = b0 / a0;
+        this.tB1[f] = b1 / a0;
+        this.tB2[f] = b2 / a0;
+        this.tA1[f] = a1 / a0;
+        this.tA2[f] = a2 / a0;
+      }
+    }
+    // Coefficient glide (block-rate is enough — targets only move k-rate).
+    {
+      const g = 1 - Math.exp(-1 / (0.004 * sr));
+      for (let f = 0; f < 3; f++) {
+        this.b0[f] += (this.tB0[f] - this.b0[f]) * g;
+        this.b1[f] += (this.tB1[f] - this.b1[f]) * g;
+        this.b2[f] += (this.tB2[f] - this.b2[f]) * g;
+        this.a1[f] += (this.tA1[f] - this.a1[f]) * g;
+        this.a2[f] += (this.tA2[f] - this.a2[f]) * g;
       }
     }
 

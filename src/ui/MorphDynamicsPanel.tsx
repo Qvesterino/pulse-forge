@@ -24,10 +24,15 @@ import {
   GLOBAL_MIX_ID,
   GLOBAL_OUTPUT_GAIN_DB_ID,
   HARM_BODY_AMOUNT_ID,
+  HARM_BLOOM_ID,
   HARM_DEV_FULL_SIGNAL_ID,
+  HARM_DIFFUSION_ID,
   HARM_ENABLED_ID,
   HARM_MIX_ID,
+  HARM_SPACE_ID,
+  HARM_SPREAD_ID,
   HARM_VOICE_COUNT,
+  HARM_WIDTH_ID,
   MACRO_BODY_ID,
   MACRO_MOTION_ID,
   MACRO_PUNCH_ID,
@@ -756,6 +761,12 @@ export function MorphDynamicsPanel({
               </div>
               {engineSlider(HARM_MIX_ID, "MIX", 0, 100, pctFmt, "linear", 50)}
               {engineSlider(HARM_BODY_AMOUNT_ID, "BODY", 0, 100, pctFmt, "linear", 100)}
+              <div className="morph-module-title morph-harm-spatial-title">SPATIAL BLOOM</div>
+              {engineSlider(HARM_BLOOM_ID, "BLOOM", 0, 100, pctFmt, "linear", 0)}
+              {engineSlider(HARM_SPREAD_ID, "SPREAD", 0, 200, pctFmt, "linear", 100)}
+              {engineSlider(HARM_WIDTH_ID, "WIDTH", 0, 200, pctFmt, "linear", 100)}
+              {engineSlider(HARM_DIFFUSION_ID, "DIFF", 0, 100, pctFmt, "linear", 0)}
+              {engineSlider(HARM_SPACE_ID, "SPACE", 0, 100, pctFmt, "linear", 0)}
               <div className="morph-harm-voices">
                 {Array.from({ length: HARM_VOICE_COUNT }, (_, v) => {
                   const onId = harmVoiceParamId(v, "on");

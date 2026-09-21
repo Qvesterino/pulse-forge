@@ -1051,6 +1051,125 @@ export const FACTORY_PRESETS: readonly MorphFactoryPreset[] = [
       [R.smooth(0)]: 110,
     },
   ),
+
+  // ── EXPERIMENT #3: SPATIAL BLOOM (Phase III dev/reference states) ──
+  // The three-arm comparison of the experiment doc §18: "Subtle Vocal
+  // Bloom" (arm A/B — harmony, reactive mix) vs "Spatial Bloom" below
+  // (arm C — same harmony WITH the reactive spatial field). Source 7 is
+  // the Bloom control (curved, enveloped BODY energy); the layered
+  // smoothMs values implement §9 (spread fast → space slow).
+  preset(
+    "morph-exp-spatial-bloom",
+    "Spatial Bloom",
+    "vocal",
+    "Bloom",
+    "strong",
+    "Full Harmonic Bloom: harmony rises out of sustained vocal tone AND the harmonic cloud opens with it — voices spread, diffusion softens the stack, a short space blooms on loud phrases and contracts when the phrase ends.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 80,
+      "harm.mix": 30,
+      "harm.bloom": 75,
+      "harm.spread": 100,
+      "harm.width": 130,
+      "harm.diffusion": 35,
+      "harm.space": 25,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 7,
+      [HV(0, "level")]: 60,
+      [HV(0, "pan")]: -35,
+      [HV(0, "detune")]: -4,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: 12,
+      [HV(1, "level")]: 45,
+      [HV(1, "pan")]: 35,
+      [HV(1, "detune")]: 3,
+      [HV(2, "on")]: 1,
+      [HV(2, "interval")]: 3,
+      [HV(2, "level")]: 40,
+      [HV(2, "pan")]: -70,
+      [HV(3, "on")]: 1,
+      [HV(3, "interval")]: -5,
+      [HV(3, "level")]: 40,
+      [HV(3, "pan")]: 70,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 60,
+      [R.smooth(0)]: 120,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 7, // Bloom
+      [R.dest(1)]: 13, // → Voice Spread
+      [R.amount(1)]: 55,
+      [R.smooth(1)]: 60,
+      [R.enabled(2)]: 1,
+      [R.source(2)]: 7, // Bloom
+      [R.dest(2)]: 15, // → Harmony Diffusion
+      [R.amount(2)]: 65,
+      [R.smooth(2)]: 160,
+      [R.enabled(3)]: 1,
+      [R.source(3)]: 7, // Bloom
+      [R.dest(3)]: 16, // → Harmony Space
+      [R.amount(3)]: 60,
+      [R.smooth(3)]: 220,
+    },
+  ),
+  preset(
+    "morph-exp-harmonic-cloud",
+    "Harmonic Cloud",
+    "synth",
+    "Bloom",
+    "extreme",
+    "Harmonic Bloom for pads and leads: a ±7/+12/+19 stack whose spread, width and diffusion breathe with the performance — wide and diffused on energetic sustains, pulled back toward a centered intimate core when the part rests.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 70,
+      "harm.mix": 45,
+      "harm.bloom": 90,
+      "harm.spread": 110,
+      "harm.width": 145,
+      "harm.diffusion": 55,
+      "harm.space": 30,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 7,
+      [HV(0, "level")]: 55,
+      [HV(0, "pan")]: -60,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: -7,
+      [HV(1, "level")]: 55,
+      [HV(1, "pan")]: 60,
+      [HV(2, "on")]: 1,
+      [HV(2, "interval")]: 12,
+      [HV(2, "level")]: 50,
+      [HV(2, "pan")]: -25,
+      [HV(2, "detune")]: 7,
+      [HV(3, "on")]: 1,
+      [HV(3, "interval")]: 19,
+      [HV(3, "level")]: 35,
+      [HV(3, "pan")]: 25,
+      [HV(3, "detune")]: -7,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 7, // Bloom
+      [R.dest(0)]: 13, // → Voice Spread
+      [R.amount(0)]: 65,
+      [R.smooth(0)]: 70,
+      [R.enabled(1)]: 1,
+      [R.source(1)]: 7, // Bloom
+      [R.dest(1)]: 14, // → Harmony Width
+      [R.amount(1)]: 45,
+      [R.smooth(1)]: 90,
+      [R.enabled(2)]: 1,
+      [R.source(2)]: 7, // Bloom
+      [R.dest(2)]: 15, // → Harmony Diffusion
+      [R.amount(2)]: 70,
+      [R.smooth(2)]: 170,
+      [R.enabled(3)]: 1,
+      [R.source(3)]: 3, // Body
+      [R.dest(3)]: 12, // → Harmony Mix
+      [R.amount(3)]: 45,
+      [R.smooth(3)]: 130,
+    },
+  ),
 ];
 
 /**

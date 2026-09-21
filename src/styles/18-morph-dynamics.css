@@ -373,3 +373,9 @@
   flex: 1;
   min-width: 0;
 }
+
+.morph-harm-spatial-title {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #2c313a;
+}

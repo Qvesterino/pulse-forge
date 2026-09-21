@@ -32,6 +32,10 @@ class AutowahProcessor extends AudioWorkletProcessor {
       { name: "release", defaultValue: 0.15, minValue: 0.05, maxValue: 1, automationRate: "k-rate" },
       { name: "sensitivity", defaultValue: 1.5, minValue: 0.5, maxValue: 3, automationRate: "k-rate" },
       { name: "mode", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0=BP 1=LP
+      // 0 = up-wah (loud → opens), 1 = down-wah (loud → closes)
+      { name: "direction", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      // Pre-SVF drive: tanh at (1 + drive·9) — grit before the sweep.
+      { name: "drive", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
@@ -54,24 +58,36 @@ class AutowahProcessor extends AudioWorkletProcessor {
     const relBlend = 1 - Math.exp(-1 / (sr * Math.max(0.05, parameters.release[0])));
     const sens = parameters.sensitivity[0];
     const bpMode = parameters.mode[0] < 0.5;
+    const direction = (parameters.direction ? parameters.direction[0] : 0) >= 0.5;
+    const drive = Math.max(0, Math.min(1, parameters.drive ? parameters.drive[0] : 0));
     const mix = parameters.mix[0];
     const q = 2 - 2 * res; // damping: 2 = max damping, 0 = self-osc
 
     const clampVal = 8;
+    const driveK = 1 + drive * 9;
 
     for (let i = 0; i < len; i++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+      let l = inL ? inL[i] : 0;
+      let r = inR ? inR[i] : l;
+      // Drive stage: tanh grit BEFORE the envelope + SVF.
+      if (drive > 0.001) {
+        l = Math.tanh(l * driveK) / Math.tanh(driveK);
+        r = Math.tanh(r * driveK) / Math.tanh(driveK);
+      }
 
-      // ---- Envelope follower ----
-      const peak = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
+      // ---- Envelope follower (on the RAW signal — drive would over-open it;
+      // the envelope tracks the performance, not the grit) ----
+      const rawL = inL ? inL[i] : 0;
+      const rawR = inR ? inR[i] : rawL;
+      const peak = Math.abs(rawL) > Math.abs(rawR) ? Math.abs(rawL) : Math.abs(rawR);
       const driven = Math.tanh(peak * sens);
       this.env =
         driven > this.env ? this.env + (driven - this.env) * atkBlend : this.env + (driven - this.env) * relBlend;
       if (this.env < 1e-20) this.env = 0;
 
-      // ---- Envelope → cutoff frequency ----
-      const fc = minF + this.env * (maxF - minF);
+      // ---- Envelope → cutoff frequency (direction flips the sweep) ----
+      const env01 = direction ? 1 - this.env : this.env;
+      const fc = minF + env01 * (maxF - minF);
 
       // ---- Chamberlin SVF (cutoff moves per-sample) ----
       const f = 2 * Math.sin((Math.PI * Math.min(fc, sr * 0.24)) / sr);

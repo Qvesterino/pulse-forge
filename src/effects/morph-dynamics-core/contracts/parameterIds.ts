@@ -110,6 +110,25 @@ export const HARM_MIX_ID = "harm.mix" as const; // 0..100 harmony bus level
  * surface. */
 export const HARM_DEV_FULL_SIGNAL_ID = "harm.devFullSignal" as const;
 
+// ── Spatial Bloom (Experiment #3, Phase III) ────────────────
+// The spatial stage lives on the HARMONY BUS only (the dry signal stays
+// the perceptual anchor). Depths are driven THROUGH the modulation
+// matrix (Bloom source → the four harm.* destinations below) and scaled
+// by the harm.bloom macro — nothing is hardcoded into the DSP.
+// Defaults are the IDENTITY: spread 100 (voices at their pan positions),
+// width 100 (M/S passthrough), diffusion 0, space 0, bloom 0 (the macro
+// gates all spatial modulation depth) — existing sessions are unchanged.
+
+export const HARM_BLOOM_ID = "harm.bloom" as const; // 0..100 spatial macro
+/** Voice spread scale, 0..200 % (100 = voices at their pan positions). */
+export const HARM_SPREAD_ID = "harm.spread" as const;
+/** Harmony-bus stereo width (M/S side gain), 0..200 % (100 = identity). */
+export const HARM_WIDTH_ID = "harm.width" as const;
+/** Allpass diffusion blend on the harmony bus, 0..100 %. */
+export const HARM_DIFFUSION_ID = "harm.diffusion" as const;
+/** Harmony space send (bus-only micro reverb return), 0..100 %. */
+export const HARM_SPACE_ID = "harm.space" as const;
+
 export const HARM_VOICE_COUNT = 4;
 
 export type HarmVoiceParam = "on" | "interval" | "level" | "pan" | "detune";

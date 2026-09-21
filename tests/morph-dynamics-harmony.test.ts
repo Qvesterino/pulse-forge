@@ -21,7 +21,7 @@ import {
   PARAM_BY_ID,
 } from "../src/effects/morph-dynamics-core/contracts/parameterSchema";
 import * as P from "../src/effects/morph-dynamics-core/contracts/parameterIds";
-import { DEST_INDEX } from "../src/effects/morph-dynamics-core/contracts/modulation";
+import { DEST_INDEX, MOD_SOURCES, SOURCE_INDEX } from "../src/effects/morph-dynamics-core/contracts/modulation";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -334,7 +334,17 @@ describe("morph-dynamics harmony: the experiment's sonic claim", () => {
     const makeHarm = (fullSignal: boolean) => {
       const harm = new BodyHarmonizer();
       harm.prepare(SR);
-      harm.setParams({ enabled: true, bodyAmount: 1, mix: 1, fullSignal, voices: FULL_VOICES });
+      harm.setParams({
+        enabled: true,
+        bodyAmount: 1,
+        mix: 1,
+        fullSignal,
+        spread: 1,
+        width: 1,
+        diffusion: 0,
+        space: 0,
+        voices: FULL_VOICES,
+      });
       return harm;
     };
     // Three arms: RING = tone then silence (the grain engine's natural
@@ -492,6 +502,161 @@ describe("morph-dynamics harmony hardening", () => {
       }
       proc.process(input, frames);
       for (let i = 0; i < frames; i++) expect(Number.isFinite(input[0][i])).toBe(true);
+    }
+  });
+});
+
+/** Per-sample side-channel RMS of the harmony-only content (spread/width
+ * move energy BETWEEN channels; the side signal measures exactly that). */
+function sideRmsOf(diffL: Float32Array, diffR: Float32Array, from = 0, to = diffL.length): number {
+  let sum = 0;
+  for (let i = from; i < to; i++) {
+    const s = diffL[i] - diffR[i];
+    sum += s * s;
+  }
+  return Math.sqrt(sum / Math.max(1, to - from));
+}
+
+describe("morph-dynamics spatial bloom (Experiment #3)", () => {
+  /** Sustained config with one voice parked half left. The chain's own
+   * SPACE stage is disabled: its per-channel decorrelated combs would put
+   * a stereo floor under EVERY add and mask the harmony's own symmetry. */
+  const PAN_NED: Record<string, number> = {
+    ...SUSTAINED,
+    [P.harmVoiceParamId(0, "pan")]: -50,
+    [P.SPACE_ENABLED_ID]: 0,
+  };
+
+  it("defines spatial params with identity defaults", () => {
+    const bloom = PARAM_BY_ID.get(P.HARM_BLOOM_ID)!;
+    expect([bloom.minValue, bloom.maxValue, bloom.defaultValue]).toEqual([0, 100, 0]);
+    const spread = PARAM_BY_ID.get(P.HARM_SPREAD_ID)!;
+    expect([spread.minValue, spread.maxValue, spread.defaultValue]).toEqual([0, 200, 100]);
+    const width = PARAM_BY_ID.get(P.HARM_WIDTH_ID)!;
+    expect([width.minValue, width.maxValue, width.defaultValue]).toEqual([0, 200, 100]);
+    const diffusion = PARAM_BY_ID.get(P.HARM_DIFFUSION_ID)!;
+    expect([diffusion.minValue, diffusion.maxValue, diffusion.defaultValue]).toEqual([0, 100, 0]);
+    const space = PARAM_BY_ID.get(P.HARM_SPACE_ID)!;
+    expect([space.minValue, space.maxValue, space.defaultValue]).toEqual([0, 100, 0]);
+    expect(MOD_SOURCES[SOURCE_INDEX.bloom]).toBe("Bloom");
+  });
+
+  it("spread pulls voices toward center at 0 and outward past 100", () => {
+    const centered = harmonyDifference({ ...PAN_NED, [P.HARM_SPREAD_ID]: 0 }, () => sine(220, 0.5), 1.0);
+    const base = harmonyDifference(PAN_NED, () => sine(220, 0.5), 1.0);
+    const wide = harmonyDifference({ ...PAN_NED, [P.HARM_SPREAD_ID]: 200 }, () => sine(220, 0.5), 1.0);
+    const from = Math.round(0.5 * SR);
+    // Spread 0: the voice sits center — harmony content is mono.
+    expect(maxAbsDiff(centered.diffL, centered.diffR, from)).toBeLessThan(1e-5);
+    // Spread 100 → pan −50; spread 200 → clamped at hard left: the side
+    // energy grows monotonically with the spread control.
+    const sideBase = sideRmsOf(base.diffL, base.diffR, from);
+    const sideWide = sideRmsOf(wide.diffL, wide.diffR, from);
+    expect(sideWide).toBeGreaterThan(sideBase * 1.3);
+    expect(sideWide).toBeGreaterThan(0.01);
+  });
+
+  it("width 0 folds the harmony bus toward mono without killing it", () => {
+    const wide = harmonyDifference(PAN_NED, () => sine(220, 0.5), 1.0);
+    const mono = harmonyDifference({ ...PAN_NED, [P.HARM_WIDTH_ID]: 0 }, () => sine(220, 0.5), 1.0);
+    const from = Math.round(0.5 * SR);
+    expect(rmsOf(mono.diffL, from)).toBeGreaterThan(0.005);
+    expect(sideRmsOf(mono.diffL, mono.diffR, from)).toBeLessThan(sideRmsOf(wide.diffL, wide.diffR, from) * 0.2);
+  });
+
+  it("diffusion audibly softens the voices while staying bounded", () => {
+    const src = () => sine(220, 0.5);
+    const dry = harmonyDifference({ ...PAN_NED, [P.HARM_DIFFUSION_ID]: 0 }, src, 1.0);
+    const diff = harmonyDifference({ ...PAN_NED, [P.HARM_DIFFUSION_ID]: 100 }, src, 1.0);
+    const from = Math.round(0.5 * SR);
+    expect(rmsOf(diff.diffL, from)).toBeGreaterThan(0.005);
+    expect(maxAbsDiff(dry.diffL, diff.diffL, from)).toBeGreaterThan(0.002);
+    expect(peakOf(diff.diffL)).toBeLessThanOrEqual(1.05);
+  });
+
+  it("space send blooms a decaying tail that the plain harmony never gets", () => {
+    const stop = 1.2;
+    const gated = () => (i: number) => (i < stop * SR ? 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR) : 0);
+    const base = harmonyDifference({ ...PAN_NED, [P.HARM_SPACE_ID]: 0 }, gated, 2.4);
+    const spaced = harmonyDifference({ ...PAN_NED, [P.HARM_SPACE_ID]: 90 }, gated, 2.4);
+    const earlyFrom = Math.round((stop + 0.05) * SR);
+    const earlyTo = Math.round((stop + 0.35) * SR);
+    const lateFrom = Math.round((stop + 1.0) * SR);
+    // Just after the phrase ends, the spaced arm carries a tail the plain
+    // harmony does not — and the tail decays rather than accumulating.
+    const earlySpaced = rmsOf(spaced.diffL, earlyFrom, earlyTo);
+    const earlyBase = rmsOf(base.diffL, earlyFrom, earlyTo);
+    expect(earlySpaced).toBeGreaterThan(earlyBase * 1.5);
+    expect(earlySpaced).toBeGreaterThan(rmsOf(spaced.diffL, lateFrom) * 2);
+  });
+
+  it("the BLOOM macro scales the spatial routes (0 = no reactive spatial)", () => {
+    const route = {
+      [P.routeParamId(0, "enabled")]: 1,
+      [P.routeParamId(0, "source")]: SOURCE_INDEX.bloom,
+      [P.routeParamId(0, "destination")]: DEST_INDEX.voiceSpread,
+      [P.routeParamId(0, "amount")]: 100,
+      [P.routeParamId(0, "smoothMs")]: 40,
+    };
+    const gated = harmonyDifference({ ...PAN_NED, ...route, [P.HARM_BLOOM_ID]: 0 }, () => sine(220, 0.5), 1.2);
+    const bloomed = harmonyDifference({ ...PAN_NED, ...route, [P.HARM_BLOOM_ID]: 90 }, () => sine(220, 0.5), 1.2);
+    const from = Math.round(0.6 * SR);
+    // With BLOOM at 0 the route contributes nothing (identity spread); at
+    // 90 the sustained tone drives the voice outward — side energy grows
+    // (constant-power pan law: −50 → −66 gives a ≈1.3× side ratio).
+    expect(sideRmsOf(bloomed.diffL, bloomed.diffR, from)).toBeGreaterThan(
+      sideRmsOf(gated.diffL, gated.diffR, from) * 1.15,
+    );
+  });
+
+  it("survives the full spatial stack open: finite, mono-safe, gain-safe", () => {
+    const worst = state({
+      ...SUSTAINED,
+      [P.harmVoiceParamId(1, "on")]: 1,
+      [P.harmVoiceParamId(2, "on")]: 1,
+      [P.harmVoiceParamId(3, "on")]: 1,
+      [P.harmVoiceParamId(0, "pan")]: -100,
+      [P.harmVoiceParamId(1, "pan")]: 100,
+      [P.harmVoiceParamId(2, "pan")]: -100,
+      [P.harmVoiceParamId(3, "pan")]: 100,
+      [P.HARM_SPREAD_ID]: 200,
+      [P.HARM_WIDTH_ID]: 200,
+      [P.HARM_DIFFUSION_ID]: 100,
+      [P.HARM_SPACE_ID]: 100,
+    });
+    const [ol, or] = render(makeProcessor(worst), noise(0.9), 2.0);
+    for (let i = 0; i < ol.length; i++) {
+      expect(Number.isFinite(ol[i])).toBe(true);
+      expect(Number.isFinite(or[i])).toBe(true);
+    }
+    expect(peakOf(ol)).toBeLessThanOrEqual(1.05);
+    // Mono sum keeps most of the energy (§12: no destructive collapse).
+    const from = Math.round(1.0 * SR);
+    let monoSum = 0;
+    let stereo = 0;
+    for (let i = from; i < ol.length; i++) {
+      monoSum += (ol[i] + or[i]) * (ol[i] + or[i]);
+      stereo += ol[i] * ol[i] + or[i] * or[i];
+    }
+    expect(Math.sqrt(monoSum / 2)).toBeGreaterThan(Math.sqrt(stereo / 2) * 0.5);
+  });
+
+  it("stays deterministic and finite at 96 kHz with spatial open", () => {
+    const params = state({
+      ...SUSTAINED,
+      [P.HARM_SPREAD_ID]: 150,
+      [P.HARM_WIDTH_ID]: 160,
+      [P.HARM_DIFFUSION_ID]: 60,
+      [P.HARM_SPACE_ID]: 50,
+    });
+    const a = makeProcessor(params, 96000);
+    const b = makeProcessor(params, 96000);
+    const [al, ar] = render(a, sine(220, 0.5, 96000), 1.0, 96000);
+    const [bl] = render(b, sine(220, 0.5, 96000), 1.0, 96000);
+    expect(maxAbsDiff(al, bl)).toBe(0);
+    for (let i = 0; i < ar.length; i++) {
+      expect(Number.isFinite(al[i])).toBe(true);
+      expect(Number.isFinite(ar[i])).toBe(true);
     }
   });
 });

@@ -26,6 +26,10 @@ export const MOD_SOURCES = [
   "Texture",
   "Density",
   "Pressure",
+  // Experiment #3 (Phase III): the curved, enveloped spatial control
+  // signal (body score → bloom curve → attack/release). Append-only,
+  // index 7 — routes serialize sources by index.
+  "Bloom",
 ] as const;
 
 export type ModSource = (typeof MOD_SOURCES)[number];
@@ -39,6 +43,7 @@ export const SOURCE_INDEX = {
   texture: 4,
   density: 5,
   pressure: 6,
+  bloom: 7,
 } as const;
 
 // ── Destinations ────────────────────────────────────────────
@@ -75,6 +80,13 @@ export const MOD_DESTINATIONS: readonly ModDestination[] = [
   // Experiment #1 (Harmonic Bloom hook, §10): BODY energy opening the
   // harmony is a ROUTE, not hardcoded DSP — append-only, index 12.
   { label: "Harmony Mix", key: "harm.mix", span: 100, min: 0, max: 100 },
+  // Experiment #3 (Phase III): the spatial bloom destinations. All four
+  // operate on the HARMONY BUS only. APPEND-ONLY (indices 13–16) —
+  // serialized routes store enum indices, never renumber.
+  { label: "Voice Spread", key: "harm.spread", span: 100, min: 0, max: 200 },
+  { label: "Harmony Width", key: "harm.width", span: 100, min: 0, max: 200 },
+  { label: "Harmony Diffusion", key: "harm.diffusion", span: 100, min: 0, max: 100 },
+  { label: "Harmony Space", key: "harm.space", span: 100, min: 0, max: 100 },
 ] as const;
 
 /** Stable enum indices (serialized in routes.N.destination). */
@@ -92,4 +104,8 @@ export const DEST_INDEX = {
   decay: 10,
   width: 11,
   harmonyMix: 12,
+  voiceSpread: 13,
+  harmWidth: 14,
+  harmDiffusion: 15,
+  harmSpace: 16,
 } as const;

@@ -9,15 +9,23 @@ import { createLfoSyncController } from "../effects/tempo-sync";
  */
 export function createChorusNode(
   ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
+  instance: { params: Record<string, number>; id?: string },
   bpm?: number,
 ): EffectRuntime {
+  // Per-instance seed → S&H LFO rerolls differ across instances but stay
+  // deterministic per project (precedent pitchshift-node).
+  let seed = 1;
+  const fxId = instance.id ?? "";
+  for (let i = 0; i < fxId.length; i++) {
+    seed = (Math.imul(seed, 31) + fxId.charCodeAt(i)) | 0;
+  }
   const node = new AudioWorkletNode(ctx, "chorus-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
+    processorOptions: { seed: Math.abs(seed) || 1 },
   });
 
   const input = ctx.createGain();
@@ -40,6 +48,9 @@ export function createChorusNode(
 
   safeApplyAudioParam(node, "depth", instance.params.depth ?? 0.5);
   safeApplyAudioParam(node, "spread", instance.params.spread ?? 1);
+  safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
+  safeApplyAudioParam(node, "voices", instance.params.voices ?? 2);
+  safeApplyAudioParam(node, "lfoShape", instance.params.lfoShape ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
   out.gain.value = Math.pow(10, (instance.params.output ?? 0) / 20);
 
