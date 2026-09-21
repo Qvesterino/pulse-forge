@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { YDocStore } from "../src/collab/YDocStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { setBpm } from "../src/commands/commands";
+import { setBpm, setProjectName } from "../src/commands/commands";
+import type { ProjectDocument } from "../src/project-model/types";
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 
 /** Simulate BroadcastChannel sync — apply source's full state to target. */
@@ -329,6 +330,41 @@ describe("YDocStore pre-sync guard (GOAL 05)", () => {
     expect(store.doc.bpm).toBe(140);
     // Self-seeded room — the pre-guard behavior.
     expect(store.yDocRef.getMap("project").size).toBeGreaterThan(0);
+  });
+
+  it("buffered window emits NOTHING to engine/transport; every post-adopt emission is a coherent full doc", () => {
+    // Side-channel contract (GOAL 07): onDocChanged drives engine.setProject
+    // and transport.setBpm — during the pre-sync window it must stay silent
+    // (the engine must never diff-sync the fallback doc, let alone a
+    // skeleton projection), and after the adopt decision every emission must
+    // be a complete document so mid-playback adoption behaves exactly like a
+    // user edit (transient ≤1 lookahead window of pre-swap audio, position
+    // preserved by setBpm's re-anchor).
+    const room = new Y.Doc();
+    const remote = createProjectFromTemplate("trap");
+    projectToYDoc(remote, room.getMap("project"));
+
+    const store = YDocStore.empty(fallback());
+    const seen: ProjectDocument[] = [];
+    store.onDocChanged = (doc) => seen.push(doc);
+
+    store.execute(setBpm(store.doc, 140));
+    store.execute(setProjectName(store.doc, "Joined Jam"));
+    expect(seen).toEqual([]);
+
+    syncDocs(room, store.yDocRef);
+    store.adoptRemote();
+    store.markSynced();
+
+    // Every emission is a full, remote-derived document (never a fragment).
+    expect(seen.length).toBeGreaterThan(0);
+    for (const doc of seen) {
+      expect(doc.id).toBe(remote.id);
+      expect(doc.tracks.length).toBe(remote.tracks.length);
+    }
+    // The flushed commands landed on the adopted doc.
+    expect(store.doc.bpm).toBe(140);
+    expect(store.doc.name).toBe("Joined Jam");
   });
 
   it("non-deferred stores (fromDocument) execute immediately — no guard", () => {

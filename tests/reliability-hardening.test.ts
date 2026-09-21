@@ -186,6 +186,13 @@ describe("SnapshotRepository — seq survives reload", () => {
     const s1 = await repo1.save("projX", doc, "s1");
     const s2 = await repo1.save("projX", doc, "s2");
     const repo2 = new SnapshotRepository();
+    // seq is wall-clock based and per-INSTANCE: without this gap, s2 (same-ms
+    // increment inside repo1) and s3 (repo2's fresh Date.now seed) can share a
+    // seq value, and the rebuilt index tie-break (stable sort over IDB getAll
+    // order = random id suffixes) then decides "newest" arbitrarily. The real
+    // guarantee being tested is ordering for saves that do NOT share a
+    // millisecond across instances — give the clock room to move.
+    await new Promise((resolve) => setTimeout(resolve, 2));
     const s3 = await repo2.save("projX", doc, "s3");
     // Session 3 rebuilds purely from the durable index.
     const repo3 = new SnapshotRepository();
