@@ -158,6 +158,17 @@ const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
 ];
 
+/**
+ * True when the text explicitly names a production target track family
+ * ("the drums", "the bass", …). The unified router uses this to give a
+ * TARGETED production intent precedence over the global mix profile —
+ * "make the drums darker" names where, so the change lands on the drums
+ * track, not on the master tilt.
+ */
+export function namesProductionTarget(text: string): boolean {
+  return TARGET_PATTERNS.some(([re]) => re.test(text));
+}
+
 /** Default amounts — modifiers ("much", "slightly") scale around these. */
 const DEFAULT_AMOUNT = 0.7;
 

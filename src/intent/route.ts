@@ -4,6 +4,7 @@ import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
 import type { EffectIntent, MixOverrides } from "./mix";
+import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -153,6 +154,7 @@ export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
   | { kind: "effectIntent"; intent: EffectIntent }
   | { kind: "loudness"; parse: { direction: "louder" | "quieter"; targetDb?: number; detected: string[] } }
+  | { kind: "production"; intent: ProductionIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
   | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[]; targetRole: string | null }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
@@ -165,11 +167,16 @@ export type RoutedIntent =
  *   2. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
  *      target × direction ("viac delayu na leade", "remove reverb from the
  *      bass") — more specific than the mix profile, so it wins over it.
- *   3. MIX — mix nouns/verbs or tone comparatives without a target ("more
+ *   3. PRODUCTION — a production concept ("darker", "punchier", "deeper"…)
+ *      with an EXPLICIT target track named ("make the drums darker") and no
+ *      genre signal: the user said WHERE, so the change lands on that track's
+ *      FX (mirrors the GENERATE button's production path). Without a named
+ *      target, tone comparatives stay with the mix profile.
+ *   4. MIX — mix nouns/verbs or tone comparatives without a target ("more
  *      reverb", "punchier", "darker mix") — SOUND processing.
- *   4. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
+ *   5. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
  *      result, same seed (identity preserved).
- *   5. PATTERN — everything else is a generation intent (default).
+ *   6. PATTERN — everything else is a generation intent (default).
  * Ambiguity is resolved toward the LEAST destructive interpretation: arrange
  * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
  * revise only on comparative + attribute pairs.
@@ -189,6 +196,18 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   if (effectIntent) {
     return { kind: "effectIntent", intent: effectIntent };
   }
+  // Genre signal flips production words into generation-time FX ("wobbly
+  // drill" GENERATES with the mangler) — same rule as the GENERATE path.
+  const pattern = parseIntentText(text);
+  const genreSignal = Boolean(
+    pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")),
+  );
+  if (!genreSignal) {
+    const production = parseProductionIntent(text);
+    if (production && namesProductionTarget(text)) {
+      return { kind: "production", intent: production };
+    }
+  }
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);
     return { kind: "mix", overrides: mix.overrides, detected: mix.detected };
@@ -197,6 +216,5 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   if (revise) {
     return { kind: "revise", ...revise };
   }
-  const pattern = parseIntentText(text);
   return { kind: "pattern", input: pattern.input, detected: pattern.detected };
 }

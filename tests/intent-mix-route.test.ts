@@ -159,4 +159,35 @@ describe("unified router (D3)", () => {
     const route = routeIntentText("ambient intro at 90", docWithScenes());
     expect(route.kind).toBe("pattern");
   });
+
+  it("production concept + explicit target beats the mix profile (GOAL 03 regression)", () => {
+    // "make the drums darker" used to fall to the MIX branch (global master
+    // tilt) because the comparative fired before anything read "drums" — the
+    // user's target was silently broadened to the whole mix.
+    const route = routeIntentText("make the drums darker", docWithScenes());
+    expect(route.kind).toBe("production");
+    if (route.kind === "production") {
+      expect(route.intent.targets).toContain("drums");
+      expect(route.intent.goals.map((g) => g.concept)).toContain("darker");
+    }
+    expect(routeIntentText("make the bass deeper", docWithScenes()).kind).toBe("production");
+    expect(routeIntentText("warmer 808 please", docWithScenes()).kind).toBe("production");
+  });
+
+  it("tone comparatives WITHOUT a target still route to the mix profile", () => {
+    expect(routeIntentText("darker", docWithScenes()).kind).toBe("mix");
+    expect(routeIntentText("make the mix warmer", docWithScenes()).kind).toBe("mix");
+  });
+
+  it("genre signal flips production words back into generation-time FX", () => {
+    // "wobbly drill" generates WITH the mangler — it must not re-tune the
+    // existing drums track (same rule as the GENERATE path).
+    const route = routeIntentText("wobbly drill", docWithScenes());
+    expect(route.kind).toBe("pattern");
+  });
+
+  it("targeted effect intents still outrank production concepts", () => {
+    // an effect NOUN × target is more specific than a concept adjective
+    expect(routeIntentText("remove reverb from the bass", docWithScenes()).kind).toBe("effectIntent");
+  });
 });

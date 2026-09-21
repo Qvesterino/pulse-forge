@@ -396,6 +396,18 @@ export function IntentPanel() {
         const command = applyEffectIntent(doc, route.intent);
         services.store.execute(command);
         setStatus(`⚡ ${route.intent.detected.join(" · ")}`);
+      } else if (route.kind === "production") {
+        // Production intent with an explicit target ("make the drums
+        // darker") — same executor as the GENERATE path: track FX, one
+        // undo step. The router only sends texts that name a target track.
+        stopAudition();
+        try {
+          const cmd = applyProductionIntentCommand(doc, route.intent);
+          services.store.execute(cmd);
+          setStatus(`✓ ${cmd.label} — applied (one undo step)`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } else if (route.kind === "loudness") {
         // D1 loudness loop: measure → trim → verify
         stopAudition();
