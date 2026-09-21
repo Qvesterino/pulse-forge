@@ -44,7 +44,7 @@ Two service tiers — the load-bearing seam of the app:
 - **`Transport`:** anchor-based tick↔time mapping, position-preserving `setBpm`, exact-anchor `setBpmAnchored` (scene-tempo seam), loop region, count-in, NaN-guarded seek.
 - **`Scheduler`:** 25 ms interval / 120 ms horizon lookahead; tick-space event windows; quantized pattern-launch commits (via sanctioned `store.execute(setActivePattern(...))`); tempo-seam window splits; loop wrap; AudioContext-state gating; derived-structure caching keyed on doc reference (relies on immutability).
 - **`PlaybackController`:** play/pause/stop/seek/launchScene; pre-roll; frozen-source resurrection.
-- Known open seam: offline scene-BPM handling (needs AudioEngine edit; design in earlier reliability notes).
+- Scene-BPM seam (GOAL 05, `46c9e97`): offline tempo-synced FX now schedule per-window (setEffectiveBpm carries the window start time; AudioParam runtimes stock-delay/chorus/kaskada honor it). Message-port runtimes (fxeq, ozvena, granular, stutter, stepgate, beatMangler) remain last-write-wins offline — ozvena is byte-faithful vendored so processor-side scheduling is upstream-only work.
 
 ## 5. Audio engine & DSP
 
@@ -119,7 +119,9 @@ Two service tiers — the load-bearing seam of the app:
 | Intent routing | overlap FIXED `41a0417` (target+concept → production); residual: bare comparatives route differently per button (DO IT→mix, GENERATE→production) — product decision pending | §6 |
 | `genre-reference.generated.ts` placeholder | genre loudness/tilt inert until measured; concurrent session owns | §6 |
 | Ranker shadow default | trained ranker unused pending human golden re-review | §6 |
-| DI bypasses in UI | GroovePoolRepository constructed in ModPanel/RackStrip; Morph/Ultina preset repos constructed in panels | §17.2 |
+| DI bypasses in UI | GroovePoolRepository DI fixed (GOAL 02); Morph/Ultina preset repos still constructed in panels | §17.2 |
+| Granular/wavetable sample re-upload | worklet instrument runtimes never re-upload a sample that lands in the bank AFTER construction (reload race) — silent/wrong until the user re-picks the sample (granularNode.ts:19,57-59; AudioEngine syncInstrument diff only on sampleId change ~:2316) | GOAL 06 top item |
+| Collab offline-adopt loss | IDB-only edits made while the websocket is down are dropped by the adopt path on reload (no merge/snapshot/warn) — mitigation candidate: auto-snapshot pre-adopt state | GOAL 06 |
 | Collab server exposure | limits+CORS shipped; moderation client-side only | §8 |
 | Offline render non-cancellable mid-render; offline scene-BPM seam | export residuals | KNOWN_LIMITATIONS |
 | jsdom full-suite runtime | 345 files, >2h on shared machine; flaky-timeout class | work log |
