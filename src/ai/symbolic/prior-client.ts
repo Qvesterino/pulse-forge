@@ -129,11 +129,7 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   try {
     const path =
-      kind === "drums"
-        ? DRUMS_MANIFEST_PATH
-        : kind === "drums-v2"
-          ? DRUMS_V2_MANIFEST_PATH
-          : MELODIC_MANIFEST_PATH;
+      kind === "drums" ? DRUMS_MANIFEST_PATH : kind === "drums-v2" ? DRUMS_V2_MANIFEST_PATH : MELODIC_MANIFEST_PATH;
     const fetchPromise = fetch(path, controller ? { signal: controller.signal } : undefined);
     const response = await Promise.race([
       fetchPromise,
@@ -228,7 +224,10 @@ export async function runPriorGridV2(values: Float32Array, rowCount: number): Pr
     }
     const active = spawnWorker();
     if (!active) return { ok: false, probs: null, source: "fallback" };
-    const load = await request({ type: "load", requestId: nextRequestId++, kind: "drums-v2", manifest }, LOAD_TIMEOUT_MS);
+    const load = await request(
+      { type: "load", requestId: nextRequestId++, kind: "drums-v2", manifest },
+      LOAD_TIMEOUT_MS,
+    );
     if (!load.ok) return { ok: false, probs: null, source: "fallback" };
     const response = await request(
       { type: "run", requestId: nextRequestId++, kind: "drums-v2", batch: values, rowCount },

@@ -32,13 +32,24 @@ const DATASET_VERSION = "symbolic-prior-ds.v1";
 // features; 64+ only duplicates the 16-frame labels without new information.
 const FRAME_LENGTHS = [16, 32] as const;
 
-// Contract guard: the vocabulary must cover the whole library, or the model
-// would train on classes the runtime cannot address.
+// Contract guard: the dataset covers ONLY styles the fixed runtime vocabulary
+// can address (44-dim one-hot layout). Grooves outside the vocab (drill,
+// phonk, jersey, dnb, …) stay on the template path until a matching model is
+// trained — filtering here keeps the check a no-op for library growth.
+const vocabSet = new Set<string>(PRIOR_STYLE_VOCAB);
 const libraryIds = GROOVE_LIBRARY.map((groove) => groove.id).sort();
-const vocabIds = [...PRIOR_STYLE_VOCAB].sort();
-if (JSON.stringify(libraryIds) !== JSON.stringify(vocabIds)) {
+const outOfVocab = libraryIds.filter((id) => !vocabSet.has(id));
+if (outOfVocab.length > 0) {
+  console.warn(
+    `[dataset] ${outOfVocab.length} library groove(s) outside PRIOR_STYLE_VOCAB — excluded ` +
+      `(template path only): ${outOfVocab.slice(0, 6).join(", ")}${outOfVocab.length > 6 ? " …" : ""}`,
+  );
+}
+const vocabOnlyIds = libraryIds.filter((id) => vocabSet.has(id));
+const libraryIdSet = new Set(libraryIds);
+if (JSON.stringify(vocabOnlyIds) !== JSON.stringify([...vocabSet].sort())) {
   throw new Error(
-    `PRIOR_STYLE_VOCAB out of sync with GROOVE_LIBRARY.\nlibrary-only: ${libraryIds.filter((id) => !vocabIds.includes(id)).join(", ")}\nvocab-only: ${vocabIds.filter((id) => !libraryIds.includes(id)).join(", ")}`,
+    `PRIOR_STYLE_VOCAB out of sync with GROOVE_LIBRARY.\nlibrary-only: ${outOfVocab.join(", ")}\nvocab-only: ${[...vocabSet].filter((id) => !libraryIdSet.has(id)).join(", ")}`,
   );
 }
 
@@ -54,6 +65,7 @@ const samples: DatasetSample[] = [];
 let hitCount = 0;
 
 for (const groove of GROOVE_LIBRARY) {
+  if (!vocabSet.has(groove.id)) continue; // out-of-vocab grooves: template path only
   for (const [patternIndex, pattern] of groove.patterns.entries()) {
     for (const frameLength of FRAME_LENGTHS) {
       for (let padIndex = 0; padIndex < 16; padIndex++) {

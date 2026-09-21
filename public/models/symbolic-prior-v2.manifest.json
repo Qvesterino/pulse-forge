@@ -1,19 +1,20 @@
 {
   "priorVersion": "prior.v2",
-  "featureVersion": "prior-features.v1",
+  "featureVersion": "prior-features-v2",
   "featureCount": 35,
   "modelPath": "/models/symbolic-prior-v2.onnx",
   "inputName": "features",
   "outputName": "logits",
-  "modelHash": "b762dbcfccf6a9acb178e0c4f6777618f687170c5ab1435f38ff02f3ca8fca4c",
+  "modelHash": "3ba076e279ecbf4c126c1a032768d9ddf59f78ae708077c38b33dfcb65a60072",
   "hidden": [
     64,
     32
   ],
   "report": {
     "datasetVersion": "symbolic-prior-ds.v1",
-    "featureVersion": "prior-features.v1",
+    "featureVersion": "prior-features-v2",
     "featureCount": 35,
+    "mode": "embedding-v2",
     "hidden": [
       64,
       32
@@ -36,6 +37,6 @@
       "f1": 0.4048
     }
   },
-  "inputDims": 35,
+  "kind": "drums-v2",
   "conditioning": "embedding"
 }

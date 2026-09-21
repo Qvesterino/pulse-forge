@@ -3,8 +3,10 @@
 > "Dark rainy Berlin techno" a "sunny Ibiza techno" by mali produkovať
 > ROZDIELNÉ patterny. Dnes dávajú rovnaký one-hot vektor — a to je tá medzera.
 >
-> Status: ROADMAP — pripravený na implementáciu po krokoch.
-> Predpoklad: MiniLM embedding model je fetchnutý a beží (§5.8b semantic layer).
+> Status: **FÁZY A-F DORUČENÉ** (2026-09-21) — descriptiony → MiniLM → PCA →
+> prior v2 (35-dim) → `pf:embedding-conditioned` wiring + provider fallback.
+> Fáza G (melodic v2) ostáva otvorená. Predpoklad: MiniLM embedding model je
+> fetchnutý a beží (§5.8b semantic layer).
 
 ---
 

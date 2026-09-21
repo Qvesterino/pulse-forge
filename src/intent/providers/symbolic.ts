@@ -15,7 +15,7 @@ import {
   PRIOR_FEATURES_VERSION,
   PRIOR_FEATURE_COUNT,
 } from "../../ai/symbolic/prior-features";
-import { buildPriorV2GridRows, PRIOR_V2_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v2";
+import { buildPriorV2GridRows, V2_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v2";
 import { runMelodicNext, runPriorGrid, runPriorGridV2, type PriorRunResult } from "../../ai/symbolic/prior-client";
 import { semanticConditioning } from "../semantic-conditioning";
 import {
@@ -276,9 +276,13 @@ export class SymbolicPriorProvider implements GenerationProvider {
         // 2. prior ONNX (autoregressive next-note model)
         // 3. template melody (Markov fallback)
         const multiVoice = generateMultiVoice(
-          doc, options.genre, parseInt(symbolicSeed.slice(-8), 36) || 42,
-          stepCount, options.key ?? doc.key ?? null,
-          plan.intent.energy, plan.intent.controls.velocityVariation,
+          doc,
+          options.genre,
+          parseInt(symbolicSeed.slice(-8), 36) || 42,
+          stepCount,
+          options.key ?? doc.key ?? null,
+          plan.intent.energy,
+          plan.intent.controls.velocityVariation,
         );
         let notes: Pattern["notes"] = {};
         let melodicSource: "mv" | "prior" | "template" = "template";
@@ -321,8 +325,8 @@ export class SymbolicPriorProvider implements GenerationProvider {
           let run: PriorRunResult | null = null;
           if (semantic && !v2Unavailable) {
             const featureRows = buildPriorV2GridRows({ semantic, padRoles, stepCount });
-            const batch = new Float32Array(featureRows.length * PRIOR_V2_FEATURE_COUNT);
-            featureRows.forEach((row, index) => batch.set(row, index * PRIOR_V2_FEATURE_COUNT));
+            const batch = new Float32Array(featureRows.length * V2_FEATURE_COUNT);
+            featureRows.forEach((row, index) => batch.set(row, index * V2_FEATURE_COUNT));
             run = await runPriorGridV2(batch, featureRows.length);
             if (run.ok) {
               semanticUsed = true;
@@ -400,8 +404,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
-          source:
-            Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
+          source: Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

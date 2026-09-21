@@ -42,8 +42,7 @@ export async function semanticConditioning(
     if (projectionCache.has(trimmed)) return projectionCache.get(trimmed) ?? null;
 
     const vectors = await embedFn([trimmed]);
-    const projected =
-      vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
+    const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
     const result =
       projected && projected.length > 0 && projected.every((value) => Number.isFinite(value))
         ? Object.freeze(projected)

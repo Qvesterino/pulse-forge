@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import pcaReference from "../scripts/data/pca-embedding-projection.json";
 import {
-  PRIOR_V2_FEATURE_COUNT,
+  V2_FEATURE_COUNT,
   V2_ROLE_VOCAB,
   V2_SEMANTIC_DIMS,
   buildPriorV2FeatureRow,
@@ -10,10 +10,7 @@ import {
 } from "../src/ai/symbolic/prior-features-v2";
 import { projectEmbedding, pcaInputDims, pcaOutputDims, pcaVersion } from "../src/ai/symbolic/pca-projection";
 import { runPriorGrid, runPriorGridV2 } from "../src/ai/symbolic/prior-client";
-import {
-  resetSemanticConditioning,
-  semanticConditioning,
-} from "../src/intent/semantic-conditioning";
+import { resetSemanticConditioning, semanticConditioning } from "../src/intent/semantic-conditioning";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
 import { symbolicPriorProvider } from "../src/intent/providers/symbolic";
@@ -77,9 +74,9 @@ describe("prior-features-v2 contract", () => {
   const SEMANTIC = Array.from({ length: V2_SEMANTIC_DIMS }, (_, index) => (index - 8) / 16);
 
   it("produces 35-dim rows: semantic(16) + role(9) + step(5) + frame(3) + flags(2)", () => {
-    expect(PRIOR_V2_FEATURE_COUNT).toBe(35);
+    expect(V2_FEATURE_COUNT).toBe(35);
     const row = buildPriorV2FeatureRow({ semantic: SEMANTIC, role: "kick", step: 0, stepCount: 16 });
-    expect(row.length).toBe(PRIOR_V2_FEATURE_COUNT);
+    expect(row.length).toBe(V2_FEATURE_COUNT);
     // semantic projection copied verbatim
     expect(row.slice(0, V2_SEMANTIC_DIMS)).toEqual(SEMANTIC);
     // role one-hot right after the semantic block
@@ -103,13 +100,13 @@ describe("prior-features-v2 contract", () => {
     const stepCount = 16;
     const rows = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount });
     expect(rows.length).toBe(padRoles.length * stepCount);
-    expect(rows.map((row) => row.length).every((length) => length === PRIOR_V2_FEATURE_COUNT)).toBe(true);
+    expect(rows.map((row) => row.length).every((length) => length === V2_FEATURE_COUNT)).toBe(true);
     const again = buildPriorV2GridRows({ semantic: SEMANTIC, padRoles, stepCount });
     expect(rows).toEqual(again);
     // second pad block starts at padRoles[1]
-    expect(
-      rows[stepCount].slice(V2_SEMANTIC_DIMS, V2_SEMANTIC_DIMS + V2_ROLE_VOCAB.length).indexOf(1),
-    ).toBe(V2_ROLE_VOCAB.indexOf("snare"));
+    expect(rows[stepCount].slice(V2_SEMANTIC_DIMS, V2_SEMANTIC_DIMS + V2_ROLE_VOCAB.length).indexOf(1)).toBe(
+      V2_ROLE_VOCAB.indexOf("snare"),
+    );
   });
 });
 
@@ -124,10 +121,7 @@ describe("pca-projection module", () => {
     expect(projected).not.toBeNull();
     // full-precision reference: components @ (vector − mean)
     const reference = pcaReference.components.map((component) =>
-      component.reduce(
-        (sum, weight, dim) => sum + weight * (vector[dim] - pcaReference.mean[dim]),
-        0,
-      ),
+      component.reduce((sum, weight, dim) => sum + weight * (vector[dim] - pcaReference.mean[dim]), 0),
     );
     for (let dim = 0; dim < pcaOutputDims(); dim++) {
       expect(Math.abs((projected as number[])[dim] - reference[dim])).toBeLessThan(0.05);
@@ -153,6 +147,7 @@ describe("semantic-conditioning gate", () => {
 
   it("flag on + 384-dim embed → 16-dim finite conditioning, memoized per text", async () => {
     localStorage.setItem(FLAG, "on");
+    priorFlagState.value = "on";
     embedTextsMock.mockResolvedValue([deterministicVector(384)]);
     const first = await semanticConditioning("dark rainy berlin techno", embedTextsMock);
     expect(first).not.toBeNull();
@@ -163,21 +158,24 @@ describe("semantic-conditioning gate", () => {
     expect(embedTextsMock).toHaveBeenCalledTimes(1);
   });
 
-  it("unavailable embedder → null (v1 fallback), empty text → null", async () => {
+  it("unavailable embedder → null (v1 fallback); blank text → null without embed", async () => {
     localStorage.setItem(FLAG, "on");
+    priorFlagState.value = "on";
     expect(await semanticConditioning("deep house", embedTextsMock)).toBeNull();
+    expect(embedTextsMock).toHaveBeenCalledTimes(1); // the probe above
     expect(await semanticConditioning("   ", embedTextsMock)).toBeNull();
-    expect(embedTextsMock).not.toHaveBeenCalled();
+    expect(embedTextsMock).toHaveBeenCalledTimes(1); // blank text never embeds
   });
 });
 
 describe("client flag", () => {
   it("defaults off; on/off round-trip; garbage falls back to off", async () => {
-    const actual = await vi.importActual<
-      typeof import("../src/ai/symbolic/prior-client")
-    >("../src/ai/symbolic/prior-client");
+    const actual = await vi.importActual<typeof import("../src/ai/symbolic/prior-client")>(
+      "../src/ai/symbolic/prior-client",
+    );
     expect(actual.embeddingConditionedMode()).toBe("off");
     localStorage.setItem(FLAG, "on");
+    priorFlagState.value = "on";
     expect(actual.embeddingConditionedMode()).toBe("on");
     localStorage.setItem(FLAG, "garbage");
     expect(actual.embeddingConditionedMode()).toBe("off");
@@ -199,18 +197,26 @@ describe("provider embedding-conditioned path", () => {
   }
 
   it("flag on + semantic answer → 35-dim batch through the v2 prior, '+sem' name", async () => {
+    priorFlagState.value = "on";
     const { doc, plan } = planFor();
     const embedding = deterministicVector(384);
     const expectedProjection = projectEmbedding(embedding) as number[];
     runPriorGridV2Mock.mockImplementation(async (batch: Float32Array, rowCount: number) => {
-      expect(batch.length).toBe(rowCount * PRIOR_V2_FEATURE_COUNT);
+      expect(batch.length).toBe(rowCount * V2_FEATURE_COUNT);
       // semantic block = the REAL PCA projection of the stubbed embedding
-      expect(Array.from(batch.slice(0, V2_SEMANTIC_DIMS))).toEqual(expectedProjection);
+      // (Float32-truncated by the batch — compare loosely)
+      const rowSemantic = Array.from(batch.slice(0, V2_SEMANTIC_DIMS));
+      expect(rowSemantic.length).toBe(V2_SEMANTIC_DIMS);
+      rowSemantic.forEach((value, dim) => expect(value).toBeCloseTo(expectedProjection[dim], 6));
       return { ok: true, probs: new Array(rowCount).fill(0.4), source: "model" as const };
     });
     embedTextsMock.mockResolvedValue([embedding]);
 
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(embedTextsMock).toHaveBeenCalledTimes(1);
     expect(runPriorGridV2Mock).toHaveBeenCalled();
     expect(runPriorGridMock).not.toHaveBeenCalled();
@@ -221,6 +227,7 @@ describe("provider embedding-conditioned path", () => {
   });
 
   it("v2 unavailable → v1 one-hot fallback keeps the candidate alive", async () => {
+    priorFlagState.value = "on";
     const { doc, plan } = planFor();
     runPriorGridV2Mock.mockResolvedValue({ ok: false, probs: null, source: "fallback" });
     runPriorGridMock.mockImplementation(async (batch: Float32Array, rowCount: number) => {
@@ -229,7 +236,11 @@ describe("provider embedding-conditioned path", () => {
     });
     embedTextsMock.mockResolvedValue([deterministicVector(384)]);
 
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(runPriorGridV2Mock).toHaveBeenCalledTimes(1); // no re-probe per seed
     expect(runPriorGridMock).toHaveBeenCalled();
     expect(failures).toContain("candidate-0:prior-v2-fallback");
@@ -245,7 +256,11 @@ describe("provider embedding-conditioned path", () => {
       source: "model" as const,
     }));
 
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(embedTextsMock).not.toHaveBeenCalled();
     expect(runPriorGridV2Mock).not.toHaveBeenCalled();
     expect(runPriorGridMock).toHaveBeenCalled();

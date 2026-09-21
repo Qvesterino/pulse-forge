@@ -78,12 +78,14 @@ function dequantizeRow(b64: string, scale: number, dims: number): Float64Array {
 let decodedMean: Float64Array | null = null;
 let decodedComponents: Float64Array[] | null = null;
 
-function ensureDecoded(): void {
-  if (decodedMean && decodedComponents) return;
-  decodedMean = dequantizeRow(MEAN_B64, MEAN_SCALE, PCA_INPUT_DIMS);
-  decodedComponents = COMPONENTS_B64.map((b64, index) =>
-    dequantizeRow(b64, COMPONENT_SCALES[index], PCA_INPUT_DIMS),
-  );
+function decoded(): { mean: Float64Array; components: Float64Array[] } {
+  if (!decodedMean || !decodedComponents) {
+    decodedMean = dequantizeRow(MEAN_B64, MEAN_SCALE, PCA_INPUT_DIMS);
+    decodedComponents = COMPONENTS_B64.map((b64, index) =>
+      dequantizeRow(b64, COMPONENT_SCALES[index], PCA_INPUT_DIMS),
+    );
+  }
+  return { mean: decodedMean, components: decodedComponents };
 }
 
 export function pcaVersion(): string {
@@ -104,17 +106,17 @@ export function pcaOutputDims(): number {
  * back to the v1 one-hot prior. Pure: same vector ⇒ same projection.
  */
 export function projectEmbedding(vector: ArrayLike<number>): number[] | null {
-  ensureDecoded();
+  const { mean, components } = decoded();
   if (!vector || vector.length !== PCA_INPUT_DIMS) return null;
   const centered = new Float64Array(PCA_INPUT_DIMS);
   for (let index = 0; index < PCA_INPUT_DIMS; index++) {
     const value = vector[index];
     if (!Number.isFinite(value)) return null;
-    centered[index] = value - decodedMean[index];
+    centered[index] = value - mean[index];
   }
   const out = new Array<number>(PCA_OUTPUT_DIMS);
   for (let component = 0; component < PCA_OUTPUT_DIMS; component++) {
-    const weights = decodedComponents[component];
+    const weights = components[component];
     let sum = 0;
     for (let index = 0; index < PCA_INPUT_DIMS; index++) sum += weights[index] * centered[index];
     out[component] = sum;

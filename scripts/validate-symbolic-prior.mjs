@@ -15,9 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const variant = process.argv[2] === "v2" ? "v2" : "v1";
 const modelsDir = path.join(ROOT, "public", "models");
-const manifest = JSON.parse(
-  readFileSync(path.join(modelsDir, `symbolic-prior-${variant}.manifest.json`), "utf8"),
-);
+const manifest = JSON.parse(readFileSync(path.join(modelsDir, `symbolic-prior-${variant}.manifest.json`), "utf8"));
 if (variant === "v2") {
   if (manifest.featureVersion !== "prior-features-v2") {
     throw new Error(`v2 manifest featureVersion mismatch: ${manifest.featureVersion}`);
@@ -49,7 +47,8 @@ try {
     graphOptimizationLevel: "all",
   });
   if (session.inputNames[0] !== manifest.inputName) throw new Error(`input name mismatch: ${session.inputNames[0]}`);
-  if (session.outputNames[0] !== manifest.outputName) throw new Error(`output name mismatch: ${session.outputNames[0]}`);
+  if (session.outputNames[0] !== manifest.outputName)
+    throw new Error(`output name mismatch: ${session.outputNames[0]}`);
 
   const featureCount = manifest.featureCount;
   const rows = 5;
@@ -62,7 +61,8 @@ try {
   for (let index = 0; index < logits.length; index++) {
     if (resultsAgain[manifest.outputName].data[index] !== logits[index]) throw new Error("non-deterministic inference");
   }
-  if (modelBytes.length > 1024 * 1024) throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
+  if (modelBytes.length > 1024 * 1024)
+    throw new Error(`model artifact too large: ${(modelBytes.length / 1024).toFixed(1)} kB`);
 
   // Realistic probe: a kick-role row at step 0 for every trained style must
   // produce a spread of probabilities (the prior differentiates styles).

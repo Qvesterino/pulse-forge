@@ -513,6 +513,18 @@ default house patternu (najhorší možný fallback pre trap request).
 - **T1 krok 3 ROADMAP**: embedding conditioning — continuous conditioning
   namiesto one-hot, text description generator, PCA projection, prior v2
   architektúra (~11-13h effort). Detailný plán: `docs/embedding-conditioning-roadmap.md`
+- **T1 krok 3 FÁZY A–F HOTOVÉ (embedding-conditioned prior)**: text
+  descriptions (1379 EN+SK) → MiniLM → PCA 384→16 (`scripts/data/pca-embedding-projection.json`)
+  → **prior v2**: 35-dim vstup (16 semantic + 19 štrukturálnych) trénovaný cez
+  `npm run prior:v2` (valAUC 0.879, 17.7 kB, `public/models/symbolic-prior-v2.onnx`).
+  Runtime: `pf:embedding-conditioned` flag (default off — postupný rollout),
+  `semanticConditioning()` (text → embed → PCA, memoizované, nikdy nehádže),
+  `runPriorGridV2()` v prior workeri (kind `drums-v2`), provider fallback v2 →
+  v1 one-hot per candidate (diagnostika `prior-v2-fallback`), názov kandidáta
+  nesie `+sem`. PCA matica v bundle ako Int8-kvantovaný modul
+  (`src/ai/symbolic/pca-projection.ts`, generovaný `npm run pca:module`).
+  Neznáme popisy ("dark rainy berlin techno") fungujú cez kontinuálny priestor —
+  žiadne nové one-hot dimenzie. Fáza G (melodic v2) ostáva otvorená.
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).

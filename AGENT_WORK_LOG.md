@@ -3274,3 +3274,29 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Campaign close (re-run 3):** GOALs 01-12 delivered. 21 campaign commits, zero regressions introduced, 3 real defects fixed (provenance seam, boot AudioContext refusal, setGroove absence asymmetry) plus the VocalForge gate leak found by the final preflight, with regression nets (real-shape tests, source pins, latency harness, sweep tables) locking each surface.
 
 **Recommendation for the next scheduled session:** re-run the 4 owner-assigned failures after the concurrent session's harmony/mic work lands; confirm the snapshot fixture stays green in a second full run; then flip the classification to PASS once items 1-4 clear.
+
+---
+
+## GOAL 24 — EMBEDDING-CONDITIONED PRIOR FÁZY D-F (2026-09-21)
+
+**Cieľ:** roadmap `docs/embedding-conditioning-roadmap.md` Fázy D-F — prior v2 (35-dim: 16 PCA semantic + 19 štrukturálnych), runtime wiring, flag `pf:embedding-conditioned`. Fázy A-C doručené skôr (GOAL 23).
+
+**Fáza D — tréning:**
+- `scripts/train-symbolic-prior.py --embedding scripts/data/style-embeddings.json`: 35-dim režim zapisuje SAMOSTATNÉ artefakty (`symbolic-prior-v2.onnx` + manifest `kind: drums-v2`, `featureVersion: prior-features-v2`) — v1 one-hot prior ostáva nedotknutý ako runtime fallback. Favorites pack transform 44→35 (strip genre+style one-hot, +style embedding cez `groove` kľúč; 35-dim packy prechádzajú 1:1, iná šírka = jasná chyba).
+- `scripts/generate-symbolic-prior-dataset.mts`: out-of-vocab grooves (12 nových dnb/drill/jersey/phonk) sa EXKLUDUJÚ s warningom namiesto hard-failu — politika "nové žánre = template path až kým nie je natrénovaný model" zostáva zachovaná.
+- `npm run prior:v2` — celý reťazec (dataset → tréning → validácia). Výsledok: valAUC **0.879**, 17.7 kB, 87 552 sampleov, deterministický.
+
+**Fáza E — runtime wiring:**
+- `prior-types.ts`: `PriorKind += "drums-v2"`, `DrumsV2PriorManifest` + guard (`prior-features-v2`, kind explicitný), `SigmoidPriorManifest` alias.
+- `prior-worker.ts`: routing drums-v2 → rovnaká sigmoid hlava; **opravený broken shim** `coerceDrumsManifest` (delegoval na guard vyžadujúci `kind`, ktorý v1 manifest na disku NEMÁ → v1 prior bol v runtime ticho nefunkčný; shim teraz akceptuje kind-less a doda kind).
+- `prior-client.ts`: `embeddingConditionedMode()` (localStorage `pf:embedding-conditioned`, default **off**), `runPriorGridV2()`, v2 manifest path, cache per kind.
+
+**Fáza F — generácia:**
+- `src/ai/symbolic/pca-projection.ts` — GENEROVANÝ modul (`npm run pca:module`): 16×384 komponenty + mean ako Int8-kvantovaný base64 (11.6 kB vs ~130 kB floats; chyba ≤ scale/127), `projectEmbedding()` validuje 384-dim vstup.
+- `src/intent/semantic-conditioning.ts` — text → MiniLM embed (semantic worker, timeout+breaker) → PCA → memoizované 16-dim conditioning; **nikdy nehádže** — null = v1 fallback.
+- `IntentSpec.text?` (clamp 300) — raw user text, tiež provenance; `normalizeIntent` prenáša.
+- Provider: v2 prior preferovaný keď flag on + embedding dostupný; fallback v2 → v1 per candidate (diagnostika `prior-v2-fallback`, bez re-probe per seed); názov kandidáta `+sem`. Pri nezmenenom flage = pures v1 chovanie.
+
+**Testy:** `tests/prior-embedding-conditioning.test.ts` 11/11 (35-dim kontrakt, PCA vs full-precision referencia ≤0.05, flag gating, memoizácia, provider +sem/v1-fallback/pure-v1). Regresia **240/240 cez 23 intent súborov**. Typecheck čistý (mimo in-flight súborov súbežnej relácie).
+
+**Poznámky:** Fáza G (melodic v2 29-dim) otvorená. Nové žánre bez modelu: warning v dataset generátore. Súbežná relácia natrénovala skorší v2 pokus (a6c42aa) s nesprávnym manifestom (featureVersion v1, bez kind) — retrain + manifest fix ho nahrádza.

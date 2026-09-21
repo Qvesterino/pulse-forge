@@ -14,24 +14,13 @@ const PCA_INPUT_DIMS = 384;
 const PCA_OUTPUT_DIMS = 16;
 
 const MEAN_SCALE = 1.14255102789994744e-3;
-const MEAN_B64 = "jneQf315knp5iZSInFigjZ2kkId0a3BsYZd1iXFKkq6Vi4WFdYxJZ2eQjn2AeYt2gWt0l3h1cHKNnHGDkII7kZp0h4WDh21maFS4j4ZjcmObeHRVYI58qHRweoFpkL1yeV+q/6aQdKiUaK+Og2ZzgX57fVNqkYiPcoGFhadPiqNyj456vIhzlpvJn2hKl4thdnNhZl2NhlecpoGekp98jnCEg5Bfa1Z1c3t6dIZ7hpBsqG2SiYN9h5V+lZ2TimtPo45wa32CfnF5fICKd4KFfmehhEiJdJR7bXBEh5RkhS58bmyUZoR1j4enbYSLcYJ3gHaXopBegrCBu3OEWJZ5gYWTkYOUh05VfY1qtWxwSnNobptoikx3tX10mqajjW1Vl4+BpF+UhbOYnX2UrHRmh4+GhI14gFKMXIijhoGreydkXGNgfYKWW21TdV54qZSnaYVjbKyol3d/gn1mtWF6lFqEcJF0gnOWjV1tlHuDdnZxjqt8hJSaamuFbopqk3Cd";
+const MEAN_B64 =
+  "jneQf315knp5iZSInFigjZ2kkId0a3BsYZd1iXFKkq6Vi4WFdYxJZ2eQjn2AeYt2gWt0l3h1cHKNnHGDkII7kZp0h4WDh21maFS4j4ZjcmObeHRVYI58qHRweoFpkL1yeV+q/6aQdKiUaK+Og2ZzgX57fVNqkYiPcoGFhadPiqNyj456vIhzlpvJn2hKl4thdnNhZl2NhlecpoGekp98jnCEg5Bfa1Z1c3t6dIZ7hpBsqG2SiYN9h5V+lZ2TimtPo45wa32CfnF5fICKd4KFfmehhEiJdJR7bXBEh5RkhS58bmyUZoR1j4enbYSLcYJ3gHaXopBegrCBu3OEWJZ5gYWTkYOUh05VfY1qtWxwSnNobptoikx3tX10mqajjW1Vl4+BpF+UhbOYnX2UrHRmh4+GhI14gFKMXIijhoGreydkXGNgfYKWW21TdV54qZSnaYVjbKyol3d/gn1mtWF6lFqEcJF0gnOWjV1tlHuDdnZxjqt8hJSaamuFbopqk3Cd";
 const COMPONENT_SCALES = [
-  1.20633016691380963e-3,
-  1.19654587711916466e-3,
-  1.19682356982262991e-3,
-  1.19616268195749109e-3,
-  1.19724314673486099e-3,
-  1.19687165319511840e-3,
-  1.19901107979164295e-3,
-  1.19703063228897917e-3,
-  1.19704013897945481e-3,
-  1.19700023457172569e-3,
-  1.19700558946631334e-3,
-  1.19701969566162760e-3,
-  1.19703081771384149e-3,
-  1.19702639743794075e-3,
-  1.19701915916348286e-3,
-  1.19708122380427612e-3,
+  1.20633016691380963e-3, 1.19654587711916466e-3, 1.19682356982262991e-3, 1.19616268195749109e-3,
+  1.19724314673486099e-3, 1.1968716531951184e-3, 1.19901107979164295e-3, 1.19703063228897917e-3, 1.19704013897945481e-3,
+  1.19700023457172569e-3, 1.19700558946631334e-3, 1.1970196956616276e-3, 1.19703081771384149e-3, 1.19702639743794075e-3,
+  1.19701915916348286e-3, 1.19708122380427612e-3,
 ];
 const COMPONENTS_B64 = [
   "jECnh2+V34NYdGqQe3rObv9xeWx6jJ58UV9yd2KsfcJUSAhyi59Je8GBcV54Z0KQibRybsdYrntrzoCBL0qNa6NlnGFghnZZmZx0Z39nf3GJe2o1uWqBeEyfDbx5i82wnb5Zin9virCWdnNIG6q9b2J6oHQ7rY+rV491o51nsIxFUpOap4I+SZx4gqWIjsJdT117YZCCXVZmlouv3YREW5dHclyhuY+5lVYUZSyTrZdTink/6IN6rYxtVIBoiMxEfY9/cW2Dqn5RjspYhX1copmVgo/KjlgpRHpdmXqRUZdbqLfEX7a2iWdUoVRmr3I9jN20TIY4tX9yW3yvW4XPtJ5ZedZea5Rvkm+GY5O5RNRvZuFob2EvS4U0poBxXEdWtT1eZ89/g2o9uX6AgVuOmKRygj0i7pOkZ5ymnETITqdveKhabcZzFFqYfTZ80MawjZ9vcbGNbYKBVH+AgFRhtY5iMVNQspPox858jVpZ2VKSpJGPknKlTFC9hHRtoIiH",
@@ -62,12 +51,12 @@ function dequantizeRow(b64: string, scale: number, dims: number): Float64Array {
 let decodedMean: Float64Array | null = null;
 let decodedComponents: Float64Array[] | null = null;
 
-function ensureDecoded(): void {
-  if (decodedMean && decodedComponents) return;
-  decodedMean = dequantizeRow(MEAN_B64, MEAN_SCALE, PCA_INPUT_DIMS);
-  decodedComponents = COMPONENTS_B64.map((b64, index) =>
-    dequantizeRow(b64, COMPONENT_SCALES[index], PCA_INPUT_DIMS),
-  );
+function decoded(): { mean: Float64Array; components: Float64Array[] } {
+  if (!decodedMean || !decodedComponents) {
+    decodedMean = dequantizeRow(MEAN_B64, MEAN_SCALE, PCA_INPUT_DIMS);
+    decodedComponents = COMPONENTS_B64.map((b64, index) => dequantizeRow(b64, COMPONENT_SCALES[index], PCA_INPUT_DIMS));
+  }
+  return { mean: decodedMean, components: decodedComponents };
 }
 
 export function pcaVersion(): string {
@@ -88,17 +77,17 @@ export function pcaOutputDims(): number {
  * back to the v1 one-hot prior. Pure: same vector ⇒ same projection.
  */
 export function projectEmbedding(vector: ArrayLike<number>): number[] | null {
-  ensureDecoded();
+  const { mean, components } = decoded();
   if (!vector || vector.length !== PCA_INPUT_DIMS) return null;
   const centered = new Float64Array(PCA_INPUT_DIMS);
   for (let index = 0; index < PCA_INPUT_DIMS; index++) {
     const value = vector[index];
     if (!Number.isFinite(value)) return null;
-    centered[index] = value - decodedMean[index];
+    centered[index] = value - mean[index];
   }
   const out = new Array<number>(PCA_OUTPUT_DIMS);
   for (let component = 0; component < PCA_OUTPUT_DIMS; component++) {
-    const weights = decodedComponents[component];
+    const weights = components[component];
     let sum = 0;
     for (let index = 0; index < PCA_INPUT_DIMS; index++) sum += weights[index] * centered[index];
     out[component] = sum;
