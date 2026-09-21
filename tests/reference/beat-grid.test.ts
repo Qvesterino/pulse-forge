@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { analyzeReference } from "../../src/reference/analysis/analyzeReference";
-import { clickTrack, FIXTURE_HOP, FIXTURE_FFT, makeMetadata } from "./_fixtures";
+import { clickTrack, FIXTURE_HOP, FIXTURE_FFT, FIXTURE_SR, makeMetadata } from "./_fixtures";
 
 const TEMPI = [60, 80, 100, 120, 128, 140, 160] as const;
 const TOLERANCE_BPM = 1.0; // ±1 BPM as per docs/REFERENCE-MAP-ROADMAP.md §C
@@ -40,7 +40,7 @@ describe("reference/beat-grid", () => {
       const beatTimes = result.result.rhythm.beatTimes;
       expect(beatTimes.length).toBeGreaterThan(0);
       if (beatTimes.length > 0) {
-        const expectedCount = Math.floor(TEST_DURATION * detected / 60);
+        const expectedCount = Math.floor((TEST_DURATION * detected) / 60);
         expect(beatTimes.length).toBeGreaterThanOrEqual(expectedCount - 2);
         expect(beatTimes.length).toBeLessThanOrEqual(expectedCount + 2);
         expect(beatTimes[0]).toBeGreaterThanOrEqual(0);
@@ -67,7 +67,7 @@ describe("reference/beat-grid", () => {
     expect(result.result.diagnostics.analysisSampleRate).toBe(FIXTURE_HOP === 512 ? 22050 : 22050);
     expect(result.result.diagnostics.fftSize).toBe(FIXTURE_FFT);
     expect(result.result.diagnostics.hopSize).toBe(FIXTURE_HOP);
-    expect(result.onsetFrameRate).toBeCloseTo(FIXTURE_FFT === 22050 ? 22050 / FIXTURE_HOP : 22050 / FIXTURE_HOP, 1);
+    expect(result.onsetFrameRate).toBeCloseTo(FIXTURE_SR / FIXTURE_HOP, 1);
   });
 
   it("emits a downsampled onset envelope of roughly 1500 buckets", () => {

@@ -1,10 +1,6 @@
 /// <reference lib="webworker" />
 import { analyzeReference } from "../analysis/analyzeReference";
-import type {
-  ReferenceAudioMetadata,
-  ReferenceOptions,
-  ReferenceStage,
-} from "../types";
+import type { ReferenceAudioMetadata, ReferenceOptions, ReferenceStage } from "../types";
 
 /**
  * Wire format for the reference analyzer worker.
@@ -34,8 +30,7 @@ interface MinimalDedicatedWorkerGlobalScope {
 }
 
 const dedicated: MinimalDedicatedWorkerGlobalScope | undefined =
-  typeof self !== "undefined" &&
-  typeof (self as unknown as { postMessage?: unknown }).postMessage === "function"
+  typeof self !== "undefined" && typeof (self as unknown as { postMessage?: unknown }).postMessage === "function"
     ? (self as unknown as MinimalDedicatedWorkerGlobalScope)
     : undefined;
 
@@ -45,7 +40,8 @@ if (dedicated) {
     if (!data || data.type !== "ANALYZE_REFERENCE") return;
     if (typeof data.jobId !== "number" || !Number.isFinite(data.jobId)) return;
     if (!(data.mono instanceof Float32Array)) return;
-    if (!data.metadata || typeof data.metadata.sampleRate !== "number" || !Number.isFinite(data.metadata.sampleRate)) return;
+    if (!data.metadata || typeof data.metadata.sampleRate !== "number" || !Number.isFinite(data.metadata.sampleRate))
+      return;
     if (data.metadata.sampleRate <= 0) return;
 
     const { jobId, mono, metadata, options } = data;

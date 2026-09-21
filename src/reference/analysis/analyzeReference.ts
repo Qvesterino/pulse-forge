@@ -68,8 +68,7 @@ export function analyzeReference(input: AnalyzeReferenceInput): AnalyzeReference
 
   const duration = metadata.duration;
   if (duration < 1) warnings.push("Audio is extremely short; analysis is unreliable.");
-  else if (duration < 10)
-    warnings.push("Short audio may produce unreliable tempo analysis.");
+  else if (duration < 10) warnings.push("Short audio may produce unreliable tempo analysis.");
 
   if (isSilent) {
     warnings.push("The audio appears to be silent or near-silent. No analysis was performed.");

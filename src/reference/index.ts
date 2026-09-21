@@ -43,10 +43,6 @@ export type {
 } from "./types";
 
 export { analyzeReferenceAsync } from "./reference-client";
-export {
-  analyzeReference,
-  type AnalyzeReferenceInput,
-  type AnalyzeReferenceOutput,
-} from "./analysis/analyzeReference";
+export { analyzeReference, type AnalyzeReferenceInput, type AnalyzeReferenceOutput } from "./analysis/analyzeReference";
 
 export { decodeReferenceFile, ReferenceDecodeError } from "./audio/decode";

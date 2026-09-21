@@ -1,9 +1,5 @@
 import { computeOnsetEnvelopes, type OnsetEnvelopes } from "../dsp/spectralFlux";
-import {
-  type ReferenceRhythm,
-  type TempoCandidate,
-  type TempoStability,
-} from "../types";
+import { type ReferenceRhythm, type TempoCandidate, type TempoStability } from "../types";
 import { estimateBeatGrid } from "./beatGrid";
 import { clamp01 } from "./confidence";
 import { estimateTempoCandidates, refineTempo, tempoPrior } from "./tempoCandidates";
@@ -35,9 +31,7 @@ function pickTempoFamily(
 ): { bpm: number; score: number } {
   // Evaluate the tempo family T/2, T, T*2 using the onset envelope, with an
   // explicit (small) preference for musically common ranges.
-  const options = [primaryBpm / 2, primaryBpm, primaryBpm * 2].filter(
-    (b) => b >= tempoMin && b <= tempoMax,
-  );
+  const options = [primaryBpm / 2, primaryBpm, primaryBpm * 2].filter((b) => b >= tempoMin && b <= tempoMax);
   if (options.length <= 1) return { bpm: primaryBpm, score };
 
   const scored = options.map((bpm) => {
@@ -50,12 +44,7 @@ function pickTempoFamily(
   return { bpm: best.bpm, score: best.bpm === primaryBpm ? score : score * 0.98 };
 }
 
-function localTempi(
-  envelope: Float32Array,
-  frameRate: number,
-  tempoMin: number,
-  tempoMax: number,
-): number[] {
+function localTempi(envelope: Float32Array, frameRate: number, tempoMin: number, tempoMax: number): number[] {
   const windows = 4;
   const size = Math.floor(envelope.length / windows);
   if (size < frameRate * 6) return [];
@@ -132,9 +121,7 @@ export function analyzeRhythm(input: RhythmAnalysisInput): RhythmAnalysisOutput 
   const stabilityBonus =
     stability === "stable" ? 1 : stability === "mostly-stable" ? 0.75 : stability === "variable" ? 0.4 : 0.5;
 
-  const confidence = clamp01(
-    0.35 * dominance + 0.25 * strength + 0.25 * alignment + 0.15 * stabilityBonus,
-  );
+  const confidence = clamp01(0.35 * dominance + 0.25 * strength + 0.25 * alignment + 0.15 * stabilityBonus);
 
   const candidates: TempoCandidate[] = [];
   candidates.push({ bpm: primaryBpm, score: Number(top.score.toFixed(4)), relation: "primary" });

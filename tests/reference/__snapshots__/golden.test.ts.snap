@@ -10,9 +10,9 @@ exports[`reference/golden > 120 BPM click track — canonical rhythm snapshot 1`
     "frameCount": 255,
     "hopSize": 512,
     "onsetEnvelopeLength": 255,
-    "peakAmplitude": 0.7988,
-    "processingMs": 132,
-    "rmsLevel": 0.07744,
+    "peakAmplitude": 0,
+    "processingMs": 0,
+    "rmsLevel": 0,
     "schemaVersion": 1,
     "tempoRange": [
       50,
@@ -137,142 +137,6 @@ exports[`reference/golden > 120 BPM click track — canonical rhythm snapshot 1`
 }
 `;
 
-exports[`reference/golden > C major sustained-note track — canonical tonal snapshot 1`] = `
-{
-  "diagnostics": {
-    "analysisSampleRate": 22050,
-    "analyzedSeconds": 12,
-    "engineVersion": "kyx-reference/1.0.0",
-    "fftSize": 2048,
-    "frameCount": 513,
-    "hopSize": 512,
-    "onsetEnvelopeLength": 513,
-    "peakAmplitude": 0.27599,
-    "processingMs": 142,
-    "rmsLevel": 0.11417,
-    "schemaVersion": 1,
-    "tempoRange": [
-      50,
-      220,
-    ],
-    "tonalFrameCount": 513,
-    "tonalRegion": "middle",
-  },
-  "metadata": {
-    "channels": 1,
-    "duration": 12,
-    "name": "fixture",
-    "sampleRate": 22050,
-    "size": 1058400,
-  },
-  "rhythm": {
-    "beatIntervalSeconds": 1.068566340160285,
-    "beatOffsetSeconds": 0.5343,
-    "beatTimes": [
-      0.534283,
-      1.60285,
-      2.671416,
-      3.739982,
-      4.808549,
-      5.877115,
-      6.945681,
-      8.014248,
-      9.082814,
-      10.15138,
-      11.219947,
-    ],
-    "bpm": 56.15,
-    "candidates": [
-      {
-        "bpm": 56.15,
-        "relation": "primary",
-        "score": 0.9265,
-      },
-      {
-        "bpm": 112.3,
-        "relation": "double-time",
-        "score": 0,
-      },
-      {
-        "bpm": 78.43,
-        "relation": "alternative",
-        "score": 0.8417,
-      },
-      {
-        "bpm": 117.17,
-        "relation": "alternative",
-        "score": 0.8403,
-      },
-      {
-        "bpm": 58.81,
-        "relation": "alternative",
-        "score": 0.7626,
-      },
-    ],
-    "confidence": 0.5886504062933549,
-    "localBpms": [],
-    "stability": "unknown",
-    "warning": null,
-  },
-  "tonal": {
-    "camelot": "4A",
-    "candidates": [
-      {
-        "confidence": 0.7334632072925138,
-        "mode": "minor",
-        "score": 0.7034,
-        "tonic": "F",
-      },
-      {
-        "confidence": 0.519549411480436,
-        "mode": "minor",
-        "score": 0.5858,
-        "tonic": "A#",
-      },
-      {
-        "confidence": 0.33172491714690666,
-        "mode": "major",
-        "score": 0.4824,
-        "tonic": "C#",
-      },
-      {
-        "confidence": 0.18616475590846912,
-        "mode": "major",
-        "score": 0.4024,
-        "tonic": "F",
-      },
-      {
-        "confidence": 0.13940427087099547,
-        "mode": "major",
-        "score": 0.3767,
-        "tonic": "A#",
-      },
-    ],
-    "chroma": [
-      0.09751022706783617,
-      0.08804166451973063,
-      0.055972022572458285,
-      0.0486493529959471,
-      0.0535612579978482,
-      0.12526875683326558,
-      0.08946832904430405,
-      0.10117018331750387,
-      0.10383562559212298,
-      0.046711202818128614,
-      0.11583295761997672,
-      0.07397841962087763,
-    ],
-    "confidence": 0.4945528662854752,
-    "mode": "minor",
-    "tonic": "F",
-    "warning": "Low tonal confidence — the key is ambiguous.",
-  },
-  "warnings": [
-    "Low tonal confidence — the key is ambiguous.",
-  ],
-}
-`;
-
 exports[`reference/golden > C sustained-note track — canonical tonal snapshot (major/minor interchangeable on synthetic fixtures) 1`] = `
 {
   "diagnostics": {
@@ -283,9 +147,9 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
     "frameCount": 513,
     "hopSize": 512,
     "onsetEnvelopeLength": 513,
-    "peakAmplitude": 0.22893,
-    "processingMs": 184,
-    "rmsLevel": 0.10632,
+    "peakAmplitude": 0,
+    "processingMs": 0,
+    "rmsLevel": 0,
     "schemaVersion": 1,
     "tempoRange": [
       50,

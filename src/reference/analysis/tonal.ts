@@ -43,9 +43,7 @@ export function scoreKeys(chroma: number[]): ReferenceKeyCandidate[] {
     });
   }
   // Deterministic ordering: score desc, then mode, then tonic name.
-  results.sort(
-    (a, b) => b.score - a.score || a.mode.localeCompare(b.mode) || a.tonic.localeCompare(b.tonic),
-  );
+  results.sort((a, b) => b.score - a.score || a.mode.localeCompare(b.mode) || a.tonic.localeCompare(b.tonic));
   return results;
 }
 
@@ -84,9 +82,7 @@ export function analyzeTonality(input: TonalAnalysisInput): TonalAnalysisOutput 
   const absolute = clamp01((best.score - 0.3) / 0.55);
   const tonality = clamp01(tonalEnergy * 3);
 
-  const confidence = clamp01(
-    0.4 * absolute + 0.3 * separation + 0.2 * tonality + 0.1 * peakiness,
-  );
+  const confidence = clamp01(0.4 * absolute + 0.3 * separation + 0.2 * tonality + 0.1 * peakiness);
 
   const candidates = ranked.slice(0, 5).map((c) => ({
     ...c,

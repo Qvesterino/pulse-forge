@@ -39,10 +39,7 @@ export function estimateTempoCandidates(
   if (envelope.length < 8) return [];
 
   const minLag = Math.max(2, Math.floor((frameRate * 60) / tempoMax));
-  const maxLag = Math.min(
-    envelope.length - 2,
-    Math.ceil((frameRate * 60) / Math.max(1, tempoMin)),
-  );
+  const maxLag = Math.min(envelope.length - 2, Math.ceil((frameRate * 60) / Math.max(1, tempoMin)));
   if (maxLag <= minLag) return [];
 
   const acf = calculateAutocorrelation(envelope, 1, Math.min(envelope.length - 2, maxLag * 3));

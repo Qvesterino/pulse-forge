@@ -11,7 +11,22 @@
 
 import { describe, expect, it } from "vitest";
 import { analyzeReference } from "../../src/reference/analysis/analyzeReference";
+import type { ReferenceDiagnostics } from "../../src/reference/types";
 import { clickTrack, makeMetadata, tonalTrack } from "./_fixtures";
+
+// Strip wall-clock / FP-rounded fields before snapshotting so the golden
+// file doesn't churn on every CI run.
+function stripVolatile<T extends { diagnostics: ReferenceDiagnostics }>(x: T): T {
+  return {
+    ...x,
+    diagnostics: {
+      ...x.diagnostics,
+      processingMs: 0,
+      peakAmplitude: 0,
+      rmsLevel: 0,
+    },
+  };
+}
 
 describe("reference/golden", () => {
   it("120 BPM click track — canonical rhythm snapshot", () => {
@@ -20,7 +35,7 @@ describe("reference/golden", () => {
       mono,
       metadata: makeMetadata(6),
     });
-    expect(result.result).toMatchSnapshot();
+    expect(stripVolatile(result.result)).toMatchSnapshot();
     // Engine + schema version is part of the golden contract.
     expect(result.result.diagnostics.engineVersion).toBe("kyx-reference/1.0.0");
     expect(result.result.diagnostics.schemaVersion).toBe(1);
@@ -32,14 +47,12 @@ describe("reference/golden", () => {
       mono,
       metadata: makeMetadata(12),
     });
-    expect(result.result).toMatchSnapshot();
+    expect(stripVolatile(result.result)).toMatchSnapshot();
     expect(result.result.tonal.tonic).toBe("C");
     // Mode is intentionally NOT pinned — Hann-window leakage on synthetic
     // signals biases major/minor toward minor. Camelot stays well-defined
     // because we still have a tonic + mode pair.
-    expect(["C major", "C minor"]).toContain(
-      `${result.result.tonal.tonic} ${result.result.tonal.mode}`,
-    );
+    expect(["C major", "C minor"]).toContain(`${result.result.tonal.tonic} ${result.result.tonal.mode}`);
     expect(["8B", "5A"]).toContain(result.result.tonal.camelot);
   });
 });

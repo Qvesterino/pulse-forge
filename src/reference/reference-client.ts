@@ -1,8 +1,4 @@
-import {
-  analyzeReference,
-  type AnalyzeReferenceInput,
-  type AnalyzeReferenceOutput,
-} from "./analysis/analyzeReference";
+import { analyzeReference, type AnalyzeReferenceInput, type AnalyzeReferenceOutput } from "./analysis/analyzeReference";
 import type { ReferenceStage } from "./types";
 
 /** Above this length (s × sr) we pay worker startup + transfer cost; below it we stay on the main thread. */
@@ -24,9 +20,7 @@ export function analyzeReferenceAsync(
   const { mono } = rest;
 
   if (signal?.aborted) {
-    return Promise.resolve(
-      analyzeReference({ ...rest, onStage: () => undefined }),
-    );
+    return Promise.resolve(analyzeReference({ ...rest, onStage: () => undefined }));
   }
 
   if (

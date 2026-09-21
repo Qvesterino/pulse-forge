@@ -36,39 +36,63 @@ describe("EffectRack", () => {
     expect(deviceNames.length).toBe(2);
   });
 
-  it("shows add effect dropdown", () => {
+  it("opens the goal-first add popover with the full device grid", () => {
     const { doc, track } = trackWithEffects(0);
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    expect(screen.getByLabelText("Add effect")).toBeInTheDocument();
+    // Popover-first: the trigger opens the grid; the popover lists every
+    // addable device by NAME (not raw type ids).
+    fireEvent.click(screen.getByRole("button", { name: "✚ ADD FX" }));
+    expect(screen.getByRole("dialog", { name: /Add effect — /i })).toBeInTheDocument();
+    expect(screen.getByText("Reverb")).toBeInTheDocument();
+    expect(screen.getByText("Vinyl Suite")).toBeInTheDocument();
   });
 
-  it("exposes the flagship plugin suites in the add effect menu", () => {
+  it("exposes the flagship plugin suites in the add popover grid", () => {
     const { doc, track } = trackWithEffects(0);
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    const select = screen.getByLabelText("Add effect") as HTMLSelectElement;
-
-    expect(Array.from(select.options).map((option) => option.value)).toEqual(
-      expect.arrayContaining(["fxeq", "ultina", "ozvena", "kaskada"]),
-    );
-    expect(select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]')).not.toBeNull();
-    expect(screen.getByRole("option", { name: "PRISM" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "VLYX" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "VØID" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "RYFT" })).toBeInTheDocument();
-  });
-
-  it("groups core effects by category in the add effect menu", () => {
-    const { doc, track } = trackWithEffects(0);
-    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
-    const select = screen.getByLabelText("Add effect") as HTMLSelectElement;
-    for (const label of ["TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"]) {
-      expect(select.querySelector(`optgroup[label="${label}"]`)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "✚ ADD FX" }));
+    // The grid speaks device names — flagships included.
+    // RYFT is the kaskada type's display name — five flagships, four panels.
+    for (const name of ["PRISM", "VLYX", "VØID", "RYFT"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
     }
-    // Kaskáda moved out of the core list into the flagship suites.
-    const flagship = select.querySelector('optgroup[label="FLAGSHIP PLUGINS"]');
-    expect(flagship?.querySelector('option[value="kaskada"]')).not.toBeNull();
-    expect(select.querySelector('optgroup[label="EFFECTS"]')).toBeNull();
   });
+
+  it("offers category goal tiles in the add popover", () => {
+    const { doc, track } = trackWithEffects(0);
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    fireEvent.click(screen.getByRole("button", { name: "✚ ADD FX" }));
+    // The registry categories become human goal tiles.
+    for (const tile of ["ALL", "TONE", "DYNAMICS", "CHARACTER", "MOVEMENT", "SPACE"]) {
+      expect(screen.getByRole("button", { name: tile })).toBeInTheDocument();
+    }
+    // Filtering by a tile narrows the grid to that category.
+    fireEvent.click(screen.getByRole("button", { name: "SPACE" }));
+    expect(screen.getByText("Reverb")).toBeInTheDocument();
+    expect(screen.queryByText("Beat Mangler")).toBeNull();
+  });
+
+  it("lands role-aware presets when adding via the popover (vinyl on the 808)", () => {
+    // trackWithEffects picks the FIRST instrument track — house template's
+    // 808, so the rack's role resolution says "bass".
+    const { doc, track } = trackWithEffects(0);
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+    fireEvent.click(screen.getByRole("button", { name: "✚ ADD FX" }));
+    // Tuned devices carry the role badge; untuned ones keep preset counts.
+    expect(screen.getAllByText(/tuned for 808 \/ bass/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Vinyl Suite"));
+    // The composite add+tune command is what the rack handed the store —
+    // execute it on the real doc and inspect the landing.
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const after = executed.execute(doc);
+    const fx = (after.tracks.find((t: { id: string }) => t.id === track.id) as {
+      effects: { type: string; params: Record<string, number> }[];
+    }).effects.find((f) => f.type === "vinyl")!;
+    expect(fx.params.amount).toBe(0.45); // 808 dust, not factory 0.5
+    expect(fx.params.mix).toBe(1);
+  });
+
 
   it("disables move-earlier on first effect", () => {
     const { doc, track } = trackWithEffects(2);

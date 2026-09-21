@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
+import { FxAddPopover } from "./FxAddPopover";
+import { parseProductionIntent } from "../intent/production";
+import {
+  addEffectWithLandingCommand,
+  applyProductionIntentToTrackCommand,
+} from "../commands/commands";
+import { roleOfTrack, rolePresetFor } from "../effects/role-presets";
 import {
   addEffect,
   applyEffectPreset,
@@ -67,6 +74,24 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
   const services = useServices();
   const doc = services.store.getDoc();
   const devicesMode = mode === "devices";
+  // Goal-first add popover (FX-ADD-REWORK-ROADMAP Wave A): same device set
+  // the old header select offered, now described and searchable.
+  const [addOpen, setAddOpen] = useState(false);
+  const [goalNote, setGoalNote] = useState<string | null>(null);
+  // Wave B — role-aware landings: what this track IS decides how a device
+  // lands (vinyl on the 808 = tape-ish dust, on the kit = sizzle).
+  const role = roleOfTrack(track);
+  const addLanded = (type: EffectType, insertAt?: number) => {
+    const landing = rolePresetFor(type, role);
+    return landing
+      ? addEffectWithLandingCommand(doc, track.id, type, landing, insertAt)
+      : addEffect(doc, track.id, type, insertAt);
+  };
+  const addableDevices: EffectType[] = [
+    ...CORE_EFFECT_GROUPS.flatMap((group) => group.types),
+    ...FLAGSHIP_EFFECT_ORDER,
+    ...ADDITIONAL_EFFECT_GROUPS.flatMap((group) => group.types),
+  ];
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
   // Accordion focus: one device editor renders full-width at a time. null =
@@ -232,7 +257,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
               const insertionIndex =
                 selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
-              const command = addEffect(doc, track.id, type, insertionIndex);
+              const command = addLanded(type, insertionIndex);
               services.store.execute(command);
               setSelectedDeviceId(command.effectId);
             }}
@@ -315,43 +340,39 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
     <section className="fx-rack" aria-label={`Effect rack — ${track.name}`}>
       <div className="fx-rack-header">
         <h2 className="panel-title">FX — {track.name}</h2>
-        <select
-          className="fx-add-select"
-          value=""
-          aria-label="Add effect"
-          onChange={(event) => {
-            const type = event.target.value as EffectType;
-            if (type) services.store.execute(addEffect(doc, track.id, type));
-          }}
+        <button
+          type="button"
+          className="btn fx-add-trigger"
+          onClick={() => setAddOpen((open) => !open)}
+          aria-expanded={addOpen}
         >
-          <option value="">+ ADD EFFECT</option>
-          {CORE_EFFECT_GROUPS.map((group) => (
-            <optgroup key={group.key} label={group.label}>
-              {group.types.map((type) => (
-                <option key={type} value={type}>
-                  {EFFECT_DEFS[type].name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-          <optgroup label="FLAGSHIP PLUGINS">
-            {FLAGSHIP_EFFECT_ORDER.map((type) => (
-              <option key={type} value={type}>
-                {EFFECT_DEFS[type].name}
-              </option>
-            ))}
-          </optgroup>
-          {ADDITIONAL_EFFECT_GROUPS.map((group) => (
-            <optgroup key={`${group.key}-more`} label={group.label}>
-              {group.types.map((type) => (
-                <option key={type} value={type}>
-                  {EFFECT_DEFS[type].name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+          ✚ ADD FX
+        </button>
       </div>
+      {addOpen && (
+        <FxAddPopover
+          trackLabel={track.name}
+          devices={addableDevices}
+          role={role}
+          onPick={(type) => {
+            services.store.execute(addLanded(type));
+            setAddOpen(false);
+          }}
+          onGoal={(goalText) => {
+            const intent = parseProductionIntent(goalText);
+            if (!intent) return;
+            try {
+              services.store.execute(applyProductionIntentToTrackCommand(doc, track.id, intent));
+              setGoalNote(null);
+              setAddOpen(false);
+            } catch (err) {
+              setGoalNote(err instanceof Error ? err.message : String(err));
+            }
+          }}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
+      {goalNote && <div className="fx-goal-note">{goalNote}</div>}
       {track.effects.length === 0 ? (
         <div className="fx-empty">No effects on this track. Add one above.</div>
       ) : (

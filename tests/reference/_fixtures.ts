@@ -52,7 +52,7 @@ export function clickTrack(bpm: number, durationSeconds: number, clickHz = 1000)
       const t = (j - start) / clickSamples;
       // Hann envelope + sine tone. Amplitude 0.8 leaves headroom for envelope.
       const envelope = 0.5 * (1 - Math.cos(2 * Math.PI * t));
-      out[j] = 0.8 * envelope * Math.sin(2 * Math.PI * clickHz * (j - start) / sr);
+      out[j] = 0.8 * envelope * Math.sin((2 * Math.PI * clickHz * (j - start)) / sr);
     }
   }
   return out;
@@ -71,7 +71,7 @@ export function tonalTrack(
   tonic: number, // 0 = C, 1 = C#, …, 11 = B
   mode: "major" | "minor",
   durationSeconds: number,
-  fundamentalHz = 220, // A3
+  _fundamentalHz = 220, // A3 (reserved for callers that want a non-default base)
 ): Float32Array {
   const sr = FIXTURE_SR;
   const samples = Math.floor(durationSeconds * sr);

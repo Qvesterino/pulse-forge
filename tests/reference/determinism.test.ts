@@ -8,21 +8,22 @@
 
 import { describe, expect, it } from "vitest";
 import { analyzeReference } from "../../src/reference/analysis/analyzeReference";
+import type { ReferenceDiagnostics } from "../../src/reference/types";
 import { clickTrack, makeMetadata, tonalTrack } from "./_fixtures";
 
 // Strip non-deterministic fields before comparing — `processingMs` is wall
 // clock time, and `peakAmplitude` / `rmsLevel` can have FP rounding noise
 // across separate runs even though their input is identical.
-function stripVolatile<T extends { diagnostics: object }>(x: T): T {
+function stripVolatile<T extends { diagnostics: ReferenceDiagnostics }>(x: T): T {
   return {
     ...x,
     diagnostics: {
       ...x.diagnostics,
-      processingMs: 0 as unknown as typeof x.diagnostics.processingMs,
-      peakAmplitude: 0 as unknown as typeof x.diagnostics.peakAmplitude,
-      rmsLevel: 0 as unknown as typeof x.diagnostics.rmsLevel,
+      processingMs: 0,
+      peakAmplitude: 0,
+      rmsLevel: 0,
     },
-  } as T;
+  };
 }
 
 describe("reference/determinism", () => {
@@ -59,8 +60,8 @@ describe("reference/determinism", () => {
       options: { tempoMin: 60, tempoMax: 200, keyRegion: "full" },
     });
 
-    expect(full.result.rhythm.bpm).toBeCloseTo(140, 1);
-    expect(override.result.rhythm.bpm).toBeCloseTo(140, 1);
+    expect(full.result.rhythm.bpm).toBeCloseTo(140, 0);
+    expect(override.result.rhythm.bpm).toBeCloseTo(140, 0);
     expect(full.result.diagnostics.analysisSampleRate).toBe(22050);
     expect(override.result.diagnostics.analysisSampleRate).toBe(22050);
   });

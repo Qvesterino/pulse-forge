@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { parseProductionIntent, planProductionActions, resolveProductionTargets } from "../src/intent/production";
-import { applyProductionIntentCommand } from "../src/commands/commands";
+import { applyProductionIntentCommand, applyProductionIntentToTrackCommand } from "../src/commands/commands";
 import type { ProjectDocument, InstrumentTrack } from "../src/project-model/types";
 
 /**
@@ -165,6 +165,25 @@ describe("applyProductionIntentCommand", () => {
     const types = bass.effects.map((fx) => fx.type);
     expect(types).toContain("pitchShift");
     expect(types).toContain("tapeSat");
+  });
+
+  it("track-scoped goal (FX popover): folds onto the named track, refuses others", () => {
+    const d = doc();
+    const intent = parseProductionIntent("make it deeper")!; // default target: bass
+    // Scoped to the DRUM track — the concept targets bass, so it refuses
+    // with a hint instead of silently doing nothing (or touching others).
+    const drums = d.tracks.find((t) => t.kind === "drum")!;
+    expect(() => applyProductionIntentToTrackCommand(d, drums.id, intent)).toThrow(/other tracks/);
+    // Scoped to the bass track — applies and stays on it.
+    const bass = bassTrackOf(d);
+    const next = applyProductionIntentToTrackCommand(d, bass.id, intent).execute(d);
+    expect(bassTrackOf(next).effects.some((f) => f.type === "pitchShift")).toBe(true);
+    const others = next.tracks.filter((t) => t.id !== bass.id);
+    for (const t of others) {
+      if (t.kind !== "drum" && t.kind !== "group" && "effects" in t) {
+        expect((t as InstrumentTrack).effects.filter((fx) => fx.type === "pitchShift")).toHaveLength(0);
+      }
+    }
   });
 
   it("wobbly plants beatMangler with a 16-step envelope on the drums track", () => {

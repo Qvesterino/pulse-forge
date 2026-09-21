@@ -4473,6 +4473,41 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
   };
 }
 
+/**
+ * Add an effect AND tune it in the SAME undo step (FX-ADD-REWORK-ROADMAP
+ * Wave B: role-aware landings). `landing` params fold over factory
+ * defaults, clamped to the registry's ParamDef metadata — an out-of-range
+ * entry can never corrupt the instance; unknown param ids are skipped so a
+ * stale table entry can never block adding the device. Undo removes the
+ * effect entirely (add+tune was one user action, it undoes as one).
+ */
+export function addEffectWithLandingCommand(
+  doc: ProjectDocument,
+  trackId: string,
+  type: EffectType,
+  landing: Record<string, number>,
+  insertAt?: number,
+): Command & { readonly effectId: string } {
+  const add = addEffect(doc, trackId, type, insertAt);
+  let next = add.execute(doc);
+  const def = EFFECT_DEFS[type];
+  for (const [paramId, value] of Object.entries(landing)) {
+    const param = def.params.find((pd) => pd.id === paramId);
+    if (!param) continue;
+    const clamped = Math.max(param.min, Math.min(param.max, value));
+    next = setEffectParam(next, trackId, add.effectId, paramId, clamped).execute(next);
+  }
+  return {
+    type: "addEffect",
+    label: `${add.label} (tuned)`,
+    effectId: add.effectId,
+    execute: () => next,
+    undo: () => doc,
+    // No applyToYDoc fast path: without it YDocStore falls back to the
+    // generic whole-document diff, which is correct for add+fold.
+  };
+}
+
 /** Replace the step pattern of a step-sequenced effect (stepGate) — one undo step per edit stroke. */
 /**
  * Exact Intents (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.1): compile a

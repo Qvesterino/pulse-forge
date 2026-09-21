@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EFFECT_DEFS, type CoreEffectGroupKey } from "../effects/registry";
+import { EFFECT_DEFS } from "../effects/registry";
 import { presetsForEffect } from "../effects/presets";
 import { EFFECT_BLURBS } from "../effects/blurbs";
+import { rolePresetFor, ROLE_LABELS, type FxTrackRole } from "../effects/role-presets";
 import { parseProductionIntent } from "../intent/production";
 import type { EffectType } from "../project-model/types";
 
@@ -34,6 +35,8 @@ interface FxAddPopoverProps {
   trackLabel: string;
   /** The device types this surface can add (rack already filters per mode). */
   devices: readonly EffectType[];
+  /** Landing role of the track — devices tuned for it get a ♪ badge. */
+  role?: FxTrackRole | null;
   /** Add a device — the parent owns the command (insertion index etc.). */
   onPick: (type: EffectType) => void;
   /** Fold a production concept onto this track (text path goal row). */
@@ -41,7 +44,7 @@ interface FxAddPopoverProps {
   onClose: () => void;
 }
 
-export function FxAddPopover({ trackLabel, devices, onPick, onGoal, onClose }: FxAddPopoverProps) {
+export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal, onClose }: FxAddPopoverProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -146,11 +149,14 @@ export function FxAddPopover({ trackLabel, devices, onPick, onGoal, onClose }: F
         {visible.map((type) => {
           const def = EFFECT_DEFS[type];
           const presetCount = presetsForEffect(type).length;
+          const landed = rolePresetFor(type, role) !== null;
           return (
             <button key={type} type="button" className="fx-add-device" onClick={() => onPick(type)}>
               <span className="fx-add-device-name">{def.name}</span>
               <span className="fx-add-device-blurb">{EFFECT_BLURBS[type] ?? ""}</span>
-              {presetCount > 0 && <span className="fx-add-device-presets">{presetCount} starts</span>}
+              <span className="fx-add-device-presets">
+                {landed ? `♪ tuned for ${ROLE_LABELS[role!]}` : presetCount > 0 ? `${presetCount} starts` : ""}
+              </span>
             </button>
           );
         })}

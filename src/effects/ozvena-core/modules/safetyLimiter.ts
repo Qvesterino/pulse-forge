@@ -54,7 +54,9 @@ export interface SafetyLimiter {
   /**
    * Switch the oversampling factor WITHOUT reallocating: every supported
    * factor's channel state is built in prepare(), so a quality change is a
-   * pure pointer swap plus an envelope carry-over. The processor calls this
+   * pointer swap plus an envelope carry-over and a lookahead prime from
+   * recent input history (no stale replay, no timing jump — total latency
+   * is factor-independent, see getLatencySamples). The processor calls this
    * from the realtime path on quality changes; calling prepare() there
    * instead would allocate and zero ~0.5 MB of rings on the audio thread.
    * (Reconciled from Pulse Forge, 2026-09-05.)
@@ -78,6 +80,32 @@ export function createSafetyLimiter(): SafetyLimiter {
 
   let laOvs = 0;
   let ringCap = 0;
+  // Constant-latency compensation (2026-09-19 audit #5): every oversample
+  // factor has a different FIR group delay (0/16/24/32 input samples for
+  // 1/2/4/8x), so switching quality moved the whole output in time — a
+  // ~0.4–0.5 sample step on ordinary material. The input is delayed by
+  // (maxOsLat - currentOsLat) so the TOTAL latency (laSamples + maxOsLat)
+  // is identical at every tier; a quality switch then only changes the
+  // filter kernels, never the timing. getLatencySamples() reports that
+  // constant (previously it tracked the factor: 96/112/120/128 @48k).
+  let maxOsLat = 0;
+  let laSamples = 0;
+  // Post-pad input history (input-rate samples) feeding two jobs: the
+  // constant-latency pad read, and priming a fresh factor's lookahead ring
+  // on a switch (see setOversampleFactor). Sized for the lookahead window
+  // plus the max pad plus one block, so any read below stays in range.
+  let histRing: Float32Array[] = [];
+  let histCap = 0;
+  let histWp = 0;
+  // Scratch for the prime segment (lookahead window copied out of histRing
+  // before upsampling — the ring may wrap). Sized once in prepare().
+  let primeScratch = new Float32Array(0);
+  // FIR warmup for the prime run, in input samples. A freshly reset
+  // upsampler starts from a zeroed delay line, so its first ~tapsPerPhase
+  // outputs ramp from silence — priming with those would bake a dip into
+  // the lookahead window. Run WARM extra history first and discard it.
+  // 64 covers the largest kernel (32 taps/phase at 8x) with margin.
+  const PRIME_WARM = 64;
   // ACTIVE channel set (pointer into chByFactor — reassigned by
   // setOversampleFactor, never mutated there).
   let ch: Chan[] = [];
@@ -257,6 +285,19 @@ export function createSafetyLimiter(): SafetyLimiter {
         chByFactor[f] = buildChannels(cc, f);
       }
       ch = chByFactor[os] as Chan[];
+      // Worst-case oversampler group delay over all tiers (input samples;
+      // the FIR tap counts are rate-independent so this is a constant).
+      maxOsLat = 0;
+      for (const f of OS_FACTORS) {
+        const set = chByFactor[f];
+        if (set && set.length > 0) maxOsLat = Math.max(maxOsLat, set[0].os.latencySamples);
+      }
+      laSamples = Math.round((LOOKAHEAD_MS / 1000) * sampleRate);
+      histCap = laSamples + maxOsLat + PRIME_WARM + maxBs + 8;
+      histRing = [];
+      for (let i = 0; i < cc; i++) histRing.push(new Float32Array(histCap));
+      histWp = 0;
+      primeScratch = new Float32Array(Math.max(8, laSamples + PRIME_WARM + 4));
       prepared = true;
     },
 
@@ -266,35 +307,42 @@ export function createSafetyLimiter(): SafetyLimiter {
       if (factor === os) return;
       const nextSet = chByFactor[factor];
       if (!nextSet) return;
-      for (let c = 0; c < ch.length; c++) {
+      const nextLaOvs = laSamples * factor;
+      for (let c = 0; c < ch.length && c < nextSet.length; c++) {
         const n = nextSet[c];
         // Carry the gain envelope across the switch: while the bus was
         // limiting, a reset env=1 would be an instantaneous gain jump (an
         // audible click on every quality change).
         n.env = ch[c].env;
-        // ...but NOT the lookahead ring: it still holds audio from whenever
-        // this factor was last active. If the envelope has since released
-        // toward unity, reactivating the set re-emits up to a full lookahead
-        // window of STALE audio at ~unity gain — a loud clip of old
-        // material on every eco→…→eco round trip. Zero the ring and the
-        // oversampler state instead.
-        // (Reconciled from Pulse Forge hardening audit, 2026-09-08.)
-        //
-        // 2026-09-19 audit: `fill` must NOT be reset to 0. `effLA =
-        // min(laOvs, fill)` in process() then collapses to 0 for the first
-        // block, so the ring read `op = (wp - upLen + i)` returns the
-        // JUST-WRITTEN samples — the output jumps forward in time by the
-        // whole lookahead window. On a 200 Hz tone at 48 kHz that is a
-        // 96-sample (144°) phase step, measured as a 0.45–0.76 sample jump
-        // (43–72x the natural slope) on every quality switch. Setting
-        // `fill = laOvs` keeps the read time-aligned; the zeroed ring makes
-        // those first lookahead samples silent (a ≤2 ms fade-in) instead of
-        // a stale replay. (Reconciled from Pulse Forge audit, 2026-09-19.)
-        const nextLaOvs = Math.round((LOOKAHEAD_MS / 1000) * sampleRate) * factor;
-        n.wp = 0;
-        n.fill = Math.min(n.ring.length, nextLaOvs);
-        n.ring.fill(0);
+        // Prime the lookahead window from recent input history instead of
+        // leaving it silent. The old code zeroed the ring with `fill = 0`,
+        // which collapsed effLA and jumped the output forward a whole
+        // lookahead window (43–72x natural slope); the 2026-09-19 interim
+        // fix (zeroed ring + `fill = laOvs`) kept alignment but emitted a
+        // ≤2 ms silence gap. Re-running the recent padded input through
+        // the NEW oversampler produces bit-plausible lookahead content —
+        // the same samples the new chain would have cached had it been
+        // active — so the first post-switch block continues the waveform.
+        // (Reconciled from Pulse Forge hardening audit, 2026-09-08, and
+        // Pulse Forge audit, 2026-09-19.)
         n.os.reset();
+        n.ring.fill(0);
+        const padNew = maxOsLat - n.os.latencySamples;
+        const hist = c < histRing.length ? histRing[c] : null;
+        if (hist && laSamples > 0) {
+          const warmLen = laSamples + PRIME_WARM;
+          for (let i = 0; i < warmLen; i++) {
+            const idx = (((histWp - padNew - warmLen + i) % histCap) + histCap) % histCap;
+            primeScratch[i] = hist[idx];
+          }
+          const up = n.os.upsample(primeScratch, warmLen);
+          // Drop the FIR warmup transient, keep the settled tail.
+          const upSkip = PRIME_WARM * factor;
+          for (let i = 0; i < nextLaOvs && upSkip + i < up.length; i++) n.ring[i] = up[upSkip + i];
+          n.os.downsample(up, warmLen * factor); // discard — warms the down FIR only
+        }
+        n.wp = Math.min(n.ring.length, nextLaOvs);
+        n.fill = Math.min(n.ring.length, nextLaOvs);
       }
       os = factor;
       ch = nextSet;
@@ -302,6 +350,26 @@ export function createSafetyLimiter(): SafetyLimiter {
 
     process(channels, frameCount) {
       if (!prepared || frameCount <= 0 || ch.length === 0) return;
+      const n = frameCount;
+      // Constant-latency input pad (2026-09-19 audit #5): delay the input
+      // by (maxOsLat - currentOsLat) so the TOTAL latency (pad + oversampler
+      // group delay + lookahead) is identical at every quality tier. A
+      // quality switch then only swaps filter kernels, never the output
+      // timing — the ~0.4-sample step from the group-delay jump is gone.
+      // In-place forward iteration is safe: the read index always trails
+      // the write index by `pad`. Raw (pre-pad) input is appended to the
+      // history ring for setOversampleFactor priming.
+      while (histRing.length < channels.length) histRing.push(new Float32Array(histCap));
+      const pad = Math.max(0, maxOsLat - (ch.length > 0 ? ch[0].os.latencySamples : 0));
+      for (let c = 0; c < channels.length && c < histRing.length; c++) {
+        const hist = histRing[c];
+        const buf = channels[c];
+        for (let i = 0; i < n; i++) {
+          hist[(histWp + i) % histCap] = buf[i];
+          if (pad > 0) buf[i] = hist[(((histWp + i - pad) % histCap) + histCap) % histCap];
+        }
+      }
+      histWp = (histWp + n) % histCap;
       const ceil = dbToLinear(ceilDb);
       const ovsRate = sampleRate * os;
       const rc = Math.exp(-1 / ((RELEASE_MS / 1000) * ovsRate));
@@ -337,12 +405,17 @@ export function createSafetyLimiter(): SafetyLimiter {
           s.os.reset();
         }
       }
+      for (const h of histRing) h.fill(0);
+      histWp = 0;
     },
 
     getLatencySamples() {
-      const laSamples = Math.round((LOOKAHEAD_MS / 1000) * sampleRate);
-      const osLatency = ch.length > 0 ? ch[0].os.latencySamples : 0;
-      return osLatency + laSamples;
+      // Constant across quality tiers by construction (see the pad in
+      // process()): lookahead + the worst-case oversampler group delay.
+      // Previously this tracked the active factor (96/112/120/128 @48k),
+      // so every quality switch also jumped the host PDC.
+      // (Reconciled from Pulse Forge audit, 2026-09-19.)
+      return laSamples + maxOsLat;
     },
 
     getGainReductionDb() {

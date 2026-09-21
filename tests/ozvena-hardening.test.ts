@@ -377,27 +377,37 @@ describe("Ozvena hardening — sample-rate robustness", () => {
 });
 
 describe("Ozvena hardening — quality switches are scalar-only on the audio thread", () => {
-  it("cycling all four quality tiers updates the reported latency and stays finite", () => {
+  it("cycling all four quality tiers keeps a CONSTANT reported latency and stays finite", () => {
     // Pre-fix, every quality change called safetyLimiter.prepare() INSIDE
     // the realtime path — allocating and zeroing the oversampler rings on
     // the audio thread (dropout risk + envelope-reset click). The limiter
     // now preallocates all four factor states in prepare() and the switch
-    // is a pointer swap; the latency report must still track the factor
-    // (lookahead + per-factor group delay).
+    // is a pointer swap.
+    // 2026-09-19 audit #5: the report used to track the factor (lookahead
+    // + per-factor group delay: 96/112/120/128 @48k), so every switch also
+    // jumped the host PDC on top of the waveform step. Total latency is now
+    // factor-independent (input pad compensates the group-delay spread),
+    // which is precisely what makes a live switch click-free.
     const proc = new Processor();
     const burst = noiseBurstThenSilence();
     render(proc, burst, 0.2);
-    const latencies: number[] = [];
+    // Baseline: the construction-time latency report (lookahead + worst
+    // group delay, now factor-independent).
+    const first = proc.port.posted.filter((m) => m.type === "latency").pop();
+    expect(first && typeof first.samples === "number").toBe(true);
+    const baseline = (first as { samples: number }).samples;
     for (const q of [0, 1, 2, 3, 1, 0]) {
       proc.port.posted.length = 0;
       sendParam(proc, "global.quality", q);
       const out = render(proc, burst, 0.2);
       expect(countNonFinite(out)).toBe(0);
-      const lat = proc.port.posted.filter((m) => m.type === "latency").pop();
-      if (lat && typeof lat.samples === "number") latencies.push(lat.samples);
+      // No new latency report may appear: the value is constant, so
+      // postLatency() (change-triggered) stays silent — and the host PDC
+      // never jumps on a quality switch.
+      for (const m of proc.port.posted) {
+        if (m.type === "latency") expect((m as { samples: number }).samples).toBe(baseline);
+      }
     }
-    // eco/standard/high/render oversamplers have distinct group delays.
-    expect(new Set(latencies).size).toBeGreaterThanOrEqual(3);
   });
 
   it("rapid quality flicker while rendering keeps the output finite and bounded", () => {
