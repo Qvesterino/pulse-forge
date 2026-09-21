@@ -1,6 +1,8 @@
 import { renderProject } from "../rendering/renderer";
 import type { SampleBank } from "../sample-library/factory";
 import type { Pattern, ProjectDocument } from "../project-model/types";
+import { foldFxIntoDoc } from "../commands/commands";
+import type { ProductionIntent } from "./production";
 
 /**
  * CANDIDATE AUDITION (INTENT_ENGINE.md A1) — hear a candidate BEFORE applying.
@@ -17,15 +19,27 @@ import type { Pattern, ProjectDocument } from "../project-model/types";
 /** Seconds of render tail after the last step (natural cutoff, short). */
 const AUDITION_TAIL_SECONDS = 0.4;
 
-/** Build the offline-only document that renders ONE pattern in isolation. */
-export function auditionDoc(doc: ProjectDocument, pattern: Pattern): ProjectDocument {
-  return {
+/**
+ * Build the offline-only document that renders ONE pattern in isolation.
+ * `fx` (the candidate's `plan.intent.fx`) folds INTO THE GHOST only — the
+ * audition hears the chains the candidate would install, the live project
+ * stays untouched. An unresolvable fold degrades to an fx-less ghost: a
+ * broken garnish never blocks hearing the pattern.
+ */
+export function auditionDoc(doc: ProjectDocument, pattern: Pattern, fx?: ProductionIntent | null): ProjectDocument {
+  const ghost: ProjectDocument = {
     ...doc,
     patterns: [...doc.patterns, pattern],
     scenes: [],
     arrangement: { ...doc.arrangement, clips: [] },
     activePatternId: pattern.id,
   };
+  if (!fx) return ghost;
+  try {
+    return foldFxIntoDoc(ghost, fx);
+  } catch {
+    return ghost;
+  }
 }
 
 let sharedContext: AudioContext | null = null;
@@ -55,13 +69,18 @@ export function stopAudition(): void {
   }
 }
 
-/** Render one candidate to an AudioBuffer through the project's live chain. */
+/**
+ * Render one candidate to an AudioBuffer through the project's live chain.
+ * `fx` extends the ghost with the candidate's own FX requests — the preview
+ * hears exactly what USE would install (preview == apply parity).
+ */
 export async function renderAuditionBuffer(
   doc: ProjectDocument,
   bank: SampleBank,
   pattern: Pattern,
+  fx?: ProductionIntent | null,
 ): Promise<AudioBuffer> {
-  return renderProject(auditionDoc(doc, pattern), bank, {
+  return renderProject(auditionDoc(doc, pattern, fx), bank, {
     mode: "pattern",
     sampleRate: 44100,
     tailSeconds: AUDITION_TAIL_SECONDS,

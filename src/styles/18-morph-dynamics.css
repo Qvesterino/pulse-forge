@@ -172,3 +172,147 @@
   border-radius: 50%;
   background: #3a3f4b;
 }
+
+/* ── PRESSURE ring (INTERACTION_MODEL §3 — central visual anchor) ── */
+
+.morph-macro-pressure {
+  display: flex;
+  justify-content: center;
+}
+
+.pressure-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.pressure-ring {
+  flex: none;
+}
+
+.pressure-ring-track {
+  fill: none;
+  stroke: #2a2e37;
+  stroke-width: 7;
+}
+
+.pressure-ring-base {
+  fill: none;
+  stroke: #e8b04b;
+  stroke-width: 7;
+  stroke-linecap: round;
+  /* Arc starts at 12 o'clock. */
+  transform: rotate(-90deg);
+  transform-origin: 48px 48px;
+  transition: stroke-dashoffset 80ms linear;
+}
+
+.pressure-ring-activity {
+  fill: none;
+  stroke: #7aa2f7;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 48px 48px;
+}
+
+.pressure-ring-tick {
+  fill: #e8b04b;
+  opacity: 0;
+}
+
+.pressure-ring-readout {
+  display: flex;
+  flex-direction: column;
+  min-width: 52px;
+}
+
+.pressure-ring-readout span:first-child {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e8b04b;
+  font-variant-numeric: tabular-nums;
+}
+
+.pressure-ring-label {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #9aa0aa;
+}
+
+.pressure-ring-wrap .slider {
+  flex: 1;
+}
+
+/* ── MORPH SCENES (A: Clean · B: Dense · C: Wide · D: Destroyed) ── */
+
+.morph-scenes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+}
+
+.morph-scenes-hint {
+  grid-column: 1 / -1;
+  font-size: 9px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.morph-scene {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.morph-scene-go {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: #1b1e24;
+  border: 1px solid #3a3f4b;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: #d7dae0;
+}
+
+.morph-scene-go:hover {
+  border-color: #e8b04b;
+}
+
+.morph-scene-slot {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9aa0aa;
+}
+
+.morph-scene.filled .morph-scene-slot {
+  color: #e8b04b;
+}
+
+.morph-scene-name {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #9aa0aa;
+}
+
+.morph-scene-capture {
+  width: 24px;
+  border: 1px solid #3a3f4b;
+  background: #262a32;
+  color: #6b7280;
+  border-radius: 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.morph-scene-capture:hover {
+  color: #e8b04b;
+  border-color: #6b5a2e;
+}

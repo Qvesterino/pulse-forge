@@ -791,3 +791,67 @@ describe("Ozvena hardening — freeze loop-gain safety (2026-09-19 audit)", () =
     expect(peak(out, 0, 6.0)).toBeLessThan(0.5);
   });
 });
+
+describe("Ozvena hardening — E1 tap crossfade clock (2026-09-19 audit)", () => {
+  // E1's tap crossfade decremented tapFadeRemaining ONCE PER BLOCK. The
+  // fade is 0.02 * sampleRate SAMPLES (20 ms), so at 128-frame blocks it
+  // ran 128x too long (2.56 s) and its length scaled with the host block
+  // size. Post-fix it decrements per sample, like the FDN engines.
+  //
+  // Observable: an impulse into E1 then a TIME step. During the fade the
+  // tap sum is a blend of the old and new tap layouts; once the fade ends
+  // the output is the settled new-layout response. Rendering with a much
+  // LARGER host block must not stretch the fade.
+  function renderE1Fade(blockSize: number): Float32Array {
+    const proc = new Processor();
+    sendParam(proc, "engines.e2.enabled", 0);
+    sendParam(proc, "engines.e3.enabled", 0);
+    sendParam(proc, "engines.e1.time", 60);
+    sendParam(proc, "engines.e1.diffusion", 100);
+    const blocks = Math.ceil((1.0 * SR) / blockSize);
+    const out = new Float32Array(blocks * blockSize);
+    const changeAt = Math.round(0.4 * SR / blockSize);
+    let s = 0x1234;
+    for (let b = 0; b < blocks; b++) {
+      if (b === changeAt) sendParam(proc, "engines.e1.time", 240);
+      const inL = new Float32Array(blockSize);
+      const inR = new Float32Array(blockSize);
+      for (let i = 0; i < blockSize; i++) {
+        s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+        inL[i] = (s / 4294967296) * 2 - 1;
+        inR[i] = inL[i];
+      }
+      proc.process(
+        [[inL, inR]],
+        [[out.subarray(b * blockSize, (b + 1) * blockSize), out.subarray(b * blockSize, (b + 1) * blockSize)]],
+      );
+      setTime(((b + 1) * blockSize) / SR);
+    }
+    return out;
+  }
+
+  it("the fade finishes by 20 ms: 64- and 128-frame renders are identical after it", () => {
+    const changeSec = 0.4;
+    const big = renderE1Fade(128);
+    const small = renderE1Fade(64);
+    // Past the 20 ms fade the two block sizes must render BIT-IDENTICALLY
+    // (the tap layout settled to the same state). Pre-fix the 128-frame
+    // render's fade ran 128x longer, so this window diverged ~1e-2.
+    const from = Math.round((changeSec + 0.1) * SR); // 100 ms — well past 20 ms
+    const to = Math.round((changeSec + 0.25) * SR);
+    let acc = 0;
+    let energyBig = 0;
+    for (let i = from; i < to; i++) {
+      acc += (big[i] - small[i]) * (big[i] - small[i]);
+      energyBig += big[i] * big[i];
+    }
+    expect(energyBig).toBeGreaterThan(1e-6);
+    expect(acc / energyBig).toBeLessThan(1e-3);
+  });
+
+  it("renders finite for both block sizes", () => {
+    expect(countNonFinite([renderE1Fade(64)])).toBe(0);
+    expect(countNonFinite([renderE1Fade(128)])).toBe(0);
+  });
+});
+

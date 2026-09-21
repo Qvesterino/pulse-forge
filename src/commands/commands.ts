@@ -4633,6 +4633,15 @@ export function applyProductionIntentCommand(doc: ProjectDocument, intent: Produ
 }
 
 /**
+ * Fold production FX chains into a doc WITHOUT wrapping in a command —
+ * ghost documents (candidate audition renders the FX the candidate would
+ * install) and other offline previews. The live project is never touched.
+ */
+export function foldFxIntoDoc(doc: ProjectDocument, fx: ProductionIntent): ProjectDocument {
+  return foldProductionIntent(doc, fx);
+}
+
+/**
  * Beat Mangler envelope edit (FX expansion): replace `volumeSteps` and/or
 /**
  * Beat Mangler envelope edit (FX expansion): replace `volumeSteps` and/or

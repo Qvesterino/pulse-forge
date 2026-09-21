@@ -4,6 +4,7 @@ import {
   ozvenaRenderQualityBumps,
   renderQualityBumps,
   resolveRenderQuality,
+  resolveRenderTailSeconds,
 } from "../src/rendering/renderer";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -85,5 +86,81 @@ describe("global Live/Export quality switch", () => {
     ]);
     // ozvena-only helper agrees on the same single bump.
     expect(ozvenaRenderQualityBumps(doc)).toHaveLength(1);
+  });
+});
+
+describe("VØID render tail (2026-09-19 audit)", () => {
+  type OzvenaFixture = {
+    id: string;
+    type: "ozvena";
+    bypassed: boolean;
+    params: Record<string, number>;
+  };
+  const docWithOzvena = (effects: OzvenaFixture[], returns: OzvenaFixture[] = []) =>
+    ({ tracks: [{ id: "track-1", effects }], returns: returns.map((fx) => ({ id: "ret-1", effects: [fx] })) }) as unknown as ProjectDocument;
+
+  it("falls back to 2 s without a VØID reverb", () => {
+    expect(resolveRenderTailSeconds(docWithEffects([]))).toBe(2);
+  });
+
+  it("extends the tail to the longest enabled VØID decay", () => {
+    const doc = docWithOzvena([
+      {
+        id: "reverb",
+        type: "ozvena",
+        bypassed: false,
+        params: { "engines.e3.enabled": 1, "engines.e3.time": 8000, "engines.e2.time": 2000 },
+      },
+    ]);
+    // 8 s x 1.1 + 0.5 = 9.3 s — a 2 s tail would truncate a long hall.
+    expect(resolveRenderTailSeconds(doc)).toBeCloseTo(9.3, 5);
+  });
+
+  it("ignores a disabled engine's time", () => {
+    const doc = docWithOzvena([
+      {
+        id: "reverb",
+        type: "ozvena",
+        bypassed: false,
+        params: { "engines.e3.enabled": 0, "engines.e3.time": 24000, "engines.e2.time": 2000 },
+      },
+    ]);
+    expect(resolveRenderTailSeconds(doc)).toBeCloseTo(2.7, 5);
+  });
+
+  it("caps a pathological decay at 12 s", () => {
+    const doc = docWithOzvena([
+      {
+        id: "reverb",
+        type: "ozvena",
+        bypassed: false,
+        params: { "engines.e3.enabled": 1, "engines.e3.time": 24000 },
+      },
+    ]);
+    expect(resolveRenderTailSeconds(doc)).toBe(12);
+  });
+
+  it("covers return-track reverbs too, and ignores bypassed ones", () => {
+    const ret = docWithOzvena(
+      [],
+      [
+        {
+          id: "ret-reverb",
+          type: "ozvena",
+          bypassed: false,
+          params: { "engines.e3.enabled": 1, "engines.e3.time": 6000 },
+        },
+      ],
+    );
+    expect(resolveRenderTailSeconds(ret)).toBeCloseTo(7.1, 5);
+    const bypassed = docWithOzvena([
+      {
+        id: "reverb",
+        type: "ozvena",
+        bypassed: true,
+        params: { "engines.e3.enabled": 1, "engines.e3.time": 24000 },
+      },
+    ]);
+    expect(resolveRenderTailSeconds(bypassed)).toBe(2);
   });
 });

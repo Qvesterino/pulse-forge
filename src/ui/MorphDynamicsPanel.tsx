@@ -54,6 +54,15 @@ import {
   applyMorphPreset,
 } from "../effects/morph-dynamics-core/presets/factoryPresets";
 import {
+  MORPH_SCENE_LABELS,
+  MORPH_SCENE_SLOTS,
+  defaultMorphScenes,
+  pickSceneParams,
+  readMorphScenesState,
+  type MorphSceneSlot,
+  type MorphScenesState,
+} from "../effects/morph-dynamics-core/contracts/state";
+import {
   MorphPresetRepository,
   MORPH_PRESET_SCHEMA_VERSION,
   type MorphPresetEntry,
@@ -102,6 +111,83 @@ function secFmt(v: number): string {
   return `${v.toFixed(2)} s`;
 }
 
+/** PRESSURE ring geometry (SVG viewBox units). */
+const PRESSURE_R = 34;
+const PRESSURE_C = 2 * Math.PI * PRESSURE_R;
+
+/**
+ * PressureRing — the central visual anchor (INTERACTION_MODEL §3): the
+ * base value as a thick arc, the instantaneous reactive activity as a thin
+ * outer ring, and a decaying recent-peak tick. Updated imperatively through
+ * the passed refs from the panel's meter poll — the ring is OBSERVATION,
+ * the slider under it is the precise control (docs §19 keyboard entry).
+ */
+function PressureRing({
+  value,
+  baseRef,
+  activityRef,
+  tickRef,
+  textRef,
+  onCommit,
+  onPreview,
+}: {
+  value: number;
+  baseRef: React.RefObject<SVGCircleElement | null>;
+  activityRef: React.RefObject<SVGCircleElement | null>;
+  tickRef: React.RefObject<SVGCircleElement | null>;
+  textRef: React.RefObject<HTMLSpanElement | null>;
+  onCommit: (v: number) => void;
+  onPreview: (v: number) => void;
+}) {
+  return (
+    <div className="pressure-ring-wrap">
+      <svg className="pressure-ring" width={96} height={96} viewBox="0 0 96 96" aria-hidden="true">
+        <circle cx={48} cy={48} r={PRESSURE_R} className="pressure-ring-track" />
+        <circle
+          ref={baseRef}
+          cx={48}
+          cy={48}
+          r={PRESSURE_R}
+          className="pressure-ring-base"
+          strokeDasharray={PRESSURE_C}
+          strokeDashoffset={PRESSURE_C * (1 - Math.max(0, Math.min(100, value)) / 100)}
+        />
+        <circle
+          ref={activityRef}
+          cx={48}
+          cy={48}
+          r={PRESSURE_R + 7}
+          className="pressure-ring-activity"
+          strokeDasharray={`0 ${2 * Math.PI * (PRESSURE_R + 7)}`}
+        />
+        <circle
+          ref={tickRef}
+          cx={48 + PRESSURE_R + 7}
+          cy={48}
+          r={2.4}
+          className="pressure-ring-tick"
+          transform={`rotate(-90 ${48} ${48})`}
+        />
+      </svg>
+      <div className="pressure-ring-readout">
+        <span ref={textRef}>{Math.round(value)}%</span>
+        <span className="pressure-ring-label">PRESSURE</span>
+      </div>
+      <Slider
+        compact
+        label=""
+        value={value}
+        min={0}
+        max={100}
+        defaultValue={35}
+        format={pctFmt}
+        onCommit={onCommit}
+        onPreview={onPreview}
+      />
+    </div>
+  );
+}
+
 export function MorphDynamicsPanel({
   trackId,
   fxId,
@@ -109,6 +195,8 @@ export function MorphDynamicsPanel({
   degraded,
   onParam,
   onApplyPreset,
+  scenesState,
+  onScenesStateChange,
 }: {
   trackId: string;
   fxId: string;
@@ -116,10 +204,14 @@ export function MorphDynamicsPanel({
   degraded?: boolean;
   onParam: (paramId: string, value: number) => void;
   onApplyPreset: (presetName: string, presetParams: Record<string, number>) => void;
+  /** Persisted morph-scene slots (deviceState "morph-scenes-v1"). */
+  scenesState?: MorphScenesState;
+  onScenesStateChange?: (state: MorphScenesState) => void;
 }) {
   const services = useServices();
   const [showEngine, setShowEngine] = useState(false);
   const [showMatrix, setShowMatrix] = useState(false);
+  const [showScenes, setShowScenes] = useState(false);
   // ── USER PRESETS: named snapshots of the full parameter map ──────────
   const [userPresets, setUserPresets] = useState<MorphPresetEntry[]>([]);
   const [selectedUserPresetId, setSelectedUserPresetId] = useState<string | null>(null);
@@ -200,9 +292,40 @@ export function MorphDynamicsPanel({
     }
   };
 
+  // ── MORPH SCENES (A: Clean · B: Dense · C: Wide · D: Destroyed) ──────
+  const scenes = scenesState ?? defaultMorphScenes();
+  const captureScene = (slot: MorphSceneSlot) => {
+    onScenesStateChange?.({ slots: { ...scenes.slots, [slot]: pickSceneParams(params) } });
+  };
+  const morphToScene = (slot: MorphSceneSlot) => {
+    // Empty slots morph to the factory archetype; captured slots to the
+    // user's stored configuration. The audible part is a 500 ms engine-side
+    // glide; the document is committed to the same values as ONE undoable
+    // command (the worklet absorbs the sync into the glide — no jump).
+    const target = scenes.slots[slot] ?? defaultMorphScenes().slots[slot];
+    if (!target) return;
+    const engineWithRuntime = services.engine as typeof services.engine & {
+      getFxRuntime?: (
+        trackId: string,
+        fxId: string,
+      ) => {
+        morphToParams?: (params: Record<string, number>, durationSec: number) => void;
+      } | null;
+    };
+    engineWithRuntime.getFxRuntime?.(trackId, fxId)?.morphToParams?.(target, 0.5);
+    onApplyPreset(`Scene ${slot} — ${MORPH_SCENE_LABELS[slot]}`, applyMorphPreset(target));
+  };
+
   // ── Live meters: polled while mounted; engine gates the worklet cost ──
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const metersRef = useRef<MorphMeters | null>(null);
+  // PRESSURE ring elements — updated imperatively in the poll (a React
+  // state update per 66 ms tick would re-render the whole panel for a meter).
+  const pressureBaseRef = useRef<SVGCircleElement | null>(null);
+  const pressureActivityRef = useRef<SVGCircleElement | null>(null);
+  const pressureTickRef = useRef<SVGCircleElement | null>(null);
+  const pressureTextRef = useRef<HTMLSpanElement | null>(null);
+  const pressurePeakRef = useRef(0);
 
   useEffect(() => {
     const engineWithMeters = services.engine as typeof services.engine & {
@@ -274,6 +397,34 @@ export function MorphDynamicsPanel({
     if (Math.abs(boost) > 0.5) {
       ctx.fillStyle = boost > 0 ? "#7dc98f" : "#c6a35b";
       ctx.fillText(`AGC ${boost > 0 ? "+" : ""}${boost.toFixed(0)} dB`, w - 96, 12);
+    }
+
+    // PRESSURE ring (INTERACTION_MODEL §3): base arc = the macro setting,
+    // outer activity ring = how hard the reactive engine is working right
+    // now (mean T/B/T energy + live route modulation), with a decaying
+    // recent-peak tick. All imperatively via refs — no re-render per tick.
+    const activity = Math.min(
+      1,
+      (0.6 * ((m?.transient ?? 0) + (m?.body ?? 0) + (m?.texture ?? 0))) / 3 + 0.4 * Math.max(0, ...(m?.routes ?? [0])),
+    );
+    const value = Math.max(0, Math.min(100, valueOf(MACRO_PRESSURE_ID)));
+    const C = 2 * Math.PI * PRESSURE_R;
+    if (pressureBaseRef.current) {
+      pressureBaseRef.current.style.strokeDashoffset = `${C * (1 - value / 100)}`;
+    }
+    if (pressureActivityRef.current) {
+      pressureActivityRef.current.style.strokeDasharray = `${C * activity} ${C}`;
+      pressureActivityRef.current.style.opacity = `${0.25 + 0.75 * activity}`;
+    }
+    // Recent-peak tick: rises instantly, decays slowly (~2 s hold-and-fall).
+    pressurePeakRef.current = Math.max(activity, pressurePeakRef.current - 0.008);
+    if (pressureTickRef.current) {
+      const angle = -90 + 360 * pressurePeakRef.current;
+      pressureTickRef.current.setAttribute("transform", `rotate(${angle} ${PRESSURE_R + 8} ${PRESSURE_R + 8})`);
+      pressureTickRef.current.style.opacity = pressurePeakRef.current > 0.03 ? "1" : "0";
+    }
+    if (pressureTextRef.current) {
+      pressureTextRef.current.textContent = `${Math.round(value)}%`;
     }
   };
 
@@ -444,13 +595,12 @@ export function MorphDynamicsPanel({
 
       <div className="morph-macros">
         <div className="morph-macro morph-macro-pressure">
-          <Slider
-            label="PRESSURE"
+          <PressureRing
             value={valueOf(MACRO_PRESSURE_ID)}
-            min={0}
-            max={100}
-            defaultValue={35}
-            format={pctFmt}
+            baseRef={pressureBaseRef}
+            activityRef={pressureActivityRef}
+            tickRef={pressureTickRef}
+            textRef={pressureTextRef}
             onCommit={(v) => onParam(MACRO_PRESSURE_ID, v)}
             onPreview={(v) => previewParam(MACRO_PRESSURE_ID, v)}
           />
@@ -465,6 +615,46 @@ export function MorphDynamicsPanel({
       <canvas ref={canvasRef} width={340} height={66} className="morph-live" aria-label="MORPH DYNAMICS live meters" />
 
       <div className="morph-sections">
+        <button type="button" className="morph-section-toggle" onClick={() => setShowScenes((s) => !s)}>
+          MORPH SCENES {showScenes ? "▾" : "▸"}
+        </button>
+        {showScenes && (
+          <div className="morph-scenes">
+            <div className="morph-scenes-hint">
+              A scene captures the whole reactive behavior. GO glides the engine (~0.5 s) and commits as one undo step;
+              ● captures the current settings into the slot.
+            </div>
+            {MORPH_SCENE_SLOTS.map((slot) => {
+              const captured = !!scenes.slots[slot];
+              return (
+                <div className={`morph-scene ${captured ? "filled" : ""}`} key={slot}>
+                  <button
+                    type="button"
+                    className="morph-scene-go"
+                    title={
+                      captured
+                        ? `Glide to scene ${slot}`
+                        : `Glide to the factory archetype (${MORPH_SCENE_LABELS[slot]})`
+                    }
+                    onClick={() => morphToScene(slot)}
+                  >
+                    <span className="morph-scene-slot">{slot}</span>
+                    <span className="morph-scene-name">{MORPH_SCENE_LABELS[slot]}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="morph-scene-capture"
+                    aria-label={`Capture current settings into scene ${slot}`}
+                    title="Capture current settings"
+                    onClick={() => captureScene(slot)}
+                  >
+                    ●
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <button type="button" className="morph-section-toggle" onClick={() => setShowEngine((s) => !s)}>
           ENGINE {showEngine ? "▾" : "▸"}
         </button>

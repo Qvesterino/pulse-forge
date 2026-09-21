@@ -324,6 +324,23 @@
   font: 8px var(--mono);
 }
 
+/* Wave: per-section FX chips — devices the section gates or sweeps. */
+.arr-role-flow-fx {
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--accent, var(--border)) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, var(--bg-raise)) 12%, transparent);
+  color: var(--text-dim);
+  font: 8px var(--mono);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.arr-role-flow-fx.sweep {
+  border-style: dashed;
+  color: var(--text);
+}
+
 .arr-role-flow-arrow {
   margin: 0 2px;
   color: var(--text-faint);

@@ -167,10 +167,14 @@ export function analyzeLoudnessBuffer(channels: readonly Float32Array[], sampleR
     }
   }
 
+  // Nothing above the absolute gate (silence/digital black) = NOT measurable —
+  // consumers (the loudness loop) must not chase −∞ with gain adjustments.
+  const measured = audible.length > 0;
+
   return {
     integrated,
     momentaryMax: Math.max(...blocks),
     shortTermMax: shortTerm.length > 0 ? Math.max(...shortTerm) : Math.max(...blocks),
-    measured: true,
+    measured,
   };
 }

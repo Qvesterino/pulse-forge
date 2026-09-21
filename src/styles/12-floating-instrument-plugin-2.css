@@ -916,6 +916,54 @@
   border-color: var(--accent);
 }
 
+/* Mic input gain + live level meter (pre-capture quality tools). */
+.arr-arm-gain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.arr-arm-gain-value {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.arr-arm-gain input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+.arr-mic-meter {
+  position: relative;
+  width: 84px;
+  height: 8px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.arr-mic-meter-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.08s linear;
+}
+
+.arr-mic-clip {
+  position: absolute;
+  inset: 0;
+  background: var(--stop);
+  color: #161616;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: none;
+  cursor: pointer;
+}
+
 .arr-rec-saving,
 .arr-rec-error {
   font-size: 11px;

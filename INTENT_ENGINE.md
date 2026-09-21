@@ -620,6 +620,28 @@ nezávislou metrikou.
   scene-role expand, amount scaling, remove, router priorita, exekúcia
   (add/knob/undo/remove), user-role respect.
 
+### 5.14 LOUDNESS LOOP (D1 v2c — "make it louder", HOTOVÉ)
+
+Meranie a úprava hlasitosti ako closures loop:
+
+- **Parse** (`parseLoudnessIntent` v loudness.ts): "make it louder/quieter",
+  "hlasitejši/hlasit" (SK stem — pozor: holé "hlas" = vokál, NIE spúšťač!),
+  explicitný target "loudness na −9" / "−9 lufs" (lookbehind namiesto  pred
+  mínusom — hyphen na word boundary inak blokuje záporné čísla).
+- **Loop** (`applyLoudnessIntent`): render celého projektu offline (song mód,
+  fallback na active pattern) → `analyzeLoudnessBuffer` (BS.1770-4 dual gate,
+  engine K-weighting) → posun `master.loudnessTrimDb` smerom k targetu
+  (default −14 LUFS streaming, nudže ±3 dB) → re-render → konvergencia
+  max 2 iterácie (limiter je nelineárny). Trim clamp ±6 dB (pole MasterConfig).
+- **Engine fix**: `analyzeLoudnessBuffer` — digitálne ticho (nič nad
+  absolútnou −70 bránou) teraz vráti `measured: false` (predtým true
+  s −∞ integrovanou hlasitosťou — loudness loop by bežal za −∞).
+- **Renderer injektovateľný** — unit testy bez audio kontextu; reálny render
+  kryje browser smoke.
+- Testy: `tests/intent-loudness.test.ts` (10) — parse EN/SK/targety,
+  LUFS matematika (+20 dB amplitúdy ≈ +20 LU), ticho ne-merateľné,
+  konvergencia loopu (injected render), clamp ±6, render failure.
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

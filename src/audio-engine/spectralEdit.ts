@@ -238,3 +238,181 @@ export function applySpectralEditsToChannels(
 ): Float32Array<ArrayBuffer>[] {
   return channels.map((ch) => applySpectralEdits(ch, sampleRate, edits, opts));
 }
+
+/* ------------------------------------------------------------------ */
+/* Noise-region suggestion ("erase noise" preset)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * STFT magnitudes in dB, one Float32Array (fftSize/2 bins) per frame.
+ * Shared by the spectrogram painter and the noise suggester so both see
+ * identical frames.
+ */
+export function computeStftDbFrames(mono: Float32Array, fftSize = 2048, hop = 1024): Float32Array<ArrayBuffer>[] {
+  const bins = fftSize >> 1;
+  if (mono.length < fftSize) return [];
+  const win = new Float64Array(fftSize);
+  for (let i = 0; i < fftSize; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (fftSize - 1));
+  const re = new Float64Array(fftSize);
+  const im = new Float64Array(fftSize);
+  const frames: Float32Array<ArrayBuffer>[] = [];
+  for (let base = 0; base + fftSize <= mono.length; base += hop) {
+    for (let i = 0; i < fftSize; i++) {
+      re[i] = mono[base + i] * win[i];
+      im[i] = 0;
+    }
+    fftInPlace(re, im);
+    const frame = new Float32Array(bins);
+    for (let bin = 0; bin < bins; bin++) {
+      const mag = Math.sqrt(re[bin] * re[bin] + im[bin] * im[bin]) / (fftSize / 4);
+      frame[bin] = mag > 1e-7 ? 20 * Math.log10(mag) : -160;
+    }
+    frames.push(frame);
+  }
+  return frames;
+}
+
+function percentileOf(values: Float32Array, p: number): number {
+  if (values.length === 0) return -160;
+  const sorted = Float32Array.from(values).sort();
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)));
+  return sorted[idx];
+}
+
+export interface NoiseSuggestion {
+  startSec: number;
+  endSec: number;
+  freqLoHz: number;
+  freqHiHz: number;
+  gainDb: number;
+}
+
+export interface NoiseSuggestOptions {
+  /** A bin is a noise candidate when its 10th percentile sits above this. Default −75 dB. */
+  floorAbsDb?: number;
+  /** …and its 90th−10th percentile spread stays below this (no musical peaks). Default 12 dB. */
+  flatnessDb?: number;
+  /** Smallest usable band width in bins. Default 8. */
+  minBins?: number;
+  /** Gain of the suggested erase cut. Default −48 dB. */
+  gainDb?: number;
+}
+
+/**
+ * Find the loudest persistent noise band and return a full-time erase
+ * region for it. Stationarity heuristic: a bin is "noise" when it is
+ * consistently audible (10th percentile above floorAbsDb) AND never rises
+ * above its own floor (90th−10th spread below flatnessDb) — musical
+ * content spikes, hiss hum and rumble sit flat. The widest reasonable
+ * contiguous band with the highest floor wins. Null = nothing persistent
+ * found (clean recording or pure silence).
+ */
+export function suggestNoiseRegionFromFrames(
+  frames: Float32Array[],
+  sampleRate: number,
+  fftSize: number,
+  durationSec: number,
+  opts: NoiseSuggestOptions = {},
+): NoiseSuggestion | null {
+  if (frames.length < 4) return null;
+  const floorAbsDb = opts.floorAbsDb ?? -75;
+  const flatnessDb = opts.flatnessDb ?? 15;
+  const minBins = opts.minBins ?? 3;
+  const gainDb = opts.gainDb ?? -48;
+
+  const bins = fftSize >> 1;
+  const binHz = sampleRate / fftSize;
+  const T = frames.length;
+
+  // Raw per-bin dB percentiles.
+  const rawFloor = new Float32Array(bins);
+  const rawPeak = new Float32Array(bins);
+  const column = new Float32Array(T);
+  for (let bin = 1; bin < bins; bin++) {
+    for (let t = 0; t < T; t++) column[t] = frames[t][bin];
+    rawFloor[bin] = percentileOf(column, 0.1);
+    rawPeak[bin] = percentileOf(column, 0.9);
+  }
+
+  // Raw percentiles swing ~15 dB between the 10th and 90th percentile even
+  // for pure noise (2-DOF power statistics at short frame counts), which
+  // would fail any flatness test. A ±3-bin moving average restores a
+  // workable spread (~11 dB) and keeps tone bands local.
+  const smoothFloor = new Float32Array(bins);
+  const smoothPeak = new Float32Array(bins);
+  for (let bin = 1; bin < bins; bin++) {
+    let sumFloor = 0;
+    let sumPeak = 0;
+    let count = 0;
+    for (let k = -3; k <= 3; k++) {
+      const idx = bin + k;
+      if (idx >= 1 && idx < bins) {
+        sumFloor += rawFloor[idx];
+        sumPeak += rawPeak[idx];
+        count++;
+      }
+    }
+    smoothFloor[bin] = sumFloor / count;
+    smoothPeak[bin] = sumPeak / count;
+  }
+
+  const isNoise = new Uint8Array(bins);
+  for (let bin = 1; bin < bins; bin++) {
+    isNoise[bin] = smoothFloor[bin] > floorAbsDb && smoothPeak[bin] - smoothFloor[bin] < flatnessDb ? 1 : 0;
+  }
+
+  // Group contiguous noise bins (≤4-bin gaps merge — filter ripples).
+  const bands: Array<{ from: number; to: number }> = [];
+  let from = -1;
+  let gap = 0;
+  for (let bin = 1; bin < bins; bin++) {
+    if (isNoise[bin]) {
+      if (from < 0) from = bin;
+      gap = 0;
+    } else if (from >= 0) {
+      gap++;
+      if (gap > 4) {
+        bands.push({ from, to: bin - gap });
+        from = -1;
+        gap = 0;
+      }
+    }
+  }
+  if (from >= 0) bands.push({ from, to: bins - 1 });
+
+  // The loudest persistent band wins (highest average smoothed floor).
+  let best: { from: number; to: number } | null = null;
+  let bestScore = -Infinity;
+  for (const band of bands) {
+    if (band.to - band.from + 1 < minBins) continue;
+    let sum = 0;
+    for (let bin = band.from; bin <= band.to; bin++) sum += smoothFloor[bin];
+    const score = sum / (band.to - band.from + 1);
+    if (score > bestScore) {
+      bestScore = score;
+      best = band;
+    }
+  }
+  if (!best) return null;
+
+  return {
+    startSec: 0,
+    endSec: Math.max(0.01, durationSec),
+    freqLoHz: Math.max(20, best.from * binHz),
+    freqHiHz: Math.min(sampleRate / 2, best.to * binHz),
+    gainDb,
+  };
+}
+
+/** Convenience wrapper: STFT + suggestion in one call. */
+export function suggestNoiseRegion(
+  mono: Float32Array,
+  sampleRate: number,
+  durationSec: number,
+  opts: NoiseSuggestOptions & { fftSize?: number; hop?: number } = {},
+): NoiseSuggestion | null {
+  const fftSize = opts.fftSize ?? 2048;
+  const hop = opts.hop ?? 1024;
+  const frames = computeStftDbFrames(mono, fftSize, hop);
+  return suggestNoiseRegionFromFrames(frames, sampleRate, fftSize, durationSec, opts);
+}

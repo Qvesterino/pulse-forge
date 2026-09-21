@@ -41,15 +41,14 @@ const FxEqPanel = lazy(() => import("./FxEqPanel").then((m) => ({ default: m.FxE
 const UltinaPanel = lazy(() => import("./UltinaPanel").then((m) => ({ default: m.UltinaPanel })));
 const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m.OzvenaPanel })));
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
-const MorphDynamicsPanel = lazy(() =>
-  import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })),
-);
+const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
+import type { MorphScenesState } from "../effects/morph-dynamics-core/contracts/state";
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 import { DockedPlugin } from "./FloatingPlugin";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
@@ -414,9 +413,10 @@ function Device({
   // only the transient draft inside the panel between pointer and command.
   const contentId = `fx-device-content-${fx.id}`;
   const defaultParams = normalizePluginParams(fx.type, {}) ?? defaultParamsOf(fx.type);
-  const isModified = Object.keys({ ...defaultParams, ...fx.params }).some(
-    (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
-  ) || (fx.outputTrimDb ?? 0) !== 0;
+  const isModified =
+    Object.keys({ ...defaultParams, ...fx.params }).some(
+      (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
+    ) || (fx.outputTrimDb ?? 0) !== 0;
   const editorSpec = effectEditorSpec(fx.type);
   const genericParams = devicesMode
     ? fx.type === "fxeq"
@@ -425,7 +425,7 @@ function Device({
         ? def.params.filter((param) => param.id.startsWith("global."))
         : fx.type === "beatMangler"
           ? def.params.filter((param) => !["trigger", "interval", "offset", "chance", "gate"].includes(param.id))
-        : def.params
+          : def.params
     : def.params;
   const usableParams = genericParams.filter(
     (param) =>
@@ -505,27 +505,27 @@ function Device({
             ))}
           </select>
         )}
-          {fx.type === "ozvena" && irNote === "IR loaded" && (
-            <button
-              type="button"
-              className="btn btn-small fx-ir-load"
-              title="Drop the loaded user impulse response (fall back to the factory IR selection)"
-              onClick={() => {
-                const engine = services.engine as typeof services.engine & {
-                  clearUserIrForFx?: (trackId: string, fxId: string) => void;
-                };
-                try {
-                  engine.clearUserIrForFx?.(track.id, fx.id);
-                  setIrNote(null);
-                } catch (err: unknown) {
-                  setIrNote(err instanceof Error ? err.message : String(err));
-                }
-              }}
-            >
-              CLR
-            </button>
-          )}
-          {fx.type === "ozvena" && (
+        {fx.type === "ozvena" && irNote === "IR loaded" && (
+          <button
+            type="button"
+            className="btn btn-small fx-ir-load"
+            title="Drop the loaded user impulse response (fall back to the factory IR selection)"
+            onClick={() => {
+              const engine = services.engine as typeof services.engine & {
+                clearUserIrForFx?: (trackId: string, fxId: string) => void;
+              };
+              try {
+                engine.clearUserIrForFx?.(track.id, fx.id);
+                setIrNote(null);
+              } catch (err: unknown) {
+                setIrNote(err instanceof Error ? err.message : String(err));
+              }
+            }}
+          >
+            CLR
+          </button>
+        )}
+        {fx.type === "ozvena" && (
           <label className="btn btn-small fx-ir-load" title="Load a user impulse response (VØID convolution)">
             IR…
             <input
@@ -791,6 +791,16 @@ function Device({
                 }
                 onApplyPreset={(name, presetParams) =>
                   services.store.execute(applyMorphDynamicsPreset(doc, track.id, fx.id, name, presetParams))
+                }
+                scenesState={
+                  fx.deviceState?.kind === "morph-scenes-v1"
+                    ? (fx.deviceState.data as unknown as MorphScenesState)
+                    : undefined
+                }
+                onScenesStateChange={(next) =>
+                  services.store.execute(
+                    setDeviceState(doc, track.id, fx.id, { kind: "morph-scenes-v1", data: { ...next } }),
+                  )
                 }
               />
             )}

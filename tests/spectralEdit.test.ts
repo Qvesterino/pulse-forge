@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySpectralEdits, fftInPlace } from "../src/audio-engine/spectralEdit";
+import { applySpectralEdits, computeStftDbFrames, fftInPlace, suggestNoiseRegion, suggestNoiseRegionFromFrames } from "../src/audio-engine/spectralEdit";
 
 const SR = 44100;
 
@@ -128,5 +128,65 @@ describe("applySpectralEdits — selectivity", () => {
     for (let i = 0; i < out.length; i += 13) {
       expect(Number.isFinite(out[i])).toBe(true);
     }
+  });
+});
+
+describe("suggestNoiseRegion — erase-noise preset", () => {
+  function noise(seconds: number, amp = 0.05, lowpass = false): Float32Array {
+    const n = Math.round(seconds * SR);
+    const out = new Float32Array(n);
+    let prev = 0;
+    let seed = 1234567;
+    for (let i = 0; i < n; i++) {
+      // Deterministic LCG-based white noise.
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      const white = ((seed / 0x3fffffff) - 1) * amp;
+      out[i] = lowpass ? (prev = prev + 0.12 * (white - prev)) : white;
+    }
+    return out;
+  }
+
+  it("suggests a broadband region for white noise", () => {
+    const clip = noise(1.2);
+    const sug = suggestNoiseRegion(clip, SR, 1.2);
+    expect(sug).not.toBeNull();
+    // White noise is flat across the spectrum — the band must span most of it.
+    const span = sug!.freqHiHz / sug!.freqLoHz;
+    expect(sug!.freqLoHz).toBeLessThan(200);
+    expect(sug!.freqHiHz).toBeGreaterThan(SR / 2 / 3);
+    expect(span).toBeGreaterThan(20);
+    expect(sug!.gainDb).toBe(-48);
+    expect(sug!.startSec).toBe(0);
+  });
+
+  it("returns null for pure silence", () => {
+    const clip = new Float32Array(Math.round(1.0 * SR));
+    expect(suggestNoiseRegion(clip, SR, 1.0)).toBeNull();
+  });
+
+  it("keeps the suggestion tight around a lone persistent tone", () => {
+    const clip = sine(onBinFreq(46), 1.2);
+    const sug = suggestNoiseRegion(clip, SR, 1.2);
+    expect(sug).not.toBeNull();
+    // The tone's band must not blanket the whole spectrum.
+    expect(sug!.freqLoHz).toBeGreaterThan(600);
+    expect(sug!.freqHiHz).toBeLessThan(1600);
+  });
+
+  it("places a low-passed hiss suggestion in the low region, not the top octave", () => {
+    const clip = noise(1.2, 0.08, true); // one-pole lowpass → energy below ~1.2 kHz
+    const sug = suggestNoiseRegion(clip, SR, 1.2);
+    expect(sug).not.toBeNull();
+    expect(sug!.freqHiHz).toBeLessThan(SR / 4);
+    expect(sug!.freqLoHz).toBeLessThan(400);
+  });
+
+  it("suggestNoiseRegionFromFrames agrees with the wrapper", () => {
+    const clip = noise(1.0);
+    const frames = computeStftDbFrames(clip, 2048, 1024);
+    expect(frames.length).toBeGreaterThan(4);
+    const direct = suggestNoiseRegionFromFrames(frames, SR, 2048, 1.0);
+    const wrapped = suggestNoiseRegion(clip, SR, 1.0);
+    expect(direct).toEqual(wrapped);
   });
 });

@@ -1024,10 +1024,15 @@
       width: new BlockSmoother(1.15, 0.06),
       predelayMs: new BlockSmoother(12, 0.08),
       duck: new BlockSmoother(0.5, 0.08),
-      /** Per-destination additive modulation delta (plain units of the dest). */
-      mod: MOD_DESTINATIONS.map(() => new BlockSmoother(0, 0.06))
+      /**
+       * Per-ROUTE smoothing (5..300 ms each): a transient route (wants ~5 ms)
+       * and a body route (wants ~150 ms) may share a destination — the route
+       * that owns the modulation owns its TC. The destination value is the SUM
+       * of the per-route smoothed deltas.
+       */
+      route: Array.from({ length: ROUTE_SLOTS }, () => new BlockSmoother(0, 0.04))
     };
-    /** Raw (pre-smoothing) matrix deltas for this block. */
+    /** Per-destination sum of SMOOTHED route deltas (plain units of the dest). */
     rawDelta = new Array(MOD_DESTINATIONS.length).fill(0);
     // Per-route activity for the matrix UI (post-modulation magnitude 0..1).
     routeActivity = new Array(ROUTE_SLOTS).fill(0);
@@ -1057,7 +1062,10 @@
     dryBufL = new Float32Array(16);
     dryBufR = new Float32Array(16);
     dryPos = 0;
+    /** Block-rate control math (morph glide advance) needs the real rate. */
+    sampleRate = 48e3;
     prepare(sampleRate2, _channelCount, maxBlockSize, qualityMode) {
+      this.sampleRate = sampleRate2;
       const controlRate = sampleRate2 / Math.max(1, maxBlockSize);
       for (const smoother of Object.values(this.sm)) {
         if (Array.isArray(smoother)) {
@@ -1095,8 +1103,56 @@
     setParameter(id, value) {
       if (!PARAM_BY_ID.has(id)) return;
       this.params[id] = clampParam(id, value);
+      if (this.morphDur > 0 && id in this.morphTarget) {
+        this.morphStart[id] = this.params[id];
+        this.morphTarget[id] = this.params[id];
+      }
       if (id === GLOBAL_QUALITY_ID) this.applyQuality();
       this.pushStaticParams();
+    }
+    // ── Morph scenes (A–D) ────────────────────────────────────────
+    // The document stays owner of truth: the panel commits a scene as ONE
+    // undoable command while the engine GLIDES audibly to the same values.
+    // Globals (I/O, mix, quality) and the mod-matrix wiring are scene-immune
+    // — a scene changes how the processor behaves, not how it is wired or
+    // how loud it is.
+    morphIds = [];
+    morphStart = {};
+    morphTarget = {};
+    morphPos = 0;
+    morphDur = 0;
+    startMorph(target, durationSec) {
+      this.cancelMorph();
+      for (const [id, value] of Object.entries(target)) {
+        if (!PARAM_BY_ID.has(id)) continue;
+        if (id.startsWith("global.") || id.startsWith("routes.")) continue;
+        this.morphIds.push(id);
+        this.morphStart[id] = this.params[id] ?? 0;
+        this.morphTarget[id] = clampParam(id, value);
+      }
+      this.morphPos = 0;
+      this.morphDur = Math.max(0.05, durationSec);
+    }
+    cancelMorph() {
+      this.morphIds.length = 0;
+      this.morphStart = {};
+      this.morphTarget = {};
+      this.morphPos = 0;
+      this.morphDur = 0;
+    }
+    /** Advance the glide one block; params carry the interpolated values. */
+    advanceMorph(blockSec) {
+      if (this.morphDur <= 0) return;
+      this.morphPos += blockSec;
+      const t = Math.min(1, this.morphPos / this.morphDur);
+      const k = t * t * (3 - 2 * t);
+      for (const id of this.morphIds) {
+        this.params[id] = this.morphStart[id] + (this.morphTarget[id] - this.morphStart[id]) * k;
+      }
+      if (t >= 1) {
+        this.cancelMorph();
+        this.pushStaticParams();
+      }
     }
     getParameter(id) {
       return this.params[id] ?? 0;
@@ -1123,7 +1179,8 @@
       this.dcR.reset();
       this.dryBufL.fill(0);
       this.dryBufR.fill(0);
-      for (const s of this.sm.mod) s.snap();
+      for (const s of this.sm.route) s.snap();
+      this.cancelMorph();
     }
     /** Quality mode → analysis resolution + character oversampling (+ its
      * dry-path compensation delay). Called from prepare and whenever the
@@ -1193,7 +1250,12 @@
       this.rawDelta.fill(0);
       for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
         this.routeActivity[slot] = 0;
-        if (q[routeParamId(slot, "enabled")] < 0.5) continue;
+        const routeSm = this.sm.route[slot];
+        if (q[routeParamId(slot, "enabled")] < 0.5) {
+          routeSm.setTarget(0);
+          routeSm.tick();
+          continue;
+        }
         const sourceIdx = Math.round(q[routeParamId(slot, "source")]);
         const destIdx = Math.round(q[routeParamId(slot, "destination")]);
         const dest = MOD_DESTINATIONS[destIdx];
@@ -1201,19 +1263,14 @@
         const s = src[sourceIdx] ?? 0;
         const amount = q[routeParamId(slot, "amount")] / 100;
         const delta = amount * s * dest.span * routeScale;
-        this.rawDelta[destIdx] += delta;
+        routeSm.tc = q[routeParamId(slot, "smoothMs")] / 1e3;
+        routeSm.setTarget(delta);
+        this.rawDelta[destIdx] += routeSm.tick();
         if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
-      }
-      const modDelta = this.sm.mod;
-      for (let d = 0; d < modDelta.length; d++) {
-        const ownerSlot = this.routeSmoothOwner(d);
-        if (ownerSlot >= 0) modDelta[d].tc = q[routeParamId(ownerSlot, "smoothMs")] / 1e3;
-        modDelta[d].setTarget(this.rawDelta[d]);
-        modDelta[d].tick();
       }
       const mod = (destIdx, base) => {
         const dest = MOD_DESTINATIONS[destIdx];
-        return Math.max(dest.min, Math.min(dest.max, base + modDelta[destIdx].current));
+        return Math.max(dest.min, Math.min(dest.max, base + this.rawDelta[destIdx]));
       };
       const sidechainExt = q[DYN_SIDECHAIN_EXT_ID] >= 0.5;
       this.sm.thresholdOffset.setTarget(-10 * Math.pow(dynScale, 1.2));
@@ -1283,6 +1340,7 @@
       const mix = this.sm.mix.tick();
       const deltaOn = q[GLOBAL_DELTA_ID] >= 0.5;
       const transientPathTrim = punch > 0 ? punch * 0.35 : punch * 0.18;
+      this.advanceMorph(frames / this.sampleRate);
       let inPeak = 0;
       let outPeak = 0;
       const dynOut = { gl: 1, gr: 1, makeup: 1 };
@@ -1364,15 +1422,6 @@
       this.meters.density = sig.density;
       this.meters.inputEnergy = sig.inputEnergy;
     }
-    /** Route slot that most recently configured destination d's smoother. */
-    routeSmoothOwner(d) {
-      for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
-        if (this.params[routeParamId(slot, "enabled")] >= 0.5 && Math.round(this.params[routeParamId(slot, "destination")]) === d) {
-          return slot;
-        }
-      }
-      return -1;
-    }
     getMeters() {
       return this.meters;
     }
@@ -1433,6 +1482,10 @@
           let i = q.length;
           while (i > 0 && q[i - 1].when > when) i--;
           q.splice(i, 0, { id: msg.id, value: msg.value, when });
+        } else if (msg.type === "morphTo") {
+          if (msg.params && typeof msg.params === "object") {
+            this.proc.startMorph(msg.params, Math.max(50, Number(msg.durationMs) || 500) / 1e3);
+          }
         } else if (msg.type === "reset") {
           this.pendingParams.length = 0;
           this.proc.reset();

@@ -411,6 +411,125 @@ describe("morph-dynamics core processor — thesis behavior", () => {
     const intRun = renderSc(intProc, mainGen, scGen, 1.2);
     expect(rms(intRun.out[0], tailFrom)).toBeGreaterThan(fedRms * 1.1);
   });
+
+  it("per-route smoothing: a slow route glides, a fast route lands immediately", () => {
+    // density → Comp Threshold route; density is constant on sustained
+    // noise, so enabling the route drops the threshold (more compression →
+    // quieter). With 300 ms smoothing the first 120 ms are barely ducked;
+    // with 5 ms they are already at the settled level — and because the
+    // smoothing lives on the ROUTE, a second (slow) route sharing the
+    // destination cannot delay the fast one.
+    const routeBase = {
+      "macro.pressure": 60,
+      "macro.motion": 0,
+      "macro.space": 0,
+      "char.enabled": 0,
+      "dyn.thresholdDb": -14,
+      "dyn.ratio": 4,
+      "dyn.attackMs": 2,
+      "dyn.releaseMs": 400,
+      [P.routeParamId(0, "enabled")]: 1,
+      [P.routeParamId(0, "source")]: 5, // Density
+      [P.routeParamId(0, "destination")]: 0, // Comp Threshold
+      [P.routeParamId(0, "amount")]: 100,
+      [P.routeParamId(1, "enabled")]: 0,
+    };
+    noiseState = 246;
+    const levels = (smoothMs: number): { earlyDb: number; settledDb: number } => {
+      const proc = makeProcessor({ ...routeBase, [P.routeParamId(0, "smoothMs")]: smoothMs });
+      // Warm up WITHOUT the route active to establish the pre-route level.
+      noiseState = 987;
+      let earlyRms = 0;
+      let settledRms = 0;
+      const frames = 0.9 * SR;
+      const blocks = Math.ceil(frames / BLOCK);
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      for (let b = 0; b < blocks; b++) {
+        for (let i = 0; i < BLOCK; i++) {
+          const v = (0.4 * (noiseState = (1103515245 * noiseState + 12345) & 0x7fffffff)) / 0x3fffffff - 0.2;
+          input[0][i] = v;
+          input[1][i] = v;
+        }
+        // Enable the route at t = 0.3 s (a real doc-write timing).
+        if (b === Math.floor((0.3 * SR) / BLOCK)) proc.setParameter(P.routeParamId(0, "enabled"), 1);
+        proc.process(input, BLOCK);
+        const t = (b * BLOCK) / SR;
+        if (t >= 0.32 && t < 0.44) {
+          for (let i = 0; i < BLOCK; i++) earlyRms += input[0][i] * input[0][i];
+        }
+        if (t >= 0.7 && t < 0.9) {
+          for (let i = 0; i < BLOCK; i++) settledRms += input[0][i] * input[0][i];
+        }
+      }
+      const n1 = 0.12 * SR;
+      const n2 = 0.2 * SR;
+      return {
+        earlyDb: 10 * Math.log10(Math.max(earlyRms / n1, 1e-12)),
+        settledDb: 10 * Math.log10(Math.max(settledRms / n2, 1e-12)),
+      };
+    };
+    const fast = levels(5);
+    const slow = levels(300);
+    // Both settle to deep compression; the SLOW route is still gliding in
+    // the early window → measurably louder there than the fast route.
+    expect(slow.earlyDb).toBeGreaterThan(fast.earlyDb + 1.5);
+    expect(Math.abs(fast.settledDb - slow.settledDb)).toBeLessThan(3);
+  });
+
+  it("morph scenes: params glide to the target; globals and routes are immune", () => {
+    const proc = makeProcessor({
+      "macro.pressure": 5,
+      "char.enabled": 1,
+      "char.drive": 0,
+      "global.mix": 80,
+      [P.routeParamId(0, "amount")]: 10,
+    });
+    proc.startMorph(
+      {
+        "macro.pressure": 85,
+        "char.drive": 60,
+        "global.mix": 20, // must be IGNORED (scene-immune)
+        [P.routeParamId(0, "amount")]: -90, // must be IGNORED
+        "not.a.param": 5, // dropped
+      },
+      0.2,
+    );
+    // Mid-glide: moving from the start values…
+    for (let b = 0; b < 6; b++) {
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      proc.process(input, BLOCK);
+    }
+    const midPressure = proc.getParameter("macro.pressure");
+    expect(midPressure).toBeGreaterThan(5);
+    expect(midPressure).toBeLessThan(85);
+    // …and settled: engine params landed, immunes untouched.
+    for (let b = 0; b < 90; b++) {
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      proc.process(input, BLOCK);
+    }
+    expect(proc.getParameter("macro.pressure")).toBeCloseTo(85, 0);
+    expect(proc.getParameter("char.drive")).toBeCloseTo(60, 0);
+    expect(proc.getParameter("global.mix")).toBe(80);
+    expect(proc.getParameter(P.routeParamId(0, "amount"))).toBe(10);
+    expect(proc.getParameter("not.a.param")).toBe(0);
+  });
+
+  it("morph scenes: a host param write mid-glide overrides that id only", () => {
+    const proc = makeProcessor({ "macro.pressure": 0, "char.enabled": 1, "char.drive": 0 });
+    proc.startMorph({ "macro.pressure": 90, "char.drive": 80 }, 0.2);
+    for (let b = 0; b < 6; b++) {
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      proc.process(input, BLOCK);
+    }
+    // Host takes pressure over mid-glide; drive keeps gliding.
+    proc.setParameter("macro.pressure", 42);
+    for (let b = 0; b < 90; b++) {
+      const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      proc.process(input, BLOCK);
+    }
+    expect(proc.getParameter("macro.pressure")).toBe(42); // host value wins
+    expect(proc.getParameter("char.drive")).toBeCloseTo(80, 0); // morph continues
+  });
 });
 
 describe("morph-dynamics core processor — hardening", () => {

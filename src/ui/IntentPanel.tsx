@@ -11,7 +11,8 @@ import {
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { buildSong, applySongCommand, reviseSection, replacePatternInPlaceCommand } from "../intent/song";
-import { applyMixIntent, planMixProfile } from "../intent/mix";
+import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
+import { applyLoudnessIntent } from "../intent/loudness";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -245,13 +246,19 @@ export function IntentPanel() {
     try {
       let buffer = buffersRef.current.get(candidate.candidateIndex);
       if (!buffer) {
-        buffer = await renderAuditionBuffer(doc, services.bank, candidate.pattern);
+        // Wave: the audition HEARS the FX — the candidate's fx requests are
+        // folded into the ghost document, so what you preview is what USE
+        // installs. Buffers cache per candidate (fx rides the plan).
+        const picked = bankResult ? resultForCandidate(bankResult, candidate.candidateIndex) : null;
+        const fx = picked?.plan.intent.fx ?? null;
+        buffer = await renderAuditionBuffer(doc, services.bank, candidate.pattern, fx);
         buffersRef.current.set(candidate.candidateIndex, buffer);
       }
       if (playTokenRef.current !== token) return; // superseded meanwhile
       playAuditionBuffer(buffer, () => setPlayingIndex(null));
       setPlayingIndex(candidate.candidateIndex);
-      setStatus(`▶ auditioning candidate #${candidate.candidateIndex + 1}`);
+      const withFx = bankResult ? (resultForCandidate(bankResult, candidate.candidateIndex)?.plan.intent.fx ?? null) : null;
+      setStatus(`▶ auditioning candidate #${candidate.candidateIndex + 1}${withFx ? " — with FX" : ""}`);
     } catch (err) {
       if (playTokenRef.current === token) {
         setError(`audition failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -371,6 +378,7 @@ export function IntentPanel() {
   // D3 unified bar: route the text to the right executor — arrange ops,
   // mix profile, or (default) candidate generation.
   const [routeBusy, setRouteBusy] = useState(false);
+  const loudnessBusyRef = useRef(false);
   const routeAndExecute = async () => {
     if (!text.trim() || routeBusy) return;
     setRouteBusy(true);
@@ -382,6 +390,31 @@ export function IntentPanel() {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));
         setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}`);
+      } else if (route.kind === "effectIntent") {
+        // D1 v2a: targeted effect × target × direction
+        stopAudition();
+        const command = applyEffectIntent(doc, route.intent);
+        services.store.execute(command);
+        setStatus(`⚡ ${route.intent.detected.join(" · ")}`);
+      } else if (route.kind === "loudness") {
+        // D1 loudness loop: measure → trim → verify
+        stopAudition();
+        if (loudnessBusyRef.current) return;
+        loudnessBusyRef.current = true;
+        setError(null);
+        setStatus("🔊 measuring loudness…");
+        try {
+          const outcome = await applyLoudnessIntent(doc, services.bank, route.parse);
+          if (!outcome.ok) {
+            setError(outcome.error);
+          } else {
+            setStatus(
+              `⚡ loudness: ${outcome.report.measuredBefore} → ${outcome.report.measuredAfter ?? "?"} LUFS (trim ${outcome.report.trim >= 0 ? "+" : ""}${outcome.report.trim} dB)`,
+            );
+          }
+        } finally {
+          loudnessBusyRef.current = false;
+        }
       } else if (route.kind === "mix") {
         stopAudition();
         const intentInput = parsed?.input ?? {};

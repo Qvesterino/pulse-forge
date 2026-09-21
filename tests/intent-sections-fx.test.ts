@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createProjectFromTemplate } from "../src/project-model/templates";
+import { createProjectFromTemplate, emptyPattern } from "../src/project-model/templates";
 import { parseSectionRequests } from "../src/intent/sections";
-import { planSongForm, buildSong, applySongCommand } from "../src/intent/song";
+import { planSongForm, buildSong, applySongCommand, sectionFxChips } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { applyGenerationResultWithFxCommand } from "../src/commands/commands";
+import { auditionDoc } from "../src/intent/audition";
 import type { ProjectDocument, InstrumentTrack } from "../src/project-model/types";
 
 /**
@@ -210,6 +211,73 @@ describe("song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl b
     // ONE undo restores the pre-song document.
     const cmd = applySongCommand(doc, build);
     expect(cmd.undo(applied)).toEqual(doc);
+  });
+
+  it("derives FX chips per section: gated vinyl, sweeping riser, clean verse", async () => {
+    const doc = createProjectFromTemplate("drill");
+    const sections = parseSectionRequests("wobbly drill with a 16-bar intro and a vinyl break")!;
+    const build = await buildSong(
+      doc,
+      normalizeIntent({
+        genre: "drill",
+        seed: "chips-e2e",
+        fx: { targets: ["drums"], goals: [{ concept: "wobbly", amount: 0.7 }], sourceText: "wobbly" },
+      }),
+      { sections, yieldBetweenSections: false },
+    );
+    const applied = applySongCommand(doc, build).execute(doc);
+
+    const brk = build.sections.find((s) => s.role === "break")!;
+    const breakChips = sectionFxChips(applied, `scene-${brk.pattern.id}`);
+    const vinylChip = breakChips.find((chip) => chip.type === "vinyl");
+    expect(vinylChip).toBeDefined();
+    expect(vinylChip!.sweep).toBe(false); // flat gate — vinyl ON for the section
+
+    // The wobbly GLOBAL chain is static (no lanes) — beatMangler must NOT
+    // appear as a section chip anywhere.
+    for (const section of build.sections) {
+      expect(sectionFxChips(applied, `scene-${section.pattern.id}`).some((c) => c.type === "beatMangler")).toBe(false);
+    }
+
+    // A swept section (intro/build riser) marks its chip with sweep.
+    const sweptSections = build.sections.filter(
+      (s) => s.role === "intro" || s.role === "build",
+    );
+    expect(sweptSections.length).toBeGreaterThanOrEqual(1);
+    for (const section of sweptSections) {
+      const chips = sectionFxChips(applied, `scene-${section.pattern.id}`);
+      expect(chips.some((c) => c.type === "svFilter" && c.sweep)).toBe(true);
+    }
+
+    // Unknown scene → no chips.
+    expect(sectionFxChips(applied, "scene-does-not-exist")).toEqual([]);
+  });
+
+  it("auditionDoc folds the candidate's fx into the ghost only", () => {
+    const doc = createProjectFromTemplate("drill");
+    const pattern = emptyPattern("ghost-audition", [drumTrackOf(doc)]);
+    const ghost = auditionDoc(doc, pattern, {
+      targets: ["drums"],
+      goals: [{ concept: "wobbly", amount: 0.7 }],
+      sourceText: "wobbly",
+    });
+    const ghostDrums = drumTrackOf(ghost);
+    expect("effects" in ghostDrums && ghostDrums.effects.some((f) => f.type === "beatMangler")).toBe(true);
+    expect(ghost.activePatternId).toBe(pattern.id);
+    // The LIVE project stays untouched — ghost-only fold.
+    const liveDrums = drumTrackOf(doc);
+    expect("effects" in liveDrums && liveDrums.effects.some((f) => f.type === "beatMangler")).toBe(false);
+  });
+
+  it("auditionDoc degrades to an fx-less ghost when the fold cannot resolve", () => {
+    const empty = createProjectFromTemplate("empty");
+    const pattern = emptyPattern("ghost-fallback", []);
+    const ghost = auditionDoc(empty, pattern, {
+      targets: ["bass"],
+      goals: [{ concept: "deeper", amount: 0.7 }],
+      sourceText: "",
+    });
+    expect(ghost.activePatternId).toBe(pattern.id);
   });
 
   it("is deterministic for a fixed seed", async () => {

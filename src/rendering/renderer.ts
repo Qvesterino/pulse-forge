@@ -145,8 +145,37 @@ export function renderQualityBumps(doc: ProjectDocument): {
   return [...fxeqRenderQualityBumps(doc), ...ozvenaRenderQualityBumps(doc)];
 }
 
-export interface ClipWindow {
-  pattern: Pattern;
+/**
+ * Roadmap O7 / 2026-09-19 audit: derive the render tail from the longest
+ * VØID decay actually in the document instead of a fixed 2 s. VØID E3 hall
+ * supports up to a 24 s T60 and the core reports it via getTailSamples();
+ * a 2 s tail audibly truncates exactly the flagship use case (long hall
+ * pads). Capped so a pathological decay cannot balloon an export: the
+ * tail is the deepest reverb's time, bounded to [2, 12] s. Bypassed
+ * instances and explicit 0 are ignored. Returns the fallback for documents
+ * without a VØID reverb.
+ */
+export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): number {
+  let maxMs = 0;
+  const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
+  for (const track of containers) {
+    for (const fx of track.effects ?? []) {
+      if (fx.type !== "ozvena" || fx.bypassed) continue;
+      const g = fx.params?.["engines.e3.enabled"] ?? 1;
+      const e3Time = g >= 0.5 ? (fx.params?.["engines.e3.time"] ?? 0) : 0;
+      const e2g = fx.params?.["engines.e2.enabled"] ?? 1;
+      const e2Time = e2g >= 0.5 ? (fx.params?.["engines.e2.time"] ?? 0) : 0;
+      maxMs = Math.max(maxMs, e3Time, e2Time);
+    }
+  }
+  if (maxMs <= 0) return fallback;
+  // A T60 (amplitude −60 dB) leaves the last ~10% of its time below the
+  // noise floor; 1.1x the decay plus a 0.5 s release is a faithful tail
+  // without rendering the silent remainder in full.
+  return Math.max(fallback, Math.min(12, (maxMs / 1000) * 1.1 + 0.5));
+}
+
+export interface ClipWindow {  pattern: Pattern;
   base: number;
   from: number;
   to: number;
@@ -298,7 +327,7 @@ export async function renderProject(
   // after the timeout the synthesized fallback renders (offline installs).
   await curatedReadyWithin(bank, 2000);
   throwIfAborted(options.signal);
-  const tail = options.tailSeconds ?? 2;
+  const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);
   const sampleRate = options.sampleRate;

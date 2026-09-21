@@ -638,7 +638,9 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       const deviceState = sanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
       const rawOutputTrimDb = (item as { outputTrimDb?: unknown }).outputTrimDb;
       const outputTrimDb =
-        typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb) ? clampFxOutputTrimDb(rawOutputTrimDb) : 0;
+        typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb)
+          ? clampFxOutputTrimDb(rawOutputTrimDb)
+          : 0;
       // Step-sequenced effects (stepGate) carry an editable pattern array.
       const steps =
         type === "stepGate" || type === "stutter" ? sanitizeGateSteps((item as { steps?: unknown }).steps) : undefined;
@@ -678,6 +680,7 @@ export function sanitizeDeviceState(raw: unknown): DeviceState | undefined {
   if (typeof ds.kind !== "string" || ds.kind.length === 0 || ds.kind.length > DEVICE_STATE_KIND_MAX) return undefined;
   if (typeof ds.data !== "object" || ds.data === null || Array.isArray(ds.data)) return undefined;
   if (ds.kind === "ultina-ab-v1" || ds.kind === "effect-ab-v1") return sanitizeAbState(ds.kind, ds.data);
+  if (ds.kind === "morph-scenes-v1") return sanitizeMorphScenesState(ds.data);
   return undefined;
 }
 
@@ -711,6 +714,34 @@ function sanitizeAbState(
   // Recall still requires a concrete snapshot in loadEffectAbSlot/loadUltina.
   const active = data.active === "B" ? "B" : "A";
   return { kind, data: { slots, active } };
+}
+
+/**
+ * MORPH DYNAMICS morph scenes (A: Clean / B: Dense / C: Wide / D: Destroyed).
+ * Each slot is a full engine parameter map (macros + sections; globals and
+ * the mod-matrix wiring are deliberately excluded by the panel before this
+ * sanitizer ever sees the blob). Values are numeric-validated and
+ * size-bounded; the DSP schema clamps again on load into the worklet.
+ */
+function sanitizeMorphScenesState(data: Record<string, unknown>): DeviceState | undefined {
+  const rawSlots = (data.slots ?? null) as Record<string, unknown> | null;
+  if (typeof rawSlots !== "object" || rawSlots === null || Array.isArray(rawSlots)) return undefined;
+  const slots: Record<string, Record<string, number>> = {};
+  let hasValidSlot = false;
+  for (const slot of ["A", "B", "C", "D"] as const) {
+    const raw = rawSlots[slot];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    hasValidSlot = true;
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, DEVICE_STATE_SLOT_KEYS_MAX)) {
+      if (key.length <= DEVICE_STATE_KEY_MAX && typeof value === "number" && Number.isFinite(value)) {
+        clean[key] = value;
+      }
+    }
+    slots[slot] = clean;
+  }
+  if (!hasValidSlot) return undefined;
+  return { kind: "morph-scenes-v1", data: { slots } };
 }
 
 /**
@@ -1478,8 +1509,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.bassMonoFreq === "number" && Number.isFinite(m.bassMonoFreq)
         ? Math.min(400, Math.max(60, m.bassMonoFreq))
         : 120;
-    const tiltDb =
-      typeof m.tiltDb === "number" && Number.isFinite(m.tiltDb) ? Math.min(4, Math.max(-4, m.tiltDb)) : 0;
+    const tiltDb = typeof m.tiltDb === "number" && Number.isFinite(m.tiltDb) ? Math.min(4, Math.max(-4, m.tiltDb)) : 0;
     if (
       dg !== m.masterGain ||
       dc !== m.ceilingDb ||

@@ -33,6 +33,7 @@ import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
 import { planProductionActions, resolveProductionTargets, type ProductionAction, type ProductionIntent } from "./production";
 import { applySectionRequests, type SectionParse } from "./sections";
+import { EFFECT_DEFS } from "../effects/registry";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -1336,6 +1337,43 @@ export { intentFromGenerateOptions, generateOptionsFromIntent };
 // pattern's provenance carries its full generation intent + seed, so we
 // shift one slider and RE-GENERATE with the same seed (identity kept),
 // then swap the pattern in place (scene + clip untouched, one undo step).
+
+/** One derived FX chip for an arrangement section (wave: FX chips UI). */
+export interface SectionFxChip {
+  type: EffectType;
+  /** Display name from the effect registry. */
+  label: string;
+  /** True when the section automates the device with a sweep (riser/closing). */
+  sweep: boolean;
+}
+
+/**
+ * Derive the FX chips shown on an arrangement section: every device with a
+ * sceneAutomation lane in this scene, one chip per device, `sweep` when the
+ * lane's value actually moves inside the section (risers, closing filters)
+ * versus a flat gate (vinyl only in the break). Pure — reads the document,
+ * so chips stay correct across undo/redo and re-generated songs without any
+ * extra persisted state.
+ */
+export function sectionFxChips(doc: ProjectDocument, sceneId: string): SectionFxChip[] {
+  const chips: SectionFxChip[] = [];
+  const seen = new Set<string>();
+  for (const lane of doc.sceneAutomation) {
+    if (lane.sceneId !== sceneId || lane.target.kind !== "fxParam" || !lane.target.fxId) continue;
+    if (seen.has(lane.target.fxId)) continue;
+    seen.add(lane.target.fxId);
+    const track = doc.tracks.find((t) => t.id === lane.target.trackId);
+    const instance =
+      track && "effects" in track ? (track.effects as { id: string; type: EffectType }[]).find((f) => f.id === lane.target.fxId) : undefined;
+    if (!instance) continue;
+    const def = EFFECT_DEFS[instance.type];
+    if (!def) continue;
+    const first = lane.points[0]?.value ?? 0;
+    const last = lane.points[lane.points.length - 1]?.value ?? 0;
+    chips.push({ type: instance.type, label: def.name, sweep: lane.points.length > 1 && first !== last });
+  }
+  return chips;
+}
 
 export type ReviseSectionAttribute = "energy" | "density";
 

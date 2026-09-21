@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithContext, mockServices } from "./helpers";
-import { HumToMelodyPanel } from "../src/ui/HumToMelody";
+import { HumToMelodyPanel, humContourLayout } from "../src/ui/HumToMelody";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { trackPitch, PITCH_CLARITY_GATE } from "../src/audio-workers/pitch-tracker";
@@ -252,6 +252,99 @@ describe('HumToMelodyPanel — TO BEAT toggle', () => {
     const user = userEvent.setup();
     await user.click(toggle);
     expect(screen.getByText(/free-time/i)).toBeInTheDocument();
+  });
+});
+
+describe("humContourLayout — pitch-contour canvas math", () => {
+  const W = 216;
+  const H = 96;
+  const note = (pitch: number, start: number, duration = 240) => ({
+    id: `n-${pitch}-${start}`,
+    pitch,
+    start,
+    duration,
+    velocity: 0.8,
+  });
+  const frame = (timeSec: number, midi: number, clarity = 0.9, rms = 0.2) => ({
+    timeSec,
+    midi,
+    clarity,
+    rms,
+  });
+
+  it("maps ticks onto the canvas width; notes become blocks with a min size", () => {
+    const layout = humContourLayout([], [note(60, 0), note(64, 960, 120)], {
+      bpm: 120,
+      patternLengthTicks: 1920,
+      anchorTick: null,
+      width: W,
+      height: H,
+    });
+    expect(layout.noteRects).toHaveLength(2);
+    expect(layout.noteRects[0]!.x).toBe(0);
+    expect(layout.noteRects[1]!.x).toBeCloseTo(W / 2, 1); // 960 = half the pattern
+    // A 120-tick note would be 13.5 px wide — but short notes keep >= 2 px.
+    expect(layout.noteRects[1]!.w).toBeGreaterThanOrEqual(2);
+    expect(layout.noteRects[0]!.w).toBeCloseTo(W / 8, 1); // 240 ticks = an 8th
+  });
+
+  it("derives pitch bounds from frames+notes with padding and a minimum span", () => {
+    const layout = humContourLayout([frame(0, 60)], [note(72, 0)], {
+      bpm: 120,
+      patternLengthTicks: 1920,
+      anchorTick: null,
+      width: W,
+      height: H,
+    });
+    // 60..72 padded ±2 → 58..74; the note sits ABOVE the frame on the canvas.
+    expect(layout.pitchMin).toBe(58);
+    expect(layout.pitchMax).toBe(74);
+    expect(layout.noteRects[0]!.y).toBeLessThan(
+      layout.points[0]!.y,
+    );
+
+    // A narrow hum spans at least 10 semitones, centered.
+    const narrow = humContourLayout([frame(0, 64)], [], {
+      bpm: 120,
+      patternLengthTicks: 1920,
+      anchorTick: null,
+      width: W,
+      height: H,
+    });
+    expect(narrow.pitchMax - narrow.pitchMin).toBeGreaterThanOrEqual(10);
+  });
+
+  it("beat-synced frames wrap into pattern space; free-time drops past-the-end frames", () => {
+    // 120 BPM → 960 ticks/s. A frame 2.0 s in with anchor 0 = tick 1920.
+    const beat = humContourLayout([frame(0, 60), frame(2.0, 62)], [note(60, 0)], {
+      bpm: 120,
+      patternLengthTicks: 1920,
+      anchorTick: 0,
+      width: W,
+      height: H,
+    });
+    expect(beat.points).toHaveLength(2);
+    expect(beat.points[1]!.x).toBeLessThan(W / 2); // wrapped 1920 → 0
+
+    const free = humContourLayout([frame(0, 60), frame(2.0, 62)], [note(60, 0)], {
+      bpm: 120,
+      patternLengthTicks: 1920,
+      anchorTick: null,
+      width: W,
+      height: H,
+    });
+    expect(free.points).toHaveLength(1); // past-the-end dropped
+  });
+
+  it("flags voicing from the clarity/rms gates; bar lines for a 4-bar pattern", () => {
+    const layout = humContourLayout(
+      [frame(0, 60, 0.9, 0.2), frame(0.5, 60, 0.2, 0.2), frame(1.0, 60, 0.9, 0.001)],
+      [],
+      { bpm: 120, patternLengthTicks: 1920 * 4, anchorTick: null, width: W, height: H },
+    );
+    expect(layout.points.map((p) => p.voiced)).toEqual([true, false, false]);
+    // Internal bar lines only: 3 for a 4-bar pattern.
+    expect(layout.barLines).toEqual([W / 4, W / 2, (W * 3) / 4]);
   });
 });
 

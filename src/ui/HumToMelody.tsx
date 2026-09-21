@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { InstrumentTrack, MusicalKey, NoteEvent, Pattern } from "../project-model/types";
-import { pitchName } from "../project-model/types";
+import { BAR_TICKS, PPQ, pitchName } from "../project-model/types";
 import { useServices } from "./context";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { trackPitchAsync } from "../audio-workers/pitch-tracker-client";
+import type { PitchFrame } from "../audio-workers/pitch-tracker";
 import {
   auditionTimings,
   framesToNotes,
@@ -11,6 +12,198 @@ import {
   patternLengthTicks,
   shiftNotesOctave,
 } from "../midi/hum-to-notes";
+
+/**
+ * Pure layout for the mini pitch-contour canvas: the hummed pitch curve and
+ * the extracted notes projected onto ONE timeline — pattern tick space (the
+ * same domain the notes live in; a beat-synced take wraps there exactly like
+ * the notes do, so later loops overlay earlier ones like the audition hears
+ * them). Exported for unit tests; the canvas component only rasterizes it.
+ */
+export interface ContourPoint {
+  x: number;
+  y: number;
+  /** Below the voicing gate — drawn as near-invisible dust, not a curve. */
+  voiced: boolean;
+  /** Frame clarity 0..1 — modulates the dot alpha. */
+  clarity: number;
+}
+
+export interface ContourNoteRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface HumContourLayout {
+  points: ContourPoint[];
+  noteRects: ContourNoteRect[];
+  /** X positions of the internal bar lines. */
+  barLines: number[];
+  pitchMin: number;
+  pitchMax: number;
+}
+
+export function humContourLayout(
+  frames: readonly PitchFrame[],
+  notes: readonly NoteEvent[],
+  options: {
+    bpm: number;
+    patternLengthTicks: number;
+    /** Transport anchor of a beat-synced take (null = free-time, no wrap). */
+    anchorTick: number | null;
+    width: number;
+    height: number;
+    /** Vertical padding inside the canvas (px). */
+    padPx?: number;
+  },
+): HumContourLayout {
+  const pad = options.padPx ?? 6;
+  const innerH = Math.max(4, options.height - pad * 2);
+  const len = options.patternLengthTicks;
+  const bpm = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
+  const secPerTick = 60 / (bpm * PPQ);
+  const beatSynced = options.anchorTick !== null;
+  const anchor = beatSynced ? Math.max(0, options.anchorTick!) : 0;
+
+  // Pitch bounds from everything drawable (notes included — an octave shift
+  // must stay visible), padded and with a sane minimum span.
+  const pitches = [
+    ...notes.map((n) => n.pitch),
+    ...frames.filter((f) => f.midi > 0).map((f) => f.midi),
+  ];
+  let pitchMin = pitches.length > 0 ? Math.min(...pitches) : 48;
+  let pitchMax = pitches.length > 0 ? Math.max(...pitches) : 72;
+  pitchMin -= 2;
+  pitchMax += 2;
+  if (pitchMax - pitchMin < 10) {
+    const mid = (pitchMax + pitchMin) / 2;
+    pitchMin = mid - 5;
+    pitchMax = mid + 5;
+  }
+  const yOf = (pitch: number) => pad + ((pitchMax - pitch) / (pitchMax - pitchMin)) * innerH;
+  const xOf = (tick: number) => ((tick % len) + len) % len * (options.width / len);
+
+  const points: ContourPoint[] = [];
+  if (beatSynced) {
+    for (const frame of frames) {
+      points.push({
+        x: xOf(anchor + Math.round(frame.timeSec / secPerTick)),
+        y: yOf(frame.midi > 0 ? frame.midi : (pitchMin + pitchMax) / 2),
+        voiced: frame.midi > 0 && frame.clarity >= 0.55 && frame.rms >= 0.004,
+        clarity: frame.clarity,
+      });
+    }
+  } else {
+    // Free-time takes may be longer than the pattern — points past the end
+    // have no honest slot; drop them (the notes were dropped the same way).
+    for (const frame of frames) {
+      const tick = anchor + Math.round(frame.timeSec / secPerTick);
+      if (tick >= len) continue;
+      points.push({
+        x: xOf(tick),
+        y: yOf(frame.midi > 0 ? frame.midi : (pitchMin + pitchMax) / 2),
+        voiced: frame.midi > 0 && frame.clarity >= 0.55 && frame.rms >= 0.004,
+        clarity: frame.clarity,
+      });
+    }
+  }
+
+  const noteRects: ContourNoteRect[] = notes.map((note) => ({
+    x: xOf(note.start),
+    y: yOf(note.pitch + 0.5),
+    w: Math.max(2, (note.duration / len) * options.width),
+    h: Math.max(2, (1 / (pitchMax - pitchMin)) * innerH),
+  }));
+
+  const barLines: number[] = [];
+  for (let tick = BAR_TICKS; tick < len; tick += BAR_TICKS) {
+    barLines.push((tick / len) * options.width);
+  }
+
+  return { points, noteRects, barLines, pitchMin, pitchMax };
+}
+
+/** Mini pitch-contour canvas: hummed curve (dots) vs extracted notes (blocks). */
+function HumPitchCanvas({
+  frames,
+  notes,
+  bpm,
+  anchorTick,
+  patternLengthTicks,
+  width,
+  height,
+}: {
+  frames: readonly PitchFrame[];
+  notes: readonly NoteEvent[];
+  bpm: number;
+  anchorTick: number | null;
+  patternLengthTicks: number;
+  width: number;
+  height: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const style = getComputedStyle(canvas);
+    const accent = style.getPropertyValue("--accent").trim() || "#f59e0b";
+    const dim = style.getPropertyValue("--text-faint").trim() || "#3a3d44";
+    const layout = humContourLayout(frames, notes, {
+      bpm,
+      patternLengthTicks,
+      anchorTick,
+      width,
+      height,
+    });
+
+    // Bar grid.
+    ctx.strokeStyle = dim;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    for (const x of layout.barLines) {
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, height);
+      ctx.stroke();
+    }
+
+    // Extracted notes — the promise of what APPLY writes.
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = accent;
+    for (const rect of layout.noteRects) ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+
+    // The hum itself — one 2px dot per tracked frame, alpha by clarity.
+    // Unvoiced frames become near-invisible dust (breaths stay visible as
+    // absence, not as pitch garbage).
+    for (const point of layout.points) {
+      ctx.globalAlpha = point.voiced ? 0.35 + 0.65 * Math.min(1, point.clarity) : 0.06;
+      ctx.fillStyle = point.voiced ? accent : dim;
+      ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }, [frames, notes, bpm, anchorTick, patternLengthTicks, width, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="hum-contour"
+      style={{ width, height }}
+      role="img"
+      aria-label="Hummed pitch contour against the extracted notes"
+    />
+  );
+}
 
 /**
  * HUM-TO-MELODY panel (piano roll toolbar → HUM).
@@ -43,6 +236,8 @@ export function HumToMelodyPanel({
   const [mode, setMode] = useState<"replace" | "merge">("replace");
   const [toBeat, setToBeat] = useState(true);
   const [auditioning, setAuditioning] = useState(false);
+  /** Contour-canvas inputs: the raw tracked frames + their transport anchor. */
+  const [contour, setContour] = useState<{ frames: PitchFrame[]; anchorTick: number | null } | null>(null);
   const recRef = useRef<PcmMicRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
   /** Pending AUDITION timeouts — cleared for instant stop (nothing is ever
@@ -243,6 +438,9 @@ export function HumToMelodyPanel({
         return;
       }
       setNotes(extracted);
+      // Keep the contour inputs so the canvas can draw hum-vs-notes: raw
+      // frames + the transport anchor that mapped them into pattern space.
+      setContour({ frames, anchorTick: startTick });
       setPhase("preview");
     } catch (err) {
       setPhase("error");
@@ -316,6 +514,17 @@ export function HumToMelodyPanel({
             {notes.length} notes · {range}
             {docKey ? ` · snapped to ${docKey}` : ""}
           </p>
+          {contour && (
+            <HumPitchCanvas
+              frames={contour.frames}
+              notes={notes}
+              bpm={services.store.getDoc().bpm}
+              anchorTick={contour.anchorTick}
+              patternLengthTicks={patternLengthTicks(pattern)}
+              width={216}
+              height={96}
+            />
+          )}
           <div className="hum-actions">
             <button
               type="button"
@@ -366,6 +575,7 @@ export function HumToMelodyPanel({
               onClick={() => {
                 stopAudition();
                 setNotes([]);
+                setContour(null);
                 setPhase("idle");
               }}
             >

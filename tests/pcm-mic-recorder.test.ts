@@ -50,8 +50,17 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     : Promise.resolve(stream);
   const getUserMedia = vi.fn(() => microphonePermission);
   const source = {
+    // The wiring is source → trim gain → worklet; "ready" fires once the
+    // trim stage chains into the capture node (post-trim graph complete).
     connect: vi.fn((node: unknown) => {
-      if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+      const trim = gains[gains.length - 1];
+      if (trim && node === trim && !trim.connectedWorklet) {
+        trim.connectedWorklet = true;
+        return;
+      }
+      if (trim?.connectedWorklet && node === lastNode) {
+        queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+      }
     }),
     disconnect: vi.fn(),
   };
@@ -59,6 +68,7 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     gain: { value: number; cancelScheduledValues: ReturnType<typeof vi.fn>; setTargetAtTime: ReturnType<typeof vi.fn> };
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    connectedWorklet?: boolean;
   }> = [];
   const samples = [new Float32Array(0)];
   const contextStateEvents = new EventTarget();
@@ -80,6 +90,12 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
       gains.push(gain);
       return gain;
     }),
+    createAnalyser: vi.fn(() => ({
+      fftSize: 1024,
+      getFloatTimeDomainData: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    })),
     createBuffer: (channels: number, frames: number, sampleRate: number) => {
       expect([channels, frames, sampleRate]).toEqual([1, 2, 48_000]);
       samples[0] = new Float32Array(frames);

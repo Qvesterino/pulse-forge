@@ -18,8 +18,10 @@ export function createMorphDynamicsNode(
   // "routes.0.amount", …).
   const initial: Record<string, number> = { ...defaults, ...instance.params };
 
+  // Input 2 carries the external sidechain feed (dyn.sidechainExt): the
+  // engine wires a source track's post-fader node here via setSidechainInput.
   const node = new AudioWorkletNode(ctx, "morphdynamics-processor", {
-    numberOfInputs: 1,
+    numberOfInputs: 2,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
@@ -32,6 +34,7 @@ export function createMorphDynamicsNode(
   const output = ctx.createGain();
   input.connect(node);
   node.connect(output);
+  let scFeed: AudioNode | null = null;
 
   // DSP latency arrives asynchronously over the port — the engine
   // subscribes via onLatencyChange to re-sync PDC the moment it lands.
@@ -88,12 +91,39 @@ export function createMorphDynamicsNode(
       if (!enabled) meters = null; // no stale reads behind a closed panel
       node.port.postMessage({ type: "setMeters", enabled });
     },
+    /**
+     * External sidechain feed (input 2 of the worklet). The engine wires the
+     * source track's node when EffectInstance.sidechainTrackId resolves and
+     * clears it with null. Safe to call repeatedly with the same node.
+     */
+    setSidechainInput(feed: AudioNode | null) {
+      if (disposed) return;
+      if (scFeed === feed) return; // engine re-syncs may re-assert — cheap no-op
+      try {
+        scFeed?.disconnect(node);
+      } catch {
+        // feed already gone (its own teardown ran first)
+      }
+      scFeed = feed;
+      if (feed) feed.connect(node, 0, 1); // → node input 2 (index 1)
+    },
+    /** Morph-scene glide (see EffectRuntime.morphToParams). */
+    morphToParams(params: Record<string, number>, durationSec: number) {
+      if (disposed) return;
+      node.port.postMessage({ type: "morphTo", params, durationMs: Math.round(durationSec * 1000) });
+    },
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
       latencyListeners.clear();
       metersWanted = false;
       meters = null;
+      try {
+        scFeed?.disconnect(node);
+      } catch {
+        // feed already gone
+      }
+      scFeed = null;
       // The port must NOT be closed here: closing a MessagePort can drop
       // already-queued messages, discarding the terminal teardown. Drop the
       // last JS reference to the node instead and let the implementation

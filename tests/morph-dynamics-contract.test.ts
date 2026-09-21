@@ -28,6 +28,14 @@ import {
   applyMorphPreset,
 } from "../src/effects/morph-dynamics-core/presets/factoryPresets";
 import { MorphPresetRepository, sanitizeMorphPresetParams } from "../src/persistence/MorphPresetRepository";
+import { sanitizeDeviceState } from "../src/project-model/schema";
+import {
+  MORPH_SCENES_KIND,
+  MORPH_SCENE_LABELS,
+  MORPH_SCENE_SLOTS,
+  defaultMorphScenes,
+  pickSceneParams,
+} from "../src/effects/morph-dynamics-core/contracts/state";
 import { defaultParamsOf, normalizePluginParams } from "../src/effects/registry";
 
 describe("morph-dynamics parameter schema", () => {
@@ -188,6 +196,52 @@ describe("morph-dynamics user preset sanitization", () => {
     expect(typeof repo.list).toBe("function");
     expect(typeof repo.save).toBe("function");
     expect(typeof repo.remove).toBe("function");
+  });
+});
+
+describe("morph-dynamics morph scenes (A–D)", () => {
+  it("captures only engine params — globals and routes are scene-immune", () => {
+    const scene = pickSceneParams({
+      "macro.pressure": 60,
+      "dyn.ratio": 3,
+      "global.mix": 75,
+      "global.inputGainDb": -3,
+      "routes.0.amount": -60,
+    });
+    expect(scene["macro.pressure"]).toBe(60);
+    expect(scene["dyn.ratio"]).toBe(3);
+    expect(scene["global.mix"]).toBeUndefined();
+    expect(scene["global.inputGainDb"]).toBeUndefined();
+    expect(scene["routes.0.amount"]).toBeUndefined();
+  });
+
+  it("ships four factory archetypes (Clean/Dense/Wide/Destroyed)", () => {
+    expect(MORPH_SCENE_SLOTS).toEqual(["A", "B", "C", "D"]);
+    expect(MORPH_SCENE_LABELS.A).toBe("Clean");
+    expect(MORPH_SCENE_LABELS.D).toBe("Destroyed");
+    const defaults = defaultMorphScenes();
+    for (const slot of MORPH_SCENE_SLOTS) {
+      const scene = defaults.slots[slot];
+      expect(scene).toBeDefined();
+      expect(scene!["macro.pressure"]).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("persists through the morph-scenes-v1 deviceState sanitizer", () => {
+    const scene = pickSceneParams({ "macro.pressure": 70, "dyn.ratio": 3.5, "global.mix": 100 });
+    const state = sanitizeDeviceState({
+      kind: MORPH_SCENES_KIND,
+      data: { slots: { A: scene, B: "junk", C: null } },
+    });
+    expect(state).toBeDefined();
+    expect(state!.kind).toBe(MORPH_SCENES_KIND);
+    const slots = state!.data.slots as Record<string, Record<string, number> | undefined>;
+    expect(slots.A?.["macro.pressure"]).toBe(70);
+    expect(slots.B).toBeUndefined(); // non-object entry → skipped
+    expect(slots.D).toBeUndefined();
+    // Hostile blob: no slots at all → dropped entirely.
+    expect(sanitizeDeviceState({ kind: MORPH_SCENES_KIND, data: {} })).toBeUndefined();
+    expect(sanitizeDeviceState({ kind: "totally-unknown-kind", data: { x: 1 } })).toBeUndefined();
   });
 });
 

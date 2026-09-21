@@ -1045,3 +1045,11 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* Hum contour canvas — hummed pitch curve vs extracted notes. */
+.hum-contour {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "./context";
 import { updateAudioClip } from "../commands/commands";
 import { uid } from "../shared/ids";
-import { applySpectralEditsToChannels, fftInPlace, type SpectralEdit } from "../audio-engine/spectralEdit";
+import { applySpectralEditsToChannels, computeStftDbFrames, suggestNoiseRegionFromFrames, type SpectralEdit } from "../audio-engine/spectralEdit";
 import {
   SPECTRO_MIN_FREQ,
   createSpectrogramBandMap,
@@ -63,6 +63,7 @@ export function SpectralEditPanel({
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const previewRef = useRef<AudioBufferSourceNode | null>(null);
+  const framesRef = useRef<Float32Array<ArrayBuffer>[] | null>(null);
   const [sel, setSel] = useState<Rect | null>(null);
   const [gainDb, setGainDb] = useState(-24);
   const [featherMs, setFeatherMs] = useState(30);
@@ -110,29 +111,15 @@ export function SpectralEditPanel({
       for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / channels.length;
     }
     const map = createSpectrogramBandMap(buffer.sampleRate, FFT, h, SPECTRO_MIN_FREQ, nyquist);
-    const columns = Math.max(1, Math.floor((mono.length - FFT) / HOP) + 1);
-    const re = new Float64Array(FFT);
-    const im = new Float64Array(FFT);
-    const frameDb = new Float32Array(FFT >> 1);
+    const frames = computeStftDbFrames(mono, FFT, HOP);
+    framesRef.current = frames;
+    if (frames.length === 0) return;
     const rows = new Float32Array(h);
     const img = ctx.createImageData(w, h);
-    const win = new Float64Array(FFT);
-    for (let i = 0; i < FFT; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FFT - 1));
 
     for (let x = 0; x < w; x++) {
-      const frame = Math.min(columns - 1, Math.floor((x * columns) / w));
-      const base = frame * HOP;
-      for (let i = 0; i < FFT; i++) {
-        const idx = base + i;
-        re[i] = idx < mono.length ? mono[idx] * win[i] : 0;
-        im[i] = 0;
-      }
-      fftInPlace(re, im);
-      for (let bin = 0; bin < FFT >> 1; bin++) {
-        const mag = Math.sqrt(re[bin] * re[bin] + im[bin] * im[bin]) / (FFT / 4);
-        frameDb[bin] = mag > 1e-7 ? 20 * Math.log10(mag) : -160;
-      }
-      reduceFrameToRows(frameDb, map, rows);
+      const frame = frames[Math.min(frames.length - 1, Math.floor((x * frames.length) / w))];
+      reduceFrameToRows(frame, map, rows);
       for (let y = 0; y < h; y++) {
         const idx = dbToLutIndex(rows[y], -90, 0);
         const p = (y * w + x) * 4;
@@ -245,13 +232,30 @@ export function SpectralEditPanel({
     return out;
   };
 
+  const eraseNoise = () => {
+    const frames = framesRef.current;
+    if (!frames || frames.length === 0) {
+      setStatus("Spectrogram still computing — try again in a moment");
+      return;
+    }
+    const sug = suggestNoiseRegionFromFrames(frames, buffer.sampleRate, FFT, duration);
+    if (!sug) {
+      setStatus("No persistent noise found — select a region manually");
+      return;
+    }
+    setGainDb(sug.gainDb);
+    const yFor = (f: number) =>
+      backing.h * (1 - Math.log(f / SPECTRO_MIN_FREQ) / Math.log(nyquist / SPECTRO_MIN_FREQ));
+    setSel({ x0: 0, x1: backing.w, y0: yFor(sug.freqHiHz), y1: yFor(sug.freqLoHz) });
+    setStatus(`Noise band ≈ ${Math.round(sug.freqLoHz)}–${Math.round(sug.freqHiHz)} Hz suggested — preview and APPLY`);
+  };
+
   const apply = () => {
     const ctx = services.engine.getLiveAudioContext();
     if (!ctx) {
       setStatus("Audio engine not running — press play once first");
       return;
-    }
-    const edit = currentEdit();
+    }    const edit = currentEdit();
     if (!edit) {
       setStatus("Select a region first (drag on the spectrogram)");
       return;
@@ -409,6 +413,14 @@ export function SpectralEditPanel({
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            style={btnStyle}
+            title="Detect the loudest persistent noise band (hiss, hum, rumble) and prefill the selection with an erase cut"
+            onClick={eraseNoise}
+          >
+            ERASE NOISE
+          </button>
           <button type="button" style={btnStyle} onClick={() => playBuffer(buffer)}>
             PLAY ORIG
           </button>

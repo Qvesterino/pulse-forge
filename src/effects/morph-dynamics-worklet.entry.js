@@ -74,6 +74,13 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
         let i = q.length;
         while (i > 0 && q[i - 1].when > when) i--;
         q.splice(i, 0, { id: msg.id, value: msg.value, when });
+      } else if (msg.type === "morphTo") {
+        // Morph scene glide: the processor eases its params toward the
+        // target map over durationMs (globals/routes.* are ignored inside;
+        // the host commits the same values to the document as one command).
+        if (msg.params && typeof msg.params === "object") {
+          this.proc.startMorph(msg.params, Math.max(50, Number(msg.durationMs) || 500) / 1000);
+        }
       } else if (msg.type === "reset") {
         this.pendingParams.length = 0;
         this.proc.reset();

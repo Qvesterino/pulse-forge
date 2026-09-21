@@ -1966,8 +1966,9 @@
         for (let c = 0; c < ch.length; c++) {
           const n = nextSet[c];
           n.env = ch[c].env;
+          const nextLaOvs = Math.round(LOOKAHEAD_MS / 1e3 * sampleRate2) * factor;
           n.wp = 0;
-          n.fill = 0;
+          n.fill = Math.min(n.ring.length, nextLaOvs);
           n.ring.fill(0);
           n.os.reset();
         }
@@ -2103,8 +2104,10 @@
       }
     }
     function recomputeLayout() {
-      const timeMs = clamp(params.time, 36.73, 250);
-      const diffusion = clamp(params.diffusion, 0, 100) / 100;
+      const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
+      const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.6;
+      const timeMs = clamp(params.time * spaceScale, 36.73, 250);
+      const diffusion = clamp(clamp(params.diffusion, 0, 100) / 100 * sizeScale, 0, 1);
       const angle = clamp(params.angle, 0, 100) / 100;
       const activeCount = Math.max(4, Math.floor(4 + diffusion * (MAX_TAPS - 4)));
       const tapsL = layout.tapsL;
@@ -2420,14 +2423,16 @@
     function recompute() {
       const t = algoTuning(params.algo);
       srScale = sampleRate2 / 44100 * t.lenMult;
-      const decaySec = clamp(params.time, 1400, 14e3) / 1e3;
+      const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
+      const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.4;
+      const decaySec = clamp(params.time * spaceScale, 1400, 14e3) / 1e3;
       let avgLen = 0;
       let lensChanged = false;
       for (let c = 0; c < 2; c++) {
         const base = c & 1 ? BASE_LENGTHS_R : BASE_LENGTHS_L;
         for (let l = 0; l < FDN_LINES; l++) {
           oldLengthsC[c][l] = lengthsC[c][l];
-          const nl = Math.max(8, Math.round(base[l] * srScale));
+          const nl = Math.max(8, Math.round(base[l] * srScale * sizeScale));
           if (nl !== lengthsC[c][l]) lensChanged = true;
           lengthsC[c][l] = nl;
           avgLen += lengthsC[c][l];
@@ -2507,7 +2512,8 @@
         const hpv = [];
         const blp = [];
         for (let l = 0; l < FDN_LINES; l++) {
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale)) + 96;
+          const SIZE_MACRO_MAX = 1.2;
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * SIZE_MACRO_MAX)) + 96;
           ls.push(new Float32Array(maxLen));
           wi.push(0);
           lp.push(0);
@@ -2970,7 +2976,9 @@
     function recompute() {
       const t = algoTuning(params.algo);
       srScale = sampleRate2 / 44100 * t.lenMult;
-      const decaySec = clamp(params.time, 4170, 24e3) / 1e3;
+      const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
+      const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.4;
+      const decaySec = clamp(params.time * spaceScale, 4170, 24e3) / 1e3;
       let avgLen = 0;
       let lensChanged = false;
       for (let c = 0; c < 2; c++) {
@@ -2978,7 +2986,7 @@
         for (let l = 0; l < FDN_LINES2; l++) {
           const densityScale = 1 - l * 0.03;
           oldLengthsC[c][l] = lengthsC[c][l];
-          const nl = Math.max(8, Math.round(base[l] * srScale * densityScale));
+          const nl = Math.max(8, Math.round(base[l] * srScale * densityScale * sizeScale));
           if (nl !== lengthsC[c][l]) lensChanged = true;
           lengthsC[c][l] = nl;
           avgLen += lengthsC[c][l];
@@ -3063,7 +3071,8 @@
         const pdIdx = [];
         for (let l = 0; l < FDN_LINES2; l++) {
           const densityScale = 1 - l * 0.03;
-          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale)) + 96;
+          const SIZE_MACRO_MAX = 1.2;
+          const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale * SIZE_MACRO_MAX)) + 96;
           ls.push(new Float32Array(maxLen));
           wi.push(0);
           lp.push(0);
@@ -4126,23 +4135,24 @@
       loadedIrId = irId;
       loadedIrRate = sampleRate2;
     }
-    function loadUserIr(samples, channels) {
+    function loadUserIr(samples, channels, source = "user") {
       if (!prepared || samples.length === 0) return;
       convolution.loadIr(samples, sampleRate2, channels);
-      userIrActive = true;
+      userIrActive = source === "user";
       loadedIrId = state?.convolution?.irId ?? null;
       loadedIrRate = sampleRate2;
     }
-    function loadPrecomputedIr(sets, channels) {
+    function loadPrecomputedIr(sets, channels, source = "user") {
       if (!prepared || sets.length === 0) return;
       convolution.loadIrPrecomputed(sets, channels);
-      userIrActive = true;
+      userIrActive = source === "user";
       loadedIrId = state?.convolution?.irId ?? null;
       loadedIrRate = sampleRate2;
     }
     function clearUserIr() {
       if (!userIrActive) return;
       userIrActive = false;
+      convolution.clearIr();
       loadedIrId = null;
       loadedIrRate = 0;
       syncConvolutionIr();
@@ -4591,11 +4601,11 @@
       isUserIrActive() {
         return userIrActive;
       },
-      loadUserIr(samples, channels) {
-        loadUserIr(samples, channels);
+      loadUserIr(samples, channels, source) {
+        loadUserIr(samples, channels, source);
       },
-      loadPrecomputedIr(sets, channels) {
-        loadPrecomputedIr(sets, channels);
+      loadPrecomputedIr(sets, channels, source) {
+        loadPrecomputedIr(sets, channels, source);
       },
       clearUserIr() {
         clearUserIr();
@@ -4754,7 +4764,7 @@
           const sets = checkedIrSets(msg.sets, sampleRate);
           if (sets) {
             if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
-              this.proc.loadPrecomputedIr(sets, channels);
+              this.proc.loadPrecomputedIr(sets, channels, "factory");
               this.postLatency();
             }
             return;
@@ -4763,7 +4773,7 @@
           if (!(samples instanceof Float32Array) || samples.length === 0) return;
           if (channels > 1 && samples.length % channels !== 0) return;
           if (this.state.convolution?.irId === msg.irId && !this.proc.isUserIrActive()) {
-            this.proc.loadUserIr(samples, channels);
+            this.proc.loadUserIr(samples, channels, "factory");
             this.postLatency();
           }
         } else if (msg.type === "clearIr") {

@@ -49,6 +49,7 @@ import {
   sliceToPads,
 } from "../commands/commands";
 import { sceneRoleOf } from "../project-model/schema";
+import { sectionFxChips } from "../intent/song";
 import { effectiveSceneBpm, sceneBarsToSeconds, sceneSecondsToBars } from "../project-model/scene-time";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
@@ -264,6 +265,12 @@ export function ArrangementPanel() {
   const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
+  const [inputGainDb, setInputGainDb] = useState<number>(() => clampInputGainDb(loadRecordingInputGainDb()));
+  /** Live mic level (peak 0..1) polled from the recorder while wiring exists. */
+  const [micPeak, setMicPeak] = useState(0);
+  /** Peak-hold since the last reset — a clip warning that does not blink. */
+  const micClippedRef = useRef(false);
+  const [micClipped, setMicClipped] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
   const recStartPendingRef = useRef(false);
@@ -309,6 +316,44 @@ export function ArrangementPanel() {
       mediaDevices?.removeEventListener?.("devicechange", refresh);
     };
   }, []);
+
+  // Mic meter loop: ~15 Hz poll of the recorder's input analyser while a
+  // session is wired (permission prompt onward). Peak-hold flags clipping
+  // until the level is reset or the recorder unwires.
+  useEffect(() => {
+    const wired = recState === "starting" || recState === "recording";
+    if (!wired) {
+      setMicPeak(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      const recorder = recRef.current;
+      if (!recorder) {
+        setMicPeak(0);
+        return;
+      }
+      const { peak } = recorder.getInputLevel();
+      setMicPeak((prev) => (Math.abs(prev - peak) > 0.01 ? peak : prev));
+      if (peak >= 0.99 && !micClippedRef.current) {
+        micClippedRef.current = true;
+        setMicClipped(true);
+      }
+    }, 66);
+    return () => clearInterval(timer);
+  }, [recState]);
+
+  const resetMicClip = () => {
+    micClippedRef.current = false;
+    setMicClipped(false);
+  };
+
+  const changeInputGain = (db: number): void => {
+    const clamped = clampInputGainDb(db);
+    setInputGainDb(clamped);
+    saveRecordingInputGainDb(clamped);
+    recRef.current?.setInputGainDb(clamped);
+    resetMicClip();
+  };
 
   const publishRecoverableTakes = useCallback((sessions: RecordingSession[]): void => {
     const current = recoverableTakesRef.current;
@@ -432,6 +477,7 @@ export function ArrangementPanel() {
         ctx,
         recovery: recoveryRepoRef.current!,
         inputDeviceId: recordingInputDeviceId,
+        inputGainDb,
       });
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
@@ -1377,6 +1423,44 @@ export function ArrangementPanel() {
             >
               {micMonitoring ? "DRY MON ON" : "DRY MON OFF"}
             </button>
+            <label className="arr-arm-gain" aria-label="Microphone input gain">
+              <span className="arr-arm-gain-value" title="Pre-capture input trim (applies to the saved take and monitoring)">
+                GAIN {inputGainDb > 0 ? "+" : ""}
+                {inputGainDb.toFixed(1)} dB
+              </span>
+              <input
+                type="range"
+                min={MIN_INPUT_GAIN_DB}
+                max={MAX_INPUT_GAIN_DB}
+                step={0.5}
+                value={inputGainDb}
+                disabled={recState !== "idle"}
+                aria-label="Microphone input gain"
+                title="Trim the mic BEFORE capture: raise until peaks read high but never red; lower if the clip warning shows"
+                onChange={(event) => changeInputGain(Number(event.target.value))}
+              />
+            </label>
+            <div
+              className="arr-mic-meter"
+              role="meter"
+              aria-valuemin={0}
+              aria-valuemax={1}
+              aria-valuenow={Number(micPeak.toFixed(2))}
+              aria-label="Microphone input level"
+            >
+              <div className="arr-mic-meter-fill" style={{ width: `${Math.min(100, micPeak * 100)}%` }} />
+              {micClipped && (
+                <button
+                  type="button"
+                  className="arr-mic-clip"
+                  role="status"
+                  title="Input clipped since the last reset — lower GAIN, then click to clear"
+                  onClick={resetMicClip}
+                >
+                  CLIP
+                </button>
+              )}
+            </div>
             {recState === "recording" ? (
               <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
                 ■ STOP {recSeconds.toFixed(0)}s
@@ -1647,9 +1731,21 @@ export function ArrangementPanel() {
             clips.map((clip, index) => {
               const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
+              // Wave: FX chips — devices gated/swept by this section's
+              // sceneAutomation (vinyl in the break, the build's riser…).
+              const fxChips = sectionFxChips(services.store.doc, clip.sceneId);
               return (
                 <span key={clip.id} className={`arr-role-flow-item role-${role}`}>
                   <span className="arr-role-flow-role">{role.toUpperCase()}</span>
+                  {fxChips.map((chip) => (
+                    <span
+                      key={`${chip.type}-${chip.label}`}
+                      className={`arr-role-flow-fx${chip.sweep ? " sweep" : ""}`}
+                      title={chip.sweep ? `${chip.label} — automated through this section` : `${chip.label} — active in this section`}
+                    >
+                      {chip.sweep ? `${chip.label} →` : chip.label}
+                    </span>
+                  ))}
                   <span className="arr-role-flow-length">{clip.lengthBars}B</span>
                   {index < clips.length - 1 && (
                     <span className="arr-role-flow-arrow" aria-hidden="true">

@@ -114,6 +114,15 @@ export interface EffectRuntime {
   getMorphSnapshot?(slot: 0 | 1): Record<string, number> | null;
   morphToSnapshot?(slot: 0 | 1, durationSec: number): void;
   morphBlendSnapshots?(a: 0 | 1, b: 0 | 1, t: number, durationSec: number): void;
+  /**
+   * MORPH DYNAMICS morph scenes: glide the engine audibly toward a full
+   * target parameter map over `durationSec` (smoothstep-eased, block-rate).
+   * The caller owns scene storage (deviceState) and commits the target to
+   * the document as one undoable command; the runtime only performs the
+   * audible glide. Globals and routes.* inside the map are ignored by the
+   * core (scenes are behavior, not wiring or loudness).
+   */
+  morphToParams?(params: Record<string, number>, durationSec: number): void;
   /** AudioParam for direct audio-rate modulation bus connection. */
   getAudioParam?(paramId: string): AudioParam | null;
   dispose(): void;
