@@ -123,6 +123,9 @@ describe("master finish chain", () => {
     expect(anyEngine.masterGlueNative?.threshold.value).toBe(-6);
     expect(anyEngine.masterGlueNative?.ratio.value).toBe(2);
     engine.setProject(masterDoc(false) as never);
+    // setProject defers the graph sync through projectQueue when a previous
+    // body is still settling (one microtask) — flush before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(anyEngine.masterGlueNative?.threshold.value).toBe(0);
     expect(anyEngine.masterGlueNative?.ratio.value).toBe(1);
   });

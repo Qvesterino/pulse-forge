@@ -177,6 +177,9 @@ describe("engine send-PDC wiring", () => {
     ).trackNodes;
     expect(trackNodes.get(trackId)!.sendDelays.size).toBe(1);
     engine.setProject({ ...doc, tracks: doc.tracks.map((t) => (t.id === trackId ? { ...t, sends: {} } : t)) });
+    // setProject defers the graph sync through projectQueue when a previous
+    // body is still settling (one microtask) — flush before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(trackNodes.get(trackId)!.sendDelays.size).toBe(0);
   });
 
@@ -206,6 +209,8 @@ describe("engine send-PDC wiring", () => {
       tracks: withBothGroups.tracks.map((track) => (track.id === trackId ? { ...track, groupId: groupB.id } : track)),
     };
     engine.setProject(moved);
+    // Flush the deferred queue-drain sync (see the removal test above).
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(output.connections.has(inputA)).toBe(false);
     expect(output.connections.has(inputB)).toBe(true);
     expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(inputB);
@@ -217,6 +222,7 @@ describe("engine send-PDC wiring", () => {
         .map((track) => (track.id === trackId ? { ...track, groupId: undefined } : track)),
     };
     engine.setProject(ungrouped);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(output.connections.has(inputB)).toBe(false);
     expect(output.connections.has(internals.master)).toBe(true);
     expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(internals.master);
