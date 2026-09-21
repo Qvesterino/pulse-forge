@@ -2716,3 +2716,35 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 - Attribution: across the three runs the COMMON changed factors in those test paths are the concurrent session's in-flight files — at final run time `src/ui/EffectRack.tsx` was actively being rewritten (+38/−28, uncommitted), plus registry/sections/morph work landed in `99daceb` mid-validation. `src/ui/ModPanel.tsx` and its test are clean vs HEAD. My changes in these paths are a one-line DI source swap + a mock stub supplying exactly the repo's public surface (list/save/remove, verified against GroovePoolRepository source).
 - Verdict: the original 9/9 failure root cause (mock missing `groovePool`) is definitively FIXED — tests 1–5 prove the fix; the original failure is impossible to reintroduce silently since the stub lives in the shared mockServices. The 4-test stall is classified as **concurrent-session in-flight suspicion, not a campaign regression**: verify on a quiet tree (their work committed or stashed by them) with `npx vitest run tests/ui/ModPanel.test.tsx`. If it still stalls with a clean tree, it is a REAL find in their EffectRack/sections work — report to owner, do not hot-fix their moving code.
 - Side observation for GOAL 03: `refreshPool`'s async `setState` outside act() produces React warnings on every ScenePanel test (pre-existing pattern, noise only).
+
+---
+
+## GOAL 03 (campaign re-run 3) — Critical path: intent routing overlap + ?regen=1 end-to-end (2026-09-21)
+
+**Goal executed:** The two GOAL 01/02-flagged critical-path items: (a) the intent routing overlap where mix comparatives shadowed targeted production intents in the unified DO IT router, (b) proving the gallery ?regen=1 chain end-to-end on a REAL engine-generated beat — the chain made live by the GOAL 01 provenance seam fix but previously covered only by hand-stamped fixtures.
+
+**Areas inspected:** src/intent/route.ts (unified router, full read), src/intent/production.ts (parser/concepts/targets/planner, full read), src/intent/mix.ts parseEffectIntent (priority-2 interplay), src/ui/IntentPanel.tsx (routeAndExecute executor + GENERATE production path + B1 regen mount effect), src/main.tsx Boot regen stash, tests/intent-mix-route.test.ts + tests/intent-production.test.ts + tests/candidate-audition.test.ts (pinned expectations + canonical test generation entry), src/export/shareCode.ts (round trip).
+
+**Confirmed problem & fix (routing overlap):**
+
+1. **Demonstrated defect:** "make the drums darker" via the DO IT bar hit `isMixIntentText` (COMPARATIVE regex) and returned the mix profile — a GLOBAL master tone tilt — silently ignoring the user's explicit target. The GENERATE button on the same text applied a targeted svFilter to the drums track (production layer, commit 25f6849). Two executors, two behaviors; the primary path (DO IT) was the lossy one. Same class: "make the bass deeper" via DO IT fell through to pattern generation (production never consulted).
+2. **Fix (`41a0417`):** `routeIntentText` now tries production BEFORE mix, gated on (a) `parseProductionIntent` non-null, (b) NEW `namesProductionTarget(text)` — the text explicitly names drums/bass/lead/chords (reuses the production TARGET_PATTERNS table), (c) no genre signal (genre words flip production concepts into generation-time FX, "wobbly drill" still generates — same rule as the GENERATE path; parseIntentText moved up and reused for the pattern fallback). RoutedIntent union gains `{kind:"production"}`; IntentPanel's routeAndExecute mirrors the GENERATE executor (applyProductionIntentCommand, one undo step, friendly error when no matching track).
+3. **Preserved behaviors (pinned by tests):** bare comparatives ("darker") still route to mix; "darker mix" still mix (no target named); effect-noun×target ("remove reverb from the bass") keeps priority over production; "softer drums" still mix (no production concept matches, punch-less profile intact); all existing mix-route tests unchanged.
+
+**Confirmed working & locked (?regen=1):** new `tests/intent-regen-chain.test.ts` drives a REAL pipeline beat (generateAsyncResult → applyGenerationResultCommand) through encodeShareCode → decodeShareCode → intentSnapshotOfDoc → promptFromIntent → fresh-seed `generateAsyncResult` — asserting the engine-stamped `generation.intent` survives publish/import, the reader finds it, the prompt is usable, and the regen take carries the fresh seed with a DIFFERENT outputContentHash. Plus a legacy-shape case (pre-fix top-level intent stays regenerable). This is the first regen coverage without hand-stamped provenance — the fixture practice that masked the GOAL 01 seam. Found + fixed one test-side subtlety while writing it: the imported doc still contains the ORIGINAL pattern, so the regen take must be located by provenance seed, not genre.
+
+**Important files changed:** src/intent/route.ts (union + branch + comment), src/intent/production.ts (namesProductionTarget export), src/ui/IntentPanel.tsx (production executor case), tests/intent-mix-route.test.ts (4 new router cases), tests/intent-regen-chain.test.ts (new, 2 cases), SYSTEM_AUDIT_MAP.md (§6/§12 updated).
+
+**Validation:** intent-mix-route 18/18, intent-production 16/16, intent-regen-chain 2/2; full intent-family batch **141/141 across 12 files** (incl. IntentPanel UI + IntentPanelRegen + exact/sections/song/artists/effect-targets/loudness/text-parser); filtered tsc clean. Committed immediately per the campaign race rule.
+
+**Recorded (not fixed, product decisions):**
+
+1. Residual inconsistency: BARE comparatives route differently per button (DO IT → mix profile, GENERATE → production with concept-default target). Both readings are defensible; unifying needs a product call on who owns bare tone words. Surfaced in map §12.
+2. Energy revise on melodic-only sections remains a content no-op (engine mapping gap, carried from GOAL 15 of the earlier campaign).
+3. Compound asks ("darker mix with punchier drums") route whole-text to production when any target word appears — acceptable v1 router doctrine (most-specific wins), compound routing is future work.
+
+**Unresolved issues:** full-suite baseline on the current tree still pending (GOAL 12 gate); concurrent session continued landing commits (eba23cf mid-goal, absorbed cleanly — no conflicts with campaign files).
+
+**Remaining risks:** the router precedence list is now 6-deep — future intent layers must add routing tests in intent-mix-route.test.ts or the ordering drifts silently.
+
+**Recommendations for next session (GOAL 04 — failure modes & resilience):** recording-recovery lifecycle under crash/reload permutations (chunk-ack protocol under IDB slowness); FrozenBufferRepository/LibraryRepository silent-write-failure paths; AudioContext construction failure / suspended-context recovery on boot; the ModPanel 4-test stall re-check on a quiet tree (GOAL 02 addendum).

@@ -63,7 +63,7 @@ Two service tiers — the load-bearing seam of the app:
 ## 6. Intent engine
 
 - **Entry:** `src/ui/IntentPanel.tsx` — DO IT routes via `src/intent/route.ts`: **arrange** → **mix** (tone comparatives → master tilt / mix chain) → **revise** (section-role word → targeted `reviseSection`, else global same-seed ±0.15) → **generate** (production intent first, weak-parse semantic fallback, candidate bank + ranker). Separate GENERATE and ♪ SONG buttons.
-- **Production intents** (`src/intent/production.ts`): 9 concepts × 4 targets, EN+SK, amount modifiers; compiles to FX ops; `applyProductionIntentCommand` = ONE undo step. **Known routing overlap:** "make the drums darker/brighter/warmer" is captured by the MIX branch (master-global) before production can target the drums track — GOAL 03 candidate.
+- **Production intents** (`src/intent/production.ts`): 12 concepts × 4 targets, EN+SK, amount modifiers; compiles to FX ops; `applyProductionIntentCommand` = ONE undo step. **Routing overlap FIXED (GOAL 03, `41a0417`):** the unified router now tries production BEFORE mix when the text names an explicit target track family and carries no genre signal — "make the drums darker" lands a targeted svFilter on the drums track instead of the global master tilt, matching the GENERATE button. Bare comparatives ("darker") keep the mix profile; effect nouns keep priority-2; "softer drums" (no production concept) still mix.
 - **Exact intents** (`src/intent/exact.ts`): "set tempo 140 / key Am / mute X / pan / gain / transpose / length" → `applyExactIntentCommand`.
 - **Generation pipeline:** parser v3 EN+SK, drum/melodic generators + ONNX symbolic priors, candidate bank (3 template + 2 symbolic), offline audition, `applyGenerationResultCommand` (one undo step + provenance).
 - **Ranker:** ONNX listwise re-ranker; `DEFAULT_RANKER_MODE = "shadow"` (localStorage override); lazy worker, timeouts, circuit breaker. Activation gated on HUMAN golden re-review bound to current dataset keys (see AGENT_WORK_LOG 2026-09-19 forensics — shadow is the correct conservative state).
@@ -115,7 +115,7 @@ Two service tiers — the load-bearing seam of the app:
 | `src/audio-engine/AudioEngine.ts` (~5.3k L) | Graph lifecycle, diff-sync; long-lived `this.doc` aliases undo snapshots (dev-only freeze) | GOAL 02 sweep |
 | Concurrent-session churn | HARD RESET wiped uncommitted campaign work once (2026-09-20); commit campaign fixes promptly | work log incident |
 | intent/ ↔ commands/ folder cycle | commands.ts imports intent/{production,pipeline,exact}; intent/{song,mix} import commands back — acyclic by file-level accident; one import from closing a hard cycle | GOAL 02 §17.6 |
-| Intent routing overlaps | mix branch shadows production intents (darker/brighter/warmer + target word) | GOAL 03 candidate |
+| Intent routing | overlap FIXED `41a0417` (target+concept → production); residual: bare comparatives route differently per button (DO IT→mix, GENERATE→production) — product decision pending | §6 |
 | `genre-reference.generated.ts` placeholder | genre loudness/tilt inert until measured; concurrent session owns | §6 |
 | Ranker shadow default | trained ranker unused pending human golden re-review | §6 |
 | DI bypasses in UI | GroovePoolRepository constructed in ModPanel/RackStrip; Morph/Ultina preset repos constructed in panels | §17.2 |
