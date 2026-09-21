@@ -1,7 +1,7 @@
 # CAMPAIGN_STATE — CROSS-PLATFORM READINESS CAMPAIGN
 
 **Objective:** make Pulse Forge's product behavior explicit enough that a
-future Android / iOS / desktop implementation can *reuse* behavior and
+future Android / iOS / desktop implementation can _reuse_ behavior and
 architectural contracts instead of reverse-engineering them. This campaign
 does **not** translate code to Kotlin/Swift — it prepares the ground
 (contracts, state models, persistence clarity, golden behaviors, parity
@@ -24,21 +24,21 @@ continue from existing evidence.
 
 ## Goal ledger
 
-| # | Goal | Status | Evidence |
-|---|---|---|---|
-| 01 | Portability readiness audit | **DONE** (2026-09-21) | `docs/PORTABILITY_MAP.md`, work log GOAL 01, fixes in `src/export/download.ts` (+4 call sites), `src/intent/audition.ts` |
-| 02 | Domain logic extraction | **DONE** (2026-09-21) | `src/instruments/definitions.ts` (pure meta; schema/targets/commands re-pointed, registry re-exports), `src/shared/{theme-data,pad-keys-data}.ts` (encoders React-free), `src/intent/favorites-core.ts`; pins in `tests/domain-purity.test.ts`. Leftover: effects-registry split (race with concurrent session) → ride along in GOAL 03 |
-| 03 | Platform contract definition | **DONE** (2026-09-21) | docs/PLATFORM-CONTRACTS.md catalog; persistence/contracts.ts (11 interfaces, threaded through Services); shared/assetUrls.ts (10 sites migrated); services/audio-decode.ts (3 repos migrated); effects defs split ride-along done. Full tsc 0 errors |
-| 04 | State machine formalization | pending | |
-| 05 | Persistence & schema evolution | pending | single choke point confirmed (`persistence/db.ts`, SCHEMA_VERSION 1, DB_VERSION 12); YDocAdapter = 2nd serialization path (drift risk) |
-| 06 | Golden behavior & parity tests | pending | existing goldens inventoried (ultina/fxeq/ozvena/morph vectors, golden-render, intent-pipeline) |
-| 07 | Error boundaries & fault containment | pending | worker breaker/timeout pattern + jsdom guards already mapped |
-| 08 | Risk-based test coverage expansion | pending | |
-| 09 | Determinism & reproducibility audit | pending | known targets: `shared/velocityFx.ts` bare Math.random, wall-clock ids in `commands.ts:4012/2925` |
-| 10 | Mobile readiness audit | pending | |
-| 11 | Platform capability matrix (`PLATFORM_CAPABILITY_MATRIX.md`) | pending | feed from PORTABILITY_MAP |
-| 12 | Migration readiness review (`CROSS_PLATFORM_READINESS_REPORT.md`) | pending | |
-| 13 | Porting slice plan | pending | blocked by 12 |
+| #   | Goal                                                              | Status                | Evidence                                                                                                                                                                                                                                                                                                                                |
+| --- | ----------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01  | Portability readiness audit                                       | **DONE** (2026-09-21) | `docs/PORTABILITY_MAP.md`, work log GOAL 01, fixes in `src/export/download.ts` (+4 call sites), `src/intent/audition.ts`                                                                                                                                                                                                                |
+| 02  | Domain logic extraction                                           | **DONE** (2026-09-21) | `src/instruments/definitions.ts` (pure meta; schema/targets/commands re-pointed, registry re-exports), `src/shared/{theme-data,pad-keys-data}.ts` (encoders React-free), `src/intent/favorites-core.ts`; pins in `tests/domain-purity.test.ts`. Leftover: effects-registry split (race with concurrent session) → ride along in GOAL 03 |
+| 03  | Platform contract definition                                      | **DONE** (2026-09-21) | docs/PLATFORM-CONTRACTS.md catalog; persistence/contracts.ts (11 interfaces, threaded through Services); shared/assetUrls.ts (10 sites migrated); services/audio-decode.ts (3 repos migrated); effects defs split ride-along done. Full tsc 0 errors                                                                                    |
+| 04  | State machine formalization                                       | **DONE** (2026-09-22) | docs/STATE-MACHINES.md (8 machines, verdict ledgers); fixes: onDocChanged closed-guard (write-after-close class), renderer abort-bank leak, collab follower resync. Glue-park resolved upstream (1361202) — engine changes reverted. 243/243 tests                                                                                      |
+| 05  | Persistence & schema evolution                                    | pending               | single choke point confirmed (`persistence/db.ts`, SCHEMA_VERSION 1, DB_VERSION 12); YDocAdapter = 2nd serialization path (drift risk)                                                                                                                                                                                                  |
+| 06  | Golden behavior & parity tests                                    | pending               | existing goldens inventoried (ultina/fxeq/ozvena/morph vectors, golden-render, intent-pipeline)                                                                                                                                                                                                                                         |
+| 07  | Error boundaries & fault containment                              | pending               | worker breaker/timeout pattern + jsdom guards already mapped                                                                                                                                                                                                                                                                            |
+| 08  | Risk-based test coverage expansion                                | pending               |                                                                                                                                                                                                                                                                                                                                         |
+| 09  | Determinism & reproducibility audit                               | pending               | known targets: `shared/velocityFx.ts` bare Math.random, wall-clock ids in `commands.ts:4012/2925`                                                                                                                                                                                                                                       |
+| 10  | Mobile readiness audit                                            | pending               |                                                                                                                                                                                                                                                                                                                                         |
+| 11  | Platform capability matrix (`PLATFORM_CAPABILITY_MATRIX.md`)      | pending               | feed from PORTABILITY_MAP                                                                                                                                                                                                                                                                                                               |
+| 12  | Migration readiness review (`CROSS_PLATFORM_READINESS_REPORT.md`) | pending               |                                                                                                                                                                                                                                                                                                                                         |
+| 13  | Porting slice plan                                                | pending               | blocked by 12                                                                                                                                                                                                                                                                                                                           |
 
 ## Highest-risk portability dependencies (GOAL 01 verdict)
 
