@@ -2748,3 +2748,60 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** the router precedence list is now 6-deep — future intent layers must add routing tests in intent-mix-route.test.ts or the ordering drifts silently.
 
 **Recommendations for next session (GOAL 04 — failure modes & resilience):** recording-recovery lifecycle under crash/reload permutations (chunk-ack protocol under IDB slowness); FrozenBufferRepository/LibraryRepository silent-write-failure paths; AudioContext construction failure / suspended-context recovery on boot; the ModPanel 4-test stall re-check on a quiet tree (GOAL 02 addendum).
+
+
+---
+
+## GOAL 19 (campaign restart) — Intent Engine T4: audio sample index (2026-09-19)
+
+**Goal executed:** T4 from the INTENT_ENGINE.md roadmap — the sample library LISTENS BACK: every bank asset (factory + user samples) classified by an AudioSet transformer, text queries ("najdi tmavý 808", "sharp hi-hat") rank the library by matching AudioSet labels + name bonus.
+
+**Areas inspected:**
+
+- `@huggingface/transformers` v4.3 pipeline types (audio-classification with Float32Array raw input — prepareAudios passes it through AS-IS, no resampling: caller must pre-resample to the model's 16 kHz), `SampleBank` (entries() → [assetId, AudioBuffer]), curated WAVs (public/samples/*.wav — 24-bit PCM, 41 files).
+
+**Fixes implemented:**
+
+- `scripts/fetch-audio-model.mjs` + `npm run audio:fetch` — Xenova/ast-finetuned-audioset-10-10-0.4593 q8 (86.6 MB, AudioSet 527 classes) → public/models/audio/ in HF layout; gitignored; allowRemoteModels=false in the worker (offline-first).
+- `src/ai/audio/` — audio-types (classify contract), audio-worker (lazy transformers.js pipeline, audio-classification top-8, env.allowRemoteModels=false, controlled fallbacks), audio-client (lazy spawn, 20 s timeout, circuit breaker, flag `pf:audio-tag`, manifest probe).
+- `src/sample-library/audio-index.ts` — `downmixToMono`, `resampleLinear` (deterministic, linear), `prepareForClassification` (mono 16 kHz), `buildAudioIndex(bank, classify?, onProgress?)` — per-asset classify with progress, failures skipped; `QUERY_SYNONYMS` — beat-maker vocabulary → AudioSet label substrings (kick/808/bass, snare, hi-hat/clap/cymbal/tom/shaker/tambourine/rim, riser/sweep, boom/impact, noise/beat + SK: bicí/bubny/tmy); `searchAudioSamples(query, index)` — label-substring match + name-substring bonus, score-desc, "a search result is always a reason" (no matched label AND no name hit = excluded). Availability check deliberately NOT in buildAudioIndex — the injected classify fn encapsulates it (test classifiers must not be gated by the manifest probe).
+- Tests: `tests/sample-audio-index.test.ts` (10) — downmix, resampler DC preservation + length, 16 kHz prep, query map EN+SK, ranking (score-desc + name bonus), empty-stem exclusion, build with progress + skip-on-fail.
+- Smoke: `scripts/smoke-audio.mjs` — REAL AST model + REAL factory WAVs: kick → drum machine/electronic ✓, hat/clap/crash → distinct timbral labels ✓, deterministic ✓, 4/4 PASS. 24-bit PCM decode added (factory WAVs are 24-bit, not 16).
+- npm: `audio:fetch`; gitignore: `public/models/audio/`.
+
+**Important files changed:** src/ai/audio/{audio-types,audio-worker,audio-client}.ts, src/sample-library/audio-index.ts, scripts/{fetch-audio-model.mjs,smoke-audio.mjs}, package.json (`audio:fetch`), .gitignore, tests/sample-audio-index.test.ts, INTENT_ENGINE.md (§5.15).
+
+**Validation:** audio-index tests 10/10; real-model smoke 4/4 (kick → drum machine/electronic, hat → slap/bang percussive, clap → gunshot/slap, crash → static/slosh — timbrally distinct, deterministic); intent-area regression 185/185 across 17 files; typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. **Honest accuracy scope**: factory samples are synthesized one-shots — AST maps them to timbrally related AudioSet classes, not always the expected name (closed-hat → "slap/bang" instead of "hi-hat"). User samples (real recordings/imports) will match better. The search is still useful because the TIMBRE clustering is correct even when label names shift.
+2. Panel wiring deferred — the natural home is a search box in SampleBrowser (concurrent session territory). The engine API (`ensureAudioIndex`/`searchAudioSamples`) is ready; UI wiring is a small follow-up.
+3. First-session indexing cost: 41 assets × ~1–2 s inference ≈ 40–80 s in a worker — fine for a background task, but a persistent localStorage cache keyed by assetId is the UX follow-up.
+4. Bash heredoc backslash mangling + silent write reverts recurred — all late edits via Edit tool with byte-level verification.
+
+---
+
+## GOAL 04 (campaign re-run 3) — Failure modes, recovery paths & resilience (2026-09-21)
+
+**Goal executed:** The three named areas: recording-recovery crash/reload lifecycle, silent write-failures in FrozenBuffer/Library repositories, AudioContext failure at boot.
+
+**Findings & fixes:**
+
+1. **Silent write-failures (FrozenBuffer/Library) — already fixed, map was stale.** Both repos now THROW descriptive errors (`Could not persist frozen audio…` / `Could not save library preferences…`), and every caller catches + surfaces visibly: FreezeButton (error state + bank cleanup on failed persist), SampleBrowser (`reportLibraryFailure` → visible banner), PresetBrowser (`guard` → saveError). Recovery paths verified sound: frozen-restore decode failure auto-unfreezes the track (plays live, never permanently silent); library load failure falls back to EMPTY without caching. Residual note in SYSTEM_AUDIT_MAP §7 removed; replaced with the verified-surfacing record. Existing tests pin both repos' throw behavior.
+2. **AudioContext failure at boot — FIXED.** `openProject`'s worklet preload called `engine.ensureContext()` as a synchronous argument inside a `void` expression — a construction throw (audio device loss, iOS context cap, blocked embed) rejected the WHOLE project open → Boot error screen, even though the engine is fully lazy and the first play gesture would retry. Fix: the preload is now guarded (sync try/catch + console.error, deferred to first gesture). Regression test appended to tests/services-close-race.test.ts ("still opens the project when the context cannot be constructed at preload time") — stub engine whose ensureContext throws; openProject must resolve with wired setProject + closable services.
+3. **Recording-recovery lifecycle — audited end-to-end, one real gap fixed.** The chain is exceptionally hardened (all verified by reading, not assumption): chunk-ack only after the IndexedDB tx commits; single serialized write-chain; sequence+dimension validation on both sides; persistence error → auto-stop with staged blocks recoverable; track ended/mute and context statechange → auto-stop + recovery; stop-timeout keeps committed PCM; start-failure removes the session (falls back to markRecoverable if even remove fails); recovery list/discard/recover UI failures surface via recError; finalize is one atomic 4-store tx that keeps staging on failure. **Gap: stale crashed takes were never pruned** — un-pruned PCM staging (≈70 MB per 3-minute stereo take) accumulated forever and could crowd project saves under IndexedDB quota pressure. FIX: `RecordingRecoveryRepository.pruneAncient()` (30-day cap; a live take refreshes `updatedAt` per ≤1 s block, so anything 30 days stale is provably dead), called once per project open from the ArrangementPanel recovery effect; per-session removes are individually atomic, an interrupted prune retries next open. Tests: ancient pruned + fresh kept + chunks cleaned; stale `status:"recording"` row pruned. Test-fixture lesson recorded: `appendChunk` refreshes `updatedAt` (liveness), so aging must happen AFTER staging — the first fixture version was wrong and the test caught it.
+
+**Concurrent-session note:** commit `e54e539` + uncommitted changes rewired the PcmMicRecorder test mock graph mid-goal; the failing "reads input peak/RMS from the post-trim tap" test is an entirely NEW test from THEIR uncommitted diff (mid-TDD on the input-level tap) — not a campaign regression, left untouched per the repo-sharing protocol.
+
+**Important files changed:** src/persistence/RecordingRecoveryRepository.ts (pruneAncient + RECORDING_PRUNE_MAX_AGE_MS), src/ui/ArrangementPanel.tsx (prune call), src/services.ts (boot guard), tests/persistence/RecordingRecoveryRepository.test.ts (2), tests/services-close-race.test.ts (1), tests/helpers.tsx (pruneAncient mock stub), SYSTEM_AUDIT_MAP.md.
+
+**Validation:** ArrangementPanel 24/24, RecordingRecoveryRepository 8/8, FrozenBufferRepository 6/6, library-repository 4/4, services-close-race 5/5; filtered tsc clean. Committed promptly per the race rule.
+
+**Recorded (not fixed):** library `load()` hard-DB-error → silent EMPTY (recoverable, favorites reappear when storage returns — acceptable); `removePcmSample` chunk cleanup trusts the stored chunkCount (a corrupt reference could orphan chunks — bounded, next prune-era improvement could sweep orphans by index); HumToMelody/ExportPanel recorder flows verified to remove/finalize their takes.
+
+**Unresolved issues:** none new; their in-flight PCM test excluded from this goal's validation scope.
+
+**Remaining risks:** prune policy (30 days) is a judgment call — if users report wanting month-old crashed takes, raise the constant; it is a named export, one-line change.
+
+**Recommendations for next session (GOAL 05 — state integrity & persistence/rehydration):** the frozen-restore + autosave + snapshot seams were covered here; concentrate on YDocStore↔ProjectStore rehydration parity under collab join mid-save, user-sample restore ordering vs bank consumers, and the offline scene-BPM seam (still open, needs AudioEngine edit).

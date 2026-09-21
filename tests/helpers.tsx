@@ -353,6 +353,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       forEachChunk: vi.fn(async () => {}),
       finalize: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
+      pruneAncient: vi.fn(async () => 0),
     } as any,
     latency,
     noteRepeat: new NoteRepeatController({

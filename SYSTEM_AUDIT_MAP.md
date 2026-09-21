@@ -76,7 +76,8 @@ Two service tiers — the load-bearing seam of the app:
 - **IndexedDB** `pulse-forge` **v11** (`src/persistence/db.ts`): **14 stores** (projects, meta, presets, library, user-samples, user-sample-audio, recording-sessions, recording-chunks +by-session, frozen-audio, user-kits, groove-pool, project-snapshots, project-snapshot-index, ultina-presets). Transaction helper resolves only on `oncomplete`; 5 s blocked-open timeout.
 - **Autosave:** 800 ms debounce / 5 s max-defer; single-writer drain; revision capture; save-status machine. Unload guards. Frozen-track restore with auto-unfreeze; frozen-buffer GC.
 - **Export/import:** `.pulseforge.json`, share codes (bomb-capped), MIDI I/O, scorepack, zyvo transfer. Share-code decode = `validateProjectShape` + `normalizeProject`.
-- Recorded (not fixed, low): `FrozenBufferRepository.save` and `LibraryRepository.mutate` swallow write failures.
+- **Write-failure surfacing VERIFIED (GOAL 04, 2026-09-21):** the former "silent write failure" residuals are FIXED end-to-end — `FrozenBufferRepository.save` and `LibraryRepository.mutate` throw descriptive errors, and every caller surfaces them visibly (FreezeButton error state + bank cleanup, SampleBrowser `reportLibraryFailure`, PresetBrowser `guard`→saveError). Recovery paths verified: frozen-restore decode failure → track auto-unfreezes (never permanently silent); library load failure → EMPTY fallback, non-cached.
+- **Recording recovery (GOAL 04 audit):** the crash/reload chain is hardened end-to-end — chunk-ack only after IDB commit, single write-chain, persistence errors → auto-stop + staged blocks recoverable, stop-timeout keeps PCM, start-failure removes (falls back to markRecoverable), recovery list/discard/recover failures surface via recError. NEW: `pruneAncient()` garbage-collects staging older than 30 days on project open (a live take refreshes `updatedAt` per ≤1 s block, so anything 30 days stale is dead) — un-pruned crashed takes (~70 MB per 3-min stereo take) previously accumulated forever and could crowd project saves under quota pressure.
 
 ## 8. Collaboration & gallery server
 
@@ -94,7 +95,7 @@ Two service tiers — the load-bearing seam of the app:
 
 ## 10. Critical execution paths
 
-1. **Startup:** route pick → Boot handoff → `createCoreServices` → bank decode → `openProject` → engine `setProject` → worklet preload → MIDI access.
+1. **Startup:** route pick → Boot handoff → `createCoreServices` → bank decode → `openProject` → engine `setProject` → worklet preload (context-construction failure is caught + deferred to first gesture, GOAL 04) → MIDI access.
 2. **Intent → sound:** IntentPanel → route → pipeline candidates (+ranker/semantic) → audition → apply command (ONE undo step) → engine diff-sync.
 3. **Edit → sound:** UI control → command → store → normalize → `onDocChanged` → diff-sync → worklet params (`safeApplyAudioParam`).
 4. **Playback:** `playPause` → transport anchor → scheduler windows → engine triggers.

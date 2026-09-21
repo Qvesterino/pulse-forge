@@ -150,3 +150,32 @@ describe("openProject close-race guards", () => {
     await servicesB.closeProject();
   });
 });
+
+describe("openProject AudioContext-failure resilience (GOAL 04)", () => {
+  it("still opens the project when the context cannot be constructed at preload time", async () => {
+    // ensureContext() throws synchronously when the browser refuses a realtime
+    // context (device loss, iOS context cap). That is a preload optimization
+    // failure — the engine is lazy and the first play gesture retries — so the
+    // project open must survive it instead of boot-failing the studio.
+    const throwingEngine = {
+      ...makeEngine(),
+      ensureContext: vi.fn(() => {
+        throw new Error("Failed to construct AudioContext");
+      }),
+    } as unknown as AudioEngine;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    let services: Awaited<ReturnType<typeof openProject>> | null = null;
+    await expect(
+      openProject(makeCore(throwingEngine), makeDoc()).then((opened) => {
+        services = opened;
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(services).not.toBeNull();
+    // The deferred preload must NOT have killed the document wiring.
+    expect(throwingEngine.setProject).toHaveBeenCalled();
+    await services!.closeProject();
+    consoleError.mockRestore();
+  });
+});

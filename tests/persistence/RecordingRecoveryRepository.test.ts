@@ -207,13 +207,26 @@ describe("RecordingRecoveryRepository", () => {
     ).resolves.toBeUndefined();
   });
 
+  /** appendChunk refreshes updatedAt on every block (liveness signal) — age a
+   *  session AFTER its chunks are staged to simulate an old dead take. */
+  async function ageSession(sessionId: string, ageMs: number): Promise<void> {
+    const db = await openDb();
+    await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => {
+      const request = store.get(sessionId);
+      request.onsuccess = () => {
+        const stored = request.result as RecordingSession | undefined;
+        if (stored) store.put({ ...stored, updatedAt: Date.now() - ageMs });
+      };
+    });
+  }
+
   it("pruneAncient deletes only staging older than the age cap", async () => {
-    const ancient = { ...session("recording-ancient"), updatedAt: Date.now() - 31 * 24 * 60 * 60 * 1000 };
-    const fresh = { ...session("recording-fresh"), updatedAt: Date.now() - 60 * 1000 };
-    await recovery.begin(ancient);
+    await recovery.begin({ ...session("recording-ancient") });
     await recovery.appendChunk(block("recording-ancient", 0, [0.1, 0.2], [-0.1, -0.2]));
-    await recovery.begin(fresh);
+    await recovery.begin({ ...session("recording-fresh") });
     await recovery.appendChunk(block("recording-fresh", 0, [0.3], [-0.3]));
+    await ageSession("recording-ancient", 31 * 24 * 60 * 60 * 1000);
+    await ageSession("recording-fresh", 60 * 1000);
 
     const pruned = await recovery.pruneAncient();
 
@@ -230,9 +243,9 @@ describe("RecordingRecoveryRepository", () => {
   });
 
   it("pruneAncient treats a stale status=recording row as garbage (live takes refresh updatedAt)", async () => {
-    const dead = { ...session("recording-dead-live"), status: "recording" as const, updatedAt: Date.now() - 40 * 24 * 60 * 60 * 1000 };
-    await recovery.begin(dead);
+    await recovery.begin({ ...session("recording-dead-live"), status: "recording" });
     await recovery.appendChunk(block("recording-dead-live", 0, [0.4], [-0.4]));
+    await ageSession("recording-dead-live", 40 * 24 * 60 * 60 * 1000);
 
     expect(await recovery.pruneAncient()).toBe(1);
     expect(await recovery.get("recording-dead-live")).toBeUndefined();
