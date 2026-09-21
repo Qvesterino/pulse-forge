@@ -2902,3 +2902,26 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** none new; the latency harness adds ~1 s to the suite.
 
 **Recommendations for next session (GOAL 08 — import/export & format robustness):** (1) fuzz-shaped project JSON through decodeShareCode/importProject (missing fields, wrong types, deep nesting, huge strings) asserting normalize-or-reject with no partial state; (2) MIDI file import edge cases (0 tracks, running status, malformed tempo maps); (3) WAV encoder round-trip property test (16/24/32-float, odd lengths); (4) gallery publish payload size ceiling behavior at the boundary.
+
+---
+
+## GOAL 08 (campaign re-run 3) — Import, export & format robustness (2026-09-21)
+
+**Goal executed:** The four named areas — project JSON fuzz, MIDI edge cases, WAV round-trip, gallery payload ceiling.
+
+**Findings & deliverables (`8b2b3e4`, one new suite: tests/import-export-robustness.test.ts, 18 tests):**
+
+1. **Project JSON fuzz:** hostile corpus (garbage tokens, null/empty/array shapes, wrong-typed fields, `__proto__` pollution keys, 1 MB string bombs, deep truncations) through `decodeShareCode` — never throws; whatever decodes is fully normalized; deep cuts null. `importProject` rejects with named errors (invalid JSON / wrong shape) and enforces the 10 MB File cap; the accept path round-trips a real project semantically AND byte-stably (normalize is idempotent through encode/decode).
+2. **MIDI edge cases:** empty/truncated/non-MIDI buffers, format 2, zero division, SMPTE, and running-status-without-status-byte all fail with NAMED `MidiParseError`s; zero-track and truncated-chunk-count files parse EMPTY (tolerant by design — `break` on missing chunks); a written 2-track file round-trips through `parseMidiFile` and the real `importMidiCommand` (undo restores the pre-import pattern set).
+3. **WAV round-trip:** minimal in-test RIFF reader; 16/24/32-bit at odd/even lengths (1, 2, 3, 33, 4096) within half-LSB tolerance; stereo de-interleaving exact at 32-bit; over-range policy pinned (16-bit soft-clips into range, 32-float retains over-range samples — the documented behavior, now regression-locked).
+4. **Gallery ceiling / URL boundary — the interesting find:** lz-string's URI-component alphabet INCLUDES `+`, and URLSearchParams (form-urlencoded rules) reads `+` as a space. Boot feeds lz-string a SPACE-MANGLED code — share links survive ONLY because `decompressFromEncodedURIComponent` restores spaces to `+` before decoding. Both halves are now pinned (mangling is real; recovery depends on lz-string's defense) so a future codec switch cannot silently break every share link containing `+`. Server-side cap ordering verified by reading: the 400k-char gate runs before decode (`"code too large"` vs `"not a valid share token"`), covered by a client-length boundary test.
+
+**Incidents:** transient tree-wide tsc/vitest breakage mid-goal — the concurrent session's registry.ts re-save left the file momentarily empty (`File is not a module`); re-verified 18/18 after their write settled (169 KB). No production code changed in this goal — the surface held up; the value is the regression net.
+
+**Important files changed:** tests/import-export-robustness.test.ts (new, 341 lines).
+
+**Validation:** 18/18 in-file; combined run with gallery-server + midi-io + persistence green (88/88); filtered tsc clean after fixing 4 strict issues in the new file.
+
+**Remaining risks:** fuzz coverage is corpus-based, not generative — a quickcheck-style random JSON fuzzer could run in CI later; WAV reader in the test is itself hand-rolled (trusted for assertions; the encoder remains the system under test).
+
+**Recommendations for next session (GOAL 09 — undo/redo & editing integrity):** (1) sweep EVERY command factory in commands.ts for a paired undo assertion (execute → undo → deep-equal doc) — property-test over the command inventory; (2) repeated undo past history start and redo past end; (3) undo after import/replaceDoc watermark behavior; (4) coalescing window behavior for same-key rapid commands (drags) — one undo step per gesture.
