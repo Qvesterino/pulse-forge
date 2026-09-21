@@ -3075,3 +3075,24 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** none new; the semantic worker's 118 MB resident model is the largest bounded resident (opt-in by usage).
 
 **Recommendations for next session (GOAL 11 — security, dependency health & suspicious code):** (1) root/test debug leftovers sweep (__debug_loop.mjs, scratch/, tests/_dbg-*, tests/_probe-*, coverage artifacts, _test_run.log/_aet2.log/_final4.log/_tc.log — many are gone, re-inventory); (2) npm audit --omit=dev; (3) dual ORT trees review (@huggingface/transformers + onnxruntime-web — chunk overlap?); (4) the concurrent session's new src/reference/ surface quick security pass (worker message validation per repo pattern); (5) dead-flag sweep (DEFAULT_RANKER_MODE etc.).
+
+---
+
+## GOAL 11 (campaign re-run 3) — Security, dependency health & suspicious code (2026-09-21)
+
+**Goal executed:** Debug-leftover re-inventory + cleanup, production dependency audit, dual-ORT review, security pass over the concurrent session's new src/reference surface.
+
+**Verdicts:**
+
+1. **npm audit --omit=dev: 0 vulnerabilities** (production dependency health clean).
+2. **Debug leftovers: cleaned (`f70e4e0`, −633 lines).** The early-campaign artifacts were gitignored but never UNTRACKED — they kept shipping: `__debug_loop.mjs`, `qa-report.json` (regenerable by scripts/qa-workflow.mjs), `scratch-mirror-upstream.mjs`, `tests/_dbg-gain.test.ts`, `tests/_debug_archive/{normalize,renderer,scheduler}.mjs` all untracked + deleted; `topbar-diag.png` deleted per RELEASE_ROADMAP's own standing recommendation. `.gitignore` gains `coverage/` and the campaign log patterns (_tc*/_final*/_aet*/_test_run). Left in place deliberately: scratch/ (session notes referenced by history), today's transient logs (concurrent session's), tests/_stubs (intentional, aliased). FORMAT-CHECK-DEVIATIONS.md still mentions the deleted _dbg-gain spec — historical record, left.
+3. **Dual ORT trees: ACCEPTED redundancy with numbers.** onnxruntime-web (direct, 137 MB in node_modules) powers ranker/prior workers via lazy `import("onnxruntime-web/wasm")`; @huggingface/transformers (152 MB, bundles its own ORT) powers the semantic worker. Shipped: two lazy chunks (ort bundle ~73 KB + transformers ~582 KB, budget-covered), on-demand wasm never precached (glob excludes wasm; models/ort/** explicitly ignored). Consolidating transformers onto the direct ORT is build surgery with no user-visible win — recorded, not done.
+4. **src/reference security pass: CLEAN.** The concurrent session's new worker follows the canonical defense pattern exactly (mirrors onset-detector.ts:96): message shape validated before processing (type/jobId-finite/Float32Array instanceof/sampleRate finite+positive), try/catch with typed error responses; the client terminates its worker on settle (verified in GOAL 10) and uses jobIds. Zero JSON.parse/eval/innerHTML/fetch in the surface.
+
+**Also carried:** the concurrent session's own deletions of two _scratch-harm-debug spec files were staged alongside (their cleanup, GOAL-11-aligned).
+
+**Important files changed:** .gitignore; deleted 10 stale tracked artifacts. No production code changed — the security posture held.
+
+**Remaining risks:** none new. transformers chunk remains the largest lazy bite (582 KB, budget-capped at 650 KB by check-bundle-size).
+
+**Recommendations for next session (GOAL 12 — final reliability sweep & release gate):** run the FULL gate series on a quiet tree: typecheck:clean, full vitest, npm run build + bundle budgets, release:preflight + server-smoke, browser smoke if the environment allows; produce RELEASE_READINESS_REPORT.md refresh with the PASS/PASS-WITH-RISKS classification; re-check the concurrent session's in-flight morph-dynamics-harmony work for attribution; revisit the flaky snapshot fixture if it recurs in the full run.
