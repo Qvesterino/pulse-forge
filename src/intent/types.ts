@@ -34,6 +34,11 @@ export interface IntentSpec {
   complexity: number;
   variation: number;
   seed: string;
+  /**
+   * Raw user text (clamped) — provenance record and the embedding-conditioned
+   * prior's conditioning input. Absent for programmatic intents.
+   */
+  text?: string;
   key: MusicalKey | null;
   bpmRange: [number, number] | null;
   length: number;

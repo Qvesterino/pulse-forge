@@ -12,6 +12,7 @@
 import {
   coerceDrumsManifest,
   isDrumsPriorManifest,
+  isDrumsV2PriorManifest,
   isMelodicPriorManifest,
   type MelodicPriorManifest,
   type PriorKind,
@@ -37,12 +38,30 @@ export function priorMode(): PriorMode {
   return "on";
 }
 
+/**
+ * Embedding-conditioned mode (roadmap Fáza E.3): localStorage
+ * `pf:embedding-conditioned` = on|off (default OFF — gradual rollout). Off =
+ * the v1 genre+style one-hot prior; on = the v2 35-dim semantic prior, which
+ * still degrades to v1 per candidate when the model or the embedding is
+ * unavailable (see SymbolicPriorProvider).
+ */
+export function embeddingConditionedMode(): "off" | "on" {
+  try {
+    const value = localStorage.getItem("pf:embedding-conditioned");
+    if (value === "off" || value === "on") return value;
+  } catch {
+    /* storage blocked — default below */
+  }
+  return "off";
+}
+
 const RUN_TIMEOUT_MS = 500; // preview budget — tiny MLP inferences per request
 const LOAD_TIMEOUT_MS = 3000;
 const MANIFEST_TIMEOUT_MS = 1500;
 const MAX_FAILURES = 3;
 
 const DRUMS_MANIFEST_PATH = "/models/symbolic-prior-v1.manifest.json";
+const DRUMS_V2_MANIFEST_PATH = "/models/symbolic-prior-v2.manifest.json";
 const MELODIC_MANIFEST_PATH = "/models/symbolic-melodic-v1.manifest.json";
 
 let worker: Worker | null = null;
@@ -109,7 +128,12 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   try {
-    const path = kind === "drums" ? DRUMS_MANIFEST_PATH : MELODIC_MANIFEST_PATH;
+    const path =
+      kind === "drums"
+        ? DRUMS_MANIFEST_PATH
+        : kind === "drums-v2"
+          ? DRUMS_V2_MANIFEST_PATH
+          : MELODIC_MANIFEST_PATH;
     const fetchPromise = fetch(path, controller ? { signal: controller.signal } : undefined);
     const response = await Promise.race([
       fetchPromise,
@@ -119,9 +143,18 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
     ]);
     if (!response.ok) return null;
     const manifest = (await response.json()) as unknown;
-    // The drums manifest on disk has no kind field (v1 artifact) — coerce it.
+    // The drums v1 manifest on disk has no kind field (legacy artifact) —
+    // coerce it; v2 and melodic manifests carry their kind explicitly.
     const validated =
-      kind === "drums" ? coerceDrumsManifest(manifest) : isMelodicPriorManifest(manifest) ? manifest : null;
+      kind === "drums"
+        ? coerceDrumsManifest(manifest)
+        : kind === "drums-v2"
+          ? isDrumsV2PriorManifest(manifest)
+            ? manifest
+            : null
+          : isMelodicPriorManifest(manifest)
+            ? manifest
+            : null;
     if (!validated) return null;
     cachedManifests.set(kind, validated);
     return validated;
@@ -157,6 +190,48 @@ export async function runPriorGrid(values: Float32Array, rowCount: number): Prom
     if (!load.ok) return { ok: false, probs: null, source: "fallback" };
     const response = await request(
       { type: "run", requestId: nextRequestId++, kind: "drums", batch: values, rowCount },
+      RUN_TIMEOUT_MS,
+    );
+    if (response.ok === false || response.type !== "run" || !response.outputs) {
+      return { ok: false, probs: null, source: "fallback" };
+    }
+    const probs = response.outputs[manifest.outputName];
+    if (
+      !Array.isArray(probs) ||
+      probs.length !== rowCount ||
+      probs.some((prob) => !Number.isFinite(prob) || prob < 0 || prob > 1)
+    ) {
+      return { ok: false, probs: null, source: "fallback" };
+    }
+    return { ok: true, probs, source: "model" };
+  } catch {
+    // A clone/postMessage/runtime failure must never escape into generation.
+    return { ok: false, probs: null, source: "fallback" };
+  }
+}
+
+/**
+ * Run the EMBEDDING-CONDITIONED v2 drum prior over one grid batch. Same
+ * guarantees as runPriorGrid — never throws, controlled fallback status.
+ * Availability additionally requires the v2 model artifact; callers fall
+ * back to the v1 one-hot prior per candidate when this returns ok:false.
+ */
+export async function runPriorGridV2(values: Float32Array, rowCount: number): Promise<PriorRunResult> {
+  try {
+    if (priorMode() === "off" || embeddingConditionedMode() === "off") {
+      return { ok: false, probs: null, source: "off" };
+    }
+    const manifest = await loadManifest("drums-v2");
+    if (!manifest || !isDrumsV2PriorManifest(manifest)) return { ok: false, probs: null, source: "fallback" };
+    if (values.length !== rowCount * manifest.featureCount) {
+      return { ok: false, probs: null, source: "fallback" };
+    }
+    const active = spawnWorker();
+    if (!active) return { ok: false, probs: null, source: "fallback" };
+    const load = await request({ type: "load", requestId: nextRequestId++, kind: "drums-v2", manifest }, LOAD_TIMEOUT_MS);
+    if (!load.ok) return { ok: false, probs: null, source: "fallback" };
+    const response = await request(
+      { type: "run", requestId: nextRequestId++, kind: "drums-v2", batch: values, rowCount },
       RUN_TIMEOUT_MS,
     );
     if (response.ok === false || response.type !== "run" || !response.outputs) {

@@ -80,6 +80,9 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     complexity: unit(source.complexity, 0.5),
     variation: unit(source.variation, DEFAULT_GENERATE_OPTIONS.velocityVariation),
     seed: typeof source.seed === "string" ? source.seed.slice(0, 128) : DEFAULT_GENERATE_OPTIONS.seed,
+    ...(typeof source.text === "string" && source.text.trim().length > 0
+      ? { text: source.text.trim().slice(0, 300) }
+      : {}),
     key: isMusicalKey(source.key) ? source.key : null,
     bpmRange: bpmRangeOf(source.bpmRange),
     length: lengthOf(source.length, DEFAULT_GENERATE_OPTIONS.stepCount),

@@ -165,6 +165,13 @@ def main() -> None:
         embedding_lookup = emb_payload.get("styles", {})
         print(f"[train] embedding mode: {len(embedding_lookup)} style vectors loaded")
 
+    # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
+    # runtime fallback (roadmap Fáza D.4).
+    embedding_mode = bool(embedding_lookup)
+    artifact_name = "symbolic-prior-v2" if embedding_mode else "symbolic-prior-v1"
+    feature_version = "prior-features-v2" if embedding_mode else "prior-features.v1"
+    prior_version = "prior.v2" if embedding_mode else "prior.v1"
+
     x_rows: list[list[float]] = []
     for i, sample in enumerate(data):
         if embedding_lookup:
@@ -199,12 +206,26 @@ def main() -> None:
         favorite_x: list[list[float]] = []
         favorite_y: list[float] = []
         for sample in favorite_samples:
-            if len(sample["x"]) != x_all.shape[1]:
+            row_x = sample["x"]
+            if embedding_mode:
+                if len(row_x) == 35:
+                    pass  # already v2 (re-exported against prior-features-v2)
+                elif len(row_x) == 44:
+                    style_id = str(sample.get("groove", "")).split("#")[0]
+                    semantic = embedding_lookup.get(style_id)
+                    if semantic is None:
+                        continue  # style outside the embedding vocab — drop, don't fail
+                    row_x = list(semantic) + list(row_x[25:])  # strip genre(4)+style(21) one-hot
+                else:
+                    raise SystemExit(
+                        "favorites feature width mismatch — regenerate the pack against the current prior-features version"
+                    )
+            elif len(row_x) != x_all.shape[1]:
                 raise SystemExit(
                     "favorites feature width mismatch — regenerate the pack against the current prior-features version"
                 )
             repeat = max(1, int(round(float(sample.get("weight", 1)))))
-            favorite_x.extend([sample["x"]] * repeat)
+            favorite_x.extend([list(row_x)] * repeat)
             favorite_y.extend([float(sample["y"])] * repeat)
         if favorite_x:
             x_train = np.concatenate([x_train, np.array(favorite_x, dtype=np.float64)])
@@ -260,8 +281,9 @@ def main() -> None:
 
     report = {
         "datasetVersion": payload["datasetVersion"],
-        "featureVersion": payload["featureVersion"],
+        "featureVersion": feature_version,
         "featureCount": int(x_all.shape[1]),
+        "mode": "embedding-v2" if embedding_mode else "one-hot-v1",
         "hidden": HIDDEN,
         "epochs": EPOCHS,
         "samples": int(len(x_all)),
@@ -296,7 +318,7 @@ def main() -> None:
             helper.make_node("Relu", ["h1"], ["a1"]),
             helper.make_node("Gemm", ["a1", "W2", "B2"], ["logits"], alpha=1.0, beta=1.0, transB=1),
         ],
-        "symbolic-prior-v1",
+        artifact_name,
         [input_tensor],
         [output_tensor],
         initializer=initializers,
@@ -306,23 +328,28 @@ def main() -> None:
     checker.check_model(model_onnx)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    model_path = MODELS_DIR / "symbolic-prior-v1.onnx"
+    model_path = MODELS_DIR / f"{artifact_name}.onnx"
     model_path.write_bytes(model_onnx.SerializeToString())
     model_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
 
     manifest = {
-        "priorVersion": "prior.v1",
-        "featureVersion": "prior-features.v1",
+        "priorVersion": prior_version,
+        "featureVersion": feature_version,
         "featureCount": int(sizes[0]),
-        "modelPath": "/models/symbolic-prior-v1.onnx",
+        "modelPath": f"/models/{artifact_name}.onnx",
         "inputName": "features",
         "outputName": "logits",
         "modelHash": model_hash,
         "hidden": HIDDEN,
         "report": report,
     }
-    (MODELS_DIR / "symbolic-prior-v1.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    (ROOT / "scripts" / "data" / "symbolic-prior-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+    if embedding_mode:
+        # v2 carries its kind explicitly so the runtime guard can route it.
+        manifest["kind"] = "drums-v2"
+        manifest["conditioning"] = "embedding"
+    (MODELS_DIR / f"{artifact_name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    validation_name = "symbolic-prior-v2-validation.json" if embedding_mode else "symbolic-prior-validation.json"
+    (ROOT / "scripts" / "data" / validation_name).write_text(json.dumps(report, indent=2) + "\n")
 
     size_kb = model_path.stat().st_size / 1024
     print(

@@ -45,6 +45,36 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
 
+// INTENT suite groups come straight from the ranker dataset — same
+// groupKey/genre/style/seeds means ranking verdicts ingest 1:1 into
+// intent-ranker-golden.json and actually train the ranker.
+const datasetPath = path.join(ROOT, "scripts", "data", "intent-ranker-dataset.json");
+const GROUPS_DATA = (() => {
+  try {
+    const dataset = JSON.parse(readFileSync(datasetPath, "utf8"));
+    const picked = [];
+    const wanted = ["house", "techno", "trap"];
+    for (const genre of wanted) {
+      const group = (dataset.groups ?? []).find(
+        (g) => g.groupKey.startsWith(genre + ":") && (g.candidates?.length ?? 0) >= 4,
+      );
+      if (!group) continue;
+      picked.push({
+        groupKey: group.groupKey,
+        genre: group.genre,
+        style: group.groupKey.split(":")[1],
+        seeds: group.candidates.slice(0, 4).map((c) => c.seed),
+      });
+    }
+    return picked;
+  } catch {
+    return [];
+  }
+})();
+if (GROUPS_DATA.length === 0) {
+  throw new Error("ranker dataset missing or has no usable groups — run the dataset script first");
+}
+
 // The evaluate body is a STRING on purpose: vite-node would otherwise
 // rewrite the dynamic import() inside the callback into
 // __vite_ssr_dynamic_import__, which does not exist in the page.
@@ -178,18 +208,18 @@ const packs = await page.evaluate(
     });
   }
 
-  // ── INTENT suite — 3 ranker groups, DATASET-COMPATIBLE keys ────────────
-  // Seeds/groupKey mirror generate-intent-ranker-dataset.mts so ranking
-  // verdicts ingest directly into intent-ranker-golden.json.
-  for (const groupGenre of ["drill", "house", "trap"]) {
-    const style = (getStyleNamesForGenre(groupGenre)[0] ?? "basic").toLowerCase().replace(/\s+/g, "");
-    const groupKey = groupGenre + ":" + style + ":ds-" + groupGenre + "-" + style + "-0";
+  // ── INTENT suite — groups injected from the RANKER DATASET (1:1 keys) ──
+  const GROUPS_DATA = ${JSON.stringify(GROUPS_DATA)};
+  for (const group of GROUPS_DATA) {
+    const groupKey = group.groupKey;
+    const groupGenre = group.genre;
+    const style = group.style;
     const candidates = [];
-    for (let seedIndex = 0; seedIndex < 4; seedIndex++) {
-      const seed = "ds-" + groupGenre + "-" + style + "-" + seedIndex;
+    for (let seedIndex = 0; seedIndex < group.seeds.length; seedIndex++) {
+      const seed = group.seeds[seedIndex];
       const intent = normalizeIntent({
         genre: groupGenre,
-        style,
+        style: style.toLowerCase().replace(/\s+/g, ""),
         energy: 0.3 + ((seedIndex * 13) % 7) / 10,
         density: 0.3 + ((seedIndex * 7) % 7) / 10,
         complexity: 0.2 + ((seedIndex * 11) % 8) / 10,
@@ -199,8 +229,7 @@ const packs = await page.evaluate(
         candidateCount: 4,
       });
       const plan = planGeneration(intent, baseDoc);
-      const generation = generatePattern(baseDoc, plan.options);
-      const pattern = generation.pattern;
+      const pattern = generatePattern(baseDoc, plan.options);
       const audio = await renderDoc({
         ...baseDoc,
         patterns: [pattern],
@@ -237,7 +266,7 @@ const packs = await page.evaluate(
           savedAt: Date.now(),
           seed,
           genre: groupGenre,
-          grooveId: String(generation.grooveId ?? ""),
+          grooveId: String(plan.options.grooveId ?? ""),
           energy: intent.energy,
           density: intent.density,
           complexity: intent.complexity,
@@ -245,12 +274,12 @@ const packs = await page.evaluate(
           padIds: drumTrack.pads.map((p) => p.id),
           padNames: drumTrack.pads.map((p) => p.name),
           rows: JSON.parse(JSON.stringify(pattern.rows)),
-          length: generation.stepCount,
-          style: generation.style ?? null,
-          ghostWeight: generation.ghostWeight,
-          microWeight: generation.microWeight,
-          velocityVariation: generation.velocityVariation,
-          temperature: generation.temperature,
+          length: pattern.stepCount,
+          style: plan.options.style ?? null,
+          ghostWeight: plan.options.ghostWeight,
+          microWeight: plan.options.microWeight,
+          velocityVariation: plan.options.velocityVariation,
+          temperature: plan.options.temperature,
           key: baseDoc.key ?? intent.key ?? null,
           melodic,
         },

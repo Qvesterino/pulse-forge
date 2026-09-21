@@ -1,10 +1,27 @@
 /** Shared contract for the ONNX symbolic prior worker (drums + melodic, T2). */
 
-export type PriorKind = "drums" | "melodic";
+export type PriorKind = "drums" | "drums-v2" | "melodic";
 
 /** Drum prior: per-(pad,step) hit logits, sigmoid-normalized in the worker. */
 export interface DrumsPriorManifest {
   kind: "drums";
+  priorVersion: string;
+  featureVersion: string;
+  featureCount: number;
+  modelPath: string;
+  inputName: string;
+  outputName: string;
+  modelHash: string;
+  hidden: readonly number[];
+}
+
+/**
+ * Embedding-conditioned drum prior (v2): same sigmoid head as v1, but the
+ * input replaces genre+style one-hots with a 16-dim PCA-projected semantic
+ * vector (35 dims total — prior-features-v2).
+ */
+export interface DrumsV2PriorManifest {
+  kind: "drums-v2";
   priorVersion: string;
   featureVersion: string;
   featureCount: number;
@@ -31,7 +48,10 @@ export interface MelodicPriorManifest {
   hidden: readonly number[];
 }
 
-export type PriorManifest = DrumsPriorManifest | MelodicPriorManifest;
+export type PriorManifest = DrumsPriorManifest | DrumsV2PriorManifest | MelodicPriorManifest;
+
+/** Sigmoid-head priors share the run/response shape; only the manifest kind differs. */
+export type SigmoidPriorManifest = DrumsPriorManifest | DrumsV2PriorManifest;
 
 export interface PriorLoadRequest {
   type: "load";
@@ -115,6 +135,18 @@ export function isDrumsPriorManifest(value: unknown): value is DrumsPriorManifes
   );
 }
 
+export function isDrumsV2PriorManifest(value: unknown): value is DrumsV2PriorManifest {
+  if (!value || typeof value !== "object") return false;
+  const manifest = value as Record<string, unknown>;
+  return (
+    commonManifestFieldsValid(manifest) &&
+    manifest.kind === "drums-v2" &&
+    manifest.featureVersion === "prior-features-v2" &&
+    typeof manifest.outputName === "string" &&
+    manifest.outputName.length > 0
+  );
+}
+
 export function isMelodicPriorManifest(value: unknown): value is MelodicPriorManifest {
   if (!value || typeof value !== "object") return false;
   const manifest = value as Record<string, unknown>;
@@ -135,8 +167,14 @@ export function isMelodicPriorManifest(value: unknown): value is MelodicPriorMan
   );
 }
 
-/** Legacy shim: the drums manifest on disk has no kind field yet. */
+/**
+ * Legacy shim: the drums manifest on disk has no kind field yet — accept it
+ * absent, but reject a manifest that names a DIFFERENT kind explicitly.
+ */
 export function coerceDrumsManifest(value: unknown): DrumsPriorManifest | null {
-  if (!isDrumsPriorManifest(value)) return null;
-  return value;
+  if (!value || typeof value !== "object") return null;
+  const manifest = value as Record<string, unknown>;
+  if (manifest.kind !== undefined && manifest.kind !== "drums") return null;
+  if (!isDrumsPriorManifest({ ...manifest, kind: "drums" })) return null;
+  return { ...(manifest as Omit<DrumsPriorManifest, "kind">), kind: "drums" };
 }

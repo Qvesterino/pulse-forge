@@ -1,10 +1,10 @@
 /**
- * Validates the trained symbolic-prior ONNX artifact with ONNX Runtime
- * (INTENT_ENGINE.md T2): loads public/models/symbolic-prior-v1.onnx, checks
- * input/output metadata against the manifest, runs a deterministic probe
- * batch and verifies output shape + finiteness + artifact size/hash.
+ * Validates a trained symbolic-prior ONNX artifact with ONNX Runtime
+ * (INTENT_ENGINE.md T2): loads public/models/symbolic-prior-v{1,2}.onnx,
+ * checks input/output metadata against the manifest, runs a deterministic
+ * probe batch and verifies output shape + finiteness + artifact size/hash.
  *
- * Run: node scripts/validate-symbolic-prior.mjs
+ * Run: node scripts/validate-symbolic-prior.mjs [v1|v2]   (default v1)
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -13,8 +13,19 @@ import { createServer } from "vite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const variant = process.argv[2] === "v2" ? "v2" : "v1";
 const modelsDir = path.join(ROOT, "public", "models");
-const manifest = JSON.parse(readFileSync(path.join(modelsDir, "symbolic-prior-v1.manifest.json"), "utf8"));
+const manifest = JSON.parse(
+  readFileSync(path.join(modelsDir, `symbolic-prior-${variant}.manifest.json`), "utf8"),
+);
+if (variant === "v2") {
+  if (manifest.featureVersion !== "prior-features-v2") {
+    throw new Error(`v2 manifest featureVersion mismatch: ${manifest.featureVersion}`);
+  }
+  if (manifest.kind !== "drums-v2") throw new Error(`v2 manifest kind mismatch: ${manifest.kind}`);
+} else if (manifest.featureVersion !== "prior-features.v1") {
+  throw new Error(`v1 manifest featureVersion mismatch: ${manifest.featureVersion}`);
+}
 const modelPath = path.join(modelsDir, path.basename(manifest.modelPath));
 const modelBytes = readFileSync(modelPath);
 const actualHash = createHash("sha256").update(modelBytes).digest("hex");

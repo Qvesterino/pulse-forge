@@ -15,6 +15,9 @@ import {
   PRIOR_FEATURES_VERSION,
   PRIOR_FEATURE_COUNT,
 } from "../../ai/symbolic/prior-features";
+import { buildPriorV2GridRows, PRIOR_V2_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v2";
+import { runMelodicNext, runPriorGrid, runPriorGridV2, type PriorRunResult } from "../../ai/symbolic/prior-client";
+import { semanticConditioning } from "../semantic-conditioning";
 import {
   buildMelodicFeatureRow,
   melodicGenreOf,
@@ -24,7 +27,6 @@ import {
   MELODIC_GENRES,
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
-import { runMelodicNext, runPriorGrid } from "../../ai/symbolic/prior-client";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
 import { attachProvenance, candidatePlan, evaluateCandidate } from "./local";
 import type { GenerationContext, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
@@ -249,6 +251,11 @@ export class SymbolicPriorProvider implements GenerationProvider {
     const supportsMelodicPrior = (MELODIC_GENRES as readonly string[]).includes(options.genre);
     const densityGain = 0.55 + plan.intent.density * 0.9;
     const velocityJitter = plan.intent.controls.velocityVariation * 0.24;
+    // Embedding conditioning (roadmap Fáza F) — ONE projection per call; the
+    // v2 prior consumes it instead of the v1 genre+style one-hots when the
+    // flag is on AND the semantic model answers. Null ⇒ pure v1 path.
+    const semantic = await semanticConditioning(plan.intent.text);
+    let v2Unavailable = false;
 
     for (const [offset, symbolicSeed] of plan.symbolicSeeds.entries()) {
       try {
@@ -306,16 +313,35 @@ export class SymbolicPriorProvider implements GenerationProvider {
         if (melodicSource === "template") notes = melodicOnly.notes;
 
         const rowsById: Record<string, number[]> = {};
-        if (pads.length > 0 && supportsDrumPrior) {
-          const featureRows = buildPriorGridRows({
-            genre: priorGenreOf(options.genre),
-            styleId,
-            stepCount,
-            padRoles,
-          });
-          const batch = new Float32Array(featureRows.length * PRIOR_FEATURE_COUNT);
-          featureRows.forEach((row, index) => batch.set(row, index * PRIOR_FEATURE_COUNT));
-          const run = await runPriorGrid(batch, featureRows.length);
+        let semanticUsed = false;
+        if (pads.length > 0 && (supportsDrumPrior || semantic)) {
+          // Preferred: embedding-conditioned v2 prior (35-dim — semantic
+          // projection + structural). Falls back to the v1 genre+style one-hot
+          // prior on first v2 failure, then for the rest of this call.
+          let run: PriorRunResult | null = null;
+          if (semantic && !v2Unavailable) {
+            const featureRows = buildPriorV2GridRows({ semantic, padRoles, stepCount });
+            const batch = new Float32Array(featureRows.length * PRIOR_V2_FEATURE_COUNT);
+            featureRows.forEach((row, index) => batch.set(row, index * PRIOR_V2_FEATURE_COUNT));
+            run = await runPriorGridV2(batch, featureRows.length);
+            if (run.ok) {
+              semanticUsed = true;
+            } else {
+              failures.push(`candidate-${startIndex + offset}:prior-v2-fallback`);
+              v2Unavailable = true;
+            }
+          }
+          if (!run?.ok) {
+            const featureRows = buildPriorGridRows({
+              genre: priorGenreOf(options.genre),
+              styleId,
+              stepCount,
+              padRoles,
+            });
+            const batch = new Float32Array(featureRows.length * PRIOR_FEATURE_COUNT);
+            featureRows.forEach((row, index) => batch.set(row, index * PRIOR_FEATURE_COUNT));
+            run = await runPriorGrid(batch, featureRows.length);
+          }
           if (!run.ok || !run.probs) {
             failures.push(`candidate-${startIndex + offset}:prior-${run.source}`);
             continue;
@@ -347,7 +373,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
             ...melodicOnly,
             name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${
               melodicSource === "mv" ? "+mv" : melodicSource === "prior" ? "+melody" : ""
-            })`,
+            }${semanticUsed ? "+sem" : ""})`,
             rows: { ...melodicOnly.rows, ...rowsById },
             ...(notes ? { notes } : {}),
             generation: {

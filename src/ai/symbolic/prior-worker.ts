@@ -16,13 +16,14 @@
 
 import {
   isDrumsPriorManifest,
+  isDrumsV2PriorManifest,
   isMelodicPriorManifest,
-  type DrumsPriorManifest,
   type MelodicPriorManifest,
   type PriorManifest,
   type PriorKind,
   type PriorRequest,
   type PriorResponse,
+  type SigmoidPriorManifest,
 } from "./prior-types";
 
 type OrtNamespace = typeof import("onnxruntime-web/wasm");
@@ -61,6 +62,7 @@ async function ensureSession(kind: PriorKind, manifest: PriorManifest): Promise<
   if (cached && cached.manifest.modelHash === manifest.modelHash) return cached.session;
   const ortNs = await ensureOrt();
   if (kind === "drums" && !isDrumsPriorManifest(manifest)) throw new Error("invalid drums prior manifest");
+  if (kind === "drums-v2" && !isDrumsV2PriorManifest(manifest)) throw new Error("invalid drums-v2 prior manifest");
   if (kind === "melodic" && !isMelodicPriorManifest(manifest)) throw new Error("invalid melodic prior manifest");
   const bytes = await verifyModelBytes(manifest.modelPath, manifest.modelHash);
   const session = await ortNs.InferenceSession.create(bytes, {
@@ -114,13 +116,15 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
       const output = await session.run({ [manifest.inputName]: input });
 
       const outputs: Record<string, number[]> = {};
-      if (request.kind === "drums") {
-        const drumsManifest = manifest as DrumsPriorManifest;
-        const tensor = output[drumsManifest.outputName];
+      if (request.kind === "drums" || request.kind === "drums-v2") {
+        // v1 and embedding-conditioned v2 share the sigmoid head — only the
+        // manifest kind (and feature layout) differs.
+        const sigmoidManifest = manifest as SigmoidPriorManifest;
+        const tensor = output[sigmoidManifest.outputName];
         if (!tensor) throw new Error("missing model output");
         const raw = tensor.data as Float32Array;
         if (raw.length !== rowCount) throw new Error(`output count ${raw.length} != ${rowCount}`);
-        outputs[drumsManifest.outputName] = Array.from(raw, (value) => {
+        outputs[sigmoidManifest.outputName] = Array.from(raw, (value) => {
           const probability = round4(sigmoid(value));
           if (!Number.isFinite(probability)) throw new Error("non-finite model output");
           return probability;
