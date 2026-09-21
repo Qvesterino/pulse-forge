@@ -110,9 +110,10 @@ describe("offline render / live playback — shared engine surface", () => {
     // tail handling so a refactor that drops it doesn't shorten
     // exports below the live behaviour.
     const renderer = readSrc(RENDERER_PATH);
-    // The default tail must be 2 seconds (documented in README and
-    // used by bounce / stems / export paths).
-    expect(renderer).toMatch(/options\.tailSeconds\s*\?\?\s*2/);
+    // The default tail resolves through resolveRenderTailSeconds (explicit
+    // override honored; fallback 2 scaled up to the deepest VØID reverb's
+    // T60, bounded [2,12] — exports capture the real decay, not a fixed 2 s).
+    expect(renderer).toMatch(/options\.tailSeconds\s*\?\?\s*resolveRenderTailSeconds\(doc\)/);
     // The tail must be added to the duration, not subtracted.
     expect(renderer).toMatch(/const duration\s*=\s*\([\s\S]*?\)\s*\+\s*tail/);
   });

@@ -328,7 +328,10 @@ export function ArrangementPanel() {
     }
     const timer = setInterval(() => {
       const recorder = recRef.current;
-      if (!recorder) {
+      // Feature-detect: the input meter is PcmMicRecorder-specific, and a
+      // recorder substitute (test mock, MediaRecorder fallback) may not
+      // implement it — a UI poll timer must never throw.
+      if (!recorder || typeof recorder.getInputLevel !== "function") {
         setMicPeak(0);
         return;
       }
