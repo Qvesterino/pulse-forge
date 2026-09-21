@@ -5,6 +5,9 @@ interface Props {
   onCrashSave?: () => void;
   /** Inline panel mode — renders a compact retry UI instead of the full crash screen. */
   panel?: string;
+  /** Full-screen mode copy. Route apps without local state override the
+   * studio's "your work has been saved" line, which would over-claim. */
+  crashNote?: string;
 }
 
 interface State {
@@ -78,7 +81,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="crash-screen" role="alert">
           <h1>KYX crashed</h1>
-          <p>Your work has been saved. Reload to continue.</p>
+          <p>{this.props.crashNote ?? "Your work has been saved. Reload to continue."}</p>
           <p className="crash-detail">{this.state.error?.message}</p>
           <button type="button" className="btn" onClick={this.handleReload}>
             Reload

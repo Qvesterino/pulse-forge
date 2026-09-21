@@ -35,6 +35,7 @@ BATCH = 64
 LR = 3e-3
 SEED = 0x5EED
 VAL_FRACTION = 0.15
+MELODIC_GENRES = ["house", "techno", "trap", "ambient"]
 
 
 def softmax(values: np.ndarray) -> np.ndarray:
@@ -179,6 +180,13 @@ def main() -> None:
         genre_semantic = genre_vectors
         print(f"[train] embedding mode: {len(genre_vectors)} genre semantic vectors")
 
+    # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
+    # runtime fallback (mirrors the drum prior v2 policy).
+    embedding_mode = bool(genre_semantic)
+    artifact_name = "symbolic-melodic-v2" if embedding_mode else "symbolic-melodic-v1"
+    feature_version = "melodic-features-v2" if embedding_mode else "melodic-features.v1"
+    prior_version = "melodic-prior.v2" if embedding_mode else "melodic-prior.v1"
+
     if genre_semantic:
         new_rows: list[list[float]] = []
         for i, sample in enumerate(data):
@@ -209,12 +217,30 @@ def main() -> None:
         favorite_yd: list[int] = []
         favorite_yt: list[int] = []
         for sample in favorite_samples:
-            if len(sample["x"]) != x_all.shape[1]:
+            row_x = sample["x"]
+            if embedding_mode:
+                if len(row_x) == 41:
+                    pass  # already v2 (re-exported against melodic-features-v2)
+                elif len(row_x) == 29:
+                    # Decode the genre from the v1 one-hot block, then swap it
+                    # for the genre's semantic vector (favorites samples carry
+                    # no explicit genre field — the one-hot IS the record).
+                    genre_block = list(row_x[0:4])
+                    genre_index = genre_block.index(max(genre_block)) if max(genre_block) > 0 else -1
+                    semantic = genre_semantic.get(MELODIC_GENRES[genre_index]) if genre_index >= 0 else None
+                    if semantic is None:
+                        continue  # undecodable / out-of-vocab genre — drop, don't fail
+                    row_x = list(semantic) + list(row_x[4:])  # strip genre one-hot (4 dims)
+                else:
+                    raise SystemExit(
+                        "favorites feature width mismatch — regenerate the pack against the current melodic-features version"
+                    )
+            elif len(row_x) != x_all.shape[1]:
                 raise SystemExit(
                     "favorites feature width mismatch — regenerate the pack against the current melodic-features version"
                 )
             repeat = max(1, int(round(float(sample.get("weight", 1)))) * max(1, args.favorite_oversample))
-            favorite_x.extend([sample["x"]] * repeat)
+            favorite_x.extend([list(row_x)] * repeat)
             favorite_yd.extend([int(sample["degree"])] * repeat)
             favorite_yt.extend([int(sample["duration"])] * repeat)
         if favorite_x:
@@ -251,8 +277,9 @@ def main() -> None:
     _, _, td, tt = model.forward(x_train)
     report = {
         "datasetVersion": payload["datasetVersion"],
-        "featureVersion": payload["featureVersion"],
+        "featureVersion": feature_version,
         "featureCount": int(x_all.shape[1]),
+        "mode": "embedding-v2" if embedding_mode else "genre-onehot-v1",
         "hidden": HIDDEN,
         "epochs": EPOCHS,
         "samples": int(len(x_all)),
@@ -285,7 +312,7 @@ def main() -> None:
             helper.make_node("Gemm", ["a1", "WD", "BD"], ["degree"], alpha=1.0, beta=1.0, transB=1),
             helper.make_node("Gemm", ["a1", "WT", "BT"], ["duration"], alpha=1.0, beta=1.0, transB=1),
         ],
-        "symbolic-melodic-v1",
+        artifact_name,
         [input_tensor],
         [degree_tensor, duration_tensor],
         initializer=initializers,
@@ -295,15 +322,15 @@ def main() -> None:
     checker.check_model(model_onnx)
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    model_path = MODELS_DIR / "symbolic-melodic-v1.onnx"
+    model_path = MODELS_DIR / f"{artifact_name}.onnx"
     model_path.write_bytes(model_onnx.SerializeToString())
     model_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
 
     manifest = {
-        "priorVersion": "melodic-prior.v1",
-        "featureVersion": "melodic-features.v1",
+        "priorVersion": prior_version,
+        "featureVersion": feature_version,
         "featureCount": int(x_all.shape[1]),
-        "modelPath": "/models/symbolic-melodic-v1.onnx",
+        "modelPath": f"/models/{artifact_name}.onnx",
         "inputName": "features",
         "degreeOutputName": "degree",
         "durationOutputName": "duration",
@@ -313,8 +340,13 @@ def main() -> None:
         "hidden": HIDDEN,
         "report": report,
     }
-    (MODELS_DIR / "symbolic-melodic-v1.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    (ROOT / "scripts" / "data" / "symbolic-melodic-validation.json").write_text(json.dumps(report, indent=2) + "\n")
+    if embedding_mode:
+        # v2 carries its kind explicitly so the runtime guard can route it.
+        manifest["kind"] = "melodic-v2"
+        manifest["conditioning"] = "embedding"
+    (MODELS_DIR / f"{artifact_name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    validation_name = "symbolic-melodic-v2-validation.json" if embedding_mode else "symbolic-melodic-validation.json"
+    (ROOT / "scripts" / "data" / validation_name).write_text(json.dumps(report, indent=2) + "\n")
 
     size_kb = model_path.stat().st_size / 1024
     print(

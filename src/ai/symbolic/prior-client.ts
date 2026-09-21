@@ -14,6 +14,7 @@ import {
   isDrumsPriorManifest,
   isDrumsV2PriorManifest,
   isMelodicPriorManifest,
+  isMelodicV2PriorManifest,
   type MelodicPriorManifest,
   type PriorKind,
   type PriorManifest,
@@ -63,6 +64,7 @@ const MAX_FAILURES = 3;
 const DRUMS_MANIFEST_PATH = "/models/symbolic-prior-v1.manifest.json";
 const DRUMS_V2_MANIFEST_PATH = "/models/symbolic-prior-v2.manifest.json";
 const MELODIC_MANIFEST_PATH = "/models/symbolic-melodic-v1.manifest.json";
+const MELODIC_V2_MANIFEST_PATH = "/models/symbolic-melodic-v2.manifest.json";
 
 let worker: Worker | null = null;
 let workerFailures = 0;
@@ -129,7 +131,13 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   try {
     const path =
-      kind === "drums" ? DRUMS_MANIFEST_PATH : kind === "drums-v2" ? DRUMS_V2_MANIFEST_PATH : MELODIC_MANIFEST_PATH;
+      kind === "drums"
+        ? DRUMS_MANIFEST_PATH
+        : kind === "drums-v2"
+          ? DRUMS_V2_MANIFEST_PATH
+          : kind === "melodic-v2"
+            ? MELODIC_V2_MANIFEST_PATH
+            : MELODIC_MANIFEST_PATH;
     const fetchPromise = fetch(path, controller ? { signal: controller.signal } : undefined);
     const response = await Promise.race([
       fetchPromise,
@@ -148,9 +156,13 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
           ? isDrumsV2PriorManifest(manifest)
             ? manifest
             : null
-          : isMelodicPriorManifest(manifest)
-            ? manifest
-            : null;
+          : kind === "melodic-v2"
+            ? isMelodicV2PriorManifest(manifest)
+              ? manifest
+              : null
+            : isMelodicPriorManifest(manifest)
+              ? manifest
+              : null;
     if (!validated) return null;
     cachedManifests.set(kind, validated);
     return validated;
@@ -305,6 +317,65 @@ export async function runMelodicNext(values: Float32Array, rowCount: number): Pr
       duration.push(...durationDist);
     }
     if (degree.length !== degreeSize || duration.length !== durationSize) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    return { ok: true, degree, duration, source: "model" };
+  } catch {
+    return { ok: false, degree: null, duration: null, source: "fallback" };
+  }
+}
+
+/**
+ * Run the EMBEDDING-CONDITIONED v2 melodic prior (Fáza G). Same guarantees and
+ * shape as runMelodicNext — never throws; availability additionally requires
+ * the v2 model artifact AND the embedding-conditioned flag. Callers fall back
+ * to the v1 prior per call when this returns ok:false.
+ */
+export async function runMelodicNextV2(values: Float32Array, rowCount: number): Promise<MelodicRunResult> {
+  try {
+    if (priorMode() === "off" || embeddingConditionedMode() === "off") {
+      return { ok: false, degree: null, duration: null, source: "off" };
+    }
+    const manifest = await loadManifest("melodic-v2");
+    if (!manifest || !isMelodicV2PriorManifest(manifest)) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    if (values.length !== rowCount * manifest.featureCount) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    const active = spawnWorker();
+    if (!active) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const load = await request(
+      { type: "load", requestId: nextRequestId++, kind: "melodic-v2", manifest },
+      LOAD_TIMEOUT_MS,
+    );
+    if (!load.ok) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const response = await request(
+      { type: "run", requestId: nextRequestId++, kind: "melodic-v2", batch: values, rowCount },
+      RUN_TIMEOUT_MS,
+    );
+    if (response.ok === false || response.type !== "run" || !response.outputs) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    // The worker keys per-row distributions as "<outputName>:<row>".
+    const degree: number[] = [];
+    const duration: number[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      const degreeDist = response.outputs[`${manifest.degreeOutputName}:${row}`];
+      const durationDist = response.outputs[`${manifest.durationOutputName}:${row}`];
+      if (!Array.isArray(degreeDist) || degreeDist.length !== manifest.degreeClasses) {
+        return { ok: false, degree: null, duration: null, source: "fallback" };
+      }
+      if (!Array.isArray(durationDist) || durationDist.length !== manifest.durationClasses) {
+        return { ok: false, degree: null, duration: null, source: "fallback" };
+      }
+      degree.push(...degreeDist);
+      duration.push(...durationDist);
+    }
+    if (
+      degree.length !== rowCount * manifest.degreeClasses ||
+      duration.length !== rowCount * manifest.durationClasses
+    ) {
       return { ok: false, degree: null, duration: null, source: "fallback" };
     }
     return { ok: true, degree, duration, source: "model" };

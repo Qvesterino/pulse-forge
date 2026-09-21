@@ -19,7 +19,8 @@ import {
   isDrumsPriorManifest,
   isDrumsV2PriorManifest,
   isMelodicPriorManifest,
-  type MelodicPriorManifest,
+  isMelodicV2PriorManifest,
+  type DualHeadPriorManifest,
   type PriorManifest,
   type PriorKind,
   type PriorRequest,
@@ -65,6 +66,8 @@ async function ensureSession(kind: PriorKind, manifest: PriorManifest): Promise<
   if (kind === "drums" && !isDrumsPriorManifest(manifest)) throw new Error("invalid drums prior manifest");
   if (kind === "drums-v2" && !isDrumsV2PriorManifest(manifest)) throw new Error("invalid drums-v2 prior manifest");
   if (kind === "melodic" && !isMelodicPriorManifest(manifest)) throw new Error("invalid melodic prior manifest");
+  if (kind === "melodic-v2" && !isMelodicV2PriorManifest(manifest))
+    throw new Error("invalid melodic-v2 prior manifest");
   const bytes = await verifyModelBytes(manifest.modelPath, manifest.modelHash);
   const session = await ortNs.InferenceSession.create(bytes, {
     executionProviders: ["wasm"],
@@ -131,7 +134,9 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
           return probability;
         });
       } else {
-        const melodicManifest = manifest as MelodicPriorManifest;
+        // melodic v1 and embedding-conditioned v2 share the dual softmax
+        // heads — only the manifest kind (and feature layout) differs.
+        const melodicManifest = manifest as DualHeadPriorManifest;
         const degreeTensor = output[melodicManifest.degreeOutputName];
         const durationTensor = output[melodicManifest.durationOutputName];
         if (!degreeTensor || !durationTensor) throw new Error("missing model output");

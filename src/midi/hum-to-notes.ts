@@ -58,6 +58,12 @@ export interface HumNoteOptions {
    * Absent = pitch-change splitting only (deterministic tests, worker-free).
    */
   onsets?: readonly number[];
+  /**
+   * Pin the clarity gate (testing/diagnostics). Absent = adaptive: the gate
+   * loosens for takes whose own clarity median sits below the strict gate
+   * (breathy voices, cheap mics) and stays strict otherwise.
+   */
+  clarityGate?: number;
 }
 
 export interface HumToNotesTarget {
@@ -71,7 +77,22 @@ export interface HumToNotesTarget {
  */
 export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOptions): NoteEvent[] {
   const bpm = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
-  const voiced = frames.filter((f) => f.clarity >= CLARITY_GATE && f.rms >= RMS_FLOOR && f.midi > 0);
+  // Adaptive clarity gate (reliability pass): a hard 0.55 rejects breathy
+  // voices and cheap mics wholesale — their whole take sits at 0.35–0.5
+  // clarity and the melody comes out full of holes. The gate adapts to the
+  // take's OWN clarity median: clean input keeps the strict gate (a solid
+  // hum medians ~0.8, so the clamp never loosens it), weak input loosens
+  // toward 0.3. Takes below a 0.35 median are mostly noise — they keep the
+  // strict gate so they resolve to the honest "no steady pitches" outcome
+  // instead of garbage notes. `clarityGate` pins it (tests/diagnostics).
+  const candidates = frames.filter((f) => f.midi > 0 && f.rms >= RMS_FLOOR);
+  let gate = options.clarityGate ?? CLARITY_GATE;
+  if (options.clarityGate === undefined && candidates.length > 0) {
+    const claritySorted = candidates.map((f) => f.clarity).sort((a, b) => a - b);
+    const median = claritySorted[Math.floor(claritySorted.length / 2)];
+    if (median >= 0.35) gate = Math.min(CLARITY_GATE, Math.max(0.3, median * 0.6));
+  }
+  const voiced = candidates.filter((f) => f.clarity >= gate);
   if (voiced.length === 0) return [];
 
   // Median-of-5 on the voiced pitch curve — kills single-frame octave flips
@@ -189,11 +210,37 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   const wrapTick = (tick: number): number => ((tick % patternLen) + patternLen) % patternLen;
 
   const raw: Array<{ pitch: number; startTick: number; endTick: number; velocity: number; onsetCut: boolean }> = [];
+  // Note pitch = MODE of the run's rounded semitones (reliability pass), not
+  // the mean of the continuous curve: singers GLIDE into the target pitch,
+  // and the glide tail drags the mean half a semitone off — key-snap then
+  // lands the note on the wrong neighbor. The most common rounded value
+  // ignores the glide; ties resolve toward the mean (symmetric vibrato
+  // keeps today's behavior).
+  const pitchOfRun = (run: { startIdx: number; endIdx: number; pitchSum: number; count: number }): number => {
+    const counts = new Map<number, number>();
+    for (let i = run.startIdx; i <= run.endIdx; i++) {
+      const p = Math.round(smoothed[i]);
+      counts.set(p, (counts.get(p) ?? 0) + 1);
+    }
+    const mean = run.pitchSum / Math.max(1, run.count);
+    let best = Math.round(mean);
+    let bestCount = -1;
+    for (const [pitch, count] of counts) {
+      if (
+        count > bestCount ||
+        (count === bestCount && Math.abs(pitch - mean) < Math.abs(best - mean))
+      ) {
+        best = pitch;
+        bestCount = count;
+      }
+    }
+    return best;
+  };
   for (const run of segmented) {
     const t0 = voiced[run.startIdx].timeSec;
     const t1 = voiced[run.endIdx].timeSec + 0.01; // hop width tail
     if (t1 - t0 < MIN_NOTE_SEC) continue;
-    const pitch = Math.round(run.pitchSum / Math.max(1, run.count));
+    const pitch = pitchOfRun(run);
     if (pitch < 12 || pitch > 120) continue;
     raw.push({
       pitch,

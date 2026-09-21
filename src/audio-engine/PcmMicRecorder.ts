@@ -27,7 +27,31 @@ const PROCESSOR_NAME = "pulse-forge-pcm-capture";
 const CHUNK_SECONDS = 0.5;
 const STOP_TIMEOUT_MS = 2_000;
 const READY_TIMEOUT_MS = 8_000;
+// ctx.resume() can stay pending indefinitely (interrupted state on iOS/Safari,
+// dead audio device after sleep); start() must still settle so the UI leaves
+// its "starting" state and the mic claim below is eventually released.
+const RESUME_TIMEOUT_MS = 10_000;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
+
+// One live microphone capture per tab. ArrangementPanel takes and ExportPanel
+// mic resamples each construct their own recorder instance; without this claim
+// both would open parallel getUserMedia streams from the same input and
+// interleave monitoring/capture. Claimed from synchronous start() entry until
+// the instance returns to "idle" (every path that sets idle releases it).
+let activeCapture: PcmMicRecorder | null = null;
+
+/** Bound an awaited step so a hung browser API cannot wedge start() forever. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
 
 export interface PcmMicRecorderDependencies {
   ctx: AudioContext;
@@ -167,6 +191,10 @@ export class PcmMicRecorder {
         this.state_ === "starting" || this.startInFlight ? "A recording start is still settling" : "Already recording",
       );
     }
+    if (activeCapture && activeCapture !== this) {
+      throw new Error("The microphone is already in use by another recording — stop that recording first");
+    }
+    activeCapture = this;
     this.startInFlight = true;
     const token = ++this.startToken;
     this.state_ = "starting";
@@ -181,7 +209,13 @@ export class PcmMicRecorder {
       if (!ctx.audioWorklet || typeof AudioWorkletNode === "undefined") {
         throw new Error("Lossless microphone recording needs AudioWorklet support in this browser");
       }
-      if (ctx.state !== "running") await ctx.resume();
+      if (ctx.state !== "running") {
+        await withTimeout(
+          ctx.resume(),
+          RESUME_TIMEOUT_MS,
+          "The audio engine did not resume playback — interact with the page and try again",
+        );
+      }
       this.assertStartIsCurrent(token);
 
       await (this.deps.addWorkletModule ?? loadCaptureWorklet)(ctx);
@@ -325,6 +359,7 @@ export class PcmMicRecorder {
         }
       }
       this.state_ = "idle";
+      this.releaseCaptureClaim();
       throw error;
     } finally {
       this.startInFlight = false;
@@ -348,9 +383,14 @@ export class PcmMicRecorder {
       this.startToken++;
       this.cleanupWiring();
       this.state_ = "idle";
+      this.releaseCaptureClaim();
       return;
     }
     await this.finishCapture();
+  }
+
+  private releaseCaptureClaim(): void {
+    if (activeCapture === this) activeCapture = null;
   }
 
   private assertStartIsCurrent(token: number): void {
@@ -499,6 +539,7 @@ export class PcmMicRecorder {
         }
       }
       this.state_ = "idle";
+      this.releaseCaptureClaim();
       return sessionId;
     })().finally(() => {
       this.finishPromise = null;

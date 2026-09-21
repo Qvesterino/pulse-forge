@@ -436,4 +436,51 @@ describe("PcmMicRecorder", () => {
     await recorder.cancel();
     expect(recorder.getInputLevel()).toEqual({ peak: 0, rms: 0 });
   });
+
+  it("allows only one live mic capture per tab across recorder instances", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    // ArrangementPanel take and ExportPanel resample build independent recorders;
+    // the second must be refused while the first holds the microphone.
+    const first = createRecorder();
+    await first.recorder.start(first.metadata);
+    expect(first.recorder.state).toBe("recording");
+
+    const second = createRecorder();
+    await expect(second.recorder.start(second.metadata)).rejects.toThrow(/already in use/i);
+    expect(second.recorder.state).toBe("idle");
+    expect(second.getUserMedia).not.toHaveBeenCalled();
+
+    await first.recorder.cancel();
+    expect(first.recorder.state).toBe("idle");
+
+    // Freeing the claim lets the next take capture.
+    await second.recorder.start(second.metadata);
+    expect(second.recorder.state).toBe("recording");
+    await second.recorder.cancel();
+  });
+
+  it("gives up when the audio context never resumes and frees the mic claim", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const first = createRecorder();
+    const suspended = first.context as unknown as { state: string; resume: () => Promise<void> };
+    suspended.state = "suspended";
+    suspended.resume = () => new Promise<void>(() => {});
+
+    vi.useFakeTimers();
+    try {
+      const pending = first.recorder.start(first.metadata);
+      const rejection = expect(pending).rejects.toThrow(/did not resume/i);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(first.recorder.state).toBe("idle");
+
+    // The failed start must not hold the microphone forever.
+    const second = createRecorder();
+    await second.recorder.start(second.metadata);
+    expect(second.recorder.state).toBe("recording");
+    await second.recorder.cancel();
+  });
 });

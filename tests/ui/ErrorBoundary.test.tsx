@@ -94,4 +94,16 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     spy.mockRestore();
   });
+
+  it("route mode: crashNote replaces the studio's saved-work line (embed/gallery hold no local work)", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <ErrorBoundary crashNote="The gallery hit an error. Reload to try again.">
+        <BrokenComponent />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText("The gallery hit an error. Reload to try again.")).toBeInTheDocument();
+    expect(screen.queryByText(/Your work has been saved/)).toBeNull();
+    spy.mockRestore();
+  });
 });

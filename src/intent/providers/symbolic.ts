@@ -16,7 +16,14 @@ import {
   PRIOR_FEATURE_COUNT,
 } from "../../ai/symbolic/prior-features";
 import { buildPriorV2GridRows, V2_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v2";
-import { runMelodicNext, runPriorGrid, runPriorGridV2, type PriorRunResult } from "../../ai/symbolic/prior-client";
+import { buildMelodicV2FeatureRow, MELV2_FEATURE_COUNT } from "../../ai/symbolic/melodic-features-v2";
+import {
+  runMelodicNext,
+  runMelodicNextV2,
+  runPriorGrid,
+  runPriorGridV2,
+  type PriorRunResult,
+} from "../../ai/symbolic/prior-client";
 import { semanticConditioning } from "../semantic-conditioning";
 import {
   buildMelodicFeatureRow,
@@ -109,6 +116,8 @@ export async function sampleMelodicParts(
   plan: GenerationPlan,
   context: GenerationContext,
   rand: () => number,
+  /** Semantic conditioning — v2 41-dim rows when present, v1 one-hot otherwise. */
+  conditioning?: readonly number[] | null,
 ): Promise<Record<MelodicRole, NoteEvent[]> | null> {
   const options = plan.options;
   const stepCount = options.stepCount;
@@ -142,16 +151,31 @@ export async function sampleMelodicParts(
     let prevDuration = 2;
     let prevPrevDegree = -1;
     while (notes.length < targetNotes && position < stepCount) {
-      const row = buildMelodicFeatureRow({
-        genre,
-        role,
-        startStep: position,
-        prevDegree,
-        prevDuration,
-        prevPrevDegree,
-      });
-      if (row.length !== MELODIC_FEATURE_COUNT) return null;
-      const run = await runMelodicNext(Float32Array.from(row), 1);
+      const row =
+        conditioning && conditioning.length > 0
+          ? buildMelodicV2FeatureRow({
+              semantic: conditioning,
+              role,
+              startStep: position,
+              prevDegree,
+              prevDuration,
+              prevPrevDegree,
+            })
+          : buildMelodicFeatureRow({
+              genre,
+              role,
+              startStep: position,
+              prevDegree,
+              prevDuration,
+              prevPrevDegree,
+            });
+      if (row.length !== (conditioning && conditioning.length > 0 ? MELV2_FEATURE_COUNT : MELODIC_FEATURE_COUNT)) {
+        return null;
+      }
+      const run =
+        conditioning && conditioning.length > 0
+          ? await runMelodicNextV2(Float32Array.from(row), 1)
+          : await runMelodicNext(Float32Array.from(row), 1);
       if (!run.ok || !run.degree || !run.duration) return null;
       const degreeClass = sampleFrom(run.degree.slice(0, 8), rand, temperature);
       const durationClass = sampleFrom(run.duration.slice(0, MELODIC_DURATION_VALUES.length), rand, 1);
@@ -299,11 +323,13 @@ export class SymbolicPriorProvider implements GenerationProvider {
         if (Object.keys(notes).length > 0) {
           melodicSource = "mv";
         } else if (supportsMelodicPrior) {
-          const priorMelody = await sampleMelodicParts(
-            plan,
-            context,
-            forkRandom(`${symbolicSeed}|melody.neural`, "stream"),
-          );
+          const melodyRand = forkRandom(`${symbolicSeed}|melody.neural`, "stream");
+          // Preferred: embedding-conditioned v2 melodic prior; falls back to
+          // the v1 genre one-hot when the v2 model doesn't answer.
+          const priorMelody = semantic
+            ? ((await sampleMelodicParts(plan, context, melodyRand, semantic)) ??
+              (await sampleMelodicParts(plan, context, melodyRand)))
+            : await sampleMelodicParts(plan, context, melodyRand);
           if (priorMelody) {
             for (const role of ["bass", "chord", "lead"] as const) {
               const track = melodicRoleTrack(role);

@@ -57,27 +57,33 @@ const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
 if (/^\/embed(\/|$)/.test(PATH)) {
   root.render(
     <StrictMode>
-      <Suspense fallback={ROUTE_FALLBACK}>
-        <EmbedApp />
-      </Suspense>
+      <ErrorBoundary crashNote="This player hit an error. Reload to try again.">
+        <Suspense fallback={ROUTE_FALLBACK}>
+          <EmbedApp />
+        </Suspense>
+      </ErrorBoundary>
     </StrictMode>,
   );
 } else if (/^\/gallery(\/|$)/.test(PATH)) {
   // /gallery — the beat feed; no studio boot either.
   root.render(
     <StrictMode>
-      <Suspense fallback={ROUTE_FALLBACK}>
-        <GalleryPage />
-      </Suspense>
+      <ErrorBoundary crashNote="The gallery hit an error. Reload to try again.">
+        <Suspense fallback={ROUTE_FALLBACK}>
+          <GalleryPage />
+        </Suspense>
+      </ErrorBoundary>
     </StrictMode>,
   );
 } else if (/^\/download(\/|$)/.test(PATH)) {
   // /download — the desktop app page; no studio boot either.
   root.render(
     <StrictMode>
-      <Suspense fallback={ROUTE_FALLBACK}>
-        <DownloadPage />
-      </Suspense>
+      <ErrorBoundary crashNote="This page hit an error. Reload to try again.">
+        <Suspense fallback={ROUTE_FALLBACK}>
+          <DownloadPage />
+        </Suspense>
+      </ErrorBoundary>
     </StrictMode>,
   );
 } else {

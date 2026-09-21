@@ -3,7 +3,7 @@
   "reviewedBy": "",
   "reviewedAt": "",
   "datasetVersion": "intent-ranker-ds.v2",
-  "note": "Poradie kandid\u00e1tov (indexov) pre ka\u017ed\u00fd combo \u2014 najlep\u0161\u00ed PRV\u00dd. Pack: public/golden-review/",
+  "note": "Poradie kandidátov (indexov) pre každý combo — najlepší PRVÝ. Pack: public/golden-review/",
   "combos": [
     {
       "combo": "house:Afro House",
@@ -75,7 +75,5 @@
         1
       ]
     }
-  ],
-  "updatedAt": "2026-09-21T19:45:08.226Z",
-  "updatedBy": "listening-room"
+  ]
 }

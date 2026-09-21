@@ -1,0 +1,16 @@
+{
+  "datasetVersion": "symbolic-melodic-ds.v1",
+  "featureVersion": "melodic-features-v2",
+  "featureCount": 41,
+  "mode": "embedding-v2",
+  "hidden": [
+    64,
+    32
+  ],
+  "epochs": 800,
+  "samples": 190,
+  "valDegreeAcc": 0.6429,
+  "trainDegreeAcc": 0.9383,
+  "valDurationAcc": 0.4643,
+  "trainDurationAcc": 0.9074
+}

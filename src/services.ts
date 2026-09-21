@@ -514,6 +514,7 @@ export async function openProject(
         }
         applyTransportState(transport, state, Date.now() / 1000);
         if (shouldStartScheduler) scheduler.start();
+        else if (wasPlaying && state.playing) scheduler.resync();
       } finally {
         followLock = false;
       }
@@ -767,6 +768,10 @@ export async function openProject(
   });
 
   store.onDocChanged = (doc) => {
+    // Post-close mutations (a late async finalize landing on a panel that
+    // outlived closeProject) must not re-point the SHARED engine at the
+    // closed project or re-arm the debouncer — the final flush already ran.
+    if (closed) return;
     engine.setProject(doc);
     transport.setBarTicks(ticksPerBar(doc));
     transport.setBpm(doc.bpm);

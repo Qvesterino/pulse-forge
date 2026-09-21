@@ -176,7 +176,8 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
   return Math.max(fallback, Math.min(12, (maxMs / 1000) * 1.1 + 0.5));
 }
 
-export interface ClipWindow {  pattern: Pattern;
+export interface ClipWindow {
+  pattern: Pattern;
   base: number;
   from: number;
   to: number;
@@ -192,10 +193,7 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
     // Audio clips can sit past the last scene clip (outro vocals, ad-libs).
     // Duration must cover them or they are silently truncated/dropped from
     // the export while live playback plays them fine.
-    const audioEnd = (doc.arrangement.audioClips ?? []).reduce(
-      (max, c) => Math.max(max, c.startBar + c.lengthBars),
-      0,
-    );
+    const audioEnd = (doc.arrangement.audioClips ?? []).reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
     const total = Math.max(end, audioEnd);
     if (total > 0) return total * BAR_TICKS;
   }
@@ -342,8 +340,7 @@ export async function renderProject(
   // Duration must reach the LAST RENDERED TICK, not just the last clip
   // window's end: with audio clips past the final scene clip, totalSeconds
   // stops short and the OfflineAudioContext cuts them off.
-  const duration =
-    (tempoMap.segments.length > 0 ? tempoMap.timeAt(totalTicks) : totalTicks * secondsPerTick) + tail;
+  const duration = (tempoMap.segments.length > 0 ? tempoMap.timeAt(totalTicks) : totalTicks * secondsPerTick) + tail;
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
   // Load AudioWorklet processors into THIS offline context so bitcrusher
   // downsample and sidechain ducking render correctly (the fallbacks are
@@ -460,12 +457,14 @@ export async function renderProject(
     }
   }
 
-  // Last cancellation window before the un-abortable render begins.
-  throwIfAborted(options.signal);
   // Release the engine's sample-added subscription: the shared bank outlives
   // this throwaway engine, and an unconsumed closure would retain every
   // discarded render engine (one per export/stem/bounce).
   try {
+    // Last cancellation window before the un-abortable render begins —
+    // INSIDE the try: an abort here must still release the bank
+    // subscription above, not leak it into the shared bank.
+    throwIfAborted(options.signal);
     return await ctx.startRendering();
   } finally {
     engine.detachBank();
