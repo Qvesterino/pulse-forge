@@ -109,12 +109,15 @@ describe("morph-dynamics parameter schema", () => {
   });
 
   it("keeps every destination bounded inside its safe region", () => {
-    expect(MOD_DESTINATIONS.length).toBe(12);
+    expect(MOD_DESTINATIONS.length).toBe(13);
     for (const dest of MOD_DESTINATIONS) {
       expect(dest.span).not.toBe(0);
       expect(dest.min).toBeLessThan(dest.max);
     }
     expect(MOD_SOURCES.length).toBe(7);
+    // Destinations are APPEND-ONLY (serialized routes store enum indices):
+    // the Experiment #1 Harmony Mix hook must stay at index 12 forever.
+    expect(MOD_DESTINATIONS[12]).toMatchObject({ key: "harm.mix", span: 100, min: 0, max: 100 });
   });
 });
 

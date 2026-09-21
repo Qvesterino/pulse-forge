@@ -565,6 +565,17 @@
   background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
+/* Wave D — assistant row: the effect-intent language, visually paired with
+   the goal row but cooler in tone so the two interpreters read apart. */
+.fx-add-assistant {
+  border-color: color-mix(in srgb, #7aa2f7 45%, transparent);
+  background: color-mix(in srgb, #7aa2f7 12%, transparent);
+}
+
+.fx-add-assistant:hover {
+  background: color-mix(in srgb, #7aa2f7 20%, transparent);
+}
+
 .fx-add-tiles {
   display: flex;
   gap: 4px;

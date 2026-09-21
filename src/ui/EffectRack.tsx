@@ -7,6 +7,7 @@ import {
   addEffectWithLandingCommand,
   applyProductionIntentToTrackCommand,
 } from "../commands/commands";
+import { applyEffectIntentOnTrack } from "./fxAddAssistant";
 import { roleOfTrack, rolePresetFor } from "../effects/role-presets";
 import {
   addEffect,
@@ -363,6 +364,18 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
             if (!intent) return;
             try {
               services.store.execute(applyProductionIntentToTrackCommand(doc, track.id, intent));
+              setGoalNote(null);
+              setAddOpen(false);
+            } catch (err) {
+              setGoalNote(err instanceof Error ? err.message : String(err));
+            }
+          }}
+          onAssistant={(assistantIntent) => {
+            // Wave D — the assistant's effect-intent, resolved at TRACK
+            // level: finds or adds the best device for the goals, tunes it
+            // through their plan/apply pipeline, one undo step.
+            try {
+              services.store.execute(applyEffectIntentOnTrack(doc, track.id, assistantIntent));
               setGoalNote(null);
               setAddOpen(false);
             } catch (err) {

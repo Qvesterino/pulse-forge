@@ -33,6 +33,7 @@ import { DynamicsStage } from "./dynamics.js";
 import { CharacterStage } from "./character.js";
 import { MotionStage } from "./motion.js";
 import { SpaceStage } from "./space.js";
+import { BodyHarmonizer, HARM_VOICE_COUNT, type BodyHarmonizerParams } from "./harmony.js";
 
 const ROUTE_SLOTS = P.ROUTE_COUNT;
 
@@ -49,6 +50,22 @@ export class MorphDynamicsProcessor {
   private character = new CharacterStage();
   private motion = new MotionStage();
   private space = new SpaceStage();
+  /**
+   * BODY Harmonizer (Experiment #1): harmony voices built ONLY from the
+   * tonal body; summed into the wet path post-dynamics, pre-character, so
+   * the harmony is glued by the same saturation/space stages as everything
+   * else. Zero algorithmic latency (grains read only the past) — the dry
+   * and harmony paths recombine phase-coherently with no compensation
+   * delay, and the reported chain latency stays owned by the character
+   * halfband. Bit-exact bypass when harm.enabled is off.
+   */
+  private harmony = new BodyHarmonizer();
+  private harmonyOut = { l: 0, r: 0, dry: 1 };
+  /** Preallocated per-block voice config (no allocation in the render path). */
+  private harmonyVoicesCfg: BodyHarmonizerParams["voices"] = Array.from(
+    { length: HARM_VOICE_COUNT },
+    () => ({ enabled: false, interval: 0, detune: 0, level: 0.7, pan: 0 }),
+  );
 
   // Output safety (per channel — each keeps its own one-pole state).
   private dcL = new OnePoleHP();
@@ -77,6 +94,7 @@ export class MorphDynamicsProcessor {
     width: new BlockSmoother(1.15, 0.06),
     predelayMs: new BlockSmoother(12, 0.08),
     duck: new BlockSmoother(0.5, 0.08),
+    harmonyMix: new BlockSmoother(0.5, 0.05),
     /**
      * Per-ROUTE smoothing (5..300 ms each): a transient route (wants ~5 ms)
      * and a body route (wants ~150 ms) may share a destination — the route
@@ -137,6 +155,7 @@ export class MorphDynamicsProcessor {
     this.character.prepare(sampleRate);
     this.motion.prepare(sampleRate, maxBlockSize);
     this.space.prepare(sampleRate);
+    this.harmony.prepare(sampleRate);
     this.dcL.setFreq(9, sampleRate);
     this.dcR.setFreq(9, sampleRate);
     this.applyQuality();
@@ -254,6 +273,7 @@ export class MorphDynamicsProcessor {
     this.character.reset();
     this.motion.reset();
     this.space.reset();
+    this.harmony.reset();
     this.dcL.reset();
     this.dcR.reset();
     this.dryBufL.fill(0);
@@ -448,6 +468,30 @@ export class MorphDynamicsProcessor {
       duck: q[P.SPACE_DUCK_ID] / 100,
     });
 
+    // BODY Harmonizer (Experiment #1): mix is a MOD DESTINATION (route
+    // "Harmony Mix" — the Harmonic Bloom hook drives it externally), the
+    // module skipped ENTIRELY when off (bit-exact bypass, zero CPU).
+    const harmOn = q[P.HARM_ENABLED_ID] >= 0.5;
+    if (harmOn) {
+      this.sm.harmonyMix.setTarget(mod(12, q[P.HARM_MIX_ID]));
+      const voices = this.harmonyVoicesCfg;
+      for (let v = 0; v < HARM_VOICE_COUNT; v++) {
+        const vc = voices[v]!;
+        vc.enabled = q[P.harmVoiceParamId(v, "on")] >= 0.5;
+        vc.interval = q[P.harmVoiceParamId(v, "interval")];
+        vc.detune = q[P.harmVoiceParamId(v, "detune")];
+        vc.level = q[P.harmVoiceParamId(v, "level")] / 100;
+        vc.pan = q[P.harmVoiceParamId(v, "pan")] / 100;
+      }
+      this.harmony.setParams({
+        enabled: true,
+        bodyAmount: q[P.HARM_BODY_AMOUNT_ID] / 100,
+        mix: this.sm.harmonyMix.tick() / 100,
+        fullSignal: q[P.HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
+        voices,
+      });
+    }
+
     // I/O + mix smoothing.
     this.sm.inputGain.setTarget(dbToLin(q[P.GLOBAL_INPUT_GAIN_DB_ID]));
     this.sm.outputGain.setTarget(dbToLin(q[P.GLOBAL_OUTPUT_GAIN_DB_ID]));
@@ -495,6 +539,15 @@ export class MorphDynamicsProcessor {
         const t = sig.transient * transientPathTrim;
         wetL += detL * t;
         wetR += detR * t;
+      }
+
+      // BODY Harmonizer: duck the sustained body of the wet path to make
+      // room (dryGain, same mask the voices were built from) and add the
+      // harmony bus — phase-coherent, zero-latency recombination.
+      if (harmOn) {
+        this.harmony.processFrame(detL, detR, this.harmonyOut);
+        wetL = wetL * this.harmonyOut.dry + this.harmonyOut.l;
+        wetR = wetR * this.harmonyOut.dry + this.harmonyOut.r;
       }
 
       // Character.

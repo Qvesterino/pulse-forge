@@ -5,7 +5,7 @@
   "modelPath": "/models/symbolic-prior-v1.onnx",
   "inputName": "features",
   "outputName": "logits",
-  "modelHash": "77c507294425e6e9ade88395af4427b37cfe55762cd4007de72559b0c30b3e68",
+  "modelHash": "681f47e8bd16e42daef0d1701535c738c4fe0c7980cdd766b452c099d265bae3",
   "hidden": [
     64,
     32
@@ -21,19 +21,19 @@
     "epochs": 500,
     "samples": 87552,
     "hitRatio": 0.0821,
-    "posWeight": 11.06,
-    "valAuc": 0.9162,
-    "trainAuc": 0.9246,
-    "bestF1Threshold": 0.73,
+    "posWeight": 8.459,
+    "valAuc": 0.9268,
+    "trainAuc": 0.8389,
+    "bestF1Threshold": 0.67,
     "val": {
-      "precision": 0.3131,
-      "recall": 0.8249,
-      "f1": 0.4539
+      "precision": 0.3149,
+      "recall": 0.907,
+      "f1": 0.4675
     },
     "train": {
       "precision": 0.329,
-      "recall": 0.8566,
-      "f1": 0.4754
+      "recall": 0.7203,
+      "f1": 0.4517
     }
   }
 }

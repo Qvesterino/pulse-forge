@@ -4,6 +4,8 @@ import { presetsForEffect } from "../effects/presets";
 import { EFFECT_BLURBS } from "../effects/blurbs";
 import { rolePresetFor, ROLE_LABELS, type FxTrackRole } from "../effects/role-presets";
 import { parseProductionIntent } from "../intent/production";
+import { parseEffectIntent } from "../effect-intent/parser";
+import type { EffectIntentSpec } from "../effect-intent/types";
 import type { EffectType } from "../project-model/types";
 
 /**
@@ -41,10 +43,12 @@ interface FxAddPopoverProps {
   onPick: (type: EffectType) => void;
   /** Fold a production concept onto this track (text path goal row). */
   onGoal: (goalText: string) => void;
+  /** Run the assistant's effect-intent on this track (Wave D text path). */
+  onAssistant?: (intent: EffectIntentSpec) => void;
   onClose: () => void;
 }
 
-export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal, onClose }: FxAddPopoverProps) {
+export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal, onAssistant, onClose }: FxAddPopoverProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +71,11 @@ export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal,
   // a dedicated goal row above the grid — the whole-track INTENT panel
   // already understands these, the popover scopes them to THIS track.
   const concept = trimmed.length >= 3 ? parseProductionIntent(trimmed) : null;
+  // WAVE D — the assistant's effect-intent language ("teplejšie", "more
+  // space"): a second, complementary action row. Both rows can appear for
+  // one sentence — the user picks the interpreter they meant.
+  const assistantParse = onAssistant && trimmed.length >= 3 ? parseEffectIntent(trimmed) : null;
+  const assistantIntent = assistantParse?.status === "ready" ? assistantParse.intent : null;
 
   const goalTiles = useMemo(() => {
     const keys = [...new Set(devices.map((type) => EFFECT_DEFS[type]?.category ?? "tone"))];
@@ -121,6 +130,20 @@ export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal,
           title="Fold this goal onto this track with the production planner"
         >
           ♪ {concept.goals.map((g) => g.concept).join(" + ")} — apply to this track
+        </button>
+      )}
+
+      {assistantIntent && (
+        <button
+          type="button"
+          className="fx-add-goal fx-add-assistant"
+          onClick={() => onAssistant?.(assistantIntent)}
+          title="Assistant proposal — finds or adds the right device and tunes it"
+        >
+          ◈ {assistantIntent.goals
+            .map((g) => `${g.goal} ${g.direction === "increase" ? "↑" : "↓"}`)
+            .join(" + ")}{" "}
+          — assistant tune on this track
         </button>
       )}
 

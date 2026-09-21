@@ -50,11 +50,7 @@ import {
 import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { OZVENA_AUDIO_PARAM_SECTIONS, OZVENA_ENUM_VALUES, clampOzvenaParam } from "./ozvena-params";
-import {
-  characterCurve,
-  CHARACTER_MODE_LABELS,
-  type CharacterMode,
-} from "./characterCurve";
+import { characterCurve, CHARACTER_MODE_LABELS, type CharacterMode } from "./characterCurve";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
@@ -1150,7 +1146,16 @@ const reverb: EffectDefinition = {
     { id: "decay", label: "DECAY", min: 0.1, max: 6, default: 1.8, unit: "s", format: formatSec },
     { id: "predelay", label: "PRE-DLY", min: 0, max: 120, default: 20, unit: "ms", format: formatMs },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 9000, unit: "Hz", format: formatHz, taper: "log" },
-    { id: "damping", label: "DAMPING", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
+    {
+      id: "damping",
+      label: "DAMPING",
+      min: 500,
+      max: 12000,
+      default: 6000,
+      unit: "Hz",
+      format: formatHz,
+      taper: "log",
+    },
     { id: "diffusion", label: "DIFFUSION", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
@@ -2418,7 +2423,15 @@ const gate: EffectDefinition = {
     { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatMs },
     { id: "range", label: "RANGE", min: -80, max: 0, default: -48, unit: "dB", format: formatDb },
-    { id: "lookahead", label: "LOOKAHEAD", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF"), kind: "toggle" },
+    {
+      id: "lookahead",
+      label: "LOOKAHEAD",
+      min: 0,
+      max: 1,
+      default: 1,
+      format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+      kind: "toggle",
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -2442,7 +2455,15 @@ const shimmer: EffectDefinition = {
     { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "decay", label: "DECAY", min: 0, max: 1, default: 0.35, format: formatPct },
-    { id: "shift", label: "SHIFT", min: -12, max: 12, default: 12, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+    {
+      id: "shift",
+      label: "SHIFT",
+      min: -12,
+      max: 12,
+      default: 12,
+      unit: "st",
+      format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
+    },
     { id: "shimmer", label: "SHIMMER", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.4, format: formatPct },
   ],
@@ -2546,7 +2567,7 @@ const shimmer: EffectDefinition = {
             fb.gain.setValueAtTime(value * 0.55, when);
             break;
           case "shift":
-            shiftNode?.setParameterAt("semitones", value, when);
+            shiftNode?.setParameterAt?.("semitones", value, when);
             break;
           case "shimmer":
             shimmerGain.gain.setValueAtTime(value, when);
@@ -3598,7 +3619,15 @@ const flanger: EffectDefinition = {
     { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
-    { id: "invert", label: "INVERT", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "TZF" : "NORMAL"), kind: "toggle" },
+    {
+      id: "invert",
+      label: "INVERT",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v >= 0.5 ? "TZF" : "NORMAL"),
+      kind: "toggle",
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
   factory(ctx, instance, env) {
@@ -3965,7 +3994,15 @@ const freqShifter: EffectDefinition = {
       options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
     },
 
-    { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 500, default: 0, unit: "Hz", format: (v) => `${Math.round(v)} Hz` },
+    {
+      id: "lfoDepth",
+      label: "LFO DEPTH",
+      min: 0,
+      max: 500,
+      default: 0,
+      unit: "Hz",
+      format: (v) => `${Math.round(v)} Hz`,
+    },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
     {
       id: "delayTime",

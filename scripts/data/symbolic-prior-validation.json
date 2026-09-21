@@ -9,18 +9,18 @@
   "epochs": 500,
   "samples": 87552,
   "hitRatio": 0.0821,
-  "posWeight": 10.679,
-  "valAuc": 0.9175,
-  "trainAuc": 0.9241,
-  "bestF1Threshold": 0.78,
+  "posWeight": 8.459,
+  "valAuc": 0.9268,
+  "trainAuc": 0.8389,
+  "bestF1Threshold": 0.67,
   "val": {
-    "precision": 0.3394,
-    "recall": 0.6864,
-    "f1": 0.4542
+    "precision": 0.3149,
+    "recall": 0.907,
+    "f1": 0.4675
   },
   "train": {
-    "precision": 0.3697,
-    "recall": 0.6905,
-    "f1": 0.4816
+    "precision": 0.329,
+    "recall": 0.7203,
+    "f1": 0.4517
   }
 }

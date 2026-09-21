@@ -23,6 +23,11 @@ import {
   GLOBAL_INPUT_GAIN_DB_ID,
   GLOBAL_MIX_ID,
   GLOBAL_OUTPUT_GAIN_DB_ID,
+  HARM_BODY_AMOUNT_ID,
+  HARM_DEV_FULL_SIGNAL_ID,
+  HARM_ENABLED_ID,
+  HARM_MIX_ID,
+  HARM_VOICE_COUNT,
   MACRO_BODY_ID,
   MACRO_MOTION_ID,
   MACRO_PUNCH_ID,
@@ -43,6 +48,7 @@ import {
   SPACE_PREDELAY_MS_ID,
   SPACE_SEND_ID,
   SPACE_WIDTH_ID,
+  harmVoiceParamId,
   routeParamId,
 } from "../effects/morph-dynamics-core/contracts/parameterIds";
 import { MOD_DESTINATIONS, MOD_SOURCES } from "../effects/morph-dynamics-core/contracts/modulation";
@@ -109,10 +115,31 @@ function ratioFmt(v: number): string {
 function secFmt(v: number): string {
   return `${v.toFixed(2)} s`;
 }
+function stFmt(v: number): string {
+  const st = Math.round(v);
+  return `${st > 0 ? "+" : ""}${st} st`;
+}
+function panFmt(v: number): string {
+  if (v < -2) return `L${Math.round(-v)}`;
+  if (v > 2) return `R${Math.round(v)}`;
+  return "C";
+}
+function centsFmt(v: number): string {
+  return `${v > 0 ? "+" : ""}${Math.round(v)}¢`;
+}
 
 /** PRESSURE ring geometry (SVG viewBox units). */
 const PRESSURE_R = 34;
 const PRESSURE_C = 2 * Math.PI * PRESSURE_R;
+
+/** Slider double-click-reset defaults per harmony voice (interval, level,
+ * pan, detune) — mirrors the schema voice defaults. */
+const MORPH_HARM_VOICE_DEFAULTS: ReadonlyArray<readonly [number, number, number, number]> = [
+  [7, 70, -25, 0],
+  [-5, 70, 25, 0],
+  [12, 60, -60, 0],
+  [-12, 60, 60, 0],
+];
 
 /**
  * PressureRing — the central visual anchor (INTERACTION_MODEL §3): the
@@ -709,6 +736,62 @@ export function MorphDynamicsPanel({
               {engineSlider(SPACE_DAMPING_ID, "DAMPING", 0, 100, pctFmt, "linear", 45)}
               {engineSlider(SPACE_WIDTH_ID, "WIDTH", 0, 200, pctFmt, "linear", 115)}
               {engineSlider(SPACE_DUCK_ID, "TRN DUCK", 0, 100, pctFmt, "linear", 50)}
+            </div>
+            <div className="morph-module morph-module-harmony">
+              <div className="morph-module-title">
+                {stageToggle(HARM_ENABLED_ID, "HARMONY")}
+                <button
+                  type="button"
+                  className={`morph-stage-toggle ${valueOf(HARM_DEV_FULL_SIGNAL_ID) >= 0.5 ? "on" : ""}`}
+                  aria-label="A/B: harmonize the FULL signal instead of the body only"
+                  title="Experiment A/B: ON = naive full-signal harmonization, OFF = BODY-only (the signature mode)"
+                  onClick={() =>
+                    onParam(HARM_DEV_FULL_SIGNAL_ID, valueOf(HARM_DEV_FULL_SIGNAL_ID) >= 0.5 ? 0 : 1)
+                  }
+                >
+                  FULL A/B
+                </button>
+              </div>
+              <div className="morph-harm-hint">
+                Harmony grows from the sustained BODY — attacks and texture stay dry. Route BODY → Harmony Mix in
+                the matrix for the reactive bloom.
+              </div>
+              {engineSlider(HARM_MIX_ID, "MIX", 0, 100, pctFmt, "linear", 50)}
+              {engineSlider(HARM_BODY_AMOUNT_ID, "BODY", 0, 100, pctFmt, "linear", 100)}
+              <div className="morph-harm-voices">
+                {Array.from({ length: HARM_VOICE_COUNT }, (_, v) => {
+                  const onId = harmVoiceParamId(v, "on");
+                  const vOn = valueOf(onId) >= 0.5;
+                  return (
+                    <div className={`morph-harm-voice ${vOn ? "on" : ""}`} key={v}>
+                      <button
+                        type="button"
+                        className={`morph-harm-voice-toggle ${vOn ? "on" : ""}`}
+                        aria-label={`Harmony voice ${String.fromCharCode(65 + v)} on/off`}
+                        onClick={() => onParam(onId, vOn ? 0 : 1)}
+                      >
+                        {String.fromCharCode(65 + v)}
+                      </button>
+                      <div className="morph-harm-voice-controls">
+                        <Slider
+                          compact
+                          label="INT"
+                          value={valueOf(harmVoiceParamId(v, "interval"))}
+                          min={-24}
+                          max={24}
+                          defaultValue={MORPH_HARM_VOICE_DEFAULTS[v]?.[0] ?? 0}
+                          format={stFmt}
+                          onCommit={(val) => onParam(harmVoiceParamId(v, "interval"), Math.round(val))}
+                          onPreview={(val) => previewParam(harmVoiceParamId(v, "interval"), Math.round(val))}
+                        />
+                        {engineSlider(harmVoiceParamId(v, "level"), "LVL", 0, 150, pctFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[1] ?? 70)}
+                        {engineSlider(harmVoiceParamId(v, "pan"), "PAN", -100, 100, panFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[2] ?? 0)}
+                        {engineSlider(harmVoiceParamId(v, "detune"), "DET", -50, 50, centsFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[3] ?? 0)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             <div className="morph-module">
               <div className="morph-module-title">

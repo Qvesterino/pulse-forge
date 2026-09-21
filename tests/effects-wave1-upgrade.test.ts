@@ -10,6 +10,7 @@
  *   characterCurve — saturation/distortion engine modes
  */
 import { beforeAll, describe, expect, it } from "vitest";
+import { CHARACTER_MODE_LABELS, characterCurve, characterTransfer } from "../src/effects/characterCurve";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -33,9 +34,8 @@ beforeAll(async () => {
   await import("../src/audio-worklets/gate-processor.js");
   // @ts-expect-error raw worklet processor files
   await import("../src/audio-worklets/stutter-processor.js");
-  // @ts-expect-error raw worklet processor files
   await import("../src/audio-worklets/flanger-processor.js");
-  // @ts-expect-error raw worklet processor files
+  // @ts-expect-error raw worklet processor file (no declaration sibling)
   await import("../src/audio-worklets/reverb-processor.js");
 });
 
@@ -90,24 +90,29 @@ describe("gate hysteresis + look-ahead", () => {
   };
 
   it("hysteresis keeps the gate open on threshold-hovering signals", () => {
-    // Piecewise levels: −30 dB segments (open) alternate with −40 dB dips
-    // (env decays to ≈ −39 dB). The open threshold is −36, the close
-    // threshold with hysteresis 1 is −48: the dip lands INSIDE the band, so
-    // the wide-hysteresis gate holds open while the zero-hysteresis gate
-    // closes on every dip (chatter).
+    // Piecewise levels: −30 dB for 50 ms, then −46 dB for 150 ms. The
+    // envelope (80 ms release) decays through the OPEN threshold (−36) into
+    // the hysteresis band but never below the CLOSE threshold (−48 at full
+    // hysteresis): a wide-hysteresis gate holds OPEN through the quiet
+    // segment while a zero-hysteresis gate slams shut — measurable deep in
+    // the quiet segment.
     const segHigh = 0.0316; // −30 dB
-    const segLow = 0.01; // −40 dB
-    const cycle = Math.floor(0.13 * SR);
+    const segLow = 0.005; // −46 dB
+    const cycle = Math.floor(0.4 * SR);
     const highLen = Math.floor(0.05 * SR);
     const gen = (i: number): number => {
       const inCycle = i % cycle;
       const a = inCycle < highLen ? segHigh : segLow;
       return a * Math.sin((2 * Math.PI * 440 * i) / SR);
     };
-    const chatter = run(make("gate-processor"), { ...base, hysteresis: 0 }, gen, 0.8);
-    const stable = run(make("gate-processor"), { ...base, hysteresis: 1 }, gen, 0.8);
-    const from = Math.floor(0.2 * SR);
-    expect(meanAbs(stable, from)).toBeGreaterThan(meanAbs(chatter, from) * 1.5);
+    const chatter = run(make("gate-processor"), { ...base, hysteresis: 0 }, gen, 1.2);
+    const stable = run(make("gate-processor"), { ...base, hysteresis: 1 }, gen, 1.2);
+    // Deep inside the second cycle's quiet segment: the 80 ms-release
+    // envelope has fully decayed (≈ −46 dB floor), so the zero-hysteresis
+    // gate is long CLOSED while the wide-band gate still holds open.
+    const from = Math.floor(0.6 * SR);
+    const to = Math.floor(0.72 * SR);
+    expect(meanAbs(stable, from, to)).toBeGreaterThan(meanAbs(chatter, from, to) * 5);
   });
 
   it("look-ahead passes the transient at full level", () => {
@@ -116,12 +121,7 @@ describe("gate hysteresis + look-ahead", () => {
     // look-ahead the gain opens instantly and the ring delay places that
     // opened gain right where the delayed burst lands.
     const burstGen = (i: number): number => (i >= 0.3 * SR && i < 0.3 * SR + 0.006 * SR ? 1 : 0);
-    const withLa = run(
-      make("gate-processor"),
-      { ...base, hysteresis: 0, attack: 0.1, lookahead: 1 },
-      burstGen,
-      0.35,
-    );
+    const withLa = run(make("gate-processor"), { ...base, hysteresis: 0, attack: 0.1, lookahead: 1 }, burstGen, 0.35);
     const withoutLa = run(
       make("gate-processor"),
       { ...base, hysteresis: 0, attack: 0.1, lookahead: 0 },
@@ -195,5 +195,50 @@ describe("reverb damping vs tone split", () => {
     const darkOut = hfRatio(12000, 800, 0.02, 0.15);
     const brightOut = hfRatio(12000, 12000, 0.02, 0.15);
     expect(brightOut).toBeGreaterThan(darkOut * 1.3);
+  });
+});
+
+describe("character engine (saturation/distortion curves)", () => {
+  const N = 2048;
+
+  it("labels the four stable modes", () => {
+    expect(CHARACTER_MODE_LABELS).toEqual(["Warm", "Tube", "Fold", "Hard"]);
+  });
+
+  it("keeps every mode's curve bounded and zero at center", () => {
+    for (let mode = 0 as 0 | 1 | 2 | 3; mode < 4; mode++) {
+      const curve = characterCurve(mode as 0 | 1 | 2 | 3, 0.8, 0.3);
+      expect(curve.length).toBe(N);
+      for (let i = 0; i < N; i++) {
+        expect(Math.abs(curve[i])).toBeLessThanOrEqual(1.0001);
+        expect(Number.isFinite(curve[i])).toBe(true);
+      }
+      // Zero input → zero output (bias DC is removed by construction —
+      // exact through the transfer function; the curve grid center sits at
+      // x ≈ 0.001, so only assert near-zero there).
+      expect(characterTransfer(mode as 0 | 1 | 2 | 3, 0, 0.8, 0.3)).toBe(0);
+      expect(Math.abs(curve[N / 2])).toBeLessThan(0.01);
+    }
+  });
+
+  it("bias breaks odd symmetry (the tube flavor)", () => {
+    for (let mode = 0 as 0 | 1 | 2 | 3; mode < 4; mode++) {
+      const x = 0.5;
+      const pos = characterTransfer(mode as 0 | 1 | 2 | 3, x, 0.6, 0.7);
+      const neg = characterTransfer(mode as 0 | 1 | 2 | 3, -x, 0.6, 0.7);
+      expect(Math.abs(pos + neg)).toBeGreaterThan(0.02); // f(x) ≠ −f(−x)
+    }
+  });
+
+  it("fold mode at high drive folds the waveform (multiple extrema)", () => {
+    const curve = characterCurve(2, 0.95, 0);
+    let extrema = 0;
+    for (let i = 1; i < N - 1; i++) {
+      const d0 = curve[i] - curve[i - 1];
+      const d1 = curve[i + 1] - curve[i];
+      if (d0 * d1 < 0) extrema++;
+    }
+    // A folded transfer swings direction many times across ±1.
+    expect(extrema).toBeGreaterThanOrEqual(4);
   });
 });

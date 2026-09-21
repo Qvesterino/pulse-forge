@@ -32,11 +32,11 @@ export function createFlangerNode(
     initialRate: instance.params.rate,
     initialSync: instance.params.sync,
     initialBpm: bpm,
-    write: (paramId, value, when) => (when == null ? safeApplyAudioParam(node, paramId, value) : safeApplyAudioParam(node, paramId, value, when)),
+    write: (paramId, value, when) =>
+      when == null ? safeApplyAudioParam(node, paramId, value) : safeApplyAudioParam(node, paramId, value, when),
   });
   // Re-apply the (possibly synced) rate over the plain default above.
   lfoSync.parameter("rate", instance.params.rate ?? 0.5, null);
-
 
   safeApplyAudioParam(node, "depth", instance.params.depth ?? 3);
   safeApplyAudioParam(node, "base", instance.params.base ?? 5);

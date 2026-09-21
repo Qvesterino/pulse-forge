@@ -102,9 +102,12 @@ class HarmonyVoice {
   // Gain fades per sample (level × enable — one pole, ~12 ms).
   private gain = 0;
   private gainCoef = 1;
-  // Ratio latches at grain boundaries (a mid-grain ratio step bends the
-  // read slope and clicks).
-  private ratioLive = 1;
+  // Per-GRAIN ratio latch: a grain keeps the ratio it was BORN with for its
+  // whole 2h life; the live target only applies to grains starting now.
+  // Latching globally would bend the read slope of the still-sounding
+  // previous grain mid-window — an instant read-position jump of up to
+  // h·Δratio samples, i.e. an audible click on every interval change.
+  private grainRatios = [1, 1];
   private lastGrain = -1;
 
   setParams(p: HarmonyVoiceParams, sampleRate: number): void {
@@ -124,7 +127,8 @@ class HarmonyVoice {
 
   reset(): void {
     this.gain = 0;
-    this.ratioLive = this.cfg.ratio;
+    this.grainRatios[0] = this.cfg.ratio;
+    this.grainRatios[1] = this.cfg.ratio;
     this.lastGrain = -1;
   }
 
@@ -152,19 +156,21 @@ class HarmonyVoice {
       this.lastGrain = Math.floor(a / h);
       return;
     }
-    if (Math.floor(a / h) !== this.lastGrain) {
-      this.lastGrain = Math.floor(a / h);
-      this.ratioLive = this.cfg.ratio;
+    const k = Math.floor(a / h);
+    if (k !== this.lastGrain) {
+      // Stamp the CURRENT target onto every grain starting now (normally
+      // exactly one; per-sample stepping never skips a boundary).
+      this.grainRatios[k & 1] = this.cfg.ratio;
+      this.lastGrain = k;
     }
-    const ratio = this.ratioLive;
 
     let wet = 0;
     let windowSum = 0;
-    const k = Math.floor(a / h);
     for (let g = k; g >= k - 1; g--) {
       const u = a / h - g; // 0..2 within this grain
       if (u < 0 || u > 2) continue;
       const window = 0.5 * (1 - Math.cos(Math.PI * u));
+      const ratio = this.grainRatios[g & 1];
       const grainStart = g * h;
       // Shift-up grains start BEHIND the grain start so the read (which
       // advances at `ratio`) ends exactly at the write line — the past-only
@@ -193,6 +199,7 @@ export class BodyHarmonizer {
   private lpToneLo = new OnePoleLP(); // 110 Hz — drops sub rumble
   private fastEnv = new EnvelopeFollower(); // ~2 ms — transient edge
   private slowEnv = new EnvelopeFollower(); // ~60 ms — sustained mass
+  private presenceEnv = new EnvelopeFollower(); // ~12 ms release — audio presence gate
   private maskEnv = new EnvelopeFollower(); // the smoothed mask itself
 
   // ── Grain engine (shared ring buffer, mono body feed) ───────────
@@ -240,26 +247,47 @@ export class BodyHarmonizer {
     this.bufMask = len - 1;
     this.lpToneHi.setFreq(3200, sampleRate);
     this.lpToneLo.setFreq(110, sampleRate);
-    this.fastEnv.setTimes(0.002, 0.04, sampleRate);
+    // The sustained-ness pair share the SAME release (300 ms) and differ
+    // ONLY in attack (2 ms vs 60 ms). With mismatched releases the ratio
+    // slow/fast climbs back toward 1 while an event is still ringing out
+    // (fast decays first), reopening the mask behind every strike; equal
+    // releases make the ratio freeze at its strike-time value until the
+    // gate — not the ratio — decides the tail is over.
+    this.fastEnv.setTimes(0.002, 0.3, sampleRate);
     this.slowEnv.setTimes(0.06, 0.3, sampleRate);
     // Mask: blooms over ~40 ms of sustained tone, ducks in ~12 ms when a
     // strike takes over — the asymmetry IS the transient/body split.
     this.maskEnv.setTimes(0.04, 0.012, sampleRate);
+    // Presence gate: closes within ~40 ms of the audio stopping so the mask
+    // never sits open across a gap and leaks the NEXT transient's onset
+    // into the grain engine (a zero-latency mask cannot close before a
+    // transient it has not seen — it must simply never be pre-opened).
+    this.presenceEnv.setTimes(0.002, 0.025, sampleRate);
     this.mixCoef = tcToCoef(0.03, sampleRate);
     this.writePos = 0;
     this.mixGain = 0;
     this.dryGain = 1;
     for (let i = 0; i < HARM_VOICE_COUNT; i++) {
       if (!this.voices[i]) this.voices[i] = new HarmonyVoice();
-      this.voices[i].setParams(this.cfg.voices[i]!, sampleRate);
-      this.voices[i].reset();
+      // Same defensive fallback as setParams (re-prepare after a short cfg).
+      this.voices[i]!.setParams(
+        this.cfg.voices?.[i] ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
+        sampleRate,
+      );
+      this.voices[i]!.reset();
     }
   }
 
   setParams(cfg: BodyHarmonizerParams): void {
     this.cfg = cfg;
     for (let i = 0; i < HARM_VOICE_COUNT; i++) {
-      this.voices[i]!.setParams(cfg.voices[i]!, this.sampleRate);
+      // Defensive: a short/absent voices array disables the missing slots
+      // instead of crashing the render thread.
+      const v = cfg.voices[i];
+      this.voices[i]!.setParams(
+        v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
+        this.sampleRate,
+      );
     }
   }
 
@@ -275,6 +303,7 @@ export class BodyHarmonizer {
     this.lpToneLo.reset();
     this.fastEnv.reset();
     this.slowEnv.reset();
+    this.presenceEnv.reset();
     this.maskEnv.reset();
     this.mixGain = 0;
     this.dryGain = 1;
@@ -295,6 +324,7 @@ export class BodyHarmonizer {
     const tone = this.lpToneHi.process(mono) - this.lpToneLo.process(mono);
     const fastV = this.fastEnv.processAbs(Math.abs(tone));
     const slowV = this.slowEnv.processAbs(Math.abs(tone));
+    const presenceV = this.presenceEnv.processAbs(Math.abs(tone));
     let rawMask: number;
     if (this.cfg.fullSignal) {
       rawMask = 1; // experiment arm A: naive full-signal harmonization
@@ -302,8 +332,9 @@ export class BodyHarmonizer {
       // Sustained-ness: when the slow mass matches the fast edge the tone
       // is being HELD (mask → 1); a strike makes fast spike ahead (→ 0).
       const w = fastV > 1e-9 ? clamp(slowV / fastV, 0, 1) : 0;
-      // Level gate: never harmonize the noise floor of a quiet channel.
-      const gate = smooth01((fastV - 3e-4) / 2.7e-3);
+      // Presence gate: only LIVE tonal material harmonizes — noise floors,
+      // gap tails and post-click silence never pre-open the mask.
+      const gate = smooth01((presenceV - 3e-3) / 1.2e-2);
       rawMask = w * gate;
     }
     const mask = this.maskEnv.processAbs(rawMask);

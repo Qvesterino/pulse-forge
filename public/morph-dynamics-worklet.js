@@ -45,6 +45,14 @@
   var SPACE_DAMPING_ID = "space.damping";
   var SPACE_WIDTH_ID = "space.width";
   var SPACE_DUCK_ID = "space.duck";
+  var HARM_ENABLED_ID = "harm.enabled";
+  var HARM_BODY_AMOUNT_ID = "harm.bodyAmount";
+  var HARM_MIX_ID = "harm.mix";
+  var HARM_DEV_FULL_SIGNAL_ID = "harm.devFullSignal";
+  var HARM_VOICE_COUNT = 4;
+  function harmVoiceParamId(voice, param) {
+    return `harm.voice.${voice}.${param}`;
+  }
   var ROUTE_COUNT = 8;
   function routeParamId(slot, param) {
     return `routes.${slot}.${param}`;
@@ -72,7 +80,10 @@
     { label: "Space Send", key: "space.send", span: 100, min: 0, max: 100 },
     { label: "Diffusion", key: "space.diffusion", span: 80, min: 0, max: 100 },
     { label: "Decay", key: "space.decayS", span: 1.5, min: 0.1, max: 5 },
-    { label: "Width", key: "space.width", span: 80, min: 0, max: 200 }
+    { label: "Width", key: "space.width", span: 80, min: 0, max: 200 },
+    // Experiment #1 (Harmonic Bloom hook, §10): BODY energy opening the
+    // harmony is a ROUTE, not hardcoded DSP — append-only, index 12.
+    { label: "Harmony Mix", key: "harm.mix", span: 100, min: 0, max: 100 }
   ];
 
   // src/effects/morph-dynamics-core/contracts/parameterSchema.ts
@@ -164,6 +175,30 @@
     }
     return defs;
   }
+  function harmParams() {
+    const defs = [
+      p(HARM_ENABLED_ID, "Body Harmonizer", 0, 0, 1, "boolean", false),
+      p(HARM_BODY_AMOUNT_ID, "Body Amount", 100, 0, 100, "percent"),
+      p(HARM_MIX_ID, "Harmony Mix", 50, 0, 100, "percent"),
+      p(HARM_DEV_FULL_SIGNAL_ID, "Dev Full-Signal A/B", 0, 0, 1, "boolean", false)
+    ];
+    const voiceDefaults = [
+      [7, 70, -25, 0],
+      // interval, level, pan, detune
+      [-5, 70, 25, 0],
+      [12, 60, -60, 0],
+      [-12, 60, 60, 0]
+    ];
+    for (let v = 0; v < HARM_VOICE_COUNT; v++) {
+      const [interval, level, pan, detune] = voiceDefaults[v];
+      defs.push(p(harmVoiceParamId(v, "on"), `Harmony Voice ${v + 1} On`, v === 0 ? 1 : 0, 0, 1, "boolean", false));
+      defs.push(p(harmVoiceParamId(v, "interval"), `Harmony Voice ${v + 1} Interval`, interval, -24, 24, "generic"));
+      defs.push(p(harmVoiceParamId(v, "level"), `Harmony Voice ${v + 1} Level`, level, 0, 150, "percent"));
+      defs.push(p(harmVoiceParamId(v, "pan"), `Harmony Voice ${v + 1} Pan`, pan, -100, 100, "generic"));
+      defs.push(p(harmVoiceParamId(v, "detune"), `Harmony Voice ${v + 1} Detune`, detune, -50, 50, "generic"));
+    }
+    return defs;
+  }
   var ALL_PARAMS = [
     ...GLOBAL_PARAMS,
     ...MACRO_PARAMS,
@@ -172,6 +207,7 @@
     ...CHAR_PARAMS,
     ...MOTION_PARAMS,
     ...SPACE_PARAMS,
+    ...harmParams(),
     ...routeParams()
   ];
   var PARAM_BY_ID = new Map(ALL_PARAMS.map((d) => [d.id, d]));
@@ -985,6 +1021,235 @@
     }
   };
 
+  // src/effects/morph-dynamics-core/dsp/harmony.ts
+  var HARM_VOICE_COUNT2 = 4;
+  function clamp(x, lo, hi) {
+    return x < lo ? lo : x > hi ? hi : x;
+  }
+  var HarmonyVoice = class {
+    // Targets (host-facing) vs latched values (audio-facing).
+    cfg = { ratio: 1, panL: 0.7071, panR: 0.7071, level: 0, enabled: false };
+    // Gain fades per sample (level × enable — one pole, ~12 ms).
+    gain = 0;
+    gainCoef = 1;
+    // Ratio latches at grain boundaries (a mid-grain ratio step bends the
+    // read slope and clicks).
+    ratioLive = 1;
+    lastGrain = -1;
+    setParams(p2, sampleRate2) {
+      const semis = clamp(p2.interval, -24, 24) + clamp(p2.detune, -50, 50) / 100;
+      this.cfg.ratio = Math.pow(2, semis / 12);
+      const theta = (clamp(p2.pan, -1, 1) + 1) * Math.PI / 4;
+      this.cfg.panL = Math.cos(theta);
+      this.cfg.panR = Math.sin(theta);
+      this.cfg.level = clamp(p2.level, 0, 1.5);
+      this.cfg.enabled = p2.enabled;
+      this.gainCoef = tcToCoef(0.012, sampleRate2);
+    }
+    get active() {
+      return this.cfg.enabled && this.cfg.level > 5e-4;
+    }
+    reset() {
+      this.gain = 0;
+      this.ratioLive = this.cfg.ratio;
+      this.lastGrain = -1;
+    }
+    /**
+     * Render one sample of this voice from the shared buffer. `a` is the
+     * absolute write counter (sample index since prepare), `writePos` its
+     * ring-free value, `h` the half-grain hop, `bufLen`/`bufMask` the ring
+     * geometry. Returns the PANNED mono grain pair into outL/outR.
+     */
+    render(a, writePos, h, buf, bufLen, out) {
+      const target = this.cfg.enabled ? this.cfg.level : 0;
+      this.gain += (target - this.gain) * (1 - this.gainCoef);
+      if (this.gain < 1e-6 && target === 0) {
+        out.l = 0;
+        out.r = 0;
+        this.lastGrain = Math.floor(a / h);
+        return;
+      }
+      if (Math.floor(a / h) !== this.lastGrain) {
+        this.lastGrain = Math.floor(a / h);
+        this.ratioLive = this.cfg.ratio;
+      }
+      const ratio = this.ratioLive;
+      let wet = 0;
+      let windowSum = 0;
+      const k = Math.floor(a / h);
+      for (let g = k; g >= k - 1; g--) {
+        const u = a / h - g;
+        if (u < 0 || u > 2) continue;
+        const window = 0.5 * (1 - Math.cos(Math.PI * u));
+        const grainStart = g * h;
+        const base = ratio >= 1 ? grainStart + 2 * h * (1 - ratio) : grainStart;
+        const read = base + (a - grainStart) * ratio;
+        if (read < 0 || read > writePos) continue;
+        let p2 = read % bufLen;
+        if (p2 < 0) p2 += bufLen;
+        const i0 = Math.floor(p2);
+        const frac = p2 - i0;
+        const i1 = i0 + 1 === bufLen ? 0 : i0 + 1;
+        wet += (buf[i0] * (1 - frac) + buf[i1] * frac) * window;
+        windowSum += window;
+      }
+      const norm = windowSum > 1e-6 ? 1 / windowSum : 0;
+      const s = wet * norm * this.gain;
+      out.l = s * this.cfg.panL;
+      out.r = s * this.cfg.panR;
+    }
+  };
+  var BodyHarmonizer = class {
+    // ── Body mask (the audio-rate T/B/T decomposition) ──────────────
+    lpToneHi = new OnePoleLP();
+    // 3.2 kHz — drops hiss/cymbal air
+    lpToneLo = new OnePoleLP();
+    // 110 Hz — drops sub rumble
+    fastEnv = new EnvelopeFollower();
+    // ~2 ms — transient edge
+    slowEnv = new EnvelopeFollower();
+    // ~60 ms — sustained mass
+    presenceEnv = new EnvelopeFollower();
+    // ~12 ms release — audio presence gate
+    maskEnv = new EnvelopeFollower();
+    // the smoothed mask itself
+    // ── Grain engine (shared ring buffer, mono body feed) ───────────
+    voices = [];
+    buf = new Float32Array(0);
+    bufLen = 0;
+    bufMask = 0;
+    writePos = 0;
+    // absolute sample counter (determinism)
+    h = 1;
+    // half-grain hop (samples)
+    // ── Smoothed bus state ──────────────────────────────────────────
+    mixGain = 0;
+    // harmony bus gain (mix × 1/√n) — per-sample pole
+    dryGain = 1;
+    // dry-body duck gain
+    mixCoef = 1;
+    cfg = {
+      enabled: false,
+      bodyAmount: 1,
+      mix: 0.5,
+      fullSignal: false,
+      voices: Array.from({ length: HARM_VOICE_COUNT2 }, () => ({
+        enabled: false,
+        interval: 0,
+        detune: 0,
+        level: 0.7,
+        pan: 0
+      }))
+    };
+    sampleRate = 48e3;
+    // Scratch for voice renders (no per-sample allocation).
+    vout = { l: 0, r: 0 };
+    prepare(sampleRate2) {
+      this.sampleRate = sampleRate2;
+      this.h = Math.max(64, Math.round(0.025 * sampleRate2));
+      let len = 4096;
+      while (len < 4 * this.h + 128) len *= 2;
+      if (len !== this.bufLen) {
+        this.buf = new Float32Array(len);
+        this.bufLen = len;
+      }
+      this.buf.fill(0);
+      this.bufMask = len - 1;
+      this.lpToneHi.setFreq(3200, sampleRate2);
+      this.lpToneLo.setFreq(110, sampleRate2);
+      this.fastEnv.setTimes(2e-3, 0.04, sampleRate2);
+      this.slowEnv.setTimes(0.06, 0.3, sampleRate2);
+      this.maskEnv.setTimes(0.04, 0.012, sampleRate2);
+      this.presenceEnv.setTimes(2e-3, 0.012, sampleRate2);
+      this.mixCoef = tcToCoef(0.03, sampleRate2);
+      this.writePos = 0;
+      this.mixGain = 0;
+      this.dryGain = 1;
+      for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
+        if (!this.voices[i]) this.voices[i] = new HarmonyVoice();
+        this.voices[i].setParams(this.cfg.voices[i], sampleRate2);
+        this.voices[i].reset();
+      }
+    }
+    setParams(cfg) {
+      this.cfg = cfg;
+      for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
+        this.voices[i].setParams(cfg.voices[i], this.sampleRate);
+      }
+    }
+    /** The current body mask (observability / tests). */
+    getMask() {
+      return this.maskEnv.value;
+    }
+    reset() {
+      this.buf.fill(0);
+      this.writePos = 0;
+      this.lpToneHi.reset();
+      this.lpToneLo.reset();
+      this.fastEnv.reset();
+      this.slowEnv.reset();
+      this.presenceEnv.reset();
+      this.maskEnv.reset();
+      this.mixGain = 0;
+      this.dryGain = 1;
+      for (const v of this.voices) v.reset();
+    }
+    /**
+     * Process one interleaved stereo frame of the POST-INPUT-GAIN tap.
+     * Writes the harmony bus into `out` and the dry-body duck gain into
+     * `outDry` (multiply the audible wet path by it BEFORE adding the bus).
+     * When the module is disabled this must not be called — the processor
+     * skips it entirely (bit-exact bypass).
+     */
+    processFrame(l, r, out) {
+      const mono = 0.5 * (l + r);
+      const tone = this.lpToneHi.process(mono) - this.lpToneLo.process(mono);
+      const fastV = this.fastEnv.processAbs(Math.abs(tone));
+      const slowV = this.slowEnv.processAbs(Math.abs(tone));
+      const presenceV = this.presenceEnv.processAbs(Math.abs(tone));
+      let rawMask;
+      if (this.cfg.fullSignal) {
+        rawMask = 1;
+      } else {
+        const w = fastV > 1e-9 ? clamp(slowV / fastV, 0, 1) : 0;
+        const gate = smooth01((presenceV - 3e-3) / 0.012);
+        rawMask = w * gate;
+      }
+      const mask = this.maskEnv.processAbs(rawMask);
+      this.buf[this.writePos & this.bufMask] = tone * mask;
+      this.writePos++;
+      let nActive = 0;
+      for (const v of this.voices) if (v.active) nActive++;
+      const compTarget = nActive > 0 ? 1 / Math.sqrt(nActive) : 0;
+      const busTarget = this.cfg.mix * compTarget;
+      this.mixGain += (busTarget - this.mixGain) * (1 - this.mixCoef);
+      if (this.mixGain < 1e-9) this.mixGain = 0;
+      this.dryGain = 1 - (1 - clamp(this.cfg.bodyAmount, 0, 1)) * mask;
+      let busL = 0;
+      let busR = 0;
+      if (this.mixGain > 1e-6) {
+        for (const v of this.voices) {
+          v.render(this.writePos - 1, this.writePos - 1, this.h, this.buf, this.bufLen, this.vout);
+          busL += this.vout.l;
+          busR += this.vout.r;
+        }
+      } else {
+        for (const v of this.voices) {
+          v.render(this.writePos - 1, this.writePos - 1, this.h, this.buf, this.bufLen, this.vout);
+        }
+        busL = 0;
+        busR = 0;
+      }
+      out.l = busL * this.mixGain;
+      out.r = busR * this.mixGain;
+      out.dry = this.dryGain;
+    }
+  };
+  function smooth01(x) {
+    const t = clamp(x, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
   // src/effects/morph-dynamics-core/dsp/morphDynamicsProcessor.ts
   var ROUTE_SLOTS = ROUTE_COUNT;
   function smoothstep(x, a, b) {
@@ -998,6 +1263,22 @@
     character = new CharacterStage();
     motion = new MotionStage();
     space = new SpaceStage();
+    /**
+     * BODY Harmonizer (Experiment #1): harmony voices built ONLY from the
+     * tonal body; summed into the wet path post-dynamics, pre-character, so
+     * the harmony is glued by the same saturation/space stages as everything
+     * else. Zero algorithmic latency (grains read only the past) — the dry
+     * and harmony paths recombine phase-coherently with no compensation
+     * delay, and the reported chain latency stays owned by the character
+     * halfband. Bit-exact bypass when harm.enabled is off.
+     */
+    harmony = new BodyHarmonizer();
+    harmonyOut = { l: 0, r: 0, dry: 1 };
+    /** Preallocated per-block voice config (no allocation in the render path). */
+    harmonyVoicesCfg = Array.from(
+      { length: HARM_VOICE_COUNT2 },
+      () => ({ enabled: false, interval: 0, detune: 0, level: 0.7, pan: 0 })
+    );
     // Output safety (per channel — each keeps its own one-pole state).
     dcL = new OnePoleHP();
     dcR = new OnePoleHP();
@@ -1024,6 +1305,7 @@
       width: new BlockSmoother(1.15, 0.06),
       predelayMs: new BlockSmoother(12, 0.08),
       duck: new BlockSmoother(0.5, 0.08),
+      harmonyMix: new BlockSmoother(0.5, 0.05),
       /**
        * Per-ROUTE smoothing (5..300 ms each): a transient route (wants ~5 ms)
        * and a body route (wants ~150 ms) may share a destination — the route
@@ -1079,6 +1361,7 @@
       this.character.prepare(sampleRate2);
       this.motion.prepare(sampleRate2, maxBlockSize);
       this.space.prepare(sampleRate2);
+      this.harmony.prepare(sampleRate2);
       this.dcL.setFreq(9, sampleRate2);
       this.dcR.setFreq(9, sampleRate2);
       this.applyQuality();
@@ -1175,6 +1458,7 @@
       this.character.reset();
       this.motion.reset();
       this.space.reset();
+      this.harmony.reset();
       this.dcL.reset();
       this.dcR.reset();
       this.dryBufL.fill(0);
@@ -1332,6 +1616,26 @@
         width: Math.max(0, Math.min(2, widthEff / 100)),
         duck: q[SPACE_DUCK_ID] / 100
       });
+      const harmOn = q[HARM_ENABLED_ID] >= 0.5;
+      if (harmOn) {
+        this.sm.harmonyMix.setTarget(mod(12, q[HARM_MIX_ID]));
+        const voices = this.harmonyVoicesCfg;
+        for (let v = 0; v < HARM_VOICE_COUNT2; v++) {
+          const vc = voices[v];
+          vc.enabled = q[harmVoiceParamId(v, "on")] >= 0.5;
+          vc.interval = q[harmVoiceParamId(v, "interval")];
+          vc.detune = q[harmVoiceParamId(v, "detune")];
+          vc.level = q[harmVoiceParamId(v, "level")] / 100;
+          vc.pan = q[harmVoiceParamId(v, "pan")] / 100;
+        }
+        this.harmony.setParams({
+          enabled: true,
+          bodyAmount: q[HARM_BODY_AMOUNT_ID] / 100,
+          mix: this.sm.harmonyMix.tick() / 100,
+          fullSignal: q[HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
+          voices
+        });
+      }
       this.sm.inputGain.setTarget(dbToLin(q[GLOBAL_INPUT_GAIN_DB_ID]));
       this.sm.outputGain.setTarget(dbToLin(q[GLOBAL_OUTPUT_GAIN_DB_ID]));
       this.sm.mix.setTarget(q[GLOBAL_MIX_ID] / 100);
@@ -1363,6 +1667,11 @@
           const t = sig.transient * transientPathTrim;
           wetL += detL * t;
           wetR += detR * t;
+        }
+        if (harmOn) {
+          this.harmony.processFrame(detL, detR, this.harmonyOut);
+          wetL = wetL * this.harmonyOut.dry + this.harmonyOut.l;
+          wetR = wetR * this.harmonyOut.dry + this.harmonyOut.r;
         }
         this.character.processFrame(wetL, wetR, charOut);
         wetL = charOut.l;

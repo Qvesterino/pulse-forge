@@ -62,7 +62,12 @@ const R = {
   source: (slot: number) => `routes.${slot}.source`,
   dest: (slot: number) => `routes.${slot}.destination`,
   amount: (slot: number) => `routes.${slot}.amount`,
+  smooth: (slot: number) => `routes.${slot}.smoothMs`,
 } as const;
+
+/** BODY Harmonizer voice param helpers (Experiment #1 presets). */
+const HV = (voice: number, param: "on" | "interval" | "level" | "pan" | "detune") =>
+  `harm.voice.${voice}.${param}`;
 
 // SOURCE index: 0 inputEnergy · 1 gainReduction · 2 transient · 3 body ·
 // 4 texture · 5 density · 6 pressure
@@ -901,6 +906,150 @@ export const FACTORY_PRESETS: readonly MorphFactoryPreset[] = [
       [R.source(2)]: 3, // Body
       [R.dest(2)]: 2, // → Drive
       [R.amount(2)]: 30,
+    },
+  ),
+
+  // ── EXPERIMENT #1: BODY HARMONIZER (dev/reference states) ───
+  // These encode the harmonizer as the product intends it: harmony grows
+  // out of the sustained tonal BODY while attacks pass clean. Each is also
+  // a test/reference state for the experiment's A/B validation.
+  preset(
+    "morph-exp-subtle-vocal-bloom",
+    "Subtle Vocal Bloom",
+    "vocal",
+    "Bloom",
+    "subtle",
+    "BODY Harmonizer: a quiet +7/+12 bloom rises out of sustained vocal tone — louder, more sustained phrases open more harmony (Body → Harmony Mix route), consonants stay dry.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 85,
+      "harm.mix": 25,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 7,
+      [HV(0, "level")]: 55,
+      [HV(0, "pan")]: -20,
+      [HV(0, "detune")]: -4,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: 12,
+      [HV(1, "level")]: 35,
+      [HV(1, "pan")]: 25,
+      [HV(1, "detune")]: 3,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 60,
+      [R.smooth(0)]: 120,
+    },
+  ),
+  preset(
+    "morph-exp-wide-fifths",
+    "Wide Fifths",
+    "instrument",
+    "Bloom",
+    "moderate",
+    "BODY Harmonizer: parallel fifths (+7/−5) spread hard left/right from the sustained body — pads and leads bloom into a wide stack while picks and attacks stay articulate.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 80,
+      "harm.mix": 45,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 7,
+      [HV(0, "level")]: 70,
+      [HV(0, "pan")]: -55,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: -5,
+      [HV(1, "level")]: 70,
+      [HV(1, "pan")]: 55,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 45,
+      [R.smooth(0)]: 90,
+    },
+  ),
+  preset(
+    "morph-exp-octave-body",
+    "Octave Body",
+    "synth",
+    "Bloom",
+    "moderate",
+    "BODY Harmonizer: the sustained body doubles an octave up (bass sub stays put, pluck attacks stay dry) — a one-knob octave-lift that only engages while notes hold.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 90,
+      "harm.mix": 55,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 12,
+      [HV(0, "level")]: 75,
+      [HV(0, "pan")]: 0,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 35,
+      [R.smooth(0)]: 80,
+    },
+  ),
+  preset(
+    "morph-exp-synthetic-choir",
+    "Synthetic Choir",
+    "vocal",
+    "Bloom",
+    "strong",
+    "BODY Harmonizer: +3/+7/+12 with slight detunes build a slow synthetic choir out of sustained vocal tone; sibilance and breath never join the shift.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 75,
+      "harm.mix": 50,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: 3,
+      [HV(0, "level")]: 60,
+      [HV(0, "pan")]: -40,
+      [HV(0, "detune")]: 6,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: 7,
+      [HV(1, "level")]: 60,
+      [HV(1, "pan")]: 40,
+      [HV(1, "detune")]: -6,
+      [HV(2, "on")]: 1,
+      [HV(2, "interval")]: 12,
+      [HV(2, "level")]: 45,
+      [HV(2, "pan")]: 0,
+      [HV(2, "detune")]: 4,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 55,
+      [R.smooth(0)]: 140,
+    },
+  ),
+  preset(
+    "morph-exp-dark-body-stack",
+    "Dark Body Stack",
+    "bass",
+    "Bloom",
+    "strong",
+    "BODY Harmonizer: −12/−5/−3 under the sustained body — a dark stack that thickens held notes and 808 tails while the attack keeps its definition.",
+    {
+      "harm.enabled": 1,
+      "harm.bodyAmount": 80,
+      "harm.mix": 50,
+      [HV(0, "on")]: 1,
+      [HV(0, "interval")]: -12,
+      [HV(0, "level")]: 65,
+      [HV(0, "pan")]: -25,
+      [HV(1, "on")]: 1,
+      [HV(1, "interval")]: -5,
+      [HV(1, "level")]: 55,
+      [HV(1, "pan")]: 30,
+      [HV(2, "on")]: 1,
+      [HV(2, "interval")]: -3,
+      [HV(2, "level")]: 45,
+      [HV(2, "pan")]: -60,
+      [R.enabled(0)]: 1,
+      [R.source(0)]: 3, // Body
+      [R.dest(0)]: 12, // → Harmony Mix
+      [R.amount(0)]: 50,
+      [R.smooth(0)]: 110,
     },
   ),
 ];
