@@ -10,6 +10,17 @@ import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
 import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
+import type {
+  IFrozenBufferRepository,
+  IGroovePoolRepository,
+  IKitRepository,
+  ILibraryRepository,
+  IPresetRepository,
+  IProjectRepository,
+  IRecordingRecoveryRepository,
+  ISnapshotRepository,
+  IUserSampleRepository,
+} from "./persistence/contracts";
 import { createAutosaveDebouncer } from "./persistence/autosave-debouncer";
 import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
@@ -50,12 +61,12 @@ import { NoteRepeatController } from "./audio-engine/NoteRepeat";
 export interface CoreServices {
   engine: AudioEngine;
   bank: SampleBank;
-  repo: ProjectRepository;
-  snapshots: SnapshotRepository;
-  presets: PresetRepository;
-  library: LibraryRepository;
-  userKits: KitRepository;
-  groovePool: GroovePoolRepository;
+  repo: IProjectRepository;
+  snapshots: ISnapshotRepository;
+  presets: IPresetRepository;
+  library: ILibraryRepository;
+  userKits: IKitRepository;
+  groovePool: IGroovePoolRepository;
   latency: LatencyCalibrationController;
 }
 
@@ -74,11 +85,11 @@ export interface Services {
   engine: AudioEngine;
   transport: Transport;
   scheduler: Scheduler;
-  repo: ProjectRepository;
+  repo: IProjectRepository;
   bank: SampleBank;
-  library: LibraryRepository;
-  userKits: KitRepository;
-  groovePool: GroovePoolRepository;
+  library: ILibraryRepository;
+  userKits: IKitRepository;
+  groovePool: IGroovePoolRepository;
   playback: PlaybackController;
   midi: MidiInput;
   /** Live MIDI record-to-pattern controller (record arm + overdub/replace). */
@@ -91,9 +102,9 @@ export interface Services {
   };
   midiOutput: MidiOutput;
   midiClock: MidiClock;
-  userSamples: UserSampleRepository;
-  recordingRecovery: RecordingRecoveryRepository;
-  frozenAudio: FrozenBufferRepository;
+  userSamples: IUserSampleRepository;
+  recordingRecovery: IRecordingRecoveryRepository;
+  frozenAudio: IFrozenBufferRepository;
   latency: LatencyCalibrationController;
   capture: ArrangementCaptureController;
   ghost: GhostPreviewPlayer;

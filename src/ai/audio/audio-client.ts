@@ -1,3 +1,4 @@
+import { assetUrl } from "../../shared/assetUrls";
 /**
  * Main-thread client for the audio tagging worker (INTENT_ENGINE.md T4).
  *
@@ -78,7 +79,7 @@ function request(request: AudioRequest, timeoutMs: number): Promise<AudioRespons
 export async function audioTagAvailable(): Promise<boolean> {
   if (audioTagMode() === "off" || unavailable || workerDisabled) return false;
   try {
-    const response = await fetch("/models/audio/manifest.json");
+    const response = await fetch(assetUrl("/models/audio/manifest.json"));
     if (!response.ok) {
       unavailable = true;
       return false;
@@ -99,10 +100,7 @@ export async function classifyAudio(audio: Float32Array): Promise<AudioLabel[] |
     if (!(await audioTagAvailable())) return null;
     const active = spawnWorker();
     if (!active) return null;
-    const response = await request(
-      { type: "classify", requestId: nextRequestId++, audio },
-      CLASSIFY_TIMEOUT_MS,
-    );
+    const response = await request({ type: "classify", requestId: nextRequestId++, audio }, CLASSIFY_TIMEOUT_MS);
     if (!response.ok || response.type !== "classify" || !response.labels) return null;
     return response.labels;
   } catch {

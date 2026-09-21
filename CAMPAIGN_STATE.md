@@ -28,7 +28,7 @@ continue from existing evidence.
 |---|---|---|---|
 | 01 | Portability readiness audit | **DONE** (2026-09-21) | `docs/PORTABILITY_MAP.md`, work log GOAL 01, fixes in `src/export/download.ts` (+4 call sites), `src/intent/audition.ts` |
 | 02 | Domain logic extraction | **DONE** (2026-09-21) | `src/instruments/definitions.ts` (pure meta; schema/targets/commands re-pointed, registry re-exports), `src/shared/{theme-data,pad-keys-data}.ts` (encoders React-free), `src/intent/favorites-core.ts`; pins in `tests/domain-purity.test.ts`. Leftover: effects-registry split (race with concurrent session) → ride along in GOAL 03 |
-| 03 | Platform contract definition | pending | seam inventory ready — PORTABILITY_MAP §3; contract queue in work-log GOAL 02 recommendations; repo interfaces belong HERE |
+| 03 | Platform contract definition | **DONE** (2026-09-21) | docs/PLATFORM-CONTRACTS.md catalog; persistence/contracts.ts (11 interfaces, threaded through Services); shared/assetUrls.ts (10 sites migrated); services/audio-decode.ts (3 repos migrated); effects defs split ride-along done. Full tsc 0 errors |
 | 04 | State machine formalization | pending | |
 | 05 | Persistence & schema evolution | pending | single choke point confirmed (`persistence/db.ts`, SCHEMA_VERSION 1, DB_VERSION 12); YDocAdapter = 2nd serialization path (drift risk) |
 | 06 | Golden behavior & parity tests | pending | existing goldens inventoried (ultina/fxeq/ozvena/morph vectors, golden-render, intent-pipeline) |

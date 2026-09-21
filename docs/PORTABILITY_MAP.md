@@ -129,9 +129,8 @@ bare Node; **MIXED** = core pure, some symbols/files touch the platform;
    `app://` standard scheme to keep this working. Any non-http target breaks
    lazy chunks, worklet loading and model fetches **simultaneously**. →
    Contract candidate: an asset-URL resolver.
-2. **Persistence requires Web Audio** — the three storage repos decode bytes
-   with throwaway `OfflineAudioContext`; a port needs a decode adapter or
-   pure decoders before storage can move. → GOAL 03 contract: `AudioDecoder`.
+2. **Persistence requires Web Audio** — RESOLVED (GOAL 03): the three decode
+   sites delegate to `src/services/audio-decode.ts` (injectable `AudioDecoder`).
 3. **Audio I/O surface** — engine context bootstrap, mic
    (`getUserMedia` ×4 sites, error-name→message mapping already exists),
    Web MIDI (2 modules), plus the second live contexts in `export/video.ts`

@@ -133,6 +133,21 @@ describe("domain purity (GOAL 02)", () => {
     }
   });
 
+  it("effects/definitions is Node-pure (no React, no audio runtime, no browser globals)", () => {
+    const entry = resolve(process.cwd(), "src/effects/definitions.ts");
+    const closure = transitiveClosure(entry);
+    expectNoMatches(closure, [...NO_REACT, ...NO_AUDIO_RUNTIME]);
+    expectNoBrowserSource(readFileSync(entry, "utf8"), "effects/definitions.ts");
+  });
+
+  it("project model consumes EFFECT_META, never the effect runtime registry", () => {
+    for (const rel of ["src/project-model/schema.ts", "src/project-model/targets.ts"]) {
+      const closure = transitiveClosure(resolve(process.cwd(), rel));
+      const hits = closure.filter((f) => f === "src/effects/registry.ts");
+      expect(hits, `${rel} must not pull the effect runtime registry`).toEqual([]);
+    }
+  });
+
   it("intent favorites-core carries no storage/browser code", () => {
     const entry = resolve(process.cwd(), "src/intent/favorites-core.ts");
     const closure = transitiveClosure(entry);

@@ -1,3 +1,4 @@
+import { assetUrl } from "../../shared/assetUrls";
 /// <reference lib="webworker" />
 /**
  * ONNX intent-ranker worker (goal doc Fáze 3).
@@ -32,7 +33,7 @@ async function ensureOrt(): Promise<OrtNamespace> {
   // as-is by vite dev AND the production build, while importing the .mjs
   // loader from public would hit vite's "no source imports from public"
   // transform error.
-  const wasmResponse = await fetch("/models/ort/ort-wasm-simd-threaded.wasm");
+  const wasmResponse = await fetch(assetUrl("/models/ort/ort-wasm-simd-threaded.wasm"));
   if (!wasmResponse.ok) throw new Error(`ort wasm fetch failed: ${wasmResponse.status}`);
   loaded.env.wasm.wasmBinary = await wasmResponse.arrayBuffer();
   loaded.env.wasm.numThreads = 1;

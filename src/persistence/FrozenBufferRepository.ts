@@ -1,8 +1,9 @@
+import { decodeAudioData } from "../services/audio-decode";
 import { openDb, tx, STORE_FROZEN_AUDIO } from "./db";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 
-interface FrozenAudioEntry {
+export interface FrozenAudioEntry {
   id: string;
   /** WAV-encoded bytes of the rendered track. */
   data: ArrayBuffer;
@@ -93,12 +94,8 @@ export async function restoreFrozenTracks(
 }
 
 function defaultDecodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {
-  if (typeof OfflineAudioContext === "undefined") {
-    return Promise.reject(new Error("OfflineAudioContext unavailable"));
-  }
-  // decodeAudioData only needs the context's machinery, not a running one —
-  // a minimal OfflineAudioContext keeps restore independent of the live
-  // engine (and of autoplay-gesture state).
-  const ctx = new OfflineAudioContext(1, 1, 44100);
-  return ctx.decodeAudioData(data);
+  // Audio-decode platform contract (GOAL 03): the shared adapter keeps the
+  // exact throwaway-OfflineAudioContext behavior and lets a non-Web-Audio
+  // host inject its decoder once at boot.
+  return decodeAudioData(data);
 }

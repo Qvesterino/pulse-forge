@@ -1,3 +1,4 @@
+import { assetUrl } from "../shared/assetUrls";
 import { materializePcmTake, type MaterializedPcmTake } from "./pcmRecording";
 import {
   RECORDING_OWNER_ID,
@@ -5,6 +6,7 @@ import {
   type RecordingPcmChunk,
   type RecordingSession,
 } from "../persistence/RecordingRecoveryRepository";
+import type { IRecordingRecoveryRepository } from "../persistence/contracts";
 import { loadRecordingInputDeviceId } from "./recordingInput";
 
 export interface PcmRecordingMetadata {
@@ -29,7 +31,7 @@ const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
 export interface PcmMicRecorderDependencies {
   ctx: AudioContext;
-  recovery?: RecordingRecoveryRepository;
+  recovery?: IRecordingRecoveryRepository;
   /** Empty string explicitly selects the system default; omitted uses the saved user preference. */
   inputDeviceId?: string;
   getUserMedia?: MediaDevices["getUserMedia"];
@@ -90,7 +92,7 @@ export class PcmMicRecorder {
   private finishPromise: Promise<string | null> | null = null;
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
 
-  private readonly recovery: RecordingRecoveryRepository;
+  private readonly recovery: IRecordingRecoveryRepository;
   private readonly inputDeviceId: string;
 
   constructor(private readonly deps: PcmMicRecorderDependencies) {
@@ -161,7 +163,9 @@ export class PcmMicRecorder {
 
   async start(getMetadata: () => PcmRecordingMetadata | null): Promise<void> {
     if (this.startInFlight || this.state_ !== "idle") {
-      throw new Error(this.state_ === "starting" || this.startInFlight ? "A recording start is still settling" : "Already recording");
+      throw new Error(
+        this.state_ === "starting" || this.startInFlight ? "A recording start is still settling" : "Already recording",
+      );
     }
     this.startInFlight = true;
     const token = ++this.startToken;
@@ -578,7 +582,7 @@ export class PcmMicRecorder {
 async function loadCaptureWorklet(ctx: AudioContext): Promise<void> {
   const existing = moduleLoads.get(ctx);
   if (existing) return existing;
-  const loading = ctx.audioWorklet.addModule(new URL("/recording-capture-worklet.js", import.meta.url).href);
+  const loading = ctx.audioWorklet.addModule(new URL(assetUrl("/recording-capture-worklet.js"), import.meta.url).href);
   moduleLoads.set(ctx, loading);
   try {
     await loading;

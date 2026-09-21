@@ -1,8 +1,5 @@
-import type {
-  RecordingPcmChunk,
-  RecordingSession,
-  RecordingRecoveryRepository,
-} from "../persistence/RecordingRecoveryRepository";
+import type { RecordingPcmChunk, RecordingSession } from "../persistence/RecordingRecoveryRepository";
+import type { IRecordingRecoveryRepository } from "../persistence/contracts";
 
 export interface MaterializedPcmTake {
   session: RecordingSession;
@@ -15,7 +12,7 @@ export interface MaterializedPcmTake {
  * is created. Samples are copied unchanged into the AudioBuffer.
  */
 export async function materializePcmTake(
-  recovery: RecordingRecoveryRepository,
+  recovery: IRecordingRecoveryRepository,
   sessionId: string,
   context: BaseAudioContext,
 ): Promise<MaterializedPcmTake> {

@@ -1,3 +1,4 @@
+import { assetUrl } from "../shared/assetUrls";
 /**
  * AudioWorklet module loader. Loads processor modules per context and
  * reports readiness synchronously so effect factories can fall back.
@@ -32,10 +33,10 @@ export const PLUGIN_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics"
 export type PluginWorkletType = (typeof PLUGIN_WORKLET_TYPES)[number];
 
 const PLUGIN_MODULE_URLS: Record<PluginWorkletType, string> = {
-  fxeq: new URL("/fxeq-worklet.js", import.meta.url).href,
-  ultina: new URL("/ultina-worklet.js", import.meta.url).href,
-  ozvena: new URL("/ozvena-worklet.js", import.meta.url).href,
-  morphdynamics: new URL("/morph-dynamics-worklet.js", import.meta.url).href,
+  fxeq: new URL(assetUrl("/fxeq-worklet.js"), import.meta.url).href,
+  ultina: new URL(assetUrl("/ultina-worklet.js"), import.meta.url).href,
+  ozvena: new URL(assetUrl("/ozvena-worklet.js"), import.meta.url).href,
+  morphdynamics: new URL(assetUrl("/morph-dynamics-worklet.js"), import.meta.url).href,
 };
 
 const CORE_TYPES = [
@@ -105,8 +106,8 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
     // contract preserves the loader's readiness semantics while avoiding a
     // production-only Vite data-URL failure for core-processor's relative
     // imports.
-    ctx.audioWorklet.addModule(new URL("/bitcrusher-worklet.js", import.meta.url).href),
-    ctx.audioWorklet.addModule(new URL("/core-worklet.js", import.meta.url).href),
+    ctx.audioWorklet.addModule(new URL(assetUrl("/bitcrusher-worklet.js"), import.meta.url).href),
+    ctx.audioWorklet.addModule(new URL(assetUrl("/core-worklet.js"), import.meta.url).href),
   ])
     .then(() => {
       readyContexts.add(ctx);

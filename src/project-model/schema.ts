@@ -27,7 +27,7 @@ import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulato
 import { uid } from "../shared/ids";
 import { defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
 import { createProjectFromTemplate } from "./templates";
-import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
+import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
@@ -587,7 +587,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       return (
         typeof fx?.id === "string" &&
         typeof fx?.type === "string" &&
-        Boolean(EFFECT_DEFS[fx.type as keyof typeof EFFECT_DEFS])
+        Boolean(EFFECT_META[fx.type as keyof typeof EFFECT_META])
       );
     })
     .map((item) => {

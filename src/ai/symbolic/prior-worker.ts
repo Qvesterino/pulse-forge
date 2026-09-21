@@ -1,3 +1,4 @@
+import { assetUrl } from "../../shared/assetUrls";
 /// <reference lib="webworker" />
 /**
  * ONNX symbolic prior worker — drums AND melodic models (INTENT_ENGINE.md T2).
@@ -38,7 +39,7 @@ async function ensureOrt(): Promise<OrtNamespace> {
   // Same runtime bytes as the ranker worker (public/models/ort/, synced by
   // npm run ranker:ort-sync). Single-threaded WASM: worker-scoped inference
   // must not spawn pthread pools inside an already-backgrounded context.
-  const wasmResponse = await fetch("/models/ort/ort-wasm-simd-threaded.wasm");
+  const wasmResponse = await fetch(assetUrl("/models/ort/ort-wasm-simd-threaded.wasm"));
   if (!wasmResponse.ok) throw new Error(`ort wasm fetch failed: ${wasmResponse.status}`);
   loaded.env.wasm.wasmBinary = await wasmResponse.arrayBuffer();
   loaded.env.wasm.numThreads = 1;

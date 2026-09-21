@@ -1,3 +1,4 @@
+import { decodeAudioData } from "../services/audio-decode";
 import type { SampleBank } from "./factory";
 
 /**
@@ -85,14 +86,8 @@ export interface CuratedLoadResult {
 }
 
 function defaultDecode(data: ArrayBuffer): Promise<AudioBuffer> {
-  if (typeof OfflineAudioContext === "undefined") {
-    return Promise.reject(new Error("OfflineAudioContext unavailable"));
-  }
-  // Same pattern as user-sample restore: decode needs the context machinery
-  // only — a minimal OfflineAudioContext stays independent of the live
-  // engine and of autoplay-gesture state.
-  const ctx = new OfflineAudioContext(1, 1, 44100);
-  return ctx.decodeAudioData(data);
+  // Audio-decode platform contract (GOAL 03) — same default, injectable.
+  return decodeAudioData(data);
 }
 
 function applyGain(buffer: AudioBuffer, gain: number): AudioBuffer {

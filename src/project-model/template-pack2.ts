@@ -9,7 +9,7 @@ import {
   setSteps,
   withNotes,
 } from "./templates";
-import { defaultParamsOf } from "../effects/registry";
+import { defaultParamsOf } from "../effects/definitions";
 import { createDrumTrackModel, createInstrumentTrackModel } from "./schema";
 import { uid } from "../shared/ids";
 import { PPQ } from "./types";

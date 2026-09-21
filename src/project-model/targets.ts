@@ -1,6 +1,6 @@
 import type { EffectInstance, ProjectDocument, ReturnTrack, Track, AutomationTarget } from "./types";
 import type { ParamDef } from "../effects/types";
-import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
+import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import { ALL_PARAMS, clampParam as clampUltinaParam } from "../effects/ultina-core/contracts/parameterSchema";
 import { INSTRUMENT_META, clampInstrumentParam } from "../instruments/definitions";
@@ -133,7 +133,7 @@ export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] 
     out.push(def);
   };
 
-  for (const def of EFFECT_DEFS[effect.type].params) push(fromRackDef(def));
+  for (const def of EFFECT_META[effect.type].params) push(fromRackDef(def));
 
   if (effect.type === "ultina") {
     for (const def of ALL_PARAMS) {
@@ -190,7 +190,7 @@ export function clampTargetValue(doc: ProjectDocument, target: AutomationTarget,
     if (
       effect?.type &&
       target.paramId &&
-      EFFECT_DEFS[effect.type].params.some((param) => param.id === target.paramId)
+      EFFECT_META[effect.type].params.some((param) => param.id === target.paramId)
     ) {
       return clampEffectParam(effect.type, target.paramId, value);
     }

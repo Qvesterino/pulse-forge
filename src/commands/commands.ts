@@ -66,7 +66,7 @@ import {
   sanitizeDeviceState,
 } from "../project-model/schema";
 import type { Pattern } from "../project-model/types";
-import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
+import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import {
   tryGetParamDef as tryGetUltinaParamDef,
@@ -1530,7 +1530,7 @@ export function addEffectToTracks(doc: ProjectDocument, trackIds: string[], type
       next = addEffect(next, id, type).execute(next);
     }
   }
-  return snapshot("addEffectToTracks", `Add ${EFFECT_DEFS[type].name} to ${unique.length} tracks`, doc, next);
+  return snapshot("addEffectToTracks", `Add ${EFFECT_META[type].name} to ${unique.length} tracks`, doc, next);
 }
 
 /**
@@ -1564,10 +1564,10 @@ export function setEffectBypassOnTracks(
     doc.returns
       .filter((r) => unique.has(r.id))
       .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
-  if (count === 0) throw new Error(`No ${EFFECT_DEFS[type].name} instances on the selected tracks`);
+  if (count === 0) throw new Error(`No ${EFFECT_META[type].name} instances on the selected tracks`);
   return snapshot(
     "setEffectBypassOnTracks",
-    `${bypassed ? "Bypass" : "Enable"} ${EFFECT_DEFS[type].name} on ${unique.size} tracks`,
+    `${bypassed ? "Bypass" : "Enable"} ${EFFECT_META[type].name} on ${unique.size} tracks`,
     doc,
     touched,
   );
@@ -1594,10 +1594,10 @@ export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[],
     doc.returns
       .filter((r) => unique.has(r.id))
       .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
-  if (removed === 0) throw new Error(`No ${EFFECT_DEFS[type].name} instances on the selected tracks`);
+  if (removed === 0) throw new Error(`No ${EFFECT_META[type].name} instances on the selected tracks`);
   return snapshot(
     "removeEffectFromTracks",
-    `Remove ${EFFECT_DEFS[type].name} from ${unique.size} tracks`,
+    `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`,
     doc,
     touched,
   );
@@ -4417,7 +4417,7 @@ export function addEffect(
     insertAt === undefined ? initialEffects.length : Math.max(0, Math.min(initialEffects.length, Math.floor(insertAt)));
   return {
     type: "addEffect",
-    label: `Add ${EFFECT_DEFS[type].name}`,
+    label: `Add ${EFFECT_META[type].name}`,
     effectId: fx.id,
     execute: (d) =>
       withTrackEffects(d, trackId, (effects) => {
@@ -4455,7 +4455,7 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
   const targetIndex = trackEffectsOf(doc, trackId).findIndex((f) => f.id === fxId);
   return {
     type: "removeEffect",
-    label: `Remove ${target ? EFFECT_DEFS[target.type].name : fxId}`,
+    label: `Remove ${target ? EFFECT_META[target.type].name : fxId}`,
     execute: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fxId)),
     undo: (d) =>
       withTrackEffects(d, trackId, (effects) => {
@@ -4500,7 +4500,7 @@ export function addEffectWithLandingCommand(
 ): Command & { readonly effectId: string } {
   const add = addEffect(doc, trackId, type, insertAt);
   let next = add.execute(doc);
-  const def = EFFECT_DEFS[type];
+  const def = EFFECT_META[type];
   for (const [paramId, value] of Object.entries(landing)) {
     const param = def.params.find((pd) => pd.id === paramId);
     if (!param) continue;
@@ -4766,7 +4766,7 @@ export function setEffectParam(
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target) throw new Error(`Effect ${fxId} not found`);
   const { type, params } = target;
-  const def = EFFECT_DEFS[type].params.find((p) => p.id === paramId);
+  const def = EFFECT_META[type].params.find((p) => p.id === paramId);
   const deepDef = !def && type === "ozvena" ? targetParamDef(doc, { kind: "fxParam", trackId, fxId, paramId }) : null;
   if (!def && !deepDef) throw new Error(`Effect param ${paramId} not defined for ${type}`);
   const eqLegacyMap: Record<string, string> = {
@@ -4796,14 +4796,14 @@ export function setEffectParam(
   };
   if (canonicalId)
     previousValues[canonicalId] =
-      params[canonicalId] ?? EFFECT_DEFS[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
+      params[canonicalId] ?? EFFECT_META[type].params.find((p) => p.id === canonicalId)?.default ?? 0;
   const apply = (d: ProjectDocument, values: Record<string, number>): ProjectDocument =>
     withTrackEffects(d, trackId, (effects) =>
       effects.map((f) => (f.id === fxId ? { ...f, params: { ...f.params, ...values } } : f)),
     );
   return {
     type: "setEffectParam",
-    label: `Set ${EFFECT_DEFS[type].name} ${paramId}`,
+    label: `Set ${EFFECT_META[type].name} ${paramId}`,
     execute: (d) => apply(d, nextValues),
     undo: (d) => apply(d, previousValues),
     applyToYDoc: (yMap) => {
@@ -4843,7 +4843,7 @@ export function setEffectOutputTrimDb(doc: ProjectDocument, trackId: string, fxI
     );
   return {
     type: "setEffectOutputTrimDb",
-    label: `Set ${EFFECT_DEFS[target.type].name} output trim`,
+    label: `Set ${EFFECT_META[target.type].name} output trim`,
     execute: (d) => apply(d, next),
     undo: (d) => apply(d, previous),
   };
@@ -4946,7 +4946,7 @@ export function moveEffectToIndex(doc: ProjectDocument, trackId: string, fxId: s
   if (index === target) {
     return {
       type: "moveEffect",
-      label: `Reorder ${EFFECT_DEFS[effects[index].type].name}`,
+      label: `Reorder ${EFFECT_META[effects[index].type].name}`,
       execute: (d) => d,
       undo: (d) => d,
     };
@@ -4955,7 +4955,7 @@ export function moveEffectToIndex(doc: ProjectDocument, trackId: string, fxId: s
   const [moved] = reordered.splice(index, 1);
   reordered.splice(target, 0, moved);
   const next = withTrackEffects(doc, trackId, () => reordered);
-  return snapshot("moveEffect", `Reorder ${EFFECT_DEFS[moved.type].name}`, doc, next);
+  return snapshot("moveEffect", `Reorder ${EFFECT_META[moved.type].name}`, doc, next);
 }
 /* ---------------- metadata & scorepack ---------------- */ export function setProjectKey(
   doc: ProjectDocument,
@@ -5719,7 +5719,7 @@ export function resetEffect(doc: ProjectDocument, trackId: string, fxId: string)
 
   return {
     type: "resetEffect",
-    label: `Reset ${EFFECT_DEFS[target.type].name}`,
+    label: `Reset ${EFFECT_META[target.type].name}`,
     execute: (d) => apply(d, nextParams, 0),
     undo: (d) => apply(d, previousParams, previousTrim),
   };
@@ -6209,7 +6209,7 @@ export function loadEffectAbSlot(doc: ProjectDocument, trackId: string, fxId: st
   const restored: Record<string, number> = pluginParams ?? { ...defaultParamsOf(target.type) };
   if (!pluginParams) {
     for (const [id, value] of Object.entries(snapshot)) {
-      const def = EFFECT_DEFS[target.type].params.find((param) => param.id === id);
+      const def = EFFECT_META[target.type].params.find((param) => param.id === id);
       if (def && typeof value === "number" && Number.isFinite(value)) {
         restored[id] = clampEffectParam(target.type, id, value);
       }

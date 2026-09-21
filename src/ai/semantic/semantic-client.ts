@@ -1,3 +1,4 @@
+import { assetUrl } from "../../shared/assetUrls";
 /**
  * Main-thread client for the semantic embedding worker (T1 krok 2).
  *
@@ -113,7 +114,7 @@ function request(
 export async function semanticAvailable(): Promise<boolean> {
   if (semanticMode() === "off" || unavailable || workerDisabled) return false;
   try {
-    const response = await fetch("/models/semantic/manifest.json");
+    const response = await fetch(assetUrl("/models/semantic/manifest.json"));
     if (!response.ok) {
       unavailable = true;
       return false;
