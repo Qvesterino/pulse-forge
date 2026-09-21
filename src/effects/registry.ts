@@ -33,6 +33,7 @@ import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
 import { createVocoderNode } from "../audio-worklets/vocoder-node";
 import { createReverseSwellNode } from "../audio-worklets/reverseswell-node";
+import { createGranularFreezeNode } from "../audio-worklets/granularfreeze-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import {
   PARAM_BY_ID as ULTINA_PARAM_BY_ID,
@@ -145,6 +146,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   // missing OR when no modulator track is routed (see createVocoderNode).
   vocoder: "degraded",
   reverseSwell: "critical",
+  granularFreeze: "critical",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -4364,6 +4366,60 @@ const reverseSwell: EffectDefinition = {
   },
 };
 
+/* ────────────── Granular Freeze — send-bus texture hold ────────────── */
+// Records continuously; a `freeze` latch locks a `window` of the recording
+// and a granular cloud plays it forever (drift walks the head, scatter jitters
+// the grains, pitch/tone shape the cloud). The dry path is ducked by the same
+// envelope, so the send bus becomes a live texture pad instead of a layer.
+
+export const GRANULAR_FREEZE_MAX_WINDOW_SEC = 8;
+
+const granularFreeze: EffectDefinition = {
+  type: "granularFreeze",
+  name: "Granular Freeze",
+  category: "space",
+  params: [
+    { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: (v) => (v > 0.5 ? "HELD" : "LIVE") },
+    {
+      id: "window",
+      label: "WINDOW",
+      min: 0.2,
+      max: GRANULAR_FREEZE_MAX_WINDOW_SEC,
+      default: 2,
+      unit: "s",
+      format: (v) => `${v.toFixed(2)} s`,
+    },
+    { id: "position", label: "POSITION", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0.2, format: formatPct },
+    {
+      id: "grainMs",
+      label: "GRAIN",
+      min: 20,
+      max: 400,
+      default: 90,
+      unit: "ms",
+      format: (v) => `${Math.round(v)} ms`,
+    },
+    { id: "scatter", label: "SCATTER", min: 0, max: 1, default: 0.3, format: formatPct },
+    {
+      id: "pitch",
+      label: "PITCH",
+      min: -24,
+      max: 24,
+      default: 0,
+      unit: "st",
+      format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st`,
+    },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 10000, unit: "Hz", format: formatHz },
+    { id: "level", label: "LEVEL", min: -24, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  ],
+  factory(ctx, instance, env) {
+    if (isWorkletReady("granularFreeze", ctx)) return createGranularFreezeNode(ctx, instance, env);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — granular freeze bypassed (1:1 signal)");
+  },
+};
+
 /* ────────────── KYX Kaskáda — character stereo delay ────────────── */
 
 const kaskada: EffectDefinition = {
@@ -4536,6 +4592,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   beatMangler,
   vocoder,
   reverseSwell,
+  granularFreeze,
 };
 
 export const EFFECT_ORDER: EffectType[] = [
@@ -4557,6 +4614,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "vowel",
   "vocoder",
   "reverseSwell",
+  "granularFreeze",
   "duckDelay",
   "kaskada",
   "multiTapDelay",
@@ -4608,6 +4666,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "tapeSat",
   "vocoder",
   "reverseSwell",
+  "granularFreeze",
   "drumBuss",
   "bassBuss",
   "utility",

@@ -843,6 +843,107 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     level: 1,
     mix: 1,
   }),
+  // Granular Freeze — send-bus texture holds (no reversed sample needed).
+  preset("granularfreeze-pad-hold", "Pad Hold", "granularFreeze", {
+    freeze: 0,
+    window: 3,
+    position: 0.5,
+    drift: 0.3,
+    grainMs: 120,
+    scatter: 0.25,
+    pitch: 0,
+    tone: 9000,
+    level: 0,
+    mix: 1,
+  }),
+  preset("granularfreeze-shimmer", "Shimmer Cloud", "granularFreeze", {
+    // +12 st cloud with wide scatter — an octave-up shimmer pad.
+    freeze: 0,
+    window: 2,
+    position: 0.5,
+    drift: 0.45,
+    grainMs: 70,
+    scatter: 0.6,
+    pitch: 12,
+    tone: 14000,
+    level: -2,
+    mix: 0.85,
+  }),
+  preset("granularfreeze-deep-drone", "Deep Drone", "granularFreeze", {
+    // −12 st, long grains, low tone: a sub-drone freeze under the drop.
+    freeze: 0,
+    window: 4,
+    position: 0.35,
+    drift: 0.15,
+    grainMs: 320,
+    scatter: 0.12,
+    pitch: -12,
+    tone: 3200,
+    level: 0,
+    mix: 1,
+  }),
+  preset("granularfreeze-glitch-cloud", "Glitch Cloud", "granularFreeze", {
+    // Tiny grains + full scatter: stuttering micro-texture.
+    freeze: 0,
+    window: 1.5,
+    position: 0.6,
+    drift: 0.7,
+    grainMs: 25,
+    scatter: 1,
+    pitch: 5,
+    tone: 12000,
+    level: -3,
+    mix: 0.9,
+  }),
+  preset("granularfreeze-tape-hold", "Tape Hold", "granularFreeze", {
+    // Dark, slow, no scatter — the "locked tape loop" character.
+    freeze: 0,
+    window: 6,
+    position: 0.5,
+    drift: 0.08,
+    grainMs: 200,
+    scatter: 0,
+    pitch: 0,
+    tone: 5000,
+    level: 0,
+    mix: 1,
+  }),
+
+  // Telephone pack — SVF narrow-band + distortion character (no new DSP):
+  // the lo-fi phone/handset chain beatmakers reach for on hooks and fills.
+  preset("svf-telephone-band", "Telephone Band", "svFilter", {
+    cutoff: 1700,
+    resonance: 0.55,
+    mode: 2, // HP
+    drive: 0.2,
+    mix: 1,
+  }),
+  preset("svf-telephone-band2", "Handset Lo", "svFilter", {
+    cutoff: 600,
+    resonance: 0.3,
+    mode: 1, // BP
+    drive: 0.35,
+    mix: 1,
+  }),
+  preset("svf-radio-mid", "Radio Mid", "svFilter", {
+    cutoff: 2400,
+    resonance: 0.7,
+    mode: 1, // BP
+    drive: 0.15,
+    mix: 1,
+  }),
+  preset("dist-telephone", "Telephone Drive", "distortion", {
+    drive: 0.62,
+    tone: 3200,
+    mix: 1,
+    output: -2,
+  }),
+  preset("dist-intercom", "Intercom", "distortion", {
+    drive: 0.8,
+    tone: 2000,
+    mix: 0.9,
+    output: -4,
+  }),
 
   manglerPreset(
     "beatmangler-halftime",

@@ -19,6 +19,9 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   // Reverse Swell: the gesture controls first (arm + length + shape);
   // reach/tone/level live on the details page.
   reverseSwell: { primaryParamIds: ["engaged", "time", "curve", "mix"] },
+  // Granular Freeze: the hold gesture first (freeze + window + drift + mix);
+  // grain size/scatter/pitch/tone/level live on the details page.
+  granularFreeze: { primaryParamIds: ["freeze", "window", "drift", "mix"] },
   // Vinyl Suite: the age macro + the three headline artefacts on page 1;
   // module detail (tones, decay, rates, drive, trims) lives on later pages.
   vinyl: { primaryParamIds: ["amount", "crackle", "hiss", "wow"] },
