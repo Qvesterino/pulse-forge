@@ -2854,3 +2854,29 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** the sync guard is new collab-core behavior — if any UI flow executes commands BEFORE openProject resolves (none found — studio mounts after openProject returns), it would buffer until first sync by design; the 8 s timeout bounds that. The partial scene-BPM coverage (3 AudioParam runtimes of 9 tempo-synced) improves exports but mixed correctness is possible (delay per-window, stutter last-window) until the processor-side story exists.
 
 **Recommendations for next session (GOAL 06 — cross-component contracts & data boundaries):** (1) granular/wavetable bank-re-upload hook (top item, pointers above); (2) gallery intent metadata schema contract (server JS + client TS read the same untyped field — shared validator); (3) collab offline-adopt snapshot; (4) MorphPreset/UltinaPreset repos onto the services DI surface (UltinaPanel cold; MorphDynamicsPanel when the concurrent session lands it); (5) revisit `?server=` handling against isAllowedServerUrl for the new collab entry points.
+
+---
+
+## GOAL 06 (campaign re-run 3) — Cross-component contracts & data boundaries (2026-09-21)
+
+**Goal executed:** The three recommended items: granular/wavetable bank re-upload hook, gallery intent metadata contract, collab offline-adopt snapshot.
+
+**Confirmed defects & fixes (`1e579bf` + absorbed `2ce3e23`):**
+
+1. **Worklet sample re-upload (data-visible reload race):** granular/wavetable instrument runtimes bake their sample into the processor at construction; `syncInstrument`'s diff only fires on a sampleId CHANGE, so a sample landing in the bank after construction (the fire-and-forget boot restore) never reached them — granular tracks silent, wavetable tracks on the wrong table, until the user re-picked the sample. FIX: `SampleBank.onSampleAdded` (fires on FIRST arrivals only — overwrites stay silent so curated re-registration does no work) + the engine subscribes in `attachBank` and re-calls `setSample(id)` on every instrument state waiting for the id. Deliberately NO granularNode changes — the existing runtime contract suffices and that file is the concurrent session's fresh feature territory (their `700c20d` granular-freeze landed this morning). LEAK FIX found during design: offline render engines also subscribe via attachBank — the shared bank outlives them, so each export/stem/bounce would retain its discarded engine through the closure; `detachBank()` added and called in renderProject's finally.
+2. **Gallery intent metadata contract:** server (plain JS `decodeShareCodeMeta`, now exported) and client (TS `intentSnapshotOfDoc`) independently read intent provenance from untyped share-code JSON — drift between them is invisible until a feed card and the studio disagree. New `tests/gallery-intent-contract.test.ts` pins both to identical genre/regenerable verdicts across the full shape matrix: engine `generation.intent`, legacy top-level `intent`, both-present precedence, slug-check divergence (server rejects non-slug genres the client may display), intent-without-genre, no-provenance, junk.
+3. **Collab offline-adopt safety net:** edits made while the websocket was down exist only in the local copy; adopting a live room replaces the document wholesale and silently drops them. `onFirstSync` now parks the pre-adopt state as a snapshot (`"auto — before collab adopt"`, best-effort, deliberately outside the 30-min auto-snapshot throttle) before `adoptRemote`, pruned by the existing 20/project cap. Full merge story remains future work (map).
+
+**Race incident #4 (benign):** the concurrent session's `git add -A` (`2ce3e23`, their new src/reference feature) absorbed 6 of my staged GOAL 06 files mid-commit; verified every file reached HEAD across `2ce3e23` + my `1e579bf`.
+
+**Also recorded:** reliability-hardening's "SnapshotRepository — seq survives reload" test is order-dependent FLAKY across batch compositions (passes in isolation every time; fails in some multi-suite batches) — pre-existing fixture-isolation issue (module-shared seq/index vs fake-indexeddb state), not touched; watch it in the GOAL 12 full-suite run.
+
+**Important files changed:** src/sample-library/factory.ts, src/audio-engine/AudioEngine.ts, src/rendering/renderer.ts, src/services.ts, server/collab-server.mjs, tests/{reliability-hardening,gallery-intent-contract}.test.ts, SYSTEM_AUDIT_MAP.md.
+
+**Validation:** 108/108 + 5 skipped across the 9-suite batch (reliability-hardening 28 incl. bank-hook behavior tests + adopt-net/source pins, contract matrix 7, gallery carry 9 + server 20, curated 15-ish, velocity-layers, close-race 5, collab-validation 18, collab-jam 4); filtered tsc clean.
+
+**Unresolved issues:** full-suite baseline (GOAL 12); their in-flight PCM test; the flaky snapshot fixture.
+
+**Remaining risks:** the re-upload hook fires setSample on ALL matching instrument states — main-thread runtimes re-read the bank per note anyway (harmless), but a pathological restore of hundreds of samples while a huge session is open does redundant work once per sample×instrument; bounded in practice (user-sample counts are small).
+
+**Recommendations for next session (GOAL 07 — async/concurrency & race sweep):** (1) the snapshot seq flaky fixture isolation fix (small, do it before GOAL 12 so the full suite is trustworthy); (2) YDocStore buffered-command flush ordering vs scheduler/transport side-channels (playback during the pre-sync window reads the fallback doc — verify scheduler doesn't schedule from a doc that then gets adopted-over mid-playback); (3) curated-layer ↔ restoreUserSampleAudio interleaving under slow devices (both fire-and-forget, disjoint ids — verify no ordering assumption in bank.size-based diagnostics); (4) PcmMicRecorder chunk-ack under artificial IDB latency (fake-indexeddb slowdown harness).

@@ -120,8 +120,8 @@ Two service tiers — the load-bearing seam of the app:
 | `genre-reference.generated.ts` placeholder | genre loudness/tilt inert until measured; concurrent session owns | §6 |
 | Ranker shadow default | trained ranker unused pending human golden re-review | §6 |
 | DI bypasses in UI | GroovePoolRepository DI fixed (GOAL 02); Morph/Ultina preset repos still constructed in panels | §17.2 |
-| Granular/wavetable sample re-upload | worklet instrument runtimes never re-upload a sample that lands in the bank AFTER construction (reload race) — silent/wrong until the user re-picks the sample (granularNode.ts:19,57-59; AudioEngine syncInstrument diff only on sampleId change ~:2316) | GOAL 06 top item |
-| Collab offline-adopt loss | IDB-only edits made while the websocket is down are dropped by the adopt path on reload (no merge/snapshot/warn) — mitigation candidate: auto-snapshot pre-adopt state | GOAL 06 |
+| Granular/wavetable sample re-upload | FIXED `1e579bf`: SampleBank.onSampleAdded (first arrivals) + engine re-push in attachBank + renderer detachBank; concurrent session's granularNode untouched | §7 |
+| Collab offline-adopt loss | mitigation shipped `1e579bf`: pre-adopt state auto-snapshotted ('auto — before collab adopt') before adoptRemote; full merge story still future work | §8 |
 | Collab server exposure | limits+CORS shipped; moderation client-side only | §8 |
 | Offline render non-cancellable mid-render; offline scene-BPM seam | export residuals | KNOWN_LIMITATIONS |
 | jsdom full-suite runtime | 345 files, >2h on shared machine; flaky-timeout class | work log |
@@ -175,7 +175,7 @@ Two service tiers — the load-bearing seam of the app:
 2. **DI bypasses (UI constructs infra directly):** `ModPanel.tsx` + `RackStrip.tsx` `new GroovePoolRepository()` (services surface already exposes `groovePool` — route through DI); `MorphDynamicsPanel.tsx` (`MorphPresetRepository`, in-flight file — concurrent session's; NOT touched) and `UltinaPanel.tsx` (`UltinaPresetRepository`) — repos not on services surface at all. Growing UI→IndexedDB coupling pattern.
 3. **Storage key duplication:** `pf-publish-code` defined in `gallery/PublishButton.tsx`, `gallery/GalleryPage.tsx` AND written as a raw literal in `ui/CollabPanel.tsx:90` (magic string, third site, outside gallery layer). Other keys single-source. Naming conventions coexist (`pf-kebab` vs `pf:colon`) — cosmetic.
 4. **Literal duplication:** output-trim clamp `[-18,+12]` + 1-decimal rounding coded in `src/effects/presetLoudness.ts` (`clampFxOutputTrimDb`) AND inline in `src/project-model/schema.ts:~641` — schema should call the function (same numbers today).
-5. **Provenance walk duplication:** fixed by `a91ad77` (EmbedApp now uses `intentSnapshotOfDoc`; server reads `generation.intent`).
+5. **Provenance walk duplication:** fixed by `a91ad77` (EmbedApp now uses `intentSnapshotOfDoc`; server reads `generation.intent`). Contract pinned by `tests/gallery-intent-contract.test.ts` (server meta × client snapshot matrix over every provenance shape), server `decodeShareCodeMeta` exported for it.
 6. **intent/ ↔ commands/ bidirectional folder coupling:** `commands.ts` imports `intent/production|pipeline|exact`; `intent/song.ts` + `intent/mix.ts` import `commands/commands` (`snapshot`). No module cycle today (verified import chains); one careless import from closing a hard cycle. Monitor; extract `snapshot` helper if it ever closes.
 7. **`effectProcessorStatus` stale cast union:** registry.ts cast literal missing 8 worklet kinds (harmless — type-only; runtime accepts full set).
 8. **Exhaustiveness gap:** `EFFECT_ORDER`/`CORE_EFFECT_ORDER` are plain arrays — a new EffectType missing from them silently vanishes from Add-Effect menus with no compile error. Consider an exhaustive-guard test.
