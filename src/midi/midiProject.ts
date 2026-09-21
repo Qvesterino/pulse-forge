@@ -19,6 +19,7 @@ import {
   normalizeProject,
 } from "../project-model/schema";
 import { PPQ, STEP_TICKS, type DrumTrack, type InstrumentTrack, type ProjectDocument } from "../project-model/types";
+import { downloadBlob } from "../export/download";
 import { parseMidiFile, writeMidiFile, type MidiTrackData } from "./midiFile";
 
 const GM_DRUM_CHANNEL = 9; // 0-based (MIDI channel 10)
@@ -266,13 +267,10 @@ export function patternToMidi(doc: ProjectDocument, patternId: string): Uint8Arr
 
 /** Browser download helper (Export panel / PatternBar share it). */
 export function downloadMidi(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([bytes as unknown as BlobPart], { type: "audio/midi" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.endsWith(".mid") ? filename : `${filename}.mid`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
+  downloadBlob(
+    new Blob([bytes as unknown as BlobPart], { type: "audio/midi" }),
+    filename.endsWith(".mid") ? filename : `${filename}.mid`,
+  );
 }
 
 /** Convenience for UI code: parse + build the command in one call. */

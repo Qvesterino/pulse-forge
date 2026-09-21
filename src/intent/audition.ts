@@ -46,10 +46,16 @@ let sharedContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 
 function playbackContext(): AudioContext {
-  if (!sharedContext) {
+  // A closed context never recovers (OS audio-device swap, system suspend,
+  // explicit close) — rebuild lazily on the next audition instead of playing
+  // into a dead graph forever.
+  if (!sharedContext || sharedContext.state === "closed") {
     const Ctor =
       window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     sharedContext = new Ctor();
+    sharedContext.onstatechange = () => {
+      if (sharedContext?.state === "closed") sharedContext = null;
+    };
   }
   if (sharedContext.state === "suspended") void sharedContext.resume();
   return sharedContext;
@@ -113,10 +119,7 @@ export function playAuditionBuffer(buffer: AudioBuffer, onEnded?: () => void): v
  * (scheduling) is bounded by the song length. For >64-bar songs a chunked
  * section-by-section render is the optimization path.
  */
-export async function renderSongAuditionBuffer(
-  bank: SampleBank,
-  songDoc: ProjectDocument,
-): Promise<AudioBuffer> {
+export async function renderSongAuditionBuffer(bank: SampleBank, songDoc: ProjectDocument): Promise<AudioBuffer> {
   return renderProject(songDoc, bank, {
     mode: "song",
     sampleRate: 44100,

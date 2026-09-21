@@ -9,6 +9,7 @@ import { generatePatternCommand, assistVary, snapshot } from "../commands/comman
 import { generatePattern } from "../ai/generator";
 import type { Services } from "../services";
 import { uid } from "../shared/ids";
+import { downloadBlob } from "../export/download";
 import {
   createDiceSession,
   rollSession,
@@ -500,13 +501,8 @@ export function DiceProvider({
     try {
       const pack = buildFavoritesPack();
       const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `pulse-forge-favorites-${new Date(pack.exportedAt).toISOString().slice(0, 10)}.json`;
-      anchor.click();
-      // Optional-call guard: jsdom/test environments may not implement revoke.
-      URL.revokeObjectURL?.(url);
+      const filename = `pulse-forge-favorites-${new Date(pack.exportedAt).toISOString().slice(0, 10)}.json`;
+      downloadBlob(blob, filename);
     } catch {
       /* download blocked — favorites stay in the local ledger */
     }

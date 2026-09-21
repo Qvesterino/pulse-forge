@@ -1,23 +1,16 @@
 import type { ProjectDocument } from "../project-model/types";
 import { validateProjectShape, migrateProject } from "../project-model/schema";
+import { downloadBlob } from "./download";
 
 /**
  * Export a ProjectDocument as a downloadable JSON file.
- * Uses the same Blob → ObjectURL → <a>.click() pattern as downloadWav.
  */
 export function exportProject(doc: ProjectDocument): void {
   const json = JSON.stringify(doc, null, 2);
   const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
   // New files use the public brand. The importer still accepts the legacy
   // .pulseforge.json suffix so existing sessions remain portable.
-  anchor.download = `${sanitizeFilename(doc.name)}.kyx.json`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
+  downloadBlob(blob, `${sanitizeFilename(doc.name)}.kyx.json`);
 }
 
 // Import size ceiling (release roadmap 1.4): a project file becomes a JS

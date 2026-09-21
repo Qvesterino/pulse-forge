@@ -1,4 +1,5 @@
 import { mulberry32, quantizeInt16Sample, softClipSample } from "../export/quantize";
+import { downloadBlob } from "../export/download";
 
 export type WavBitDepth = 16 | 24 | 32;
 
@@ -76,15 +77,7 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
 }
 
 export function downloadWav(arrayBuffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([arrayBuffer], { type: "audio/wav" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL?.(url), 5000);
+  downloadBlob(new Blob([arrayBuffer], { type: "audio/wav" }), filename);
 }
 
 export function sanitizeFilename(name: string): string {
