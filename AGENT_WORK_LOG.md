@@ -3389,3 +3389,15 @@ into their churning files).
 **Validation:** master-finish 3/3 (their updated tests) + reentrancy + scheduler + collab-transport + renderer + project-store + store-undo + transport + commands + midi + reliability = **243/243 green**; `tsc --noEmit` 0 campaign errors (remaining two files are the concurrent session's in-flight: untracked melodic-embedding test + their PcmMicRecorder refactor).
 
 **Recommendations for next session (GOAL 05 — persistence & schema evolution):** inventory is strong already (single `db.ts` choke point, SCHEMA_VERSION 1 + migrateProject, shareCode caps, YDocAdapter as second serialization path = drift risk). Focus: (1) schema-ownership map (which stores are versioned vs implicitly), (2) old-data/malformed/future-version matrix tests per repo, (3) YDocAdapter↔schema drift pin, (4) FrozenBuffer/PCM blob formats documented. Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 26 — USER STYLE VECTOR #7 (2026-09-21)
+
+**Cieľ:** priemer embeddingov ★-roliek ako "tvoj zvuk" vektor, blendovaný do conditioning pre oba v2 priory.
+
+- **`src/intent/style-vector.ts`**: ledger entry → deterministický EN text (energy/density/complexity adjektíva + genre + style token — rovnaký slovný priestor ako tréningový korpus; ledger NEmá text pole, takže projekcia z atribútov) → MiniLM embed → **priemer v 384-dim → JEDNA PCA projekcia** (lineárna — mean-then-project ≡ project-then-mean, lacnejšie) → 16-dim vektor. localStorage cache `pf:style-vector-cache` keyed **ledger signatúrou** (FNV-1a nad savedAt|seed|grooveId, sorted + count) — nová/re-★/mazaná rolka = recompute, inak nula re-embeddov.
+- **Blend v `semantic-conditioning`**: `INTENT_BLEND_WEIGHT = 0.75` intent / 0.25 štýl; memo key = `text|styleSignature` (personalizácia sa prepočíta po zmene ledgeru, opakované rolky nič ne-embeddujú). Oba v2 priory (drum 35-dim + melodic 41-dim) konzumujú JEDEN conditioning vektor → štýl ovplyvňuje automaticky obe.
+- **Flag `pf:style-vector`** default ON — ale aktívny IBA keď `pf:embedding-conditioned` on; vypnuteľný samostatne (intent-conditioning bez personalizácie).
+- **Testy** `tests/style-vector.test.ts` 8/8: text-projekcia + determinizmus, signatúra stabilita/zmeny, presná mean→project aritmetika, localStorage cache + invalidácia, flag gating, blend integrácia (numerická rovnosť s blendSemantic), prázdny ledger = čistá intent projekcia. Regresia **254/254 cez 25 intent súborov**; typecheck mojich súborov 0 chýb.
+- Dizajn poznámka: blend je v1 mechanizmus ("alongside intent"); heavyweight alternatívy (style vector ako druhý conditioning vstup do modelu) by vyžadovali retrain — klasifikované ako follow-up ak v1 blend nebude stačiť.

@@ -530,6 +530,15 @@ default house patternu (najhorší možný fallback pre trap request).
   (valDegreeAcc 0.643 = parita s v1 na rovnakých dátach, 20.7 kB,
   `symbolic-melodic-v2.onnx`, kind `melodic-v2`), `runMelodicNextV2` +
   `sampleMelodicParts(..., conditioning)` — v2 preferované, v1 fallback per call.
+  **#7 USER STYLE VECTOR HOTOVÝ** (`src/intent/style-vector.ts`): priemer
+  ★-roliek ledgeru → deterministický EN text (rovnaký slovný priestor ako
+  tréningový korpus: energy/density/complexity adjektíva + genre + style) →
+  MiniLM → priemer v 384-dim → JEDNA PCA projekcia → 16-dim vektor, cache v
+  localStorage (`pf:style-vector-cache`) keyed ledger signatúrou (nová ★ =
+  recompute). Blend do conditioning: `INTENT_BLEND_WEIGHT` 0.75 intent / 0.25
+  štýl — oba v2 priory ho berú cez JEDEN vektor; memoizácia keyed text+signature.
+  Flag `pf:style-vector` (default on, aktívny len pri `pf:embedding-conditioned`
+  on). "Moja verzia travis scott beatu" = blend osobného vektoru s promptom.
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).

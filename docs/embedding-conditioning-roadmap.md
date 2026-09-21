@@ -3,7 +3,7 @@
 > "Dark rainy Berlin techno" a "sunny Ibiza techno" by mali produkovať
 > ROZDIELNÉ patterny. Dnes dávajú rovnaký one-hot vektor — a to je tá medzera.
 >
-> Status: **VŠETKY FÁZY A-G DORUČENÉ** (2026-09-21) — descriptiony → MiniLM →
+> Status: **VŠETKY FÁZY A-G DORUČENÉ + #7 USER STYLE VECTOR** (2026-09-21) — descriptiony → MiniLM →
 > PCA → drum prior v2 (35-dim) aj melodic prior v2 (41-dim, Fáza G) →
 > `pf:embedding-conditioned` wiring + provider fallbacky. Poznámka: melodic v2
 > je 41-dim, nie 29 — 16+13 aritmetika v tomto návrhu by zahodila
