@@ -4526,10 +4526,7 @@ export function addEffectWithLandingCommand(
  * canonical commands (setBpm, setProjectKey, setTrackParams,
  * setPatternLength) over a working document and snapshotting the result.
  */
-export function applyExactIntentCommand(
-  doc: ProjectDocument,
-  plan: ExactIntentPlan,
-): Command {
+export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentPlan): Command {
   let next = doc;
   const resolve = (target: string): string[] => {
     if (target === "mix") return [];
@@ -5596,7 +5593,12 @@ export function applyGenerationResultWithFxCommand(
   const fx = result.plan.intent.fx ?? null;
   if (!fx) return patternCmd;
   const next = foldProductionIntent(patternCmd.execute(doc), fx);
-  return snapshot("applyGenerationWithFx", `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`, doc, next);
+  return snapshot(
+    "applyGenerationWithFx",
+    `${patternCmd.label} + ${fx.goals.map((g) => g.concept).join(", ")}`,
+    doc,
+    next,
+  );
 }
 
 /**

@@ -2,13 +2,7 @@ import type { InstrumentDefinition, InstrumentRuntime } from "./types";
 import type { InstrumentKind, InstrumentTrack, SampleLayer } from "../project-model/types";
 import { midiToFreq } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
-import {
-  buildWavetableMips,
-  extractWavetable,
-  FACTORY_WAVETABLES,
-  FRAME_SIZE,
-  pickMipLevel,
-} from "./wavetables";
+import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, pickMipLevel } from "./wavetables";
 import { scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
@@ -35,13 +29,7 @@ import {
   SYNC_BEATS,
   syncRateHz,
 } from "./definitions";
-export {
-  INSTRUMENT_ORDER,
-  defaultInstrumentParams,
-  clampInstrumentParam,
-  syncRateHz,
-  SYNC_BEATS,
-} from "./definitions";
+export { INSTRUMENT_ORDER, defaultInstrumentParams, clampInstrumentParam, syncRateHz, SYNC_BEATS } from "./definitions";
 
 function clampBpm(bpm: number): number {
   return Math.max(20, Math.min(300, bpm || 120));

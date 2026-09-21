@@ -1,6 +1,6 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
-import type { PadKeyMap } from "../ui/padKeys";
-import { normalizePadKeyMap } from "../ui/padKeys";
+import type { PadKeyMap } from "../shared/pad-keys-data";
+import { normalizePadKeyMap } from "../shared/pad-keys-data";
 
 /**
  * BINDS share codes: the 16 pad-key bindings compressed into a portable

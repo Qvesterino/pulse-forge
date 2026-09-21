@@ -1,6 +1,6 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
-import { normalizePadKeyMap } from "../ui/padKeys";
-import { THEME_PRESETS, type ThemeState } from "../ui/theme";
+import { normalizePadKeyMap } from "../shared/pad-keys-data";
+import { THEME_PRESETS, type ThemeState } from "../shared/theme-data";
 import type { KitPadCapture } from "../commands/commands";
 
 /**

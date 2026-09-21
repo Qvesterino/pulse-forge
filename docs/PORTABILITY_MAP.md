@@ -149,13 +149,18 @@ bare Node; **MIXED** = core pure, some symbols/files touch the platform;
    ws/wss from page protocol/host/port; a port must inject endpoint config
    and re-host y-websocket/BroadcastChannel transports.
 7. **Export encoder graph pulls React** — `packCode.ts` imports pure data
-   from `../ui/theme` + `../ui/padKeys` (which import React). Small extraction
-   makes pack/share codes Node-runnable. → GOAL 02 target.
+   from `../ui/theme` + `../ui/padKeys` (which import React). **RESOLVED
+   (GOAL 02):** pure data now lives in `src/shared/{theme-data,pad-keys-data}.ts`;
+   encoders import from there, UI modules re-export. Pinned by
+   `tests/domain-purity.test.ts`.
 8. **Definitions/runtime entanglement** — `schema.ts`/`targets.ts` consume
    param metadata from `effects/registry.ts`/`instruments/registry.ts`, which
-   also hold audio runtime factories + worklet imports. Splitting DEFINITIONS
-   from RUNTIME gives the port a light pure schema graph. → GOAL 02 target
-   (largest, highest payoff).
+   also hold audio runtime factories + worklet imports. **Instrument half
+   RESOLVED (GOAL 02):** `src/instruments/definitions.ts` is the Node-pure
+   metadata module (`INSTRUMENT_META`); schema/targets/commands/randomize/
+   similar consume it, the runtime registry re-exports. **Effects half
+   pending** (registry is a concurrent-session edit zone — split the same
+   way when it clears).
 9. **Micro-nits recorded:** `process.env.NODE_ENV` macro (native toolchain
    must define it); unseeded `Math.random` in `shared/velocityFx.ts:14,23`
    and wall-clock seeds in `commands.ts:4012` / `commands.ts:2925` (GOAL 09

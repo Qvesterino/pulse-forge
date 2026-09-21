@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { DEFAULT_PAD_KEYS, normalizePadKeyMap, RESERVED, type PadKeyMap } from "../shared/pad-keys-data";
 
 /**
  * Per-user QWERTY bindings for the 16 drum pads (performance keys).
@@ -11,60 +12,15 @@ import { useSyncExternalStore } from "react";
  * A pad key overrides single-letter keyboard shortcuts: pressing it plays the
  * pad, the shortcut (loop toggle, track select…) stays silent for that key.
  * Modifier combos (Ctrl/Alt/Meta+…) are untouched by this rule.
+ *
+ * The pure data half (default grid, reserved set, normalizer) lives in
+ * `shared/pad-keys-data.ts` so share-code encoders never pull React; this
+ * module re-exports it for backward compatibility.
  */
 
-export const DEFAULT_PAD_KEYS = [
-  "q",
-  "w",
-  "e",
-  "r",
-  "t",
-  "y",
-  "u",
-  "i",
-  "a",
-  "s",
-  "d",
-  "f",
-  "g",
-  "h",
-  "j",
-  "k",
-] as const;
+export { DEFAULT_PAD_KEYS, normalizePadKeyMap, type PadKeyMap } from "../shared/pad-keys-data";
 
 const STORAGE_KEY = "pf-padkeys-v1";
-
-/** Keys that must never be bound (modifiers, navigation, transport, help). */
-const RESERVED = new Set([
-  " ",
-  "escape",
-  "enter",
-  "tab",
-  "backspace",
-  "delete",
-  "home",
-  "end",
-  "pageup",
-  "pagedown",
-  "insert",
-  "arrowup",
-  "arrowdown",
-  "arrowleft",
-  "arrowright",
-  "shift",
-  "control",
-  "alt",
-  "meta",
-  "capslock",
-  "contextmenu",
-  ",",
-  ".",
-  "?",
-  "+",
-  "-",
-]);
-
-export type PadKeyMap = string[];
 
 let state: PadKeyMap = [...DEFAULT_PAD_KEYS];
 /**
@@ -74,30 +30,6 @@ let state: PadKeyMap = [...DEFAULT_PAD_KEYS];
  */
 let armed = false;
 const listeners = new Set<() => void>();
-
-export function normalizePadKeyMap(map: unknown): PadKeyMap {
-  const source = Array.isArray(map) ? map : [];
-  const out: string[] = [];
-  const used = new Set<string>();
-  for (let i = 0; i < 16; i++) {
-    const raw = typeof source[i] === "string" ? source[i].toLowerCase() : "";
-    // One printable character, not reserved, not already used by another slot.
-    if (raw.length === 1 && !RESERVED.has(raw) && !used.has(raw)) {
-      out.push(raw);
-      used.add(raw);
-    } else {
-      // Fall back to the default key for this slot when free.
-      const fallback = DEFAULT_PAD_KEYS[i];
-      if (fallback && !used.has(fallback)) {
-        out.push(fallback);
-        used.add(fallback);
-      } else {
-        out.push("");
-      }
-    }
-  }
-  return out;
-}
 
 function load(): PadKeyMap {
   if (typeof localStorage === "undefined") return [...DEFAULT_PAD_KEYS];

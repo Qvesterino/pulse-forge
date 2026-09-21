@@ -27,8 +27,8 @@ continue from existing evidence.
 | # | Goal | Status | Evidence |
 |---|---|---|---|
 | 01 | Portability readiness audit | **DONE** (2026-09-21) | `docs/PORTABILITY_MAP.md`, work log GOAL 01, fixes in `src/export/download.ts` (+4 call sites), `src/intent/audition.ts` |
-| 02 | Domain logic extraction | pending | extraction queue already drafted — PORTABILITY_MAP §5 items 7–8 |
-| 03 | Platform contract definition | pending | seam inventory ready — PORTABILITY_MAP §3 |
+| 02 | Domain logic extraction | **DONE** (2026-09-21) | `src/instruments/definitions.ts` (pure meta; schema/targets/commands re-pointed, registry re-exports), `src/shared/{theme-data,pad-keys-data}.ts` (encoders React-free), `src/intent/favorites-core.ts`; pins in `tests/domain-purity.test.ts`. Leftover: effects-registry split (race with concurrent session) → ride along in GOAL 03 |
+| 03 | Platform contract definition | pending | seam inventory ready — PORTABILITY_MAP §3; contract queue in work-log GOAL 02 recommendations; repo interfaces belong HERE |
 | 04 | State machine formalization | pending | |
 | 05 | Persistence & schema evolution | pending | single choke point confirmed (`persistence/db.ts`, SCHEMA_VERSION 1, DB_VERSION 12); YDocAdapter = 2nd serialization path (drift risk) |
 | 06 | Golden behavior & parity tests | pending | existing goldens inventoried (ultina/fxeq/ozvena/morph vectors, golden-render, intent-pipeline) |
@@ -51,8 +51,8 @@ Ranked, with contract-owner goals — full reasoning in
 4. Worker-everything + sync main-thread fallbacks → GOAL 11 matrix.
 5. PWA/offline model bound to Vite plugins → GOAL 11 matrix.
 6. Collab ws/wss endpoints derived from `location` → GOAL 03 network contract.
-7. Export encoders pull React via `packCode.ts` → ui imports → GOAL 02 extraction.
-8. Instrument/effect DEFINITIONS entangled with audio RUNTIME registries → GOAL 02 extraction (largest payoff).
+7. ~~Export encoders pull React via `packCode.ts` → ui imports~~ **RESOLVED in GOAL 02** (`src/shared/{theme-data,pad-keys-data}.ts`; pinned by `tests/domain-purity.test.ts`).
+8. Instrument/effect DEFINITIONS entangled with audio RUNTIME registries → **instrument half RESOLVED in GOAL 02** (`src/instruments/definitions.ts`); effects half pending (concurrent-session race on `src/effects/registry.ts`).
 
 ## Environment cautions (read every session)
 

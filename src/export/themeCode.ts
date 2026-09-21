@@ -1,5 +1,5 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
-import { THEME_PRESETS, type ThemeState } from "../ui/theme";
+import { THEME_PRESETS, type ThemeState } from "../shared/theme-data";
 
 /**
  * Theme share codes: a user's look — palette, accent hue, size, density,
