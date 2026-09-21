@@ -2925,3 +2925,61 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** fuzz coverage is corpus-based, not generative — a quickcheck-style random JSON fuzzer could run in CI later; WAV reader in the test is itself hand-rolled (trusted for assertions; the encoder remains the system under test).
 
 **Recommendations for next session (GOAL 09 — undo/redo & editing integrity):** (1) sweep EVERY command factory in commands.ts for a paired undo assertion (execute → undo → deep-equal doc) — property-test over the command inventory; (2) repeated undo past history start and redo past end; (3) undo after import/replaceDoc watermark behavior; (4) coalescing window behavior for same-key rapid commands (drags) — one undo step per gesture.
+
+
+---
+
+## GOAL 21 (campaign restart) — Functional harmony + multi-voice orchestrator (2026-09-19)
+
+**Goal executed:** The biggest musical upgrade to the Intent Engine — replacing independent Markov chains with a UNIFIED harmonic model. The three melodic voices (bass, chords, lead) are now generated SEQUENTIALLY from the same chord progression, with voice leading and functional harmony awareness.
+
+**Root cause of the "flat sound":** The three roles were generated completely independently — bass didn't know what chords were playing, lead didn't resolve onto chord tones. The result was three unrelated MIDI tracks that happened to be in the same key.
+
+**Fixes implemented:**
+
+- `src/ai/harmony.ts` — FUNCTIONAL HARMONY ENGINE:
+  - Per-genre chord progressions (house: I-vi-IV-V maj7, techno: i-iv-♭VII + i-♭II phrygian, trap: i-VI-III-VII emotional, ambient: Imaj7-IVmaj7 + sus2 modal drift) — each event carries degree + quality + duration + HARMONIC FUNCTION (T/S/D/p).
+  - `CHORD_INTERVALS` — precise semitone offsets for 8 chord qualities.
+  - `voiceLead(previousPitches, rootPitch, quality)` — finds the chord voicing that MINIMISES movement from the previous chord (L1 distance over all rotations).
+  - `romanNumeral` — analysis labels ("I7", "iv", "♭II").
+  - `selectProgression` + `expandProgression` — deterministic from seed, loops to fill the pattern length.
+- `src/intent/multi-voice.ts` — MULTI-VOICE ORCHESTRATOR:
+  - **CHORDS first** (harmonic foundation): placed on progression positions, voiced with `voiceLead` (minimal movement), expanding via `expandChord` quality intervals.
+  - **BASS second** (follows roots): 8th-note rhythm, chord root pitch, sidechain velocity shaping, downbeat accents.
+  - **LEAD third** (on top): chord tones + approach notes (±1 semitone from chord targets), syncopated rhythm, exists only when energy > 0.4, scale-snapped.
+  - All three voices share the SAME chord progression — the result sounds like a BAND, not three unrelated tracks.
+- Tests: `tests/harmony-multi-voice.test.ts` (12) — progression structure per genre, deterministic selection, chord intervals, roman numerals, voice leading quality, multi-voice content, bass scale conformity, lead gating by energy, chord-to-chord movement distance, full determinism.
+
+**Important files changed:** src/ai/harmony.ts, src/intent/multi-voice.ts, tests/harmony-multi-voice.test.ts, INTENT_ENGINE.md (§5.17).
+
+**Validation:** harmony/multi-voice tests 12/12; intent-area regression 216/216 across 20 files; typecheck clean.
+
+**What this DOESN'T do yet (next steps):**
+
+1. **Embedding conditioning** (#1 from the ultra plan): replace one-hot genre/style conditioning with MiniLM 384-dim projections. The harmony engine is ready for this — the conditioning would SELECT different progressions and alter bass/lead rhythmic density.
+2. **Integration into the symbolic prior provider**: the multi-voice engine is standalone — needs to be wired into `SymbolicPriorProvider` as an alternative to the melodic prior ONNX.
+3. **Per-genre progression expansion**: currently 2-3 progressions per genre — more diversity needs more handwritten progression data or a learned progression model.
+
+---
+
+## GOAL 09 (campaign re-run 3) — Undo/redo & editing integrity (2026-09-21)
+
+**Goal executed:** Per-factory undo round-trip sweep over the command inventory, undo/redo bounds, replaceDoc watermark, coalescing-window behavior.
+
+**Findings & fixes (`f6c89f9`):**
+
+1. **REAL defect — setGroove absence asymmetry (FIXED in commands.ts):** the factory captured `prev = doc.groove ?? {}`, so undoing the FIRST groove edit on a doc without a groove object wrote `groove: {}`; normalizeProject then materialized a default groove the document never had. undo now distinguishes absence (key deletion via rest-spread) from a real previous value. Yjs applyToYDoc path unchanged (remote undo is Y.UndoManager-driven).
+2. **Set-semantics asymmetry (RECORDED, not fixed):** note-list undos restore the same note SET in possibly different ARRAY order (deleteNote undo re-appends rather than splicing at the original index). Playback/render iterate order-independently — semantically neutral; the sweep canonicalizes note order and documents why. Index-restoring undos are a P3 polish if ever needed.
+3. **Sweep (57 factories, every domain):** project, steps, patterns, tracks/groups/returns, FX, notes, scenes, arrangement clips, transitions, automation, LFOs, macros — execute changes state, undo restores the exact pre-command doc (compared post-normalize), redo re-applies, undo restores again. Authoring contract notes recorded in the file: addNote stores on the ACTIVE PATTERN (not the track); LFOs and automation lanes are doc-level arrays; LFO patch fields are amount/rateHz — junk keys are STRIPPED by normalize, which silently turned a wrong-field setLfoParams into a no-op (the sweep self-adjusts against current values and its no-op guard would catch such factories).
+4. **Bounds & lifecycle pinned:** undo/redo past history ends are safe no-ops; replaceDoc clears history AND the saved-at watermark.
+5. **Coalescing pinned:** three same-key commands inside the 1 s window coalesce to ONE undo entry whose undo restores the pre-gesture state; different keys stay separate entries. Factories carry no key argument — callers attach coalesceKey by spreading (matches GranularPanel).
+
+**Environment note:** the concurrent session's registry.ts re-save transiently emptied the file mid-goal (tree-wide tsc/vitest "not a module" breakage); the sweep was re-verified on the settled tree. Their LFO/modulation refactor was in flight around the same files.
+
+**Important files changed:** tests/undo-roundtrip-sweep.test.ts (new, 65 tests), src/commands/commands.ts (setGroove undo absence fix).
+
+**Validation:** sweep 65/65, undo-redo-integrity 6/6, filtered tsc clean. Committed f6c89f9.
+
+**Remaining risks:** the sweep pins ~57 of ~90 exported functions — the remainder are non-command helpers, clipboard/preset-driven factories needing heavier fixtures, and in-flight concurrent-session territory (applyMidiCreativeTool, audio-clip factories); extending the table is incremental.
+
+**Recommendations for next session (GOAL 10 — resource lifecycle & performance):** (1) instrument-voice and effect-runtime disposal on track deletion/undo (voices survive track delete?); (2) AudioWorkletNode port listener cleanup across context swaps; (3) rAF loop subscriber leak check (subscribe without unsubscribe in panels); (4) worker termination on closeProject; (5) Blob URL revoke coverage for new download paths.
