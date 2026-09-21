@@ -197,9 +197,12 @@ export class BodyHarmonizer {
   // ── Body mask (the audio-rate T/B/T decomposition) ──────────────
   private lpToneHi = new OnePoleLP(); // 3.2 kHz — drops hiss/cymbal air
   private lpToneLo = new OnePoleLP(); // 110 Hz — drops sub rumble
+  private lpNois = new OnePoleLP(); // 2 kHz — HF split for the noise gate
   private fastEnv = new EnvelopeFollower(); // ~2 ms — transient edge
   private slowEnv = new EnvelopeFollower(); // ~60 ms — sustained mass
-  private presenceEnv = new EnvelopeFollower(); // ~12 ms release — audio presence gate
+  private noisEnv = new EnvelopeFollower(); // HF component envelope
+  private toneEnv = new EnvelopeFollower(); // full-band envelope (matched pair)
+  private presenceEnv = new EnvelopeFollower(); // ~25 ms release — audio presence gate
   private maskEnv = new EnvelopeFollower(); // the smoothed mask itself
 
   // ── Grain engine (shared ring buffer, mono body feed) ───────────
@@ -247,6 +250,7 @@ export class BodyHarmonizer {
     this.bufMask = len - 1;
     this.lpToneHi.setFreq(3200, sampleRate);
     this.lpToneLo.setFreq(110, sampleRate);
+    this.lpNois.setFreq(2000, sampleRate);
     // The sustained-ness pair share the SAME release (300 ms) and differ
     // ONLY in attack (2 ms vs 60 ms). With mismatched releases the ratio
     // slow/fast climbs back toward 1 while an event is still ringing out
@@ -255,9 +259,17 @@ export class BodyHarmonizer {
     // gate — not the ratio — decides the tail is over.
     this.fastEnv.setTimes(0.002, 0.3, sampleRate);
     this.slowEnv.setTimes(0.06, 0.3, sampleRate);
-    // Mask: blooms over ~40 ms of sustained tone, ducks in ~12 ms when a
-    // strike takes over — the asymmetry IS the transient/body split.
-    this.maskEnv.setTimes(0.04, 0.012, sampleRate);
+    // The noisiness pair is matched too (2 ms / 50 ms, so the HF SHARE is
+    // level- and decay-invariant): clicks, consonants and cymbal texture
+    // carry most of their band energy above 2 kHz; held tonal material
+    // almost none. This is the gate that catches a QUIET transient over a
+    // LOUD sustain — the ratio view cannot see it (nothing rises), but its
+    // spectrum gives it away.
+    this.noisEnv.setTimes(0.002, 0.05, sampleRate);
+    this.toneEnv.setTimes(0.002, 0.05, sampleRate);
+    // Mask: blooms over ~40 ms of sustained tone, slams shut in ~2 ms when
+    // any of its views drops — the asymmetry IS the transient/body split.
+    this.maskEnv.setTimes(0.04, 0.002, sampleRate);
     // Presence gate: closes within ~40 ms of the audio stopping so the mask
     // never sits open across a gap and leaks the NEXT transient's onset
     // into the grain engine (a zero-latency mask cannot close before a
@@ -284,10 +296,7 @@ export class BodyHarmonizer {
       // Defensive: a short/absent voices array disables the missing slots
       // instead of crashing the render thread.
       const v = cfg.voices[i];
-      this.voices[i]!.setParams(
-        v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
-        this.sampleRate,
-      );
+      this.voices[i]!.setParams(v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 }, this.sampleRate);
     }
   }
 
@@ -301,8 +310,11 @@ export class BodyHarmonizer {
     this.writePos = 0;
     this.lpToneHi.reset();
     this.lpToneLo.reset();
+    this.lpNois.reset();
     this.fastEnv.reset();
     this.slowEnv.reset();
+    this.noisEnv.reset();
+    this.toneEnv.reset();
     this.presenceEnv.reset();
     this.maskEnv.reset();
     this.mixGain = 0;
@@ -322,9 +334,13 @@ export class BodyHarmonizer {
 
     // ── 1. Tonal body feed + mask ────────────────────────────────
     const tone = this.lpToneHi.process(mono) - this.lpToneLo.process(mono);
-    const fastV = this.fastEnv.processAbs(Math.abs(tone));
-    const slowV = this.slowEnv.processAbs(Math.abs(tone));
-    const presenceV = this.presenceEnv.processAbs(Math.abs(tone));
+    const absTone = Math.abs(tone);
+    const fastV = this.fastEnv.processAbs(absTone);
+    const slowV = this.slowEnv.processAbs(absTone);
+    const presenceV = this.presenceEnv.processAbs(absTone);
+    // HF share (matched envelopes → decay-invariant): the noisiness view.
+    const noisV = this.noisEnv.processAbs(Math.abs(tone - this.lpNois.process(tone)));
+    const toneV = this.toneEnv.processAbs(absTone);
     let rawMask: number;
     if (this.cfg.fullSignal) {
       rawMask = 1; // experiment arm A: naive full-signal harmonization
@@ -332,10 +348,14 @@ export class BodyHarmonizer {
       // Sustained-ness: when the slow mass matches the fast edge the tone
       // is being HELD (mask → 1); a strike makes fast spike ahead (→ 0).
       const w = fastV > 1e-9 ? clamp(slowV / fastV, 0, 1) : 0;
+      // Noisiness: broadband content (clicks, consonants, cymbals) is
+      // pushed out of the harmony even when the ratio view misses it.
+      const hfShare = toneV > 1e-9 ? clamp(noisV / toneV, 0, 1) : 0;
+      const hfGate = 1 - smooth01((hfShare - 0.35) / 0.3);
       // Presence gate: only LIVE tonal material harmonizes — noise floors,
       // gap tails and post-click silence never pre-open the mask.
       const gate = smooth01((presenceV - 3e-3) / 1.2e-2);
-      rawMask = w * gate;
+      rawMask = w * hfGate * gate;
     }
     const mask = this.maskEnv.processAbs(rawMask);
 

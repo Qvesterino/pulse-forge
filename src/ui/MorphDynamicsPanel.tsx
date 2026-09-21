@@ -745,16 +745,14 @@ export function MorphDynamicsPanel({
                   className={`morph-stage-toggle ${valueOf(HARM_DEV_FULL_SIGNAL_ID) >= 0.5 ? "on" : ""}`}
                   aria-label="A/B: harmonize the FULL signal instead of the body only"
                   title="Experiment A/B: ON = naive full-signal harmonization, OFF = BODY-only (the signature mode)"
-                  onClick={() =>
-                    onParam(HARM_DEV_FULL_SIGNAL_ID, valueOf(HARM_DEV_FULL_SIGNAL_ID) >= 0.5 ? 0 : 1)
-                  }
+                  onClick={() => onParam(HARM_DEV_FULL_SIGNAL_ID, valueOf(HARM_DEV_FULL_SIGNAL_ID) >= 0.5 ? 0 : 1)}
                 >
                   FULL A/B
                 </button>
               </div>
               <div className="morph-harm-hint">
-                Harmony grows from the sustained BODY — attacks and texture stay dry. Route BODY → Harmony Mix in
-                the matrix for the reactive bloom.
+                Harmony grows from the sustained BODY — attacks and texture stay dry. Route BODY → Harmony Mix in the
+                matrix for the reactive bloom.
               </div>
               {engineSlider(HARM_MIX_ID, "MIX", 0, 100, pctFmt, "linear", 50)}
               {engineSlider(HARM_BODY_AMOUNT_ID, "BODY", 0, 100, pctFmt, "linear", 100)}
@@ -784,9 +782,33 @@ export function MorphDynamicsPanel({
                           onCommit={(val) => onParam(harmVoiceParamId(v, "interval"), Math.round(val))}
                           onPreview={(val) => previewParam(harmVoiceParamId(v, "interval"), Math.round(val))}
                         />
-                        {engineSlider(harmVoiceParamId(v, "level"), "LVL", 0, 150, pctFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[1] ?? 70)}
-                        {engineSlider(harmVoiceParamId(v, "pan"), "PAN", -100, 100, panFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[2] ?? 0)}
-                        {engineSlider(harmVoiceParamId(v, "detune"), "DET", -50, 50, centsFmt, "linear", MORPH_HARM_VOICE_DEFAULTS[v]?.[3] ?? 0)}
+                        {engineSlider(
+                          harmVoiceParamId(v, "level"),
+                          "LVL",
+                          0,
+                          150,
+                          pctFmt,
+                          "linear",
+                          MORPH_HARM_VOICE_DEFAULTS[v]?.[1] ?? 70,
+                        )}
+                        {engineSlider(
+                          harmVoiceParamId(v, "pan"),
+                          "PAN",
+                          -100,
+                          100,
+                          panFmt,
+                          "linear",
+                          MORPH_HARM_VOICE_DEFAULTS[v]?.[2] ?? 0,
+                        )}
+                        {engineSlider(
+                          harmVoiceParamId(v, "detune"),
+                          "DET",
+                          -50,
+                          50,
+                          centsFmt,
+                          "linear",
+                          MORPH_HARM_VOICE_DEFAULTS[v]?.[3] ?? 0,
+                        )}
                       </div>
                     </div>
                   );

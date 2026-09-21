@@ -66,8 +66,7 @@ const R = {
 } as const;
 
 /** BODY Harmonizer voice param helpers (Experiment #1 presets). */
-const HV = (voice: number, param: "on" | "interval" | "level" | "pan" | "detune") =>
-  `harm.voice.${voice}.${param}`;
+const HV = (voice: number, param: "on" | "interval" | "level" | "pan" | "detune") => `harm.voice.${voice}.${param}`;
 
 // SOURCE index: 0 inputEnergy · 1 gainReduction · 2 transient · 3 body ·
 // 4 texture · 5 density · 6 pressure

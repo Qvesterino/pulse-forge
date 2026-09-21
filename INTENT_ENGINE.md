@@ -510,6 +510,9 @@ default house patternu (najhorší možný fallback pre trap request).
   reverb/punch) → revise (OBSAH: energy/density) → pattern.
 - **T1 krok 2 HOTOVÉ (§5.8b)**: semantic retrieval pochopí neznáme frázy a
   mená; alias mapa ostáva ako rýchly offline fallback a korpusový zdroj.
+- **T1 krok 3 ROADMAP**: embedding conditioning — continuous conditioning
+  namiesto one-hot, text description generator, PCA projection, prior v2
+  architektúra (~11-13h effort). Detailný plán: `docs/embedding-conditioning-roadmap.md`
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).

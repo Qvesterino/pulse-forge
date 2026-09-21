@@ -201,8 +201,8 @@ describe("reverb damping vs tone split", () => {
 describe("character engine (saturation/distortion curves)", () => {
   const N = 2048;
 
-  it("labels the four stable modes", () => {
-    expect(CHARACTER_MODE_LABELS).toEqual(["Warm", "Tube", "Fold", "Hard"]);
+  it("labels the five stable modes", () => {
+    expect(CHARACTER_MODE_LABELS).toEqual(["Warm", "Tube", "Fold", "Hard", "Tape"]);
   });
 
   it("keeps every mode's curve bounded and zero at center", () => {

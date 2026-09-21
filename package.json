@@ -32,6 +32,7 @@
     "favorites:retrain": "vite-node scripts/export-favorites-training.mts",
     "semantic:fetch": "node scripts/fetch-semantic-model.mjs",
     "audio:fetch": "node scripts/fetch-audio-model.mjs",
+    "embedding:train": "npx vite-node scripts/train-embedding-prior.mts",
     "ranker:golden-template": "vite-node scripts/generate-golden-template.mts",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",
     "ranker:activate": "node scripts/activate-intent-ranker.mjs",
@@ -59,6 +60,8 @@
     "video:promo": "remotion render remotion/index.ts PulseForgePromo out/pulse-forge-promo.mp4 --codec=h264 --public-dir=./remotion/public",
     "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public",
     "references:genres": "node scripts/measure-genre-references.mjs",
+    "listening:morph": "vite-node scripts/render-morph-listening.mjs",
+    "listening:serve": "node scripts/serve-listening.mjs",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs"
   },
   "dependencies": {

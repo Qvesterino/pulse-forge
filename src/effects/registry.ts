@@ -658,6 +658,16 @@ const haasWidener: EffectDefinition = {
   params: [
     { id: "delayMs", label: "DELAY", min: 0.5, max: 40, default: 12, unit: "ms", format: formatMs },
     { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "crossfeed", label: "CROSSFEED", min: 0, max: 1, default: 0.4, format: formatPct },
+    {
+      id: "invert",
+      label: "INVERT",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v >= 0.5 ? "FLIP" : "NORMAL"),
+      kind: "toggle",
+    },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.6, default: 0, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -671,6 +681,14 @@ const haasWidener: EffectDefinition = {
     wet.gain.value = instance.params.width ?? 0.7;
     const dry = ctx.createGain();
     dry.gain.value = 1 - (instance.params.width ?? 0.7);
+    // CROSSFEED: a (optionally inverted) delayed copy of L is ADDED to the
+    // right channel — true inter-channel decorrelation (real width), not
+    // just the L comb filter the old version produced.
+    const xf = ctx.createGain();
+    const applyXf = (level: number, invert: boolean, when: number): void => {
+      xf.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * (invert ? -1 : 1) * 0.8, when, 0.03);
+    };
+    applyXf(instance.params.crossfeed ?? 0.4, Math.round(instance.params.invert ?? 0) >= 0.5, ctx.currentTime);
     const fb = ctx.createGain();
     fb.gain.value = instance.params.feedback ?? 0;
 
@@ -685,6 +703,8 @@ const haasWidener: EffectDefinition = {
     dry.connect(merger, 0, 0);
     // R channel direct
     splitter.connect(merger, 1, 1);
+    // Delayed-left copy into the RIGHT channel (crossfeed — the widening).
+    delay.connect(xf).connect(merger, 0, 1);
     // Feedback: delayed L back into delay input (adds shimmer)
     wet.connect(fb).connect(delay);
     merger.connect(output);
@@ -697,6 +717,12 @@ const haasWidener: EffectDefinition = {
         case "width":
           smooth(wet.gain, v, when);
           smooth(dry.gain, 1 - v, when);
+          break;
+        case "crossfeed":
+          applyXf(v, Math.round(instance.params.invert ?? 0) >= 0.5, when);
+          break;
+        case "invert":
+          applyXf(instance.params.crossfeed ?? 0.4, Math.round(v) >= 0.5, when);
           break;
         case "feedback":
           smooth(fb.gain, v, when);
@@ -730,6 +756,7 @@ const haasWidener: EffectDefinition = {
         delay.disconnect();
         wet.disconnect();
         dry.disconnect();
+        xf.disconnect();
         fb.disconnect();
       },
     };
@@ -757,13 +784,43 @@ const multiband: EffectDefinition = {
     { id: "lowGain", label: "LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "midGain", label: "MID", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "highGain", label: "HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+    { id: "comp", label: "COMP", min: 0, max: 1, default: 0, format: formatPct },
+    {
+      id: "soloLow",
+      label: "SOLO LOW",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+      kind: "toggle",
+    },
+    {
+      id: "soloMid",
+      label: "SOLO MID",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+      kind: "toggle",
+    },
+    {
+      id: "soloHigh",
+      label: "SOLO HIGH",
+      min: 0,
+      max: 1,
+      default: 0,
+      format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+      kind: "toggle",
+    },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
     const mix = mixBus(ctx);
     // Complementary 3-band crossover (unity-sum): low = LP(lowFreq, wet)
     // midHigh = wet − low; mid = LP(highFreq, midHigh); high = midHigh − mid
-    // Each branch then feeds a gain stage (−12..+12 dB) and sums at mix.output.
+    // Each branch feeds a gain stage (−12..+12 dB), then a PARALLEL
+    // per-band compressor (COMP crossfades band → compressed band) and a
+    // SOLO gate (any solo active mutes the other bands).
     const lowLP = ctx.createBiquadFilter();
     lowLP.type = "lowpass";
     const midLP = ctx.createBiquadFilter();
@@ -778,17 +835,77 @@ const multiband: EffectDefinition = {
     const midHighSum = ctx.createGain();
     const highSum = ctx.createGain();
 
+    // Per-band parallel compressor + solo gate. COMP crossfades the band
+    // between dry and compressed; a solo active anywhere mutes the others.
+    const makeBand = (): {
+      input: GainNode;
+      setComp: (amount: number, when: number) => void;
+      setSolo: (soloed: boolean, when: number) => void;
+      output: GainNode;
+      dispose: () => void;
+    } => {
+      const input = ctx.createGain();
+      const dry = ctx.createGain();
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -24;
+      comp.ratio.value = 4;
+      comp.attack.value = 0.005;
+      comp.release.value = 0.2;
+      comp.knee.value = 12;
+      const compWet = ctx.createGain();
+      const solo = ctx.createGain();
+      const output = ctx.createGain();
+      input.connect(dry).connect(output);
+      input.connect(comp).connect(compWet).connect(output);
+      output.connect(solo);
+      const setComp = (amount: number, when: number): void => {
+        const a = Math.max(0, Math.min(1, amount));
+        compWet.gain.setTargetAtTime(a, when, 0.03);
+        dry.gain.setTargetAtTime(1 - a, when, 0.03);
+      };
+      const setSolo = (soloed: boolean, when: number): void => {
+        solo.gain.setTargetAtTime(soloed ? 1 : 0, when, 0.015);
+      };
+      const dispose = (): void => {
+        input.disconnect();
+        dry.disconnect();
+        comp.disconnect();
+        compWet.disconnect();
+        output.disconnect();
+        solo.disconnect();
+      };
+      return { input, setComp, setSolo, output, dispose };
+    };
+    const bandLow = makeBand();
+    const bandMid = makeBand();
+    const bandHigh = makeBand();
+    const soloFlags = (): [boolean, boolean, boolean] => [
+      Math.round(instance.params.soloLow ?? 0) >= 0.5,
+      Math.round(instance.params.soloMid ?? 0) >= 0.5,
+      Math.round(instance.params.soloHigh ?? 0) >= 0.5,
+    ];
+    const applySolos = (when: number): void => {
+      const [lo, mid, hi] = soloFlags();
+      const any = lo || mid || hi;
+      bandLow.setSolo(!any || lo, when);
+      bandMid.setSolo(!any || mid, when);
+      bandHigh.setSolo(!any || hi, when);
+    };
+
     mix.wet.connect(lowLP);
-    lowLP.connect(gLow).connect(mix.output);
+    lowLP.connect(gLow).connect(bandLow.input);
+    bandLow.output.connect(mix.output);
     // wet − low → midHighSum
     mix.wet.connect(midHighSum);
     lowLP.connect(invLow).connect(midHighSum);
     midHighSum.connect(midLP);
-    midLP.connect(gMid).connect(mix.output);
+    midLP.connect(gMid).connect(bandMid.input);
+    bandMid.output.connect(mix.output);
     // midHighSum − mid → high branch
     midHighSum.connect(highSum);
     midLP.connect(invMid).connect(highSum);
-    highSum.connect(gHigh).connect(mix.output);
+    highSum.connect(gHigh).connect(bandHigh.input);
+    bandHigh.output.connect(mix.output);
 
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
@@ -807,11 +924,22 @@ const multiband: EffectDefinition = {
         case "highGain":
           smooth(gHigh.gain, dbToLin(v), when);
           break;
+        case "comp":
+          bandLow.setComp(v, when);
+          bandMid.setComp(v, when);
+          bandHigh.setComp(v, when);
+          break;
+        case "soloLow":
+        case "soloMid":
+        case "soloHigh":
+          applySolos(when);
+          break;
         case "mix":
           mix.setMix(v, when);
           break;
       }
     };
+    applySolos(ctx.currentTime);
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
@@ -848,6 +976,9 @@ const multiband: EffectDefinition = {
         invMid.disconnect();
         midHighSum.disconnect();
         highSum.disconnect();
+        bandLow.dispose();
+        bandMid.dispose();
+        bandHigh.dispose();
       },
     };
   },
@@ -954,30 +1085,37 @@ const saturation: EffectDefinition = {
       id: "character",
       label: "CHARACTER",
       min: 0,
-      max: 3,
+      max: 4,
       default: 0,
       kind: "enum",
       step: 1,
-      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(3, Math.round(v)))],
+      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(4, Math.round(v)))],
     },
     { id: "bias", label: "BIAS", min: -1, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 8000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "preHpfHz", label: "PRE HPF", min: 20, max: 400, default: 20, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
     const mix = mixBus(ctx);
+    // Pre-HPF: band-limits what reaches the shaper so heavy bass doesn't
+    // intermodulate the whole spectrum (decapitator-style FOCUS).
+    const preHP = ctx.createBiquadFilter();
+    preHP.type = "highpass";
+    preHP.frequency.value = instance.params.preHpfHz ?? 20;
+    preHP.Q.value = 0.7;
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "4x";
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     const out = ctx.createGain();
-    mix.wet.connect(shaper).connect(tone).connect(out).connect(mix.output);
+    mix.wet.connect(preHP).connect(shaper).connect(tone).connect(out).connect(mix.output);
     let mode = Math.round(instance.params.character ?? 0);
     let driveVal = instance.params.drive ?? 0.3;
     let biasVal = instance.params.bias ?? 0;
     const applyCurve = () => {
-      shaper.curve = characterCurve(Math.max(0, Math.min(3, mode)) as CharacterMode, driveVal, biasVal);
+      shaper.curve = characterCurve(Math.max(0, Math.min(4, mode)) as CharacterMode, driveVal, biasVal);
     };
     applyCurve();
     const apply = (id: string, v: number, when: number) => {
@@ -997,6 +1135,9 @@ const saturation: EffectDefinition = {
         case "tone":
           smooth(tone.frequency, v, when);
           break;
+        case "preHpfHz":
+          smooth(preHP.frequency, v, when);
+          break;
         case "mix":
           mix.setMix(v, when);
           break;
@@ -1014,6 +1155,7 @@ const saturation: EffectDefinition = {
       dispose: () => {
         mix.input.disconnect();
         mix.output.disconnect();
+        preHP.disconnect();
         shaper.disconnect();
         tone.disconnect();
         out.disconnect();
@@ -1656,32 +1798,39 @@ const distortion: EffectDefinition = {
       id: "character",
       label: "CHARACTER",
       min: 0,
-      max: 3,
+      max: 4,
       default: 3,
       kind: "enum",
       step: 1,
-      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(3, Math.round(v)))],
+      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(4, Math.round(v)))],
     },
     { id: "bias", label: "BIAS", min: -1, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 5000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "preHpfHz", label: "PRE HPF", min: 20, max: 400, default: 20, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
     const mix = mixBus(ctx);
+    // Pre-HPF (see saturation): keeps heavy bass out of the shaper so the
+    // distortion generates harmonics of the mids instead of intermod mud.
+    const preHP = ctx.createBiquadFilter();
+    preHP.type = "highpass";
+    preHP.frequency.value = instance.params.preHpfHz ?? 20;
+    preHP.Q.value = 0.7;
     const pre = ctx.createGain();
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "4x";
     const tone = ctx.createBiquadFilter();
     tone.type = "lowpass";
     const out = ctx.createGain();
-    mix.wet.connect(pre).connect(shaper).connect(tone).connect(out).connect(mix.output);
+    mix.wet.connect(preHP).connect(pre).connect(shaper).connect(tone).connect(out).connect(mix.output);
 
     let mode = Math.round(instance.params.character ?? 3);
     let driveVal = instance.params.drive ?? 0.4;
     let biasVal = instance.params.bias ?? 0;
     const applyCurve = () => {
-      shaper.curve = characterCurve(Math.max(0, Math.min(3, mode)) as CharacterMode, driveVal, biasVal);
+      shaper.curve = characterCurve(Math.max(0, Math.min(4, mode)) as CharacterMode, driveVal, biasVal);
     };
     applyCurve();
     const apply = (id: string, v: number, when: number) => {
@@ -1701,6 +1850,9 @@ const distortion: EffectDefinition = {
         case "tone":
           smooth(tone.frequency, v, when);
           break;
+        case "preHpfHz":
+          smooth(preHP.frequency, v, when);
+          break;
         case "mix":
           mix.setMix(v, when);
           break;
@@ -1718,6 +1870,7 @@ const distortion: EffectDefinition = {
       dispose: () => {
         mix.input.disconnect();
         mix.output.disconnect();
+        preHP.disconnect();
         pre.disconnect();
         shaper.disconnect();
         tone.disconnect();
@@ -1759,6 +1912,8 @@ const bitcrusher: EffectDefinition = {
       kind: "discrete",
       step: 1,
     },
+    { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+    { id: "tone", label: "TONE", min: 500, max: 18000, default: 18000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
@@ -4014,7 +4169,7 @@ const freqShifter: EffectDefinition = {
       format: formatMs,
     },
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
-    { id: "tone", label: "TONE", min: 500, max: 16000, default: 16000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 16000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
@@ -4558,7 +4713,7 @@ const reverseSwell: EffectDefinition = {
       default: 0.6,
       format: (v) => (v < 0.05 ? "Lin" : `^${(1 + v * 4).toFixed(1)}`),
     },
-    { id: "tone", label: "TONE", min: 500, max: 16000, default: 12000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 12000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "level", label: "LEVEL", min: -24, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
@@ -4612,7 +4767,7 @@ const granularFreeze: EffectDefinition = {
       unit: "st",
       format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} st`,
     },
-    { id: "tone", label: "TONE", min: 500, max: 16000, default: 10000, unit: "Hz", format: formatHz },
+    { id: "tone", label: "TONE", min: 500, max: 16000, default: 10000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "level", label: "LEVEL", min: -24, max: 12, default: 0, unit: "dB", format: formatDb },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],

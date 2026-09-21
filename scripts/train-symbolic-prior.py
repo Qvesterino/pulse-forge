@@ -139,6 +139,11 @@ def main() -> None:
         help="weighted favorite samples JSON (symbolic-prior-favorites-samples.json "
         "from scripts/export-favorites-training.mts) — folded into the TRAIN split only",
     )
+    parser.add_argument(
+        "--embedding",
+        help="style-embeddings.json (from generate-style-embeddings.mts) — replaces "
+        "genre+style one-hot with a 16-dim semantic vector (v2, 35-dim input)",
+    )
     args = parser.parse_args()
 
     rng = np.random.default_rng(SEED)
@@ -147,9 +152,31 @@ def main() -> None:
         raise SystemExit(f"unexpected feature version: {payload['featureVersion']}")
 
     data = payload["data"]
-    x_all = np.array([sample["x"] for sample in data], dtype=np.float64)
+    x_all_raw = np.array([sample["x"] for sample in data], dtype=np.float64)
     y_all = np.array([sample["y"] for sample in data], dtype=np.float64)
     groups = np.array([sample["groove"] for sample in data])
+
+    # --embedding mode: replace genre(4)+style(21) one-hot with a 16-dim
+    # semantic vector from style-embeddings.json. The model input becomes
+    # 35 dims instead of 44. Structural features (x[25:]) are preserved.
+    embedding_lookup: dict[str, list[float]] = {}
+    if args.embedding:
+        emb_payload = json.loads(Path(args.embedding).read_text())
+        embedding_lookup = emb_payload.get("styles", {})
+        print(f"[train] embedding mode: {len(embedding_lookup)} style vectors loaded")
+
+    x_rows: list[list[float]] = []
+    for i, sample in enumerate(data):
+        if embedding_lookup:
+            style_id = sample["groove"].split("#")[0]  # e.g. "house.driving" from "house.driving#0"
+            semantic = embedding_lookup.get(style_id, [0.0] * 16)
+            structural = list(x_all_raw[i][25:])  # skip genre(4) + style(21) one-hot
+            x_rows.append(list(semantic) + structural)
+        else:
+            x_rows.append(list(x_all_raw[i]))
+    x_all = np.array(x_rows, dtype=np.float64)
+
+    input_size = x_all.shape[1]
 
     # Group split (groove#pattern) — whole sequences stay on one side.
     unique_groups = np.unique(groups)

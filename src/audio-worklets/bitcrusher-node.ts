@@ -23,14 +23,23 @@ export function createBitcrusherNode(
   const dry = ctx.createGain();
   const wet = ctx.createGain();
   const out = ctx.createGain();
+  // DRIVE pushes more level into the quantizer (deeper crush character);
+  // TONE lowpasses the crushed signal (tames the aliasing harshness).
+  const drive = ctx.createGain();
+  const tone = ctx.createBiquadFilter();
+  tone.type = "lowpass";
+  tone.Q.value = 0.7;
   input.connect(dry).connect(output);
-  input.connect(wet).connect(node).connect(out).connect(output);
+  input.connect(wet).connect(drive).connect(node).connect(tone).connect(out).connect(output);
 
   // Set initial parameter values (safeApplyAudioParam guards non-finite)
   safeApplyAudioParam(node, "bits", instance.params.bits ?? 8);
   safeApplyAudioParam(node, "downsample", instance.params.downsample ?? 1);
   const bitsParam = node.parameters.get("bits");
   const dsParam = node.parameters.get("downsample");
+  const driveVal = instance.params.drive ?? 0;
+  drive.gain.value = 1 + driveVal * 7;
+  tone.frequency.value = instance.params.tone ?? 18000;
 
   // Set initial mix
   const mixVal = instance.params.mix ?? 1;
@@ -53,6 +62,12 @@ export function createBitcrusherNode(
         case "downsample":
           safeApplyAudioParam(node, "downsample", v, now);
           break;
+        case "drive":
+          drive.gain.setTargetAtTime(1 + v * 7, now, 0.02);
+          break;
+        case "tone":
+          tone.frequency.setTargetAtTime(v, now, 0.02);
+          break;
         case "mix":
           wet.gain.setTargetAtTime(v, now, 0.02);
           dry.gain.setTargetAtTime(1 - v, now, 0.02);
@@ -69,6 +84,12 @@ export function createBitcrusherNode(
           break;
         case "downsample":
           safeApplyAudioParam(node, "downsample", v, when);
+          break;
+        case "drive":
+          drive.gain.setTargetAtTime(1 + v * 7, when, 0.02);
+          break;
+        case "tone":
+          tone.frequency.setTargetAtTime(v, when, 0.02);
           break;
         case "mix":
           wet.gain.setTargetAtTime(v, when, 0.02);
@@ -90,6 +111,8 @@ export function createBitcrusherNode(
       output.disconnect();
       dry.disconnect();
       wet.disconnect();
+      drive.disconnect();
+      tone.disconnect();
       out.disconnect();
     },
   };

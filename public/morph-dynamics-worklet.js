@@ -1032,9 +1032,12 @@
     // Gain fades per sample (level × enable — one pole, ~12 ms).
     gain = 0;
     gainCoef = 1;
-    // Ratio latches at grain boundaries (a mid-grain ratio step bends the
-    // read slope and clicks).
-    ratioLive = 1;
+    // Per-GRAIN ratio latch: a grain keeps the ratio it was BORN with for its
+    // whole 2h life; the live target only applies to grains starting now.
+    // Latching globally would bend the read slope of the still-sounding
+    // previous grain mid-window — an instant read-position jump of up to
+    // h·Δratio samples, i.e. an audible click on every interval change.
+    grainRatios = [1, 1];
     lastGrain = -1;
     setParams(p2, sampleRate2) {
       const semis = clamp(p2.interval, -24, 24) + clamp(p2.detune, -50, 50) / 100;
@@ -1051,7 +1054,8 @@
     }
     reset() {
       this.gain = 0;
-      this.ratioLive = this.cfg.ratio;
+      this.grainRatios[0] = this.cfg.ratio;
+      this.grainRatios[1] = this.cfg.ratio;
       this.lastGrain = -1;
     }
     /**
@@ -1069,18 +1073,18 @@
         this.lastGrain = Math.floor(a / h);
         return;
       }
-      if (Math.floor(a / h) !== this.lastGrain) {
-        this.lastGrain = Math.floor(a / h);
-        this.ratioLive = this.cfg.ratio;
+      const k = Math.floor(a / h);
+      if (k !== this.lastGrain) {
+        this.grainRatios[k & 1] = this.cfg.ratio;
+        this.lastGrain = k;
       }
-      const ratio = this.ratioLive;
       let wet = 0;
       let windowSum = 0;
-      const k = Math.floor(a / h);
       for (let g = k; g >= k - 1; g--) {
         const u = a / h - g;
         if (u < 0 || u > 2) continue;
         const window = 0.5 * (1 - Math.cos(Math.PI * u));
+        const ratio = this.grainRatios[g & 1];
         const grainStart = g * h;
         const base = ratio >= 1 ? grainStart + 2 * h * (1 - ratio) : grainStart;
         const read = base + (a - grainStart) * ratio;
@@ -1105,12 +1109,18 @@
     // 3.2 kHz — drops hiss/cymbal air
     lpToneLo = new OnePoleLP();
     // 110 Hz — drops sub rumble
+    lpNois = new OnePoleLP();
+    // 2 kHz — HF split for the noise gate
     fastEnv = new EnvelopeFollower();
     // ~2 ms — transient edge
     slowEnv = new EnvelopeFollower();
     // ~60 ms — sustained mass
+    noisEnv = new EnvelopeFollower();
+    // HF component envelope
+    toneEnv = new EnvelopeFollower();
+    // full-band envelope (matched pair)
     presenceEnv = new EnvelopeFollower();
-    // ~12 ms release — audio presence gate
+    // ~25 ms release — audio presence gate
     maskEnv = new EnvelopeFollower();
     // the smoothed mask itself
     // ── Grain engine (shared ring buffer, mono body feed) ───────────
@@ -1157,24 +1167,34 @@
       this.bufMask = len - 1;
       this.lpToneHi.setFreq(3200, sampleRate2);
       this.lpToneLo.setFreq(110, sampleRate2);
-      this.fastEnv.setTimes(2e-3, 0.04, sampleRate2);
+      this.lpNois.setFreq(2e3, sampleRate2);
+      this.fastEnv.setTimes(2e-3, 0.3, sampleRate2);
       this.slowEnv.setTimes(0.06, 0.3, sampleRate2);
-      this.maskEnv.setTimes(0.04, 0.012, sampleRate2);
-      this.presenceEnv.setTimes(2e-3, 0.012, sampleRate2);
+      this.noisEnv.setTimes(2e-3, 0.05, sampleRate2);
+      this.toneEnv.setTimes(2e-3, 0.05, sampleRate2);
+      this.maskEnv.setTimes(0.04, 2e-3, sampleRate2);
+      this.presenceEnv.setTimes(2e-3, 0.025, sampleRate2);
       this.mixCoef = tcToCoef(0.03, sampleRate2);
       this.writePos = 0;
       this.mixGain = 0;
       this.dryGain = 1;
       for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
         if (!this.voices[i]) this.voices[i] = new HarmonyVoice();
-        this.voices[i].setParams(this.cfg.voices[i], sampleRate2);
+        this.voices[i].setParams(
+          this.cfg.voices?.[i] ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
+          sampleRate2
+        );
         this.voices[i].reset();
       }
     }
     setParams(cfg) {
       this.cfg = cfg;
       for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
-        this.voices[i].setParams(cfg.voices[i], this.sampleRate);
+        const v = cfg.voices[i];
+        this.voices[i].setParams(
+          v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
+          this.sampleRate
+        );
       }
     }
     /** The current body mask (observability / tests). */
@@ -1186,8 +1206,11 @@
       this.writePos = 0;
       this.lpToneHi.reset();
       this.lpToneLo.reset();
+      this.lpNois.reset();
       this.fastEnv.reset();
       this.slowEnv.reset();
+      this.noisEnv.reset();
+      this.toneEnv.reset();
       this.presenceEnv.reset();
       this.maskEnv.reset();
       this.mixGain = 0;
@@ -1204,16 +1227,21 @@
     processFrame(l, r, out) {
       const mono = 0.5 * (l + r);
       const tone = this.lpToneHi.process(mono) - this.lpToneLo.process(mono);
-      const fastV = this.fastEnv.processAbs(Math.abs(tone));
-      const slowV = this.slowEnv.processAbs(Math.abs(tone));
-      const presenceV = this.presenceEnv.processAbs(Math.abs(tone));
+      const absTone = Math.abs(tone);
+      const fastV = this.fastEnv.processAbs(absTone);
+      const slowV = this.slowEnv.processAbs(absTone);
+      const presenceV = this.presenceEnv.processAbs(absTone);
+      const noisV = this.noisEnv.processAbs(Math.abs(tone - this.lpNois.process(tone)));
+      const toneV = this.toneEnv.processAbs(absTone);
       let rawMask;
       if (this.cfg.fullSignal) {
         rawMask = 1;
       } else {
         const w = fastV > 1e-9 ? clamp(slowV / fastV, 0, 1) : 0;
+        const hfShare = toneV > 1e-9 ? clamp(noisV / toneV, 0, 1) : 0;
+        const hfGate = 1 - smooth01((hfShare - 0.35) / 0.3);
         const gate = smooth01((presenceV - 3e-3) / 0.012);
-        rawMask = w * gate;
+        rawMask = w * hfGate * gate;
       }
       const mask = this.maskEnv.processAbs(rawMask);
       this.buf[this.writePos & this.bufMask] = tone * mask;

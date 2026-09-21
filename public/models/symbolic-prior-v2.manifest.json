@@ -1,0 +1,41 @@
+{
+  "priorVersion": "prior.v2",
+  "featureVersion": "prior-features.v1",
+  "featureCount": 35,
+  "modelPath": "/models/symbolic-prior-v2.onnx",
+  "inputName": "features",
+  "outputName": "logits",
+  "modelHash": "b762dbcfccf6a9acb178e0c4f6777618f687170c5ab1435f38ff02f3ca8fca4c",
+  "hidden": [
+    64,
+    32
+  ],
+  "report": {
+    "datasetVersion": "symbolic-prior-ds.v1",
+    "featureVersion": "prior-features.v1",
+    "featureCount": 35,
+    "hidden": [
+      64,
+      32
+    ],
+    "epochs": 500,
+    "samples": 87552,
+    "hitRatio": 0.0821,
+    "posWeight": 11.06,
+    "valAuc": 0.8791,
+    "trainAuc": 0.8847,
+    "bestF1Threshold": 0.65,
+    "val": {
+      "precision": 0.2557,
+      "recall": 0.727,
+      "f1": 0.3784
+    },
+    "train": {
+      "precision": 0.2757,
+      "recall": 0.761,
+      "f1": 0.4048
+    }
+  },
+  "inputDims": 35,
+  "conditioning": "embedding"
+}

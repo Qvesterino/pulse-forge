@@ -16,11 +16,11 @@
  * thumps the output.
  */
 
-export type CharacterMode = 0 | 1 | 2 | 3;
+export type CharacterMode = 0 | 1 | 2 | 3 | 4;
 
-export const CHARACTER_MODE_COUNT = 4;
+export const CHARACTER_MODE_COUNT = 5;
 
-export const CHARACTER_MODE_LABELS = ["Warm", "Tube", "Fold", "Hard"] as const;
+export const CHARACTER_MODE_LABELS = ["Warm", "Tube", "Fold", "Hard", "Tape"] as const;
 
 /** Transfer function for one sample position x ∈ [−1, 1]. */
 export function characterTransfer(mode: CharacterMode, x: number, drive: number, bias: number): number {
@@ -51,6 +51,13 @@ export function characterTransfer(mode: CharacterMode, x: number, drive: number,
         // 80/20 hard-clip/tanh shoulder: aggressive edge, forgiving corner.
         const hard = Math.max(-1, Math.min(1, u2));
         return 0.8 * hard + 0.2 * Math.tanh(u2);
+      }
+      case 4: {
+        // Tape: arctan sigmoid — softer knee than tanh, gentle early
+        // compression and a slightly rounded top (head saturation) with a
+        // whisper of even harmonics from the bias shift.
+        const k = 1 + drive * 6;
+        return Math.atan(u * k) / Math.atan(k);
       }
       default:
         return Math.tanh(u);

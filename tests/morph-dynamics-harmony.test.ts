@@ -15,7 +15,11 @@ import { describe, expect, it } from "vitest";
 
 import { MorphDynamicsProcessor } from "../src/effects/morph-dynamics-core/dsp/morphDynamicsProcessor";
 import { BodyHarmonizer, HARM_VOICE_COUNT } from "../src/effects/morph-dynamics-core/dsp/harmony";
-import { buildDefaultParams, clampParam, PARAM_BY_ID } from "../src/effects/morph-dynamics-core/contracts/parameterSchema";
+import {
+  buildDefaultParams,
+  clampParam,
+  PARAM_BY_ID,
+} from "../src/effects/morph-dynamics-core/contracts/parameterSchema";
 import * as P from "../src/effects/morph-dynamics-core/contracts/parameterIds";
 import { DEST_INDEX } from "../src/effects/morph-dynamics-core/contracts/modulation";
 
@@ -311,11 +315,7 @@ describe("morph-dynamics harmony: the experiment's sonic claim", () => {
       [P.harmVoiceParamId(0, "level")]: 100,
     };
     const body = harmonyDifference({ ...base, [P.HARM_BODY_AMOUNT_ID]: 100 }, () => clickTrain(0.8), 1.2);
-    const full = harmonyDifference(
-      { ...base, [P.HARM_DEV_FULL_SIGNAL_ID]: 1 },
-      () => clickTrain(0.8),
-      1.2,
-    );
+    const full = harmonyDifference({ ...base, [P.HARM_DEV_FULL_SIGNAL_ID]: 1 }, () => clickTrain(0.8), 1.2);
     // Same voice config, same material: harmonizing ONLY the body leaves
     // the clicks (almost) untouched while full-signal shifting smears them.
     const bodyRms = rmsOf(body.diffL);
@@ -324,36 +324,61 @@ describe("morph-dynamics harmony: the experiment's sonic claim", () => {
     expect(bodyRms).toBeLessThan(fullRms * 0.7);
   });
 
-  it("sustained tone opens the mask; clicks keep it closed", () => {
+  it("sustained tone opens the mask; a quiet click over it never feeds the grains", () => {
     const FULL_VOICES = [
       { enabled: true, interval: 7, detune: 0, level: 1, pan: 0 },
       { enabled: false, interval: -5, detune: 0, level: 0.7, pan: 0.25 },
       { enabled: false, interval: 12, detune: 0, level: 0.6, pan: -0.6 },
       { enabled: false, interval: -12, detune: 0, level: 0.6, pan: 0.6 },
     ];
-    const harm = new BodyHarmonizer();
-    harm.prepare(SR);
-    harm.setParams({
-      enabled: true,
-      bodyAmount: 1,
-      mix: 1,
-      fullSignal: false,
-      voices: FULL_VOICES,
-    });
-    const out = { l: 0, r: 0, dry: 1 };
-    // Sustained 300 Hz tone → mask blooms.
-    for (let i = 0; i < SR * 0.5; i++) {
-      const x = 0.4 * Math.sin((2 * Math.PI * 300 * i) / SR);
-      harm.processFrame(x, x, out);
+    const makeHarm = (fullSignal: boolean) => {
+      const harm = new BodyHarmonizer();
+      harm.prepare(SR);
+      harm.setParams({ enabled: true, bodyAmount: 1, mix: 1, fullSignal, voices: FULL_VOICES });
+      return harm;
+    };
+    // Three arms: RING = tone then silence (the grain engine's natural
+    // decay), BODY = tone then a quiet click (consonant after a vowel),
+    // FULL = same with the naive full-signal switch. The click's own
+    // contribution per arm = sqrt(rms² − ringRms²).
+    const ring = makeHarm(false);
+    const body = makeHarm(false);
+    const full = makeHarm(true);
+    const oRing = { l: 0, r: 0, dry: 1 };
+    const oBody = { l: 0, r: 0, dry: 1 };
+    const oFull = { l: 0, r: 0, dry: 1 };
+    const clickLen = Math.round(SR * 0.003);
+    const runLen = Math.round(SR * 0.52);
+    const clickAt = Math.round(SR * 0.5);
+    let maskAtSustain = 0;
+    let ringRms = 0;
+    let bodyRms = 0;
+    let fullRms = 0;
+    let count = 0;
+    for (let i = 0; i < runLen; i++) {
+      const sineV = 0.45 * Math.sin((2 * Math.PI * 220 * i) / SR);
+      const clickV = i >= clickAt && i < clickAt + clickLen ? 0.3 * ((i % 7) * 0.12 - 0.4) : 0;
+      ring.processFrame(sineV, sineV, oRing);
+      body.processFrame(clickV === 0 ? sineV : clickV, clickV === 0 ? sineV : clickV, oBody);
+      full.processFrame(clickV === 0 ? sineV : clickV, clickV === 0 ? sineV : clickV, oFull);
+      if (i === clickAt - 1) maskAtSustain = body.getMask();
+      if (i >= clickAt && i < clickAt + Math.round(SR * 0.02)) {
+        ringRms += oRing.l * oRing.l;
+        bodyRms += oBody.l * oBody.l;
+        fullRms += oFull.l * oFull.l;
+        count++;
+      }
     }
-    const sustainedMask = harm.getMask();
-    expect(sustainedMask).toBeGreaterThan(0.6);
-    // Broadband click → mask slams shut.
-    for (let i = 0; i < Math.round(SR * 0.05); i++) {
-      const click = i < Math.round(SR * 0.003) ? (i % 7) * 0.12 - 0.4 : 0;
-      harm.processFrame(click, click, out);
-    }
-    expect(harm.getMask()).toBeLessThan(0.3);
+    // The sustained tone right before the click IS body — the mask is open
+    // for it (this is the material the harmony is FOR).
+    expect(maskAtSustain).toBeGreaterThan(0.5);
+    const ringRmsVal = Math.sqrt(ringRms / count);
+    const extraBody = Math.sqrt(Math.max(0, bodyRms / count - ringRmsVal * ringRmsVal));
+    const extraFull = Math.sqrt(Math.max(0, fullRms / count - ringRmsVal * ringRmsVal));
+    // The FULL arm shifts the click outright; the BODY arm's extra energy
+    // (what its grains made of the click) must stay far below that.
+    expect(extraFull).toBeGreaterThan(0.01);
+    expect(extraBody).toBeLessThan(extraFull * 0.5);
   });
 });
 
@@ -372,11 +397,7 @@ describe("morph-dynamics harmony: Harmonic Bloom hook", () => {
       [P.routeParamId(0, "smoothMs")]: 40,
     };
     const withRoute = harmonyDifference(base, () => sine(220, 0.5), 1.5);
-    const without = harmonyDifference(
-      { ...base, [P.routeParamId(0, "enabled")]: 0 },
-      () => sine(220, 0.5),
-      1.5,
-    );
+    const without = harmonyDifference({ ...base, [P.routeParamId(0, "enabled")]: 0 }, () => sine(220, 0.5), 1.5);
     const from = Math.round(0.75 * SR);
     expect(rmsOf(withRoute.diffL, from)).toBeGreaterThan(rmsOf(without.diffL, from) * 3);
   });

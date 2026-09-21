@@ -3096,3 +3096,33 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** none new. transformers chunk remains the largest lazy bite (582 KB, budget-capped at 650 KB by check-bundle-size).
 
 **Recommendations for next session (GOAL 12 — final reliability sweep & release gate):** run the FULL gate series on a quiet tree: typecheck:clean, full vitest, npm run build + bundle budgets, release:preflight + server-smoke, browser smoke if the environment allows; produce RELEASE_READINESS_REPORT.md refresh with the PASS/PASS-WITH-RISKS classification; re-check the concurrent session's in-flight morph-dynamics-harmony work for attribution; revisit the flaky snapshot fixture if it recurs in the full run.
+
+
+---
+
+## GOAL 23 (campaign restart) — Intent Engine T1 krok 2+: embedding conditioning pipeline (2026-09-19)
+
+**Goal executed:** Fáze A-C of docs/embedding-conditioning-roadmap.md — the text→embedding→PCA pipeline that enables priors to be conditioned on MEANING instead of one-hot vectors.
+
+**Fixes implemented:**
+
+- `src/intent/descriptions.ts` — procedural text description generator: COMBINATORIAL templates (10 EN + 4 SK sentence structures × genre synonyms × style descriptors × mood words × tempo references). Each genre×style combination gets 20-30 diverse, natural-sounding descriptions. These are the training data for embedding-conditioned priors — each description is embedded by MiniLM and paired with the pattern's features.
+- `scripts/train-embedding-prior.mts` — Phase B-C pipeline:
+  - Generates 1379 text descriptions across all genre×style combinations
+  - Embeds with MiniLM q8 (Xenova/paraphrase-multilingual-MiniLM-L12-v2)
+  - Computes PCA 384→16 (power iteration with deflation, numpy-free)
+  - Saves PCA projection matrix + enriched descriptions to scripts/data/
+- `src/intent/semantic.ts` — `buildSemanticCorpus()` already had ~80 texts; descriptions add 1379 more → richer corpus for the semantic layer.
+- Tests: `tests/intent-descriptions.test.ts` (7) — diversity, vocabulary coverage, mood differentiation, SK inclusion, BPM references, all-genre coverage.
+- npm script: `embedding:train` — runs the full embedding pipeline.
+
+**Important files changed:** src/intent/descriptions.ts, scripts/train-embedding-prior.mts, tests/intent-descriptions.test.ts, package.json (`embedding:train`), INTENT_ENGINE.md.
+
+**Validation:** description tests 7/7; embedding pipeline ran end-to-end (1379 descriptions → 384-dim → PCA → saved); intent-area 216/216.
+
+**Unresolved issues / next steps (Phase D-F):**
+
+1. **Phase D (trainer modification)**: both prior trainers need to accept 35-dim input (16 PCA + 19 structural) instead of 44 one-hot. The Python trainer code needs to read the PCA projection from the saved file and project the embeddings before training. This is a ~50-line change to each trainer.
+2. **Phase E (training)**: after trainer modification, retrain both priors with the enriched dataset. Validation on held-out genres tells us if the embedding conditioning generalizes.
+3. **Phase F (integration)**: prior worker needs to accept the PCA-projected embedding from the semantic layer. The provider needs to compute the embedding projection at generation time and pass it to the prior worker.
+4. **The concurrent session's in-flight breakage persists** (controls.tsx, ExportPanel.tsx) — filtered tsc used.

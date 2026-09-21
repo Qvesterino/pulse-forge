@@ -62,10 +62,13 @@ export class MorphDynamicsProcessor {
   private harmony = new BodyHarmonizer();
   private harmonyOut = { l: 0, r: 0, dry: 1 };
   /** Preallocated per-block voice config (no allocation in the render path). */
-  private harmonyVoicesCfg: BodyHarmonizerParams["voices"] = Array.from(
-    { length: HARM_VOICE_COUNT },
-    () => ({ enabled: false, interval: 0, detune: 0, level: 0.7, pan: 0 }),
-  );
+  private harmonyVoicesCfg: BodyHarmonizerParams["voices"] = Array.from({ length: HARM_VOICE_COUNT }, () => ({
+    enabled: false,
+    interval: 0,
+    detune: 0,
+    level: 0.7,
+    pan: 0,
+  }));
 
   // Output safety (per channel — each keeps its own one-pole state).
   private dcL = new OnePoleHP();
