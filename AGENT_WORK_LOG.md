@@ -3300,3 +3300,38 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Testy:** `tests/prior-embedding-conditioning.test.ts` 11/11 (35-dim kontrakt, PCA vs full-precision referencia ≤0.05, flag gating, memoizácia, provider +sem/v1-fallback/pure-v1). Regresia **240/240 cez 23 intent súborov**. Typecheck čistý (mimo in-flight súborov súbežnej relácie).
 
 **Poznámky:** Fáza G (melodic v2 29-dim) otvorená. Nové žánre bez modelu: warning v dataset generátore. Súbežná relácia natrénovala skorší v2 pokus (a6c42aa) s nesprávnym manifestom (featureVersion v1, bez kind) — retrain + manifest fix ho nahrádza.
+
+---
+
+## GOAL 12 addendum — owner-item fixes (2026-09-22, ~00:30)
+
+**Items 1+3 of 4 FIXED + validated (`4c9544f`):**
+- offline-parity stale pin updated to the intentional resolver default (tests 4/4).
+- ArrangementPanel mic-peak poller now feature-detects getInputLevel (the unhandled
+  full-run error class); validation of the ArrangementPanel suite itself deferred to
+  the settled tree.
+
+**Item 2 (master glue park) — ROOT-CAUSED, fix deferred with evidence:**
+Probe instrumentation (since reverted) established: the GLUE toggle triggers a
+master-chain REBUILD; the rebuilt native fallback is created at hardcoded -6/2,
+and a park pass with enabled=false DOES run (thr-after: 0 observed) — yet the test
+still reads -6, meaning a LATER rebuild applies STALE config. Mechanism: setProject
+assigns `this.doc` synchronously but runs its body asynchronously through
+projectQueue; a still-running body for the PREVIOUS target interleaves with the
+new body and its buildMaster applies the OLD master config AFTER the new body's
+park (probe interleaving across 3 engines confirmed the asymmetry). Possible fixes,
+in order of preference (next session, once the concurrent session's
+effects-definitions extraction stops churning — it broke tree-wide test collection
+for 30+ min during this investigation):
+  a) in runBody, bail at resumption points when `this.doc !== target`;
+  b) or re-apply master config from this.doc at the END of buildMaster;
+  c) or create the native fallback with the config-derived park state.
+master-finish.test.ts is the regression net and stays failing until then.
+
+**Item 4 (tinypool worker exit):** environmental — one vitest fork died during the
+82-minute full run on a shared, concurrently-compiling machine; no repo defect.
+
+**Also carried:** the concurrent session's GOAL 02 extraction temporarily broke
+tree-wide collection twice tonight (missing STOCK_DELAY/BEATMANGLE imports mid-save)
+— both resolved by them within minutes; attribution rule held (no campaign edits
+into their churning files).
