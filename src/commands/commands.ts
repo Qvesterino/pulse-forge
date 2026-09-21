@@ -742,15 +742,25 @@ export function pastePattern(doc: ProjectDocument, clip: PatternClipboard): Comm
 /* ---------------- groove & step performance ---------------- */
 
 export function setGroove(doc: ProjectDocument, groove: Partial<GrooveSettings>): Command {
-  const prev = doc.groove ?? {};
-  const nextGroove: Partial<GrooveSettings> = { ...prev, ...groove };
+  // prev === undefined when the doc carried NO groove object at all — undo
+  // must restore that ABSENCE, not write an empty object (which normalize
+  // would then materialize into a default groove the doc never had).
+  const prev = doc.groove;
+  const base = prev ?? {};
+  const nextGroove: Partial<GrooveSettings> = { ...base, ...groove };
   const describe = (g: Partial<GrooveSettings>) =>
     `swing ${Math.round((g.swing ?? 0) * 100)}% · humanize ${Math.round((g.humanizeTiming ?? 0) * 100)}/${Math.round((g.humanizeVelocity ?? 0) * 100)}`;
   return {
     type: "setGroove",
     label: `Groove → ${describe(nextGroove)}`,
     execute: (d) => ({ ...d, groove: nextGroove }),
-    undo: (d) => ({ ...d, groove: prev }),
+    undo: (d) => {
+      if (prev === undefined) {
+        const { groove: _restored, ...withoutGroove } = d;
+        return withoutGroove;
+      }
+      return { ...d, groove: prev };
+    },
     applyToYDoc: (yMap) => {
       let g = yMap.get("groove") as any;
       if (!g) {
