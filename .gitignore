@@ -42,6 +42,7 @@ public/models/semantic/
 
 # Golden review pack (human listening) — local-only, not served
 golden-review/
+listening/
 
 # Local browser profiling artifacts. Browser profiles can contain cookies,
 # IndexedDB projects, local preferences and cache data; never commit them.
@@ -51,3 +52,10 @@ tmp-spectro-*.mjs
 
 # Audio classification model (T4) — one-time fetch via npm run audio:fetch
 public/models/audio/
+
+# transient audit/coverage artifacts
+coverage/
+_tc*.log
+_final*.log
+_aet*.log
+_test_run.log
