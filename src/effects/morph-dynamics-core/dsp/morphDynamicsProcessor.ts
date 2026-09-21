@@ -23,7 +23,7 @@
  */
 
 import * as P from "../contracts/parameterIds.js";
-import { MOD_DESTINATIONS } from "../contracts/modulation.js";
+import { MOD_DESTINATIONS, MOD_SOURCES } from "../contracts/modulation.js";
 import type { MorphMeters } from "../contracts/meters.js";
 import { buildDefaultParams, clampParam, PARAM_BY_ID } from "../contracts/parameterSchema.js";
 import type { AnalysisSignals } from "./analysis.js";
@@ -69,6 +69,28 @@ export class MorphDynamicsProcessor {
     level: 0.7,
     pan: 0,
   }));
+  /**
+   * Preallocated per-block stage output/config bags and the modulation
+   * source vector — process() mutates them in place. Fresh literals per
+   * block would put ~5 short-lived objects on the GC nursery every render
+   * quantum (the module contract is no allocation after prepare()).
+   */
+  private src = new Array<number>(MOD_SOURCES.length).fill(0);
+  private dynOut = { gl: 1, gr: 1, makeup: 1 };
+  private charOut = { l: 0, r: 0 };
+  private motionOut = { l: 0, r: 0 };
+  private spaceOut = { l: 0, r: 0 };
+  private harmonyParams: BodyHarmonizerParams = {
+    enabled: true,
+    bodyAmount: 1,
+    mix: 0.5,
+    fullSignal: false,
+    spread: 1,
+    width: 1,
+    diffusion: 0,
+    space: 0,
+    voices: this.harmonyVoicesCfg,
+  };
   // ── Spatial Bloom control signal (Experiment #3, §6) ────────────
   // bloom = BODY score → curve (§3: nothing below ~0.2, rising through
   // the musical range) → enveloped (attack ~80 ms, release ~450 ms — the
@@ -115,6 +137,13 @@ export class MorphDynamicsProcessor {
   };
   /** Per-destination sum of SMOOTHED route deltas (plain units of the dest). */
   private rawDelta = new Array<number>(MOD_DESTINATIONS.length).fill(0);
+
+  /** Bound-once mod-matrix clamp — a per-block closure would be a
+   * render-path allocation (the module contract is allocate-free). */
+  private modDelta = (destIdx: number, base: number): number => {
+    const dest = MOD_DESTINATIONS[destIdx]!;
+    return Math.max(dest.min, Math.min(dest.max, base + this.rawDelta[destIdx]!));
+  };
 
   // Per-route activity for the matrix UI (post-modulation magnitude 0..1).
   private routeActivity = new Array<number>(ROUTE_SLOTS).fill(0);
@@ -350,6 +379,10 @@ export class MorphDynamicsProcessor {
     const L = inputs[0];
     const R = inputs[1] ?? inputs[0];
 
+    // Morph scenes: glide params toward the active scene target BEFORE the
+    // block reads them — sections 1+ run on the interpolated values.
+    this.advanceMorph(frames / this.sampleRate);
+
     // ── 1. PRESSURE → curated nonlinear subsystem curves (f1..f4) ─
     const Pn = q[P.MACRO_PRESSURE_ID] / 100;
     const dynScale = Pn;
@@ -367,16 +400,16 @@ export class MorphDynamicsProcessor {
     // gently when a phrase ends, it does not collapse).
     const bloomRaw = smoothstep(this.meters.body, 0.2, 0.95);
     this.bloom += (bloomRaw - this.bloom) * (bloomRaw > this.bloom ? this.bloomUp : this.bloomDown);
-    const src: number[] = [
-      this.meters.inputEnergy,
-      this.dyn.grNorm,
-      this.meters.transient,
-      this.meters.body,
-      this.meters.texture,
-      this.meters.density,
-      routeScale, // PRESSURE as a source = post-curve reactive depth
-      this.bloom, // Spatial Bloom (Experiment #3) — curved, enveloped body energy
-    ];
+    // Reusable source vector (MOD_SOURCES order — see contracts/modulation).
+    const src = this.src;
+    src[0] = this.meters.inputEnergy;
+    src[1] = this.dyn.grNorm;
+    src[2] = this.meters.transient;
+    src[3] = this.meters.body;
+    src[4] = this.meters.texture;
+    src[5] = this.meters.density;
+    src[6] = routeScale; // PRESSURE as a source = post-curve reactive depth
+    src[7] = this.bloom; // Spatial Bloom (Experiment #3) — curved, enveloped body energy
     this.rawDelta.fill(0);
     for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
       this.routeActivity[slot] = 0;
@@ -403,10 +436,6 @@ export class MorphDynamicsProcessor {
       if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
     }
 
-    const mod = (destIdx: number, base: number): number => {
-      const dest = MOD_DESTINATIONS[destIdx];
-      return Math.max(dest.min, Math.min(dest.max, base + this.rawDelta[destIdx]));
-    };
 
     // ── 3. Effective (curated + modulated) stage values ───────────
     // External sidechain intent (the feed itself is consumed in the sample
@@ -418,8 +447,8 @@ export class MorphDynamicsProcessor {
     this.sm.thresholdOffset.setTarget(-10 * Math.pow(dynScale, 1.2));
     this.sm.ratioBonus.setTarget(3.5 * Math.pow(dynScale, 1.6));
     this.sm.makeupBonus.setTarget(1.5 * dynScale * dynScale);
-    const thresholdEff = mod(0, q[P.DYN_THRESHOLD_DB_ID] + this.sm.thresholdOffset.tick());
-    const ratioEff = mod(1, q[P.DYN_RATIO_ID] + this.sm.ratioBonus.current);
+    const thresholdEff = this.modDelta(0, q[P.DYN_THRESHOLD_DB_ID] + this.sm.thresholdOffset.tick());
+    const ratioEff = this.modDelta(1, q[P.DYN_RATIO_ID] + this.sm.ratioBonus.current);
     this.dyn.setParams({
       thresholdDb: thresholdEff,
       ratio: ratioEff,
@@ -443,9 +472,9 @@ export class MorphDynamicsProcessor {
     // tick() is what ADVANCES the smoother — reading .current without it
     // pins the value at its initial 0 forever, silently bypassing the whole
     // character stage (found by the alias-rejection test).
-    const driveEff = mod(2, this.sm.driveBase.tick() + reactiveDrive);
-    const toneEff = mod(3, q[P.CHAR_TONE_ID] + (q[P.MACRO_BODY_ID] - 50) * 0.3);
-    const clipEff = mod(4, q[P.CHAR_CLIP_ID] + q[P.MACRO_PUNCH_ID] * 0.15);
+    const driveEff = this.modDelta(2, this.sm.driveBase.tick() + reactiveDrive);
+    const toneEff = this.modDelta(3, q[P.CHAR_TONE_ID] + (q[P.MACRO_BODY_ID] - 50) * 0.3);
+    const clipEff = this.modDelta(4, q[P.CHAR_CLIP_ID] + q[P.MACRO_PUNCH_ID] * 0.15);
     this.sm.tone.setTarget(charOn ? toneEff / 100 : 0);
     this.sm.asym.setTarget(charOn ? q[P.CHAR_ASYM_ID] / 100 : 0);
     this.sm.clip.setTarget(charOn ? clipEff / 100 : 0);
@@ -458,28 +487,33 @@ export class MorphDynamicsProcessor {
 
     // f3 — motion: macro sets the base depth; reactive sources (body,
     // density) sweep the AP bank; GR feeds back; PRESSURE opens the swing.
+    // All four controls pass through their BlockSmoothers like every other
+    // stage — a macro jump or preset snap must step the AP bank click-free
+    // (the depth is a wet crossfade; a raw step clicks).
     const motionOn = q[P.MOTION_ENABLED_ID] >= 0.5;
-    const motionDepthEff = mod(5, (q[P.MACRO_MOTION_ID] / 100) * (35 + 65 * motionScale));
-    const rateEff = mod(6, q[P.MOTION_RATE_HZ_ID]);
-    const fbEff = mod(7, q[P.MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale);
-    const reactiveSweep =
-      (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale;
-    this.motion.setControl(
-      motionOn ? Math.max(0, Math.min(100, motionDepthEff)) / 100 : 0,
-      motionOn ? Math.max(0, rateEff) : 0,
-      motionOn ? Math.max(-80, Math.min(80, fbEff)) / 100 : 0,
-      motionOn ? Math.max(-1, Math.min(1, reactiveSweep)) : 0,
+    this.sm.motionDepth.setTarget(
+      motionOn ? Math.max(0, Math.min(100, this.modDelta(5, (q[P.MACRO_MOTION_ID] / 100) * (35 + 65 * motionScale)))) / 100 : 0,
     );
+    this.sm.motionRate.setTarget(motionOn ? Math.max(0, this.modDelta(6, q[P.MOTION_RATE_HZ_ID])) : 0);
+    this.sm.motionFeedback.setTarget(
+      motionOn ? Math.max(-80, Math.min(80, this.modDelta(7, q[P.MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale))) / 100 : 0,
+    );
+    this.sm.motionSweep.setTarget(
+      motionOn
+        ? Math.max(-1, Math.min(1, (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale))
+        : 0,
+    );
+    this.motion.setControl(this.sm.motionDepth.tick(), this.sm.motionRate.tick(), this.sm.motionFeedback.tick(), this.sm.motionSweep.tick());
 
     // f4 — space: macro send with a spaceScale floor (SPACE alone still
     // blooms); texture/density open send + diffusion reactively; transient
     // ducking comes straight from the analysis; width follows TEXTURE macro.
     const spaceOn = q[P.SPACE_ENABLED_ID] >= 0.5;
     const sendBase = (q[P.MACRO_SPACE_ID] / 100) * (40 + 60 * spaceScale);
-    const sendEff = mod(8, sendBase + (this.meters.texture * 20 + this.meters.density * 10) * spaceScale);
-    const diffEff = mod(9, q[P.SPACE_DIFFUSION_ID] + this.meters.texture * 25 * spaceScale);
-    const decayEff = mod(10, q[P.SPACE_DECAY_S_ID] + this.meters.body * 0.5 * spaceScale);
-    const widthEff = mod(11, q[P.SPACE_WIDTH_ID] * (0.7 + 0.6 * (q[P.MACRO_TEXTURE_ID] / 100)));
+    const sendEff = this.modDelta(8, sendBase + (this.meters.texture * 20 + this.meters.density * 10) * spaceScale);
+    const diffEff = this.modDelta(9, q[P.SPACE_DIFFUSION_ID] + this.meters.texture * 25 * spaceScale);
+    const decayEff = this.modDelta(10, q[P.SPACE_DECAY_S_ID] + this.meters.body * 0.5 * spaceScale);
+    const widthEff = this.modDelta(11, q[P.SPACE_WIDTH_ID] * (0.7 + 0.6 * (q[P.MACRO_TEXTURE_ID] / 100)));
     this.space.setParams({
       send: spaceOn ? Math.max(0, Math.min(100, sendEff)) / 100 : 0,
       predelayMs: q[P.SPACE_PREDELAY_MS_ID],
@@ -500,7 +534,7 @@ export class MorphDynamicsProcessor {
     // other destination (§7 — no special-case PRESSURE wiring).
     const harmOn = q[P.HARM_ENABLED_ID] >= 0.5;
     if (harmOn) {
-      this.sm.harmonyMix.setTarget(mod(12, q[P.HARM_MIX_ID]));
+      this.sm.harmonyMix.setTarget(this.modDelta(12, q[P.HARM_MIX_ID]));
       const voices = this.harmonyVoicesCfg;
       for (let v = 0; v < HARM_VOICE_COUNT; v++) {
         const vc = voices[v]!;
@@ -511,17 +545,20 @@ export class MorphDynamicsProcessor {
         vc.pan = q[P.harmVoiceParamId(v, "pan")] / 100;
       }
       const bloomScale = q[P.HARM_BLOOM_ID] / 100;
-      this.harmony.setParams({
-        enabled: true,
-        bodyAmount: q[P.HARM_BODY_AMOUNT_ID] / 100,
-        mix: this.sm.harmonyMix.tick() / 100,
-        fullSignal: q[P.HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
-        spread: Math.max(0, Math.min(200, q[P.HARM_SPREAD_ID] + this.rawDelta[13]! * bloomScale)) / 100,
-        width: Math.max(0, Math.min(200, q[P.HARM_WIDTH_ID] + this.rawDelta[14]! * bloomScale)) / 100,
-        diffusion: Math.max(0, Math.min(100, q[P.HARM_DIFFUSION_ID] + this.rawDelta[15]! * bloomScale)) / 100,
-        space: Math.max(0, Math.min(100, q[P.HARM_SPACE_ID] + this.rawDelta[16]! * bloomScale)) / 100,
-        voices,
-      });
+      // Mutate the preallocated config bag in place — the harmonizer holds
+      // this reference, so a fresh literal per block is both an allocation
+      // and unnecessary.
+      const hp = this.harmonyParams;
+      hp.enabled = true;
+      hp.bodyAmount = q[P.HARM_BODY_AMOUNT_ID] / 100;
+      hp.mix = this.sm.harmonyMix.tick() / 100;
+      hp.fullSignal = q[P.HARM_DEV_FULL_SIGNAL_ID] >= 0.5;
+      hp.spread = Math.max(0, Math.min(200, q[P.HARM_SPREAD_ID] + this.rawDelta[13]! * bloomScale)) / 100;
+      hp.width = Math.max(0, Math.min(200, q[P.HARM_WIDTH_ID] + this.rawDelta[14]! * bloomScale)) / 100;
+      hp.diffusion = Math.max(0, Math.min(100, q[P.HARM_DIFFUSION_ID] + this.rawDelta[15]! * bloomScale)) / 100;
+      hp.space = Math.max(0, Math.min(100, q[P.HARM_SPACE_ID] + this.rawDelta[16]! * bloomScale)) / 100;
+      hp.voices = voices;
+      this.harmony.setParams(hp);
     }
 
     // I/O + mix smoothing.
@@ -535,24 +572,28 @@ export class MorphDynamicsProcessor {
     // PUNCH>0 adds a short parallel transient lift after the compressor
     // (phase-safe — pure gain); PUNCH<0 trims transient peaks slightly.
     const transientPathTrim = punch > 0 ? punch * 0.35 : punch * 0.18;
-    // Morph scenes: glide params toward the active scene target before the
-    // block reads them (section 1+ run on the interpolated values).
-    this.advanceMorph(frames / this.sampleRate);
 
     // ── 4. Sample loop ────────────────────────────────────────────
     let inPeak = 0;
     let outPeak = 0;
-    const dynOut = { gl: 1, gr: 1, makeup: 1 };
-    const charOut = { l: 0, r: 0 };
-    const motionOut = { l: 0, r: 0 };
-    const spaceOut = { l: 0, r: 0 };
+    const dynOut = this.dynOut;
+    const charOut = this.charOut;
+    const motionOut = this.motionOut;
+    const spaceOut = this.spaceOut;
     let sig: AnalysisSignals = this.analysis.processFrame(0, 0);
     // External sidechain (dyn.sidechainExt): the DETECTOR and the ANALYSIS
     // tap follow the sidechain feed instead of the main signal — a kick or
     // vocal chop drives the ducking/gain while the main audio stays put.
+    // Length-checked: a short feed must fall back to the main signal, not
+    // read out of bounds into NaN.
     const scLArr = sc?.[0];
     const scRArr = sc?.[1];
-    const extSc = sidechainExt && scLArr !== undefined && scRArr !== undefined;
+    const extSc =
+      sidechainExt &&
+      scLArr !== undefined &&
+      scRArr !== undefined &&
+      scLArr.length >= frames &&
+      scRArr.length >= frames;
     const dryDelay = this.character.latencySamples;
     for (let i = 0; i < frames; i++) {
       const detL = (extSc ? scLArr![i] : L[i]) * inputGain;

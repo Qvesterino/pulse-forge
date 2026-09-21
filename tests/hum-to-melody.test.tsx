@@ -409,6 +409,74 @@ describe("humContourLayout — pitch-contour canvas math", () => {
   });
 });
 
+describe("recognition reliability — adaptive gate + pitch mode", () => {
+  const frame = (timeSec: number, midi: number, clarity = 0.9, rms = 0.2) => ({
+    timeSec,
+    midi,
+    clarity,
+    rms,
+  });
+  const base = { bpm: 120, quantize: false, patternLengthTicks: 1920 * 8 };
+
+  it("adaptive gate: a breathy take (median ~0.45) yields notes where the hard 0.55 gave holes", () => {
+    // A whole take sitting at 0.4–0.5 clarity — cheap-mic / breathy hum.
+    // Old behavior: every frame fails the 0.55 gate → zero notes.
+    const breathy = Array.from({ length: 60 }, (_, i) => frame(0.4 + i * 0.01, 60, 0.44 + (i % 5) * 0.02));
+    const hardGate = framesToNotes(breathy, { ...base, clarityGate: 0.55 });
+    expect(hardGate).toHaveLength(0);
+    const adaptive = framesToNotes(breathy, base);
+    expect(adaptive.length).toBeGreaterThanOrEqual(1);
+    expect(adaptive[0]!.pitch).toBe(60);
+  });
+
+  it("adaptive gate: a clean take keeps the strict gate — noisy frames stay filtered", () => {
+    // Solid hum (median ~0.85) with one low-clarity wobble frame.
+    const clean = Array.from({ length: 50 }, (_, i) => frame(0.4 + i * 0.01, 62, 0.85));
+    clean[25] = frame(0.65, 62, 0.4); // weak frame mid-take
+    const notes = framesToNotes(clean, base);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.pitch).toBe(62);
+    // And the pinned gate still behaves like the old hard gate.
+    expect(framesToNotes(clean, { ...base, clarityGate: 0.95 })).toHaveLength(0);
+  });
+
+  it("adaptive gate: a noise-only take (median < 0.35) stays strict — honest empty result", () => {
+    const noise = Array.from({ length: 60 }, (_, i) => frame(0.4 + i * 0.01, 60 + (i % 7), 0.15 + (i % 4) * 0.03));
+    expect(framesToNotes(noise, base)).toHaveLength(0);
+  });
+
+  it("pitch mode: a glide INTO the note does not drag the pitch off target", () => {
+    // 5 frames: three at ~63.3 (mode → 63) then two gliding up to 64.3.
+    // Mean = 63.66 → rounds to 64 (the OLD, wrong landing); mode = 63.
+    const gliding = [
+      frame(0.4, 63.3),
+      frame(0.41, 63.4),
+      frame(0.42, 63.3),
+      frame(0.43, 64.1),
+      frame(0.44, 64.3),
+    ];
+    const notes = framesToNotes(gliding, base);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.pitch).toBe(63);
+  });
+
+  it("pitch mode: symmetric vibrato keeps the center (tie resolves toward the mean)", () => {
+    // Oscillating ±0.4 around 64: rounded counts split 64/65 — mean 64.0
+    // breaks the tie downward, matching the old mean behavior.
+    const vibrato = [
+      frame(0.4, 63.6),
+      frame(0.41, 64.4),
+      frame(0.42, 63.6),
+      frame(0.43, 64.4),
+      frame(0.44, 63.6),
+      frame(0.45, 64.4),
+    ];
+    const notes = framesToNotes(vibrato, base);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.pitch).toBe(64);
+  });
+});
+
 describe("audition helpers (pre-apply AUDITION + octave shift)", () => {
   it("auditionTimings maps ticks to absolute delays and sounding seconds", () => {
     const notes = [

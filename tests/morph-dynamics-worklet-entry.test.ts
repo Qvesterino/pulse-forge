@@ -229,4 +229,61 @@ describe("Morph Dynamics worklet and analysis", () => {
     expect(outputL[0]).toBe(0);
     expect(outputR[0]).toBe(0);
   });
+
+  it("reads the external sidechain from node input 2 (inputs[1]) — regression", () => {
+    // The feed used to be read from inputs[0][2+c] — channels that cannot
+    // exist (explicit channelCount 2) — so dyn.sidechainExt ducked against
+    // silence. A hot sidechain feed MUST duck the main path; a silent one
+    // must not.
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const scParams = {
+      "macro.pressure": 0,
+      "macro.punch": 0,
+      "char.enabled": 0,
+      "motion.enabled": 0,
+      "space.enabled": 0,
+      "dyn.sidechainExt": 1,
+      "dyn.makeupAuto": 0,
+      "dyn.thresholdDb": -20,
+      "dyn.ratio": 6,
+      "dyn.attackMs": 5,
+      "dyn.releaseMs": 150,
+    };
+    const runWith = (scAmplitude: number): number => {
+      const proc = new Processor();
+      proc.port.onmessage?.({ data: { type: "params", params: scParams } });
+      let sumSq = 0;
+      let count = 0;
+      for (let block = 0; block < 220; block++) {
+        const inputL = new Float32Array(BLOCK);
+        const inputR = new Float32Array(BLOCK);
+        const scL = new Float32Array(BLOCK);
+        const scR = new Float32Array(BLOCK);
+        const outputL = new Float32Array(BLOCK);
+        const outputR = new Float32Array(BLOCK);
+        for (let frame = 0; frame < BLOCK; frame++) {
+          const t = (block * BLOCK + frame) / 48_000;
+          // Main: quiet sustained tone. Feed: loud tone driving the detector.
+          inputL[frame] = 0.15 * Math.sin(2 * Math.PI * 220 * t);
+          inputR[frame] = inputL[frame]!;
+          scL[frame] = scAmplitude * Math.sin(2 * Math.PI * 55 * t);
+          scR[frame] = scL[frame]!;
+        }
+        // Node wiring: inputs[0] = main (2ch), inputs[1] = sidechain (2ch).
+        proc.process([[inputL, inputR], [scL, scR]], [[outputL, outputR]]);
+        if (block >= 120) {
+          for (let frame = 0; frame < BLOCK; frame++) sumSq += outputL[frame] ** 2 + outputR[frame] ** 2;
+          count += 2 * BLOCK;
+        }
+      }
+      return Math.sqrt(sumSq / count);
+    };
+    const ducked = runWith(0.5);
+    const open = runWith(0);
+    // 14 dB over threshold at 6:1 ≈ −12 dB GR on the feed — far more than
+    // the old always-silent feed could ever produce.
+    expect(ducked).toBeLessThan(open * 0.4);
+    expect(open).toBeGreaterThan(0.1);
+  });
 });

@@ -23,18 +23,13 @@ describe("instrument definitions (pure metadata)", () => {
   });
 
   it("every param of every kind is well-formed (min ≤ default ≤ max, ids unique)", () => {
-    // KNOWN EXCEPTION: "808:decay" appears twice — introduced by in-flight
-    // 808 work from the parallel session, swept verbatim into the split.
-    // `defaultInstrumentParams` (fromEntries) keeps the LAST, `clamp`
-    // (find) honours the FIRST. Recorded as a data smell; do not add more.
-    const knownDuplicates = new Set(["808:decay"]);
+    // Historical note: a transient "808:decay" duplicate (in-flight parallel
+    // 808 work swept verbatim into the GOAL 02 split) was tolerated here until
+    // 2026-09-22; that work resolved it, so uniqueness is unconditional again.
     for (const kind of ALL_KINDS) {
       const seen = new Set<string>();
       for (const p of INSTRUMENT_META[kind].params) {
-        const key = `${kind}:${p.id}`;
-        if (!knownDuplicates.has(key)) {
-          expect(seen.has(p.id), `${key} duplicate`).toBe(false);
-        }
+        expect(seen.has(p.id), `${kind}:${p.id} duplicate`).toBe(false);
         seen.add(p.id);
         expect(p.min).toBeLessThanOrEqual(p.max);
         expect(p.default).toBeGreaterThanOrEqual(p.min);

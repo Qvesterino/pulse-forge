@@ -128,6 +128,9 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output || !output[0] || !output[1]) return true;
     const input = inputs[0];
+    // Input 2 (inputs[1]) carries the external sidechain feed; unconnected
+    // inputs arrive as silence/empty, guarded below.
+    const scInput = inputs[1];
     const total = output[0].length;
     // Events up to the end of the block apply now (≤ one quantum early).
     this.applyDueParams(currentTime + total / sampleRate);
@@ -145,8 +148,10 @@ class MorphDynamicsWorkletProcessor extends AudioWorkletProcessor {
           buf.fill(0, 0, frames);
         }
         // Sidechain feed: node input 2, optional (nothing connected → zeros).
+        // The feed arrives as inputs[1] (the node's second INPUT) — channels
+        // 2+ of inputs[0] cannot exist (explicit channelCount 2).
         const scBuf = this.scScratch[c];
-        const scCh = input && input[CHANNELS + c];
+        const scCh = scInput && scInput[c];
         if (scCh && scCh.length >= offset + frames) {
           scBuf.set(scCh.subarray(offset, offset + frames));
         } else {

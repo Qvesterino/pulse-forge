@@ -130,4 +130,4 @@ writeFileSync(path.join(outRoot, "LISTENING.md"), listeningLines.join("\n"));
 
 await browser.close();
 await server.close();
-console.log(`[review-pack] ${totalFiles} candidate render(s) → public/golden-review/ (+ LISTENING.md)`);
+console.log(`[review-pack] ${totalFiles} candidate render(s) → ${outRoot} (+ LISTENING.md)`);
