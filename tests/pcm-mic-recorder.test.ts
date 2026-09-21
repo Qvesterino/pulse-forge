@@ -431,7 +431,8 @@ describe("PcmMicRecorder", () => {
     await recorder.start(metadata);
     const level = recorder.getInputLevel();
     expect(level.peak).toBeCloseTo(0.5, 5);
-    expect(level.rms).toBeCloseTo(Math.sqrt((0.25 + 0.0625 + 0.015625) / 4), 5);
+    // RMS runs over the full 1024-frame analyser window (mostly zeros here).
+    expect(level.rms).toBeCloseTo(Math.sqrt((0.25 + 0.0625 + 0.015625) / 1024), 8);
     await recorder.cancel();
     expect(recorder.getInputLevel()).toEqual({ peak: 0, rms: 0 });
   });

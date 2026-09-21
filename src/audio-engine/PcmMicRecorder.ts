@@ -123,6 +123,9 @@ export class PcmMicRecorder {
     gain.setTargetAtTime(Math.pow(10, this.inputGainDb / 20), now, 0.01);
   }
 
+  /** Current input trim in dB. Derived from {@link inputGainDb}; kept as a
+   * public alias so callers (tests, meters) can read the trim in dB without
+   * touching the clamped backing field. */
   get inputGain(): number {
     return this.inputGainDb;
   }

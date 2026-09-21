@@ -52,7 +52,10 @@ export function loadRecordingInputGainDb(storage: RecordingInputStorage | null =
 export function saveRecordingInputGainDb(gainDb: number, storage: RecordingInputStorage | null = browserStorage()): void {
   try {
     if (!storage) return;
-    storage.setItem(GAIN_STORAGE_KEY, String(Math.round(gainDb * 10) / 10));
+    // No rounding — exact round-trip so the slider reads the same value
+    // after a reload. The UI slider steps in 0.5 dB; `clampInputGainDb`
+    // on the read/write side is the authoritative bounds guard.
+    storage.setItem(GAIN_STORAGE_KEY, String(gainDb));
   } catch {
     // Blocked storage must not prevent a vocal take.
   }
