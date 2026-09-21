@@ -524,7 +524,12 @@ default house patternu (najhorší možný fallback pre trap request).
   nesie `+sem`. PCA matica v bundle ako Int8-kvantovaný modul
   (`src/ai/symbolic/pca-projection.ts`, generovaný `npm run pca:module`).
   Neznáme popisy ("dark rainy berlin techno") fungujú cez kontinuálny priestor —
-  žiadne nové one-hot dimenzie. Fáza G (melodic v2) ostáva otvorená.
+  žiadne nové one-hot dimenzie. **Fáza G HOTOVÁ — melodic prior v2 (41-dim)**:
+  `melodic-features-v2` (semantic 16 + role/step/prev_degree/prev_dur/contour 25 —
+  roadmapové 16+13 by zahodilo autoregresívny kontext), `npm run prior:melodic:v2`
+  (valDegreeAcc 0.643 = parita s v1 na rovnakých dátach, 20.7 kB,
+  `symbolic-melodic-v2.onnx`, kind `melodic-v2`), `runMelodicNextV2` +
+  `sampleMelodicParts(..., conditioning)` — v2 preferované, v1 fallback per call.
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).
