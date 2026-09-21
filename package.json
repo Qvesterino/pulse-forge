@@ -62,6 +62,8 @@
     "references:genres": "node scripts/measure-genre-references.mjs",
     "listening:morph": "vite-node scripts/render-morph-listening.mjs",
     "listening:serve": "node scripts/serve-listening.mjs",
+    "listening:room": "vite-node scripts/render-listening-room.mjs",
+    "listening:ingest": "node scripts/ingest-listening-verdicts.mjs",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs"
   },
   "dependencies": {

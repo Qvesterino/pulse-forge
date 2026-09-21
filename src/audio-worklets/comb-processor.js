@@ -32,6 +32,10 @@ class CombProcessor extends AudioWorkletProcessor {
       { name: "feedback", defaultValue: 0.5, minValue: -0.95, maxValue: 0.95, automationRate: "k-rate" },
       { name: "damp", defaultValue: 6500, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      // STEREO SPREAD: the right channel reads at (1 + 0.35·spread)× the
+      // delay — the L/R notches separate, turning the metallic mono comb
+      // into a wide stereo resonator.
+      { name: "spread", defaultValue: 0.25, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -50,6 +54,7 @@ class CombProcessor extends AudioWorkletProcessor {
     const feedback = Math.max(-0.95, Math.min(0.95, parameters.feedback[0]));
     const dampFreq = Math.max(500, Math.min(12000, parameters.damp[0]));
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
+    const spread = Math.max(0, Math.min(1, parameters.spread ? parameters.spread[0] : 0.25));
 
     const delaySamples = (delayMs * sr) / 1000;
     const dampAlpha = 1 - Math.exp((-2 * Math.PI * dampFreq) / sr);
@@ -60,7 +65,10 @@ class CombProcessor extends AudioWorkletProcessor {
 
       const readPos = this.writeIdx - delaySamples;
       const delayedL = this.readCubic(this.bufL, readPos);
-      const delayedR = this.readCubic(this.bufR, readPos);
+      // Spread: the right channel reads proportionally DEEPER into the
+      // buffer — its notches land at different frequencies than the left's.
+      const readPosR = this.writeIdx - delaySamples * (1 + 0.35 * spread);
+      const delayedR = this.readCubic(this.bufR, readPosR);
 
       // Damp in feedback loop (one-pole lowpass)
       this.dampL += dampAlpha * (delayedL - this.dampL);

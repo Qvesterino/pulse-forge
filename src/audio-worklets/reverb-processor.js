@@ -46,6 +46,8 @@ class ReverbProcessor extends AudioWorkletProcessor {
     // Output tone LP state (per channel) — separate from the in-loop damping.
     this.outLpL = 0;
     this.outLpR = 0;
+    // Modulation phase (sample counter — deterministic, no RNG).
+    this.modPhase = 0;
   }
 
   static get parameterDescriptors() {
@@ -54,6 +56,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
       { name: "damping", defaultValue: 6000, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
       { name: "diffusion", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "tone", defaultValue: 6000, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
+      // Comb delay-length modulation depth (0..1): a slow per-comb sine
+      // drift on the read positions — detunes the early resonance modes so
+      // long decays stop ringing metallically.
+      { name: "mod", defaultValue: 0.35, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -99,23 +105,32 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const combFeedback = this.combFeedback;
 
     const apFeedback = 0.3 + diffusion * 0.4; // 0.3..0.7
+    // Mod depth in samples (up to ~3% of the longest comb ≈ 1.3 ms) and a
+    // per-comb rate/phase spread — decorrelates the resonance modes.
+    const modDepth = Math.max(0, Math.min(1, parameters.mod ? parameters.mod[0] : 0.35)) * 0.03;
+    const modRateRad = (2 * Math.PI * 0.5) / sr;
 
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
-      const inputMono = (l + r) * 0.5;
 
-      // Parallel combs
+      // Parallel combs — STEREO INPUT: each channel feeds its own network
+      // (used to be summed to mono, which wasted the stereo field).
       let sumL = 0;
       let sumR = 0;
+      this.modPhase += modRateRad;
+      if (this.modPhase > 2 * Math.PI) this.modPhase -= 2 * Math.PI;
       for (let c = 0; c < 4; c++) {
         const delaySamples = (REVERB_COMB_DELAYS[c] * sr) / 48000;
         const fb = combFeedback[c];
-        // Read with linear interp, ±1% stereo detune
+        // Read with linear interp, ±1% stereo detune + slow per-comb drift
+        // (modulation kills the metallic fixed-mode ring on long decays).
         const detuneL = 1 - 0.01 * (c % 2 === 0 ? 1 : -1) * 0.5;
         const detuneR = 1 + 0.01 * (c % 2 === 0 ? 1 : -1) * 0.5;
-        const readL = this.readComb(c, 0, delaySamples * detuneL);
-        const readR = this.readComb(c, 1, delaySamples * detuneR);
+        const driftL = 1 + modDepth * Math.sin(this.modPhase * (1 + c * 0.13) + c * 1.7);
+        const driftR = 1 + modDepth * Math.sin(this.modPhase * (1.21 + c * 0.11) + c * 2.3 + 1.1);
+        const readL = this.readComb(c, 0, delaySamples * detuneL * driftL);
+        const readR = this.readComb(c, 1, delaySamples * detuneR * driftR);
         // Damping LP in feedback loop
         this.combDampL[c] += dampAlpha * (readL - this.combDampL[c]);
         this.combDampR[c] += dampAlpha * (readR - this.combDampR[c]);
@@ -123,9 +138,9 @@ class ReverbProcessor extends AudioWorkletProcessor {
         if (Math.abs(this.combDampR[c]) < 1e-20) this.combDampR[c] = 0;
         const dampL = this.combDampL[c];
         const dampR = this.combDampR[c];
-        // Write input + feedback * damped
-        const wL = inputMono + dampL * fb;
-        const wR = inputMono + dampR * fb;
+        // Write per-channel input + feedback * damped
+        const wL = l + dampL * fb;
+        const wR = r + dampR * fb;
         this.writeComb(c, 0, wL);
         this.writeComb(c, 1, wR);
         sumL += dampL;

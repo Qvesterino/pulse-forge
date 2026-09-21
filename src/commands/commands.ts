@@ -78,7 +78,7 @@ import {
   clampParam as clampMorphParam,
   buildDefaultParams as buildMorphDefaults,
 } from "../effects/morph-dynamics-core/contracts/parameterSchema";
-import { INSTRUMENT_DEFS, clampInstrumentParam, defaultInstrumentParams } from "../instruments/registry";
+import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "../instruments/definitions";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
 import type { InstrumentPreset } from "../presets/types";
 import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
@@ -2273,7 +2273,7 @@ export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramI
   });
   return {
     type: "setInstrumentParam",
-    label: `Set ${INSTRUMENT_DEFS[track.instrument].name} ${paramId}`,
+    label: `Set ${INSTRUMENT_META[track.instrument].name} ${paramId}`,
     execute: (d) => apply(d, clamped),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {

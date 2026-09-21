@@ -3,7 +3,7 @@ import type { ParamDef } from "../effects/types";
 import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
 import { ALL_PARAMS, clampParam as clampUltinaParam } from "../effects/ultina-core/contracts/parameterSchema";
-import { INSTRUMENT_DEFS, clampInstrumentParam } from "../instruments/registry";
+import { INSTRUMENT_META, clampInstrumentParam } from "../instruments/definitions";
 import { defaultOzvenaStateV1 } from "../effects/ozvena-core/v2/types";
 import { ozvenaParamRange } from "../effects/ozvena-params";
 
@@ -154,7 +154,7 @@ export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] 
 }
 
 export function instrumentTargetParamDefs(track: Extract<Track, { kind: "instrument" }>): TargetParamDef[] {
-  return INSTRUMENT_DEFS[track.instrument].params.map(fromRackDef);
+  return INSTRUMENT_META[track.instrument].params.map(fromRackDef);
 }
 
 /** Resolve the legal metadata for one fully-qualified AutomationTarget. */

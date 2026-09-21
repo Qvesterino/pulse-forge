@@ -27,7 +27,22 @@ import { runMelodicNext, runPriorGrid } from "../src/ai/symbolic/prior-client";
 const runPriorGridMock = vi.mocked(runPriorGrid);
 const runMelodicNextMock = vi.mocked(runMelodicNext);
 
+// Multi-voice can be force-emptied per-test to exercise the template fallback
+// without losing the real harmony-aware path for the other cases.
+const multiVoiceState = vi.hoisted(() => ({ empty: false }));
+vi.mock("../src/intent/multi-voice", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/intent/multi-voice")>();
+  return {
+    ...actual,
+    generateMultiVoice: (...args: Parameters<typeof actual.generateMultiVoice>) =>
+      multiVoiceState.empty
+        ? { bass: [], chord: [], lead: [], progressionName: "empty", progressionDegree: 0 }
+        : actual.generateMultiVoice(...args),
+  };
+});
+
 beforeEach(() => {
+  multiVoiceState.empty = false;
   runPriorGridMock.mockReset();
   runPriorGridMock.mockImplementation(async (batch: Float32Array, rowCount: number) => ({
     ok: batch.length === rowCount * 44,
@@ -133,7 +148,7 @@ describe("melodic prior sampling in the provider", () => {
       expect(note.duration).toBeGreaterThan(0);
     }
     // name marks the melodic prior participation
-    expect(entries[0].pattern.name).toContain("+melody");
+    expect(entries[0].pattern.name).toContain("+mv");
   });
 
   it("is deterministic for the same plan and stubbed distributions", async () => {
@@ -145,7 +160,8 @@ describe("melodic prior sampling in the provider", () => {
     expect(first.entries[0].pattern.rows).toEqual(second.entries[0].pattern.rows);
   });
 
-  it("falls back to template melody when the melodic prior is unavailable", async () => {
+  it("falls back to template melody when multi-voice and the prior are unavailable", async () => {
+    multiVoiceState.empty = true;
     runMelodicNextMock.mockResolvedValue({ ok: false, degree: null, duration: null, source: "fallback" });
     const plan = planGeneration(intent, doc);
     const { entries, failures } = await symbolicPriorProvider.collectCandidates(
@@ -155,7 +171,7 @@ describe("melodic prior sampling in the provider", () => {
     );
     expect(failures).toEqual([]); // melodic fallback is NOT a failure — candidate stays
     expect(entries.length).toBe(1);
-    expect(entries[0].pattern.name).not.toContain("+melody");
+    expect(entries[0].pattern.name).not.toContain("+mv");
     const notes = Object.values(entries[0].pattern.notes ?? {}).flat();
     expect(notes.length).toBeGreaterThan(0); // template melody preserved
   });

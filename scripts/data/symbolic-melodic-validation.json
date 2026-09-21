@@ -1,15 +1,15 @@
 {
   "datasetVersion": "symbolic-melodic-ds.v1",
   "featureVersion": "melodic-features.v1",
-  "featureCount": 29,
+  "featureCount": 41,
   "hidden": [
     64,
     32
   ],
   "epochs": 800,
   "samples": 190,
-  "valDegreeAcc": 0.8214,
-  "trainDegreeAcc": 0.7871,
-  "valDurationAcc": 0.6786,
-  "trainDurationAcc": 0.8754
+  "valDegreeAcc": 0.6429,
+  "trainDegreeAcc": 0.9383,
+  "valDurationAcc": 0.4643,
+  "trainDurationAcc": 0.9074
 }

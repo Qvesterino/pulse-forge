@@ -1191,10 +1191,7 @@
       this.cfg = cfg;
       for (let i = 0; i < HARM_VOICE_COUNT2; i++) {
         const v = cfg.voices[i];
-        this.voices[i].setParams(
-          v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 },
-          this.sampleRate
-        );
+        this.voices[i].setParams(v ?? { enabled: false, interval: 0, detune: 0, level: 0, pan: 0 }, this.sampleRate);
       }
     }
     /** The current body mask (observability / tests). */
@@ -1303,10 +1300,13 @@
     harmony = new BodyHarmonizer();
     harmonyOut = { l: 0, r: 0, dry: 1 };
     /** Preallocated per-block voice config (no allocation in the render path). */
-    harmonyVoicesCfg = Array.from(
-      { length: HARM_VOICE_COUNT2 },
-      () => ({ enabled: false, interval: 0, detune: 0, level: 0.7, pan: 0 })
-    );
+    harmonyVoicesCfg = Array.from({ length: HARM_VOICE_COUNT2 }, () => ({
+      enabled: false,
+      interval: 0,
+      detune: 0,
+      level: 0.7,
+      pan: 0
+    }));
     // Output safety (per channel — each keeps its own one-pole state).
     dcL = new OnePoleHP();
     dcR = new OnePoleHP();

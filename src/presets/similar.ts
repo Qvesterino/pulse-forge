@@ -1,4 +1,4 @@
-import { INSTRUMENT_DEFS } from "../instruments/registry";
+import { INSTRUMENT_META } from "../instruments/definitions";
 import type { InstrumentTrack } from "../project-model/types";
 import type { InstrumentPreset } from "./types";
 
@@ -24,7 +24,7 @@ export function rankSimilarPresets(
   track: InstrumentTrack,
   limit = 12,
 ): SimilarPreset[] {
-  const defs = INSTRUMENT_DEFS[track.instrument].params;
+  const defs = INSTRUMENT_META[track.instrument].params;
   const scored: SimilarPreset[] = [];
   for (const preset of candidates) {
     if (preset.instrument !== track.instrument) continue;

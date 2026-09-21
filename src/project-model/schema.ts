@@ -25,7 +25,7 @@ import type {
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
-import { defaultInstrumentParams, INSTRUMENT_DEFS } from "../instruments/registry";
+import { defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
 import { createProjectFromTemplate } from "./templates";
 import { EFFECT_DEFS, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../effects/registry";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
@@ -1102,10 +1102,10 @@ function normalizeTracksDomain(s: NormalizeState): void {
     // promises never to throw, and a hostile doc (collab peer, corrupted
     // import) previously crashed the whole sync path here.
     const knownInstrument =
-      typeof track.instrument === "string" && Object.prototype.hasOwnProperty.call(INSTRUMENT_DEFS, track.instrument);
+      typeof track.instrument === "string" && Object.prototype.hasOwnProperty.call(INSTRUMENT_META, track.instrument);
     const instrument = knownInstrument
       ? track.instrument
-      : (Object.keys(INSTRUMENT_DEFS)[0] as InstrumentTrack["instrument"]);
+      : (Object.keys(INSTRUMENT_META)[0] as InstrumentTrack["instrument"]);
     const defaults = defaultInstrumentParams(instrument);
     let t: InstrumentTrack = track;
     let paramsChanged = false;

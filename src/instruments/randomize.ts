@@ -1,6 +1,6 @@
 import type { InstrumentKind } from "../project-model/types";
 import { mulberry32 } from "../shared/rng";
-import { clampInstrumentParam, INSTRUMENT_DEFS } from "./registry";
+import { clampInstrumentParam, INSTRUMENT_META } from "./definitions";
 
 /**
  * Musically-constrained randomize for instrument tracks.
@@ -32,7 +32,7 @@ export function randomizeParams(
   seed: number,
 ): Record<string, number> {
   const rand = mulberry32(seed);
-  const def = INSTRUMENT_DEFS[instrument];
+  const def = INSTRUMENT_META[instrument];
   const skip = new Set([...NEVER_RANDOMIZE, ...(EXCLUDE[instrument] ?? [])]);
   const out: Record<string, number> = {};
   for (const p of def.params) {

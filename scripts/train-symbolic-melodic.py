@@ -142,6 +142,11 @@ def main() -> None:
         help="weighted favorite next-note samples JSON (favoritesToMelodicSamples output) "
         "— folded into the TRAIN split only",
     )
+    parser.add_argument(
+        "--embedding",
+        help="style-embeddings.json (from generate-style-embeddings.mts) — replaces "
+        "genre one-hot with a 16-dim semantic vector (v2, 41-dim input)",
+    )
     parser.add_argument("--favorite-oversample", type=int, default=3)
     args = parser.parse_args()
 
@@ -155,6 +160,34 @@ def main() -> None:
     y_degree = np.array([sample["degree"] for sample in data], dtype=np.int64)
     y_duration = np.array([sample["duration"] for sample in data], dtype=np.int64)
     groups = np.array([sample["group"] for sample in data])
+
+    # --embedding mode: replace genre one-hot (x[0:4]) with 16-dim semantic
+    # vector from style-embeddings.json. Input goes from 29 → 41 dims.
+    genre_semantic: dict[str, list[float]] = {}
+    if args.embedding:
+        emb_payload = json.loads(Path(args.embedding).read_text())
+        style_map = emb_payload.get("styles", {})
+        # Average semantic vectors per genre (melodic model is genre-level)
+        genre_vectors: dict[str, list[float]] = {}
+        for style_id, vector in style_map.items():
+            genre = style_id.split(".")[0]
+            if genre not in genre_vectors:
+                genre_vectors[genre] = list(vector)
+            else:
+                for d in range(len(vector)):
+                    genre_vectors[genre][d] = (genre_vectors[genre][d] + vector[d]) / 2
+        genre_semantic = genre_vectors
+        print(f"[train] embedding mode: {len(genre_vectors)} genre semantic vectors")
+
+    if genre_semantic:
+        new_rows: list[list[float]] = []
+        for i, sample in enumerate(data):
+            genre = sample["group"].split("#")[0]
+            semantic = genre_semantic.get(genre, [0.0] * 16)
+            structural = list(x_all[i][4:])  # skip genre one-hot (4 dims)
+            new_rows.append(list(semantic) + structural)
+        x_all = np.array(new_rows, dtype=np.float64)
+        print(f"[train] features transformed to embedding-conditioned: {x_all.shape[1]} dims")
 
     unique_groups = np.unique(groups)
     rng.shuffle(unique_groups)

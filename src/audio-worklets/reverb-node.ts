@@ -19,27 +19,18 @@ export function createReverbNode(ctx: BaseAudioContext, instance: { params: Reco
   const output = ctx.createGain();
   input.connect(node).connect(output);
 
+  // DAMPING (loop darkening) and TONE (output brightness) are independent
+  // processor params now — no legacy tone→damping mirroring. The helper
+  // drops non-finite values so a corrupt preset write cannot abort.
   const setParam = (id: string, v: number, when?: number) => {
-    // Map legacy `tone` to `damping`+`tone` for compat. The helper drops
-    // non-finite values so a corrupt preset write cannot abort the chain.
-    if (id === "tone") {
-      safeApplyAudioParam(node, "tone", v, when);
-      const dp = node.parameters.get("damping");
-      if (dp && Number.isFinite(v)) {
-        if (when === undefined) dp.value = v;
-        else dp.setValueAtTime(v, when);
-      }
-      return;
-    }
     safeApplyAudioParam(node, id, v, when);
   };
 
   setParam("decay", instance.params.decay ?? 1.8);
-  // Prefer explicit damping, else tone
-  const damp = instance.params.damping ?? instance.params.tone ?? 6000;
-  setParam("damping", damp);
-  setParam("tone", damp);
+  setParam("damping", instance.params.damping ?? instance.params.tone ?? 6000);
+  setParam("tone", instance.params.tone ?? 9000);
   setParam("diffusion", instance.params.diffusion ?? 0.5);
+  setParam("mod", instance.params.mod ?? 0.35);
 
   return {
     input,

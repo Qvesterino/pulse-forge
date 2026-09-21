@@ -23,6 +23,7 @@ export function createCombNode(ctx: BaseAudioContext, instance: { params: Record
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0.5);
   safeApplyAudioParam(node, "damp", instance.params.damp ?? 6500);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
+  safeApplyAudioParam(node, "spread", instance.params.spread ?? 0.25);
 
   return {
     input,

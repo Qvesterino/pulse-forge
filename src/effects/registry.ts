@@ -1299,6 +1299,7 @@ const reverb: EffectDefinition = {
       taper: "log",
     },
     { id: "diffusion", label: "DIFFUSION", min: 0, max: 1, default: 0.5, format: formatPct },
+    { id: "mod", label: "MOD", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -1327,6 +1328,9 @@ const reverb: EffectDefinition = {
             break;
           case "diffusion":
             node.setParameter("diffusion", v);
+            break;
+          case "mod":
+            node.setParameter("mod", v);
             break;
           case "mix":
             mix.setMix(v, when);
@@ -2152,6 +2156,8 @@ const phaser: EffectDefinition = {
     },
 
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.6, format: formatPct },
+    { id: "center", label: "CENTER", min: 200, max: 3000, default: 800, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.3, format: formatPct },
     {
       id: "stages",
@@ -2165,13 +2171,16 @@ const phaser: EffectDefinition = {
   ],
   factory(ctx, instance, env) {
     const mix = mixBus(ctx);
-
+    // TRUE STEREO: two all-pass chains (L / R) with their own oscillators.
+    // The R oscillator runs at rate·(1 + 0.03·spread) — a slight detune that
+    // makes the L/R notches drift apart over time (classic pseudo-stereo
+    // phasing). spread 0 = identical chains = mono.
     const buildStages = (count: number): BiquadFilterNode[] => {
       const stages: BiquadFilterNode[] = [];
       for (let i = 0; i < count; i++) {
         const ap = ctx.createBiquadFilter();
         ap.type = "allpass";
-        ap.frequency.value = 800;
+        ap.frequency.value = instance.params.center ?? 800;
         ap.Q.value = 5;
         stages.push(ap);
       }
@@ -2185,55 +2194,107 @@ const phaser: EffectDefinition = {
       PHASER_STAGE_COUNTS[
         Math.max(0, Math.min(PHASER_STAGE_COUNTS.length - 1, Math.round(instance.params.stages ?? 1)))
       ];
-    let stages = buildStages(stageCount);
+    let stagesL = buildStages(stageCount);
+    let stagesR = buildStages(stageCount);
 
-    const lfo = ctx.createOscillator();
-    lfo.type = "sine";
-    lfo.frequency.value = 0.4;
-    const lfoDepth = ctx.createGain();
-    lfoDepth.gain.value = 600;
-    lfo.connect(lfoDepth);
-    lfo.start();
+    let centerHz = instance.params.center ?? 800;
+    let spreadVal = instance.params.spread ?? 0.5;
+    let rateHz = instance.params.rate ?? 0.4;
 
-    const baseGain = ctx.createGain();
-    baseGain.gain.value = 800;
+    const oscL = ctx.createOscillator();
+    oscL.type = "sine";
+    oscL.frequency.value = rateHz;
+    const oscR = ctx.createOscillator();
+    oscR.type = "sine";
+    oscR.frequency.value = rateHz * (1 + 0.03 * spreadVal);
+    const depthL = ctx.createGain();
+    depthL.gain.value = 600;
+    const depthR = ctx.createGain();
+    depthR.gain.value = 600;
+    oscL.connect(depthL);
+    oscR.connect(depthR);
+    oscL.start();
+    oscR.start();
 
-    const wireStages = () => {
-      // Disconnect any existing fan-out
-      try {
-        baseGain.disconnect();
-      } catch {
-        /* nothing to disconnect */
+    const baseL = ctx.createGain();
+    const baseR = ctx.createGain();
+    baseL.gain.value = centerHz;
+    baseR.gain.value = centerHz;
+
+    const wireStages = (): void => {
+      for (const g of [baseL, baseR, depthL, depthR]) {
+        try {
+          g.disconnect();
+        } catch {
+          /* nothing to disconnect */
+        }
       }
-      try {
-        lfoDepth.disconnect();
-      } catch {
-        /* nothing to disconnect */
+      for (const stage of stagesL) {
+        baseL.connect(stage.frequency);
+        depthL.connect(stage.frequency);
       }
-      for (const stage of stages) {
-        baseGain.connect(stage.frequency);
-        lfoDepth.connect(stage.frequency);
+      for (const stage of stagesR) {
+        baseR.connect(stage.frequency);
+        depthR.connect(stage.frequency);
       }
     };
     wireStages();
 
-    const feedback = ctx.createGain();
-    feedback.gain.value = 0.3;
-    const wetOut = ctx.createGain();
-    wetOut.gain.value = 1;
+    const fbL = ctx.createGain();
+    const fbR = ctx.createGain();
+    const setFeedback = (v: number, when: number): void => {
+      fbL.gain.setTargetAtTime(v, when, 0.05);
+      fbR.gain.setTargetAtTime(v, when, 0.05);
+    };
+    setFeedback(instance.params.feedback ?? 0.3, ctx.currentTime);
+    const wetL = ctx.createGain();
+    const wetR = ctx.createGain();
 
-    // Re-wire: mix.wet -> stages[0] -> ... -> stages[last] -> wetOut -> mix.output
-    // and stages[last] -> feedback -> stages[0]
-    const connectStages = () => {
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+
+    const connectStages = (): void => {
       try {
         mix.wet.disconnect();
       } catch {
         /* nothing */
       }
-      if (stages.length > 0) {
-        mix.wet.connect(stages[0]);
-        stages[stages.length - 1].connect(wetOut).connect(mix.output);
-        stages[stages.length - 1].connect(feedback).connect(stages[0]);
+      try {
+        splitter.disconnect();
+      } catch {
+        /* nothing */
+      }
+      try {
+        merger.disconnect();
+      } catch {
+        /* nothing */
+      }
+      for (const chain of [stagesL, stagesR]) {
+        for (const stage of chain) {
+          try {
+            stage.disconnect();
+          } catch {
+            /* nothing */
+          }
+        }
+      }
+      try {
+        fbL.disconnect();
+        fbR.disconnect();
+        wetL.disconnect();
+        wetR.disconnect();
+      } catch {
+        /* nothing */
+      }
+      if (stageCount > 0) {
+        mix.wet.connect(splitter);
+        splitter.connect(stagesL[0], 0);
+        splitter.connect(stagesR[0], 1);
+        stagesL[stagesL.length - 1].connect(wetL).connect(merger, 0, 0);
+        stagesR[stagesR.length - 1].connect(wetR).connect(merger, 0, 1);
+        stagesL[stagesL.length - 1].connect(fbL).connect(stagesL[0]);
+        stagesR[stagesR.length - 1].connect(fbR).connect(stagesR[0]);
+        merger.connect(mix.output);
       } else {
         mix.wet.connect(mix.output);
       }
@@ -2244,16 +2305,20 @@ const phaser: EffectDefinition = {
     mix.output.connect(out);
 
     // C2 tempo-sync: the LFO locks to musical divisions when params.sync is
-    // set; OFF keeps the user's Hz knob authoritative.
+    // set; OFF keeps the user's Hz knob authoritative. The R oscillator
+    // tracks the same writes with the spread detune applied.
+    const writeRates = (hz: number, when: number): void => {
+      const safe = Math.max(0.05, hz);
+      oscL.frequency.setTargetAtTime(safe, when, 0.05);
+      oscR.frequency.setTargetAtTime(safe * (1 + 0.03 * spreadVal), when, 0.05);
+    };
     const lfoSync = createLfoSyncController({
       rateParamId: "rate",
       defaultRate: 0.4,
-      initialRate: instance.params.rate,
+      initialRate: rateHz,
       initialSync: instance.params.sync,
       initialBpm: env.bpm,
-      write: (_id, hz, when) => {
-        lfo.frequency.setTargetAtTime(Math.max(0.05, hz), when ?? ctx.currentTime, 0.05);
-      },
+      write: (_id, hz, when) => writeRates(hz, when ?? ctx.currentTime),
     });
 
     const apply = (id: string, v: number, when: number) => {
@@ -2263,40 +2328,28 @@ const phaser: EffectDefinition = {
           lfoSync.parameter(id, v, when);
           break;
         case "depth":
-          lfoDepth.gain.setTargetAtTime(1500 * v, when, 0.05);
+          depthL.gain.setTargetAtTime(1500 * v, when, 0.05);
+          depthR.gain.setTargetAtTime(1500 * v, when, 0.05);
+          break;
+        case "center":
+          centerHz = v;
+          baseL.gain.setTargetAtTime(centerHz, when, 0.05);
+          baseR.gain.setTargetAtTime(centerHz, when, 0.05);
+          break;
+        case "spread":
+          spreadVal = v;
+          writeRates(rateHz, when);
           break;
         case "feedback":
-          smooth(feedback.gain, v, when);
+          setFeedback(v, when);
           break;
         case "stages": {
           const idx = Math.max(0, Math.min(PHASER_STAGE_COUNTS.length - 1, Math.round(v)));
           const newCount = PHASER_STAGE_COUNTS[idx];
           if (newCount === stageCount) return;
-          // Tear down old chain
-          try {
-            mix.wet.disconnect();
-          } catch {
-            /* nothing */
-          }
-          for (const stage of stages) {
-            try {
-              stage.disconnect();
-            } catch {
-              /* nothing */
-            }
-          }
-          try {
-            feedback.disconnect();
-          } catch {
-            /* nothing */
-          }
-          try {
-            wetOut.disconnect();
-          } catch {
-            /* nothing */
-          }
           stageCount = newCount;
-          stages = buildStages(stageCount);
+          stagesL = buildStages(stageCount);
+          stagesR = buildStages(stageCount);
           wireStages();
           connectStages();
           break;
@@ -2315,20 +2368,34 @@ const phaser: EffectDefinition = {
       syncBpm: (nextBpm) => lfoSync.syncBpm(nextBpm, ctx.currentTime),
       dispose: () => {
         try {
-          lfo.stop();
+          oscL.stop();
         } catch {
           /* not started */
         }
-        lfo.disconnect();
-        lfoDepth.disconnect();
-        baseGain.disconnect();
-        feedback.disconnect();
-        wetOut.disconnect();
-        for (const stage of stages) {
-          try {
-            stage.disconnect();
-          } catch {
-            /* already */
+        try {
+          oscR.stop();
+        } catch {
+          /* not started */
+        }
+        oscL.disconnect();
+        oscR.disconnect();
+        depthL.disconnect();
+        depthR.disconnect();
+        baseL.disconnect();
+        baseR.disconnect();
+        fbL.disconnect();
+        fbR.disconnect();
+        wetL.disconnect();
+        wetR.disconnect();
+        splitter.disconnect();
+        merger.disconnect();
+        for (const chain of [stagesL, stagesR]) {
+          for (const stage of chain) {
+            try {
+              stage.disconnect();
+            } catch {
+              /* already */
+            }
           }
         }
         mix.input.disconnect();
@@ -2339,7 +2406,6 @@ const phaser: EffectDefinition = {
   },
 };
 
-/* ---------------- Sidechain Compressor ---------------- */
 // Ducks the main signal's gain based on the envelope of a separate audio source.
 // Web Audio's DynamicsCompressorNode has no sidechain input, and ScriptProcessorNode
 // is unreliable in OfflineAudioContext (which is what offline render + our
@@ -3944,6 +4010,7 @@ const comb: EffectDefinition = {
       format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`,
     },
     { id: "damp", label: "DAMP", min: 500, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.25, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
   factory(ctx, instance) {

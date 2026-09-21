@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8" />
+<title>KYX Listening Room</title>
+<style>
+  :root { color-scheme: dark; --acc: #f59e0b; --blue: #7aa2f7; --ok: #4ade80; }
+  body { font: 14px/1.5 ui-monospace, monospace; background: #101010; color: #ddd; margin: 20px auto; max-width: 1020px; padding: 0 14px; }
+  h1 { font-size: 17px; letter-spacing: 1px; }
+  h1 span { color: var(--acc); }
+  .hint { color: #888; font-size: 12px; }
+  .tabs { display: flex; gap: 6px; margin: 14px 0; position: sticky; top: 0; background: #101010; padding: 8px 0; z-index: 5; border-bottom: 1px solid #333; }
+  .tabs button { font: inherit; background: #1c1c1c; color: #aaa; border: 1px solid #333; border-radius: 4px; padding: 6px 14px; cursor: pointer; }
+  .tabs button.active { color: var(--acc); border-color: var(--acc); }
+  .suite { display: none; }
+  .suite.active { display: block; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 20px; }
+  tr { border-bottom: 1px solid #242424; }
+  tr.playing { background: #191919; }
+  td { padding: 7px 9px; }
+  .cat, .desc { color: #777; font-size: 11px; }
+  button { font: inherit; background: #1e1e1e; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+  button:hover { border-color: #666; }
+  .ab .active { border-color: var(--acc); color: var(--acc); }
+  .path .active { border-color: var(--blue); color: var(--blue); }
+  #player { width: 100%; margin: 8px 0 16px; }
+  .group { border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; margin: 14px 0; }
+  .group h3 { margin: 0 0 4px; font-size: 13px; }
+  .group .gk { color: #666; font-size: 11px; }
+  .cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 10px 0; }
+  .cand { border: 1px solid #333; border-radius: 6px; padding: 9px; cursor: pointer; }
+  .cand:hover { border-color: #777; }
+  .cand .rank { font-size: 20px; color: #555; min-height: 26px; }
+  .cand.r1 .rank { color: var(--ok); } .cand.r2 .rank { color: var(--blue); }
+  .cand.r3 .rank { color: var(--acc); } .cand.r4 .rank { color: #c084fc; }
+  .cand.playing { border-color: var(--acc); }
+  .cand .fav { margin-top: 6px; font-size: 12px; }
+  .cand .fav.on { color: var(--acc); border-color: var(--acc); }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .verdict-ok { color: var(--ok); }
+  .sent { color: var(--ok); font-size: 11px; margin-left: 8px; }
+</style>
+</head>
+<body>
+<h1>KYX <span>Listening Room</span></h1>
+<p class="hint">Počúj, porovnaj, rozhodni — tvoje verdikty sa ukladajú (POST → listening/verdicts.json) a
+<code>npm run listening:ingest</code> ich pretaví do tréningu intent enginu (ranker golden + favorites retrain všetkých 3 modelov).</p>
+<div class="tabs">
+  <button data-suite="morph" class="active">MORPH ★ (A/B)</button>
+  <button data-suite="scenes">SCENE presety (A/B)</button>
+  <button data-suite="intent">INTENT učenie (rank ★)</button>
+</div>
+
+<div id="playerWrap"><audio id="player" controls preload="auto" style="width:100%"></audio></div>
+
+<div class="suite active" id="suite-morph"></div>
+<div class="suite" id="suite-scenes"></div>
+<div class="suite" id="suite-intent"></div>
+
+<p class="hint" id="verdicts-info">verdikty: …</p>
+
+<script>
+const player = document.getElementById("player");
+let currentSrc = null;
+function playFile(src, row) {
+  if (currentSrc === src && !player.paused) { player.pause(); return; }
+  currentSrc = src;
+  player.src = src;
+  player.play().catch(() => {});
+  document.querySelectorAll("tr.playing, .cand.playing").forEach((el) => el.classList.remove("playing"));
+  if (row) row.classList.add("playing");
+}
+
+async function postVerdict(verdict) {
+  const res = await fetch("/api/verdict", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(verdict),
+  });
+  if (!res.ok) throw new Error("verdict POST failed");
+  loadVerdictCount();
+}
+
+async function loadVerdictCount() {
+  try {
+    const res = await fetch("/api/verdicts");
+    const data = await res.json();
+    document.getElementById("verdicts-info").textContent =
+      "uložené verdikty: " + data.count + "  (listening/verdicts.json → npm run listening:ingest)";
+  } catch { /* server without API — ignore */ }
+}
+
+// ── suite builders ──────────────────────────────────────────────────────
+function buildMorph(entries) {
+  const root = document.getElementById("suite-morph");
+  const rows = entries.map((e) => {
+    const tr = document.createElement("tr");
+    const paths = Object.keys(e.files);
+    const hasTwo = paths.length > 1;
+    tr.innerHTML =
+      '<td class="star">' + (e.id === "bypass" ? "" : "★") + "</td>" +
+      "<td><b>" + e.label + '</b><span class="cat">' + (e.category || "") + "</span>" +
+      '<div class="desc">' + (e.description || "") + "</div></td>" +
+      (hasTwo ? '<td class="path">' + paths.map((p) => '<button data-path="' + e.files[p] + '">' + p.toUpperCase() + "</button>").join("") + "</td>" : "") +
+      '<td class="ab">' +
+      '<button class="a" data-file="' + (e.files.drums || Object.values(e.files)[0]) + '">A</button>' +
+      '<button class="b" data-file="' + (e.files["808"] || e.files.wet || Object.values(e.files)[0]) + '">B</button>' +
+      "</td>";
+    return tr;
+  });
+  const table = document.createElement("table");
+  table.append(...rows);
+  root.append(table);
+  rows.forEach((tr) => {
+    tr.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => playFile(btn.dataset.file, tr));
+    });
+  });
+}
+
+function buildScenes(entries) {
+  const root = document.getElementById("suite-scenes");
+  for (const e of entries) {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML =
+      "<h3>" + e.label + ' <span class="cat">na ' + e.templateId + ' beate</span></h3>' +
+      '<div class="desc">' + (e.description || "") + "</div>" +
+      '<div class="toolbar">' +
+      '<button data-file="' + e.files.bypass + '">A · bypass</button>' +
+      '<button data-file="' + e.files.wet + '">B · preset</button>' +
+      "</div>";
+    div.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => playFile(btn.dataset.file, div));
+    });
+    root.append(div);
+  }
+}
+
+function buildIntent(groups) {
+  const root = document.getElementById("suite-intent");
+  for (const g of groups) {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML =
+      "<h3>" + g.genre + " · " + g.style + "</h3>" +
+      '<div class="gk">' + g.groupKey + "</div>" +
+      '<div class="hint">Klikni kandidáta v poradí preferencie (1. = najlepší). ★ = favorite (učí všetky 3 modely).</div>' +
+      '<div class="cands"></div>' +
+      '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
+    const cands = div.querySelector(".cands");
+    const order = [];
+    const sent = div.querySelector(".sent");
+    const cards = g.candidates.map((c) => {
+      const card = document.createElement("div");
+      card.className = "cand";
+      card.innerHTML =
+        '<div class="rank">·</div><b>' + c.seed.split("-").slice(-1)[0] + "</b>" +
+        '<div class="desc">E' + Math.round((c.favorite?.energy ?? 0) * 100) +
+        " D" + Math.round((c.favorite?.density ?? 0) * 100) + "</div>" +
+        '<button class="fav">★ favorite</button>';
+      card.addEventListener("click", (ev) => {
+        if (ev.target.classList.contains("fav")) return;
+        if (card.dataset.rank) return;
+        const rank = order.length + 1;
+        if (rank > g.candidates.length) return;
+        card.dataset.rank = String(rank);
+        card.querySelector(".rank").textContent = String(rank);
+        card.classList.add("r" + rank);
+        order.push(c.seed);
+        if (order.length === g.candidates.length) {
+          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, savedAt: Date.now() })
+            .then(() => { sent.textContent = "✓ odoslané"; })
+            .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+        }
+        playFile(c.file, card);
+      });
+      card.querySelector(".fav").addEventListener("click", () => {
+        const on = card.querySelector(".fav").classList.toggle("on");
+        if (!on || !c.favorite) return;
+        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, savedAt: Date.now() })
+          .then(() => { sent.textContent = "✓ favorite uložený"; })
+          .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+      });
+      card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
+      cands.append(card);
+      return { card, c };
+    });
+    cards.forEach(({ card, c }) => {
+      card.addEventListener("dblclick", () => playFile(c.file, card));
+    });
+    div.querySelector(".reset").addEventListener("click", () => {
+      order.length = 0;
+      sent.textContent = "";
+      cards.forEach(({ card }) => {
+        delete card.dataset.rank;
+        card.className = "cand";
+        card.querySelector(".rank").textContent = "·";
+      });
+    });
+    cards.forEach(({ card, c }) => {
+      const playBtn = document.createElement("button");
+      playBtn.textContent = "▶";
+      playBtn.title = "prehrať";
+      playBtn.addEventListener("click", () => playFile(c.file, card));
+      card.prepend(playBtn);
+    });
+    root.append(div);
+  }
+}
+
+fetch("room.json")
+  .then((r) => r.json())
+  .then((room) => {
+    buildMorph(room.morph);
+    buildScenes(room.scenes);
+    buildIntent(room.intent);
+  });
+loadVerdictCount();
+
+document.querySelectorAll(".tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".suite").forEach((s) => s.classList.remove("active"));
+    document.getElementById("suite-" + btn.dataset.suite).classList.add("active");
+  });
+});
+</script>
+</body>
+</html>

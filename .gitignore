@@ -59,3 +59,4 @@ _tc*.log
 _final*.log
 _aet*.log
 _test_run.log
+public/models/audio/pca-projection.json

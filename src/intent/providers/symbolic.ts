@@ -1,6 +1,7 @@
 import { generatePattern, resolveGrooveForGeneration } from "../../ai/generator";
 import { degreeToPitch, expandChord } from "../../ai/melodic";
 import { MELODIC_BY_GENRE } from "../../ai/grooves/melodic-data";
+import { generateMultiVoice } from "../multi-voice";
 import { inferPadRole } from "../../ai/pad-roles";
 import { forkRandom } from "../../shared/rng";
 import { uid } from "../../shared/ids";
@@ -17,10 +18,10 @@ import {
 import {
   buildMelodicFeatureRow,
   melodicGenreOf,
-  MELODIC_GENRES,
   MELODIC_DURATION_VALUES,
   MELODIC_FEATURE_COUNT,
   MELODIC_FEATURES_VERSION,
+  MELODIC_GENRES,
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
 import { runMelodicNext, runPriorGrid } from "../../ai/symbolic/prior-client";
@@ -102,7 +103,7 @@ function sampleFrom(distribution: number[], rand: () => number, temperature: num
  * concurrently. Returns null when the prior is unavailable — callers keep
  * the template melody in that case.
  */
-async function sampleMelodicParts(
+export async function sampleMelodicParts(
   plan: GenerationPlan,
   context: GenerationContext,
   rand: () => number,
@@ -244,6 +245,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
     const supportsDrumPrior =
       (PRIOR_GENRES as readonly string[]).includes(options.genre) &&
       (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
+    // Same policy for the melodic prior: only genres the model was trained on.
     const supportsMelodicPrior = (MELODIC_GENRES as readonly string[]).includes(options.genre);
     const densityGain = 0.55 + plan.intent.density * 0.9;
     const velocityJitter = plan.intent.controls.velocityVariation * 0.24;
@@ -262,21 +264,46 @@ export class SymbolicPriorProvider implements GenerationProvider {
             : options.roles,
         });
 
-        // Melodic prior (T2 v2) — replaces template melody when available.
-        const priorMelody = supportsMelodicPrior
-          ? await sampleMelodicParts(plan, context, forkRandom(`${symbolicSeed}|melody.neural`, "stream"))
-          : null;
-        let notes: Pattern["notes"] = melodicOnly.notes;
-        if (priorMelody) {
-          notes = {};
-          for (const role of ["bass", "chord", "lead"] as const) {
-            const part = priorMelody[role];
-            if (!part || part.length === 0) continue;
-            const track = melodicTrackForRole(doc, options, role);
-            if (!track) continue;
-            notes[track.id] = [...(notes[track.id] ?? []), ...part];
+        // Melodic generation priority (INTENT_ENGINE.md #1+#2):
+        // 1. generateMultiVoice — harmony-aware (chord progression engine)
+        // 2. prior ONNX (autoregressive next-note model)
+        // 3. template melody (Markov fallback)
+        const multiVoice = generateMultiVoice(
+          doc, options.genre, parseInt(symbolicSeed.slice(-8), 36) || 42,
+          stepCount, options.key ?? doc.key ?? null,
+          plan.intent.energy, plan.intent.controls.velocityVariation,
+        );
+        let notes: Pattern["notes"] = {};
+        let melodicSource: "mv" | "prior" | "template" = "template";
+        const melodicRoleTrack = (role: "bass" | "chord" | "lead") =>
+          !options.roles || options.roles.includes(role === "chord" ? "chords" : role)
+            ? melodicTrackForRole(doc, options, role)
+            : null;
+        for (const role of ["bass", "chord", "lead"] as const) {
+          const track = melodicRoleTrack(role);
+          const part = multiVoice[role];
+          if (!track || !part || part.length === 0) continue;
+          notes[track.id] = [...part];
+        }
+        if (Object.keys(notes).length > 0) {
+          melodicSource = "mv";
+        } else if (supportsMelodicPrior) {
+          const priorMelody = await sampleMelodicParts(
+            plan,
+            context,
+            forkRandom(`${symbolicSeed}|melody.neural`, "stream"),
+          );
+          if (priorMelody) {
+            for (const role of ["bass", "chord", "lead"] as const) {
+              const track = melodicRoleTrack(role);
+              const part = priorMelody[role];
+              if (!track || !part || part.length === 0) continue;
+              notes[track.id] = [...part];
+            }
+            if (Object.keys(notes).length > 0) melodicSource = "prior";
           }
         }
+        if (melodicSource === "template") notes = melodicOnly.notes;
 
         const rowsById: Record<string, number[]> = {};
         if (pads.length > 0 && supportsDrumPrior) {
@@ -318,7 +345,9 @@ export class SymbolicPriorProvider implements GenerationProvider {
         const candidate: Pattern = attachProvenance(
           {
             ...melodicOnly,
-            name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${priorMelody ? "+melody" : ""})`,
+            name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${
+              melodicSource === "mv" ? "+mv" : melodicSource === "prior" ? "+melody" : ""
+            })`,
             rows: { ...melodicOnly.rows, ...rowsById },
             ...(notes ? { notes } : {}),
             generation: {
@@ -345,7 +374,8 @@ export class SymbolicPriorProvider implements GenerationProvider {
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
-          source: Object.keys(rowsById).length > 0 || priorMelody ? "symbolic-prior" : "template",
+          source:
+            Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

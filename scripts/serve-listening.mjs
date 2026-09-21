@@ -3,7 +3,7 @@
  * http://127.0.0.1:5179  (serves listening/ with correct WAV mime type).
  */
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,11 +17,45 @@ const MIME = {
   ".md": "text/plain; charset=utf-8",
 };
 
+const VERDICTS = path.join(SERVE_ROOT, "verdicts.json");
+
+const readVerdicts = async () => {
+  try {
+    const parsed = JSON.parse(await readFile(VERDICTS, "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
+    // Verdict API — the room page teaches the intent engine through here.
+    if (url.pathname === "/api/verdict" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const verdict = JSON.parse(body);
+      if (!verdict || typeof verdict !== "object" || typeof verdict.kind !== "string") {
+        res.writeHead(400).end('{"error":"invalid verdict"}');
+        return;
+      }
+      const verdicts = await readVerdicts();
+      verdicts.push({ ...verdict, receivedAt: Date.now() });
+      await writeFile(VERDICTS, JSON.stringify(verdicts, null, 2));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, count: verdicts.length }));
+      return;
+    }
+    if (url.pathname === "/api/verdicts" && req.method === "GET") {
+      const verdicts = await readVerdicts();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ count: verdicts.length, verdicts }));
+      return;
+    }
     let rel = decodeURIComponent(url.pathname);
     if (rel === "/" || rel === "/morph/") rel = "/morph/index.html";
+    if (rel === "/room/" || rel === "/room") rel = "/room/room.html";
     const abs = path.join(SERVE_ROOT, rel);
     if (!abs.startsWith(SERVE_ROOT)) throw new Error("traversal");
     const info = await stat(abs);
