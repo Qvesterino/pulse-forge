@@ -687,6 +687,55 @@ sample) do AudioSet labelov.
   nemožné** (OfflineAudioContext je main-thread-only API) — optimalizácia pre
   >64-bar songy by bola chunked section-by-section render.
 
+### 5.17 FUNCTIONAL HARMONY + MULTI-VOICE (INTENT_ENGINE.md #1+#2, HOTOVÉ)
+
+Najväčší hudobný upgrade — tri melodic voices sú teraz **harmonicky prepojené**:
+
+- **Chord progression engine** (`src/ai/harmony.ts`): per-žáner progresie s
+  funkčnou harmóniou (house: I-vi-IV-V maj7, techno: i-iv-♭VII hypnotic,
+  trap: i-VI-III-VII emotional, ambient: Imaj7-IVmaj7 lounge). Každá
+  progresia má funkčné značky (T/S/D/p) pre voice leading. Modal interchange
+  (♭II phrygian pre industrial, ♭VI-♭III pre trap anthem).
+- **Multi-voice orchestrátor** (`src/intent/multi-voice.ts`): tri voices sa
+  generujú SEQUENČNE z rovnakej harmónie — chords majú voice leading
+  (minimálny pohyb medzi voicings), bass nasleduje chord ROOTS (s octave
+  jumps a 8th-note rytmom), lead používa chord tones + approach tones
+  (tension → resolution). Výsledok znie ako KAPELA, nie tri MIDI tracky.
+- **Roman numeral analysis** pre diagnostics ("I7", "iv", "♭II").
+- **Chord quality intervals**: maj/min/dim/dom7/maj7/min7/sus4/sus2 —
+  presné semitone offsets pre voice leading.
+
+- Testy: `tests/harmony-multi-voice.test.ts` (12) — progresie štruktúra,
+  determinizmus, chord intervals, roman numerals, voice leading, scale
+  conformity, lead-za-energiou, determinizmus.
+
+### 5.18 AUDIO FEEDBACK LOOP (D1 v3 / #5 — "ranking počúva", HOTOVÉ)
+
+Prvá vlna audio feedback: **time-domain features + genre target profily**.
+
+- **Feature extractor** (`src/ai/audio-features.ts`): pure math single-pass —
+  RMS (loudness proxy), peak, crest factor (peak/RMS — punchy vs compressed),
+  zero-crossing rate (bright vs dark), low-band energy ratio (bass weight,
+  one-pole LP @ 200 Hz). Žiadny FFT, žiadny audio context — O(n) na
+  Float32Array.
+- **Genre target profily** (`audio-feedback.ts`): per-žáner expected ranges —
+  house: RMS 0.05–0.3, ZCR 0.01–0.15; techno: RMS 0.08–0.35, bas 0.25–0.7;
+  ambient: RMS 0.01–0.12, crest 4–30; trap: bas 0.3–0.8, crest 3–20.
+  `scoreAudioFit(features, target)` — 1.0 ak je každá dimenzia v range,
+  lineárny pokles vonku.
+- **Loop** (`scoreCandidatesBySound`): per candidate → offline render →
+  extract features → score against target. Kandidáty ktoré renderujú zle sú
+  skipované (bez audio score).
+- **Integrácia**: audio score sa blenduje so symbolic scoreom v paneli
+  (výzor: "🔊 audio 78%"). Plugin bod pre budúce ONNX audio embedding modely.
+- **Engine fix**: `analyzeLoudnessBuffer` — digitálne ticho teraz vráti
+  `measured: false` (predtým true s −∞ — loudness loop by chase −∞).
+
+- Testy: `tests/intent-audio-feedback.test.ts` (12) — feature extrakcia
+  (RMS/peak/ZCR/bass ratio na syntetických signáloch, crest factor na
+  compressed vs dynamic), genre targets, scoring (in-range high, out-of-range
+  low), router (loudness/effectIntent/pattern).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

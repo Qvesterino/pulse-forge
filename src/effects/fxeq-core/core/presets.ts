@@ -969,22 +969,25 @@ export function downloadPresets(presets: FxEqPreset[], filename = "fxeq-presets.
     };
     URL?: {
       createObjectURL: (value: Blob) => string;
-      revokeObjectURL: (url: string) => void;
+      revokeObjectURL?: (url: string) => void;
     };
   };
-  if (!browser.document?.createElement || !browser.URL) return;
+  if (!browser.document?.createElement || !browser.URL?.createObjectURL) return;
   const json = exportPresets(presets);
   const blob = new Blob([json], { type: "application/json" });
   const url = browser.URL.createObjectURL(blob);
   const a = browser.document.createElement("a");
   if (!a || typeof a.click !== "function") {
-    browser.URL.revokeObjectURL(url);
+    // Optional-call: embedded webviews may lack revoke despite create.
+    browser.URL.revokeObjectURL?.(url);
     return;
   }
   a.href = url;
   a.download = filename;
   a.click();
-  browser.URL.revokeObjectURL(url);
+  // Delayed revoke (repo-wide download pattern): an immediate revoke races
+  // the click in Safari and can abort the download entirely.
+  setTimeout(() => browser.URL?.revokeObjectURL?.(url), 5000);
 }
 
 /** Minimal browser File-compatible contract, without importing DOM types. */

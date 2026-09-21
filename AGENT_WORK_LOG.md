@@ -2983,3 +2983,39 @@ Total: 47 insertions, 15 deletions across 3 files. No public API change. No brea
 **Remaining risks:** the sweep pins ~57 of ~90 exported functions — the remainder are non-command helpers, clipboard/preset-driven factories needing heavier fixtures, and in-flight concurrent-session territory (applyMidiCreativeTool, audio-clip factories); extending the table is incremental.
 
 **Recommendations for next session (GOAL 10 — resource lifecycle & performance):** (1) instrument-voice and effect-runtime disposal on track deletion/undo (voices survive track delete?); (2) AudioWorkletNode port listener cleanup across context swaps; (3) rAF loop subscriber leak check (subscribe without unsubscribe in panels); (4) worker termination on closeProject; (5) Blob URL revoke coverage for new download paths.
+
+
+---
+
+## GOAL 22 (campaign restart) — Intent Engine D1 v3: audio feedback loop (2026-09-19)
+
+**Goal executed:** "Ranking počúva" — candidates are now JUDGED BY SOUND, not just by symbolic note data. Rendered audio features (RMS, crest factor, ZCR, bass ratio) are scored against per-genre target profiles and blended into the ranking.
+
+**Root cause of the gap:** Two candidates with identical symbolic features (same note count, same velocity distribution) can sound completely different depending on samples, effects, and mixing. The symbolic ranker has no way to detect this. The audio feedback loop closes that gap.
+
+**Fixes implemented:**
+
+- `src/ai/audio-features.ts` — pure time-domain feature extraction (no FFT, no audio context, O(n) single pass):
+  - RMS level (loudness proxy)
+  - Peak level (absolute max)
+  - Crest factor = peak/RMS (high = punchy/dynamic, low = compressed)
+  - Zero-crossing rate (bright/noisy vs dark/tonal)
+  - Low-band energy ratio via one-pole LP at 200 Hz (bass weight)
+- `src/intent/audio-feedback.ts`:
+  - Per-genre AUDIO_TARGETS — expected ranges for each feature (techno expects high RMS + bass ratio; ambient expects low RMS + high crest)
+  - `scoreAudioFit(features, target)` — 1.0 if all dims inside range, linear falloff outside
+  - `scoreCandidatesBySound(doc, candidates, genre, renderFn)` — renders each candidate, extracts features, scores against target; candidates that fail to render get no audio score
+- IntentPanel: effectIntent branch wired (applyEffectIntent + status); loudness branch with 🔊 measuring status
+- Engine fix: `analyzeLoudnessBuffer` — digital silence now returns `measured: false` (previously returned true with −∞ integrated, which would cause the loudness loop to chase −∞)
+
+- Tests: `tests/intent-audio-feedback.test.ts` (12) — feature extraction on synthetic signals (sine, noise, silence, compressed vs dynamic), genre target profiles (trap bass > ambient bass), scoring in-range vs out-of-range, router routing (loudness/effectIntent/pattern).
+
+**Important files changed:** src/ai/audio-features.ts, src/intent/audio-feedback.ts, src/intent/route.ts, src/ui/IntentPanel.tsx, tests/intent-audio-feedback.test.ts, INTENT_ENGINE.md (§5.18).
+
+**Validation:** audio feedback tests 12/12; intent-area regression 228/228 across 21 files; typecheck clean for changed files.
+
+**Unresolved issues / risks:**
+
+1. Per-candidate rendering adds latency (~0.1–0.5 s per candidate for short patterns). The render is async (OfflineAudioContext) so UI stays responsive, but the audition flow now takes longer for 5+ candidates. Optimization: cache rendered buffers per candidate (already done by the audition system).
+2. The genre targets are hand-tuned initial values. They should be calibrated against real reference tracks (the genre-reference pipeline exists) for more accurate matching.
+3. The audio features are time-domain only — frequency-domain features (spectral centroid via FFT, sub-band energies) would provide finer discrimination but require an FFT implementation.

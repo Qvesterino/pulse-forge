@@ -38,11 +38,11 @@ export function createFlangerNode(
   lfoSync.parameter("rate", instance.params.rate ?? 0.5, null);
 
 
-  safeApplyAudioParam(node, "rate", instance.params.rate ?? 0.5);
   safeApplyAudioParam(node, "depth", instance.params.depth ?? 3);
   safeApplyAudioParam(node, "base", instance.params.base ?? 5);
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0.4);
   safeApplyAudioParam(node, "spread", instance.params.spread ?? 0.7);
+  safeApplyAudioParam(node, "invert", instance.params.invert ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
 
   return {

@@ -32,6 +32,10 @@ class FlangerProcessor extends AudioWorkletProcessor {
       { name: "base", defaultValue: 5, minValue: 0.5, maxValue: 20, automationRate: "k-rate" }, // ms
       { name: "feedback", defaultValue: 0.4, minValue: 0, maxValue: 0.95, automationRate: "k-rate" },
       { name: "spread", defaultValue: 0.7, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      // TZF: inverts the wet polarity — with a short base delay the notch
+      // sweeps THROUGH zero (through-zero flanging) instead of stopping at
+      // the dry signal.
+      { name: "invert", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
@@ -53,6 +57,7 @@ class FlangerProcessor extends AudioWorkletProcessor {
     const feedback = Math.max(0, Math.min(0.95, parameters.feedback[0]));
     const spread = parameters.spread[0];
     const mix = parameters.mix[0];
+    const invert = (parameters.invert ? parameters.invert[0] : 0) >= 0.5 ? -1 : 1;
 
     const lfoRateRad = (2 * Math.PI * rate) / sr;
     const depthSamples = depthSec * sr;
@@ -82,13 +87,15 @@ class FlangerProcessor extends AudioWorkletProcessor {
       const wetL = this.readCubic(this.bufL, readL);
       const wetR = this.readCubic(this.bufR, readR);
 
-      // Zero-delay feedback: wet signal feeds back into the buffer NOW
-      this.bufL[this.writeIdx] = l + wetL * feedback;
-      this.bufR[this.writeIdx] = r + wetR * feedback;
+      // Zero-delay feedback: wet signal feeds back into the buffer NOW.
+      // TZF invert flips the wet polarity both in the loop and at the mix
+      // tap — the classic through-zero notch sweep.
+      this.bufL[this.writeIdx] = l + wetL * invert * feedback;
+      this.bufR[this.writeIdx] = r + wetR * invert * feedback;
       this.writeIdx = (this.writeIdx + 1) & FLANGER_MASK;
 
-      outL[i] = l * (1 - mix) + wetL * mix;
-      if (outR) outR[i] = r * (1 - mix) + wetR * mix;
+      outL[i] = l * (1 - mix) + wetL * invert * mix;
+      if (outR) outR[i] = r * (1 - mix) + wetR * invert * mix;
     }
 
     // Denormal guard

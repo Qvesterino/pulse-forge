@@ -72,6 +72,9 @@ export const MOD_DESTINATIONS: readonly ModDestination[] = [
   { label: "Diffusion", key: "space.diffusion", span: 80, min: 0, max: 100 },
   { label: "Decay", key: "space.decayS", span: 1.5, min: 0.1, max: 5 },
   { label: "Width", key: "space.width", span: 80, min: 0, max: 200 },
+  // Experiment #1 (Harmonic Bloom hook, §10): BODY energy opening the
+  // harmony is a ROUTE, not hardcoded DSP — append-only, index 12.
+  { label: "Harmony Mix", key: "harm.mix", span: 100, min: 0, max: 100 },
 ] as const;
 
 /** Stable enum indices (serialized in routes.N.destination). */
@@ -88,4 +91,5 @@ export const DEST_INDEX = {
   diffusion: 9,
   decay: 10,
   width: 11,
+  harmonyMix: 12,
 } as const;

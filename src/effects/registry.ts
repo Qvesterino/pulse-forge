@@ -50,6 +50,11 @@ import {
 import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { OZVENA_AUDIO_PARAM_SECTIONS, OZVENA_ENUM_VALUES, clampOzvenaParam } from "./ozvena-params";
+import {
+  characterCurve,
+  CHARACTER_MODE_LABELS,
+  type CharacterMode,
+} from "./characterCurve";
 
 const dbToLin = (db: number) => Math.pow(10, db / 20);
 const smooth = (param: AudioParam, value: number, when: number, tc = 0.02) => param.setTargetAtTime(value, when, tc);
@@ -941,7 +946,7 @@ const compressor: EffectDefinition = {
   },
 };
 
-/* ---------------- Saturation ---------------- */
+/* ---------------- Saturation (character engine) ---------------- */
 
 const saturation: EffectDefinition = {
   type: "saturation",
@@ -949,6 +954,17 @@ const saturation: EffectDefinition = {
   category: "character",
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.3, format: formatPct },
+    {
+      id: "character",
+      label: "CHARACTER",
+      min: 0,
+      max: 3,
+      default: 0,
+      kind: "enum",
+      step: 1,
+      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(3, Math.round(v)))],
+    },
+    { id: "bias", label: "BIAS", min: -1, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 8000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
@@ -961,20 +977,26 @@ const saturation: EffectDefinition = {
     tone.type = "lowpass";
     const out = ctx.createGain();
     mix.wet.connect(shaper).connect(tone).connect(out).connect(mix.output);
-    const curveOf = (drive: number) => {
-      const k = 1 + drive * 9;
-      const n = 1024;
-      const curve = new Float32Array(new ArrayBuffer(n * 4));
-      for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * 2 - 1;
-        curve[i] = Math.tanh(x * k);
-      }
-      return curve;
+    let mode = Math.round(instance.params.character ?? 0);
+    let driveVal = instance.params.drive ?? 0.3;
+    let biasVal = instance.params.bias ?? 0;
+    const applyCurve = () => {
+      shaper.curve = characterCurve(Math.max(0, Math.min(3, mode)) as CharacterMode, driveVal, biasVal);
     };
+    applyCurve();
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "drive":
-          shaper.curve = curveOf(v);
+          driveVal = v;
+          applyCurve();
+          break;
+        case "character":
+          mode = Math.round(v);
+          applyCurve();
+          break;
+        case "bias":
+          biasVal = v;
+          applyCurve();
           break;
         case "tone":
           smooth(tone.frequency, v, when);
@@ -1033,16 +1055,21 @@ const clipper: EffectDefinition = {
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
     { id: "ceiling", label: "CEILING", min: -24, max: 0, default: -1, unit: "dB", format: formatDb },
     { id: "softness", label: "SOFTNESS", min: 0, max: 1, default: 0.2, format: formatPct },
+    { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
   factory(ctx, instance) {
-    const input = ctx.createGain();
-    const output = ctx.createGain();
+    // Parallel topology via mixBus: MIX < 100 blends the CLEAN path back in
+    // (the classic "parallel clipper" — transient snap without the crushed
+    // body). The dry reference is pre-drive, so DRIVE does not change the
+    // blended level.
+    const mix = mixBus(ctx);
+    mix.setMix(instance.params.mix ?? 1, ctx.currentTime);
     const pre = ctx.createGain();
     const shaper = ctx.createWaveShaper();
     shaper.oversample = "4x";
     const post = ctx.createGain();
-    input.connect(pre).connect(shaper).connect(post).connect(output);
+    mix.wet.connect(pre).connect(shaper).connect(post).connect(mix.output);
     let ceiling = instance.params.ceiling ?? -1;
     let softness = instance.params.softness ?? 0.2;
     const curveOf = () => {
@@ -1075,6 +1102,9 @@ const clipper: EffectDefinition = {
           softness = v;
           shaper.curve = curveOf();
           break;
+        case "mix":
+          mix.setMix(v, when);
+          break;
         case "output":
           smooth(post.gain, dbToLin(v), when);
           break;
@@ -1082,13 +1112,13 @@ const clipper: EffectDefinition = {
     };
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
-      input,
-      output,
+      input: mix.input,
+      output: mix.output,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => {
-        input.disconnect();
-        output.disconnect();
+        mix.input.disconnect();
+        mix.output.disconnect();
         pre.disconnect();
         shaper.disconnect();
         post.disconnect();
@@ -1119,7 +1149,8 @@ const reverb: EffectDefinition = {
   params: [
     { id: "decay", label: "DECAY", min: 0.1, max: 6, default: 1.8, unit: "s", format: formatSec },
     { id: "predelay", label: "PRE-DLY", min: 0, max: 120, default: 20, unit: "ms", format: formatMs },
-    { id: "tone", label: "TONE", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "tone", label: "TONE", min: 500, max: 12000, default: 9000, unit: "Hz", format: formatHz, taper: "log" },
+    { id: "damping", label: "DAMPING", min: 500, max: 12000, default: 6000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "diffusion", label: "DIFFUSION", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.3, format: formatPct },
   ],
@@ -1140,12 +1171,12 @@ const reverb: EffectDefinition = {
             smooth(preDelay.delayTime, v / 1000, when, 0.05);
             break;
           case "tone":
+            // Output brightness — separate from the in-loop damping.
             node.setParameter("tone", v);
-            node.setParameter("damping", v);
             break;
           case "damping":
+            // Feedback-loop darkening (how fast the TAIL loses HF).
             node.setParameter("damping", v);
-            node.setParameter("tone", v);
             break;
           case "diffusion":
             node.setParameter("diffusion", v);
@@ -1616,6 +1647,17 @@ const distortion: EffectDefinition = {
   category: "character",
   params: [
     { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.4, format: formatPct },
+    {
+      id: "character",
+      label: "CHARACTER",
+      min: 0,
+      max: 3,
+      default: 3,
+      kind: "enum",
+      step: 1,
+      format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(3, Math.round(v)))],
+    },
+    { id: "bias", label: "BIAS", min: -1, max: 1, default: 0, format: formatPct },
     { id: "tone", label: "TONE", min: 500, max: 12000, default: 5000, unit: "Hz", format: formatHz, taper: "log" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
@@ -1630,28 +1672,26 @@ const distortion: EffectDefinition = {
     const out = ctx.createGain();
     mix.wet.connect(pre).connect(shaper).connect(tone).connect(out).connect(mix.output);
 
-    let driveVal = 0.4;
-    void driveVal; // reserved for future read; curve is the source of truth
-    const curveOf = (drive: number): Float32Array<ArrayBuffer> => {
-      const k = 1 + drive * 4;
-      const n = 2048;
-      const curve = new Float32Array(new ArrayBuffer(n * 4));
-      for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * 2 - 1;
-        // Cubic soft clip: y = k*x - (k*x)^3 / 3, clamped to [-1, 1]
-        const kx = k * x;
-        let y = kx - (kx * kx * kx) / 3;
-        if (y > 1) y = 1;
-        else if (y < -1) y = -1;
-        curve[i] = y;
-      }
-      return curve;
+    let mode = Math.round(instance.params.character ?? 3);
+    let driveVal = instance.params.drive ?? 0.4;
+    let biasVal = instance.params.bias ?? 0;
+    const applyCurve = () => {
+      shaper.curve = characterCurve(Math.max(0, Math.min(3, mode)) as CharacterMode, driveVal, biasVal);
     };
+    applyCurve();
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "drive":
           driveVal = v;
-          shaper.curve = curveOf(v);
+          applyCurve();
+          break;
+        case "character":
+          mode = Math.round(v);
+          applyCurve();
+          break;
+        case "bias":
+          biasVal = v;
+          applyCurve();
           break;
         case "tone":
           smooth(tone.frequency, v, when);
@@ -2310,6 +2350,17 @@ function createWorkletRuntime(
   const input = ctx.createGain();
   const output = ctx.createGain();
   input.connect(node).connect(output);
+  // The gate reports its look-ahead delay once at construction (transient
+  // never posts) — surface it so the engine's PDC keeps tracks aligned.
+  let latencySamples = 0;
+  const latencyListeners = new Set<() => void>();
+  node.port.onmessage = (event: MessageEvent<{ type?: string; samples?: number }>) => {
+    const msg = event.data;
+    if (msg?.type === "latency" && typeof msg.samples === "number") {
+      latencySamples = msg.samples;
+      for (const listener of latencyListeners) listener();
+    }
+  };
   const apply = (id: string, value: number, when: number) => {
     const param = node.parameters.get(id);
     if (param) param.setValueAtTime(value, when);
@@ -2318,9 +2369,17 @@ function createWorkletRuntime(
   return {
     input,
     output,
+    getLatencySec: () => latencySamples / ctx.sampleRate,
+    onLatencyChange(listener: () => void) {
+      latencyListeners.add(listener);
+      return () => {
+        latencyListeners.delete(listener);
+      };
+    },
     setParameter: (id, value) => apply(id, value, ctx.currentTime),
     setParameterAt: apply,
     dispose: () => {
+      node.port.onmessage = null;
       node.disconnect();
       input.disconnect();
       output.disconnect();
@@ -2354,10 +2413,12 @@ const gate: EffectDefinition = {
   category: "dynamics",
   params: [
     { id: "threshold", label: "THRESH", min: -80, max: 0, default: -36, unit: "dB", format: formatDb },
+    { id: "hysteresis", label: "HYSTERESIS", min: 0, max: 1, default: 0.15, format: formatPct },
     { id: "attack", label: "ATTACK", min: 0.0001, max: 0.5, default: 0.002, unit: "s", format: formatMs },
     { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatMs },
     { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatMs },
     { id: "range", label: "RANGE", min: -80, max: 0, default: -48, unit: "dB", format: formatDb },
+    { id: "lookahead", label: "LOOKAHEAD", min: 0, max: 1, default: 1, format: (v) => (v >= 0.5 ? "ON" : "OFF"), kind: "toggle" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -2381,6 +2442,8 @@ const shimmer: EffectDefinition = {
     { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 0.35, format: formatPct },
     { id: "tone", label: "TONE", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "decay", label: "DECAY", min: 0, max: 1, default: 0.35, format: formatPct },
+    { id: "shift", label: "SHIFT", min: -12, max: 12, default: 12, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+    { id: "shimmer", label: "SHIMMER", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.4, format: formatPct },
   ],
   factory(ctx, instance) {
@@ -2411,6 +2474,27 @@ const shimmer: EffectDefinition = {
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = 5200 + (instance.params.tone ?? 0.5) * 3000;
+    // Pitch-shifted shimmer voice: a +12 (default) copy of the exciter feeds
+    // the delay loop, so the SHIFTED tail recirculates — the defining
+    // shimmer sound. Reuses the always-loaded pitchshift worklet (COLA
+    // granular engine); without the worklet the effect degrades to the
+    // plain exciter+tail, never to silence.
+    let shiftNode: ReturnType<typeof createPitchShiftNode> | null = null;
+    const shimmerGain = ctx.createGain();
+    shimmerGain.gain.value = instance.params.shimmer ?? 0.6;
+    if (isWorkletReady("pitchShift", ctx)) {
+      shiftNode = createPitchShiftNode(ctx, {
+        id: instance.id ? `${instance.id}:shimmer` : "shimmer-voice",
+        params: {
+          semitones: instance.params.shift ?? 12,
+          grainMs: 45,
+          width: 0.4,
+          mix: 1,
+        },
+      });
+      exciteGain.connect(shiftNode.input);
+      shiftNode.output.connect(shimmerGain).connect(delay);
+    }
     // Chain: wet -> hp -> shaper -> exciteGain -> delay -> lp -> feedback -> delay loop
     // Wet tap to output: lp feeds back to mix output via wet path
     mix.wet.connect(hp).connect(shaper).connect(exciteGain).connect(delay);
@@ -2437,6 +2521,12 @@ const shimmer: EffectDefinition = {
           case "decay":
             fb.gain.setTargetAtTime(value * 0.55, ctx.currentTime, 0.02);
             break;
+          case "shift":
+            shiftNode?.setParameter("semitones", value);
+            break;
+          case "shimmer":
+            shimmerGain.gain.setTargetAtTime(value, ctx.currentTime, 0.03);
+            break;
           case "mix":
             mix.setMix(value, ctx.currentTime);
             break;
@@ -2454,6 +2544,12 @@ const shimmer: EffectDefinition = {
             break;
           case "decay":
             fb.gain.setValueAtTime(value * 0.55, when);
+            break;
+          case "shift":
+            shiftNode?.setParameterAt("semitones", value, when);
+            break;
+          case "shimmer":
+            shimmerGain.gain.setValueAtTime(value, when);
             break;
           case "mix":
             mix.setMix(value, when);
@@ -2486,6 +2582,12 @@ const shimmer: EffectDefinition = {
         } catch {}
         try {
           exciteGain.disconnect();
+        } catch {}
+        try {
+          shimmerGain.disconnect();
+        } catch {}
+        try {
+          shiftNode?.dispose();
         } catch {}
       },
     };
@@ -3496,6 +3598,7 @@ const flanger: EffectDefinition = {
     { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
+    { id: "invert", label: "INVERT", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "TZF" : "NORMAL"), kind: "toggle" },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
   factory(ctx, instance, env) {
@@ -3617,6 +3720,7 @@ const stutter: EffectDefinition = {
     { id: "division", label: "RATE", min: 0, max: 5, default: 4, options: STUTTER_DIVISIONS },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.8, format: formatPct },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.7, default: 0, format: formatPct },
+    { id: "smooth", label: "SMOOTH", min: 0, max: 20, default: 3, unit: "ms", format: formatMs },
   ],
   factory(ctx, instance) {
     if (isWorkletReady("stutter", ctx)) {

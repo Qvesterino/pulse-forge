@@ -30,6 +30,7 @@ export function createStutterNode(
   safeApplyAudioParam(node, "division", instance.params.division ?? 4);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.8);
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
+  safeApplyAudioParam(node, "smooth", instance.params.smooth ?? 0.003);
 
   const steps = instance.steps && instance.steps.length > 0 ? instance.steps : undefined;
   if (steps) node.port.postMessage({ type: "pattern", steps: [...steps] });

@@ -36,16 +36,6 @@ const BRANCH_A_POLES = [75, 150, 300, 600, 1200, 2400, 4800, 7500];
 const BRANCH_B_POLES = [250, 500, 1000, 2000, 3000, 4000, 6000, 8000];
 const FS_STAGES = 8;
 
-function fsRng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Read a k-rate parameter defensively (missing → fallback). */
 function fsPv(parameters, name, fallback) {
   const p = parameters[name];
@@ -69,10 +59,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     super();
     const sr = globalThis.sampleRate || 44100;
     this.sr = sr;
-    // Decorrelated dither seed per instance (only used to break the L/R
-    // symmetry of the feedback loop start; renders stay deterministic).
-    const seed = (options && options.processorOptions && options.processorOptions.seed) || 1;
-    this.rng = fsRng(seed);
+    // NOTE: the feedback loop is deliberately zero-initialised — two renders
+    // of the same document are bit-identical (offline parity). An earlier
+    // revision seeded an unused RNG here "to break L/R symmetry"; the loop
+    // is per-channel so there is no symmetry to break. Removed (dead code).
     const coefFor = (poleHz) => {
       const t = Math.tan((Math.PI * poleHz) / sr);
       return (t - 1) / (t + 1); // |c| < 1 for any positive pole frequency

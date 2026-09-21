@@ -1,0 +1,11 @@
+src/effects/registry.ts(1920,79): error TS2554: Expected 2 arguments, but got 3.
+src/effects/registry.ts(3553,81): error TS2554: Expected 2 arguments, but got 3.
+src/effects/registry.ts(3881,87): error TS2554: Expected 2 arguments, but got 3.
+tests/undo-roundtrip-sweep.test.ts(23,38): error TS2694: Namespace '"D:/pulse-forge/src/commands/commands"' has no exported member 'Command'.
+tests/undo-roundtrip-sweep.test.ts(77,75): error TS2554: Expected 3 arguments, but got 4.
+tests/undo-roundtrip-sweep.test.ts(272,52): error TS18048: 'd.arrangement.transitions' is possibly 'undefined'.
+tests/undo-roundtrip-sweep.test.ts(283,56): error TS2339: Property 'lanes' does not exist on type 'AutomationLane[]'.
+tests/undo-roundtrip-sweep.test.ts(289,58): error TS2339: Property 'lanes' does not exist on type 'AutomationLane[]'.
+tests/undo-roundtrip-sweep.test.ts(313,39): error TS2353: Object literal may only specify known properties, and 'rate' does not exist in type 'Partial<Omit<Lfo, "id" | "trackId">>'.
+tests/undo-roundtrip-sweep.test.ts(391,63): error TS2339: Property 'params' does not exist on type 'Track'.
+  Property 'params' does not exist on type 'DrumTrack'.

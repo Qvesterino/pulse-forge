@@ -8,7 +8,7 @@
   "durationOutputName": "duration",
   "degreeClasses": 8,
   "durationClasses": 4,
-  "modelHash": "7a073115fd635ec75a6a42c4279c29f0c435f2d88c7c73162f74ce0379b81c31",
+  "modelHash": "008a28cc735ad908f2f443cc23ae33e0b7766389396edd9e39ab2f0fe44a8751",
   "hidden": [
     64,
     32
@@ -23,9 +23,9 @@
     ],
     "epochs": 800,
     "samples": 190,
-    "valDegreeAcc": 0.7143,
-    "trainDegreeAcc": 0.9506,
-    "valDurationAcc": 0.6071,
-    "trainDurationAcc": 0.9012
+    "valDegreeAcc": 0.8214,
+    "trainDegreeAcc": 0.7871,
+    "valDurationAcc": 0.6786,
+    "trainDurationAcc": 0.8754
   }
 }

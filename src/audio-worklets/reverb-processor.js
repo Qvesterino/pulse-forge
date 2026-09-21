@@ -43,6 +43,9 @@ class ReverbProcessor extends AudioWorkletProcessor {
     this.apMask = apSize - 1;
     this.apBufs = Array.from({ length: 2 }, () => [new Float32Array(apSize), new Float32Array(apSize)]);
     this.apIdx = [0, 0];
+    // Output tone LP state (per channel) — separate from the in-loop damping.
+    this.outLpL = 0;
+    this.outLpR = 0;
   }
 
   static get parameterDescriptors() {
@@ -72,15 +75,14 @@ class ReverbProcessor extends AudioWorkletProcessor {
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
     const decay = Math.max(0.1, Math.min(6, parameters.decay[0]));
-    const dampingFreq = Math.max(
-      500,
-      Math.min(12000, parameters.damping ? parameters.damping[0] : parameters.tone ? parameters.tone[0] : 6000),
-    );
+    // DAMPING shapes the feedback loop (how fast the TAIL loses highs);
+    // TONE is the output brightness — two distinct filters now, they used
+    // to collapse into one (min of both) which wasted a knob.
+    const dampingFreq = Math.max(500, Math.min(12000, parameters.damping ? parameters.damping[0] : 6000));
     const diffusion = Math.max(0, Math.min(1, parameters.diffusion ? parameters.diffusion[0] : 0.5));
-    const toneFreq = Math.max(500, Math.min(12000, parameters.tone ? parameters.tone[0] : dampingFreq));
-    // Use the brighter of damping/tone as effective lowpass
-    const effDamp = Math.min(dampingFreq, toneFreq);
-    const dampAlpha = 1 - Math.exp((-2 * Math.PI * effDamp) / sr);
+    const toneFreq = Math.max(500, Math.min(12000, parameters.tone ? parameters.tone[0] : 9000));
+    const dampAlpha = 1 - Math.exp((-2 * Math.PI * dampingFreq) / sr);
+    const toneAlpha = 1 - Math.exp((-2 * Math.PI * toneFreq) / sr);
 
     // Precompute per-comb feedback gains for RT60 = decay. Cached — the old
     // per-block `.map` (+closure) was avoidable garbage on the audio thread;
@@ -138,8 +140,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
       apL = this.processAllpass(1, 0, apL, ALLPASS_DELAYS[1], apFeedback);
       apR = this.processAllpass(1, 1, apR, ALLPASS_DELAYS[1], apFeedback);
 
-      outL[i] = apL;
-      if (outR) outR[i] = apR;
+      outL[i] = this.outLpL = this.outLpL + toneAlpha * (apL - this.outLpL);
+      if (outR) outR[i] = this.outLpR = this.outLpR + toneAlpha * (apR - this.outLpR);
+      if (Math.abs(this.outLpL) < 1e-20) this.outLpL = 0;
+      if (Math.abs(this.outLpR) < 1e-20) this.outLpR = 0;
     }
     return true;
   }

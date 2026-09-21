@@ -1,12 +1,17 @@
 import type { EffectRuntime } from "../effects/types";
 import { safeApplyAudioParam } from "./safeAudioParam";
+import { createLfoSyncController } from "../effects/tempo-sync";
 
 /**
  * Create a Chorus AudioWorkletNode synchronously.
  * The processor module MUST be pre-loaded via `loadCoreWorklets()` first —
  * callers gate construction behind `isWorkletReady("chorus", ctx)`.
  */
-export function createChorusNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
+export function createChorusNode(
+  ctx: BaseAudioContext,
+  instance: { params: Record<string, number> },
+  bpm?: number,
+): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "chorus-processor", {
     numberOfInputs: 1,
     numberOfOutputs: 1,
@@ -19,7 +24,20 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
   const out = ctx.createGain();
   input.connect(node).connect(out);
 
-  safeApplyAudioParam(node, "rate", instance.params.rate ?? 0.6);
+  // C2 tempo-sync: the rate param stays Hz; a musical `sync` locks the LFO
+  // to the transport and follows bpm pushes via the engine hook (replaces
+  // the old always-on 1/4-beat snap that ignored the user's rate).
+  const lfoSync = createLfoSyncController({
+    rateParamId: "rate",
+    defaultRate: 0.6,
+    initialRate: instance.params.rate,
+    initialSync: instance.params.sync,
+    initialBpm: bpm,
+    write: (paramId, value, when) =>
+      when == null ? safeApplyAudioParam(node, paramId, value) : safeApplyAudioParam(node, paramId, value, when),
+  });
+  lfoSync.parameter("rate", instance.params.rate ?? 0.6, null);
+
   safeApplyAudioParam(node, "depth", instance.params.depth ?? 0.5);
   safeApplyAudioParam(node, "spread", instance.params.spread ?? 1);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
@@ -35,6 +53,7 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
         smoothOut(v, ctx.currentTime);
         return;
       }
+      if (lfoSync.parameter(id, v, ctx.currentTime)) return;
       safeApplyAudioParam(node, id, v, ctx.currentTime);
     },
     setParameterAt: (id, v, when) => {
@@ -42,11 +61,11 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
         smoothOut(v, when);
         return;
       }
+      if (lfoSync.parameter(id, v, when)) return;
       safeApplyAudioParam(node, id, v, when);
     },
-    syncBpm(bpm, when) {
-      // Snap the LFO to 1/4-beat rate (musical default for chorus motion).
-      safeApplyAudioParam(node, "rate", bpm / 60 / 4, when ?? ctx.currentTime);
+    syncBpm(next, when) {
+      lfoSync.syncBpm(next, when ?? ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

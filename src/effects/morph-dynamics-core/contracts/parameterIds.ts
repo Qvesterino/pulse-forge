@@ -8,7 +8,7 @@
  *
  * ID rules (persistent API contract):
  *   1. IDs are dot-namespaced: global.*, macro.*, analysis.*, dyn.*,
- *      char.*, motion.*, space.*, routes.*.
+ *      char.*, motion.*, space.*, harm.*, routes.*.
  *   2. Once shipped, an ID never changes meaning. New parameters get new
  *      IDs; removed parameters are deprecated, never renumbered.
  *   3. Modulation routes live in the numeric param map as 8 fixed slots
@@ -92,6 +92,41 @@ export const SPACE_DAMPING_ID = "space.damping" as const; // 0..100
 export const SPACE_WIDTH_ID = "space.width" as const; // 0..200 %
 /** Depth of transient-ducked space (signature: clear attack → bloom). */
 export const SPACE_DUCK_ID = "space.duck" as const; // 0..100
+
+// ── BODY Harmonizer (Experiment #1) ─────────────────────────
+// Harmony is built ONLY from the tonal body component; transients and
+// texture pass the chain untouched (see "MORPH DYNAMICS — EXPERIMENT #1
+// BODY HARMONIZER.md"). The module is OFF by default — enabling it must
+// never silently alter existing MORPH behavior or presets.
+
+export const HARM_ENABLED_ID = "harm.enabled" as const;
+/** Level of the ORIGINAL body in the output (0..100). 100 = dry untouched
+ * (harmony is a pure parallel add); lower values duck the sustained body
+ * to make room for the harmony instead of double-counting body energy. */
+export const HARM_BODY_AMOUNT_ID = "harm.bodyAmount" as const;
+export const HARM_MIX_ID = "harm.mix" as const; // 0..100 harmony bus level
+/** Experiment A/B: 1 = naive FULL-signal harmonization (mask forced to 1)
+ * for sonic comparison against BODY-only. Dev/reference, not a product
+ * surface. */
+export const HARM_DEV_FULL_SIGNAL_ID = "harm.devFullSignal" as const;
+
+export const HARM_VOICE_COUNT = 4;
+
+export type HarmVoiceParam = "on" | "interval" | "level" | "pan" | "detune";
+
+export function harmVoiceParamId(voice: number, param: HarmVoiceParam): string {
+  return `harm.voice.${voice}.${param}`;
+}
+
+/** True for any id inside the harm.voice.N.* namespace (bounded check). */
+export function isHarmVoiceParamId(id: string): boolean {
+  if (!id.startsWith("harm.voice.")) return false;
+  const rest = id.slice("harm.voice.".length);
+  const dot = rest.indexOf(".");
+  if (dot <= 0) return false;
+  const voice = Number.parseInt(rest.slice(0, dot), 10);
+  return Number.isInteger(voice) && voice >= 0 && voice < HARM_VOICE_COUNT;
+}
 
 // ── Modulation matrix (8 fixed route slots) ────────────────
 

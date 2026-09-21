@@ -1,5 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
 import { safeApplyAudioParam } from "./safeAudioParam";
+import { createLfoSyncController } from "../effects/tempo-sync";
 
 /**
  * Create a Frequency Shifter AudioWorkletNode synchronously.
@@ -13,6 +14,7 @@ import { safeApplyAudioParam } from "./safeAudioParam";
 export function createFreqShiftNode(
   ctx: BaseAudioContext,
   instance: { params: Record<string, number> },
+  bpm?: number,
 ): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "freqshift-processor", {
     numberOfInputs: 1,
@@ -45,11 +47,33 @@ export function createFreqShiftNode(
     if (Number.isFinite(v)) safeApplyAudioParam(node, param, v);
   }
 
+  // C2 tempo-sync: lfoRate stays Hz; a musical `sync` locks the sweep LFO
+  // to the transport and follows bpm pushes via the engine hook.
+  const lfoSync = createLfoSyncController({
+    rateParamId: "lfoRate",
+    defaultRate: 0.1,
+    initialRate: instance.params.lfoRate,
+    initialSync: instance.params.sync,
+    initialBpm: bpm,
+    write: (paramId, value, when) =>
+      when == null ? safeApplyAudioParam(node, paramId, value) : safeApplyAudioParam(node, paramId, value, when),
+  });
+  lfoSync.parameter("lfoRate", instance.params.lfoRate ?? 0.1, null);
+
   return {
     input,
     output,
-    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
+    setParameter: (id, v) => {
+      if (lfoSync.parameter(id, v, ctx.currentTime)) return;
+      safeApplyAudioParam(node, id, v, ctx.currentTime);
+    },
+    setParameterAt: (id, v, when) => {
+      if (lfoSync.parameter(id, v, when)) return;
+      safeApplyAudioParam(node, id, v, when);
+    },
+    syncBpm(next, when) {
+      lfoSync.syncBpm(next, when ?? ctx.currentTime);
+    },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {
       node.disconnect();

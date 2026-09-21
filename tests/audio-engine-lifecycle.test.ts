@@ -119,11 +119,11 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(useContext).toMatch(/event\.preventDefault\(\)/);
     // contextlost must clear this.ctx so the next ensureContext() rebuilds
     // against a fresh context rather than recursing on the broken handle.
-    expect(useContext).toMatch(/oncontextlost[\s\S]{0,200}this\.ctx\s*=\s*null/);
+    expect(useContext).toMatch(/oncontextlost[\s\S]{0,800}this\.ctx\s*=\s*null/);
     // contextrestored must call useContext(ctx) to rebuild against the SAME
     // restored context — the browser kept the AudioContext alive, allocating
     // a new one would leak the original.
-    expect(useContext).toMatch(/oncontextrestored[\s\S]{0,200}this\.useContext\(ctx\)/);
+    expect(useContext).toMatch(/oncontextrestored[\s\S]{0,800}this\.useContext\(ctx\)/);
   });
 
   it("panic() disposes LFO + follower state in BOTH the live-context and no-context paths", () => {

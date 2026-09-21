@@ -30,6 +30,7 @@ class StutterProcessor extends AudioWorkletProcessor {
     this.phase = 0;
     this.bpm = 120;
     this.gateSteps = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    this.gateSmoothed = 1;
     this.port.onmessage = (event) => {
       const d = event.data || {};
       if (d.type === "pattern" && Array.isArray(d.steps) && d.steps.length > 0) {
@@ -48,6 +49,10 @@ class StutterProcessor extends AudioWorkletProcessor {
       { name: "division", defaultValue: 4, minValue: 0, maxValue: 5, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.8, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0, minValue: 0, maxValue: 0.7, automationRate: "k-rate" },
+      // Step-edge smoothing (ms): the per-step gate glides instead of
+      // stepping — hard on/off transitions click on the exact step boundary
+      // (the same fix stepGate has had all along).
+      { name: "smooth", defaultValue: 0.003, minValue: 0, maxValue: 0.02, automationRate: "k-rate" },
     ];
   }
 
@@ -66,6 +71,8 @@ class StutterProcessor extends AudioWorkletProcessor {
     this.divValue = divIdx;
     const mix = parameters.mix[0];
     const feedback = Math.max(0, Math.min(0.7, parameters.feedback[0]));
+    const smoothMs = Math.max(0, parameters.smooth ? parameters.smooth[0] : 0.003);
+    const gateCoef = smoothMs > 0.0001 ? Math.exp(-1 / (sr * smoothMs)) : 0;
     const stepBeats = STUT_DIV_BEATS[divIdx];
     const phaseRate = this.bpm / (60 * sr);
 
@@ -84,10 +91,16 @@ class StutterProcessor extends AudioWorkletProcessor {
       this.phase += phaseRate;
       const stepIdx = Math.floor(this.phase / stepBeats) % this.gateSteps.length;
       const gate = this.gateSteps[stepIdx] || 0;
+      // Smoothed gate: one-pole toward the step target on BOTH edges —
+      // (1 − coef) per sample reaches 63 % in exactly smoothMs. Hard steps
+      // clicked on the exact boundary (the fix stepGate has had all along).
+      this.gateSmoothed += (gate - this.gateSmoothed) * (1 - gateCoef);
+      if (Math.abs(this.gateSmoothed) < 1e-20) this.gateSmoothed = 0;
+      const gateGain = this.gateSmoothed;
 
       // Write with feedback
-      let wL = l + delayedL * gate * feedback;
-      let wR = r + delayedR * gate * feedback;
+      let wL = l + delayedL * gateGain * feedback;
+      let wR = r + delayedR * gateGain * feedback;
       if (Math.abs(wL) < 1e-20) wL = 0;
       if (Math.abs(wR) < 1e-20) wR = 0;
       this.bufL[this.writeIdx] = wL;
@@ -95,8 +108,8 @@ class StutterProcessor extends AudioWorkletProcessor {
       this.writeIdx = (this.writeIdx + 1) & STUT_MASK;
 
       // Output: gated delayed signal
-      const gatedL = delayedL * gate;
-      const gatedR = delayedR * gate;
+      const gatedL = delayedL * gateGain;
+      const gatedR = delayedR * gateGain;
       outL[i] = l * (1 - mix) + gatedL * mix;
       if (outR) outR[i] = r * (1 - mix) + gatedR * mix;
     }

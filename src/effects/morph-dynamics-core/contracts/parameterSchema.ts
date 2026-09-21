@@ -139,6 +139,40 @@ function routeParams(): MorphParamDef[] {
   return defs;
 }
 
+/**
+ * harm.* — BODY Harmonizer (Experiment #1). Disabled by default: enabling
+ * must never silently alter existing MORPH behavior or presets. Voice A is
+ * pre-shaped (+7 st, on) so turning the module ON is immediately musical
+ * (the plugin's "meaningful result seconds after loading" rule); voices
+ * B/C/D carry the spread (−5/+12/−12) and pan positions for when they are
+ * enabled.
+ */
+function harmParams(): MorphParamDef[] {
+  const defs: MorphParamDef[] = [
+    p(P.HARM_ENABLED_ID, "Body Harmonizer", 0, 0, 1, "boolean", false),
+    p(P.HARM_BODY_AMOUNT_ID, "Body Amount", 100, 0, 100, "percent"),
+    p(P.HARM_MIX_ID, "Harmony Mix", 50, 0, 100, "percent"),
+    p(P.HARM_DEV_FULL_SIGNAL_ID, "Dev Full-Signal A/B", 0, 0, 1, "boolean", false),
+  ];
+  // Voice defaults: interval / level / pan shape a ready-to-open stack —
+  // A(+7, center-ish) B(−5, mirrored) C(+12, wide) D(−12, wide).
+  const voiceDefaults: Array<[number, number, number, number]> = [
+    [7, 70, -25, 0], // interval, level, pan, detune
+    [-5, 70, 25, 0],
+    [12, 60, -60, 0],
+    [-12, 60, 60, 0],
+  ];
+  for (let v = 0; v < P.HARM_VOICE_COUNT; v++) {
+    const [interval, level, pan, detune] = voiceDefaults[v]!;
+    defs.push(p(P.harmVoiceParamId(v, "on"), `Harmony Voice ${v + 1} On`, v === 0 ? 1 : 0, 0, 1, "boolean", false));
+    defs.push(p(P.harmVoiceParamId(v, "interval"), `Harmony Voice ${v + 1} Interval`, interval, -24, 24, "generic"));
+    defs.push(p(P.harmVoiceParamId(v, "level"), `Harmony Voice ${v + 1} Level`, level, 0, 150, "percent"));
+    defs.push(p(P.harmVoiceParamId(v, "pan"), `Harmony Voice ${v + 1} Pan`, pan, -100, 100, "generic"));
+    defs.push(p(P.harmVoiceParamId(v, "detune"), `Harmony Voice ${v + 1} Detune`, detune, -50, 50, "generic"));
+  }
+  return defs;
+}
+
 export const ALL_PARAMS: readonly MorphParamDef[] = [
   ...GLOBAL_PARAMS,
   ...MACRO_PARAMS,
@@ -147,6 +181,7 @@ export const ALL_PARAMS: readonly MorphParamDef[] = [
   ...CHAR_PARAMS,
   ...MOTION_PARAMS,
   ...SPACE_PARAMS,
+  ...harmParams(),
   ...routeParams(),
 ];
 
