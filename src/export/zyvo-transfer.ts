@@ -260,10 +260,10 @@ export async function buildZyvoTransfer(
     },
     stems: stemMetadata,
     notes: [
-      "The full-mix WAV is the authoritative sound reference and is loaded as the VocalForge instrumental bed.",
+      "The full-mix WAV is the authoritative sound reference and is loaded as the target DAW's instrumental bed.",
       "Track stems are aligned from time zero, include KYX track/group processing and are rendered before the KYX master stage.",
       "Track fader gain and pan are baked into each stem; imported stem mixer channels start at unity/center and muted.",
-      "The original KYX JSON is included. Instrument, effect, automation and sample-bank state are preserved there, not translated into VocalForge-native synth state.",
+      "The original KYX JSON is included. Instrument, effect, automation and sample-bank state are preserved there, not translated into target-DAW-native synth state.",
       "Nonlinear track/group processing means isolated stems are remix sources, not a promise that summing them recreates the mastered full mix.",
       "Sidechain keying from tracks outside an isolated stem may not reproduce in that stem; the full-mix render remains the authoritative reference.",
     ],
@@ -272,7 +272,7 @@ export async function buildZyvoTransfer(
   entries.push({ name: "README.md", data: encodeUtf8(buildReadme(doc.name, manifest)) });
 
   throwIfAborted(signal);
-  onProgress({ phase: "Packaging native VocalForge transfer", pct: 0.94 });
+  onProgress({ phase: "Packaging native ZYVO transfer", pct: 0.94 });
   const blob = buildZip(entries);
   if (blob.size > MAX_ZYVO_TRANSFER_BYTES) {
     throw new Error(`The generated transfer is too large (${formatBytes(blob.size)}).`);
@@ -395,20 +395,20 @@ function buildReadme(projectName: string, manifest: ZyvoTransferManifest): strin
   const lines = [
     `# ${projectName} — KYX to ZYVO transfer`,
     "",
-    "Open VocalForge / ZYVO and choose File → Import KYX Session…",
+    "Open the target DAW (ZYVO) and choose File → Import KYX Session…",
     "",
     "## Audio fidelity",
     "",
     `- Authoritative stereo mix: ${manifest.master.sampleRate} Hz, 32-bit float WAV, ${manifest.master.quality} offline render.`,
     "- Optional track stems are time-aligned to zero, 32-bit float, and rendered before KYX master processing.",
-    "- The VocalForge project starts with the exact master mix audible and all stems muted, preventing accidental doubling.",
+    "- The target-DAW project starts with the exact master mix audible and all stems muted, preventing accidental doubling.",
     "- Track/group processing is included in the stems. The full mix remains the reference because nonlinear processing cannot be undone by a stem sum.",
     "- Sidechain inputs from other tracks may differ in isolated stems; use the full mix as the definitive reference.",
     "",
     "## Editability",
     "",
     "- `source/kyx-project.json` retains the original KYX musical document and plugin/instrument parameters.",
-    "- VocalForge receives native audio tracks. KYX synths and plugin states are not falsely represented as compatible VocalForge instruments.",
+    "- The target DAW receives native audio tracks. KYX synths and plugin states are not falsely represented as compatible target-DAW instruments.",
     "",
     `## Session details`,
     "",

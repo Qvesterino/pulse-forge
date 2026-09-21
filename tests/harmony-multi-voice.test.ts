@@ -10,7 +10,6 @@ import {
   type ChordProgression,
 } from "../src/ai/harmony";
 import { generateMultiVoice } from "../src/intent/multi-voice";
-import { snapToScale, SCALE_INTERVALS } from "../src/project-model/scales";
 
 describe("chord progression engine (functional harmony)", () => {
   it("every genre has progressions with valid structure", () => {
@@ -83,8 +82,6 @@ describe("chord progression engine (functional harmony)", () => {
 });
 
 describe("multi-voice orchestrator (harmonic awareness)", () => {
-  const INTENT = { seed: "mv-test", energy: 0.8, velocityVariation: 0.3 };
-
   it("all three voices are generated with content", () => {
     const doc = testDoc();
     const result = generateMultiVoice(doc, "house", 42, 64, "C Natural Minor", 0.8, 0.3);

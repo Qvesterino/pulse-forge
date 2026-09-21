@@ -686,7 +686,7 @@ export function ExportPanel({
           type="button"
           className="btn btn-export btn-export-scorepack"
           disabled={busy}
-          title="Create a VocalForge / ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
+          title="Create a ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
           onClick={() => void exportZyvoTransfer()}
         >
           EXPORT TO ZYVO
