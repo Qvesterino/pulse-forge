@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 import {
@@ -17,6 +17,7 @@ import { computeRenderTicks } from "../src/rendering/renderer";
 import { BAR_TICKS } from "../src/project-model/types";
 import { SnapshotRepository } from "../src/persistence/SnapshotRepository";
 import { SampleBank } from "../src/sample-library/factory";
+import { downloadPresets } from "../src/effects/fxeq-core/core/presets";
 import { UserSampleRepository, type UserSampleAsset } from "../src/persistence/UserSampleRepository";
 import { openDb, STORE_META, STORE_SNAPSHOT_INDEX, STORE_SNAPSHOTS, tx } from "../src/persistence/db";
 
@@ -549,6 +550,57 @@ describe("SampleBank arrival hook (GOAL 06 — worklet sample re-upload)", () =>
     expect(engineSource).toContain("detachBank(): void");
     // Offline engines must release the subscription (shared bank outlives them).
     expect(read(SRC.renderer)).toContain("engine.detachBank()");
+  });
+});
+
+describe("Resource lifecycle (GOAL 10)", () => {
+  it("diff-sync disposes track/return/group nodes whose ids left the doc; frozen sources stop", () => {
+    const source = read(SRC.engine);
+    expect(source).toContain("if (!liveTrackIds.has(id)) this.disposeTrackNodes(id, nodes);");
+    expect(source).toContain("if (!liveReturnIds.has(id)) this.disposeReturnNodes(id, nodes);");
+    expect(source).toContain("if (!liveGroupIds.has(id)) this.disposeGroupNodes(id, nodes);");
+    expect(source).toContain("private disposeInstrumentRuntime(");
+    // A deleted frozen track stops its playing source immediately.
+    expect(source).toContain("private disposeFrozenSource(");
+  });
+
+  it("fxeq preset download revokes lazily and survives a browser without revokeObjectURL", () => {
+    vi.useFakeTimers();
+    const created: string[] = [];
+    const revoked: string[] = [];
+    const anchor = { href: "", download: "", click: () => {} };
+    vi.stubGlobal("document", { createElement: () => anchor });
+    vi.stubGlobal("URL", {
+      createObjectURL: (blob: Blob) => {
+        void blob;
+        const url = `blob:fake-${created.length}`;
+        created.push(url);
+        return url;
+      },
+      revokeObjectURL: (url: string) => revoked.push(url),
+    });
+    try {
+      downloadPresets([{ id: "p1", name: "P1", category: "Delay", params: {} }], "test.json");
+      expect(created.length).toBe(1);
+      // NOT revoked synchronously — an immediate revoke races the click in
+      // Safari and can abort the download.
+      expect(revoked).toEqual([]);
+      vi.advanceTimersByTime(5_000);
+      expect(revoked).toEqual(created);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("fxeq preset download no-ops in a DOM-less environment", () => {
+    vi.stubGlobal("document", undefined);
+    vi.stubGlobal("URL", undefined);
+    try {
+      expect(() => downloadPresets([], "x.json")).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
