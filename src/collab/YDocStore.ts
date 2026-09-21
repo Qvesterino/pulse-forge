@@ -37,6 +37,20 @@ registerYDocHelpers({
 
 export type SaveStatus = "saved" | "dirty" | "saving" | "error" | "syncing";
 
+/**
+ * Pre-first-sync guard window. `YDocStore.empty()` starts with an UNKNOWN
+ * room: a command executed before the first sync would either fragment the
+ * empty map (targeted fast-path helpers no-op on missing entities, scalar
+ * setters write a lone key whose projection collapses the whole UI to a
+ * skeleton doc) or self-seed the room, which also makes `hasRemote` true from
+ * OUR OWN writes and turns an intended seed into an adopt of our fragment.
+ * execute() therefore BUFFERS commands while connecting and flushes them —
+ * in order, after the hydrate/adopt decision — once `markSynced()` fires.
+ * `markSyncFailed()` (wired by openProject to a timeout) degrades to the old
+ * immediate behavior so an unreachable relay cannot wedge editing forever.
+ */
+export type SyncPhase = "connecting" | "ready";
+
 export interface HistoryEntry {
   label: string;
   type: string;
@@ -66,6 +80,9 @@ export class YDocStore {
   private lastUndoneLabel: string | null = null;
   private lastCoalesce: { key: string; at: number } | null = null;
   private doc_: ProjectDocument;
+  /** Pre-first-sync command buffer — see the SyncPhase docs. */
+  private syncPhase_: SyncPhase = "ready";
+  private bufferedCommands: Command[] = [];
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
   /**
    * Jam-role gate: returns the local role (or null = ungated). Wired by
@@ -81,7 +98,13 @@ export class YDocStore {
     this.yDoc = yDoc;
     this.yMap = yDoc.getMap("project");
     this.doc_ = this.readDoc(true);
-    const undoManager = new Y.UndoManager(this.yMap, { trackedOrigins: new Set([this]) });
+    const undoManager = new Y.UndoManager(this.yMap, {
+      trackedOrigins: new Set([this]),
+      // Parity with ProjectStore's 1 s coalesce window: the default 500 ms
+      // captureTimeout split same-gesture edits (600 ms apart) into two
+      // undo steps in collab while solo merged them.
+      captureTimeout: 1000,
+    });
     this.undoManager = undoManager;
 
     // Stash the command label on each undo stack item so the history panel
@@ -141,8 +164,51 @@ export class YDocStore {
    */
   static empty(fallback: ProjectDocument): YDocStore {
     const store = new YDocStore(new Y.Doc());
-    store.doc_ = fallback;
+    // Parity with the ProjectStore constructor: the fallback enters the store
+    // through the normalizer (the raw template/import doc may carry junk the
+    // fast-path projection would faithfully reproduce).
+    store.doc_ = normalizeProject(fallback);
+    store.syncPhase_ = "connecting";
     return store;
+  }
+
+  /** Commands held while connecting (bounded — see execute()). */
+  get bufferedCommandCount(): number {
+    return this.bufferedCommands.length;
+  }
+
+  get syncPhase(): SyncPhase {
+    return this.syncPhase_;
+  }
+
+  /**
+   * First sync resolved (hydrate/adopt already applied by the caller):
+   * release the buffered commands against the final room content.
+   */
+  markSynced(): void {
+    this.syncPhase_ = "ready";
+    this.flushBufferedCommands();
+  }
+
+  /**
+   * The relay never reached first sync (unreachable/offline): degrade to
+   * immediate execution so the room self-seeds from the fallback document —
+   * exactly the pre-guard behavior, without the wedge.
+   */
+  markSyncFailed(): void {
+    if (this.syncPhase_ === "ready") return;
+    this.syncPhase_ = "ready";
+    this.flushBufferedCommands();
+  }
+
+  private flushBufferedCommands(): void {
+    if (this.bufferedCommands.length === 0) return;
+    // One emit per flush: re-project once after the whole batch lands.
+    const batch = this.bufferedCommands;
+    this.bufferedCommands = [];
+    for (const command of batch) {
+      this.executeBuffered(command);
+    }
   }
 
   /** Seed the (empty) room: write the initial document into the Y map. */
@@ -269,6 +335,23 @@ export class YDocStore {
    * origin and never enter the local undo stack.
    */
   execute(command: Command): void {
+    if (this.syncPhase_ === "connecting") {
+      // Pre-first-sync guard — see the SyncPhase docs. Bounded: beyond the
+      // cap the OLDEST buffered command is dropped so the flushed state still
+      // reflects the user's latest intent.
+      if (this.bufferedCommands.length >= 200) this.bufferedCommands.shift();
+      this.bufferedCommands.push(command);
+      if (this.saveStatus_ !== "syncing") {
+        this.saveStatus_ = "syncing";
+        this.emit();
+      }
+      return;
+    }
+    this.executeBuffered(command);
+  }
+
+  /** Command application proper — runs once the sync phase is ready. */
+  private executeBuffered(command: Command): void {
     // Jam-role gate: a restricted role may not run commands outside its
     // bucket. The refusal is surfaced, never thrown — the UI keeps working.
     const role = this.roleProvider?.() ?? null;
@@ -292,6 +375,21 @@ export class YDocStore {
           applyProjectToYMap(this.doc_, newDoc, this.yMap);
         }
       }, this);
+    } catch (err) {
+      // A throw from applyToYDoc / command.execute / applyProjectToYMap
+      // leaves the Y.Doc in a half-applied state (yjs has no automatic
+      // rollback inside a transaction). Surface it loudly, skip the
+      // post-transact undo-stopCapturing so we never close a partial
+      // capture, and re-emit so listeners re-render against the now-stable
+      // (possibly partial) projection instead of getting stuck on stale
+      // snapshots. Mirrors the role-block path: do NOT re-throw — callers
+      // are not exception-safe and a thrown execute() would freeze the UI.
+      console.error(
+        `[YDocStore] command "${command.type}" threw during Y.Doc transaction — Y.Doc may be partially mutated, undo/history NOT advanced`,
+        err,
+      );
+      this.emit();
+      return;
     } finally {
       this.pendingLabel = null;
     }

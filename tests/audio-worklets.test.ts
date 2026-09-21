@@ -115,7 +115,8 @@ describe("AudioWorklet loader", () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadAllWorklets(ctx);
-    expect(addModule).toHaveBeenCalledTimes(5);
+    // 6th entry added by the granularFreeze worklet (FX expansion phase 4).
+    expect(addModule).toHaveBeenCalledTimes(6);
     expect(isWorkletReady("fxeq", ctx)).toBe(true);
     expect(isWorkletReady("ultina", ctx)).toBe(true);
     expect(isWorkletReady("ozvena", ctx)).toBe(true);

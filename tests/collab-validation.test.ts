@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { YDocStore } from "../src/collab/YDocStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { setBpm } from "../src/commands/commands";
 import { projectToYDoc, yDocToProject } from "../src/collab/YDocAdapter";
 
 /** Simulate BroadcastChannel sync — apply source's full state to target. */
@@ -270,5 +271,70 @@ describe("YDocStore collaboration", () => {
     store.refreshSnapshot();
     expect(store.doc.name).toBe("Remote Edit");
     expect(store.doc.bpm).toBe(300);
+  });
+});
+
+describe("YDocStore pre-sync guard (GOAL 05)", () => {
+  const fallback = () => createProjectFromTemplate("house");
+
+  it("buffers commands while connecting — nothing touches the room before the sync decision", () => {
+    const store = YDocStore.empty(fallback());
+    expect(store.syncPhase).toBe("connecting");
+    expect(store.saveStatus).toBe("saved");
+
+    store.execute(setBpm(store.doc, 140));
+    // The buffered command must not fragment the empty map (self-seed)…
+    expect(store.yDocRef.getMap("project").size).toBe(0);
+    // …must not change the visible document yet…
+    expect(store.doc.bpm).toBe(fallback().bpm);
+    // …and the UI gets the "syncing" status.
+    expect(store.saveStatus).toBe("syncing");
+  });
+
+  it("releases buffered commands after hydrate (room was empty)", () => {
+    const store = YDocStore.empty(fallback());
+    store.execute(setBpm(store.doc, 140));
+    store.hydrate(fallback());
+    store.markSynced();
+
+    expect(store.syncPhase).toBe("ready");
+    expect(store.doc.bpm).toBe(140);
+    expect(store.yDocRef.getMap("project").size).toBeGreaterThan(0);
+    expect(store.saveStatus).not.toBe("syncing");
+  });
+
+  it("releases buffered commands against ADOPTED content (joiner on a live room)", () => {
+    const room = new Y.Doc();
+    const trapDoc = createProjectFromTemplate("trap");
+    projectToYDoc(trapDoc, room.getMap("project"));
+    const store = YDocStore.empty(fallback());
+    store.execute(setBpm(store.doc, 140));
+    // The joiner's first sync delivers the remote state…
+    syncDocs(room, store.yDocRef);
+    store.adoptRemote();
+    store.markSynced();
+
+    // …and the buffered command lands on the ADOPTED document (trap bpm),
+    // not on the fallback the joiner arrived with.
+    expect(store.doc.bpm).toBe(140);
+    expect(store.doc.id).toBe(trapDoc.id);
+  });
+
+  it("markSyncFailed degrades to immediate execution (unreachable relay never wedges editing)", () => {
+    const store = YDocStore.empty(fallback());
+    store.execute(setBpm(store.doc, 140));
+    store.markSyncFailed();
+
+    expect(store.syncPhase).toBe("ready");
+    expect(store.doc.bpm).toBe(140);
+    // Self-seeded room — the pre-guard behavior.
+    expect(store.yDocRef.getMap("project").size).toBeGreaterThan(0);
+  });
+
+  it("non-deferred stores (fromDocument) execute immediately — no guard", () => {
+    const store = YDocStore.fromDocument(fallback());
+    expect(store.syncPhase).toBe("ready");
+    store.execute(setBpm(store.doc, 140));
+    expect(store.doc.bpm).toBe(140);
   });
 });

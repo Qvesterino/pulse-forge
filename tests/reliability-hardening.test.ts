@@ -361,6 +361,10 @@ describe("renderer — export content correctness", () => {
 
 const SRC = {
   engine: resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"),
+  renderer: resolve(process.cwd(), "src/rendering/renderer.ts"),
+  stockDelay: resolve(process.cwd(), "src/audio-worklets/stock-delay-node.ts"),
+  chorus: resolve(process.cwd(), "src/audio-worklets/chorus-node.ts"),
+  kaskadaNode: resolve(process.cwd(), "src/audio-worklets/kaskada-node.ts"),
   granular: resolve(process.cwd(), "src/audio-worklets/granular-voice-processor.js"),
   wtvoice: resolve(process.cwd(), "src/audio-worklets/wtvoice-processor.js"),
   kwmeter: resolve(process.cwd(), "src/audio-worklets/kwmeter-processor.js"),
@@ -416,6 +420,34 @@ describe("AudioEngine — hardening pins (source-grep)", () => {
     const bpm = functionBody(source, /private pushSyncBpm\(/);
     expect(bpm).toContain("this.groupNodes.values()");
     expect(bpm).toContain("this.returnNodes.values()");
+  });
+
+  it("pushSyncBpm threads `when` to runtimes and only change-guards live pushes (offline scene-BPM seam)", () => {
+    const source = read(SRC.engine);
+    const bpm = functionBody(source, /private pushSyncBpm\(/);
+    // Scheduled (offline) pushes must reach runtimes even for a repeated BPM
+    // value — each push carries its own window time.
+    expect(bpm).toContain("when === undefined && this.syncedBpm === bpm");
+    expect(bpm).toContain("rt.syncBpm?.(bpm, when)");
+    expect(bpm).toContain("inst.runtime.syncBpm?.(bpm, when)");
+  });
+
+  it("offline renderer schedules each window's scene BPM at its own start time", () => {
+    const source = read(SRC.renderer);
+    expect(source).toContain("engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from))");
+  });
+
+  it("offline renderer awaits bounded user-sample readiness next to the curated layer", () => {
+    const source = read(SRC.renderer);
+    expect(source).toContain("await userSamplesReadyWithin(bank, 4000)");
+    expect(source).toContain("await curatedReadyWithin(bank, 2000)");
+  });
+
+  it("AudioParam-backed syncBpm runtimes schedule with `when ?? currentTime`", () => {
+    for (const path of [SRC.stockDelay, SRC.chorus, SRC.kaskadaNode]) {
+      const source = read(path);
+      expect(source.includes("when ?? ctx.currentTime") || source.includes("(bpm, when) =>"), path).toBe(true);
+    }
   });
 
   it("triggerAudioClip disconnects the un-started primary source on the warp-segment path", () => {

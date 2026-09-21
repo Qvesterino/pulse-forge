@@ -415,6 +415,20 @@ export class AudioEngine {
   private doc: ProjectDocument | null = null;
   private effectIntentPreview: EffectIntentPreviewSession | null = null;
   private synthNoise: AudioBuffer | null = null;
+  /**
+   * Serializes back-to-back `setProject()` calls so a worklet-load driven
+   * continuation from the prior doc can't mutate the new doc's runtime
+   * graph (the previous bug: `queueWorkletRefresh` -> `loadCoreWorklets().then`
+   * -> `queueFxRebuild` ran `syncProject(this.doc)` after `this.doc` had
+   * already been replaced by a re-entrant `setProject`, so doc A's effect
+   * IDs were applied to doc B's graph). The IIFE wrapping `setProject`'s
+   * body resolves to `void`; the queue drains FIFO once the in-flight
+   * body settles. Re-entrant calls coalesce — only the latest pending doc
+   * matters, since older queued docs are already superseded by the most
+   * recent push.
+   */
+  private projectPromise: Promise<void> | null = null;
+  private projectQueue: ProjectDocument[] = [];
 
   private ensureSynthNoise(): AudioBuffer | null {
     if (this.synthNoise && this.ctx && this.synthNoise.sampleRate === this.ctx.sampleRate) return this.synthNoise;
@@ -1466,21 +1480,51 @@ export class AudioEngine {
   }
 
   setProject(doc: ProjectDocument): void {
-    this.cancelEffectIntentPreview(doc, "projectChanged");
-    if (this.meterProjectId !== null && this.meterProjectId !== doc.id) this.resetMeterHistory();
-    this.meterProjectId = doc.id;
-    if (this.stretchProjectId !== doc.id) {
-      this.stretchProjectId = doc.id;
-      this.clearStretchCache();
-      this.clearWarpCache();
-      this.warpEpoch++;
-      // Missing-asset ids belong to the project that missed them — the
-      // engine outlives projects, so stale ids would accumulate forever and
-      // pollute the diagnostics panel of the newly opened project.
-      this.missedAssets.clear();
-    }
+    // `this.doc = doc` MUST be synchronous — the offline renderer and the
+    // surrounding UI read `engine.doc` immediately after this returns, so
+    // the new project's metadata is visible before the rest of the body
+    // runs. The remaining work (preview cancel, cache reset, graph sync)
+    // is deferred through `projectPromise` so a re-entrant call with a
+    // different doc can't interleave its body with this one.
     this.doc = doc;
-    if (this.ctx) this.syncProject(doc);
+    if (this.projectPromise) {
+      // Coalesce re-entrant calls — only the latest pending doc matters.
+      // Older queued docs are superseded by this most-recent push, so
+      // drop them: applying their bodies against the current graph would
+      // only fight the build for the doc we're actually settling on.
+      this.projectQueue = [doc];
+      return;
+    }
+    const runBody = async (target: ProjectDocument): Promise<void> => {
+      this.cancelEffectIntentPreview(target, "projectChanged");
+      if (this.meterProjectId !== null && this.meterProjectId !== target.id) this.resetMeterHistory();
+      this.meterProjectId = target.id;
+      if (this.stretchProjectId !== target.id) {
+        this.stretchProjectId = target.id;
+        this.clearStretchCache();
+        this.clearWarpCache();
+        this.warpEpoch++;
+        // Missing-asset ids belong to the project that missed them — the
+        // engine outlives projects, so stale ids would accumulate forever and
+        // pollute the diagnostics panel of the newly opened project.
+        this.missedAssets.clear();
+      }
+      if (this.ctx) this.syncProject(target);
+    };
+    this.projectPromise = (async () => {
+      try {
+        await runBody(doc);
+        // Drain any re-entrant calls that arrived while the body was
+        // settling. Each push replaces older queued entries, so the
+        // loop exits as soon as no further calls land during the drain.
+        while (this.projectQueue.length > 0) {
+          const next = this.projectQueue.shift()!;
+          await runBody(next);
+        }
+      } finally {
+        this.projectPromise = null;
+      }
+    })();
   }
 
   transportStarted(time: number, beatPhase: number, positionBeats = beatPhase): void {
@@ -2122,24 +2166,32 @@ export class AudioEngine {
    * renderer calls this per clip window for live==offline parity.
    * `null` clears the scene override — runtimes return to doc.bpm.
    */
-  setEffectiveBpm(bpm: number | null): void {
+  setEffectiveBpm(bpm: number | null, when?: number): void {
     this.sceneBpmOverride = bpm;
     const effective = bpm ?? this.doc?.bpm;
-    if (effective != null && Number.isFinite(effective)) this.pushSyncBpm(effective);
+    if (effective != null && Number.isFinite(effective)) this.pushSyncBpm(effective, when);
   }
 
-  private pushSyncBpm(bpm: number): void {
-    if (this.syncedBpm === bpm) return;
+  private pushSyncBpm(bpm: number, when?: number): void {
+    // The change-guard only makes sense for live (immediate) pushes: scheduled
+    // offline pushes must reach the runtimes even when the BPM value repeats
+    // (120→140→120 scenes), because each push carries its own window time.
+    if (when === undefined && this.syncedBpm === bpm) return;
     this.syncedBpm = bpm;
     // Bus and return chains hold tempo-synced runtimes (SYNC delays, LFO
     // syncs) — without these loops a return delay kept the old BPM after a
     // project/scene tempo change and echoes landed off-grid.
+    // AudioParam-backed runtimes schedule the write at `when` (offline scene
+    // lanes land at their own window start); message-port runtimes apply
+    // immediately regardless (their processors cannot schedule) — those stay
+    // last-write-wins across offline windows (vendor constraint on ozvena).
     for (const nodes of [...this.trackNodes.values(), ...this.groupNodes.values(), ...this.returnNodes.values()]) {
-      for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm);
+      for (const rt of nodes.fx.runtimes.values()) rt.syncBpm?.(bpm, when);
     }
     // Instrument runtimes: tempo-synced modulators (LFO sync, texture delay,
-    // granular rate sync) pick the new tempo up live.
-    for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(bpm);
+    // granular rate sync) pick the new tempo up live. `when` schedules the
+    // write for offline scene lanes where the runtime supports it.
+    for (const inst of this.instruments.values()) inst.runtime.syncBpm?.(bpm, when);
   }
 
   /**

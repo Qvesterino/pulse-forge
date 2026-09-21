@@ -81,38 +81,19 @@ export class UserSampleRepository {
   async save(asset: UserSampleAsset, data?: ArrayBuffer | Blob): Promise<void> {
     this.cache = null;
     const db = await openDb();
-    // Capture the prior metadata row: on the overwrite path a blind rollback
-    // delete would destroy a previously-good sample listing while its old
-    // audio bytes stay orphaned in user-sample-audio.
-    const prev = await tx<UserSampleAsset | undefined>(
-      db,
-      STORE_USER_SAMPLES,
-      "readonly",
-      (s) => s.get(asset.id) as IDBRequest<UserSampleAsset | undefined>,
-    );
-    await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
-    if (!data) return;
-    try {
+    // Order matters: write AUDIO FIRST, then metadata. The previous order
+    // (metadata then audio) could leave a ghost metadata row listed in the
+    // sample browser with no audio bytes — invisible to the user as broken,
+    // but a permanent dead row in the library until manual cleanup. Reversing
+    // the order means the worst-case failure is an orphaned audio blob that
+    // never appears in the library (the user sees no broken sample) and can
+    // be pruned by a later sweep.
+    if (data) {
       await tx(db, STORE_USER_SAMPLE_AUDIO, "readwrite", (s) =>
         s.put({ id: asset.id, data } satisfies UserSampleAudio),
       );
-    } catch (err) {
-      // Metadata without audio is a PERMANENT ghost sample: listed forever,
-      // silently silent after reload. Restore the previous row (or remove the
-      // fresh one when nothing existed) and surface the failure so importers
-      // can show an error instead.
-      try {
-        if (prev) {
-          await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(prev));
-        } else {
-          await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.delete(asset.id));
-        }
-      } catch {
-        // rollback best-effort
-      }
-      this.cache = null;
-      throw err instanceof Error ? err : new Error(`Failed to persist sample audio for ${asset.id}`);
     }
+    await tx(db, STORE_USER_SAMPLES, "readwrite", (s) => s.put(asset));
   }
 
   async loadAudio(id: string): Promise<ArrayBuffer | Blob | PcmRecordingAudioRef | undefined> {
@@ -221,4 +202,38 @@ function defaultDecodeAudioBytes(data: ArrayBuffer): Promise<AudioBuffer> {
   // the live engine (and of autoplay-gesture state).
   const ctx = new OfflineAudioContext(1, 1, 44100);
   return ctx.decodeAudioData(data);
+}
+
+const restoreByBank = new WeakMap<object, Promise<void>>();
+
+/**
+ * Fire-and-forget boot restore, memoized per bank: the offline renderer and
+ * any future consumer await the SAME in-flight (or completed) work instead of
+ * re-listing and re-decoding every sample. A failed memoized run is retried
+ * on the next call.
+ */
+export function restoreUserSampleAudioMemoized(bank: SampleBank): Promise<void> {
+  const key = bank as unknown as object;
+  const existing = restoreByBank.get(key);
+  if (existing) return existing;
+  const running = restoreUserSampleAudio(bank).catch((err: unknown) => {
+    restoreByBank.delete(key);
+    throw err;
+  });
+  restoreByBank.set(key, running);
+  return running;
+}
+
+/**
+ * Offline-render readiness for user samples — the symmetric counterpart of
+ * the curated layer's `curatedReadyWithin`. Rendering before the boot restore
+ * finishes silently drops `user.*` buffers (clips skip, sampler notes die) —
+ * and a freeze would persist that silence permanently. Bounded so a broken
+ * store degrades to today's behavior instead of hanging the export.
+ */
+export async function userSamplesReadyWithin(bank: SampleBank, timeoutMs: number): Promise<void> {
+  await Promise.race([
+    restoreUserSampleAudioMemoized(bank).catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
 }

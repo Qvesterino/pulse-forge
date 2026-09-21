@@ -37,8 +37,8 @@ export function createStockDelayNode(
     output,
     setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
     setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
-    syncBpm(nextBpm) {
-      safeApplyAudioParam(node, "bpm", nextBpm, ctx.currentTime);
+    syncBpm(nextBpm, when) {
+      safeApplyAudioParam(node, "bpm", nextBpm, when ?? ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

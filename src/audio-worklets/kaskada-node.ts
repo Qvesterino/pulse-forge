@@ -49,7 +49,7 @@ export function createKaskadaNode(ctx: BaseAudioContext, instance: { params: Rec
     output,
     setParameter: (id, value) => safeApplyAudioParam(node, id, value),
     setParameterAt: (id, value, when) => safeApplyAudioParam(node, id, value, when),
-    syncBpm: (bpm) => safeApplyAudioParam(node, "bpm", bpm),
+    syncBpm: (bpm, when) => safeApplyAudioParam(node, "bpm", bpm, when),
     getMeters: () => meters,
     setMetersEnabled(enabled: boolean) {
       if (disposed) return;

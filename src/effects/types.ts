@@ -34,7 +34,15 @@ export interface EffectRuntime {
    * never re-upload to the audio thread.
    */
   setSteps?(volume: readonly number[] | undefined, pitch: readonly number[] | undefined): void;
-  syncBpm?(bpm: number): void;
+  /**
+   * Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…).
+   * `when` (audio-context time) schedules the change for offline renders so
+   * each clip window's scene BPM lands at its own window start instead of the
+   * last-processed window winning the whole export. AudioParam-backed runtimes
+   * honor it; message-port runtimes apply immediately (live paths always pass
+   * undefined).
+   */
+  syncBpm?(bpm: number, when?: number): void;
   onTransportStarted?(time: number, beatPhase: number, positionBeats?: number): void;
   /** Engine-owned post-effect gain used for preset level matching and output trim. */
   setOutputTrimDb?(gainDb: number): void;

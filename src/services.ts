@@ -21,7 +21,7 @@ import { PatternRecorder } from "./midi/patternRecorder";
 import { recordPlayActivity } from "./ui/playActivity";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
-import { UserSampleRepository, restoreUserSampleAudio } from "./persistence/UserSampleRepository";
+import { UserSampleRepository, restoreUserSampleAudioMemoized } from "./persistence/UserSampleRepository";
 import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
@@ -239,8 +239,12 @@ export async function createCoreServices(): Promise<CoreServices> {
   const engine = new AudioEngine();
   engine.attachBank(bank);
   // Re-decode persisted user-sample audio into the bank (fire-and-forget —
-  // the app is fully usable while imports stream back in).
-  void restoreUserSampleAudio(bank);
+  // the app is fully usable while imports stream back in). Memoized per bank:
+  // the offline renderer awaits the same promise (bounded) so an export or
+  // freeze that races the restore cannot silently bake missing samples.
+  void restoreUserSampleAudioMemoized(bank).catch((error) => {
+    console.error("[user-samples] boot restore failed:", error);
+  });
   // Curated factory layer (same-id override): the synthesized kit already
   // sounds; these progressively replace the curated slots as they decode.
   // Export paths await `curatedReady()` so renders use the intended sound.
@@ -299,11 +303,21 @@ export async function openProject(
     // room when first sync shows the room EMPTY. A joiner opening a room
     // that already lives adopts the remote content instead — an identical
     // re-seed would clobber edits made before they arrived (Instant Jam).
+    // Until first sync resolves, the store BUFFERS local commands (the
+    // pre-sync window would otherwise fragment the empty map or self-seed
+    // the room and defeat the adopt decision).
     store = YDocStoreImpl.empty(initial);
     collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
+    const syncGuardTimer: ReturnType<typeof setTimeout> = setTimeout(() => {
+      // Relay unreachable — degrade to the old self-seeding behavior rather
+      // than wedging editing behind a buffered queue forever.
+      (store as YDocStore).markSyncFailed();
+    }, 8_000);
     collab.onFirstSync((hasRemote) => {
+      clearTimeout(syncGuardTimer);
       if (hasRemote) (store as YDocStore).adoptRemote();
       else (store as YDocStore).hydrate(initial);
+      (store as YDocStore).markSynced();
     });
     // Jam roles: gate local commands on the session role and surface refusals.
     (store as YDocStore).roleProvider = () => collab?.localRole ?? null;

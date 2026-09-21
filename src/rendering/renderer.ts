@@ -1,5 +1,6 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
 import { curatedReadyWithin } from "../sample-library/curated";
+import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
@@ -327,6 +328,11 @@ export async function renderProject(
   // after the timeout the synthesized fallback renders (offline installs).
   await curatedReadyWithin(bank, 2000);
   throwIfAborted(options.signal);
+  // User samples (recorded takes, imports): same bounded readiness. Without
+  // this a render started before the boot restore finishes silently drops
+  // `user.*` buffers — and a freeze would persist that silence permanently.
+  await userSamplesReadyWithin(bank, 4000);
+  throwIfAborted(options.signal);
   const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const totalTicks = computeRenderTicks(doc, options.mode);
@@ -412,7 +418,10 @@ export async function renderProject(
     // syncs) must see this window's scene tempo BEFORE its notes are
     // scheduled — the live scheduler flips them at the seam boundary, so
     // per-window parity keeps SYNC'd material aligned with the transport.
-    engine.setEffectiveBpm(window.bpm ?? null);
+    // `when` schedules the change at the window's own start time: without it
+    // every push wrote at ctx.currentTime (=0 offline) and the LAST window's
+    // BPM won for tempo-synced FX across the whole export.
+    engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from));
     scheduleDrums(doc, window, timeAt, engine);
     scheduleNotes(window, timeAt, 60 / ((window.bpm ?? doc.bpm) * PPQ), engine);
   }

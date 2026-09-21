@@ -59,7 +59,11 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
     setSwitchError(null);
     try {
       await services.closeProject();
-      const next = await openProject(services.core, doc, options);
+      // Read the doc AFTER the flush, not the render-time snapshot: this
+      // panel does not re-render on doc edits, so the captured `doc` could
+      // seed the room from a stale document and the collab autosave would
+      // then persist that stale state over the flushed edits.
+      const next = await openProject(services.core, services.store.getDoc(), options);
       if (mounted.current) onReplaceServices(next);
     } catch (err) {
       if (mounted.current) setSwitchError(`Project switch failed: ${err instanceof Error ? err.message : String(err)}`);

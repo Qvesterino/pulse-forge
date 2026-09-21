@@ -30,8 +30,8 @@ export interface InstrumentRuntime {
   setSample?(id: string | null): void;
   /** Replace the sampler's velocity/round-robin layers (see SampleLayer). */
   setVelocityLayers?(layers: SampleLayer[]): void;
-  /** Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…). */
-  syncBpm?(bpm: number): void;
+  /** Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…). `when` = scheduled offline application (see EffectRuntime.syncBpm). */
+  syncBpm?(bpm: number, when?: number): void;
   panic(): void;
   dispose(): void;
 }

@@ -44,9 +44,9 @@ export function createChorusNode(ctx: BaseAudioContext, instance: { params: Reco
       }
       safeApplyAudioParam(node, id, v, when);
     },
-    syncBpm(bpm) {
+    syncBpm(bpm, when) {
       // Snap the LFO to 1/4-beat rate (musical default for chorus motion).
-      safeApplyAudioParam(node, "rate", bpm / 60 / 4, ctx.currentTime);
+      safeApplyAudioParam(node, "rate", bpm / 60 / 4, when ?? ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

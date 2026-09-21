@@ -69,6 +69,9 @@ describe("instant jam seeding", () => {
     // Initiator seeds an empty room, then tweaks the jam.
     const initiator = YDocStore.empty(decoded);
     initiator.hydrate(decoded);
+    // openProject's onFirstSync resolves the seed-vs-adopt decision and then
+    // releases the pre-sync guard — the initiator's post-seed edit runs LIVE.
+    initiator.markSynced();
     initiator.execute(setBpm(initiator.doc, 141));
 
     // A late joiner opens the same jam link — deferred seeding: the room has
@@ -77,6 +80,7 @@ describe("instant jam seeding", () => {
     const late = YDocStore.empty(decoded);
     Y.applyUpdate(late.yDocRef, Y.encodeStateAsUpdate(initiator.yDocRef));
     late.adoptRemote();
+    late.markSynced();
     expect(late.doc.bpm).toBe(141);
 
     // The initiator is untouched by the joiner (nothing was written back).
@@ -91,9 +95,11 @@ describe("instant jam seeding", () => {
     const decoded = encodeDecode(createProjectFromTemplate("house"));
     const a = YDocStore.empty(decoded);
     a.hydrate(decoded); // initiator seeds the empty room
+    a.markSynced(); // onFirstSync released the pre-sync guard
     const b = YDocStore.empty(decoded);
     Y.applyUpdate(b.yDocRef, Y.encodeStateAsUpdate(a.yDocRef));
     b.adoptRemote(); // joiner adopts the room
+    b.markSynced();
 
     a.execute(setBpm(a.doc, 132));
     b.execute(setProjectName(b.doc, "Renamed Jam"));
