@@ -3,6 +3,7 @@ import type { InstrumentTrack, MusicalKey, NoteEvent, Pattern } from "../project
 import { BAR_TICKS, PPQ, pitchName } from "../project-model/types";
 import { useServices } from "./context";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
+import { detectHumReAttacks } from "../audio-workers/hum-onsets";
 import { trackPitchAsync } from "../audio-workers/pitch-tracker-client";
 import type { PitchFrame } from "../audio-workers/pitch-tracker";
 import {
@@ -424,12 +425,17 @@ export function HumToMelodyPanel({
         /* recovery cleanup is best-effort — never block the flow */
       }
       const channel = take.buffer.getChannelData(0);
+      // Pitch tracking (worker) + hum re-attack detection (cheap, sync) —
+      // the re-attacks split same-pitch notes ("da-da") that pitch-only
+      // segmentation would merge into one long note.
       const frames = await trackPitchAsync(channel, take.buffer.sampleRate);
+      const onsets = detectHumReAttacks(channel, take.buffer.sampleRate);
       const extracted = framesToNotes(frames, {
         bpm: services.store.getDoc().bpm,
         key: docKey,
         quantize: true,
         patternLengthTicks: patternLengthTicks(pattern),
+        onsets,
         ...(startTick !== null ? { transportStartTick: startTick } : {}),
       });
       if (extracted.length === 0) {

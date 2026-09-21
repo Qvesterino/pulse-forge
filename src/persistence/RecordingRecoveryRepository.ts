@@ -42,6 +42,15 @@ export interface RecordingPcmChunk {
 const RECOVERY_STALE_MS = 5_000;
 
 /**
+ * Staged takes older than this are garbage on project open. A live take
+ * refreshes `updatedAt` once per committed block (≤ CHUNK_SECONDS cadence),
+ * so anything this stale is from a take whose tab died and whose recovery
+ * offer was never acted on. Un-pruned staging (tens of MB of PCM per take)
+ * would eventually crowd project saves out under IndexedDB quota pressure.
+ */
+export const RECORDING_PRUNE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
  * Identifies this browser context (tab load) so `listRecoverable` can hide
  * the tab's own still-live take. A crash keeps the row with the old owner id,
  * so after a reload (new id) the interrupted take remains recoverable.
@@ -329,6 +338,23 @@ export class RecordingRecoveryRepository {
         };
       };
     });
+  }
+
+  /**
+   * Delete staging for takes whose last committed block is older than
+   * `maxAgeMs` (see RECORDING_PRUNE_MAX_AGE_MS). Called once per project
+   * open; per-session removes are individually atomic, so an interrupted
+   * prune just leaves the remainder for the next open. Returns how many
+   * sessions were pruned.
+   */
+  async pruneAncient(now = Date.now(), maxAgeMs = RECORDING_PRUNE_MAX_AGE_MS): Promise<number> {
+    const db = await this.openDatabase();
+    const sessions = await tx<RecordingSession[]>(db, STORE_RECORDING_SESSIONS, "readonly", (store) => store.getAll());
+    const ancient = (sessions ?? []).filter((session) => now - session.updatedAt >= maxAgeMs);
+    for (const session of ancient) {
+      await this.remove(session.id);
+    }
+    return ancient.length;
   }
 }
 

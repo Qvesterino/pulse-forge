@@ -51,6 +51,13 @@ export interface HumNoteOptions {
    * tick 0 = take start).
    */
   transportStartTick?: number;
+  /**
+   * Transient times (seconds) from the onset detector over the RAW take —
+   * onset-assisted segmentation: re-attacks inside a pitch run split it, so
+   * two same-pitch notes ("da-da") stay two notes instead of merging.
+   * Absent = pitch-change splitting only (deterministic tests, worker-free).
+   */
+  onsets?: readonly number[];
 }
 
 export interface HumToNotesTarget {
@@ -82,6 +89,8 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     pitchSum: number;
     count: number;
     rmsMax: number;
+    /** Sub-run created by an onset cut — bridging must not re-merge it. */
+    onsetCut?: boolean;
   }
   const runs: Run[] = [];
   let current: Run | null = null;
@@ -112,13 +121,66 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     splitRef = splitRef * 0.8 + pitch * 0.2; // slow reference follows glides
   }
 
+  // Onset-assisted segmentation: pitch runs split on sustained pitch CHANGES
+  // only, so two same-pitch notes ("da-da") merge into one long note. With
+  // transient times from the onset detector, a re-attack strictly INSIDE a
+  // run becomes a boundary. Margins keep ≥80 ms of note on both sides of the
+  // cut (the take's initial attack and hairline fragments stay out); the
+  // sub-run keeps its own pitch mean/rms so velocity follows the re-attack.
+  const cutMarginSec = MIN_NOTE_SEC * 0.8;
+  const onsetMatchSec = 0.02; // onset ↔ voiced-frame matching (2× hop)
+  const sortedOnsets = [...(options.onsets ?? [])].filter(Number.isFinite).sort((a, b) => a - b);
+  const segmented: Run[] = [];
+  for (const run of runs) {
+    const cuts: number[] = [];
+    for (const onset of sortedOnsets) {
+      if (onset <= voiced[run.startIdx].timeSec) continue;
+      if (onset >= voiced[run.endIdx].timeSec) break;
+      let idx = -1;
+      for (let i = run.startIdx + 1; i <= run.endIdx; i++) {
+        if (voiced[i].timeSec >= onset - onsetMatchSec) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) continue;
+      const headSec = voiced[idx].timeSec - voiced[run.startIdx].timeSec;
+      const tailSec = voiced[run.endIdx].timeSec + 0.01 - voiced[idx].timeSec;
+      if (headSec < cutMarginSec || tailSec < cutMarginSec) continue;
+      if (cuts.length === 0 || idx > cuts[cuts.length - 1]) cuts.push(idx);
+    }
+    if (cuts.length === 0) {
+      segmented.push(run);
+      continue;
+    }
+    let start = run.startIdx;
+    for (const cut of [...cuts, run.endIdx + 1]) {
+      const end = cut - 1;
+      let pitchSum = 0;
+      let rmsMax = 0;
+      for (let i = start; i <= end; i++) {
+        pitchSum += smoothed[i];
+        rmsMax = Math.max(rmsMax, voiced[i].rms);
+      }
+      segmented.push({
+        startIdx: start,
+        endIdx: end,
+        pitchSum,
+        count: end - start + 1,
+        rmsMax,
+        onsetCut: start !== run.startIdx,
+      });
+      start = cut;
+    }
+  }
+
   // Runs → tick-space drafts (time from the FIRST voiced frame index).
   // Beat-synced takes anchor at the transport tick where recording began;
   // drafts stay in UNWRAPPED (absolute) tick space so bridging and duration
   // math stay correct across loop boundaries — wrapping happens per-note at
   // the end (the transport loops the pattern, so a hum "one loop later"
   // lands on the same grid slots).
-  const maxRms = runs.reduce((max, r) => Math.max(max, r.rmsMax), 1e-9);
+  const maxRms = segmented.reduce((max, r) => Math.max(max, r.rmsMax), 1e-9);
   const secPerTick = 60 / (bpm * PPQ);
   const beatSynced =
     options.transportStartTick !== undefined && Number.isFinite(options.transportStartTick);
@@ -126,8 +188,8 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   const patternLen = options.patternLengthTicks;
   const wrapTick = (tick: number): number => ((tick % patternLen) + patternLen) % patternLen;
 
-  const raw: Array<{ pitch: number; startTick: number; endTick: number; velocity: number }> = [];
-  for (const run of runs) {
+  const raw: Array<{ pitch: number; startTick: number; endTick: number; velocity: number; onsetCut: boolean }> = [];
+  for (const run of segmented) {
     const t0 = voiced[run.startIdx].timeSec;
     const t1 = voiced[run.endIdx].timeSec + 0.01; // hop width tail
     if (t1 - t0 < MIN_NOTE_SEC) continue;
@@ -138,6 +200,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
       startTick: anchor + Math.round(t0 / secPerTick),
       endTick: anchor + Math.round(t1 / secPerTick),
       velocity: 0.45 + 0.45 * Math.min(1, run.rmsMax / maxRms),
+      onsetCut: !!run.onsetCut,
     });
   }
   if (raw.length === 0) return [];
@@ -149,6 +212,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     if (
       prev &&
       note.pitch === prev.pitch &&
+      !note.onsetCut &&
       (note.startTick - prev.endTick) * secPerTick < BRIDGE_SEC
     ) {
       prev.endTick = note.endTick;

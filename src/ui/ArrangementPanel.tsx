@@ -381,6 +381,13 @@ export function ArrangementPanel() {
 
   useEffect(() => {
     let live = true;
+    // One-shot per project open: garbage-collect staging from takes that
+    // crashed so long ago no recovery offer is realistic anymore (keeps
+    // IndexedDB quota for project saves). Non-fatal — a failed prune
+    // retries on the next open.
+    void recoveryRepoRef.current!.pruneAncient().catch((error) => {
+      console.error("[recording] recovery staging prune failed:", error);
+    });
     const refresh = () => {
       void recoveryRepoRef.current!.listRecoverable(Date.now(), RECORDING_OWNER_ID).then(
         (sessions) => {

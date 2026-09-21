@@ -417,7 +417,15 @@ export async function openProject(
   // to bypass/fallback until modules are ready, then the engine rebuilds
   // the chains on the next syncProject cycle). The vendored plugin suites
   // load only when this project references them.
-  void ensureWorkletsForDoc(store.doc, engine.ensureContext());
+  // ensureContext() throws SYNCHRONOUSLY when the browser refuses a realtime
+  // context (audio device loss, iOS context cap, blocked embed). A preload
+  // optimization must not fail the whole project open — the engine is lazy
+  // and the first real user gesture retries through playPause.
+  try {
+    void ensureWorkletsForDoc(store.doc, engine.ensureContext());
+  } catch (error) {
+    console.error("[openProject] AudioContext unavailable at open — worklet preload deferred:", error);
+  }
   transport.seek(0);
   const playback = new PlaybackController(
     engine,

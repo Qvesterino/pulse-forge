@@ -6,6 +6,7 @@ import { HumToMelodyPanel, humContourLayout } from "../src/ui/HumToMelody";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { trackPitch, PITCH_CLARITY_GATE } from "../src/audio-workers/pitch-tracker";
+import { detectHumReAttacks } from "../src/audio-workers/hum-onsets";
 import { trackPitchAsync } from "../src/audio-workers/pitch-tracker-client";
 import {
   auditionTimings,
@@ -252,6 +253,66 @@ describe('HumToMelodyPanel — TO BEAT toggle', () => {
     const user = userEvent.setup();
     await user.click(toggle);
     expect(screen.getByText(/free-time/i)).toBeInTheDocument();
+  });
+});
+
+describe('onset-assisted segmentation (da-da on one pitch)', () => {
+  it('splits a continuous same-pitch re-attack into two notes via the real onset detector', () => {
+    const sec = SR;
+    // Continuous A3 voicing with an amplitude re-articulation at ~0.35 s:
+    // dips to 12% (still voiced: rms ~0.034 >> gate) then back to full —
+    // the classic "da-da" on ONE pitch.
+    const first = sine(220, Math.round(sec * 0.3));
+    const dip = sine(220, Math.round(sec * 0.06), 0.048);
+    const second = sine(220, Math.round(sec * 0.3));
+    const audio = concat(
+      silence(Math.round(sec * 0.4)),
+      first,
+      dip,
+      second,
+      silence(sec),
+    );
+    const frames = trackPitch(audio, SR);
+    const onsets = detectHumReAttacks(audio, SR);
+    expect(onsets).toHaveLength(1); // the re-articulation (the take start is a run edge, not a cut)
+
+    const base = { bpm: 120, quantize: true, patternLengthTicks: 1920 * 4 };
+    const without = framesToNotes(frames, base);
+    expect(without).toHaveLength(1); // pitch-only segmentation merges it
+
+    const withOnsets = framesToNotes(frames, { ...base, onsets });
+    expect(withOnsets).toHaveLength(2);
+    expect(withOnsets[0]!.pitch).toBe(57);
+    expect(withOnsets[1]!.pitch).toBe(57);
+    // The cut lands near the re-articulation (~0.7 s = 720 ticks in).
+    expect(withOnsets[1]!.start).toBeGreaterThanOrEqual(480);
+    expect(withOnsets[1]!.start).toBeLessThanOrEqual(1080);
+    // Both halves keep real length (no hairline fragments).
+    for (const note of withOnsets) expect(note.duration).toBeGreaterThanOrEqual(120);
+  });
+
+  it('margin guards: onsets near a run edge or in gaps never create fragments', () => {
+    // Frames: one continuous voiced run 0.39–1.09 s (A3), hand-made.
+    const mk = (timeSec: number, midi: number) => ({ timeSec, midi, clarity: 0.9, rms: 0.2 });
+    const frames = Array.from({ length: 70 }, (_, i) => mk(0.39 + i * 0.01, 57));
+    const base = { bpm: 120, quantize: false, patternLengthTicks: 1920 * 8 };
+
+    // Onset 30 ms after the run start → head < 80 ms → no cut.
+    const nearStart = framesToNotes(frames, { ...base, onsets: [0.42] });
+    expect(nearStart).toHaveLength(1);
+    // Onset 30 ms before the run end → tail < 80 ms → no cut.
+    const nearEnd = framesToNotes(frames, { ...base, onsets: [1.06] });
+    expect(nearEnd).toHaveLength(1);
+    // A healthy mid-run onset DOES split: 0.39+0.35=0.74.
+    const mid = framesToNotes(frames, { ...base, onsets: [0.74] });
+    expect(mid).toHaveLength(2);
+    expect(mid[0]!.pitch).toBe(57);
+    expect(mid[1]!.pitch).toBe(57);
+    expect(mid[1]!.velocity).toBeCloseTo(mid[0]!.velocity, 5); // same rms profile
+    // Onsets in the silence BETWEEN runs change nothing (runs already split).
+    const twoRuns = [...frames.slice(0, 40), ...frames.slice(55)];
+    const gapped = framesToNotes(twoRuns, { ...base, onsets: [0.85] });
+    expect(gapped).toHaveLength(2);
   });
 });
 

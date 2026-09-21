@@ -206,4 +206,35 @@ describe("RecordingRecoveryRepository", () => {
       tx(db, STORE_RECORDING_CHUNKS, "readonly", (store) => store.get([take.id, 0])),
     ).resolves.toBeUndefined();
   });
+
+  it("pruneAncient deletes only staging older than the age cap", async () => {
+    const ancient = { ...session("recording-ancient"), updatedAt: Date.now() - 31 * 24 * 60 * 60 * 1000 };
+    const fresh = { ...session("recording-fresh"), updatedAt: Date.now() - 60 * 1000 };
+    await recovery.begin(ancient);
+    await recovery.appendChunk(block("recording-ancient", 0, [0.1, 0.2], [-0.1, -0.2]));
+    await recovery.begin(fresh);
+    await recovery.appendChunk(block("recording-fresh", 0, [0.3], [-0.3]));
+
+    const pruned = await recovery.pruneAncient();
+
+    expect(pruned).toBe(1);
+    expect(await recovery.get("recording-ancient")).toBeUndefined();
+    expect(await recovery.get("recording-fresh")).toBeDefined();
+    const db = await openDb();
+    await expect(
+      tx(db, STORE_RECORDING_CHUNKS, "readonly", (store) => store.get(["recording-ancient", 0])),
+    ).resolves.toBeUndefined();
+    await expect(
+      tx(db, STORE_RECORDING_CHUNKS, "readonly", (store) => store.get(["recording-fresh", 0])),
+    ).resolves.toBeDefined();
+  });
+
+  it("pruneAncient treats a stale status=recording row as garbage (live takes refresh updatedAt)", async () => {
+    const dead = { ...session("recording-dead-live"), status: "recording" as const, updatedAt: Date.now() - 40 * 24 * 60 * 60 * 1000 };
+    await recovery.begin(dead);
+    await recovery.appendChunk(block("recording-dead-live", 0, [0.4], [-0.4]));
+
+    expect(await recovery.pruneAncient()).toBe(1);
+    expect(await recovery.get("recording-dead-live")).toBeUndefined();
+  });
 });

@@ -50,25 +50,13 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     : Promise.resolve(stream);
   const getUserMedia = vi.fn(() => microphonePermission);
   const source = {
-    // The wiring is source → trim gain → worklet; "ready" fires once the
-    // trim stage chains into the capture node (post-trim graph complete).
-    connect: vi.fn((node: unknown) => {
-      const trim = gains[gains.length - 1];
-      if (trim && node === trim && !trim.connectedWorklet) {
-        trim.connectedWorklet = true;
-        return;
-      }
-      if (trim?.connectedWorklet && node === lastNode) {
-        queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
-      }
-    }),
+    connect: vi.fn(),
     disconnect: vi.fn(),
   };
   const gains: Array<{
     gain: { value: number; cancelScheduledValues: ReturnType<typeof vi.fn>; setTargetAtTime: ReturnType<typeof vi.fn> };
     connect: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
-    connectedWorklet?: boolean;
   }> = [];
   const samples = [new Float32Array(0)];
   const contextStateEvents = new EventTarget();
@@ -84,7 +72,11 @@ function createRecorder(options: { deferMicrophonePermission?: boolean; inputDev
     createGain: vi.fn(() => {
       const gain = {
         gain: { value: 1, cancelScheduledValues: vi.fn(), setTargetAtTime: vi.fn() },
-        connect: vi.fn(),
+        // "ready" fires once the trim stage chains into the capture node:
+        // source → trim gain → worklet (post-trim graph complete).
+        connect: vi.fn((node: unknown) => {
+          if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+        }),
         disconnect: vi.fn(),
       };
       gains.push(gain);
@@ -225,7 +217,10 @@ describe("PcmMicRecorder", () => {
     expect(gains[1].gain.value).toBe(0); // direct monitoring is opt-in
     recorder.setMonitoring(true);
     expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 1, 0.01);
-    expect(source.connect).toHaveBeenCalledWith(gains[1]);
+    // source → trim (gains[2]) → worklet + monitor (gains[1])
+    expect(source.connect).toHaveBeenCalledWith(gains[2]);
+    expect(gains[2].connect).toHaveBeenCalledWith(lastNode);
+    expect(gains[2].connect).toHaveBeenCalledWith(gains[1]);
     expect(lastNode?.sent).toContainEqual({ type: "start" });
 
     const pcm = new Float32Array([0.25, -1.25]);
@@ -238,9 +233,10 @@ describe("PcmMicRecorder", () => {
     expect(Array.from(samples[0])).toEqual([0.25, -1.25]);
     await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
     expect(track.stop).toHaveBeenCalledOnce();
-    expect(source.disconnect).toHaveBeenCalledTimes(2);
+    expect(source.disconnect).toHaveBeenCalledOnce();
     expect(gains[0].disconnect).toHaveBeenCalledOnce();
     expect(gains[1].disconnect).toHaveBeenCalledOnce();
+    expect(gains[2].disconnect).toHaveBeenCalled();
   });
 
   it("keeps committed audio staged when the panel cancels/unmounts", async () => {
@@ -366,8 +362,7 @@ describe("PcmMicRecorder", () => {
     expect(track.stop).toHaveBeenCalledOnce();
   }, 5_000);
 
-  it("cleans up and preserves recovery data if the worklet port rejects the stop command", async () => {
-    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+  it("cleans up and preserves recovery data if the worklet port rejects the stop command", async () => {    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const { recorder, recovery, metadata, track } = createRecorder();
     const onError = vi.fn();
     recorder.onError = onError;

@@ -48,3 +48,6 @@ golden-review/
 tmp-spectro-profile/
 tmp-spectro-shots/
 tmp-spectro-*.mjs
+
+# Audio classification model (T4) — one-time fetch via npm run audio:fetch
+public/models/audio/
