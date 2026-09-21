@@ -957,6 +957,127 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     { playMode: 0, repeatFill: 0, trigger: 1, interval: 4, offset: 0, chance: 0.75, gate: 4, mix: 0.75 },
     [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0],
   ),
+
+  // ── Completeness pass (FX-ADD-REWORK-ROADMAP C1): the last bare types ──
+  // Reverb is the most-used device in beatmaking — it ships with starts.
+  preset("reverb-tight-room", "Tight Room", "reverb", {
+    decay: 0.6,
+    predelay: 8,
+    tone: 7000,
+    diffusion: 0.7,
+    mix: 0.18,
+  }),
+  preset("reverb-dark-plate", "Dark Plate", "reverb", {
+    decay: 2.6,
+    predelay: 24,
+    tone: 3200,
+    diffusion: 0.85,
+    mix: 0.3,
+  }),
+  preset("reverb-hall", "Hall", "reverb", {
+    decay: 4.2,
+    predelay: 40,
+    tone: 5200,
+    diffusion: 0.9,
+    mix: 0.26,
+  }),
+  preset("reverb-808-glue", "808 Glue", "reverb", {
+    decay: 1.1,
+    predelay: 0,
+    tone: 900,
+    diffusion: 0.55,
+    mix: 0.14,
+  }),
+  preset("phaser-slow-sweep", "Slow Sweep", "phaser", {
+    rate: 0.25,
+    depth: 0.7,
+    feedback: 0.35,
+    stages: 1,
+    mix: 0.5,
+  }),
+  preset("phaser-jet", "Jet", "phaser", {
+    rate: 1.6,
+    depth: 0.85,
+    feedback: 0.65,
+    stages: 1,
+    mix: 0.6,
+  }),
+  preset("phaser-subtle", "Subtle Sheen", "phaser", {
+    rate: 0.5,
+    depth: 0.35,
+    feedback: 0.2,
+    stages: 1,
+    mix: 0.35,
+  }),
+  preset("bitcrusher-lofi-8", "Lo-Fi Crush", "bitcrusher", {
+    bits: 8,
+    downsample: 6,
+    mix: 0.6,
+    output: -1,
+  }),
+  preset("bitcrusher-phone", "Data Phone", "bitcrusher", {
+    bits: 4,
+    downsample: 16,
+    mix: 0.85,
+    output: -3,
+  }),
+  preset("bitcrusher-ghost", "Ghost Digital", "bitcrusher", {
+    bits: 11,
+    downsample: 3,
+    mix: 0.35,
+    output: 0,
+  }),
+  preset("saturation-tape-warm", "Warm Tape", "saturation", {
+    drive: 0.35,
+    tone: 7000,
+    mix: 1,
+    output: -1,
+  }),
+  preset("saturation-valve", "Valve Push", "saturation", {
+    drive: 0.62,
+    tone: 5000,
+    mix: 1,
+    output: -3,
+  }),
+  preset("saturation-sizzle", "Hat Sizzle", "saturation", {
+    drive: 0.5,
+    tone: 10500,
+    mix: 0.8,
+    output: -2,
+  }),
+  preset("shimmer-soft-cream", "Soft Cream", "shimmer", {
+    amount: 0.3,
+    tone: 0.75,
+    decay: 0.4,
+    mix: 0.3,
+  }),
+  preset("shimmer-choir", "Choir Pad", "shimmer", {
+    amount: 0.62,
+    tone: 0.9,
+    decay: 0.62,
+    mix: 0.45,
+  }),
+  preset("shimmer-hats-air", "Hat Air", "shimmer", {
+    amount: 0.4,
+    tone: 0.85,
+    decay: 0.28,
+    mix: 0.25,
+  }),
+  preset("pump-quarter", "Quarter Note", "pump", {
+    amount: 0.65,
+    rate: 2,
+    release: 0.4,
+  }),
+  preset("pump-eighth", "Eighth Note", "pump", {
+    amount: 0.5,
+    rate: 3,
+    release: 0.35,
+  }),
+  preset("pump-hiphop", "Hip-Hop Sway", "pump", {
+    amount: 0.4,
+    rate: 2,
+    release: 0.62,
+  }),
 ];
 
 export function presetsForEffect(type: EffectType): EffectPreset[] {

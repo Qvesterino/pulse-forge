@@ -5,9 +5,12 @@ const SAMPLE_RATE = 44100;
 
 export class SampleBank {
   private buffers = new Map<string, AudioBuffer>();
+  private sampleAddedListeners = new Set<(id: string) => void>();
 
   add(id: string, buffer: AudioBuffer): void {
+    const isNew = !this.buffers.has(id);
     this.buffers.set(id, buffer);
+    if (isNew) this.notifySampleAdded(id);
   }
 
   get(id: string | null): AudioBuffer | undefined {
@@ -28,6 +31,22 @@ export class SampleBank {
 
   entries(): [string, AudioBuffer][] {
     return [...this.buffers.entries()];
+  }
+
+  /**
+   * Subscribe to FIRST arrivals of a sample id (overwriting an existing id
+   * does not fire — consumers re-syncing on it would just redo work). The
+   * reload race this serves: worklet-backed instrument runtimes (granular /
+   * wavetable voices) bake their sample at construction and never see the
+   * boot restore's later `bank.add` — the engine re-uploads to them here.
+   */
+  onSampleAdded(listener: (id: string) => void): () => void {
+    this.sampleAddedListeners.add(listener);
+    return () => this.sampleAddedListeners.delete(listener);
+  }
+
+  private notifySampleAdded(id: string): void {
+    for (const listener of this.sampleAddedListeners) listener(id);
   }
 }
 

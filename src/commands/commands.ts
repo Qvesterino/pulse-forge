@@ -41,6 +41,7 @@ import {
 import {
   planProductionActions,
   resolveProductionTargets,
+  type ProductionAction,
   type ProductionIntent,
 } from "../intent/production";
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
@@ -4589,22 +4590,21 @@ export function applyExactIntentCommand(
  * the language layer never touches AudioNodes directly.
  */
 /**
- * Shared fold for a production plan: existing same-type effects are
+ * Shared fold for production ACTIONS: existing same-type effects are
  * re-tuned in place, missing ones added; beatMangler envelopes ride the
- * same fold. Used by applyProductionIntentCommand AND the generation-side
- * FX path (candidate USE, song builds).
+ * same fold. Used by applyProductionIntentCommand, the track-scoped goal
+ * path (FX add popover) and the generation-side FX flow.
  */
-function foldProductionIntent(doc: ProjectDocument, intent: ProductionIntent): ProjectDocument {
-  const { plan } = planProductionActions(doc, intent);
+function foldProductionActions(doc: ProjectDocument, actions: ProductionAction[]): ProjectDocument {
   let next = doc;
-  for (const action of plan.actions) {
+  for (const action of actions) {
     const existing = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
     if (!existing) {
       const add = addEffect(next, action.trackId, action.type);
       next = add.execute(next);
     }
   }
-  for (const action of plan.actions) {
+  for (const action of actions) {
     const instance = trackEffectsOf(next, action.trackId).find((f) => f.type === action.type);
     if (!instance) continue;
     for (const [paramId, value] of Object.entries(action.params)) {
@@ -4624,11 +4624,36 @@ function foldProductionIntent(doc: ProjectDocument, intent: ProductionIntent): P
   return next;
 }
 
+function foldProductionIntent(doc: ProjectDocument, intent: ProductionIntent): ProjectDocument {
+  const { plan } = planProductionActions(doc, intent);
+  return foldProductionActions(doc, plan.actions);
+}
+
 export function applyProductionIntentCommand(doc: ProjectDocument, intent: ProductionIntent): Command {
   const { plan } = planProductionActions(doc, intent);
   const next = foldProductionIntent(doc, intent);
   // Production intents are deterministic — undo restores the exact previous
   // chain state, and a redo replays the same folded operations.
+  return snapshot("applyProductionIntent", plan.label, doc, next);
+}
+
+/**
+ * Production goal scoped to ONE track (FX add popover: "deeper" typed on an
+ * open track folds its planner actions onto THAT track only). Throws with a
+ * hint when the concept resolves elsewhere — the popover surfaces it, the
+ * INTENT panel stays the whole-mix entry.
+ */
+export function applyProductionIntentToTrackCommand(
+  doc: ProjectDocument,
+  trackId: string,
+  intent: ProductionIntent,
+): Command {
+  const { plan } = planProductionActions(doc, intent);
+  const scoped = plan.actions.filter((action) => action.trackId === trackId);
+  if (scoped.length === 0) {
+    throw new Error(`That goal targets other tracks — try the INTENT panel or pick a device here`);
+  }
+  const next = foldProductionActions(doc, scoped);
   return snapshot("applyProductionIntent", plan.label, doc, next);
 }
 

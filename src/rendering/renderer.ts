@@ -462,7 +462,14 @@ export async function renderProject(
 
   // Last cancellation window before the un-abortable render begins.
   throwIfAborted(options.signal);
-  return ctx.startRendering();
+  // Release the engine's sample-added subscription: the shared bank outlives
+  // this throwaway engine, and an unconsumed closure would retain every
+  // discarded render engine (one per export/stem/bounce).
+  try {
+    return await ctx.startRendering();
+  } finally {
+    engine.detachBank();
+  }
 }
 
 /** Build the intensity signal shared by offline rendering and its tests. */

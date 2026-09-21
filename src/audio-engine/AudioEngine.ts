@@ -542,8 +542,34 @@ export class AudioEngine {
   /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
   private sceneBpmOverride: number | null = null;
 
+  private bankUnsubscribe: (() => void) | null = null;
+
   attachBank(bank: SampleBank): void {
     this.bank = bank;
+    // Reload race (GOAL 06): worklet-backed instrument runtimes (granular /
+    // wavetable voices) bake their sample into the processor at construction,
+    // and syncInstrument's diff only fires on a sampleId CHANGE — a sample
+    // that lands in the bank AFTER construction (the fire-and-forget boot
+    // restore) never reaches them, leaving the track silent (granular) or on
+    // the wrong table (wavetable) until the user re-picks the sample. Re-push
+    // the id to every instrument waiting on it. Main-thread runtimes re-read
+    // the bank per note anyway, so the extra setSample is harmless there.
+    this.bankUnsubscribe?.();
+    this.bankUnsubscribe = bank.onSampleAdded((id) => {
+      for (const state of this.instruments.values()) {
+        if (state.sampleId === id) state.runtime.setSample?.(id);
+      }
+    });
+  }
+
+  /**
+   * Release the sample-added subscription taken by attachBank. Offline
+   * engines (renderer) MUST call this when done — the bank outlives them,
+   * and an unconsumed closure would retain every discarded render engine.
+   */
+  detachBank(): void {
+    this.bankUnsubscribe?.();
+    this.bankUnsubscribe = null;
   }
 
   get context(): BaseAudioContext | null {

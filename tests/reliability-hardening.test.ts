@@ -16,6 +16,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { computeRenderTicks } from "../src/rendering/renderer";
 import { BAR_TICKS } from "../src/project-model/types";
 import { SnapshotRepository } from "../src/persistence/SnapshotRepository";
+import { SampleBank } from "../src/sample-library/factory";
 import { UserSampleRepository, type UserSampleAsset } from "../src/persistence/UserSampleRepository";
 import { openDb, STORE_META, STORE_SNAPSHOT_INDEX, STORE_SNAPSHOTS, tx } from "../src/persistence/db";
 
@@ -362,6 +363,7 @@ describe("renderer — export content correctness", () => {
 const SRC = {
   engine: resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"),
   renderer: resolve(process.cwd(), "src/rendering/renderer.ts"),
+  bank: resolve(process.cwd(), "src/sample-library/factory.ts"),
   stockDelay: resolve(process.cwd(), "src/audio-worklets/stock-delay-node.ts"),
   chorus: resolve(process.cwd(), "src/audio-worklets/chorus-node.ts"),
   kaskadaNode: resolve(process.cwd(), "src/audio-worklets/kaskada-node.ts"),
@@ -501,3 +503,48 @@ describe("Worklet processors — RT-safety pins (source-grep)", () => {
     expect(source).not.toMatch(/^\s*input\.disconnect\(workletNode/m);
   });
 });
+
+describe("SampleBank arrival hook (GOAL 06 — worklet sample re-upload)", () => {
+  it("fires on FIRST arrival of an id, not on overwrites; unsubscribe works", () => {
+    const bank = new SampleBank();
+    const seen: string[] = [];
+    const unsubscribe = bank.onSampleAdded((id) => seen.push(id));
+
+    const buffer = new AudioBufferMock() as unknown as AudioBuffer;
+    bank.add("user.take", buffer);
+    bank.add("user.take", buffer); // overwrite — no second fire
+    bank.add("factory.kick", buffer);
+    expect(seen).toEqual(["user.take", "factory.kick"]);
+
+    unsubscribe();
+    bank.remove("user.take");
+    bank.add("user.take", buffer); // the unsubscribed listener stays silent
+    expect(seen).toEqual(["user.take", "factory.kick"]);
+
+    // A fresh listener sees the RE-ARRIVAL (remove + add is a new first).
+    const again: string[] = [];
+    bank.onSampleAdded((id) => again.push(id));
+    bank.add("user.take", buffer);
+    expect(again).toEqual([]); // already present — overwrite, no fire
+    bank.remove("user.take");
+    bank.add("user.take", buffer);
+    expect(again).toEqual(["user.take"]);
+  });
+
+  it("the engine re-pushes a newly arrived sample to waiting instruments and the renderer detaches", () => {
+    const engineSource = read(SRC.engine);
+    const attach = functionBody(engineSource, /attachBank\(bank: SampleBank\): void/);
+    // The reload-race re-upload: bank arrival → setSample on matching states.
+    expect(attach).toContain("bank.onSampleAdded");
+    expect(attach).toContain("state.sampleId === id");
+    expect(attach).toContain("state.runtime.setSample?.(id)");
+    expect(engineSource).toContain("detachBank(): void");
+    // Offline engines must release the subscription (shared bank outlives them).
+    expect(read(SRC.renderer)).toContain("engine.detachBank()");
+  });
+});
+
+class AudioBufferMock {
+  length = 1;
+  sampleRate = 44100;
+}

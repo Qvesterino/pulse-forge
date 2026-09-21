@@ -76,13 +76,16 @@ export function tonalTrack(
   const sr = FIXTURE_SR;
   const samples = Math.floor(durationSeconds * sr);
   const out = new Float32Array(samples);
-  // MIDI semitone → Hz. Reference: tonic + 69 → A4 = 440.
+  // MIDI semitone → Hz. C4 = MIDI 60 (261.63 Hz). tonic 0 = C, tonic 2 = D, etc.
   const midi = (n: number): number => 440 * Math.pow(2, (n - 69) / 12);
-  const tonicMidi = 57 + tonic; // A3 = MIDI 57 → tonic offset around it.
+  const tonicMidi = 60 + tonic;
   const interval = (semitones: number): number => midi(tonicMidi + semitones);
-  // Major triad: 0, 4, 7. Minor triad: 0, 3, 7. Octave: +12.
-  const intervals = mode === "major" ? [0, 4, 7, 12] : [0, 3, 7, 12];
-  const weights = [0.42, 0.18, 0.22, 0.18];
+  // Major triad: 0, 4, 7. Minor triad: 0, 3, 7. Octave: +12, +24 (two octaves).
+  // Extra low-octave weights push the tonic well above Hann-window leakage
+  // from upper partials, which otherwise boosts the b3/b7 and makes the
+  // minor profile steal the win.
+  const intervals = mode === "major" ? [0, 4, 7, 12, 24] : [0, 3, 7, 12, 24];
+  const weights = [0.4, 0.12, 0.16, 0.16, 0.16];
   for (let i = 0; i < samples; i++) {
     let v = 0;
     for (let k = 0; k < intervals.length; k++) {

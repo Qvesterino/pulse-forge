@@ -150,8 +150,12 @@ function cleanTags(value) {
  * A share code is only accepted if it actually decodes back into a project
  * JSON shape (lz-string + JSON.parse + a tracks array). Returns lightweight
  * display metadata, or null when the code is junk.
+ *
+ * Exported for the client/server contract test: the gallery card's
+ * genre/regenerable verdicts must agree with the studio-side
+ * intentSnapshotOfDoc on every provenance shape.
  */
-function decodeShareCodeMeta(code) {
+export function decodeShareCodeMeta(code) {
   try {
     const json = decompressFromEncodedURIComponent(code);
     if (!json || json.length > 4_000_000) return null;
