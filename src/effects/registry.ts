@@ -2,6 +2,7 @@ import type { EffectDefinition, EffectRuntime, ParamDef } from "./types";
 import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
+import { LFO_SYNC_DIVISIONS, createLfoSyncController } from "./tempo-sync";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
 import { createUltinaNode } from "./ultinaNode";
@@ -1901,13 +1902,22 @@ const chorus: EffectDefinition = {
       format: (v) => `${v.toFixed(2)} Hz`,
       taper: "log",
     },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: LFO_SYNC_DIVISIONS.length - 1,
+      default: 0,
+      options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 1, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
     { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
   ],
-  factory(ctx, instance) {
-    if (isWorkletReady("chorus", ctx)) return createChorusNode(ctx, instance);
+  factory(ctx, instance, env) {
+    if (isWorkletReady("chorus", ctx)) return createChorusNode(ctx, instance, env.bpm);
     return chorusNativeFallback(ctx, instance);
   },
 };
@@ -1932,6 +1942,15 @@ const phaser: EffectDefinition = {
       format: (v) => `${v.toFixed(2)} Hz`,
       taper: "log",
     },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: LFO_SYNC_DIVISIONS.length - 1,
+      default: 0,
+      options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.6, format: formatPct },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.3, format: formatPct },
     {
@@ -1944,7 +1963,7 @@ const phaser: EffectDefinition = {
     },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
-  factory(ctx, instance) {
+  factory(ctx, instance, env) {
     const mix = mixBus(ctx);
 
     const buildStages = (count: number): BiquadFilterNode[] => {
@@ -2024,10 +2043,24 @@ const phaser: EffectDefinition = {
     const out = ctx.createGain();
     mix.output.connect(out);
 
+    // C2 tempo-sync: the LFO locks to musical divisions when params.sync is
+    // set; OFF keeps the user's Hz knob authoritative.
+    const lfoSync = createLfoSyncController({
+      rateParamId: "rate",
+      defaultRate: 0.4,
+      initialRate: instance.params.rate,
+      initialSync: instance.params.sync,
+      initialBpm: env.bpm,
+      write: (_id, hz, when) => {
+        lfo.frequency.setTargetAtTime(Math.max(0.05, hz), when ?? ctx.currentTime, 0.05);
+      },
+    });
+
     const apply = (id: string, v: number, when: number) => {
       switch (id) {
         case "rate":
-          lfo.frequency.setTargetAtTime(Math.max(0.05, v), when, 0.05);
+        case "sync":
+          lfoSync.parameter(id, v, when);
           break;
         case "depth":
           lfoDepth.gain.setTargetAtTime(1500 * v, when, 0.05);
@@ -2079,6 +2112,7 @@ const phaser: EffectDefinition = {
       output: out,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
+      syncBpm: (nextBpm) => lfoSync.syncBpm(nextBpm, ctx.currentTime),
       dispose: () => {
         try {
           lfo.stop();
@@ -3449,14 +3483,23 @@ const flanger: EffectDefinition = {
       format: (v) => `${v.toFixed(2)} Hz`,
       taper: "log",
     },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: LFO_SYNC_DIVISIONS.length - 1,
+      default: 0,
+      options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+
     { id: "depth", label: "DEPTH", min: 0, max: 10, default: 3, unit: "ms", format: formatMs },
     { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
     { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 0.5, format: formatPct },
   ],
-  factory(ctx, instance) {
-    if (isWorkletReady("flanger", ctx)) return createFlangerNode(ctx, instance);
+  factory(ctx, instance, env) {
+    if (isWorkletReady("flanger", ctx)) return createFlangerNode(ctx, instance, env.bpm);
     return bypassRuntime(ctx, "AudioWorklet unavailable — flanger bypassed (1:1 signal)");
   },
 };
@@ -3485,6 +3528,15 @@ const tremolo: EffectDefinition = {
       format: (v) => `${v.toFixed(1)} Hz`,
       taper: "log",
     },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: LFO_SYNC_DIVISIONS.length - 1,
+      default: 0,
+      options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+
     { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.7, format: formatPct },
     {
       id: "shape",
@@ -3497,8 +3549,8 @@ const tremolo: EffectDefinition = {
     { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: TREMOLO_MODES },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
-  factory(ctx, instance) {
-    if (isWorkletReady("tremolo", ctx)) return createTremoloNode(ctx, instance);
+  factory(ctx, instance, env) {
+    if (isWorkletReady("tremolo", ctx)) return createTremoloNode(ctx, instance, env.bpm);
     return bypassRuntime(ctx, "AudioWorklet unavailable — tremolo bypassed (1:1 signal)");
   },
 };
@@ -3800,6 +3852,15 @@ const freqShifter: EffectDefinition = {
       taper: "log",
       format: (v) => (v < 1 ? `${v.toFixed(2)} Hz` : `${v.toFixed(1)} Hz`),
     },
+    {
+      id: "sync",
+      label: "SYNC",
+      min: 0,
+      max: LFO_SYNC_DIVISIONS.length - 1,
+      default: 0,
+      options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+    },
+
     { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 500, default: 0, unit: "Hz", format: (v) => `${Math.round(v)} Hz` },
     { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0, format: formatPct },
     {
@@ -3816,8 +3877,8 @@ const freqShifter: EffectDefinition = {
     { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
     { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   ],
-  factory(ctx, instance) {
-    if (isWorkletReady("freqShifter", ctx)) return createFreqShiftNode(ctx, instance);
+  factory(ctx, instance, env) {
+    if (isWorkletReady("freqShifter", ctx)) return createFreqShiftNode(ctx, instance, env.bpm);
     return bypassRuntime(ctx, "AudioWorklet unavailable — frequency shifter bypassed (1:1 signal)");
   },
 };

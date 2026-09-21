@@ -741,6 +741,36 @@ export class AudioEngine {
         }
       };
     }
+    // GOAL 04 (browser-audio lifecycle): iOS Safari / mobile Chrome can fire
+    // `contextlost` when an audio session is interrupted (call, Siri, route
+    // change). Without a handler the engine keeps a reference to the dead
+    // context and every subsequent `ensureContext()` either recurses on the
+    // same broken handle or no-ops until the user reloads. With the handler:
+    //   - contextlost: clear `this.ctx` so the next ensureContext() rebuilds
+    //     against a fresh AudioContext.
+    //   - contextrestored: rebuild the graph against the SAME restored
+    //     context (no new AudioContext needed — the browser kept it alive).
+    // `preventDefault()` on contextlost is required for contextrestored to
+    // fire. Feature-detect with `typeof ... !== "undefined"` — the property
+    // is missing entirely on Safari < 16.4 and Firefox.
+    if (typeof (ctx as AudioContext).oncontextlost !== "undefined") {
+      (ctx as AudioContext).oncontextlost = (event: Event) => {
+        event.preventDefault();
+        if (this.ctx !== ctx) return;
+        // Drop the handle; ensureContext() detects state === "closed" and
+        // constructs a fresh context on the next call.
+        this.ctx = null;
+      };
+    }
+    if (typeof (ctx as AudioContext).oncontextrestored !== "undefined") {
+      (ctx as AudioContext).oncontextrestored = () => {
+        if (this.ctx !== ctx) return;
+        // The browser kept the SAME context alive (see preventDefault above) —
+        // rebuild the engine's graph against the restored handle rather than
+        // allocating a new AudioContext.
+        this.useContext(ctx);
+      };
+    }
   }
 
   /**

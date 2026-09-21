@@ -339,7 +339,12 @@ export function createSafetyLimiter(): SafetyLimiter {
           // Drop the FIR warmup transient, keep the settled tail.
           const upSkip = PRIME_WARM * factor;
           for (let i = 0; i < nextLaOvs && upSkip + i < up.length; i++) n.ring[i] = up[upSkip + i];
-          n.os.downsample(up, warmLen * factor); // discard — warms the down FIR only
+          // Warm the DOWN FIR with the DISCARDED prefix — the delay line
+          // must hold content ending exactly where the primed ring content
+          // begins. Warming with the tail (as first written) positioned the
+          // state ~96 samples in the future, producing a ~12-sample garbage
+          // transient on the first post-switch outputs.
+          n.os.downsample(up, upSkip); // discard — warms the down FIR only
         }
         n.wp = Math.min(n.ring.length, nextLaOvs);
         n.fill = Math.min(n.ring.length, nextLaOvs);

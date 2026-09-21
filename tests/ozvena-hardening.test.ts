@@ -465,14 +465,64 @@ describe("Ozvena hardening — quality switches are scalar-only on the audio thr
     expect(peak2).toBeLessThan(1.0);
   });
 
+  it("quality switch on a steady tone has no sample step beyond the natural slope", () => {
+    // 2026-09-19 audit #5: switching tiers moved the output in time —
+    // first by a whole lookahead window (0.45–0.76 jumps), then, after the
+    // fill fix, by the oversampler group-delay spread (0.40). Total
+    // latency is now factor-independent (input pad) and the incoming
+    // lookahead window is primed from recent history, so a switch is a
+    // no-op on a steady tone: the largest adjacent-sample step in the
+    // switch block equals the tone's own slope.
+    const proc = new Processor();
+    sendParam(proc, "global.dryWet", 0);
+    sendParam(proc, "preDelay.enabled", 0);
+    sendParam(proc, "smoother.enabled", 0);
+    sendParam(proc, "engines.e1.enabled", 0);
+    sendParam(proc, "engines.e2.enabled", 0);
+    sendParam(proc, "engines.e3.enabled", 0);
+    setTime(0);
+    const blocks = Math.ceil((0.5 * SR) / BLOCK);
+    const switchBlock = Math.floor(blocks * 0.6);
+    let prev = 0;
+    let maxSwitchStep = 0;
+    for (let b = 0; b < blocks; b++) {
+      if (b === switchBlock) sendParam(proc, "global.quality", 2);
+      const inL = new Float32Array(BLOCK);
+      const inR = new Float32Array(BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const v = 0.4 * Math.sin((2 * Math.PI * 200 * (b * BLOCK + i)) / SR);
+        inL[i] = v;
+        inR[i] = v;
+      }
+      const outL = new Float32Array(BLOCK);
+      const outR = new Float32Array(BLOCK);
+      proc.process(
+        [[inL, inR]],
+        [[outL.subarray(0, BLOCK), outR.subarray(0, BLOCK)]],
+      );
+      // NOTE: outL/outR here are fresh per-block buffers (not views into a
+      // shared render), so block-boundary steps are measured explicitly.
+      for (let i = 0; i < BLOCK; i++) {
+        if (b === switchBlock || b === switchBlock + 1) {
+          maxSwitchStep = Math.max(maxSwitchStep, Math.abs(outL[i] - prev));
+        }
+        prev = outL[i];
+      }
+      setTime(((b + 1) * BLOCK) / SR);
+    }
+    // Natural slope of the 0.4-amplitude 200 Hz probe ≈ 0.0105; allow 2.5x
+    // for filter warmup ripple. Pre-fix this measured 0.40–0.76.
+    expect(maxSwitchStep).toBeLessThan(0.03);
+  });
+
   it("regression: reactivating an oversample set does not replay its stale lookahead audio", () => {
     // Drive quality "render" (8×) with hot impulses — its rings fill with
     // loud audio while the envelope engages. Switch away (eco), let
     // silence release the envelope toward unity, then switch BACK: the 8×
     // set's lookahead ring still held the old loud audio and re-emitted up
     // to a full lookahead window of stale material at ~unity gain on the
-    // first silent block. The switch now zeroes the incoming set's ring
-    // (envelope still carried): silence renders as silence.
+    // first silent block. The switch primes the incoming set from recent
+    // history (envelope still carried): silence renders as silence.
     // Engines/pre-delay/smoother are disabled and dryWet is 0 so the DRY
     // path feeds the limiter directly — otherwise the reverb tail (not
     // the limiter) dominates the output and masks the replay.

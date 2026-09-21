@@ -1823,6 +1823,13 @@
     let os = 4;
     let laOvs = 0;
     let ringCap = 0;
+    let maxOsLat = 0;
+    let laSamples = 0;
+    let histRing = [];
+    let histCap = 0;
+    let histWp = 0;
+    let primeScratch = new Float32Array(0);
+    const PRIME_WARM = 64;
     let ch = [];
     const chByFactor = {};
     const OS_FACTORS = [1, 2, 4, 8];
@@ -1955,6 +1962,17 @@
           chByFactor[f] = buildChannels(cc, f);
         }
         ch = chByFactor[os];
+        maxOsLat = 0;
+        for (const f of OS_FACTORS) {
+          const set = chByFactor[f];
+          if (set && set.length > 0) maxOsLat = Math.max(maxOsLat, set[0].os.latencySamples);
+        }
+        laSamples = Math.round(LOOKAHEAD_MS / 1e3 * sampleRate2);
+        histCap = laSamples + maxOsLat + PRIME_WARM + maxBs + 8;
+        histRing = [];
+        for (let i = 0; i < cc; i++) histRing.push(new Float32Array(histCap));
+        histWp = 0;
+        primeScratch = new Float32Array(Math.max(8, laSamples + PRIME_WARM + 4));
         prepared = true;
       },
       setOversampleFactor(factor) {
@@ -1963,20 +1981,45 @@
         if (factor === os) return;
         const nextSet = chByFactor[factor];
         if (!nextSet) return;
-        for (let c = 0; c < ch.length; c++) {
+        const nextLaOvs = laSamples * factor;
+        for (let c = 0; c < ch.length && c < nextSet.length; c++) {
           const n = nextSet[c];
           n.env = ch[c].env;
-          const nextLaOvs = Math.round(LOOKAHEAD_MS / 1e3 * sampleRate2) * factor;
-          n.wp = 0;
-          n.fill = Math.min(n.ring.length, nextLaOvs);
-          n.ring.fill(0);
           n.os.reset();
+          n.ring.fill(0);
+          const padNew = maxOsLat - n.os.latencySamples;
+          const hist = c < histRing.length ? histRing[c] : null;
+          if (hist && laSamples > 0) {
+            const warmLen = laSamples + PRIME_WARM;
+            for (let i = 0; i < warmLen; i++) {
+              const idx = ((histWp - padNew - warmLen + i) % histCap + histCap) % histCap;
+              primeScratch[i] = hist[idx];
+            }
+            const up = n.os.upsample(primeScratch, warmLen);
+            const upSkip = PRIME_WARM * factor;
+            for (let i = 0; i < nextLaOvs && upSkip + i < up.length; i++) n.ring[i] = up[upSkip + i];
+            n.os.downsample(up, upSkip);
+          }
+          n.wp = Math.min(n.ring.length, nextLaOvs);
+          n.fill = Math.min(n.ring.length, nextLaOvs);
         }
         os = factor;
         ch = nextSet;
       },
       process(channels, frameCount) {
         if (!prepared || frameCount <= 0 || ch.length === 0) return;
+        const n = frameCount;
+        while (histRing.length < channels.length) histRing.push(new Float32Array(histCap));
+        const pad = Math.max(0, maxOsLat - (ch.length > 0 ? ch[0].os.latencySamples : 0));
+        for (let c = 0; c < channels.length && c < histRing.length; c++) {
+          const hist = histRing[c];
+          const buf = channels[c];
+          for (let i = 0; i < n; i++) {
+            hist[(histWp + i) % histCap] = buf[i];
+            if (pad > 0) buf[i] = hist[((histWp + i - pad) % histCap + histCap) % histCap];
+          }
+        }
+        histWp = (histWp + n) % histCap;
         const ceil = dbToLinear(ceilDb);
         const ovsRate = sampleRate2 * os;
         const rc = Math.exp(-1 / (RELEASE_MS / 1e3 * ovsRate));
@@ -2006,11 +2049,11 @@
             s.os.reset();
           }
         }
+        for (const h of histRing) h.fill(0);
+        histWp = 0;
       },
       getLatencySamples() {
-        const laSamples = Math.round(LOOKAHEAD_MS / 1e3 * sampleRate2);
-        const osLatency = ch.length > 0 ? ch[0].os.latencySamples : 0;
-        return osLatency + laSamples;
+        return laSamples + maxOsLat;
       },
       getGainReductionDb() {
         if (ch.length === 0) return 0;

@@ -96,6 +96,36 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(useContext).toMatch(/this\.ctx\s*===\s*ctx/);
   });
 
+  it("useContext() registers oncontextlost and oncontextrestored (GOAL 04 mobile-audio lifecycle)", () => {
+    // iOS Safari and mobile Chrome fire `contextlost` when an audio session
+    // is interrupted (call, Siri, route change). Without a handler the engine
+    // keeps a reference to the dead context and every subsequent
+    // ensureContext() either recurses on the broken handle or no-ops until
+    // the user reloads. The handler:
+    //   - contextlost → clear the engine's ctx so the next ensureContext()
+    //     rebuilds against a fresh AudioContext.
+    //   - contextrestored → call useContext() against the SAME restored
+    //     context (no allocation needed — the browser kept it alive).
+    // `event.preventDefault()` on contextlost is required for contextrestored
+    // to fire — feature-detect with `typeof !== "undefined"` because the
+    // property is missing on Safari < 16.4 and Firefox.
+    const useContext = sliceFunction(readEngine(), /useContext\s*\(/);
+    expect(useContext, "useContext not found").not.toBe("");
+    expect(useContext).toMatch(/oncontextlost\s*=/);
+    expect(useContext).toMatch(/oncontextrestored\s*=/);
+    // preventDefault() on the lost event is required for the restored event
+    // to fire — pin it so a future refactor that drops it silently
+    // re-introduces the "no automatic recovery" bug.
+    expect(useContext).toMatch(/event\.preventDefault\(\)/);
+    // contextlost must clear this.ctx so the next ensureContext() rebuilds
+    // against a fresh context rather than recursing on the broken handle.
+    expect(useContext).toMatch(/oncontextlost[\s\S]{0,200}this\.ctx\s*=\s*null/);
+    // contextrestored must call useContext(ctx) to rebuild against the SAME
+    // restored context — the browser kept the AudioContext alive, allocating
+    // a new one would leak the original.
+    expect(useContext).toMatch(/oncontextrestored[\s\S]{0,200}this\.useContext\(ctx\)/);
+  });
+
   it("panic() disposes LFO + follower state in BOTH the live-context and no-context paths", () => {
     // Defect 6.1 (resource-leak audit): panic() previously cleared
     // voices, frozen buffers and instrument runtimes, but never the

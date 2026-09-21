@@ -250,6 +250,7 @@ describe("normalizeProject — macros, returns, master", () => {
       bassMonoEnabled: false,
       bassMonoFreq: 120,
       tiltDb: 0,
+      loudnessTrimDb: 0,
     });
   });
 
