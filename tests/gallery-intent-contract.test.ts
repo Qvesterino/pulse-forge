@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { encodeShareCode } from "../src/export/shareCode";
 import { intentSnapshotOfDoc } from "../src/gallery/intentCarry";
+// @ts-expect-error untyped .mjs server module
 import { decodeShareCodeMeta } from "../server/collab-server.mjs";
 import type { Pattern, ProjectDocument } from "../src/project-model/types";
 import type { PatternGeneration } from "../src/project-model/types";
@@ -27,7 +28,7 @@ const INTENT = { genre: "trap", energy: 0.9, density: 0.6, seed: "abc", bpmRange
 const FIXTURES: Array<{ name: string; pattern: Partial<Pattern>; genre: string | null; regenerable: boolean }> = [
   {
     name: "engine writer shape (generation.intent)",
-    pattern: { generation: { intent: INTENT } as PatternGeneration },
+    pattern: { generation: { intent: INTENT } as unknown as PatternGeneration },
     genre: "trap",
     regenerable: true,
   },
@@ -39,19 +40,22 @@ const FIXTURES: Array<{ name: string; pattern: Partial<Pattern>; genre: string |
   },
   {
     name: "both shapes present — generation wins",
-    pattern: { generation: { intent: INTENT } as PatternGeneration, intent: { genre: "house" } } as Partial<Pattern>,
+    pattern: {
+      generation: { intent: INTENT } as unknown as PatternGeneration,
+      intent: { genre: "house" },
+    } as Partial<Pattern>,
     genre: "trap",
     regenerable: true,
   },
   {
     name: "intent without a valid genre string — regenerable, no genre",
-    pattern: { generation: { intent: { energy: 0.5 } } as PatternGeneration },
+    pattern: { generation: { intent: { energy: 0.5 } } as unknown as PatternGeneration },
     genre: null,
     regenerable: true,
   },
   {
     name: "genre that fails the server slug check — client may read it, server must not",
-    pattern: { generation: { intent: { genre: "Not A Slug!" } } as PatternGeneration },
+    pattern: { generation: { intent: { genre: "Not A Slug!" } } as unknown as PatternGeneration },
     genre: null,
     regenerable: true,
   },

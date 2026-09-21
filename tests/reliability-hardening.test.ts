@@ -364,6 +364,7 @@ const SRC = {
   engine: resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"),
   renderer: resolve(process.cwd(), "src/rendering/renderer.ts"),
   bank: resolve(process.cwd(), "src/sample-library/factory.ts"),
+  services: resolve(process.cwd(), "src/services.ts"),
   stockDelay: resolve(process.cwd(), "src/audio-worklets/stock-delay-node.ts"),
   chorus: resolve(process.cwd(), "src/audio-worklets/chorus-node.ts"),
   kaskadaNode: resolve(process.cwd(), "src/audio-worklets/kaskada-node.ts"),
@@ -541,6 +542,17 @@ describe("SampleBank arrival hook (GOAL 06 — worklet sample re-upload)", () =>
     expect(engineSource).toContain("detachBank(): void");
     // Offline engines must release the subscription (shared bank outlives them).
     expect(read(SRC.renderer)).toContain("engine.detachBank()");
+  });
+});
+
+describe("Collab offline-adopt safety net (GOAL 06)", () => {
+  it("adopting a live room parks the pre-adopt local state as a snapshot", () => {
+    const source = read(SRC.services);
+    expect(source).toContain('"auto — before collab adopt"');
+    // Snapshot BEFORE the adopt replaces the document, prune after (cap kept).
+    const adoptIdx = source.indexOf("before collab adopt");
+    const adoptCall = source.indexOf("adoptRemote()", adoptIdx);
+    expect(adoptCall).toBeGreaterThan(0);
   });
 });
 

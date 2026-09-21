@@ -315,8 +315,21 @@ export async function openProject(
     }, 8_000);
     collab.onFirstSync((hasRemote) => {
       clearTimeout(syncGuardTimer);
-      if (hasRemote) (store as YDocStore).adoptRemote();
-      else (store as YDocStore).hydrate(initial);
+      if (hasRemote) {
+        // Offline-adopt safety net (GOAL 06): edits made while the websocket
+        // was down live only in this tab's local copy — adopting the room
+        // replaces that document wholesale, which would silently drop them.
+        // Park the pre-adopt state as a snapshot (best-effort, deliberately
+        // OUTSIDE the 30-min auto-snapshot throttle — this is rarer and more
+        // valuable than a routine auto-snapshot).
+        void snapshots
+          .save(initial.id, initial, "auto — before collab adopt")
+          .then(() => snapshots.prune(initial.id))
+          .catch(() => {});
+        (store as YDocStore).adoptRemote();
+      } else {
+        (store as YDocStore).hydrate(initial);
+      }
       (store as YDocStore).markSynced();
     });
     // Jam roles: gate local commands on the session role and surface refusals.
