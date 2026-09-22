@@ -16,7 +16,7 @@
 class BitcrusherProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.heldValue = 0;
+    this.held = []; // per-channel sample-and-hold state
     this.counter = 0;
   }
 
@@ -38,24 +38,48 @@ class BitcrusherProcessor extends AudioWorkletProcessor {
     const dsIsConstant = downsample.length === 1;
 
     const channelCount = Math.min(input.length, output.length);
+    const held = this.held;
+    const counterStart = this.counter;
 
     for (let ch = 0; ch < channelCount; ch++) {
       const inCh = input[ch];
+      const inLen = inCh ? inCh.length : 0;
       const outCh = output[ch];
-      // Share counter across channels for stereo coherence.
+      // Every channel runs the SAME hold phase (the counter is restored per
+      // channel) and keeps its OWN held sample. The old single counter +
+      // single heldValue, consumed by sequential channel loops, offset ch1's
+      // hold grid by blockLen % ds and let ch1 open each block with ch0's
+      // stale hold — the opposite of the stereo coherence that was intended.
+      let counter = counterStart;
+      let heldCh = held[ch] ?? 0;
       for (let i = 0; i < outCh.length; i++) {
         const b = bitsIsConstant ? bits[0] : bits[i];
         const ds = dsIsConstant ? downsample[0] : downsample[i];
 
-        if (this.counter === 0) {
-          // Quantize to bit depth
-          const levels = Math.max(2, Math.pow(2, Math.max(1, Math.round(b))));
-          const step = 2 / (levels - 1);
-          const quantized = Math.round((inCh[i] + 1) / step) * step - 1;
-          this.heldValue = Math.max(-1, Math.min(1, quantized));
+        if (counter === 0) {
+          // Quantize to bit depth. A missing (zero-length) or non-finite
+          // input sample holds the previous value — a NaN must never latch
+          // into the hold state, it would output NaN until the next valid
+          // quantize on every channel.
+          if (i < inLen && Number.isFinite(inCh[i])) {
+            const levels = Math.max(2, Math.pow(2, Math.max(1, Math.round(b))));
+            const step = 2 / (levels - 1);
+            const quantized = Math.round((inCh[i] + 1) / step) * step - 1;
+            heldCh = Math.max(-1, Math.min(1, quantized));
+          }
         }
-        outCh[i] = this.heldValue;
-        this.counter = (this.counter + 1) % Math.max(1, Math.round(ds));
+        outCh[i] = heldCh;
+        counter = (counter + 1) % Math.max(1, Math.round(ds));
+      }
+      held[ch] = heldCh;
+    }
+    this.counter = counter;
+
+    // Mono input feeding a multi-channel output: mirror ch0 so trailing
+    // outputs never carry stale samples (svfilter/compressor do the same).
+    if (channelCount > 0) {
+      for (let ch = channelCount; ch < output.length; ch++) {
+        if (output[ch]) output[ch].set(output[0]);
       }
     }
 

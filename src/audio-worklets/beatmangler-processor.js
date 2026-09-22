@@ -60,7 +60,21 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
             : null;
         this.volumeSteps = clean(data.volume, 1);
         this.pitchSteps = clean(data.pitch, 0);
-        this.stepsPerBar = this.volumeSteps?.length ?? this.pitchSteps?.length ?? 16;
+        // The two lanes are independent document arrays and CAN arrive with
+        // different lengths; indexing the shorter with stepsPerBar would read
+        // undefined → NaN pitch → NaN readPos → permanent NaN audio (the NaN
+        // survives every reset comparison). Pad the shorter lane by holding
+        // its last step so both lanes always span stepsPerBar.
+        const vLen = this.volumeSteps?.length ?? 0;
+        const pLen = this.pitchSteps?.length ?? 0;
+        this.stepsPerBar = Math.max(vLen, pLen) || 16;
+        if (vLen > 0 && pLen > 0 && vLen !== pLen) {
+          const short = vLen < pLen ? this.volumeSteps : this.pitchSteps;
+          const padded = new Array(Math.max(vLen, pLen));
+          for (let s = 0; s < padded.length; s++) padded[s] = short[Math.min(s, short.length - 1)];
+          if (vLen < pLen) this.volumeSteps = padded;
+          else this.pitchSteps = padded;
+        }
       } else if (data.type === "bpm" && Number.isFinite(data.bpm) && data.bpm > 0) {
         this.bpm = Math.max(20, Math.min(300, data.bpm));
         this.barSamples = (60 / this.bpm) * 4 * sr;

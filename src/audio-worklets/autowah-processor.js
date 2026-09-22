@@ -91,9 +91,19 @@ class AutowahProcessor extends AudioWorkletProcessor {
 
       // ---- Chamberlin SVF (cutoff moves per-sample) ----
       const f = 2 * Math.sin((Math.PI * Math.min(fc, sr * 0.24)) / sr);
+      // Numerical stability: the semi-implicit Chamberlin recursion diverges
+      // when f*q >= (4 - f²)/2 — high cutoff combined with LOW resonance
+      // (max damping is the unstable corner). Scale the damping into the
+      // stable region exactly like svfilter-processor; settings that are
+      // already stable are untouched. The ±8 state clamps below only remain
+      // as a last-resort guard — they previously masked the divergence as a
+      // harsh ±8 limit cycle on legal settings (res ≤ ~0.3, hot signal).
+      let qEff = q;
+      const fqMax = (4 - f * f) * 0.49;
+      if (f * qEff > fqMax) qEff = fqMax / f;
 
       // Left
-      const hpL = l - this.lpL - q * this.bpL;
+      const hpL = l - this.lpL - qEff * this.bpL;
       this.bpL += f * hpL;
       this.lpL += f * this.bpL;
       if (this.bpL > clampVal) this.bpL = clampVal;
@@ -104,7 +114,7 @@ class AutowahProcessor extends AudioWorkletProcessor {
       if (Math.abs(this.lpL) < 1e-20) this.lpL = 0;
 
       // Right
-      const hpR = r - this.lpR - q * this.bpR;
+      const hpR = r - this.lpR - qEff * this.bpR;
       this.bpR += f * hpR;
       this.lpR += f * this.bpR;
       if (this.bpR > clampVal) this.bpR = clampVal;

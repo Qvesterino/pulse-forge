@@ -7,18 +7,22 @@
  * width. An invert switch enables through-zero-style flanging character.
  *
  * Delay ring buffer is power-of-2 sized for mask indexing (base + depth max
- * 30 ms, at 48 kHz = 1440 samples → 2048 buffer).
+ * 30 ms; sized from the runtime sample rate so 88.2/96 kHz contexts keep the
+ * full sweep — a fixed 2048 ring silently shortened the sweep above ~68 kHz).
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
-const FLANGER_DIVISOR = 2048;
-const FLANGER_MASK = FLANGER_DIVISOR - 1;
+const FLANGER_MIN_DIVISOR = 2048;
 
 class FlangerProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufL = new Float32Array(FLANGER_DIVISOR);
-    this.bufR = new Float32Array(FLANGER_DIVISOR);
+    const sr = globalThis.sampleRate || 44100;
+    this.divisor = FLANGER_MIN_DIVISOR;
+    while (this.divisor < Math.ceil(sr * 0.032)) this.divisor *= 2;
+    this.mask = this.divisor - 1;
+    this.bufL = new Float32Array(this.divisor);
+    this.bufR = new Float32Array(this.divisor);
     this.writeIdx = 0;
     this.lfoPhaseL = 0;
     this.lfoPhaseR = Math.PI * (2 / 3); // 120° offset for stereo width
@@ -92,7 +96,7 @@ class FlangerProcessor extends AudioWorkletProcessor {
       // tap — the classic through-zero notch sweep.
       this.bufL[this.writeIdx] = l + wetL * invert * feedback;
       this.bufR[this.writeIdx] = r + wetR * invert * feedback;
-      this.writeIdx = (this.writeIdx + 1) & FLANGER_MASK;
+      this.writeIdx = (this.writeIdx + 1) & this.mask;
 
       outL[i] = l * (1 - mix) + wetL * invert * mix;
       if (outR) outR[i] = r * (1 - mix) + wetR * invert * mix;
@@ -108,10 +112,11 @@ class FlangerProcessor extends AudioWorkletProcessor {
   readCubic(buf, position) {
     const idx = Math.floor(position);
     const frac = position - idx;
-    const i0 = (idx - 1) & FLANGER_MASK;
-    const i1 = idx & FLANGER_MASK;
-    const i2 = (idx + 1) & FLANGER_MASK;
-    const i3 = (idx + 2) & FLANGER_MASK;
+    const m = this.mask;
+    const i0 = (idx - 1) & m;
+    const i1 = idx & m;
+    const i2 = (idx + 1) & m;
+    const i3 = (idx + 2) & m;
     const y0 = buf[i0];
     const y1 = buf[i1];
     const y2 = buf[i2];

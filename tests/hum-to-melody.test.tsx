@@ -450,10 +450,10 @@ describe("recognition reliability — adaptive gate + pitch mode", () => {
     // Mean = 63.66 → rounds to 64 (the OLD, wrong landing); mode = 63.
     const gliding = [
       frame(0.4, 63.3),
-      frame(0.41, 63.4),
-      frame(0.42, 63.3),
-      frame(0.43, 64.1),
-      frame(0.44, 64.3),
+      frame(0.43, 63.4),
+      frame(0.46, 63.3),
+      frame(0.49, 64.1),
+      frame(0.52, 64.3),
     ];
     const notes = framesToNotes(gliding, base);
     expect(notes).toHaveLength(1);
@@ -461,15 +461,15 @@ describe("recognition reliability — adaptive gate + pitch mode", () => {
   });
 
   it("pitch mode: symmetric vibrato keeps the center (tie resolves toward the mean)", () => {
-    // Oscillating ±0.4 around 64: rounded counts split 64/65 — mean 64.0
-    // breaks the tie downward, matching the old mean behavior.
+    // Oscillating ±0.4 around 64: rounded counts split 63/64 evenly — the
+    // mean (64.0) breaks the tie downward, matching the old mean behavior.
     const vibrato = [
       frame(0.4, 63.6),
-      frame(0.41, 64.4),
-      frame(0.42, 63.6),
       frame(0.43, 64.4),
-      frame(0.44, 63.6),
-      frame(0.45, 64.4),
+      frame(0.46, 63.6),
+      frame(0.49, 64.4),
+      frame(0.52, 63.6),
+      frame(0.55, 64.4),
     ];
     const notes = framesToNotes(vibrato, base);
     expect(notes).toHaveLength(1);

@@ -77,7 +77,8 @@ function createRecorder(
         // "ready" fires once the trim stage chains into the capture node:
         // source → trim gain → worklet (post-trim graph complete).
         connect: vi.fn((node: unknown) => {
-          if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+          if (node === lastNode)
+            queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
         }),
         disconnect: vi.fn(),
       };

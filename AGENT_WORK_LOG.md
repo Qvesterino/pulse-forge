@@ -3401,3 +3401,54 @@ into their churning files).
 - **Flag `pf:style-vector`** default ON — ale aktívny IBA keď `pf:embedding-conditioned` on; vypnuteľný samostatne (intent-conditioning bez personalizácie).
 - **Testy** `tests/style-vector.test.ts` 8/8: text-projekcia + determinizmus, signatúra stabilita/zmeny, presná mean→project aritmetika, localStorage cache + invalidácia, flag gating, blend integrácia (numerická rovnosť s blendSemantic), prázdny ledger = čistá intent projekcia. Regresia **254/254 cez 25 intent súborov**; typecheck mojich súborov 0 chýb.
 - Dizajn poznámka: blend je v1 mechanizmus ("alongside intent"); heavyweight alternatívy (style vector ako druhý conditioning vstup do modelu) by vyžadovali retrain — klasifikované ako follow-up ak v1 blend nebude stačiť.
+
+---
+
+## HARDENING ROUND 5 (2026-09-22) — mic lifecycle P3s, route error boundaries, post-split parity audit
+
+Scope note: the concurrent session's in-flight melodic-v2 diff (src/ai/symbolic/*, AudioEngine.ts,
+renderer.ts, services.ts, src/intent/providers/symbolic.ts, scripts/*symbolic-melodic*, new ONNX model)
+was treated as off-limits throughout.
+
+**Fixed:**
+- **PcmMicRecorder cross-instance mic claim** (round-2 deferred P3): ArrangementPanel takes and
+  ExportPanel mic resamples each construct their own recorder — nothing stopped both from opening
+  parallel getUserMedia streams on the same input. Module-level claim acquired at synchronous start()
+  entry, released at EVERY transition to idle (start-catch, cancel-during-starting, finishCapture).
+  Second start() throws "The microphone is already in use by another recording — stop that recording
+  first" (both panels already surface error.message + call cancel()).
+- **PcmMicRecorder unbounded ctx.resume()** (round-2 deferred P3): raced against a 10 s timeout —
+  interrupted/dead-device contexts could leave start() pending forever, wedging the UI in "starting"
+  and holding the mic claim.
+- **Route error boundaries** (audit-prompt §35, never covered): /embed, /gallery, /download rendered
+  with NO ErrorBoundary — a throw on the most adversarial surfaces (public routes, remote data) gave
+  a blank page. Wrapped all three; ErrorBoundary gained `crashNote` so route apps don't over-claim
+  "Your work has been saved" (studio default unchanged).
+- **tests/style-vector.test.ts**: two unused imports broke whole-tree `tsc --noEmit` for everyone
+  (committed file, not in-flight work) — removed; full typecheck now 0 errors.
+
+**Audited, no defect:**
+- elapsedSeconds freezing while ctx suspended is CORRECT (capture halts with the clock; mid-take
+  suspension already aborts capture via the statechange handler).
+- Definitions splits parity (GOAL 02/03 verbatim moves): multiset line diff of
+  instruments/definitions.ts and effects/definitions.ts (+ surviving registries) vs pre-split
+  registries from git history — zero data loss; unmatched lines are import/export plumbing,
+  export-prefix rewrites, prettier reflow, and rewritten defaultParamsOf/clampEffectParam bodies
+  (behavior test-pinned). Spot-verified GATE_DIVISIONS/SVF_MODES/PHASER_STAGE_COUNTS values identical.
+- **808:decay duplicate id RESOLVED upstream** by the parallel session's 808 work — the test's
+  knownDuplicates tolerance was stale and would have silently tolerated a future duplicate; removed,
+  param-id uniqueness is unconditional again (instrument-definitions suite green).
+- LiveRecorder mic branch unreachable from UI (ExportPanel routes mic to PcmMicRecorder before
+  LiveRecorder; browser-checks taps master) — no contention sibling for the claim.
+- Residual (recorded, not fixed): latencyProbe.ts opens its own mic stream for calibration; running
+  it during an arrangement take opens a second stream (browsers allow it, minor monitor doubling) —
+  deliberate-diagnostic UX, leave unless it shows up in practice.
+
+**Tests added:** cross-instance claim + hung-resume timeout (tests/pcm-mic-recorder.test.ts,
+17/17), ErrorBoundary route-mode crashNote (tests/ui/ErrorBoundary.test.tsx, 8/8).
+
+**Verification:** full `npx tsc --noEmit` 0 errors; 9 targeted suites 79/79 (mic recorder + latency,
+ErrorBoundary, timeline-rec, input-gain-slider, instrument-definitions, domain-purity,
+platform-contracts, style-vector); prettier clean on touched files. Not run: full vitest, build
+(shared machine, concurrent session mid-flight; no runtime-affecting change outside PcmMicRecorder
+claim/timeout + route boundaries).

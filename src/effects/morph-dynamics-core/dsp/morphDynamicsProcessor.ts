@@ -436,7 +436,6 @@ export class MorphDynamicsProcessor {
       if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
     }
 
-
     // ── 3. Effective (curated + modulated) stage values ───────────
     // External sidechain intent (the feed itself is consumed in the sample
     // loop): when EXT is on, AUTO MAKEUP stands down — reactive makeup would
@@ -492,18 +491,34 @@ export class MorphDynamicsProcessor {
     // (the depth is a wet crossfade; a raw step clicks).
     const motionOn = q[P.MOTION_ENABLED_ID] >= 0.5;
     this.sm.motionDepth.setTarget(
-      motionOn ? Math.max(0, Math.min(100, this.modDelta(5, (q[P.MACRO_MOTION_ID] / 100) * (35 + 65 * motionScale)))) / 100 : 0,
+      motionOn
+        ? Math.max(0, Math.min(100, this.modDelta(5, (q[P.MACRO_MOTION_ID] / 100) * (35 + 65 * motionScale)))) / 100
+        : 0,
     );
     this.sm.motionRate.setTarget(motionOn ? Math.max(0, this.modDelta(6, q[P.MOTION_RATE_HZ_ID])) : 0);
     this.sm.motionFeedback.setTarget(
-      motionOn ? Math.max(-80, Math.min(80, this.modDelta(7, q[P.MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale))) / 100 : 0,
+      motionOn
+        ? Math.max(-80, Math.min(80, this.modDelta(7, q[P.MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale))) /
+            100
+        : 0,
     );
     this.sm.motionSweep.setTarget(
       motionOn
-        ? Math.max(-1, Math.min(1, (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale))
+        ? Math.max(
+            -1,
+            Math.min(
+              1,
+              (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale,
+            ),
+          )
         : 0,
     );
-    this.motion.setControl(this.sm.motionDepth.tick(), this.sm.motionRate.tick(), this.sm.motionFeedback.tick(), this.sm.motionSweep.tick());
+    this.motion.setControl(
+      this.sm.motionDepth.tick(),
+      this.sm.motionRate.tick(),
+      this.sm.motionFeedback.tick(),
+      this.sm.motionSweep.tick(),
+    );
 
     // f4 — space: macro send with a spaceScale floor (SPACE alone still
     // blooms); texture/density open send + diffusion reactively; transient

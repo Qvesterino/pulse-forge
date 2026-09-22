@@ -1481,6 +1481,28 @@
       level: 0.7,
       pan: 0
     }));
+    /**
+     * Preallocated per-block stage output/config bags and the modulation
+     * source vector — process() mutates them in place. Fresh literals per
+     * block would put ~5 short-lived objects on the GC nursery every render
+     * quantum (the module contract is no allocation after prepare()).
+     */
+    src = new Array(MOD_SOURCES.length).fill(0);
+    dynOut = { gl: 1, gr: 1, makeup: 1 };
+    charOut = { l: 0, r: 0 };
+    motionOut = { l: 0, r: 0 };
+    spaceOut = { l: 0, r: 0 };
+    harmonyParams = {
+      enabled: true,
+      bodyAmount: 1,
+      mix: 0.5,
+      fullSignal: false,
+      spread: 1,
+      width: 1,
+      diffusion: 0,
+      space: 0,
+      voices: this.harmonyVoicesCfg
+    };
     // ── Spatial Bloom control signal (Experiment #3, §6) ────────────
     // bloom = BODY score → curve (§3: nothing below ~0.2, rising through
     // the musical range) → enveloped (attack ~80 ms, release ~450 ms — the
@@ -1520,6 +1542,12 @@
     };
     /** Per-destination sum of SMOOTHED route deltas (plain units of the dest). */
     rawDelta = new Array(MOD_DESTINATIONS.length).fill(0);
+    /** Bound-once mod-matrix clamp — a per-block closure would be a
+     * render-path allocation (the module contract is allocate-free). */
+    modDelta = (destIdx, base) => {
+      const dest = MOD_DESTINATIONS[destIdx];
+      return Math.max(dest.min, Math.min(dest.max, base + this.rawDelta[destIdx]));
+    };
     // Per-route activity for the matrix UI (post-modulation magnitude 0..1).
     routeActivity = new Array(ROUTE_SLOTS).fill(0);
     // Core users (offline render/tests) get meters by default. The AudioWorklet
@@ -1722,6 +1750,7 @@
       const q = this.params;
       const L = inputs[0];
       const R = inputs[1] ?? inputs[0];
+      this.advanceMorph(frames / this.sampleRate);
       const Pn = q[MACRO_PRESSURE_ID] / 100;
       const dynScale = Pn;
       const charScale = smoothstep(Pn, 0.1, 0.7);
@@ -1730,18 +1759,15 @@
       const routeScale = smoothstep(Pn, 0.15, 0.65);
       const bloomRaw = smoothstep(this.meters.body, 0.2, 0.95);
       this.bloom += (bloomRaw - this.bloom) * (bloomRaw > this.bloom ? this.bloomUp : this.bloomDown);
-      const src = [
-        this.meters.inputEnergy,
-        this.dyn.grNorm,
-        this.meters.transient,
-        this.meters.body,
-        this.meters.texture,
-        this.meters.density,
-        routeScale,
-        // PRESSURE as a source = post-curve reactive depth
-        this.bloom
-        // Spatial Bloom (Experiment #3) — curved, enveloped body energy
-      ];
+      const src = this.src;
+      src[0] = this.meters.inputEnergy;
+      src[1] = this.dyn.grNorm;
+      src[2] = this.meters.transient;
+      src[3] = this.meters.body;
+      src[4] = this.meters.texture;
+      src[5] = this.meters.density;
+      src[6] = routeScale;
+      src[7] = this.bloom;
       this.rawDelta.fill(0);
       for (let slot = 0; slot < ROUTE_SLOTS; slot++) {
         this.routeActivity[slot] = 0;
@@ -1763,16 +1789,12 @@
         this.rawDelta[destIdx] += routeSm.tick();
         if (this.metersEnabled) this.routeActivity[slot] = Math.min(1, Math.abs(amount * s) * routeScale * 1.25);
       }
-      const mod = (destIdx, base) => {
-        const dest = MOD_DESTINATIONS[destIdx];
-        return Math.max(dest.min, Math.min(dest.max, base + this.rawDelta[destIdx]));
-      };
       const sidechainExt = q[DYN_SIDECHAIN_EXT_ID] >= 0.5;
       this.sm.thresholdOffset.setTarget(-10 * Math.pow(dynScale, 1.2));
       this.sm.ratioBonus.setTarget(3.5 * Math.pow(dynScale, 1.6));
       this.sm.makeupBonus.setTarget(1.5 * dynScale * dynScale);
-      const thresholdEff = mod(0, q[DYN_THRESHOLD_DB_ID] + this.sm.thresholdOffset.tick());
-      const ratioEff = mod(1, q[DYN_RATIO_ID] + this.sm.ratioBonus.current);
+      const thresholdEff = this.modDelta(0, q[DYN_THRESHOLD_DB_ID] + this.sm.thresholdOffset.tick());
+      const ratioEff = this.modDelta(1, q[DYN_RATIO_ID] + this.sm.ratioBonus.current);
       this.dyn.setParams({
         thresholdDb: thresholdEff,
         ratio: ratioEff,
@@ -1789,9 +1811,9 @@
       const charOn = q[CHAR_ENABLED_ID] >= 0.5;
       const reactiveDrive = (this.meters.body * 30 + this.dyn.grNorm * 25) * charScale;
       this.sm.driveBase.setTarget(q[CHAR_DRIVE_ID] + q[MACRO_BODY_ID] / 100 * 25 * charScale);
-      const driveEff = mod(2, this.sm.driveBase.tick() + reactiveDrive);
-      const toneEff = mod(3, q[CHAR_TONE_ID] + (q[MACRO_BODY_ID] - 50) * 0.3);
-      const clipEff = mod(4, q[CHAR_CLIP_ID] + q[MACRO_PUNCH_ID] * 0.15);
+      const driveEff = this.modDelta(2, this.sm.driveBase.tick() + reactiveDrive);
+      const toneEff = this.modDelta(3, q[CHAR_TONE_ID] + (q[MACRO_BODY_ID] - 50) * 0.3);
+      const clipEff = this.modDelta(4, q[CHAR_CLIP_ID] + q[MACRO_PUNCH_ID] * 0.15);
       this.sm.tone.setTarget(charOn ? toneEff / 100 : 0);
       this.sm.asym.setTarget(charOn ? q[CHAR_ASYM_ID] / 100 : 0);
       this.sm.clip.setTarget(charOn ? clipEff / 100 : 0);
@@ -1802,22 +1824,34 @@
         clip: Math.max(0, Math.min(1, this.sm.clip.tick()))
       });
       const motionOn = q[MOTION_ENABLED_ID] >= 0.5;
-      const motionDepthEff = mod(5, q[MACRO_MOTION_ID] / 100 * (35 + 65 * motionScale));
-      const rateEff = mod(6, q[MOTION_RATE_HZ_ID]);
-      const fbEff = mod(7, q[MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale);
-      const reactiveSweep = (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale;
+      this.sm.motionDepth.setTarget(
+        motionOn ? Math.max(0, Math.min(100, this.modDelta(5, q[MACRO_MOTION_ID] / 100 * (35 + 65 * motionScale)))) / 100 : 0
+      );
+      this.sm.motionRate.setTarget(motionOn ? Math.max(0, this.modDelta(6, q[MOTION_RATE_HZ_ID])) : 0);
+      this.sm.motionFeedback.setTarget(
+        motionOn ? Math.max(-80, Math.min(80, this.modDelta(7, q[MOTION_FEEDBACK_ID] + this.dyn.grNorm * 40 * motionScale))) / 100 : 0
+      );
+      this.sm.motionSweep.setTarget(
+        motionOn ? Math.max(
+          -1,
+          Math.min(
+            1,
+            (this.meters.body - 0.35) * 0.9 * motionScale + (this.meters.density - 0.4) * 0.4 * motionScale
+          )
+        ) : 0
+      );
       this.motion.setControl(
-        motionOn ? Math.max(0, Math.min(100, motionDepthEff)) / 100 : 0,
-        motionOn ? Math.max(0, rateEff) : 0,
-        motionOn ? Math.max(-80, Math.min(80, fbEff)) / 100 : 0,
-        motionOn ? Math.max(-1, Math.min(1, reactiveSweep)) : 0
+        this.sm.motionDepth.tick(),
+        this.sm.motionRate.tick(),
+        this.sm.motionFeedback.tick(),
+        this.sm.motionSweep.tick()
       );
       const spaceOn = q[SPACE_ENABLED_ID] >= 0.5;
       const sendBase = q[MACRO_SPACE_ID] / 100 * (40 + 60 * spaceScale);
-      const sendEff = mod(8, sendBase + (this.meters.texture * 20 + this.meters.density * 10) * spaceScale);
-      const diffEff = mod(9, q[SPACE_DIFFUSION_ID] + this.meters.texture * 25 * spaceScale);
-      const decayEff = mod(10, q[SPACE_DECAY_S_ID] + this.meters.body * 0.5 * spaceScale);
-      const widthEff = mod(11, q[SPACE_WIDTH_ID] * (0.7 + 0.6 * (q[MACRO_TEXTURE_ID] / 100)));
+      const sendEff = this.modDelta(8, sendBase + (this.meters.texture * 20 + this.meters.density * 10) * spaceScale);
+      const diffEff = this.modDelta(9, q[SPACE_DIFFUSION_ID] + this.meters.texture * 25 * spaceScale);
+      const decayEff = this.modDelta(10, q[SPACE_DECAY_S_ID] + this.meters.body * 0.5 * spaceScale);
+      const widthEff = this.modDelta(11, q[SPACE_WIDTH_ID] * (0.7 + 0.6 * (q[MACRO_TEXTURE_ID] / 100)));
       this.space.setParams({
         send: spaceOn ? Math.max(0, Math.min(100, sendEff)) / 100 : 0,
         predelayMs: q[SPACE_PREDELAY_MS_ID],
@@ -1829,7 +1863,7 @@
       });
       const harmOn = q[HARM_ENABLED_ID] >= 0.5;
       if (harmOn) {
-        this.sm.harmonyMix.setTarget(mod(12, q[HARM_MIX_ID]));
+        this.sm.harmonyMix.setTarget(this.modDelta(12, q[HARM_MIX_ID]));
         const voices = this.harmonyVoicesCfg;
         for (let v = 0; v < HARM_VOICE_COUNT2; v++) {
           const vc = voices[v];
@@ -1840,17 +1874,17 @@
           vc.pan = q[harmVoiceParamId(v, "pan")] / 100;
         }
         const bloomScale = q[HARM_BLOOM_ID] / 100;
-        this.harmony.setParams({
-          enabled: true,
-          bodyAmount: q[HARM_BODY_AMOUNT_ID] / 100,
-          mix: this.sm.harmonyMix.tick() / 100,
-          fullSignal: q[HARM_DEV_FULL_SIGNAL_ID] >= 0.5,
-          spread: Math.max(0, Math.min(200, q[HARM_SPREAD_ID] + this.rawDelta[13] * bloomScale)) / 100,
-          width: Math.max(0, Math.min(200, q[HARM_WIDTH_ID] + this.rawDelta[14] * bloomScale)) / 100,
-          diffusion: Math.max(0, Math.min(100, q[HARM_DIFFUSION_ID] + this.rawDelta[15] * bloomScale)) / 100,
-          space: Math.max(0, Math.min(100, q[HARM_SPACE_ID] + this.rawDelta[16] * bloomScale)) / 100,
-          voices
-        });
+        const hp = this.harmonyParams;
+        hp.enabled = true;
+        hp.bodyAmount = q[HARM_BODY_AMOUNT_ID] / 100;
+        hp.mix = this.sm.harmonyMix.tick() / 100;
+        hp.fullSignal = q[HARM_DEV_FULL_SIGNAL_ID] >= 0.5;
+        hp.spread = Math.max(0, Math.min(200, q[HARM_SPREAD_ID] + this.rawDelta[13] * bloomScale)) / 100;
+        hp.width = Math.max(0, Math.min(200, q[HARM_WIDTH_ID] + this.rawDelta[14] * bloomScale)) / 100;
+        hp.diffusion = Math.max(0, Math.min(100, q[HARM_DIFFUSION_ID] + this.rawDelta[15] * bloomScale)) / 100;
+        hp.space = Math.max(0, Math.min(100, q[HARM_SPACE_ID] + this.rawDelta[16] * bloomScale)) / 100;
+        hp.voices = voices;
+        this.harmony.setParams(hp);
       }
       this.sm.inputGain.setTarget(dbToLin(q[GLOBAL_INPUT_GAIN_DB_ID]));
       this.sm.outputGain.setTarget(dbToLin(q[GLOBAL_OUTPUT_GAIN_DB_ID]));
@@ -1860,17 +1894,16 @@
       const mix = this.sm.mix.tick();
       const deltaOn = q[GLOBAL_DELTA_ID] >= 0.5;
       const transientPathTrim = punch > 0 ? punch * 0.35 : punch * 0.18;
-      this.advanceMorph(frames / this.sampleRate);
       let inPeak = 0;
       let outPeak = 0;
-      const dynOut = { gl: 1, gr: 1, makeup: 1 };
-      const charOut = { l: 0, r: 0 };
-      const motionOut = { l: 0, r: 0 };
-      const spaceOut = { l: 0, r: 0 };
+      const dynOut = this.dynOut;
+      const charOut = this.charOut;
+      const motionOut = this.motionOut;
+      const spaceOut = this.spaceOut;
       let sig = this.analysis.processFrame(0, 0);
       const scLArr = sc?.[0];
       const scRArr = sc?.[1];
-      const extSc = sidechainExt && scLArr !== void 0 && scRArr !== void 0;
+      const extSc = sidechainExt && scLArr !== void 0 && scRArr !== void 0 && scLArr.length >= frames && scRArr.length >= frames;
       const dryDelay = this.character.latencySamples;
       for (let i = 0; i < frames; i++) {
         const detL = (extSc ? scLArr[i] : L[i]) * inputGain;
@@ -2050,6 +2083,7 @@
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const input = inputs[0];
+      const scInput = inputs[1];
       const total = output[0].length;
       this.applyDueParams(currentTime + total / sampleRate);
       for (let offset = 0; offset < total; offset += MAX_BLOCK) {
@@ -2063,7 +2097,7 @@
             buf.fill(0, 0, frames);
           }
           const scBuf = this.scScratch[c];
-          const scCh = input && input[CHANNELS + c];
+          const scCh = scInput && scInput[c];
           if (scCh && scCh.length >= offset + frames) {
             scBuf.set(scCh.subarray(offset, offset + frames));
           } else {

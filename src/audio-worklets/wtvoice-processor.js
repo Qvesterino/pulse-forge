@@ -30,12 +30,19 @@
  * event queue (the scheduler posts `when` values ahead of audio time).
  */
 
+// Reused result bag: the only caller consumes f/q immediately, and a fresh
+// literal per call put one heap object per sample per modulated voice on the
+// GC nursery (cutoff is a mod destination, so coeffs can re-run per sample).
+const SVF_COEFFS_OUT = { f: 0, q: 0 };
+
 function svfCoeffs(f, q, sr) {
   let ff = 2 * Math.sin((Math.PI * Math.min(f, sr * 0.24)) / sr);
   let qq = 2 - 2 * Math.max(0, Math.min(1, q));
   const fqMax = (4 - ff * ff) * 0.49; // stability clamp shared with svfilter-processor
   if (ff * qq > fqMax) qq = fqMax / ff;
-  return { f: ff, q: qq };
+  SVF_COEFFS_OUT.f = ff;
+  SVF_COEFFS_OUT.q = qq;
+  return SVF_COEFFS_OUT;
 }
 
 const UNISON_MAX = 8;
@@ -49,7 +56,9 @@ class WtTables {
   }
 
   set(msg) {
-    if (!Array.isArray(msg.levels) || msg.levels.length === 0) return;
+    // An upload with zero frames per level would drive tableFrames to 0 and
+    // the mip interpolation into `% 0` (NaN) — reject the whole upload.
+    if (!Array.isArray(msg.levels) || msg.levels.length === 0 || !(msg.levels[0].length > 0)) return;
     this.levels = msg.levels.map((level) => level.map((f) => Float32Array.from(f)));
     this.ks = Array.isArray(msg.ks) && msg.ks.length > 0 ? Array.from(msg.ks) : [1];
   }
@@ -190,6 +199,15 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
       tableFrames: 8,
       pickLevel: () => 0,
     };
+    // Only these may be overwritten by `param` messages — the reserved
+    // internals are off-limits: a message swapping `pickLevel` for a number
+    // would throw on the render thread the next time a voice spawns, and a
+    // `tableFrames` outside the real mip chain reads past the tables.
+    this.tunableParamNames = new Set(
+      Object.keys(this.params).filter((k) => k !== "tableFrames" && k !== "pickLevel"),
+    );
+    this.dueOn = [];
+    this.dueOff = [];
     this.port.onmessage = (e) => this.handleMessage(e.data);
   }
 
@@ -201,19 +219,29 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.params.tableFrames = this.tables.frameCount();
         this.params.pickLevel = (f0) => this.tables.pickLevel(f0);
         break;
-      case "noteOn":
+      case "noteOn": {
+        // Boundary validation: a NaN `when` would survive `??` and wedge the
+        // sorted queue head forever (every later note dies), and a NaN pitch
+        // poisons the phase math past the output clamp.
+        const when = Number.isFinite(msg.when) ? Math.max(msg.when, currentTime) : currentTime;
+        if (!Number.isFinite(msg.pitch)) break;
         this.events.push({
-          when: Math.max(msg.when ?? currentTime, currentTime),
+          when,
           kind: "on",
           pitch: msg.pitch,
-          velocity: msg.velocity,
+          velocity: Number.isFinite(msg.velocity) ? Math.max(0, Math.min(1, msg.velocity)) : 0.8,
         });
         this.events.sort((a, b) => a.when - b.when);
         break;
-      case "noteOff":
-        this.events.push({ when: Math.max(msg.when ?? currentTime, currentTime), kind: "off", pitch: msg.pitch });
-        this.events.sort((a, b) => a.when - b.when);
+      }
+      case "noteOff": {
+        const when = Number.isFinite(msg.when) ? Math.max(msg.when, currentTime) : currentTime;
+        if (Number.isFinite(msg.pitch)) {
+          this.events.push({ when, kind: "off", pitch: msg.pitch });
+          this.events.sort((a, b) => a.when - b.when);
+        }
         break;
+      }
       case "pressure":
         for (const v of this.voices) {
           if (v.active && v.pitch === msg.pitch) v.pressure = Math.max(0, Math.min(1, msg.value));
@@ -224,7 +252,11 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.events.length = 0;
         break;
       case "param":
-        if (typeof msg.name === "string" && msg.name in this.params && typeof msg.value === "number") {
+        if (
+          typeof msg.name === "string" &&
+          this.tunableParamNames.has(msg.name) &&
+          Number.isFinite(msg.value)
+        ) {
           this.params[msg.name] = msg.value;
         }
         break;
@@ -266,14 +298,19 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
+    if (!outputs || !outputs[0]) return true;
     const outL = outputs[0][0];
     const outR = outputs[0].length > 1 ? outputs[0][1] : null;
     if (!outL) return true;
     const sr = globalThis.sampleRate || 44100;
     const dt = 1 / sr;
     const blockStart = currentTime;
-    const dueOn = [];
-    const dueOff = [];
+    // Reused per-block dispatch bags (fresh literals here put two short-lived
+    // arrays on the GC nursery every render quantum).
+    const dueOn = this.dueOn;
+    const dueOff = this.dueOff;
+    dueOn.length = 0;
+    dueOff.length = 0;
     const p = this.params;
     const N = p.tableFrames;
     const tN1 = Math.max(1, N - 1);

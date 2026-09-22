@@ -75,7 +75,10 @@ class GranularFreezeProcessor extends AudioWorkletProcessor {
     /** Active grains: fixed-capacity ring of small records. */
     this.grainAge = new Float32Array(GF_MAX_GRAINS);
     this.grainLen = new Float32Array(GF_MAX_GRAINS);
-    this.grainStart = new Float32Array(GF_MAX_GRAINS);
+    // Float64 — these hold ABSOLUTE writePos positions that grow for the
+    // whole session; Float32's 24-bit mantissa quantizes them past 2^24
+    // samples (~6 min @48k) and frozen clouds developed stepping artifacts.
+    this.grainStart = new Float64Array(GF_MAX_GRAINS);
     this.grainRate = new Float32Array(GF_MAX_GRAINS);
     this.grainGain = new Float32Array(GF_MAX_GRAINS);
     this.grainCh = new Uint8Array(GF_MAX_GRAINS);

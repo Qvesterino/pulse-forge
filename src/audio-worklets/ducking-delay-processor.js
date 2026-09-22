@@ -16,13 +16,19 @@
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
 const DUCK_BUF_SIZE = 131072;
-const DUCK_MASK = DUCK_BUF_SIZE - 1;
 
 class DuckingDelayProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufL = new Float32Array(DUCK_BUF_SIZE);
-    this.bufR = new Float32Array(DUCK_BUF_SIZE);
+    // Ring sized from the runtime sample rate: the 1000 ms max delay must
+    // fit with interpolation headroom (131072 ≈ 2.9 s @44.1k but only
+    // 0.68 s @192k — keep the pow2 size for mask indexing).
+    const sr = globalThis.sampleRate || 44100;
+    this.bufSize = DUCK_BUF_SIZE;
+    while (this.bufSize < Math.ceil(sr * 1.05)) this.bufSize *= 2;
+    this.bufMask = this.bufSize - 1;
+    this.bufL = new Float32Array(this.bufSize);
+    this.bufR = new Float32Array(this.bufSize);
     this.writeIdx = 0;
     this.env = 0;
     this.dampL = 0;
@@ -41,6 +47,11 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
       { name: "duckAttack", defaultValue: 0.005, minValue: 0.001, maxValue: 0.5, automationRate: "k-rate" },
       { name: "duckRelease", defaultValue: 0.18, minValue: 0.02, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.3, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      // Declared so the node wrapper's writes land (the knobs shipped in
+      // definitions.ts but were silently dropped before this — undeclared
+      // params never materialize in the runtime's `parameters` bag).
+      { name: "pingpong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "loopHpfHz", defaultValue: 40, minValue: 20, maxValue: 400, automationRate: "k-rate" },
     ];
   }
 
@@ -118,18 +129,22 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
 
       // Feedback write (feedback not ducked — tail preserves, only output
       // ducks). Ping-pong crossfeeds: each write receives 0.7× the OTHER
-      // channel's loop content — the tail bounces L↔R.
-      let wL = l + dampL * feedback;
-      let wR = r + dampR * feedback;
+      // channel's loop content — the tail bounces L↔R. The crossfeed matrix
+      // lifts the symmetric loop eigenvalue to fb·1.7, so ping-pong caps the
+      // loop feedback at 0.99/1.7 (bare mode safely reaches 0.9; uncapped the
+      // matrix hits 1.53 at the knob max and diverges).
+      const fbLoop = pingpong ? Math.min(feedback, 0.99 / 1.7) : feedback;
+      let wL = l + dampL * fbLoop;
+      let wR = r + dampR * fbLoop;
       if (pingpong) {
-        wL += dampR * feedback * 0.7;
-        wR += dampL * feedback * 0.7;
+        wL += dampR * fbLoop * 0.7;
+        wR += dampL * fbLoop * 0.7;
       }
       if (Math.abs(wL) < 1e-20) wL = 0;
       if (Math.abs(wR) < 1e-20) wR = 0;
       this.bufL[this.writeIdx] = wL;
       this.bufR[this.writeIdx] = wR;
-      this.writeIdx = (this.writeIdx + 1) & DUCK_MASK;
+      this.writeIdx = (this.writeIdx + 1) & this.bufMask;
     }
     return true;
   }
@@ -137,10 +152,11 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
   readCubic(buf, position) {
     const idx = Math.floor(position);
     const frac = position - idx;
-    const i0 = (idx - 1) & DUCK_MASK;
-    const i1 = idx & DUCK_MASK;
-    const i2 = (idx + 1) & DUCK_MASK;
-    const i3 = (idx + 2) & DUCK_MASK;
+    const m = this.bufMask;
+    const i0 = (idx - 1) & m;
+    const i1 = idx & m;
+    const i2 = (idx + 1) & m;
+    const i3 = (idx + 2) & m;
     const y0 = buf[i0];
     const y1 = buf[i1];
     const y2 = buf[i2];

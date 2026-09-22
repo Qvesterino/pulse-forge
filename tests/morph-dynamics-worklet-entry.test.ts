@@ -271,7 +271,13 @@ describe("Morph Dynamics worklet and analysis", () => {
           scR[frame] = scL[frame]!;
         }
         // Node wiring: inputs[0] = main (2ch), inputs[1] = sidechain (2ch).
-        proc.process([[inputL, inputR], [scL, scR]], [[outputL, outputR]]);
+        proc.process(
+          [
+            [inputL, inputR],
+            [scL, scR],
+          ],
+          [[outputL, outputR]],
+        );
         if (block >= 120) {
           for (let frame = 0; frame < BLOCK; frame++) sumSq += outputL[frame] ** 2 + outputR[frame] ** 2;
           count += 2 * BLOCK;

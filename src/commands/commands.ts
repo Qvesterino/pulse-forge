@@ -2653,22 +2653,27 @@ export function addAudioClip(
   const track = doc.tracks.find((t) => t.id === trackId);
   if (!track) throw new Error(`Track ${trackId} not found`);
   if (!bufferId) throw new Error("bufferId required");
+  // Audit hardening: a non-finite position/duration from a caller parse bug
+  // must never poison the document (Math.max/min pass NaN through).
+  const finiteOr = (value: number, fallback: number): number =>
+    Number.isFinite(value) ? value : fallback;
   const clip: AudioClip = {
     id: uid("audioClip"),
     trackId,
     bufferId,
-    startBar: Math.max(0, Math.round(startBar * 100) / 100),
-    lengthBars: Math.max(0.25, Math.round(lengthBars * 100) / 100),
-    offsetSec: Math.max(0, patch.offsetSec ?? 0),
-    trimStart: Math.max(0, patch.trimStart ?? 0),
-    trimEnd: Math.max(0, patch.trimEnd ?? 0),
-    gain: Math.min(2, Math.max(0, patch.gain ?? 1)),
-    fadeIn: Math.max(0, patch.fadeIn ?? 0),
-    fadeOut: Math.max(0, patch.fadeOut ?? 0),
-    stretchRate: Math.min(4, Math.max(0.25, patch.stretchRate ?? 1)),
+    startBar: Math.max(0, Math.round(finiteOr(startBar, 0) * 100) / 100),
+    lengthBars: Math.max(0.25, Math.round(finiteOr(lengthBars, 4) * 100) / 100),
+    offsetSec: Math.max(0, finiteOr(patch.offsetSec ?? 0, 0)),
+    trimStart: Math.max(0, finiteOr(patch.trimStart ?? 0, 0)),
+    trimEnd: Math.max(0, finiteOr(patch.trimEnd ?? 0, 0)),
+    gain: Math.min(2, Math.max(0, finiteOr(patch.gain ?? 1, 1))),
+    fadeIn: Math.max(0, finiteOr(patch.fadeIn ?? 0, 0)),
+    fadeOut: Math.max(0, finiteOr(patch.fadeOut ?? 0, 0)),
+    stretchRate: Math.min(4, Math.max(0.25, finiteOr(patch.stretchRate ?? 1, 1))),
     reverse: patch.reverse === true,
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
     ...(patch.loop === true ? { loop: true as const } : {}),
+    ...(patch.warpMarkers ? { warpMarkers: patch.warpMarkers.map((m) => ({ ...m })) } : {}),
   };
   const next: ProjectDocument = {
     ...doc,
@@ -2694,6 +2699,7 @@ export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
 export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (!Number.isFinite(startBar)) return snapshot("moveAudioClip", "Move audio clip (no-op)", doc, doc);
   const bar = Math.max(0, Math.round(startBar * 100) / 100);
   const next: ProjectDocument = {
     ...doc,
@@ -2710,12 +2716,21 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
 export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (!Number.isFinite(lengthBars)) return snapshot("resizeAudioClip", "Resize audio clip (no-op)", doc, doc);
   const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
+  // Fades must stay inside the resized clip (audit §8): the engine clamps
+  // audibly, but out-of-bounds state desyncs the fade handles from the
+  // visual clip width.
+  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const fadeIn = Math.min(clip.fadeIn ?? 0, durSec);
+  const fadeOut = Math.min(clip.fadeOut ?? 0, durSec);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
       ...doc.arrangement,
-      audioClips: (doc.arrangement.audioClips ?? []).map((c) => (c.id === clipId ? { ...c, lengthBars: bars } : c)),
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        c.id === clipId ? { ...c, lengthBars: bars, fadeIn, fadeOut } : c,
+      ),
     },
   };
   return snapshot("resizeAudioClip", `Resize audio clip to ${bars} bars`, doc, next);
@@ -3017,9 +3032,10 @@ export function updateAudioClip(
   if (trimEnd !== undefined) nextPatch.trimEnd = trimEnd;
   const gain = num(patch.gain, 0, 2);
   if (gain !== undefined) nextPatch.gain = gain;
-  const fadeIn = num(patch.fadeIn, 0, Infinity);
+    const clipDurSec = (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const fadeIn = num(patch.fadeIn, 0, clipDurSec);
   if (fadeIn !== undefined) nextPatch.fadeIn = fadeIn;
-  const fadeOut = num(patch.fadeOut, 0, Infinity);
+  const fadeOut = num(patch.fadeOut, 0, clipDurSec);
   if (fadeOut !== undefined) nextPatch.fadeOut = fadeOut;
   const stretchRate = num(patch.stretchRate, 0.25, 4);
   if (stretchRate !== undefined) nextPatch.stretchRate = stretchRate;
@@ -3126,7 +3142,12 @@ export function duplicateAudioClip(doc: ProjectDocument, clipId: string): Comman
     )
   )
     startBar += clip.lengthBars;
-  const copy: AudioClip = { ...clip, id: uid("audioClip"), startBar };
+  const copy: AudioClip = {
+    ...clip,
+    id: uid("audioClip"),
+    startBar,
+    ...(clip.warpMarkers ? { warpMarkers: clip.warpMarkers.map((m) => ({ ...m })) } : {}),
+  };
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3168,17 +3189,28 @@ export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, split
   const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSec * (clip.stretchRate ?? 1);
   const leftId = uid("audioClip");
   const rightId = uid("audioClip");
+  // Audit §5/§8: store the left length ROUNDED, then derive the right clip
+  // from it so left.end === right.start exactly (rounding both halves
+  // independently could leave a ~1-tick overlap → double-triggered hits),
+  // and neutralise fades at the split point while keeping the outer fades.
+  const leftLength = Math.round(leftBars * 100) / 100;
+  const rightLength = Math.max(0.05, Math.round((clip.lengthBars - leftLength) * 100) / 100);
+  const copyWarps = () => (clip.warpMarkers ? { warpMarkers: clip.warpMarkers.map((m) => ({ ...m })) } : {});
   const leftClip: import("../project-model/types").AudioClip = {
     ...clip,
+    ...copyWarps(),
     id: leftId,
-    lengthBars: Math.round(leftBars * 100) / 100,
+    lengthBars: leftLength,
+    fadeOut: 0,
   };
   const rightClip: import("../project-model/types").AudioClip = {
     ...clip,
+    ...copyWarps(),
     id: rightId,
-    startBar: splitTick / BAR_TICKS,
-    lengthBars: Math.round(rightBars * 100) / 100,
+    startBar: clip.startBar + leftLength,
+    lengthBars: rightLength,
     offsetSec: clip.reverse ? clip.offsetSec : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
+    fadeIn: 0,
     // For reverse, keep offset as is — approximate
   };
   // Fix reverse offset handling: keep original for now if reverse

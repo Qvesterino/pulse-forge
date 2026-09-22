@@ -44,6 +44,16 @@ function mulberry32(seed) {
   };
 }
 
+/** Allocation-free `grains.some((g) => g.active)` — the closure form ran once
+ * per sample per releasing voice (fresh arrow + iterator glue every call). */
+function hasActiveGrain(voice) {
+  const grains = voice.grains;
+  for (let i = 0; i < grains.length; i++) {
+    if (grains[i].active) return true;
+  }
+  return false;
+}
+
 class Grain {
   constructor() {
     this.active = false;
@@ -149,11 +159,15 @@ class GrainVoice {
 
     const len = sample.length;
     const grainDurSamples = Math.round((size + 0.01) * sr);
+    // Buffer span the grain actually consumes (rate-corrected) — the start
+    // clamp must reserve this much, else a >1-rate buffer lets the read head
+    // run past the end and the bounds guard kills the grain mid-window.
+    const grainSpanBuf = grainDurSamples * sample.rateScale;
     let start = offsetFrac * len;
     // Clamp so the grain window stays inside the sample (fallback semantics).
-    const maxStart = Math.max(0, len - grainDurSamples);
+    const maxStart = Math.max(0, len - grainSpanBuf - 1);
     start = Math.min(Math.max(0, start), maxStart);
-    if (reverse) start = Math.min(Math.max(0, len - start - grainDurSamples), maxStart);
+    if (reverse) start = Math.min(Math.max(0, len - start - grainSpanBuf), maxStart);
 
     free.active = true;
     free.pos = start;
@@ -220,13 +234,27 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           length: msg.ch0.length,
           channels: msg.ch1 instanceof Float32Array ? 2 : 1,
           sampleRate: msg.sampleRate || 44100,
+          // Buffer-samples consumed per context-sample. The upload is raw
+          // getChannelData (no host resample), so a 44.1 kHz buffer in a
+          // 48 kHz session previously played ~+8.8 % sharp (grains advanced
+          // 1:1 with context samples while `sampleRate` went unread), and a
+          // 48 kHz buffer in 44.1 kHz played flat AND had grains truncated
+          // by the end-of-buffer guard.
+          rateScale: (globalThis.sampleRate || 44100) / (msg.sampleRate || 44100),
         };
         return;
       case "noteOn":
-        this.events.push({ ...msg, kind: "on" });
+        // Boundary validation: a NaN/absent `when` can never drain from the
+        // sample-accurate queue (`Math.round(NaN) <= frame` is always false)
+        // — it would wedge every later note and grow `events` unboundedly.
+        if (Number.isFinite(msg.when) && Number.isFinite(msg.pitch)) {
+          this.events.push({ ...msg, kind: "on" });
+        }
         return;
       case "noteOff":
-        this.events.push({ ...msg, kind: "off" });
+        if (Number.isFinite(msg.when) && Number.isFinite(msg.pitch)) {
+          this.events.push({ ...msg, kind: "off" });
+        }
         return;
       case "panic":
         this.events.length = 0;
@@ -281,6 +309,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs) {
+    if (!outputs || !outputs[0]) return true;
     const outL = outputs[0][0];
     const outR = outputs[0].length > 1 ? outputs[0][1] : null;
     if (!outL) return true;
@@ -364,7 +393,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           }
           gl += mono * g.panL * envg;
           gr += monoR * g.panR * envg;
-          g.pos += g.rate;
+          g.pos += g.rate * sample.rateScale;
           g.age++;
           g.remaining--;
           if (g.remaining <= 0) g.active = false;
@@ -380,7 +409,7 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           v.stage === "release" &&
           v.env < 0.0004 &&
           frame >= v.offFrame + 0.005 * sr &&
-          !v.grains.some((g) => g.active)
+          !hasActiveGrain(v)
         ) {
           v.active = false;
           v.dead = true;

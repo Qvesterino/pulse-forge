@@ -13,14 +13,20 @@
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
-const COMB_SIZE = 8192;
-const COMB_MASK = COMB_SIZE - 1;
+const COMB_MIN_SIZE = 8192;
 
 class CombProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufL = new Float32Array(COMB_SIZE);
-    this.bufR = new Float32Array(COMB_SIZE);
+    // Ring sized from the runtime sample rate: max read is 60 ms x 1.35
+    // spread = 81 ms, so a fixed 8192 ring only holds up to ~101 kHz —
+    // beyond that the comb silently mistunes (pow2 kept for mask indexing).
+    const sr = globalThis.sampleRate || 44100;
+    this.size = COMB_MIN_SIZE;
+    while (this.size < Math.ceil(sr * 0.085)) this.size *= 2;
+    this.mask = this.size - 1;
+    this.bufL = new Float32Array(this.size);
+    this.bufR = new Float32Array(this.size);
     this.writeIdx = 0;
     this.dampL = 0;
     this.dampR = 0;
@@ -85,7 +91,7 @@ class CombProcessor extends AudioWorkletProcessor {
       if (Math.abs(wR) < 1e-20) wR = 0;
       this.bufL[this.writeIdx] = wL;
       this.bufR[this.writeIdx] = wR;
-      this.writeIdx = (this.writeIdx + 1) & COMB_MASK;
+      this.writeIdx = (this.writeIdx + 1) & this.mask;
 
       outL[i] = l * (1 - mix) + wetL * mix;
       if (outR) outR[i] = r * (1 - mix) + wetR * mix;
@@ -96,10 +102,11 @@ class CombProcessor extends AudioWorkletProcessor {
   readCubic(buf, position) {
     const idx = Math.floor(position);
     const frac = position - idx;
-    const i0 = (idx - 1) & COMB_MASK;
-    const i1 = idx & COMB_MASK;
-    const i2 = (idx + 1) & COMB_MASK;
-    const i3 = (idx + 2) & COMB_MASK;
+    const m = this.mask;
+    const i0 = (idx - 1) & m;
+    const i1 = idx & m;
+    const i2 = (idx + 1) & m;
+    const i3 = (idx + 2) & m;
     const y0 = buf[i0];
     const y1 = buf[i1];
     const y2 = buf[i2];
