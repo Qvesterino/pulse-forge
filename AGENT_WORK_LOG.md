@@ -3479,3 +3479,123 @@ claim/timeout + route boundaries).
 **Validation:** new suites 10/10; collab family 94/94 (incl. YDocStore/session/jam/bandmate — the tags change touches the live collab projection); persistence + adversarial suites green; `tsc --noEmit` 0 campaign errors (remaining errors are the concurrent session's in-flight `hum-to-notes.ts` edit).
 
 **Recommendations for next session (GOAL 06 — golden behavior & parity tests):** build on what exists — ultina/fxeq/ozvena/morph golden vectors + golden-render + intent-pipeline determinism are in place; the gap is DOMAIN-level fixtures a foreign implementation could consume: (1) project-transform goldens (command sequences → canonical doc JSON with deterministic ids via `useDeterministicIds`), (2) serialize/deserialize goldens (share code → doc → share code byte-pins), (3) transport/scheduler planning goldens via SchedulerDeps headless. Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 27 — AUGMENTED DATA INTO THE TRAINING CHAINS (2026-09-21)
+
+**Cieľ:** augmentované datasety (GOAL 22) neboli v žiadnom tréningovom chaine — chainy regenerovali základný dataset (190 melodic / 87 552 drum) a modely sa trénovali bez augmentácie (aktuálny v1 melodic = 0.643/190, nie 0.821 z GOAL 22 — ten bol natrénovaný mimo chain a neskôr prepísaný).
+
+- **Obe trénera dostali `--augmented <path>`**: merged do TRAIN splitu only (weight 1.0, žiadny oversampling — procedurálne validné, nie user preference). **Leak-guard**: varianty, ktorých BASE skupina (`genre#role#seq` / `styleId#pattern` — augmented pridáva `#augN`/`#originalN` segment) padla do val splitu, sa DROPNÚ — tréning na siblingovi held-out sekvencie by val unikol do modelu. Dôsledok: GOAL 22 číslo 0.821 bolo pravdepodobne merané S val-sibling leakage (augmented merged pred splitom) — čistý held-out boost je skromnejší.
+- **v2 transform v --augmented vetve**: 29→41 (genre z group segmentu 0 → genre semantic) resp. 44→35 (styleId z groove → style embedding); už-v2 riadky 1:1; iná šírka = jasná chyba.
+- **Chains**: `prior:train`, `prior:v2`, `prior:melodic`, `prior:melodic:v2` — všetky štyri teraz trénujú s `--augmented`. Report má `augmentedSamples` (transparentnosť).
+- **Fair porovnanie (obe verzie trénované na dnešnom datasete, čistý held-out):**
+  | model | base-only | with augmented | verdict |
+  |---|---|---|---|
+  | drum v1 | valAUC 0.9162 / F1 0.4539 | 0.9132 / 0.4567 | AUC parita (−0.003 seed-noise), F1 hore, TRAIN ×3.5 |
+  | drum v2 | valAUC 0.8791 / F1 0.3784 | 0.8805 / 0.3875 | mierne lepšie |
+  | melodic v1 | 0.643 deg / 0.464 dur | **0.679 / 0.571** | lepšie |
+  | melodic v2 | 0.643 / 0.464 | 0.607 / 0.464 | noise-range (28-sample val; semantic pod one-hot na známych žánroch = očakávaný trade-off za textovú generalizáciu) |
+- **Rozhodnutie:** `--augmented` ostáva vo všetkých 4 chainoch — val parita alebo lepšie, hlavná hodnota je TRAIN pokrytie (melodic 162→2411 = 15×, drum 74k→366k = 4.9×): robustnejšie generovanie naprieč semantic space. Diskové modely = augmented verzie.
+
+---
+
+## HARDENING R4 — worklet processor & wrapper self-audit (2026-09-22)
+
+**Prompt:** re-run of the browser-audio-plugin hardening/self-audit goal (same prompt family as
+`PLUGIN_HARDENING_AUDIT.md` FázA §6). Scope deliberately EXCLUDED the concurrent session's live
+zone (morph-dynamics, hum-to-melody, AudioEngine core). Method: 4 parallel read-only sweeps over
+the ~40 non-vendored AudioWorklet processors + all 30 node wrappers, every candidate re-verified
+against source before fixing.
+
+**Fixed (P1/P2):**
+
+- **ducking-delay: dead UI knobs (P1)** — `pingpong`/`loopHpfHz` were read in process() and exposed
+  in definitions.ts but never declared in `parameterDescriptors`; the runtime never delivers
+  undeclared params, so `safeApplyAudioParam` silently dropped every write (the wave-4 D1 test
+  passed only because it injected the params directly, bypassing the descriptor contract).
+  Declared both. **Armed hazard fixed with it:** the ping-pong crossfeed matrix has symmetric loop
+  eigenvalue fb·1.7 → 1.53 at the feedback max (divergence); loop feedback is now capped so the
+  eigenvalue never exceeds the bare-mode max (0.9). Ring also sized from runtime sr (1000 ms must
+  fit at 192 kHz).
+- **autowah: Chamberlin SVF divergence (P1)** — no `f·q < (4−f²)/2` stability scaling (svfilter has
+  it, autowah didn't): legal settings (res ≤ ~0.3, hot signal driving cutoff to maxFreq) diverged
+  into the ±8 clamp limit cycle. Mirrored svfilter's per-sample damping scale; stable settings
+  untouched.
+- **beatmangler: mismatched step lanes → permanent NaN (P1/P2)** — `stepsPerBar` took the volume
+  lane length; a shorter pitch lane read `undefined` → NaN pitch → NaN readPos (survives every
+  reset comparison) → NaN wet. Lanes are now hold-last padded to the same length at the message
+  boundary.
+- **wtvoice: render-thread crash + queue wedge (P2)** — `param` messages could overwrite the
+  function-valued `pickLevel` (TypeError on the next voice spawn) and `tableFrames` (reads past
+  the mip chain); NaN `when` notes wedged the sorted event queue forever (all later notes dead).
+  Numeric-only tunable allowlist + `Number.isFinite` boundary checks; NaN pitch/velocity rejected;
+  empty `tables` upload rejected; `outputs[0]` guarded; `svfCoeffs` returns a shared scratch
+ (cutoff is a mod destination — the fresh literal ran per sample per modulated voice); per-block
+  dispatch bags reused.
+- **granular-voice: wrong sample-rate playback (P2)** — uploads are raw `getChannelData` (no host
+  resample) and grains advanced 1:1 with context samples while the recorded `sampleRate` went
+  unread: 44.1 kHz material in a 48 kHz session played ~+8.8 % sharp. Grains now advance by
+  `bufRate/ctxRate` (rateScale), spawn clamps reserve the rate-corrected buffer span. NOTE: the
+  first fix attempt had the ratio INVERTED (521 Hz measured vs 440 target) — caught by the
+  regression test before commit; the committed direction is `bufRate/ctxRate`. Malformed note
+  events (NaN when/pitch) dropped at the boundary (a NaN `when` could never drain and grew
+  `events` unboundedly); `.some` closure in the per-sample death check replaced with an
+  allocation-free helper; `outputs[0]` guarded.
+- **bitcrusher: stereo hold smear + NaN latch (P2)** — one shared counter AND one shared
+  heldValue across sequential channel loops: ch1's hold grid sat offset by `blockLen % ds` and
+  each block opened with the OTHER channel's stale hold (the "stereo coherence" comment was
+  inverted by the implementation). Per-channel hold state + per-channel phase restore; zero-length
+  or non-finite input samples hold the previous value instead of latching NaN; mono input mirrors
+  ch0 into trailing outputs.
+- **flanger/comb: rings sized from runtime sr (P2/P3)** — fixed 2048/8192-sample rings silently
+  shortened the max sweep above ~68/~101 kHz (88.2/96/192 kHz contexts). Constructor now sizes
+  pow2 rings from `globalThis.sampleRate` (48 kHz keeps the legacy sizes bit-for-bit).
+- **granularfreeze: Float32 grain positions (P2)** — `grainStart` holds ABSOLUTE session positions;
+  Float32 quantized them past 2^24 samples (~6 min) → frozen-cloud stepping. Float64Array.
+- **ducking-delay node: SYNC knob dead post-build (P2)** — `sync` is UI-only (no AudioParam);
+  `setParameter("sync")` fell through to safeApplyAudioParam and silently no-oped, so the knob and
+  BPM-follow never engaged after construction (every other tempo-synced effect intercepts it).
+  Now intercepts `sync` and re-pushes the derived delay time.
+- **limiter node: NaN latency → graph-wide PDC TypeError (P2)** — non-finite `lookaheadMs` was
+  stored raw, reached `getLatencySec()` (NaN survives min/max), and would throw out of
+  `syncPdc.setTargetAtTime`, aborting latency sizing for the whole graph. Finite-guarded store +
+  fallback to the processor default (5 ms).
+- **bitcrusher/chorus nodes: unguarded native AudioParam writes (P2)** — drive/tone/mix/output
+  live on native Gains/Biquads outside safeApplyAudioParam's reach; a corrupt stored value threw
+  out of the engine's bulk sync (the exact class FázA §6 eliminated for worklet params). All
+  native writes finite-guarded.
+
+**Fixed (P3):** gate look-ahead ring flush on off→on toggle (stale gains leaked/muted for the
+whole 2.5 ms ring on the transition) + mono→stereo mirror (gate/transient/bitcrusher);
+stutter/stepgate `align` phase NaN coercion; vinyl `seed: 0` no longer collapsed to 1 (`||` →
+finite check); per-block closure allocations removed (limiter `applyKnee`, chorus `shapeLfo` →
+methods); stock-delay block-invariant `Math.exp` hoisted out of the sample loop; transient
+per-sample exp pair hoisted; kwmeter restored biquad state validated (length-5 + finite) so a
+malformed upload can't pin the meter at −180.
+
+**Tests added:** `tests/worklet-hardening-r4.test.ts` — 21 regression pins (descriptor contract,
+ping-pong loop stability soak, autowah limit-cycle absence at the max-damping corner, lane
+padding, wtvoice allowlist/wedge/throw pins, granular TRUE-PITCH pin (440 Hz ±5 % at 44.1k-in-48k
+— fails both the old code and the inverted-ratio first fix), bitcrusher L/R hold alignment +
+NaN-latch + mono mirror, ring-size pins at 48/96/192 kHz, granularfreeze Float64, node guard
+source pins).
+
+**Recorded, not fixed (deliberate):** reverb allpass delays not sr-scaled (comb delays are —
+parity argument, but scaling shifts 44.1 kHz tail character → sonic change, needs a listening
+verdict); compressor RMS detector's hardcoded 0.006 coefficient (comment intent ≈8 ms vs ~3.8 ms
+actual @44.1k — sonic change, same class); kwmeter integrated-loudness full rescan per 100 ms
+(O(n²) but ~72k trivial iterations/100 ms at the 1 h cap — negligible, revisit with the cap);
+eq/vocoder per-block string/object literals (engines likely escape-analyze; low win, medium diff
+risk); tapestop spin-mode readPos stick/jump at absolute 0; granularfreeze grain positions can
+land ahead of the freeze anchor at high drift/scatter; sidechain/vocoder setSidechainInput lacks
+the compressor's same-source early return (needless churn, no duplicate edge); loader one-shot
+`failedContexts` poison (documented tradeoff).
+
+**Verification:** hardening suite 21/21; affected families green (effects-wave1/2/4, aliasing/
+truepeak, granular-freeze, granular, wtvoice, vocoder, fx-expansion, audio-worklets,
+audio-worklets-safe-param, effects — 149 passing); filtered `tsc` clean on the touched .ts +
+new test (full tsc blocked by the concurrent session's in-flight Sequencer.tsx/style-vector
+edits); prettier clean on touched files; core worklet bundles rebuilt
+(`build:core-worklets`) after the source changes. Full-suite + build results recorded in the
+audit doc.

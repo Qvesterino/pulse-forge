@@ -148,6 +148,12 @@ def main() -> None:
         help="style-embeddings.json (from generate-style-embeddings.mts) — replaces "
         "genre one-hot with a 16-dim semantic vector (v2, 41-dim input)",
     )
+    parser.add_argument(
+        "--augmented",
+        help="augmented melodic dataset JSON (generate-augmented-data.mts output) — "
+        "procedural variants merged into the TRAIN split only (weight 1.0); validation "
+        "stays library-only, and variants of held-out sequences are dropped",
+    )
     parser.add_argument("--favorite-oversample", type=int, default=3)
     args = parser.parse_args()
 
@@ -206,6 +212,52 @@ def main() -> None:
     x_train, x_val = x_all[~val_mask], x_all[val_mask]
     yd_train, yd_val = y_degree[~val_mask], y_degree[val_mask]
     yt_train, yt_val = y_duration[~val_mask], y_duration[val_mask]
+
+    # Procedural augmentation (GOAL 22): transformed library sequences join the
+    # TRAIN split at weight 1.0 — they are procedurally valid, not user
+    # preference. Variants whose BASE sequence (`genre#role#seq`) landed in the
+    # validation split are DROPPED — training on a sibling of a held-out
+    # sequence would leak the val answer into the model.
+    aug_count = 0
+    if args.augmented:
+        aug_payload = json.loads(Path(args.augmented).read_text())
+        if aug_payload.get("featureVersion") != "melodic-features.v1":
+            raise SystemExit(f"unexpected augmented feature version: {aug_payload.get('featureVersion')}")
+        aug_x: list[list[float]] = []
+        aug_yd: list[int] = []
+        aug_yt: list[int] = []
+        for sample in aug_payload.get("data") or []:
+            aug_group = str(sample["group"])
+            if "#".join(aug_group.split("#")[:3]) in val_groups:
+                continue  # variant of a held-out sequence — skip, don't leak
+            row_x = sample["x"]
+            if embedding_mode:
+                if len(row_x) == 41:
+                    pass  # already v2
+                elif len(row_x) == 29:
+                    semantic = genre_semantic.get(aug_group.split("#")[0])
+                    if semantic is None:
+                        continue  # genre outside the embedding vocab — drop
+                    row_x = list(semantic) + list(row_x[4:])  # strip genre one-hot
+                else:
+                    raise SystemExit(
+                        "augmented feature width mismatch — regenerate the augmented dataset "
+                        "against the current melodic-features version"
+                    )
+            elif len(row_x) != x_all.shape[1]:
+                raise SystemExit(
+                    "augmented feature width mismatch — regenerate the augmented dataset "
+                    "against the current melodic-features version"
+                )
+            aug_x.append(list(row_x))
+            aug_yd.append(int(sample["degree"]))
+            aug_yt.append(int(sample["duration"]))
+        aug_count = len(aug_x)
+        if aug_x:
+            x_train = np.concatenate([x_train, np.array(aug_x, dtype=np.float64)])
+            yd_train = np.concatenate([yd_train, np.array(aug_yd, dtype=np.int64)])
+            yt_train = np.concatenate([yt_train, np.array(aug_yt, dtype=np.int64)])
+            print(f"[train] augmented merged: {aug_count} procedural samples (train-only, val siblings dropped)")
 
     # Favorites feedback loop (C1): weighted user-kept melodic phrases join
     # the TRAIN split only — validation stays library-only so reported
@@ -280,6 +332,7 @@ def main() -> None:
         "featureVersion": feature_version,
         "featureCount": int(x_all.shape[1]),
         "mode": "embedding-v2" if embedding_mode else "genre-onehot-v1",
+        "augmentedSamples": aug_count,
         "hidden": HIDDEN,
         "epochs": EPOCHS,
         "samples": int(len(x_all)),

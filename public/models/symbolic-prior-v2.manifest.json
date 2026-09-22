@@ -5,7 +5,7 @@
   "modelPath": "/models/symbolic-prior-v2.onnx",
   "inputName": "features",
   "outputName": "logits",
-  "modelHash": "3ba076e279ecbf4c126c1a032768d9ddf59f78ae708077c38b33dfcb65a60072",
+  "modelHash": "c0646e3fa9351c4e98c67b33d0bef181da1b67c4028a1409ca7c14840c312a6d",
   "hidden": [
     64,
     32
@@ -15,6 +15,7 @@
     "featureVersion": "prior-features-v2",
     "featureCount": 35,
     "mode": "embedding-v2",
+    "augmentedSamples": 227328,
     "hidden": [
       64,
       32
@@ -22,19 +23,19 @@
     "epochs": 500,
     "samples": 87552,
     "hitRatio": 0.0821,
-    "posWeight": 11.06,
-    "valAuc": 0.8791,
-    "trainAuc": 0.8847,
-    "bestF1Threshold": 0.65,
+    "posWeight": 8.488,
+    "valAuc": 0.8805,
+    "trainAuc": 0.808,
+    "bestF1Threshold": 0.71,
     "val": {
-      "precision": 0.2557,
-      "recall": 0.727,
-      "f1": 0.3784
+      "precision": 0.3087,
+      "recall": 0.5203,
+      "f1": 0.3875
     },
     "train": {
-      "precision": 0.2757,
-      "recall": 0.761,
-      "f1": 0.4048
+      "precision": 0.337,
+      "recall": 0.4331,
+      "f1": 0.379
     }
   },
   "kind": "drums-v2",

@@ -8,7 +8,7 @@
   "durationOutputName": "duration",
   "degreeClasses": 8,
   "durationClasses": 4,
-  "modelHash": "a324360e58a13e262fea109fddf17b4c39c666953b42164b51998d34feec269d",
+  "modelHash": "ef214ee4a77f505ee583fd05a094a2a5504f64f3ea106c144fb6f015f41d69f6",
   "hidden": [
     64,
     32
@@ -18,16 +18,17 @@
     "featureVersion": "melodic-features-v2",
     "featureCount": 41,
     "mode": "embedding-v2",
+    "augmentedSamples": 2249,
     "hidden": [
       64,
       32
     ],
     "epochs": 800,
     "samples": 190,
-    "valDegreeAcc": 0.6429,
-    "trainDegreeAcc": 0.9383,
+    "valDegreeAcc": 0.6071,
+    "trainDegreeAcc": 0.7557,
     "valDurationAcc": 0.4643,
-    "trainDurationAcc": 0.9074
+    "trainDurationAcc": 0.8847
   },
   "kind": "melodic-v2",
   "conditioning": "embedding"

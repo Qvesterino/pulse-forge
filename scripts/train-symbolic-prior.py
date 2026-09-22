@@ -140,6 +140,12 @@ def main() -> None:
         "from scripts/export-favorites-training.mts) — folded into the TRAIN split only",
     )
     parser.add_argument(
+        "--augmented",
+        help="augmented drum dataset JSON (generate-augmented-data.mts output) — "
+        "procedural variants merged into the TRAIN split only (weight 1.0); validation "
+        "stays library-only, and variants of held-out grooves are dropped",
+    )
+    parser.add_argument(
         "--embedding",
         help="style-embeddings.json (from generate-style-embeddings.mts) — replaces "
         "genre+style one-hot with a 16-dim semantic vector (v2, 35-dim input)",
@@ -194,6 +200,49 @@ def main() -> None:
 
     x_train, y_train = x_all[~val_mask], y_all[~val_mask]
     x_val, y_val = x_all[val_mask], y_all[val_mask]
+
+    # Procedural augmentation (GOAL 22): transformed library grooves join the
+    # TRAIN split at weight 1.0. Variants whose BASE groove (`styleId#pattern`)
+    # landed in the validation split are DROPPED — training on a sibling of a
+    # held-out groove would leak the val answer into the model.
+    aug_count = 0
+    if args.augmented:
+        aug_payload = json.loads(Path(args.augmented).read_text())
+        if aug_payload.get("featureVersion") != "prior-features.v1":
+            raise SystemExit(f"unexpected augmented feature version: {aug_payload.get('featureVersion')}")
+        aug_x: list[list[float]] = []
+        aug_y: list[float] = []
+        for sample in aug_payload.get("data") or []:
+            aug_groove = str(sample["groove"])
+            if "#".join(aug_groove.split("#")[:2]) in val_groups:
+                continue  # variant of a held-out groove — skip, don't leak
+            row_x = sample["x"]
+            if embedding_mode:
+                if len(row_x) == 35:
+                    pass  # already v2
+                elif len(row_x) == 44:
+                    style_id = aug_groove.split("#")[0]
+                    semantic = embedding_lookup.get(style_id)
+                    if semantic is None:
+                        continue  # style outside the embedding vocab — drop
+                    row_x = list(semantic) + list(row_x[25:])  # strip genre(4)+style(21) one-hot
+                else:
+                    raise SystemExit(
+                        "augmented feature width mismatch — regenerate the augmented dataset "
+                        "against the current prior-features version"
+                    )
+            elif len(row_x) != x_all.shape[1]:
+                raise SystemExit(
+                    "augmented feature width mismatch — regenerate the augmented dataset "
+                    "against the current prior-features version"
+                )
+            aug_x.append(list(row_x))
+            aug_y.append(float(sample["y"]))
+        aug_count = len(aug_x)
+        if aug_x:
+            x_train = np.concatenate([x_train, np.array(aug_x, dtype=np.float64)])
+            y_train = np.concatenate([y_train, np.array(aug_y, dtype=np.float64)])
+            print(f"[train] augmented merged: {aug_count} procedural samples (train-only, val siblings dropped)")
 
     # Favorites feedback loop (T2 v2): weighted user-kept rolls join the TRAIN
     # split only — validation stays library-only so reported metrics keep
@@ -284,6 +333,7 @@ def main() -> None:
         "featureVersion": feature_version,
         "featureCount": int(x_all.shape[1]),
         "mode": "embedding-v2" if embedding_mode else "one-hot-v1",
+        "augmentedSamples": aug_count,
         "hidden": HIDDEN,
         "epochs": EPOCHS,
         "samples": int(len(x_all)),

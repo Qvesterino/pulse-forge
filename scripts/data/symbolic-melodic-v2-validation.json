@@ -3,14 +3,15 @@
   "featureVersion": "melodic-features-v2",
   "featureCount": 41,
   "mode": "embedding-v2",
+  "augmentedSamples": 2249,
   "hidden": [
     64,
     32
   ],
   "epochs": 800,
   "samples": 190,
-  "valDegreeAcc": 0.6429,
-  "trainDegreeAcc": 0.9383,
+  "valDegreeAcc": 0.6071,
+  "trainDegreeAcc": 0.7557,
   "valDurationAcc": 0.4643,
-  "trainDurationAcc": 0.9074
+  "trainDurationAcc": 0.8847
 }
