@@ -66,7 +66,7 @@ describe("factory presets", () => {
   });
 
   it("every genre tag is a known genre", () => {
-    const genres = new Set(["house", "techno", "trap", "ambient", "score", null]);
+    const genres = new Set(["house", "techno", "trap", "ambient", "score", "drill", "phonk", "jersey", "dnb", null]);
     for (const preset of FACTORY_PRESETS) {
       expect(genres.has(preset.genre)).toBe(true);
     }

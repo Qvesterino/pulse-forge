@@ -1,10 +1,20 @@
 import type { InstrumentKind } from "../project-model/types";
 
-export type PresetGenre = "house" | "techno" | "trap" | "ambient" | "score";
+export type PresetGenre = "house" | "techno" | "trap" | "ambient" | "score" | "drill" | "phonk" | "jersey" | "dnb";
 
 export type PresetMood = "dark" | "bright" | "warm" | "aggressive" | "clean" | "deep" | "atmosphere";
 
-export const PRESET_GENRES: PresetGenre[] = ["house", "techno", "trap", "ambient", "score"];
+export const PRESET_GENRES: PresetGenre[] = [
+  "house",
+  "techno",
+  "trap",
+  "ambient",
+  "score",
+  "drill",
+  "phonk",
+  "jersey",
+  "dnb",
+];
 
 export const PRESET_MOODS: PresetMood[] = ["dark", "bright", "warm", "aggressive", "clean", "deep", "atmosphere"];
 

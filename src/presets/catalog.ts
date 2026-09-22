@@ -72,6 +72,14 @@ function bpmRangeFor(genre: InstrumentPreset["genre"]): PresetBpmRange {
       return { min: 50, max: 110 };
     case "score":
       return { min: 50, max: 140 };
+    case "drill":
+      return { min: 138, max: 150 };
+    case "phonk":
+      return { min: 130, max: 160 };
+    case "jersey":
+      return { min: 130, max: 145 };
+    case "dnb":
+      return { min: 160, max: 180 };
     default:
       return { min: 60, max: 140 };
   }
