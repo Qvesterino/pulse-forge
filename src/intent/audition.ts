@@ -1,4 +1,3 @@
-import { renderProject } from "../rendering/renderer";
 import type { SampleBank } from "../sample-library/factory";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 import { foldFxIntoDoc } from "../commands/commands";
@@ -86,6 +85,9 @@ export async function renderAuditionBuffer(
   pattern: Pattern,
   fx?: ProductionIntent | null,
 ): Promise<AudioBuffer> {
+  // Dynamic import: the offline renderer carries AudioEngine + worklet
+  // loaders — it must not sit in the landing route's static payload.
+  const { renderProject } = await import("../rendering/renderer");
   return renderProject(auditionDoc(doc, pattern, fx), bank, {
     mode: "pattern",
     sampleRate: 44100,
@@ -120,6 +122,7 @@ export function playAuditionBuffer(buffer: AudioBuffer, onEnded?: () => void): v
  * section-by-section render is the optimization path.
  */
 export async function renderSongAuditionBuffer(bank: SampleBank, songDoc: ProjectDocument): Promise<AudioBuffer> {
+  const { renderProject } = await import("../rendering/renderer");
   return renderProject(songDoc, bank, {
     mode: "song",
     sampleRate: 44100,

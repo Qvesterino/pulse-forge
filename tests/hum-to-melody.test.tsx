@@ -14,6 +14,8 @@ import {
   humToNotesCommand,
   patternLengthTicks,
   shiftNotesOctave,
+  shiftNotesToBarStart,
+  tileNotesAcrossPattern,
 } from "../src/midi/hum-to-notes";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { MusicalKey, Pattern, ProjectDocument } from "../src/project-model/types";
@@ -406,6 +408,62 @@ describe("humContourLayout — pitch-contour canvas math", () => {
     expect(layout.points.map((p) => p.voiced)).toEqual([true, false, false]);
     // Internal bar lines only: 3 for a 4-bar pattern.
     expect(layout.barLines).toEqual([W / 4, W / 2, (W * 3) / 4]);
+  });
+});
+
+describe("phrase helpers — TO START nudge + LOOP FILL", () => {
+  const note = (pitch: number, start: number, duration = 240) => ({
+    id: `n-${pitch}-${start}`,
+    pitch,
+    start,
+    duration,
+    velocity: 0.8,
+  });
+
+  it("shiftNotesToBarStart nudges the earliest note to tick 0, preserving everything else", () => {
+    const draft = [note(64, 384), note(60, 624, 120)];
+    const shifted = shiftNotesToBarStart(draft);
+    expect(shifted.map((n) => n.start)).toEqual([0, 240]);
+    expect(shifted.map((n) => n.pitch)).toEqual([64, 60]);
+    expect(shifted.map((n) => n.duration)).toEqual([240, 120]);
+    // Already at zero → a copy, not a re-shift.
+    expect(shiftNotesToBarStart(shifted)).toEqual(shifted);
+    expect(shiftNotesToBarStart([])).toEqual([]);
+  });
+
+  it("tileNotesAcrossPattern fills a 4-bar pattern from a 1-bar phrase at tick 0", () => {
+    const phrase = [note(60, 0, 240), note(64, 240, 240)];
+    const tiled = tileNotesAcrossPattern(phrase, 1920 * 4);
+    // 4 copies × 2 notes.
+    expect(tiled).toHaveLength(8);
+    const starts = tiled.map((n) => n.start).sort((a, b) => a - b);
+    expect(starts.filter((s) => s % 1920 === 0)).toHaveLength(4);
+    expect(starts.filter((s) => s % 1920 === 240)).toHaveLength(4);
+    // Fresh ids per copy (piano-roll selection safety).
+    expect(new Set(tiled.map((n) => n.id)).size).toBe(8);
+  });
+
+  it("a phrase starting at bar 2 fills bars 2-3-4 (tiles forward, not from zero)", () => {
+    // Beat-synced take landing at bar 2 with a 1-bar phrase.
+    const phrase = [note(57, 1920, 480), note(60, 2160, 480)];
+    const tiled = tileNotesAcrossPattern(phrase, 1920 * 4);
+    const starts = tiled.map((n) => n.start).sort((a, b) => a - b);
+    expect(starts).toEqual([1920, 2160, 3840, 4080, 5760, 6000]);
+  });
+
+  it("a phrase with a tail rounds the period UP to whole bars; the last copy clips", () => {
+    // Span 2100 ticks (1.09 bars) → tiles every 2 bars.
+    const phrase = [note(60, 0, 2100)];
+    const tiled = tileNotesAcrossPattern(phrase, 1920 * 3);
+    expect(tiled.map((n) => n.start)).toEqual([0, 3840]);
+    // Second copy crosses the 3-bar pattern end (3840+2100=5940 > 5760) — clipped.
+    expect(tiled[1]!.duration).toBe(1920 * 3 - 3840);
+  });
+
+  it("a phrase that already fills the pattern comes back unchanged; empty stays empty", () => {
+    const full = [note(60, 0, 1920 * 4)];
+    expect(tileNotesAcrossPattern(full, 1920 * 4)).toEqual(full);
+    expect(tileNotesAcrossPattern([], 1920 * 4)).toEqual([]);
   });
 });
 

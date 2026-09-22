@@ -394,11 +394,17 @@ export function PianoRollTrack({
       // Cursor row is the entry root — keys stack semitones above it, so a
       // chord is just holding several keys before moving on.
       const pitch = Math.max(0, Math.min(127, cur.pitch + offset));
+      // Clamp the insert INSIDE the pattern: a cursor parked near the end
+      // with a long entry duration used to emit an overflowing note that
+      // normalize silently dropped — while the preview note still sounded.
+      const patternTicks = stepCount * STEP_TICKS;
+      const start = Math.max(0, Math.min(cur.step * STEP_TICKS, patternTicks - STEP_TICKS));
+      const duration = Math.max(STEP_TICKS, Math.min(entrySteps * STEP_TICKS, patternTicks - start));
       services.store.execute(
         addNote(doc, track.id, {
           pitch,
-          start: cur.step * STEP_TICKS,
-          duration: entrySteps * STEP_TICKS,
+          start,
+          duration,
           velocity: 0.8,
         }),
       );
@@ -646,8 +652,14 @@ export function PianoRollTrack({
       for (const [nid, startVel] of Object.entries(current.startVels))
         velocities[nid] = clamp(startVel + delta / 120, 0.05, 1);
       const ids = Object.keys(velocities);
-      if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
-      else if (ids.length > 1) services.store.execute(setNotesVelocities(doc, track.id, velocities));
+      // The note can vanish mid-drag (undo/collab) — a throwing commit here
+      // would skip the drag-state reset below and leave stale bar heights.
+      try {
+        if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+        else if (ids.length > 1) services.store.execute(setNotesVelocities(doc, track.id, velocities));
+      } catch {
+        /* stale ids — drop the commit, still reset drag state */
+      }
       // reset preview styles
       for (const nid of ids) {
         const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
@@ -837,8 +849,12 @@ export function PianoRollTrack({
       velocities[nid] = clamp(startVel + delta / 120, 0.05, 1);
     }
     const ids = Object.keys(velocities);
-    if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
-    else services.store.execute(setNotesVelocities(doc, track.id, velocities));
+    try {
+      if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+      else services.store.execute(setNotesVelocities(doc, track.id, velocities));
+    } catch {
+      /* stale ids — drop the commit, still reset drag state */
+    }
     setVelDrag(null);
   };
   // Interrupted velocity drag — abort and restore the lane previews.
@@ -944,7 +960,13 @@ export function PianoRollTrack({
         if (e.key === "ArrowRight") dt = e.shiftKey ? STEP_TICKS * 4 : STEP_TICKS;
         if (e.key === "ArrowUp") dp = e.shiftKey ? 12 : 1;
         if (e.key === "ArrowDown") dp = e.shiftKey ? -12 : -1;
-        services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, dt, dp));
+        try {
+          services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, dt, dp));
+        } catch {
+          // Stale selection (notes deleted by undo/collab between renders) —
+          // same tolerance the Ctrl+B / Alt+Q paths have; never an uncaught
+          // exception in the window keydown handler.
+        }
       }
     };
     window.addEventListener("keydown", handler);

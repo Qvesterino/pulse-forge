@@ -1,5 +1,4 @@
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
-import { renderProject } from "../rendering/renderer";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 import { setMasterConfig } from "../commands/commands";
@@ -27,15 +26,17 @@ export interface LoudnessIntentParse {
 }
 
 export function parseLoudnessIntent(text: string): LoudnessIntentParse | null {
-  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `;
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
   // Lookbehind (not \b) so a LEADING minus at a word boundary still matches
   // ("−9 lufs" — \b before "-" fails the transition space→hyphen).
-  const targetMatch =
-    /\bloudness (?:na |to |target )?(-?\d{1,2})\b|(?<![\d-])(-?\d{1,2})\s*lufs\b/.exec(lower);
-  const isLouder =
-    /\bmake it louder\b|\blouder\b|\bmore loud\b|\bhlas(?:it|ie|ej)/.test(lower);
-  const isQuieter =
-    /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bmenej hlas|\bsofter mix\b/.test(lower);
+  const targetMatch = /\bloudness (?:na |to |target )?(-?\d{1,2})\b|(?<![\d-])(-?\d{1,2})\s*lufs\b/.exec(lower);
+  const isLouder = /\bmake it louder\b|\blouder\b|\bmore loud\b|\bhlas(?:it|ie|ej)/.test(lower);
+  const isQuieter = /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bmenej hlas|\bsofter mix\b/.test(
+    lower,
+  );
   if (targetMatch) {
     const targetDb = Number(targetMatch[1] ?? targetMatch[2]);
     const detected = [`loudness ${targetDb} LUFS`];
@@ -62,17 +63,19 @@ export interface LoudnessReport {
   target: number;
 }
 
-export type LoudnessRenderFn = (
-  doc: ProjectDocument,
-  bank: SampleBank,
-) => Promise<AudioBuffer>;
+export type LoudnessRenderFn = (doc: ProjectDocument, bank: SampleBank) => Promise<AudioBuffer>;
 
 export type LoudnessApplyResult =
-  | { ok: true; command: ReturnType<typeof setMasterConfig>; report: LoudnessReport }
-  | { ok: false; error: string };
+  { ok: true; command: ReturnType<typeof setMasterConfig>; report: LoudnessReport } | { ok: false; error: string };
 
 /** Measure gated integrated LUFS of the whole project (song, or active pattern). */
-export async function measureLoudness(doc: ProjectDocument, bank: SampleBank): Promise<{ integrated: number; measured: boolean }> {
+export async function measureLoudness(
+  doc: ProjectDocument,
+  bank: SampleBank,
+): Promise<{ integrated: number; measured: boolean }> {
+  // Dynamic import: the offline renderer carries AudioEngine + worklet
+  // loaders — it must not sit in the landing route's static payload.
+  const { renderProject } = await import("../rendering/renderer");
   const buffer = await renderProject(doc, bank, { mode: "song", sampleRate: 44100, tailSeconds: 0.4 });
   const channels: Float32Array[] = [];
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
@@ -113,12 +116,20 @@ export async function applyLoudnessIntent(
   parse: LoudnessIntentParse,
   options: { render?: LoudnessRenderFn } = {},
 ): Promise<LoudnessApplyResult> {
-  const render: LoudnessRenderFn = options.render ?? ((d, b) => renderProject(d, b, { mode: "song", sampleRate: 44100, tailSeconds: 0.4 }));
+  const render: LoudnessRenderFn =
+    options.render ??
+    (async (d, b) =>
+      (await import("../rendering/renderer")).renderProject(d, b, {
+        mode: "song",
+        sampleRate: 44100,
+        tailSeconds: 0.4,
+      }));
 
   let measured: number;
   try {
     const reading = await measureWithRender(doc, bank, render);
-    if (!reading.measured) return { ok: false, error: "could not measure loudness — the render was too quiet or empty" };
+    if (!reading.measured)
+      return { ok: false, error: "could not measure loudness — the render was too quiet or empty" };
     measured = reading.integrated;
   } catch (error) {
     return { ok: false, error: `loudness render failed: ${error instanceof Error ? error.message : String(error)}` };
@@ -130,12 +141,20 @@ export async function applyLoudnessIntent(
       ? parse.targetDb
       : Math.max(
           LOUDNESS_TARGET_LUFS - 6,
-          Math.min(LOUDNESS_TARGET_LUFS + 6, measured + (parse.direction === "louder" ? DEFAULT_NUDGE_DB : -DEFAULT_NUDGE_DB)),
+          Math.min(
+            LOUDNESS_TARGET_LUFS + 6,
+            measured + (parse.direction === "louder" ? DEFAULT_NUDGE_DB : -DEFAULT_NUDGE_DB),
+          ),
         );
 
   let trim = neededTrim(currentTrim, measured, target);
   let command = setMasterConfig(doc, { loudnessTrimDb: Math.round(trim * 10) / 10 });
-  let report: LoudnessReport = { measuredBefore: Math.round(measured * 10) / 10, measuredAfter: null, trim: Math.round(trim * 10) / 10, target };
+  let report: LoudnessReport = {
+    measuredBefore: Math.round(measured * 10) / 10,
+    measuredAfter: null,
+    trim: Math.round(trim * 10) / 10,
+    target,
+  };
 
   // Verify loop: re-render with the applied trim and correct once more — the
   // limiter makes the chain nonlinear, so the first step can undershoot.

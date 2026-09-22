@@ -334,7 +334,19 @@ export function PatternBar({
           type="button"
           className="btn btn-small"
           title="Copy active pattern"
-          onClick={() => onCopy({ stepCount: active.stepCount, rows: active.rows, notes: active.notes ?? {} })}
+          onClick={() =>
+            onCopy(
+              // Deep-copy: the clipboard must not alias the live document's
+              // rows/meta (paste clones again, but the snapshot itself has
+              // to be immune to any future in-place writer).
+              structuredClone({
+                stepCount: active.stepCount,
+                rows: active.rows,
+                notes: active.notes ?? {},
+                stepMeta: active.stepMeta,
+              }),
+            )
+          }
         >
           COPY
         </button>

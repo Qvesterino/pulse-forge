@@ -1,5 +1,5 @@
 import type { NoteEvent, MusicalKey, Pattern, ProjectDocument } from "../project-model/types";
-import { PPQ, STEP_TICKS } from "../project-model/types";
+import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { snapToScale } from "../project-model/scales";
 import { uid } from "../shared/ids";
 import { snapshot } from "../commands/commands";
@@ -381,6 +381,51 @@ export function shiftNotesOctave(notes: readonly NoteEvent[], octaves: number): 
     .map((note) => ({ ...note, pitch: note.pitch + delta }))
     .filter((note) => note.pitch >= 12 && note.pitch <= 120);
   return shifted.length > 0 ? shifted : [...notes];
+}
+
+/**
+ * Snap the whole draft so the EARLIEST note starts at tick 0 (improvement 5:
+ * free-time takes land wherever the hum began — this nudges the phrase onto
+ * the downbeat without touching pitch or relative timing).
+ */
+export function shiftNotesToBarStart(notes: readonly NoteEvent[]): NoteEvent[] {
+  if (notes.length === 0) return [];
+  const first = Math.min(...notes.map((note) => note.start));
+  if (first === 0) return [...notes];
+  return notes.map((note) => ({ ...note, start: note.start - first }));
+}
+
+/**
+ * Tile the phrase FORWARD across the whole pattern (improvement 4: hum one
+ * bar, get the full groove). The tile period is the phrase span rounded UP
+ * to whole bars, so copies never overlap each other; each copy starts where
+ * the phrase started (a phrase beginning at bar 2 fills bars 2-3-4…) and a
+ * copy crossing the pattern end is clipped. A phrase that already reaches
+ * the pattern end comes back unchanged.
+ */
+export function tileNotesAcrossPattern(
+  notes: readonly NoteEvent[],
+  patternLengthTicks: number,
+): NoteEvent[] {
+  if (notes.length === 0 || patternLengthTicks <= 0) return [...notes];
+  const first = Math.min(...notes.map((note) => note.start));
+  const lastEnd = Math.max(...notes.map((note) => note.start + note.duration));
+  const span = lastEnd - first;
+  if (span <= 0 || first + span >= patternLengthTicks) return [...notes];
+  const period = Math.max(1, Math.ceil(span / BAR_TICKS)) * BAR_TICKS;
+  const out: NoteEvent[] = [];
+  let copy = 0;
+  for (let offset = 0; offset < patternLengthTicks; offset += period) {
+    for (const note of notes) {
+      const start = note.start + offset;
+      if (start >= patternLengthTicks) continue;
+      const duration = Math.min(note.duration, patternLengthTicks - start);
+      if (duration <= 0) continue;
+      out.push({ ...note, id: `${note.id}-tile${copy}`, start, duration });
+    }
+    copy += 1;
+  }
+  return out;
 }
 
 export interface AuditionTiming {

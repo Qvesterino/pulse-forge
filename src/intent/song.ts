@@ -16,24 +16,19 @@ import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreKitToDoc } from "./genre-kit";
 import { genreMasterTiltDb } from "./mix";
-import {
-  GENRE_REFERENCE,
-  SONG_LOUDNESS_TARGET_LUFS,
-  SONG_LOUDNESS_TRIM_LIMIT_DB,
-} from "./genre-reference.generated";
+import { GENRE_REFERENCE, SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import type { Command } from "../commands/types";
-import {
-  addEffect,
-  setBeatManglerSteps,
-  setEffectParam,
-  snapshot,
-  trackEffectsOf,
-} from "../commands/commands";
+import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
-import { planProductionActions, resolveProductionTargets, type ProductionAction, type ProductionIntent } from "./production";
+import {
+  planProductionActions,
+  resolveProductionTargets,
+  type ProductionAction,
+  type ProductionIntent,
+} from "./production";
 import { applySectionRequests, type SectionParse } from "./sections";
-import { EFFECT_DEFS } from "../effects/registry";
+import { EFFECT_META } from "../effects/definitions";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -883,7 +878,10 @@ const SECTION_FX_RECIPES: Partial<Record<SceneRole, SectionFxRecipe[]>> = {
   ],
 };
 
-export function planSongForm(intent: IntentSpec, overrides?: SectionParse): {
+export function planSongForm(
+  intent: IntentSpec,
+  overrides?: SectionParse,
+): {
   genre: IntentSpec["genre"];
   sections: SongSectionSpec[];
   totalBars: number;
@@ -1198,7 +1196,8 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
         // — a music-role recipe falls back to the first instrument track so
         // the dramaturgy survives every kit.
         const trackId =
-          resolved ?? (recipe.targetRole === "drums" ? undefined : next.tracks.find((t) => t.kind === "instrument")?.id);
+          resolved ??
+          (recipe.targetRole === "drums" ? undefined : next.tracks.find((t) => t.kind === "instrument")?.id);
         if (!trackId) continue;
         const fxId = foldAction({ trackId, type: recipe.type, params: recipe.params ?? {} });
         if (!fxId) continue;
@@ -1243,13 +1242,11 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   const existingFx = next.tracks.find(
     (t): t is InstrumentTrack => t.kind === "instrument" && t.name === FX_CUE_TRACK_NAME,
   );
-  const fxTrack: InstrumentTrack =
-    existingFx ??
-    {
-      ...createInstrumentTrackModel("sampler", next.tracks.length),
-      name: FX_CUE_TRACK_NAME,
-      sampleId: null,
-    };
+  const fxTrack: InstrumentTrack = existingFx ?? {
+    ...createInstrumentTrackModel("sampler", next.tracks.length),
+    name: FX_CUE_TRACK_NAME,
+    sampleId: null,
+  };
   const cueClips = buildTransitionCueClips(seams, build.resolvedBpm ?? doc.bpm, fxTrack.id);
 
   // Genre master tilt (sound-quality pass): character genres ride the master
@@ -1284,20 +1281,14 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
     tracks: existingFx ? next.tracks : [...next.tracks, fxTrack],
     // Section FX lanes replace only lanes targeting fx ids THIS build
     // touches — user automation on other devices survives a re-generate.
-    sceneAutomation: [
-      ...next.sceneAutomation.filter((lane) => !touchedFxIds.has(lane.target.fxId ?? "")),
-      ...fxLanes,
-    ],
+    sceneAutomation: [...next.sceneAutomation.filter((lane) => !touchedFxIds.has(lane.target.fxId ?? "")), ...fxLanes],
     arrangement: {
       ...next.arrangement,
       clips,
       transitions,
       // Replace only THIS lane's previous cue clips — user clips (recorded
       // takes, imported audio) on other tracks survive a re-generate.
-      audioClips: [
-        ...(next.arrangement.audioClips ?? []).filter((c) => c.trackId !== fxTrack.id),
-        ...cueClips,
-      ],
+      audioClips: [...(next.arrangement.audioClips ?? []).filter((c) => c.trackId !== fxTrack.id), ...cueClips],
     },
     markers: [...(next.markers ?? []), ...markers],
     activePatternId: build.sections[build.sections.length - 1].pattern.id,
@@ -1331,7 +1322,6 @@ export function previewSongForm(
 // Re-exported for the UI's convenience (same canonical pipeline entry points).
 export { intentFromGenerateOptions, generateOptionsFromIntent };
 
-
 // ── C3: TARGETED SECTION REVISE ─────────────────────────────────────────────
 // "make bridge more energic" — the section role names the TARGET: the
 // pattern's provenance carries its full generation intent + seed, so we
@@ -1364,9 +1354,11 @@ export function sectionFxChips(doc: ProjectDocument, sceneId: string): SectionFx
     seen.add(lane.target.fxId);
     const track = doc.tracks.find((t) => t.id === lane.target.trackId);
     const instance =
-      track && "effects" in track ? (track.effects as { id: string; type: EffectType }[]).find((f) => f.id === lane.target.fxId) : undefined;
+      track && "effects" in track
+        ? (track.effects as { id: string; type: EffectType }[]).find((f) => f.id === lane.target.fxId)
+        : undefined;
     if (!instance) continue;
-    const def = EFFECT_DEFS[instance.type];
+    const def = EFFECT_META[instance.type];
     if (!def) continue;
     const first = lane.points[0]?.value ?? 0;
     const last = lane.points[lane.points.length - 1]?.value ?? 0;
@@ -1378,8 +1370,7 @@ export function sectionFxChips(doc: ProjectDocument, sceneId: string): SectionFx
 export type ReviseSectionAttribute = "energy" | "density";
 
 export type SectionReviseOutcome =
-  | { ok: true; patternId: string; pattern: Pattern; label: string }
-  | { ok: false; error: string };
+  { ok: true; patternId: string; pattern: Pattern; label: string } | { ok: false; error: string };
 
 /**
  * Re-generate ONE section's pattern with a shifted content slider. Reads the

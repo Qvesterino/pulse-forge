@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { renderProject } from "../rendering/renderer";
 import { decodeShareCode, shareAppUrl } from "../export/shareCode";
 import { intentSnapshotOfDoc } from "../gallery/intentCarry";
 import type { ProjectDocument } from "../project-model/types";
@@ -72,6 +71,10 @@ export function EmbedApp({
         const bank = await generateFactoryBank();
         // The user sample bank is local to the creator's browser — freeze
         // handles those tracks; anything missing simply renders silently.
+        // Dynamic: the offline renderer drags AudioEngine + the worklet
+        // loaders into the chunk graph — keep it out of the landing/embed
+        // static payload (landing-route size budget).
+        const { renderProject } = await import("../rendering/renderer");
         const buffer = await renderProject(doc, bank, { mode: "song", sampleRate: 44100 });
         if (cancelled) return;
         bufferRef.current = buffer;

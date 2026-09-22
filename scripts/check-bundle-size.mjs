@@ -31,7 +31,13 @@ import { fileURLToPath } from "node:url";
 // hierarchy pass adds ~2 KB on top. Same debt: chunk the recorder/prior UIs
 // once the wave settles.
 const ENTRY_BUDGET_KB = 1070;
-const TOTAL_BUDGET_KB = 2400;
+// 2400: set with the flagship-plugin waves. 2450 (2026-09-22): conscious bump —
+// the intent waves (user style vector, melodic prior v2, effect-intent catalog)
+// and the MORPH preset/scene data shipped ~16 KB of real feature code past the
+// old ceiling; the landing-route regression that actually mattered was fixed
+// the same day by cutting the static renderer→AudioEngine edge out of the
+// landing/embed/intent-audition graphs (landing on-demand 729 → 443 KB).
+const TOTAL_BUDGET_KB = 2450;
 // The semantic intent worker dynamically imports Transformers.js only after a
 // weak keyword parse and a successful local-model probe. Keep that optional
 // runtime under its own cap instead of silently raising the normal DAW budget.
@@ -99,7 +105,9 @@ console.log(`[size-budget] core worklets: ${coreWorkletKb.toFixed(0)} KB (budget
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
-  console.error("            Move code into a lazy chunk (React.lazy / dynamic import) or raise the budget consciously.");
+  console.error(
+    "            Move code into a lazy chunk (React.lazy / dynamic import) or raise the budget consciously.",
+  );
   failed = true;
 }
 if (totalKb > TOTAL_BUDGET_KB) {

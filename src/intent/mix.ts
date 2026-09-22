@@ -6,7 +6,7 @@ import {
   setEffectSidechainSource,
   snapshot,
 } from "../commands/commands";
-import { clampEffectParam, EFFECT_DEFS } from "../effects/registry";
+import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { roleForTrack } from "./favorites";
 import type { IntentSpec } from "./types";
@@ -116,10 +116,9 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
   // top-bright) but always punches. GENRE_TONE_DEFAULT (above) is the single
   // source for the tone defaults AND the master tilt mapping.
   const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
-  const tone = overrides.tone ?? moodTone(intent) ?? (GENRE_TONE_DEFAULT[genre] ?? null);
+  const tone = overrides.tone ?? moodTone(intent) ?? GENRE_TONE_DEFAULT[genre] ?? null;
   const punch: MixOverrides["punch"] | null =
-    overrides.punch ??
-    (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
+    overrides.punch ?? (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
   const lushGenre = genre === "ambient";
   const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk";
 
@@ -325,7 +324,6 @@ export function removeMixEffect(
   return snapshot("removeMixEffect", `Remove ${effectType} from ${target}`, doc, cursor);
 }
 
-
 // ── D1 v2a: TARGETED EFFECT INTENTS ─────────────────────────────────────────
 // "viac delayu na leade", "add reverb to the bridge", "menej filtra na basi" —
 // effect × target × direction grammar above the profile-level mix. Targets
@@ -405,7 +403,11 @@ export function parseEffectIntent(text: string): EffectIntent | null {
 
   // remove wins over add (explicit "remove X" / "bez X" / "menej X")
   let direction: EffectIntent["direction"] = "more";
-  if (/\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\w*|\bmenej (?:delay|dozvuk|ozven)/.test(lower)) {
+  if (
+    /\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez (?:delay|reverb|ozven|dozvuk|pump|chorus|filtr|eq)\w*|\bmenej (?:delay|dozvuk|ozven)/.test(
+      lower,
+    )
+  ) {
     direction = "remove";
   } else if (/\bless\b|\bmenej/.test(lower)) {
     direction = "less";
@@ -444,7 +446,6 @@ export function effectKnobDelta(intent: EffectIntent): number {
 }
 
 /* sentinel-test */
-
 
 /** Per-effect knob delta multipliers for targeted requests (pre-clamp). */
 const TARGETED_KNOB_DELTA: Partial<Record<EffectType, number>> = {
@@ -485,12 +486,14 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
     let fx = cursor.tracks.find((track) => track.id === trackId)?.effects.find((fx) => fx.type === intent.effectType);
     if (!fx) {
       cursor = addEffectToTracks(cursor, [trackId], intent.effectType).execute(cursor);
-      fx = cursor.tracks.find((track) => track.id === trackId)?.effects.find((effect) => effect.type === intent.effectType);
+      fx = cursor.tracks
+        .find((track) => track.id === trackId)
+        ?.effects.find((effect) => effect.type === intent.effectType);
       if (!fx) continue;
       parts.push(`+${intent.effectType}`);
       updates += 1;
     }
-    const knobDef = EFFECT_DEFS[intent.effectType].params.find((param: { id: string }) => param.id === knob);
+    const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
     const base = fx.params[knob] ?? knobDef.default;
     const step = (TARGETED_KNOB_DELTA[intent.effectType] ?? 0.16 * (knobDef.max - knobDef.min) * 0.25) * scale;

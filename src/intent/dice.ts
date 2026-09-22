@@ -1,6 +1,6 @@
 import { classifyPads } from "../assist/patternOps";
 import type { EffectType, Pattern, ProjectDocument } from "../project-model/types";
-import { defaultParamsOf } from "../effects/registry";
+import { defaultParamsOf } from "../effects/definitions";
 import { hashString } from "../shared/rng";
 import { nextSeed, jitterControls, pickStyle } from "../shared/dice";
 import type { IntentSpec } from "./types";

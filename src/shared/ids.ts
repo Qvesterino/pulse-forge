@@ -32,5 +32,8 @@ export function uid(prefix: string): string {
 }
 
 export function clamp(value: number, min: number, max: number): number {
+  // NaN passes through Math.min/max chains unchanged — a NaN velocity from a
+  // parse bug must clamp to the floor, not poison a pattern row or a note.
+  if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
 }

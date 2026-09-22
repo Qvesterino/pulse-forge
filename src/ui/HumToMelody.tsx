@@ -12,6 +12,8 @@ import {
   humToNotesCommand,
   patternLengthTicks,
   shiftNotesOctave,
+  shiftNotesToBarStart,
+  tileNotesAcrossPattern,
 } from "../midi/hum-to-notes";
 
 /**
@@ -474,6 +476,21 @@ export function HumToMelodyPanel({
     ? `${pitchName(Math.min(...notes.map((n) => n.pitch)))} – ${pitchName(Math.max(...notes.map((n) => n.pitch)))}`
     : "";
 
+  // FILL button state: how many copies the phrase tiles into, and whether
+  // there is room to fill at all (a phrase already reaching the pattern end
+  // has nowhere to tile).
+  const len = patternLengthTicks(pattern);
+  const fillCopies = (() => {
+    if (notes.length === 0) return 1;
+    const first = Math.min(...notes.map((n) => n.start));
+    const lastEnd = Math.max(...notes.map((n) => n.start + n.duration));
+    const span = lastEnd - first;
+    if (span <= 0) return 1;
+    const period = Math.max(1, Math.ceil(span / BAR_TICKS)) * BAR_TICKS;
+    return Math.max(1, Math.ceil((len - first) / period));
+  })();
+  const canFill = notes.length > 0 && fillCopies > 1;
+
   return (
     <div className="hum-panel context-menu" role="dialog" aria-label="Hum to melody">
       <div className="context-menu-header">HUM → NOTES</div>
@@ -555,6 +572,31 @@ export function HumToMelodyPanel({
               onClick={() => shiftOctave(1)}
             >
               OCT +
+            </button>
+          </div>
+          <div className="hum-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="Snap the whole take so the first note lands on the pattern start (free-time takes begin wherever you started humming)"
+              onClick={() => {
+                stopAudition();
+                setNotes((current) => shiftNotesToBarStart(current));
+              }}
+            >
+              TO START
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="Tile the phrase forward across the whole pattern (hum one bar, get the full groove)"
+              disabled={!canFill}
+              onClick={() => {
+                stopAudition();
+                setNotes((current) => tileNotesAcrossPattern(current, patternLengthTicks(pattern)));
+              }}
+            >
+              {fillCopies > 1 ? `FILL ×${fillCopies}` : "FILL"}
             </button>
           </div>
           <label className="hum-mode">

@@ -712,6 +712,10 @@ export function clearPattern(doc: ProjectDocument, patternId: string): Command {
               Object.entries(p.rows).map(([padId, row]) => [padId, new Array<number>(row.length).fill(0)]),
             ),
             notes: {},
+            // Clear performance meta with the content: stale p-locks /
+            // probability would otherwise resurrect on re-drawn steps (the
+            // exact bug setPatternLength's comment warns about).
+            stepMeta: undefined,
           }
         : p,
     ),
@@ -723,6 +727,10 @@ export interface PatternClipboard {
   stepCount: number;
   rows: Record<string, number[]>;
   notes: Record<string, NoteEvent[]>;
+  /** Performance meta (p-locks/probability/ratchet) — carried since the
+      editing-timeline audit; pasting used to drop it silently while stale
+      TARGET meta kept binding to pasted content at the same indexes. */
+  stepMeta?: Pattern["stepMeta"];
 }
 
 export function pastePattern(doc: ProjectDocument, clip: PatternClipboard): Command {
@@ -730,11 +738,28 @@ export function pastePattern(doc: ProjectDocument, clip: PatternClipboard): Comm
   if (!target) throw new Error("No active pattern");
   const rows = Object.fromEntries(Object.entries(clip.rows).map(([padId, row]) => [padId, [...row]]));
   const notes = Object.fromEntries(
-    Object.entries(clip.notes).map(([trackId, noteList]) => [trackId, noteList.map((n) => ({ ...n }))]),
+    Object.entries(clip.notes).map(([trackId, noteList]) => [
+      trackId,
+      // Fresh ids per paste — carrying the source's ids duplicated them
+      // across patterns (PianoRoll's own clipboard regenerates too).
+      noteList.map((n) => ({ ...n, id: uid("note") })),
+    ]),
   );
   const pasted: ProjectDocument = {
     ...doc,
-    patterns: doc.patterns.map((p) => (p.id === target.id ? { ...p, stepCount: clip.stepCount, rows, notes } : p)),
+    patterns: doc.patterns.map((p) =>
+      p.id === target.id
+        ? {
+            ...p,
+            stepCount: clip.stepCount,
+            rows,
+            notes,
+            // Replace (not merge) — stale target meta would bind old
+            // p-locks to the pasted content at the same indexes.
+            stepMeta: clip.stepMeta ? structuredClone(clip.stepMeta) : undefined,
+          }
+        : p,
+    ),
   };
   return snapshot("pastePattern", `Paste into ${target.name}`, doc, normalizeProject(pasted));
 }
@@ -1017,7 +1042,10 @@ export function setStepsVelocity(
       const rows = { ...p.rows };
       for (const entry of list) {
         const row = [...(rows[entry.padId] ?? [])];
-        if (entry.stepIndex < row.length) row[entry.stepIndex] = entry.velocity;
+        // Raw write previously let NaN/over-unity velocities poison a row
+        // (NaN passes row<=0 checks and reaches the scheduler) — clamp here.
+        if (!Number.isInteger(entry.stepIndex) || entry.stepIndex < 0 || entry.stepIndex >= row.length) continue;
+        row[entry.stepIndex] = clamp(entry.velocity, 0, 1);
         rows[entry.padId] = row;
       }
       return { ...p, rows };
@@ -1665,10 +1693,38 @@ export function addNote(
   const patternId = _doc.activePatternId;
 
   const id = uid("note");
+  // Audit hardening: addNote had NO sanitization — a NaN pitch or a
+  // negative duration from a caller parse bug went straight into the
+  // pattern (move/resize clamp at apply time, add never did).
+  const finiteOr = (value: number, fallback: number): number =>
+    Number.isFinite(value) ? value : fallback;
+  const sanitized = {
+    id,
+    pitch: clamp(Math.round(finiteOr(note.pitch, 60)), 0, 127),
+    start: Math.max(0, Math.round(finiteOr(note.start, 0))),
+    duration: Math.max(1, Math.round(finiteOr(note.duration, 1))),
+    velocity: clamp(finiteOr(note.velocity, 0.8), 0, 1),
+  };
+  const apply = (d: ProjectDocument): ProjectDocument =>
+    withTrackNotes(
+      d,
+      trackId,
+      (notes) => {
+        // Same apply-time pattern-bounds clamp as moveNote: normalize drops
+        // overflowing notes on save, so a long note added near the end must
+        // shorten FL-style instead of silently disappearing later.
+        const pattern = d.patterns.find((p) => p.id === patternId);
+        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
+        const fitted = patternTicks !== null ? { ...sanitized, start: Math.min(sanitized.start, Math.max(0, patternTicks - 1)) } : sanitized;
+        const maxDur = patternTicks !== null ? Math.max(1, patternTicks - fitted.start) : fitted.duration;
+        return [...notes, { ...fitted, duration: Math.min(fitted.duration, maxDur) }];
+      },
+      patternId,
+    );
   return {
     type: "addNote",
     label: `Add note`,
-    execute: (d) => withTrackNotes(d, trackId, (notes) => [...notes, { id, ...note }], patternId),
+    execute: (d) => apply(d),
     undo: (d) => withTrackNotes(d, trackId, (notes) => notes.filter((n) => n.id !== id), patternId),
   };
 }
@@ -1700,6 +1756,9 @@ export function moveNote(
           if (n.id !== noteId) return n;
           const next = { ...n, ...patch };
           if (next.start < 0) next.start = 0;
+          // Pitch out of [0, 127] renders pinned to the wrong row — clamp at
+          // the boundary like every other field (nudgeNotes does the same).
+          if (next.pitch !== undefined) next.pitch = clamp(Math.round(next.pitch), 0, 127);
           if (patternTicks !== null) {
             // Keep the whole note inside the pattern: normalizeProject drops
             // overflowing notes, so moving a long pad right shortens it
@@ -1730,7 +1789,27 @@ export function resizeNote(doc: ProjectDocument, trackId: string, noteId: string
     return { type: "resizeNote", label: "Resize note", execute: (d) => d, undo: (d) => d };
   }
   const apply = (d: ProjectDocument, dur: number) =>
-    withTrackNotes(d, trackId, (notes) => notes.map((n) => (n.id === noteId ? { ...n, duration: dur } : n)), patternId);
+    withTrackNotes(
+      d,
+      trackId,
+      (notes) => {
+        // Clamp at APPLY time (mirrors moveNote): patternTicks is re-read
+        // from the live doc — a resize committed after a collab peer (or
+        // history jump) shrank the pattern used to overflow it, and
+        // normalize then silently DELETED the note. Non-finite junk is a
+        // no-op rather than a poison write.
+        if (!Number.isFinite(dur)) return notes;
+        const pattern = d.patterns.find((p) => p.id === patternId);
+        const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
+        return notes.map((n) => {
+          if (n.id !== noteId) return n;
+          let nextDur = Math.max(1, Math.round(dur));
+          if (patternTicks !== null) nextDur = Math.min(nextDur, Math.max(1, patternTicks - n.start));
+          return nextDur === n.duration ? n : { ...n, duration: nextDur };
+        });
+      },
+      patternId,
+    );
   return {
     type: "resizeNote",
     label: "Resize note",
@@ -1813,7 +1892,7 @@ export function quantizeNotes(
   const targetIds = noteIds && noteIds.length > 0 ? new Set(noteIds) : null;
   const before = all.filter((n) => !targetIds || targetIds.has(n.id));
   const prev = [...all];
-  const s = Math.min(1, Math.max(0, strength));
+  const s = Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 1;
   const quantized = all.map((n) => {
     if (targetIds && !targetIds.has(n.id)) return n;
     const qStart = Math.round(n.start / gridTicks) * gridTicks;
@@ -1821,10 +1900,16 @@ export function quantizeNotes(
     // FL partial quantize: strength < 1 moves the start only a fraction of
     // the way to the grid (50% = "quick quantize 50%", keeps the groove feel)
     const start = qStart + (n.start - qStart) * (1 - s);
-    const duration = n.duration * (1 - s) + Math.max(gridTicks, qDur) * s;
+    let duration = n.duration * (1 - s) + Math.max(gridTicks, qDur) * s;
+    // A full-bar note can blend to duration > patternTicks (strength < 1
+    // mixes in `gridTicks`); the start clamp below would then go negative →
+    // start 0 with an overflowing end → normalize DELETES the note. Cap the
+    // duration to the pattern first so quantize never destroys content.
+    const patternTicks = pattern.stepCount * STEP_TICKS;
+    if (duration > patternTicks) duration = patternTicks;
     return {
       ...n,
-      start: Math.max(0, Math.min(pattern.stepCount * STEP_TICKS - duration, Math.round(start))),
+      start: Math.max(0, Math.min(patternTicks - duration, Math.round(start))),
       duration: Math.max(1, Math.round(duration)),
     };
   });
@@ -2518,10 +2603,15 @@ function clipsOverlap(
 export function addArrangementClip(doc: ProjectDocument, sceneId: string, startBar: number, lengthBars = 4): Command {
   const scene = doc.scenes.find((s) => s.id === sceneId);
   if (!scene) throw new Error(`Scene ${sceneId} not found`);
-  if (clipsOverlap(doc.arrangement.clips, null, startBar, lengthBars)) {
-    throw new Error(`Clip overlaps an existing clip at bar ${startBar + 1}`);
+  // Math.max passes NaN through and NaN comparisons are all false — an
+  // unguarded NaN/negative wrote a clip that normalize then silently
+  // DELETED (as an "undoable move"). Clamp like the audio-clip path.
+  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
+  const bars = Number.isFinite(lengthBars) ? Math.max(1, Math.round(lengthBars)) : 1;
+  if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
+    throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
-  const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar, lengthBars };
+  const clip: ArrangementClip = { id: uid("clip"), sceneId, startBar: bar, lengthBars: bars };
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -2529,7 +2619,7 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
       clips: [...doc.arrangement.clips, clip].sort((a, b) => a.startBar - b.startBar),
     },
   };
-  return snapshot("addArrangementClip", `Place ${scene.name} at bar ${startBar + 1}`, doc, next);
+  return snapshot("addArrangementClip", `Place ${scene.name} at bar ${bar + 1}`, doc, next);
 }
 
 function transitionsForClips(doc: ProjectDocument, clips: ArrangementClip[]): ArrangementTransition[] | undefined {
@@ -2567,7 +2657,8 @@ export function createVariationAndPlaceClip(
 export function moveArrangementClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
-  const bar = Math.max(0, Math.round(startBar));
+  // NaN passes Math.max/round through — clamp to 0 like addArrangementClip.
+  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
   if (clipsOverlap(doc.arrangement.clips, clipId, bar, clip.lengthBars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
@@ -2592,7 +2683,8 @@ export function moveArrangementClip(doc: ProjectDocument, clipId: string, startB
 export function resizeArrangementClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
-  const bars = Math.max(1, Math.round(lengthBars));
+  // NaN passes Math.max/round through — clamp to 1 (minimum clip length).
+  const bars = Number.isFinite(lengthBars) ? Math.max(1, Math.round(lengthBars)) : 1;
   if (clipsOverlap(doc.arrangement.clips, clipId, clip.startBar, bars)) {
     throw new Error(`Clip would overlap the next clip`);
   }
@@ -2623,7 +2715,14 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   let startBar = clip.startBar + clip.lengthBars;
   while (clipsOverlap(doc.arrangement.clips, null, startBar, clip.lengthBars)) startBar += clip.lengthBars;
-  const copy: ArrangementClip = { id: uid("clip"), sceneId: clip.sceneId, startBar, lengthBars: clip.lengthBars };
+  // Carry the per-clip `loop` flag — a fresh literal silently reset it.
+  const copy: ArrangementClip = {
+    id: uid("clip"),
+    sceneId: clip.sceneId,
+    startBar,
+    lengthBars: clip.lengthBars,
+    ...(clip.loop ? { loop: clip.loop } : {}),
+  };
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3354,6 +3453,8 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
     sceneId: c.sceneId,
     startBar: c.startBar + deltaBars,
     lengthBars: c.lengthBars,
+    // Carry the per-clip loop flag — a fresh literal silently reset it.
+    ...(c.loop ? { loop: c.loop } : {}),
   }));
   const nextClips = [...baseClips, ...duplicatedClips].sort((a, b) => a.startBar - b.startBar);
   // Preserve transitions where possible (sanitize prunes dangling ones)
@@ -3624,6 +3725,10 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
     patterns: nextPatterns,
     scenes: nextScenes,
     arrangement: {
+      // Spread the existing arrangement: rebuilding it from scratch DROPPED
+      // `audioClips` — consolidating a zone silently deleted every audio
+      // clip in the project (undoable once, permanent after a save).
+      ...doc.arrangement,
       clips: nextClips,
       ...(nextTransitions ? { transitions: nextTransitions } : { transitions: undefined }),
     },

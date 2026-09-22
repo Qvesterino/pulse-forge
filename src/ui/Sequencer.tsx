@@ -16,6 +16,7 @@ import {
   setStepsVelocity,
   setStepVelocityCommand,
   setTrackParams,
+  snapshot,
   toggleStep,
 } from "../commands/commands";
 import { assetCategoryOf, categoryColor } from "./kitColors";
@@ -246,6 +247,11 @@ export function Sequencer({
   ): StepSelection => {
     const a = orderedPadIds.indexOf(anchorPad);
     const b = orderedPadIds.indexOf(padId);
+    // Anchor (or current) pad deleted mid-gesture (collab): indexOf is -1 —
+    // bail out instead of silently stretching the selection from pad 0.
+    if (a < 0 || b < 0) {
+      return { padIds: [], from: Math.min(anchorStep, stepIndex), to: Math.max(anchorStep, stepIndex) };
+    }
     const lo = Math.max(0, Math.min(a, b));
     const hi = Math.min(orderedPadIds.length - 1, Math.max(a, b));
     return {
@@ -445,12 +451,10 @@ export function Sequencer({
             for (const pid of stepSelection.padIds)
               for (let s = stepSelection.from; s <= stepSelection.to; s++)
                 nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, { microtiming }).execute(nextDoc);
-            services.store.execute({
-              type: "bulkMicrotiming",
-              label: "Set microtiming",
-              execute: () => nextDoc,
-              undo: () => doc,
-            } as any);
+            // Delta snapshot, not a whole-doc pin — `undo: () => doc` would
+            // wholesale-revert any edit (collab/live MIDI) that landed
+            // between gesture start and the undo.
+            services.store.execute(snapshot("bulkMicrotiming", "Set microtiming", doc, nextDoc));
           } else {
             services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { microtiming }));
           }
@@ -469,12 +473,8 @@ export function Sequencer({
             for (const pid of stepSelection.padIds)
               for (let s = stepSelection.from; s <= stepSelection.to; s++)
                 nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, { probability }).execute(nextDoc);
-            services.store.execute({
-              type: "bulkProbability",
-              label: "Set probability",
-              execute: () => nextDoc,
-              undo: () => doc,
-            } as any);
+            // Delta snapshot — see bulkMicrotiming above.
+            services.store.execute(snapshot("bulkProbability", "Set probability", doc, nextDoc));
           } else {
             services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { probability }));
           }
@@ -1083,12 +1083,8 @@ function StepEditor({
           nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, change).execute(nextDoc);
         }
       }
-      services.store.execute({
-        type: "bulkStepMeta",
-        label: "Bulk edit steps",
-        execute: () => nextDoc,
-        undo: () => doc,
-      } as any);
+      // Delta snapshot — see bulkMicrotiming in the drag commit path.
+      services.store.execute(snapshot("bulkStepMeta", "Bulk edit steps", doc, nextDoc));
     } else {
       services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
     }
@@ -1307,7 +1303,10 @@ function StepEditor({
             );
           } else {
             set({ probability: 1, ratchet: 1, microtiming: 0, locks: undefined } as StepMeta);
-            if (hasLocks) for (const k of Object.keys(meta.locks!)) setLock(k as any, undefined);
+            // The `locks: undefined` patch above ALREADY clears every lock —
+            // the extra per-key setLock loop used to fire redundant commands
+            // that each rebuilt the pattern object (never identity-equal), so
+            // one RESET click spammed up to 6 dead Ctrl+Z entries.
           }
         }}
       >
@@ -1666,7 +1665,13 @@ const StepCell = memo(function StepCell({
         longPress.onPointerUp();
       }}
       onPointerLeave={longPress.onPointerLeave}
-      onPointerCancel={longPress.onPointerCancel}
+      onPointerCancel={(event) => {
+        // A cancelled gesture (touch takeover, palm rejection) must END the
+        // step interaction — without this, dragRef survived and paint /
+        // velocity previews kept rendering a state that was never committed.
+        onEnd(event);
+        longPress.onPointerCancel();
+      }}
       onKeyDown={(event) => {
         // Enter toggles the step; Space stays free for the global play/pause
         // shortcut (preventing the keydown also cancels the native keyup click).

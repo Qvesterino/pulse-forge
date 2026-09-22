@@ -1032,10 +1032,19 @@ export function ArrangementPanel() {
       return;
     }
     if (current.mode === "move" && finalDrag.startBar !== current.origStart) {
-      execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
+      try {
+        execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
+      } catch {
+        // Clip deleted mid-drag (undo/collab) — the factory throws before
+        // execute's own guard can; drop silently like the cancel path.
+      }
     }
     if (current.mode === "resize" && finalDrag.lengthBars !== current.origLength) {
-      execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
+      try {
+        execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
+      } catch {
+        /* same mid-drag deletion race */
+      }
     }
   };
 
@@ -1916,7 +1925,10 @@ export function ArrangementPanel() {
             }}
             onPointerUp={(event) => {
               if (marqueeStartRef.current !== null) {
-                const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
+                // Floor: a plain click PLACES a clip — fractional bars used
+                // to persist off-grid (moveArrangementClip rounds, this
+                // path did not; addArrangementClip even toasted "bar 4.37").
+                const bar = Math.max(0, Math.floor((event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth));
                 const from = Math.min(marqueeStartRef.current, bar);
                 const to = Math.max(marqueeStartRef.current, bar);
                 marqueeStartRef.current = null;
