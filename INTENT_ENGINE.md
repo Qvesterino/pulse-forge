@@ -765,6 +765,14 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
   compressed vs dynamic), genre targets, scoring (in-range high, out-of-range
   low), router (loudness/effectIntent/pattern).
 
+## 5.9b SUNO MODE — jedna veta → hotový track (GOAL 29/30, `src/intent/compose.ts`)
+
+`composeFullTrack(doc, text, options)` orchestruje celý engine do jedného volania — **♪ SONG ho volá priamo (GOAL 30)**: text → parser + section requests + dĺžkový hint (#6 dynamic form) → `buildSong` (sekcie, transitions, scoped FX) → mix profil → loudness pass (BS.1770 → trim na −14). Vracia undoable commands (song, mix) + loudness runner, ktorý sa volá PO inštalácii (render musí počuť hotový mix). Nikdy nehádže — nefunkčné fázy v `skipped`. Statusy fáz v paneli (⚡ SUNO MODE — … → ✓ SUNO MODE — N sections, bars ≈ m:ss + mix — loudness X LUFS).
+
+**#6 dynamic form**: `parseSongLength`/`applySongLength` — short (intro/outro ½ + prvá cykla), radio edit (base), extended/epic (+1/+2 razítkované core cykly), exact ("3 minutes", "2:30" — greedy k cieľu). `BuildSongOptions.length`.
+
+**Embedding shadow A/B (GOAL 30, `npm run embedding:ab`)**: model-level gate (ort-web vo vite serveri) — **v2 je komplementárny, nie dominantný**: mood-only páry v1 SLEPÝ (dist 0) / v2 vidí (0.54); style-explicit páry v1 ostrejší (1.44 vs 0.54). Verdikt KEEP-OFF — flag `pf:embedding-conditioned` ostáva default off; cesta k ON = hybrid v3 conditioning (semantic + style one-hot, retrén) alebo listening-room verdikt.
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,

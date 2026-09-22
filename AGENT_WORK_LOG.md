@@ -3718,3 +3718,7 @@ audit doc.
 **Validation:** velocity-fx 8/8; domain goldens 12/12 (6 families); full local batch green. tsc 0 campaign errors.
 
 **Recommendations for next session (GOAL 10 — mobile readiness audit):** the portability map already flagged the mobile-critical seams: hover-dependent interactions (matchMedia pointer:coarse exists in Sequencer/FxEq/ModPanel), pointer events (mostly pointerdown/up — verify), tiny targets, virtual keyboard in text inputs, background tab behavior (rAF gating exists), IndexedDB eviction on iOS Safari (persistence), audio unlock gestures (AudioUnlock exists), file download vs share-sheet. Use `docs/PORTABILITY_MAP.md` §2 + GOAL 04 state machines as the base. Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 30 (doplňok) — INTENT_ENGINE.md 5.9b sekcia (SUNO MODE + A/B nález) doplnená.
