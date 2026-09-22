@@ -39,6 +39,7 @@ import {
   renameScene,
   reorderScenes,
   resizeArrangementClip,
+  transitionsForClips,
   resizeArrangementClipRipple,
   moveArrangementClipRipple,
   deleteArrangementClipRipple,
@@ -1001,6 +1002,32 @@ export function ArrangementPanel() {
     if (!current || !finalDrag) return;
     if (current.movingIds) {
       if (!delta) return;
+      if (rippleMode) {
+        // RIPPLE multi-move: the block and every later clip slide by the
+        // same delta — gaps after the strip stay exactly as before. No
+        // collision guard: layering the strip past a stationary clip is
+        // the ripple contract (later clips move WITH the block).
+        const beforeDoc = services.store.doc;
+        const minStart = Math.min(...Object.values(current.origStarts ?? { 0: 0 }));
+        const clips = beforeDoc.arrangement.clips
+          .map((c) =>
+            current.movingIds!.includes(c.id) || c.startBar >= minStart
+              ? { ...c, startBar: Math.max(0, c.startBar + delta) }
+              : c,
+          )
+          .sort((a, b) => a.startBar - b.startBar);
+        const nextDoc: ProjectDocument = {
+          ...beforeDoc,
+          arrangement: { ...beforeDoc.arrangement, clips, transitions: transitionsForClips(beforeDoc, clips) },
+        };
+        services.store.execute({
+          type: "moveClipsRipple",
+          label: `Ripple move ${current.movingIds.length} clips`,
+          execute: () => nextDoc,
+          undo: () => beforeDoc,
+        });
+        return;
+      }
       // One gesture = one undo entry, regardless of how many clips moved.
       // The whole BLOCK moves to its final state at once: applying per-clip
       // `moveArrangementClip` would validate overlaps against INTERMEDIATE
@@ -2060,7 +2087,20 @@ export function ArrangementPanel() {
             onDrop={(event) => {
               event.preventDefault();
               const sceneId = event.dataTransfer.getData("application/x-pulse-forge-scene");
-              if (sceneId) placeScene(sceneId, barFromEvent(event));
+              if (!sceneId) return;
+              // Drop ON a clip swaps that clip's variant (arrangement-as-a-tool);
+              // drop on empty space places a new clip — one gesture, two intents.
+              const bar = barFromEvent(event);
+              const hit = clips.find((c) => bar >= c.startBar && bar < c.startBar + c.lengthBars);
+              if (hit && hit.sceneId !== sceneId) {
+                try {
+                  execute(setArrangementClipScene(services.store.doc, hit.id, sceneId));
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : String(err));
+                }
+                return;
+              }
+              placeScene(sceneId, bar);
             }}
           >
             <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * barWidth }} />
@@ -2093,6 +2133,34 @@ export function ArrangementPanel() {
               const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
+              // RIPPLE GHOST: while a ripple drag moves, show where every
+              // later clip will land (dashed outline at the shifted slot).
+              const rippleGhost = (() => {
+                if (!rippleMode) return null;
+                const cur = dragRef.current;
+                if (!cur) return null;
+                if (cur.movingIds && multiDrag !== null) {
+                  const minStart = Math.min(...Object.values(cur.origStarts ?? { 0: 0 }));
+                  if (multiDrag === 0) return null;
+                  return { skip: cur.movingIds, from: minStart, delta: multiDrag };
+                }
+                if (!drag) return null;
+                if (cur.mode === "move" && drag.startBar !== cur.origStart) {
+                  return { skip: [cur.clipId], from: cur.origStart, delta: drag.startBar - cur.origStart };
+                }
+                if (cur.mode === "resize" && drag.lengthBars !== cur.origLength) {
+                  return {
+                    skip: [cur.clipId],
+                    from: cur.origStart + cur.origLength,
+                    delta: drag.lengthBars - cur.origLength,
+                  };
+                }
+                return null;
+              })();
+              const ghostShift =
+                rippleGhost && !rippleGhost.skip.includes(clip.id) && clip.startBar >= rippleGhost.from
+                  ? rippleGhost.delta
+                  : 0;
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
               const startBar = multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar;
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
@@ -2131,6 +2199,12 @@ export function ArrangementPanel() {
                     <span className="arr-clip-bars">{lengthBars}b</span>
                     <span className="arr-clip-resize" />
                   </div>
+                  {ghostShift !== 0 && (
+                    <div
+                      className="arr-ripple-ghost"
+                      style={{ left: (clip.startBar + ghostShift) * barWidth, width: clip.lengthBars * barWidth - 4 }}
+                    />
+                  )}
                   {nextClip && (
                     <button
                       type="button"

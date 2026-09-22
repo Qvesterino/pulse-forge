@@ -2698,7 +2698,7 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   return snapshot("addArrangementClip", `Place ${scene.name} at bar ${bar + 1}`, doc, next);
 }
 
-function transitionsForClips(doc: ProjectDocument, clips: ArrangementClip[]): ArrangementTransition[] | undefined {
+export function transitionsForClips(doc: ProjectDocument, clips: ArrangementClip[]): ArrangementTransition[] | undefined {
   return sanitizeArrangementTransitions(doc.arrangement.transitions, clips);
 }
 
