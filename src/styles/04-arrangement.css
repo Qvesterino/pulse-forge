@@ -347,6 +347,91 @@
   font: 12px var(--sans);
 }
 
+/* ── Arrangement-as-a-tool wave: ripple toggle + clip swap bar ────────── */
+.arr-ripple-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 6px;
+}
+
+.arr-ripple-toggle {
+  font: 9px var(--mono);
+  letter-spacing: 0.7px;
+  padding: 3px 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.arr-ripple-toggle.on {
+  border-color: #7aa2f7;
+  color: #7aa2f7;
+}
+
+.arr-ripple-hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.arr-swap-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raise);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font: 11px var(--mono);
+  color: var(--text-dim);
+}
+
+.arr-swap-label {
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+
+.arr-swap-variant select {
+  height: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.arr-swap-bar button {
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.arr-swap-bar button:hover {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+.arr-swap-loop.on {
+  border-color: #7aa2f7;
+  color: #7aa2f7;
+}
+
+.arr-swap-delete:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
 .arr-role-flow-empty {
   color: var(--text-faint);
   font: 9px var(--mono);

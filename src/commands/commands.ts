@@ -4148,7 +4148,12 @@ function clampAutomationPointValue(doc: ProjectDocument, target: AutomationTarge
 export function addAutomationPoint(doc: ProjectDocument, laneId: string, tick: number, value: number): Command {
   const lane = automationLaneOf(doc, laneId);
   if (!lane) throw new Error(`Lane ${laneId} not found`);
-  const point = { tick: Math.max(0, Math.round(tick)), value: clampAutomationPointValue(doc, lane.target, value) };
+  // Audit 06 D4: Math.max(0, NaN) === NaN — a non-finite tick sorted
+  // nondeterministically and corrupted valueAt's scan. Gate it finite.
+  const point = {
+    tick: Number.isFinite(tick) ? Math.max(0, Math.round(tick)) : 0,
+    value: clampAutomationPointValue(doc, lane.target, value),
+  };
   return {
     type: "addAutomationPoint",
     label: "Add automation point",
@@ -4174,17 +4179,24 @@ export function moveAutomationPoint(
   const lane = automationLaneOf(doc, laneId);
   if (!lane || index < 0 || index >= lane.points.length) throw new Error("Automation point not found");
   const prev = lane.points;
+  // Audit 06 D3: re-anchor by IDENTITY, then by (tick, value) — the index
+  // was validated against the FACTORY doc only; a collab peer shifting the
+  // array used to make points[index] undefined (TypeError) or move the
+  // WRONG point.
+  const original = lane.points[index]!;
   const nextValue = delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
   return {
     type: "moveAutomationPoint",
     label: "Move automation point",
     execute: (d) =>
       withLane(d, laneId, (l) => {
+        let at = l.points.findIndex((p) => p === original);
+        if (at === -1) at = l.points.findIndex((p) => p.tick === original.tick && p.value === original.value);
+        if (at === -1) return l;
         const points = [...l.points];
-        const p = points[index];
-        points[index] = {
-          tick: Math.max(0, Math.round(delta.tick ?? p.tick)),
-          value: nextValue ?? p.value,
+        points[at] = {
+          tick: Math.max(0, Math.round(delta.tick ?? original.tick)),
+          value: nextValue ?? original.value,
         };
         return { ...l, points: points.sort((a, b) => a.tick - b.tick) };
       }),
@@ -4199,13 +4211,23 @@ export function deleteAutomationPoint(doc: ProjectDocument, laneId: string, inde
   return {
     type: "deleteAutomationPoint",
     label: "Delete automation point",
-    execute: (d) => withLane(d, laneId, (l) => ({ ...l, points: l.points.filter((_, i) => i !== index) })),
+    execute: (d) =>
+      withLane(d, laneId, (l) => {
+        // Same re-anchor as moveAutomationPoint (Audit 06 D3).
+        let at = l.points.findIndex((p) => p === removed);
+        if (at === -1) at = l.points.findIndex((p) => p.tick === removed.tick && p.value === removed.value);
+        if (at === -1) return l;
+        const points = [...l.points];
+        points.splice(at, 1);
+        return { ...l, points };
+      }),
     undo: (d) =>
       withLane(d, laneId, (l) => {
-        if (l.points.some((p) => p === removed)) return l;
-        const points = [...l.points];
-        points.splice(Math.min(index, points.length), 0, removed);
-        return { ...l, points };
+        // Re-insert SORTED: splicing at the creation-time index after the
+        // array shifted (delete B, add tick-5, undo) produced an unsorted
+        // array and wrong interpolation between ticks.
+        if (l.points.some((p) => p.tick === removed.tick && p.value === removed.value)) return l;
+        return { ...l, points: insertPointSorted(l.points, removed) };
       }),
   };
 }
@@ -5331,6 +5353,98 @@ export function setArrangementClipLoop(doc: ProjectDocument, clipId: string, loo
   };
   return snapshot("setArrangementClipLoop", loop ? "Loop clip" : "Unloop clip", doc, next);
 }
+
+/**
+ * VARIANT SWAP (arrangement-as-a-tool wave): point an existing clip at a
+ * different scene — same position, same length, same transitions. This is
+ * the cheap "try Pattern B in the second chorus" move: nothing on the
+ * timeline changes but the musical content under the clip.
+ */
+export function setArrangementClipScene(doc: ProjectDocument, clipId: string, sceneId: string): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  const scene = doc.scenes.find((s) => s.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  if (clip.sceneId === sceneId) return snapshot("setArrangementClipScene", "Swap variant (no-op)", doc, doc);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips.map((c) => (c.id === clipId ? { ...c, sceneId } : c)),
+    },
+  };
+  return snapshot("setArrangementClipScene", `Swap variant → ${scene.name}`, doc, next);
+}
+
+/**
+ * RIPPLE EDIT (arrangement-as-a-tool wave): moving a clip shifts every
+ * later clip by the same delta, preserving all gaps — the arrangement
+ * behaves like one continuous strip instead of clips floating on rails.
+ * Transitions are re-derived from the resulting layout.
+ */
+export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, startBar: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  if (!Number.isFinite(startBar)) return snapshot("moveArrangementClipRipple", "Ripple move (no-op)", doc, doc);
+  const target = Math.max(0, Math.round(startBar));
+  const delta = target - clip.startBar;
+  const clips = doc.arrangement.clips
+    .map((c) =>
+      c.id === clipId || c.startBar >= clip.startBar + clip.lengthBars
+        ? { ...c, startBar: Math.max(0, c.startBar + delta) }
+        : c,
+    )
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+  };
+  return snapshot("moveArrangementClipRipple", `Ripple move to bar ${target + 1}`, doc, next);
+}
+
+/**
+ * RIPPLE resize: growing a clip pushes every later clip right (shrinking
+ * pulls them left) — the gaps after the edit stay exactly as before.
+ */
+export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  if (!Number.isFinite(lengthBars)) return snapshot("resizeArrangementClipRipple", "Ripple resize (no-op)", doc, doc);
+  const bars = Math.max(1, Math.round(lengthBars));
+  const deltaBars = bars - clip.lengthBars;
+  const oldEnd = clip.startBar + clip.lengthBars;
+  const clips = doc.arrangement.clips
+    .map((c) => {
+      if (c.id === clipId) return { ...c, lengthBars: bars };
+      if (c.startBar >= oldEnd) return { ...c, startBar: Math.max(0, c.startBar + deltaBars) };
+      return c;
+    })
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+  };
+  return snapshot("resizeArrangementClipRipple", `Ripple resize to ${bars} bars`, doc, next);
+}
+
+/**
+ * RIPPLE delete: removing a clip closes the gap — every later clip slides
+ * left by the deleted length.
+ */
+export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  const oldEnd = clip.startBar + clip.lengthBars;
+  const clips = doc.arrangement.clips
+    .filter((c) => c.id !== clipId)
+    .map((c) => (c.startBar >= oldEnd ? { ...c, startBar: Math.max(0, c.startBar - clip.lengthBars) } : c))
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+  };
+  return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);
+}
 /* ---------------- scene automation ---------------- */ export function addSceneAutomation(
   doc: ProjectDocument,
   sceneId: string,
@@ -5397,15 +5511,19 @@ export function moveSceneAutomationPoint(
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
   if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
   const nextValue = delta.value === undefined ? undefined : clampAutomationPointValue(doc, lane.target, delta.value);
+  // Audit 06 D3: re-anchor by identity/(tick,value) like the project lanes.
+  const original = lane.points[index]!;
   const next = {
     ...doc,
     sceneAutomation: doc.sceneAutomation.map((l) => {
       if (l.id !== laneId) return l;
+      let at = l.points.findIndex((p) => p === original);
+      if (at === -1) at = l.points.findIndex((p) => p.tick === original.tick && p.value === original.value);
+      if (at === -1) return l;
       const points = [...l.points];
-      const p = points[index];
-      points[index] = {
-        tick: delta.tick !== undefined ? Math.max(0, Math.floor(delta.tick)) : p.tick,
-        value: nextValue ?? p.value,
+      points[at] = {
+        tick: delta.tick !== undefined && Number.isFinite(delta.tick) ? Math.max(0, Math.floor(delta.tick)) : original.tick,
+        value: nextValue ?? original.value,
       };
       points.sort((a, b) => a.tick - b.tick);
       return { ...l, points };
@@ -5417,11 +5535,19 @@ export function removeSceneAutomationPoint(doc: ProjectDocument, laneId: string,
   const lane = doc.sceneAutomation.find((l) => l.id === laneId);
   if (!lane) throw new Error(`Scene lane ${laneId} not found`);
   if (index < 0 || index >= lane.points.length) throw new Error("Scene point out of range");
+  const removed = lane.points[index];
   const next = {
     ...doc,
-    sceneAutomation: doc.sceneAutomation.map((l) =>
-      l.id === laneId ? { ...l, points: l.points.filter((_, i) => i !== index) } : l,
-    ),
+    sceneAutomation: doc.sceneAutomation.map((l) => {
+      if (l.id !== laneId) return l;
+      // Audit 06 D3: same re-anchor as the project-lane delete.
+      let at = l.points.findIndex((p) => p === removed);
+      if (at === -1) at = l.points.findIndex((p) => p.tick === removed.tick && p.value === removed.value);
+      if (at === -1) return l;
+      const points = [...l.points];
+      points.splice(at, 1);
+      return { ...l, points };
+    }),
   };
   return snapshot("removeSceneAutomationPoint", "Remove scene point", doc, next);
 }

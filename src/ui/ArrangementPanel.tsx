@@ -39,6 +39,11 @@ import {
   renameScene,
   reorderScenes,
   resizeArrangementClip,
+  resizeArrangementClipRipple,
+  moveArrangementClipRipple,
+  deleteArrangementClipRipple,
+  setArrangementClipScene,
+  setArrangementClipLoop,
   setSceneIntensityCurve,
   setSceneRole,
   resizeAudioClip,
@@ -1033,7 +1038,8 @@ export function ArrangementPanel() {
     }
     if (current.mode === "move" && finalDrag.startBar !== current.origStart) {
       try {
-        execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
+        if (rippleMode) execute(moveArrangementClipRipple(services.store.doc, current.clipId, finalDrag.startBar));
+        else execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
       } catch {
         // Clip deleted mid-drag (undo/collab) — the factory throws before
         // execute's own guard can; drop silently like the cancel path.
@@ -1041,7 +1047,8 @@ export function ArrangementPanel() {
     }
     if (current.mode === "resize" && finalDrag.lengthBars !== current.origLength) {
       try {
-        execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
+        if (rippleMode) execute(resizeArrangementClipRipple(services.store.doc, current.clipId, finalDrag.lengthBars));
+        else execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
       } catch {
         /* same mid-drag deletion race */
       }
@@ -1055,18 +1062,36 @@ export function ArrangementPanel() {
     setMultiDrag(null);
   };
 
+  // Ripple mode (arrangement-as-a-tool): moves/resizes/deletes shift every
+  // later clip to preserve the gaps after the edit.
+  const [rippleMode, setRippleMode] = useState(false);
   /** Delete arrangement clips (single or multi) as ONE undoable gesture + toast. */
-  const deleteClipsWithToast = (ids: string[]) => {
+  const deleteClipsWithToast = (ids: string[], ripple = false) => {
     if (ids.length === 0) return;
     const beforeDoc = services.store.doc;
     let nextDoc = beforeDoc;
     let firstName = "";
-    for (const id of ids) {
+    if (ripple || rippleMode) {
+      // RIPPLE delete: every removed clip closes its gap. Deleting from the
+      // LAST clip backwards keeps earlier shifts exact, and each command
+      // re-derives transitions for the shifted layout.
+      const removed = ids
+        .map((id) => beforeDoc.arrangement.clips.find((c) => c.id === id))
+        .filter((clip): clip is NonNullable<typeof clip> => Boolean(clip))
+        .sort((a, b) => b.startBar - a.startBar);
+      if (removed.length === 0) return;
+      firstName = scenes.find((sceneItem) => sceneItem.id === removed[0]!.sceneId)?.name ?? "clip";
+      for (const clip of removed) {
+        nextDoc = deleteArrangementClipRipple(nextDoc, clip.id).execute(nextDoc);
+      }
+    } else {
+      for (const id of ids) {
       const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
       if (!clip) continue;
       const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
       if (!firstName) firstName = scene?.name ?? "clip";
-      nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
+        nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
+      }
     }
     if (nextDoc === beforeDoc) return;
     const label = ids.length === 1 ? `Deleted "${firstName}"` : `Deleted ${ids.length} clips`;
@@ -1742,6 +1767,18 @@ export function ArrangementPanel() {
             </button>
           </div>
         )}
+        <div className="arr-ripple-row">
+          <button
+            type="button"
+            className={`arr-ripple-toggle${rippleMode ? " on" : ""}`}
+            aria-pressed={rippleMode}
+            title="Ripple edit — moves/resizes/deletes shift every later clip to preserve the gaps"
+            onClick={() => setRippleMode((on) => !on)}
+          >
+            RIPPLE {rippleMode ? "ON" : "OFF"}
+          </button>
+          <span className="arr-ripple-hint">shifts later clips to keep the gaps</span>
+        </div>
 
         <div className="arr-role-flow" aria-label="Arrangement role flow">
           {clips.length === 0 ? (
@@ -1777,6 +1814,54 @@ export function ArrangementPanel() {
           )}
         </div>
 
+        {selectedClipId && clips.some((c) => c.id === selectedClipId) && (() => {
+          const clip = clips.find((c) => c.id === selectedClipId)!;
+          const clipScene = scenes.find((candidate) => candidate.id === clip.sceneId);
+          return (
+            <div className="arr-swap-bar" role="toolbar" aria-label="Selected clip tools">
+              <span className="arr-swap-label">
+                CLIP · {clipScene?.name ?? "?"} · {clip.startBar + 1}–{clip.startBar + clip.lengthBars}
+              </span>
+              <label className="arr-swap-variant">
+                VARIANT{" "}
+                <select
+                  value={clip.sceneId}
+                  aria-label="Swap clip variant"
+                  onChange={(event) => {
+                    try {
+                      execute(setArrangementClipScene(services.store.doc, clip.id, event.target.value));
+                    } catch (err) {
+                      setActionError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
+                >
+                  {scenes.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className={`arr-swap-loop${clip.loop ? " on" : ""}`}
+                aria-pressed={Boolean(clip.loop)}
+                title="Loop this clip's content for its whole length"
+                onClick={() => execute(setArrangementClipLoop(services.store.doc, clip.id, !clip.loop))}
+              >
+                LOOP
+              </button>
+              <button
+                type="button"
+                className="arr-swap-delete"
+                title={rippleMode ? "Delete and close the gap" : "Delete"}
+                onClick={() => deleteClipsWithToast([clip.id], true)}
+              >
+                {rippleMode ? "DEL GAP" : "DEL"}
+              </button>
+            </div>
+          );
+        })()}
         <div className="arr-lane-scroll" ref={scrollRef}>
           <div
             className="arr-ruler"
