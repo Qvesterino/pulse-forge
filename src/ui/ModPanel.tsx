@@ -150,8 +150,7 @@ interface ParamRange {
 }
 
 /** Point hit radius: a 9px dot is fine for a mouse, a finger needs ~3x that. */
-const POINT_HIT_PX =
-  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 22 : 8;
+const POINT_HIT_PX = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? 22 : 8;
 
 function laneRange(doc: ProjectDocument, target: AutomationTarget): ParamRange {
   if (target.kind === "trackGain") return { min: 0, max: 1.5, format: (v) => v.toFixed(2) };
@@ -341,15 +340,15 @@ export function ModPanel() {
                         </optgroup>
                       ))
                     : effectTargetParamDefs(fx)
-                      .filter((p) => {
-                        const query = paramFilter.trim().toLowerCase();
-                        return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);
-                      })
-                      .map((p) => (
-                        <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
-                          {EFFECT_DEFS[fx.type].name} · {p.label}
-                        </option>
-                      )),
+                        .filter((p) => {
+                          const query = paramFilter.trim().toLowerCase();
+                          return !query || `${p.label} ${p.id}`.toLowerCase().includes(query);
+                        })
+                        .map((p) => (
+                          <option key={`${fx.id}:${p.id}`} value={`fxParam:${fx.id}:${p.id}`}>
+                            {EFFECT_DEFS[fx.type].name} · {p.label}
+                          </option>
+                        )),
               )}
           </select>
           <button type="button" className="btn btn-small" onClick={submitAddLane}>
@@ -937,7 +936,9 @@ function PointEditor({
                     0,
                     Math.min(patternTicks, Math.round(Number(event.target.value) / STEP_TICKS) * STEP_TICKS),
                   );
-                  services.store.execute(moveAutomationPoint(services.store.doc, laneId, i, { tick: v, value: p.value }));
+                  services.store.execute(
+                    moveAutomationPoint(services.store.doc, laneId, i, { tick: v, value: p.value }),
+                  );
                 }}
               />
               <input
@@ -950,7 +951,9 @@ function PointEditor({
                 step={(range.max - range.min) / 100}
                 onChange={(event) => {
                   const v = Math.max(range.min, Math.min(range.max, Number(event.target.value)));
-                  services.store.execute(moveAutomationPoint(services.store.doc, laneId, i, { tick: p.tick, value: v }));
+                  services.store.execute(
+                    moveAutomationPoint(services.store.doc, laneId, i, { tick: p.tick, value: v }),
+                  );
                 }}
               />
               <button
@@ -1456,7 +1459,12 @@ function ScenePanel() {
                   className="btn btn-small"
                   aria-label={`Delete groove ${entry.name}`}
                   title="Delete from pool"
-                  onClick={() => void groovePoolRef.current.remove(entry.id).then(refreshPool)}
+                  onClick={() =>
+                    void groovePoolRef.current
+                      .remove(entry.id)
+                      .then(refreshPool)
+                      .catch((err: unknown) => console.error("[mod-panel] groove delete failed:", err))
+                  }
                 >
                   ×
                 </button>

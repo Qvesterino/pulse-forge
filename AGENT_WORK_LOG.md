@@ -3635,3 +3635,27 @@ audit doc.
 - **Traits +11**: gritty/raw, clean, lush, atmospheric, epic, textured, steady, dirty/crunchy, floating, haunting, festival/peak time.
 - **Semantic korpus +18 záznamov** (EN+SK): hard techno, drift phonk, memphis, liquid/jumpup dnb, afro house, uk drill, boom bap, dubstep, chillhop, drone — kNN pokrytie nových fráz aj keď keyword parser nepochopí.
 - **Testy +11** (3 bloky): rozšírený roster, sub-žánrové frázy, mood slovná zásoba vr. SK koreňov, trait slidery. Regresia **246/246 cez 24 intent súborov**; typecheck mojich súborov 0 chýb; prettier čistý. ⚠️ project-invariants 2 faily = súbežná relácia schema v2 (schema.ts menený 17:41) — nie náš výkon.
+
+---
+
+## GOAL 07 (cross-platform campaign) — Error boundaries & fault containment (2026-09-22)
+
+**Goal executed:** Audit subsystem failure isolation (two parallel read-only sweeps: UI boundary census + async/worker/network/persistence rejection sweep), close the real escape paths, pin containment behavior with tests, document the fault map. No broad catch blocks introduced.
+
+**Delivered:**
+
+- **`docs/FAULT-CONTAINMENT.md` (new)** — the fault-boundary map: route/panel/root React boundaries, worker breakers, scheduler fail-forward, recorder self-stop, worklet load/runtime containment, corrupted-project pipeline, plus closed vs recorded gaps and a verified-safe list (so future sessions don't re-chase).
+- **UI boundary gaps closed** — the audit found the studio's 10 dock panels were contained, but the PRIMARY writing surface and lazy chunks were root-crash class: `Sequencer` (PianoRoll blast radius), `Inspector` (PresetBrowser/SliceLab lazy chunks — the #1 crash source after deploys), `PaletteOverlay`, the four TopBar popovers (CollabPanel swaps live services), gallery per-card, LandingPage (had ZERO containment), ProjectBrowser crash copy (over-claimed "work saved" for a browser screen). All now inline-retry boundaries.
+- **Rejection paths closed:** (1) `AudioEngine.setProject` deferred body — try/finally with NO catch on the hottest path in the app; now logs like the sibling `queueFxRebuild` guard. (2) `doSave` — `setSaveStatus("saving")` moved inside the try (a throwing store listener rejected flushSave exactly during pagehide/crash-save). (3) ModPanel groove delete onRejected. (4) audition resume closed-context race. (5) sw-update poll ×3 (offline/deployed-404 noise every 15 min).
+- **Runtime worklet containment** — `src/audio-worklets/processor-errors.ts` (new): `attachProcessorErrorGuard(node, label)` + `processorErrorCount()`; the browser silently KILLS throwing processors and load-time readiness cannot see it. Wired into `createWorkletRuntime` (all transient/gate effect worklets) and surfaced as `processorErrors` in `getDiagnostics()`. Factory sweep is incremental (recorded).
+- **`tests/fault-containment.test.tsx` (new, 5 tests)** — panel-mode containment + retry re-containment, chunk-staleness reload affordance, full-screen crash + `onCrashSave` firing, processor-error counting.
+
+**Recorded (open):** runtime `onprocessorerror` wiring across the ~28 remaining node factories (mechanical sweep when the concurrent session's churn clears — the effects path covers the plugin class); bounce-to-clip persistence failure console-only (needs a session warning channel); frozen-track/user-sample boot-restore failures console-only (needs a restored-with-warnings list); crash-screen save copy unconditional (fire-and-forget by design); collab relay retries unbounded + no "jam is offline" message; no global `window.onerror`/`unhandledrejection` reporter (diagnostics decision); gallery cap divergence + `fxeq.band.*` key namespace (carried from GOAL 05).
+
+**Important files changed:** docs/FAULT-CONTAINMENT.md (new), src/audio-worklets/processor-errors.ts (new), src/audio-engine/AudioEngine.ts, src/services.ts, src/effects/registry.ts, src/ui/{App,TopBar,ModPanel}.tsx, src/gallery/GalleryPage.tsx, src/main.tsx, src/intent/audition.ts, src/sw-update.ts, tests/fault-containment.test.tsx (new).
+
+**Validation:** fault-containment 5/5; TopBar/GalleryPage/candidate-audition/master-finish 51/51; App.test 4/4; reentrancy + goldens + schema-evolution green. `ModPanel.test` and one combined batch HANG — verified NOT campaign-caused via stash isolation (the concurrent session's in-flight MRT2 `commands.ts` work; their suite, their fix). `tsc --noEmit` 0 campaign errors.
+
+**Race state at commit:** `services.ts`, `src/main.tsx`, `src/ui/App.tsx`, `src/audio-engine/AudioEngine.ts` carry BOTH campaign fixes and the concurrent session's in-flight MRT2 edits in the same working files — committed everything EXCEPT those four (their commit absorbs them, as in GOALs 05/06); all four fixes are behavior-complete in the tree and will land with the next absorption. tsc-verified on the combined tree.
+
+**Recommendations for next session (GOAL 08 — risk-based test coverage):** the audits keep producing evidence — now rank UNTESTED risk: (1) the ~28 unwired onprocessorerror factories, (2) PersistenceContracts backends (in-memory repo for tests — the missing test seam from GOAL 03), (3) scheduler automation/modulator call recording in the golden harness, (4) route-app boundaries under lazy-chunk failure (jsdom-simulable), (5) the ModPanel test hang root-cause (blocked on their MRT2). Read CAMPAIGN_STATE.md first.

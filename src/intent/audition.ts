@@ -56,7 +56,9 @@ function playbackContext(): AudioContext {
       if (sharedContext?.state === "closed") sharedContext = null;
     };
   }
-  if (sharedContext.state === "suspended") void sharedContext.resume();
+  // Closed-context races are handled by the rebuild above; a rejected
+  // resume (device loss) must not become an unhandled rejection.
+  if (sharedContext.state === "suspended") void sharedContext.resume().catch(() => undefined);
   return sharedContext;
 }
 

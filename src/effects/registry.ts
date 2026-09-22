@@ -2,6 +2,7 @@ import type { EffectDefinition, EffectRuntime } from "./types";
 import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady } from "../audio-worklets/loader";
+import { attachProcessorErrorGuard } from "../audio-worklets/processor-errors";
 import { createLfoSyncController } from "./tempo-sync";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
@@ -2238,6 +2239,7 @@ function createWorkletRuntime(
     outputChannelCount: [2],
     channelCount: 2,
   });
+  attachProcessorErrorGuard(node, processor);
   const input = ctx.createGain();
   const output = ctx.createGain();
   input.connect(node).connect(output);

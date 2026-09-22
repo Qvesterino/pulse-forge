@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useEffect, useMemo, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
 import { shareAppUrl } from "../export/shareCode";
@@ -24,7 +25,6 @@ import { funnelEvent } from "../services/funnel";
 import { randomRoomId } from "../collab/collabShared";
 
 type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
-
 
 /**
  * /gallery — the Beat Gallery. A feed of community beats (share codes +
@@ -186,14 +186,15 @@ export function GalleryPage() {
 
       <div className="gallery-grid">
         {visible.map((item) => (
-          <GalleryCard
-            key={item.id}
-            item={item}
-            playing={playingId === item.id}
-            onTogglePlay={() => setPlayingId(playingId === item.id ? null : item.id)}
-            onTagClick={(tag) => setFilter(filter === tag ? null : tag)}
-            onFork={reload}
-          />
+          <ErrorBoundary key={item.id} panel="gallery-card">
+            <GalleryCard
+              item={item}
+              playing={playingId === item.id}
+              onTogglePlay={() => setPlayingId(playingId === item.id ? null : item.id)}
+              onTagClick={(tag) => setFilter(filter === tag ? null : tag)}
+              onFork={reload}
+            />
+          </ErrorBoundary>
         ))}
       </div>
 

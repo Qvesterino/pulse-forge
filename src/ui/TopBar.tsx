@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "./ErrorBoundary";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 import {
@@ -977,22 +978,30 @@ export function TopBar({
       </header>
       {scalePanelOpen && (
         <div className="scale-popover">
-          <ScalePanel scaleSnap={scaleSnap} onToggleSnap={onToggleScaleSnap} />
+          <ErrorBoundary panel="scale-panel">
+            <ScalePanel scaleSnap={scaleSnap} onToggleSnap={onToggleScaleSnap} />
+          </ErrorBoundary>
         </div>
       )}
       {collabOpen && (
         <div className="scale-popover">
-          <CollabPanel onReplaceServices={onReplaceServices} />
+          <ErrorBoundary panel="collab">
+            <CollabPanel onReplaceServices={onReplaceServices} />
+          </ErrorBoundary>
         </div>
       )}
       {themeOpen && (
         <div className="scale-popover">
-          <ThemePanel />
+          <ErrorBoundary panel="theme">
+            <ThemePanel />
+          </ErrorBoundary>
         </div>
       )}
       {assistOpen && (
         <div className="scale-popover">
-          <AssistPanel onClose={() => setAssistOpen(false)} />
+          <ErrorBoundary panel="assist">
+            <AssistPanel onClose={() => setAssistOpen(false)} />
+          </ErrorBoundary>
         </div>
       )}
     </>

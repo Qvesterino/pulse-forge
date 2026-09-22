@@ -46,7 +46,7 @@ export function initSwUpdate(): void {
       reload.className = "btn btn-small";
       reload.textContent = "RELOAD";
       reload.addEventListener("click", () => {
-        void update(true);
+        void update(true).catch(() => undefined);
       });
       const dismiss = document.createElement("button");
       dismiss.type = "button";
@@ -63,12 +63,12 @@ export function initSwUpdate(): void {
   // rarely run. Poll on a timer and when the tab becomes visible again.
   pollInterval = setInterval(
     () => {
-      void update();
+      void update().catch(() => undefined);
     },
     15 * 60 * 1000,
   );
   visibilityListener = () => {
-    if (document.visibilityState === "visible") void update();
+    if (document.visibilityState === "visible") void update().catch(() => undefined);
   };
   document.addEventListener("visibilitychange", visibilityListener);
 }
