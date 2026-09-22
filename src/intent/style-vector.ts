@@ -14,7 +14,6 @@
  * style) so both v2 priors pick it up through the ONE conditioning vector.
  * Never throws — any failure degrades to pure intent conditioning.
  */
-import { embedTexts } from "../ai/semantic/semantic-client";
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import { isValidLedgerEntry, type FavoriteLedgerEntry } from "./favorites-core";
 import { readFavoriteLedger } from "./favorites";
@@ -118,9 +117,13 @@ export function resetStyleVector(): void {
  */
 export async function computeStyleVector(
   entries: readonly FavoriteLedgerEntry[],
-  embedFn: EmbedFn = embedTexts,
+  embedFn?: EmbedFn,
 ): Promise<readonly number[] | null> {
   try {
+    // Lazy: the semantic client (transformers chunk) must NOT enter the
+    // static closure of anything the landing route reaches (landing-budget
+    // gate). Resolved only when the caller did not inject an embedder.
+    const embed = embedFn ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     if (styleVectorMode() === "off") return null;
     const valid = entries.filter(isValidLedgerEntry);
     if (valid.length === 0) return null;
@@ -139,7 +142,7 @@ export async function computeStyleVector(
     }
 
     const texts = valid.map(styleVectorTextForEntry);
-    const vectors = await embedFn(texts);
+    const vectors = await embed(texts);
     if (!vectors || vectors.length !== texts.length) return null;
     const dim = vectors[0]?.length ?? 0;
     if (dim === 0) return null;

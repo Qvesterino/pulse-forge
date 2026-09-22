@@ -13,7 +13,6 @@
  * dropped one) changes the signature, so personalization shifts recompute
  * while repeat rolls with an unchanged ledger re-embed nothing.
  */
-import { embedTexts } from "../ai/semantic/semantic-client";
 import { embeddingConditionedMode } from "../ai/symbolic/prior-client";
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import { readFavoriteLedger } from "./favorites";
@@ -37,9 +36,12 @@ export function resetSemanticConditioning(): void {
  */
 export async function semanticConditioning(
   text: string | null | undefined,
-  embedFn: EmbedFn = embedTexts,
+  embedFn?: EmbedFn,
 ): Promise<readonly number[] | null> {
   try {
+    // Lazy: keep the semantic client out of the landing-route static closure
+    // (see style-vector.ts).
+    const embed = embedFn ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     const trimmed = (text ?? "").trim().slice(0, MAX_TEXT_LENGTH);
     if (!trimmed) return null;
     if (embeddingConditionedMode() !== "on") return null;
@@ -48,14 +50,14 @@ export async function semanticConditioning(
     const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}`;
     if (projectionCache.has(cacheKey)) return projectionCache.get(cacheKey) ?? null;
 
-    const vectors = await embedFn([trimmed]);
+    const vectors = await embed([trimmed]);
     const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
     const pure =
       projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null;
 
     let result: readonly number[] | null = null;
     if (pure) {
-      const style = await computeStyleVector(ledger, embedFn);
+      const style = await computeStyleVector(ledger, embed);
       result = style ? Object.freeze(blendSemantic(pure, style)) : Object.freeze(pure);
     }
 

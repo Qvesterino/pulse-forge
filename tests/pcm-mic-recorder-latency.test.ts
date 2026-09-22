@@ -157,10 +157,16 @@ describe("PcmMicRecorder chunk-ack under IDB latency (GOAL 07)", () => {
     // Emit faster than the 30 ms per-append storage can commit.
     for (let sequence = 0; sequence < 6; sequence++) lastNode!.emit(chunk(sequence));
 
-    // Let the write chain drain (6 blocks × 30 ms + slack).
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Let the write chain drain — POLL until all 6 acks land instead of a
+    // fixed sleep: under full-suite CPU load the 30 ms stalls stretch, and a
+    // fixed window would flake. 10 s ceiling = hard failure if the chain jams.
+    const deadline = Date.now() + 10_000;
+    const acksSoFar = () => lastNode!.sent.filter((m) => m.type === "ack").map((m) => m.sequence);
+    while (acksSoFar().length < 6 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
 
-    const acks = lastNode!.sent.filter((m) => m.type === "ack").map((m) => m.sequence);
+    const acks = acksSoFar();
     expect(acks).toEqual([0, 1, 2, 3, 4, 5]);
     // Slow-but-working storage must not be reported as a persistence failure.
     expect(onError).not.toHaveBeenCalled();
