@@ -34,6 +34,26 @@ function deaccent(value: string): string {
 
 /** Genre keyword → IntentGenre mapping. More specific genres win by list order. */
 const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
+  // sub-genre specifics FIRST — generic entries below would otherwise win
+  [/\bhard techno\b/, "techno"],
+  [/\bmelodic techno\b/, "techno"],
+  [/\bhypnotic techno\b/, "techno"],
+  [/\bpeak time\b|\bafter ?hours\b/, "techno"],
+  [/\bwarehouse\b/, "techno"],
+  [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b/, "techno"],
+  [/\btrance\b|\bpsytrance\b|\bpsy\b/, "techno"],
+  [/\bacid house\b/, "house"],
+  [/\bbass house\b|\bfuture house\b/, "house"],
+  [/\bg[- ]house\b|\bghetto ?tech\b/, "house"],
+  [/\bafro house\b/, "house"],
+  [/\buk drill\b|\bsample drill\b/, "drill"],
+  [/\bgrime\b/, "drill"],
+  [/\bdrift phonk\b/, "phonk"],
+  [/\bdubstep\b|\briddim\b|\bhybrid trap\b/, "trap"],
+  [/\bchillhop\b|\bstudy beats\b|\blofi hip hop\b/, "ambient"],
+  [/\bdrone\b|\bdark ambient\b|\bnew age\b|\bmeditation\b/, "ambient"],
+  [/\bbreakcore\b/, "dnb"],
+  // canonical / generic
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],
   [/\bfrench house\b/, "house"],
@@ -42,7 +62,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bdeep\b/, "house"],
   [/\bgarage\b|\bukg\b|\buk garage\b/, "house"],
   [/\bjersey\b/, "jersey"], // first-class since the sound-quality pass (own grooves + kit)
-  [/\bafro\b|\bafrobeat\b|\bafro house\b/, "house"],
+  [/\bafro\b|\bafrobeat\b/, "house"],
   [/\breggaeton\b/, "house"],
   [/\btechno\b/, "techno"],
   [/\btech\b/, "techno"],
@@ -85,10 +105,22 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */
 const MOOD_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\btmav|\btemn/, "dark"],
-  [/\baggressive\b|\bhard\b|\bharsh\b|\bbrutal\b|\btvrd|\bagresiv/, "aggressive"],
-  [/\bchill\b|\bsoft\b|\bmellow\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bpoko|\bjemn|\bmakk/, "chill"],
-  [/\benergetic\b|\bbright\b|\buplifting\b|\beuphoric\b|\bsvetl|\bvesel/, "energetic"],
+  [
+    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn/,
+    "dark",
+  ],
+  [
+    /\baggressive\b|\bhard\b|\bharsh\b|\bbrutal\b|\bviolent\b|\bangry\b|\bwild\b|\bhostile\b|\bfuriou|\btvrd|\bagresiv|\bzuriv|\bdivok/,
+    "aggressive",
+  ],
+  [
+    /\bchill\b|\bsoft\b|\bmellow\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bserene\b|\bpoko|\bjemn|\bmakk|\btlm|\bsnov|\bleniv|\bpohodov/,
+    "chill",
+  ],
+  [
+    /\benergetic\b|\bbright\b|\buplifting\b|\beuphoric\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bfestive\b|\bcelebrator|\belated\b|\bsvetl|\bvesel|\bradostn|\boslavn|\bsviatocn/,
+    "energetic",
+  ],
 ];
 
 /** Additional character phrases that only shape sliders (no mood tweaks). */
@@ -118,13 +150,34 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
   [/\bfast\b|\brychl/, { energy: 0.85 }],
   [/\bslow\b|\bpomal/, { energy: 0.3 }],
   // moods also nudge sliders so "dark" both tweaks mood AND lowers energy
-  [/\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\btmav|\btemn/, { energy: 0.3 }],
-  [/\bchill\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bpoko/, { energy: 0.3, density: 0.4 }],
-  [/\baggressive\b|\bhard\b|\btvrd/, { energy: 0.9, density: 0.7 }],
-  [/\benergetic\b|\beuphoric\b|\buplifting\b|\bbright\b|\bsvetl|\bvesel/, { energy: 0.95, density: 0.7 }],
+  [
+    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn/,
+    { energy: 0.3 },
+  ],
+  [
+    /\bchill\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bpoko/,
+    { energy: 0.3, density: 0.4 },
+  ],
+  [/\baggressive\b|\bhard\b|\btvrd|\bviolent\b|\bangry\b|\bwild\b|\bzuriv|\bdivok/, { energy: 0.9, density: 0.7 }],
+  [
+    /\benergetic\b|\beuphoric\b|\buplifting\b|\bbright\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bsvetl|\bvesel|\bradostn/,
+    { energy: 0.95, density: 0.7 },
+  ],
   [/\bdriving\b/, { energy: 0.8, density: 0.7 }],
   [/\brolling\b|\broluj/, { variation: 0.6 }],
   [/\bmelancholic\b|\bemotional\b|\bsmutn|\bemocion/, { energy: 0.35, complexity: 0.5 }],
+  // vocabulary-wave traits
+  [/\bgritty\b|\braw\b|\bsurov/, { energy: 0.8, density: 0.6 }],
+  [/\bclean\b|\bcrisp\b|\bcist/, { complexity: 0.3 }],
+  [/\blush\b|\bbohat/, { density: 0.65, complexity: 0.6 }],
+  [/\batmospheric\b|\batmosferick/, { complexity: 0.55, variation: 0.6 }],
+  [/\bepic\b|\bepick/, { energy: 0.85, density: 0.75 }],
+  [/\btextured\b|\btextur/, { complexity: 0.6 }],
+  [/\bsteady\b|\bpevn/, { variation: 0.25 }],
+  [/\bdirty\b|\bcrunchy\b|\bspinav/, { energy: 0.75, complexity: 0.5 }],
+  [/\bfloat(?:ing)?\b|\bplavaj/, { energy: 0.35, density: 0.35 }],
+  [/\bhaunting\b|\bdesiv/, { energy: 0.35, complexity: 0.55 }],
+  [/\bfestival\b|\bfestiv|\bpeak time\b/, { energy: 0.95, density: 0.8 }],
 ];
 
 /**

@@ -154,3 +154,49 @@ describe("text-parser v3 — slovenčina", () => {
     expect(parsed.input.roles).toEqual(["lead"]);
   });
 });
+
+describe("vocabulary wave — sub-genres, moods, traits", () => {
+  it("resolves sub-genre phrases to canonical genres", () => {
+    expect(parseIntentText("hard techno banger").input.genre).toBe("techno");
+    expect(parseIntentText("acid house groove").input.genre).toBe("house");
+    expect(parseIntentText("bass house at 126").input.genre).toBe("house");
+    expect(parseIntentText("drift phonk type beat").input.genre).toBe("phonk");
+    expect(parseIntentText("uk drill beat").input.genre).toBe("drill");
+    expect(parseIntentText("sample drill at 142").input.genre).toBe("drill");
+    expect(parseIntentText("grime beat").input.genre).toBe("drill");
+    expect(parseIntentText("dubstep wobble").input.genre).toBe("trap");
+    expect(parseIntentText("chillhop study beats").input.genre).toBe("ambient");
+    expect(parseIntentText("dark ambient drone").input.genre).toBe("ambient");
+    expect(parseIntentText("breakcore at 180").input.genre).toBe("dnb");
+    expect(parseIntentText("synthwave night drive").input.genre).toBe("techno");
+    expect(parseIntentText("trance at 138").input.genre).toBe("techno");
+  });
+
+  it("resolves the expanded mood vocabulary", () => {
+    expect(parseIntentText("sinister techno").input.mood).toBe("dark");
+    expect(parseIntentText("ominous drill beat").input.mood).toBe("dark");
+    expect(parseIntentText("angry trap beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("wild phonk").input.mood).toBe("aggressive");
+    expect(parseIntentText("dreamy ambient pad").input.mood).toBe("chill");
+    expect(parseIntentText("cozy lofi beat").input.mood).toBe("chill");
+    expect(parseIntentText("happy house banger").input.mood).toBe("energetic");
+    expect(parseIntentText("vibrant funky house").input.mood).toBe("energetic");
+    // SK stems
+    expect(parseIntentText("zúrivý drill").input.mood).toBe("aggressive");
+    expect(parseIntentText("pohodový house").input.mood).toBe("chill");
+    expect(parseIntentText("radostný beat").input.mood).toBe("energetic");
+    expect(parseIntentText("nočný techno").input.mood).toBe("dark");
+  });
+
+  it("resolves the expanded trait vocabulary into sliders", () => {
+    expect(parseIntentText("gritty techno").input.energy).toBe(0.8);
+    expect(parseIntentText("clean minimal house").input.complexity).toBe(0.3);
+    expect(parseIntentText("lush ambient pad").input.density).toBe(0.65);
+    expect(parseIntentText("epic trap banger").input.energy).toBe(0.85);
+    expect(parseIntentText("haunting ambient scene").input.complexity).toBe(0.55);
+    expect(parseIntentText("peak time techno").input.energy).toBe(0.95);
+    // SK stems
+    expect(parseIntentText("surový drill").input.energy).toBe(0.8);
+    expect(parseIntentText("bohatý ambient").input.density).toBe(0.65);
+  });
+});

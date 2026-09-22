@@ -37,7 +37,12 @@ export interface SemanticMatch {
 /** Cosine threshold below which a match is "not confident enough" to use. */
 export const SEMANTIC_THRESHOLD = 0.5;
 
-const MOOD_SK: Record<string, string> = { dark: "tmavý", aggressive: "agresívny", chill: "pokojný", energetic: "energický" };
+const MOOD_SK: Record<string, string> = {
+  dark: "tmavý",
+  aggressive: "agresívny",
+  chill: "pokojný",
+  energetic: "energický",
+};
 
 /**
  * The curated knowledge base: artist presets (the C1 dictionary, embedded so
@@ -58,7 +63,7 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
       ...(preset.bpmRange ? { bpmRange: [...preset.bpmRange] as [number, number] } : {}),
     };
     const moodEn = preset.mood ?? "";
-    const moodSk = preset.mood ? MOOD_SK[preset.mood] ?? "" : "";
+    const moodSk = preset.mood ? (MOOD_SK[preset.mood] ?? "") : "";
     corpus.push({ text: `${primary} type beat`, patch, label: preset.label });
     corpus.push({ text: `${primary} style instrumental`, patch, label: preset.label });
     if (preset.mood || preset.style) {
@@ -104,6 +109,28 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     { text: "pokojný ambientný zvuk", patch: { genre: "ambient", mood: "chill", energy: 0.3 } },
     { text: "tvrdý trap beat s 808kami", patch: { genre: "trap", energy: 0.85 } },
     { text: "hypnotické minimálne techno", patch: { genre: "techno", style: "minimal", energy: 0.6 } },
+    // vocabulary-wave entries (expanded genre/sub-genre + artist coverage)
+    { text: "hard techno warehouse peak time banger", patch: { genre: "techno", style: "driving", energy: 0.95 } },
+    { text: "dark hypnotic berlin techno groove", patch: { genre: "techno", mood: "dark", energy: 0.7 } },
+    { text: "trance euphoric breakdown with supersaw", patch: { genre: "techno", mood: "energetic", energy: 0.85 } },
+    { text: "synthwave outrun night drive", patch: { genre: "techno", mood: "energetic", energy: 0.7 } },
+    {
+      text: "drift phonk for a night drive",
+      patch: { genre: "phonk", style: "drift", mood: "aggressive", energy: 0.9 },
+    },
+    { text: "memphis phonk cassette tape vibe", patch: { genre: "phonk", style: "memphis", mood: "dark" } },
+    { text: "liquid drum and bass rollers", patch: { genre: "dnb", style: "liquid", energy: 0.85 } },
+    { text: "jump up dnb with reese bass", patch: { genre: "dnb", style: "jumpup", mood: "aggressive", energy: 0.9 } },
+    { text: "afro house sunset groove", patch: { genre: "house", style: "afro", mood: "chill", energy: 0.65 } },
+    { text: "uk drill with sliding 808 and dark bells", patch: { genre: "drill", style: "uk", mood: "dark" } },
+    { text: "boom bap with a dusty soul sample", patch: { genre: "trap", style: "classic", energy: 0.55 } },
+    { text: "dubstep half time wobble", patch: { genre: "trap", mood: "aggressive", energy: 0.9 } },
+    { text: "chillhop study beats to relax", patch: { genre: "ambient", mood: "chill", energy: 0.35 } },
+    { text: "drone dark ambient soundscape", patch: { genre: "ambient", mood: "dark", energy: 0.25 } },
+    { text: "tvrdý hard techno na festivale", patch: { genre: "techno", mood: "aggressive", energy: 0.95 } },
+    { text: "drift phonk na nočnú jazdu", patch: { genre: "phonk", style: "drift", mood: "aggressive", energy: 0.9 } },
+    { text: "boom bap so starým samplom", patch: { genre: "trap", style: "classic", energy: 0.55 } },
+    { text: "pokojný chillhop na štúdium", patch: { genre: "ambient", mood: "chill", energy: 0.35 } },
   ];
   for (const entry of vocab) {
     corpus.push({ text: entry.text, patch: entry.patch, label: entry.text });

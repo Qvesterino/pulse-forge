@@ -158,3 +158,50 @@ describe("targeted section revise (C3)", () => {
     }
   });
 });
+
+describe("expanded artist roster (vocabulary wave)", () => {
+  it("maps techno references to peak-time/hard variants", () => {
+    const charlotte = parseIntentText("charlotte de witte type beat");
+    expect(charlotte.input.genre).toBe("techno");
+    expect(charlotte.input.style).toBe("driving");
+    expect(charlotte.input.mood).toBe("aggressive");
+    expect(charlotte.input.bpmRange).toEqual([145, 152]);
+    expect(parseIntentText("ben klock type beat").input.style).toBe("minimal");
+    expect(parseIntentText("sara landry type beat").input.bpmRange).toEqual([148, 155]);
+    expect(parseIntentText("boris brejcha type beat").input.bpmRange).toEqual([120, 126]);
+  });
+
+  it("maps trap references including the opium rage cluster", () => {
+    expect(parseIntentText("future type beat").input.style).toBe("rolling");
+    expect(parseIntentText("gunna type beat").input.mood).toBe("chill");
+    const ken = parseIntentText("ken carson type beat");
+    expect(ken.input.genre).toBe("trap");
+    expect(ken.input.mood).toBe("aggressive");
+    expect(ken.input.bpmRange).toEqual([150, 165]);
+    expect(parseIntentText("zaytoven type beat").input.style).toBe("classic");
+    expect(parseIntentText("chief keef type beat").input.genre).toBe("drill");
+  });
+
+  it("maps phonk, dnb, ambient and house references", () => {
+    const kordhell = parseIntentText("kordhell type beat");
+    expect(kordhell.input.genre).toBe("phonk");
+    expect(kordhell.input.style).toBe("drift");
+    expect(kordhell.input.bpmRange).toEqual([150, 165]);
+    expect(parseIntentText("dj smokey type beat").input.style).toBe("memphis");
+    expect(parseIntentText("sub focus type beat").input.genre).toBe("dnb");
+    expect(parseIntentText("hedex type beat").input.style).toBe("jumpup");
+    const eno = parseIntentText("brian eno type beat");
+    expect(eno.input.genre).toBe("ambient");
+    expect(eno.input.bpmRange).toEqual([60, 80]);
+    expect(parseIntentText("aphex twin type beat").input.style).toBe("glitch");
+    expect(parseIntentText("keinemusik type beat").input.style).toBe("afro");
+    expect(parseIntentText("dom dolla type beat").input.bpmRange).toEqual([124, 127]);
+    expect(parseIntentText("trance type beat").input.genre).toBe("techno");
+  });
+
+  it("explicit words still override the expanded presets", () => {
+    const bright = parseIntentText("charlotte de witte type beat chill");
+    expect(bright.input.mood).toBe("chill");
+    expect(bright.input.genre).toBe("techno");
+  });
+});

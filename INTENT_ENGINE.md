@@ -464,7 +464,7 @@ NAD keyword parserom:
   zakáže CDN fallback (offline-first po prvom fetchnutí; PWA precache ho
   vylučuje, runtime cache len prehliadača).
 - **Prístup: retrieval namiesto trénovania hláv** — curated korpus
-  (`buildSemanticCorpus`, ~80 referencií: artist presety EN+SK + žáner×mood
+  (`buildSemanticCorpus`, ~130 referencií (vocabulary wave): artist presety EN+SK + žáner×mood
   slovná zásoba) sa raz zembeduje a text sa matchuje kosínovou
   najbližším susedom. Match donuje intent patch (rovnaký mechanizmus ako
   artist slovník, ale dosiahnutý VÝZNAMOM, nie slovami) — preto pochopí
@@ -491,7 +491,7 @@ beat?": aggressive ✓ (mood), "more energetic" ✓ (C2 revise), artist
 referencie ✓ (C1 slovník) — predtým "travis scott type beat" padol do
 default house patternu (najhorší možný fallback pre trap request).
 
-- **C1 Artist alias slovník** (`src/intent/artists.ts`): 14 presetov /
+- **C1 Artist alias slovník** (`src/intent/artists.ts`): 38 presetov (rozsirené 2026-09-22 — vocabulary wave: techno charlotte de witte/klock/sara landry/brejcha/trance; trap future/gunna/opium rage/pierre/zaytoven/tay keith/lex luger; drill chief keef; phonk kordhell-drift/dj smokey-memphis; dnb sub focus/hedex; house dom dolla/keinemusik/overmono; ambient eno/aphex/BoC/tycho; jersey bandmanrill) /
   ~40 match fráz — travis scott (trap/rolling/dark/130–140), metro boomin,
   21 savage, rage (carti/yeat/southstar: bouncy/aggressive/150–165), drill
   (pop smoke/central cee: sparse/140–145), ice spice jersey, boom bap
