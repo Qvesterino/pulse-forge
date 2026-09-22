@@ -1,18 +1,27 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useServices } from "./context";
+import { useGenerativeStatus, useServices } from "./context";
 import {
   resetPadSlice,
   setPadMod,
   setPadParams,
   setPadSynth,
   setTrackParams,
+  setGenerativeTrackConfig,
   setInstrumentParam,
   setInstrumentSample,
 } from "../commands/commands";
-import type { DrumPad, InstrumentKind, PadMod, SampleLayer, Track } from "../project-model/types";
+import {
+  PPQ,
+  type DrumPad,
+  type InstrumentKind,
+  type PadMod,
+  type SampleLayer,
+  type Track,
+} from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
+import { ticksPerBar } from "../project-model/schema";
 import { autoMapVelocityLayers } from "../samples/autoMap";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
@@ -72,12 +81,25 @@ export function Inspector({
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
   const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
   const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
+  const [generativeStyleDraft, setGenerativeStyleDraft] = useState("");
+  const [generativeCaptureState, setGenerativeCaptureState] = useState<"idle" | "capturing" | "error">("idle");
+  const generativeStatus = useGenerativeStatus(track.id);
 
   useEffect(() => {
     // A mapping proposal belongs to the track that received the drop. Never
     // leave an Apply button for a different track after selection changes.
     setPendingSamplerMapping(null);
-  }, [track.id]);
+    if (track.kind === "generative" && track.generative.style.kind === "text") {
+      setGenerativeStyleDraft(track.generative.style.text);
+    } else {
+      setGenerativeStyleDraft("");
+    }
+  }, [
+    track.id,
+    track.kind,
+    track.kind === "generative" ? track.generative.style.kind : null,
+    track.kind === "generative" && track.generative.style.kind === "text" ? track.generative.style.text : null,
+  ]);
 
   const trackSection = (
     <>
@@ -273,6 +295,161 @@ export function Inspector({
     return (
       <aside className="inspector" aria-label="Inspector">
         {trackSection}
+      </aside>
+    );
+  }
+
+  if (track.kind === "generative") {
+    const sourceTracks = doc.tracks.filter((candidate) => candidate.id !== track.id && candidate.kind !== "group");
+    const commitStyle = (): void => {
+      const text = generativeStyleDraft.trim().slice(0, 400);
+      if (!text || (track.generative.style.kind === "text" && text === track.generative.style.text)) return;
+      services.store.execute(setGenerativeTrackConfig(doc, track.id, { style: { kind: "text", text } }));
+    };
+    const captureFourBars = (): void => {
+      setGenerativeCaptureState("capturing");
+      const durationSec = (ticksPerBar(doc) * 4 * 60) / (doc.bpm * PPQ);
+      void services.generativeRuntime
+        .captureTrack(track.id, durationSec)
+        .then(() => setGenerativeCaptureState("idle"))
+        .catch(() => setGenerativeCaptureState("error"));
+    };
+    return (
+      <aside className="inspector" aria-label="Inspector">
+        {trackSection}
+        <h2 className="panel-title">MRT2 GENERATIVE</h2>
+        <p className="inspector-subtitle">
+          {track.generative.providerId} / {track.generative.modelId}
+        </p>
+        <label className="fx-param-select">
+          <span className="slider-label">STYLE PROMPT</span>
+          <input
+            value={generativeStyleDraft}
+            maxLength={400}
+            onChange={(event) => setGenerativeStyleDraft(event.target.value)}
+            onBlur={commitStyle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+            }}
+          />
+        </label>
+        <label className="fx-param-select">
+          <span className="slider-label">CHORD SOURCE</span>
+          <select
+            value={track.generative.chordSourceTrackId ?? ""}
+            onChange={(event) =>
+              services.store.execute(
+                setGenerativeTrackConfig(doc, track.id, { chordSourceTrackId: event.target.value || undefined }),
+              )
+            }
+          >
+            <option value="">None</option>
+            {sourceTracks.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fx-param-select">
+          <span className="slider-label">NOTE SOURCE</span>
+          <select
+            value={track.generative.noteSourceTrackId ?? ""}
+            onChange={(event) =>
+              services.store.execute(
+                setGenerativeTrackConfig(doc, track.id, { noteSourceTrackId: event.target.value || undefined }),
+              )
+            }
+          >
+            <option value="">None</option>
+            {sourceTracks.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fx-param-select">
+          <span className="slider-label">DRUMS</span>
+          <select
+            value={track.generative.drumsMode}
+            onChange={(event) =>
+              services.store.execute(
+                setGenerativeTrackConfig(doc, track.id, {
+                  drumsMode: event.target.value as "off" | "on" | "provider-default",
+                }),
+              )
+            }
+          >
+            <option value="off">OFF — accompaniment only</option>
+            <option value="on">ON — provider may add drums</option>
+            <option value="provider-default">PROVIDER DEFAULT</option>
+          </select>
+        </label>
+        <Slider
+          compact
+          label="Energy"
+          value={track.generative.macros.energy}
+          min={0}
+          max={1}
+          defaultValue={0.5}
+          format={(value) => `${Math.round(value * 100)}%`}
+          onCommit={(energy) => services.store.execute(setGenerativeTrackConfig(doc, track.id, { macros: { energy } }))}
+        />
+        <Slider
+          compact
+          label="Density"
+          value={track.generative.macros.density}
+          min={0}
+          max={1}
+          defaultValue={0.35}
+          format={(value) => `${Math.round(value * 100)}%`}
+          onCommit={(density) =>
+            services.store.execute(setGenerativeTrackConfig(doc, track.id, { macros: { density } }))
+          }
+        />
+        <Slider
+          compact
+          label="Variation"
+          value={track.generative.macros.variation}
+          min={0}
+          max={1}
+          defaultValue={0.25}
+          format={(value) => `${Math.round(value * 100)}%`}
+          onCommit={(variation) =>
+            services.store.execute(setGenerativeTrackConfig(doc, track.id, { macros: { variation } }))
+          }
+        />
+        <Slider
+          compact
+          label="Texture"
+          value={track.generative.macros.texture}
+          min={0}
+          max={1}
+          defaultValue={0.5}
+          format={(value) => `${Math.round(value * 100)}%`}
+          onCommit={(texture) =>
+            services.store.execute(setGenerativeTrackConfig(doc, track.id, { macros: { texture } }))
+          }
+        />
+        <p className="inspector-subtitle">
+          {track.generative.latencyMode.toUpperCase()} · {generativeStatus.state.toUpperCase()}
+          {generativeStatus.message ? ` · ${generativeStatus.message}` : ""}
+        </p>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={generativeCaptureState === "capturing"}
+          onClick={captureFourBars}
+          title="Capture four bars as a normal KYX audio clip"
+        >
+          {generativeCaptureState === "capturing" ? "CAPTURING…" : "CAPTURE 4 BARS"}
+        </button>
+        {generativeCaptureState === "error" && (
+          <p className="inspector-subtitle">CAPTURE FAILED — check provider status</p>
+        )}
       </aside>
     );
   }

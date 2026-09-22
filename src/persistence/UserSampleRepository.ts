@@ -18,6 +18,13 @@ export interface UserSampleAsset {
    * loops without a steady pulse never get one.
    */
   bpm?: number;
+  /** Optional provenance for generated audio; absent means imported/recorded user audio. */
+  origin?: "generated";
+  generated?: {
+    providerId: string;
+    modelId: string;
+    inputHash: string;
+  };
 }
 
 export interface UserSampleAudio {

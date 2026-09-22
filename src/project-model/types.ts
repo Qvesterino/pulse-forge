@@ -275,7 +275,61 @@ export interface GroupTrack {
   frozen?: FrozenState;
 }
 
-export type Track = DrumTrack | InstrumentTrack | GroupTrack;
+export type GenerativeDrumsMode = "off" | "on" | "provider-default";
+export type GenerativeMacroName = "energy" | "density" | "variation" | "texture";
+
+export interface GenerativeMacroAutomation {
+  id: ID;
+  macro: GenerativeMacroName;
+  points: AutomationPoint[];
+}
+
+export interface GenerativeTrackConfig {
+  /** Provider registry id, e.g. "mrt2". */
+  providerId: string;
+  /** Provider model id, e.g. "mrt2_small". */
+  modelId: string;
+  /** Text or durable audio asset reference used for style conditioning. */
+  style: { kind: "text"; text: string } | { kind: "audio"; bufferId: string };
+  /** Optional melodic/chord source track ids. Runtime resolves their notes. */
+  noteSourceTrackId?: ID;
+  chordSourceTrackId?: ID;
+  drumsMode: GenerativeDrumsMode;
+  macros: {
+    energy: number;
+    density: number;
+    variation: number;
+    texture: number;
+  };
+  /** Optional validated macro lanes sampled by live and capture conditioning. */
+  automation?: GenerativeMacroAutomation[];
+  /** Optional provider seed; providers may report that they do not support it. */
+  seed?: string;
+  /** Live session or capture-first workflow preference. */
+  latencyMode: "live" | "capture";
+  providerVersion?: string;
+}
+
+export interface GenerativeTrack {
+  id: ID;
+  kind: "generative";
+  name: string;
+  gain: number;
+  pan: number;
+  mute: boolean;
+  solo: boolean;
+  effects: EffectInstance[];
+  sends: Record<ID, number>;
+  /** Optional group membership — track routes through a GroupTrack instead of master. */
+  groupId?: ID;
+  /** Tag color for mixer strips (CSS hex). */
+  color?: string;
+  /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
+  frozen?: FrozenState;
+  generative: GenerativeTrackConfig;
+}
+
+export type Track = DrumTrack | InstrumentTrack | GroupTrack | GenerativeTrack;
 
 export interface ReturnTrack {
   id: ID;

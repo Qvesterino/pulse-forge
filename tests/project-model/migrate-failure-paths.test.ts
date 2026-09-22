@@ -55,6 +55,8 @@ describe("migrateProject — failure paths", () => {
     // Pin the format so the caller can pattern-match the numbers for an
     // "update your app" toast without parsing free text.
     const huge = { ...createProjectFromTemplate("house"), schemaVersion: 9999 };
-    expect(() => migrateProject(huge)).toThrow(/Project schema 9999 is newer than supported 1/);
+    expect(() => migrateProject(huge)).toThrow(
+      new RegExp(`Project schema 9999 is newer than supported ${SCHEMA_VERSION}`),
+    );
   });
 });

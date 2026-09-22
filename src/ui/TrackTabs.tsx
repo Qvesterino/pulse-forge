@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useSelection, useServices, useTracks } from "./context";
-import { createDrumTrack, createGroupTrack, createInstrumentTrack, setTrackParams } from "../commands/commands";
+import {
+  createDrumTrack,
+  createGenerativeTrack,
+  createGroupTrack,
+  createInstrumentTrack,
+  setTrackParams,
+} from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
 
 const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
@@ -25,6 +31,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
 export function trackBadge(track: Track): string {
   if (track.kind === "drum") return KIND_BADGE.drum;
   if (track.kind === "group") return KIND_BADGE.group;
+  if (track.kind === "generative") return "AI";
   return KIND_BADGE[track.instrument];
 }
 
@@ -87,7 +94,7 @@ export function TrackTabs({
             type="button"
             role="tab"
             aria-selected={isSelected}
-            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
+            aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
             className={`track-tab${isSelected ? " active" : ""}`}
             title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range`}
             onClick={(e) => onSelectTrack(track.id, e)}
@@ -114,6 +121,8 @@ export function TrackTabs({
           if (!value) return;
           if (value === "drum") {
             services.store.execute(createDrumTrack(doc));
+          } else if (value === "generative") {
+            services.store.execute(createGenerativeTrack(doc));
           } else if (value === "group") {
             services.store.execute(createGroupTrack(doc));
           } else {
@@ -123,6 +132,7 @@ export function TrackTabs({
       >
         <option value="">+ TRACK</option>
         <option value="drum">Drum Rack</option>
+        <option value="generative">MRT2 Generative</option>
         <option value="sampler">Sampler</option>
         <option value="analog">Analog Synth</option>
         <option value="bass">Bass Synth</option>

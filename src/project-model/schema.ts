@@ -3,6 +3,10 @@ import type {
   DrumTrack,
   DeviceState,
   EffectInstance,
+  GenerativeTrack,
+  GenerativeMacroAutomation,
+  GenerativeMacroName,
+  GenerativeTrackConfig,
   InstrumentKind,
   InstrumentTrack,
   IntensityPoint,
@@ -31,7 +35,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -104,6 +108,28 @@ export function createGroupTrackModel(name: string): import("../project-model/ty
     solo: false,
     effects: [],
     sends: {},
+  };
+}
+
+export function createGenerativeTrackModel(name: string): GenerativeTrack {
+  return {
+    id: uid("track"),
+    kind: "generative",
+    name,
+    gain: 0.85,
+    pan: 0,
+    mute: false,
+    solo: false,
+    effects: [],
+    sends: {},
+    generative: {
+      providerId: "mrt2",
+      modelId: "mrt2_small",
+      style: { kind: "text", text: "dark atmospheric accompaniment" },
+      drumsMode: "off",
+      macros: { energy: 0.5, density: 0.35, variation: 0.25, texture: 0.5 },
+      latencyMode: "live",
+    },
   };
 }
 
@@ -845,6 +871,81 @@ function normalizeActivePatternDomain(s: NormalizeState): void {
   }
 }
 
+function sanitizeGenerativeConfig(raw: unknown, trackId: string, trackIds: Set<string>): GenerativeTrackConfig {
+  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const safeString = (candidate: unknown, fallback: string, maxLength: number): string =>
+    typeof candidate === "string" && candidate.length > 0 && candidate.length <= maxLength ? candidate : fallback;
+  const unit = (candidate: unknown, fallback: number): number =>
+    typeof candidate === "number" && Number.isFinite(candidate) ? Math.min(1, Math.max(0, candidate)) : fallback;
+  const styleValue = value.style && typeof value.style === "object" ? (value.style as Record<string, unknown>) : {};
+  const style =
+    styleValue.kind === "audio" && typeof styleValue.bufferId === "string" && styleValue.bufferId.length > 0
+      ? { kind: "audio" as const, bufferId: styleValue.bufferId.slice(0, 200) }
+      : {
+          kind: "text" as const,
+          text: safeString(styleValue.text, "dark atmospheric accompaniment", 400),
+        };
+  const sourceId = (candidate: unknown): string | undefined =>
+    typeof candidate === "string" && candidate !== trackId && trackIds.has(candidate) ? candidate : undefined;
+  const macrosValue = value.macros && typeof value.macros === "object" ? (value.macros as Record<string, unknown>) : {};
+  const drumsMode = value.drumsMode === "on" || value.drumsMode === "provider-default" ? value.drumsMode : "off";
+  const latencyMode = value.latencyMode === "capture" ? "capture" : "live";
+  const seed = typeof value.seed === "string" && value.seed.length <= 200 ? value.seed : undefined;
+  const providerVersion =
+    typeof value.providerVersion === "string" && value.providerVersion.length <= 120
+      ? value.providerVersion
+      : undefined;
+  const noteSourceTrackId = sourceId(value.noteSourceTrackId);
+  const chordSourceTrackId = sourceId(value.chordSourceTrackId);
+  const automation = Array.isArray(value.automation)
+    ? value.automation
+        .map((raw): GenerativeMacroAutomation | null => {
+          if (!raw || typeof raw !== "object") return null;
+          const candidate = raw as Record<string, unknown>;
+          const macro = candidate.macro;
+          if (macro !== "energy" && macro !== "density" && macro !== "variation" && macro !== "texture") return null;
+          if (!Array.isArray(candidate.points)) return null;
+          const points = candidate.points
+            .map((point) => {
+              if (!point || typeof point !== "object") return null;
+              const entry = point as Record<string, unknown>;
+              const tick = Number(entry.tick);
+              const pointValue = Number(entry.value);
+              if (!Number.isFinite(tick) || !Number.isFinite(pointValue)) return null;
+              return {
+                tick: Math.max(0, Math.min(1_000_000_000, Math.round(tick))),
+                value: Math.min(1, Math.max(0, pointValue)),
+              };
+            })
+            .filter((point): point is { tick: number; value: number } => point !== null)
+            .sort((a, b) => a.tick - b.tick);
+          if (points.length === 0) return null;
+          const id =
+            typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id.slice(0, 200) : uid("genAuto");
+          return { id, macro: macro as GenerativeMacroName, points };
+        })
+        .filter((lane): lane is GenerativeMacroAutomation => lane !== null)
+    : [];
+  return {
+    providerId: safeString(value.providerId, "mrt2", 80),
+    modelId: safeString(value.modelId, "mrt2_small", 120),
+    style,
+    ...(noteSourceTrackId ? { noteSourceTrackId } : {}),
+    ...(chordSourceTrackId ? { chordSourceTrackId } : {}),
+    drumsMode,
+    macros: {
+      energy: unit(macrosValue.energy, 0.5),
+      density: unit(macrosValue.density, 0.35),
+      variation: unit(macrosValue.variation, 0.25),
+      texture: unit(macrosValue.texture, 0.5),
+    },
+    ...(automation.length > 0 ? { automation } : {}),
+    ...(seed !== undefined ? { seed } : {}),
+    latencyMode,
+    ...(providerVersion !== undefined ? { providerVersion } : {}),
+  };
+}
+
 function normalizeTracksDomain(s: NormalizeState): void {
   const doc = s.doc;
   const trackIds = new Set(doc.tracks.map((t) => t.id));
@@ -865,207 +966,320 @@ function normalizeTracksDomain(s: NormalizeState): void {
         changed = true;
         continue;
       }
-      clean[k] = v;
+      // Clamp on READ too: "clamped on write" held only for the command
+      // boundary — a hostile/legacy doc with sends: { ret: 42 } reached the
+      // engine unclamped (+52 dB into the FX bus).
+      clean[k] = Math.min(1, Math.max(0, v));
     }
     return changed ? clean : sends;
   };
-  const tracks = doc.tracks.map((track): DrumTrack | InstrumentTrack | import("../project-model/types").GroupTrack => {
-    if (track.kind === "drum") {
-      let t: DrumTrack = track;
-      const pads = t.pads.map((pad) => {
-        let nextPad = pad;
-        let padChanged = false;
-        const cleanNonNegative = (value: unknown): number | undefined =>
-          typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-        const sliceStart = cleanNonNegative(pad.sliceStart);
-        const sliceEnd = cleanNonNegative(pad.sliceEnd);
-        const fadeIn = cleanNonNegative(pad.sliceFadeIn) ?? 0;
-        const fadeOut = cleanNonNegative(pad.sliceFadeOut) ?? 0;
-        const hasSliceConfig =
-          pad.sliceStart !== undefined ||
-          pad.sliceEnd !== undefined ||
-          pad.sliceFadeIn !== undefined ||
-          pad.sliceFadeOut !== undefined ||
-          pad.sliceReverse !== undefined;
-        const hasSynth = (pad as any).synth !== undefined;
-        const sliceLoop =
-          typeof (pad as unknown as Record<string, unknown>).sliceLoop === "boolean"
-            ? ((pad as unknown as { sliceLoop?: unknown }).sliceLoop as boolean)
-            : undefined;
-        const rawLoopStart = (pad as unknown as Record<string, unknown>).sliceLoopStart;
-        const rawLoopEnd = (pad as unknown as Record<string, unknown>).sliceLoopEnd;
-        const sliceLoopStart =
-          typeof rawLoopStart === "number" && Number.isFinite(rawLoopStart) && rawLoopStart >= 0
-            ? rawLoopStart
-            : undefined;
-        const sliceLoopEnd =
-          typeof rawLoopEnd === "number" && Number.isFinite(rawLoopEnd) && rawLoopEnd >= 0 ? rawLoopEnd : undefined;
+  const tracks = doc.tracks.map(
+    (track): DrumTrack | InstrumentTrack | GenerativeTrack | import("../project-model/types").GroupTrack => {
+      if (track.kind === "drum") {
+        let t: DrumTrack = track;
+        const pads = t.pads.map((pad) => {
+          let nextPad = pad;
+          let padChanged = false;
+          const cleanNonNegative = (value: unknown): number | undefined =>
+            typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+          const sliceStart = cleanNonNegative(pad.sliceStart);
+          const sliceEnd = cleanNonNegative(pad.sliceEnd);
+          const fadeIn = cleanNonNegative(pad.sliceFadeIn) ?? 0;
+          const fadeOut = cleanNonNegative(pad.sliceFadeOut) ?? 0;
+          const hasSliceConfig =
+            pad.sliceStart !== undefined ||
+            pad.sliceEnd !== undefined ||
+            pad.sliceFadeIn !== undefined ||
+            pad.sliceFadeOut !== undefined ||
+            pad.sliceReverse !== undefined;
+          const hasSynth = (pad as any).synth !== undefined;
+          const sliceLoop =
+            typeof (pad as unknown as Record<string, unknown>).sliceLoop === "boolean"
+              ? ((pad as unknown as { sliceLoop?: unknown }).sliceLoop as boolean)
+              : undefined;
+          const rawLoopStart = (pad as unknown as Record<string, unknown>).sliceLoopStart;
+          const rawLoopEnd = (pad as unknown as Record<string, unknown>).sliceLoopEnd;
+          const sliceLoopStart =
+            typeof rawLoopStart === "number" && Number.isFinite(rawLoopStart) && rawLoopStart >= 0
+              ? rawLoopStart
+              : undefined;
+          const sliceLoopEnd =
+            typeof rawLoopEnd === "number" && Number.isFinite(rawLoopEnd) && rawLoopEnd >= 0 ? rawLoopEnd : undefined;
 
-        const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
-        const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
-        // Per-pad mod (voice-local LFO) sanitization — null = disabled/off
-        const rawMod: unknown = (pad as unknown as Record<string, unknown>).mod;
-        const saneMod = rawMod !== undefined ? sanitizePadMod(rawMod) : undefined;
-        const modChanged = rawMod !== undefined && JSON.stringify(saneMod) !== JSON.stringify(rawMod ?? null);
-        const loopChanged =
-          sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
-          sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
-          sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
-        if (loopChanged) {
-          nextPad = {
-            ...nextPad,
-            sliceLoop: sliceLoop ?? undefined,
-            sliceLoopStart: sliceLoopStart ?? undefined,
-            sliceLoopEnd: sliceLoopEnd ?? undefined,
-          } as typeof pad;
-          padChanged = true;
-        }
-
-        if (padColorChanged) {
-          nextPad = { ...nextPad, color: padColor } as typeof pad;
-          padChanged = true;
-        }
-        if (!hasSliceConfig && !hasSynth) {
-          const earlyLoopChanged =
+          const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
+          const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
+          // Per-pad mod (voice-local LFO) sanitization — null = disabled/off
+          const rawMod: unknown = (pad as unknown as Record<string, unknown>).mod;
+          const saneMod = rawMod !== undefined ? sanitizePadMod(rawMod) : undefined;
+          const modChanged = rawMod !== undefined && JSON.stringify(saneMod) !== JSON.stringify(rawMod ?? null);
+          const loopChanged =
             sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
             sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
             sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
-          if (!padColorChanged && !earlyLoopChanged && !modChanged) return pad;
-          return {
-            ...pad,
-            color: padColor,
-            sliceLoop: sliceLoop ?? undefined,
-            sliceLoopStart: sliceLoopStart ?? undefined,
-            sliceLoopEnd: sliceLoopEnd ?? undefined,
-            ...(modChanged ? { mod: saneMod } : {}),
-          };
-        }
-        if (hasSliceConfig) {
-          if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
-          if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
-          if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
-          const invalidBound =
-            (pad.sliceStart !== undefined && sliceStart === undefined) ||
-            (pad.sliceEnd !== undefined && sliceEnd === undefined);
-          if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
+          if (loopChanged) {
             nextPad = {
               ...nextPad,
-              sliceFadeIn: fadeIn,
-              sliceFadeOut: fadeOut,
-              sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
-            };
-            delete nextPad.sliceStart;
-            delete nextPad.sliceEnd;
+              sliceLoop: sliceLoop ?? undefined,
+              sliceLoopStart: sliceLoopStart ?? undefined,
+              sliceLoopEnd: sliceLoopEnd ?? undefined,
+            } as typeof pad;
             padChanged = true;
-          } else if (padChanged) {
-            nextPad = {
-              ...nextPad,
-              sliceStart,
-              sliceEnd,
-              sliceFadeIn: fadeIn,
-              sliceFadeOut: fadeOut,
-              sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+          }
+
+          if (padColorChanged) {
+            nextPad = { ...nextPad, color: padColor } as typeof pad;
+            padChanged = true;
+          }
+          if (!hasSliceConfig && !hasSynth) {
+            const earlyLoopChanged =
+              sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
+              sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
+              sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
+            if (!padColorChanged && !earlyLoopChanged && !modChanged) return pad;
+            return {
+              ...pad,
+              color: padColor,
+              sliceLoop: sliceLoop ?? undefined,
+              sliceLoopStart: sliceLoopStart ?? undefined,
+              sliceLoopEnd: sliceLoopEnd ?? undefined,
+              ...(modChanged ? { mod: saneMod } : {}),
             };
           }
-        }
-        // Synth config sanitization
-        const rawSynth: unknown = (pad as any).synth;
-        if (rawSynth !== undefined) {
-          if (rawSynth === null) {
-            if (nextPad.synth !== null) {
-              nextPad = { ...nextPad, synth: null } as any;
+          if (hasSliceConfig) {
+            if (sliceStart !== pad.sliceStart || sliceEnd !== pad.sliceEnd) padChanged = true;
+            if (fadeIn !== (pad.sliceFadeIn ?? 0) || fadeOut !== (pad.sliceFadeOut ?? 0)) padChanged = true;
+            if (pad.sliceReverse !== undefined && typeof pad.sliceReverse !== "boolean") padChanged = true;
+            const invalidBound =
+              (pad.sliceStart !== undefined && sliceStart === undefined) ||
+              (pad.sliceEnd !== undefined && sliceEnd === undefined);
+            if (invalidBound || (sliceStart !== undefined && sliceEnd !== undefined && sliceEnd <= sliceStart)) {
+              nextPad = {
+                ...nextPad,
+                sliceFadeIn: fadeIn,
+                sliceFadeOut: fadeOut,
+                sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+              };
+              delete nextPad.sliceStart;
+              delete nextPad.sliceEnd;
               padChanged = true;
+            } else if (padChanged) {
+              nextPad = {
+                ...nextPad,
+                sliceStart,
+                sliceEnd,
+                sliceFadeIn: fadeIn,
+                sliceFadeOut: fadeOut,
+                sliceReverse: typeof pad.sliceReverse === "boolean" ? pad.sliceReverse : false,
+              };
             }
-          } else if (typeof rawSynth === "object" && rawSynth !== null) {
-            const obj = rawSynth as Record<string, unknown>;
-            const allowed: Record<string, { min: number; max: number; def: number }> = {
-              hatClosed: { min: 0.05, max: 1.5, def: 0.08 },
-              hatOpen: { min: 0.05, max: 1.5, def: 0.32 },
-              clap: { min: 0.05, max: 1.5, def: 0.25 },
-              perc: { min: 0.05, max: 1.5, def: 0.12 },
-              cowbell: { min: 0.05, max: 1.5, def: 0.3 },
-              kick: { min: 0.05, max: 1.5, def: 0.42 },
-              snare: { min: 0.05, max: 1.5, def: 0.22 },
-            };
-            const type = typeof obj.type === "string" && obj.type in allowed ? (obj.type as string) : null;
-            if (!type) {
-              nextPad = { ...nextPad, synth: null } as any;
-              padChanged = true;
-            } else {
-              const decay =
-                typeof obj.decay === "number" && Number.isFinite(obj.decay)
-                  ? Math.min(1.5, Math.max(0.02, obj.decay))
-                  : allowed[type].def;
-              const tone =
-                typeof obj.tone === "number" && Number.isFinite(obj.tone)
-                  ? Math.min(12000, Math.max(200, obj.tone))
-                  : type === "hatClosed"
-                    ? 7500
-                    : type === "hatOpen"
-                      ? 7000
-                      : type === "snare"
-                        ? 1750
-                        : 5000;
-              const snap =
-                typeof obj.snap === "number" && Number.isFinite(obj.snap) ? Math.min(1, Math.max(0, obj.snap)) : 0.35;
-              const body =
-                typeof obj.body === "number" && Number.isFinite(obj.body) ? Math.min(1, Math.max(0, obj.body)) : 0.5;
-              const nextSynth: any = { type, decay, tone, snap, body };
-              if (JSON.stringify(nextSynth) !== JSON.stringify((pad as any).synth)) {
-                nextPad = { ...nextPad, synth: nextSynth } as any;
+          }
+          // Synth config sanitization
+          const rawSynth: unknown = (pad as any).synth;
+          if (rawSynth !== undefined) {
+            if (rawSynth === null) {
+              if (nextPad.synth !== null) {
+                nextPad = { ...nextPad, synth: null } as any;
                 padChanged = true;
               }
+            } else if (typeof rawSynth === "object" && rawSynth !== null) {
+              const obj = rawSynth as Record<string, unknown>;
+              const allowed: Record<string, { min: number; max: number; def: number }> = {
+                hatClosed: { min: 0.05, max: 1.5, def: 0.08 },
+                hatOpen: { min: 0.05, max: 1.5, def: 0.32 },
+                clap: { min: 0.05, max: 1.5, def: 0.25 },
+                perc: { min: 0.05, max: 1.5, def: 0.12 },
+                cowbell: { min: 0.05, max: 1.5, def: 0.3 },
+                kick: { min: 0.05, max: 1.5, def: 0.42 },
+                snare: { min: 0.05, max: 1.5, def: 0.22 },
+              };
+              const type = typeof obj.type === "string" && obj.type in allowed ? (obj.type as string) : null;
+              if (!type) {
+                nextPad = { ...nextPad, synth: null } as any;
+                padChanged = true;
+              } else {
+                const decay =
+                  typeof obj.decay === "number" && Number.isFinite(obj.decay)
+                    ? Math.min(1.5, Math.max(0.02, obj.decay))
+                    : allowed[type].def;
+                const tone =
+                  typeof obj.tone === "number" && Number.isFinite(obj.tone)
+                    ? Math.min(12000, Math.max(200, obj.tone))
+                    : type === "hatClosed"
+                      ? 7500
+                      : type === "hatOpen"
+                        ? 7000
+                        : type === "snare"
+                          ? 1750
+                          : 5000;
+                const snap =
+                  typeof obj.snap === "number" && Number.isFinite(obj.snap) ? Math.min(1, Math.max(0, obj.snap)) : 0.35;
+                const body =
+                  typeof obj.body === "number" && Number.isFinite(obj.body) ? Math.min(1, Math.max(0, obj.body)) : 0.5;
+                const nextSynth: any = { type, decay, tone, snap, body };
+                if (JSON.stringify(nextSynth) !== JSON.stringify((pad as any).synth)) {
+                  nextPad = { ...nextPad, synth: nextSynth } as any;
+                  padChanged = true;
+                }
+              }
+            } else {
+              nextPad = { ...nextPad, synth: null } as any;
+              padChanged = true;
             }
-          } else {
-            nextPad = { ...nextPad, synth: null } as any;
+          }
+          // Per-pad mod sanitization (already computed above for the early-return path)
+          if (modChanged) {
+            nextPad = { ...nextPad, mod: saneMod } as any;
             padChanged = true;
           }
+          return padChanged ? nextPad : pad;
+        });
+        if (pads.some((pad, index) => pad !== t.pads[index])) {
+          t = { ...t, pads };
+          tracksChanged = true;
         }
-        // Per-pad mod sanitization (already computed above for the early-return path)
-        if (modChanged) {
-          nextPad = { ...nextPad, mod: saneMod } as any;
-          padChanged = true;
+        const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
+        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+          t = { ...t, effects: normalizedEffects } as DrumTrack;
+          tracksChanged = true;
         }
-        return padChanged ? nextPad : pad;
-      });
-      if (pads.some((pad, index) => pad !== t.pads[index])) {
-        t = { ...t, pads };
+        const cleanSends = sanitizeSends(t.sends ?? {});
+        if (t.sends === undefined || cleanSends !== t.sends) {
+          t = { ...t, sends: cleanSends } as DrumTrack;
+          tracksChanged = true;
+        }
+        // Validate groupId reference
+        if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
+          t = { ...t, groupId: undefined } as DrumTrack;
+          tracksChanged = true;
+        }
+        const cleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
+        if (cleanColor !== (t as unknown as Record<string, unknown>).color) {
+          if (cleanColor === undefined) {
+            const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+            t = rest as unknown as DrumTrack;
+          } else t = { ...t, color: cleanColor } as unknown as DrumTrack;
+          tracksChanged = true;
+        }
+        return t;
+      }
+      if (track.kind === "generative") {
+        let t: GenerativeTrack = track;
+        const generative = sanitizeGenerativeConfig(t.generative, t.id, trackIds);
+        if (JSON.stringify(generative) !== JSON.stringify(t.generative)) {
+          t = { ...t, generative };
+          tracksChanged = true;
+        }
+        const normalizedEffects = normalizeEffects(t.effects ?? [], t.id, trackIds);
+        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+          t = { ...t, effects: normalizedEffects };
+          tracksChanged = true;
+        }
+        const cleanSends = sanitizeSends(t.sends ?? {});
+        if (t.sends === undefined || cleanSends !== t.sends) {
+          t = { ...t, sends: cleanSends };
+          tracksChanged = true;
+        }
+        if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
+          t = { ...t, groupId: undefined };
+          tracksChanged = true;
+        }
+        const cleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
+        if (cleanColor !== (t as unknown as Record<string, unknown>).color) {
+          if (cleanColor === undefined) {
+            const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+            t = rest as unknown as GenerativeTrack;
+          } else t = { ...t, color: cleanColor };
+          tracksChanged = true;
+        }
+        return t;
+      }
+      if (track.kind === "group") {
+        let t = track;
+        // Frozen state on a group is a historical inconsistency: the renderer
+        // cannot include group children, so the persisted buffer is silence
+        // and the flag saves no CPU. Strip it (the children simply play live
+        // again — the migration path for projects frozen before the guard).
+        if ("frozen" in (t as unknown as Record<string, unknown>)) {
+          const { frozen: _frozen, ...rest } = t as unknown as Record<string, unknown>;
+          t = rest as unknown as import("./types").GroupTrack;
+          tracksChanged = true;
+        }
+        const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
+        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+          t = { ...t, effects: normalizedEffects };
+          tracksChanged = true;
+        }
+        const groupCleanSends = sanitizeSends(t.sends ?? {});
+        if (t.sends === undefined || groupCleanSends !== t.sends) {
+          t = { ...t, sends: groupCleanSends };
+          tracksChanged = true;
+        }
+        const groupCleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
+        if (groupCleanColor !== (t as unknown as Record<string, unknown>).color) {
+          if (groupCleanColor === undefined) {
+            const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
+            t = rest as unknown as import("./types").GroupTrack;
+          } else t = { ...t, color: groupCleanColor };
+          tracksChanged = true;
+        }
+        // collapsed — boolean, absent = expanded
+        if (
+          typeof (t as unknown as Record<string, unknown>).collapsed !== "boolean" &&
+          (t as unknown as Record<string, unknown>).collapsed !== undefined
+        ) {
+          const { collapsed: _c, ...rest } = t as unknown as Record<string, unknown>;
+          t = rest as unknown as import("./types").GroupTrack;
+          tracksChanged = true;
+        }
+        return t;
+      }
+      // instrument: merge params with defaults only when keys are missing.
+      // An unknown/missing instrument kind must HEAL, not throw — normalize
+      // promises never to throw, and a hostile doc (collab peer, corrupted
+      // import) previously crashed the whole sync path here.
+      const knownInstrument =
+        typeof track.instrument === "string" && Object.prototype.hasOwnProperty.call(INSTRUMENT_META, track.instrument);
+      const instrument = knownInstrument
+        ? track.instrument
+        : (Object.keys(INSTRUMENT_META)[0] as InstrumentTrack["instrument"]);
+      const defaults = defaultInstrumentParams(instrument);
+      let t: InstrumentTrack = track;
+      let paramsChanged = false;
+      if (instrument !== track.instrument) {
+        t = { ...track, instrument };
         tracksChanged = true;
       }
-      const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
-      if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
-        t = { ...t, effects: normalizedEffects } as DrumTrack;
-        tracksChanged = true;
+      const merged: Record<string, number> = { ...defaults };
+      const paramsRecord: Record<string, number> = track.params ?? {};
+      const SAFE_PARAM_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
+      const isSafeKey = (k: string): boolean =>
+        SAFE_PARAM_KEY.test(k) && !["__proto__", "constructor", "prototype"].includes(k);
+      for (const k of Object.keys(defaults)) {
+        const v = paramsRecord[k];
+        if (v === undefined) {
+          paramsChanged = true;
+        } else {
+          merged[k] = v;
+        }
       }
-      const cleanSends = sanitizeSends(t.sends ?? {});
-      if (t.sends === undefined || cleanSends !== t.sends) {
-        t = { ...t, sends: cleanSends } as DrumTrack;
-        tracksChanged = true;
+      // Backfill any keys present in the track params but missing from defaults.
+      // Unknown keys may only ride along as finite numbers — arbitrary keys or
+      // non-numeric values from a hostile doc are dropped, and so are setter
+      // traps like __proto__ (they'd land on params via plain assignment).
+      for (const k of Object.keys(paramsRecord)) {
+        if (
+          merged[k] === undefined &&
+          isSafeKey(k) &&
+          typeof paramsRecord[k] === "number" &&
+          Number.isFinite(paramsRecord[k])
+        ) {
+          merged[k] = paramsRecord[k];
+          paramsChanged = true;
+        }
       }
-      // Validate groupId reference
-      if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
-        t = { ...t, groupId: undefined } as DrumTrack;
-        tracksChanged = true;
-      }
-      const cleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
-      if (cleanColor !== (t as unknown as Record<string, unknown>).color) {
-        if (cleanColor === undefined) {
-          const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
-          t = rest as unknown as DrumTrack;
-        } else t = { ...t, color: cleanColor } as unknown as DrumTrack;
-        tracksChanged = true;
-      }
-      return t;
-    }
-    if (track.kind === "group") {
-      let t = track;
-      // Frozen state on a group is a historical inconsistency: the renderer
-      // cannot include group children, so the persisted buffer is silence
-      // and the flag saves no CPU. Strip it (the children simply play live
-      // again — the migration path for projects frozen before the guard).
-      if ("frozen" in (t as unknown as Record<string, unknown>)) {
-        const { frozen: _frozen, ...rest } = t as unknown as Record<string, unknown>;
-        t = rest as unknown as import("./types").GroupTrack;
+      if (paramsChanged) {
+        // Spread `t` (not `track`) so an instrument heal above survives.
+        t = { ...t, params: merged };
         tracksChanged = true;
       }
       const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
@@ -1073,142 +1287,83 @@ function normalizeTracksDomain(s: NormalizeState): void {
         t = { ...t, effects: normalizedEffects };
         tracksChanged = true;
       }
-      const groupCleanSends = sanitizeSends(t.sends ?? {});
-      if (t.sends === undefined || groupCleanSends !== t.sends) {
-        t = { ...t, sends: groupCleanSends };
+      const instCleanSends = sanitizeSends(t.sends ?? {});
+      if (t.sends === undefined || instCleanSends !== t.sends) {
+        t = { ...t, sends: instCleanSends };
         tracksChanged = true;
       }
-      const groupCleanColor = sanitizeColor((t as unknown as Record<string, unknown>).color);
-      if (groupCleanColor !== (t as unknown as Record<string, unknown>).color) {
-        if (groupCleanColor === undefined) {
+      // Validate groupId reference
+      if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
+        t = { ...t, groupId: undefined };
+        tracksChanged = true;
+      }
+      // Velocity/round-robin layers: keep well-formed zones only; drop the
+      // field entirely when nothing valid remains (classic single-sample mode)
+      if (t.velocityLayers !== undefined) {
+        const rawLayers = Array.isArray(t.velocityLayers) ? (t.velocityLayers as unknown[]) : [];
+        const cleanLayers: import("./types").SampleLayer[] = [];
+        for (const rawLayer of rawLayers) {
+          const l = (rawLayer ?? {}) as Partial<import("./types").SampleLayer> & Record<string, unknown>;
+          const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
+          const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
+          if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
+          const minPitch =
+            typeof l.minPitch === "number" && Number.isFinite(l.minPitch)
+              ? Math.round(Math.max(0, Math.min(127, l.minPitch)))
+              : undefined;
+          const maxPitch =
+            typeof l.maxPitch === "number" && Number.isFinite(l.maxPitch)
+              ? Math.round(Math.max(0, Math.min(127, l.maxPitch)))
+              : undefined;
+          cleanLayers.push({
+            id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
+            sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
+            min,
+            max,
+            ...(minPitch !== undefined && maxPitch !== undefined ? { minPitch, maxPitch } : {}),
+          });
+        }
+        const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;
+        if (JSON.stringify(canonical) !== JSON.stringify(t.velocityLayers)) {
+          t = canonical ? { ...t, velocityLayers: canonical } : t;
+          if (!canonical) {
+            const { velocityLayers: _vl, ...rest } = t as unknown as Record<string, unknown>;
+            t = rest as unknown as InstrumentTrack;
+          }
+          tracksChanged = true;
+        }
+      }
+      const cleanColorInst = sanitizeColor((t as unknown as Record<string, unknown>).color);
+      if (cleanColorInst !== (t as unknown as Record<string, unknown>).color) {
+        if (cleanColorInst === undefined) {
           const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
-          t = rest as unknown as import("./types").GroupTrack;
-        } else t = { ...t, color: groupCleanColor };
-        tracksChanged = true;
-      }
-      // collapsed — boolean, absent = expanded
-      if (
-        typeof (t as unknown as Record<string, unknown>).collapsed !== "boolean" &&
-        (t as unknown as Record<string, unknown>).collapsed !== undefined
-      ) {
-        const { collapsed: _c, ...rest } = t as unknown as Record<string, unknown>;
-        t = rest as unknown as import("./types").GroupTrack;
+          t = rest as unknown as InstrumentTrack;
+        } else t = { ...t, color: cleanColorInst };
         tracksChanged = true;
       }
       return t;
-    }
-    // instrument: merge params with defaults only when keys are missing.
-    // An unknown/missing instrument kind must HEAL, not throw — normalize
-    // promises never to throw, and a hostile doc (collab peer, corrupted
-    // import) previously crashed the whole sync path here.
-    const knownInstrument =
-      typeof track.instrument === "string" && Object.prototype.hasOwnProperty.call(INSTRUMENT_META, track.instrument);
-    const instrument = knownInstrument
-      ? track.instrument
-      : (Object.keys(INSTRUMENT_META)[0] as InstrumentTrack["instrument"]);
-    const defaults = defaultInstrumentParams(instrument);
-    let t: InstrumentTrack = track;
-    let paramsChanged = false;
-    if (instrument !== track.instrument) {
-      t = { ...track, instrument };
-      tracksChanged = true;
-    }
-    const merged: Record<string, number> = { ...defaults };
-    const paramsRecord: Record<string, number> = track.params ?? {};
-    const SAFE_PARAM_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
-    const isSafeKey = (k: string): boolean =>
-      SAFE_PARAM_KEY.test(k) && !["__proto__", "constructor", "prototype"].includes(k);
-    for (const k of Object.keys(defaults)) {
-      const v = paramsRecord[k];
-      if (v === undefined) {
-        paramsChanged = true;
-      } else {
-        merged[k] = v;
-      }
-    }
-    // Backfill any keys present in the track params but missing from defaults.
-    // Unknown keys may only ride along as finite numbers — arbitrary keys or
-    // non-numeric values from a hostile doc are dropped, and so are setter
-    // traps like __proto__ (they'd land on params via plain assignment).
-    for (const k of Object.keys(paramsRecord)) {
-      if (
-        merged[k] === undefined &&
-        isSafeKey(k) &&
-        typeof paramsRecord[k] === "number" &&
-        Number.isFinite(paramsRecord[k])
-      ) {
-        merged[k] = paramsRecord[k];
-        paramsChanged = true;
-      }
-    }
-    if (paramsChanged) {
-      // Spread `t` (not `track`) so an instrument heal above survives.
-      t = { ...t, params: merged };
-      tracksChanged = true;
-    }
-    const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
-    if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
-      t = { ...t, effects: normalizedEffects };
-      tracksChanged = true;
-    }
-    const instCleanSends = sanitizeSends(t.sends ?? {});
-    if (t.sends === undefined || instCleanSends !== t.sends) {
-      t = { ...t, sends: instCleanSends };
-      tracksChanged = true;
-    }
-    // Validate groupId reference
-    if (t.groupId !== undefined && !trackIds.has(t.groupId)) {
-      t = { ...t, groupId: undefined };
-      tracksChanged = true;
-    }
-    // Velocity/round-robin layers: keep well-formed zones only; drop the
-    // field entirely when nothing valid remains (classic single-sample mode)
-    if (t.velocityLayers !== undefined) {
-      const rawLayers = Array.isArray(t.velocityLayers) ? (t.velocityLayers as unknown[]) : [];
-      const cleanLayers: import("./types").SampleLayer[] = [];
-      for (const rawLayer of rawLayers) {
-        const l = (rawLayer ?? {}) as Partial<import("./types").SampleLayer> & Record<string, unknown>;
-        const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
-        const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
-        if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
-        const minPitch =
-          typeof l.minPitch === "number" && Number.isFinite(l.minPitch)
-            ? Math.round(Math.max(0, Math.min(127, l.minPitch)))
-            : undefined;
-        const maxPitch =
-          typeof l.maxPitch === "number" && Number.isFinite(l.maxPitch)
-            ? Math.round(Math.max(0, Math.min(127, l.maxPitch)))
-            : undefined;
-        cleanLayers.push({
-          id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
-          sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
-          min,
-          max,
-          ...(minPitch !== undefined && maxPitch !== undefined ? { minPitch, maxPitch } : {}),
-        });
-      }
-      const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;
-      if (JSON.stringify(canonical) !== JSON.stringify(t.velocityLayers)) {
-        t = canonical ? { ...t, velocityLayers: canonical } : t;
-        if (!canonical) {
-          const { velocityLayers: _vl, ...rest } = t as unknown as Record<string, unknown>;
-          t = rest as unknown as InstrumentTrack;
-        }
-        tracksChanged = true;
-      }
-    }
-    const cleanColorInst = sanitizeColor((t as unknown as Record<string, unknown>).color);
-    if (cleanColorInst !== (t as unknown as Record<string, unknown>).color) {
-      if (cleanColorInst === undefined) {
-        const { color: _c, ...rest } = t as unknown as Record<string, unknown>;
-        t = rest as unknown as InstrumentTrack;
-      } else t = { ...t, color: cleanColorInst };
-      tracksChanged = true;
-    }
-    return t;
-  });
+    },
+  );
   if (tracksChanged) {
     s.doc = { ...doc, tracks: tracks as ProjectDocument["tracks"] };
+    s.changed = true;
+  }
+  // Mixer params (Audit 04): every track kind carries gain/pan/mute/solo,
+  // but the per-kind sanitizers above never touched them. A hostile doc with
+  // gain: 999 blasted ~+60 dB through the engine, and a NON-FINITE gain made
+  // setTargetAtTime THROW mid-syncProject — aborting the whole graph sync
+  // and leaving audio permanently desynced from the UI.
+  const current = s.doc;
+  const mixerSafe = current.tracks.map((t) => {
+    const gain = typeof t.gain === "number" && Number.isFinite(t.gain) ? Math.min(1.5, Math.max(0, t.gain)) : 0.9;
+    const pan = typeof t.pan === "number" && Number.isFinite(t.pan) ? Math.min(1, Math.max(-1, t.pan)) : 0;
+    const mute = t.mute === true;
+    const solo = t.solo === true;
+    if (gain === t.gain && pan === t.pan && mute === t.mute && solo === t.solo) return t;
+    return { ...t, gain, pan, mute, solo };
+  });
+  if (mixerSafe !== current.tracks) {
+    s.doc = { ...current, tracks: mixerSafe };
     s.changed = true;
   }
 }
@@ -1510,6 +1665,13 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
         ? Math.min(400, Math.max(60, m.bassMonoFreq))
         : 120;
     const tiltDb = typeof m.tiltDb === "number" && Number.isFinite(m.tiltDb) ? Math.min(4, Math.max(-4, m.tiltDb)) : 0;
+    // loudnessTrimDb (song-builder genre trim): the rebuild below used to
+    // OMIT it — any other out-of-range master field silently reset a
+    // non-zero trim to 0 on load. Sanitize it like the rest.
+    const loudnessTrimDb =
+      typeof m.loudnessTrimDb === "number" && Number.isFinite(m.loudnessTrimDb)
+        ? Math.min(12, Math.max(-12, m.loudnessTrimDb))
+        : 0;
     if (
       dg !== m.masterGain ||
       dc !== m.ceilingDb ||
@@ -1524,7 +1686,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       glueEnabled !== m.glueEnabled ||
       bassMonoEnabled !== m.bassMonoEnabled ||
       bassMonoFreq !== m.bassMonoFreq ||
-      tiltDb !== m.tiltDb
+      tiltDb !== m.tiltDb ||
+      loudnessTrimDb !== m.loudnessTrimDb
     ) {
       doc = {
         ...doc,
@@ -1543,6 +1706,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           bassMonoEnabled,
           bassMonoFreq,
           tiltDb,
+          loudnessTrimDb,
         },
       };
       s.changed = true;

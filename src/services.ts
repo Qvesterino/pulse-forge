@@ -42,6 +42,7 @@ import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
 import type { BandmateControls } from "./collab/bandmate";
 import { createBandmate } from "./collab/bandmate";
+import { createUnavailableGenerativeProvider, GenerativeProviderRegistry, GenerativeRuntime } from "./generative";
 import {
   applyTransportState,
   captureTransportState,
@@ -61,6 +62,8 @@ import { NoteRepeatController } from "./audio-engine/NoteRepeat";
 export interface CoreServices {
   engine: AudioEngine;
   bank: SampleBank;
+  /** Provider implementations are host capabilities, never project state. */
+  generativeProviders?: GenerativeProviderRegistry;
   repo: IProjectRepository;
   snapshots: ISnapshotRepository;
   presets: IPresetRepository;
@@ -83,6 +86,9 @@ export interface Services {
   /** Plain local store, or a CRDT store while a collab session is active. */
   store: ProjectStore | YDocStore;
   engine: AudioEngine;
+  generativeProviders: GenerativeProviderRegistry;
+  /** Provider/audio bridge for live generative tracks and capture. */
+  generativeRuntime: GenerativeRuntime;
   transport: Transport;
   scheduler: Scheduler;
   repo: IProjectRepository;
@@ -120,6 +126,10 @@ export interface Services {
 
 export class PlaybackController {
   private listeners = new Set<() => void>();
+  /** Late-bound (constructed after the controller): seek re-anchors held rolls. */
+  private noteRepeatRef: NoteRepeatController | null = null;
+  /** Late-bound: stop/seek cancel future-timed MIDI sends (ghost hits). */
+  private midiOutputRef: MidiOutput | null = null;
 
   constructor(
     private engine: AudioEngine,
@@ -132,6 +142,32 @@ export class PlaybackController {
     private onTransportStop?: (currentTick: number) => void,
     private onTransportPause?: () => void,
   ) {}
+
+  private generativeLifecycle: {
+    start: () => void;
+    pause: () => void;
+    stop: () => void;
+    seek: () => void;
+  } | null = null;
+
+  attachGenerativeLifecycle(lifecycle: {
+    start: () => void;
+    pause: () => void;
+    stop: () => void;
+    seek: () => void;
+  }): void {
+    this.generativeLifecycle = lifecycle;
+  }
+
+  /** Audit 03 D2 — seek/stop must re-anchor live note-repeat holds. */
+  attachNoteRepeat(noteRepeat: NoteRepeatController): void {
+    this.noteRepeatRef = noteRepeat;
+  }
+
+  /** Audit 03 D5 — stop/seek must cancel future-timed MIDI sends. */
+  attachMidiOutput(midiOutput: MidiOutput): void {
+    this.midiOutputRef = midiOutput;
+  }
 
   setMode = (mode: PlayMode): void => {
     if (this.modeRef.mode === mode) return;
@@ -177,6 +213,7 @@ export class PlaybackController {
       this.engine.panic();
       this.transport.pause();
       this.onTransportPause?.();
+      this.generativeLifecycle?.pause();
     } else {
       // Lead-in: start playback early so the metronome clicks (pre-roll +
       // count-in bars) lead into the requested position (content starts at
@@ -200,6 +237,7 @@ export class PlaybackController {
       // panic() on pause/stop and resurrected here on every play.
       this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.start();
+      this.generativeLifecycle?.start();
     }
     this.notify();
   };
@@ -210,8 +248,12 @@ export class PlaybackController {
     this.scheduler.stop();
     this.engine.panic();
     this.engine.automationReset();
+    // Audit 03 D5: drop future-timed MIDI note-ons (ghost hits at the old
+    // musical time); flush their pending note-offs so nothing hangs.
+    this.midiOutputRef?.cancelPending();
     this.transport.stop();
     this.onTransportPause?.();
+    this.generativeLifecycle?.stop();
     this.notify();
   };
 
@@ -220,10 +262,22 @@ export class PlaybackController {
     this.transport.seek(Math.max(0, tick));
     if (this.transport.playing) {
       this.engine.panic();
+      // Audit 03 D1: panic() kills voices but not AudioParam timelines —
+      // pre-seek windows left automation/modulator writes up to a lookahead
+      // (~120 ms) ahead, which fired between the post-seek writes as an
+      // audible snap-back. Cancel them; the next scheduler window (≤25 ms)
+      // re-lands fresh values from the new position.
+      this.engine.automationReset();
+      // Audit 03 D2: held note-repeat rolls re-anchor to the new position —
+      // a stale nextTick muted the roll until the playhead climbed back.
+      this.noteRepeatRef?.reanchorToTransport();
+      // Audit 03 D5: same ghost-hit cleanup as stop (pending MIDI sends).
+      this.midiOutputRef?.cancelPending();
       const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
       this.engine.transportStarted(this.engine.currentTime, pos / PPQ, this.transport.position / PPQ);
       this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.resync();
+      this.generativeLifecycle?.seek();
     }
     this.notify();
   };
@@ -259,6 +313,10 @@ export class PlaybackController {
 export async function createCoreServices(): Promise<CoreServices> {
   const bank = await generateFactoryBank();
   const engine = new AudioEngine();
+  const generativeProviders = new GenerativeProviderRegistry();
+  generativeProviders.register(
+    createUnavailableGenerativeProvider("mrt2", "MRT2 native bridge is not installed on this host", "mrt2_small"),
+  );
   engine.attachBank(bank);
   // Re-decode persisted user-sample audio into the bank (fire-and-forget —
   // the app is fully usable while imports stream back in). Memoized per bank:
@@ -278,6 +336,7 @@ export async function createCoreServices(): Promise<CoreServices> {
   return {
     engine,
     bank,
+    generativeProviders,
     repo: new ProjectRepository(),
     snapshots: new SnapshotRepository(),
     presets: new PresetRepository(),
@@ -307,6 +366,7 @@ export async function openProject(
   initial: ProjectDocument,
   options: OpenProjectOptions = {},
 ): Promise<Services> {
+  const generativeProviders = core.generativeProviders ?? new GenerativeProviderRegistry();
   const { engine, repo, bank, library, userKits, groovePool, latency, snapshots } = core;
 
   const collabConfig =
@@ -634,7 +694,41 @@ export async function openProject(
   midi.attachNoteRepeat(noteRepeat);
   midi.attachPatternRecorder(patternRecorder);
   midi.attachSelectionBridge(selectionBridge);
+  playback.attachNoteRepeat(noteRepeat);
+  playback.attachMidiOutput(midiOutput);
   midi.onNoteActivity = (pitch) => recordPlayActivity({ pitch });
+
+  const generativeRuntime = new GenerativeRuntime({
+    engine,
+    transport,
+    project: () => store.doc,
+    providers: generativeProviders,
+    bank,
+    userSamples,
+    execute: (command) => store.execute(command),
+  });
+  playback.attachGenerativeLifecycle({
+    start: () => {
+      void generativeRuntime.startAll().catch((error) => {
+        console.warn("[generative] live start failed:", error);
+      });
+    },
+    pause: () => {
+      void generativeRuntime.stopAll().catch((error) => {
+        console.warn("[generative] pause failed:", error);
+      });
+    },
+    stop: () => {
+      void generativeRuntime.stopAll().catch((error) => {
+        console.warn("[generative] stop failed:", error);
+      });
+    },
+    seek: () => {
+      void generativeRuntime.refreshAll().catch((error) => {
+        console.warn("[generative] seek refresh failed:", error);
+      });
+    },
+  });
 
   // Restore frozen-track audio (IndexedDB → bank) so frozen tracks survive
   // reloads. Tracks whose buffer is gone (cleared site data, other browser)
@@ -790,6 +884,9 @@ export async function openProject(
     engine.setProject(doc);
     transport.setBarTicks(ticksPerBar(doc));
     transport.setBpm(doc.bpm);
+    void generativeRuntime.refreshAll().catch((error) => {
+      console.warn("[generative] project refresh failed:", error);
+    });
     store.setSaveStatus("dirty");
     // Defect D.1: route through the debouncer so a continuous gesture
     // still force-flushes after maxDeferMs / maxArms. flushSave
@@ -831,6 +928,7 @@ export async function openProject(
     noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();
+    await generativeRuntime.dispose();
     playback.stop();
     collab?.dispose();
     midi.stop();
@@ -866,6 +964,8 @@ export async function openProject(
     core,
     store,
     engine,
+    generativeProviders,
+    generativeRuntime,
     transport,
     scheduler,
     sharedTransportReapply,

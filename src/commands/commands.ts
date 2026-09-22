@@ -11,6 +11,7 @@ import type {
   DeviceState,
   EffectInstance,
   EffectType,
+  GenerativeTrackConfig,
   GrooveSettings,
   InstrumentKind,
   InstrumentTrack,
@@ -50,6 +51,7 @@ import { insertPointSorted } from "../project-model/automation";
 import {
   clampUnit,
   createDrumTrackModel,
+  createGenerativeTrackModel,
   createGroupTrackModel,
   createInstrumentTrackModel,
   createPatternForDoc,
@@ -468,22 +470,48 @@ type TrackParams = Partial<Pick<Track, "name" | "gain" | "pan" | "mute" | "solo"
 
 export function setTrackParams(doc: ProjectDocument, trackId: string, params: TrackParams): Command {
   const track = doc.tracks.find((t) => t.id === trackId);
-  const prev: TrackParams = track
-    ? { name: track.name, gain: track.gain, pan: track.pan, mute: track.mute, solo: track.solo }
-    : {};
+  if (!track) throw new Error(`Track ${trackId} not found`);
+  // Clamp at the boundary (normalize clamps too, but this command is also
+  // the collab/YDoc path): gain [0,1.5], pan [-1,1], booleans strict.
+  const safe: TrackParams = {
+    ...(params.name !== undefined ? { name: params.name } : {}),
+    ...(params.gain !== undefined
+      ? { gain: Number.isFinite(params.gain) ? Math.min(1.5, Math.max(0, params.gain)) : track.gain }
+      : {}),
+    ...(params.pan !== undefined
+      ? { pan: Number.isFinite(params.pan) ? Math.min(1, Math.max(-1, params.pan)) : track.pan }
+      : {}),
+    ...(params.mute !== undefined ? { mute: params.mute === true } : {}),
+    ...(params.solo !== undefined ? { solo: params.solo === true } : {}),
+  };
+  // Drop fields equal to the current value — a fader click without drag or
+  // a double-click reset otherwise pushed no-op undo entries (the track
+  // spread always builds a new object, so the store's identity guard fired).
+  const effective: TrackParams = {};
+  for (const [k, v] of Object.entries(safe)) {
+    if (v !== undefined && v !== (track as unknown as Record<string, unknown>)[k]) {
+      (effective as Record<string, unknown>)[k] = v;
+    }
+  }
+  if (Object.keys(effective).length === 0) {
+    return { type: "setTrackParams", label: "Edit track", execute: (d) => d, undo: (d) => d };
+  }
+  const prev: TrackParams = Object.fromEntries(
+    Object.keys(effective).map((k) => [k, (track as unknown as Record<string, unknown>)[k]]),
+  );
   const apply = (d: ProjectDocument, values: TrackParams): ProjectDocument =>
     withTrack(d, trackId, (t) => ({ ...t, ...values }));
   return {
     type: "setTrackParams",
-    label: `Edit track ${trackId}`,
-    execute: (d) => apply(d, params),
+    label: `Edit track ${track.name}`,
+    execute: (d) => apply(d, effective),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i) as any;
         if (t.get("id") === trackId) {
-          for (const [k, v] of Object.entries(params)) {
+          for (const [k, v] of Object.entries(effective)) {
             if (v !== undefined) t.set(k, v);
           }
           break;
@@ -704,21 +732,20 @@ export function clearPattern(doc: ProjectDocument, patternId: string): Command {
   if (!target) throw new Error(`Pattern ${patternId} not found`);
   const next: ProjectDocument = {
     ...doc,
-    patterns: doc.patterns.map((p) =>
-      p.id === patternId
-        ? {
-            ...p,
-            rows: Object.fromEntries(
-              Object.entries(p.rows).map(([padId, row]) => [padId, new Array<number>(row.length).fill(0)]),
-            ),
-            notes: {},
-            // Clear performance meta with the content: stale p-locks /
-            // probability would otherwise resurrect on re-drawn steps (the
-            // exact bug setPatternLength's comment warns about).
-            stepMeta: undefined,
-          }
-        : p,
-    ),
+    patterns: doc.patterns.map((p) => {
+      if (p.id !== patternId) return p;
+      const { stepMeta: _stepMeta, ...patternWithoutStepMeta } = p;
+      return {
+        ...patternWithoutStepMeta,
+        rows: Object.fromEntries(
+          Object.entries(p.rows).map(([padId, row]) => [padId, new Array<number>(row.length).fill(0)]),
+        ),
+        notes: {},
+        // Clear performance meta with the content: stale p-locks /
+        // probability would otherwise resurrect on re-drawn steps (the
+        // exact bug setPatternLength's comment warns about).
+      };
+    }),
   };
   return snapshot("clearPattern", `Clear ${target.name}`, doc, next);
 }
@@ -1173,6 +1200,42 @@ export function createGroupTrack(doc: ProjectDocument): Command {
   const track = createGroupTrackModel(`Group ${count + 1}`);
   const next: ProjectDocument = { ...doc, tracks: [...doc.tracks, track] };
   return snapshot("createGroupTrack", `Add group ${track.name}`, doc, next);
+}
+
+export function createGenerativeTrack(doc: ProjectDocument): Command {
+  const count = doc.tracks.filter((t) => t.kind === "generative").length;
+  const track = createGenerativeTrackModel(`Generative ${count + 1}`);
+  const next = normalizeProject({ ...doc, tracks: [...doc.tracks, track] });
+  return snapshot("createGenerativeTrack", `Add track ${track.name}`, doc, next);
+}
+
+export type GenerativeTrackConfigPatch = Partial<Omit<GenerativeTrackConfig, "macros">> & {
+  macros?: Partial<GenerativeTrackConfig["macros"]>;
+};
+
+export function setGenerativeTrackConfig(
+  doc: ProjectDocument,
+  trackId: string,
+  patch: GenerativeTrackConfigPatch,
+): Command {
+  const track = doc.tracks.find((candidate) => candidate.id === trackId && candidate.kind === "generative");
+  if (!track) throw new Error(`Generative track ${trackId} not found`);
+  const next: ProjectDocument = normalizeProject({
+    ...doc,
+    tracks: doc.tracks.map((candidate) =>
+      candidate.id === trackId && candidate.kind === "generative"
+        ? {
+            ...candidate,
+            generative: {
+              ...candidate.generative,
+              ...patch,
+              macros: { ...candidate.generative.macros, ...(patch.macros ?? {}) },
+            },
+          }
+        : candidate,
+    ),
+  });
+  return snapshot("setGenerativeTrackConfig", `Edit ${track.name} generative config`, doc, next);
 }
 
 export function addToGroup(doc: ProjectDocument, trackId: string, groupId: string): Command {
@@ -1696,8 +1759,7 @@ export function addNote(
   // Audit hardening: addNote had NO sanitization — a NaN pitch or a
   // negative duration from a caller parse bug went straight into the
   // pattern (move/resize clamp at apply time, add never did).
-  const finiteOr = (value: number, fallback: number): number =>
-    Number.isFinite(value) ? value : fallback;
+  const finiteOr = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
   const sanitized = {
     id,
     pitch: clamp(Math.round(finiteOr(note.pitch, 60)), 0, 127),
@@ -1715,7 +1777,10 @@ export function addNote(
         // shorten FL-style instead of silently disappearing later.
         const pattern = d.patterns.find((p) => p.id === patternId);
         const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : null;
-        const fitted = patternTicks !== null ? { ...sanitized, start: Math.min(sanitized.start, Math.max(0, patternTicks - 1)) } : sanitized;
+        const fitted =
+          patternTicks !== null
+            ? { ...sanitized, start: Math.min(sanitized.start, Math.max(0, patternTicks - 1)) }
+            : sanitized;
         const maxDur = patternTicks !== null ? Math.max(1, patternTicks - fitted.start) : fitted.duration;
         return [...notes, { ...fitted, duration: Math.min(fitted.duration, maxDur) }];
       },
@@ -2735,7 +2800,6 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
 
 /* ---------------- audioClips ---------------- */
 
-
 export function addAudioClip(
   doc: ProjectDocument,
   trackId: string,
@@ -2749,8 +2813,7 @@ export function addAudioClip(
   if (!bufferId) throw new Error("bufferId required");
   // Audit hardening: a non-finite position/duration from a caller parse bug
   // must never poison the document (Math.max/min pass NaN through).
-  const finiteOr = (value: number, fallback: number): number =>
-    Number.isFinite(value) ? value : fallback;
+  const finiteOr = (value: number, fallback: number): number => (Number.isFinite(value) ? value : fallback);
   const clip: AudioClip = {
     id: uid("audioClip"),
     trackId,
@@ -3126,7 +3189,7 @@ export function updateAudioClip(
   if (trimEnd !== undefined) nextPatch.trimEnd = trimEnd;
   const gain = num(patch.gain, 0, 2);
   if (gain !== undefined) nextPatch.gain = gain;
-    const clipDurSec = (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const clipDurSec = (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ);
   const fadeIn = num(patch.fadeIn, 0, clipDurSec);
   if (fadeIn !== undefined) nextPatch.fadeIn = fadeIn;
   const fadeOut = num(patch.fadeOut, 0, clipDurSec);

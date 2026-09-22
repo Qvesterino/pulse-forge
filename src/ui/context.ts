@@ -1,6 +1,7 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 import type { Services } from "../services";
 import type { ProjectDocument } from "../project-model/types";
+import type { GenerativeStatus } from "../generative/types";
 import type { LibraryState } from "../persistence/LibraryRepository";
 import type { LatencyCalibrationSnapshot } from "../audio-engine/latencyCalibration";
 import type { ArrangementCaptureSnapshot } from "../arrangement/capture";
@@ -10,6 +11,11 @@ import type { Tool } from "../store/ToolStore";
 import { ToolStore } from "../store/ToolStore";
 
 const EMPTY_CAPTURE_SNAPSHOT: ArrangementCaptureSnapshot = { capturing: false, launchCount: 0, firstBar: null };
+const EMPTY_GENERATIVE_STATUS: GenerativeStatus = { state: "idle" };
+const EMPTY_GENERATIVE_RUNTIME = {
+  subscribe: (_listener: (trackId: string, status: GenerativeStatus) => void) => () => undefined,
+  getStatus: (_trackId: string): GenerativeStatus => EMPTY_GENERATIVE_STATUS,
+};
 const EMPTY_CAPTURE = {
   subscribe: (_listener: () => void) => () => undefined,
   getSnapshot: (): ArrangementCaptureSnapshot => EMPTY_CAPTURE_SNAPSHOT,
@@ -163,6 +169,17 @@ export function useArrangementCapture(): ArrangementCaptureSnapshot {
   const { capture } = useServices();
   const source = capture ?? EMPTY_CAPTURE;
   return useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
+}
+
+/** Reactive provider/session status for one persisted generative track. */
+export function useGenerativeStatus(trackId: string): GenerativeStatus {
+  const { generativeRuntime: serviceRuntime } = useServices();
+  const generativeRuntime = serviceRuntime ?? EMPTY_GENERATIVE_RUNTIME;
+  return useSyncExternalStore(
+    (listener) => generativeRuntime.subscribe((changedTrackId) => changedTrackId === trackId && listener()),
+    () => generativeRuntime.getStatus(trackId),
+    () => generativeRuntime.getStatus(trackId),
+  );
 }
 
 /** Reactive favorites/recent state for the sample & preset browsers. */

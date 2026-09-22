@@ -71,6 +71,9 @@ export interface NoteRepeatDeps {
   getAudioTime(): number;
   /** Fire one pad hit. Implementations resolve the pad and schedule it. */
   fire(trackId: string, padId: string, velocity: number, when: number): void;
+  /** Optional host gesture hooks; note repeat itself does not own document history. */
+  beginUndoFrame?: (label?: string) => void;
+  endUndoFrame?: () => void;
 }
 
 export class NoteRepeatController {
@@ -186,6 +189,22 @@ export class NoteRepeatController {
   stopAll(): void {
     this.holds.clear();
     this.pruneTimer();
+  }
+
+  /**
+   * Re-anchor every held roll to the transport's CURRENT position (Audit 03
+   * D2). A seek or loop wrap used to leave `nextTick` pointing past the old
+   * location: the roll went mute until the playhead climbed back to that
+   * stale grid tick (up to a full loop pass), and forward seeks burned
+   * stale grid points before resuming. Clearing `nextTick` makes the next
+   * tick() re-anchor from the live position — the same sentinel the
+   * playing↔stopped transition already uses.
+   */
+  reanchorToTransport(): void {
+    for (const hold of this.holds.values()) {
+      hold.nextTick = null;
+      hold.nextTime = null;
+    }
   }
 
   /**

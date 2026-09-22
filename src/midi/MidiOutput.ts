@@ -5,9 +5,10 @@
 export class MidiOutput {
   private access: MIDIAccess | null = null;
   private selectedDeviceId: string = "";
-  /** Scheduled future sends — cleared on dispose so a closed project cannot
-   * fire ghost notes into hardware afterwards. */
-  private pending = new Set<ReturnType<typeof setTimeout>>();
+  /** Scheduled future sends with their messages — cancelPending() must know
+   * WHAT it is cancelling: a pending note-OFF that is silently dropped
+   * leaves a stuck note on hardware, while a pending note-ON is a ghost. */
+  private pending = new Map<ReturnType<typeof setTimeout>, Uint8Array>();
 
   async requestAccess(): Promise<boolean> {
     if (typeof navigator === "undefined" || !navigator.requestMIDIAccess) return false;
@@ -55,10 +56,30 @@ export class MidiOutput {
         this.pending.delete(timer);
         output.send(msg);
       }, delayMs);
-      this.pending.add(timer);
+      this.pending.set(timer, msg);
       return;
     }
     output.send(msg);
+  }
+
+  /**
+   * Cancel every future-timed send (Audit 03 D5): the scheduler queues
+   * note-ons up to a lookahead ahead, so Stop/Seek left ghost hits firing
+   * into hardware at the OLD musical time. Note-offs still flush
+   * immediately — a dropped off would leave a stuck note; dropping the
+   * unmatched note-ons is exactly the point.
+   */
+  cancelPending(): void {
+    for (const [timer, msg] of this.pending) {
+      clearTimeout(timer);
+      const status = msg[0] & 0xf0;
+      if (status === 0x80) {
+        // Pending note-off whose note-on may already have fired — send NOW.
+        this.getOutput()?.send(msg);
+      }
+      // Note-ons (0x90), CCs, clocks: dropped — stale musical time.
+    }
+    this.pending.clear();
   }
 
   sendNoteOn(channel: number, note: number, velocity: number, delayMs?: number): void {
@@ -104,7 +125,7 @@ export class MidiOutput {
   dispose(): void {
     // Cancel scheduled future sends FIRST — otherwise a note-on queued
     // before teardown could start a hanging note after All Sound Off.
-    for (const timer of this.pending) clearTimeout(timer);
+    for (const timer of this.pending.keys()) clearTimeout(timer);
     this.pending.clear();
     // Send all notes off
     for (let ch = 0; ch < 16; ch++) {

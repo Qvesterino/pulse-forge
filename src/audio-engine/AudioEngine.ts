@@ -446,6 +446,9 @@ export class AudioEngine {
     return buf;
   }
   private trackNodes = new Map<string, TrackNodes>();
+  /** External realtime sources owned by a provider runtime, keyed by track. */
+  private generativeSources = new Map<string, AudioNode>();
+  private connectedGenerativeSources = new Set<string>();
   private returnNodes = new Map<string, ReturnNodes>();
   private groupNodes = new Map<string, GroupNodes>();
   /** Desired metering state per fx id (panel attached → on). Re-applied when a
@@ -578,6 +581,79 @@ export class AudioEngine {
 
   get currentTime(): number {
     return this.ctx?.currentTime ?? 0;
+  }
+
+  /**
+   * Route a provider-owned realtime source through the normal track graph.
+   * The engine owns only the connection edge; the caller still owns the
+   * source node and must dispose it after detaching.
+   */
+  attachGenerativeSource(trackId: string, source: AudioNode): void {
+    const ctx = this.ctx;
+    if (!ctx || source.context !== ctx) return;
+    const previous = this.generativeSources.get(trackId);
+    if (previous && previous !== source) {
+      const nodes = this.trackNodes.get(trackId);
+      try {
+        if (nodes) previous.disconnect(nodes.input);
+        else previous.disconnect();
+      } catch {
+        /* previous edge may already be disconnected */
+      }
+      this.connectedGenerativeSources.delete(trackId);
+    }
+    this.generativeSources.set(trackId, source);
+    const track = this.doc?.tracks.find((candidate) => candidate.id === trackId);
+    const nodes = this.trackNodes.get(trackId);
+    if (!nodes || track?.kind !== "generative" || track.frozen) return;
+    if (this.connectedGenerativeSources.has(trackId)) return;
+    try {
+      source.connect(nodes.input);
+      this.connectedGenerativeSources.add(trackId);
+    } catch {
+      /* A provider can race a context swap; the next attach retries. */
+    }
+  }
+
+  /** Detach a provider source without taking ownership of its AudioNode. */
+  detachGenerativeSource(trackId: string, source?: AudioNode): void {
+    const current = this.generativeSources.get(trackId);
+    if (!current || (source && current !== source)) return;
+    const nodes = this.trackNodes.get(trackId);
+    try {
+      if (nodes) current.disconnect(nodes.input);
+      else current.disconnect();
+    } catch {
+      /* edge may already be gone */
+    }
+    this.connectedGenerativeSources.delete(trackId);
+    this.generativeSources.delete(trackId);
+  }
+
+  private setGenerativeSourceConnection(trackId: string, nodes: TrackNodes, connected: boolean): void {
+    const source = this.generativeSources.get(trackId);
+    if (!source || source.context !== this.ctx) {
+      this.generativeSources.delete(trackId);
+      this.connectedGenerativeSources.delete(trackId);
+      return;
+    }
+    if (connected) {
+      if (this.connectedGenerativeSources.has(trackId)) return;
+      try {
+        source.connect(nodes.input);
+        this.connectedGenerativeSources.add(trackId);
+      } catch {
+        /* provider/context race; a later sync can retry */
+      }
+      return;
+    }
+    if (!this.connectedGenerativeSources.has(trackId)) return;
+    try {
+      source.disconnect(nodes.input);
+    } catch {
+      /* edge may already be gone */
+    }
+    this.connectedGenerativeSources.delete(trackId);
   }
 
   get voiceCount(): number {
@@ -1854,6 +1930,9 @@ export class AudioEngine {
   }
 
   private disposeTrackNodes(id: string, nodes: TrackNodes): void {
+    this.setGenerativeSourceConnection(id, nodes, false);
+    this.generativeSources.delete(id);
+    this.connectedGenerativeSources.delete(id);
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
     for (const rt of nodes.fx.runtimes.values()) rt.dispose();
@@ -2112,6 +2191,16 @@ export class AudioEngine {
           sendDelays: new Map(),
         };
         this.trackNodes.set(track.id, nodes);
+      }
+
+      // A live provider source enters at the same point as an instrument and
+      // therefore receives the track FX, gain/pan, sends and group routing.
+      // Frozen tracks retain the provider handle but disconnect it while the
+      // baked buffer owns the audible path.
+      if (track.kind === "generative") {
+        this.setGenerativeSourceConnection(track.id, nodes, !track.frozen);
+      } else {
+        this.detachGenerativeSource(track.id);
       }
 
       // Frozen track: play back the pre-rendered buffer instead of instrument/FX.
@@ -2432,8 +2521,15 @@ export class AudioEngine {
     const needsRatioLock = lockedRatio !== undefined && docTrack?.instrument === "keys";
     const savedRatio: number | undefined = needsRatioLock ? (docTrack!.params as any).ratio : undefined;
     if (needsRatioLock) {
-      inst.runtime.setParameterAt?.("ratio", Math.max(1, Math.min(7, lockedRatio as number)), when) ??
+      // Capability check, NOT `??`: setParameterAt returns void, so the old
+      // `??` fallback executed the immediate setParameter on EVERY call —
+      // the locked value landed now (on ringing voices) instead of only at
+      // the scheduled `when`.
+      if (inst.runtime.setParameterAt) {
+        inst.runtime.setParameterAt("ratio", Math.max(1, Math.min(7, lockedRatio as number)), when);
+      } else {
         inst.runtime.setParameter("ratio", Math.max(1, Math.min(7, lockedRatio as number)));
+      }
     }
     if (slideFrom) {
       // Glide origin in AudioContext seconds. The scheduler passes the
@@ -2461,9 +2557,14 @@ export class AudioEngine {
         // the command/undo system, breaks immutable-doc delta capture, and in
         // a race (user sets a ratio param while the note sounds) would delete
         // their fresh edit.
-        inst.runtime.setParameterAt?.("ratio", 3.5, restoreAt) ?? inst.runtime.setParameter("ratio", 3.5);
+        // if/else, not `??` — setParameterAt returns void, so the old fallback
+        // fired the restore IMMEDIATELY, undoing the p-lock on ringing voices
+        // a full lookahead before the note even played.
+        if (inst.runtime.setParameterAt) inst.runtime.setParameterAt("ratio", 3.5, restoreAt);
+        else inst.runtime.setParameter("ratio", 3.5);
       } else {
-        inst.runtime.setParameterAt?.("ratio", savedRatio, restoreAt) ?? inst.runtime.setParameter("ratio", savedRatio);
+        if (inst.runtime.setParameterAt) inst.runtime.setParameterAt("ratio", savedRatio, restoreAt);
+        else inst.runtime.setParameter("ratio", savedRatio);
       }
     }
   }

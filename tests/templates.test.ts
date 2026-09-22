@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TEMPLATES, createProjectFromTemplate, templateInfo } from "../src/project-model/templates";
 import type { TemplateId } from "../src/project-model/templates";
-import { normalizeProject, validateProjectShape } from "../src/project-model/schema";
+import { SCHEMA_VERSION, normalizeProject, validateProjectShape } from "../src/project-model/schema";
 import { PPQ } from "../src/project-model/types";
 import type { DrumTrack, InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
@@ -54,7 +54,7 @@ describe("templates", () => {
 
     it("produces a schema-valid project", () => {
       expect(validateProjectShape(doc)).toBe(true);
-      expect(doc.schemaVersion).toBe(1);
+      expect(doc.schemaVersion).toBe(SCHEMA_VERSION);
       expect(doc.bpm).toBe(template.bpm);
     });
 

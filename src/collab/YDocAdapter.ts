@@ -17,6 +17,7 @@ import type {
   DrumPad,
   EffectInstance,
   FrozenState,
+  GenerativeTrackConfig,
   GrooveSettings,
   Lfo,
   Macro,
@@ -122,6 +123,13 @@ function yMapToTrack(m: unknown): Track {
       ...base,
       kind: "group",
       collapsed: map.has("collapsed") ? (map.get("collapsed") as boolean) : undefined,
+    };
+  }
+  if (kind === "generative") {
+    return {
+      ...base,
+      kind: "generative",
+      generative: plainValue(map.get("generative")) as unknown as GenerativeTrackConfig,
     };
   }
   return {
@@ -593,6 +601,8 @@ function syncTrackEntity(target: Y.Map<unknown>, track: Track): void {
     } else if (target.has("midiOutput")) {
       target.delete("midiOutput");
     }
+  } else if (track.kind === "generative") {
+    syncPlainJsonField(target, "generative", track.generative);
   }
 
   if (track.frozen) {
@@ -963,6 +973,8 @@ function trackToYMap(track: Track): Y.Map<unknown> {
       mo.set("channel", track.midiOutput.channel);
       if (track.midiOutput.deviceId) mo.set("deviceId", track.midiOutput.deviceId);
     }
+  } else if (track.kind === "generative") {
+    m.set("generative", plainValue(track.generative));
   }
   return m;
 }
