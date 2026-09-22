@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "kind": "transport-time",
+    "note": "Transport timeline math with an injected manual clock (bpm 120)",
+    "campaign": "GOAL 06",
+    "ids": "useDeterministicIds (prefix-test-N)",
+    "time": "canonicalized to <ts>"
+  },
+  "cases": [
+    {
+      "name": "play/seek/pause/resume/loop/stop position table",
+      "operation": "transportSequence",
+      "input": {
+        "clockStart": 100,
+        "sequence": [
+          "setBpm",
+          "play",
+          "advance1s",
+          "advance0.5s",
+          "seek",
+          "advance0.25s",
+          "pause",
+          "advanceWhilePaused",
+          "resume",
+          "advance1sAfterResume",
+          "setLoop",
+          "advance2sInLoop",
+          "stop",
+          "advanceAfterStop"
+        ]
+      },
+      "expected": [
+        {
+          "op": "setBpm",
+          "args": {
+            "bpm": 120
+          },
+          "positionAfter": 0
+        },
+        {
+          "op": "play",
+          "args": {
+            "fromTick": 0
+          },
+          "positionAfter": 0
+        },
+        {
+          "op": "advance1s",
+          "positionAfter": 960
+        },
+        {
+          "op": "advance0.5s",
+          "positionAfter": 1440
+        },
+        {
+          "op": "seek",
+          "args": {
+            "tick": 1920
+          },
+          "positionAfter": 1920
+        },
+        {
+          "op": "advance0.25s",
+          "positionAfter": 2160
+        },
+        {
+          "op": "pause",
+          "positionAfter": 2160
+        },
+        {
+          "op": "advanceWhilePaused",
+          "positionAfter": 2160
+        },
+        {
+          "op": "resume",
+          "positionAfter": 2160
+        },
+        {
+          "op": "advance1sAfterResume",
+          "positionAfter": 3120
+        },
+        {
+          "op": "setLoop",
+          "args": {
+            "start": 0,
+            "end": 3840
+          },
+          "positionAfter": 3120
+        },
+        {
+          "op": "advance2sInLoop",
+          "positionAfter": 5040
+        },
+        {
+          "op": "stop",
+          "positionAfter": 0
+        },
+        {
+          "op": "advanceAfterStop",
+          "positionAfter": 0
+        }
+      ]
+    }
+  ]
+}

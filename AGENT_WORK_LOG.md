@@ -3407,10 +3407,11 @@ into their churning files).
 ## HARDENING ROUND 5 (2026-09-22) — mic lifecycle P3s, route error boundaries, post-split parity audit
 
 Scope note: the concurrent session's in-flight melodic-v2 diff (src/ai/symbolic/*, AudioEngine.ts,
-renderer.ts, services.ts, src/intent/providers/symbolic.ts, scripts/*symbolic-melodic*, new ONNX model)
+renderer.ts, services.ts, src/intent/providers/symbolic.ts, scripts/_symbolic-melodic_, new ONNX model)
 was treated as off-limits throughout.
 
 **Fixed:**
+
 - **PcmMicRecorder cross-instance mic claim** (round-2 deferred P3): ArrangementPanel takes and
   ExportPanel mic resamples each construct their own recorder — nothing stopped both from opening
   parallel getUserMedia streams on the same input. Module-level claim acquired at synchronous start()
@@ -3428,6 +3429,7 @@ was treated as off-limits throughout.
   (committed file, not in-flight work) — removed; full typecheck now 0 errors.
 
 **Audited, no defect:**
+
 - elapsedSeconds freezing while ctx suspended is CORRECT (capture halts with the clock; mid-take
   suspension already aborts capture via the statechange handler).
 - Definitions splits parity (GOAL 02/03 verbatim moves): multiset line diff of
@@ -3490,12 +3492,12 @@ claim/timeout + route boundaries).
 - **v2 transform v --augmented vetve**: 29→41 (genre z group segmentu 0 → genre semantic) resp. 44→35 (styleId z groove → style embedding); už-v2 riadky 1:1; iná šírka = jasná chyba.
 - **Chains**: `prior:train`, `prior:v2`, `prior:melodic`, `prior:melodic:v2` — všetky štyri teraz trénujú s `--augmented`. Report má `augmentedSamples` (transparentnosť).
 - **Fair porovnanie (obe verzie trénované na dnešnom datasete, čistý held-out):**
-  | model | base-only | with augmented | verdict |
-  |---|---|---|---|
-  | drum v1 | valAUC 0.9162 / F1 0.4539 | 0.9132 / 0.4567 | AUC parita (−0.003 seed-noise), F1 hore, TRAIN ×3.5 |
-  | drum v2 | valAUC 0.8791 / F1 0.3784 | 0.8805 / 0.3875 | mierne lepšie |
-  | melodic v1 | 0.643 deg / 0.464 dur | **0.679 / 0.571** | lepšie |
-  | melodic v2 | 0.643 / 0.464 | 0.607 / 0.464 | noise-range (28-sample val; semantic pod one-hot na známych žánroch = očakávaný trade-off za textovú generalizáciu) |
+  | model      | base-only                 | with augmented    | verdict                                                                                                             |
+  | ---------- | ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+  | drum v1    | valAUC 0.9162 / F1 0.4539 | 0.9132 / 0.4567   | AUC parita (−0.003 seed-noise), F1 hore, TRAIN ×3.5                                                                 |
+  | drum v2    | valAUC 0.8791 / F1 0.3784 | 0.8805 / 0.3875   | mierne lepšie                                                                                                       |
+  | melodic v1 | 0.643 deg / 0.464 dur     | **0.679 / 0.571** | lepšie                                                                                                              |
+  | melodic v2 | 0.643 / 0.464             | 0.607 / 0.464     | noise-range (28-sample val; semantic pod one-hot na známych žánroch = očakávaný trade-off za textovú generalizáciu) |
 - **Rozhodnutie:** `--augmented` ostáva vo všetkých 4 chainoch — val parita alebo lepšie, hlavná hodnota je TRAIN pokrytie (melodic 162→2411 = 15×, drum 74k→366k = 4.9×): robustnejšie generovanie naprieč semantic space. Diskové modely = augmented verzie.
 
 ---
@@ -3531,7 +3533,7 @@ against source before fixing.
   the mip chain); NaN `when` notes wedged the sorted event queue forever (all later notes dead).
   Numeric-only tunable allowlist + `Number.isFinite` boundary checks; NaN pitch/velocity rejected;
   empty `tables` upload rejected; `outputs[0]` guarded; `svfCoeffs` returns a shared scratch
- (cutoff is a mod destination — the fresh literal ran per sample per modulated voice); per-block
+  (cutoff is a mod destination — the fresh literal ran per sample per modulated voice); per-block
   dispatch bags reused.
 - **granular-voice: wrong sample-rate playback (P2)** — uploads are raw `getChannelData` (no host
   resample) and grains advanced 1:1 with context samples while the recorded `sampleRate` went
@@ -3599,3 +3601,24 @@ new test (full tsc blocked by the concurrent session's in-flight Sequencer.tsx/s
 edits); prettier clean on touched files; core worklet bundles rebuilt
 (`build:core-worklets`) after the source changes. Full-suite + build results recorded in the
 audit doc.
+
+---
+
+## GOAL 06 (cross-platform campaign) — Golden behavior & parity tests (2026-09-22)
+
+**Goal executed:** Domain-level reference fixtures (input → operation → expected) that a future platform implementation consumes to prove behavioral parity — prioritizing portable logic, no implementation details, determinism investigated and introduced where safe.
+
+**Delivered:**
+
+- **`tests/domain-goldens/*.json` + `tests/domain-goldens/harness.ts` (new)** — 5 families, 43 cases, all computed deterministically: (1) `param-math` — instrument/effect DEFAULTS TABLES (14 kinds + 47 types), clamp edge/NaN sweeps, syncRateHz table, midiToFreq 0–127, snapToScale/isInScale, swingOffsetTicks, automation valueAt; (2) `transport-time` — play/advance/seek/pause/resume/setLoop/stop position table under an injected manual clock; (3) `command-transforms` — scripted edits (step velocity, note add/move/resize, quantize, groove swing + drumHitsInWindow, arrangement clip + overlap-rejection error text + bpm) on a deterministic doc; (4) `serialization` — share-code encode + FULL MIDI HEX for a small pattern; (5) `scheduler-plan` — headless Scheduler trigger events for a swung pattern. `decode-goldens.json` = captured share codes that must decode identically FOREVER (backward-compat pins; capture script preserves, never regenerates).
+- **Canonicalization contract** (`harness.ts`): ISO strings → `<ts>` (wall clock never leaks), numbers → 6 dp, −0 → 0; ids via `useDeterministicIds`. Capture (`scripts/capture-domain-goldens.mts`, `npm run goldens:capture`) and the replay runner (`tests/domain-goldens.test.ts`) share the harness — they cannot drift.
+- **`docs/GOLDEN-PARITY.md` (new)** — the consumer guide: format, families, determinism contract, workflow, how a Kotlin/Swift implementation tracks ids (structure only; values are scheme artifacts), and the GOAL 09 non-determinism exclusions (velocityFx bare Math.random, two wall-clock id sites).
+- **Determinism fix:** `src/shared/ids.ts` `useDeterministicIds()` restore now restores the PREVIOUS state instead of unconditionally disabling — nested scopes (a builder inside `deterministicTestDoc`'s own finally) silently lost the mode and minted random ids mid-fixture. Caught by the goldens' own cross-run stability check.
+
+**Important files changed:** tests/domain-goldens/{harness.ts,param-math.json,transport-time.json,command-transforms.json,serialization.json,scheduler-plan.json,decode-goldens.json}(new), tests/domain-goldens.test.ts (new), scripts/capture-domain-goldens.mts (new), package.json (`goldens:capture`), src/shared/ids.ts, docs/GOLDEN-PARITY.md (new).
+
+**Validation:** replay 10/10 green across THREE consecutive runs (determinism proven); ids-helper consumers regression (groove/doc-delta/intent-mix/project-invariants/undo-sweep/commands/golden-render/intent-pipeline) green except `doc-delta` — verified PRE-EXISTING via stash isolation (fails identically without the ids change; the concurrent session's in-flight MRT2 generative-tracks work is in the tree: `src/generative/`, ADR 0012, schema/types/commands edits). tsc 0 errors in campaign files.
+
+**Recorded:** fixtures captured on a tree carrying the concurrent session's in-flight schema/commands edits — if their final shape differs, the replay diff will surface it (that is the pin working); scheduler golden currently records trigger events only (automation/modulator call recording is a natural extension); WAV byte goldens already implicitly pinned by the seeded-dither round-trips (GOAL 08).
+
+**Recommendations for next session (GOAL 07 — error boundaries & fault containment):** audit subsystem failure isolation: UI ErrorBoundary coverage for the route apps + panels (route ErrorBoundaries exist for /embed /gallery /download — verify studio panels), worker failure → breaker semantics (already strong), persistence failure UX (quota/corruption paths per store — partially pinned by GOAL 05 matrix), audio-engine failure states (context loss recovery paths — GOAL 04 mapped them). Read CAMPAIGN_STATE.md first.

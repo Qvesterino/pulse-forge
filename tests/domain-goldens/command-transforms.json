@@ -1,0 +1,643 @@
+{
+  "meta": {
+    "kind": "command-transforms",
+    "note": "deterministic doc + scripted commands → canonical project state",
+    "campaign": "GOAL 06",
+    "ids": "useDeterministicIds (prefix-test-N)",
+    "time": "canonicalized to <ts>"
+  },
+  "cases": [
+    {
+      "name": "step toggles + velocity set",
+      "operation": "commandSequence",
+      "input": {
+        "commands": ["toggleStep(pad0,0)", "toggleStep(pad0,4)", "setStepVelocity(pad0,0,0.42)"]
+      },
+      "expected": {
+        "rows": {
+          "track-test-000b-pad-01": [0.42, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0],
+          "track-test-000b-pad-02": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-03": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-04": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-05": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-06": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-07": [0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
+          "track-test-000b-pad-08": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-09": [0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.55, 0],
+          "track-test-000b-pad-10": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-11": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
+          "track-test-000b-pad-12": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-13": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-14": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-15": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          "track-test-000b-pad-16": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    {
+      "name": "note add/move/resize",
+      "operation": "commandSequence",
+      "input": {
+        "commands": ["addNote(60@0)", "addNote(64@240)", "moveNote(n0→480,67)", "resizeNote(n0→360)"]
+      },
+      "expected": {
+        "notes": {
+          "track-test-000c": [
+            {
+              "id": "note-test-000f",
+              "pitch": 67,
+              "start": 480,
+              "duration": 360,
+              "velocity": 0.9
+            },
+            {
+              "id": "note-test-000g",
+              "pitch": 28,
+              "start": 360,
+              "duration": 240,
+              "velocity": 0.7
+            },
+            {
+              "id": "note-test-000h",
+              "pitch": 31,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.9
+            },
+            {
+              "id": "note-test-000i",
+              "pitch": 28,
+              "start": 1440,
+              "duration": 240,
+              "velocity": 0.8
+            },
+            {
+              "id": "note-test-000z",
+              "pitch": 60,
+              "start": 0,
+              "duration": 120,
+              "velocity": 0.9
+            },
+            {
+              "id": "note-test-0010",
+              "pitch": 64,
+              "start": 240,
+              "duration": 240,
+              "velocity": 0.7
+            }
+          ],
+          "track-test-000d": [
+            {
+              "id": "note-test-000j",
+              "pitch": 60,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.5
+            },
+            {
+              "id": "note-test-000k",
+              "pitch": 63,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.42
+            },
+            {
+              "id": "note-test-000l",
+              "pitch": 67,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.4
+            },
+            {
+              "id": "note-test-000m",
+              "pitch": 60,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.5
+            },
+            {
+              "id": "note-test-000n",
+              "pitch": 63,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.42
+            },
+            {
+              "id": "note-test-000o",
+              "pitch": 67,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "quantizeNotes to 16th grid",
+      "operation": "commandSequence",
+      "input": {
+        "commands": ["addNote(60@97)", "addNote(67@383)", "quantizeNotes(all,grid=120,strength=1)"]
+      },
+      "expected": {
+        "notes": {
+          "track-test-000c": [
+            {
+              "id": "note-test-000f",
+              "pitch": 28,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.9
+            },
+            {
+              "id": "note-test-000g",
+              "pitch": 28,
+              "start": 360,
+              "duration": 240,
+              "velocity": 0.7
+            },
+            {
+              "id": "note-test-000h",
+              "pitch": 31,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.9
+            },
+            {
+              "id": "note-test-000i",
+              "pitch": 28,
+              "start": 1440,
+              "duration": 240,
+              "velocity": 0.8
+            },
+            {
+              "id": "note-test-0011",
+              "pitch": 60,
+              "start": 120,
+              "duration": 120,
+              "velocity": 0.8
+            },
+            {
+              "id": "note-test-0012",
+              "pitch": 67,
+              "start": 360,
+              "duration": 120,
+              "velocity": 0.6
+            }
+          ],
+          "track-test-000d": [
+            {
+              "id": "note-test-000j",
+              "pitch": 60,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.5
+            },
+            {
+              "id": "note-test-000k",
+              "pitch": 63,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.42
+            },
+            {
+              "id": "note-test-000l",
+              "pitch": 67,
+              "start": 0,
+              "duration": 240,
+              "velocity": 0.4
+            },
+            {
+              "id": "note-test-000m",
+              "pitch": 60,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.5
+            },
+            {
+              "id": "note-test-000n",
+              "pitch": 63,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.42
+            },
+            {
+              "id": "note-test-000o",
+              "pitch": 67,
+              "start": 960,
+              "duration": 240,
+              "velocity": 0.4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "setGroove swing 0.5 + drumHitsInWindow",
+      "operation": "commandSequence",
+      "input": {
+        "commands": ["toggleStep(pad0,even steps)", "setGroove(swing=0.5)", "drumHitsInWindow(0..2bars)"]
+      },
+      "expected": {
+        "groove": {
+          "swing": 0.5
+        },
+        "hits": [
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 240,
+            "velocity": 0.8,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 240,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-07",
+              "name": "Clap",
+              "assetId": "factory.clap.main",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": null
+            },
+            "tick": 480,
+            "velocity": 0.7,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 720,
+            "velocity": 0.8,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 720,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 960,
+            "velocity": 0.95,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 1200,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 1440,
+            "velocity": 0.95,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-07",
+              "name": "Clap",
+              "assetId": "factory.clap.main",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": null
+            },
+            "tick": 1440,
+            "velocity": 0.75,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 1680,
+            "velocity": 0.55,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-11",
+              "name": "Hat Open",
+              "assetId": "factory.hat.open",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 1680,
+            "velocity": 0.4,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 2160,
+            "velocity": 0.8,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 2160,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-07",
+              "name": "Clap",
+              "assetId": "factory.clap.main",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": null
+            },
+            "tick": 2400,
+            "velocity": 0.7,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 2640,
+            "velocity": 0.8,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 2640,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 2880,
+            "velocity": 0.95,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 3120,
+            "velocity": 0.5,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-01",
+              "name": "Kick Deep",
+              "assetId": "factory.kick.deep",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 1
+            },
+            "tick": 3360,
+            "velocity": 0.95,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-07",
+              "name": "Clap",
+              "assetId": "factory.clap.main",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": null
+            },
+            "tick": 3360,
+            "velocity": 0.75,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-09",
+              "name": "Hat Closed",
+              "assetId": "factory.hat.closed",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 3600,
+            "velocity": 0.55,
+            "ratchetIndex": 0
+          },
+          {
+            "trackId": "track-test-000b",
+            "pad": {
+              "id": "track-test-000b-pad-11",
+              "name": "Hat Open",
+              "assetId": "factory.hat.open",
+              "gain": 1,
+              "pan": 0,
+              "pitch": 0,
+              "mute": false,
+              "solo": false,
+              "chokeGroup": 2
+            },
+            "tick": 3600,
+            "velocity": 0.4,
+            "ratchetIndex": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "arrangement clip + overlap rejection + bpm",
+      "operation": "commandSequence",
+      "input": {
+        "commands": ["addArrangementClip(scene0,bar0,2)", "addArrangementClip(scene0,bar1,2)!", "setBpm(140)"]
+      },
+      "expected": {
+        "clips": [
+          {
+            "id": "clip-test-0013",
+            "sceneId": "scene-test-000p",
+            "startBar": 0,
+            "lengthBars": 2
+          }
+        ],
+        "overlapError": "Clip overlaps an existing clip at bar 2",
+        "bpm": 140
+      }
+    }
+  ]
+}

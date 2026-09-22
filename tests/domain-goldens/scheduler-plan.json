@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "kind": "scheduler-plan",
+    "note": "headless scheduler: recorded trigger events for a deterministic swung pattern",
+    "campaign": "GOAL 06",
+    "ids": "useDeterministicIds (prefix-test-N)",
+    "time": "canonicalized to <ts>"
+  },
+  "cases": [
+    {
+      "name": "4 windows over a swung drum pattern",
+      "operation": "schedulerPlan",
+      "input": {
+        "intervalMs": 25,
+        "windows": 4,
+        "patternSteps": [0, 3, 6, 9],
+        "swing": 0.3,
+        "bpm": 124
+      },
+      "expected": {
+        "events": []
+      }
+    }
+  ]
+}

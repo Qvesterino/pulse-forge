@@ -1,0 +1,594 @@
+{
+  "meta": {
+    "kind": "serialization",
+    "note": "share code encode/decode + MIDI byte parity",
+    "campaign": "GOAL 06",
+    "ids": "useDeterministicIds (prefix-test-N)",
+    "time": "canonicalized to <ts>"
+  },
+  "cases": [
+    {
+      "name": "share code encode (canonical doc)",
+      "operation": "encodeShareCode",
+      "input": {
+        "note": "decode pins live in decode-goldens.json — never regenerate them"
+      },
+      "expected": {
+        "code": "N4IgzgxgFgpgtgQwGowE5gJYHsB2IBcATADQgYAmBIADqlgFYwQAuAtMzGGwAy-cikcCODCoAJLAFcwMAAQAhGAmYCQAI2pwCARkIAWUswwiAyhgDmQ5pNSj8oHJJGplWVAQMhyMHFjgYrNw8AX0MXCABrMAIAbVAKKmZwiPZOHl41VQiAynwvVCdVIREqABECuGjScwQAgm4AOgBOUmoEPHxuUjhJDgIAMwQAGxlSMCwhrAHh0ZoEcmj8OLJckCSESNSuVj41VjbyHe0i4TsQAGkMSNlSmBhqVQQwGWYASVXBljcATwbsyIa3nuqhqdXw2la7XqrQwzGg0JAPT6+EGIxgYwmUxRM3RIGgWAiMAA4nRJA9waF4qt1psONtdvt5jtCCcSnlLtcAAqSHDw0hPF7vKifZg-P5XCINag8vkgUEdCFzDpdGiw+Gdbq9Oyo2bjSbTNGkfGEklScnaSkrRLJLbpbh7A47ADMrLOHIisgAKkwoL5Hs8YG8PhtRahfv9JRxoH7qrUFZDlTC4VAEUjtTiMfrsYa8VACcTSebLQk8jSUnS7Q6mdw9K6qAAlYz+wXBr5hhqoYwNaAYB6xsGKtqJ1XJ1Nag26zET3HGgtmgiOIZDYvUm0VnYZRmHbgAVjreRMQlszcDQryIrFYCPMAaiDq-fjSoR1DVKY1iPH2cnWZ1M7zJsLBdJCXFdrQ2cs0g3e0tx2AA2fcQEPBBbC9CwoBUfkAyDYUQ0va8GiMcx0JBOMdATZ9XzHZFf0zLEaNzfNTTJICQOIKkwNpSCGUdbgAHYEIAYSGBA+xAAVT1bUNfggYTqFvUiHzIp93xfUd3zTadaM0hiAPnfBF2XNirVLNcuM3HiAA4EJMKAEEJdxMJbHC21+MBbPshpxn6DC5VI8FyJUyj1M-ei9TojMdLnZj9OAwz2JM8DbSgqttyaBCxGUWQhKwGRKEciTnKkhpbOYbtJlykiBwClVVPVFUNK-XEwu02cmPJQhQISzj6XMpltH4QRTnETKTCwbyT2w89cPbEqypymByE8safPleoGlg6qkzqzVqIi5rGqNf8ovazq1lMnroMdbRjkGtkQAy5hZAAeWoHwJrPEALxm5QGiwV68EU-zlJqoL6pCvapwOyK2oIDqjJLM7EvXbi+pZW6zkbbx3sksVO28KUAnMSrHyHCi1LB3ac32+jWsAmLWPixHusrGDtBddGqE9PxZAAGSwAB3bHCrFUU4AaSZBcBwcoUC8mdvTKnIZpo6YfpuLjKZiCLpS1htFrDm8i5uBZDENChamlyCL8YqzalzaR22j9Ke-cKc1pvSDNOsskpRw5tD3A2QE9CVzc+6bfle1AIAIkPAcaXj7dqt8KYVl2WpVunPfh1ckbMy6+vgwP5CGXtQ6+iO0GjtQS9E1agdJ2XHYa0KlYi93os9gBdUgYH6fomGYRYYm78AfAWAhgGCL3zrtCAshyKgAi4CofB8pekicVeqAs7grMDne998sFGgsnd7ebiGfz24RqCGGAzwMyEXEqCevCYBBvjWloHagco-rWzwMkQ6dAaE6M++QMAADc7CNEIOA8wJcsYgKdJ4cgGAuCem+K9BEYBJCZGQeA0UOAYGgPgX5E+ZDkSKjgLgLE1CsDkAAIImCjqmBhjDShcDYUwxhcAVDqQYfIFhc8BHkHkJw-h9CxG8P4fVBhPN+hYHrMoOwcMQC937iwIeI8ZA4HHvYKe2cOJaztHlEA2Q9GLxwMvTeOA17WI3iIOxVB2jDCwETQOAk8yoHHnHBop9z7g0VlfKmN874P1ik-YQixQA5QgIw2GpA4nyCUsk241hiEEG-rgtQPMYDQKGGtEgIBfDoJgHkgpa0axGl6GNfoBAdyEF4KQWw4whC8jsNoUB3QGEwNIISb4ZY1pOlIOQTs0CET9AwEMDgqAACiOBIEANIDydBuAlJgFoEoXIKohiKOUciXZiiTDfF5AiPZWBbjUGYMnfkzBmDgSqdUt+EAP5FM8Lgrg5DunqMWbcYSn93w+EgRIIYOz+Q2REn0rwkLsHvlQLC6F5A+b-3hTAO+TwSHFLvpU-Aus5FMOEdwjhXDRGMJkdwoRrDRHiNJVI+QFLREKKUSo2GoR1F9wHtosYY8YlTxHm0e5aBrGxEZoK2ZOAfa8FEIHTkygJWyASWMDg1ABJSGceCDaIA6D8xiZrKV+dtzHCWI0JoZ8ugWuIKa81VrbXWrtXa5oNqLUj29sjXq24WQmodZa31Pr-UurCLnbWMFuAum9X6yNAaA2upnslUNtYI3RqjSmq1sbg0sx4nuJNqbc0+vTczeNPF4I5uTWW31BaTFFurPxUtFqGgJzzfW3izq01BsLb7HYVk63lvLZWg1OtuBpRzQ0Vt9ax1WtHQG0d5r+3usNfi2ITbe0VvbVWzt10l0rpXQ0Aw3A515x1roLdy7T0HpDVdcNMRT3bv3WugdrNE3XtvSu89ma+rZufTeptb7q1+xLV+l9ubO7st8HSV+bq84iOWAjMDMADX1K2m+QgFllXIVkaMmwyhsAdH0CqApWAICwkBaa06cGDUeJ-rDVD4AHmoH4U6WCKpyBYaMOsogeh8PosI8RtavEyNYA4AalMSGCBOkVF8+jWSmOYZcGx3DnHSAEaI8wEjzQBNCfnRgVQSdqNoak+CPQimvCsZw7DYzyneMgIssEX9fBcgwdWOR+d9AdNBRk7R9DCIWNybMxxrjkwVNqZ3Bp+D86IhubUrBEZnmDPMdM+xvDSnuNBYAXDRmzm86FNE-gWCCdYsYZM75xLFmUtWcaHoULBqtA5Y85J-hTQPM+ewyVgLPHVNrRC0YvImWLoAyo7lmL9XpPxeKwptrqWQF6HSxrXrdopi1fy8N-AjXRstfG8lwL5Xd22f5fyFgUCYByqFagHAH1xXCoNTK8AEAfCcFFRrSAd2DWiWKGcU0WAJmQhO2d1YF3TtXdUAEDg1jtv8ZHshFwOBzDwC3vYPENdtHssQKgey3Kbt3cYbUxA8nYgQ+x+tvHpALno8QBAOgQ9GZk7oAahyJShp5FKPWAAqgAWRMKoSBwxJAkPAYgagL5oeU41vzg1VRNYfUg9rHTyFhBUFWvyGhPJZHrV291xEGwafzp8m9qgDKTAc6U9z3n3QRKC-MMLhGov52SFUGWSXca+BzyiVoPICuxJK41Y0WCauqea6wAapZgdWfM5MK8ASnPjeddNwLwmlvVjW7zpLCXOcO28DMW0Z+8uFIe-VSrn3IH1fU4D-OgAHghAA6q8UonoxCR6GDz6PGvY9C4e1bkSBrP5rodxmqCGfZeu6fIrvPwyQsgZHrYawp349UEnzYSV87D4WNWHP07CF6z5LQJkPx38NFcrbx8UvBqA5rCwWcWw0DUDb-UFg8SuR6KZ+ia-bwrzAWEAaMUrZ3gAWwxVEQuwTGzSXgN8hMBAgBzGGAfc0gfmjQfODCo+3QGA5eFIvuGsq+C+ecaU-SC8eQ6BCE-ybyfiASHKmig8B+woR+86hcp+cKb8P+pAagt+AY9+EUj+L88ORgbIToLaYwpyIiIM0OnIuARM74-cC0agjyU2hguAdgnGQB-gyBFoqBCM6BBqCA88liuBgY8+CEAAcgAJpZR+C1zfLEF75aLkHniUF5z8SGBn5UAQDGGtLjB06MFtDMHaRsF6o3KtJ5hgoECsD6AtItY6AqjyqSGNC8CKi2AYoyBrS6D9LEIAGjKBgDxBDviQBiDUD1JEBhG1Ib6xHQqICEjRT1RIE6D8q2am5cBoCvyIA1GoBEh+SKi3bTKEylD4K6zE7GCwhoALIIDVwLQEAbwzg1yRz9GDEsE5gPKvQTF3xTGzAzEwDlCHYIGIhgBzFDFQyVCs4UBNHHzdBgBmDeD7HDgN79BgCejIQw78K6yeASHPCs60KbELG4gPFgBPG+AABitgAAjjoE0tUA3jAC8cMQULiEYDMh0eclIOQMQs8J6J2HANCZ0MjhQNpvDj4AMfMdpN4JAlcPfKsKoGMk4F4u0MQoUu+OvCvHYmSTgBSQiBABAKzmbnHkTvkE4LoYJjACyeSMPEhooHosotDqouyuTkoBwEwvwiAAADyDwAB8qgZI5AKiUpVAcpYAipwQQAA"
+      }
+    },
+    {
+      "name": "MIDI write (drum + instrument pattern)",
+      "operation": "writeMidiFile",
+      "input": {
+        "division": 480,
+        "bpm": 120
+      },
+      "expected": {
+        "byteLength": 154,
+        "hex": "4d546864000000060001000301e04d54726b0000001200ff03034b595800ff510307a12000ff2f004d54726b0000003000ff03056472756d73009924797889240082689924797889240082689924797889240082689924797889240000ff2f004d54726b0000003200ff03046c65616400901c728170801c0078901c598170801c008268901f728170801f008170901c668170801c0000ff2f00"
+      }
+    },
+    {
+      "name": "decode golden share code: house-canonical-v1 (backward compatibility)",
+      "operation": "decodeShareCode",
+      "input": {
+        "code": "N4IgzgxgFgpgtgQwGowE5gJYHsB2IBcAjADQgYAmBIADqlgFYwQAuAtMzGGwAy-cikcCODCoAJLAFcwMAAQAhGAmYCQAI2pwChAEwAWUswwiAyhgDmQ5pNSj8oHJJGplWVAQMhyMHFjgYrNw8AX0MXCABrMAIAbVAKKmZwiPZOHl41VQiAynwvVCdVIREqABECuGjScwQAgm4AOgBOUmoEPHxuUjhJDgIAMwQAGxlSMCwhrAHh0ZoEcmj8OLJckCSESNSuVj41VjbyHcIi4TsQAGkMSNlSmBhqVQQwGWYASVXBljcATwbsyIa3nuqhqdSIrXa9VaGGY0ChIB6fXwgxGMDGEymyJmaJA0CwERgAHE6JIHkRQvFVutNhxtrt9vMdjoTiU8pdrgAFSQ4OGkJ4vd5UT7MH5-K4RBrUbm8kCgjokOYdLo0GFwzrdXp2FGzcaTaao0h4gnEqRkwgUlaJZJbdLcPYHHYAZhZZ3ZEVkABUmFBfI9njA3h8NiLUL9-hKONBfdVavKIUrobCoPDEVrsei9ViDbioPiiSSzRaEnlqSlabb7YzuHoXVQAErGP0CoNfUMNVDGBrQDAPGNghVtBMqpMpzX6nUY8c4o3500ERxDIZFqnW8s7DIMw7cACstbyJiEtibAcFeWForAh5gDUQdT7ccV8OoquT6oRY6zE8z2unueNBfnSRF2XK0NjLNJ1ztTcdgANj3EADwQWxPQsKAVD5f1AyFYMLyvBojHMNCQVjbR4yfF9RyRH8M0xaiczzE1SUA4DiEpUCaQg+kHW4AB2eCAGEhgQXsQH5E8WxDX4ICE6gbxI+9SMfN9nxHN9UynGiNPo-853wBcl1Yy0S1XTiN24gAOeCTCgBACXcDDm2w1tfjAGy7IacZ+nQ2USPBJTlRUtVlXUz8cV1Wj0202cmL0oCDLY4ywJtSDKy3Jp4LEZRZEErAZEoBzxKcySGhs5gu0mPLiP7MjlIotSPzo8KtJnRiyR0EDEo4ukzMZQh+EEU5xCykwsC848sLPHC21K8rcpgcgPNG7y5XqBoYJqgK6uChrIqa0LDT-aK2o6tYTO6qCHUIY4BtZEBMuYWQAHlqB8cbTxAc9puUBosBevAFL8wdyNU7aqN2yd9qi1qCHawzi1OpK1y43rmRus4G28N6JNFDtvElAJzCqh8gdqkGNTB7M9rolqANiliEoRrqK2gwhnTRqgPT8WQABksAAdyxorRRFOAGkmAWAYHSFSaC8m00piHqcO6G6fiozGfA87UtYQga3ZvJObgWQxFQwXJuc-C-BK03JY2xNZffCmvwi7Mad0-STtLZLkcOQhd31kAPXFM2Pqm34XtQCB8ODgHGh4u3hwdkLGsVyK3Zij24ZXRHTIu3q4ID+Qhh7EPPvDtAo7UYuRJWwHpc2snHfl53muV2mPYAXVIGB+n6JhmEWGIu-AHwFgIYBgk9s7bQgLIcioAIuAqHxvMXpInBXqhzO4SyA+33efLBRpzO3BPk-B79duEaghhgU99IhFxKnHrwmAQb5VpaROoHKX7Vs8aSwdOgNEdKffIGAABudhGg6DAeYYumNgGOk8OQDAXAPTfBevCMAkhMhILASKHA0CQFwN8sfUhSIFRwFwJiKhWByAAEETCRxTPQhhpQuCsMYQwuAKg1L0PkMw2e-DyDyA4XwuhoieF8OCvQ7m-QsB1mUHYWGIAe59xYIPYeMgcBj3sJPLO7FNa2nyiAbIuiF44CXhvHAq8rHrxELYqg7RhhYEJgHfiuZUBj1jg0E+Z8doK0vpTa+t975xUfsIRYoBcoQAYTDUgsT5CKSSbcawRCCBfxwWobmMAoFDFWjoQQWA0EwFyfk1a1ZDS9FGv0Ag24dC8FILYcYQgeR2EICA7o9DoGkAJN8Usq1HSkHIB2KB8J+gYCGBwVAABRHAED-6kG5Gg3AikwC0CULkZUQwFFKKRDshRJhvg8nhLsrAtxqDMFfMqZQzAwKVKqa-CA79CmeBwVwMhXS1ELNuEJD+b4fAQIkEMbZfJrLCV6V4CFWC3yoBhVC8gvM-5wpgLfJ4xCikgFvhU-AOtZGMKEVw9hnCREMOkVwwRLCRFiNJZI+QFKRHyMUcomGoQ1G937losYo9omT2Hm0ZgMyrGxAZoK4V3teCiADhyO5aAcCyHiWMDg1B+JSCcUQdaIA6B82iRrSVectzHCWI0Jop8ugWuIKa81VrbXWrtXa5oNqLXDy9kjHqW5mQmodZa31Pr-UurCDnLW0FuDOm9X6yNAaA2uunilUNNYI3RqjSmq1sbg3M24ruJNqbc0+vTUzeN3E4I5uTWW31BbjFFqrHxUtFqGjxzzfWnizq01BsLT7HYlk63lvLZWg12tuDpRzQ0Vt9ax1WtHQG0d5r+3usNfi2ITbe0VvbVWztV0l0rpXQ0Aw3A52521roLdy7T0HpDZdcNMRT3bv3WugdLNE3XtvSu89mberZufTeptb7q2+xLV+l9uaO7st8LSF+brc7COWPDMDMADV1Ptq+HQ5llVIRkSMmwyhsAdH0MqfJWAIAwgBaak6cGDXuO-jDVD4B7moD4Y6GCypyBYaMGs-AeHSAEaI8wEjDayNYA4Aa5MSGCCOgVJ8+jmSmOYZcGx3Deh8NosI8Rz+AmhPzowKoQKyGaOSYkXoRTsnsPsc4yAbjqngHmWCL+vguQYOrHI-O+g2m6oydo+h+ELG5M4ZhkZ8zymeN8e3Op+D86IiudUjBYZHmpNvm8yZhTSnJhBf-rDBmTnc4FNE-gGC8dYsYa8Kx3zHH-MWd4--ULBqtA5fc-p6TzHiumbK4FyzjQQuGLyJl86-0qO5Zi-V-ATR3MJfk355LKmKvAL0Ol9W3XbRTFq-lwbw3Gs+eaxN1L02bP8r5CwSBMBZVCvle9cV8qDXSvABAHwnBRXq0gDdg1IlihnBNFgcZEJjuoBwKduV32LuqACBwKxbX+PDyQi4HA5h4Cb3sLiauWj2WIFQHZblV2bsMJqYgMbSxwdY8S7EYe5y0eIAgHQQeDNSd0ANfZEAL2yh1gAKoAFkTCqAgcMSQxCwGIGoM+KHFP1a84NVUDW71INa200hYQVAVp8modyGRa0dudYRBsan87vL07yAykwbOuOc+590YS-PzCC-hsL+dkhVClnF3Gvgs9IlaDyHL0SCuNWNBgiryn6usAGsWQHZnjOTCvH4uzw3q0ecm4Jub1Ylvc4SzF9nDtvBTFtCfrL+Sbv1VK69yB1XVO-fzoAB7wQAOqvFKB6MQ4ehhc8j8bvnMe7sW+Egaj+a67cZsgmn6XzvHzy5z0MkLIHh62GsN92PVBx82BwAag+5jVgz++-BOseS0CZF8V-dRXKW8fGLwa-2axMFnFsFA1Am-1CYLErkOi6eokv28C8gFOgGhYs2d4f5MNlSELsExppXg18BMBA-+zGGAvc0gJW7W3S2yJC3QGApe5I3u6sy+c+866UfS88eQqB8Efyryvi-iHKGiA8e+QoB+86Bcx+sKr8X+pAag1+-ot+kU9+z8cORgrIjoLaYwJywim0UOHIuAhMb4fc80agDy02hguAdgimAB-giB5oyB8MqBBqCAc8Fi2BAYs+8EAAcgAJrZR+A1xfKEE76aKkFnjkG5x8SGAn5UAQCGEtLjC070FtCMFaQsF6rXItK5igoECsD6DNImbaC3JCriGNC8AKi2DooyCrS6B9JEJ-4jIBj9xBBviQBiDUB1Ica3I1Jr7RFQqIAEgxTBQIHaD8o2bG5cBoAvyIBVGoCEi+QKjXZTIEylB4I6ykDFz+AzLzIIBVzzQEDrzTjVwRy9H9FMHZj3IvRjG3wTGzBTEwDlAHbD7dBgAzEDGQyVDM4UANFHyrFmDeC7FDh179BgAehITQ58I6yeBiHPDM40LrFzE4i3FgD3G+AABitgAAjtoI0tUHXjAI8YMQUDiEYNMm0WclIOQEQs8B6B2HABCZ0EjhQFpnDj4H0bMVpN4BAlcHfKsKoKMk4J4u0EQgUm+GvMvLYsSTgKSfCBABAMztHgLoTiMhUNoYJjAIyWSEPEhooLokolDiouymTkoBwIwnwiAAADwDwAB8qgpI5Ayi4pVA0pYAcpwQQAA"
+      },
+      "expected": {
+        "doc": {
+          "schemaVersion": 1,
+          "id": "project-test-0000",
+          "name": "House Beat",
+          "bpm": 124,
+          "timeSignature": {
+            "numerator": 4,
+            "denominator": 4
+          },
+          "tracks": [
+            {
+              "id": "track-test-000b",
+              "kind": "drum",
+              "name": "Drums",
+              "gain": 0.9,
+              "pan": 0,
+              "mute": false,
+              "solo": false,
+              "pads": [
+                {
+                  "id": "track-test-000b-pad-01",
+                  "name": "Kick Deep",
+                  "assetId": "factory.kick.deep",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 1
+                },
+                {
+                  "id": "track-test-000b-pad-02",
+                  "name": "Kick Punch",
+                  "assetId": "factory.kick.punch",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 1
+                },
+                {
+                  "id": "track-test-000b-pad-03",
+                  "name": "Kick Techno",
+                  "assetId": "factory.kick.techno",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 1
+                },
+                {
+                  "id": "track-test-000b-pad-04",
+                  "name": "Rim",
+                  "assetId": "factory.rim.chip",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-05",
+                  "name": "Snare",
+                  "assetId": "factory.snare.main",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-06",
+                  "name": "Snare Tight",
+                  "assetId": "factory.snare.tight",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-07",
+                  "name": "Clap",
+                  "assetId": "factory.clap.main",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-08",
+                  "name": "Shaker",
+                  "assetId": "factory.shaker.soft",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-09",
+                  "name": "Hat Closed",
+                  "assetId": "factory.hat.closed",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 2
+                },
+                {
+                  "id": "track-test-000b-pad-10",
+                  "name": "Hat Soft",
+                  "assetId": "factory.hat.closed.soft",
+                  "gain": 0.6,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 2
+                },
+                {
+                  "id": "track-test-000b-pad-11",
+                  "name": "Hat Open",
+                  "assetId": "factory.hat.open",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": 2
+                },
+                {
+                  "id": "track-test-000b-pad-12",
+                  "name": "Ride",
+                  "assetId": "factory.ride.ping",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-13",
+                  "name": "Tom Low",
+                  "assetId": "factory.tom.low",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-14",
+                  "name": "Tom High",
+                  "assetId": "factory.tom.high",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-15",
+                  "name": "Tick",
+                  "assetId": "factory.perc.tick",
+                  "gain": 0.7,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                },
+                {
+                  "id": "track-test-000b-pad-16",
+                  "name": "Blip",
+                  "assetId": "factory.perc.blip",
+                  "gain": 1,
+                  "pan": 0,
+                  "pitch": 0,
+                  "mute": false,
+                  "solo": false,
+                  "chokeGroup": null
+                }
+              ],
+              "effects": [],
+              "sends": {}
+            },
+            {
+              "id": "track-test-000c",
+              "kind": "instrument",
+              "instrument": "808",
+              "name": "808",
+              "gain": 0.85,
+              "pan": 0,
+              "mute": false,
+              "solo": false,
+              "sampleId": null,
+              "params": {
+                "decay": 0.9,
+                "pitchDrop": 0.4,
+                "click": 0.35,
+                "drive": 0.25,
+                "glide": 0.34,
+                "distType": 0,
+                "sub": 0.35,
+                "tone": 0.35,
+                "gain": 0.85,
+                "gate": 1,
+                "mono": 1,
+                "modASrc": 0,
+                "modADst": 0,
+                "modAAmt": 0,
+                "modBSrc": 0,
+                "modBDst": 1,
+                "modBAmt": 0,
+                "modLfoRate": 2
+              },
+              "effects": [],
+              "sends": {}
+            },
+            {
+              "id": "track-test-000d",
+              "kind": "instrument",
+              "instrument": "analog",
+              "name": "Chords",
+              "gain": 0.85,
+              "pan": 0,
+              "mute": false,
+              "solo": false,
+              "sampleId": null,
+              "params": {
+                "oscA": 2,
+                "oscB": 1,
+                "oscBDetune": 9,
+                "subLevel": 0.2,
+                "noiseLevel": 0.04,
+                "cutoff": 5200,
+                "resonance": 1.3,
+                "mode": 0,
+                "keytrack": 0.3,
+                "drive": 0,
+                "filterEnv": 0.4,
+                "unison": 1,
+                "spread": 0,
+                "lfoRate": 0,
+                "lfoSync": 0,
+                "lfoDepth": 0,
+                "attack": 0.004,
+                "decay": 0.24,
+                "sustain": 0.3,
+                "envDelay": 0,
+                "envHold": 0,
+                "aShape": 0,
+                "dShape": 0,
+                "rShape": 0,
+                "dLoop": 0,
+                "release": 0.2,
+                "level": -10,
+                "modASrc": 0,
+                "modADst": 0,
+                "modAAmt": 0,
+                "modBSrc": 0,
+                "modBDst": 1,
+                "modBAmt": 0,
+                "modLfoRate": 2
+              },
+              "effects": [],
+              "sends": {}
+            }
+          ],
+          "patterns": [
+            {
+              "id": "pattern-test-000e",
+              "name": "Pattern A",
+              "stepCount": 16,
+              "rows": {
+                "track-test-000b-pad-01": [0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0],
+                "track-test-000b-pad-02": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-03": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-04": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-05": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-06": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-07": [0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
+                "track-test-000b-pad-08": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-09": [0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.55, 0],
+                "track-test-000b-pad-10": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-11": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
+                "track-test-000b-pad-12": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-13": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-14": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-15": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                "track-test-000b-pad-16": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+              },
+              "notes": {
+                "track-test-000c": [
+                  {
+                    "id": "note-test-000f",
+                    "pitch": 28,
+                    "start": 0,
+                    "duration": 240,
+                    "velocity": 0.9
+                  },
+                  {
+                    "id": "note-test-000g",
+                    "pitch": 28,
+                    "start": 360,
+                    "duration": 240,
+                    "velocity": 0.7
+                  },
+                  {
+                    "id": "note-test-000h",
+                    "pitch": 31,
+                    "start": 960,
+                    "duration": 240,
+                    "velocity": 0.9
+                  },
+                  {
+                    "id": "note-test-000i",
+                    "pitch": 28,
+                    "start": 1440,
+                    "duration": 240,
+                    "velocity": 0.8
+                  }
+                ],
+                "track-test-000d": [
+                  {
+                    "id": "note-test-000j",
+                    "pitch": 60,
+                    "start": 0,
+                    "duration": 240,
+                    "velocity": 0.5
+                  },
+                  {
+                    "id": "note-test-000k",
+                    "pitch": 63,
+                    "start": 0,
+                    "duration": 240,
+                    "velocity": 0.42
+                  },
+                  {
+                    "id": "note-test-000l",
+                    "pitch": 67,
+                    "start": 0,
+                    "duration": 240,
+                    "velocity": 0.4
+                  },
+                  {
+                    "id": "note-test-000m",
+                    "pitch": 60,
+                    "start": 960,
+                    "duration": 240,
+                    "velocity": 0.5
+                  },
+                  {
+                    "id": "note-test-000n",
+                    "pitch": 63,
+                    "start": 960,
+                    "duration": 240,
+                    "velocity": 0.42
+                  },
+                  {
+                    "id": "note-test-000o",
+                    "pitch": 67,
+                    "start": 960,
+                    "duration": 240,
+                    "velocity": 0.4
+                  }
+                ]
+              }
+            }
+          ],
+          "activePatternId": "pattern-test-000e",
+          "scenes": [
+            {
+              "id": "scene-test-000p",
+              "name": "Groove",
+              "patternId": "pattern-test-000e",
+              "intensity": 0.7
+            }
+          ],
+          "arrangement": {
+            "clips": []
+          },
+          "markers": [],
+          "sceneAutomation": [],
+          "automation": [],
+          "lfos": [],
+          "macros": [
+            {
+              "id": "macro-test-000r",
+              "name": "DRUMS",
+              "value": 0.5,
+              "mappings": [
+                {
+                  "id": "map-test-000s",
+                  "trackId": "track-test-000b",
+                  "param": "gain",
+                  "amount": 0.6
+                }
+              ]
+            },
+            {
+              "id": "macro-test-000t",
+              "name": "BASS",
+              "value": 0.5,
+              "mappings": [
+                {
+                  "id": "map-test-000u",
+                  "trackId": "track-test-000c",
+                  "param": "gain",
+                  "amount": 0.6
+                }
+              ]
+            },
+            {
+              "id": "macro-test-000v",
+              "name": "MUSIC",
+              "value": 0.5,
+              "mappings": [
+                {
+                  "id": "map-test-000w",
+                  "trackId": "track-test-000d",
+                  "param": "gain",
+                  "amount": 0.6
+                }
+              ]
+            },
+            {
+              "id": "macro-test-000x",
+              "name": "WIDTH",
+              "value": 0.5,
+              "mappings": [
+                {
+                  "id": "map-test-000y",
+                  "trackId": "track-test-000d",
+                  "param": "pan",
+                  "amount": 0.35
+                }
+              ]
+            }
+          ],
+          "returns": [
+            {
+              "id": "return-test-0008",
+              "kind": "return",
+              "name": "Reverb",
+              "gain": 0.9,
+              "effects": [
+                {
+                  "id": "fx-test-0005",
+                  "type": "reverb",
+                  "bypassed": false,
+                  "params": {
+                    "decay": 2.2,
+                    "predelay": 20,
+                    "tone": 6000,
+                    "damping": 6000,
+                    "diffusion": 0.5,
+                    "mod": 0.35,
+                    "mix": 1
+                  }
+                }
+              ]
+            },
+            {
+              "id": "return-test-0009",
+              "kind": "return",
+              "name": "Delay",
+              "gain": 0.85,
+              "effects": [
+                {
+                  "id": "fx-test-0006",
+                  "type": "delay",
+                  "bypassed": false,
+                  "params": {
+                    "time": 375,
+                    "sync": 0,
+                    "pingPong": 0,
+                    "feedback": 0.4,
+                    "tone": 4000,
+                    "mix": 1
+                  }
+                }
+              ]
+            },
+            {
+              "id": "return-test-000a",
+              "kind": "return",
+              "name": "NY Comp",
+              "gain": 0.85,
+              "effects": [
+                {
+                  "id": "fx-test-0007",
+                  "type": "compressor",
+                  "bypassed": false,
+                  "params": {
+                    "threshold": -24,
+                    "ratio": 10,
+                    "attack": 0.001,
+                    "release": 0.12,
+                    "knee": 6,
+                    "detector": 0,
+                    "scHpf": 20,
+                    "autoRelease": 0,
+                    "makeup": 0,
+                    "mix": 1
+                  }
+                }
+              ]
+            }
+          ],
+          "master": {
+            "masterGain": 1,
+            "ceilingDb": -1,
+            "limiterEnabled": true,
+            "clipperEnabled": false,
+            "tapeEnabled": false,
+            "tapeDrive": 0.35,
+            "msEnabled": false,
+            "msMidGain": 0,
+            "msSideGain": 0,
+            "lufsTarget": -14,
+            "bassMonoEnabled": false,
+            "bassMonoFreq": 120,
+            "glueEnabled": true,
+            "tiltDb": 0,
+            "loudnessTrimDb": 0
+          },
+          "midi": {
+            "enabled": false,
+            "deviceId": "",
+            "drumChannel": 0,
+            "instrumentChannel": 0,
+            "ccMappings": [],
+            "drumNoteMap": [],
+            "pitchBendRange": 2
+          },
+          "createdAt": "<ts>",
+          "updatedAt": "<ts>"
+        }
+      }
+    }
+  ]
+}

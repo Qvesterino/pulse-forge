@@ -9,9 +9,12 @@ let deterministicMode = false;
 let deterministicCounter = 0;
 
 export function useDeterministicIds(): () => void {
+  // Restore the PREVIOUS state, not "off" — nested scopes (a builder inside
+  // a builder) must not silently disable the mode for their caller.
+  const previous = deterministicMode;
   deterministicMode = true;
   return () => {
-    deterministicMode = false;
+    deterministicMode = previous;
   };
 }
 
