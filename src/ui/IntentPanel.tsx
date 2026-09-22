@@ -10,13 +10,8 @@ import {
   applyProductionIntentCommand,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import {
-  buildSong,
-  applySongCommand,
-  reviseSection,
-  replacePatternInPlaceCommand,
-  parseSongLength,
-} from "../intent/song";
+import { reviseSection, replacePatternInPlaceCommand } from "../intent/song";
+import { composeFullTrack } from "../intent/compose";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent } from "../intent/loudness";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
@@ -344,6 +339,9 @@ export function IntentPanel() {
   // Wave 2+3 — the sentence's section vocabulary shapes the form ("16-bar
   // intro", "chorus twice", "no break") and scopes FX ("vinyl break"); the
   // intent's remaining FX words become global song chains.
+  // SUNO MODE — one sentence through the FULL pipeline: song (sections,
+  // transitions, scoped FX, length words) + mix profile + loudness pass.
+  // Undo per stage; the loudness render must run AFTER install.
   const [songBusy, setSongBusy] = useState(false);
   const runSongBuild = async (sections?: SectionParse) => {
     setError(null);
@@ -354,26 +352,33 @@ export function IntentPanel() {
     try {
       const intentInput = parsed?.input ?? {};
       const globalFx = parseProductionIntent(sections?.remainingText ?? text);
-      const build = await buildSong(
-        doc,
-        {
-          ...intentInput,
-          ...(globalFx ? { fx: globalFx } : {}),
-          seed: `song-${Date.now()}`,
-          roles: intentInput.roles ?? ["drums", "bass", "chords", "lead"],
-        },
-        {
-          ...(sections ? { sections } : {}),
-          ...(parseSongLength(text) ? { length: parseSongLength(text) } : {}),
-          onProgress: (done, label, total) => setStatus(`♪ building song — ${label} (${done}/${total})`),
-        },
-      );
-      services.store.execute(applySongCommand(doc, build));
-      const fxNote = build.baseIntent.fx || build.sections.some((s) => s.fx) ? " + FX" : "";
-      const seconds = Math.round((build.totalBars * 4 * 60) / (build.resolvedBpm ?? 120));
+      const result = await composeFullTrack(doc, text, {
+        ...(sections ? { sections } : {}),
+        input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
+        bank: services.bank,
+        onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
+      });
+      services.store.execute(result.commands.song);
+      if (result.commands.mix) services.store.execute(result.commands.mix);
+      let loudnessNote = "";
+      if (result.loudness) {
+        setStatus("⚡ SUNO MODE — loudness pass (render + trim)…");
+        const outcome = await result.loudness.run(services.store.getDoc());
+        if (outcome?.ok) {
+          loudnessNote = ` — loudness ${outcome.report.measuredAfter ?? "?"} LUFS (trim ${
+            outcome.report.trim >= 0 ? "+" : ""
+          }${outcome.report.trim} dB)`;
+        }
+      }
+      const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
+      const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
       const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      const stages = result.commands.mix ? " + mix" : "";
+      const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
       setStatus(
-        `✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars${lengthNote}${fxNote} (one undo step)`,
+        `✓ SUNO MODE — ${result.build.name} — ${result.build.sections.length} sections, ${
+          result.build.totalBars
+        } bars${lengthNote}${fxNote}${stages}${loudnessNote}${skipNote}`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

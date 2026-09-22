@@ -46,7 +46,19 @@ export function priorMode(): PriorMode {
  * still degrades to v1 per candidate when the model or the embedding is
  * unavailable (see SymbolicPriorProvider).
  */
+let embeddingConditionedOverride: "off" | "on" | null = null;
+
+/**
+ * Test/shadow-A/B hook: force the mode regardless of localStorage (null =
+ * back to storage). The shadow A/B script flips this per pass without
+ * touching the user's flag.
+ */
+export function setEmbeddingConditionedOverride(mode: "off" | "on" | null): void {
+  embeddingConditionedOverride = mode;
+}
+
 export function embeddingConditionedMode(): "off" | "on" {
+  if (embeddingConditionedOverride) return embeddingConditionedOverride;
   try {
     const value = localStorage.getItem("pf:embedding-conditioned");
     if (value === "off" || value === "on") return value;
@@ -392,4 +404,5 @@ export function resetPriorClient(): void {
   workerDisabled = false;
   cachedManifests.clear();
   nextRequestId = 1;
+  embeddingConditionedOverride = null;
 }

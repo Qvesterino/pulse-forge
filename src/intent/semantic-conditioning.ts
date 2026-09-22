@@ -34,6 +34,17 @@ export function resetSemanticConditioning(): void {
  * The conditioning vector for raw intent text, or null when unavailable.
  * Inject `embedFn` in tests; production uses the semantic worker client.
  */
+let embedOverride: EmbedFn | null = null;
+
+/**
+ * Test/shadow-A/B hook: substitute the embedder (e.g. the Node MiniLM
+ * pipeline) without touching the production worker client. Cleared by
+ * passing null.
+ */
+export function setSemanticEmbedOverride(fn: EmbedFn | null): void {
+  embedOverride = fn;
+}
+
 export async function semanticConditioning(
   text: string | null | undefined,
   embedFn?: EmbedFn,
@@ -41,7 +52,7 @@ export async function semanticConditioning(
   try {
     // Lazy: keep the semantic client out of the landing-route static closure
     // (see style-vector.ts).
-    const embed = embedFn ?? (await import("../ai/semantic/semantic-client")).embedTexts;
+    const embed = embedFn ?? embedOverride ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     const trimmed = (text ?? "").trim().slice(0, MAX_TEXT_LENGTH);
     if (!trimmed) return null;
     if (embeddingConditionedMode() !== "on") return null;

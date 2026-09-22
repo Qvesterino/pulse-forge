@@ -15,7 +15,8 @@
  * degrades to a shorter pipeline with the reason surfaced in the summary.
  */
 import { parseIntentText } from "./text-parser";
-import { parseSectionRequests } from "./sections";
+import type { IntentInput } from "./types";
+import { parseSectionRequests, type SectionParse } from "./sections";
 import { buildSong, applySongCommand, parseSongLength, type SongBuild, type SongLengthHint } from "./song";
 import { planMixProfile, applyMixIntent } from "./mix";
 import { parseLoudnessIntent, applyLoudnessIntent, type LoudnessApplyResult, type LoudnessRenderFn } from "./loudness";
@@ -48,6 +49,17 @@ export interface ComposeOptions {
   onProgress?: (label: string) => void;
   /** Length override; default parses the text ("short", "3 minutes", "epic journey"). */
   length?: SongLengthHint | null;
+  /**
+   * Section requests override — callers that PRE-parsed the sentence (role
+   * flow, chips) pass their parse here; otherwise the text is re-parsed.
+   */
+  sections?: SectionParse;
+  /**
+   * Intent input override — callers with a RICHER parse (semantic enrichment,
+   * artist presets, production-FX ride-along) pass their input here; fields
+   * the text parse found are used when omitted.
+   */
+  input?: IntentInput;
   /** Run the loudness pass after install. Default true when a bank is provided. */
   loudness?: boolean;
   /** Sample bank for the loudness render — loudness needs it; without it the stage skips. */
@@ -71,7 +83,7 @@ export async function composeFullTrack(
 
   // 1 — parse: intent + section requests + length hint (#6).
   const parsed = parseIntentText(trimmed);
-  const sectionRequests = parseSectionRequests(trimmed);
+  const sectionRequests = options.sections ?? parseSectionRequests(trimmed);
   const length = options.length !== undefined ? options.length : parseSongLength(trimmed);
 
   // 2 — generate: whole song, transitions and scoped FX baked per section.
@@ -80,8 +92,9 @@ export async function composeFullTrack(
     doc,
     {
       ...parsed.input,
+      ...(options.input ?? {}),
       seed: options.seed ?? `compose-${Date.now()}`,
-      roles: parsed.input.roles ?? ["drums", "bass", "chords", "lead"],
+      roles: (options.input ?? parsed.input).roles ?? ["drums", "bass", "chords", "lead"],
     },
     {
       ...(sectionRequests ? { sections: sectionRequests } : {}),

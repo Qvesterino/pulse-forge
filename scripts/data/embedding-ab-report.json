@@ -1,0 +1,119 @@
+{
+  "version": "embedding-ab-v2-model-level",
+  "generatedAt": "2026-09-22T20:16:03.292Z",
+  "prompts": [
+    "dark rainy berlin techno at 132",
+    "sunny uplifting techno at 132",
+    "aggressive peak time techno",
+    "minimal hypnotic techno",
+    "aggressive hard trap at 145",
+    "chill smooth trap at 135",
+    "deep house sunset groove",
+    "funky house party at 125",
+    "drift phonk night drive",
+    "liquid drum and bass rollers"
+  ],
+  "rows": [
+    {
+      "prompt": "dark rainy berlin techno at 132",
+      "genre": "techno",
+      "style": "techno.driving",
+      "v1Mean": 0.34,
+      "v2Mean": 0.343
+    },
+    {
+      "prompt": "sunny uplifting techno at 132",
+      "genre": "techno",
+      "style": "techno.driving",
+      "v1Mean": 0.34,
+      "v2Mean": 0.357
+    },
+    {
+      "prompt": "aggressive peak time techno",
+      "genre": "techno",
+      "style": "techno.driving",
+      "v1Mean": 0.34,
+      "v2Mean": 0.356
+    },
+    {
+      "prompt": "minimal hypnotic techno",
+      "genre": "techno",
+      "style": "techno.minimal",
+      "v1Mean": 0.268,
+      "v2Mean": 0.356
+    },
+    {
+      "prompt": "aggressive hard trap at 145",
+      "genre": "trap",
+      "style": "trap.classic",
+      "v1Mean": 0.332,
+      "v2Mean": 0.361
+    },
+    {
+      "prompt": "chill smooth trap at 135",
+      "genre": "trap",
+      "style": "trap.classic",
+      "v1Mean": 0.332,
+      "v2Mean": 0.364
+    },
+    {
+      "prompt": "deep house sunset groove",
+      "genre": "house",
+      "style": "house.deep",
+      "v1Mean": 0.397,
+      "v2Mean": 0.362
+    },
+    {
+      "prompt": "funky house party at 125",
+      "genre": "house",
+      "style": "house.funky",
+      "v1Mean": 0.415,
+      "v2Mean": 0.351
+    },
+    {
+      "prompt": "drift phonk night drive",
+      "genre": "phonk",
+      "style": "house.driving",
+      "v1Mean": 0.327,
+      "v2Mean": 0.339
+    },
+    {
+      "prompt": "liquid drum and bass rollers",
+      "genre": "dnb",
+      "style": "house.driving",
+      "v1Mean": 0.327,
+      "v2Mean": 0.378
+    }
+  ],
+  "pairs": [
+    {
+      "pair": "dark rainy berlin techno at 132  ⇄  sunny uplifting techno at 132",
+      "v1Distance": 0,
+      "v2Distance": 0.54,
+      "ratio": "new"
+    },
+    {
+      "pair": "aggressive peak time techno  ⇄  minimal hypnotic techno",
+      "v1Distance": 1.44,
+      "v2Distance": 0.19,
+      "ratio": 0.129
+    },
+    {
+      "pair": "aggressive hard trap at 145  ⇄  chill smooth trap at 135",
+      "v1Distance": 0,
+      "v2Distance": 0.39,
+      "ratio": "new"
+    },
+    {
+      "pair": "deep house sunset groove  ⇄  funky house party at 125",
+      "v1Distance": 1.45,
+      "v2Distance": 0.54,
+      "ratio": 0.376
+    }
+  ],
+  "meanRatio": 0.253,
+  "pairsImproved": 2,
+  "functional": true,
+  "nonDegradation": false,
+  "verdict": "KEEP-OFF"
+}
