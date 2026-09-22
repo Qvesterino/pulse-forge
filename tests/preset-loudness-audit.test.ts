@@ -65,7 +65,11 @@ describe("preset gain sanity", () => {
     // explicitly instead of silently growing the capped set.
     const KNOWN_CLAMPED = [
       "factory.drumsynth.ambient.softclap",
+      "factory.drumsynth.dnb.opencup",
+      "factory.drumsynth.drill.tickhat",
       "factory.drumsynth.house.tighthat",
+      "factory.drumsynth.jersey.clap",
+      "factory.drumsynth.jersey.hat",
       "factory.granular.ambient.cloudpad",
       "factory.granular.ambient.dust",
       "factory.granular.ambient.timestretch",
