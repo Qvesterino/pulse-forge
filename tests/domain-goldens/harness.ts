@@ -47,6 +47,8 @@ import { Transport } from "../../src/transport/Transport";
 import { Scheduler } from "../../src/scheduler/Scheduler";
 import { encodeShareCode, decodeShareCode } from "../../src/export/shareCode";
 import { writeMidiFile } from "../../src/midi/midiFile";
+import { mulberry32 } from "../../src/shared/rng";
+import { humanizeVelocities, randomizeVelocities } from "../../src/shared/velocityFx";
 import type { ProjectDocument } from "../../src/project-model/types";
 
 export interface GoldenCase {
@@ -490,6 +492,35 @@ function buildSchedulerPlan(): GoldenFamily {
 
 // ── registry ─────────────────────────────────────────────────────────────
 
+// ── velocity-fx ──────────────────────────────────────────────────────────
+
+function buildVelocityFx(): GoldenFamily {
+  // GOAL 09: velocityFx is seedable — the UI keeps Math.random (creative
+  // rolls, values baked into commands); the golden family pins the seeded
+  // contract (same rng stream → same output).
+  const current = [0, 0.5, 0.8, 0, 1, 0.3, 0.62];
+  const roll = randomizeVelocities(current, 0.45, 1, mulberry32(1234));
+  const human = humanizeVelocities(current, 0.12, mulberry32(5678));
+  return {
+    file: "velocity-fx.json",
+    meta: familyMeta("velocity-fx", "seeded velocity effects (mulberry32 1234/5678) — silence-preserving"),
+    cases: [
+      {
+        name: "randomizeVelocities seeded (silence preserved, [min,max] range)",
+        operation: "randomizeVelocities",
+        input: { current, min: 0.45, max: 1, seed: 1234 },
+        expected: { out: canonicalize(roll) },
+      },
+      {
+        name: "humanizeVelocities seeded (±amount, floor 0.05)",
+        operation: "humanizeVelocities",
+        input: { current, amount: 0.12, seed: 5678 },
+        expected: { out: canonicalize(human) },
+      },
+    ],
+  };
+}
+
 export function buildFamilies(decodeGoldens: Array<{ label: string; code: string }>): GoldenFamily[] {
   return [
     buildParamMath(),
@@ -497,5 +528,6 @@ export function buildFamilies(decodeGoldens: Array<{ label: string; code: string
     buildCommandTransforms(),
     buildSerialization(decodeGoldens),
     buildSchedulerPlan(),
+    buildVelocityFx(),
   ];
 }

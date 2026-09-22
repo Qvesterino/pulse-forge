@@ -69,7 +69,9 @@ regenerating existing pins breaks the backward-compatibility contract.
    sequential scheme; a port's own id scheme is fine as long as references
    resolve the same way.
 
-Known non-determinism parked for GOAL 09: `shared/velocityFx.ts` uses bare
-`Math.random` (humanize/randomize velocity edits are not yet replayable) and
-two wall-clock id sites in `commands.ts` — deliberately excluded from the
-fixtures until seeded.
+GOAL 09 outcome: `shared/velocityFx.ts` is now SEEDABLE (optional `rng`
+parameter; default Math.random preserved for creative per-click rolls — the
+computed values are baked into their commands, so replay was already
+stable). The two wall-clock id sites in `commands.ts` (modulator seed,
+sketch stamp) are uniqueness-only by design: stored seeds make their streams
+reproducible, so they stay.

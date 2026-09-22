@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "kind": "velocity-fx",
+    "note": "seeded velocity effects (mulberry32 1234/5678) — silence-preserving",
+    "campaign": "GOAL 06",
+    "ids": "useDeterministicIds (prefix-test-N)",
+    "time": "canonicalized to <ts>"
+  },
+  "cases": [
+    {
+      "name": "randomizeVelocities seeded (silence preserved, [min,max] range)",
+      "operation": "randomizeVelocities",
+      "input": {
+        "current": [
+          0,
+          0.5,
+          0.8,
+          0,
+          1,
+          0.3,
+          0.62
+        ],
+        "min": 0.45,
+        "max": 1,
+        "seed": 1234
+      },
+      "expected": {
+        "out": [
+          0,
+          0.490312,
+          0.836877,
+          0,
+          0.946571,
+          0.983802,
+          0.47253
+        ]
+      }
+    },
+    {
+      "name": "humanizeVelocities seeded (±amount, floor 0.05)",
+      "operation": "humanizeVelocities",
+      "input": {
+        "current": [
+          0,
+          0.5,
+          0.8,
+          0,
+          1,
+          0.3,
+          0.62
+        ],
+        "amount": 0.12,
+        "seed": 5678
+      },
+      "expected": {
+        "out": [
+          0,
+          0.498652,
+          0.848933,
+          0,
+          0.956983,
+          0.202353,
+          0.663105
+        ]
+      }
+    }
+  ]
+}

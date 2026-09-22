@@ -3696,3 +3696,25 @@ audit doc.
 - **SUNO MODE** (`src/intent/compose.ts` — `composeFullTrack(doc, text)`): text → parser + sections + length → buildSong → mix profil (applyMixIntent command) → loudness pass (parseLoudnessIntent explicit alebo implicitný −14 SONG_LOUDNESS_TARGET_LUFS; potrebuje bank; volá sa PO inštalácii cez vrátený `loudness.run(doc)` — render musí počuť hotový mix). Vracia `{ commands: {song, mix}, loudness, skipped }` — nikdy nehádže, nefunkčné fázy v `skipped`.
 - **UI** (`IntentPanel.runSongBuild`): SONG berie dĺžkové frázy zo vety + status ukazuje ≈ dĺžku (bars → mm:ss z resolvedBpm).
 - **Testy** `tests/suno-mode.test.ts` 9/9 (exact/short/extended/epic matematika, unikátne labely, determinizmus, compose e2e vrátane loudness degradácie). Regresia **257/257 cez 25 súborov**; typecheck mojich súborov 0.
+
+---
+
+## GOAL 09 (cross-platform campaign) — Determinism & reproducibility audit (2026-09-22)
+
+**Goal executed:** Audit non-determinism (unstable ids, time-dependent behavior, uncontrolled randomness, ordering, races, unstable serialization, clock-dependent tests); introduce determinism where product requirements allow; keep intentional creative randomness.
+
+**Headline verdict (revisits the GOAL 02 claim):** the velocityFx "replayability" finding was WRONG in the strict sense — both call sites (PianoRoll `setNotesVelocities`, Sequencer `setStepsVelocity`) compute the velocities in the UI and bake the RESULTS into their commands, so cross-instance replay was already stable. The randomness is UI-input (creative roll), not a project-model leak. The improvement taken is still real: `shared/velocityFx.ts` now accepts an optional `rng` (default Math.random preserved), making the output a pure function of (input, rng) for reproducible contexts.
+
+**Changes:**
+
+1. `src/shared/velocityFx.ts` — optional `rng` parameter on `randomizeVelocities`/`humanizeVelocities` (backwards compatible; documented determinism contract).
+2. `tests/velocity-fx.test.ts` +8 pins — seeded same-output, different-seed difference, silence preservation, humanize clamps (extends the existing committed suite instead of duplicating it).
+3. Golden harness gains the `velocity-fx` family (mulberry32 1234/5678) + `velocity-fx.json` captured — the GOAL 06 exclusion is resolved; `docs/GOLDEN-PARITY.md` updated.
+4. **Verdicts recorded (no code change, intentional):** wall-clock ids in `commands.ts` (sketch stamp :3108, newModulatorSeed :4239) are UNIQUENESS-only — stored seeds make their streams reproducible on any platform, so they stay; `dice.ts` wall-clock fallback seed is documented intentional (unsaved rolls are un-re-generable by design); JS ordering assumptions (stable sort ES2019, string-key insertion order) are portable; capability-dependent worklet availability is by-design detection, not non-determinism.
+5. Timing-dependent test sweep: gallery-server real-time handshake guard (2 s reject / 3.2 s settle) is a timeout guard, not flaky determinism; pack-groove/rafLoop/ranker-client short settles are benign. No clock-dependent assertions found in domain suites.
+
+**Important files changed:** src/shared/velocityFx.ts, tests/velocity-fx.test.ts, tests/domain-goldens/{harness.ts,velocity-fx.json}, docs/GOLDEN-PARITY.md.
+
+**Validation:** velocity-fx 8/8; domain goldens 12/12 (6 families); full local batch green. tsc 0 campaign errors.
+
+**Recommendations for next session (GOAL 10 — mobile readiness audit):** the portability map already flagged the mobile-critical seams: hover-dependent interactions (matchMedia pointer:coarse exists in Sequencer/FxEq/ModPanel), pointer events (mostly pointerdown/up — verify), tiny targets, virtual keyboard in text inputs, background tab behavior (rAF gating exists), IndexedDB eviction on iOS Safari (persistence), audio unlock gestures (AudioUnlock exists), file download vs share-sheet. Use `docs/PORTABILITY_MAP.md` §2 + GOAL 04 state machines as the base. Read CAMPAIGN_STATE.md first.

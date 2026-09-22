@@ -56,3 +56,27 @@ describe("humanizeVelocities", () => {
     expect(out[2]).toBeLessThanOrEqual(1);
   });
 });
+
+// ── GOAL 09: seeded determinism contract ────────────────────────────────────
+// With an injected rng the output is a pure function of (input, rng). UI
+// callers keep the Math.random default (intentional creative rolls — the
+// computed values are baked into their commands, so replay is stable anyway).
+
+import { mulberry32 } from "../src/shared/rng";
+
+const CURRENT = [0, 0.5, 0.8, 0, 1, 0.3];
+
+describe("velocityFx determinism (GOAL 09)", () => {
+  it("same seed → identical output (pure function of input + rng)", () => {
+    expect(randomizeVelocities(CURRENT, 0.45, 1, mulberry32(42))).toEqual(
+      randomizeVelocities(CURRENT, 0.45, 1, mulberry32(42)),
+    );
+    expect(humanizeVelocities(CURRENT, 0.12, mulberry32(7))).toEqual(humanizeVelocities(CURRENT, 0.12, mulberry32(7)));
+  });
+
+  it("different seeds produce different rolls", () => {
+    expect(randomizeVelocities(CURRENT, 0.45, 1, mulberry32(1))).not.toEqual(
+      randomizeVelocities(CURRENT, 0.45, 1, mulberry32(2)),
+    );
+  });
+});
