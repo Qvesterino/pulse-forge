@@ -1,6 +1,7 @@
 import { withGenerativeTimeout, GENERATIVE_PROVIDER_TIMEOUT_MS } from "../../timeout";
 import {
   encodeMrt2AudioPacket,
+  validateMrt2AudioPacket,
   type Mrt2AudioPacket,
   type Mrt2ControlMessage,
   type Mrt2SerializableInput,
@@ -155,6 +156,7 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
   private readonly captureChunks: Mrt2AudioPacket[] = [];
   private sessionId: string | null = null;
   private disposed = false;
+  private failedError: Error | null = null;
   private unsubscribeTransport: (() => void) | null;
 
   constructor(
@@ -376,7 +378,7 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
       const error = new Error(event.reason ?? "MRT2 companion disconnected");
       for (const pending of this.pending.values()) pending.reject(error);
       this.pending.clear();
-      if (!this.disposed) {
+      if (!this.disposed && !this.failedError) {
         // A closed transport is recoverable by the next explicit Play/Connect
         // action, but this session cannot silently recreate a socket or native
         // model. Keep that distinction visible instead of claiming a retry.
@@ -385,14 +387,25 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
       return;
     }
     if (event.kind === "audio") {
-      if (event.packet.kind !== "output") return;
-      if (this.status.state === "capturing") this.captureChunks.push(event.packet);
+      let packet: Mrt2AudioPacket;
+      try {
+        packet = validateMrt2AudioPacket(event.packet);
+      } catch (error) {
+        this.fail(
+          new Error(
+            error instanceof Error ? `Invalid MRT2 audio packet: ${error.message}` : "Invalid MRT2 audio packet",
+          ),
+        );
+        return;
+      }
+      if (packet.kind !== "output") return;
+      if (this.status.state === "capturing") this.captureChunks.push(packet);
       const chunk: GenerativeAudioChunk = {
-        sequence: event.packet.sequence,
-        sampleRate: event.packet.sampleRate,
-        channels: event.packet.channels,
-        frames: event.packet.frames,
-        data: event.packet.data,
+        sequence: packet.sequence,
+        sampleRate: packet.sampleRate,
+        channels: packet.channels,
+        frames: packet.frames,
+        data: packet.data,
       };
       for (const listener of this.audioListeners) listener(chunk);
       return;
@@ -423,6 +436,15 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
 
   private assertUsable(allowDisposed = false): void {
     if (!allowDisposed && this.disposed) throw new Error("MRT2 companion session is disposed");
+    if (!allowDisposed && this.failedError) throw this.failedError;
+  }
+
+  private fail(error: Error): void {
+    if (this.disposed || this.failedError) return;
+    this.failedError = error;
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+    this.setStatus({ state: "error", message: error.message });
   }
 }
 

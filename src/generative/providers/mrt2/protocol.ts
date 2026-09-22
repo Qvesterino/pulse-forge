@@ -9,6 +9,7 @@ import type {
 export const MRT2_PROTOCOL_VERSION = 1 as const;
 export const MRT2_CONTROL_MAX_BYTES = 64 * 1024;
 export const MRT2_PACKET_MAX_FRAMES = 48_000 * 15;
+export const MRT2_PACKET_MAX_SAMPLE_RATE = 192_000;
 const MRT2_PACKET_MAGIC = "KYXMRT2\0";
 const MRT2_PACKET_HEADER_BYTES = 32;
 
@@ -144,6 +145,13 @@ function requiredString(value: unknown, label: string): string {
 function finitePositive(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     throw new Error(`${label} must be a positive finite number`);
+  }
+  return value;
+}
+
+function packetSampleRate(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > MRT2_PACKET_MAX_SAMPLE_RATE) {
+    throw new Error(`${label} must be a bounded positive integer`);
   }
   return value;
 }
@@ -354,33 +362,61 @@ export function serializeMrt2ControlMessage(message: Mrt2ControlMessage): string
   return serialized;
 }
 
-/** Encode PCM as a versioned binary frame; control messages never carry PCM. */
-export function encodeMrt2AudioPacket(packet: Mrt2AudioPacket): ArrayBuffer {
-  if (packet.kind !== "output" && packet.kind !== "style") throw new Error("MRT2 packet kind is invalid");
-  if (!Number.isSafeInteger(packet.sequence) || packet.sequence < 0 || packet.sequence > 0xffffffff) {
+/**
+ * Validate a decoded packet again at the provider boundary.
+ *
+ * WebSocket transports already decode packets, but Electron/localhost
+ * adapters can provide typed objects directly. Keeping this check here makes
+ * every adapter obey the same bounded PCM contract before audio reaches a
+ * player, capture accumulator, or AudioEngine graph.
+ */
+export function validateMrt2AudioPacket(value: unknown): Mrt2AudioPacket {
+  if (!isRecord(value)) throw new Error("MRT2 audio packet must be an object");
+  if (value.kind !== "output" && value.kind !== "style") throw new Error("MRT2 packet kind is invalid");
+  if (!Number.isSafeInteger(value.sequence) || value.sequence < 0 || value.sequence > 0xffffffff) {
     throw new Error("MRT2 packet sequence is invalid");
   }
-  const sampleRate = finitePositive(packet.sampleRate, "packet.sampleRate");
-  const channels = boundedInteger(packet.channels, "packet.channels", 2);
+  const sampleRate = packetSampleRate(value.sampleRate, "packet.sampleRate");
+  const channels = boundedInteger(value.channels, "packet.channels", 2);
   if (channels < 1) throw new Error("MRT2 packet channels are invalid");
-  const frames = boundedInteger(packet.frames, "packet.frames", MRT2_PACKET_MAX_FRAMES);
-  if (packet.data.length !== frames * channels) throw new Error("MRT2 packet PCM shape is invalid");
-  for (const sample of packet.data)
+  const frames = boundedInteger(value.frames, "packet.frames", MRT2_PACKET_MAX_FRAMES);
+  if (!(value.data instanceof Float32Array) || value.data.length !== frames * channels) {
+    throw new Error("MRT2 packet PCM shape is invalid");
+  }
+  for (const sample of value.data) {
     if (!Number.isFinite(sample)) throw new Error("MRT2 packet contains non-finite PCM");
+  }
+  return {
+    kind: value.kind,
+    sequence: value.sequence,
+    sampleRate,
+    channels,
+    frames,
+    data: value.data,
+  };
+}
+
+/** Encode PCM as a versioned binary frame; control messages never carry PCM. */
+export function encodeMrt2AudioPacket(packet: Mrt2AudioPacket): ArrayBuffer {
+  const validated = validateMrt2AudioPacket(packet);
+  const { kind, sequence, data } = validated;
+  const sampleRate = validated.sampleRate;
+  const channels = validated.channels;
+  const frames = validated.frames;
   const dataBytes = packet.data.byteLength;
   const buffer = new ArrayBuffer(MRT2_PACKET_HEADER_BYTES + dataBytes);
   const bytes = new Uint8Array(buffer, 0, 8);
   for (let index = 0; index < MRT2_PACKET_MAGIC.length; index++) bytes[index] = MRT2_PACKET_MAGIC.charCodeAt(index);
   const view = new DataView(buffer);
   view.setUint16(8, MRT2_PROTOCOL_VERSION, true);
-  view.setUint8(10, packet.kind === "output" ? 0 : 1);
+  view.setUint8(10, kind === "output" ? 0 : 1);
   view.setUint8(11, channels);
   view.setUint32(12, sampleRate, true);
   view.setUint32(16, frames, true);
   view.setUint32(20, packet.sequence, true);
   view.setUint32(24, dataBytes, true);
   view.setUint32(28, 0, true);
-  new Float32Array(buffer, MRT2_PACKET_HEADER_BYTES).set(packet.data);
+  new Float32Array(buffer, MRT2_PACKET_HEADER_BYTES).set(data);
   return buffer;
 }
 
@@ -396,8 +432,7 @@ export function decodeMrt2AudioPacket(raw: ArrayBuffer): Mrt2AudioPacket {
   if (kindValue > 1) throw new Error("MRT2 audio packet kind is invalid");
   const channels = view.getUint8(11);
   if (channels < 1 || channels > 2) throw new Error("MRT2 audio packet channels are invalid");
-  const sampleRate = view.getUint32(12, true);
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error("MRT2 audio packet sample rate is invalid");
+  const sampleRate = packetSampleRate(view.getUint32(12, true), "MRT2 audio packet sample rate");
   const frames = view.getUint32(16, true);
   const sequence = view.getUint32(20, true);
   const dataBytes = view.getUint32(24, true);
@@ -406,6 +441,12 @@ export function decodeMrt2AudioPacket(raw: ArrayBuffer): Mrt2AudioPacket {
   }
   if (MRT2_PACKET_HEADER_BYTES + dataBytes !== raw.byteLength) throw new Error("MRT2 audio packet has trailing bytes");
   const data = new Float32Array(raw, MRT2_PACKET_HEADER_BYTES, frames * channels);
-  for (const sample of data) if (!Number.isFinite(sample)) throw new Error("MRT2 audio packet contains non-finite PCM");
-  return { kind: kindValue === 0 ? "output" : "style", sequence, sampleRate, channels, frames, data };
+  return validateMrt2AudioPacket({
+    kind: kindValue === 0 ? "output" : "style",
+    sequence,
+    sampleRate,
+    channels,
+    frames,
+    data,
+  });
 }

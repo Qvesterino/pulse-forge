@@ -36,4 +36,20 @@ describe("generative offline export boundary", () => {
     };
     expect(() => assertGenerativeExportSources(muted, bank([]))).not.toThrow();
   });
+
+  it("does not mistake an engine freeze buffer for a captured generative take", () => {
+    const { doc, track } = fixture();
+    const engineFrozen = {
+      ...doc,
+      tracks: doc.tracks.map((candidate) =>
+        candidate.id === track.id
+          ? { ...candidate, frozen: { bufferId: "frozen-runtime-track", durationSec: 4, sampleRate: 48_000 } }
+          : candidate,
+      ),
+    };
+
+    expect(() => assertGenerativeExportSources(engineFrozen, bank(["frozen-runtime-track"]))).toThrow(
+      /Capture the track/u,
+    );
+  });
 });

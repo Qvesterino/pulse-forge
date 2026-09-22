@@ -5,6 +5,7 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { createGenerativeTrack } from "../src/commands/commands";
 import { Transport } from "../src/transport/Transport";
 import type { GenerativePlayerHandle, GenerativePlayerStatus } from "../src/audio-worklets/generative-player-node";
+import type { GenerativeAudioSession, GenerativeCapabilities, GenerativeStatus } from "../src/generative/types";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { IUserSampleRepository } from "../src/persistence/contracts";
 import { setAudioDecoder } from "../src/services/audio-decode";
@@ -163,6 +164,43 @@ describe("generative runtime", () => {
     expect(runtime.getStatus(trackId)).toEqual({ state: "unavailable", message: "Provider mrt2 is not installed" });
   });
 
+  it("reports an unavailable provider before the first play attempt", () => {
+    const { doc, trackId } = fixture();
+    const providers = new GenerativeProviderRegistry();
+    providers.register({
+      id: "mrt2",
+      getCapabilities: () => ({
+        providerId: "mrt2",
+        modelIds: ["mrt2_small"],
+        supportsRealtime: false,
+        supportsCapture: false,
+        supportsTextStyle: false,
+        supportsAudioStyle: false,
+        supportsNoteConditioning: false,
+        supportsDrumsMode: false,
+        supportsSeed: false,
+        macroSupport: {},
+        outputSampleRates: [],
+        outputChannels: [],
+        maxCaptureSeconds: 0,
+      }),
+      createSession: async () => {
+        throw new Error("session must not be created");
+      },
+    });
+    const runtime = new GenerativeRuntime({
+      engine: {} as never,
+      transport: new Transport({ now: () => 0 }, doc.bpm),
+      project: () => doc,
+      providers,
+    });
+
+    expect(runtime.getStatus(trackId)).toEqual({
+      state: "unavailable",
+      message: "Provider does not support realtime playback",
+    });
+  });
+
   it("captures through the provider and commits one normal AudioClip command", async () => {
     const { doc, trackId } = fixture();
     let currentDoc = doc;
@@ -314,6 +352,117 @@ describe("generative runtime", () => {
       state: "running",
       message: expect.stringContaining("fallback"),
     });
+    await runtime.dispose();
+  });
+
+  it("retires the live graph after a provider refresh stall", async () => {
+    const { doc, trackId } = fixture();
+    const providers = new GenerativeProviderRegistry();
+    const capabilities: GenerativeCapabilities = {
+      providerId: "mrt2",
+      modelIds: ["mrt2_small"],
+      supportsRealtime: true,
+      supportsCapture: true,
+      supportsTextStyle: true,
+      supportsAudioStyle: true,
+      supportsNoteConditioning: true,
+      supportsDrumsMode: true,
+      supportsSeed: true,
+      macroSupport: {},
+      outputSampleRates: [48_000],
+      outputChannels: [2],
+      maxCaptureSeconds: 120,
+    };
+    let createdSessions = 0;
+    let stopCalls = 0;
+    let disposeCalls = 0;
+    let emitProviderStatus: ((status: GenerativeStatus) => void) | undefined;
+    providers.register({
+      id: "mrt2",
+      getCapabilities: () => capabilities,
+      createSession: async (config): Promise<GenerativeAudioSession> => {
+        createdSessions++;
+        let updateCalls = 0;
+        let status: GenerativeStatus = { state: "idle" };
+        const statusListeners = new Set<(next: GenerativeStatus) => void>();
+        return {
+          capabilities,
+          config,
+          getStatus: () => status,
+          subscribeStatus: (listener) => {
+            statusListeners.add(listener);
+            emitProviderStatus = (next) => {
+              for (const current of statusListeners) current(next);
+            };
+            return () => statusListeners.delete(listener);
+          },
+          subscribeAudio: () => () => undefined,
+          updateInput: async () => {
+            updateCalls++;
+            if (updateCalls >= 3) throw new Error("provider refresh stalled");
+          },
+          start: async () => {
+            status = { state: "running" };
+            for (const listener of statusListeners) listener(status);
+          },
+          stop: async () => {
+            stopCalls++;
+            status = { state: "ready" };
+          },
+          capture: async () => {
+            throw new Error("capture unused");
+          },
+          dispose: async () => {
+            disposeCalls++;
+            status = { state: "disposed" };
+          },
+        };
+      },
+    });
+    const log = { attached: 0, detached: 0, disposed: 0 };
+    const runtime = new GenerativeRuntime({
+      engine: {
+        context: { sampleRate: 48_000 } as BaseAudioContext,
+        ensureContext: () => ({ sampleRate: 48_000 }) as BaseAudioContext,
+        attachGenerativeSource: () => log.attached++,
+        detachGenerativeSource: () => log.detached++,
+      } as never,
+      transport: new Transport({ now: () => 0 }, doc.bpm),
+      project: () => doc,
+      providers,
+      providerTimeoutMs: 20,
+      loadWorklets: async () => undefined,
+      isPlayerReady: () => true,
+      createPlayer: () => ({
+        output: {} as AudioNode,
+        pushChunk: () => undefined,
+        flush: () => undefined,
+        subscribeStatus: () => () => undefined,
+        dispose: () => log.disposed++,
+      }),
+    });
+
+    await runtime.startTrack(trackId);
+    expect(runtime.getStatus(trackId).state).toBe("running");
+
+    await runtime.refreshAll();
+
+    expect(runtime.getStatus(trackId)).toEqual({ state: "error", message: "provider refresh stalled" });
+    expect(log.attached).toBe(1);
+    expect(log.detached).toBe(1);
+    expect(log.disposed).toBe(1);
+    expect(stopCalls).toBe(1);
+    expect(disposeCalls).toBe(1);
+
+    await runtime.startTrack(trackId);
+    expect(createdSessions).toBe(2);
+    emitProviderStatus?.({ state: "error", message: "native stream failed" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(runtime.getStatus(trackId)).toEqual({ state: "error", message: "native stream failed" });
+    expect(log.detached).toBe(2);
+    expect(log.disposed).toBe(2);
+    expect(stopCalls).toBe(2);
+    expect(disposeCalls).toBe(2);
     await runtime.dispose();
   });
 });

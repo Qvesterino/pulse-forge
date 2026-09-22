@@ -35,6 +35,7 @@ const IDLE_STATUS: GenerativeStatus = { state: "idle" };
 
 interface RuntimeEntry {
   trackId: string;
+  epoch: number;
   session: GenerativeAudioSession;
   player: GenerativePlayerHandle;
   unsubscribeAudio: () => void;
@@ -42,6 +43,7 @@ interface RuntimeEntry {
   unsubscribePlayer: () => void;
   refreshTimer: ReturnType<typeof setInterval>;
   refreshing: boolean;
+  retiring: boolean;
   lastInput?: GenerativeInput;
 }
 
@@ -81,6 +83,7 @@ export class GenerativeRuntime {
   private readonly pending = new Set<string>();
   private readonly epochs = new Map<string, number>();
   private readonly statuses = new Map<string, GenerativeStatus>();
+  private readonly derivedStatuses = new Map<string, GenerativeStatus>();
   private readonly listeners = new Set<GenerativeRuntimeListener>();
   private disposed = false;
 
@@ -103,7 +106,33 @@ export class GenerativeRuntime {
   }
 
   getStatus(trackId: string): GenerativeStatus {
-    return this.statuses.get(trackId) ?? IDLE_STATUS;
+    const status = this.statuses.get(trackId);
+    if (status) return status;
+    const track = this.generativeTrack(trackId);
+    if (!track) return IDLE_STATUS;
+    const provider = this.options.providers.get(track.generative.providerId);
+    if (!provider) {
+      const cached = this.derivedStatuses.get(trackId);
+      if (cached) return cached;
+      const unavailable = {
+        state: "unavailable",
+        message: `Provider ${track.generative.providerId} is not installed`,
+      } satisfies GenerativeStatus;
+      this.derivedStatuses.set(trackId, unavailable);
+      return unavailable;
+    }
+    if (!provider.getCapabilities().supportsRealtime) {
+      const cached = this.derivedStatuses.get(trackId);
+      if (cached) return cached;
+      const unavailable = {
+        state: "unavailable",
+        message: "Provider does not support realtime playback",
+      } satisfies GenerativeStatus;
+      this.derivedStatuses.set(trackId, unavailable);
+      return unavailable;
+    }
+    this.derivedStatuses.delete(trackId);
+    return IDLE_STATUS;
   }
 
   async startAll(): Promise<void> {
@@ -166,6 +195,7 @@ export class GenerativeRuntime {
 
       const entry: RuntimeEntry = {
         trackId,
+        epoch,
         session,
         player,
         unsubscribeAudio: () => undefined,
@@ -173,6 +203,7 @@ export class GenerativeRuntime {
         unsubscribePlayer: () => undefined,
         refreshTimer: setInterval(() => undefined, REFRESH_INTERVAL_MS),
         refreshing: false,
+        retiring: false,
         lastInput: input,
       };
       clearInterval(entry.refreshTimer);
@@ -180,22 +211,17 @@ export class GenerativeRuntime {
       this.options.engine.attachGenerativeSource(trackId, player.output);
       entry.unsubscribeAudio = session.subscribeAudio((chunk) => player?.pushChunk(chunk));
       entry.unsubscribeStatus = session.subscribeStatus((status) => {
-        if (status.state === "reconnecting") {
-          // A dead transport cannot be safely reused. Retire the audio graph
-          // immediately; the next explicit Play creates a fresh provider
-          // session instead of silently retrying inside the audio callback.
-          clearInterval(entry.refreshTimer);
-          this.entries.delete(trackId);
-          this.options.engine.detachGenerativeSource(trackId, entry.player.output);
-          entry.player.flush();
-          entry.unsubscribeAudio();
-          entry.unsubscribeStatus();
-          entry.unsubscribePlayer();
-          entry.player.dispose();
-          void entry.session.dispose().catch(() => undefined);
-          this.setStatus(trackId, {
-            state: "reconnecting",
-            message: status.message ?? "MRT2 companion disconnected; stop and play to reconnect",
+        if (status.state === "reconnecting" || status.state === "error" || status.state === "unavailable") {
+          // A terminal provider status cannot be safely reused. Retire the
+          // audio graph immediately; the next explicit Play creates a fresh
+          // provider session instead of leaving a silent node/timer alive.
+          void this.retireEntry(trackId, entry, {
+            state: status.state,
+            message:
+              status.message ??
+              (status.state === "reconnecting"
+                ? "MRT2 companion disconnected; stop and play to reconnect"
+                : "MRT2 provider session is no longer available"),
           });
           return;
         }
@@ -461,6 +487,7 @@ export class GenerativeRuntime {
     await this.stopAll();
     this.listeners.clear();
     this.statuses.clear();
+    this.derivedStatuses.clear();
   }
 
   private async refreshTrack(trackId: string, epoch: number): Promise<void> {
@@ -484,7 +511,7 @@ export class GenerativeRuntime {
       await this.providerCall("refresh-input", entry.session.updateInput(input));
     } catch (error) {
       if (this.isCurrent(trackId, epoch)) {
-        this.setStatus(trackId, {
+        await this.retireEntry(trackId, entry, {
           state: "error",
           message: error instanceof Error ? error.message : "Generative update failed",
         });
@@ -543,6 +570,7 @@ export class GenerativeRuntime {
   }
 
   private setStatus(trackId: string, status: GenerativeStatus): void {
+    this.derivedStatuses.delete(trackId);
     this.statuses.set(trackId, status);
     for (const listener of this.listeners) listener(trackId, status);
   }
@@ -559,11 +587,35 @@ export class GenerativeRuntime {
     if (session) {
       try {
         await this.providerCall("stale-stop", session.stop());
+      } catch {
+        /* provider teardown is best effort; still attempt dispose */
+      }
+      try {
         await this.providerCall("stale-dispose", session.dispose());
       } catch {
-        /* stale provider teardown is best effort */
+        /* provider teardown is best effort */
       }
     }
+  }
+
+  /**
+   * Retire one live provider graph exactly once. Provider stalls and transport
+   * reconnects must not leave a refresh timer or AudioNode alive after the
+   * user-visible failure state has been reported.
+   */
+  private async retireEntry(trackId: string, entry: RuntimeEntry, status: GenerativeStatus): Promise<void> {
+    if (entry.retiring) return;
+    entry.retiring = true;
+    const ownsEntry = this.entries.get(trackId) === entry && this.epochs.get(trackId) === entry.epoch;
+    if (ownsEntry) {
+      clearInterval(entry.refreshTimer);
+      this.entries.delete(trackId);
+      entry.unsubscribeAudio();
+      entry.unsubscribeStatus();
+      entry.unsubscribePlayer();
+      this.setStatus(trackId, status);
+    }
+    await this.disposeResources(trackId, entry.session, entry.player);
   }
 
   private providerCall<T>(operation: string, promise: Promise<T>, signal?: AbortSignal): Promise<T> {

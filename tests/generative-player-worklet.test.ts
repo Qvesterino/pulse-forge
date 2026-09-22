@@ -131,4 +131,28 @@ describe("generative player AudioWorklet", () => {
     } as MessageEvent);
     expect(processor.port.messages).toContainEqual({ type: "sample-rate-mismatch", expected: 48000, received: 44100 });
   });
+
+  it("drops non-finite and unbounded chunks without emitting non-finite output", () => {
+    const Processor = loadProcessor();
+    const processor = new Processor({ processorOptions: { channels: 2, maxFrames: 8 } });
+    send(processor, new Float32Array([Number.NaN, 0]), 0);
+    send(processor, new Float32Array([1, 1]), 1, 2);
+    processor.port.onmessage?.({
+      data: {
+        type: "chunk",
+        sequence: 2,
+        sampleRate: 1_000_000,
+        channels: 2,
+        frames: 1,
+        data: new Float32Array([2, 2]),
+      },
+    } as MessageEvent);
+    const left = new Float32Array(3);
+    const right = new Float32Array(3);
+    processor.process([], [[left, right]]);
+
+    expect([...left]).toEqual([1, 0, 0]);
+    expect([...right]).toEqual([1, 0, 0]);
+    expect([...left, ...right].every(Number.isFinite)).toBe(true);
+  });
 });

@@ -52,7 +52,7 @@ class GenerativePlayerProcessor extends AudioWorkletProcessor {
     const frames = message.frames;
     const data = message.data;
     if (!Number.isInteger(sequence) || sequence < 0) return;
-    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return;
+    if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0 || sampleRate > 192000) return;
     if (channels !== 1 && channels !== 2) return;
     if (!Number.isInteger(frames) || frames <= 0 || frames > this.maxFrames * 4) return;
     if (!(data instanceof Float32Array) || data.length !== frames * channels) return;
@@ -66,6 +66,11 @@ class GenerativePlayerProcessor extends AudioWorkletProcessor {
     if (this.inputSampleRate === 0) {
       this.inputSampleRate = sampleRate;
       this.sourceStep = sampleRate / this.outputSampleRate;
+      if (!Number.isFinite(this.sourceStep) || this.sourceStep <= 0) {
+        this.inputSampleRate = 0;
+        this.sourceStep = 1;
+        return;
+      }
     } else if (sampleRate !== this.inputSampleRate) {
       this.port.postMessage({ type: "sample-rate-mismatch", expected: this.inputSampleRate, received: sampleRate });
       return;

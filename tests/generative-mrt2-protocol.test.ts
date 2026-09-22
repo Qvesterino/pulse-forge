@@ -133,6 +133,10 @@ class FakeTransport implements Mrt2CompanionTransport {
     this.emit({ kind: "closed", reason });
   }
 
+  emitAudio(packet: unknown): void {
+    this.emit({ kind: "audio", packet: packet as Mrt2AudioPacket });
+  }
+
   private emit(event: Mrt2CompanionEvent): void {
     this.listener?.(event);
   }
@@ -216,6 +220,26 @@ describe("MRT2 companion protocol", () => {
     expect(decoded).toMatchObject({ kind: "output", sequence: 4, sampleRate: 48_000, channels: 2, frames: 2 });
     expect([...decoded.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
     expect(() => decodeMrt2AudioPacket(encoded.slice(0, -1))).toThrow(/size|truncated|trailing/u);
+    expect(() =>
+      encodeMrt2AudioPacket({
+        kind: "output",
+        sequence: 0,
+        sampleRate: 192_001,
+        channels: 2,
+        frames: 1,
+        data: new Float32Array([0, 0]),
+      }),
+    ).toThrow(/sampleRate/u);
+    expect(() =>
+      encodeMrt2AudioPacket({
+        kind: "output",
+        sequence: 0,
+        sampleRate: 48_000,
+        channels: 2,
+        frames: 1,
+        data: new Float32Array([Number.NaN, 0]),
+      }),
+    ).toThrow(/non-finite/u);
   });
 
   it("validates versioned control messages before returning them", () => {
@@ -318,6 +342,27 @@ describe("MRT2 companion protocol", () => {
       state: "reconnecting",
       message: "companion stopped; stop and play to reconnect",
     });
+    await session.dispose();
+  });
+
+  it("terminates the session when a direct transport emits invalid PCM", async () => {
+    const transport = new FakeTransport();
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    transport.emitAudio({
+      kind: "output",
+      sequence: 0,
+      sampleRate: 48_000,
+      channels: 2,
+      frames: 1,
+      data: new Float32Array([Number.NaN, 0]),
+    });
+    expect(session.getStatus()).toMatchObject({ state: "error" });
+    await expect(session.start()).rejects.toThrow(/Invalid MRT2 audio packet/u);
     await session.dispose();
   });
 });

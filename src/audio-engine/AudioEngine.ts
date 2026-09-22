@@ -3621,10 +3621,23 @@ export class AudioEngine {
       const write = this.makeModulatorWriter(group.target);
       if (!write) continue;
 
+      // Audit 06 D1: honor each event's mode — modulatorEventsInRange emits
+      // "set" for hard holds (S&H) and "ramp" for glides, but the loop wrote
+      // "ramp" for every non-first event, so Hold-mode S&H glided across the
+      // entire hold interval (the Hold/Glide toggle was audibly near-no-op).
+      // A composite tick inherits "set" when ANY stream holds there.
+      const modeAtTick = new Map<number, "set" | "ramp">();
+      for (const stream of streams) {
+        for (const event of stream.events) {
+          if (event.mode === "set" || !modeAtTick.has(event.tick)) modeAtTick.set(event.tick, event.mode);
+        }
+      }
+
       let isFirst = true;
       for (const tick of sorted) {
         const when = Math.max(ctx.currentTime, whenFor(tick));
-        write(compositeAt(tick), isFirst ? "set" : "ramp", when);
+        const mode = isFirst ? "set" : (modeAtTick.get(tick) ?? "ramp");
+        write(compositeAt(tick), mode, when);
         isFirst = false;
       }
     }
@@ -3774,9 +3787,24 @@ export class AudioEngine {
       const fallback =
         targetParamDef(doc, lane.target)?.default ??
         (lane.target.kind === "trackGain" ? 1 : lane.target.kind === "trackPan" ? 0 : 0);
-      const v0 = valueAt(lane.points, relOf(fromTick), fallback);
-      const v1 = valueAt(lane.points, relOf(toTick), fallback);
+      const rel0 = relOf(fromTick);
+      const rel1 = relOf(toTick);
+      const v0 = valueAt(lane.points, rel0, fallback);
+      const v1 = valueAt(lane.points, rel1, fallback);
       this.writeAutomationTargetAt(lane.target, v0, t0);
+      // Audit 06 D2: interior points inside this window must land in the
+      // realtime timeline — the offline renderer expands them, so writing
+      // only the endpoints played dense sweeps/spikes as straight lines
+      // (live != export). Wall-clock fallback callers keep endpoint-only.
+      if (timeAt && lane.points.length > 1) {
+        for (const point of lane.points) {
+          const rel = relOf(point.tick);
+          if (rel <= rel0 || rel >= rel1) continue;
+          const when = timeAt(point.tick);
+          if (!Number.isFinite(when)) continue;
+          this.writeAutomationTargetAt(lane.target, point.value, Math.max(ctx.currentTime, when + offset));
+        }
+      }
       this.writeAutomationTargetAt(lane.target, v1, t1);
     }
   }

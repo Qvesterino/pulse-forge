@@ -50,7 +50,10 @@ export function createGenerativePlayerNode(
       if (!Number.isInteger(chunk.frames) || chunk.frames <= 0) return;
       if (chunk.channels !== 1 && chunk.channels !== 2) return;
       if (chunk.data.length !== chunk.frames * chunk.channels) return;
-      if (!Number.isFinite(chunk.sampleRate) || chunk.sampleRate <= 0) return;
+      if (!Number.isSafeInteger(chunk.sampleRate) || chunk.sampleRate <= 0 || chunk.sampleRate > 192000) return;
+      for (const sample of chunk.data) {
+        if (!Number.isFinite(sample)) return;
+      }
       const data = chunk.data.slice();
       node.port.postMessage(
         {

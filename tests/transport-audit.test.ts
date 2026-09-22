@@ -76,6 +76,50 @@ describe("PlaybackController.notifyForRemoteTransportChange (audit 02)", () => {
   });
 });
 
+/* ── generative lifecycle: transport owns session timing ─────────────── */
+
+describe("PlaybackController generative lifecycle", () => {
+  it("starts, pauses, seeks and stops the generative runtime with transport", () => {
+    const transport = new Transport({ now: () => 0 }, 120);
+    const lifecycle = {
+      start: vi.fn(),
+      pause: vi.fn(),
+      stop: vi.fn(),
+      seek: vi.fn(),
+    };
+    const controller = new PlaybackController(
+      {
+        currentTime: 0,
+        ensureContext: () => ({ state: "running" }),
+        stopPreview: vi.fn(),
+        transportStarted: vi.fn(),
+        restartFrozenSources: vi.fn(),
+        panic: vi.fn(),
+        automationReset: vi.fn(),
+      } as never,
+      transport,
+      { start: vi.fn(), stop: vi.fn(), resync: vi.fn() } as never,
+      { mode: "pattern" },
+      () => ({}) as never,
+    );
+    controller.attachGenerativeLifecycle(lifecycle);
+
+    controller.playPause();
+    expect(lifecycle.start).toHaveBeenCalledTimes(1);
+
+    controller.playPause();
+    expect(lifecycle.pause).toHaveBeenCalledTimes(1);
+
+    controller.playPause();
+    controller.seek(960);
+    expect(lifecycle.start).toHaveBeenCalledTimes(2);
+    expect(lifecycle.seek).toHaveBeenCalledTimes(1);
+
+    controller.stop();
+    expect(lifecycle.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
 /* ── D4: key-repeat transport guards (source pins) ──────────────────── */
 
 describe("key-repeat transport guards (audit 02)", () => {

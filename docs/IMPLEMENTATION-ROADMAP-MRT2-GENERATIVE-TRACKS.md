@@ -20,11 +20,14 @@ Overené v pracovnom strome 2026-09-22:
 
 ### Dôkazy posledného implementation passu
 
-- `npx tsc --noEmit --pretty false` — PASS;
-- `npm run build` — PASS, MRT2 transport je v on-demand chunke `websocket-transport`, DAW JS `2490/2500 KB`;
-- targeted generative/bridge suites — PASS, naposledy `21 tests`;
+- `npx tsc --noEmit --pretty false` — MRT2-focused run was PASS before the concurrent intent/song worktree edits; current full rerun is blocked by unrelated `IntentPanel`/song-length and existing test-fixture type errors;
+- `npx vite build` — PASS, MRT2 transport je v on-demand chunke `websocket-transport`; aktuálny `node scripts/check-bundle-size.mjs` správne zlyhá na DAW JS `2504/2500 KB` po paralelných non-MRT2 worktree zmenách (predchádzajúci MRT2 pass bol `2499/2500 KB`); full `npm run build` remains blocked by typecheck errors above;
+- full targeted generative/lifecycle cluster — PASS, `16 files / 74 tests` including protocol, IPC, provider, player, runtime, capture, export, resample, architecture and transport lifecycle;
+- provider-stall hardening — PASS; a failed refresh retires the session/audio graph and allows a later explicit Play to create a fresh session;
+- malformed PCM hardening — PASS; every MRT2 transport adapter is revalidated at the provider boundary, non-finite/out-of-range packets terminate the session with an explicit error, and the AudioWorklet drops invalid chunks without producing non-finite output;
+- `tests/transport-audit.test.ts` — PASS, generative lifecycle is pinned through transport `play/pause/seek/stop` callbacks;
 - 300 s mock live soak — PASS ako zrýchlený virtuálny test (`7500` provider frames);
-- Playwright smoke — `3 passed / 3 failed`; zlyhania sú v existujúcom landing/panel boot flow a nie sú označené ako zelený MRT2 browser gate.
+- Playwright na čistom Vite serveri — landing flow `3/3` PASS a MRT2 generative-track smoke `1/1` PASS; širší Chromium smoke `5/6` (landing, generate a persistence PASS, existujúci panel-toggle overflow test timeoutol pri EXPORT menu, preto browser gate ešte nie je kompletne zelený). Generative track teraz deklaruje `UNAVAILABLE` už pred prvým Play bez native bridge.
 
 ## Pracovný kontrakt
 
@@ -232,6 +235,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] pre browser režim podporiť iba deliberate localhost companion connection s origin/token kontrolou, ak to ADR schváli;
 - [x] deklarovať platform capability: Apple Silicon realtime, offline-only alebo unavailable; Windows KYX musí mať jasný fallback stav;
 - [x] zobraziť/propagovať model loading, downloading, ready, buffering, unavailable, error a reconnect stavy;
+- [x] browser Inspector smoke overuje vytvorenie generative tracku, provider/model surface, localhost-only companion endpoint a bezpečný idle stav bez native hosta;
 - [x] neukladať absolútne model paths, IPC tokeny ani host-local capabilities do project documentu;
 - [x] pridať mock IPC boundary test a protocol invalid-message/size/shape test;
 - [ ] pridať native bridge smoke test na podporovanom Apple Silicon hoste — na Windows je native MRT2 zámerne explicitne unavailable.
@@ -247,9 +251,9 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] pridať generative output bus, ktorý sa route-ne cez track gain/pan/effects/sends/group ako ostatné tracky;
 - [x] synchronizovať session start/stop/pause/seek s transportom; bar-boundary latency policy a kalibrácia zostávajú hardening;
 - [x] odmerať provider warm-up a control latency; uložiť iba host-local user-facing calibration, nie runtime socket stav;
-- [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume;
+- [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume; provider-stall retirement is now implemented/tested, while the remaining realtime/browser matrix stays open;
 - [x] oddeliť scheduler plánovanie note frames od AudioEngine execution; Scheduler nesmie vlastniť provider session;
-- [ ] pridať browser checks pre play/stop/seek, provider unavailable, underrun recovery a zero non-finite samples;
+- [ ] pridať browser checks pre play/stop/seek, provider unavailable, underrun recovery a zero non-finite samples; provider-unavailable/localhost Inspector smoke je už pokrytý samostatne; worklet/provider boundary coverage now proves invalid PCM is dropped and never rendered, but the real-browser underrun/transport matrix remains open;
 - [x] overiť 300 s virtuálny mock live soak s finite/ordered chunks;
 - [ ] overiť CPU/heap growth a latency pri samostatnom native soaku na podporovanom Macu.
 
@@ -280,7 +284,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [ ] overiť sample-accurate placement, fades, stretch, reverse, FX, group routing a master chain;
 - [x] zabezpečiť, že incomplete/failed capture nevytvorí v projekte orphan clip ani fake success state;
 - [ ] pridať render→encode→reload test a parity test live preview vs captured clip v toleranciách definovaných testom;
-- [ ] oddeliť track-level engine freeze optimization od produktovej akcie `Capture/Freeze to Audio`.
+- [x] oddeliť track-level engine freeze optimization od produktovej akcie `Capture/Freeze to Audio`; export guard akceptuje iba durable generative `AudioClip`, nie interný `FrozenState`.
 
 **Akceptácia:** export je reprodukovateľný po capture a projekt nikdy nesľubuje offline render z nedostupného realtime providera.
 
