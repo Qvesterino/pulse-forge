@@ -21,31 +21,35 @@ export interface GenrePadSwap {
 
 export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadSwap[]>> = {
   drill: [
-    // Sliding 808 character: the deep slot becomes a sub-808, the punch slot
-    // a shorter trap kick, the techno slot a soft alt. Roles stay "kick".
-    { index: 0, assetId: "factory.kick.sub808", name: "Kick 808" },
+    // Sliding 808 character: the deep slot becomes the dedicated drill 808
+    // (tight growl body), the punch slot a shorter trap kick, the techno
+    // slot a soft alt. Roles stay "kick".
+    { index: 0, assetId: "factory.kick.drill", name: "Kick 808" },
     { index: 1, assetId: "factory.kick.trap" },
     { index: 2, assetId: "factory.kick.soft", name: "Kick Soft" },
     // Darker, shorter backbeat.
     { index: 4, assetId: "factory.snare.trap" },
   ],
   phonk: [
-    // Memphis dirt: trap-style kick up front, deep kick as the alt slot.
-    { index: 0, assetId: "factory.kick.trap" },
-    { index: 2, assetId: "factory.kick.deep" },
+    // Memphis dirt: the crunchy vintage thump up front, the distorted 808
+    // as the alt slot.
+    { index: 0, assetId: "factory.kick.phonk" },
+    { index: 2, assetId: "factory.kick.808drive", name: "Kick 808 Drive" },
     // THE phonk voice: the fx-role blip slot becomes a cowbell (pad 15 falls
     // back to role "fx" by index either way — generation is unaffected).
     { index: 15, assetId: "factory.perc.cowbell", name: "Cowbell" },
   ],
   jersey: [
-    // Club bounce: short punchy kick up front, hard alt, cracking backbeat.
-    { index: 0, assetId: "factory.kick.punch" },
+    // Club bounce: the clicky jersey kick up front, hard alt, cracking
+    // backbeat.
+    { index: 0, assetId: "factory.kick.jersey" },
     { index: 2, assetId: "factory.kick.techno" },
     { index: 4, assetId: "factory.snare.punch" },
   ],
   dnb: [
-    // Two-step character: punchy kick, cracking snare, 16th pedal hat.
-    { index: 0, assetId: "factory.kick.punch" },
+    // Two-step character: the rolling dnb punch, cracking snare, 16th pedal
+    // hat.
+    { index: 0, assetId: "factory.kick.dnb" },
     { index: 4, assetId: "factory.snare.punch" },
     { index: 9, assetId: "factory.hat.pedal" },
   ],

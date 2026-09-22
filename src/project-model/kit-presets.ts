@@ -57,7 +57,7 @@ export const KIT_PRESETS: KitPreset[] = [
     pads: [
       s(0, "factory.kick.techno", { chokeGroup: 1 }),
       s(1, "factory.kick.deep", { chokeGroup: 1, gain: 0.85, pan: -0.05 }),
-      s(2, "factory.kick.punch", { chokeGroup: 1, gain: 0.8 }),
+      s(2, "factory.kick.909", { chokeGroup: 1, gain: 0.8 }),
       s(3, "factory.rim.chip", { gain: 0.6 }),
       s(4, "factory.snare.punch", { gain: 0.95 }),
       s(5, "factory.snare.tight", { gain: 0.85 }),
@@ -81,7 +81,7 @@ export const KIT_PRESETS: KitPreset[] = [
     pads: [
       s(0, "factory.kick.sub808", { chokeGroup: 1 }),
       s(1, "factory.kick.trap", { chokeGroup: 1, gain: 0.9 }),
-      s(2, "factory.kick.soft", { chokeGroup: 1, gain: 0.8 }),
+      s(2, "factory.kick.808pure", { chokeGroup: 1, gain: 0.8 }),
       s(3, "factory.rim.chip", { gain: 0.7 }),
       s(4, "factory.snare.trap", { gain: 0.95 }),
       s(5, "factory.snare.punch", { gain: 0.9 }),
@@ -152,7 +152,7 @@ export const KIT_PRESETS: KitPreset[] = [
     description: "Dark warehouse — boomy, aggressive",
     pads: [
       s(0, "factory.kick.techno", { chokeGroup: 1 }),
-      s(1, "factory.kick.sub808", { chokeGroup: 1, gain: 0.85 }),
+      s(1, "factory.kick.808drive", { chokeGroup: 1, gain: 0.85 }),
       s(2, "factory.kick.deep", { chokeGroup: 1, gain: 0.8 }),
       s(3, "factory.rim.chip", { gain: 0.5 }),
       s(4, "factory.snare.punch", { gain: 0.9 }),

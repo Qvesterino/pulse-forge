@@ -191,6 +191,82 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
 }
 
 /**
+ * Kick bank content gate (2026-09 expansion: 6 → 15 kicks): every kick in
+ * the manifest must render audible, bounded, finite audio with a sane tail,
+ * and the bank must stay a PICKING bank — no two kicks may be near-identical
+ * waveforms (a copy-paste or parameter collision would silently remove a
+ * choice). Runs on the pristine synthesized bank (pre-curation) because the
+ * curated mastering only re-levels/glues — identity is the synth's job.
+ */
+export async function auditKickBank(bank: SampleBank): Promise<CheckResult> {
+  const kickIds = FACTORY_ASSETS.filter((a) => a.category === "Kick").map((a) => a.id);
+  const failures: string[] = [];
+
+  const buffers: AudioBuffer[] = [];
+  for (const id of kickIds) {
+    const buf = bank.get(id);
+    if (!buf) failures.push(`${id}: missing from factory bank`);
+    else buffers.push(buf);
+  }
+  if (failures.length > 0) {
+    return { name: "kick bank: renders audible/finite/distinct", ok: false, message: failures.join(" | ") };
+  }
+
+  const sigs = buffers.map((buf, i) => {
+    const data = buf.getChannelData(0);
+    let peak = 0;
+    let peakIdx = 0;
+    let finite = true;
+    for (let j = 0; j < data.length; j++) {
+      const v = data[j];
+      if (!Number.isFinite(v)) finite = false;
+      if (Math.abs(v) > peak) {
+        peak = Math.abs(v);
+        peakIdx = j;
+      }
+    }
+    const rms = Math.sqrt(data.reduce((acc, v) => acc + v * v, 0) / Math.max(1, data.length));
+    if (!finite) failures.push(`${kickIds[i]}: non-finite samples`);
+    if (peak < 0.05) failures.push(`${kickIds[i]}: inaudible peak=${peak.toFixed(4)}`);
+    if (peak > 1.6) failures.push(`${kickIds[i]}: runaway peak=${peak.toFixed(3)}`);
+    if (rms < 0.01) failures.push(`${kickIds[i]}: no body rms=${rms.toFixed(4)}`);
+    // Attack must land up-front — a kick whose peak arrives late reads as a
+    // broken render, not a sound.
+    if (peakIdx > data.length * 0.25) {
+      failures.push(`${kickIds[i]}: late attack at ${(peakIdx / buf.sampleRate).toFixed(3)}s`);
+    }
+    // Signature for distinctness: ×16-downsampled first 0.3 s.
+    const stride = 16;
+    const window = Math.min(data.length, Math.floor(0.3 * buf.sampleRate));
+    const sig = new Float32Array(Math.floor(window / stride));
+    for (let j = 0; j < sig.length; j++) sig[j] = data[j * stride];
+    return sig;
+  });
+
+  for (let a = 0; a < sigs.length; a++) {
+    for (let b = a + 1; b < sigs.length; b++) {
+      const n = Math.min(sigs[a].length, sigs[b].length);
+      let dot = 0;
+      let ea = 0;
+      let eb = 0;
+      for (let j = 0; j < n; j++) {
+        dot += sigs[a][j] * sigs[b][j];
+        ea += sigs[a][j] * sigs[a][j];
+        eb += sigs[b][j] * sigs[b][j];
+      }
+      const corr = Math.abs(dot) / Math.max(1e-9, Math.sqrt(ea * eb));
+      if (corr > 0.97) failures.push(`${kickIds[a]} ≈ ${kickIds[b]}: corr=${corr.toFixed(3)}`);
+    }
+  }
+
+  return {
+    name: "kick bank: renders audible/finite/distinct",
+    ok: failures.length === 0,
+    message: failures.length === 0 ? `passed=${kickIds.length}/${kickIds.length}` : failures.slice(0, 8).join(" | "),
+  };
+}
+
+/**
  * FX expansion (docs/FX-EXPANSION-ROADMAP.md): each new beatmaking effect
  * must (a) render audible output through its real worklet chain and
  * (b) render deterministically — two identical renders stay bit-identical
@@ -284,6 +360,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   );
   const silentAssets = bank.entries().filter(([, buf]) => peakOf(buf.getChannelData(0)) < 0.001);
   check("factory buffers are audible", silentAssets.length === 0, silentAssets.map(([id]) => id).join(","));
+  record(await auditKickBank(bank));
   // The app's live bank carries the curated layer (services boot) — the
   // preset audit must measure the sound users actually hear, not the synth
   // fallback. Sampler/texture probes sample curated overrides directly.

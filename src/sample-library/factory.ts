@@ -404,6 +404,129 @@ function sub808(): Builder {
   };
 }
 
+/** Sustained 808 body with drive: sine sweep + tanh sat + tail smoothing.
+ * The backbone of drill/phonk 808s — the drive pushes harmonics into the
+ * mids so the note reads on small speakers, the LPF keeps the fizz down. */
+function sub808Drive(opts: {
+  startHz: number;
+  endHz: number;
+  dropSec: number;
+  tailSec: number;
+  tau: number;
+  drive: number;
+  lpfHz: number;
+  click: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(opts.startHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(opts.endHz, t0 + opts.dropSec);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(1, t0);
+    g.gain.setTargetAtTime(0.0005, t0 + opts.tailSec, opts.tau);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(new ArrayBuffer(1024 * 4));
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      curve[i] = Math.tanh(x * (1 + opts.drive * 4));
+    }
+    shaper.curve = curve;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = opts.lpfHz;
+    osc.connect(g).connect(shaper).connect(lpf).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + opts.tailSec + opts.tau * 5);
+    if (opts.click > 0) {
+      const click = noiseSource(ctx, 12, 0.02, t0);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 2000;
+      click
+        .connect(hp)
+        .connect(env(ctx, t0, opts.click, 0.015))
+        .connect(dest);
+    }
+  };
+}
+
+/** Vintage thump: mid-forward body through real saturation + a dusty grit
+ * layer under a lowpass — the phonk/lo-fi family share this shape. */
+function vintageThump(opts: {
+  startHz: number;
+  endHz: number;
+  decay: number;
+  drive: number;
+  lpfHz: number;
+  gritHz: number;
+  gritGain: number;
+  seed: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(opts.startHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(opts.endHz, t0 + Math.min(0.09, opts.decay * 0.4));
+    const amp = env(ctx, t0, 1, opts.decay);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(new ArrayBuffer(1024 * 4));
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      curve[i] = Math.tanh(x * (1 + opts.drive * 4));
+    }
+    shaper.curve = curve;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = opts.lpfHz;
+    osc.connect(amp).connect(shaper).connect(lpf).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + opts.decay + 0.02);
+    const grit = noiseSource(ctx, opts.seed, 0.03, t0);
+    const gritLp = ctx.createBiquadFilter();
+    gritLp.type = "lowpass";
+    gritLp.frequency.value = opts.gritHz;
+    grit
+      .connect(gritLp)
+      .connect(env(ctx, t0, opts.gritGain, 0.022))
+      .connect(dest);
+  };
+}
+
+/** 90s knock: sub body plus a short mid-band "knock" hit layered on top —
+ * the boom-bap / RnB punch that reads through a dusty mix. */
+function knock(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(140, t0);
+    osc.frequency.exponentialRampToValueAtTime(55, t0 + 0.07);
+    osc.connect(env(ctx, t0, 0.9, 0.32)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.36);
+    const knocker = ctx.createOscillator();
+    knocker.type = "triangle";
+    knocker.frequency.setValueAtTime(192, t0);
+    knocker.frequency.exponentialRampToValueAtTime(150, t0 + 0.06);
+    const kShaper = ctx.createWaveShaper();
+    const kCurve = new Float32Array(new ArrayBuffer(1024 * 4));
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      kCurve[i] = Math.tanh(x * 1.8);
+    }
+    kShaper.curve = kCurve;
+    knocker
+      .connect(env(ctx, t0, 0.5, 0.09))
+      .connect(kShaper)
+      .connect(dest);
+    knocker.start(t0);
+    knocker.stop(t0 + 0.12);
+  };
+}
+
 function snarePunch(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -697,13 +820,72 @@ function fxNoise(): Builder {
   };
 }
 
-const BUILDERS: Record<string, Builder> = {
+/** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
+export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
   "factory.kick.punch": kick(210, 54, 0.28, 0.45),
   "factory.kick.techno": kick(175, 44, 0.55, 0.3, 0.7),
   "factory.kick.sub808": sub808(),
   "factory.kick.trap": kick(180, 48, 0.35, 0.4, 0.45),
   "factory.kick.soft": kick(118, 44, 0.46, 0.16),
+  // Kick bank expansion (2026-09): genre-anchored one-shots — the 808
+  // family (drive/pure/drill), the vintage pair (phonk/lofi), and the
+  // club/heritage punches (jersey/dnb/knock/909). Each targets a distinct
+  // spectral+decay pocket so a beat can actually pick between them.
+  "factory.kick.808drive": sub808Drive({
+    startHz: 150,
+    endHz: 36,
+    dropSec: 0.5,
+    tailSec: 0.12,
+    tau: 0.32,
+    drive: 0.55,
+    lpfHz: 6000,
+    click: 0.15,
+  }),
+  "factory.kick.808pure": sub808Drive({
+    startHz: 140,
+    endHz: 34,
+    dropSec: 0.45,
+    tailSec: 0.14,
+    tau: 0.42,
+    drive: 0,
+    lpfHz: 4000,
+    click: 0,
+  }),
+  "factory.kick.drill": sub808Drive({
+    startHz: 175,
+    endHz: 42,
+    dropSec: 0.06,
+    tailSec: 0.1,
+    tau: 0.16,
+    drive: 0.4,
+    lpfHz: 5500,
+    click: 0.3,
+  }),
+  "factory.kick.phonk": vintageThump({
+    startHz: 130,
+    endHz: 50,
+    decay: 0.3,
+    drive: 0.5,
+    lpfHz: 3200,
+    gritHz: 1200,
+    gritGain: 0.08,
+    seed: 31,
+  }),
+  "factory.kick.jersey": kick(205, 56, 0.22, 0.55),
+  "factory.kick.dnb": kick(170, 52, 0.26, 0.5),
+  "factory.kick.lofi": vintageThump({
+    startHz: 115,
+    endHz: 48,
+    decay: 0.3,
+    drive: 0.25,
+    lpfHz: 2600,
+    gritHz: 900,
+    gritGain: 0.1,
+    seed: 37,
+  }),
+  "factory.kick.knock": knock(),
+  "factory.kick.909": kick(290, 52, 0.3, 0.6, 0.15),
   "factory.rim.chip": rim(),
   "factory.snare.main": snare(192, 0.11, 0.2, 1750),
   "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
@@ -741,13 +923,23 @@ const BUILDERS: Record<string, Builder> = {
   "factory.tonal.bell": bell(),
 };
 
-const DURATIONS: Record<string, number> = {
+/** Render length per asset, seconds — exported for coherence tests. */
+export const DURATIONS: Record<string, number> = {
   "factory.kick.deep": 0.5,
   "factory.kick.punch": 0.35,
   "factory.kick.techno": 0.65,
   "factory.kick.sub808": 1.2,
   "factory.kick.trap": 0.45,
   "factory.kick.soft": 0.6,
+  "factory.kick.808drive": 1.3,
+  "factory.kick.808pure": 1.5,
+  "factory.kick.drill": 0.6,
+  "factory.kick.phonk": 0.55,
+  "factory.kick.jersey": 0.4,
+  "factory.kick.dnb": 0.42,
+  "factory.kick.lofi": 0.5,
+  "factory.kick.knock": 0.5,
+  "factory.kick.909": 0.45,
   "factory.rim.chip": 0.08,
   "factory.snare.main": 0.3,
   "factory.snare.tight": 0.2,
@@ -813,6 +1005,22 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
   "factory.kick.punch": [
     { rate: 1.012, gain: 1.03 },
     { rate: 0.99, gain: 0.96 },
+  ],
+  "factory.kick.jersey": [
+    { rate: 1.014, gain: 1.03 },
+    { rate: 0.988, gain: 0.95 },
+  ],
+  "factory.kick.dnb": [
+    { rate: 1.01, gain: 1.04 },
+    { rate: 0.992, gain: 0.95 },
+  ],
+  "factory.kick.drill": [
+    { rate: 1.008, gain: 1.03 },
+    { rate: 0.994, gain: 0.96 },
+  ],
+  "factory.kick.909": [
+    { rate: 1.011, gain: 1.03 },
+    { rate: 0.991, gain: 0.96 },
   ],
 };
 

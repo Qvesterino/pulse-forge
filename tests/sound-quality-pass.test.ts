@@ -251,12 +251,12 @@ describe("applySongCommand — cue lane + genre kit (one undo step)", () => {
   it("drill/phonk kit colouring swaps pad assets in the same undo step (idempotent)", () => {
     const drill = applySongCommand(testDoc(), fakeBuild("drill", "a", 140)).execute(testDoc());
     const drillPads = drill.tracks.find((t) => t.kind === "drum")!.pads;
-    expect(drillPads[0]).toMatchObject({ assetId: "factory.kick.sub808", name: "Kick 808" });
+    expect(drillPads[0]).toMatchObject({ assetId: "factory.kick.drill", name: "Kick 808" });
     expect(drillPads[4].assetId).toBe("factory.snare.trap");
 
     const phonk = applySongCommand(testDoc(), fakeBuild("phonk", "a", 136)).execute(testDoc());
     const phonkPads = phonk.tracks.find((t) => t.kind === "drum")!.pads;
-    expect(phonkPads[0].assetId).toBe("factory.kick.trap");
+    expect(phonkPads[0].assetId).toBe("factory.kick.phonk");
     expect(phonkPads[15]).toMatchObject({ assetId: "factory.perc.cowbell", name: "Cowbell" });
 
     // house leaves the default kit alone
@@ -362,7 +362,7 @@ describe("drill + phonk genre plumbing", () => {
     expect(fxTrack).toBeDefined();
     const cueClips = (next.arrangement.audioClips ?? []).filter((c) => c.trackId === fxTrack!.id);
     expect(cueClips.length).toBeGreaterThanOrEqual(3);
-    expect(next.tracks.find((t) => t.kind === "drum")!.pads[0].assetId).toBe("factory.kick.sub808");
+    expect(next.tracks.find((t) => t.kind === "drum")!.pads[0].assetId).toBe("factory.kick.drill");
   });
 });
 
@@ -423,12 +423,12 @@ describe("jersey + dnb genre plumbing (wave 2)", () => {
   it("kit colouring: jersey punch kit, dnb pedal-hat kit (idempotent, one undo)", () => {
     const jersey = applyGenreKitToDoc(testDoc(), "jersey");
     const jerseyPads = jersey.tracks.find((t) => t.kind === "drum")!.pads;
-    expect(jerseyPads[0].assetId).toBe("factory.kick.punch");
+    expect(jerseyPads[0].assetId).toBe("factory.kick.jersey");
     expect(jerseyPads[4].assetId).toBe("factory.snare.punch");
 
     const dnb = applyGenreKitToDoc(testDoc(), "dnb");
     const dnbPads = dnb.tracks.find((t) => t.kind === "drum")!.pads;
-    expect(dnbPads[0].assetId).toBe("factory.kick.punch");
+    expect(dnbPads[0].assetId).toBe("factory.kick.dnb");
     expect(dnbPads[4].assetId).toBe("factory.snare.punch");
     expect(dnbPads[9].assetId).toBe("factory.hat.pedal");
 
@@ -443,20 +443,14 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
     expect(planMixProfile(normalizeIntent({ genre: "jersey", seed: "sq" })).masterTiltDb).toBe(-1.5); // bright
     // dnb has no tone default → no tilt unless the user asks for a tone
     expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" })).masterTiltDb).toBeUndefined();
-    expect(
-      planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq", mood: "dark" })).masterTiltDb,
-    ).toBe(2);
+    expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq", mood: "dark" })).masterTiltDb).toBe(2);
 
     // Legacy gate: even an explicit mood word never tilts legacy genres'
     // master — their sound is pinned by rule 50.
-    expect(
-      planMixProfile(normalizeIntent({ genre: "house", seed: "sq", mood: "dark" })).masterTiltDb,
-    ).toBeUndefined();
+    expect(planMixProfile(normalizeIntent({ genre: "house", seed: "sq", mood: "dark" })).masterTiltDb).toBeUndefined();
 
     // An explicit tone override steers a character genre's tilt.
-    expect(
-      planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" }), { tone: "bright" }).masterTiltDb,
-    ).toBe(-1.5);
+    expect(planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" }), { tone: "bright" }).masterTiltDb).toBe(-1.5);
   });
 
   it("genreMasterTiltDb agrees with the mix tone defaults", () => {
@@ -549,10 +543,7 @@ describe("genre song references — per-genre loudness trim (sound-quality wave 
 
   it("engine source pin: trim rides multiplicatively on master gain, clamped ±12", () => {
     const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
-    const apply = source.slice(
-      source.indexOf("private applyMasterConfig"),
-      source.indexOf("if (this.masterTiltLow"),
-    );
+    const apply = source.slice(source.indexOf("private applyMasterConfig"), source.indexOf("if (this.masterTiltLow"));
     expect(apply).toContain("config.loudnessTrimDb ?? 0");
     expect(apply).toMatch(/Math\.min\(12, Math\.max\(-12,/);
     // Multiplicative on the clamped input trim, pre-limiter (before tape/M/S).
