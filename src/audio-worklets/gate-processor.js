@@ -87,11 +87,25 @@ class GateProcessor extends AudioWorkletProcessor {
       // the envelope reacted to the transient BEFORE it reaches the output.
       let appliedGain = this.gain;
       if (lookahead >= 0.5 && this.lookaheadSamples > 0) {
+        if (!this.lookaheadWasOn) {
+          // Re-enabling look-ahead must not replay gains parked in the ring
+          // while it was off (stale open/closed values mute or leak for the
+          // whole 2.5 ms ring on the transition block).
+          this.gainRing.fill(this.gain);
+          this.lookaheadWasOn = true;
+        }
         appliedGain = this.gainRing[this.gainRingIdx];
         this.gainRing[this.gainRingIdx] = this.gain;
         this.gainRingIdx = (this.gainRingIdx + 1) % this.lookaheadSamples;
+      } else {
+        this.lookaheadWasOn = false;
       }
       for (let ch = 0; ch < channels; ch++) output[ch][i] = (input[ch][i] || 0) * (1 + (appliedGain - 1) * mix);
+    }
+    // Mono input feeding a multi-channel output: mirror ch0 so trailing
+    // outputs never carry stale samples (svfilter/compressor do the same).
+    for (let ch = channels; ch < output.length; ch++) {
+      if (output[ch]) output[ch].set(output[0]);
     }
     return true;
   }

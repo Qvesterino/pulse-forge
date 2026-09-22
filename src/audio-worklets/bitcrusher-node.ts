@@ -37,18 +37,25 @@ export function createBitcrusherNode(
   safeApplyAudioParam(node, "downsample", instance.params.downsample ?? 1);
   const bitsParam = node.parameters.get("bits");
   const dsParam = node.parameters.get("downsample");
+  // drive/tone/mix/output live on NATIVE nodes (Gain/Biquad), not on the
+  // worklet — safeApplyAudioParam can't cover them. Apply the same contract
+  // by hand: a corrupt (non-finite) stored value is dropped, never thrown,
+  // or it would abort the engine's whole-track bulk param sync.
   const driveVal = instance.params.drive ?? 0;
-  drive.gain.value = 1 + driveVal * 7;
-  tone.frequency.value = instance.params.tone ?? 18000;
+  if (Number.isFinite(driveVal)) drive.gain.value = 1 + driveVal * 7;
+  const toneVal = instance.params.tone ?? 18000;
+  if (Number.isFinite(toneVal)) tone.frequency.value = toneVal;
 
   // Set initial mix
   const mixVal = instance.params.mix ?? 1;
-  wet.gain.value = mixVal;
-  dry.gain.value = 1 - mixVal;
+  if (Number.isFinite(mixVal)) {
+    wet.gain.value = mixVal;
+    dry.gain.value = 1 - mixVal;
+  }
 
   // Set initial output gain
   const outputDb = instance.params.output ?? 0;
-  out.gain.value = Math.pow(10, outputDb / 20);
+  if (Number.isFinite(outputDb)) out.gain.value = Math.pow(10, outputDb / 20);
 
   return {
     input,
@@ -63,17 +70,19 @@ export function createBitcrusherNode(
           safeApplyAudioParam(node, "downsample", v, now);
           break;
         case "drive":
-          drive.gain.setTargetAtTime(1 + v * 7, now, 0.02);
+          if (Number.isFinite(v)) drive.gain.setTargetAtTime(1 + v * 7, now, 0.02);
           break;
         case "tone":
-          tone.frequency.setTargetAtTime(v, now, 0.02);
+          if (Number.isFinite(v)) tone.frequency.setTargetAtTime(v, now, 0.02);
           break;
         case "mix":
-          wet.gain.setTargetAtTime(v, now, 0.02);
-          dry.gain.setTargetAtTime(1 - v, now, 0.02);
+          if (Number.isFinite(v)) {
+            wet.gain.setTargetAtTime(v, now, 0.02);
+            dry.gain.setTargetAtTime(1 - v, now, 0.02);
+          }
           break;
         case "output":
-          out.gain.setTargetAtTime(Math.pow(10, v / 20), now, 0.02);
+          if (Number.isFinite(v)) out.gain.setTargetAtTime(Math.pow(10, v / 20), now, 0.02);
           break;
       }
     },
@@ -86,17 +95,19 @@ export function createBitcrusherNode(
           safeApplyAudioParam(node, "downsample", v, when);
           break;
         case "drive":
-          drive.gain.setTargetAtTime(1 + v * 7, when, 0.02);
+          if (Number.isFinite(v)) drive.gain.setTargetAtTime(1 + v * 7, when, 0.02);
           break;
         case "tone":
-          tone.frequency.setTargetAtTime(v, when, 0.02);
+          if (Number.isFinite(v)) tone.frequency.setTargetAtTime(v, when, 0.02);
           break;
         case "mix":
-          wet.gain.setTargetAtTime(v, when, 0.02);
-          dry.gain.setTargetAtTime(1 - v, when, 0.02);
+          if (Number.isFinite(v)) {
+            wet.gain.setTargetAtTime(v, when, 0.02);
+            dry.gain.setTargetAtTime(1 - v, when, 0.02);
+          }
           break;
         case "output":
-          out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
+          if (Number.isFinite(v)) out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
           break;
       }
     },

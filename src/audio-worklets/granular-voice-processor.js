@@ -234,13 +234,12 @@ class GrainVoiceProcessor extends AudioWorkletProcessor {
           length: msg.ch0.length,
           channels: msg.ch1 instanceof Float32Array ? 2 : 1,
           sampleRate: msg.sampleRate || 44100,
-          // Buffer-samples consumed per context-sample. The upload is raw
-          // getChannelData (no host resample), so a 44.1 kHz buffer in a
-          // 48 kHz session previously played ~+8.8 % sharp (grains advanced
-          // 1:1 with context samples while `sampleRate` went unread), and a
-          // 48 kHz buffer in 44.1 kHz played flat AND had grains truncated
-          // by the end-of-buffer guard.
-          rateScale: (globalThis.sampleRate || 44100) / (msg.sampleRate || 44100),
+          // Buffer-samples consumed per context-sample: bufRate / ctxRate.
+          // The upload is raw getChannelData (no host resample), and grains
+          // previously advanced 1:1 with context samples — a 44.1 kHz buffer
+          // in a 48 kHz session was consumed at 48k buffer-samples/s and
+          // played ~+8.8 % sharp (48 kHz material in 44.1 kHz played flat).
+          rateScale: (msg.sampleRate || 44100) / (globalThis.sampleRate || 44100),
         };
         return;
       case "noteOn":

@@ -37,7 +37,9 @@ class StutterProcessor extends AudioWorkletProcessor {
         this.gateSteps = d.steps.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
       } else if (d.type === "align") {
         const stepBeats = STUT_DIV_BEATS[Math.max(0, Math.min(5, Math.round(this.divValue ?? 4)))];
-        this.phase = Math.floor((d.phase || 0) / stepBeats) * stepBeats;
+        // Coerce + finite-fallback: a truthy non-numeric phase ("abc") would
+        // poison this.phase with NaN and mute every step forever.
+        this.phase = Math.floor((Number.isFinite(d.phase) ? d.phase : 0) / stepBeats) * stepBeats;
       } else if (d.type === "bpm") {
         this.bpm = Math.max(20, Math.min(300, d.bpm || 120));
       }

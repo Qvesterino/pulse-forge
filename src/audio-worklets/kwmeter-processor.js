@@ -18,8 +18,15 @@ class KwMeterProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const opts = (options && options.processorOptions) || {};
-    const s1 = opts.s1 || [1, 0, 0, 0, 0];
-    const s2 = opts.s2 || [1, 0, 0, 0, 0];
+    // Restore-state validation: a malformed uploaded biquad state (wrong
+    // length or non-finite) would feed NaN through both filters and pin the
+    // meter at -180 forever.
+    const stateOf = (v) =>
+      Array.isArray(v) && v.length === 5 && v.every((x) => typeof x === "number" && Number.isFinite(x))
+        ? v.slice()
+        : [1, 0, 0, 0, 0];
+    const s1 = stateOf(opts.s1);
+    const s2 = stateOf(opts.s2);
     this.s1 = s1;
     this.s2 = s2;
     // Biquad state per channel: [L, R]

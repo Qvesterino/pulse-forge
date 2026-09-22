@@ -27,11 +27,13 @@ class TransientProcessor extends AudioWorkletProcessor {
     const mix = parameters.mix;
     const outputDb = parameters.output;
     const channels = Math.min(input.length, output.length);
+    // Block-invariant envelope coefficients — per-sample Math.exp here spent
+    // 256 transcendentals per block on constants.
+    const fastCoef = Math.exp(-1 / (sr * 0.004));
+    const slowCoef = Math.exp(-1 / (sr * 0.08));
     for (let i = 0; i < output[0].length; i++) {
       let peak = 0;
       for (let ch = 0; ch < channels; ch++) peak = Math.max(peak, Math.abs(input[ch][i] || 0));
-      const fastCoef = Math.exp(-1 / (sr * 0.004));
-      const slowCoef = Math.exp(-1 / (sr * 0.08));
       this.fast = fastCoef * this.fast + (1 - fastCoef) * peak;
       this.slow = slowCoef * this.slow + (1 - slowCoef) * peak;
       if (Math.abs(this.fast) < 1e-20) this.fast = 0;
@@ -46,6 +48,11 @@ class TransientProcessor extends AudioWorkletProcessor {
       const wet = mix.length > 1 ? mix[i] : mix[0];
       const gain = Math.pow(10, (outputDb.length > 1 ? outputDb[i] : outputDb[0]) / 20);
       for (let ch = 0; ch < channels; ch++) output[ch][i] = input[ch][i] * (1 + (shape - 1) * wet) * gain;
+    }
+    // Mono input feeding a multi-channel output: mirror ch0 so trailing
+    // outputs never carry stale samples (gate/compressor do the same).
+    for (let ch = channels; ch < output.length; ch++) {
+      if (output[ch]) output[ch].set(output[0]);
     }
     return true;
   }

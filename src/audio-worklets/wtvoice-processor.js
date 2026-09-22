@@ -203,9 +203,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
     // internals are off-limits: a message swapping `pickLevel` for a number
     // would throw on the render thread the next time a voice spawns, and a
     // `tableFrames` outside the real mip chain reads past the tables.
-    this.tunableParamNames = new Set(
-      Object.keys(this.params).filter((k) => k !== "tableFrames" && k !== "pickLevel"),
-    );
+    this.tunableParamNames = new Set(Object.keys(this.params).filter((k) => k !== "tableFrames" && k !== "pickLevel"));
     this.dueOn = [];
     this.dueOff = [];
     this.port.onmessage = (e) => this.handleMessage(e.data);
@@ -252,11 +250,7 @@ class WtVoiceProcessor extends AudioWorkletProcessor {
         this.events.length = 0;
         break;
       case "param":
-        if (
-          typeof msg.name === "string" &&
-          this.tunableParamNames.has(msg.name) &&
-          Number.isFinite(msg.value)
-        ) {
+        if (typeof msg.name === "string" && this.tunableParamNames.has(msg.name) && Number.isFinite(msg.value)) {
           this.params[msg.name] = msg.value;
         }
         break;

@@ -52,9 +52,15 @@ export function createChorusNode(
   safeApplyAudioParam(node, "voices", instance.params.voices ?? 2);
   safeApplyAudioParam(node, "lfoShape", instance.params.lfoShape ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 0.5);
-  out.gain.value = Math.pow(10, (instance.params.output ?? 0) / 20);
+  // `output` lives on a NATIVE gain (not a worklet AudioParam), so
+  // safeApplyAudioParam can't cover it — drop non-finite values by hand or a
+  // corrupt stored value throws out of the engine's bulk param sync.
+  const outputDb = instance.params.output ?? 0;
+  if (Number.isFinite(outputDb)) out.gain.value = Math.pow(10, outputDb / 20);
 
-  const smoothOut = (v: number, when: number) => out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
+  const smoothOut = (v: number, when: number) => {
+    if (Number.isFinite(v)) out.gain.setTargetAtTime(Math.pow(10, v / 20), when, 0.02);
+  };
 
   return {
     input,

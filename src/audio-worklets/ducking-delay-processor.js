@@ -131,9 +131,10 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
       // ducks). Ping-pong crossfeeds: each write receives 0.7× the OTHER
       // channel's loop content — the tail bounces L↔R. The crossfeed matrix
       // lifts the symmetric loop eigenvalue to fb·1.7, so ping-pong caps the
-      // loop feedback at 0.99/1.7 (bare mode safely reaches 0.9; uncapped the
-      // matrix hits 1.53 at the knob max and diverges).
-      const fbLoop = pingpong ? Math.min(feedback, 0.99 / 1.7) : feedback;
+      // loop feedback so the eigenvalue never exceeds the bare-mode max
+      // (0.9): uncapped, the matrix reaches 1.53 at the knob max and
+      // diverges, and even 0.99 would ring for ~a minute.
+      const fbLoop = pingpong ? Math.min(feedback, 0.9 / 1.7) : feedback;
       let wL = l + dampL * fbLoop;
       let wR = r + dampR * fbLoop;
       if (pingpong) {

@@ -133,6 +133,16 @@ class LimiterProcessor extends AudioWorkletProcessor {
     ];
   }
 
+  /** Soft-knee gain curve — a method so the render path allocates nothing. */
+  applyKneeGain(peak, thresholdDb, ceilingDb) {
+    if (peak <= 1e-8) return 1;
+    const peakDb = 20 * Math.log10(peak);
+    const over = peakDb - thresholdDb;
+    if (over <= 0) return 1;
+    const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
+    return Math.pow(10, gDb / 20);
+  }
+
   process(inputs, outputs, parameters) {
     const output = outputs[0];
     if (!output || !output[0]) return true;
@@ -156,17 +166,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
     let blockGrDb = 0;
 
-    // Soft-knee gain for the per-channel path — hoisted out of the sample
-    // loop: the old per-sample closure allocation was steady garbage on the
-    // render thread whenever channels were unlinked.
-    const applyKnee = (peak) => {
-      if (peak <= 1e-8) return 1;
-      const peakDb = 20 * Math.log10(peak);
-      const over = peakDb - thresholdDb;
-      if (over <= 0) return 1;
-      const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
-      return Math.pow(10, gDb / 20);
-    };
+    // Soft-knee gain for the per-channel path — the per-block arrow closure
+    // still allocated a fresh function object every render quantum; the knee
+    // math now lives in a method taking the (k-rate) thresholds.
+    const applyKnee = (peak) => this.applyKneeGain(peak, thresholdDb, ceilingDb);
 
     for (let i = 0; i < len; i++, this.step++) {
       const l = inL ? inL[i] : 0;

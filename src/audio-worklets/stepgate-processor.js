@@ -37,7 +37,9 @@ class StepGateProcessor extends AudioWorkletProcessor {
             Math.max(0, Math.min(GATE_DIVISION_BEATS.length - 1, Math.round(this.divisionValue ?? 4)))
           ];
         // Snap DOWN to the nearest step boundary of the transport grid.
-        this.phase = Math.floor((d.phase || 0) / stepBeats) * stepBeats;
+        // Coerce + finite-fallback: a truthy non-numeric phase ("abc") would
+        // poison this.phase with NaN and mute every step forever.
+        this.phase = Math.floor((Number.isFinite(d.phase) ? d.phase : 0) / stepBeats) * stepBeats;
       } else if (d.type === "bpm") {
         this.bpm = Math.max(20, Math.min(300, d.bpm || 120));
       }

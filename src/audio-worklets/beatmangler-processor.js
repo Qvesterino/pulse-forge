@@ -11,12 +11,40 @@
  * NOTE: served as part of core-worklet.js — plain JavaScript only.
  */
 const REPEAT_INTERVAL_BEATS = [
-  4, 2, 1, 0.5, 0.25, 0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
-  3, 4 / 3, 1.5, 2 / 3, 0.75, 1 / 3, 0.375, 1 / 6, 0.1875, 1 / 12,
+  4,
+  2,
+  1,
+  0.5,
+  0.25,
+  0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
+  3,
+  4 / 3,
+  1.5,
+  2 / 3,
+  0.75,
+  1 / 3,
+  0.375,
+  1 / 6,
+  0.1875,
+  1 / 12,
 ];
 const REPEAT_GATE_BEATS = [
-  4, 2, 1, 0.5, 0.25, 0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
-  3, 4 / 3, 1.5, 2 / 3, 0.75, 1 / 3, 0.375, 1 / 6, 0.1875, 1 / 12,
+  4,
+  2,
+  1,
+  0.5,
+  0.25,
+  0.125, // 1/1 … 1/32 straight (stable UI ids 0..5)
+  3,
+  4 / 3,
+  1.5,
+  2 / 3,
+  0.75,
+  1 / 3,
+  0.375,
+  1 / 6,
+  0.1875,
+  1 / 12,
 ];
 
 class BeatManglerProcessor extends AudioWorkletProcessor {
@@ -98,7 +126,13 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
     return [
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "trigger", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-      { name: "interval", defaultValue: 0, minValue: 0, maxValue: REPEAT_INTERVAL_BEATS.length - 1, automationRate: "k-rate" },
+      {
+        name: "interval",
+        defaultValue: 0,
+        minValue: 0,
+        maxValue: REPEAT_INTERVAL_BEATS.length - 1,
+        automationRate: "k-rate",
+      },
       { name: "offset", defaultValue: 0, minValue: 0, maxValue: 15, automationRate: "k-rate" },
       { name: "chance", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "gate", defaultValue: 2, minValue: 0, maxValue: REPEAT_GATE_BEATS.length - 1, automationRate: "k-rate" },
@@ -116,7 +150,7 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
   }
 
   readSegmentAt(start, length, offset, channel) {
-    const wrapped = (((offset % length) + length) % length);
+    const wrapped = ((offset % length) + length) % length;
     const i0 = Math.floor(wrapped);
     const frac = wrapped - i0;
     const i1 = (i0 + 1) % length;
@@ -208,7 +242,7 @@ class BeatManglerProcessor extends AudioWorkletProcessor {
             const fillStart = span - fillLength;
             relative = fillStart + ((((relative - fillStart) % fillLength) + fillLength) % fillLength);
           } else {
-            relative = ((((relative % span) + span) % span));
+            relative = ((relative % span) + span) % span;
           }
           const phase = Math.max(0, Math.min(0.999999, relative / span));
           const stepIdx = Math.min(this.stepsPerBar - 1, Math.max(0, Math.floor(phase * this.stepsPerBar)));

@@ -44,7 +44,10 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
     output,
     setParameter(id, value) {
       if (id === "lookaheadMs") {
-        lookaheadMs = value;
+        // A non-finite value would poison getLatencySec() → NaN PDC delay
+        // time → TypeError in syncPdc; safeApplyAudioParam drops the param
+        // write, so the stored latency must stay on the last valid value.
+        if (Number.isFinite(value)) lookaheadMs = value;
         safeApplyAudioParam(node, "lookahead", Math.max(1, value) / 1000, ctx.currentTime);
         return;
       }
@@ -52,7 +55,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
     },
     setParameterAt(id, value, when) {
       if (id === "lookaheadMs") {
-        lookaheadMs = value;
+        if (Number.isFinite(value)) lookaheadMs = value;
         safeApplyAudioParam(node, "lookahead", Math.max(1, value) / 1000, when);
         return;
       }
@@ -64,6 +67,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
       // descriptor clamps lookahead to [1, 20] ms, so an out-of-range stored
       // lookaheadMs (e.g. 50) must not over-compensate PDC and shift the
       // track early.
+      if (!Number.isFinite(lookaheadMs)) return 0.005;
       return Math.min(20, Math.max(1, lookaheadMs)) / 1000;
     },
     getGainReductionDb() {

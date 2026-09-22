@@ -16,8 +16,8 @@ export function createDuckingDelayNode(
   // (division mult = cycles per beat → for a delay we use beat length ÷
   // mult, i.e. 1/4 = one beat, 1/8 = half beat …). OFF keeps the ms knob.
   const bpmVal = typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
-  const delayMsFromSync = (): number => {
-    const idx = lfoSyncIndex(instance.params.sync);
+  const delayMsFromSync = (syncOverride?: number): number => {
+    const idx = lfoSyncIndex(syncOverride ?? instance.params.sync);
     const mult = LFO_SYNC_DIVISIONS[idx]?.mult ?? 0;
     if (mult <= 0) return instance.params.time ?? 375;
     return Math.max(30, Math.min(1000, ((60 / bpmVal) * 1000) / mult));
@@ -48,8 +48,26 @@ export function createDuckingDelayNode(
   return {
     input,
     output,
-    setParameter: (id, v) => safeApplyAudioParam(node, id, v, ctx.currentTime),
-    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
+    setParameter: (id, v) => {
+      // `sync` is a UI-only param (no AudioParam on the processor): a change
+      // must re-push the derived delay TIME. The fall-through used to hit
+      // safeApplyAudioParam, which silently no-ops on unknown ids — the SYNC
+      // knob and BPM-follow never engaged after construction (the other
+      // tempo-synced effects intercept it via lfoSync; this is the same
+      // contract, hand-rolled for a time division).
+      if (id === "sync") {
+        safeApplyAudioParam(node, "time", delayMsFromSync(v), ctx.currentTime);
+        return;
+      }
+      safeApplyAudioParam(node, id, v, ctx.currentTime);
+    },
+    setParameterAt: (id, v, when) => {
+      if (id === "sync") {
+        safeApplyAudioParam(node, "time", delayMsFromSync(v), when);
+        return;
+      }
+      safeApplyAudioParam(node, id, v, when);
+    },
     // BPM push: a synced delay re-computes its ms (OFF keeps the knob).
     syncBpm: (next: number) => {
       if (lfoSyncIndex(instance.params.sync) === 0) return;

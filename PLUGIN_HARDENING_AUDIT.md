@@ -16,6 +16,46 @@ investigations are listed at the end.
 
 ---
 
+## Round 4 (2026-09-22) — worklet processors & node wrappers
+
+A re-run of the same goal prompt (4 parallel read-only sweeps over the
+~40 non-vendored processors + all 30 wrappers, every candidate
+hand-verified) found and fixed a further defect cluster the earlier
+rounds predated or missed. Full detail in `AGENT_WORK_LOG.md`
+(HARDENING R4); summary:
+
+- **P1** ducking-delay `pingpong`/`loopHpfHz` were advertised knobs with
+  no `parameterDescriptors` entry — the runtime never delivered them, so
+  the controls were silently dead (and the crossfeed loop they arm has an
+  fb·1.7 eigenvalue that diverges at the knob max; now capped). Autowah
+  Chamberlin SVF diverged at legal settings (no `f·q` stability scaling —
+  svfilter had it, autowah didn't); the ±8 clamps masked it as a harsh
+  limit cycle. Beatmangler mismatched step lanes produced permanent NaN
+  audio.
+- **P2** wtvoice `param` allowlist + note-event validation (render-thread
+  TypeError, wedged event queue); granular-voice rate-corrected sample
+  playback (44.1 kHz uploads played ~+8.8 % sharp — the stored
+  `sampleRate` was never applied) + malformed-event boundary validation;
+  bitcrusher per-channel hold phase/state (L/R hold grids were offset)
+  + NaN-latch guard; flanger/comb rings sized from the runtime sample
+  rate; granularfreeze grain positions to Float64; ducking-delay node
+  SYNC interception; limiter NaN-latency PDC guard; bitcrusher/chorus
+  native AudioParam write guards.
+- **P3** gate look-ahead ring flush + mono→stereo mirrors, align-phase
+  NaN coercion (stutter/stepgate), vinyl seed 0, per-block closure
+  hoists (limiter/chorus), sample-loop `exp` hoists, kwmeter restore-state
+  validation.
+- **Tests:** `tests/worklet-hardening-r4.test.ts`, 21 regression pins —
+  including a true-pitch granular pin (440 Hz ±5 %) that fails both the
+  original code AND the first (inverted-ratio) fix attempt, and a
+  ping-pong stability soak that discriminates the divergence class.
+- **Recorded, not fixed (sonic-change class, needs a listening
+  verdict):** reverb allpass delays not sr-scaled (comb delays are);
+  compressor RMS detector's hardcoded 0.006 coefficient (~3.8 ms @44.1k
+  vs the documented ~8 ms intent).
+
+---
+
 ## 1. Plugin Invariants (Objective §1)
 
 Verified by reading code, existing regression tests, and the dedicated

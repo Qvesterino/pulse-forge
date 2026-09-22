@@ -68,7 +68,11 @@ class VinylProcessor extends AudioWorkletProcessor {
     super();
     const sr = globalThis.sampleRate || 44100;
     this.sr = sr;
-    const seed = (options && options.processorOptions && options.processorOptions.seed) || 1;
+    // `|| 1` collapsed a legitimate seed 0 into 1 (two instances then shared
+    // one noise pattern, breaking the live/offline bit-identity contract for
+    // that seed).
+    const opt = options && options.processorOptions;
+    const seed = typeof opt === "object" && opt !== null && Number.isFinite(opt.seed) ? opt.seed : 1;
     this.rng = vinylRng(seed);
 
     // Wow/flutter delay lines (one per channel — keeps the stereo image).
@@ -235,14 +239,12 @@ class VinylProcessor extends AudioWorkletProcessor {
       let hissL = 0;
       let hissR = 0;
       if (hissAmp > 0.00001) {
-        this.hissLpState[0] += ((this.rng() * 2 - 1) - this.hissLpState[0]) * hissLpCoef;
-        this.hissHpState[0] = (1 - hissHpCoef) *
-          (this.hissHpState[0] + this.hissLpState[0] - this.hissHpPrev[0]);
+        this.hissLpState[0] += (this.rng() * 2 - 1 - this.hissLpState[0]) * hissLpCoef;
+        this.hissHpState[0] = (1 - hissHpCoef) * (this.hissHpState[0] + this.hissLpState[0] - this.hissHpPrev[0]);
         this.hissHpPrev[0] = this.hissLpState[0];
         hissL = this.hissHpState[0];
-        this.hissLpState[1] += ((this.rng() * 2 - 1) - this.hissLpState[1]) * hissLpCoef;
-        this.hissHpState[1] = (1 - hissHpCoef) *
-          (this.hissHpState[1] + this.hissLpState[1] - this.hissHpPrev[1]);
+        this.hissLpState[1] += (this.rng() * 2 - 1 - this.hissLpState[1]) * hissLpCoef;
+        this.hissHpState[1] = (1 - hissHpCoef) * (this.hissHpState[1] + this.hissLpState[1] - this.hissHpPrev[1]);
         this.hissHpPrev[1] = this.hissLpState[1];
         hissR = this.hissHpState[1];
       }
@@ -251,8 +253,8 @@ class VinylProcessor extends AudioWorkletProcessor {
       let rumbleL = 0;
       let rumbleR = 0;
       if (rumbleAmp > 0.00001) {
-        this.rumbleLpState[0] += ((this.rng() * 2 - 1) - this.rumbleLpState[0]) * rumbleLpCoef;
-        this.rumbleLpState[1] += ((this.rng() * 2 - 1) - this.rumbleLpState[1]) * rumbleLpCoef;
+        this.rumbleLpState[0] += (this.rng() * 2 - 1 - this.rumbleLpState[0]) * rumbleLpCoef;
+        this.rumbleLpState[1] += (this.rng() * 2 - 1 - this.rumbleLpState[1]) * rumbleLpCoef;
         rumbleL = this.rumbleLpState[0];
         rumbleR = this.rumbleLpState[1];
       }
@@ -269,22 +271,18 @@ class VinylProcessor extends AudioWorkletProcessor {
 
       // --- Year contour: old records are thin + band-limited (per channel) ---
       this.yearLpState[0] += (sumL - this.yearLpState[0]) * yearLpCoef;
-      this.yearHpState[0] = (1 - yearHpCoef) *
-        (this.yearHpState[0] + this.yearLpState[0] - this.yearHpPrev[0]);
+      this.yearHpState[0] = (1 - yearHpCoef) * (this.yearHpState[0] + this.yearLpState[0] - this.yearHpPrev[0]);
       this.yearHpPrev[0] = this.yearLpState[0];
       this.yearLpState[1] += (sumR - this.yearLpState[1]) * yearLpCoef;
-      this.yearHpState[1] = (1 - yearHpCoef) *
-        (this.yearHpState[1] + this.yearLpState[1] - this.yearHpPrev[1]);
+      this.yearHpState[1] = (1 - yearHpCoef) * (this.yearHpState[1] + this.yearLpState[1] - this.yearHpPrev[1]);
       this.yearHpPrev[1] = this.yearLpState[1];
 
       // --- Master wet tone trim (per channel) ---
       this.toneLpState[0] += (this.yearHpState[0] - this.toneLpState[0]) * toneLpCoef;
-      this.toneHpState[0] = (1 - toneHpCoef) *
-        (this.toneHpState[0] + this.toneLpState[0] - this.toneHpPrev[0]);
+      this.toneHpState[0] = (1 - toneHpCoef) * (this.toneHpState[0] + this.toneLpState[0] - this.toneHpPrev[0]);
       this.toneHpPrev[0] = this.toneLpState[0];
       this.toneLpState[1] += (this.yearHpState[1] - this.toneLpState[1]) * toneLpCoef;
-      this.toneHpState[1] = (1 - toneHpCoef) *
-        (this.toneHpState[1] + this.toneLpState[1] - this.toneHpPrev[1]);
+      this.toneHpState[1] = (1 - toneHpCoef) * (this.toneHpState[1] + this.toneLpState[1] - this.toneHpPrev[1]);
       this.toneHpPrev[1] = this.toneLpState[1];
       let trimL = this.toneHpState[0];
       let trimR = this.toneHpState[1];

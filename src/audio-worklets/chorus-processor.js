@@ -60,6 +60,18 @@ class ChorusProcessor extends AudioWorkletProcessor {
     ];
   }
 
+  /** LFO waveshape for voice v (sin / triangle / S&H) — a method, not a
+   * per-block closure: the arrow form allocated fresh function objects on the
+   * render thread every render quantum. */
+  shapeLfoValue(v, phase, lfoShape) {
+    if (lfoShape === 1) {
+      const p = (phase / (2 * Math.PI)) % 1;
+      return 1 - 4 * Math.abs(p - 0.5);
+    }
+    if (lfoShape === 2) return this.shValues[v];
+    return Math.sin(phase);
+  }
+
   process(inputs, outputs, parameters) {
     const output = outputs[0];
     if (!output || !output[0]) return true;
@@ -91,15 +103,6 @@ class ChorusProcessor extends AudioWorkletProcessor {
       this.shCount = Math.max(64, Math.round(sr / (rate * 2)));
     }
 
-    const shapeLfo = (v, phase) => {
-      if (lfoShape === 1) {
-        const p = (phase / (2 * Math.PI)) % 1;
-        return 1 - 4 * Math.abs(p - 0.5);
-      }
-      if (lfoShape === 2) return this.shValues[v];
-      return Math.sin(phase);
-    };
-
     for (let i = 0; i < len; i++) {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
@@ -112,7 +115,7 @@ class ChorusProcessor extends AudioWorkletProcessor {
         const step = stepBase * (1 + (0.4 * spread * v) / Math.max(1, voices - 1));
         this.phases[v] += step;
         if (this.phases[v] > 2 * Math.PI) this.phases[v] -= 2 * Math.PI;
-        const lfo = shapeLfo(v, this.phases[v]);
+        const lfo = this.shapeLfoValue(v, this.phases[v], lfoShape);
         const base = (CHORUS_BASE_MS[v] / 1000) * sr;
         const buf = this.bufs[v];
         // Read BEFORE write: the delayed tap feeds back into the write.

@@ -40,6 +40,7 @@ class BitcrusherProcessor extends AudioWorkletProcessor {
     const channelCount = Math.min(input.length, output.length);
     const held = this.held;
     const counterStart = this.counter;
+    let counter = counterStart;
 
     for (let ch = 0; ch < channelCount; ch++) {
       const inCh = input[ch];
@@ -50,7 +51,7 @@ class BitcrusherProcessor extends AudioWorkletProcessor {
       // single heldValue, consumed by sequential channel loops, offset ch1's
       // hold grid by blockLen % ds and let ch1 open each block with ch0's
       // stale hold — the opposite of the stereo coherence that was intended.
-      let counter = counterStart;
+      counter = counterStart;
       let heldCh = held[ch] ?? 0;
       for (let i = 0; i < outCh.length; i++) {
         const b = bitsIsConstant ? bits[0] : bits[i];

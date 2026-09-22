@@ -74,9 +74,9 @@ class StockDelayProcessor extends AudioWorkletProcessor {
     // One-pole lowpass coefficient for the loop damping.
     const w = (2 * Math.PI * toneHz) / sr;
     const lpCoef = w / (1 + w);
+    const step = 1 - Math.exp(-1 / (0.02 * sr));
 
     for (let i = 0; i < len; i++) {
-      const step = 1 - Math.exp(-1 / (0.02 * sr));
       this.curDelayL += (targetSamples - this.curDelayL) * step;
       this.curDelayR += (targetSamples - this.curDelayR) * step;
 
