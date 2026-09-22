@@ -1316,19 +1316,23 @@ export function App({
                     <TrackTabs selectedTrackId={track.id} onSelectTrack={selectTrack} />
                   )}
                   <PatternBar clip={clip} onCopy={setClip} onOpenDice={() => setBottomPanel("dice")} />
-                  <Sequencer
-                    selectedPadId={padId}
-                    selectedTrackId={track.id}
-                    onSelectTrack={selectTrack}
-                    onSelectPad={setSelectedPadId}
-                    selectedNote={selectedNote}
-                    onSelectNote={setSelectedNote}
-                    stepSelection={stepSelection}
-                    onSelectSteps={setStepSelection}
-                    scaleSnap={scaleSnap}
-                  />
+                  <ErrorBoundary panel="sequencer">
+                    <Sequencer
+                      selectedPadId={padId}
+                      selectedTrackId={track.id}
+                      onSelectTrack={selectTrack}
+                      onSelectPad={setSelectedPadId}
+                      selectedNote={selectedNote}
+                      onSelectNote={setSelectedNote}
+                      stepSelection={stepSelection}
+                      onSelectSteps={setStepSelection}
+                      scaleSnap={scaleSnap}
+                    />
+                  </ErrorBoundary>
                 </div>
-                <Inspector track={track} selectedPadId={padId} onOpenPlugin={openDevicesPanel} />
+                <ErrorBoundary panel="inspector">
+                  <Inspector track={track} selectedPadId={padId} onOpenPlugin={openDevicesPanel} />
+                </ErrorBoundary>
               </main>
               <div
                 className={
@@ -1428,9 +1432,11 @@ export function App({
               <UndoHistoryPanel open={historyOpen} />
               <InstallPrompt />
               <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
-              <Suspense fallback={null}>
-                <PaletteOverlay open={paletteOpen} deps={paletteDeps} onClose={() => setPaletteOpen(false)} />
-              </Suspense>
+              <ErrorBoundary panel="palette">
+                <Suspense fallback={null}>
+                  <PaletteOverlay open={paletteOpen} deps={paletteDeps} onClose={() => setPaletteOpen(false)} />
+                </Suspense>
+              </ErrorBoundary>
               <OnboardingHint />
               <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
             </div>

@@ -6,7 +6,7 @@
   "modelPath": "/models/intent-ranker-v1.onnx",
   "inputName": "features",
   "outputName": "score",
-  "modelHash": "3c1e41a2c8fda77885eb557cadbdda17f2b1799d1e110b579a0245281693bfd9",
+  "modelHash": "0a29c387489deefca74925c0fa5d3a8f869d2cfb9387a6b81a560c2de2796212",
   "hidden": [
     64,
     32,
@@ -22,17 +22,23 @@
       16
     ],
     "epochs": 1200,
-    "trainPairs": 2520,
-    "valPairs": 630,
-    "trainPairwiseAccuracyVsHeuristic": 0.9575,
-    "valPairwiseAccuracyVsHeuristic": 0.7984,
-    "valTop1AgreementWithHeuristic": 0.6,
-    "valSpearmanVsHeuristic": 0.6781,
-    "goldenHoldoutPairwiseAccuracy": null,
-    "goldenHoldoutPairs": 0,
-    "goldenHoldoutCandidates": 0,
-    "goldenHoldoutGroups": 0,
-    "goldenHoldoutGenres": [],
-    "goldenVerdict": "invalid-golden-data"
+    "trainPairs": 2478,
+    "valPairs": 624,
+    "favoriteGroups": 0,
+    "trainPairwiseAccuracyVsHeuristic": 0.9483,
+    "valPairwiseAccuracyVsHeuristic": 0.7981,
+    "valTop1AgreementWithHeuristic": 0.6923,
+    "valSpearmanVsHeuristic": 0.6654,
+    "goldenHoldoutPairwiseAccuracy": 0.75,
+    "goldenHoldoutPairs": 48,
+    "goldenHoldoutCandidates": 32,
+    "goldenHoldoutGroups": 8,
+    "goldenHoldoutGenres": [
+      "ambient",
+      "house",
+      "techno",
+      "trap"
+    ],
+    "goldenVerdict": "ready-for-active"
   }
 }

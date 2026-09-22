@@ -28,6 +28,7 @@ const CAPABILITIES: GenerativeCapabilities = {
   supportsNoteConditioning: true,
   supportsDrumsMode: true,
   supportsSeed: true,
+  macroSupport: { energy: "wrapper", density: "wrapper", variation: "wrapper", texture: "wrapper" },
   outputSampleRates: [8000, 44100, 48000],
   outputChannels: [1, 2],
   maxCaptureSeconds: GENERATIVE_MAX_CAPTURE_SECONDS,
@@ -226,7 +227,13 @@ export class MockGenerativeProvider implements GenerativeAudioProvider {
   }
 
   getCapabilities(): GenerativeCapabilities {
-    return { ...CAPABILITIES, providerId: this.id, modelIds: [this.modelId] };
+    return {
+      ...CAPABILITIES,
+      providerId: this.id,
+      modelIds: [this.modelId],
+      outputSampleRates: [this.sampleRate],
+      outputChannels: [this.channels],
+    };
   }
 
   async createSession(config: GenerativeSessionConfig): Promise<GenerativeAudioSession> {

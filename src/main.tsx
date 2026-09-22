@@ -8,6 +8,7 @@ import { decodeShareCode } from "./export/shareCode";
 import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill, stashRegenFlag } from "./landing/handoff";
 import { funnelTiming } from "./services/funnel";
 import { initSwUpdate } from "./sw-update";
+import { detectWebAudioSupport, isWebAudioBootFailure } from "./shared/webAudioSupport";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
@@ -47,7 +48,25 @@ const ONBOARDED_KEY = "pf-onboarded";
 // Set by the Electron shell's preload (desktop/main.cjs, ADR 0010).
 declare global {
   interface Window {
-    kyxDesktop?: { isDesktop: true };
+    kyxDesktop?: {
+      isDesktop: true;
+      mrt2?: {
+        getAvailability: () => Promise<{
+          nativeRealtime: boolean;
+          localCompanion: boolean;
+          platform: string;
+          arch: string;
+          status: "available" | "unavailable";
+          message: string;
+        }>;
+        validateEndpoint: (
+          value: string,
+        ) => Promise<
+          | { ok: true; endpoint: { url: string; secure: boolean; host: string; port: number } }
+          | { ok: false; error: string }
+        >;
+      };
+    };
   }
 }
 
@@ -125,9 +144,11 @@ function Entry() {
   };
   if (entered) return <Boot />;
   return (
-    <Suspense fallback={ROUTE_FALLBACK}>
-      <LandingPage onEnterStudio={enterStudio} />
-    </Suspense>
+    <ErrorBoundary crashNote="The landing page hit an error. Reload to try again.">
+      <Suspense fallback={ROUTE_FALLBACK}>
+        <LandingPage onEnterStudio={enterStudio} />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -135,6 +156,7 @@ type Screen =
   | { kind: "booting" }
   | { kind: "browser"; core: CoreServices; importDoc?: ProjectDocument }
   | { kind: "studio"; services: Services }
+  | { kind: "unsupported"; missing: string[] }
   | { kind: "error"; message: string };
 
 function Boot() {
@@ -144,6 +166,14 @@ function Boot() {
     let cancelled = false;
     void (async () => {
       try {
+        // Web Audio is the studio's one hard dependency — a browser without
+        // it (or with it OS-blocked) gets actionable guidance instead of a
+        // raw engine exception half-way through boot.
+        const support = detectWebAudioSupport();
+        if (!support.ok) {
+          setScreen({ kind: "unsupported", missing: support.missing });
+          return;
+        }
         // ?import=<share code> — a shared link drops the project straight
         // into the studio, skipping the browser. Reject corrupt links before
         // loading the audio engine; they do not need services to explain the
@@ -190,7 +220,16 @@ function Boot() {
           setScreen({ kind: "browser", core });
         }
       } catch (error) {
-        if (!cancelled) setScreen({ kind: "error", message: String(error) });
+        if (!cancelled) {
+          // Audio blocked at construction time (iOS Low Power Mode, hardened
+          // browser builds) reads like a crash but is a capability problem —
+          // same guidance screen, minus the stack-trace tone.
+          setScreen(
+            isWebAudioBootFailure(error)
+              ? { kind: "unsupported", missing: [] }
+              : { kind: "error", message: String(error) },
+          );
+        }
       }
     })();
     return () => {
@@ -229,12 +268,15 @@ function Boot() {
   if (screen.kind === "booting") {
     return <div className="boot">KYX — forging audio engine…</div>;
   }
+  if (screen.kind === "unsupported") {
+    return <NoWebAudioScreen missing={screen.missing} />;
+  }
   if (screen.kind === "error") {
     return <div className="boot boot-error">Failed to start: {screen.message}</div>;
   }
   if (screen.kind === "browser") {
     return (
-      <ErrorBoundary>
+      <ErrorBoundary crashNote="The project browser hit an error. Reload to try again.">
         <ProjectBrowser core={screen.core} onOpen={(doc) => openDoc(screen.core, doc)} />
       </ErrorBoundary>
     );
@@ -249,5 +291,37 @@ function Boot() {
         />
       </Suspense>
     </ErrorBoundary>
+  );
+}
+
+/** Full-screen guidance when the browser cannot provide Web Audio — old
+ *  browsers, hardened builds, or iOS/iPadOS Low Power Mode (the OS blocks
+ *  the API entirely there). The studio cannot run without it, but the
+ *  visitor deserves an actionable explanation, not a ReferenceError. */
+function NoWebAudioScreen({ missing }: { missing: string[] }) {
+  return (
+    <div className="crash-screen" role="alert">
+      <h1>KYX needs Web Audio</h1>
+      <p className="crash-detail">
+        {missing.length > 0
+          ? `This browser does not provide ${missing.join(" and ")} — the standard APIs every DAW-in-the-browser is built on.`
+          : "Audio was blocked while KYX was starting — this browser or system is preventing Web Audio from running."}{" "}
+        Nothing you saved is lost; your projects live in this browser's storage.
+      </p>
+      <ul className="crash-list">
+        <li>Open KYX in a current Chrome, Edge, Firefox or Safari (Safari 14.1 or newer).</li>
+        <li>
+          iPhone / iPad: <strong>Low Power Mode disables Web Audio</strong> — turn it off, then reload this page.
+        </li>
+        <li>Check the browser's site settings — audio or "Web Audio" may be switched off for this site.</li>
+        <li>
+          Prefer an installed app? The <strong>KYX desktop build for Windows</strong> ships its own audio stack — see
+          the Download page.
+        </li>
+      </ul>
+      <button type="button" className="crash-reload" onClick={() => location.reload()}>
+        Reload
+      </button>
+    </div>
   );
 }

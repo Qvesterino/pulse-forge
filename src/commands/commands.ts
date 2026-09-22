@@ -1563,31 +1563,29 @@ export function setGroupCollapsed(doc: ProjectDocument, groupId: string, collaps
 export function setGroupMute(doc: ProjectDocument, groupId: string, mute: boolean): Command {
   const group = doc.tracks.find((t) => t.id === groupId && t.kind === "group");
   if (!group) throw new Error(`Group ${groupId} not found`);
-  const memberIds = new Set(doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).map((t) => t.id));
+  const memberCount = doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).length;
+  // Write ONLY the group: the engine's soloAudibility silences members
+  // through the group record, so the old member cascade was pure state
+  // destruction — un-muting the group resurrected members the user had
+  // individually muted before the group mute.
   const next: ProjectDocument = {
     ...doc,
-    tracks: doc.tracks.map((t) => {
-      if (t.id === groupId) return { ...t, mute } as import("../project-model/types").GroupTrack;
-      if (memberIds.has(t.id)) return { ...t, mute } as Track;
-      return t;
-    }),
+    tracks: doc.tracks.map((t) => (t.id === groupId ? { ...t, mute } : t)),
   };
-  return snapshot("setGroupMute", `${mute ? "Mute" : "Unmute"} ${group.name} (+${memberIds.size})`, doc, next);
+  return snapshot("setGroupMute", `${mute ? "Mute" : "Unmute"} ${group.name} (+${memberCount})`, doc, next);
 }
 
 export function setGroupSolo(doc: ProjectDocument, groupId: string, solo: boolean): Command {
   const group = doc.tracks.find((t) => t.id === groupId && t.kind === "group");
   if (!group) throw new Error(`Group ${groupId} not found`);
-  const memberIds = new Set(doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).map((t) => t.id));
+  const memberCount = doc.tracks.filter((t) => t.kind !== "group" && t.groupId === groupId).length;
+  // Group-only write — same reasoning as setGroupMute above (soloAudibility
+  // reads soloedGroups / groupsWithSoloedChild straight from the group).
   const next: ProjectDocument = {
     ...doc,
-    tracks: doc.tracks.map((t) => {
-      if (t.id === groupId) return { ...t, solo } as import("../project-model/types").GroupTrack;
-      if (memberIds.has(t.id)) return { ...t, solo } as Track;
-      return t;
-    }),
+    tracks: doc.tracks.map((t) => (t.id === groupId ? { ...t, solo } : t)),
   };
-  return snapshot("setGroupSolo", `${solo ? "Solo" : "Un-solo"} ${group.name} (+${memberIds.size})`, doc, next);
+  return snapshot("setGroupSolo", `${solo ? "Solo" : "Un-solo"} ${group.name} (+${memberCount})`, doc, next);
 }
 
 export function createReturnTrack(doc: ProjectDocument, name?: string): Command {
@@ -1678,6 +1676,19 @@ export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[],
     returns: d.returns.map((r) => (unique.has(r.id) ? { ...r, effects: r.effects.filter((f) => f.type !== type) } : r)),
   });
   const touched = apply(doc);
+  // Audit 05 D1: collect the removed instances' owner|fxId keys and prune
+  // their automation/LFO/macro/MIDI references inside the command (see
+  // stripDanglingEffectReferences) — otherwise undo lost the routings.
+  const removedKeys = new Set<string>();
+  for (const t of doc.tracks) {
+    if (!unique.has(t.id) || !("effects" in t)) continue;
+    for (const f of t.effects as EffectInstance[]) if (f.type === type) removedKeys.add(`${t.id}|${f.id}`);
+  }
+  for (const r of doc.returns) {
+    if (!unique.has(r.id)) continue;
+    for (const f of r.effects) if (f.type === type) removedKeys.add(`${r.id}|${f.id}`);
+  }
+  const pruned = stripDanglingEffectReferences(touched, removedKeys);
   const removed =
     doc.tracks
       .filter((t) => unique.has(t.id) && "effects" in t)
@@ -1690,7 +1701,7 @@ export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[],
     "removeEffectFromTracks",
     `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`,
     doc,
-    touched,
+    pruned,
   );
 }
 
@@ -4644,37 +4655,61 @@ export function addEffect(
   };
 }
 
+/**
+ * Audit 05 D1: remove the effect AND every cross-reference HELD BY OTHER
+ * ENTITIES (automation lanes, LFOs, scene automation, macro mappings, MIDI
+ * CC/aftertouch targets) — inside the command, so the undo delta restores
+ * them together with the device. The post-apply normalize pass prunes
+ * dangling targets, so leaving them outside the delta meant Ctrl+Z brought
+ * the device back while its routings were permanently gone (the exact
+ * deleteTrack bug class).
+ */
+function stripDanglingEffectReferences(
+  doc: ProjectDocument,
+  removed: Set<string>,
+): ProjectDocument {
+  const keyOf = (target: import("../project-model/types").AutomationTarget | undefined | null): string =>
+    target?.fxId ? `${String(target.trackId)}|${String(target.fxId)}` : "";
+  const automation = doc.automation?.filter((lane) => !removed.has(keyOf(lane.target)));
+  const sceneAutomation = doc.sceneAutomation?.filter((lane) => !removed.has(keyOf(lane.target)));
+  const lfos = doc.lfos?.filter((lfo) => !removed.has(keyOf(lfo.target)));
+  const macros = doc.macros?.map((macro) => ({
+    ...macro,
+    mappings: macro.mappings.filter((mapping) => !removed.has(keyOf(mapping.target))),
+  }));
+  const aftertouchGone = doc.midi?.aftertouchTarget ? removed.has(keyOf(doc.midi.aftertouchTarget)) : false;
+  return {
+    ...doc,
+    ...(automation ? { automation } : {}),
+    ...(lfos ? { lfos } : {}),
+    ...(sceneAutomation ? { sceneAutomation } : {}),
+    ...(macros ? { macros } : {}),
+    ...(doc.midi
+      ? {
+          midi: {
+            ...doc.midi,
+            ccMappings: doc.midi.ccMappings.filter((mapping) => !removed.has(keyOf(mapping.target))),
+            ...(aftertouchGone ? { aftertouchTarget: undefined } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  const targetIndex = trackEffectsOf(doc, trackId).findIndex((f) => f.id === fxId);
-  return {
-    type: "removeEffect",
-    label: `Remove ${target ? EFFECT_META[target.type].name : fxId}`,
-    execute: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fxId)),
-    undo: (d) =>
-      withTrackEffects(d, trackId, (effects) => {
-        if (!target || effects.some((f) => f.id === fxId)) return effects;
-        const copy = [...effects];
-        copy.splice(Math.max(0, Math.min(targetIndex, copy.length)), 0, target);
-        return copy;
-      }),
-    applyToYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i) as any;
-        if (t.get("id") === trackId) {
-          const effects = t.get("effects") as any;
-          for (let j = 0; j < effects.length; j++) {
-            if ((effects.get(j) as any).get("id") === fxId) {
-              effects.delete(j, 1);
-              break;
-            }
-          }
-          break;
-        }
-      }
-    },
-  };
+  if (!target) {
+    // Stale/collab-raced id — a silent no-op, not a dead undo entry.
+    return { type: "removeEffect", label: "Remove effect", execute: (d) => d, undo: (d) => d };
+  }
+  const removed = new Set([`${trackId}|${fxId}`]);
+  const next = stripDanglingEffectReferences(
+    withTrackEffects(doc, trackId, (effects) => effects.filter((f) => f.id !== fxId)),
+    removed,
+  );
+  // Whole-command delta (no partial applyToYDoc): the collab fallback
+  // applies execute() on peers, which propagates the reference pruning too.
+  return snapshot("removeEffect", `Remove ${EFFECT_META[target.type].name}`, doc, next);
 }
 
 /**

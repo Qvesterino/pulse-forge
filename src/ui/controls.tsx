@@ -161,6 +161,13 @@ export function Slider({
   const menuAnchor = useRef<{ x: number; y: number } | null>(null);
   const holdFired = useRef(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  // Double-click reset (Audit 04): a zero-movement click commits its
+  // position (click-to-set), but the SECOND zero-movement click of a
+  // double-click must not — the dblclick handler resets to default. Track
+  // the last click time and whether the pointer actually moved.
+  const lastClickAt = useRef(0);
+  const movedSinceDown = useRef(false);
+  const downPos = useRef<{ x: number; y: number } | null>(null);
   // Built-in fallback menu (reset + type) when the host does not provide one.
   const [builtinMenu, setBuiltinMenu] = useState<{ x: number; y: number } | null>(null);
   const [typeDraft, setTypeDraft] = useState<string | null>(null);
@@ -216,6 +223,8 @@ export function Slider({
     // aborts the drag — a release afterwards must not commit the touched
     // position as a level change.
     holdFired.current = false;
+    movedSinceDown.current = false;
+    downPos.current = { x: event.clientX, y: event.clientY };
     // Touch/pen long-press opens the same menu as right-click. The host menu
     // wins when provided; otherwise the built-in reset/type menu opens.
     if (event.pointerType !== "mouse") {
@@ -249,6 +258,8 @@ export function Slider({
     // long-press.
     const start = dragStart.current;
     if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) clearMenuTimer();
+    const anchor = downPos.current;
+    if (anchor && Math.hypot(event.clientX - anchor.x, event.clientY - anchor.y) > 4) movedSinceDown.current = true;
     const v = positionToValue(event.clientX);
     setDragValue(v);
     firePreview(v);
@@ -261,9 +272,26 @@ export function Slider({
       return;
     }
     clearMenuTimer();
+    downPos.current = null;
     if (dragValue === null) return;
     // Kill a pending preview so a stale frame can't land after the commit.
     cancelPreview();
+    if (!movedSinceDown.current) {
+      // Zero-movement click (click-to-set) — unless it is the SECOND click
+      // of a double-click: the dblclick handler resets to default, and
+      // committing the clicked position here flashed the level through an
+      // extra undo entry. Skipping restores dragValue and lets dblclick act.
+      const now = performance.now();
+      const isSecondClick = now - lastClickAt.current < 300;
+      lastClickAt.current = isSecondClick ? 0 : now;
+      if (isSecondClick) {
+        setDragValue(null);
+        onCancel?.();
+        return;
+      }
+    } else {
+      lastClickAt.current = 0;
+    }
     onCommit(dragValue);
     setDragValue(null);
   };
@@ -274,6 +302,7 @@ export function Slider({
   const handlePointerCancel = () => {
     clearMenuTimer();
     holdFired.current = false;
+    downPos.current = null;
     cancelPreview();
     setDragValue(null);
     onCancel?.();

@@ -16,10 +16,11 @@
  *   3. no service worker (the PWA layer is browser-only),
  *   4. `window.kyxDesktop.isDesktop` so the app skips the web landing page.
  */
-const { app, BrowserWindow, protocol, session, dialog, net, Menu } = require("electron");
+const { app, BrowserWindow, protocol, session, dialog, net, Menu, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
@@ -141,6 +142,7 @@ app.whenReady().then(() => {
   registerAppProtocol();
   configurePermissions();
   configureDownloads();
+  registerMrt2IpcHandlers(ipcMain);
   buildMenu();
   createWindow();
   scheduleUpdateChecks();
@@ -268,14 +270,8 @@ function runSmoke() {
         })`,
       )
       .then((state) => {
-        const ok =
-          why !== "timeout" &&
-          state.rootMounted &&
-          state.origin === "app://bundle" &&
-          errors.length === 0;
-        console.log(
-          JSON.stringify({ ok, why, origin: state.origin, rootMounted: state.rootMounted, errors }, null, 2),
-        );
+        const ok = why !== "timeout" && state.rootMounted && state.origin === "app://bundle" && errors.length === 0;
+        console.log(JSON.stringify({ ok, why, origin: state.origin, rootMounted: state.rootMounted, errors }, null, 2));
         app.exit(ok ? 0 : 1);
       })
       .catch((error) => {

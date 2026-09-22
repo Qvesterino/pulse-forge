@@ -39,6 +39,35 @@ npm run ranker:train       # retrains the ranker incl. new golden orders
 The morph-only pack (`npm run listening:morph` → `listening/morph/`) stays
 available as the legacy single-suite variant.
 
+## 2.1 TRAIN MY TASTE — the one-command learning loop
+
+```bash
+npm run taste:train          # full loop (add --dry-run to preview)
+```
+
+Orchestrator (`scripts/train-my-taste.mjs`) runs, in order:
+
+1. **ingest** — room verdicts → ranker golden (complete index permutations:
+   your ranked top-N sits on top, unheard candidates fill the tail by
+   descending heuristic score) + top-level `golden.reviewed` flag,
+2. **merge favourites** — `listening/favorites-pack.json` (room ★) + every
+   pack in `listening/dice-packs/` (dice tray ⬇★ export, or
+   `POST /api/favorites` on the serve port) → `favorites-combined.json`,
+3. **retrain** — `favorites:retrain` (drum prior + melodic prior + ranker),
+4. **activate** — `ranker:activate`: golden review gate → `ranker:train` →
+   independent holdout validation → flips `DEFAULT_RANKER_MODE` to
+   `"active"` when the holdout gate passes,
+5. **before/after** — model manifests + validation report diffed and printed
+   (retrained models marked ●, holdout accuracy before vs after).
+
+First real run (2026-09-22): one room ranking session retrained
+`intent-ranker-v1` and lifted `goldenHoldoutPairwiseAccuracy` 0.7083 →
+**0.7500** — the gate flipped the ranker **active**.
+
+Known limits: dice pack entries need a real `grooveId` (the drum prior
+skips unknown grooves); the activation gate demands an independent holdout
+— more listening sessions raise it.
+
 ## 3. Files
 
 | Path | Role |

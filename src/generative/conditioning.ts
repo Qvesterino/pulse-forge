@@ -8,6 +8,8 @@ import { valueAt } from "../project-model/automation";
 const MAX_CONDITIONING_SECONDS = 120;
 
 export interface GenerativeConditioningOptions {
+  /** Effective transport BPM (scene override wins over document BPM). */
+  bpm?: number;
   /** Runtime resolver for a persisted audio style reference. */
   resolveAudioStyle?: (bufferId: string) => GenerativeStyle & { kind: "audio" };
   /** Runtime-resolved macro values, including section/automation overlays. */
@@ -106,7 +108,8 @@ export function buildGenerativeInput(
 ): GenerativeInput {
   if (!Number.isFinite(startTick) || startTick < 0) throw new Error("startTick must be non-negative");
   if (!Number.isFinite(durationTicks) || durationTicks <= 0) throw new Error("durationTicks must be positive");
-  const ticksPerSecond = PPQ * (doc.bpm / 60);
+  const bpm = Number.isFinite(options.bpm) && (options.bpm ?? 0) > 0 ? options.bpm! : doc.bpm;
+  const ticksPerSecond = PPQ * (bpm / 60);
   const durationSec = durationTicks / ticksPerSecond;
   if (durationSec > MAX_CONDITIONING_SECONDS) throw new Error("conditioning window exceeds 120 seconds");
   const ticksPerFrame = ticksPerSecond / GENERATIVE_FRAME_RATE_HZ;
@@ -122,7 +125,7 @@ export function buildGenerativeInput(
     };
   });
   return {
-    bpm: doc.bpm,
+    bpm,
     frameRateHz: GENERATIVE_FRAME_RATE_HZ,
     startTick,
     style: styleOf(track, options),

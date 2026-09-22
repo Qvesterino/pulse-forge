@@ -54,6 +54,31 @@ export interface RenderOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * External generative providers are intentionally absent from OfflineAudioContext.
+ * A live generative track is exportable only after its provider take has been
+ * captured into a normal arrangement AudioClip (or the track is muted). This
+ * guard prevents the renderer from silently exporting a project without the
+ * sound the user heard live.
+ */
+export function assertGenerativeExportSources(doc: ProjectDocument, bank: SampleBank): void {
+  const audioClips = doc.arrangement.audioClips ?? [];
+  for (const track of doc.tracks) {
+    if (track.kind !== "generative" || track.mute) continue;
+    const captured = audioClips.filter((clip) => clip.trackId === track.id);
+    if (captured.length === 0) {
+      throw new Error(
+        `Generative track "${track.name}" has no captured AudioClip. Capture the track before offline export.`,
+      );
+    }
+    for (const clip of captured) {
+      if (!bank.has(clip.bufferId)) {
+        throw new Error(`Captured generative AudioClip ${clip.id} is missing audio asset ${clip.bufferId}.`);
+      }
+    }
+  }
+}
+
 /** @throws AbortError when the export was cancelled during setup. */
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
@@ -321,6 +346,7 @@ export async function renderProject(
     throw new Error("OfflineAudioContext is not available in this environment — offline export is unsupported.");
   }
   throwIfAborted(options.signal);
+  assertGenerativeExportSources(doc, bank);
   // Curated factory layer (same-id override, memoized per bank): exports wait
   // briefly for the curated sound so "what you hear is what you export" —
   // after the timeout the synthesized fallback renders (offline installs).

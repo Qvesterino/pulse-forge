@@ -75,6 +75,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
     },
     dispose() {
       node.port.onmessage = null;
+      node.port.close();
       node.disconnect();
       input.disconnect();
       output.disconnect();

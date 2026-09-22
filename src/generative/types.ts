@@ -22,6 +22,11 @@ export interface GenerativeMacroValues {
   texture: number;
 }
 
+export type GenerativeMacroName = keyof GenerativeMacroValues;
+export type GenerativeMacroSupport = "native" | "wrapper" | "unsupported";
+export type GenerativeMacroSupportMap = Readonly<Partial<Record<GenerativeMacroName, GenerativeMacroSupport>>>;
+export const GENERATIVE_MACRO_NAMES = ["energy", "density", "variation", "texture"] as const;
+
 /** One provider-time frame. Pitch states use 0=off, 1=sustain, 2=onset, 3=provider decides. */
 export interface GenerativeNoteFrame {
   frameIndex: number;
@@ -40,7 +45,18 @@ export interface GenerativeInput {
 }
 
 export type GenerativeSessionState =
-  "idle" | "starting" | "ready" | "running" | "capturing" | "error" | "unavailable" | "disposed";
+  | "idle"
+  | "loading"
+  | "downloading"
+  | "starting"
+  | "ready"
+  | "running"
+  | "buffering"
+  | "capturing"
+  | "reconnecting"
+  | "error"
+  | "unavailable"
+  | "disposed";
 
 export interface GenerativeStatus {
   state: GenerativeSessionState;
@@ -57,6 +73,8 @@ export interface GenerativeCapabilities {
   supportsNoteConditioning: boolean;
   supportsDrumsMode: boolean;
   supportsSeed: boolean;
+  /** Product-level macro semantics; these are not assumed to be native model controls. */
+  macroSupport?: GenerativeMacroSupportMap;
   outputSampleRates: readonly number[];
   outputChannels: readonly number[];
   maxCaptureSeconds: number;
@@ -86,6 +104,11 @@ export interface GeneratedAudio {
   providerId: string;
   modelId: string;
   inputHash: string;
+  provenance?: {
+    sourceHash?: string;
+    prompt?: string;
+    providerVersion?: string;
+  };
 }
 
 export interface GenerativeCaptureRequest {

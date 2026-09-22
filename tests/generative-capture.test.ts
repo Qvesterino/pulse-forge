@@ -44,8 +44,12 @@ describe("generated audio capture", () => {
     };
     const generated = await session.capture({ input, durationSec: 0.1 });
     const memory = memoryRepository();
+    const generatedWithProvenance = {
+      ...generated,
+      provenance: { sourceHash: "ref-1234", prompt: "dark pad", providerVersion: "mock-v1" },
+    };
 
-    const asset = await persistGeneratedAudio(memory.repository, generated, "AI / pad: take 1", {
+    const asset = await persistGeneratedAudio(memory.repository, generatedWithProvenance, "AI / pad: take 1", {
       assetId: "generated-test-1",
       createdAt: "2026-09-22T00:00:00.000Z",
     });
@@ -55,6 +59,9 @@ describe("generated audio capture", () => {
       providerId: "mock-generative",
       modelId: "mock-small",
       inputHash: generated.inputHash,
+      sourceHash: "ref-1234",
+      prompt: "dark pad",
+      providerVersion: "mock-v1",
     });
     expect(asset.fileName).toBe("AI-pad-take-1.wav");
     expect(memory.saved).toHaveLength(1);
@@ -111,6 +118,30 @@ describe("generated audio capture", () => {
     });
     expect(result.asset.id).toBe("generated-clip-1");
     expect(result.wav.byteLength).toBeGreaterThan(44);
+    await session.dispose();
+  });
+
+  it("survives the durable sample reload boundary before the project clip is restored", async () => {
+    const provider = createMockGenerativeProvider({ sampleRate: 8000, channels: 2 });
+    const session = await provider.createSession({ modelId: "mock-small", outputSampleRate: 8000, outputChannels: 2 });
+    const input = {
+      bpm: 120,
+      frameRateHz: 25 as const,
+      startTick: 0,
+      style: { kind: "text" as const, text: "reloadable pad" },
+      noteFrames: [{ frameIndex: 0, pitchState: new Array<number>(128).fill(0) }],
+      drumsMode: "off" as const,
+      macros: { energy: 0.5, density: 0.3, variation: 0.2, texture: 0.6 },
+    };
+    const generated = await session.capture({ input, durationSec: 0.1 });
+    const memory = memoryRepository();
+    await persistGeneratedAudio(memory.repository, generated, "reloadable", { assetId: "generated-reload-1" });
+
+    const reloadedAssets = await memory.repository.list();
+    const reloadedAudio = await memory.repository.loadAudio("generated-reload-1");
+    expect(reloadedAssets[0]).toMatchObject({ id: "generated-reload-1", origin: "generated" });
+    expect(reloadedAudio).toBeInstanceOf(ArrayBuffer);
+    expect((reloadedAudio as ArrayBuffer).byteLength).toBeGreaterThan(44);
     await session.dispose();
   });
 });

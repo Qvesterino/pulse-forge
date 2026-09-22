@@ -1499,7 +1499,11 @@ export class AudioEngine {
       // drive. Engine clamp ±12 dB is a defensive bound; the builder writes
       // at most ±6.
       const gain = Math.min(2, Math.max(0, config.masterGain));
-      const trim = Math.min(12, Math.max(-12, config.loudnessTrimDb ?? 0));
+      // NaN-safe: Math.min/max pass NaN through, and gain * 10**(NaN/20)
+      // would throw inside setTargetAtTime — the FIRST statement of
+      // syncProject, killing the whole graph sync.
+      const trimRaw = config.loudnessTrimDb;
+      const trim = typeof trimRaw === "number" && Number.isFinite(trimRaw) ? Math.min(12, Math.max(-12, trimRaw)) : 0;
       this.master.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);
     }
     if (this.masterTape) {
@@ -1662,6 +1666,13 @@ export class AudioEngine {
           const next = this.projectQueue.shift()!;
           await runBody(next);
         }
+      } catch (err) {
+        // The queue is the hottest path in the app (every doc change): a
+        // thrown body (e.g. an effect factory on a hostile doc) must land in
+        // the console, never as an unhandled rejection. The graph may be
+        // half-synced — the next setProject re-syncs (queueFxRebuild guards
+        // the same hazard on its own path).
+        console.error("[audio-engine] setProject body failed:", err);
       } finally {
         this.projectPromise = null;
       }
@@ -1818,7 +1829,7 @@ export class AudioEngine {
         },
       }) as EffectRuntime;
       const positionTick = this.transportTickNow();
-      const beatPhase = ((positionTick % PPQ) + PPQ) % PPQ / PPQ;
+      const beatPhase = (((positionTick % PPQ) + PPQ) % PPQ) / PPQ;
       rt.onTransportStarted?.(ctx.currentTime, beatPhase, positionTick / PPQ);
       // PRISM's runtime morph slots are intentionally transient audio state,
       // but their source snapshots are document-owned. Rehydrate them here so
@@ -4599,6 +4610,26 @@ export class AudioEngine {
     };
   }
 
+  /** Preview an ephemeral buffer through the same master preview bus as bank assets. */
+  previewBuffer(buffer: AudioBuffer, gainValue = 0.9): void {
+    this.ensureContext();
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, gainValue));
+    source.connect(gain).connect(this.master);
+    const voice: PreviewVoice = { source, gain };
+    this.previewVoices.add(voice);
+    source.start(ctx.currentTime + 0.005);
+    source.onended = () => {
+      this.previewVoices.delete(voice);
+      gain.disconnect();
+      source.disconnect();
+    };
+  }
+
   /**
    * Preview a sample synced to the transport (FL Browser Alt+P): the sample's
    * first beat lands on the next bar boundary and playbackRate tempo-matches
@@ -4875,9 +4906,12 @@ export class AudioEngine {
     return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
   }
 
-  /** One read for the mixer channel meter: level, peak readout and clip flag. */
+  /** One read for the mixer channel meter: level, peak readout and clip flag.
+   * Groups are metered from their group nodes (same fallback the spectrogram
+   * source getter uses) — pre-fix, bus strips showed flat-zero forever. */
   getTrackMeterSnapshot(trackId: string): TrackMeterSnapshot {
-    const peak = this.rawPeakOf(this.trackNodes.get(trackId)?.analyser ?? null);
+    const analyser = this.trackNodes.get(trackId)?.analyser ?? this.groupNodes.get(trackId)?.analyser ?? null;
+    const peak = this.rawPeakOf(analyser);
     return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
   }
 
@@ -5017,6 +5051,37 @@ export class AudioEngine {
     rt?.setParameter?.(paramId, value);
   }
 
+  /**
+   * Live mixer previews (Audit 04 #6): the same writes syncProject performs
+   * on commit, fired during a fader drag so the level is audible WHILE it
+   * moves — the document write still happens once on commit and is
+   * idempotent with the preview. Cancel re-previews the committed doc value.
+   */
+  previewTrackGain(trackId: string, gain: number): void {
+    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
+    if (!nodes || !this.ctx) return;
+    nodes.gain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, gain)), this.ctx.currentTime, 0.01);
+  }
+
+  previewTrackPan(trackId: string, pan: number): void {
+    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
+    if (!nodes || !this.ctx) return;
+    nodes.panner.pan.setTargetAtTime(Math.min(1, Math.max(-1, pan)), this.ctx.currentTime, 0.01);
+  }
+
+  previewReturnGain(returnId: string, gain: number): void {
+    const nodes = this.returnNodes.get(returnId);
+    if (!nodes || !this.ctx) return;
+    nodes.gain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, gain)), this.ctx.currentTime, 0.01);
+  }
+
+  previewMasterGain(masterGain: number): void {
+    // applyMasterConfig combines the fader with the persisted loudness trim —
+    // route through it so the preview matches the committed write exactly.
+    if (!this.master || !this.doc || !this.ctx) return;
+    this.applyMasterConfig({ ...this.doc.master, masterGain: Math.min(1.5, Math.max(0, masterGain)) });
+  }
+
   /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */
   beginEffectIntentPreview(
     trackId: string,
@@ -5050,7 +5115,9 @@ export class AudioEngine {
     const active = this.effectIntentPreview;
     if (!active) return true;
     this.effectIntentPreview = null;
-    const current = nextDoc ? targetOwner(nextDoc, active.trackId)?.effects.find((effect) => effect.id === active.fxId) : undefined;
+    const current = nextDoc
+      ? targetOwner(nextDoc, active.trackId)?.effects.find((effect) => effect.id === active.fxId)
+      : undefined;
     let restored = true;
     if (current?.type === active.effectType) {
       const values = Object.fromEntries(
@@ -5080,7 +5147,8 @@ export class AudioEngine {
     values: Record<string, number>,
     rollbackValues: Record<string, number> = {},
   ): boolean {
-    if (Object.keys(values).length === 0 || Object.values(values).some((value) => !Number.isFinite(value))) return false;
+    if (Object.keys(values).length === 0 || Object.values(values).some((value) => !Number.isFinite(value)))
+      return false;
     const runtime =
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??

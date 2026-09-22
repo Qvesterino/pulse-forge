@@ -10,6 +10,7 @@ import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
 import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
+import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
   IFrozenBufferRepository,
   IGroovePoolRepository,
@@ -42,7 +43,9 @@ import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
 import type { BandmateControls } from "./collab/bandmate";
 import { createBandmate } from "./collab/bandmate";
-import { createUnavailableGenerativeProvider, GenerativeProviderRegistry, GenerativeRuntime } from "./generative";
+import { createUnavailableGenerativeProvider, GenerativeProviderRegistry } from "./generative/registry";
+import { GenerativeLatencyCalibrationController } from "./generative/latency";
+import { GenerativeRuntime } from "./generative/runtime";
 import {
   applyTransportState,
   captureTransportState,
@@ -64,6 +67,8 @@ export interface CoreServices {
   bank: SampleBank;
   /** Provider implementations are host capabilities, never project state. */
   generativeProviders?: GenerativeProviderRegistry;
+  /** Host-local provider warm-up/control measurements; never project state. */
+  generativeLatency?: GenerativeLatencyCalibrationController;
   repo: IProjectRepository;
   snapshots: ISnapshotRepository;
   presets: IPresetRepository;
@@ -89,6 +94,7 @@ export interface Services {
   generativeProviders: GenerativeProviderRegistry;
   /** Provider/audio bridge for live generative tracks and capture. */
   generativeRuntime: GenerativeRuntime;
+  generativeLatency?: GenerativeLatencyCalibrationController;
   transport: Transport;
   scheduler: Scheduler;
   repo: IProjectRepository;
@@ -337,6 +343,7 @@ export async function createCoreServices(): Promise<CoreServices> {
     engine,
     bank,
     generativeProviders,
+    generativeLatency: new GenerativeLatencyCalibrationController(),
     repo: new ProjectRepository(),
     snapshots: new SnapshotRepository(),
     presets: new PresetRepository(),
@@ -368,6 +375,7 @@ export async function openProject(
 ): Promise<Services> {
   const generativeProviders = core.generativeProviders ?? new GenerativeProviderRegistry();
   const { engine, repo, bank, library, userKits, groovePool, latency, snapshots } = core;
+  const generativeLatency = core.generativeLatency ?? new GenerativeLatencyCalibrationController();
 
   const collabConfig =
     options.collab ?? (typeof location !== "undefined" ? collabParamsFromSearch(location.search) : null);
@@ -554,6 +562,7 @@ export async function openProject(
       patternRecorder.onTransportInterrupted();
     },
   );
+  let generativeRuntimeRef: GenerativeRuntime | null = null;
 
   if (collab) {
     // ── Shared transport (Instant Jam pulse) ─────────────────────────────
@@ -582,10 +591,13 @@ export async function openProject(
         if (!state.playing) {
           scheduler.stop();
           engine.panic();
+          void generativeRuntimeRef?.stopAll();
         }
         applyTransportState(transport, state, Date.now() / 1000);
-        if (shouldStartScheduler) scheduler.start();
-        else if (wasPlaying && state.playing) scheduler.resync();
+        if (shouldStartScheduler) {
+          scheduler.start();
+          void generativeRuntimeRef?.startAll();
+        } else if (wasPlaying && state.playing) scheduler.resync();
         // A REMOTE pulse mutates the transport from outside the controller —
         // without this, the TopBar play button (and every playback
         // subscriber) stayed stale until the next local gesture.
@@ -601,6 +613,7 @@ export async function openProject(
       followLock = true;
       try {
         applyTransportState(transport, lastPulse, Date.now() / 1000);
+        if (lastPulse.playing) void generativeRuntimeRef?.startAll();
       } finally {
         followLock = false;
       }
@@ -706,7 +719,25 @@ export async function openProject(
     bank,
     userSamples,
     execute: (command) => store.execute(command),
+    latencyCalibration: generativeLatency,
   });
+  generativeRuntimeRef = generativeRuntime;
+  let generativePausedForContext = false;
+  const pauseGenerativeForContext = (): void => {
+    if (!transport.playing || generativePausedForContext) return;
+    generativePausedForContext = true;
+    void generativeRuntime.stopAll().catch((error) => {
+      console.warn("[generative] context suspend stop failed:", error);
+    });
+  };
+  const resumeGenerativeAfterContext = (): void => {
+    if (!generativePausedForContext) return;
+    generativePausedForContext = false;
+    if (!transport.playing) return;
+    void generativeRuntime.startAll().catch((error) => {
+      console.warn("[generative] context resume start failed:", error);
+    });
+  };
   playback.attachGenerativeLifecycle({
     start: () => {
       void generativeRuntime.startAll().catch((error) => {
@@ -808,8 +839,10 @@ export async function openProject(
     // can edit while IndexedDB is awaiting; that newer revision must not be
     // reported as saved when this older write completes.
     const documentAtStart = store.doc;
-    store.setSaveStatus("saving");
     try {
+      // Inside the try: a throwing save-status listener must not reject
+      // flushSave unhandled during pagehide/beforeunload/crash-save.
+      store.setSaveStatus("saving");
       await repo.save(documentAtStart);
       if (store.doc !== documentAtStart) {
         saveQueued = true;
@@ -897,6 +930,7 @@ export async function openProject(
   const onVisibility = (): void => {
     if (document.visibilityState === "hidden") {
       void flushSave();
+      pauseGenerativeForContext();
       return;
     }
     // Defect A02.D3 (browser audio lifecycle audit): on the visible
@@ -909,7 +943,10 @@ export async function openProject(
     // window origin to the live playhead so it does not try to
     // schedule the events that piled up during the suspended gap.
     engine.ensureContext();
-    if (transport.playing) scheduler.resync();
+    if (transport.playing) {
+      scheduler.resync();
+      resumeGenerativeAfterContext();
+    }
   };
   // pagehide is the one iOS Safari reliably fires before terminating a
   // tab; beforeunload also gets the "unsaved changes" warning wired up
@@ -920,6 +957,15 @@ export async function openProject(
     isDirty: () => store.saveStatus === "dirty" || store.saveStatus === "error",
   });
   document.addEventListener("visibilitychange", onVisibility);
+  const onAudioContextState = (): void => {
+    const state = engine.context?.state;
+    if (state === "suspended") {
+      pauseGenerativeForContext();
+    } else if (state === "running") {
+      resumeGenerativeAfterContext();
+    }
+  };
+  engine.context?.addEventListener("statechange", onAudioContextState);
 
   const closeProject = async (): Promise<void> => {
     // Ordered teardown; the flag first so pending fire-and-forget asyncs
@@ -935,6 +981,7 @@ export async function openProject(
     midiClock.dispose();
     midiOutput.dispose();
     document.removeEventListener("visibilitychange", onVisibility);
+    engine.context?.removeEventListener("statechange", onAudioContextState);
     uninstallUnloadGuards();
     await flushSave();
   };
@@ -949,6 +996,7 @@ export async function openProject(
       transportTick: Math.round(transport.position),
       schedulerRunning: scheduler.isRunning,
       scheduledEvents: scheduler.stats.scheduledEvents,
+      processorErrors: processorErrorCount(),
       schedulerFailedWindows: scheduler.stats.failedWindows,
       nextStepTick: Math.round(scheduler.stats.lastHorizonTick),
       schedulerWindows: scheduler.stats.windows,
@@ -966,6 +1014,7 @@ export async function openProject(
     engine,
     generativeProviders,
     generativeRuntime,
+    generativeLatency,
     transport,
     scheduler,
     sharedTransportReapply,

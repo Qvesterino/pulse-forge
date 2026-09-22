@@ -1,5 +1,3 @@
-
-
 /* ---------- Drop Zone ---------- */
 
 .drop-zone {
@@ -892,6 +890,37 @@
   color: var(--text-dim);
   max-width: 600px;
   word-break: break-word;
+}
+
+/* No-Web-Audio guidance screen (main.tsx NoWebAudioScreen). */
+.crash-list {
+  margin: 0;
+  padding-left: 18px;
+  text-align: left;
+  max-width: 520px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+.crash-list strong {
+  color: var(--text);
+}
+
+.crash-reload {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 8px 22px;
+  border: 1px solid var(--text-dim);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.crash-reload:hover {
+  border-color: var(--text);
 }
 
 .panel-error {

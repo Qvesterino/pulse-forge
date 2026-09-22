@@ -4,6 +4,7 @@
  */
 import { createServer } from "node:http";
 import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +46,24 @@ const server = createServer(async (req, res) => {
       await writeFile(VERDICTS, JSON.stringify(verdicts, null, 2));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, count: verdicts.length }));
+      return;
+    }
+    // Dice ★ packs from the app (dice tray ⬇★ export can POST here) —
+    // everything lands in listening/dice-packs/ for train-my-taste.
+    if (url.pathname === "/api/favorites" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      const pack = JSON.parse(body);
+      if (!pack || pack.version !== 1 || !Array.isArray(pack.entries)) {
+        res.writeHead(400).end('{"error":"expected a FavoritesPack"}');
+        return;
+      }
+      const dir = path.join(SERVE_ROOT, "dice-packs");
+      mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `posted-${Date.now()}.json`);
+      writeFileSync(file, JSON.stringify(pack, null, 2));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, entries: pack.entries.length }));
       return;
     }
     if (url.pathname === "/api/verdicts" && req.method === "GET") {

@@ -103,6 +103,7 @@ export function createCompressorNode(
     },
     dispose() {
       node.port.onmessage = null;
+      node.port.close();
       if (lastSidechainSource) {
         try {
           lastSidechainSource.disconnect(node);

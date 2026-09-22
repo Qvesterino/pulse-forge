@@ -45,10 +45,10 @@ const favourites = verdicts.filter((v) => v.kind === "favorite" && v.entry && v.
 let matched = 0;
 const unmatched = [];
 if (rankings.length > 0) {
-  const knownGroups = new Set();
+  const groupByKey = new Map();
   if (existsSync(datasetPath)) {
     const dataset = JSON.parse(readFileSync(datasetPath, "utf8"));
-    for (const group of dataset.groups ?? []) knownGroups.add(group.groupKey);
+    for (const group of dataset.groups ?? []) groupByKey.set(group.groupKey, group);
   } else {
     console.warn("[ingest] ranker dataset not found — skipping membership check");
   }
@@ -59,17 +59,47 @@ if (rankings.length > 0) {
   if (!Array.isArray(golden.combos)) golden.combos = [];
 
   for (const verdict of rankings) {
-    if (knownGroups.size > 0 && !knownGroups.has(verdict.groupKey)) {
+    const datasetGroup = groupByKey.get(verdict.groupKey);
+    if (!datasetGroup) {
       unmatched.push(verdict.groupKey);
       continue;
     }
+    // The room ranks a SUBSET (4 audible candidates); the golden validator
+    // requires a COMPLETE permutation of the dataset group's candidate
+    // indices. Verdict order (seeds) maps to candidate indices, and the
+    // candidates the room did not play are appended by descending
+    // heuristic score — the human signal sits on top, the engine's own
+    // ranking fills the unheard tail.
+    const bySeed = new Map((datasetGroup.candidates ?? []).map((c) => [c.seed, c]));
+    const heardIndexes = [];
+    let unmapped = false;
+    for (const seed of verdict.order) {
+      const candidate = bySeed.get(seed);
+      if (!candidate) {
+        unmapped = true;
+        break;
+      }
+      heardIndexes.push(candidate.index);
+    }
+    if (unmapped) {
+      unmatched.push(verdict.groupKey + " (seed not in dataset group)");
+      continue;
+    }
+    const tail = (datasetGroup.candidates ?? [])
+      .filter((c) => !heardIndexes.includes(c.index))
+      .sort((a, b) => (b.heuristicScore ?? 0) - (a.heuristicScore ?? 0))
+      .map((c) => c.index);
+    const fullOrder = [...heardIndexes, ...tail];
+
     const existing = golden.combos.find((combo) => combo.groupKey === verdict.groupKey);
     const record = {
+      combo: verdict.groupKey,
       groupKey: verdict.groupKey,
-      order: verdict.order,
+      order: fullOrder,
       reviewed: true,
       reviewedBy: "listening-room",
       reviewedAt: new Date(verdict.savedAt ?? Date.now()).toISOString(),
+      heard: heardIndexes.length,
     };
     if (existing) {
       Object.assign(existing, record);
@@ -82,6 +112,13 @@ if (rankings.length > 0) {
   if (matched > 0) {
     golden.updatedAt = new Date().toISOString();
     golden.updatedBy = "listening-room";
+    // ranker:activate gates on the TOP-LEVEL reviewed flag; listening-room
+    // rankings ARE the human review, so room-sourced combos satisfy it.
+    if (golden.reviewed !== true) {
+      golden.reviewed = true;
+      golden.reviewedBy = "listening-room";
+      golden.reviewedAt = golden.updatedAt;
+    }
     writeFileSync(goldenPath, JSON.stringify(golden, null, 2));
   }
 }

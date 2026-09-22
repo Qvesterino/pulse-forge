@@ -22,6 +22,8 @@ import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
+import type { GenerativeVariation } from "../generative/resample";
+import { GENERATIVE_MACRO_NAMES } from "../generative/types";
 import { autoMapVelocityLayers } from "../samples/autoMap";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
@@ -83,6 +85,14 @@ export function Inspector({
   const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
   const [generativeStyleDraft, setGenerativeStyleDraft] = useState("");
   const [generativeCaptureState, setGenerativeCaptureState] = useState<"idle" | "capturing" | "error">("idle");
+  const [generativeResampleSourceId, setGenerativeResampleSourceId] = useState("");
+  const [generativeResampleState, setGenerativeResampleState] = useState<
+    "idle" | "generating" | "committing" | "error"
+  >("idle");
+  const [generativeVariations, setGenerativeVariations] = useState<GenerativeVariation[]>([]);
+  const [mrt2CompanionUrl, setMrt2CompanionUrl] = useState("ws://127.0.0.1:8765");
+  const [mrt2CompanionToken, setMrt2CompanionToken] = useState("");
+  const [mrt2CompanionState, setMrt2CompanionState] = useState<"idle" | "configured" | "error">("idle");
   const generativeStatus = useGenerativeStatus(track.id);
 
   useEffect(() => {
@@ -94,6 +104,9 @@ export function Inspector({
     } else {
       setGenerativeStyleDraft("");
     }
+    setGenerativeResampleSourceId("");
+    setGenerativeResampleState("idle");
+    setGenerativeVariations([]);
   }, [
     track.id,
     track.kind,
@@ -301,10 +314,35 @@ export function Inspector({
 
   if (track.kind === "generative") {
     const sourceTracks = doc.tracks.filter((candidate) => candidate.id !== track.id && candidate.kind !== "group");
+    const capabilities = services.generativeProviders.capabilities(track.generative.providerId);
+    const macroSupport = capabilities?.macroSupport;
+    const generativeLatency = services.generativeLatency?.getSnapshot();
+    const resampleSources = (doc.arrangement.audioClips ?? []).filter((clip) => services.bank.get(clip.bufferId));
+    const selectedResampleSource = resampleSources.find((clip) => clip.id === generativeResampleSourceId);
     const commitStyle = (): void => {
       const text = generativeStyleDraft.trim().slice(0, 400);
       if (!text || (track.generative.style.kind === "text" && text === track.generative.style.text)) return;
       services.store.execute(setGenerativeTrackConfig(doc, track.id, { style: { kind: "text", text } }));
+    };
+    const configureMrt2Companion = async (): Promise<void> => {
+      try {
+        const { createMrt2LocalhostProvider, isAllowedMrt2CompanionUrl } =
+          await import("../generative/providers/mrt2/websocket-transport");
+        if (!isAllowedMrt2CompanionUrl(mrt2CompanionUrl)) {
+          setMrt2CompanionState("error");
+          return;
+        }
+        const provider = createMrt2LocalhostProvider({
+          url: mrt2CompanionUrl,
+          ...(mrt2CompanionToken ? { authToken: mrt2CompanionToken } : {}),
+        });
+        services.generativeProviders.unregister(provider.id);
+        services.generativeProviders.register(provider);
+        setMrt2CompanionState("configured");
+        void services.generativeRuntime.refreshAll();
+      } catch {
+        setMrt2CompanionState("error");
+      }
     };
     const captureFourBars = (): void => {
       setGenerativeCaptureState("capturing");
@@ -314,6 +352,36 @@ export function Inspector({
         .then(() => setGenerativeCaptureState("idle"))
         .catch(() => setGenerativeCaptureState("error"));
     };
+    const generateResamples = (): void => {
+      if (!selectedResampleSource) return;
+      const source = services.bank.get(selectedResampleSource.bufferId);
+      if (!source) return;
+      const durationSec = Math.max(0.25, (selectedResampleSource.lengthBars * ticksPerBar(doc) * 60) / (doc.bpm * PPQ));
+      setGenerativeResampleState("generating");
+      void services.generativeRuntime
+        .generateResampleVariations(track.id, source, {
+          durationSec,
+          sourceDurationSec: Math.min(15, source.duration),
+          count: 4,
+        })
+        .then((variations) => {
+          setGenerativeVariations(variations);
+          setGenerativeResampleState("idle");
+        })
+        .catch(() => setGenerativeResampleState("error"));
+    };
+    const commitResample = (variation: GenerativeVariation): void => {
+      setGenerativeResampleState("committing");
+      void services.generativeRuntime
+        .commitResampleVariation(track.id, variation)
+        .then(() => setGenerativeResampleState("idle"))
+        .catch(() => setGenerativeResampleState("error"));
+    };
+    const previewResample = (variation: GenerativeVariation): void => {
+      void services.generativeRuntime
+        .previewResampleVariation(variation)
+        .catch(() => setGenerativeResampleState("error"));
+    };
     return (
       <aside className="inspector" aria-label="Inspector">
         {trackSection}
@@ -321,6 +389,32 @@ export function Inspector({
         <p className="inspector-subtitle">
           {track.generative.providerId} / {track.generative.modelId}
         </p>
+        <h3 className="inspector-subtitle">LOCAL MRT2 COMPANION</h3>
+        <label className="fx-param-select">
+          <span className="slider-label">LOCAL ENDPOINT</span>
+          <input
+            value={mrt2CompanionUrl}
+            onChange={(event) => setMrt2CompanionUrl(event.target.value)}
+            placeholder="ws://127.0.0.1:8765"
+            spellCheck={false}
+          />
+        </label>
+        <label className="fx-param-select">
+          <span className="slider-label">SESSION TOKEN (OPTIONAL)</span>
+          <input
+            type="password"
+            value={mrt2CompanionToken}
+            onChange={(event) => setMrt2CompanionToken(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <button type="button" className="btn btn-small" onClick={() => void configureMrt2Companion()}>
+          USE LOCAL COMPANION
+        </button>
+        {mrt2CompanionState === "configured" && (
+          <p className="inspector-subtitle">COMPANION CONFIGURED — PLAY TO CONNECT</p>
+        )}
+        {mrt2CompanionState === "error" && <p className="inspector-subtitle">INVALID COMPANION — USE LOCALHOST ONLY</p>}
         <label className="fx-param-select">
           <span className="slider-label">STYLE PROMPT</span>
           <input
@@ -434,10 +528,21 @@ export function Inspector({
             services.store.execute(setGenerativeTrackConfig(doc, track.id, { macros: { texture } }))
           }
         />
+        <p className="inspector-subtitle" title="These are KYX wrapper semantics, not assumed native MRT2 parameters">
+          MACRO MAP ·{" "}
+          {GENERATIVE_MACRO_NAMES.map((name) => `${name}:${macroSupport?.[name] ?? "undeclared"}`).join(" · ")}
+        </p>
         <p className="inspector-subtitle">
           {track.generative.latencyMode.toUpperCase()} · {generativeStatus.state.toUpperCase()}
           {generativeStatus.message ? ` · ${generativeStatus.message}` : ""}
         </p>
+        {generativeLatency && (
+          <p className="inspector-subtitle" title="Host-local provider calibration; not stored in the project">
+            PROVIDER LATENCY · WARMUP{" "}
+            {generativeLatency.warmupMs === null ? "—" : `${Math.round(generativeLatency.warmupMs)}ms`} · CONTROL{" "}
+            {generativeLatency.controlMs === null ? "—" : `${Math.round(generativeLatency.controlMs)}ms`}
+          </p>
+        )}
         <button
           type="button"
           className="btn btn-small"
@@ -449,6 +554,62 @@ export function Inspector({
         </button>
         {generativeCaptureState === "error" && (
           <p className="inspector-subtitle">CAPTURE FAILED — check provider status</p>
+        )}
+        <h3 className="inspector-subtitle">GENERATIVE RESAMPLE</h3>
+        <label className="fx-param-select">
+          <span className="slider-label">AUDIO REFERENCE</span>
+          <select
+            value={generativeResampleSourceId}
+            onChange={(event) => setGenerativeResampleSourceId(event.target.value)}
+          >
+            <option value="">Select an AudioClip…</option>
+            {resampleSources.map((clip) => (
+              <option key={clip.id} value={clip.id}>
+                {clip.id.slice(0, 12)} · {clip.lengthBars} bars
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={
+            !selectedResampleSource ||
+            generativeResampleState === "generating" ||
+            generativeResampleState === "committing"
+          }
+          onClick={generateResamples}
+          title="Create four preview-only variations from the selected AudioClip"
+        >
+          {generativeResampleState === "generating" ? "GENERATING…" : "GENERATE A / B / C / D"}
+        </button>
+        {generativeVariations.length > 0 && (
+          <div className="inspector-subtitle" aria-label="Generative resample variations">
+            {generativeVariations.map((variation) => (
+              <span key={variation.id} style={{ display: "inline-flex", gap: 4, marginRight: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => previewResample(variation)}
+                  title={`Preview variation ${variation.label} without committing it`}
+                >
+                  PREVIEW {variation.label}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={generativeResampleState === "committing"}
+                  onClick={() => commitResample(variation)}
+                  title={`Commit variation ${variation.label} as a normal AudioClip`}
+                >
+                  COMMIT
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {generativeResampleState === "error" && (
+          <p className="inspector-subtitle">RESAMPLE FAILED — no project changes were committed</p>
         )}
       </aside>
     );

@@ -30,6 +30,13 @@ import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
 import { MacroPerformanceBar } from "./MacroPerformanceBar";
 
+/** Gain → dB readout matching MasterMeter's convention: the display floor
+ * (linear 0 / −60 dB) reads "-INF" instead of a bogus "-60.0". */
+function gainDbLabel(v: number, unit = ""): string {
+  const db = 20 * Math.log10(Math.max(v, 0.001));
+  return `${db <= -59 ? "-INF" : db.toFixed(1)}${unit}`;
+}
+
 export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): Mixer only ever reads `tracks`
@@ -211,8 +218,10 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
                   min={0}
                   max={1.5}
                   defaultValue={0.9}
-                  format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}`}
+                  format={(v) => gainDbLabel(v)}
                   onCommit={(gain) => services.store.execute(setReturnGain(doc, ret.id, gain))}
+                  onPreview={(gain) => services.engine.previewReturnGain(ret.id, gain)}
+                  onCancel={() => services.engine.previewReturnGain(ret.id, ret.gain)}
                 />
                 <div className="return-fx-names">
                   {ret.effects.map((fx) => (
@@ -262,8 +271,10 @@ function MasterStrip() {
             min={0}
             max={1.5}
             defaultValue={1}
-            format={(v) => `${(20 * Math.log10(Math.max(v, 0.001))).toFixed(1)} dB`}
+            format={(v) => gainDbLabel(v, " dB")}
             onCommit={(masterGain) => services.store.execute(setMasterConfig(doc, { masterGain }))}
+            onPreview={(masterGain) => services.engine.previewMasterGain(masterGain)}
+            onCancel={() => services.engine.previewMasterGain(master.masterGain)}
           />
           <Slider
             compact
@@ -603,8 +614,10 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
             min={0}
             max={1.5}
             defaultValue={0.9}
-            format={(v) => (20 * Math.log10(Math.max(v, 0.001))).toFixed(1)}
+            format={(v) => gainDbLabel(v)}
             onCommit={(gain) => services.store.execute(setTrackParams(doc, track.id, { gain }))}
+            onPreview={(gain) => services.engine.previewTrackGain(track.id, gain)}
+            onCancel={() => services.engine.previewTrackGain(track.id, track.gain)}
             onMenu={(x, y) => setFaderMenu({ x, y, param: "gain", defaultValue: 0.9, trackId: track.id })}
           />
           <Slider
@@ -615,6 +628,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
             defaultValue={0}
             format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
             onCommit={(pan) => services.store.execute(setTrackParams(doc, track.id, { pan }))}
+            onPreview={(pan) => services.engine.previewTrackPan(track.id, pan)}
+            onCancel={() => services.engine.previewTrackPan(track.id, track.pan)}
             onMenu={(x, y) => setFaderMenu({ x, y, param: "pan", defaultValue: 0, trackId: track.id })}
           />
           {returns.map((ret) => (
@@ -728,7 +743,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
               setFaderMenu(null);
             }}
           >
-            Reset to default ({faderMenu.defaultValue})
+            Reset to default ({gainDbLabel(faderMenu.defaultValue)})
           </button>
           <button
             type="button"

@@ -62,7 +62,14 @@ export interface PersistedGeneratedAudio {
     channels: number;
     createdAt: string;
     origin: "generated";
-    generated: { providerId: string; modelId: string; inputHash: string };
+    generated: {
+      providerId: string;
+      modelId: string;
+      inputHash: string;
+      sourceHash?: string;
+      prompt?: string;
+      providerVersion?: string;
+    };
   };
   wav: ArrayBuffer;
 }
@@ -86,7 +93,14 @@ export async function persistGeneratedAudio(
     channels: audio.channels,
     createdAt: options.createdAt ?? new Date().toISOString(),
     origin: "generated" as const,
-    generated: { providerId: audio.providerId, modelId: audio.modelId, inputHash: audio.inputHash },
+    generated: {
+      providerId: audio.providerId,
+      modelId: audio.modelId,
+      inputHash: audio.inputHash,
+      ...(audio.provenance?.sourceHash ? { sourceHash: audio.provenance.sourceHash } : {}),
+      ...(audio.provenance?.prompt ? { prompt: audio.provenance.prompt } : {}),
+      ...(audio.provenance?.providerVersion ? { providerVersion: audio.provenance.providerVersion } : {}),
+    },
   };
   await repository.save(asset, generatedAudioToWav(audio));
   return asset;

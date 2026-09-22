@@ -67,6 +67,7 @@
     "listening:serve": "node scripts/serve-listening.mjs",
     "listening:room": "vite-node scripts/render-listening-room.mjs",
     "listening:ingest": "node scripts/ingest-listening-verdicts.mjs",
+    "taste:train": "node scripts/train-my-taste.mjs",
     "goldens:capture": "vite-node scripts/capture-domain-goldens.mts",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs"
   },

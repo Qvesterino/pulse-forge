@@ -1,7 +1,7 @@
 import type { GenerativeAudioChunk } from "../generative/types";
 
 export interface GenerativePlayerStatus {
-  type: "overrun" | "underrun" | "sequence-gap" | "recovered";
+  type: "overrun" | "underrun" | "sequence-gap" | "recovered" | "sample-rate-mismatch";
   droppedFrames?: number;
   missingFrames?: number;
   expected?: number;
@@ -33,7 +33,7 @@ export function createGenerativePlayerNode(
   const node = new AudioWorkletNode(ctx, "generative-player", {
     numberOfInputs: 0,
     numberOfOutputs: 1,
-    outputChannelCount: [channels],
+    outputChannelCount: [2],
     processorOptions: { channels, maxFrames },
   });
   const listeners = new Set<(status: GenerativePlayerStatus) => void>();
@@ -50,7 +50,7 @@ export function createGenerativePlayerNode(
       if (!Number.isInteger(chunk.frames) || chunk.frames <= 0) return;
       if (chunk.channels !== 1 && chunk.channels !== 2) return;
       if (chunk.data.length !== chunk.frames * chunk.channels) return;
-      if (!Number.isFinite(chunk.sampleRate) || chunk.sampleRate !== ctx.sampleRate) return;
+      if (!Number.isFinite(chunk.sampleRate) || chunk.sampleRate <= 0) return;
       const data = chunk.data.slice();
       node.port.postMessage(
         {

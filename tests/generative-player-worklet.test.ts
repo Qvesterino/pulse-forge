@@ -21,8 +21,11 @@ type Processor = new (options?: { processorOptions?: Record<string, unknown> }) 
   process(inputs: unknown[], outputs: Float32Array[][]): boolean;
 };
 
-function loadProcessor(): Processor {
+function loadProcessor(outputSampleRate = 48000): Processor {
   const source = readFileSync(resolve(process.cwd(), "src/audio-worklets/generative-player-processor.js"), "utf8");
+  const runtime = globalThis as typeof globalThis & { sampleRate?: number };
+  const previousSampleRate = runtime.sampleRate;
+  runtime.sampleRate = outputSampleRate;
   let captured: Processor | undefined;
   const host = new Function("registerProcessor", "AudioWorkletProcessor", source) as (
     register: (name: string, processor: Processor) => void,
@@ -31,6 +34,7 @@ function loadProcessor(): Processor {
   host((name, processor) => {
     if (name === "generative-player") captured = processor;
   }, FakeAudioWorkletProcessor);
+  runtime.sampleRate = previousSampleRate;
   if (!captured) throw new Error("generative player processor was not registered");
   return captured;
 }
@@ -95,5 +99,36 @@ describe("generative player AudioWorklet", () => {
 
     expect([...left]).toEqual([0.25, -0.5]);
     expect([...right]).toEqual([0.25, -0.5]);
+  });
+
+  it("adapts 48 kHz provider frames to the AudioContext sample rate", () => {
+    const Processor = loadProcessor(44100);
+    const processor = new Processor({ processorOptions: { channels: 2, maxFrames: 8, outputSampleRate: 44100 } });
+    send(processor, new Float32Array([0, 0, 1, 1, 2, 2, 3, 3]), 0);
+    const left = new Float32Array(3);
+    const right = new Float32Array(3);
+    processor.process([], [[left, right]]);
+
+    expect(left[0]).toBeCloseTo(0, 6);
+    expect(left[1]).toBeGreaterThan(1);
+    expect(left[1]).toBeLessThan(1.2);
+    expect([...left]).toEqual([...right]);
+  });
+
+  it("rejects a provider sample-rate change inside one live session", () => {
+    const Processor = loadProcessor();
+    const processor = new Processor({ processorOptions: { channels: 2, maxFrames: 8 } });
+    send(processor, new Float32Array([0.1, 0.1]), 0);
+    processor.port.onmessage?.({
+      data: {
+        type: "chunk",
+        sequence: 1,
+        sampleRate: 44100,
+        channels: 2,
+        frames: 1,
+        data: new Float32Array([0.2, 0.2]),
+      },
+    } as MessageEvent);
+    expect(processor.port.messages).toContainEqual({ type: "sample-rate-mismatch", expected: 48000, received: 44100 });
   });
 });

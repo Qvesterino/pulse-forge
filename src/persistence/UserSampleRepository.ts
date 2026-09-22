@@ -24,6 +24,9 @@ export interface UserSampleAsset {
     providerId: string;
     modelId: string;
     inputHash: string;
+    sourceHash?: string;
+    prompt?: string;
+    providerVersion?: string;
   };
 }
 

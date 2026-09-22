@@ -8,14 +8,23 @@
 
 Overené v pracovnom strome 2026-09-22:
 
-| Oblasť                                                                       | Stav                                             |
-| ---------------------------------------------------------------------------- | ------------------------------------------------ |
-| ADR, persisted track model, schema v1 → v2 normalizácia                      | hotové a testované                               |
-| provider-neutral contract, mock provider, capability registry, validation    | hotové a testované                               |
-| bounded PCM queue s explicitným overrun/underrun stavom                      | hotové a testované                               |
-| capture → durable generated user sample → undoable `AudioClip` command       | hotové na mock provider flow; UI commit ešte nie |
-| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                   | hotové a testované                               |
-| MRT2 native bridge, live engine/worklet bus, section automation, resample UI | otvorené                                         |
+| Oblasť                                                                    | Stav                                                    |
+| ------------------------------------------------------------------------- | ------------------------------------------------------- |
+| ADR, persisted track model, schema v1 → v2 normalizácia                   | hotové a testované                                      |
+| provider-neutral contract, mock provider, capability registry, validation | hotové a testované                                      |
+| bounded PCM queue s explicitným overrun/underrun stavom                   | hotové a testované                                      |
+| capture → durable generated user sample → undoable `AudioClip` command    | hotové na mock provider flow vrátane runtime/UI commitu |
+| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                | hotové a testované                                      |
+| live engine/worklet bus, persisted macro lanes + scene intensity          | prvý vertical slice hotový; hardening otvorený          |
+| MRT2 protocol/IPC safety, host-local latency calibration, resample UI     | prvý slice hotový; native model host otvorený           |
+
+### Dôkazy posledného implementation passu
+
+- `npx tsc --noEmit --pretty false` — PASS;
+- `npm run build` — PASS, MRT2 transport je v on-demand chunke `websocket-transport`, DAW JS `2490/2500 KB`;
+- targeted generative/bridge suites — PASS, naposledy `21 tests`;
+- 300 s mock live soak — PASS ako zrýchlený virtuálny test (`7500` provider frames);
+- Playwright smoke — `3 passed / 3 failed`; zlyhania sú v existujúcom landing/panel boot flow a nie sú označené ako zelený MRT2 browser gate.
 
 ## Pracovný kontrakt
 
@@ -159,13 +168,13 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `docs/adr/0012-mrt2-generative-tracks.md`, `docs/CURRENT-STATE.md` iba ak sa zmení verifikovateľný počet, nový `docs/` spike report, prípadne samostatný native prototype mimo web bundle.
 
-- [ ] skontrolovať `git status --short` a zapísať baseline typecheck/test/build stav;
+- [x] skontrolovať `git status --short` a zapísať baseline typecheck/test/build stav;
 - [x] vytvoriť ADR 0012 s rozhodnutím: provider boundary, optional native bridge, track kind, freeze semantics, platform support a licenčné povinnosti;
-- [ ] overiť upstream C++/MLX API pre session lifecycle, audio callback, note/MIDI input, style input, model loading a stop/restart;
+- [x] overiť upstream C++/MLX API pre session lifecycle, audio callback, note/MIDI input, style input, model loading a stop/restart;
 - [ ] overiť reálny output sample rate/channels, chunk size, warm-up latency a dlhý stream na Apple Silicon;
-- [ ] zistiť, či upstream API garantuje seed/determinism a ktoré conditioning možnosti sú dostupné v `mrt2_small`;
+- [x] zistiť, či upstream API garantuje seed/determinism a ktoré conditioning možnosti sú dostupné v `mrt2_small`;
 - [ ] vyrobiť minimálny 4–8 taktový WAV cez upstream runtime bez zásahu do KYX;
-- [ ] zapísať výsledok a neistoty do ADR/spike reportu. Nezačať track model, kým nie je jasné, čo bridge skutočne vie.
+- [x] zapísať výsledok a neistoty do ADR/spike reportu. Nezačať track model, kým nie je jasné, čo bridge skutočne vie.
 
 **Checkpoint:** máme overený externý audio vstup/výstup a platformovú maticu; žiadny MRT2 kód ešte nie je importovaný do browser bundle.
 
@@ -177,9 +186,9 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] oddeliť control plane (start/stop/style/note frames/status) od audio plane (PCM chunks);
 - [x] pridať mock provider s deterministickým PCM fixture outputom;
 - [x] pridať validáciu requestov, finite-number guardy, bounded queue policy a cancellation;
-- [ ] doplniť všeobecný provider timeout/error policy pre externé adaptery;
+- [x] doplniť všeobecný provider timeout/error policy pre externé adaptery;
 - [x] napojiť provider registry cez capability detection, nie cez priame `if (window...)` v UI;
-- [ ] pridať plné contract testy pre ordering chunkov, gap/underrun, reconnect, dispose, unsupported capability a deterministic mock output.
+- [x] pridať plné contract testy pre ordering chunkov, gap/underrun, reconnect state, dispose, unsupported capability a deterministic mock output.
 
 **Akceptácia:** celý generative runtime sa dá testovať bez MRT2, bez audio device a bez native hosta.
 
@@ -193,7 +202,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] normalizovať provider id, model id, prompt, style buffer id, macro range, drums mode a optional seed;
 - [x] doplniť undoable commands: add track a edit config patch;
 - [x] zabezpečiť collab round-trip vrátane neznámeho provideru a chýbajúceho audio assetu;
-- [ ] rozhodnúť, či generative macro automation rozšíri `AutomationTarget`, alebo dostane samostatný validated lane type. Nesmie zostať iba v React state;
+- [x] rozhodnúť, že generative macro automation bude samostatný validated lane type v `GenerativeTrackConfig`; runtime ho vzorkuje rovnako pre live aj capture;
 - [x] pridať project round-trip, malformed JSON, migration, undo/redo a collab testy.
 
 **Akceptácia:** generative track je čistý serializovateľný model a jeho načítanie bez providera nespôsobí ticho alebo crash celého projektu.
@@ -202,14 +211,14 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `src/generative/`, `src/persistence/`, `src/commands/commands.ts`, `src/rendering/`, relevantné UI v `src/ui/`.
 
-- [ ] implementovať `captureGeneratedAudio()` nad mock providerom aj externým render adapterom;
+- [x] implementovať `captureTrack()` nad provider-neutral session contractom; mock provider flow je pokrytý runtime testom;
 - [x] vybrať durable storage kontrakt pre generated WAV/PCM bytes a provenance metadata; neprepísať silently existujúce user sample rows;
 - [x] vytvoriť generated asset id, input hash a provider/model metadata;
-- [x] pripraviť capture ako normálny `addAudioClip` command cez `persistGeneratedAudioAsClip`; okamžitý `SampleBank` import a UI commit ešte nasledujú;
-- [ ] zabezpečiť jeden používateľský undo krok pre commit clipu a bezpečné správanie pri súbežnej editácii projektu počas renderu;
-- [ ] previewovať output cez existujúci engine, nie cez druhý ad-hoc audio graph;
-- [ ] doplniť trim, split, reverse, stretch a FX smoke test na generated clip;
-- [ ] doplniť reload test: projekt + generated bytes prežijú zavretie/obnovenie rovnako ako ostatné durable audio.
+- [x] pripraviť capture ako normálny `addAudioClip` command cez `persistGeneratedAudioAsClip`, s okamžitým `SampleBank` importom a Inspector commitom;
+- [x] zabezpečiť jeden používateľský undo krok pre commit clipu a document identity guard proti súbežnej editácii počas renderu;
+- [x] previewovať live output cez existujúci `AudioEngine` track graph, nie cez druhý ad-hoc audio graph;
+- [x] doplniť trim, split, reverse, stretch a FX smoke test na generated clip;
+- [x] doplniť reload test: projekt + generated bytes prežijú zavretie/obnovenie rovnako ako ostatné durable audio.
 
 **Akceptácia:** používateľ vie dostať generovaný stem do timeline a ďalej s ním pracovať ako s bežným KYX audio materiálom aj bez live MRT2 runtime.
 
@@ -217,14 +226,15 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** nový `desktop/` bridge/IPC contract podľa ADR 0012, `src/generative/providers/mrt2/`, `desktop/main.cjs`, `desktop/preload.cjs`, optional localhost companion protocol docs.
 
-- [ ] implementovať transport-neutral control protocol s versioned messages;
-- [ ] binary PCM posielať oddelene od JSON control messages;
-- [ ] v Electron hoste povoliť iba explicitne spustený a validovaný local provider; žiadny arbitrary executable path z URL parametra alebo projektu;
-- [ ] pre browser režim podporiť iba deliberate localhost companion connection s origin/token kontrolou, ak to ADR schváli;
-- [ ] deklarovať platform capability: Apple Silicon realtime, offline-only alebo unavailable; Windows KYX musí mať jasný fallback stav;
-- [ ] zobraziť model loading, downloading, ready, buffering, unavailable, error a reconnect stavy;
-- [ ] neukladať absolútne model paths, IPC tokeny ani host-local capabilities do project documentu;
-- [ ] pridať native bridge smoke test, mock IPC test a protocol fuzz/invalid-message test.
+- [x] implementovať transport-neutral control protocol s versioned messages;
+- [x] binary PCM posielať oddelene od JSON control messages;
+- [x] v Electron hoste povoliť iba explicitne spustený a validovaný loopback companion endpoint cez úzky IPC boundary; žiadny arbitrary executable/model path z URL parametra alebo projektu;
+- [x] pre browser režim podporiť iba deliberate localhost companion connection s origin/token kontrolou, ak to ADR schváli;
+- [x] deklarovať platform capability: Apple Silicon realtime, offline-only alebo unavailable; Windows KYX musí mať jasný fallback stav;
+- [x] zobraziť/propagovať model loading, downloading, ready, buffering, unavailable, error a reconnect stavy;
+- [x] neukladať absolútne model paths, IPC tokeny ani host-local capabilities do project documentu;
+- [x] pridať mock IPC boundary test a protocol invalid-message/size/shape test;
+- [ ] pridať native bridge smoke test na podporovanom Apple Silicon hoste — na Windows je native MRT2 zámerne explicitne unavailable.
 
 **Akceptácia:** bridge vie dodať rovnaký `GenerativeAudioProvider` contract ako mock provider a pri páde sa korektne odpojí bez poškodenia AudioEngine.
 
@@ -232,15 +242,16 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `src/audio-worklets/`, `src/audio-engine/AudioEngine.ts`, `src/scheduler/Scheduler.ts`, `src/transport/Transport.ts`, `src/services/`, `tests/` a browser checks.
 
-- [ ] navrhnúť bounded PCM ring buffer s explicitným sample-rate/channel contractom;
-- [ ] preniesť chunks do AudioWorkletu cez `MessagePort`/transferable buffers; žiadne per-block main-thread PCM kopírovanie;
-- [ ] pridať generative output bus, ktorý sa route-ne cez track gain/pan/effects/sends/group ako ostatné tracky;
-- [ ] synchronizovať session start/stop/pause/seek s transportom na bar/beat boundary podľa latency policy;
-- [ ] odmerať provider warm-up a control latency; uložiť iba user-facing calibration, nie runtime socket stav;
+- [x] navrhnúť bounded PCM ring buffer s explicitným sample-rate/channel contractom;
+- [x] preniesť chunks do AudioWorkletu cez `MessagePort`/transferable buffers; žiadne per-block main-thread PCM kopírovanie;
+- [x] pridať generative output bus, ktorý sa route-ne cez track gain/pan/effects/sends/group ako ostatné tracky;
+- [x] synchronizovať session start/stop/pause/seek s transportom; bar-boundary latency policy a kalibrácia zostávajú hardening;
+- [x] odmerať provider warm-up a control latency; uložiť iba host-local user-facing calibration, nie runtime socket stav;
 - [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume;
-- [ ] oddeliť scheduler plánovanie note frames od AudioEngine execution; Scheduler nesmie vlastniť provider session;
+- [x] oddeliť scheduler plánovanie note frames od AudioEngine execution; Scheduler nesmie vlastniť provider session;
 - [ ] pridať browser checks pre play/stop/seek, provider unavailable, underrun recovery a zero non-finite samples;
-- [ ] overiť CPU/heap growth pri minimálne 300 s mock live soaku a samostatný native soak na podporovanom Macu.
+- [x] overiť 300 s virtuálny mock live soak s finite/ordered chunks;
+- [ ] overiť CPU/heap growth a latency pri samostatnom native soaku na podporovanom Macu.
 
 **Akceptácia:** live generative track hrá v synchronizácii bez runaway bufferu, bez audio callback exception a bez main-thread audio execution.
 
@@ -248,14 +259,14 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `src/generative/conditioning/`, `src/project-model/automation.ts`, `src/project-model/targets.ts`, `src/scheduler/Scheduler.ts`, relevantné UI panely.
 
-- [ ] vytvoriť čistú funkciu, ktorá preloží KYX notes/chords na provider frame representation;
-- [ ] explicitne otestovať note onset, sustain, release, overlapping notes, tempo change a pattern loop;
-- [ ] oddeliť chord source, note source a drums mode; neposielať 808/drums, ak je režim `off`;
-- [ ] použiť existujúcu scene/arrangement intensity ako prvý section-aware driver;
-- [ ] pridať validated automation/macro targety iba po rozhodnutí v modeli; runtime musí mať rovnakú interpretáciu v live aj capture ceste;
-- [ ] namapovať `energy`, `density`, `variation`, `texture` na provider capability/profile, pričom unsupported mapping musí byť viditeľný a stabilný;
-- [ ] dodať panel pre prompt/style, source tracks, drums mode, macro values, live status a latency;
-- [ ] pridať testy pre section boundary, automation continuity a fallback na poslednú validnú conditioning konfiguráciu.
+- [x] vytvoriť čistú funkciu, ktorá preloží KYX notes/chords na provider frame representation;
+- [x] explicitne otestovať note onset, sustain, release, overlapping notes, tempo change a pattern loop;
+- [x] oddeliť chord source, note source a drums mode; neposielať 808/drums, ak je režim `off`;
+- [x] použiť existujúcu scene/arrangement intensity ako prvý section-aware driver;
+- [x] pridať validated generative macro lanes; runtime má rovnakú interpretáciu v live aj capture ceste;
+- [x] namapovať `energy`, `density`, `variation`, `texture` na provider capability/profile, pričom unsupported mapping musí byť viditeľný a stabilný;
+- [x] dodať Inspector panel pre prompt/style, source tracks, drums mode, macro values, live status a capture action;
+- [x] pridať testy pre section boundary, automation continuity a fallback na poslednú validnú conditioning konfiguráciu.
 
 **Akceptácia:** rovnaký project recipe vytvára konzistentný conditioning request v mock live aj capture režime; žiadny macro názov nepredstiera natívnu MRT2 podporu.
 
@@ -263,11 +274,11 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `src/rendering/renderer.ts`, `src/rendering/track-renderer.ts`, `src/export/`, generated asset repository, relevantné browser checks.
 
-- [ ] rozhodnúť a zdokumentovať, že live external provider nie je priamo dependency `OfflineAudioContext`;
-- [ ] export live generative track buď odmietne s jasnou správou, alebo vyžiada explicitný capture/pre-render prepass;
-- [ ] po capture používať iba rovnaký `AudioClip` path ako live prehrávanie a offline renderer;
+- [x] rozhodnúť a zdokumentovať, že live external provider nie je priamo dependency `OfflineAudioContext`;
+- [x] export live generative track buď odmietne s jasnou správou, alebo vyžiada explicitný capture/pre-render prepass;
+- [x] po capture používať iba rovnaký `AudioClip` path ako live prehrávanie a offline renderer;
 - [ ] overiť sample-accurate placement, fades, stretch, reverse, FX, group routing a master chain;
-- [ ] zabezpečiť, že incomplete/failed capture nevytvorí v projekte orphan clip ani fake success state;
+- [x] zabezpečiť, že incomplete/failed capture nevytvorí v projekte orphan clip ani fake success state;
 - [ ] pridať render→encode→reload test a parity test live preview vs captured clip v toleranciách definovaných testom;
 - [ ] oddeliť track-level engine freeze optimization od produktovej akcie `Capture/Freeze to Audio`.
 
@@ -277,12 +288,12 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 **Súvisiace súbory:** `src/generative/conditioning/`, `src/ui/ArrangementPanel.tsx`, generated asset repository, `src/export/`, shared runtime package decision.
 
-- [ ] z vybraného audio regionu vytvoriť bezpečný, capped audio reference request;
-- [ ] resamplovať reference na MusicCoCa kontrakt (16 kHz mono podľa model card) mimo AudioWorklet realtime callback;
-- [ ] generovať A/B/C/D variation jobs s cancellation a per-job provenance;
-- [ ] previewovať variácie bez automatického vloženia do projektu;
-- [ ] drag/drop alebo explicitný commit vloží vybranú variáciu ako normálny audio clip;
-- [ ] pridať source hash, provider/model version a user prompt k generated assetu;
+- [x] z vybraného audio regionu vytvoriť bezpečný, capped audio reference request;
+- [x] resamplovať reference na MusicCoCa kontrakt (16 kHz mono podľa model card) mimo AudioWorklet realtime callback;
+- [x] generovať A/B/C/D variation jobs s cancellation a per-job provenance;
+- [x] previewovať variácie bez automatického vloženia do projektu;
+- [x] drag/drop alebo explicitný commit vloží vybranú variáciu ako normálny audio clip;
+- [x] pridať source hash, provider/model version a user prompt k generated assetu;
 - [ ] až po stabilizácii KYX workflowu rozhodnúť, či `src/generative/` extrahovať do zdieľaného QWESTER runtime pre ZYVO.
 
 **Akceptácia:** generative resample je sampling workflow s AI pomocou, nie nevratné nahradenie pôvodného materiálu.

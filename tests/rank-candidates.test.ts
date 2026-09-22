@@ -150,10 +150,12 @@ describe("rankerMode flag", () => {
     resetRankerClient();
   });
 
-  it("defaults to shadow until independent golden evaluation is valid", () => {
-    // The checked-in golden set currently maps to no exact dataset groups;
-    // no model may influence candidate choice until an independent review gate passes.
-    expect(rankerMode()).toBe("shadow");
+  it("is ACTIVE after the independent golden evaluation passed (2026-09-22)", () => {
+    // ranker:activate flipped shadow → active once the listening-room golden
+    // orders mapped to exact dataset groups and the independent holdout
+    // (48 pairs / 8 groups) reached goldenHoldoutPairwiseAccuracy 0.75.
+    // Revert via ranker-client.ts DEFAULT_RANKER_MODE if the gate regresses.
+    expect(rankerMode()).toBe("active");
   });
 
   it("reads the localStorage override", () => {

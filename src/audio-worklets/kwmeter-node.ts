@@ -64,6 +64,9 @@ export function createKwMeterNode(ctx: BaseAudioContext): KwMeterHandle {
     },
     dispose() {
       node.port.onmessage = null;
+      // Close the port (fxeqNode convention) so the processor is collectable
+      // immediately instead of lingering on an open message channel.
+      node.port.close();
       node.disconnect();
     },
   };

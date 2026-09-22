@@ -86,4 +86,24 @@ describe("generative provider contract", () => {
     await session.dispose();
     await expect(session.start()).rejects.toThrow("disposed");
   });
+
+  it("runs a 300-second virtual live soak with finite, ordered chunks", async () => {
+    const provider = createMockGenerativeProvider({ sampleRate: 8000, channels: 1 });
+    const session = await provider.createSession({ modelId: "mock-small", outputSampleRate: 8000, outputChannels: 1 });
+    const sequences: number[] = [];
+    session.subscribeAudio((chunk) => {
+      sequences.push(chunk.sequence);
+      expect(chunk.frames).toBe(320);
+      expect(chunk.data.every(Number.isFinite)).toBe(true);
+    });
+    await session.updateInput(input());
+    await session.start();
+    for (let frame = 0; frame < 300 * 25; frame++) {
+      await session.updateInput(input(`soak-${frame}`));
+    }
+    expect(sequences).toHaveLength(300 * 25);
+    expect(sequences[0]).toBe(0);
+    expect(sequences.at(-1)).toBe(sequences.length - 1);
+    await session.dispose();
+  });
 });

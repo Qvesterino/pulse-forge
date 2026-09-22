@@ -17,8 +17,14 @@ function fixture(): { doc: ProjectDocument; trackId: string } {
   return { doc, trackId: track.id };
 }
 
-function makePlayer(log: { pushed: number[]; disposed: number; flushed: number }): GenerativePlayerHandle {
+function makePlayer(
+  log: { pushed: number[]; disposed: number; flushed: number },
+  onCreate?: (emit: (status: GenerativePlayerStatus) => void) => void,
+): GenerativePlayerHandle {
   const listeners = new Set<(status: GenerativePlayerStatus) => void>();
+  onCreate?.((status) => {
+    for (const listener of listeners) listener(status);
+  });
   return {
     output: {} as AudioNode,
     pushChunk: (chunk) => log.pushed.push(chunk.sequence),
@@ -41,7 +47,8 @@ function runtimeFixture() {
   const providers = new GenerativeProviderRegistry();
   providers.register(createMockGenerativeProvider({ providerId: "mrt2", modelId: "mrt2_small" }));
   const transport = new Transport({ now: () => 0 }, doc.bpm);
-  const log = { pushed: [] as number[], disposed: 0, flushed: 0, attached: 0, detached: 0 };
+  const log = { pushed: [] as number[], disposed: 0, flushed: 0, attached: 0, detached: 0, previewed: 0 };
+  let emitPlayerStatus: ((status: GenerativePlayerStatus) => void) | undefined;
   const engine = {
     context: { sampleRate: 48000 } as BaseAudioContext,
     ensureContext: () => ({ sampleRate: 48000 }) as BaseAudioContext,
@@ -51,6 +58,9 @@ function runtimeFixture() {
     detachGenerativeSource: () => {
       log.detached++;
     },
+    previewBuffer: () => {
+      log.previewed++;
+    },
   };
   const runtime = new GenerativeRuntime({
     engine: engine as never,
@@ -59,9 +69,18 @@ function runtimeFixture() {
     providers,
     loadWorklets: async () => undefined,
     isPlayerReady: () => true,
-    createPlayer: () => makePlayer(log),
+    createPlayer: () =>
+      makePlayer(log, (emit) => {
+        emitPlayerStatus = emit;
+      }),
   });
-  return { runtime, trackId, log };
+  return {
+    runtime,
+    trackId,
+    log,
+    doc,
+    emitPlayerStatus: (status: GenerativePlayerStatus) => emitPlayerStatus?.(status),
+  };
 }
 
 describe("generative runtime", () => {
@@ -117,6 +136,19 @@ describe("generative runtime", () => {
     expect(runtime.getStatus(trackId).state).toBe("ready");
   });
 
+  it("surfaces bounded player underrun and recovery as lifecycle states", async () => {
+    const { runtime, trackId, emitPlayerStatus } = runtimeFixture();
+    await runtime.startTrack(trackId);
+
+    emitPlayerStatus({ type: "underrun", missingFrames: 128 });
+    expect(runtime.getStatus(trackId)).toEqual({ state: "buffering", message: "audio underrun (128 frames)" });
+
+    emitPlayerStatus({ type: "recovered", queuedFrames: 512 });
+    expect(runtime.getStatus(trackId)).toEqual({ state: "running", message: "audio buffer recovered" });
+
+    await runtime.dispose();
+  });
+
   it("surfaces a missing provider explicitly instead of silently falling back", async () => {
     const { doc, trackId } = fixture();
     const runtime = new GenerativeRuntime({
@@ -150,7 +182,11 @@ describe("generative runtime", () => {
     const bank = { add: (id: string) => saved.push(`bank:${id}`) };
     setAudioDecoder(
       async () =>
-        ({ numberOfChannels: 2, sampleRate: 48000, getChannelData: () => new Float32Array(1) }) as AudioBuffer,
+        ({
+          numberOfChannels: 2,
+          sampleRate: 48000,
+          getChannelData: () => new Float32Array(1),
+        }) as unknown as AudioBuffer,
     );
     try {
       const runtime = new GenerativeRuntime({
@@ -184,5 +220,100 @@ describe("generative runtime", () => {
     } finally {
       setAudioDecoder(null);
     }
+  });
+
+  it("removes the durable asset and skips the command when capture decode fails", async () => {
+    const { doc, trackId } = fixture();
+    const providers = new GenerativeProviderRegistry();
+    providers.register(createMockGenerativeProvider({ providerId: "mrt2", modelId: "mrt2_small" }));
+    const saved: string[] = [];
+    const removed: string[] = [];
+    let executeCount = 0;
+    const userSamples: IUserSampleRepository = {
+      invalidateCache: () => undefined,
+      list: async () => [],
+      save: async (asset) => {
+        saved.push(asset.id);
+      },
+      loadAudio: async () => undefined,
+      listAudio: async () => [],
+      remove: async (id) => {
+        removed.push(id);
+      },
+    };
+    setAudioDecoder(async () => {
+      throw new Error("decode failed");
+    });
+    try {
+      const runtime = new GenerativeRuntime({
+        engine: {
+          context: { sampleRate: 48000 } as BaseAudioContext,
+          ensureContext: () => ({ sampleRate: 48000 }) as BaseAudioContext,
+          attachGenerativeSource: () => undefined,
+          detachGenerativeSource: () => undefined,
+        } as never,
+        transport: new Transport({ now: () => 0 }, doc.bpm),
+        project: () => doc,
+        providers,
+        userSamples,
+        execute: () => {
+          executeCount++;
+        },
+      });
+
+      await expect(runtime.captureTrack(trackId, 0.1)).rejects.toThrow("decode failed");
+      expect(saved).toHaveLength(1);
+      expect(removed).toEqual(saved);
+      expect(executeCount).toBe(0);
+      await runtime.dispose();
+    } finally {
+      setAudioDecoder(null);
+    }
+  });
+
+  it("generates resample previews without mutating the project", async () => {
+    const { runtime, trackId, log } = runtimeFixture();
+    const source = {
+      numberOfChannels: 2,
+      sampleRate: 48_000,
+      duration: 0.1,
+      getChannelData: () => new Float32Array([0.1, 0.2, 0.3, 0.4]),
+    } as unknown as AudioBuffer;
+    const variations = await runtime.generateResampleVariations(trackId, source, { durationSec: 0.02, count: 4 });
+    expect(variations.map((variation) => variation.label)).toEqual(["A", "B", "C", "D"]);
+    expect(variations[0]?.audio.provenance?.sourceHash).toMatch(/^[0-9a-f]{8}$/u);
+    expect(variations[0]?.audio.provenance?.prompt).toBe("dark atmospheric accompaniment");
+    expect(runtime.getStatus(trackId).state).toBe("idle");
+    setAudioDecoder(
+      async () =>
+        ({
+          numberOfChannels: 2,
+          sampleRate: 48000,
+          getChannelData: () => new Float32Array(1),
+        }) as unknown as AudioBuffer,
+    );
+    try {
+      await runtime.previewResampleVariation(variations[0]!);
+      expect(log.previewed).toBe(1);
+    } finally {
+      setAudioDecoder(null);
+    }
+    await runtime.dispose();
+  });
+
+  it("keeps the last valid conditioning input when a live refresh becomes invalid", async () => {
+    const { runtime, trackId, doc } = runtimeFixture();
+    await runtime.startTrack(trackId);
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.kind !== "generative") throw new Error("generative fixture missing");
+    track.generative.style = { kind: "audio", bufferId: "missing-style" };
+
+    await runtime.refreshAll();
+
+    expect(runtime.getStatus(trackId)).toMatchObject({
+      state: "running",
+      message: expect.stringContaining("fallback"),
+    });
+    await runtime.dispose();
   });
 });

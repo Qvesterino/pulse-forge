@@ -100,8 +100,15 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
   // Four flagship editors side by side squeezed each into a ~260px column —
   // unusable; a single focused editor is the DAW-standard device view.
   const [expandedFxId, setExpandedFxId] = useState<string | null>(null);
+  // Audit 05 D3: an expanded id whose device was deleted via collab/undo
+  // used to stick forever (rack collapsed until the next manual toggle).
+  // "" = explicitly collapsed (sticky), null or a dead id = auto (newest).
   const effectiveExpandedFxId =
-    expandedFxId ?? (track.effects.length > 0 ? track.effects[track.effects.length - 1].id : "");
+    expandedFxId === ""
+      ? ""
+      : expandedFxId !== null && track.effects.some((fx) => fx.id === expandedFxId)
+        ? expandedFxId
+        : (track.effects.at(-1)?.id ?? "");
   const hasInstrument = track.kind === "instrument" || track.kind === "drum";
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(
     () => track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),

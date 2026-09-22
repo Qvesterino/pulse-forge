@@ -1,0 +1,323 @@
+import { describe, expect, it } from "vitest";
+import {
+  decodeMrt2AudioPacket,
+  encodeMrt2AudioPacket,
+  parseMrt2ControlMessage,
+  serializeMrt2ControlMessage,
+  type Mrt2AudioPacket,
+  type Mrt2CompanionEvent,
+  type Mrt2CompanionTransport,
+  Mrt2CompanionProvider,
+  isAllowedMrt2CompanionUrl,
+} from "../src/generative";
+
+class FakeTransport implements Mrt2CompanionTransport {
+  private listener: ((event: Mrt2CompanionEvent) => void) | null = null;
+  readonly binary: ArrayBuffer[] = [];
+  private sequence = 0;
+
+  sendControl(message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
+    queueMicrotask(() => {
+      switch (message.type) {
+        case "hello":
+          this.emit({
+            kind: "control",
+            message: {
+              version: 1,
+              type: "hello.ok",
+              requestId: message.requestId,
+              providerId: "mrt2",
+              modelIds: ["mrt2_small"],
+              outputSampleRates: [48_000],
+              outputChannels: [2],
+              supportsRealtime: true,
+              supportsCapture: true,
+              supportsTextStyle: true,
+              supportsNoteConditioning: true,
+              supportsAudioStyle: true,
+              supportsDrumsMode: true,
+              supportsSeed: false,
+              maxCaptureSeconds: 120,
+            },
+          });
+          break;
+        case "session.create":
+          this.emit({
+            kind: "control",
+            message: { version: 1, type: "session.ok", requestId: message.requestId, sessionId: "s1" },
+          });
+          break;
+        case "input.update":
+          this.emit({
+            kind: "control",
+            message: {
+              version: 1,
+              type: "status",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              state: "ready",
+            },
+          });
+          break;
+        case "session.start":
+          this.emit({
+            kind: "control",
+            message: {
+              version: 1,
+              type: "status",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              state: "running",
+            },
+          });
+          break;
+        case "session.stop":
+        case "session.close":
+          this.emit({
+            kind: "control",
+            message: {
+              version: 1,
+              type: "status",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              state: "ready",
+            },
+          });
+          break;
+        case "capture.start": {
+          const packet: Mrt2AudioPacket = {
+            kind: "output",
+            sequence: this.sequence++,
+            sampleRate: 48_000,
+            channels: 2,
+            frames: 2,
+            data: new Float32Array([0.1, -0.1, 0.2, -0.2]),
+          };
+          this.emit({ kind: "audio", packet });
+          this.emit({
+            kind: "control",
+            message: {
+              version: 1,
+              type: "capture.ok",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              frames: 2,
+              durationSec: 2 / 48_000,
+              inputHash: "capture-hash",
+            },
+          });
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  }
+
+  sendBinary(packet: ArrayBuffer): void {
+    this.binary.push(packet);
+  }
+
+  subscribe(listener: (event: Mrt2CompanionEvent) => void): () => void {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+
+  close(): void {
+    this.emit({ kind: "closed", reason: "closed" });
+  }
+
+  disconnect(reason = "companion stopped"): void {
+    this.emit({ kind: "closed", reason });
+  }
+
+  private emit(event: Mrt2CompanionEvent): void {
+    this.listener?.(event);
+  }
+}
+
+class SilentTransport implements Mrt2CompanionTransport {
+  sendControl(_message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
+    // Deliberately leave the request pending so the provider timeout is exercised.
+  }
+
+  sendBinary(_packet: ArrayBuffer): void {
+    // No-op.
+  }
+
+  subscribe(_listener: (event: Mrt2CompanionEvent) => void): () => void {
+    return () => undefined;
+  }
+
+  close(): void {
+    // No-op.
+  }
+}
+
+class DisconnectingTransport implements Mrt2CompanionTransport {
+  private listener: ((event: Mrt2CompanionEvent) => void) | null = null;
+
+  sendControl(_message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
+    queueMicrotask(() => this.listener?.({ kind: "closed", reason: "companion stopped" }));
+  }
+
+  sendBinary(_packet: ArrayBuffer): void {
+    // No-op.
+  }
+
+  subscribe(listener: (event: Mrt2CompanionEvent) => void): () => void {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+
+  close(): void {
+    this.listener = null;
+  }
+}
+
+function input(style: "text" | "audio" = "text") {
+  return {
+    bpm: 120,
+    frameRateHz: 25 as const,
+    startTick: 0,
+    style:
+      style === "text"
+        ? ({ kind: "text" as const, text: "dark atmospheric pad" } as const)
+        : ({ kind: "audio" as const, sampleRate: 16_000, channels: [new Float32Array([0.1, 0.2, 0.3, 0.4])] } as const),
+    noteFrames: [{ frameIndex: 0, pitchState: new Array<number>(128).fill(0) }],
+    drumsMode: "off" as const,
+    macros: { energy: 0.5, density: 0.3, variation: 0.2, texture: 0.6 },
+  };
+}
+
+describe("MRT2 companion protocol", () => {
+  it("allows only deliberate localhost companion endpoints", () => {
+    expect(isAllowedMrt2CompanionUrl("ws://127.0.0.1:8765")).toBe(true);
+    expect(isAllowedMrt2CompanionUrl("wss://localhost:8765/path")).toBe(true);
+    expect(isAllowedMrt2CompanionUrl("ws://evil.example:8765")).toBe(false);
+    expect(isAllowedMrt2CompanionUrl("ws://user:pass@localhost:8765")).toBe(false);
+    expect(isAllowedMrt2CompanionUrl("https://localhost:8765")).toBe(false);
+  });
+
+  it("round-trips bounded binary PCM and rejects malformed packets", () => {
+    const encoded = encodeMrt2AudioPacket({
+      kind: "output",
+      sequence: 4,
+      sampleRate: 48_000,
+      channels: 2,
+      frames: 2,
+      data: new Float32Array([0.1, -0.1, 0.2, -0.2]),
+    });
+    const decoded = decodeMrt2AudioPacket(encoded);
+    expect(decoded).toMatchObject({ kind: "output", sequence: 4, sampleRate: 48_000, channels: 2, frames: 2 });
+    expect([...decoded.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
+    expect(() => decodeMrt2AudioPacket(encoded.slice(0, -1))).toThrow(/size|truncated|trailing/u);
+  });
+
+  it("validates versioned control messages before returning them", () => {
+    const message = {
+      version: 1 as const,
+      type: "session.start" as const,
+      requestId: "r1",
+      sessionId: "s1",
+    };
+    expect(parseMrt2ControlMessage(serializeMrt2ControlMessage(message))).toEqual(message);
+    expect(() => parseMrt2ControlMessage('{"version":99,"type":"status","state":"ready"}')).toThrow(/version/u);
+    expect(() => parseMrt2ControlMessage('{"version":1,"type":"unknown"}')).toThrow(/Unsupported/u);
+    expect(() =>
+      parseMrt2ControlMessage(
+        JSON.stringify({
+          version: 1,
+          type: "input.update",
+          requestId: "r1",
+          sessionId: "s1",
+          input: {
+            bpm: 120,
+            frameRateHz: 25,
+            startTick: 0,
+            style: { kind: "text", text: "pad" },
+            noteFrames: [{ frameIndex: 0, pitchState: [0, 1] }],
+            drumsMode: "off",
+            macros: { energy: 0.5, density: 0.5, variation: 0.5, texture: 0.5 },
+          },
+        }),
+      ),
+    ).toThrow(/pitchState/u);
+  });
+
+  it("accepts the full provider lifecycle state vocabulary", () => {
+    for (const state of ["loading", "downloading", "buffering", "reconnecting"] as const) {
+      expect(parseMrt2ControlMessage({ version: 1, type: "status", state, message: `state:${state}` })).toMatchObject({
+        type: "status",
+        state,
+      });
+    }
+  });
+
+  it("keeps style PCM on the binary plane and exposes capture as GeneratedAudio", async () => {
+    const transport = new FakeTransport();
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    await session.updateInput(input("audio"));
+    expect(transport.binary).toHaveLength(1);
+    expect(decodeMrt2AudioPacket(transport.binary[0]!).kind).toBe("style");
+    await session.start();
+    const audio = await session.capture({ input: input("audio"), durationSec: 2 / 48_000 });
+    expect(audio).toMatchObject({ sampleRate: 48_000, channels: 2, frames: 2, inputHash: "capture-hash" });
+    expect([...audio.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
+    await session.dispose();
+  });
+
+  it("rejects unsupported seed control before sending it to the companion", async () => {
+    const transport = new FakeTransport();
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    await expect(session.updateInput({ ...input("text"), seed: "must-not-cross-boundary" })).rejects.toThrow(
+      /seed control/u,
+    );
+    await session.dispose();
+  });
+
+  it("surfaces disconnect and timeout instead of leaving the runtime pending", async () => {
+    const disconnecting = new Mrt2CompanionProvider({
+      transportFactory: async () => new DisconnectingTransport(),
+      timeoutMs: 50,
+    });
+    await expect(
+      disconnecting.createSession({ modelId: "mrt2_small", outputSampleRate: 48_000, outputChannels: 2 }),
+    ).rejects.toThrow(/stopped|disconnected/u);
+
+    const silent = new Mrt2CompanionProvider({ transportFactory: async () => new SilentTransport(), timeoutMs: 5 });
+    await expect(
+      silent.createSession({ modelId: "mrt2_small", outputSampleRate: 48_000, outputChannels: 2 }),
+    ).rejects.toThrow(/timed out/u);
+  });
+
+  it("exposes a recoverable disconnect state without silently retrying", async () => {
+    const transport = new FakeTransport();
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    transport.disconnect();
+    expect(session.getStatus()).toEqual({
+      state: "reconnecting",
+      message: "companion stopped; stop and play to reconnect",
+    });
+    await session.dispose();
+  });
+});

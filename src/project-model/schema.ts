@@ -969,7 +969,9 @@ function normalizeTracksDomain(s: NormalizeState): void {
       // Clamp on READ too: "clamped on write" held only for the command
       // boundary — a hostile/legacy doc with sends: { ret: 42 } reached the
       // engine unclamped (+52 dB into the FX bus).
-      clean[k] = Math.min(1, Math.max(0, v));
+      const clamped = Math.min(1, Math.max(0, v));
+      if (clamped !== v) changed = true;
+      clean[k] = clamped;
     }
     return changed ? clean : sends;
   };

@@ -37,7 +37,10 @@ const ENTRY_BUDGET_KB = 1070;
 // old ceiling; the landing-route regression that actually mattered was fixed
 // the same day by cutting the static renderer→AudioEngine edge out of the
 // landing/embed/intent-audition graphs (landing on-demand 729 → 443 KB).
-const TOTAL_BUDGET_KB = 2450;
+// 2500 (2026-09-22): conscious MRT2 bump — the provider-neutral companion
+// protocol, bounded resample runtime and deliberate localhost Inspector surface
+// are shipped without model weights or native ML dependencies.
+const TOTAL_BUDGET_KB = 2500;
 // The semantic intent worker dynamically imports Transformers.js only after a
 // weak keyword parse and a successful local-model probe. Keep that optional
 // runtime under its own cap instead of silently raising the normal DAW budget.

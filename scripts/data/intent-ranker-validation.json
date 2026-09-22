@@ -8,17 +8,22 @@
     16
   ],
   "epochs": 1200,
-  "trainPairs": 2682,
-  "valPairs": 630,
-  "favoriteGroups": 3,
-  "trainPairwiseAccuracyVsHeuristic": 0.9623,
-  "valPairwiseAccuracyVsHeuristic": 0.7889,
-  "valTop1AgreementWithHeuristic": 0.6571,
-  "valSpearmanVsHeuristic": 0.6229,
-  "goldenHoldoutPairwiseAccuracy": null,
-  "goldenHoldoutPairs": 0,
-  "goldenHoldoutCandidates": 0,
-  "goldenHoldoutGroups": 0,
-  "goldenHoldoutGenres": [],
-  "goldenVerdict": "invalid-golden-data"
+  "trainPairs": 2478,
+  "valPairs": 624,
+  "favoriteGroups": 0,
+  "trainPairwiseAccuracyVsHeuristic": 0.9483,
+  "valPairwiseAccuracyVsHeuristic": 0.7981,
+  "valTop1AgreementWithHeuristic": 0.6923,
+  "valSpearmanVsHeuristic": 0.6654,
+  "goldenHoldoutPairwiseAccuracy": 0.75,
+  "goldenHoldoutPairs": 48,
+  "goldenHoldoutCandidates": 32,
+  "goldenHoldoutGroups": 8,
+  "goldenHoldoutGenres": [
+    "ambient",
+    "house",
+    "techno",
+    "trap"
+  ],
+  "goldenVerdict": "ready-for-active"
 }

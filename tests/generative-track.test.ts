@@ -56,7 +56,7 @@ describe("GenerativeTrack project contract", () => {
             ],
           },
           { id: "bad-lane", macro: "unsupported", points: [{ tick: 0, value: 1 }] },
-        ],
+        ] as unknown as GenerativeTrack["generative"]["automation"],
         latencyMode: "invalid" as "live",
       },
     };
@@ -95,5 +95,24 @@ describe("GenerativeTrack project contract", () => {
     expect(restoredTrack.kind).toBe("generative");
     expect(restoredTrack.id).toBe(originalTrack.id);
     expect(restoredTrack.generative).toEqual(originalTrack.generative);
+  });
+
+  it("keeps host-local connection details out of the persisted project shape", () => {
+    const base = createDefaultProject();
+    const doc = createGenerativeTrack(base).execute(base);
+    const raw = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>;
+    const tracks = raw.tracks as Array<Record<string, unknown>>;
+    const generative = tracks.find((track) => track.kind === "generative");
+    if (!generative) throw new Error("Generative track missing");
+    const config = generative.generative as Record<string, unknown>;
+    config.endpoint = "ws://127.0.0.1:8765";
+    config.authToken = "must-not-persist";
+    config.modelPath = "C:/models/mrt2";
+
+    const normalized = normalizeProject(raw as never);
+    const serialized = JSON.stringify(normalized);
+    expect(serialized).not.toContain("must-not-persist");
+    expect(serialized).not.toContain("C:/models/mrt2");
+    expect(serialized).not.toContain("127.0.0.1:8765");
   });
 });

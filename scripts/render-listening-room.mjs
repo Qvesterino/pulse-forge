@@ -271,7 +271,8 @@ const packs = await page.evaluate(
           savedAt: Date.now(),
           seed,
           genre: groupGenre,
-          grooveId: String(plan.options.grooveId ?? ""),
+          // grooveId lives on the pattern generation metadata (mirrors DiceContext)
+          grooveId: String(pattern.generation?.grooveId ?? plan.options.grooveId ?? ""),
           energy: intent.energy,
           density: intent.density,
           complexity: intent.complexity,

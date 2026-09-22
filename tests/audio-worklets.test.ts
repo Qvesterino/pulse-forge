@@ -34,6 +34,7 @@ describe("AudioWorklet loader", () => {
     expect(isWorkletReady("sidechain", ctx)).toBe(true);
     expect(isWorkletReady("limiter", ctx)).toBe(true);
     expect(isWorkletReady("compressor", ctx)).toBe(true);
+    expect(isWorkletReady("generativePlayer", ctx)).toBe(true);
     // Vendored plugin suites are NOT loaded by the core path.
     expect(isWorkletReady("fxeq", ctx)).toBe(false);
     expect(isWorkletReady("ultina", ctx)).toBe(false);

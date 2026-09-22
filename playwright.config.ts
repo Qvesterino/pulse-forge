@@ -48,5 +48,16 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      // Safari-engine coverage on Windows: the same scenarios through the
+      // WebKit engine. Playwright's Windows WebKit build ships WITHOUT the
+      // media stack (no AudioContext at all), so the engine-backed scenarios
+      // 01–08 cannot run there — spec 09 exercises the no-Web-Audio
+      // degradation path natively instead. Real Safari-on-macOS audio
+      // behavior still needs a manual pass (owner gate).
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testIgnore: /0[1-8]-/,
+    },
   ],
 });

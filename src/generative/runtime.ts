@@ -10,7 +10,13 @@ import type { Transport } from "../transport/Transport";
 import type { IUserSampleRepository } from "../persistence/contracts";
 import { uid } from "../shared/ids";
 import { buildGenerativeInput, resolveGenerativeMacrosAtTick } from "./conditioning";
-import { persistGeneratedAudioAsClip, type PersistedGeneratedClip } from "./capture";
+import { generatedAudioToWav, persistGeneratedAudioAsClip, type PersistedGeneratedClip } from "./capture";
+import {
+  audioBufferToMusicCocaAudioReference,
+  generateGenerativeVariations,
+  hashGenerativeAudioReference,
+  type GenerativeVariation,
+} from "./resample";
 import type {
   GeneratedAudio,
   GenerativeAudioSession,
@@ -19,6 +25,8 @@ import type {
   GenerativeStatus,
 } from "./types";
 import { GenerativeProviderRegistry } from "./registry";
+import { withGenerativeTimeout } from "./timeout";
+import { generativeLatencyNow, type GenerativeLatencyCalibrationController } from "./latency";
 
 const REFRESH_INTERVAL_MS = 40;
 const LIVE_WINDOW_BARS = 4;
@@ -34,6 +42,7 @@ interface RuntimeEntry {
   unsubscribePlayer: () => void;
   refreshTimer: ReturnType<typeof setInterval>;
   refreshing: boolean;
+  lastInput?: GenerativeInput;
 }
 
 export interface GenerativeRuntimeOptions {
@@ -44,6 +53,8 @@ export interface GenerativeRuntimeOptions {
   bank?: SampleBank;
   userSamples?: IUserSampleRepository;
   execute?: (command: import("../commands/types").Command) => void;
+  providerTimeoutMs?: number;
+  latencyCalibration?: GenerativeLatencyCalibrationController;
   /** Test seams; production uses the real loader and AudioWorklet node. */
   loadWorklets?: (ctx: BaseAudioContext) => Promise<void>;
   isPlayerReady?: (ctx: BaseAudioContext) => boolean;
@@ -51,6 +62,14 @@ export interface GenerativeRuntimeOptions {
 }
 
 export type GenerativeRuntimeListener = (trackId: string, status: GenerativeStatus) => void;
+
+export interface GenerativeResampleOptions {
+  durationSec: number;
+  sourceStartSec?: number;
+  sourceDurationSec?: number;
+  count?: number;
+  signal?: AbortSignal;
+}
 
 /**
  * Owns the bridge between serializable generative-track intent and the live
@@ -139,7 +158,9 @@ export class GenerativeRuntime {
         return;
       }
       const input = this.buildInput(track);
-      session = await provider.createSession(config);
+      const warmupStartedAt = generativeLatencyNow();
+      session = await this.providerCall("create-session", provider.createSession(config));
+      this.options.latencyCalibration?.recordWarmup(generativeLatencyNow() - warmupStartedAt);
       player = this.createPlayer(ctx, { channels: config.outputChannels, maxFrames: PLAYER_QUEUE_FRAMES });
       if (!this.isCurrent(trackId, epoch)) return;
 
@@ -152,24 +173,63 @@ export class GenerativeRuntime {
         unsubscribePlayer: () => undefined,
         refreshTimer: setInterval(() => undefined, REFRESH_INTERVAL_MS),
         refreshing: false,
+        lastInput: input,
       };
       clearInterval(entry.refreshTimer);
       this.entries.set(trackId, entry);
       this.options.engine.attachGenerativeSource(trackId, player.output);
       entry.unsubscribeAudio = session.subscribeAudio((chunk) => player?.pushChunk(chunk));
-      entry.unsubscribeStatus = session.subscribeStatus((status) => this.setStatus(trackId, status));
+      entry.unsubscribeStatus = session.subscribeStatus((status) => {
+        if (status.state === "reconnecting") {
+          // A dead transport cannot be safely reused. Retire the audio graph
+          // immediately; the next explicit Play creates a fresh provider
+          // session instead of silently retrying inside the audio callback.
+          clearInterval(entry.refreshTimer);
+          this.entries.delete(trackId);
+          this.options.engine.detachGenerativeSource(trackId, entry.player.output);
+          entry.player.flush();
+          entry.unsubscribeAudio();
+          entry.unsubscribeStatus();
+          entry.unsubscribePlayer();
+          entry.player.dispose();
+          void entry.session.dispose().catch(() => undefined);
+          this.setStatus(trackId, {
+            state: "reconnecting",
+            message: status.message ?? "MRT2 companion disconnected; stop and play to reconnect",
+          });
+          return;
+        }
+        this.setStatus(trackId, status);
+      });
       entry.unsubscribePlayer = player.subscribeStatus((status) => {
         const current = this.getStatus(trackId);
-        if (current.state === "running" || current.state === "ready") {
+        if (status.type === "underrun") {
+          this.setStatus(trackId, {
+            state: "buffering",
+            message: `audio underrun (${status.missingFrames ?? 0} frames)`,
+          });
+          return;
+        }
+        if (status.type === "recovered") {
+          this.setStatus(trackId, { state: "running", message: "audio buffer recovered" });
+          return;
+        }
+        if (status.type === "sample-rate-mismatch") {
+          this.setStatus(trackId, { state: "error", message: "audio sample-rate mismatch" });
+          return;
+        }
+        if (current.state === "running" || current.state === "ready" || current.state === "buffering") {
           this.setStatus(trackId, { state: current.state, message: `audio ${status.type}` });
         }
       });
-      await session.updateInput(input);
+      const controlStartedAt = generativeLatencyNow();
+      await this.providerCall("initial-input", session.updateInput(input));
+      this.options.latencyCalibration?.recordControl(generativeLatencyNow() - controlStartedAt);
       if (!this.isCurrent(trackId, epoch)) return;
-      await session.start();
+      await this.providerCall("start", session.start());
       if (!this.isCurrent(trackId, epoch)) return;
       // A provider may not emit until its first post-start conditioning update.
-      await session.updateInput(input);
+      await this.providerCall("first-refresh", session.updateInput(input));
       entry.refreshTimer = setInterval(() => {
         void this.refreshTrack(trackId, epoch);
       }, REFRESH_INTERVAL_MS);
@@ -218,8 +278,8 @@ export class GenerativeRuntime {
     entry.unsubscribePlayer();
     entry.player.dispose();
     try {
-      await entry.session.stop();
-      await entry.session.dispose();
+      await this.providerCall("stop", entry.session.stop());
+      await this.providerCall("dispose", entry.session.dispose());
     } catch {
       /* provider teardown is best effort after the source is detached */
     }
@@ -252,24 +312,32 @@ export class GenerativeRuntime {
     const sourceDoc = this.options.project();
     const barTicks = ticksPerBar(sourceDoc);
     const startTick = Math.max(0, Math.floor(this.options.transport.position / barTicks) * barTicks);
-    const durationTicks = Math.max(1, Math.round((durationSec * sourceDoc.bpm * PPQ) / 60));
+    const durationTicks = Math.max(1, Math.round((durationSec * this.options.transport.bpm * PPQ) / 60));
     const input = this.buildInput(track, startTick, durationTicks);
     const active = this.entries.get(trackId);
     let session = active?.session;
     let temporary = false;
     if (!session) {
-      session = await provider.createSession(config);
+      session = await this.providerCall("capture-create-session", provider.createSession(config));
       temporary = true;
-      await session.updateInput(input);
+      await this.providerCall("capture-input", session.updateInput(input));
     } else {
-      await session.updateInput(input);
+      await this.providerCall("capture-input", session.updateInput(input));
     }
     let audio: GeneratedAudio;
     try {
-      audio = await session.capture({ input, durationSec });
+      audio = await this.providerCall("capture", session.capture({ input, durationSec }));
     } finally {
-      if (temporary) await session.dispose();
+      if (temporary) await this.providerCall("capture-dispose", session.dispose()).catch(() => undefined);
     }
+    audio = {
+      ...audio,
+      provenance: {
+        ...audio.provenance,
+        ...(track.generative.style.kind === "text" ? { prompt: track.generative.style.text } : {}),
+        ...(track.generative.style.kind === "audio" ? { sourceHash: hashGenerativeAudioReference(input.style) } : {}),
+      },
+    };
     if (sourceDoc !== this.options.project()) throw new Error("Project changed during generative capture");
     const assetId = uid("generated");
     if (!this.options.userSamples || !this.options.execute) {
@@ -302,6 +370,91 @@ export class GenerativeRuntime {
     return persisted;
   }
 
+  /**
+   * Generate preview-only A/B/C/D takes from an existing AudioBuffer. The
+   * source is capped/downmixed/resampled before it crosses the provider
+   * boundary; no project mutation or durable asset write happens here.
+   */
+  async generateResampleVariations(
+    trackId: string,
+    source: AudioBuffer,
+    options: GenerativeResampleOptions,
+  ): Promise<GenerativeVariation[]> {
+    if (this.disposed) throw new Error("Generative runtime is disposed");
+    const track = this.generativeTrack(trackId);
+    if (!track) throw new Error(`Generative track ${trackId} not found`);
+    const provider = this.options.providers.get(track.generative.providerId);
+    if (!provider) throw new Error(`Provider ${track.generative.providerId} is not installed`);
+    const reference = audioBufferToMusicCocaAudioReference(source, {
+      startFrame: Math.max(0, Math.floor((options.sourceStartSec ?? 0) * source.sampleRate)),
+      ...(options.sourceDurationSec !== undefined
+        ? { frameCount: Math.max(1, Math.floor(options.sourceDurationSec * source.sampleRate)) }
+        : {}),
+    });
+    const doc = this.options.project();
+    const barTicks = ticksPerBar(doc);
+    const startTick = Math.max(0, Math.floor(this.options.transport.position / barTicks) * barTicks);
+    const durationTicks = Math.max(1, Math.round((options.durationSec * this.options.transport.bpm * PPQ) / 60));
+    const input = {
+      ...this.buildInput(track, startTick, durationTicks),
+      style: reference,
+    };
+    return generateGenerativeVariations(provider, track.generative.modelId, input, {
+      ...options,
+      ...(track.generative.style.kind === "text" ? { prompt: track.generative.style.text } : {}),
+    });
+  }
+
+  /** Audition an in-memory variation without persisting it or mutating the document. */
+  async previewResampleVariation(variation: GenerativeVariation): Promise<void> {
+    if (this.disposed) throw new Error("Generative runtime is disposed");
+    const ctx = this.options.engine.context ?? this.options.engine.ensureContext();
+    const decoded = await decodeAudioData(generatedAudioToWav(variation.audio).slice(0), ctx.sampleRate);
+    this.options.engine.previewBuffer(decoded);
+  }
+
+  /** Commit one preview variation through the same durable AudioClip path as capture. */
+  async commitResampleVariation(
+    trackId: string,
+    variation: GenerativeVariation,
+    startBar?: number,
+  ): Promise<PersistedGeneratedClip> {
+    if (this.disposed) throw new Error("Generative runtime is disposed");
+    const track = this.generativeTrack(trackId);
+    if (!track) throw new Error(`Generative track ${trackId} not found`);
+    const sourceDoc = this.options.project();
+    if (!this.options.userSamples || !this.options.execute)
+      throw new Error("Generated capture persistence is unavailable");
+    const barTicks = ticksPerBar(sourceDoc);
+    const durationTicks = Math.max(1, Math.round((variation.audio.durationSec * sourceDoc.bpm * PPQ) / 60));
+    const assetId = uid("generated");
+    const persisted = await persistGeneratedAudioAsClip(
+      this.options.userSamples,
+      sourceDoc,
+      variation.audio,
+      `${track.name} resample ${variation.label}`,
+      {
+        assetId,
+        placement: {
+          trackId,
+          startBar: startBar ?? Math.floor(this.options.transport.position / barTicks),
+          lengthBars: Math.max(0.25, durationTicks / barTicks),
+        },
+      },
+    );
+    const ctx = this.options.engine.context ?? this.options.engine.ensureContext();
+    try {
+      const decoded = await decodeAudioData(persisted.wav.slice(0), ctx.sampleRate);
+      this.options.bank?.add(persisted.asset.id, decoded);
+      if (sourceDoc !== this.options.project()) throw new Error("Project changed during generative resample commit");
+      this.options.execute(persisted.command);
+    } catch (error) {
+      await this.options.userSamples.remove(persisted.asset.id).catch(() => undefined);
+      throw error;
+    }
+    return persisted;
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
@@ -316,7 +469,19 @@ export class GenerativeRuntime {
     if (!entry || !track || !this.isCurrent(trackId, epoch) || entry.refreshing) return;
     entry.refreshing = true;
     try {
-      await entry.session.updateInput(this.buildInput(track));
+      let input = entry.lastInput;
+      try {
+        input = this.buildInput(track);
+        entry.lastInput = input;
+      } catch (error) {
+        if (!input) throw error;
+        const current = this.getStatus(trackId);
+        this.setStatus(trackId, {
+          state: current.state === "running" ? "running" : current.state,
+          message: `conditioning fallback: ${error instanceof Error ? error.message : "invalid input"}`,
+        });
+      }
+      await this.providerCall("refresh-input", entry.session.updateInput(input));
     } catch (error) {
       if (this.isCurrent(trackId, epoch)) {
         this.setStatus(trackId, {
@@ -338,6 +503,7 @@ export class GenerativeRuntime {
     const barTicks = ticksPerBar(doc);
     const safeStartTick = Math.max(0, startTick);
     return buildGenerativeInput(doc, track, safeStartTick, durationTicks ?? barTicks * LIVE_WINDOW_BARS, {
+      bpm: this.options.transport.bpm,
       macros: resolveGenerativeMacrosAtTick(doc, track, safeStartTick),
       resolveAudioStyle: (bufferId) => {
         const buffer = this.options.bank?.get(bufferId);
@@ -356,10 +522,15 @@ export class GenerativeRuntime {
     contextSampleRate: number,
   ): { modelId: string; outputSampleRate: number; outputChannels: number } | null {
     if (!capabilities.modelIds.includes(track.generative.modelId)) return null;
-    if (!capabilities.outputSampleRates.includes(contextSampleRate)) return null;
+    const outputSampleRate = capabilities.outputSampleRates.includes(contextSampleRate)
+      ? contextSampleRate
+      : capabilities.outputSampleRates.includes(48000)
+        ? 48000
+        : capabilities.outputSampleRates[0];
+    if (!outputSampleRate) return null;
     const outputChannels = capabilities.outputChannels.includes(2) ? 2 : capabilities.outputChannels[0];
     if (!outputChannels) return null;
-    return { modelId: track.generative.modelId, outputSampleRate: contextSampleRate, outputChannels };
+    return { modelId: track.generative.modelId, outputSampleRate, outputChannels };
   }
 
   private generativeTrack(trackId: string): GenerativeTrack | undefined {
@@ -387,11 +558,19 @@ export class GenerativeRuntime {
     }
     if (session) {
       try {
-        await session.stop();
-        await session.dispose();
+        await this.providerCall("stale-stop", session.stop());
+        await this.providerCall("stale-dispose", session.dispose());
       } catch {
         /* stale provider teardown is best effort */
       }
     }
+  }
+
+  private providerCall<T>(operation: string, promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    return withGenerativeTimeout(promise, {
+      operation,
+      timeoutMs: this.options.providerTimeoutMs,
+      signal,
+    });
   }
 }

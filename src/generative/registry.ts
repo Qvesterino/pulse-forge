@@ -107,6 +107,7 @@ export function createUnavailableGenerativeProvider(
     supportsNoteConditioning: false,
     supportsDrumsMode: false,
     supportsSeed: false,
+    macroSupport: {},
     outputSampleRates: [],
     outputChannels: [],
     maxCaptureSeconds: 0,

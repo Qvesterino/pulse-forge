@@ -1,7 +1,7 @@
 {
-  "reviewed": false,
-  "reviewedBy": "",
-  "reviewedAt": "",
+  "reviewed": true,
+  "reviewedBy": "listening-room",
+  "reviewedAt": "2026-09-22T15:50:33.210Z",
   "datasetVersion": "intent-ranker-ds.v2",
   "note": "Poradie kandidátov (indexov) pre každý combo — najlepší PRVÝ. Pack: public/golden-review/",
   "combos": [
@@ -74,6 +74,23 @@
         3,
         1
       ]
+    },
+    {
+      "groupKey": "house:Driving:ds-house-Driving-0",
+      "order": [
+        2,
+        3,
+        0,
+        1
+      ],
+      "reviewed": true,
+      "reviewedBy": "listening-room",
+      "reviewedAt": "1970-01-01T00:00:00.001Z",
+      "source": "listening-room",
+      "combo": "house:Driving:ds-house-Driving-0",
+      "heard": 4
     }
-  ]
+  ],
+  "updatedAt": "2026-09-22T16:11:10.634Z",
+  "updatedBy": "listening-room"
 }
