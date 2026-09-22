@@ -139,9 +139,20 @@ export class PlaybackController {
     this.notify();
   };
 
+  /** Play-mode getter for UI mirrors. */
   get mode(): PlayMode {
     return this.modeRef.mode;
   }
+
+  /**
+   * Re-broadcast the mode/transport to UI subscribers after an OUTSIDE
+   * mutation of the transport (collab remote pulse). The controller's own
+   * methods notify internally; direct transport writes otherwise left the
+   * TopBar play button stale until the next local gesture.
+   */
+  notifyForRemoteTransportChange = (): void => {
+    this.notify();
+  };
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -515,6 +526,10 @@ export async function openProject(
         applyTransportState(transport, state, Date.now() / 1000);
         if (shouldStartScheduler) scheduler.start();
         else if (wasPlaying && state.playing) scheduler.resync();
+        // A REMOTE pulse mutates the transport from outside the controller —
+        // without this, the TopBar play button (and every playback
+        // subscriber) stayed stale until the next local gesture.
+        playback.notifyForRemoteTransportChange();
       } finally {
         followLock = false;
       }

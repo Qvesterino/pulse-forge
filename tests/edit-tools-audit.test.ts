@@ -153,7 +153,7 @@ describe("I4 copies own their mutable state", () => {
   });
 });
 
-describe("I5 duplicate placement", () => {
+describe("I5 duplicate placement + overlap contract", () => {
   it("duplicate lands after the source with a fresh id, original untouched", () => {
     const { doc, clipId } = docWithClip();
     const next = duplicateAudioClip(doc, clipId).execute(doc);
@@ -162,6 +162,35 @@ describe("I5 duplicate placement", () => {
     expect(sorted[0]!.id).not.toBe(sorted[1]!.id);
     expect(sorted[1]!.startBar).toBe(8); // right after the 4-bar source
     expect(sorted[0]!.startBar).toBe(4);
+  });
+
+  it("OVERLAP CONTRACT: audio duplicates LAYER instead of teleporting past busy neighbours", () => {
+    const seed = docWithClip();
+    // A neighbour occupies bars 8..12 (exactly where a naive "after source"
+    // copy would land). The old bump silently teleported the copy to 12..
+    const trackId = seed.doc.tracks.find((t) => t.kind === "instrument")!.id;
+    const withNeighbour = addAudioClip(seed.doc, trackId, "buf-neighbour", 8, 4).execute(seed.doc);
+    const source = clipsOf(withNeighbour).find((c) => c.bufferId === "buf-1")!;
+    // ONE command instance — snapshot commands are id-anchored inverse
+    // patches; a second instance would mint a different uid and its undo
+    // could not revert the first instance's copy.
+    const cmd = duplicateAudioClip(withNeighbour, source.id);
+    const next = cmd.execute(withNeighbour);
+    const mine = clipsOf(next).filter((c) => c.bufferId === "buf-1").sort((a, b) => a.startBar - b.startBar);
+    expect(mine).toHaveLength(2);
+    expect(mine[1]!.startBar).toBe(8); // adjacent to source — OVERLAPS neighbour (layering)
+    expect(clipsOf(next)).toHaveLength(3); // neighbour untouched
+    // undo restores the pre-duplicate state exactly
+    expect(cmd.undo(next)).toEqual(withNeighbour);
+  });
+
+  it("audio clips may layer by design (add does not avoid, engine sums)", () => {
+    const base = createProjectFromTemplate("house");
+    const trackId = base.tracks.find((t) => t.kind === "instrument")!.id;
+    let working = addAudioClip(base, trackId, "buf-a", 0, 4).execute(base);
+    working = addAudioClip(working, trackId, "buf-b", 2, 4).execute(working); // deliberate overlap
+    const onTrack = clipsOf(working).filter((c) => c.trackId === trackId);
+    expect(onTrack).toHaveLength(2); // both survive — layering is the contract
   });
 });
 

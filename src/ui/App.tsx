@@ -1125,6 +1125,21 @@ export function App({
 
       const matched = matchShortcut(event);
       if (!matched) return;
+      // Auto-repeat must not re-trigger TRANSPORT actions: a Space held a
+      // beat too long flapped play/pause ~30×/s, and held ","/"." seek-
+      // panicked the engine on every repeat. Non-transport shortcuts
+      // (nudges, zoom) legitimately repeat and stay untouched.
+      if (
+        event.repeat &&
+        (matched === "playPause" ||
+          matched === "stop" ||
+          matched === "seekHome" ||
+          matched === "seekBack" ||
+          matched === "seekForward")
+      ) {
+        event.preventDefault();
+        return;
+      }
       runShortcutRef.current(matched, event);
     };
     window.addEventListener("keydown", handler);

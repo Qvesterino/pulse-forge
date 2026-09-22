@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { STEP_TICKS } from "../src/project-model/types";
-import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
   addArrangementClip,
@@ -29,12 +28,6 @@ import type { PatternClipboard } from "../src/commands/commands";
  * clip command layer has its own suite (tests/edit-tools-audit.test.ts).
  * Audio-clip-free slices: notes, scene arrangement clips, pattern clipboard.
  */
-
-function store(): { s: ProjectStore; doc: ProjectDocument } {
-  const doc = createProjectFromTemplate("house");
-  const s = new ProjectStore(doc);
-  return { s, doc };
-}
 
 /* ── notes ──────────────────────────────────────────────────────────── */
 

@@ -177,12 +177,15 @@ export function TopBar({
     let last = "";
     registerRaf(loopRafId, () => {
       const t = services.transport;
-      const sig = `${t.loopEnabled}|${t.loopStart}|${t.loopEnd}`;
+      const sig = `${t.loopEnabled}|${t.loopStart}|${t.loopEnd}|${t.metronome ? 1 : 0}`;
       if (sig === last) return;
       last = sig;
       setLoopEnabled(t.loopEnabled);
       setLoopStart(t.loopStart);
       setLoopEnd(t.loopEnd);
+      // Other surfaces (Hum-to-Melody) write transport.setMetronome
+      // directly — without this poll the CLICK button showed a stale value.
+      setMetronome(t.metronome);
     });
     return () => unregisterRaf(loopRafId);
   }, [services.transport, loopRafId]);
@@ -325,16 +328,19 @@ export function TopBar({
           target.isContentEditable);
       if (typing) return;
       if (matchShortcut(event) === "toggleLoop") {
+        // Key-repeat must not flap the loop region ~30×/s while held.
+        if (event.repeat) return;
         event.preventDefault();
         toggleLoop();
       }
-      // 1-klik Assist shortcuts — deterministic, no panel
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
+      // 1-klik Assist shortcuts — deterministic, no panel (repeat-guarded:
+      // each press stamps a fresh seed; holding would spam undo history)
+      if (!event.repeat && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
         event.preventDefault();
         const seed = nextSeed(activePatternId + String(Date.now()), "topbar-vary");
         services.store.execute(assistVary(doc, activePatternId, seed, 0.6));
       }
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
+      if (!event.repeat && event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         const seed = nextSeed(activePatternId + String(Date.now()), "topbar-fill");
         services.store.execute(assistFill(doc, activePatternId, seed));

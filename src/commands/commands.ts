@@ -2735,11 +2735,6 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
 
 /* ---------------- audioClips ---------------- */
 
-function audioClipOverlap(a: AudioClip, b: AudioClip): boolean {
-  if (a.trackId !== b.trackId) return false;
-  return a.startBar < b.startBar + b.lengthBars && b.startBar < a.startBar + a.lengthBars;
-}
-void audioClipOverlap;
 
 export function addAudioClip(
   doc: ProjectDocument,
@@ -3231,16 +3226,15 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
 export function duplicateAudioClip(doc: ProjectDocument, clipId: string): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
-  let startBar = clip.startBar + clip.lengthBars;
-  // Avoid same-track overlap by bumping forward
-  const existing = doc.arrangement.audioClips ?? [];
-  while (
-    existing.some(
-      (c) =>
-        c.trackId === clip.trackId && startBar < c.startBar + c.lengthBars && c.startBar < startBar + clip.lengthBars,
-    )
-  )
-    startBar += clip.lengthBars;
+  // OVERLAP CONTRACT (audit §13): the two clip systems intentionally differ.
+  // AudioClips LAYER — the engine sums every clip into its track input, and
+  // add/move/resize allow free placement — so the copy lands EXACTLY after
+  // its source and may overlap neighbouring clips like any moved clip would.
+  // (The old forward-bump here was copied from the arrangement-clip system,
+  // which IS no-overlap: moveArrangementClip/duplicateArrangementClip
+  // enforce it. Bumping silently teleported audio duplicates across busy
+  // tracks — unpredictable placement.) Arrangement clips keep no-overlap.
+  const startBar = clip.startBar + clip.lengthBars;
   const copy: AudioClip = {
     ...clip,
     id: uid("audioClip"),

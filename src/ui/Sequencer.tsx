@@ -6,6 +6,7 @@ import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { usePlayheadStep } from "./playhead";
+import { rulerStepFromX } from "./sequencerRuler";
 import {
   clearStepLocks,
   pasteStepLocks,
@@ -539,18 +540,26 @@ export function Sequencer({
   const rulerStepFromEvent = useCallback(
     (clientX: number): number | null => {
       const ruler = rulerRef.current;
-      const scroller = scrollRef.current;
-      if (!ruler || !scroller) return null;
-      const rect = ruler.getBoundingClientRect();
-      const contentX = clientX - rect.left + scroller.scrollLeft;
-      const stride = effMinCol + COL_GAP;
-      const step = Math.floor((contentX - (stepsLabel + COL_GAP)) / stride);
-      return Math.max(0, Math.min(pattern.stepCount - 1, step));
+      if (!ruler) return null;
+      // Pure helper — see sequencerRuler.ts for the scroll double-count
+      // regression this replaces (sticky-vertically ruler scrolls with the
+      // content; scroller.scrollLeft must NOT be added here).
+      return rulerStepFromX(
+        clientX,
+        ruler.getBoundingClientRect().left,
+        effMinCol + COL_GAP,
+        stepsLabel + COL_GAP,
+        pattern.stepCount,
+      );
     },
     [effMinCol, pattern.stepCount, stepsLabel],
   );
   const onRulerPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
+    // The sticky label cell (FOCUS / ? buttons) lives inside the ruler —
+    // its clicks used to bubble here, clamp out-of-range to step 0 and
+    // phantom-seek (while capture swallowed the button's own click).
+    if ((event.target as HTMLElement).closest("button")) return;
     const step = rulerStepFromEvent(event.clientX);
     if (step == null) return;
     rulerDragRef.current = { startStep: step, lastStep: step };
@@ -559,7 +568,10 @@ export function Sequencer({
     } catch {
       /* no capture */
     }
-    services.transport.seek(step * STEP_TICKS);
+    // Through the controller: while playing, a seek must panic + resync the
+    // scheduler and refresh the engine beat phase — raw transport.seek
+    // left stale lookahead events firing at the old location.
+    services.playback.seek(step * STEP_TICKS);
   };
   const onRulerPointerMove = (event: React.PointerEvent) => {
     const drag = rulerDragRef.current;

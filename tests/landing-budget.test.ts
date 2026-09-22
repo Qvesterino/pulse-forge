@@ -102,10 +102,18 @@ describe("landing route — static import budget (Fáza C)", () => {
     expect(violations, violations.join("\n")).toEqual([]);
   });
 
-  it("the offline render path (EmbedApp → renderer) IS the landing's engine — nothing heavier", () => {
-    // Guard against the walker silently matching nothing: the known-good
-    // edge renderer→AudioEngine must exist in the graph.
+  it("the render path stays DYNAMIC (no renderer/AudioEngine in the static graph)", () => {
+    // 2026-09-22: EmbedApp/loudness/audition switched to `await import()`
+    // for the offline renderer — statically it dragged AudioEngine, the
+    // worklet loader, persistence and the curated library into the landing
+    // closure (bundle landing route 729 > 600 KB). The renderer may only
+    // enter via dynamic import (loaded on demand, after first paint).
     const files = [...graph.keys()];
-    expect(files.some((file) => file.includes(`renderer${""}`) || file.endsWith("renderer.ts"))).toBe(true);
+    expect(files.some((file) => file.endsWith("renderer.ts"))).toBe(false);
+    expect(files.some((file) => file.endsWith("AudioEngine.ts"))).toBe(false);
+    // Guard against the walker silently matching nothing: the known-good
+    // static edge commands.ts (intent apply — the sanctioned heaviest
+    // landing module) must still be in the walked graph.
+    expect(files.some((file) => file.endsWith("commands.ts"))).toBe(true);
   });
 });
