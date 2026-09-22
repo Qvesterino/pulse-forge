@@ -3659,3 +3659,40 @@ audit doc.
 **Race state at commit:** `services.ts`, `src/main.tsx`, `src/ui/App.tsx`, `src/audio-engine/AudioEngine.ts` carry BOTH campaign fixes and the concurrent session's in-flight MRT2 edits in the same working files — committed everything EXCEPT those four (their commit absorbs them, as in GOALs 05/06); all four fixes are behavior-complete in the tree and will land with the next absorption. tsc-verified on the combined tree.
 
 **Recommendations for next session (GOAL 08 — risk-based test coverage):** the audits keep producing evidence — now rank UNTESTED risk: (1) the ~28 unwired onprocessorerror factories, (2) PersistenceContracts backends (in-memory repo for tests — the missing test seam from GOAL 03), (3) scheduler automation/modulator call recording in the golden harness, (4) route-app boundaries under lazy-chunk failure (jsdom-simulable), (5) the ModPanel test hang root-cause (blocked on their MRT2). Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 08 (cross-platform campaign) — Risk-based test coverage (2026-09-22)
+
+**Goal executed:** Map test coverage against RISK (not percentage), add meaningful tests in the highest-risk untested areas, remove/improve false-confidence tests, record what remains open. Method: one read-only coverage-vs-risk sweep over the candidate module list + verification of async failure-path and contract coverage.
+
+**New tests (risk-ranked additions):**
+
+1. **`tests/services-save-drain.test.ts` (2)** — THE data-loss guard, pinned at the services layer for the first time: a failing autosave write surfaces `saveStatus:"error"`, a doc edited while the write was in flight is re-queued, and flushSave's drain writes the NEWER revision to SAVED (never the stale one); persistent failures stay on error and never report saved. Built on the services-close-race harness pattern.
+2. **`tests/persistence/groove-pool.test.ts` (3)** — GroovePoolRepository had NO dedicated suite: round-trip + newest-first ordering, garbage-row tolerance (documented raw-cast contract), save/remove cache invalidation.
+3. **`tests/kit-pools-assign.test.ts` (5)** — dice kit-pool assignment (untested): kit/drums lock short-circuit, chance gate at zero jitter, deterministic seed search for full-jitter assignment shape, family locks respected, run-to-run determinism.
+4. **`tests/midi/midi-clock-master.test.ts` (2)** — MidiClock MASTER mode (untested): sendStart once → 24 pulses/quarter at transport tempo (fake timers), tempo mid-stream recalculation (60→120 bpm doubles pulses), stop silences.
+5. **`tests/zyvo-transfer-contract.test.ts` (4)** — zyvo-transfer (whole-song handoff, ZERO coverage): format identity (`com.kyx.zyvo-transfer` v1), 1 GiB ceiling, embedded-JSON headroom, byte-accurate UTF-8 for multi-byte names (`encodeUtf8` exported — part of the handoff format).
+
+**False-confidence fixes:** `tests/sec-debug.test.ts` DELETED (literal `expect(true).toBe(true)` debug leftover; the sections parser is pinned by intent-sections-fx). `tests/ai-markov.test.ts` getGrooveById upgraded from `.toBeDefined()` to catalog-identity assertions (id/genre/name/patterns/activePads/bpm ordering + a real miss returns undefined).
+
+**Verified already-covered (do not double-test):** video/mp3 abort paths, mic capture rejection, quota/poisoned-row adversarial matrices, db open-retry, collab join/re-anchor/validation failures, jamRoles fail-closed, time-stretch fallback, snapshot pruning with poisoned rows, transport NaN guards.
+
+**Recorded (remaining high-risk untested, queued):** ExportPanel REAL cancel flow (current suite mocks cancel and never aborts an in-flight export); scene-intensity adjacent-window + tail decay cases (single-window only); latencyProbe synthetic pulse→offset test (H risk — recordings off-grid; needs an analyser harness); zyvo full-build golden manifest (needs the offline render harness); GroovePool/UserSample `openDatabase` injection seam generalization (quota paths untestable while hardcoded — GOAL 03 follow-up); collab has NO reconnect logic at all (feature absent — not a gap to test until it exists).
+
+**Important files changed:** tests/{services-save-drain,kit-pools-assign,zyvo-transfer-contract,fault-containment}.test.* (new), tests/persistence/groove-pool.test.ts (new), tests/midi/midi-clock-master.test.ts (new), tests/sec-debug.test.ts (deleted), tests/ai-markov.test.ts, src/export/zyvo-transfer.ts (`encodeUtf8` exported — part of the handoff format).
+
+**Validation:** all new + neighbor suites 92/92 (7 files); tsc 0 campaign errors. The ModPanel.test hang (GOAL 07) remains theirs-blocked.
+
+**Recommendations for next session (GOAL 09 — determinism & reproducibility):** targets already parked twice: (1) `shared/velocityFx.ts` bare `Math.random` → seeded `forkRandom` streams (humanize/randomize edits replayable in collab + undo), (2) wall-clock ids in `commands.ts:4012/2925` (newModulatorSeed, sketch stamp) → `uid`-based or seed-chained, (3) then extend the GOAL 06 golden harness with a velocityFx family. Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 29 — SUNO MODE + DYNAMIC SONG FORM #6 (2026-09-22)
+
+**Cieľ:** posledný číslovaný bod ULTIMATE roadmapu (#6) + orchestrácia celého enginu do jedného volania — jedna veta → hotový produkovaný track.
+
+- **#6 Dynamic song form** (`src/intent/song.ts`): `parseSongLength(text)` — exact ("3 minutes", "2:30", "3 minúty" — deaccentované stems!) / short / radio edit / extended / epic journey / dlhá verzia. `applySongLength(sections, hint, bpm)` — short = intro/outro polené + len PRVÁ core cykla; extended/epic = +1/+2 RAZÍTKOVANÉ core cykly (label+marker dostanú písmeno cyklu, unikátne); exact = greedy cykly k cieľu (bpm/4 bars za minútu; bpm = stred bpmRange alebo per-žáner default). `planSongForm(intent, overrides, length?)` + `BuildSongOptions.length` — UI získa funkciu zdarma. **BUG počas vývoja: coreCycle musí nájsť PRVÚ cyklu (do rovnakej role), inak rastie s každým insertom** (extended dal +36 namiesto +12).
+- **SUNO MODE** (`src/intent/compose.ts` — `composeFullTrack(doc, text)`): text → parser + sections + length → buildSong → mix profil (applyMixIntent command) → loudness pass (parseLoudnessIntent explicit alebo implicitný −14 SONG_LOUDNESS_TARGET_LUFS; potrebuje bank; volá sa PO inštalácii cez vrátený `loudness.run(doc)` — render musí počuť hotový mix). Vracia `{ commands: {song, mix}, loudness, skipped }` — nikdy nehádže, nefunkčné fázy v `skipped`.
+- **UI** (`IntentPanel.runSongBuild`): SONG berie dĺžkové frázy zo vety + status ukazuje ≈ dĺžku (bars → mm:ss z resolvedBpm).
+- **Testy** `tests/suno-mode.test.ts` 9/9 (exact/short/extended/epic matematika, unikátne labely, determinizmus, compose e2e vrátane loudness degradácie). Regresia **257/257 cez 25 súborov**; typecheck mojich súborov 0.

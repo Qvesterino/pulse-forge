@@ -10,7 +10,13 @@ import {
   applyProductionIntentCommand,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import { buildSong, applySongCommand, reviseSection, replacePatternInPlaceCommand } from "../intent/song";
+import {
+  buildSong,
+  applySongCommand,
+  reviseSection,
+  replacePatternInPlaceCommand,
+  parseSongLength,
+} from "../intent/song";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent } from "../intent/loudness";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
@@ -183,9 +189,7 @@ export function IntentPanel() {
     const production = parseProductionIntent(text);
     const sectionParse = parseSectionRequests(text);
     const remainingFxText = sectionParse?.remainingText ?? text;
-    const genreSignal = Boolean(
-      parsed?.input.genre || parsed?.detected.some((chip) => chip.startsWith("♪")),
-    );
+    const genreSignal = Boolean(parsed?.input.genre || parsed?.detected.some((chip) => chip.startsWith("♪")));
     if (production && !genreSignal && !sectionParse) {
       try {
         const cmd = applyProductionIntentCommand(doc, production);
@@ -257,7 +261,9 @@ export function IntentPanel() {
       if (playTokenRef.current !== token) return; // superseded meanwhile
       playAuditionBuffer(buffer, () => setPlayingIndex(null));
       setPlayingIndex(candidate.candidateIndex);
-      const withFx = bankResult ? (resultForCandidate(bankResult, candidate.candidateIndex)?.plan.intent.fx ?? null) : null;
+      const withFx = bankResult
+        ? (resultForCandidate(bankResult, candidate.candidateIndex)?.plan.intent.fx ?? null)
+        : null;
       setStatus(`▶ auditioning candidate #${candidate.candidateIndex + 1}${withFx ? " — with FX" : ""}`);
     } catch (err) {
       if (playTokenRef.current === token) {
@@ -358,12 +364,17 @@ export function IntentPanel() {
         },
         {
           ...(sections ? { sections } : {}),
+          ...(parseSongLength(text) ? { length: parseSongLength(text) } : {}),
           onProgress: (done, label, total) => setStatus(`♪ building song — ${label} (${done}/${total})`),
         },
       );
       services.store.execute(applySongCommand(doc, build));
       const fxNote = build.baseIntent.fx || build.sections.some((s) => s.fx) ? " + FX" : "";
-      setStatus(`✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars${fxNote} (one undo step)`);
+      const seconds = Math.round((build.totalBars * 4 * 60) / (build.resolvedBpm ?? 120));
+      const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      setStatus(
+        `✓ ${build.name} — ${build.sections.length} sections, ${build.totalBars} bars${lengthNote}${fxNote} (one undo step)`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

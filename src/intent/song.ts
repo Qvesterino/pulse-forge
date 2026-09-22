@@ -881,6 +881,7 @@ const SECTION_FX_RECIPES: Partial<Record<SceneRole, SectionFxRecipe[]>> = {
 export function planSongForm(
   intent: IntentSpec,
   overrides?: SectionParse,
+  length?: SongLengthHint | null,
 ): {
   genre: IntentSpec["genre"];
   sections: SongSectionSpec[];
@@ -896,11 +897,161 @@ export function planSongForm(
   // "no break", "vinyl break". An over-eager request never empties the form
   // (applySectionRequests guards the invariant).
   const sections = overrides ? applySectionRequests(planned, overrides) : planned;
+  // #6 dynamic song form — length words ("short", "radio edit", "extended",
+  // "epic journey", "3 minutes") scale the form's core cycles to the ask.
+  const scaled = length ? applySongLength(sections, length, formBpm(intent)) : sections;
   return {
     genre: intent.genre,
-    sections,
-    totalBars: sections.reduce((sum, section) => sum + section.bars, 0),
+    sections: scaled,
+    totalBars: scaled.reduce((sum, section) => sum + section.bars, 0),
   };
+}
+
+// ─── #6 DYNAMIC SONG FORM — length words → section plan ─────────────────────
+
+export type SongLengthKind = "short" | "standard" | "radio" | "extended" | "epic" | "exact";
+
+export interface SongLengthHint {
+  kind: SongLengthKind;
+  /** "exact" mode: requested minutes (clock "2:30" allowed → 2.5). */
+  minutes?: number;
+  /** Human label for status lines. */
+  label: string;
+}
+
+/** Genre defaults when the intent carries no bpmRange — centers of the priors. */
+const GENRE_DEFAULT_BPM: Record<IntentSpec["genre"], number> = {
+  house: 124,
+  techno: 132,
+  trap: 140,
+  ambient: 90,
+  drill: 142,
+  phonk: 150,
+  jersey: 138,
+  dnb: 174,
+};
+
+function formBpm(intent: IntentSpec): number {
+  if (intent.bpmRange) return Math.round((intent.bpmRange[0] + intent.bpmRange[1]) / 2);
+  return GENRE_DEFAULT_BPM[intent.genre];
+}
+
+/**
+ * Length phrases → hint. Exact durations win ("3 minutes", "2:30"), then the
+ * named edits. SK stems are DE-ACCENTED (the parser normalizes before match).
+ * Pure — same text ⇒ same hint.
+ */
+export function parseSongLength(text: string): SongLengthHint | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  const clock = /\b(\d{1,2}):(\d{2})\b/.exec(lower);
+  if (clock) {
+    const minutes = Number(clock[1]) + Number(clock[2]) / 60;
+    if (minutes > 0 && minutes <= 20) return { kind: "exact", minutes, label: `${clock[1]}:${clock[2]}` };
+  }
+  const minutes = /\b(\d{1,2})\s*(?:minutes?|mins?|minut\w*|min)\b/.exec(lower);
+  if (minutes) {
+    const value = Number(minutes[1]);
+    if (value > 0 && value <= 20) return { kind: "exact", minutes: value, label: `${value} min` };
+  }
+  if (/\bshort(?: version| edit| mix)?\b|\bkratk\w*/.test(lower)) {
+    return { kind: "short", label: "short" };
+  }
+  if (/\bradio(?: edit| version| mix)?\b|\bradiov\w*/.test(lower)) {
+    return { kind: "radio", label: "radio edit" };
+  }
+  if (/\bextended(?: mix| version| edit)?\b|\brozsir\w*/.test(lower)) {
+    return { kind: "extended", label: "extended" };
+  }
+  if (
+    /\bepic (?:journey|version|mode)\b|\blong (?:journey|track|version)\b|\bdlh\w* (?:journey|track|verzi)/.test(lower)
+  ) {
+    return { kind: "epic", label: "epic" };
+  }
+  return null;
+}
+
+const roundBars = (bars: number): number => Math.max(4, Math.round(bars / 4) * 4);
+
+/** Clone a section with a cycle letter appended so labels/markers stay unique. */
+function cloneWithCycle(section: SongSectionSpec, cycle: number): SongSectionSpec {
+  const letter = String.fromCharCode(64 + cycle); // 1 → "A", 2 → "B", …
+  return {
+    ...section,
+    label: `${section.label} ${letter}`,
+    ...(section.marker ? { marker: { ...section.marker, name: `${section.marker.name} ${letter}` } } : {}),
+  };
+}
+
+/** Core cycle = the FIRST danceable block after the intro (intro excluded,
+ *  ends at the next cycle of the same role or at the closing furniture). */
+function coreCycle(sections: SongSectionSpec[]): SongSectionSpec[] {
+  const start = sections.findIndex((section) => section.role !== "intro");
+  if (start < 0) return [];
+  const firstRole = sections[start].role;
+  let end = start + 1;
+  while (
+    end < sections.length &&
+    sections[end].role !== firstRole &&
+    !["break", "bridge", "outro"].includes(sections[end].role)
+  ) {
+    end += 1;
+  }
+  return sections.slice(start, end);
+}
+
+function insertCoreCycle(sections: SongSectionSpec[], cycle: number): SongSectionSpec[] {
+  const cycleSections = coreCycle(sections);
+  if (cycleSections.length === 0) return sections;
+  const stamped = cycleSections.map((section) => cloneWithCycle(section, cycle));
+  // Insert before the first break/bridge/outro — or before the outro at the end.
+  let insertAt = sections.findIndex(
+    (section, index) => index > 0 && ["break", "bridge", "outro"].includes(section.role),
+  );
+  if (insertAt < 0) insertAt = sections.length - 1;
+  return [...sections.slice(0, insertAt), ...stamped, ...sections.slice(insertAt)];
+}
+
+/**
+ * Scale the planned form to the length ask:
+ * - short: intro/outro halved, only the FIRST core cycle survives;
+ * - extended/epic: one/two extra stamped core cycles before the break;
+ * - exact: greedy core cycles toward the requested minute count;
+ * - standard/radio: untouched (forms are already radio-shaped).
+ */
+export function applySongLength(sections: SongSectionSpec[], hint: SongLengthHint, bpm: number): SongSectionSpec[] {
+  if (hint.kind === "standard" || hint.kind === "radio") return sections;
+  if (hint.kind === "short") {
+    const intro = sections[0];
+    const outro = sections[sections.length - 1];
+    const core = sections.slice(1, sections.length - 1).filter((section) => section.role !== "break");
+    // First cycle = up to (excluding) the next section sharing the first core role.
+    let cut = core.findIndex((section, index) => index > 0 && section.role === core[0]?.role);
+    if (cut < 0) cut = Math.ceil(core.length / 2);
+    const kept = core.slice(0, cut > 0 ? cut : core.length);
+    if (!intro || !outro || kept.length === 0) return sections;
+    return [{ ...intro, bars: roundBars(intro.bars / 2) }, ...kept, { ...outro, bars: roundBars(outro.bars / 2) }];
+  }
+  if (hint.kind === "extended" || hint.kind === "epic") {
+    let out = sections;
+    const cycles = hint.kind === "extended" ? 1 : 2;
+    for (let cycle = 1; cycle <= cycles; cycle++) out = insertCoreCycle(out, cycle + 2);
+    return out;
+  }
+  // exact — greedy cycles toward the minute target (bpm/4 bars per minute).
+  if (typeof hint.minutes !== "number" || hint.minutes <= 0) return sections;
+  const target = roundBars((hint.minutes * bpm) / 4);
+  const totalBars = (list: SongSectionSpec[]) => list.reduce((sum, section) => sum + section.bars, 0);
+  let out = sections;
+  let guard = 0;
+  let cycle = 4;
+  while (totalBars(out) < target - 3 && guard < 12) {
+    out = insertCoreCycle(out, cycle++);
+    guard += 1;
+  }
+  return out;
 }
 
 /** One generated, ready-to-install song section. */
@@ -933,6 +1084,11 @@ export interface BuildSongOptions {
    * generation; scoped FX ride on the sections into applySongCommand.
    */
   sections?: SectionParse;
+  /**
+   * #6 dynamic song form — length words ("short", "radio edit", "extended",
+   * "epic journey", "3 minutes", "2:30") scale the core cycles.
+   */
+  length?: SongLengthHint | null;
 }
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -950,7 +1106,7 @@ export async function buildSong(
   options: BuildSongOptions = {},
 ): Promise<SongBuild> {
   const baseIntent = normalizeIntent(input);
-  const form = planSongForm(baseIntent, options.sections);
+  const form = planSongForm(baseIntent, options.sections, options.length);
   const sections: SongBuildSection[] = [];
   let resolvedBpm: number | null = null;
   let key: MusicalKey | null = baseIntent.key ?? doc.key ?? null;
