@@ -383,7 +383,7 @@ function slug(value: string): string {
     .slice(0, 48) || "track";
 }
 
-function encodeUtf8(value: string): Uint8Array {
+export function encodeUtf8(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 

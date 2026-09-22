@@ -211,11 +211,17 @@ describe("groove library", () => {
     }
   });
 
-  it("getGrooveById finds existing grooves", () => {
-    expect(getGrooveById("house.driving")).toBeDefined();
-    expect(getGrooveById("techno.minimal")).toBeDefined();
-    expect(getGrooveById("trap.classic")).toBeDefined();
-    expect(getGrooveById("ambient.drifting")).toBeDefined();
+  it("getGrooveById returns the real catalog entry (identity + content, not just defined)", () => {
+    for (const id of ["house.driving", "techno.minimal", "trap.classic", "ambient.drifting"]) {
+      const groove = getGrooveById(id);
+      expect(groove?.id, id).toBe(id);
+      expect(groove?.genre.length, id).toBeGreaterThan(0);
+      expect(groove?.name.length, id).toBeGreaterThan(0);
+      expect(groove?.patterns.length, id + " has velocity patterns").toBeGreaterThan(0);
+      expect(groove?.activePads.length, id + " has active pads").toBeGreaterThan(0);
+      expect(groove?.bpm[0] ?? 0, id + " bpm range ordered").toBeLessThanOrEqual(groove?.bpm[1] ?? 999);
+    }
+    expect(getGrooveById("no.such-groove")).toBeUndefined();
   });
 
   it("getGrooveById returns undefined for unknown id", () => {
