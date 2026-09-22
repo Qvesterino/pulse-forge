@@ -3452,3 +3452,30 @@ ErrorBoundary, timeline-rec, input-gain-slider, instrument-definitions, domain-p
 platform-contracts, style-vector); prettier clean on touched files. Not run: full vitest, build
 (shared machine, concurrent session mid-flight; no runtime-affecting change outside PcmMicRecorder
 claim/timeout + route boundaries).
+
+---
+
+## GOAL 05 (cross-platform campaign) — Persistence & schema evolution (2026-09-22)
+
+**Goal executed:** Inventory every persisted byte, classify versioning, map ownership, pin the test matrix (current/old/missing/unknown/malformed/future), repair what was small and safe. Stable formats deliberately NOT redesigned.
+
+**Method:** two parallel read-only sweeps (IndexedDB stores + repos; web storage + export formats + YDocAdapter).
+
+**Delivered:**
+
+- **`docs/PERSISTENCE-SCHEMAS.md` (new)** — the registry: 15 IndexedDB stores (owner, record shape, versioning class, sanitize behavior, binary payload format, id scheme), DB_VERSION 1→12 history with the **v8 incident** (groove-pool added without a version bump — installs stuck at v8 would never get the store; only v9+ reopened the upgrade path), future-version policy, 35 localStorage + 4 sessionStorage keys, 11 export/share formats (markers, validation, caps), ownership map, ranked risk list. Deliberate non-redesigns recorded: share code keeps NO container prefix (a prefix would break every existing share); kits/groove-pool keep raw-cast reads (pin-first).
+- **`tests/persistence/schema-evolution.test.ts` (new, 7 tests)** — store-layout matrix: upgrade from a hand-built v8-shaped DB completes to all 15 stores (the incident class), open at DB_VERSION exposes every declared store, a FUTURE version fails the open cleanly (VersionError, no hang); malformed-row matrix: raw-cast stores (kits/groove-pool) tolerate garbage rows, presets filter rows failing the light gate, future-version project rows are quarantined via `listIncompatible` while `listAll`/`load`/`loadMostRecent` skip them without throwing.
+- **`tests/collab-ydoc-drift.test.ts` (new, 3 tests)** — the YDocAdapter drift net: compile-time-exhaustive `Record<keyof ProjectDocument, true>` (a new model key breaks the build until the codec + pin are extended), rich round-trip deep-equal + key-preservation, idempotent second apply, per-key master/track/pad scalar survival (the historical silent-loss class).
+- **Real drift caught + fixed on the pin's first run:** `yMapToProject` materialized `tags: []` for docs that never had the field (the only unconditional optional on the read side), and the write side synced `tags ?? []` — every collab projection grew a `tags` key the source doc never had. Both sides now treat absent as absent (matching groove/midi), pinned by the drift test. `src/collab/YDocAdapter.ts`.
+- **`pf:pluginMode` sanitized** (`ui/FloatingPlugin.tsx`) — was a blind `as PluginMode` cast: a garbage string became live UI state; now validated against the union.
+- **AGENTS.md key-name correction** — the onboarding gate is `localStorage["pf-onboarded"]`, not the documented `kyx-onboarded` (the doc's key never existed in src/).
+
+**Existing coverage confirmed (not duplicated):** GOAL 08 robustness suite (share-code hostile corpus, project JSON caps, MIDI malformed matrix, WAV round-trip), `tests/persistence/*` per-repo suites, `round-trip-integrity` (deep round-trip per template, normalize idempotency, migrate determinism, corruption healing), `project-repository.test.ts` (listIncompatible).
+
+**Recorded (queue):** SCHEMA_VERSION discriminates nothing today (compatibility = normalizeProject) — bump with a real migration step only on the first breaking shape change; share-code cap divergence client 2 M vs gallery server 400 k (server-side decision); kits/groove-pool sanitizers (add when a writer bug appears); `fxeq.band.${fxId}` unbounded localStorage namespace; recording-chunk boundary contract is implicit in the worklet (the `pcm-f32-planar-v1` tag is the pattern for a future v2); db.ts stale-cache nuance after a versionchange close (connection closed by policy, cache still returns it — benign today, worth a cache invalidate if it ever bites).
+
+**Important files changed:** docs/PERSISTENCE-SCHEMAS.md (new), tests/persistence/schema-evolution.test.ts (new), tests/collab-ydoc-drift.test.ts (new), src/collab/YDocAdapter.ts, src/ui/FloatingPlugin.tsx, AGENTS.md.
+
+**Validation:** new suites 10/10; collab family 94/94 (incl. YDocStore/session/jam/bandmate — the tags change touches the live collab projection); persistence + adversarial suites green; `tsc --noEmit` 0 campaign errors (remaining errors are the concurrent session's in-flight `hum-to-notes.ts` edit).
+
+**Recommendations for next session (GOAL 06 — golden behavior & parity tests):** build on what exists — ultina/fxeq/ozvena/morph golden vectors + golden-render + intent-pipeline determinism are in place; the gap is DOMAIN-level fixtures a foreign implementation could consume: (1) project-transform goldens (command sequences → canonical doc JSON with deterministic ids via `useDeterministicIds`), (2) serialize/deserialize goldens (share code → doc → share code byte-pins), (3) transport/scheduler planning goldens via SchedulerDeps headless. Read CAMPAIGN_STATE.md first.

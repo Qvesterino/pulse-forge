@@ -28,42 +28,42 @@ npm run build         # production build + bundle budgets
 
 Pre-`dev` and pre-`build` hooks rebuild the AudioWorklet bundles (`build:core-worklets`, `build:fxeq`, `build:ultina`, `build:ozvena`). If worklets changed and the dev server is already running, restart it or run the worklet build explicitly first.
 
-The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every boot; the landing page (`src/landing/LandingPage.tsx`) is shown once before `localStorage["kyx-onboarded"]` is set to `"1"`. Returning users skip the landing page.
+The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every boot; the landing page (`src/landing/LandingPage.tsx`) is shown once before `localStorage["pf-onboarded"]` is set to `"1"`. Returning users skip the landing page.
 
 ---
 
 ## 2. Repository map (one-liner per directory)
 
-| Path | One-liner |
-|---|---|
-| `src/audio-engine/` | `AudioEngine.ts` (~182 KB) — single source of audio truth; metering, recorder, latency calibration, onset detection, note repeat, IR generator, phase vocoder, time-stretch. |
-| `src/audio-worklets/` | AudioWorklet processors: reverb, sidechain, limiter, gate, transient, fxeq, ultina, ozvena, kaskada, wtvoice, granular voice. |
-| `src/audio-workers/` | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`. |
-| `src/scheduler/Scheduler.ts` | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback. |
-| `src/transport/Transport.ts` | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome. |
-| `src/project-model/` | `schema.ts` (`SCHEMA_VERSION = 1`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`. |
-| `src/commands/` | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo. |
-| `src/store/` | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state. |
-| `src/instruments/` | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 14 instrument kinds. Mod matrix, randomization. |
-| `src/effects/` | `registry.ts` — `EFFECT_DEFS` for 36 effect types + 4 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`. |
-| `src/sample-library/` | `manifest.ts` (41 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`. |
-| `src/presets/` | `factory.ts` (199 instrument presets + 6 drum presets = 205), `normalization.ts`, `similar.ts`, `audioQuality.ts`. |
-| `src/rendering/` | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder). |
-| `src/export/` | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`. |
-| `src/persistence/` | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`. |
-| `src/midi/` | Web MIDI input/output/clock; pattern recorder; midiFile/midiProject import-export. |
-| `src/collab/` | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`. |
-| `src/intent/` | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`. |
-| `src/ai/` | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors. |
-| `src/analysis/` | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host. |
-| `src/services/` | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring). |
-| `src/ui/` | ~70 React components — every panel/dialog/editor. `App.tsx` (56 KB), `ArrangementPanel.tsx` (106 KB), `ModPanel.tsx` (70 KB), `Sequencer.tsx` (67 KB), `PianoRoll.tsx` (65 KB). |
-| `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page. |
-| `server/collab-server.mjs` | y-websocket relay + `/api/gallery` JSON store. One process, one port. |
-| `desktop/main.cjs` + `desktop/preload.cjs` | Thin Electron shell (ADR 0010/0011); auto-update via electron-updater against GitHub Releases. |
-| `tests/` | Vitest specs (~219 files), Playwright E2E (5 specs), golden-vector locks for the three vendored plugin cores, intent suite, persistence round-trip. |
-| `docs/adr/` | Architecture decision records 0001–0011. Read the relevant ADR before touching the area. |
-| `docs/CURRENT-STATE.md` | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number. |
+| Path                                         | One-liner                                                                                                                                                                                                    |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/audio-engine/`                          | `AudioEngine.ts` (~182 KB) — single source of audio truth; metering, recorder, latency calibration, onset detection, note repeat, IR generator, phase vocoder, time-stretch.                                 |
+| `src/audio-worklets/`                        | AudioWorklet processors: reverb, sidechain, limiter, gate, transient, fxeq, ultina, ozvena, kaskada, wtvoice, granular voice.                                                                                |
+| `src/audio-workers/`                         | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`.                                                                                                              |
+| `src/scheduler/Scheduler.ts`                 | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback.                                                                                                                            |
+| `src/transport/Transport.ts`                 | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome.                                                                                                                               |
+| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 1`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
+| `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                      |
+| `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
+| `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 14 instrument kinds. Mod matrix, randomization.                                                                                                 |
+| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 36 effect types + 4 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.     |
+| `src/sample-library/`                        | `manifest.ts` (41 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                         |
+| `src/presets/`                               | `factory.ts` (199 instrument presets + 6 drum presets = 205), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                           |
+| `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                               |
+| `src/export/`                                | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`. |
+| `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                                   |
+| `src/midi/`                                  | Web MIDI input/output/clock; pattern recorder; midiFile/midiProject import-export.                                                                                                                           |
+| `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                |
+| `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                        |
+| `src/ai/`                                    | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors.                                                                                              |
+| `src/analysis/`                              | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host.                                                                                                                                |
+| `src/services/`                              | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring).                                                                                                      |
+| `src/ui/`                                    | ~70 React components — every panel/dialog/editor. `App.tsx` (56 KB), `ArrangementPanel.tsx` (106 KB), `ModPanel.tsx` (70 KB), `Sequencer.tsx` (67 KB), `PianoRoll.tsx` (65 KB).                              |
+| `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                              |
+| `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
+| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011); auto-update via electron-updater against GitHub Releases.                                                                                                               |
+| `tests/`                                     | Vitest specs (~219 files), Playwright E2E (5 specs), golden-vector locks for the three vendored plugin cores, intent suite, persistence round-trip.                                                          |
+| `docs/adr/`                                  | Architecture decision records 0001–0011. Read the relevant ADR before touching the area.                                                                                                                     |
+| `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
 
 ---
 
@@ -100,6 +100,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 ## 5. How to add common things
 
 ### Adding a new instrument
+
 1. Define the kind in `InstrumentKind` union in `src/project-model/types.ts`.
 2. Implement the instrument body in `src/instruments/registry.ts` (after the existing 14 definitions).
 3. Register it in `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER`.
@@ -109,6 +110,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 7. Update `docs/CURRENT-STATE.md` (bump the 14 → new count).
 
 ### Adding a new core effect
+
 1. Define the effect type in `EffectType` union in `src/project-model/types.ts`.
 2. Implement the runtime in `src/effects/registry.ts` (after the existing 36).
 3. Register it in `EFFECT_DEFS` and the relevant `*_EFFECT_ORDER`.
@@ -117,6 +119,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 6. Update `docs/CURRENT-STATE.md` (bump the 36 → new count).
 
 ### Adding a new vendored plugin suite (flagship DSP)
+
 1. Open an ADR in `docs/adr/` that records why this plugin suite exists, what it does, and how it is vendored.
 2. Mirror the upstream source into `src/effects/<name>-core/` and add a reconciliation script under `scripts/vendor-<name>.mjs`. Refuse to drop reconciliation markers the upstream snapshot lacks.
 3. Add a worklet entry under `src/audio-worklets/` and a build script `scripts/build-<name>-worklet.mjs`.
@@ -126,12 +129,14 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 7. Update `docs/CURRENT-STATE.md` (bump the 4 flagship count + add a row to the flagship table).
 
 ### Adding a new project template
+
 1. Define a new `id` in the `TemplateId` union in `src/project-model/templates.ts`.
 2. Add a starter doc factory (in `templates.ts` or `template-pack2.ts` for larger genre starters).
 3. Add a thumbnail + description in the project browser (`src/ui/ProjectBrowser.tsx`).
 4. Test the boot path: open the template, verify transport, mixer, scene state.
 
 ### Adding a new AI model (ONNX)
+
 1. Train with the matching `scripts/train-*.py` and validate with `scripts/validate-*.{py,mjs}`.
 2. Pin the model under `public/models/<name>-v1.onnx` + a sibling `<name>-v1.manifest.json` that records `featureVersion`, `featureCount`, `modelHash` (SHA-256), `inputName`, `outputName(s)`, `report`.
 3. Add a worker under `src/ai/<bucket>/<name>-worker.ts`. The worker must validate `event.data` (Float32Array + size check) before passing to ORT.
@@ -142,17 +147,17 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 
 ## 6. Test gates — what must be green before merging
 
-| Gate | Command | Expected result |
-|---|---|---|
-| Strict typecheck | `npm run typecheck` | EXIT 0 (clean `tsc --noEmit`) |
-| Full Vitest suite | `npm run test` | 219+ files / 2351+ tests / 103+ skipped, all PASS |
-| Format check | `npm run format:check` | `All matched files use Prettier code style!` |
-| Real-browser audio | `npm run test:browser` | 226/226 in Chromium, Firefox and Edge |
-| Factory preset QA | `npm run test:browser:factory-presets` | 199/199 |
-| Targeted plugin hardening | (per plugin, under `tests/`) | PASS for PRISM, VLYX, VØID |
-| 300 s plugin soaks | (per plugin, under `tests/`) | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples |
-| Production build | `npm run build` | exit 0, bundle budgets respected |
-| Vulnerability audit | `npm audit --omit=dev` | 0 vulnerabilities |
+| Gate                      | Command                                | Expected result                                               |
+| ------------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                 |
+| Full Vitest suite         | `npm run test`                         | 219+ files / 2351+ tests / 103+ skipped, all PASS             |
+| Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                  |
+| Real-browser audio        | `npm run test:browser`                 | 226/226 in Chromium, Firefox and Edge                         |
+| Factory preset QA         | `npm run test:browser:factory-presets` | 199/199                                                       |
+| Targeted plugin hardening | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                    |
+| 300 s plugin soaks        | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples |
+| Production build          | `npm run build`                        | exit 0, bundle budgets respected                              |
+| Vulnerability audit       | `npm audit --omit=dev`                 | 0 vulnerabilities                                             |
 
 Owner gates still open (release-blocking, not feature-blocking): manual Firefox/Safari/iOS Safari smoke, `release:deployed-smoke` with a real `KYX_DEPLOY_URL`. See `RELEASE_READINESS_REPORT.md`.
 
@@ -234,21 +239,21 @@ npm run release:deployed-smoke                # requires KYX_DEPLOY_URL
 
 ## 9. Where to look for context before guessing
 
-Before opening a PR or guessing at "how does X work", check the relevant ADR. ADRs are short, dated, and authoritative on the *why* of architectural decisions.
+Before opening a PR or guessing at "how does X work", check the relevant ADR. ADRs are short, dated, and authoritative on the _why_ of architectural decisions.
 
-| Topic | Files |
-|---|---|
-| Browser-first platform | `docs/adr/0001-browser-first.md`, `docs/adr/0005-rust-wasm-dsp-policy.md` |
-| Audio clock + scheduling | `docs/adr/0002-audio-clock-scheduling.md`, `src/scheduler/Scheduler.ts` |
-| Project model ↔ runtime | `docs/adr/0003-project-model-runtime-separation.md`, `src/project-model/schema.ts` |
-| AudioWorklet boundary | `docs/adr/0004-audioworklet-boundary.md`, `src/audio-worklets/loader.ts` |
+| Topic                                | Files                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------- |
+| Browser-first platform               | `docs/adr/0001-browser-first.md`, `docs/adr/0005-rust-wasm-dsp-policy.md`           |
+| Audio clock + scheduling             | `docs/adr/0002-audio-clock-scheduling.md`, `src/scheduler/Scheduler.ts`             |
+| Project model ↔ runtime              | `docs/adr/0003-project-model-runtime-separation.md`, `src/project-model/schema.ts`  |
+| AudioWorklet boundary                | `docs/adr/0004-audioworklet-boundary.md`, `src/audio-worklets/loader.ts`            |
 | Effect rack, devices, native effects | `docs/adr/0006-effect-rack-native-effects.md`, `docs/adr/0006-device-state-slot.md` |
-| Instruments and notes | `docs/adr/0007-instruments-and-notes.md`, `src/instruments/registry.ts` |
-| VØID / reverb per-frequency decay | `docs/adr/0007-ozvena-per-frequency-decay-network.md` |
-| Composition systems (intent, dice) | `docs/adr/0008-composition-systems.md`, `INTENT_ENGINE.md` |
-| Offline render + export | `docs/adr/0009-offline-render-export.md`, `src/rendering/renderer.ts` |
-| Desktop packaging | `docs/adr/0010-desktop-packaging.md`, `desktop/main.cjs` |
-| Desktop auto-update | `docs/adr/0011-desktop-auto-update.md`, `electron-builder.yml` |
+| Instruments and notes                | `docs/adr/0007-instruments-and-notes.md`, `src/instruments/registry.ts`             |
+| VØID / reverb per-frequency decay    | `docs/adr/0007-ozvena-per-frequency-decay-network.md`                               |
+| Composition systems (intent, dice)   | `docs/adr/0008-composition-systems.md`, `INTENT_ENGINE.md`                          |
+| Offline render + export              | `docs/adr/0009-offline-render-export.md`, `src/rendering/renderer.ts`               |
+| Desktop packaging                    | `docs/adr/0010-desktop-packaging.md`, `desktop/main.cjs`                            |
+| Desktop auto-update                  | `docs/adr/0011-desktop-auto-update.md`, `electron-builder.yml`                      |
 
 If a decision feels arbitrary, look for an ADR. If none exists and you think there should be one, write it.
 

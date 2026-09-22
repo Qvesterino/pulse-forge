@@ -63,7 +63,7 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
 
     // Every top-level key present in the doc survives the round trip.
     for (const key of Object.keys(ALL_TOP_LEVEL_KEYS)) {
-      if ((doc as Record<string, unknown>)[key] !== undefined) {
+      if ((doc as unknown as Record<string, unknown>)[key] !== undefined) {
         expect(key in restored, `top-level key lost in Y.Doc round-trip: ${key}`).toBe(true);
       }
     }
@@ -85,29 +85,20 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
 
     for (const key of Object.keys(doc.master)) {
       expect(key in restored.master, `master scalar lost: ${key}`).toBe(true);
-      expect(restored.master[key as keyof typeof restored.master]).toEqual(
-        doc.master[key as keyof typeof doc.master],
-      );
+      expect(restored.master[key as keyof typeof restored.master]).toEqual(doc.master[key as keyof typeof doc.master]);
     }
     for (const track of doc.tracks) {
       const restoredTrack = restored.tracks.find((t) => t.id === track.id);
       expect(restoredTrack, `track dropped: ${track.id}`).toBeDefined();
       for (const key of Object.keys(track)) {
-        expect(
-          key in (restoredTrack ?? {}),
-          `track scalar lost (${track.kind}): ${key}`,
-        ).toBe(true);
+        expect(key in (restoredTrack ?? {}), `track scalar lost (${track.kind}): ${key}`).toBe(true);
       }
-      if (track.kind === "drum") {
-        for (const pad of track.pads) {
-          const restoredPad = restoredTrack?.pads.find((p) => p.idx === pad.idx);
-          expect(restoredPad, `pad dropped: ${track.id}/${pad.idx}`).toBeDefined();
-          for (const key of Object.keys(pad)) {
-            expect(
-              key in (restoredPad ?? {}),
-              `pad scalar lost (${track.id}/${pad.idx}): ${key}`,
-            ).toBe(true);
-          }
+      const restoredPads = restoredTrack !== undefined && restoredTrack.kind === "drum" ? restoredTrack.pads : [];
+      for (const pad of track.kind === "drum" ? track.pads : []) {
+        const restoredPad = restoredPads.find((p) => p.id === pad.id);
+        expect(restoredPad, `pad dropped: ${track.id}/${pad.id}`).toBeDefined();
+        for (const key of Object.keys(pad)) {
+          expect(key in (restoredPad ?? {}), `pad scalar lost (${track.id}/${pad.id}): ${key}`).toBe(true);
         }
       }
     }

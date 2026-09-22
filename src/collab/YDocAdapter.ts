@@ -55,7 +55,7 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
       denominator: 4,
     },
     key: m.get("key") as string | undefined as any,
-    tags: listValue(m.get("tags")) as string[],
+    ...(m.has("tags") ? { tags: listValue(m.get("tags")) as string[] } : {}), // ABSENT stays absent — materializing [] grew every collab projection a tags field the source doc never had (drift pin, GOAL 05).
     tracks: yArrToList(m.get("tracks") as Y.Array<unknown>).map(yMapToTrack),
     patterns: yArrToList(m.get("patterns") as Y.Array<unknown>).map(yMapToPattern),
     activePatternId: (m.get("activePatternId") as string) ?? "",
@@ -795,7 +795,10 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   setOrDelete(yMap, "key", newDoc.key);
 
   // Tags — Y.Array of plain strings, replaced only when content differs.
-  syncStringArray(yMap, "tags", newDoc.tags ?? []);
+  // ABSENT stays absent (see the read side) — an undefined tags field must
+  // not materialize as an empty array on peers.
+  if (newDoc.tags !== undefined) syncStringArray(yMap, "tags", newDoc.tags);
+  else yMap.delete("tags");
 
   // timeSignature
   const ts = ensureChildMap(yMap, "timeSignature");
