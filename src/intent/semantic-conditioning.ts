@@ -1,17 +1,21 @@
 /**
- * Text (+ user style) → 16-dim semantic conditioning vector (Fázy F + #7).
+ * Text (+ user style + AUDIO REFERENCE) → 16-dim semantic conditioning vector
+ * (Fázy F + #7 + reference).
  *
  * Chain: raw intent text → MiniLM embedding (semantic worker, timeout +
- * circuit breaker) → PCA projection → blended with the USER STYLE VECTOR
- * (average of the user's ★-kept rolls, INTENT_BLEND_WEIGHT intent vs style) →
- * conditioning vector for the v2 priors (drum + melodic — both consume this
- * ONE vector). Returns null when the flag is off, the text is empty, the
- * semantic model is unavailable, or the projection is degenerate — the
- * provider then falls back to the v1 genre+style one-hot prior. NEVER throws.
+ * circuit breaker) → PCA projection → an installed AUDIO REFERENCE vector
+ * ("sprav to ako tento WAV") REPLACES the text projection as the base — the
+ * WAV IS the intent — then the USER STYLE VECTOR blend applies as usual
+ * (INTENT_BLEND_WEIGHT) → conditioning vector for the v2 priors (drum +
+ * melodic — both consume this ONE vector). Returns null when the flag is
+ * off, the text is empty, the semantic model is unavailable, or the
+ * projection is degenerate — the provider then falls back to the v1
+ * genre+style one-hot prior. NEVER throws.
  *
- * Memoization key = trimmed text + style-vector SIGNATURE: a new ★ (or a
- * dropped one) changes the signature, so personalization shifts recompute
- * while repeat rolls with an unchanged ledger re-embed nothing.
+ * Memoization key = trimmed text + style-vector SIGNATURE + audio EPOCH:
+ * a new ★, a dropped one, or a new reference changes the key, so
+ * personalization/reference shifts recompute while repeat rolls with an
+ * unchanged ledger re-embed nothing.
  */
 import { embeddingConditionedMode } from "../ai/symbolic/prior-client";
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
@@ -24,6 +28,19 @@ const MAX_TEXT_LENGTH = 300;
 const MAX_CACHE_ENTRIES = 64;
 
 const projectionCache = new Map<string, readonly number[] | null>();
+
+let audioEpoch = 0;
+let audioReferenceOverride: readonly number[] | null = null;
+
+/**
+ * Install an audio-reference conditioning vector ("sprav to ako tento WAV").
+ * Null clears it. Bumps the cache epoch either way.
+ */
+export function setAudioReferenceConditioning(vector: readonly number[] | null): void {
+  audioReferenceOverride = vector;
+  audioEpoch += 1;
+  projectionCache.clear();
+}
 
 /** Test/diagnostic hook: drop the memoized conditioning vectors. */
 export function resetSemanticConditioning(): void {
@@ -58,13 +75,16 @@ export async function semanticConditioning(
     if (embeddingConditionedMode() !== "on") return null;
 
     const ledger = readFavoriteLedger();
-    const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}`;
+    const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}`;
     if (projectionCache.has(cacheKey)) return projectionCache.get(cacheKey) ?? null;
 
     const vectors = await embed([trimmed]);
     const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
+    // An installed audio reference REPLACES the text projection as the base —
+    // "sprav to ako tento WAV" means the WAV outranks the words.
     const pure =
-      projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null;
+      audioReferenceOverride ??
+      (projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null);
 
     let result: readonly number[] | null = null;
     if (pure) {

@@ -12,6 +12,9 @@ import {
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { reviseSection, replacePatternInPlaceCommand } from "../intent/song";
 import { composeFullTrack } from "../intent/compose";
+import { analyzeAudioReference } from "../intent/audio-reference";
+import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
+import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent } from "../intent/loudness";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
@@ -207,7 +210,7 @@ export function IntentPanel() {
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
-    const intentInput = parsed?.input ?? {};
+    const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
     // Wave 1 — FX words remaining after section parsing ride WITH the
     // generation ("wobbly drill"): candidates carry them, USE applies
     // pattern + FX as one step.
@@ -343,6 +346,35 @@ export function IntentPanel() {
   // transitions, scoped FX, length words) + mix profile + loudness pass.
   // Undo per stage; the loudness render must run AFTER install.
   const [songBusy, setSongBusy] = useState(false);
+  // Audio reference ("sprav to ako tento WAV"): patch merges into every
+  // generation path, the 16-dim conditioning installs for the v2 priors.
+  const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
+  const [refBusy, setRefBusy] = useState(false);
+  const referenceInputRef = useRef<HTMLInputElement | null>(null);
+  const handleReferenceFile = async (file: File | null) => {
+    if (!file || refBusy) return;
+    setRefBusy(true);
+    setStatus("🎧 listening to the reference…");
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const ctx = new AudioContext();
+      const buffer = await ctx.decodeAudioData(arrayBuffer);
+      await ctx.close();
+      const pcm = resampleLinear(downmixToMono(buffer), buffer.sampleRate, 16000);
+      const result = await analyzeAudioReference(pcm);
+      if (!result) {
+        setError("🎧 reference: audio models unavailable (fetch them or try later)");
+        return;
+      }
+      setRefPatch(result.patch);
+      setAudioReferenceConditioning(result.conditioning);
+      setStatus(`🎧 reference: ${result.summary} — patch + conditioning live`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefBusy(false);
+    }
+  };
   const runSongBuild = async (sections?: SectionParse) => {
     setError(null);
     setStatus(null);
@@ -350,7 +382,7 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     try {
-      const intentInput = parsed?.input ?? {};
+      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
       const globalFx = parseProductionIntent(sections?.remainingText ?? text);
       const result = await composeFullTrack(doc, text, {
         ...(sections ? { sections } : {}),
@@ -445,7 +477,7 @@ export function IntentPanel() {
         }
       } else if (route.kind === "mix") {
         stopAudition();
-        const intentInput = parsed?.input ?? {};
+        const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
@@ -483,7 +515,7 @@ export function IntentPanel() {
           setStatus(`⚡ ${route.attribute} ${route.direction === "more" ? "+0.15" : "−0.15"} — same seed`);
         } else {
           // Nothing generated yet — apply the attribute to the parsed intent.
-          const intentInput: IntentInput = { ...(parsed?.input ?? {}) };
+          const intentInput: IntentInput = { ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}) } };
           intentInput[route.attribute] = fallbackDefaults[route.attribute] + delta;
           await runGeneration(intentInput, controller);
           setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
@@ -581,6 +613,25 @@ export function IntentPanel() {
         >
           {songBusy ? "BUILDING…" : "♪ SONG"}
         </button>
+        <button
+          type="button"
+          className="btn intent-ref-btn"
+          disabled={refBusy}
+          onClick={() => referenceInputRef.current?.click()}
+          title="Audio reference — drop a WAV and the engine listens: genre + energy patch, plus a semantic conditioning vector for the v2 priors"
+        >
+          {refBusy ? "🎧…" : "🎧 REF"}
+        </button>
+        <input
+          ref={referenceInputRef}
+          type="file"
+          accept="audio/*"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            void handleReferenceFile(event.target.files?.[0] ?? null);
+            event.target.value = "";
+          }}
+        />
       </div>
       {candidates && candidates.length > 0 && (
         <div className="intent-candidates" aria-label="Candidate bank">

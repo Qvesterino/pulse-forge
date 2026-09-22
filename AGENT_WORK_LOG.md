@@ -3722,3 +3722,12 @@ audit doc.
 ---
 
 ## GOAL 30 (doplňok) — INTENT_ENGINE.md 5.9b sekcia (SUNO MODE + A/B nález) doplnená.
+
+---
+
+## GOAL 31 — AUDIO REFERENCE "SPRAV TO AKO TENTO WAV" (2026-09-22)
+
+- **`src/intent/audio-reference.ts`** `analyzeAudioReference(pcm16k, {classify?, embed?})`: AST klasifikácia (classifyAudio, 16 kHz mono) + `extractAudioFeatures` → **patch** (genre cez GENRE_LABEL_HINTS mapa AudioSet labelov, energy/density z RMS/crest/low-band heuristiky, mood) + **textový most conditioning**: top-6 labelov ako text → MiniLM → projectEmbedding → 16-dim. NIKDY nehádže — AST nedostupný = features-only patch, embedder nedostupný = bez conditioning.
+- **semantic-conditioning**: `setAudioReferenceConditioning(vec|null)` — nainštalovaná referenca NAHRÁDZA textovú projekciu ako base (WAV JE intent), style blend zostáva; cache epoch (set bumpne kľúč — nová referenca = recompute).
+- **IntentPanel**: 🎧 REF button + hidden file input — decodeAudioData → downmixToMono → resampleLinear(16 kHz) → analyze → `setRefPatch` (merguje sa do VŠETKÝCH 4 intent assembly bodov) + conditioning live. Status "🎧 reference: techno — Techno 82%, ..."
+- **Testy** `tests/audio-reference.test.ts` 5/5 (label→genre, text-bridge numerická rovnosť, AST degradácia, slider heuristiky, override replacuje text + clear vráti text). Regresia 240/240 cez 24 súborov; typecheck 0.
