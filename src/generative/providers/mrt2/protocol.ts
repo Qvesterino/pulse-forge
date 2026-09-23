@@ -10,6 +10,9 @@ export const MRT2_PROTOCOL_VERSION = 1 as const;
 export const MRT2_CONTROL_MAX_BYTES = 64 * 1024;
 export const MRT2_PACKET_MAX_FRAMES = 48_000 * 15;
 export const MRT2_PACKET_MAX_SAMPLE_RATE = 192_000;
+export const MRT2_CAPTURE_MAX_SECONDS = 120;
+export const MRT2_CAPTURE_MAX_FRAMES = 48_000 * MRT2_CAPTURE_MAX_SECONDS;
+export const MRT2_CAPTURE_MAX_CHUNKS = 16_384;
 const MRT2_PACKET_MAGIC = "KYXMRT2\0";
 const MRT2_PACKET_HEADER_BYTES = 32;
 
@@ -275,7 +278,7 @@ export function parseMrt2ControlMessage(raw: unknown): Mrt2ControlMessage {
         typeof maxCaptureSeconds !== "number" ||
         !Number.isFinite(maxCaptureSeconds) ||
         maxCaptureSeconds < 0 ||
-        maxCaptureSeconds > 120
+        maxCaptureSeconds > MRT2_CAPTURE_MAX_SECONDS
       ) {
         throw new Error("hello.ok.maxCaptureSeconds is invalid");
       }
@@ -316,13 +319,17 @@ export function parseMrt2ControlMessage(raw: unknown): Mrt2ControlMessage {
     case "capture.start":
       requiredString(value.requestId, "message.requestId");
       requiredString(value.sessionId, "message.sessionId");
-      finitePositive(value.durationSec, "message.durationSec");
+      if (finitePositive(value.durationSec, "message.durationSec") > MRT2_CAPTURE_MAX_SECONDS) {
+        throw new Error("message.durationSec exceeds the capture limit");
+      }
       return value as unknown as Mrt2ControlMessage;
     case "capture.ok":
       requiredString(value.requestId, "message.requestId");
       requiredString(value.sessionId, "message.sessionId");
-      boundedInteger(value.frames, "message.frames", MRT2_PACKET_MAX_FRAMES);
-      finitePositive(value.durationSec, "message.durationSec");
+      boundedInteger(value.frames, "message.frames", MRT2_CAPTURE_MAX_FRAMES);
+      if (finitePositive(value.durationSec, "message.durationSec") > MRT2_CAPTURE_MAX_SECONDS) {
+        throw new Error("message.durationSec exceeds the capture limit");
+      }
       requiredString(value.inputHash, "message.inputHash");
       return value as unknown as Mrt2ControlMessage;
     case "status":
@@ -373,13 +380,20 @@ export function serializeMrt2ControlMessage(message: Mrt2ControlMessage): string
 export function validateMrt2AudioPacket(value: unknown): Mrt2AudioPacket {
   if (!isRecord(value)) throw new Error("MRT2 audio packet must be an object");
   if (value.kind !== "output" && value.kind !== "style") throw new Error("MRT2 packet kind is invalid");
-  if (!Number.isSafeInteger(value.sequence) || value.sequence < 0 || value.sequence > 0xffffffff) {
+  if (
+    typeof value.sequence !== "number" ||
+    !Number.isSafeInteger(value.sequence) ||
+    value.sequence < 0 ||
+    value.sequence > 0xffffffff
+  ) {
     throw new Error("MRT2 packet sequence is invalid");
   }
   const sampleRate = packetSampleRate(value.sampleRate, "packet.sampleRate");
   const channels = boundedInteger(value.channels, "packet.channels", 2);
   if (channels < 1) throw new Error("MRT2 packet channels are invalid");
+  const sequence = value.sequence;
   const frames = boundedInteger(value.frames, "packet.frames", MRT2_PACKET_MAX_FRAMES);
+  if (frames === 0) throw new Error("MRT2 packet must contain at least one frame");
   if (!(value.data instanceof Float32Array) || value.data.length !== frames * channels) {
     throw new Error("MRT2 packet PCM shape is invalid");
   }
@@ -388,7 +402,7 @@ export function validateMrt2AudioPacket(value: unknown): Mrt2AudioPacket {
   }
   return {
     kind: value.kind,
-    sequence: value.sequence,
+    sequence,
     sampleRate,
     channels,
     frames,
@@ -399,7 +413,7 @@ export function validateMrt2AudioPacket(value: unknown): Mrt2AudioPacket {
 /** Encode PCM as a versioned binary frame; control messages never carry PCM. */
 export function encodeMrt2AudioPacket(packet: Mrt2AudioPacket): ArrayBuffer {
   const validated = validateMrt2AudioPacket(packet);
-  const { kind, sequence, data } = validated;
+  const { kind, data } = validated;
   const sampleRate = validated.sampleRate;
   const channels = validated.channels;
   const frames = validated.frames;

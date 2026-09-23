@@ -13,7 +13,12 @@
       "input": {
         "intervalMs": 25,
         "windows": 4,
-        "patternSteps": [0, 3, 6, 9],
+        "patternSteps": [
+          0,
+          3,
+          6,
+          9
+        ],
         "swing": 0.3,
         "bpm": 124
       },

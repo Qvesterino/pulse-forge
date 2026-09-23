@@ -660,6 +660,10 @@ export async function openProject(
     execute: (command) => store.execute(command),
     getTick: () => transport.tickAt(engine.currentTime + 0.005),
     isPlaying: () => transport.playing,
+    // Audit 07 D3: count-in/pre-roll hits land before the content region —
+    // record only from the content start onward (null while stopped; the
+    // isPlaying gate already drops those).
+    getContentStartTick: () => (transport.playing ? transport.anchorTickBeforePreRoll() : null),
     beginUndoFrame: (label) => store.beginUndoFrame(label),
     endUndoFrame: () => store.endUndoFrame(),
   });

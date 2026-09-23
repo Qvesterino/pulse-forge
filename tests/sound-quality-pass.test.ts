@@ -544,7 +544,8 @@ describe("genre song references — per-genre loudness trim (sound-quality wave 
   it("engine source pin: trim rides multiplicatively on master gain, clamped ±12", () => {
     const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
     const apply = source.slice(source.indexOf("private applyMasterConfig"), source.indexOf("if (this.masterTiltLow"));
-    expect(apply).toContain("config.loudnessTrimDb ?? 0");
+    expect(apply).toContain("const trimRaw = config.loudnessTrimDb");
+    expect(apply).toMatch(/typeof trimRaw === "number" && Number\.isFinite\(trimRaw\)/);
     expect(apply).toMatch(/Math\.min\(12, Math\.max\(-12,/);
     // Multiplicative on the clamped input trim, pre-limiter (before tape/M/S).
     expect(apply).toMatch(/gain \* Math\.pow\(10, trim \/ 20\)/);

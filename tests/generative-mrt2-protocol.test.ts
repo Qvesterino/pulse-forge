@@ -7,6 +7,7 @@ import {
   type Mrt2AudioPacket,
   type Mrt2CompanionEvent,
   type Mrt2CompanionTransport,
+  type Mrt2ControlMessage,
   Mrt2CompanionProvider,
   isAllowedMrt2CompanionUrl,
 } from "../src/generative";
@@ -137,6 +138,10 @@ class FakeTransport implements Mrt2CompanionTransport {
     this.emit({ kind: "audio", packet: packet as Mrt2AudioPacket });
   }
 
+  emitControl(message: unknown): void {
+    this.emit({ kind: "control", message: message as Mrt2ControlMessage });
+  }
+
   private emit(event: Mrt2CompanionEvent): void {
     this.listener?.(event);
   }
@@ -240,6 +245,16 @@ describe("MRT2 companion protocol", () => {
         data: new Float32Array([Number.NaN, 0]),
       }),
     ).toThrow(/non-finite/u);
+    expect(() =>
+      encodeMrt2AudioPacket({
+        kind: "output",
+        sequence: 0,
+        sampleRate: 48_000,
+        channels: 2,
+        frames: 0,
+        data: new Float32Array(),
+      }),
+    ).toThrow(/at least one frame/u);
   });
 
   it("validates versioned control messages before returning them", () => {
@@ -364,5 +379,36 @@ describe("MRT2 companion protocol", () => {
     expect(session.getStatus()).toMatchObject({ state: "error" });
     await expect(session.start()).rejects.toThrow(/Invalid MRT2 audio packet/u);
     await session.dispose();
+  });
+
+  it("bounds capture PCM to the requested frames and rejects malformed direct control events", async () => {
+    const transport = new FakeTransport();
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    await expect(session.capture({ input: input("text"), durationSec: 1 / 48_000 })).rejects.toThrow(
+      /requested frame limit/u,
+    );
+    expect(session.getStatus().state).toBe("error");
+    await session.dispose();
+
+    const controlTransport = new FakeTransport();
+    const controlProvider = new Mrt2CompanionProvider({
+      transportFactory: async () => controlTransport,
+      timeoutMs: 1000,
+    });
+    const controlSession = await controlProvider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    const start = controlSession.start();
+    controlTransport.emitControl({ version: 1, type: "status", state: "future-state" });
+    await expect(start).rejects.toThrow(/Invalid MRT2 control message/u);
+    expect(controlSession.getStatus().state).toBe("error");
+    await controlSession.dispose();
   });
 });

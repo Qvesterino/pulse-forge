@@ -50,7 +50,7 @@ const EMPTY_EXPORT_SUMMARY: BufferSummary = {
 };
 
 type RecSourceKind = "master" | "track" | "mic";
-type RecState = "idle" | "recording" | "saving";
+type RecState = "idle" | "starting" | "recording" | "saving";
 
 export function ExportPanel({
   selectedTrackId,
@@ -345,6 +345,10 @@ export function ExportPanel({
       setRecError("Audio engine not ready");
       return;
     }
+    // Audit 07 D5: enter "starting" IMMEDIATELY — the mic permission prompt
+    // can take seconds, and a second click used to construct a competing
+    // recorder whose claim error surfaced while the first prompt was open.
+    setRecState("starting");
     // The TRACK option only renders with a selected track; anything else that
     // slips through falls back to the master tap rather than failing silently.
     const source: RecordSource =
@@ -403,6 +407,7 @@ export function ExportPanel({
       const recorder = recorderRef.current;
       if (recorder) await Promise.resolve(recorder.cancel()).catch(() => undefined);
       recorderRef.current = null;
+      setRecState("idle"); // back off "starting" — retry must be possible
       setRecError(err instanceof Error ? err.message : "Recording failed");
     }
   };
@@ -748,10 +753,10 @@ export function ExportPanel({
             <button
               type="button"
               className="btn btn-rec"
-              disabled={recState === "saving"}
+              disabled={recState === "saving" || recState === "starting"}
               onClick={() => void startRecording()}
             >
-              ● REC
+              {recState === "starting" ? "…" : "● REC"}
             </button>
           )}
           {recState === "saving" && <span className="export-resample-saving">saving…</span>}

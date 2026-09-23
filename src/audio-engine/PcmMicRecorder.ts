@@ -17,6 +17,11 @@ export interface PcmRecordingMetadata {
   startBar: number;
   bpm: number;
   recordingInputOffsetMs?: number;
+  /** Audit 07 D1: count-in/pre-roll seconds captured BEFORE the musical
+   * content when REC rolled the transport with a lead-in. Placement trims
+   * this head off (clip offsetSec) so the downbeat lands on startBar
+   * instead of one lead-in late. */
+  leadInSec?: number;
 }
 
 export type PcmRecorderState = "idle" | "starting" | "recording" | "stopping";

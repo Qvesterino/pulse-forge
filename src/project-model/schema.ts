@@ -436,11 +436,17 @@ export function clampUnit(value: unknown): number {
 }
 
 /** Validate a stepCount. Returns a safe positive integer or the fallback. */
+/** Hard ceiling (Audit 08 D6): a hostile doc with stepCount: 1e9 OOM'd the
+ * tab inside normalize's row rebuild (16 × stepCount-length arrays per
+ * pattern). 128 steps = 8 bars — far above any UI flow (drag/zoom stops at
+ * 64), far below OOM territory. */
+export const MAX_STEP_COUNT = 128;
+
 export function normalizeStepCount(stepCount: number): number {
   if (!Number.isFinite(stepCount) || stepCount <= 0 || !Number.isInteger(stepCount)) {
     return FALLBACK_STEP_COUNT;
   }
-  return stepCount;
+  return Math.min(MAX_STEP_COUNT, stepCount);
 }
 
 export function sanitizeColor(value: unknown): string | undefined {
@@ -1354,17 +1360,22 @@ function normalizeTracksDomain(s: NormalizeState): void {
   // but the per-kind sanitizers above never touched them. A hostile doc with
   // gain: 999 blasted ~+60 dB through the engine, and a NON-FINITE gain made
   // setTargetAtTime THROW mid-syncProject — aborting the whole graph sync
-  // and leaving audio permanently desynced from the UI.
+  // and leaving audio permanently desynced from the UI. When every track is
+  // already clean the ORIGINAL array reference must survive — canonicality
+  // (normalize == identity) and structural sharing for the React slices
+  // depend on it; an unconditional .map broke both.
   const current = s.doc;
+  let mixerChanged = false;
   const mixerSafe = current.tracks.map((t) => {
     const gain = typeof t.gain === "number" && Number.isFinite(t.gain) ? Math.min(1.5, Math.max(0, t.gain)) : 0.9;
     const pan = typeof t.pan === "number" && Number.isFinite(t.pan) ? Math.min(1, Math.max(-1, t.pan)) : 0;
     const mute = t.mute === true;
     const solo = t.solo === true;
     if (gain === t.gain && pan === t.pan && mute === t.mute && solo === t.solo) return t;
+    mixerChanged = true;
     return { ...t, gain, pan, mute, solo };
   });
-  if (mixerSafe !== current.tracks) {
+  if (mixerChanged) {
     s.doc = { ...current, tracks: mixerSafe };
     s.changed = true;
   }

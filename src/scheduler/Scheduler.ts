@@ -724,7 +724,13 @@ export class Scheduler {
         this.firedMarkerIds.add(marker.id);
         const assetId = mapMarkerTypeToAsset(marker.type);
         const when = timeAtForWindow(marker.tick) + this.scheduleOffsetSec() + 0.005;
-        this.deps.triggerMarker?.(assetId, when, marker.linkedClipId);
+        // linkedClipId is a CLIP id (Audit 08 D5) — resolve the clip's TRACK
+        // so the cue previews in the right track context instead of always
+        // falling back to the global preview bus.
+        const linkedClipTrackId = marker.linkedClipId
+          ? doc.arrangement.audioClips?.find((c) => c.id === marker.linkedClipId)?.trackId
+          : undefined;
+        this.deps.triggerMarker?.(assetId, when, linkedClipTrackId);
       }
       // Scene automation: invoke applySceneAutomation per active clip window.
       if (activeScene) {

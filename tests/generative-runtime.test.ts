@@ -5,7 +5,13 @@ import { createDefaultProject } from "../src/project-model/schema";
 import { createGenerativeTrack } from "../src/commands/commands";
 import { Transport } from "../src/transport/Transport";
 import type { GenerativePlayerHandle, GenerativePlayerStatus } from "../src/audio-worklets/generative-player-node";
-import type { GenerativeAudioSession, GenerativeCapabilities, GenerativeStatus } from "../src/generative/types";
+import type {
+  GenerativeAudioSession,
+  GenerativeAudioProvider,
+  GenerativeCapabilities,
+  GenerativeInput,
+  GenerativeStatus,
+} from "../src/generative/types";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { IUserSampleRepository } from "../src/persistence/contracts";
 import { setAudioDecoder } from "../src/services/audio-decode";
@@ -43,10 +49,10 @@ function makePlayer(
   };
 }
 
-function runtimeFixture() {
+function runtimeFixture(provider = createMockGenerativeProvider({ providerId: "mrt2", modelId: "mrt2_small" })) {
   const { doc, trackId } = fixture();
   const providers = new GenerativeProviderRegistry();
-  providers.register(createMockGenerativeProvider({ providerId: "mrt2", modelId: "mrt2_small" }));
+  providers.register(provider);
   const transport = new Transport({ now: () => 0 }, doc.bpm);
   const log = { pushed: [] as number[], disposed: 0, flushed: 0, attached: 0, detached: 0, previewed: 0 };
   let emitPlayerStatus: ((status: GenerativePlayerStatus) => void) | undefined;
@@ -80,7 +86,56 @@ function runtimeFixture() {
     trackId,
     log,
     doc,
+    transport,
     emitPlayerStatus: (status: GenerativePlayerStatus) => emitPlayerStatus?.(status),
+  };
+}
+
+function inputRecordingProvider(inputs: GenerativeInput[]): GenerativeAudioProvider {
+  const capabilities: GenerativeCapabilities = {
+    providerId: "mrt2",
+    modelIds: ["mrt2_small"],
+    supportsRealtime: true,
+    supportsCapture: false,
+    supportsTextStyle: true,
+    supportsAudioStyle: false,
+    supportsNoteConditioning: true,
+    supportsDrumsMode: false,
+    supportsSeed: false,
+    outputSampleRates: [48_000],
+    outputChannels: [2],
+    maxCaptureSeconds: 0,
+  };
+  return {
+    id: "mrt2",
+    getCapabilities: () => capabilities,
+    createSession: async (config) => {
+      let status: GenerativeStatus = { state: "idle" };
+      const statusListeners = new Set<(next: GenerativeStatus) => void>();
+      const setStatus = (next: GenerativeStatus): void => {
+        status = next;
+        for (const listener of statusListeners) listener(next);
+      };
+      return {
+        capabilities,
+        config,
+        getStatus: () => status,
+        subscribeStatus: (listener) => {
+          statusListeners.add(listener);
+          return () => statusListeners.delete(listener);
+        },
+        subscribeAudio: () => () => undefined,
+        updateInput: async (input) => {
+          inputs.push(input);
+        },
+        start: async () => setStatus({ state: "running" }),
+        stop: async () => setStatus({ state: "ready" }),
+        capture: async () => {
+          throw new Error("capture is not supported by this test provider");
+        },
+        dispose: async () => setStatus({ state: "disposed" }),
+      };
+    },
   };
 }
 
@@ -100,6 +155,25 @@ describe("generative runtime", () => {
     expect(log.flushed).toBe(1);
     expect(log.disposed).toBe(1);
     expect(log.detached).toBe(1);
+  });
+
+  it("refreshes conditioning with the current tempo and loop-wrap playhead", async () => {
+    const inputs: GenerativeInput[] = [];
+    const { runtime, trackId, transport } = runtimeFixture(inputRecordingProvider(inputs));
+    await runtime.startTrack(trackId);
+
+    transport.play(1_920, { leadIn: false });
+    transport.setBpm(90);
+    await runtime.refreshAll();
+    expect(inputs.at(-1)).toMatchObject({ bpm: 90, startTick: 1_920 });
+
+    transport.setLoop(true, 960, 1_920);
+    // Scheduler re-anchors the transport to loopStart on a loop boundary.
+    transport.seek(960);
+    await runtime.refreshAll();
+    expect(inputs.at(-1)).toMatchObject({ bpm: 90, startTick: 960 });
+
+    await runtime.dispose();
   });
 
   it("invalidates an in-flight start so a late provider cannot reattach audio", async () => {

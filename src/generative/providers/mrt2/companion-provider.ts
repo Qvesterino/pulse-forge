@@ -1,7 +1,10 @@
 import { withGenerativeTimeout, GENERATIVE_PROVIDER_TIMEOUT_MS } from "../../timeout";
 import {
   encodeMrt2AudioPacket,
+  parseMrt2ControlMessage,
   validateMrt2AudioPacket,
+  MRT2_CAPTURE_MAX_FRAMES,
+  MRT2_CAPTURE_MAX_CHUNKS,
   type Mrt2AudioPacket,
   type Mrt2ControlMessage,
   type Mrt2SerializableInput,
@@ -153,7 +156,11 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
     string,
     { resolve: (message: Mrt2ControlMessage) => void; reject: (error: unknown) => void }
   >();
-  private readonly captureChunks: Mrt2AudioPacket[] = [];
+  private captureData: Float32Array | null = null;
+  private captureExpectedFrames = 0;
+  private captureCollectedFrames = 0;
+  private captureLastSequence: number | null = null;
+  private capturePacketCount = 0;
   private sessionId: string | null = null;
   private disposed = false;
   private failedError: Error | null = null;
@@ -292,32 +299,62 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
     validateCaptureRequest(request, this.capabilities.maxCaptureSeconds);
     if (!this.capabilities.supportsCapture) throw new Error("MRT2 companion does not support capture");
     const sessionId = this.requireSessionId();
-    this.captureChunks.length = 0;
+    const requestedFrames = Math.ceil(request.durationSec * this.config.outputSampleRate);
+    if (requestedFrames > MRT2_CAPTURE_MAX_FRAMES) {
+      throw new Error("MRT2 capture exceeds the bounded PCM frame limit for this sample rate");
+    }
+    this.captureData = new Float32Array(requestedFrames * this.config.outputChannels);
+    this.captureExpectedFrames = requestedFrames;
+    this.captureCollectedFrames = 0;
+    this.captureLastSequence = null;
+    this.capturePacketCount = 0;
     this.setStatus({ state: "capturing" });
-    const response = await this.request(
-      {
-        version: 1,
-        type: "capture.start",
-        requestId: requestId("capture"),
-        sessionId,
-        durationSec: request.durationSec,
-      },
-      "capture.ok",
-      request.signal,
-    );
-    if (response.type !== "capture.ok") throw new Error("MRT2 companion capture did not complete");
-    const data = concatenateCapture(this.captureChunks, response.frames, this.config.outputChannels);
-    this.setStatus({ state: "ready" });
-    return {
-      sampleRate: this.config.outputSampleRate,
-      channels: this.config.outputChannels,
-      frames: response.frames,
-      durationSec: response.durationSec,
-      data,
-      providerId: this.capabilities.providerId,
-      modelId: this.config.modelId,
-      inputHash: response.inputHash,
-    };
+    try {
+      const response = await this.request(
+        {
+          version: 1,
+          type: "capture.start",
+          requestId: requestId("capture"),
+          sessionId,
+          durationSec: request.durationSec,
+        },
+        "capture.ok",
+        request.signal,
+      );
+      if (response.type !== "capture.ok") throw new Error("MRT2 companion capture did not complete");
+      if (response.frames <= 0 || response.frames !== this.captureCollectedFrames) {
+        throw new Error("MRT2 capture frame count does not match received PCM");
+      }
+      const expectedDurationSec = response.frames / this.config.outputSampleRate;
+      if (Math.abs(response.durationSec - expectedDurationSec) > 1 / this.config.outputSampleRate + 1e-9) {
+        throw new Error("MRT2 capture duration does not match its PCM frame count");
+      }
+      const captureData = this.captureData;
+      if (!captureData) throw new Error("MRT2 capture PCM buffer is unavailable");
+      const data = captureData.subarray(0, response.frames * this.config.outputChannels);
+      this.setStatus({ state: "ready" });
+      return {
+        sampleRate: this.config.outputSampleRate,
+        channels: this.config.outputChannels,
+        frames: response.frames,
+        durationSec: response.durationSec,
+        data,
+        providerId: this.capabilities.providerId,
+        modelId: this.config.modelId,
+        inputHash: response.inputHash,
+      };
+    } catch (error) {
+      if (!this.failedError && this.status.state === "capturing") {
+        this.setStatus({ state: "ready", message: error instanceof Error ? error.message : "MRT2 capture failed" });
+      }
+      throw error;
+    } finally {
+      this.captureData = null;
+      this.captureExpectedFrames = 0;
+      this.captureCollectedFrames = 0;
+      this.captureLastSequence = null;
+      this.capturePacketCount = 0;
+    }
   }
 
   async dispose(): Promise<void> {
@@ -374,6 +411,7 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
   }
 
   private onTransportEvent(event: Mrt2CompanionEvent): void {
+    if (this.disposed || this.failedError) return;
     if (event.kind === "closed") {
       const error = new Error(event.reason ?? "MRT2 companion disconnected");
       for (const pending of this.pending.values()) pending.reject(error);
@@ -399,7 +437,36 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
         return;
       }
       if (packet.kind !== "output") return;
-      if (this.status.state === "capturing") this.captureChunks.push(packet);
+      if (this.status.state === "capturing") {
+        if (packet.sampleRate !== this.config.outputSampleRate || packet.channels !== this.config.outputChannels) {
+          this.fail(new Error("MRT2 capture PCM format changed during capture"));
+          return;
+        }
+        if (
+          this.captureLastSequence !== null &&
+          (packet.sequence <= this.captureLastSequence || packet.sequence !== this.captureLastSequence + 1)
+        ) {
+          this.fail(new Error("MRT2 capture PCM sequence is duplicated, out of order, or incomplete"));
+          return;
+        }
+        if (this.capturePacketCount >= MRT2_CAPTURE_MAX_CHUNKS) {
+          this.fail(new Error("MRT2 capture exceeded its bounded packet count"));
+          return;
+        }
+        if (this.captureCollectedFrames + packet.frames > this.captureExpectedFrames) {
+          this.fail(new Error("MRT2 capture exceeded its requested frame limit"));
+          return;
+        }
+        const captureData = this.captureData;
+        if (!captureData) {
+          this.fail(new Error("MRT2 capture PCM buffer is unavailable"));
+          return;
+        }
+        captureData.set(packet.data, this.captureCollectedFrames * this.config.outputChannels);
+        this.captureLastSequence = packet.sequence;
+        this.captureCollectedFrames += packet.frames;
+        this.capturePacketCount++;
+      }
       const chunk: GenerativeAudioChunk = {
         sequence: packet.sequence,
         sampleRate: packet.sampleRate,
@@ -410,8 +477,26 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
       for (const listener of this.audioListeners) listener(chunk);
       return;
     }
-    const message = event.message;
+    let message: Mrt2ControlMessage;
+    try {
+      message = parseMrt2ControlMessage(event.message);
+    } catch (error) {
+      this.fail(
+        new Error(
+          error instanceof Error ? `Invalid MRT2 control message: ${error.message}` : "Invalid MRT2 control message",
+        ),
+      );
+      return;
+    }
+    if (message.type === "error") {
+      this.fail(new Error(`MRT2 companion error ${message.code}: ${message.message}`));
+      return;
+    }
     if (message.type === "status") {
+      if (message.state === "error" || message.state === "unavailable") {
+        this.fail(new Error(message.message ?? `MRT2 companion reported ${message.state}`), message.state);
+        return;
+      }
       this.setStatus({
         state: message.state as GenerativeSessionState,
         ...(message.message ? { message: message.message } : {}),
@@ -439,26 +524,11 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
     if (!allowDisposed && this.failedError) throw this.failedError;
   }
 
-  private fail(error: Error): void {
+  private fail(error: Error, state: "error" | "unavailable" = "error"): void {
     if (this.disposed || this.failedError) return;
     this.failedError = error;
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
-    this.setStatus({ state: "error", message: error.message });
+    this.setStatus({ state, message: error.message });
   }
-}
-
-function concatenateCapture(chunks: readonly Mrt2AudioPacket[], frames: number, channels: number): Float32Array {
-  const ordered = [...chunks].sort((a, b) => a.sequence - b.sequence);
-  const output = new Float32Array(frames * channels);
-  let offset = 0;
-  for (const packet of ordered) {
-    if (packet.channels !== channels) throw new Error("MRT2 capture channel count changed");
-    const count = Math.min(packet.data.length, output.length - offset);
-    if (count <= 0) break;
-    output.set(packet.data.subarray(0, count), offset);
-    offset += count;
-  }
-  if (offset !== output.length) throw new Error("MRT2 capture returned incomplete PCM");
-  return output;
 }

@@ -51,6 +51,24 @@ describe("normalizeProject — mixer parameter sanitization (audit 04)", () => {
     expect(doc.tracks[0]!.solo).toBe(false);
   });
 
+  it("CLEAN mixer params keep the tracks ARRAY reference (canonicality + structural sharing)", () => {
+    // Regression: the first version of this sanitizer .map()-ed unconditionally,
+    // reallocating `tracks` on EVERY normalizeProject call — breaking doc
+    // identity (templates are canonical) and the React slice subscriptions.
+    const doc = createProjectFromTemplate("house");
+    const normalized = normalizeProject(doc);
+    expect(normalized.tracks).toBe(doc.tracks);
+    // And an out-of-range value still gets clamped (same run, real change).
+    const hostile = normalizeProject({
+      ...doc,
+      tracks: doc.tracks.map((t, i) => (i === 0 ? { ...t, gain: 42 } : t)),
+    });
+    expect(hostile.tracks).not.toBe(doc.tracks);
+    expect(hostile.tracks[0]!.gain).toBe(1.5);
+    // Master identity survives when loudnessTrimDb is present and in range.
+    expect(hostile.master).toBeDefined();
+  });
+
   it("clamps hostile send levels into [0, 1] (pre-fix: send 42 reached the FX bus)", () => {
     const base = createProjectFromTemplate("house");
     const returnId = base.returns[0]?.id;

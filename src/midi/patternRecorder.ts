@@ -21,6 +21,8 @@ export interface PatternRecorderDeps {
   /** Musical tick for an event that just arrived (maps audio time → transport tick). */
   getTick: () => number;
   isPlaying: () => boolean;
+  /** Content-region start (post count-in/pre-roll) while playing; null/absent = no gate. */
+  getContentStartTick?: () => number | null;
   /** Undo frame — the whole record pass collapses into ONE history entry. */
   beginUndoFrame: (label?: string) => void;
   endUndoFrame: () => void;
@@ -116,14 +118,32 @@ export class PatternRecorder {
     if (this.state.armed) this.deps.beginUndoFrame("Recorded take");
   };
 
+  /**
+   * Musical tick for a performed event — or null when the event must NOT be
+   * recorded (Audit 07 D2/D3). A STOPPED transport extrapolates getTick()
+   * from a stale anchor, so notes landed at drifting pseudo-random steps;
+   * count-in/pre-roll ticks land one lead-in early. Both are dropped: the
+   * hit still sounds (the fire callback is separate), it just doesn't stamp
+   * the pattern.
+   */
+  private captureTick(): number | null {
+    if (!this.deps.isPlaying()) return null;
+    const contentStart = this.deps.getContentStartTick?.();
+    const tick = this.deps.getTick();
+    if (contentStart !== null && contentStart !== undefined && tick < contentStart) return null;
+    return tick;
+  }
+
   /** One performed drum hit — stamps the (wrapped) step row immediately. */
   drumHit = (padId: string, velocity: number): void => {
     if (!this.state.armed) return;
+    const tick = this.captureTick();
+    if (tick === null) return;
     if (this.state.mode === "replace" && !this.replaceCleared) this.runReplaceClear();
     const doc = this.deps.getDoc();
     const pattern = doc.patterns.find((p) => p.id === doc.activePatternId);
     const stepCount = pattern?.stepCount ?? 16;
-    const step = Math.floor(this.quantizeTick(this.deps.getTick()) / STEP_TICKS);
+    const step = Math.floor(this.quantizeTick(tick) / STEP_TICKS);
     const wrapped = ((step % stepCount) + stepCount) % stepCount;
     this.deps.execute(setStepVelocityCommand(doc, padId, wrapped, velocity));
   };
@@ -131,8 +151,10 @@ export class PatternRecorder {
   /** Instrument note-on — remembers the start tick; commits on note-off. */
   noteOn = (trackId: string, pitch: number, velocity: number): void => {
     if (!this.state.armed) return;
+    const tick = this.captureTick();
+    if (tick === null) return;
     if (this.state.mode === "replace" && !this.replaceCleared) this.runReplaceClear();
-    this.held.set(pitch, { trackId, startTick: this.deps.getTick(), velocity });
+    this.held.set(pitch, { trackId, startTick: tick, velocity });
   };
 
   /** Instrument note-off — commits the note with its played duration. */

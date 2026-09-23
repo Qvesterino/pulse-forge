@@ -20,14 +20,16 @@ Overené v pracovnom strome 2026-09-22:
 
 ### Dôkazy posledného implementation passu
 
-- `npx tsc --noEmit --pretty false` — MRT2-focused run was PASS before the concurrent intent/song worktree edits; current full rerun is blocked by unrelated `IntentPanel`/song-length and existing test-fixture type errors;
-- `npx vite build` — PASS, MRT2 transport je v on-demand chunke `websocket-transport`; aktuálny `node scripts/check-bundle-size.mjs` správne zlyhá na DAW JS `2504/2500 KB` po paralelných non-MRT2 worktree zmenách (predchádzajúci MRT2 pass bol `2499/2500 KB`); full `npm run build` remains blocked by typecheck errors above;
-- full targeted generative/lifecycle cluster — PASS, `16 files / 74 tests` including protocol, IPC, provider, player, runtime, capture, export, resample, architecture and transport lifecycle;
+- `npx tsc --noEmit --pretty false` — no application-source, MRT2, generative-track, AudioEngine or renderer diagnostics; blocked by existing test errors in `groove-pool` (`createdAt`), `recording-audit`, `services-save-drain`, `suno-mode` and `transport-audit`;
+- `npx vite build` — PASS, MRT2 transport je v on-demand chunke `websocket-transport`; latest `node scripts/check-bundle-size.mjs` is `2526/2500 KB` DAW JS (entry `221/1070`, optional semantic `568/650`, core worklets `119/150`, landing `452/600`). The DAW total is 26 KB over budget; no budget increase was applied. Full `npm run build` remains blocked by the typecheck errors above;
+- full targeted generative/lifecycle/render-time cluster — PASS, `18 files / 94 tests` including protocol, IPC, provider, player, runtime, capture, export, resample, architecture, transport lifecycle, BPM/loop-wrap conditioning refresh and tempo-map regressions;
 - provider-stall hardening — PASS; a failed refresh retires the session/audio graph and allows a later explicit Play to create a fresh session;
-- malformed PCM hardening — PASS; every MRT2 transport adapter is revalidated at the provider boundary, non-finite/out-of-range packets terminate the session with an explicit error, and the AudioWorklet drops invalid chunks without producing non-finite output;
+- malformed transport/PCM hardening — PASS; every MRT2 adapter control and audio event is revalidated at the provider boundary, non-finite/out-of-range packets and malformed control messages terminate the session explicitly, and the AudioWorklet drops invalid chunks without producing non-finite output;
+- capture stream memory bound — PASS; each capture writes directly into one preallocated PCM buffer, is capped by requested duration/frame count, format, sequence and packet count, and inconsistent returned PCM metadata is rejected and cleared;
 - `tests/transport-audit.test.ts` — PASS, generative lifecycle is pinned through transport `play/pause/seek/stop` callbacks;
 - 300 s mock live soak — PASS ako zrýchlený virtuálny test (`7500` provider frames);
-- Playwright na čistom Vite serveri — landing flow `3/3` PASS a MRT2 generative-track smoke `1/1` PASS; širší Chromium smoke `5/6` (landing, generate a persistence PASS, existujúci panel-toggle overflow test timeoutol pri EXPORT menu, preto browser gate ešte nie je kompletne zelený). Generative track teraz deklaruje `UNAVAILABLE` už pred prvým Play bez native bridge.
+- Playwright na čistom Vite serveri — landing flow `3/3` PASS; MRT2 generative-track Chromium flows `3/3` PASS vrátane fake localhost companion handshake, PCM streamu cez reálny AudioWorklet, underrun → buffering → recovery → running, Sequencer ruler seek s novým `startTick` na provider strane a Play → Pause → Resume → Stop lifecycle. IndexedDB asset/provenance reload → presne načasovaný AudioClip render → WAV encode/decode round-trip zachová počuteľný nástup. Offline clip render overuje trimmed reverse, pitch-preserving stretch, fade-in/out, track reverb, group hard-pan a štandardný master, polovičný master gain aj explicitný master bypass; všetky varianty majú finite a počuteľný výstup. Parity E2E porovnáva identické PCM cez live generative-source bus a captured `AudioClip` render (relative RMS error < 1 %); tým zároveň zachytil a opravil chybu, kde looping AudioClip predčasne končil po dĺžke zdrojového bufferu. Toto je routing/render parity, nie tvrdenie, že nedeterministický MRT2 vytvorí bit-identický nový capture. Windows WebKit preflight potvrdil chýbajúce `AudioContext`/`OfflineAudioContext`; 3 audio scenáre sa preto explicitne skipujú, skutočný Safari/macOS audio pass zostáva release gate. Širší Chromium smoke `5/6` (landing, generate a persistence PASS, existujúci panel-toggle overflow test timeoutol pri EXPORT menu, preto browser gate ešte nie je kompletne zelený). Generative track deklaruje `UNAVAILABLE` už pred prvým Play bez native bridge.
+- Offline render regression — browser test odhalil a `buildTempoMap()` fixol extrapoláciu za posledné tempo window: doteraz sa gap počítal od začiatku poslednej scény, čo mohlo vytvoriť nulovú dĺžku AudioClipu za jej hranicou. Regression pokrýva gap medzi scene windows aj extrapoláciu po poslednom window.
 
 ## Pracovný kontrakt
 
@@ -251,9 +253,15 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] pridať generative output bus, ktorý sa route-ne cez track gain/pan/effects/sends/group ako ostatné tracky;
 - [x] synchronizovať session start/stop/pause/seek s transportom; bar-boundary latency policy a kalibrácia zostávajú hardening;
 - [x] odmerať provider warm-up a control latency; uložiť iba host-local user-facing calibration, nie runtime socket stav;
-- [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume; provider-stall retirement is now implemented/tested, while the remaining realtime/browser matrix stays open;
+- [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume; provider-stall retirement and terminal provider-error retirement are implemented/tested, while the remaining realtime/browser matrix stays open;
 - [x] oddeliť scheduler plánovanie note frames od AudioEngine execution; Scheduler nesmie vlastniť provider session;
-- [ ] pridať browser checks pre play/stop/seek, provider unavailable, underrun recovery a zero non-finite samples; provider-unavailable/localhost Inspector smoke je už pokrytý samostatne; worklet/provider boundary coverage now proves invalid PCM is dropped and never rendered, but the real-browser underrun/transport matrix remains open;
+- [x] browser Play/Pause/Resume/Stop integrácia s fake localhost companionom: handshake, PCM stream cez AudioWorklet, pause odpojí session/audio graph a resume obnoví generovanie;
+- [x] browser Inspector smoke pre missing provider a bezpečný localhost endpoint;
+- [x] browser E2E pokrýva reálny underrun a recovery po obnovení PCM streamu cez AudioWorklet;
+- [x] browser E2E seek cez Sequencer ruler overuje, že provider dostane nový conditioning `startTick` počas live playbacku;
+- [x] non-finite PCM rejection a finite rendered output sú pokryté protocol/worklet testami;
+- [x] runtime conditioning refresh sleduje aktuálne BPM a playhead po loop-wrap re-anchor-i;
+- [ ] plná live transport/browser matrix a device-level context suspend/resume; Windows WebKit bez Web Audio APIs je explicitne skipnutý a Safari/macOS audio pass zostáva otvorený;
 - [x] overiť 300 s virtuálny mock live soak s finite/ordered chunks;
 - [ ] overiť CPU/heap growth a latency pri samostatnom native soaku na podporovanom Macu.
 
@@ -281,9 +289,11 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] rozhodnúť a zdokumentovať, že live external provider nie je priamo dependency `OfflineAudioContext`;
 - [x] export live generative track buď odmietne s jasnou správou, alebo vyžiada explicitný capture/pre-render prepass;
 - [x] po capture používať iba rovnaký `AudioClip` path ako live prehrávanie a offline renderer;
-- [ ] overiť sample-accurate placement, fades, stretch, reverse, FX, group routing a master chain;
+- [x] browser E2E overuje presný engine schedule (`when`/duration) captured clipu na bar boundary, trim, fade-in/out, pitch-preserving stretch, reverse, track reverb, group hard-pan, počuteľnosť v štandardnom offline renderi a zachovaný nástup po WAV round-tripe cez master output path;
+- [x] browser E2E overuje varianty master chainu: štandardný master, polovičný master gain a explicitný master-processing bypass s finite/počuteľným výstupom;
 - [x] zabezpečiť, že incomplete/failed capture nevytvorí v projekte orphan clip ani fake success state;
-- [ ] pridať render→encode→reload test a parity test live preview vs captured clip v toleranciách definovaných testom;
+- [x] pridať browser render→WAV encode/decode→reload test s durably persisted generated assetom a provenance;
+- [x] browser parity test posiela identické PCM cez live generative-source bus a captured `AudioClip` path; relative RMS error je < 1 % (routing parity, nie deterministickosť externého MRT2 capture);
 - [x] oddeliť track-level engine freeze optimization od produktovej akcie `Capture/Freeze to Audio`; export guard akceptuje iba durable generative `AudioClip`, nie interný `FrozenState`.
 
 **Akceptácia:** export je reprodukovateľný po capture a projekt nikdy nesľubuje offline render z nedostupného realtime providera.
@@ -298,7 +308,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] previewovať variácie bez automatického vloženia do projektu;
 - [x] drag/drop alebo explicitný commit vloží vybranú variáciu ako normálny audio clip;
 - [x] pridať source hash, provider/model version a user prompt k generated assetu;
-- [ ] až po stabilizácii KYX workflowu rozhodnúť, či `src/generative/` extrahovať do zdieľaného QWESTER runtime pre ZYVO.
+- [x] rozhodnutie o zdieľanom QWESTER runtime: zatiaľ neextrahovať `src/generative/`; KYX je jediný reálny consumer, provider-neutral kontrakt zachováva možnosť extrakcie, keď ZYVO bude mať konkrétny druhý use case a vlastné runtime/persistence požiadavky.
 
 **Akceptácia:** generative resample je sampling workflow s AI pomocou, nie nevratné nahradenie pôvodného materiálu.
 

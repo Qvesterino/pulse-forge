@@ -290,21 +290,26 @@ export function buildTempoMap(
   }
   const totalSeconds = cursorTime;
   const timeAt = (tick: number): number => {
-    let seg: TempoSegment | null = null;
-    for (const s of segments) {
-      if (tick >= s.from && tick <= s.to) {
-        seg = s;
-        break;
+    const segmentEndTime = (segment: TempoSegment): number =>
+      segment.startTime + (segment.to - segment.from) * (60 / (segment.bpm * PPQ));
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      if (tick >= segment.from && tick <= segment.to) {
+        return segment.startTime + (tick - segment.from) * (60 / (segment.bpm * PPQ));
+      }
+      if (tick < segment.from) {
+        // A gap before the first window, or between two windows, runs at the
+        // project tempo. Anchor it to the nearest preceding edge instead of
+        // extrapolating from the last scene (which can collapse an AudioClip
+        // beyond that scene to a zero-second render duration).
+        const previous = segments[index - 1];
+        return previous ? segmentEndTime(previous) + (tick - previous.to) * docSpt : tick * docSpt;
       }
     }
-    if (!seg) {
-      // Outside every window: project-tempo travel from the nearest edge.
-      const first = segments[0];
-      const last = segments[segments.length - 1];
-      if (tick < first.from) return tick * docSpt;
-      return last.startTime + (tick - last.to) * docSpt;
-    }
-    return seg.startTime + (tick - seg.from) * (60 / (seg.bpm * PPQ));
+    // Beyond the final scene window, continue from its actual end time and
+    // then advance at the project tempo.
+    const last = segments[segments.length - 1];
+    return segmentEndTime(last) + (tick - last.to) * docSpt;
   };
   return { segments, totalSeconds, timeAt };
 }

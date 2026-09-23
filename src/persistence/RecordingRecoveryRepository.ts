@@ -21,6 +21,9 @@ export interface RecordingSession {
   bpm: number;
   /** Manual mic-input alignment captured when the take started; absent in older sessions. */
   recordingInputOffsetMs?: number;
+  /** Audit 07 D1: count-in/pre-roll head captured before the musical content;
+   * placement trims it via clip offsetSec. Absent in older sessions. */
+  leadInSec?: number;
   sampleRate: number;
   channels: number;
   createdAt: string;

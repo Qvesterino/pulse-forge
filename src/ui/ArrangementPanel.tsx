@@ -504,6 +504,17 @@ export function ArrangementPanel() {
         const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
         if (!track) return null;
         const startBar = Math.max(0, recordingStartBar(services.transport.position));
+        // Audit 07 D1: capture whether the imminent playPause() will roll a
+        // count-in/pre-roll lead-in BEFORE the content — the buffer starts at
+        // the REC press, so without this the take landed one lead-in late
+        // with the count-in room audio at its head. Placement trims it via
+        // clip offsetSec (non-destructive).
+        const leadInTicks = services.transport.leadInTicks();
+        const leadInWillApply =
+          !services.transport.playing &&
+          !services.transport.paused &&
+          leadInTicks > 0 &&
+          services.transport.position >= leadInTicks;
         return {
           projectId: currentDoc.id,
           trackId: track.id,
@@ -512,6 +523,7 @@ export function ArrangementPanel() {
           startBar,
           bpm: currentDoc.bpm,
           recordingInputOffsetMs: recordingAlignment.getSnapshot(),
+          leadInSec: leadInWillApply ? leadInTicks * services.transport.secondsPerTick : 0,
         };
       });
       recorder.onError = (message) => {
@@ -599,10 +611,12 @@ export function ArrangementPanel() {
               take.session.recordingInputOffsetMs ?? 0,
               currentDoc.bpm,
             ),
-            clipLengthBars(take.buffer.duration, currentDoc.bpm),
+            clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm),
             {
               fadeIn: 0.005,
               fadeOut: 0.02,
+              // D1: skip the count-in/pre-roll head captured before content.
+              offsetSec: take.session.leadInSec ?? 0,
             },
           ),
         );
@@ -673,8 +687,8 @@ export function ArrangementPanel() {
               session.trackId,
               bufferId,
               compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, currentDoc.bpm),
-              clipLengthBars(take.buffer.duration, currentDoc.bpm),
-              { fadeIn: 0.005, fadeOut: 0.02 },
+              clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm),
+              { fadeIn: 0.005, fadeOut: 0.02, offsetSec: session.leadInSec ?? 0 },
             ),
           );
           setRecError(`Recovered ${session.trackName} and placed it back on the timeline.`);

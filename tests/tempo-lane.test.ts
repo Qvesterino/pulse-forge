@@ -87,6 +87,27 @@ describe("buildTempoMap", () => {
     expect(map.totalSeconds).toBeCloseTo(4 * BAR_TICKS * spt, 4);
     expect(map.timeAt(2 * BAR_TICKS)).toBeCloseTo(2 * BAR_TICKS * spt, 4);
   });
+
+  it("continues after the last scene from that window's end time", () => {
+    const { doc } = songWithTwoScenes(undefined, 60);
+    const map = buildTempoMap(doc, [{ from: 0, to: 4 * BAR_TICKS, bpm: 60 } as never]);
+    const sceneSeconds = 4 * BAR_TICKS * (60 / (60 * PPQ));
+    const projectGapSeconds = 2 * BAR_TICKS * (60 / (doc.bpm * PPQ));
+
+    expect(map.timeAt(6 * BAR_TICKS)).toBeCloseTo(sceneSeconds + projectGapSeconds, 4);
+  });
+
+  it("uses project tempo inside gaps between scene windows", () => {
+    const { doc } = songWithTwoScenes(120, 60);
+    const map = buildTempoMap(doc, [
+      { from: 0, to: 2 * BAR_TICKS, bpm: 120 },
+      { from: 4 * BAR_TICKS, to: 6 * BAR_TICKS, bpm: 60 },
+    ] as never);
+    const firstSceneSeconds = 2 * BAR_TICKS * (60 / (120 * PPQ));
+    const projectGapSeconds = BAR_TICKS * (60 / (doc.bpm * PPQ));
+
+    expect(map.timeAt(3 * BAR_TICKS)).toBeCloseTo(firstSceneSeconds + projectGapSeconds, 4);
+  });
 });
 
 describe("Scheduler — scene tempo lane", () => {

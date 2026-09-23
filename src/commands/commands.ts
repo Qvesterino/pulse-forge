@@ -615,10 +615,25 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
           ) ?? {}),
         }
       : doc.arrangement;
+  // Audit 08 D4: if the cascade emptied the scene list, synthesize a
+  // deterministic default scene IN-COMMAND — normalize's backfill mints a
+  // fresh-uid "Scene A" outside the delta, resurrecting a phantom scene
+  // that undo could never remove.
+  const finalScenes =
+    scenes.length > 0 ? scenes : [{ id: uid("scene"), name: "Scene A", patternId: remaining[0]!.id, intensity: 0.7 }];
   const next: ProjectDocument = {
     ...doc,
     patterns: remaining,
-    scenes,
+    scenes: finalScenes,
+    // Audit 08 D2: the removed scenes' automation lanes go WITH them —
+    // leaving them for normalize meant undo restored the scenes but the
+    // lanes were gone (same class as deleteTrack).
+    ...(doc.sceneAutomation
+      ? { sceneAutomation: doc.sceneAutomation.filter((l) => !removedSceneIds.has(l.sceneId)) }
+      : {}),
+    // Audit 08 D3: clamp markers to the shrunken project end IN-COMMAND so
+    // undo restores their ticks (normalize clamps them outside any delta).
+    ...(markerClampPatch(doc.markers, finalScenes, remaining, arrangement)),
     arrangement,
     activePatternId: doc.activePatternId === patternId ? remaining[0].id : doc.activePatternId,
   };
@@ -683,7 +698,8 @@ export function setPatternLength(doc: ProjectDocument, patternId: string, stepCo
   // Math.max(1, Math.floor(NaN)) is NaN — the row rebuild would throw on
   // `new Array(NaN)`. Reject explicitly instead of crashing at dispatch.
   if (!Number.isFinite(stepCount)) throw new Error(`Pattern length must be a finite number`);
-  const safeCount = Math.max(1, Math.floor(stepCount));
+  // Same hard ceiling normalize enforces on load (Audit 08 D6).
+  const safeCount = Math.min(128, Math.max(1, Math.floor(stepCount)));
   const patternTicks = safeCount * STEP_TICKS;
   const next: ProjectDocument = {
     ...doc,
@@ -2548,12 +2564,14 @@ function clonePatternForVariation(source: Pattern, sourceName: string): Pattern 
     id: uid("pattern"),
     name: `${sourceName} Variation`,
     rows: Object.fromEntries(Object.entries(source.rows).map(([id, row]) => [id, [...row]])),
+    // Fresh note ids + deep-cloned stepMeta (Audit 08 D8): duplicated ids
+    // across two patterns on the same track could match the wrong notes in
+    // SelectionStore, and shared `locks` object references aliased the
+    // source pattern's performance state.
     notes: Object.fromEntries(
-      Object.entries(source.notes ?? {}).map(([id, notes]) => [id, notes.map((note) => ({ ...note }))]),
+      Object.entries(source.notes ?? {}).map(([id, notes]) => [id, notes.map((note) => ({ ...note, id: uid("note") }))]),
     ),
-    stepMeta: source.stepMeta
-      ? Object.fromEntries(Object.entries(source.stepMeta).map(([padId, meta]) => [padId, { ...meta }]))
-      : undefined,
+    stepMeta: source.stepMeta ? cloneStepMeta(source.stepMeta) : undefined,
     generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
   };
 }
@@ -2640,20 +2658,57 @@ export function setScenePattern(doc: ProjectDocument, sceneId: string, patternId
   };
 }
 
+/**
+ * Audit 08 D3: mirror normalize's marker clamp so an arrangement shrink
+ * records marker moves INSIDE the command delta — otherwise undo of the
+ * shrink restored the clips but the markers stayed clamped to the shrunken
+ * end. Returns a `{ markers }` patch only when something actually moved.
+ */
+function markerClampPatch(
+  markers: Marker[],
+  scenes: ProjectDocument["scenes"],
+  patterns: ProjectDocument["patterns"],
+  arrangement: ProjectDocument["arrangement"],
+): Partial<ProjectDocument> {
+  if (markers.length === 0) return {};
+  const totalProjectTicks = Math.max(
+    0,
+    ...scenes.map((sc) => (patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
+    ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
+  );
+  let changed = false;
+  const clamped = markers.map((m) => {
+    if (m.tick <= totalProjectTicks) return m;
+    changed = true;
+    return { ...m, tick: totalProjectTicks };
+  });
+  return changed ? { markers: clamped } : {};
+}
+
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);
   if (!target) throw new Error(`Scene ${sceneId} not found`);
+  // Audit 08 D1: the scene's automation lanes must be pruned IN-COMMAND —
+  // normalize strips them post-apply, so undo restored the scene but its
+  // lanes were permanently gone (deleteTrack bug class).
+  const sceneAutomation = doc.sceneAutomation?.filter((lane) => lane.sceneId !== sceneId);
+  const remainingScenes = doc.scenes.filter((s) => s.id !== sceneId);
+  const remainingClips = doc.arrangement.clips.filter((c) => c.sceneId !== sceneId);
   const next: ProjectDocument = {
     ...doc,
-    scenes: doc.scenes.filter((s) => s.id !== sceneId),
+    scenes: remainingScenes,
+    ...(sceneAutomation ? { sceneAutomation } : {}),
+    // Audit 08 D3: markers clamp to the shrunken project end in-command.
+    ...(markerClampPatch(doc.markers, remainingScenes, doc.patterns, {
+      ...doc.arrangement,
+      clips: remainingClips,
+    })),
     arrangement: {
       ...doc.arrangement,
-      clips: doc.arrangement.clips.filter((c) => c.sceneId !== sceneId),
+      clips: remainingClips,
       transitions: doc.arrangement.transitions?.filter((transition) => {
-        const clipIds = new Set(
-          doc.arrangement.clips.filter((clip) => clip.sceneId !== sceneId).map((clip) => clip.id),
-        );
+        const clipIds = new Set(remainingClips.map((clip) => clip.id));
         return clipIds.has(transition.fromClipId) && clipIds.has(transition.toClipId);
       }),
     },
@@ -2773,11 +2828,17 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
 }
 
 export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Command {
+  const remainingClips = doc.arrangement.clips.filter((c) => c.id !== clipId);
   const next: ProjectDocument = {
     ...doc,
+    // Audit 08 D3: markers clamp to the shrunken project end in-command.
+    ...(markerClampPatch(doc.markers, doc.scenes, doc.patterns, {
+      ...doc.arrangement,
+      clips: remainingClips,
+    })),
     arrangement: {
       ...doc.arrangement,
-      clips: doc.arrangement.clips.filter((c) => c.id !== clipId),
+      clips: remainingClips,
       transitions: doc.arrangement.transitions?.filter(
         (transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId,
       ),
@@ -5441,6 +5502,8 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
     .sort((a, b) => a.startBar - b.startBar);
   const next: ProjectDocument = {
     ...doc,
+    // Audit 08 D3: markers clamp to the shrunken project end in-command.
+    ...(markerClampPatch(doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips })),
     arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
   };
   return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);

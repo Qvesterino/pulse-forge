@@ -2791,8 +2791,16 @@ export class AudioEngine {
       const effOffset = warpedHit ? 0 : playOffset;
       const effDur = warpedHit ? Math.min(clipDurSec, warpedHit.duration) : duration;
       try {
-        source.start(when, effOffset, effDur);
-        source.stop(when + effDur + 0.01);
+        if (source.loop) {
+          // The optional `start(..., duration)` argument is measured against
+          // the source buffer and stops after one pass, even when `loop` is
+          // enabled. Let the loop run until the arrangement clip boundary.
+          source.start(when, effOffset);
+          source.stop(when + clipDurSec + 0.01);
+        } else {
+          source.start(when, effOffset, effDur);
+          source.stop(when + effDur + 0.01);
+        }
       } catch {
         /* already started */
       }

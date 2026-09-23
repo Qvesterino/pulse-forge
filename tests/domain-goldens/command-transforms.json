@@ -11,26 +11,302 @@
       "name": "step toggles + velocity set",
       "operation": "commandSequence",
       "input": {
-        "commands": ["toggleStep(pad0,0)", "toggleStep(pad0,4)", "setStepVelocity(pad0,0,0.42)"]
+        "commands": [
+          "toggleStep(pad0,0)",
+          "toggleStep(pad0,4)",
+          "setStepVelocity(pad0,0,0.42)"
+        ]
       },
       "expected": {
         "rows": {
-          "track-test-000b-pad-01": [0.42, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0],
-          "track-test-000b-pad-02": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-03": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-04": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-05": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-06": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-07": [0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
-          "track-test-000b-pad-08": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-09": [0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.55, 0],
-          "track-test-000b-pad-10": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-11": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
-          "track-test-000b-pad-12": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-13": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-14": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-15": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          "track-test-000b-pad-16": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          "track-test-000b-pad-01": [
+            0.42,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0.95,
+            0,
+            0,
+            0,
+            0.95,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-02": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-03": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-04": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-05": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-06": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-07": [
+            0,
+            0,
+            0,
+            0,
+            0.7,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0.75,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-08": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-09": [
+            0,
+            0,
+            0.5,
+            0,
+            0,
+            0,
+            0.5,
+            0,
+            0,
+            0,
+            0.5,
+            0,
+            0,
+            0,
+            0.55,
+            0
+          ],
+          "track-test-000b-pad-10": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-11": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0.4,
+            0
+          ],
+          "track-test-000b-pad-12": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-13": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-14": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-15": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "track-test-000b-pad-16": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
         }
       }
     },
@@ -38,7 +314,12 @@
       "name": "note add/move/resize",
       "operation": "commandSequence",
       "input": {
-        "commands": ["addNote(60@0)", "addNote(64@240)", "moveNote(n0→480,67)", "resizeNote(n0→360)"]
+        "commands": [
+          "addNote(60@0)",
+          "addNote(64@240)",
+          "moveNote(n0→480,67)",
+          "resizeNote(n0→360)"
+        ]
       },
       "expected": {
         "notes": {
@@ -137,7 +418,11 @@
       "name": "quantizeNotes to 16th grid",
       "operation": "commandSequence",
       "input": {
-        "commands": ["addNote(60@97)", "addNote(67@383)", "quantizeNotes(all,grid=120,strength=1)"]
+        "commands": [
+          "addNote(60@97)",
+          "addNote(67@383)",
+          "quantizeNotes(all,grid=120,strength=1)"
+        ]
       },
       "expected": {
         "notes": {
@@ -236,7 +521,11 @@
       "name": "setGroove swing 0.5 + drumHitsInWindow",
       "operation": "commandSequence",
       "input": {
-        "commands": ["toggleStep(pad0,even steps)", "setGroove(swing=0.5)", "drumHitsInWindow(0..2bars)"]
+        "commands": [
+          "toggleStep(pad0,even steps)",
+          "setGroove(swing=0.5)",
+          "drumHitsInWindow(0..2bars)"
+        ]
       },
       "expected": {
         "groove": {
@@ -624,7 +913,11 @@
       "name": "arrangement clip + overlap rejection + bpm",
       "operation": "commandSequence",
       "input": {
-        "commands": ["addArrangementClip(scene0,bar0,2)", "addArrangementClip(scene0,bar1,2)!", "setBpm(140)"]
+        "commands": [
+          "addArrangementClip(scene0,bar0,2)",
+          "addArrangementClip(scene0,bar1,2)!",
+          "setBpm(140)"
+        ]
       },
       "expected": {
         "clips": [

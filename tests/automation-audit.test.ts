@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
-import { modulatorEventsInRange, modulatorPointValue } from "../src/project-model/modulators";
+import { modulatorEventsInRange } from "../src/project-model/modulators";
 import { valueAt } from "../src/project-model/automation";
-import type { Lfo, ProjectDocument } from "../src/project-model/types";
+import type { Lfo } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
   addAutomationLane,
