@@ -356,6 +356,7 @@ export function sendPdcDelaySec(downstreamLatSec: number, returnLatSec: number):
 
 export class AudioEngine {
   private ctx: BaseAudioContext | null = null;
+  private liveContextListeners = new Set<(context: AudioContext | null) => void>();
   private master: GainNode | null = null;
   private masterClipper: WaveShaperNode | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
@@ -577,6 +578,28 @@ export class AudioEngine {
 
   get context(): BaseAudioContext | null {
     return this.ctx;
+  }
+
+  /** Subscribe to live AudioContext creation, replacement and loss. */
+  subscribeLiveContext(listener: (context: AudioContext | null) => void): () => void {
+    this.liveContextListeners.add(listener);
+    try {
+      listener(this.getLiveAudioContext());
+    } catch {
+      /* observers cannot break engine initialization */
+    }
+    return () => this.liveContextListeners.delete(listener);
+  }
+
+  private notifyLiveContextChange(): void {
+    const context = this.getLiveAudioContext();
+    for (const listener of [...this.liveContextListeners]) {
+      try {
+        listener(context);
+      } catch {
+        /* observers cannot break context creation or recovery */
+      }
+    }
   }
 
   get currentTime(): number {
@@ -845,6 +868,7 @@ export class AudioEngine {
         // Drop the handle; the next context-creation helper detects state
         // === "closed" and constructs a fresh context.
         this.ctx = null;
+        this.notifyLiveContextChange();
       };
     }
     if (typeof ext.oncontextrestored !== "undefined") {
@@ -856,6 +880,7 @@ export class AudioEngine {
         this.useContext(ctx);
       };
     }
+    this.notifyLiveContextChange();
   }
 
   /**

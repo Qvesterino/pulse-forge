@@ -279,8 +279,12 @@ export class ProjectStore {
     this.timestamps.push(Date.now());
     // Collapse the per-command history snapshots: keep the before-frame state
     // plus the after-frame state (same pairing shape undo() maintains).
-    this.historyDocs.length = this.undoStack.length + 1;
-    this.historyDocs[this.undoStack.length] = this.doc_;
+    // Audit 09 D2: slide the snapshot window (same semantics as
+    // recordHistoryDoc) instead of stretching `historyDocs` to the raw stack
+    // index — beyond the 64 cap that created empty holes and misaligned
+    // diffForIndex offsets for every older entry.
+    this.historyDocs.push(this.doc_);
+    while (this.historyDocs.length > ProjectStore.HISTORY_LIMIT) this.historyDocs.shift();
     this.diffCache.clear();
     this.afterMutation();
   }
@@ -325,6 +329,12 @@ export class ProjectStore {
    * (0-based in the undo stack). One logical entry — no partial application.
    */
   jumpTo(index: number): void {
+    // Audit 09 D1: seal an open record frame FIRST — jumping rewinds the
+    // stack below `frameOpenDepth`, which corrupted the disarm bookkeeping
+    // (the compound wrapped commands already undone by the jump, and redo
+    // executed them a second time). Sealing leaves D as its own entry and
+    // lets the jump build a coherent redo branch.
+    if (this.frameCommands) this.endUndoFrame();
     while (this.undoStack.length > index + 1) this.undo();
     while (this.undoStack.length <= index && this.redoStack.length > 0) this.redo();
   }
@@ -349,6 +359,11 @@ export class ProjectStore {
     this.doc_ = normalizeProject(doc);
     this.undoStack = [];
     this.redoStack = [];
+    // Audit 09 D4: an open record frame must die with the old document —
+    // a later endUndoFrame would bake the old project's frame commands into
+    // a compound and re-execute them against THIS document. (No live caller
+    // today — project switches build a fresh store — landmine defusal.)
+    this.frameCommands = null;
     this.historyDocs = [this.doc_];
     this.diffCache.clear();
     // Defect 4.2 (undo/redo integrity audit): afterMutation() sets the

@@ -613,7 +613,9 @@ A few clear directions visible in those documents, but **not commitments**:
 - **Schema migrations.** The project model lives in `src/project-model/schema.ts`. Any change to the on-disk shape must update `SCHEMA_VERSION` and provide a migration in `migrateProject`; loading code rejects unknown future versions.
 - **Architecture decisions** go through an ADR in `docs/adr/` with date and status. Existing ADRs are the canonical reference for "why" questions.
 - **Adding a new effect / instrument** follows the contract in `ARCHITECTURE.md` §28 and is verified by the targeted vitest suites for effects, instruments, and plugin worklets. Factory presets for a new instrument must be auditable via `npm run test:browser:factory-presets`.
-- **Bundles.** `npm run build` enforces bundle budgets (entry 995 KB, total JS 2400 KB, core worklets 120 KB). If you need to grow a chunk, justify it in the PR.
+- **Bundles.** `npm run build` enforces bundle budgets (entry 1070 KB, DAW JS 2500 KB, optional lazy AI runtimes 650
+  KB, core worklets 150 KB). The checker reports physical shipped JS separately; if you need to grow a budget, justify
+  it in the PR.
 - **AI models.** Three ONNX models live under `public/models/` with sibling `*.manifest.json` that pins the feature version, normalization id and SHA-256 hash. Any model update requires regenerating the dataset (`scripts/generate-*-dataset.mts`), retraining (`scripts/train-*.py`), validating (`scripts/validate-*.{py,mjs}`), and updating the manifest hash.
 
 ---

@@ -1,9 +1,9 @@
 {
   "datasetVersion": "symbolic-prior-ds.v1",
-  "featureVersion": "prior-features-v2",
-  "featureCount": 35,
+  "featureVersion": "prior-features-v3",
+  "featureCount": 60,
   "mode": "embedding-v2",
-  "augmentedSamples": 227328,
+  "augmentedSamples": 0,
   "hidden": [
     64,
     32
@@ -11,18 +11,18 @@
   "epochs": 500,
   "samples": 87552,
   "hitRatio": 0.0821,
-  "posWeight": 8.488,
-  "valAuc": 0.8805,
-  "trainAuc": 0.808,
-  "bestF1Threshold": 0.71,
+  "posWeight": 11.06,
+  "valAuc": 0.9172,
+  "trainAuc": 0.9256,
+  "bestF1Threshold": 0.7,
   "val": {
-    "precision": 0.3087,
-    "recall": 0.5203,
-    "f1": 0.3875
+    "precision": 0.3052,
+    "recall": 0.8724,
+    "f1": 0.4522
   },
   "train": {
-    "precision": 0.337,
-    "recall": 0.4331,
-    "f1": 0.379
+    "precision": 0.323,
+    "recall": 0.8966,
+    "f1": 0.4749
   }
 }

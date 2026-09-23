@@ -49,6 +49,7 @@ function project(embedding: Float32Array | number[]): number[] {
 
 // Generate descriptions per style and embed them
 const styleEmbeddings: Record<string, number[]> = {};
+const styleEmbeddingVariants: Record<string, number[][]> = {};
 const genreFor: Record<string, string> = {};
 
 for (const styleId of PRIOR_STYLE_VOCAB) {
@@ -67,19 +68,25 @@ for (const styleId of PRIOR_STYLE_VOCAB) {
   const avg = new Float64Array(vectors[0].length);
   for (const vec of vectors) for (let d = 0; d < vec.length; d++) avg[d] += vec[d] / vectors.length;
 
-  // Project through PCA
+  // Project EVERY description through PCA — the centroid alone taught the
+  // prior one semantic point per style, and free-text prompts (farther from
+  // the centroid) then saturated its logits (v3 gate finding). All variants
+  // go into training; the centroid stays as the runtime-facing average.
+  const projectedVariants = vectors.map((vec) => project(vec));
   const projected = project(avg);
   styleEmbeddings[styleId] = projected;
-  console.log(`[style-embed] ${styleId}: ${descriptions.length} descriptions → 16 dims`);
+  styleEmbeddingVariants[styleId] = projectedVariants;
+  console.log(`[style-embed] ${styleId}: ${descriptions.length} descriptions → centroid + ${projectedVariants.length} variants`);
 }
 
 writeFileSync(
   path.join(OUT_DIR, "style-embeddings.json"),
   JSON.stringify({
-    version: "style-embeddings-v1",
+    version: "style-embeddings-v2",
     pcaVersion: "pca-embedding-v1",
     dims: 16,
     styles: styleEmbeddings,
+    variants: styleEmbeddingVariants,
   }, null, 2) + "\n"
 );
 console.log(`[style-embed] ${Object.keys(styleEmbeddings).length} style embeddings → scripts/data/style-embeddings.json`);

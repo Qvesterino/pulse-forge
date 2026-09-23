@@ -1,6 +1,6 @@
 # MRT2 Small feasibility report
 
-> Overené: 2026-09-22
+> Overené: 2026-09-23
 > Scope: Magenta RealTime 2 provider boundary pre KYX/Pulse Forge
 > Status: upstream contract verified; native runtime experiment still requires an Apple Silicon host
 
@@ -16,6 +16,22 @@ Modelový frame contract je 25 Hz, 1920 samples na frame pri 48 kHz a stereo
 výstupe. To je 40 ms provider frame. Upstream public landing page uvádza približne
 200 ms control latency; presný warm-up a end-to-end latency musíme zmerať na
 konkrétnom Macu, nie hardcodovať do KYX.
+
+### Dôležitý detail aktuálneho C++ API
+
+`magentart::core::RealtimeRunner::read_audio_stereo()` je určený pre audio
+callback a pri underrune vráti `false` s nulami doplneným výstupom; cez
+`get_metrics()` host vie čítať dostupný buffer a počet dropped frames. To dáva
+adapteru merateľný signál pre KYX buffering/recovery stav, ale nenahrádza
+device-level soak ani našu bounded browser-side PCM queue.
+
+Audio-style path má jeden explicitný upstream footgun:
+`RealtimeRunner::set_audio_prompt(index, path)` je v aktuálnom public header
+označený ako placeholder, ktorý pre neprázdnu cestu vytvorí deterministický
+fake embedding. Nesmie sa používať na produkčný conditioning. Native companion
+musí súbor dekódovať/resamplovať mimo audio callbacku a použiť
+`set_audio_prompt_samples()`; resource loading a prompt encoding ostávajú na
+controller/background threadoch. [Zdroj: `realtime_runner.h`](https://github.com/magenta/magenta-realtime/blob/main/core/include/magentart/realtime_runner.h)
 
 `mrt2_small` má 230M parametrov a upstream ho označuje ako realtime-capable na
 Apple Silicon Macoch vrátane Air modelov. Python/JAX cesta vie robiť offline
@@ -60,6 +76,16 @@ Adapter ich môže mapovať iba cez explicitný capability/profile mapping.
 | Intel macOS         | not accepted as realtime target                                                  | unavailable or capture-only provider                              |
 | Windows Electron    | no upstream MLX realtime target                                                  | unavailable; captured clips still play/export                     |
 | Browser/PWA         | no model/native dependency in bundle                                             | unavailable unless user deliberately starts a localhost companion |
+
+## License and distribution boundary
+
+Upstream model card deklaruje Apache 2.0 pre kód a CC-BY 4.0 pre model weights.
+KYX momentálne model weights ani native runtime nebalí ani automaticky
+nesťahuje; akákoľvek budúca distribúcia native companion/model assets potrebuje
+samostatný dependency/license audit, atribúciu a explicitný release checklist.
+Upstream zároveň prenáša zodpovednosť za outputs a ich následné použitie na
+integrátora a používateľa; app nesmie sľubovať právny status generovaného audia.
+[Model card](https://huggingface.co/google/magenta-realtime-2) · [MRT2 source repository](https://github.com/magenta/magenta-realtime)
 
 ## Evidence still requiring an Apple Silicon experiment
 

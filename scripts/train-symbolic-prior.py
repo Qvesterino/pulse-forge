@@ -172,10 +172,16 @@ def main() -> None:
     # semantic vector from style-embeddings.json. The model input becomes
     # 35 dims instead of 44. Structural features (x[25:]) are preserved.
     embedding_lookup: dict[str, list[float]] = {}
+    embedding_variants: dict[str, list[list[float]]] = {}
     if args.embedding:
         emb_payload = json.loads(Path(args.embedding).read_text())
         embedding_lookup = emb_payload.get("styles", {})
-        print(f"[train] embedding mode: {len(embedding_lookup)} style vectors loaded")
+        # v2 pack: per-style DESCRIPTION VARIANTS (not just the centroid) —
+        # training across the style's real semantic spread flattens the
+        # logit saturation the centroid-only v3 run showed (v3 gate).
+        embedding_variants = emb_payload.get("variants", {})
+        variant_total = sum(len(v) for v in embedding_variants.values())
+        print(f"[train] embedding mode: {len(embedding_lookup)} style vectors, {variant_total} variants loaded")
 
     # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
     # runtime fallback (roadmap Fáza D.4).
@@ -191,11 +197,23 @@ def main() -> None:
     )
     prior_version = "prior.v3" if hybrid_mode else ("prior.v2" if embedding_mode else "prior.v1")
 
+    def semantic_for(style_id: str, salt: int) -> list[float]:
+        # Deterministic variant pick: same sample → same variant, different
+        # samples → different points across the style's semantic spread.
+        base = embedding_lookup.get(style_id)
+        if base is None:
+            return [0.0] * 16
+        variants = embedding_variants.get(style_id)
+        if not variants:
+            return base
+        salt_sum = sum(ord(ch) for ch in style_id) + salt
+        return variants[salt_sum % len(variants)]
+
     x_rows: list[list[float]] = []
     for i, sample in enumerate(data):
         if embedding_lookup:
             style_id = sample["groove"].split("#")[0]  # e.g. "house.driving" from "house.driving#0"
-            semantic = embedding_lookup.get(style_id, [0.0] * 16)
+            semantic = semantic_for(style_id, i)
             if hybrid_mode:
                 # v3: semantic PREPENDED, the full 44-dim v1 row (genre+style
                 # one-hot + structural) stays intact — both conditioning channels.
