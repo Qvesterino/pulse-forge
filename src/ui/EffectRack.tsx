@@ -319,6 +319,10 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
             ))}
           </select>
         </div>
+        {/* The persistent idea input lives on BOTH rack surfaces — the dock
+            renders this devices view for the selected track, the classic
+            rack below for the mixer-focused flow. */}
+        <FxIntentBar trackId={track.id} />
         <div className="device-surface">
           {activeDeviceId === "instrument" && hasInstrument ? (
             <DockedPlugin trackId={track.id} selectedPadId={selectedPadId} />
