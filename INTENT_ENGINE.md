@@ -800,6 +800,25 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 
 **Embedding shadow A/B (GOAL 30, `npm run embedding:ab`)**: model-level gate (ort-web vo vite serveri) — **v2 je komplementárny, nie dominantný**: mood-only páry v1 SLEPÝ (dist 0) / v2 vidí (0.54); style-explicit páry v1 ostrejší (1.44 vs 0.54). Verdikt KEEP-OFF — flag `pf:embedding-conditioned` ostáva default off; cesta k ON = hybrid v3 conditioning (semantic + style one-hot, retrén) alebo listening-room verdikt.
 
+### 5.19 SONG AUTO-PRODUCE (P4 — každá pesnička znie hotovo, HOTOVÉ)
+
+Reťaz je kompletná a defaultná: `composeFullTrack` (`src/intent/compose.ts`)
+stavia song → mix profil → loudness pass; `applySongCommand` sám nesie genre
+kit, section FX, cue klipy, master tilt (character genres) a statický genre
+trim na −14 LUFS; draft flow v IntentPaneli (`buildSongDraft` → audition →
+`useSongDraft`) počúva song+mix zložené a USE inštaluje **presne ten istý**
+mix (reuse composed command, kým je doc nedotknutý; po medzi-editácii rebase
+s priznaním "mix re-planned after edits"). Dôvod: re-plán na post-song docu
+dáva síce rovnaké typy/parametre/sidechain, ale INÉ poradie chainu (pump pred
+vs. za section FX — počuteľné). Reuse drží preview==USE aj v poradí.
+
+- **Garancie** (`tests/song-auto-produce.test.ts`, 3): všetkých 8 žánrov má
+  pri neutrálnom intente neprázdny mix; re-plán sa zhoduje s composed mixom
+  v počuteľnom tvare; mix nikdy nesiaha na "FX Cues" lane (transition
+  zvuky ostávajú bez pumpy).
+- **Vedomý tradeoff**: audition nepočuje loudness fine-tune (beží až na USE
+  proti nainštalovanému docu — plný render ×2 iterácie by spomalil draft).
+
 ## 6. Kvalita, testy, determinizmus
 
 - **Testy**: `tests/intent-pipeline.test.ts`, `intent-async-pipeline.test.ts`,
