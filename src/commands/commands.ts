@@ -97,6 +97,7 @@ import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
 import { classifyPads } from "../assist/patternOps";
+import { applyVerbRows, type PatternVerb } from "../intent/pattern-verbs";
 import type { ExactIntentPlan, ExactOp } from "../intent/exact";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
@@ -1108,6 +1109,43 @@ export function setStepsVelocity(
  * ghost notes next to existing hits, occasional dropped weak hits and a touch
  * of microtiming. One undo step returns the original.
  */
+/**
+ * PATTERN-DIFF VERBS (vibe-code wave 1): "fewer hats", "menej hi-hatov",
+ * "denser snare", "add ghosts", "simplify", "swing it" — applied to the
+ * pattern you're HEARING, in place, as ONE undoable snapshot. Families
+ * resolve via classifyPads on the drum track; rows never empty entirely
+ * (the family's first original hit survives) and the swing verb composes
+ * into doc.groove instead of rows. Deterministic per (pattern, verbs).
+ */
+export function applyPatternVerbsCommand(
+  doc: ProjectDocument,
+  patternId: string,
+  verbs: PatternVerb[],
+  seed = "pattern-verbs",
+): Command {
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const drumTrack = doc.tracks.find((t) => t.kind === "drum");
+  const pads = drumTrack && drumTrack.kind === "drum" ? drumTrack.pads : [];
+  const { rows, grooveSwingDelta } = applyVerbRows(pattern, pads, verbs, seed);
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((p) => (p.id === patternId ? { ...p, rows: { ...p.rows, ...rows } } : p)),
+    ...(grooveSwingDelta > 0
+      ? {
+          groove: {
+            ...doc.groove,
+            swing: Math.min(0.6, Math.round(((doc.groove?.swing ?? 0) + grooveSwingDelta) * 100) / 100),
+          },
+        }
+      : {}),
+  };
+  const unchanged = next.patterns === doc.patterns && next.groove === doc.groove;
+  if (unchanged) return snapshot("applyPatternVerbs", "Pattern verbs (no-op)", doc, doc);
+  const describe = verbs.map((v) => v.kind + (v.family !== "all" ? ` ${v.family}` : "")).join(" + ");
+  return snapshot("applyPatternVerbs", `Pattern verbs: ${describe}`, doc, next);
+}
+
 export function mutatePattern(doc: ProjectDocument, patternId: string): Command {
   const source = doc.patterns.find((p) => p.id === patternId);
   if (!source) throw new Error(`Pattern ${patternId} not found`);

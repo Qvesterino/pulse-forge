@@ -5,6 +5,14 @@ import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseProductionIntent } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
 import {
+  applySessionCandidateCommand,
+  lastGeneration,
+  promptHistory,
+  rememberGeneration,
+  rememberPrompt,
+  resolveSessionReference,
+} from "../intent/session-context";
+import {
   applyGenerationResultCommand,
   applyGenerationResultWithFxCommand,
   applyProductionIntentCommand,
@@ -64,6 +72,9 @@ export function IntentPanel() {
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
   const [semanticChip, setSemanticChip] = useState<string | null>(null);
+  // Prompt history strip (vibe-code wave 2): reactivity tick over the
+  // module-level session history.
+  const [historyTick, setHistoryTick] = useState(0);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [renderingIndex, setRenderingIndex] = useState<number | null>(null);
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
@@ -79,6 +90,18 @@ export function IntentPanel() {
       stopAudition();
     };
   }, []);
+
+  // Audit 13 D2: a PROJECT SWITCH swaps `services` while this panel stays
+  // mounted — abort the in-flight generation and drop its candidate bank so
+  // the old project's proposal can never be applied into the new project.
+  useEffect(() => {
+    abortRef.current?.abort();
+    stopAudition();
+    setBankResult(null);
+    setPlayingIndex(null);
+    setSongDraft(null);
+    setJustApplied(false);
+  }, [services]);
 
   // Landing handoff (viral growth plan A2): the prompt that forged the beat
   // now playing pre-fills the field, so "tweak it and Forge another" is one
@@ -155,6 +178,22 @@ export function IntentPanel() {
         return;
       }
       lastIntentRef.current = result.plan.intent;
+      // Session context (vibe-code wave 2): the bank stays addressable —
+      // "that second one, darker" resolves against it next prompt.
+      rememberGeneration({
+        text: intentInput.seed ? text.trim() || intentInput.seed : text.trim(),
+        intent: intentInput,
+        candidates: (result.bank ?? []).map((entry, index) => ({
+          index,
+          pattern: entry.pattern,
+          intent: result.plan.intent,
+        })),
+        appliedIndex: null,
+        docId: doc.id,
+        at: Date.now(),
+      });
+      rememberPrompt(text);
+      setHistoryTick((tick) => tick + 1);
       setBankResult(result);
       const count = result.bank?.length ?? 0;
       setStatus(
@@ -180,6 +219,32 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     buffersRef.current = new Map();
+    // SESSION REFERENCE (vibe-code wave 2): "that second one, darker" —
+    // apply the referenced candidate from the last generation, then run the
+    // residual words through the normal pipeline (production/verbs/song).
+    const last = lastGeneration();
+    const reference = last ? resolveSessionReference(text, last.candidates) : null;
+    if (reference && last) {
+      const candidate = last.candidates[reference.index];
+      services.store.execute(applySessionCandidateCommand(doc, candidate.pattern));
+      rememberPrompt(text);
+      let statusText = `✓ candidate #${reference.index + 1} re-applied from session context`;
+      const residualText = reference.rest;
+      if (residualText) {
+        const production = parseProductionIntent(residualText);
+        if (production) {
+          try {
+            services.store.execute(applyProductionIntentCommand(doc, production));
+            statusText += ` + ${production.goals.map((g) => g.concept).join(" + ")}`;
+          } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
+          }
+        }
+      }
+      setStatus(statusText);
+      setBusy(false);
+      return;
+    }
     // Production intents (master doc §4.3): "make the bass deeper" tweaks the
     // EXISTING track's sound through effects — one undoable command group —
     // instead of generating a new pattern. Detection is comparative/
@@ -792,6 +857,27 @@ export function IntentPanel() {
         rows={3}
         aria-label="Intent description"
       />
+      {historyTick >= 0 && promptHistory().length > 0 && (
+        <div className="intent-history" aria-label="Prompt history">
+          <span className="intent-history-label">RECENT</span>
+          {promptHistory()
+            .slice(0, 8)
+            .map((entry) => (
+              <button
+                key={entry.at}
+                type="button"
+                className="intent-history-chip"
+                title="Re-run this prompt"
+                onClick={() => {
+                  setText(entry.text);
+                  void generate();
+                }}
+              >
+                {entry.text.length > 42 ? entry.text.slice(0, 40) + "…" : entry.text}
+              </button>
+            ))}
+        </div>
+      )}
       {detectedText && (
         <div className="intent-detected" aria-label="Detected keywords">
           {detectedText}

@@ -231,3 +231,37 @@
 .intent-ref-chip-clear:hover {
   color: #f87171;
 }
+
+/* ── Prompt history strip (vibe-code wave 2) ──────────────────────────── */
+.intent-history {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
+.intent-history-label {
+  color: var(--text-faint, #777);
+  font: 9px var(--mono, monospace);
+  letter-spacing: 0.7px;
+}
+
+.intent-history-chip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px var(--mono, monospace);
+  color: var(--text-dim, #aaa);
+  background: var(--bg-raise, #222);
+  border: 1px solid var(--border, #333);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+
+.intent-history-chip:hover {
+  border-color: var(--accent, #f59e0b);
+  color: var(--accent, #f59e0b);
+}
