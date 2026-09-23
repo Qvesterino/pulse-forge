@@ -24,6 +24,7 @@ import { pitchName } from "../project-model/types";
 import { ticksPerBar } from "../project-model/schema";
 import type { GenerativeVariation } from "../generative/resample";
 import { GENERATIVE_MACRO_NAMES } from "../generative/types";
+import { createUnavailableGenerativeProvider } from "../generative/registry";
 import { autoMapVelocityLayers } from "../samples/autoMap";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
@@ -92,8 +93,31 @@ export function Inspector({
   const [generativeVariations, setGenerativeVariations] = useState<GenerativeVariation[]>([]);
   const [mrt2CompanionUrl, setMrt2CompanionUrl] = useState("ws://127.0.0.1:8765");
   const [mrt2CompanionToken, setMrt2CompanionToken] = useState("");
-  const [mrt2CompanionState, setMrt2CompanionState] = useState<"idle" | "configured" | "error">("idle");
+  const [mrt2CompanionState, setMrt2CompanionState] = useState<"idle" | "starting" | "configured" | "error">("idle");
+  const [mrt2CompanionError, setMrt2CompanionError] = useState("");
+  const [mrt2NativeRunning, setMrt2NativeRunning] = useState(false);
+  const [mrt2NativeInstalled, setMrt2NativeInstalled] = useState(false);
+  const [mrt2NativeStatus, setMrt2NativeStatus] = useState("");
   const generativeStatus = useGenerativeStatus(track.id);
+
+  useEffect(() => {
+    const bridge = window.kyxDesktop?.mrt2;
+    if (!bridge) return;
+    let active = true;
+    void bridge
+      .getAvailability()
+      .then((availability) => {
+        if (!active) return;
+        setMrt2NativeInstalled(availability.nativeInstalled);
+        setMrt2NativeStatus(availability.message);
+      })
+      .catch(() => {
+        if (active) setMrt2NativeStatus("NATIVE MRT2 STATUS IS UNAVAILABLE");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     // A mapping proposal belongs to the track that received the drop. Never
@@ -324,24 +348,75 @@ export function Inspector({
       if (!text || (track.generative.style.kind === "text" && text === track.generative.style.text)) return;
       services.store.execute(setGenerativeTrackConfig(doc, track.id, { style: { kind: "text", text } }));
     };
-    const configureMrt2Companion = async (): Promise<void> => {
+    const configureMrt2Companion = async (
+      endpointUrl = mrt2CompanionUrl,
+      sessionToken = mrt2CompanionToken,
+    ): Promise<boolean> => {
       try {
         const { createMrt2LocalhostProvider, isAllowedMrt2CompanionUrl } =
           await import("../generative/providers/mrt2/websocket-transport");
-        if (!isAllowedMrt2CompanionUrl(mrt2CompanionUrl)) {
+        if (!isAllowedMrt2CompanionUrl(endpointUrl)) {
           setMrt2CompanionState("error");
-          return;
+          setMrt2CompanionError("COMPANION ENDPOINT MUST USE LOCALHOST");
+          return false;
         }
         const provider = createMrt2LocalhostProvider({
-          url: mrt2CompanionUrl,
-          ...(mrt2CompanionToken ? { authToken: mrt2CompanionToken } : {}),
+          url: endpointUrl,
+          ...(sessionToken ? { authToken: sessionToken } : {}),
         });
         services.generativeProviders.unregister(provider.id);
         services.generativeProviders.register(provider);
         setMrt2CompanionState("configured");
+        setMrt2CompanionError("");
         void services.generativeRuntime.refreshAll();
+        return true;
       } catch {
         setMrt2CompanionState("error");
+        setMrt2CompanionError("MRT2 COMPANION COULD NOT BE CONFIGURED");
+        return false;
+      }
+    };
+    const startNativeMrt2 = async (): Promise<void> => {
+      const bridge = window.kyxDesktop?.mrt2;
+      if (!bridge || !mrt2NativeInstalled) return;
+      setMrt2CompanionState("starting");
+      setMrt2CompanionError("");
+      try {
+        await bridge.startNativeHost();
+        setMrt2NativeRunning(true);
+        const { createMrt2ElectronProvider } = await import("../generative/providers/mrt2/electron-transport");
+        const provider = createMrt2ElectronProvider();
+        services.generativeProviders.unregister(provider.id);
+        services.generativeProviders.register(provider);
+        setMrt2CompanionState("configured");
+        setMrt2CompanionError("");
+        void services.generativeRuntime.refreshAll();
+        const availability = await bridge.getAvailability();
+        setMrt2NativeInstalled(availability.nativeInstalled);
+        setMrt2NativeStatus(availability.message);
+      } catch (error) {
+        setMrt2CompanionState("error");
+        setMrt2CompanionError(error instanceof Error ? error.message.toUpperCase() : "MRT2 NATIVE HOST FAILED");
+      }
+    };
+    const stopNativeMrt2 = async (): Promise<void> => {
+      const bridge = window.kyxDesktop?.mrt2;
+      if (!bridge) return;
+      try {
+        await services.generativeRuntime.stopAll();
+        services.generativeProviders.unregister("mrt2");
+        services.generativeProviders.register(
+          createUnavailableGenerativeProvider("mrt2", "MRT2 native host is stopped", "mrt2_small"),
+        );
+        await bridge.stopNativeHost();
+        setMrt2NativeRunning(false);
+        setMrt2CompanionState("idle");
+        const availability = await bridge.getAvailability();
+        setMrt2NativeInstalled(availability.nativeInstalled);
+        setMrt2NativeStatus(availability.message);
+      } catch {
+        setMrt2CompanionState("error");
+        setMrt2CompanionError("MRT2 NATIVE HOST COULD NOT BE STOPPED");
       }
     };
     const captureFourBars = (): void => {
@@ -390,6 +465,24 @@ export function Inspector({
           {track.generative.providerId} / {track.generative.modelId}
         </p>
         <h3 className="inspector-subtitle">LOCAL MRT2 COMPANION</h3>
+        {window.kyxDesktop?.mrt2 && (
+          <>
+            <p className="inspector-subtitle">{mrt2NativeStatus || "CHECKING NATIVE MRT2 HOST…"}</p>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!mrt2NativeInstalled || mrt2CompanionState === "starting"}
+              onClick={() => void startNativeMrt2()}
+            >
+              {mrt2CompanionState === "starting" ? "STARTING MRT2 SMALL…" : "START NATIVE MRT2 SMALL"}
+            </button>
+            {mrt2NativeRunning && (
+              <button type="button" className="btn btn-small" onClick={() => void stopNativeMrt2()}>
+                STOP NATIVE MRT2
+              </button>
+            )}
+          </>
+        )}
         <label className="fx-param-select">
           <span className="slider-label">LOCAL ENDPOINT</span>
           <input
@@ -414,7 +507,9 @@ export function Inspector({
         {mrt2CompanionState === "configured" && (
           <p className="inspector-subtitle">COMPANION CONFIGURED — PLAY TO CONNECT</p>
         )}
-        {mrt2CompanionState === "error" && <p className="inspector-subtitle">INVALID COMPANION — USE LOCALHOST ONLY</p>}
+        {mrt2CompanionState === "error" && (
+          <p className="inspector-subtitle">{mrt2CompanionError || "INVALID COMPANION — USE LOCALHOST ONLY"}</p>
+        )}
         <label className="fx-param-select">
           <span className="slider-label">STYLE PROMPT</span>
           <input

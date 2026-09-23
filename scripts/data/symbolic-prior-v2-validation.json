@@ -12,17 +12,17 @@
   "samples": 87552,
   "hitRatio": 0.0821,
   "posWeight": 11.06,
-  "valAuc": 0.9172,
-  "trainAuc": 0.9256,
-  "bestF1Threshold": 0.7,
+  "valAuc": 0.9203,
+  "trainAuc": 0.9299,
+  "bestF1Threshold": 0.71,
   "val": {
-    "precision": 0.3052,
-    "recall": 0.8724,
-    "f1": 0.4522
+    "precision": 0.3391,
+    "recall": 0.7171,
+    "f1": 0.4605
   },
   "train": {
-    "precision": 0.323,
-    "recall": 0.8966,
-    "f1": 0.4749
+    "precision": 0.3581,
+    "recall": 0.7886,
+    "f1": 0.4925
   }
 }

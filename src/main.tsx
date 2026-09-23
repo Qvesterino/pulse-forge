@@ -52,6 +52,7 @@ declare global {
       isDesktop: true;
       mrt2?: {
         getAvailability: () => Promise<{
+          nativeInstalled: boolean;
           nativeRealtime: boolean;
           localCompanion: boolean;
           platform: string;
@@ -65,6 +66,13 @@ declare global {
           | { ok: true; endpoint: { url: string; secure: boolean; host: string; port: number } }
           | { ok: false; error: string }
         >;
+        startNativeHost: () => Promise<{ ready: true }>;
+        stopNativeHost: () => Promise<void>;
+        openTransport: () => Promise<string>;
+        sendControl: (transportId: string, message: unknown) => Promise<void>;
+        sendBinary: (transportId: string, packet: ArrayBuffer) => Promise<void>;
+        closeTransport: (transportId: string) => Promise<void>;
+        subscribe: (listener: (event: unknown) => void) => () => void;
       };
     };
   }

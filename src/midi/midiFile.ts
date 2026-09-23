@@ -79,6 +79,13 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
   let bpm: number | null = null;
   let timeSignature: { num: number; den: number } | null = null;
 
+  // Audit 10 D3: hard cap on retained notes. A machine-generated 10 MB .mid
+  // (just under the file cap) packs ~2.5 M note events — the parse used to
+  // allocate them all (hundreds of MB live + multi-second freeze) only for
+  // downstream caps to discard almost everything.
+  const MAX_NOTES = 200_000;
+  let noteCount = 0;
+
   /** Per chunk: name + per-channel note-open stacks + finished note lists. */
   type OpenNote = { startTick: number; velocity: number };
   const chunks: { name: string; open: Map<number, OpenNote[]>; notes: Map<number, MidiNote[]> }[] = [];
@@ -109,6 +116,11 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
       const open = stack?.pop();
       if (!open) return;
       if (endT <= open.startTick) return;
+      if (++noteCount > MAX_NOTES) {
+        throw new MidiParseError(
+          `MIDI file contains too many notes (over ${MAX_NOTES}) — likely machine-generated data`,
+        );
+      }
       notesOf(channel).push({
         pitch,
         startTick: open.startTick,

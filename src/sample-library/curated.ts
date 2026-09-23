@@ -91,6 +91,14 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.tonal.stab", file: "factory.tonal.stab.wav" },
   { id: "factory.tonal.keys", file: "factory.tonal.keys.wav" },
   { id: "factory.tonal.bell", file: "factory.tonal.bell.wav" },
+  { id: "factory.tonal.memphisguitar", file: "factory.tonal.memphisguitar.wav" },
+  { id: "factory.tonal.darkstrings", file: "factory.tonal.darkstrings.wav" },
+  { id: "factory.tonal.rhodes", file: "factory.tonal.rhodes.wav" },
+  { id: "factory.tonal.trumpet", file: "factory.tonal.trumpet.wav" },
+  { id: "factory.tonal.animepluck", file: "factory.tonal.animepluck.wav" },
+  { id: "factory.tonal.sadpiano", file: "factory.tonal.sadpiano.wav" },
+  { id: "factory.tonal.padwarm", file: "factory.tonal.padwarm.wav" },
+  { id: "factory.tonal.harp", file: "factory.tonal.harp.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

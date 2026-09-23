@@ -47,6 +47,17 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
+mac:
+  target:
+    - dmg
+    - zip
+  extraResources:
+    - from: build/mrt2-host/kyx-mrt2-host
+      to: mrt2-host/kyx-mrt2-host
+  # electron-builder signs this executable as nested native code before
+  # signing/notarizing the outer app bundle.
+  binaries:
+    - Contents/Resources/mrt2-host/kyx-mrt2-host
 nsis:
   oneClick: false
   perMachine: false

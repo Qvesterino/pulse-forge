@@ -46,6 +46,7 @@ import { createBandmate } from "./collab/bandmate";
 import { createUnavailableGenerativeProvider, GenerativeProviderRegistry } from "./generative/registry";
 import { GenerativeLatencyCalibrationController } from "./generative/latency";
 import { GenerativeRuntime } from "./generative/runtime";
+import { bindGenerativeContextLifecycle } from "./generative/context-lifecycle";
 import {
   applyTransportState,
   captureTransportState,
@@ -726,22 +727,14 @@ export async function openProject(
     latencyCalibration: generativeLatency,
   });
   generativeRuntimeRef = generativeRuntime;
-  let generativePausedForContext = false;
-  const pauseGenerativeForContext = (): void => {
-    if (!transport.playing || generativePausedForContext) return;
-    generativePausedForContext = true;
-    void generativeRuntime.stopAll().catch((error) => {
-      console.warn("[generative] context suspend stop failed:", error);
-    });
-  };
-  const resumeGenerativeAfterContext = (): void => {
-    if (!generativePausedForContext) return;
-    generativePausedForContext = false;
-    if (!transport.playing) return;
-    void generativeRuntime.startAll().catch((error) => {
-      console.warn("[generative] context resume start failed:", error);
-    });
-  };
+  const generativeContextLifecycle = bindGenerativeContextLifecycle(
+    engine,
+    generativeRuntime,
+    () => transport.playing,
+    (operation, error) => console.warn(`[generative] context ${operation} failed:`, error),
+  );
+  const pauseGenerativeForContext = (): void => generativeContextLifecycle.pause();
+  const resumeGenerativeAfterContext = (): void => generativeContextLifecycle.resume();
   playback.attachGenerativeLifecycle({
     start: () => {
       void generativeRuntime.startAll().catch((error) => {
@@ -961,15 +954,6 @@ export async function openProject(
     isDirty: () => store.saveStatus === "dirty" || store.saveStatus === "error",
   });
   document.addEventListener("visibilitychange", onVisibility);
-  const onAudioContextState = (): void => {
-    const state = engine.context?.state;
-    if (state === "suspended") {
-      pauseGenerativeForContext();
-    } else if (state === "running") {
-      resumeGenerativeAfterContext();
-    }
-  };
-  engine.context?.addEventListener("statechange", onAudioContextState);
 
   const closeProject = async (): Promise<void> => {
     // Ordered teardown; the flag first so pending fire-and-forget asyncs
@@ -978,6 +962,7 @@ export async function openProject(
     noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();
+    generativeContextLifecycle.dispose();
     await generativeRuntime.dispose();
     playback.stop();
     collab?.dispose();
@@ -985,7 +970,6 @@ export async function openProject(
     midiClock.dispose();
     midiOutput.dispose();
     document.removeEventListener("visibilitychange", onVisibility);
-    engine.context?.removeEventListener("statechange", onAudioContextState);
     uninstallUnloadGuards();
     await flushSave();
   };

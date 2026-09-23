@@ -344,7 +344,7 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
         inputHash: response.inputHash,
       };
     } catch (error) {
-      if (!this.failedError && this.status.state === "capturing") {
+      if (!this.failedError && this.captureData !== null) {
         this.setStatus({ state: "ready", message: error instanceof Error ? error.message : "MRT2 capture failed" });
       }
       throw error;
@@ -437,7 +437,10 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
         return;
       }
       if (packet.kind !== "output") return;
-      if (this.status.state === "capturing") {
+      // Capture ownership is the allocated buffer, not the display status. A
+      // native inference underrun may report buffering during capture without
+      // making subsequent PCM cease to belong to that capture.
+      if (this.captureData !== null) {
         if (packet.sampleRate !== this.config.outputSampleRate || packet.channels !== this.config.outputChannels) {
           this.fail(new Error("MRT2 capture PCM format changed during capture"));
           return;

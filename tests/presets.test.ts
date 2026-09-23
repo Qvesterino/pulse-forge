@@ -61,7 +61,9 @@ describe("factory presets", () => {
   it("sample-driven presets reference a real tonal factory sample", () => {
     for (const preset of FACTORY_PRESETS.filter((p) => ["sampler", "granular", "vocalchop"].includes(p.instrument))) {
       expect(preset.sampleId).toBeTruthy();
-      expect(preset.sampleId).toMatch(/^factory\.tonal\.(pluck|stab|keys|bell)$/);
+      expect(preset.sampleId).toMatch(
+        /^factory\.tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp)$/,
+      );
     }
   });
 

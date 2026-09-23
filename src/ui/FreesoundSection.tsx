@@ -73,10 +73,17 @@ export function FreesoundSection({ onImport }: { onImport: (asset: UserSampleAss
         services.bank.add(id, await ctx.decodeAudioData(raw.slice(0)));
       }
       const buffer = services.bank.get(id)!;
+      // Audit 10 D4: the API name is untrusted — strip control/separator
+      // characters so fileName can never carry path-ish or control garbage.
+      const safeName =
+        result.name
+          .slice(0, 30)
+          .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, " ")
+          .trim() || "freesound";
       const asset: UserSampleAsset = {
         id,
-        name: `${result.name.slice(0, 30)} · fs`,
-        fileName: `${result.name.slice(0, 30)} (freesound preview).mp3`,
+        name: `${safeName} · fs`,
+        fileName: `${safeName} (freesound preview).mp3`,
         category: "Custom",
         duration: buffer.duration,
         sampleRate: buffer.sampleRate,

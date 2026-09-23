@@ -475,6 +475,248 @@ function keys(): Builder {
   };
 }
 
+/** Memphis/phonk guitar hook: saw+triangle through a warm LPF with a slow
+ * vibrato and a dusted attack — the dusty six-string that carries memphis
+ * melodies. */
+function memphisGuitar(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 2100;
+    lpf.Q.value = 1.1;
+    const vib = ctx.createOscillator();
+    vib.type = "sine";
+    vib.frequency.value = 5.2;
+    const vibGain = ctx.createGain();
+    vibGain.gain.value = 4.5;
+    vib.connect(vibGain);
+    for (const [type, mult, level, decay] of [
+      ["sawtooth", 1, 0.55, 0.85],
+      ["triangle", 1.002, 0.4, 0.7],
+      ["sine", 2.004, 0.18, 0.4],
+    ] as [OscillatorType, number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(C4 * mult, t0);
+      vibGain.connect(osc.detune);
+      osc.connect(env(ctx, t0, level, decay)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.1);
+    }
+    vib.start(t0);
+    vib.stop(t0 + 1.2);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.9, t0);
+    amp.gain.setTargetAtTime(0.0001, t0 + 0.7, 0.3);
+    lpf.connect(amp).connect(dest);
+    const grit = noiseSource(ctx, 71, 0.02, t0);
+    const ghp = ctx.createBiquadFilter();
+    ghp.type = "highpass";
+    ghp.frequency.value = 2500;
+    grit.connect(ghp).connect(env(ctx, t0, 0.06, 0.015)).connect(dest);
+  };
+}
+
+/** Dark string ensemble: three detuned saws + fifth through a heavy LPF,
+ * slow swell, long tail — the drill/melodic-trap menace bed. */
+function darkStrings(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 1600;
+    lpf.Q.value = 0.8;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.linearRampToValueAtTime(0.8, t0 + 0.18);
+    amp.gain.setTargetAtTime(0.0001, t0 + 0.55, 0.5);
+    lpf.connect(amp).connect(dest);
+    for (const [mult, level] of [
+      [1, 0.34],
+      [1.0045, 0.3],
+      [0.9957, 0.3],
+      [1.5, 0.14],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(C4 * mult, t0);
+      osc.connect(env(ctx, t0, level, 1.6)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 1.9);
+    }
+  };
+}
+
+/** Rhodes-ish tine: sine body + bright FM-ish tine partial that decays
+ * fast — the warm electric key the sampler never had. */
+function rhodes(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const body = ctx.createOscillator();
+    body.type = "sine";
+    body.frequency.value = C4;
+    const bodyG = env(ctx, t0, 0.7, 1.4);
+    body.connect(bodyG).connect(dest);
+    body.start(t0);
+    body.stop(t0 + 1.6);
+    const tine = ctx.createOscillator();
+    tine.type = "sine";
+    tine.frequency.setValueAtTime(C4 * 3.98, t0);
+    tine.frequency.exponentialRampToValueAtTime(C4 * 3.02, t0 + 0.25);
+    const tineG = env(ctx, t0, 0.3, 0.3);
+    tine.connect(tineG).connect(dest);
+    tine.start(t0);
+    tine.stop(t0 + 0.5);
+    const bark = ctx.createOscillator();
+    bark.type = "triangle";
+    bark.frequency.value = C4 * 2;
+    bark.connect(env(ctx, t0, 0.12, 0.5)).connect(dest);
+    bark.start(t0);
+    bark.stop(t0 + 0.7);
+  };
+}
+
+/** Mariachi trumpet: saw through a brassy bandpass formant with a pitch
+ * flare on the attack and late vibrato — the phonk icon. */
+function mariachiTrumpet(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(C4 * 0.985, t0);
+    osc.frequency.exponentialRampToValueAtTime(C4 * 1.004, t0 + 0.09);
+    const vib = ctx.createOscillator();
+    vib.type = "sine";
+    vib.frequency.value = 5.6;
+    const vibGain = ctx.createGain();
+    vibGain.gain.setValueAtTime(0.0001, t0);
+    vibGain.gain.linearRampToValueAtTime(9, t0 + 0.5);
+    vib.connect(vibGain).connect(osc.detune);
+    vib.start(t0);
+    vib.stop(t0 + 1.0);
+    const formant = ctx.createBiquadFilter();
+    formant.type = "bandpass";
+    formant.frequency.value = 1150;
+    formant.Q.value = 1.6;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.linearRampToValueAtTime(0.85, t0 + 0.045);
+    amp.gain.setTargetAtTime(0.0001, t0 + 0.6, 0.25);
+    osc.connect(formant).connect(amp).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 1.1);
+    const edge = noiseSource(ctx, 73, 0.015, t0);
+    const ehp = ctx.createBiquadFilter();
+    ehp.type = "highpass";
+    ehp.frequency.value = 3200;
+    edge.connect(ehp).connect(env(ctx, t0, 0.07, 0.012)).connect(dest);
+  };
+}
+
+/** Anime/game pluck: bright sine stack with a sparkle partial and short
+ * decay — kawaii/jersey melody ear candy. */
+function animePluck(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [mult, level, decay] of [
+      [1, 0.6, 0.3],
+      [2.01, 0.3, 0.2],
+      [3.02, 0.18, 0.14],
+      [4.04, 0.1, 0.1],
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = C4 * 2 * mult;
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.1);
+    }
+  };
+}
+
+/** Sad piano: layered sines with staggered decays under a dark LPF — the
+ * melodic trap / drill heartbreak note. */
+function sadPiano(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 2400;
+    lpf.connect(dest);
+    for (const [mult, level, decay] of [
+      [1, 0.6, 1.7],
+      [2.002, 0.25, 0.9],
+      [3.004, 0.1, 0.45],
+      [4.998, 0.05, 0.25],
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = C4 * mult;
+      osc.connect(env(ctx, t0, level, decay)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.2);
+    }
+    const hammer = noiseSource(ctx, 79, 0.012, t0);
+    const hlp = ctx.createBiquadFilter();
+    hlp.type = "lowpass";
+    hlp.frequency.value = 3000;
+    hammer.connect(hlp).connect(env(ctx, t0, 0.08, 0.01)).connect(dest);
+  };
+}
+
+/** Warm pad swell: detuned triangles breathing in — the lo-fi/dnb intro
+ * bed that sits under everything. */
+function padWarm(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 1800;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.linearRampToValueAtTime(0.75, t0 + 0.5);
+    amp.gain.setTargetAtTime(0.0001, t0 + 1.3, 0.6);
+    lpf.connect(amp).connect(dest);
+    for (const [mult, type, level] of [
+      [1, "triangle", 0.4],
+      [1.006, "sine", 0.3],
+      [0.5, "sine", 0.25],
+      [1.5, "triangle", 0.15],
+    ] as [number, OscillatorType, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = C4 * mult;
+      osc.connect(env(ctx, t0, level, 2.4)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 2.7);
+    }
+  };
+}
+
+/** Harp tone: five-partial cascade with fast staggered decays — the dnb
+ * liquid / score gliss grain. */
+function harpTone(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const parts: [number, number, number][] = [
+      [1, 0.5, 1.1],
+      [2.001, 0.28, 0.7],
+      [3.003, 0.16, 0.5],
+      [4.005, 0.09, 0.35],
+      [5.01, 0.05, 0.25],
+    ];
+    for (const [mult, level, decay] of parts) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = C4 * mult;
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.15);
+    }
+  };
+}
+
 function bell(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1071,6 +1313,18 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.stab": stab(),
   "factory.tonal.keys": keys(),
   "factory.tonal.bell": bell(),
+  // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
+  // actually reaches for — memphis guitar, drill strings, rhodes, mariachi
+  // trumpet, anime pluck, sad piano, warm pad, harp. Carriers for sampler
+  // AND vocalchop presets (the chop engine formats tonal carriers).
+  "factory.tonal.memphisguitar": memphisGuitar(),
+  "factory.tonal.darkstrings": darkStrings(),
+  "factory.tonal.rhodes": rhodes(),
+  "factory.tonal.trumpet": mariachiTrumpet(),
+  "factory.tonal.animepluck": animePluck(),
+  "factory.tonal.sadpiano": sadPiano(),
+  "factory.tonal.padwarm": padWarm(),
+  "factory.tonal.harp": harpTone(),
 };
 
 /** Render length per asset, seconds — exported for coherence tests. */
@@ -1135,6 +1389,14 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.stab": 0.5,
   "factory.tonal.keys": 1.1,
   "factory.tonal.bell": 1.5,
+  "factory.tonal.memphisguitar": 1.4,
+  "factory.tonal.darkstrings": 2.2,
+  "factory.tonal.rhodes": 1.8,
+  "factory.tonal.trumpet": 1.3,
+  "factory.tonal.animepluck": 0.5,
+  "factory.tonal.sadpiano": 2.2,
+  "factory.tonal.padwarm": 2.8,
+  "factory.tonal.harp": 1.4,
 };
 
 /**

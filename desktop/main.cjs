@@ -20,13 +20,21 @@ const { app, BrowserWindow, protocol, session, dialog, net, Menu, ipcMain } = re
 const { autoUpdater } = require("electron-updater");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const os = require("node:os");
 const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
+const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
 const IS_SMOKE = process.env.KYX_SMOKE === "1";
 
 let mainWindow = null;
+let quittingAfterMrt2Stop = false;
+const mrt2NativeHost = new Mrt2NativeHostManager({
+  appIsPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  homeDirectory: os.homedir(),
+});
 
 // Must be called before app `ready`.
 protocol.registerSchemesAsPrivileged([
@@ -98,6 +106,25 @@ function configureDownloads() {
   });
 }
 
+function isTrustedMrt2Frame(event) {
+  const frameUrl = event?.senderFrame?.url;
+  if (typeof frameUrl !== "string") return false;
+  let parsed;
+  try {
+    parsed = new URL(frameUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "app:" && parsed.hostname === "bundle") return true;
+  const devUrl = process.env.KYX_DEV_URL;
+  if (!devUrl) return false;
+  try {
+    return parsed.origin === new URL(devUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -138,11 +165,24 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
+app.on("before-quit", (event) => {
+  if (quittingAfterMrt2Stop || !mrt2NativeHost.isRunning()) return;
+  event.preventDefault();
+  quittingAfterMrt2Stop = true;
+  void mrt2NativeHost.stop().finally(() => app.quit());
+});
+
 app.whenReady().then(() => {
   registerAppProtocol();
   configurePermissions();
   configureDownloads();
-  registerMrt2IpcHandlers(ipcMain);
+  registerMrt2IpcHandlers(ipcMain, {
+    appIsPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    homeDirectory: os.homedir(),
+    nativeHostManager: mrt2NativeHost,
+    isTrustedSender: isTrustedMrt2Frame,
+  });
   buildMenu();
   createWindow();
   scheduleUpdateChecks();

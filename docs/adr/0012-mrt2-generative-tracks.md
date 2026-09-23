@@ -71,6 +71,28 @@ weights, together with output-use responsibilities. Any native adapter,
 model distribution, attribution and update policy must be recorded in release
 documentation before shipping MRT2 assets.
 
+### 7. Electron uses a fixed, framed local-process boundary
+
+The desktop renderer never launches processes or opens an implicit network
+connection for native MRT2. Electron main may launch only the fixed packaged
+helper at resources/mrt2-host/kyx-mrt2-host, with the conventional
+~/Documents/Magenta/magenta-rt-v2 model root. The helper is Apple Silicon /
+macOS 14+ only and its availability is not inferred from the project file.
+
+Control and PCM use a bounded, versioned stdio framing contract. Renderer
+transports are bound to a trusted webContents; a renderer cannot send through
+another renderer's transport or pass executable/model paths. The browser path
+remains an explicit localhost companion connection. The wire contract and
+current release-artifact gap are tracked in
+docs/MRT2-NATIVE-HOST-PROTOCOL.md.
+
+The Objective-C++ `kyx-mrt2-host` source and pinned macOS arm64 build/package
+path now live in `native/mrt2-host/` and `scripts/`. This does not change the
+release matrix until an Apple Silicon build and actual-model smoke pass. The
+first native slice supports text prompt, live note state, drumless mode and
+capture; audio-style input, seeds and KYX product macros are explicitly
+reported unsupported until their upstream data/semantics are verified.
+
 ## Consequences
 
 - The browser bundle stays free of model weights and native ML dependencies.
@@ -97,6 +119,7 @@ documentation before shipping MRT2 assets.
 
 - [MRT2 repository](https://github.com/magenta/magenta-realtime)
 - [MRT2 model card](https://huggingface.co/google/magenta-realtime-2)
+- docs/MRT2-NATIVE-HOST-PROTOCOL.md
 - `docs/IMPLEMENTATION-ROADMAP-MRT2-GENERATIVE-TRACKS.md`
 - `docs/adr/0003-project-model-runtime-separation.md`
 - `docs/adr/0004-audioworklet-boundary.md`

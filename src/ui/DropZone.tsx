@@ -47,32 +47,30 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
 
   const importFiles = useCallback(
     async (files: FileList | File[]) => {
+      // Audit 10 D1: a second drop/click during an in-flight batch used to
+      // start a competing decode loop (two setImporting(false) races, last
+      // error wins). One batch at a time.
+      if (importing) return;
       setImporting(true);
       setError(null);
       const fileArray = Array.from(files);
       const importedBatch: UserSampleAsset[] = [];
+      const skipped: string[] = [];
 
       for (const file of fileArray) {
-        // Validate file type
+        // Validate file type — SKIP (not abort): dropping 20 WAVs where #3 is
+        // a .txt must not silently discard files 4–20 (Audit 10 D2).
         const isAccepted = ACCEPTED_TYPES.includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name);
         if (!isAccepted) {
-          setError(`Unsupported format: ${file.name}`);
-          setImporting(false);
-          return;
+          skipped.push(file.name);
+          continue;
         }
 
         // Validate size BEFORE reading — decoded PCM multiplies the bytes,
         // so an oversized file must fail fast instead of OOM-ing the tab.
         if (file.size > MAX_AUDIO_IMPORT_BYTES) {
-          setError(
-            `File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB — limit ${(
-              MAX_AUDIO_IMPORT_BYTES /
-              1024 /
-              1024
-            ).toFixed(0)} MB)`,
-          );
-          setImporting(false);
-          return;
+          skipped.push(`${file.name} (over ${Math.floor(MAX_AUDIO_IMPORT_BYTES / 1024 / 1024)} MB)`);
+          continue;
         }
 
         try {
@@ -129,12 +127,21 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
           console.error("[DropZone] import error:", err);
         }
       }
+      if (skipped.length > 0) {
+        // D2: say WHAT was skipped — the old early-return silently discarded
+        // every file after the first bad one.
+        setError(
+          `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"}: ${skipped.slice(0, 3).join(", ")}${
+            skipped.length > 3 ? "…" : ""
+          }`,
+        );
+      }
       if (onBatchImport && importedBatch.length > 1) {
         onBatchImport(importedBatch);
       }
       setImporting(false);
     },
-    [services, onBatchImport, onImport],
+    [services, onBatchImport, onImport, importing],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

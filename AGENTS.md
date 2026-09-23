@@ -22,7 +22,7 @@ A browser-first, fully offline-capable, production-grade digital audio workstati
 npm install
 npm run dev           # vite dev server — http://127.0.0.1:5173
 npm run typecheck     # strict tsc --noEmit
-npm run test          # vitest (jsdom, ~219 spec files)
+npm run test          # vitest (jsdom, ~449 collected spec files)
 npm run build         # production build + bundle budgets
 ```
 
@@ -41,11 +41,11 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/audio-workers/`                         | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`.                                                                                                              |
 | `src/scheduler/Scheduler.ts`                 | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback.                                                                                                                            |
 | `src/transport/Transport.ts`                 | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome.                                                                                                                               |
-| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 1`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
+| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 2`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
 | `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                      |
 | `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
-| `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 14 instrument kinds. Mod matrix, randomization.                                                                                                 |
-| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 36 effect types + 4 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.     |
+| `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 15 instrument kinds. Mod matrix, randomization.                                                                                                 |
+| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 42 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.   |
 | `src/sample-library/`                        | `manifest.ts` (41 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                         |
 | `src/presets/`                               | `factory.ts` (199 instrument presets + 6 drum presets = 205), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                           |
 | `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                               |
@@ -55,14 +55,15 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                |
 | `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                        |
 | `src/ai/`                                    | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors.                                                                                              |
+| `src/generative/`                            | Provider-neutral generative-track runtime, MRT2 browser/Electron adapters, KYX note conditioning, bounded AudioWorklet playback, durable capture and resample.                                                 |
 | `src/analysis/`                              | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host.                                                                                                                                |
 | `src/services/`                              | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring).                                                                                                      |
 | `src/ui/`                                    | ~70 React components — every panel/dialog/editor. `App.tsx` (56 KB), `ArrangementPanel.tsx` (106 KB), `ModPanel.tsx` (70 KB), `Sequencer.tsx` (67 KB), `PianoRoll.tsx` (65 KB).                              |
 | `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                              |
 | `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
-| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011); auto-update via electron-updater against GitHub Releases.                                                                                                               |
-| `tests/`                                     | Vitest specs (~219 files), Playwright E2E (5 specs), golden-vector locks for the three vendored plugin cores, intent suite, persistence round-trip.                                                          |
-| `docs/adr/`                                  | Architecture decision records 0001–0011. Read the relevant ADR before touching the area.                                                                                                                     |
+| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                 |
+| `tests/`                                     | Vitest specs (452 files), Playwright E2E, golden-vector locks for the three vendored plugin cores, intent suite, persistence round-trip.                                                                    |
+| `docs/adr/`                                  | Architecture decision records 0001–0012. Read the relevant ADR before touching the area.                                                                                                                     |
 | `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
 
 ---
@@ -126,7 +127,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 4. Add a golden-vector test suite under `tests/<name>-vectors/` (input → expected output, bit-exact).
 5. Wire the load order into `src/audio-worklets/loader.ts` (`PLUGIN_WORKLET_TYPES`).
 6. Add a panel under `src/ui/<Name>Panel.tsx` and wire it into `src/ui/dockLayout.ts`.
-7. Update `docs/CURRENT-STATE.md` (bump the 4 flagship count + add a row to the flagship table).
+7. Update `docs/CURRENT-STATE.md` (bump the 5 flagship count + add a row to the flagship table).
 
 ### Adding a new project template
 
@@ -150,7 +151,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 | Gate                      | Command                                | Expected result                                               |
 | ------------------------- | -------------------------------------- | ------------------------------------------------------------- |
 | Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                 |
-| Full Vitest suite         | `npm run test`                         | 219+ files / 2351+ tests / 103+ skipped, all PASS             |
+| Full Vitest suite         | `npm run test`                         | 449+ files / 4.5k+ tests / 100+ skipped, all PASS             |
 | Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                  |
 | Real-browser audio        | `npm run test:browser`                 | 226/226 in Chromium, Firefox and Edge                         |
 | Factory preset QA         | `npm run test:browser:factory-presets` | 199/199                                                       |
@@ -224,6 +225,8 @@ npm run vendor:fxeq
 # Desktop (Windows)
 npm run desktop:dev                            # vite dev + Electron window
 npm run desktop:build                          # NSIS installer + portable exe in release/
+npm run build:mrt2-native-host                 # macOS Apple Silicon only; MAGENTA_REALTIME_SOURCE must point at upstream v2.0.3
+npm run desktop:build:mac:mrt2                 # macOS Apple Silicon MRT2-enabled DMG + ZIP
 npm run desktop:smoke                          # boot Electron over dist/
 
 # Collab / gallery server

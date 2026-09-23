@@ -16,6 +16,7 @@ class FakeTransport implements Mrt2CompanionTransport {
   private listener: ((event: Mrt2CompanionEvent) => void) | null = null;
   readonly binary: ArrayBuffer[] = [];
   private sequence = 0;
+  bufferDuringCapture = false;
 
   sendControl(message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
     queueMicrotask(() => {
@@ -86,6 +87,18 @@ class FakeTransport implements Mrt2CompanionTransport {
           });
           break;
         case "capture.start": {
+          if (this.bufferDuringCapture) {
+            this.emit({
+              kind: "control",
+              message: {
+                version: 1,
+                type: "status",
+                sessionId: message.sessionId,
+                state: "buffering",
+                message: "inference underrun",
+              },
+            });
+          }
           const packet: Mrt2AudioPacket = {
             kind: "output",
             sequence: this.sequence++,
@@ -311,6 +324,28 @@ describe("MRT2 companion protocol", () => {
     await session.start();
     const audio = await session.capture({ input: input("audio"), durationSec: 2 / 48_000 });
     expect(audio).toMatchObject({ sampleRate: 48_000, channels: 2, frames: 2, inputHash: "capture-hash" });
+    expect([...audio.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
+    await session.dispose();
+  });
+
+  it("continues collecting capture PCM across a buffering status transition", async () => {
+    const transport = new FakeTransport();
+    transport.bufferDuringCapture = true;
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    await session.updateInput(input("text"));
+    await session.start();
+    const statuses: string[] = [];
+    session.subscribeStatus((status) => statuses.push(status.state));
+
+    const audio = await session.capture({ input: input("text"), durationSec: 2 / 48_000 });
+
+    expect(statuses).toContain("buffering");
+    expect(audio.frames).toBe(2);
     expect([...audio.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
     await session.dispose();
   });

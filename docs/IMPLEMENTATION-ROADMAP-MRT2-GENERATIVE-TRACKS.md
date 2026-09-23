@@ -8,30 +8,31 @@
 
 Overené v pracovnom strome 2026-09-23:
 
-| Oblasť                                                                    | Stav                                                    |
-| ------------------------------------------------------------------------- | ------------------------------------------------------- |
-| ADR, persisted track model, schema v1 → v2 normalizácia                   | hotové a testované                                      |
-| provider-neutral contract, mock provider, capability registry, validation | hotové a testované                                      |
-| bounded PCM queue s explicitným overrun/underrun stavom                   | hotové a testované                                      |
-| capture → durable generated user sample → undoable `AudioClip` command    | hotové na mock provider flow vrátane runtime/UI commitu |
-| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                | hotové a testované                                      |
-| live engine/worklet bus, persisted macro lanes + scene intensity          | prvý vertical slice hotový; hardening otvorený          |
-| MRT2 protocol/IPC safety, host-local latency calibration, resample UI     | prvý slice hotový; native model host otvorený           |
+| Oblasť                                                                    | Stav                                                                                                            |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| ADR, persisted track model, schema v1 → v2 normalizácia                   | hotové a testované                                                                                              |
+| provider-neutral contract, mock provider, capability registry, validation | hotové a testované                                                                                              |
+| bounded PCM queue s explicitným overrun/underrun stavom                   | hotové a testované                                                                                              |
+| capture → durable generated user sample → undoable `AudioClip` command    | hotové na mock provider flow vrátane runtime/UI commitu                                                         |
+| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                | hotové a testované                                                                                              |
+| live engine/worklet bus, persisted macro lanes + scene intensity          | prvý vertical slice hotový; hardening otvorený                                                                  |
+| MRT2 protocol/IPC safety, host-local latency calibration, resample UI     | prvý slice hotový; native helper source/build/package path hotový; arm64 build a Apple Silicon runtime otvorené |
 
 ### Dôkazy posledného implementation passu
 
-- `npx tsc --noEmit --pretty false` — no MRT2/generative, AudioEngine or renderer diagnostics. Workspace typecheck is currently red on concurrent, out-of-scope instrument work: `src/instruments/registry.ts` has `flute` runtime/type errors, and `src/project-model/schema.ts` plus `src/ui/TrackTabs.tsx` are missing `flute` mappings. Test diagnostics also remain in `groove-pool`, `prior-embedding-conditioning`, `project-state-audit`, `recording-audit`, `services-save-drain`, `suno-mode`, `transport-audit` and the untracked `undo-redo-audit`;
-- `npx vite build` + `node scripts/check-bundle-size.mjs` — PASS on the current tree, MRT2 transport je v on-demand chunke `websocket-transport`; DAW JS `2466/2500 KB` (entry `222/1070`), optional lazy AI runtimes `640/650 KB` (Transformers.js + ONNX Runtime loaded only inside on-demand inference workers), core worklets `119/150 KB`, landing `455/600 KB`. Physical shipped JavaScript is `3106 KB` including optional AI runtimes; this updates budget classification, not emitted bytes, and does not increase either existing cap. Full `npm run build` remains blocked by unrelated typecheck errors above;
-- full targeted generative/lifecycle/render-time cluster — PASS, `18 files / 94 tests` including protocol, IPC, provider, player, runtime, capture, export, resample, architecture, transport lifecycle, BPM/loop-wrap conditioning refresh and tempo-map regressions;
+- `npx tsc --noEmit --pretty false` — no MRT2/generative, AudioEngine, renderer or current application-source diagnostics. Workspace typecheck remains red on test-only diagnostics in `import-audit`, `groove-pool`, `prior-embedding-conditioning`, `project-state-audit`, `recording-audit`, `services-save-drain`, `suno-mode`, `transport-audit` and the in-progress `undo-redo-audit`;
+- `npx vite build` + `node scripts/check-bundle-size.mjs` — PASS on the current tree; browser localhost and Electron IPC transports are on-demand chunks (`websocket-transport` 2.48 KB, `electron-transport` 1.67 KB). DAW JS `2478/2500 KB` (entry `222/1070`), optional lazy AI runtimes `640/650 KB` (Transformers.js + ONNX Runtime loaded only inside on-demand inference workers), core worklets `119/150 KB`, landing `455/600 KB`. Physical shipped JavaScript is `3118 KB` including optional AI runtimes; the existing core/lazy budgets remain respected. Full `npm run build` remains blocked by unrelated test-only typecheck errors above;
+- Electron native-host manager/IPC/provider additions — PASS, 3 files / 17 tests: fixed packaged executable/model-root launch policy, strict ready handshake, bounded framed stdio, sender-owned transport relays, finite style/output PCM validation, process exit/stop and the provider contract over Electron IPC. This verifies KYX's side of the adapter only; there is still no packaged MRT2 helper binary or actual-model Apple Silicon run;
+- combined focused MRT2/generative regression matrix — PASS, `22 files / 115 tests`; covers provider/protocol/IPC, AudioEngine/context lifecycle, player/worklet, capture/export/resample, transport, conditioning, architecture and the 300 s virtual provider soak. Includes packaged-host/model prerequisite vs runtime-ready gating, serialized suspend→resume, context loss/replacement, transport stop during interruption and BPM/loop-wrap conditioning refresh; capture PCM remains collected across a buffering status transition;
+- `npx vite build` — PASS on the current revision; the MRT2 browser and Electron adapters remain on-demand chunks, and no MRT2 model weights or native SDK enter the browser bundle. `node scripts/build-mrt2-native-host.mjs` correctly refuses this Windows x64 host before running CMake; native binary/package signature remains an Apple Silicon gate;
 - lazy inference/runtime classification — `tests/ranker-client.test.ts`, `tests/intent-semantic-client.test.ts`, `tests/landing-budget.test.ts`: PASS, `3 files / 11 tests`; `node scripts/check-bundle-size.mjs`: PASS with both core and lazy AI-runtime caps enforced;
-- fresh targeted MRT2/generative recheck — PASS, `17 files / 79 tests` across generative runtime/protocol/conditioning/capture/player/worklet/provider/export/resample/clip workflow/registry/latency/timeout/audio queue/architecture, Electron bridge and transport audit;
 - full `npm run test` — best-effort run while the shared worktree was changing, completed with `440 passed / 4 failed` files and `4481 passed / 10 failed / 117 skipped` tests; one worker exited unexpectedly after Node hit its ~4 GB heap limit. This is not a clean aggregate gate, so no failures are counted as feature passes;
 - provider-stall hardening — PASS; a failed refresh retires the session/audio graph and allows a later explicit Play to create a fresh session;
 - malformed transport/PCM hardening — PASS; every MRT2 adapter control and audio event is revalidated at the provider boundary, non-finite/out-of-range packets and malformed control messages terminate the session explicitly, and the AudioWorklet drops invalid chunks without producing non-finite output;
 - capture stream memory bound — PASS; each capture writes directly into one preallocated PCM buffer, is capped by requested duration/frame count, format, sequence and packet count, and inconsistent returned PCM metadata is rejected and cleared;
 - `tests/transport-audit.test.ts` — PASS, generative lifecycle is pinned through transport `play/pause/seek/stop` callbacks;
 - 300 s mock live soak — PASS ako zrýchlený virtuálny test (`7500` provider frames);
-- Playwright na čistom Vite serveri — landing flow `3/3` PASS; MRT2 generative-track Chromium flows `3/3` PASS vrátane fake localhost companion handshake, PCM streamu cez reálny AudioWorklet, underrun → buffering → recovery → running, Sequencer ruler seek s novým `startTick` na provider strane a Play → Pause → Resume → Stop lifecycle. IndexedDB asset/provenance reload → presne načasovaný AudioClip render → WAV encode/decode round-trip zachová počuteľný nástup. Offline clip render overuje trimmed reverse, pitch-preserving stretch, fade-in/out, track reverb, group hard-pan a štandardný master, polovičný master gain aj explicitný master bypass; všetky varianty majú finite a počuteľný výstup. Parity E2E porovnáva identické PCM cez live generative-source bus a captured `AudioClip` render (relative RMS error < 1 %); tým zároveň zachytil a opravil chybu, kde looping AudioClip predčasne končil po dĺžke zdrojového bufferu. Toto je routing/render parity, nie tvrdenie, že nedeterministický MRT2 vytvorí bit-identický nový capture. Windows WebKit preflight potvrdil chýbajúce `AudioContext`/`OfflineAudioContext`; 3 audio scenáre sa preto explicitne skipujú, skutočný Safari/macOS audio pass zostáva release gate. Širší Chromium smoke `5/6` (landing, generate a persistence PASS). Panel-toggle overflow test zlyhal aj pri samostatnom opakovaní: timeout 60 s pri `Escape`, pričom error snapshot je späť na Project Browser; príčina zatiaľ neizolovaná a širší browser gate preto nie je zelený. Generative track deklaruje `UNAVAILABLE` už pred prvým Play bez native bridge.
+- Playwright na čistom Vite serveri — landing flow `3/3` PASS; MRT2 generative-track Chromium flows pri poslednom opakovaní `3/3` PASS vrátane fake localhost companion handshake, PCM streamu cez reálny AudioWorklet, underrun → buffering → recovery → running, Sequencer ruler seek s novým `startTick` na provider strane a Play → Pause → Resume → Stop lifecycle. IndexedDB asset/provenance reload → presne načasovaný AudioClip render → WAV encode/decode round-trip zachová počuteľný nástup. Offline clip render overuje trimmed reverse, pitch-preserving stretch, fade-in/out, track reverb, group hard-pan a štandardný master, polovičný master gain aj explicitný master bypass; všetky varianty majú finite a počuteľný výstup. Parity E2E porovnáva identické PCM cez live generative-source bus a captured `AudioClip` render (relative RMS error < 1 %); tým zároveň zachytil a opravil chybu, kde looping AudioClip predčasne končil po dĺžke zdrojového bufferu. Toto je routing/render parity, nie tvrdenie, že nedeterministický MRT2 vytvorí bit-identický nový capture. Windows WebKit preflight potvrdil chýbajúce `AudioContext`/`OfflineAudioContext`; 3 audio scenáre sa preto explicitne skipujú, skutočný Safari/macOS audio pass zostáva release gate. Širší Chromium smoke `5/6` (landing, generate a persistence PASS). Panel-toggle overflow test zlyhal aj pri samostatnom opakovaní: timeout 60 s pri `Escape`, pričom error snapshot je späť na Project Browser; príčina zatiaľ neizolovaná a širší browser gate preto nie je zelený. Generative track deklaruje `UNAVAILABLE` už pred prvým Play bez native bridge.
 - Offline render regression — browser test odhalil a `buildTempoMap()` fixol extrapoláciu za posledné tempo window: doteraz sa gap počítal od začiatku poslednej scény, čo mohlo vytvoriť nulovú dĺžku AudioClipu za jej hranicou. Regression pokrýva gap medzi scene windows aj extrapoláciu po poslednom window.
 
 ## Pracovný kontrakt
@@ -236,14 +237,24 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 
 - [x] implementovať transport-neutral control protocol s versioned messages;
 - [x] binary PCM posielať oddelene od JSON control messages;
-- [x] v Electron hoste povoliť iba explicitne spustený a validovaný loopback companion endpoint cez úzky IPC boundary; žiadny arbitrary executable/model path z URL parametra alebo projektu;
+- [x] v Electron IPC určovať natívnu dostupnosť iba z pevnej packaged host cesty, Apple Silicon/macOS, executable bitu a očakávaných MRT2 Small assetov; žiadny executable/model path z projektu ani renderer parametra;
+- [x] implementovať Electron main-process manager pre pevný packaged helper path, fixný model root, startup timeout/ready handshake, bounded versioned framed stdin/stdout, graceful stop/escalation a crash cleanup; unit testy fake-process lifecycle a malformed/bounded PCM;
+- [x] relayovať host stream cez úzky Electron IPC boundary s trusted-frame kontrolou, per-webContents transport ownership, renderer-destroy cleanup a bez arbitrary IPC/process/path API;
+- [x] implementovať TypeScript MRT2 provider adapter nad týmto IPC transportom a overiť handshake/session, oddelené PCM style packet posielanie a output audio delivery;
+- [x] implementovať Objective-C++ `kyx-mrt2-host` source nad upstream `magentart::core`, CMake target a pinned `v2.0.3` build script bez Windows/cross-platform runtime fallback;
+- [x] pridať macOS arm64 electron-builder `extraResources`/nested-code signing config a oddelený `desktop:build:mac:mrt2` release path;
+- [ ] skompilovať helper na macOS arm64, vyrobiť DMG/ZIP a overiť zabalený resource path/signature; Windows host túto fázu zámerne nespúšťa;
+- [x] native host capability handshake deklaruje text style, note conditioning, drums režim a capture; audio style, seed a všetky štyri KYX makrá explicitne označuje unsupported;
+- [ ] potvrdiť na reálnom Apple Silicon runtime, že deklarované text/note/drumless/capture správanie zodpovedá upstream inference a že buffer underrun/recovery nestráca capture PCM;
 - [x] pre browser režim podporiť iba deliberate localhost companion connection s origin/token kontrolou, ak to ADR schváli;
 - [x] deklarovať platform capability: Apple Silicon realtime, offline-only alebo unavailable; Windows KYX musí mať jasný fallback stav;
 - [x] zobraziť/propagovať model loading, downloading, ready, buffering, unavailable, error a reconnect stavy;
 - [x] browser Inspector smoke overuje vytvorenie generative tracku, provider/model surface, localhost-only companion endpoint a bezpečný idle stav bez native hosta;
 - [x] neukladať absolútne model paths, IPC tokeny ani host-local capabilities do project documentu;
-- [x] pridať mock IPC boundary test a protocol invalid-message/size/shape test;
+- [x] pridať IPC availability/endpoint boundary test a protocol invalid-message/size/shape test;
 - [ ] pridať native bridge smoke test na podporovanom Apple Silicon hoste — na Windows je native MRT2 zámerne explicitne unavailable.
+
+Wire contract a native-host capability hranice sú v `docs/MRT2-NATIVE-HOST-PROTOCOL.md`. KYX-side manager/provider tests nie sú dôkazom, že upstream inference, prompt encoding, note-frame timing alebo 48 kHz stream fungujú na reálnom Apple Silicon runtime. Aktuálna implementácia číta iba prvý stav note-frame pri každom 40 ms refreshi; plný frame-array scheduler nie je v upstream realtime runner API.
 
 **Akceptácia:** bridge vie dodať rovnaký `GenerativeAudioProvider` contract ako mock provider a pri páde sa korektne odpojí bez poškodenia AudioEngine.
 
@@ -256,7 +267,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] pridať generative output bus, ktorý sa route-ne cez track gain/pan/effects/sends/group ako ostatné tracky;
 - [x] synchronizovať session start/stop/pause/seek s transportom; bar-boundary latency policy a kalibrácia zostávajú hardening;
 - [x] odmerať provider warm-up a control latency; uložiť iba host-local user-facing calibration, nie runtime socket stav;
-- [ ] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume; provider-stall retirement and terminal provider-error retirement are implemented/tested, while the remaining realtime/browser matrix stays open;
+- [x] riešiť underrun, overrun, provider stall, tempo change, loop, stop a context suspend/resume; context replacement/loss and serialized provider stop/restart are covered by unit tests;
 - [x] oddeliť scheduler plánovanie note frames od AudioEngine execution; Scheduler nesmie vlastniť provider session;
 - [x] browser Play/Pause/Resume/Stop integrácia s fake localhost companionom: handshake, PCM stream cez AudioWorklet, pause odpojí session/audio graph a resume obnoví generovanie;
 - [x] browser Inspector smoke pre missing provider a bezpečný localhost endpoint;
@@ -264,7 +275,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [x] browser E2E seek cez Sequencer ruler overuje, že provider dostane nový conditioning `startTick` počas live playbacku;
 - [x] non-finite PCM rejection a finite rendered output sú pokryté protocol/worklet testami;
 - [x] runtime conditioning refresh sleduje aktuálne BPM a playhead po loop-wrap re-anchor-i;
-- [ ] plná live transport/browser matrix a device-level context suspend/resume; Windows WebKit bez Web Audio APIs je explicitne skipnutý a Safari/macOS audio pass zostáva otvorený;
+- [ ] plná live transport/browser matrix a device-level audio interruption pass; Windows WebKit bez Web Audio APIs je explicitne skipnutý a Safari/macOS suspend/resume pass zostáva otvorený;
 - [x] overiť 300 s virtuálny mock live soak s finite/ordered chunks;
 - [ ] overiť CPU/heap growth a latency pri samostatnom native soaku na podporovanom Macu.
 

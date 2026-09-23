@@ -214,6 +214,15 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(body, "closed-context recovery must rebuild through useContext()").toMatch(/this\.useContext\(ctx\)/);
   });
 
+  it("notifies live-context observers when the context is rebound or lost", () => {
+    const engine = readEngine();
+    const useContext = sliceFunction(engine, /useContext\s*\(/);
+    expect(engine).toMatch(/subscribeLiveContext\(listener:/);
+    expect(engine).toMatch(/listener\(this\.getLiveAudioContext\(\)\)/);
+    expect(useContext).toMatch(/this\.notifyLiveContextChange\(\)/);
+    expect(useContext).toMatch(/this\.ctx\s*=\s*null;[\s\S]{0,120}this\.notifyLiveContextChange\(\)/);
+  });
+
   it("keys async worklet refresh locking to the context that owns the load", () => {
     const engine = readEngine();
     expect(engine).toMatch(/workletRefreshQueuedFor:\s*BaseAudioContext\s*\|\s*null/);

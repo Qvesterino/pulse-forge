@@ -4,7 +4,7 @@
 
 KYX (internally known as **Pulse Forge**, the repository name) is a production-oriented digital audio workstation that runs entirely in the browser. It is built around six product pillars — **Sound, Rhythm, Composition, Processing, Arrangement, and Export** — and is designed to deliver a finished track without ever leaving the tab.
 
-It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 14 native instruments, 45 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
+It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 15 native instruments, 47 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
 
 The web build also ships as a standalone Windows desktop app (ADR 0010/0011) — the same code, served from a thin Electron shell — with auto-update through GitHub Releases.
 
@@ -96,7 +96,7 @@ It explicitly avoids: simultaneous multi-input studio recording, VST/AU plugin h
 
 Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke groups) and a separate **7-voice synth drum kit** that the rack's pads map onto. All instruments support mod matrix routes (MOD A / B with ENV/LFO/VEL/PRESS → CUTOFF/AMP/MORPH), MPE poly aftertouch and per-note timbre (CC74), and live parameter changes that propagate to sounding voices.
 
-### 45 effects — 40 native/core + 5 flagship (`src/effects/registry.ts`)
+### 47 effects — 42 native/core + 5 flagship (`src/effects/registry.ts`)
 
 **Flagship plugin suites** (AudioWorklet DSP with dedicated regression/golden coverage):
 
@@ -147,6 +147,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 ### Generative and assist
 
+- **Generative tracks (experimental)** — provider-neutral generative accompaniment with KYX note/chord conditioning, a bounded AudioWorklet playback path, capture/freeze into durable AudioClips, and MusicCoCa-style audio resampling. MRT2 Small connects only through an explicitly selected localhost companion in the browser. The Electron IPC/provider adapter and macOS arm64 helper source/build path are implemented; the native executable still needs a real Apple Silicon build/model smoke before release. Native v1 advertises text style, notes and drumless mode; audio-style, seed and product macros are explicitly unsupported. Windows correctly reports native MRT2 unavailable.
 - **Dice / seed-locked generation** — `MUT`, `FILL`, full/vary rolls, seed chain (cap 100), per-row locks (kick / snare / hats / kit / bass / chords / lead), favorites, kit dice.
 - **AI Bandmate** (collab-only) — when a remote jam session is running, an autonomous drum player takes unassigned roles and writes a fresh 16-step groove into its own track through the same command path humans use; the CRDT broadcasts it to every peer.
 - **Intent engine** — text → beat (e.g. `"dark rolling techno at 140 with lead"`), with EN keyword parsing, sliders, seed, length, candidate count. Sync path for instant preview, async path with a 54-feature ONNX MLP ranker (`intent-ranker-v1.onnx`, ~25 KB) that ranks candidates against the heuristic. Lazy-loaded in a Web Worker, bounded by timeout + circuit breaker + fallback heuristic (`src/intent/providers/local.ts`).
