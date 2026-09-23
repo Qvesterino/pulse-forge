@@ -3821,3 +3821,15 @@ audit doc.
 - **Panel**: REF handler extrahuje groove z rovnakého PCM; 🥁→DRUMS button (visible pri refGroove) — `replacePatternInPlaceCommand` na aktívny pattern (rows swap, one undo). Status "🥁 groove installed — 120 BPM — 14 hits (4 low / 4 mid / 6 high)".
 - **Testy** `tests/groove-extraction.test.ts` 4/4: syntetický groove (kick downbeaty + hat off-beaty @120) obnoví steps aj bandy; determinizmus; ticho/krátky signál = null; rows mapping cez role.
 - Gotcha: **detTransients nie je vhodný na groove transkripciu** (neskoré/chaotické časy) — vlastný flux detektor. Regresia 172/172 na 17 súboroch; typecheck 0.
+
+---
+
+## GOAL 35 — LEARNED RERANK WEIGHTS (2026-09-22)
+
+**Cieľ:** uzavrieť learning slučku na VÝBERE — audio váha reranku (doteraz natvrdo 0.3) sa naučí z ★ generácií.
+
+- **`src/intent/rerank-weights.ts`**: `RerankSample {firstPass 0..1, audio 0..1, kept, generationId}`; `fitRerankWeight(samples)` — čistý grid search 0..0.6 (krok 0.05) maximalizujúci **per-generation top-1 accuracy** ★-kept kandidáta; remízy preferujú MENŠIU váhu; < 2 použiteľné generácie = null. `readLearnedRerankWeight()` — validovaný localStorage `pf:rerank-weights` (0..0.6, garbage = null).
+- **ranking-v3 váhový reťazec**: explicit `options.weight` → learned → `AUDIO_FEEDBACK_WEIGHT` 0.3.
+- **`scripts/fit-rerank-weights.mjs`** (`npm run rerank:fit -- pack.json`): playwright + vite (rovnaký vzor ako listening pack) — pre každú ★ rolku: REGENERUJ bank z uloženého intent+seed (engine deterministický) → rankCandidateBank → render top-4 → audio-fit; kept kandidát = najbližší role-usporiadaný drum grid k uloženým rows (pad-id drift bezpečný). Fit v browseri cez import pure modulu. Výstup: report + hotový `localStorage.setItem` riadok na inštaláciu.
+- **Testy** `tests/rerank-weights.test.ts` 7/7: audio-rozhodnuté generácie zvýšia váhu s accuracy 1; first-pass-rozhodnuté držia 0; < 2 generácie null; localStorage round-trip + garbage + out-of-range; **ranking-v3 konzumuje learned váhu** (0.55 preklopí pretek, ktorý 0.3 nepreloží) a bez nej zostáva default. Regresia **260/260 cez 27 súborov**; typecheck 0.
+- FIT GOTCHA (poctivo): regenerácia starých ★ roliek je približná — engine sa medzi tým menil (v3 conditioning, nové modely), takže kept match je nearest-neighbor na drum gride, nie presný replay. Presnejšie fitovanie: ★ len čerstvo vygenerované rolky.

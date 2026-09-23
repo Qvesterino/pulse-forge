@@ -15,6 +15,7 @@
  */
 import type { RankedCandidate } from "./types";
 import { scoreCandidatesBySound, AUDIO_FEEDBACK_WEIGHT, type RenderCandidateFn } from "./audio-feedback";
+import { readLearnedRerankWeight } from "./rerank-weights";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 
@@ -73,7 +74,9 @@ export async function rerankTopBySound(
     const maxScore = Math.max(...finalists.map((entry) => entry.score), 1e-9);
     const firstPassNorm = (entry: RankedCandidate): number => Math.max(0, Math.min(1, entry.score / maxScore));
 
-    const weight = options.weight ?? AUDIO_FEEDBACK_WEIGHT;
+    // weight chain: explicit call option -> LEARNED (pf:rerank-weights, fitted
+    // from ★ generations by the fit harness) -> shipped default.
+    const weight = options.weight ?? readLearnedRerankWeight() ?? AUDIO_FEEDBACK_WEIGHT;
     const combined = finalists.map((entry) => {
       const audio = audioFor(entry);
       const audioComponent = audio === null ? 0.5 : audio;

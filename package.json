@@ -39,6 +39,7 @@
     "embedding:train": "npx vite-node scripts/train-embedding-prior.mts",
     "embedding:ab": "vite-node scripts/shadow-embedding-ab.mts",
     "listening:v1v3": "node scripts/render-v1v3-listening.mjs",
+    "rerank:fit": "node scripts/fit-rerank-weights.mjs",
     "ranker:golden-template": "vite-node scripts/generate-golden-template.mts",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",
     "ranker:activate": "node scripts/activate-intent-ranker.mjs",
@@ -74,7 +75,8 @@
     "listening:ingest": "node scripts/ingest-listening-verdicts.mjs",
     "taste:train": "node scripts/train-my-taste.mjs",
     "goldens:capture": "vite-node scripts/capture-domain-goldens.mts",
-    "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs"
+    "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs",
+    "ecosystem:sync": "node scripts/sync-to-qvester.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
