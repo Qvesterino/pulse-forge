@@ -70,11 +70,23 @@ class MLP:
             activations.append(out)
         return activations
 
-    def train_step(self, x: np.ndarray, y: np.ndarray, pos_weight: float, lr: float) -> float:
+    def train_step(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        pos_weight: float,
+        lr: float,
+        label_smoothing: float = 0.0,
+    ) -> float:
         acts = self.forward(x)
         logits = acts[-1][:, 0]
         probs = sigmoid(logits)
         eps = 1e-7
+        # Label smoothing pulls targets off 0/1 — without it the sigmoid head
+        # drives |logit| past 16 on the sparse grid and the exported prior
+        # saturates into walls/silence (v3 gate finding). 0.1 keeps the
+        # ranking sharp while capping reachable confidence.
+        y = y * (1.0 - label_smoothing) + label_smoothing / 2.0
         weights = np.where(y > 0.5, pos_weight, 1.0)
         loss = float(np.mean(weights * -(y * np.log(probs + eps) + (1 - y) * np.log(1 - probs + eps))))
 
@@ -335,7 +347,8 @@ def main() -> None:
         batches = 0
         for start in range(0, len(order), BATCH):
             batch = order[start : start + BATCH]
-            epoch_loss += model.train_step(x_train[batch], y_train[batch], pos_weight, LR)
+            smoothing = 0.1 if (embedding_mode or hybrid_mode) else 0.0
+            epoch_loss += model.train_step(x_train[batch], y_train[batch], pos_weight, LR, smoothing)
             batches += 1
         if (epoch + 1) % 50 == 0 or epoch == 0:
             val_probs = sigmoid(model.forward(x_val)[-1][:, 0])
