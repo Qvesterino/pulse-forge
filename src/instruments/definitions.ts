@@ -529,7 +529,15 @@ export const fluteParams: ParamDef[] = [
   { id: "breath", label: "BREATH", min: 0, max: 1, default: 0.3, format: formatPct },
   { id: "breathTone", label: "B-TONE", min: 600, max: 8000, default: 2200, unit: "Hz", format: formatHz, taper: "log" },
   { id: "vibrato", label: "VIB", min: 0, max: 1, default: 0.25, format: formatPct },
-  { id: "vibRate", label: "V-RATE", min: 0, max: 8, default: 5, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+  {
+    id: "vibRate",
+    label: "V-RATE",
+    min: 0,
+    max: 8,
+    default: 5,
+    unit: "Hz",
+    format: (v) => (v < 0.005 ? "OFF" : `${v.toFixed(2)} Hz`),
+  },
   {
     id: "vibDelay",
     label: "V-DELAY",

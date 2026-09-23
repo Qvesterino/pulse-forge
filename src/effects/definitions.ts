@@ -34,6 +34,12 @@ export const formatDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 export const formatHz = (v: number) => `${Math.round(v)} Hz`;
 
 export const formatMs = (v: number) => `${Math.round(v)} ms`;
+/**
+ * Seconds-stored params display in ms — scale ×1000 (GOAL 08/A2: the old
+ * shared formatMs displayed raw seconds, so every dynamics attack/release
+ * knob read "0 ms" for typical settings).
+ */
+export const formatSecMs = (v: number) => `${Math.round(v * 1000)} ms`;
 
 export const formatPct = (v: number) => `${Math.round(v * 100)}%`;
 
@@ -621,8 +627,8 @@ export const multibandParams: ParamDef[] = [
 export const compressorParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 3, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatSecMs },
   { id: "knee", label: "KNEE", min: 0, max: 40, default: 6, unit: "dB", format: formatDb },
   {
     id: "detector",
@@ -873,10 +879,18 @@ export const phaserParams: ParamDef[] = [
 export const sidechainParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 4, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatSecMs },
   { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
-  { id: "splitFreq", label: "SPLIT", min: 0, max: 500, default: 0, unit: "Hz", format: formatHz },
+  {
+    id: "splitFreq",
+    label: "SPLIT",
+    min: 0,
+    max: 500,
+    default: 0,
+    unit: "Hz",
+    format: (v) => (v <= 10 ? "OFF" : `${Math.round(v)} Hz`),
+  },
 ];
 
 export const transientParams: ParamDef[] = [
@@ -890,9 +904,9 @@ export const transientParams: ParamDef[] = [
 export const gateParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -80, max: 0, default: -36, unit: "dB", format: formatDb },
   { id: "hysteresis", label: "HYSTERESIS", min: 0, max: 1, default: 0.15, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.0001, max: 0.5, default: 0.002, unit: "s", format: formatMs },
-  { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.0001, max: 0.5, default: 0.002, unit: "s", format: formatSecMs },
+  { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatSecMs },
   { id: "range", label: "RANGE", min: -80, max: 0, default: -48, unit: "dB", format: formatDb },
   {
     id: "lookahead",
@@ -1135,8 +1149,8 @@ export const bassBussParams: ParamDef[] = [
     taper: "log",
   },
   { id: "compression", label: "COMPRESSION", min: 0, max: 1, default: 0.25, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.01, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.01, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatSecMs },
   {
     id: "monoBassFrequency",
     label: "MONO BASS",
@@ -1208,7 +1222,7 @@ export const utilityParams: ParamDef[] = [
 export const limiterParams: ParamDef[] = [
   { id: "ceiling", label: "CEILING", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
   { id: "threshold", label: "THRESHOLD", min: -24, max: 0, default: -6, unit: "dB", format: formatDb },
-  { id: "release", label: "RELEASE", min: 0.01, max: 1, default: 0.12, unit: "s", format: formatMs },
+  { id: "release", label: "RELEASE", min: 0.01, max: 1, default: 0.12, unit: "s", format: formatSecMs },
   { id: "lookaheadMs", label: "LOOKAHEAD", min: 1, max: 20, default: 5, unit: "ms", format: formatMs },
   { id: "link", label: "LINK", min: 0, max: 1, default: 1, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -1292,7 +1306,7 @@ export const tremoloParams: ParamDef[] = [
     min: 0,
     max: 1,
     default: 0,
-    format: (v) => (v < 0.3 ? "Sine" : v < 0.7 ? "Tri" : "Square"),
+    format: (v) => (v < 0.3 ? "Sine" : v < 0.7 ? "Blend" : "Square"),
   },
   { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: TREMOLO_MODES },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -1311,8 +1325,8 @@ export const autowahParams: ParamDef[] = [
     taper: "log",
   },
   { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.7, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatSecMs },
   { id: "sensitivity", label: "SENSITIVITY", min: 0.5, max: 3, default: 1.5, format: (v) => v.toFixed(2) },
   { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: AUTOWAH_MODES },
   {
@@ -1334,7 +1348,7 @@ export const stutterParams: ParamDef[] = [
   { id: "division", label: "RATE", min: 0, max: 5, default: 4, options: STUTTER_DIVISIONS },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.8, format: formatPct },
   { id: "feedback", label: "FEEDBACK", min: 0, max: 0.7, default: 0, format: formatPct },
-  { id: "smooth", label: "SMOOTH", min: 0, max: 20, default: 3, unit: "ms", format: formatMs },
+  { id: "smooth", label: "SMOOTH", min: 0, max: 0.02, default: 0.003, unit: "s", format: formatSecMs },
 ];
 
 export const combParams: ParamDef[] = [
@@ -1372,8 +1386,8 @@ export const duckDelayParams: ParamDef[] = [
   { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz, taper: "log" },
   { id: "duckAmount", label: "DUCK", min: 0, max: 1, default: 0.7, format: formatPct },
   { id: "duckThresh", label: "THRESH", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
-  { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatMs },
-  { id: "duckRelease", label: "DUCK REL", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatMs },
+  { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
+  { id: "duckRelease", label: "DUCK REL", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatSecMs },
   {
     id: "sync",
     label: "SYNC",
@@ -1760,8 +1774,8 @@ export const vocoderParams: ParamDef[] = [
     taper: "log",
   },
   { id: "q", label: "SHARPNESS", min: 1, max: 16, default: 4, format: (v) => v.toFixed(1) },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.004, unit: "s", format: formatMs },
-  { id: "release", label: "RELEASE", min: 0.005, max: 1, default: 0.06, unit: "s", format: formatMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.004, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.005, max: 1, default: 0.06, unit: "s", format: formatSecMs },
   {
     id: "shift",
     label: "FORMANT",

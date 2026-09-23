@@ -2989,7 +2989,25 @@ const utility: EffectDefinition = {
     monoRight.connect(merger, 0, 0);
     monoRight.connect(merger, 0, 1);
     const pan = ctx.createStereoPanner();
-    merger.connect(pan).connect(output);
+    // DC BLOCK (GOAL 08/A3): a 12 Hz highpass crossed wet/dry. Engaged it
+    // removes sub-audio DC offset (the thump/click a downstream gain move
+    // causes when the signal rides a DC pedestal); disengaged it is a
+    // unity-gain wire. The param existed for a long time as a dead knob.
+    const dcHp = ctx.createBiquadFilter();
+    dcHp.type = "highpass";
+    dcHp.frequency.value = 12;
+    dcHp.Q.value = 0.5;
+    const dcWet = ctx.createGain();
+    const dcDry = ctx.createGain();
+    merger.connect(dcHp).connect(dcWet).connect(pan);
+    merger.connect(dcDry).connect(pan);
+    let dcBlockOn = instance.params.dcBlock === 1;
+    dcWet.gain.value = dcBlockOn ? 1 : 0;
+    dcDry.gain.value = dcBlockOn ? 0 : 1;
+    const applyDcBlock = (when: number) => {
+      smooth(dcWet.gain, dcBlockOn ? 1 : 0, when);
+      smooth(dcDry.gain, dcBlockOn ? 0 : 1, when);
+    };
     let widthValue = instance.params.width ?? 1;
     let phaseLeft = instance.params.phaseLeft === 1;
     let phaseRight = instance.params.phaseRight === 1;
@@ -3020,6 +3038,10 @@ const utility: EffectDefinition = {
         case "phaseRight":
           phaseRight = value >= 0.5;
           applyWidth(when);
+          break;
+        case "dcBlock":
+          dcBlockOn = value >= 0.5;
+          applyDcBlock(when);
           break;
         case "monoBassFrequency": {
           const frequency = Math.max(20, value || 20);

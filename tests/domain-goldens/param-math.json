@@ -800,7 +800,7 @@
             "division": 4,
             "mix": 0.8,
             "feedback": 0,
-            "smooth": 3
+            "smooth": 0.003
           }
         },
         {
