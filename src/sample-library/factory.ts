@@ -514,7 +514,10 @@ function memphisGuitar(): Builder {
     const ghp = ctx.createBiquadFilter();
     ghp.type = "highpass";
     ghp.frequency.value = 2500;
-    grit.connect(ghp).connect(env(ctx, t0, 0.06, 0.015)).connect(dest);
+    grit
+      .connect(ghp)
+      .connect(env(ctx, t0, 0.06, 0.015))
+      .connect(dest);
   };
 }
 
@@ -610,7 +613,10 @@ function mariachiTrumpet(): Builder {
     const ehp = ctx.createBiquadFilter();
     ehp.type = "highpass";
     ehp.frequency.value = 3200;
-    edge.connect(ehp).connect(env(ctx, t0, 0.07, 0.012)).connect(dest);
+    edge
+      .connect(ehp)
+      .connect(env(ctx, t0, 0.07, 0.012))
+      .connect(dest);
   };
 }
 
@@ -661,7 +667,10 @@ function sadPiano(): Builder {
     const hlp = ctx.createBiquadFilter();
     hlp.type = "lowpass";
     hlp.frequency.value = 3000;
-    hammer.connect(hlp).connect(env(ctx, t0, 0.08, 0.01)).connect(dest);
+    hammer
+      .connect(hlp)
+      .connect(env(ctx, t0, 0.08, 0.01))
+      .connect(dest);
   };
 }
 
@@ -699,12 +708,15 @@ function padWarm(): Builder {
 function harpTone(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
+    // Faster, fingered decays than the keys stack + a nail transient on the
+    // attack — without it the harp measured 0.973-correlated with tonal.keys
+    // (a duplicate, not a second voice).
     const parts: [number, number, number][] = [
-      [1, 0.5, 1.1],
-      [2.001, 0.28, 0.7],
-      [3.003, 0.16, 0.5],
-      [4.005, 0.09, 0.35],
-      [5.01, 0.05, 0.25],
+      [1, 0.5, 0.75],
+      [2.001, 0.3, 0.5],
+      [3.003, 0.18, 0.36],
+      [4.005, 0.1, 0.26],
+      [5.01, 0.06, 0.18],
     ];
     for (const [mult, level, decay] of parts) {
       const osc = ctx.createOscillator();
@@ -712,8 +724,17 @@ function harpTone(): Builder {
       osc.frequency.value = C4 * mult;
       osc.connect(env(ctx, t0, level, decay)).connect(dest);
       osc.start(t0);
-      osc.stop(t0 + decay + 0.15);
+      osc.stop(t0 + decay + 0.12);
     }
+    const nail = noiseSource(ctx, 83, 0.012, t0);
+    const nbp = ctx.createBiquadFilter();
+    nbp.type = "bandpass";
+    nbp.frequency.value = 3600;
+    nbp.Q.value = 2;
+    nail
+      .connect(nbp)
+      .connect(env(ctx, t0, 0.12, 0.01))
+      .connect(dest);
   };
 }
 
