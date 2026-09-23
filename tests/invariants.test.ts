@@ -261,3 +261,32 @@ describe("AGENTS.md invariant #10 — no innerHTML / eval / new Function in src/
     expect(violations).toEqual([]);
   });
 });
+
+describe("AGENTS.md invariant — leaky `as any` budget on critical layers", () => {
+  // Most of the `as any` in src/audio-engine/ and src/commands/ is
+  // vendor-seam (drumsynth internals: body / snap / tone / _stopAll) or
+  // storage-bridge (Yjs YMap.get cast). Pinning the count lets us
+  // notice if a NEW layer leaks — not a comprehensive type-tightening,
+  // just a regression guard that catches a future leak before it lands.
+  function countAsAny(dir: string): number {
+    let count = 0;
+    for (const f of listFiles(dir)) {
+      count += (readFileSync(f, "utf8").match(/\bas any\b/g) ?? []).length;
+    }
+    return count;
+  }
+
+  it("src/audio-engine/ keeps its leaky `as any` budget stable", () => {
+    // 17 is the current count; a regression that introduces new
+    // user-facing leaks fires here without changing the source.
+    // A drop signals a refactor — update the test in the same commit.
+    expect(countAsAny("src/audio-engine")).toBe(17);
+  });
+
+  it("src/commands/ keeps its leaky `as any` budget stable", () => {
+    // 33 is the current count; the vast majority are Yjs YMap.get casts
+    // (vendor seam; the alternative is a 5-line branded type for an
+    // untyped JS lib) and runtime-strategy restoration casts.
+    expect(countAsAny("src/commands")).toBe(33);
+  });
+});
