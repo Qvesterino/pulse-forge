@@ -21,8 +21,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                     |
 | **Factory assets** (drum / tonal / FX) |  **50** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts` (15 kicks after the 2026-09 kick-bank expansion)                                                                       |
 | └─ curated WAV overrides               |      50 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure) |
-| **Factory presets**                    | **238** | `src/presets/factory.ts`                                                                                                   |
-| └─ instrument presets                  |     232 | `FACTORY_PRESETS`                                                                                                          |
+| **Factory presets**                    | **248** | `src/presets/factory.ts`                                                                                                   |
+| └─ instrument presets                  |     242 | `FACTORY_PRESETS`                                                                                                          |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                     |
 | **Architecture decision records**      |  **14** | `docs/adr/` (0001–0012, plus 0006/0007 each have two companion files)                                                      |
 | **Vitest spec files**                  | **422** | `tests/` files matching `*.test.*` in the current working tree                                                             |
@@ -65,7 +65,7 @@ The following historical results were recorded against candidate `b8c7a00` on 20
 | `npm run typecheck`                  | PASS (clean `tsc --noEmit`)                                              | candidate `b8c7a00`, 2026-09-14   |
 | Full Vitest suite                    | **239 files / 2351 tests passed / 103 skipped / 2454 total** (`424.94s`) | candidate `b8c7a00`, 2026-09-14   |
 | Real-browser verifier                | **226/226 in Chromium, Firefox and Edge**                                | candidate `b8c7a00`, 2026-09-14   |
-| Factory preset audio QA              | **232/232**                                                              | candidate `b8c7a00`, 2026-09-14   |
+| Factory preset audio QA              | **242/242**                                                              | candidate `b8c7a00`, 2026-09-14   |
 | 300 s plugin soaks (PRISM/VLYX/VØID) | PASS (≤ 6 MB heap growth, ≤ 0.003 dB drift, zero tail peak)              | candidate `b8c7a00`, 2026-09-14   |
 | `npm audit --omit=dev`               | 0 vulnerabilities                                                        | candidate `b8c7a00`, 2026-09-14   |
 | `npm run format:check`               | **DEVIATIONS DOCUMENTED — owner gate open**                              | `docs/FORMAT-CHECK-DEVIATIONS.md` |
