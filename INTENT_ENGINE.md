@@ -605,10 +605,15 @@ Revise dostal CIEL: rola v texte zvolí konkrétnu sekciu aranžmánu.
 - **Chyby ako správy**: "no bridge section — build a song first",
   "pattern has no intent provenance" (ručne kreslené patterny sa
   ne-revizujú, nechá sa im ich obsah).
-- **Známe mapping obmedzenie**: energy slider ovplyvňuje len drum vrstvu
-  (velocityVariation/ghostWeight); na melodic-only sekcii (bridge) je
-  energy revise obsahovo no-op — engine v2 kandidát (melodic velocity
-  scaling). density prejaví sa všade (ghost notes).
+- **Mapping obmedzenie OPRAVENÉ (P2, 2026-09-23)**: energy/density/complexity
+  siahajú aj na melódiu — template path (`generateMelodicParts`: energy →
+  velocity gain `1+(e−0.7)·0.8`, density → počet nôt `·(0.6+d·0.8)`) aj
+  multi-voice (`generateMultiVoice`: density → 16th bass pickupy,
+  energy → lead hustota full/sparse + velocity gainy, complexity →
+  approach-tone šanca). Všetky gainy sú identita pri default slideroch
+  (0.7/0.5/0.5), takže golden baselines sú bit-identické. Revise na
+  melodic-only sekcii (bridge) už mení obsah — kryje
+  `tests/melodic-dynamics.test.ts` (7).
 
 - Testy: intent-artists 13 (rola v routeri, global vs targeted), song 13
   (in-place regenerácia: id/seed/scene väzba, undo, friendly error).

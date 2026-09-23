@@ -69,7 +69,8 @@ export function createDuckingDelayNode(
       safeApplyAudioParam(node, id, v, when);
     },
     // BPM push: a synced delay re-computes its ms (OFF keeps the knob).
-    syncBpm: (next: number) => {
+    // `when` (offline scene lanes) schedules the write at the window start.
+    syncBpm: (next: number, when?: number) => {
       if (lfoSyncIndex(instance.params.sync) === 0) return;
       const nextMs = Math.max(
         30,
@@ -78,7 +79,7 @@ export function createDuckingDelayNode(
           ((60 / next) * 1000) / Math.max(1, LFO_SYNC_DIVISIONS[lfoSyncIndex(instance.params.sync)]?.mult ?? 1),
         ),
       );
-      safeApplyAudioParam(node, "time", nextMs, ctx.currentTime);
+      safeApplyAudioParam(node, "time", nextMs, when ?? ctx.currentTime);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     dispose() {

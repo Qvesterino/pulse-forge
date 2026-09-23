@@ -1494,9 +1494,9 @@ const pump: EffectDefinition = {
       degradedReason: "Pump key on native envelope — attack follows release",
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
-      syncBpm(next) {
+      syncBpm(next, when) {
         bpm = next;
-        if (osc) smooth(osc.frequency, freqOf(), ctx.currentTime, 0.05);
+        if (osc) smooth(osc.frequency, freqOf(), when ?? ctx.currentTime, 0.05);
       },
       onTransportStarted(time, beatPhase) {
         if (keySource) return; // key owns the groove — no oscillator restart
@@ -1791,11 +1791,13 @@ function chorusNativeFallback(ctx: BaseAudioContext, instance: EffectInstance): 
     degradedReason: "AudioWorklet unavailable — Chorus on legacy native graph",
     setParameter: (id, v) => apply(id, v, ctx.currentTime),
     setParameterAt: (id, v, when) => apply(id, v, when),
-    syncBpm(bpm) {
-      // Snap the LFO to 1/4-beat rate (musical default for chorus motion)
+    syncBpm(bpm, when) {
+      // Snap the LFO to 1/4-beat rate (musical default for chorus motion).
+      // `when` (offline scene lanes) schedules the snap at the window start.
+      const at = when ?? ctx.currentTime;
       const beatHz = bpm / 60 / 4;
-      lfo1.frequency.setTargetAtTime(beatHz, ctx.currentTime, 0.05);
-      lfo2.frequency.setTargetAtTime(beatHz * 1.4, ctx.currentTime, 0.05);
+      lfo1.frequency.setTargetAtTime(beatHz, at, 0.05);
+      lfo2.frequency.setTargetAtTime(beatHz * 1.4, at, 0.05);
     },
     dispose: () => {
       try {
@@ -2038,7 +2040,7 @@ const phaser: EffectDefinition = {
       output: out,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
-      syncBpm: (nextBpm) => lfoSync.syncBpm(nextBpm, ctx.currentTime),
+      syncBpm: (nextBpm, when) => lfoSync.syncBpm(nextBpm, when ?? ctx.currentTime),
       dispose: () => {
         try {
           oscL.stop();
@@ -3436,10 +3438,11 @@ const multiTapDelay: EffectDefinition = {
       output,
       setParameter: (id, v) => setParameter(id, v),
       setParameterAt: (id, v, when) => setParameter(id, v, when),
-      syncBpm: (nextBpm) => {
+      syncBpm: (nextBpm, when) => {
         bpm = Number.isFinite(nextBpm) && nextBpm > 0 ? nextBpm : 124;
+        const at = when ?? ctx.currentTime;
         for (let t = 0; t < 4; t++) {
-          tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), ctx.currentTime, 0.05);
+          tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), at, 0.05);
         }
       },
       dispose() {

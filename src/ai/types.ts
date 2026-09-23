@@ -69,7 +69,7 @@ export interface GenerateOptions {
   sourcePatternId?: string;
   /** If true, set project groove (swing/humanize) from the resolved groove */
   applyGrooveSettings?: boolean;
-  /** Dice intent hints (optional, not persisted) — density/complexity/energy shape drums */
+  /** Dice intent hints (optional, not persisted) — density/complexity/energy shape drums and melodic dynamics (P2) */
   _diceDensity?: number;
   _diceComplexity?: number;
   _diceEnergy?: number;

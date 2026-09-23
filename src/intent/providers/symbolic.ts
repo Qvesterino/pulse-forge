@@ -310,6 +310,8 @@ export class SymbolicPriorProvider implements GenerationProvider {
           options.key ?? doc.key ?? null,
           plan.intent.energy,
           plan.intent.controls.velocityVariation,
+          plan.intent.density,
+          plan.intent.complexity,
         );
         let notes: Pattern["notes"] = {};
         let melodicSource: "mv" | "prior" | "template" = "template";

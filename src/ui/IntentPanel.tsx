@@ -10,8 +10,8 @@ import {
   applyProductionIntentCommand,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import { reviseSection, replacePatternInPlaceCommand } from "../intent/song";
-import { composeFullTrack } from "../intent/compose";
+import { reviseSection, replacePatternInPlaceCommand, applySongCommand } from "../intent/song";
+import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
@@ -21,7 +21,7 @@ import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/r
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
-import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
+import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
 import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
@@ -33,6 +33,7 @@ import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
+import type { ProjectDocument } from "../project-model/types";
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
@@ -346,6 +347,25 @@ export function IntentPanel() {
   // transitions, scoped FX, length words) + mix profile + loudness pass.
   // Undo per stage; the loudness render must run AFTER install.
   const [songBusy, setSongBusy] = useState(false);
+  // SONG DRAFT (audition-before-apply): compose builds the song + mix off to
+  // the side, the user HEARS the whole arrangement through the offline
+  // renderer first, then USE installs it (fresh commands against the latest
+  // doc so undo stays correct). Discard drops everything, nothing applied.
+  // The loudness runner is stored on the draft and runs only on USE — the
+  // previous flow measured loudness but never executed its trim command.
+  interface SongDraft {
+    result: ComposeResult;
+    previewDoc: ProjectDocument;
+    mixNote: string;
+    lengthNote: string;
+    seconds: number;
+  }
+  const [songDraft, setSongDraft] = useState<SongDraft | null>(null);
+  const [songPlaying, setSongPlaying] = useState(false);
+  const [songRendering, setSongRendering] = useState(false);
+  const songBufferRef = useRef<AudioBuffer | null>(null);
+  const songTokenRef = useRef(0);
+  const songTextRef = useRef("");
   // Audio reference ("sprav to ako tento WAV"): patch merges into every
   // generation path, the 16-dim conditioning installs for the v2 priors.
   const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
@@ -375,52 +395,167 @@ export function IntentPanel() {
       setRefBusy(false);
     }
   };
-  const runSongBuild = async (sections?: SectionParse) => {
+  const buildSongDraft = async (sections?: SectionParse, reviseInput?: IntentInput) => {
     setError(null);
     setStatus(null);
     setBankResult(null);
     setJustApplied(false);
     stopAudition();
+    setSongPlaying(false);
+    songBufferRef.current = null;
     try {
-      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
-      const globalFx = parseProductionIntent(sections?.remainingText ?? text);
-      const result = await composeFullTrack(doc, text, {
+      const baseDoc = services.store.getDoc();
+      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(reviseInput ?? {}) };
+      const globalFx = reviseInput?.fx ?? parseProductionIntent(sections?.remainingText ?? text);
+      const result = await composeFullTrack(baseDoc, songTextRef.current || text, {
         ...(sections ? { sections } : {}),
         input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
+        ...(reviseInput?.seed ? { seed: reviseInput.seed } : {}),
         bank: services.bank,
         onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
       });
-      services.store.execute(result.commands.song);
-      if (result.commands.mix) services.store.execute(result.commands.mix);
-      let loudnessNote = "";
-      if (result.loudness) {
-        setStatus("⚡ SUNO MODE — loudness pass (render + trim)…");
-        const outcome = await result.loudness.run(services.store.getDoc());
-        if (outcome?.ok) {
-          loudnessNote = ` — loudness ${outcome.report.measuredAfter ?? "?"} LUFS (trim ${
-            outcome.report.trim >= 0 ? "+" : ""
-          }${outcome.report.trim} dB)`;
+      // Preview doc for the audition render only — nothing is applied yet.
+      // Song command is whole-doc; mix is a delta — fold mix over the song
+      // so the preview hears exactly what USE would install.
+      let preview: ProjectDocument = result.commands.song.execute(baseDoc);
+      if (result.commands.mix) {
+        try {
+          preview = result.commands.mix.execute(preview);
+        } catch {
+          /* garnish must not block the preview */
         }
       }
-      const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
       const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-      const stages = result.commands.mix ? " + mix" : "";
+      const mixNote = result.mixSummary ? ` · mix: ${result.mixSummary}` : "";
+      setSongDraft({ result, previewDoc: preview, mixNote, lengthNote, seconds });
+      const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
       setStatus(
-        `✓ SUNO MODE — ${result.build.name} — ${result.build.sections.length} sections, ${
-          result.build.totalBars
-        } bars${lengthNote}${fxNote}${stages}${loudnessNote}${skipNote}`,
+        `✓ SUNO MODE — ${result.build.name} — ${result.build.sections.length} sections, ${result.build.totalBars} bars${lengthNote}${fxNote}${mixNote}${skipNote} — ▶ to audition, USE to keep`,
       );
+      // Background audition render — PLAY enables when done. Loudness runs
+      // on USE against the installed doc, not here.
+      const token = ++songTokenRef.current;
+      setSongRendering(true);
+      try {
+        const buffer = await renderSongAuditionBuffer(services.bank, preview);
+        if (songTokenRef.current !== token) return;
+        songBufferRef.current = buffer;
+      } catch (err) {
+        if (songTokenRef.current === token) {
+          setError(`song preview render failed: ${err instanceof Error ? err.message : String(err)} — USE still works`);
+        }
+      } finally {
+        if (songTokenRef.current === token) setSongRendering(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+  const runSongBuild = async (sections?: SectionParse) => {
+    songTextRef.current = text;
+    await buildSongDraft(sections);
+  };
   const generateSong = async () => {
     if (!text.trim() || songBusy || busy) return;
     setSongBusy(true);
-    await runSongBuild(parseSectionRequests(text) ?? undefined);
-    setSongBusy(false);
+    try {
+      await runSongBuild(parseSectionRequests(text) ?? undefined);
+    } finally {
+      setSongBusy(false);
+    }
+  };
+  const toggleSongAudition = () => {
+    if (songPlaying) {
+      stopAudition();
+      setSongPlaying(false);
+      return;
+    }
+    const buffer = songBufferRef.current;
+    if (!buffer) return;
+    playAuditionBuffer(buffer, () => setSongPlaying(false));
+    setSongPlaying(true);
+    setStatus(`▶ auditioning full song — ${songDraft?.result.build.sections.length ?? 0} sections`);
+  };
+  const discardSongDraft = () => {
+    songTokenRef.current++;
+    stopAudition();
+    setSongPlaying(false);
+    songBufferRef.current = null;
+    setSongDraft(null);
+    setStatus("Song draft discarded — nothing applied.");
+  };
+  const useSongDraft = async () => {
+    if (!songDraft || songBusy) return;
+    songTokenRef.current++;
+    stopAudition();
+    setSongPlaying(false);
+    setSongBusy(true);
+    try {
+      // Fresh commands against the CURRENT doc — a draft may sit open while
+      // the user keeps editing; rebasing keeps undo correct.
+      const current = services.store.getDoc();
+      const songCmd = applySongCommand(current, songDraft.result.build);
+      services.store.execute(songCmd);
+      let afterSong = services.store.getDoc();
+      try {
+        const profile = planMixProfile(songDraft.result.build.baseIntent);
+        const mixCmd = applyMixIntent(afterSong, profile);
+        services.store.execute(mixCmd);
+        afterSong = services.store.getDoc();
+      } catch {
+        /* no mix decisions — song alone is complete */
+      }
+      let loudnessNote = "";
+      if (songDraft.result.loudness) {
+        setStatus("⚡ SUNO MODE — loudness pass (render + trim)…");
+        const outcome = await songDraft.result.loudness.run(afterSong);
+        if (outcome && outcome.ok) {
+          services.store.execute(outcome.command);
+          loudnessNote = ` — loudness ${outcome.report.measuredAfter ?? "?"} LUFS (trim ${
+            outcome.report.trim >= 0 ? "+" : ""
+          }${outcome.report.trim} dB)`;
+        } else if (outcome && !outcome.ok) {
+          loudnessNote = ` — loudness skipped (${outcome.error})`;
+        }
+      }
+      const fxNote =
+        songDraft.result.build.baseIntent.fx || songDraft.result.build.sections.some((s) => s.fx) ? " + FX" : "";
+      songBufferRef.current = null;
+      setSongDraft(null);
+      setJustApplied(true);
+      setStatus(
+        `✓ SUNO MODE — ${songDraft.result.build.name} — ${songDraft.result.build.sections.length} sections, ${songDraft.result.build.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSongBusy(false);
+    }
+  };
+  // Global draft revise — same seed, shifted content slider. The song keeps
+  // its identity (sections, seeds, form), only the character moves. Runs as
+  // a fresh draft build so the user can still audition before USE.
+  const reviseSongDraft = async (attribute: "energy" | "density", delta: number) => {
+    if (!songDraft || songBusy) return;
+    const base = songDraft.result.build.baseIntent;
+    const fallback = attribute === "energy" ? 0.7 : 0.5;
+    const current = typeof base[attribute] === "number" ? (base[attribute] as number) : fallback;
+    const next = Math.max(0, Math.min(1, current + delta));
+    setSongBusy(true);
+    try {
+      await buildSongDraft(parseSectionRequests(songTextRef.current) ?? undefined, {
+        ...base,
+        [attribute]: next,
+        seed: base.seed,
+      });
+      setStatus(
+        `⚡ song ${attribute} ${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(2)} — same seed, audition before USE`,
+      );
+    } finally {
+      setSongBusy(false);
+    }
   };
 
   // D3 unified bar: route the text to the right executor — arrange ops,
@@ -679,6 +814,103 @@ export function IntentPanel() {
         <button type="button" className="btn intent-generate-btn" onClick={() => useCandidate(null)}>
           USE RESULT
         </button>
+      )}
+      {songDraft && (
+        <div className="intent-song-draft" aria-label="Song draft preview">
+          <div className="intent-candidate-row winner">
+            <button
+              type="button"
+              className="btn btn-small intent-audition-btn"
+              disabled={songRendering || !songBufferRef.current}
+              onClick={toggleSongAudition}
+              title={songPlaying ? "Stop song audition" : "Audition the full song"}
+            >
+              {songRendering ? "…" : songPlaying ? "■" : "▶"}
+            </button>
+            <span className="intent-candidate-meta">
+              <span className="intent-candidate-index">{songDraft.result.build.name}</span>
+              <span className="intent-candidate-score">
+                {songDraft.result.build.sections.length} sections · {songDraft.result.build.totalBars} bars
+                {songDraft.lengthNote} · {Math.round(songDraft.result.build.resolvedBpm ?? 120)} BPM
+              </span>
+            </span>
+            <button
+              type="button"
+              className="btn btn-small intent-use-btn"
+              disabled={songBusy}
+              onClick={() => void useSongDraft()}
+              title="Apply this song to the project (song + mix + loudness, undoable)"
+            >
+              USE SONG
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={discardSongDraft}
+              title="Discard this draft — nothing is applied"
+            >
+              DROP
+            </button>
+          </div>
+          <div className="intent-song-sections" aria-label="Song sections">
+            {songDraft.result.build.sections.map((section) => (
+              <span key={section.pattern.id} className="intent-candidate-score" title={section.roles.join("+")}>
+                {section.label} · {section.bars}b · {section.roles.join("+")}
+              </span>
+            ))}
+          </div>
+          <div className="intent-share-actions" aria-label="Revise song draft">
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={() => void reviseSongDraft("energy", 0.15)}
+              title="Same seed, more energy — audition again before USE"
+            >
+              E+
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={() => void reviseSongDraft("energy", -0.15)}
+              title="Same seed, calmer — audition again before USE"
+            >
+              E−
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={() => void reviseSongDraft("density", 0.15)}
+              title="Same seed, denser — audition again before USE"
+            >
+              D+
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={() => void reviseSongDraft("density", -0.15)}
+              title="Same seed, sparser — audition again before USE"
+            >
+              D−
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={songBusy}
+              onClick={() => void buildSongDraft(parseSectionRequests(songTextRef.current) ?? undefined)}
+              title="Fresh seed — a different take on the same sentence"
+            >
+              ↻ FRESH
+            </button>
+          </div>
+          <div className="intent-detected">
+            After USE: type “make bridge more energetic” + ⚡ DO IT to revise one section in place.
+          </div>
+        </div>
       )}
     </div>
   );

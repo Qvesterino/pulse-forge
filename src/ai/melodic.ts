@@ -175,6 +175,11 @@ export function expandChord(
   }));
 }
 
+/** Clamp a scaled velocity back into the valid unit range (keeps the >0 invariant). */
+function clampUnit(value: number): number {
+  return Math.max(0.1, Math.min(1, value));
+}
+
 /** Sample a velocity from observed values for a state, with slight jitter */
 function sampleVelocity(velocities: Map<number, number[]>, state: number, rand: () => number): number {
   const observed = velocities.get(state);
@@ -264,6 +269,16 @@ export function generateMelodicParts(
   const maxSteps = options.stepCount;
   const bars = options.stepCount / 16;
 
+  // P2 melodic dynamics — the intent sliders reach the melody, not just the
+  // drums. Both gains are identity at the intent defaults (energy 0.7,
+  // density 0.5), so default renders stay bit-identical to the golden
+  // baselines. The hints are only present when a slider leaves its default
+  // (see mapIntentToOptions); absent hints mean neutral.
+  const diceEnergy = options._diceEnergy ?? 0.7;
+  const diceDensity = options._diceDensity ?? 0.5;
+  const energyVelocityGain = Math.max(0.5, Math.min(1.3, 1 + (diceEnergy - 0.7) * 0.8));
+  const densityCountGain = 0.6 + diceDensity * 0.8; // 0.5 → 1.0
+
   // Generate for each role in the genre
   for (const pattern of patterns) {
     const intentRole: GenerationRole = pattern.role === "chord" ? "chords" : pattern.role;
@@ -272,8 +287,9 @@ export function generateMelodicParts(
     // Build Markov model from reference sequences for this role
     const model = getMelodicModel(pattern.sequences);
 
-    // Role-specific note density
-    const notesPerBar = pattern.role === "chord" ? 2 : pattern.role === "bass" ? 4 : 3;
+    // Role-specific note density, scaled by the density slider (P2)
+    const baseNotesPerBar = pattern.role === "chord" ? 2 : pattern.role === "bass" ? 4 : 3;
+    const notesPerBar = Math.max(1, Math.round(baseNotesPerBar * densityCountGain));
     const targetNotes = Math.ceil(notesPerBar * bars);
 
     const sequence = generateMelodicSequence(model, targetNotes, roleRand, options.temperature);
@@ -312,12 +328,13 @@ export function generateMelodicParts(
               pitch,
               start: currentTick,
               duration: durationTicks,
-              velocity: cn.velocity,
+              velocity: clampUnit(cn.velocity * energyVelocityGain),
             });
           }
         } else {
           // Sidechain-aware bass: if kick is active at this step, duck the velocity
-          let velocity = note.velocity;
+          // (P2: the corpus velocity first rides the energy gain, then ducks)
+          let velocity = clampUnit(note.velocity * energyVelocityGain);
           let startTick = currentTick;
           if (isBass && kickActive.has(stepIndex)) {
             // Duck: reduce velocity and shift note slightly later

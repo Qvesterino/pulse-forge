@@ -130,3 +130,44 @@ describe("registry wiring", () => {
     }
   });
 });
+
+describe('offline scene-BPM seam (timestamped syncBpm)', () => {
+  // The offline renderer pushes per-window BPM at the window's START TIME;
+  // AudioParam-backed runtimes must SCHEDULE there, not at ctx.currentTime
+  // (0 in an OfflineAudioContext — the last window used to win globally).
+
+  it('the renderer anchors each window push at its tempo-map time; the engine fans when out', () => {
+    const renderer = readFileSync('src/rendering/renderer.ts', 'utf8');
+    expect(renderer).toContain('engine.setEffectiveBpm(window.bpm ?? null, timeAt(window.from))');
+    const engine = readFileSync('src/audio-engine/AudioEngine.ts', 'utf8');
+    expect(engine).toContain('setEffectiveBpm(bpm: number | null, when?: number)');
+    expect(engine).toContain('rt.syncBpm?.(bpm, when)');
+    expect(engine).toContain('inst.runtime.syncBpm?.(bpm, when)');
+    // The change-guard must not swallow scheduled 120→140→120 pushes.
+    expect(engine).toContain('if (when === undefined && this.syncedBpm === bpm) return;');
+  });
+
+  it('every AudioParam-backed runtime honors when (falls back to ctx.currentTime live)', () => {
+    const ducking = readFileSync('src/audio-worklets/ducking-delay-node.ts', 'utf8');
+    expect(ducking).toContain('safeApplyAudioParam(node, "time", nextMs, when ?? ctx.currentTime)');
+    const registry = readFileSync('src/effects/registry.ts', 'utf8');
+    // Pump-key oscillator, native-chorus LFO pair, LFO-sync wrapper, multitap.
+    expect(registry).toContain('smooth(osc.frequency, freqOf(), when ?? ctx.currentTime, 0.05)');
+    expect(registry).toContain('lfoSync.syncBpm(nextBpm, when ?? ctx.currentTime)');
+    // Native-chorus fallback: the syncBpm(bpm, when) body schedules at `at`.
+    expect(registry).toContain('syncBpm(bpm, when) {');
+    expect(registry).toContain('const at = when ?? ctx.currentTime;');
+    expect(registry).toContain('tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), at, 0.05)');
+    // Contract carries the optional timestamp.
+    const types = readFileSync('src/effects/types.ts', 'utf8');
+    expect(types).toContain('syncBpm?(bpm: number, when?: number): void');
+  });
+
+  it('message-port runtimes are documented last-write-wins (vendor constraint)', () => {
+    // beatmangler / stepgate / stutter / fxeq / ozvena / granular forward BPM
+    // over the port — processors cannot schedule, so offline renders keep
+    // last-write-wins for them BY DESIGN (the engine comment pins it).
+    const engine = readFileSync('src/audio-engine/AudioEngine.ts', 'utf8');
+    expect(engine).toContain('last-write-wins across offline windows');
+  });
+});

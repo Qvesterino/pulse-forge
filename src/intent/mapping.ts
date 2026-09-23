@@ -13,11 +13,15 @@ function clamp(lo: number, hi: number, v: number): number {
  * energy/density/complexity/variation mapping.
  *
  * Mapping intent → engine (deterministic, no RNG):
- * - density  → ghostWeight + prune/densify hint
- * - energy   → velocityVariation + ghostWeight boost
+ * - density  → ghostWeight + prune/densify hint (+ P2 melodic note-count gain)
+ * - energy   → velocityVariation + ghostWeight boost (+ P2 melodic velocity gain)
  * - complexity → microWeight + temperature + syncopation/ratchet hint
  * - variation  → temperature + bar-variation hint
  * - mood     → small tweaks (dark/aggressive/chill)
+ *
+ * The `_dice*` hints are read by generateDrumPattern AND by the melodic
+ * consumers (generateMelodicParts, generateMultiVoice) — P2 closed the
+ * "energy is a drums-only slider" gap.
  */
 export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): GenerateOptions {
   // Fast path: default intent (0.7/0.5/0.5) → no mapping (preserve golden-render)

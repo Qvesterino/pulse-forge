@@ -39,7 +39,8 @@ export interface MultiVoiceResult {
 }
 
 /** Rhythmic patterns per role (steps relative to section start). */
-const RHYTHM_LEAD = [0, 3, 6, 8, 11, 14]; // syncopated pattern
+const RHYTHM_LEAD_FULL = [0, 3, 6, 8, 11, 14]; // syncopated pattern (high energy)
+const RHYTHM_LEAD_SPARSE = [0, 8, 11]; // sparser subset (mid energy)
 
 /** Expanded chord timeline — one chord per entry with start step. */
 interface ChordSlot {
@@ -95,6 +96,8 @@ export function generateMultiVoice(
   key: MusicalKey | null,
   energy: number,
   velocityVariation: number,
+  density = 0.5,
+  complexity = 0.5,
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
   const progression = selectProgression(genre, seed);
@@ -107,6 +110,14 @@ export function generateMultiVoice(
 
   const bars = stepCount / 16;
   const velocitySpread = 0.08 + velocityVariation * 0.1;
+
+  // P2 melodic dynamics — energy/density/complexity shape all three voices.
+  // Every gain is identity at the intent defaults (energy 0.7, density 0.5,
+  // complexity 0.5): default calls (including the 7-arg legacy form) render
+  // bit-identical output, so golden fixtures stay green.
+  const energyVelocityGain = Math.max(0.5, Math.min(1.3, 1 + (energy - 0.7) * 0.8));
+  const approachChance = 0.3 * (0.7 + complexity * 0.6); // 0.5 → 0.3
+  const bassPickupChance = Math.max(0, (density - 0.5) * 1.2); // 0.5 → 0 (8ths only)
 
   // ── Voice 1: CHORDS (the harmonic foundation) ─────────────────────────
   const chordEvents: NoteEvent[] = [];
@@ -125,7 +136,10 @@ export function generateMultiVoice(
       quality,
     );
 
-    const velocity = Math.max(0.15, Math.min(1, 0.6 + (rand() - 0.5) * velocitySpread));
+    const velocity = Math.max(
+      0.15,
+      Math.min(1, (0.6 + (rand() - 0.5) * velocitySpread) * energyVelocityGain),
+    );
     const durationSteps = slot.endStep - slot.startStep;
 
     for (const pitch of voicedPitches) {
@@ -149,13 +163,20 @@ export function generateMultiVoice(
     const rootPitch = root + intervals[slot.event.degree % intervals.length];
     const bassPitch = 3 * 12 + bassOctave * 12 + rootPitch;
 
-    // Bass rhythm: 8th notes with accent on downbeat
-    for (let step = slot.startStep; step < slot.endStep; step += 2) {
-      const isDownbeat = (step - slot.startStep) === 0;
-      const velocity = isDownbeat
-        ? Math.min(1, 0.85 + rand() * 0.1)
-        : Math.max(0.3, 0.5 + (rand() - 0.5) * velocitySpread * 2);
-      const duration = 2; // 8th note
+    // Bass rhythm: 8th notes with accent on downbeat (P2: density above the
+    // 0.5 default adds quiet 16th pickups between them). At the default no
+    // extra rand() is consumed, so the 8th-note stream stays bit-identical.
+    for (let step = slot.startStep; step < slot.endStep; step += 1) {
+      const isEighth = step % 2 === 0;
+      if (!isEighth && bassPickupChance <= 0) continue;
+      if (!isEighth && rand() >= bassPickupChance) continue;
+      const isDownbeat = step - slot.startStep === 0;
+      const velocity = isEighth
+        ? isDownbeat
+          ? Math.min(1, (0.85 + rand() * 0.1) * energyVelocityGain)
+          : Math.max(0.3, (0.5 + (rand() - 0.5) * velocitySpread * 2) * energyVelocityGain)
+        : Math.max(0.15, Math.min(1, (0.3 + rand() * 0.15) * energyVelocityGain));
+      const duration = isEighth ? 2 : 1; // 8th note, 16th pickup
       bassEvents.push({
         id: uid("note"),
         pitch: Math.max(0, Math.min(127, bassPitch)),
@@ -171,10 +192,12 @@ export function generateMultiVoice(
   const leadOctave = octaveOffsetFor(genre, "lead");
 
   if (energy > 0.4) {
-    // Lead exists only when energy is high enough
+    // Lead exists only when energy is high enough (P2: the rhythm thins to a
+    // sparse subset below 0.7 instead of vanishing — identity at/above 0.7).
+    const rhythmSteps = energy >= 0.7 ? RHYTHM_LEAD_FULL : RHYTHM_LEAD_SPARSE;
     for (let bar = 0; bar < bars; bar++) {
       const barStart = bar * 16;
-      for (const rhythmStep of RHYTHM_LEAD) {
+      for (const rhythmStep of rhythmSteps) {
         const step = barStart + rhythmStep;
         if (step >= stepCount) continue;
         const slot = chordAtStep(slots, step);
@@ -186,12 +209,16 @@ export function generateMultiVoice(
         const toneIndex = Math.floor(rand() * tones.length);
         const toneOffset = tones[toneIndex];
 
-        // Approach: 50% chance to use a scale neighbour (approach tone)
-        const isApproach = rand() < 0.3 && step > 0;
+        // Approach tone: a scale neighbour instead of the chord tone itself
+        // (P2: chance widens with complexity — 0.3 at the 0.5 default).
+        const isApproach = rand() < approachChance && step > 0;
         const pitch = 3 * 12 + leadOctave * 12 + chordRoot + toneOffset + (isApproach ? (rand() > 0.5 ? 1 : -1) : 0);
         const snapped = key ? snapToScale(pitch, key) : pitch;
 
-        const velocity = Math.max(0.2, Math.min(1, 0.7 + (rand() - 0.5) * velocitySpread * 2));
+        const velocity = Math.max(
+          0.2,
+          Math.min(1, (0.7 + (rand() - 0.5) * velocitySpread * 2) * energyVelocityGain),
+        );
         leadEvents.push({
           id: uid("note"),
           pitch: Math.max(0, Math.min(127, snapped)),
