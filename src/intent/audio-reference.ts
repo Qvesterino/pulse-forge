@@ -20,6 +20,7 @@
 import { classifyAudio } from "../ai/audio/audio-client";
 import type { AudioLabel } from "../ai/audio/audio-types";
 import { extractAudioFeatures, type AudioFeatures } from "../ai/audio-features";
+import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import type { IntentGenre, IntentInput } from "./types";
 
@@ -76,6 +77,8 @@ export interface AudioReferenceResult {
   /** Top AST labels (score-desc) — echoed in the UI. */
   labels: AudioLabel[];
   features: AudioFeatures;
+  tempo: TempoEstimate | null;
+  key: KeyEstimate | null;
   genre: IntentGenre | null;
   /** Ready-to-merge intent patch (genre/energy/density/mood/style). */
   patch: IntentInput;
@@ -102,11 +105,16 @@ export async function analyzeAudioReference(
     const features = extractAudioFeatures(pcm16k, 16000);
     if (labels.length === 0 && features.rms === 0) return null;
 
+    const tempo = estimateTempo(pcm16k, 16000);
+    const key = estimateKey(pcm16k, 16000);
     const genreHit = matchLabels(labels, GENRE_LABEL_HINTS);
     const styleHit = matchLabels(labels, STYLE_LABEL_HINTS);
     const patch: IntentInput = { ...featuresToSliders(features) };
     if (genreHit) patch.genre = genreHit.key;
     if (styleHit) patch.style = styleHit.key;
+    // tempo + key: the reference's groove carries over to the generation
+    if (tempo) patch.bpmRange = [Math.round(tempo.bpm) - 2, Math.round(tempo.bpm) + 2];
+    if (key) patch.key = key.key as IntentInput["key"];
 
     const conditioningText = labels
       .slice(0, 6)
@@ -125,8 +133,19 @@ export async function analyzeAudioReference(
       .slice(0, 3)
       .map((entry) => `${entry.label} ${(entry.score * 100).toFixed(0)}%`)
       .join(", ");
-    const summary = `${genreHit?.key ?? "unknown genre"} — ${top || "no labels"}`;
-    return { labels, features, genre: genreHit?.key ?? null, patch, conditioningText, conditioning, summary };
+    const metaNote = [tempo ? `${tempo.bpm} BPM` : null, key?.key ?? null].filter(Boolean).join(", ");
+    const summary = `${genreHit?.key ?? "unknown genre"}${metaNote ? ` — ${metaNote}` : ""} — ${top || "no labels"}`;
+    return {
+      labels,
+      features,
+      tempo,
+      key,
+      genre: genreHit?.key ?? null,
+      patch,
+      conditioningText,
+      conditioning,
+      summary,
+    };
   } catch {
     return null;
   }

@@ -1,3 +1,6 @@
+import type { SampleBank } from "../sample-library/factory";
+import type { RenderCandidateFn } from "./audio-feedback";
+import { rerankTopBySound } from "./ranking-v3";
 import type { GenerateOptions } from "../ai/types";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
@@ -68,6 +71,16 @@ export interface GenerateAsyncOptions {
    * it is never serialized into the project.
    */
   includeBank?: boolean;
+  /**
+   * Ranking v3 — sound-check the top finalists (render → audio-fit vs genre
+   * targets) and re-order the bank head. Requires includeBank.
+   */
+  sound?: {
+    bank: SampleBank;
+    finalists?: number;
+    weight?: number;
+    render?: RenderCandidateFn;
+  };
 }
 
 /**
@@ -114,9 +127,28 @@ export async function generateAsyncResult(
     contentHash: entry.contentHash,
     pattern: entry.pattern,
   }));
+  let finalBank = bank;
+  if (options.sound) {
+    // Ranking v3: render the top finalists and re-order by the weighted mix
+    // of first-pass rank and audio fit. The winner becomes bank[0] and the
+    // proposal points at it.
+    finalBank = await rerankTopBySound(doc, bank, plan.intent.genre, {
+      bank: options.sound.bank,
+      ...(options.sound.finalists !== undefined ? { finalists: options.sound.finalists } : {}),
+      ...(options.sound.weight !== undefined ? { weight: options.sound.weight } : {}),
+      ...(options.sound.render ? { render: options.sound.render } : {}),
+    });
+  }
+  const base = resultFromProposal(plan, ranked.proposal);
+  const proposal = base.proposal
+    ? finalBank.length > 0 && finalBank[0].pattern !== base.proposal.pattern
+      ? { ...base.proposal, pattern: finalBank[0].pattern }
+      : base.proposal
+    : base.proposal;
   return {
-    ...resultFromProposal(plan, ranked.proposal),
-    bank,
+    ...base,
+    proposal,
+    bank: finalBank,
     selection: ranked.ranker,
   };
 }

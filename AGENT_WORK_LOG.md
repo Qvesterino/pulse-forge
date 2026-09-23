@@ -3791,3 +3791,22 @@ audit doc.
 **Validation:** campaign+core batch 200/200 on the churned tree (25 files); the only reds are concurrent-session-owned and documented with exact errors (factory.ts:2794 syntax mid-edit; 6 test-file tsc drifts; ModPanel hang).
 
 **Post-campaign pointer:** the verification pass (full build + full suite on a quiet tree) remains the standing recommendation before any release — the DAW-budget exhaustion finding makes it concrete. The queued UX/coverage items (long-press workflows, bounce warning, latencyProbe harness) are product work in normal sessions now.
+
+---
+
+## GOAL 33 — REFERENCE TEMPO/KEY + RANKING V3 + v1v3 LISTENING PACK (2026-09-22)
+
+**B — tempo/tón z referencie (`src/ai/audio-tempo-key.ts`):**
+- `estimateTempo`: detectTransients (log-flux onsets, zdieľané s nahrávaním) → 20 ms impulzný envelope → autokorelácia nad 70–180 BPM lagmi → fold half/double. Click-track testy 128/90 BPM ±4.
+- `estimateKey`: Goertzel 12 tried × 4 oktávy (C2–B5) → chroma → Krumhansl korelácia (24 rotácií) → "C Major"/"C Natural Minor" formát. Čistá C4 sin → root C ✓.
+- Wire do `analyzeAudioReference`: patch.bpmRange (±2) + patch.key + result.tempo/key + summary. Panel status ukazuje "🎧 reference: techno — 128 BPM, C Natural Minor — Techno 82%...".
+
+**A — ranking v3 (`src/intent/ranking-v3.ts`, `rerankTopBySound`):**
+- Dvojštupňový výber: 1. pass ranker → top-3 finalistov RENDERUJÚ (renderAuditionBuffer + downmix) → `scoreCandidatesBySound` vs `audioTargetFor(genre)` → combined = 0.7·(score/maxScore) + 0.3·audioFit. `score/maxScore` škála: ranker dominuje pri veľkých rozdieloch, blízke preteky rozhoduje zvuk. Render-fail = neutrálne 0.5/pôvodné poradie; finalists pod rezom bez zmeny.
+- Pipeline: `GenerateAsyncOptions.sound` → po banke rerank + proposal.pattern = nový winner (bank[0]). Panel GENERATE posiela `sound: { bank: services.bank }`; winner marker = bank[0].candidateIndex.
+
+**Počúvanie (`npm run listening:v1v3`, `scripts/render-v1v3-listening.mjs`):**
+- vite server + playwright (golden-pack vzor): 6 promptov × v1/v3 override → REAL engine render → `v1v3-listening/N-slug.{v1,v3}.wav` + LISTENING.md. 12 renderov ✓.
+- ⚠️ zombie vite servery držia porty po crashi — netstat + taskkill.
+
+**Testy**: audio-reference 9/9 (click track tempo 128/90, chroma root, BPM v patchu), ranking-v3 4/4 (prerazenie pri blízkom preteku, render-fail, weight 0, finalists cap). Regresia 130/130 na 14 dotykových súboroch; typecheck 0.
