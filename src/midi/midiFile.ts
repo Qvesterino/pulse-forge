@@ -193,8 +193,13 @@ export function parseMidiFile(data: Uint8Array): ParsedMidi {
 
     // Close any hanging notes at the last tick — better an audible short
     // note than a silently dropped phrase (many exporters omit note-offs).
+    // The cap guards here too: a hostile file stacking note-ons at one tick
+    // floods through THIS loop otherwise (event-driven closes cap first).
     for (const [key, stack] of entry.open) {
       for (const open of stack) {
+        if (++noteCount > MAX_NOTES) {
+          throw new MidiParseError(`MIDI file contains too many notes (over ${MAX_NOTES})`);
+        }
         const channel = key & 0x0f;
         const pitch = key >> 4;
         notesOf(channel).push({

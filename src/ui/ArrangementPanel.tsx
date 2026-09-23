@@ -1254,7 +1254,11 @@ export function ArrangementPanel() {
     const fromBar = selection.timeRange.fromTick / BAR_TICKS;
     const lenBars = (selection.timeRange.toTick - selection.timeRange.fromTick) / BAR_TICKS;
     if (lenBars < 0.25) return;
-    const trackIds = selection.trackIds.length > 0 ? selection.trackIds : tracks.slice(0, 1).map((t) => t.id);
+    // Audit 11 D6: the fallback target must skip GROUP tracks — a group
+    // alone renders silence (no generators on group nodes) and plants a
+    // silent audio clip over the zone.
+    const bounceable = tracks.filter((t) => t.kind !== "group");
+    const trackIds = selection.trackIds.length > 0 ? selection.trackIds : bounceable.slice(0, 1).map((t) => t.id);
     setBouncingZone(true);
     try {
       // REAL bounce: offline-render the selected tracks (FX, groups, sends

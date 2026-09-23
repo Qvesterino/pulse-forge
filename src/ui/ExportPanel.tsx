@@ -192,6 +192,9 @@ export function ExportPanel({
           sampleRate,
           quality,
           signal,
+          // Audit 11 D1: stems are deliverables for re-balancing elsewhere —
+          // they must not bake the master limiter/tape/glue into every stem.
+          masterProcessing: false,
           });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);

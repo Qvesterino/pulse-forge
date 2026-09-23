@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createDefaultProject } from "../src/project-model/schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import {
@@ -125,5 +127,26 @@ describe("master and send commands", () => {
     expect(store.doc.returns[0].gain).toBeCloseTo(0.4, 5);
     store.undo();
     expect(store.doc.returns[0].gain).toBeCloseTo(0.9, 5);
+  });
+});
+
+describe("stems — deliverable semantics (audit 11)", () => {
+  it("buildStemProject clears member MUTE so a muted track never exports silence", () => {
+    const doc = createDefaultProject();
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const muted = { ...drum, mute: true };
+    const stemDoc = buildStemProject(
+      { ...doc, tracks: doc.tracks.map((t) => (t.id === drum.id ? muted : t)) },
+      (t) => t.kind === "drum",
+    );
+    const stemTrack = stemDoc.tracks.find((t) => t.id === drum.id)!;
+    expect(stemTrack.mute, "muted track must still render its stem content").toBe(false);
+    expect(stemTrack.solo).toBe(false);
+  });
+
+  it("stem renders request no master processing (source pin)", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/ui/ExportPanel.tsx"), "utf8");
+    const start = source.indexOf("const stemDoc = buildStemProject");
+    expect(source.slice(start, start + 600)).toContain("masterProcessing: false");
   });
 });

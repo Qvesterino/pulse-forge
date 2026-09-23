@@ -77,7 +77,7 @@ describe("normalizeProject — mixer parameter sanitization (audit 04)", () => {
       ...base,
       tracks: base.tracks.map((t, i) => (i === 0 ? { ...t, sends: { [returnId]: 42 } } : t)),
     });
-    expect(doc.tracks[0]!.sends?.[returnId]).toBe(1);
+    expect(doc.tracks[0]!.sends?.[returnId]).toBe(1.5);
   });
 
   it("master rebuild preserves loudnessTrimDb (pre-fix: silently reset to 0)", () => {

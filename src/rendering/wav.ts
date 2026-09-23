@@ -18,7 +18,11 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
       `Render too large for WAV export (${(dataSize / 1024 ** 3).toFixed(1)} GB data). Export in segments or lower the sample rate/bit depth.`,
     );
   }
-  const arrayBuffer = new ArrayBuffer(44 + dataSize);
+  // Audit 11 D4: RIFF requires an odd `data` chunk to carry one pad byte —
+  // currently unreachable (all sources are stereo), but encodeWav is public
+  // API and a future mono 24-bit call would emit a spec-violating file.
+  const padByte = dataSize % 2 === 1 ? 1 : 0;
+  const arrayBuffer = new ArrayBuffer(44 + dataSize + padByte);
   const view = new DataView(arrayBuffer);
 
   const writeString = (offset: number, text: string) => {
@@ -38,6 +42,9 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
   view.setUint16(34, bitDepth, true);
   writeString(36, "data");
   view.setUint32(40, dataSize, true);
+  // RIFF sizes count the data chunk WITH its pad byte (spec: chunks are
+  // word-aligned); the declared `dataSize` stays the raw sample bytes.
+  view.setUint32(4, 36 + dataSize + padByte, true);
 
   const channels: Float32Array[] = [];
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));

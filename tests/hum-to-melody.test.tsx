@@ -12,6 +12,7 @@ import {
   auditionTimings,
   framesToNotes,
   humToNotesCommand,
+  notesToMidiBlob,
   patternLengthTicks,
   shiftNotesOctave,
   shiftNotesToBarStart,
@@ -408,6 +409,37 @@ describe("humContourLayout — pitch-contour canvas math", () => {
     expect(layout.points.map((p) => p.voiced)).toEqual([true, false, false]);
     // Internal bar lines only: 3 for a 4-bar pattern.
     expect(layout.barLines).toEqual([W / 4, W / 2, (W * 3) / 4]);
+  });
+});
+
+describe("notesToMidiBlob — hum → Standard MIDI File", () => {
+  const note = (pitch: number, start: number, duration = 240, velocity = 0.8) => ({
+    id: `n-${pitch}-${start}`,
+    pitch,
+    start,
+    duration,
+    velocity,
+  });
+
+  it("round-trips through parseMidiFile: pitches, ticks, velocity and tempo survive", async () => {
+    const { parseMidiFile } = await import("../src/midi/midiFile");
+    const notes = [note(60, 0), note(64, 240, 480, 0.55), note(67, 960, 120, 0.4)];
+    const blob = notesToMidiBlob(notes, { bpm: 124, name: "Lead Vocal" });
+    const parsed = parseMidiFile(new Uint8Array(await blob.arrayBuffer()));
+
+    expect(parsed.bpm).toBe(124);
+    expect(parsed.division).toBe(480);
+    const melodic = parsed.tracks.find((t) => t.notes.length > 0)!;
+    expect(melodic.name).toBe("Lead Vocal");
+    expect(melodic.notes).toHaveLength(3);
+    expect(melodic.notes.map((n) => n.pitch)).toEqual([60, 64, 67]);
+    expect(melodic.notes[1]).toMatchObject({ startTick: 240, endTick: 720 });
+    expect(melodic.notes[2]).toMatchObject({ startTick: 960, endTick: 1080 });
+    expect(melodic.notes[1]!.velocity).toBeCloseTo(0.55, 1);
+  });
+
+  it("rejects an empty draft", () => {
+    expect(() => notesToMidiBlob([], { bpm: 120 })).toThrow(/No hummed notes/);
   });
 });
 

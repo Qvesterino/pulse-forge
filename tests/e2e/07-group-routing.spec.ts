@@ -38,6 +38,13 @@ test("moving a track between groups removes its old audio route", async ({ page 
     engine.useContext(context);
     engine.setProject(withGroups);
     engine.setProject(moved);
+    // setProject defers the graph rebuild through an internal promise chain
+    // (re-entrant calls coalesce into a queue drain). Reading route
+    // bookkeeping before the drain settles races the rebuild — the AUDIO
+    // settles to group B either way, but the routeDestination field is
+    // written only when the queued body runs. Await the chain: deterministic,
+    // no arbitrary delay.
+    await (engine as unknown as { projectPromise: Promise<void> }).projectPromise;
 
     const internals = engine as unknown as {
       trackNodes: Map<string, { routeDestination: AudioNode }>;

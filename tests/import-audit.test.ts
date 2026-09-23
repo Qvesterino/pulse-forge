@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { MidiParseError, parseMidiFile, writeMidiFile } from "../src/midi/midiFile";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,7 +18,6 @@ describe("MIDI import — note flood cap (audit 10)", () => {
     // Build a track chunk manually: many note-on/note-off pairs via running
     // status. writeMidiFile would need 200k note objects — hand-roll the
     // bytes for speed.
-    const bytes: number[] = [];
     const pushVlq = (value: number) => {
       const septets = [value & 0x7f];
       let rest = value >> 7;
@@ -26,7 +25,9 @@ describe("MIDI import — note flood cap (audit 10)", () => {
         septets.unshift((rest & 0x7f) | 0x80);
         rest >>= 7;
       }
-      bytes.push(...septets);
+      // ⚠ deltas MUST land in `track` — pushing them to a dead array was the
+      // probe bug that made the flood invisible (all ticks stayed 0).
+      track.push(...septets);
     };
 
     const track: number[] = [];

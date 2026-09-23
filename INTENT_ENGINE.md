@@ -215,15 +215,20 @@ sa pripojať ako *proposal source* — žiadne priame mutácie projektu.
   hudobná validita, candidate-relative odchýlky, presence flags. Pevné poradie =
   contract; zmena vyžaduje novú feature version.
 - **Model**: MLP 54→64→32→16→1, sigmoid normalizácia, round 4 decimálne miesta
-  pred stable sortom. 25 kB. Trénovaný ako RankNet na heuristic teacher signále;
-  golden gate prešiel (`goldenPairwiseAccuracy: 1.0`, verdict ready-for-active).
+  pred stable sortom. 25 338 B. Trénovaný ako RankNet na heuristic teacher signále;
+  manifest (`public/models/intent-ranker-v1.manifest.json`): train pairwise
+  0.948, val pairwise 0.798, val top-1 agreement 0.692, golden holdout
+  pairwise **0.75** (48 párov / 32 kandidátov / 8 groups / 4 genres),
+  verdict **ready-for-active**, `favoriteGroups: 0` (žiadny ★ signál v tomto
+  artifacte — preferencie prídu až retrainom z ledgeru, §5.4).
 - **Worker**: `onnxruntime-web/wasm`, single-threaded, `env.wasm.wasmBinary`
   fetchnutý z `/models/ort/`, session cache, SHA-256 verifikácia modelu proti
   manifestu. Timeouty: score 400 ms, load 3 s, manifest 1.5 s. Circuit breaker:
   3 zlyhania → worker vypnutý na session. Všetky chyby = kontrolovaný fallback.
 - **Režimy**: `off | shadow | active`, flag `localStorage["pf:intent-ranker"]`,
-  default **shadow** (aktívny stav čaká na nezávislý golden holdout —
-  pozri activation status nižšie).
+  default **active** (`DEFAULT_RANKER_MODE` v `src/ai/ranking/ranker-client.ts`).
+  Shadow era (§5.12 história) skončila — model reálne prehadzuje poradie
+  banku, heuristika ostáva fallbackom aj váhou (0.6/0.4).
 - **Kombinácia (active)**: `finalScore = 0.6·heuristic + 0.4·model`, stable sort
   (score desc → candidateIndex asc → contentHash asc). Hard gate má vždy
   prioritu — model vidí len validných kandidátov.
@@ -263,8 +268,11 @@ ktoré sú štýlovo konzistentné, ale nie sú kópie templateov.
   template kandidáty (`source: "symbolic-prior"`), prechádzajú tými istými
   invariantmi, repairom aj heuristickým + ONNX rankingom. Zlyhanie prioru iba
   ZMENŠÍ bank — nikdy nezablokuje generáciu.
-- **IntentSpec**: `symbolicCandidates?: number` (0..4, default 0 — sync path
-  a golden baselines sa nemenia). IntentPanel "ťahák" posiela 2.
+- **IntentSpec**: `symbolicCandidates?: number` (0..4, schema default 0 — sync path
+  a golden baselines sa nemenia). Efektívne UI defaulty: IntentPanel GENERATE
+  posiela `candidateCount: 3` + `symbolicCandidates: 2` (`src/ui/IntentPanel.tsx`);
+  landing beat a Dice single-candidate toky ostávajú na 0 (zámerne — tam je
+  ranker provable no-op).
 - **Overenie**: `scripts/smoke-symbolic-prior.mts` (reálny model + reálne
   features): house 4/4 kick 0.69–0.86, trap rozbitý kick (downbeat 0.95,
   off-quarter 0.23 vs house 0.79), sampling deterministický — 10/10 PASS
@@ -285,13 +293,17 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   degree → pitch cez ten istý math ako template engine (exportované
   `degreeToPitch`/`expandChord` z `src/ai/melodic.ts` + `snapToScale`). Akýkoľvek
   samplovaný ton je v tónine, aj pri custom key.
-- **Model**: `public/models/symbolic-melodic-v1.onnx`, **17.7 kB**, dve hlavy.
+- **Model**: `public/models/symbolic-melodic-v1.onnx`, **18 145 B**, dve hlavy.
   Tréning: `npm run prior:melodic` (dataset z MELODIC_BY_GENRE vrátane
   wrap-around prechodov → class-weighted CE na oboch hlavách → ONNX).
-  Metriky v1: **valDegreeAcc 0.714** (majority baseline 0.370),
-  **valDurationAcc 0.607** (baseline 0.469), 190 vzoriek / 27 skupín —
-  malý dataset je úprimnýlimit: model interpoluje knižnicu, favorites ho
-  naučia viac.
+  Metriky v1 (manifest): **valDegreeAcc 0.679** (majority baseline 0.370),
+  **valDurationAcc 0.571** (baseline 0.469), 190 vzoriek / 27 skupín —
+  malý dataset je úprimný limit: model interpoluje knižnicu, favorites ho
+  naučia viac. Melodic v2 (`symbolic-melodic-v2.onnx`, 21 217 B, 41-dim
+  embedding) je na rovnakých dátach HORŠÍ (valDegreeAcc 0.607, valDuration
+  0.464) — preto provider preferuje v2 len keď je embedding dostupný a
+  per-call fallbackuje na v1 (P1 audit 2026-09-23: drums držať na v3,
+  melodic preferovať v1 kým nebude väčší dataset).
 - **Provider**: `SymbolicPriorProvider` v2 — pri dostupnom modeli NAHRADZuje
   template melódiu prior-samplovanými notami (autoregresívne po rolách,
   roly bežia paralelne; `controls.temperature` tvaruje distribúcie).
@@ -517,7 +529,10 @@ default house patternu (najhorší možný fallback pre trap request).
   descriptions (1379 EN+SK) → MiniLM → PCA 384→16 (`scripts/data/pca-embedding-projection.json`)
   → **prior v2**: 35-dim vstup (16 semantic + 19 štrukturálnych) trénovaný cez
   `npm run prior:v2` (valAUC 0.879, 17.7 kB, `public/models/symbolic-prior-v2.onnx`).
-  Runtime: `pf:embedding-conditioned` flag (default off — postupný rollout),
+  Runtime: `pf:embedding-conditioned` flag (default **on** od v3 hybrid
+  shadow-A/B — `embeddingConditionedMode()` v `src/ai/symbolic/prior-client.ts`;
+  P1 audit 2026-09-23: v3 valAUC 0.920 > v1 0.916 > v2 0.881, runtime degraduje
+  v3 → v2 → v1 per candidate),
   `semanticConditioning()` (text → embed → PCA, memoizované, nikdy nehádže),
   `runPriorGridV2()` v prior workeri (kind `drums-v2`), provider fallback v2 →
   v1 one-hot per candidate (diagnostika `prior-v2-fallback`), názov kandidáta
@@ -537,8 +552,9 @@ default house patternu (najhorší možný fallback pre trap request).
   localStorage (`pf:style-vector-cache`) keyed ledger signatúrou (nová ★ =
   recompute). Blend do conditioning: `INTENT_BLEND_WEIGHT` 0.75 intent / 0.25
   štýl — oba v2 priory ho berú cez JEDEN vektor; memoizácia keyed text+signature.
-  Flag `pf:style-vector` (default on, aktívny len pri `pf:embedding-conditioned`
-  on). "Moja verzia travis scott beatu" = blend osobného vektoru s promptom.
+  Flag `pf:style-vector` (default on, účinný len pri `pf:embedding-conditioned`
+  on — čo je dnešný default, takže personalizácia je live hneď ako má user
+  ★ v ledgeru). "Moja verzia travis scott beatu" = blend osobného vektoru s promptom.
 - Testy: `tests/intent-artists.test.ts` (11) — presety + text override +
   drill fix + revise parser EN/SK + router priority + same-seed identity
   (rovnaký seed, iný content hash, determinizmus).
@@ -597,31 +613,33 @@ Revise dostal CIEL: rola v texte zvolí konkrétnu sekciu aranžmánu.
 - Testy: intent-artists 13 (rola v routeri, global vs targeted), song 13
   (in-place regenerácia: id/seed/scene väzba, undo, friendly error).
 
-### 5.12 RANKER ACTIVATION STATUS — shadow je KOREKTNÝ, activation čaká na tvoje uši
+### 5.12 RANKER ACTIVATION STATUS — ACTIVE (P1 audit 2026-09-23)
 
-Forenza (git + dáta): default bol flipsnutý active→shadow v commite "uha",
-ktorý tiež pridal nezávislý golden validátor. **Dôvod bol methodologicky
-správny**: pôvodný "ready-for-active" verdikt stál na in-sample golden fit
-(prefix matching, starý dataset) — nový režim to odmietol
-(`invalid-golden-data`), lebo tvoje staré počúvanie (7 combos, reviewed by
-KYX) referencovalo dataset skupiny, ktoré po regenerácii už neexistujú.
+Aktuálny stav: `DEFAULT_RANKER_MODE = "active"`
+(`src/ai/ranking/ranker-client.ts:24`), manifest verdict
+**ready-for-active** s nezávislým golden holdoutom (0.75 na 48 pároch /
+8 groups). Model reálne prehadzuje poradie banku
+(`finalScore = 0.6·heuristic + 0.4·model`).
 
-**Pripravené pre re-aktiváciu** (human-in-the-loop, ~15 min počúvania):
+História: default bol prechodne flipsnutý active→shadow v commite "uha"
+(metodologicky správne — starý verdikt stál na in-sample golden fit s prefix
+matchingom a starým datasetom, nový prísny validátor ho odmietol ako
+`invalid-golden-data`). Medzitým prebehol nový golden holdout na aktuálnom
+datasete a flip späť na active.
+
+**Re-validácia** (keď budeš chcieť prepočúvať, ~15 min):
 1. `npm run ranker:golden-template` — čerstvý nereviewovaný template
-   viazaný na AKTUÁLNY dataset (7 combos: house Afro/Deep, techno Acid/
-   Ambient Techno, trap Bouncy/Classic, ambient Drifting; exaktné groupKeys)
-2. `node scripts/render-golden-review-pack.mjs` — 28 WAVov (4 kandidáti ×
-   7 combos) cez reálny engine → `golden-review/` (mimo public/ — bez
-   precache balastu) + LISTENING.md s heuristickým poradím
-3. **TY**: prepočuj, prepíš `order` per combo (indexy, najlepší prvý),
-   `reviewed: true` + meno + dátum
-4. `npm run ranker:train` → nový prísny režim (exaktné groupKeys, golden
-   skupiny s position labels) → verdikt
-5. `npm run ranker:activate` → flip na "active" + typecheck + testy
+   viazaný na AKTUÁLNY dataset (exaktné groupKeys)
+2. `node scripts/render-golden-review-pack.mjs` — WAVy cez reálny engine →
+   `golden-review/` (mimo public/) + LISTENING.md s heuristickým poradím
+3. **TY**: prepočuj, prepíš `order` per combo, `reviewed: true` + meno + dátum
+4. `npm run ranker:train` → prísny režim → verdikt
+5. `npm run ranker:activate` → potvrdenie flipu + typecheck + testy
 
 Poznámka: C2 favorites retraining je DRUHÝ, silnejší signál — preferenčné
-skupiny z tvojich ★ idú priamo do tréningu (GOAL 08); golden holdout ostáva
-nezávislou metrikou.
+skupiny z tvojich ★ idú priamo do tréningu; golden holdout ostáva
+nezávislou metrikou. Aktuálny artifact má `favoriteGroups: 0`, teda bez ★
+signálu — retrain z reálneho ledgeru je otvorený follow-up.
 
 ### 5.13 TARGETED EFFECT INTENTS (D1 v2a — "viac delayu na leade", HOTOVÉ engine-side)
 
@@ -818,17 +836,17 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 
 ### 7.2 Schopnostné medzery voči SUNO
 
-| Oblast | Dnes | Chýba do SUNO-tieru |
+| Oblast | Dnes (P1 audit 2026-09-23) | Chýba do SUNO-tieru |
 |---|---|---|
-| Text understanding | **parser v3 + C1 artist slovník + T1 krok 2 SEMANTIC LAYER** (multilingual MiniLM embedding kNN nad curated korpusom — rozumie neznámym frázam a menám, SK vrátane) | väčší embedding model, korpus rastúci s favoritmi |
-| Žánre/style | 4 žánre + 21 groove štýlov v prior vocab | desiatky štýlov; style embeddingy namiesto ručných keyword map |
-| Generatívny model | template anchors + constrained Markov **+ ONNX symbolic prior v1 (drums)** | prior v2: melodic role, učenie z favoritov, väčší dataset |
-| Štruktúra pesničky | **HOTOVÉ (A2 v2 + T3)**: song builder s verse/chorus/bridge, inštrumentáciou per sekciu a REÁLNYMI transition zvukmi (fill roll/riser/dropout pečené do odchádzajúcich sekcií) | section-aware prior kandidáty, audíció celej pesničky, syntetizované riser WAV |
-| Intent → mix | **HOTOVÉ (D1)**: mix profil z intentu (tone/punch/space/pump) ako jeden undo krok | loudness target (limiter), per-section mix v song builderi |
-| Unified bar | **HOTOVÉ (D3)**: ⚡ router arrange→mix→pattern v IntentPaneli | vzor/pattern z audio referencie (T4) |
-| Audio dimenzia | sample kity, grooves; žiadne audio AI | audio embeddingy (tagovanie sample lib, audio ranker rendered výstupu) |
+| Text understanding | **parser v3 + C1 artist slovník + SEMANTIC LAYER** (multilingual MiniLM q8 118 MB, EN+SK kNN — rozumie neznámym frázam/menám). **Pozor:** model nie je v gite, treba `npm run semantic:fetch`; bez neho tichý keyword fallback | viditeľný model-status v UI, korpus rastúci s favoritmi |
+| Žánre/style | 4 žánre + 21 groove štýlov v prior vocab **+ kontinuálny 16-dim semantic priestor (v2/v3)** — neznáme popisy fungujú bez nových one-hot dimenzií | desiatky štýlov, väčší tréningový korpus |
+| Generatívny model | template anchors + Markov **+ ranker ACTIVE + drums prior v3 (valAUC 0.920, hybrid) + melodic prior v1 preferovaný** (v2 regresia na 190 vzorkách — drží sa ako fallback) | melodic v2 prevaliť až po väčšom datasete, section-aware priory |
+| Štruktúra pesničky | **HOTOVÉ (A2 v2 + T3)**: song builder + verse/chorus/bridge + inštrumentácia + REÁLNE transition zvuky + **SUNO MODE `composeFullTrack` (song + mix + loudness v jednom toku)** | section-aware prior kandidáty, syntetizované riser WAV, chunked render >64 barov |
+| Intent → mix | **HOTOVÉ (D1 + D1 v2a/v2c)**: mix profil + targeted effect intents + loudness loop (−14 LUFS, ±6 dB trim) ako jeden undo krok; SUNO MODE to reťazí automaticky | per-section mix, auto slot pre master tilt mimo character genres |
+| Unified bar | **HOTOVÉ (D3)**: ⚡ router arrange→mix→effect→loudness→revise→pattern **+ 🎧 audio referencia** (AST/CLAP patch + 16-dim conditioning do v2 priorov) | hlbšia fúzia referencie (tempo/key/style lock) |
+| Audio dimenzia | **ČIASTOČNE (T4)**: AST AudioSet q8 86.6 MB (`npm run audio:fetch`) → audio index + cache + song audition; **ranking zatiaľ nepočúva** (audio score len display, nie súčasť sortu — P2/P5 kandidát) | audio score do automatického výberu, tagovanie v SampleBrowseri |
 | Vocals | — | v prehliadači realisticky až neskôr (pozri §8 T5) |
-| Feedback loop | **HOTOVÉ (C1+C2)**: favorites → retrain drum+melodic prioru aj rankera (preferencie), jeden príkaz | dlhodobejšie: cloud-free zdieľanie packov, implicitné signály (apply bez audition) |
+| Feedback loop | **HOTOVÉ (C1+C2 + #7 style-vector)**: favorites → retrain všetkých 3 modelov + live style-vector blend (0.75 intent / 0.25 štýl). Aktuálne artifacty: ranker `favoriteGroups: 0` — reálny ★ retrain je otvorený | cloud-free zdieľanie packov, implicitné signály (USE bez audition) |
 
 ---
 
@@ -838,8 +856,18 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 > kontrolovaný fallback, proposal-only, žiadna inferencia v audio callbacku.
 > Veľkosti sú hrubé odhady pre int8/wasm; potvrdiť meraním.
 
-### T0 — existujúce (hotové)
-- intent-ranker v1 (25 kB, WASM, active) — pattern kandidáty.
+### T0 — existujúce (hotové, P1 audit 2026-09-23: 6 ONNX artefaktov v `public/models/`)
+- intent-ranker v1 (25 338 B, MLP 54→64→32→16→1, golden holdout 0.75, verdict
+  ready-for-active, default **active**) — pattern kandidáty.
+- symbolic-prior v1 (20 399 B, 44-dim one-hot, valAUC 0.916) — fallback vetva.
+- symbolic-prior v2 (18 095 B, 35-dim embedding, valAUC 0.881) — medzistupeň.
+- symbolic-prior v3 (24 495 B, 60-dim hybrid, valAUC **0.920** — default vetva,
+  degraduje v3 → v2 → v1 per candidate).
+- symbolic-melodic v1 (18 145 B, 29-dim, valDegreeAcc 0.679 — preferovaná).
+- symbolic-melodic v2 (21 217 B, 41-dim embedding, valDegreeAcc 0.607 —
+  regresia na 190 vzorkách, len fallback).
+- Lazy-fetch (nie v gite): MiniLM semantic q8 118 MB (`semantic:fetch`),
+  AST AudioSet q8 86.6 MB (`audio:fetch`).
 
 ### T1 — Zapojenie a prehĺbenie porozumenia zámeru — ✅ HOTOVÉ (2026-09-19)
 1. ~~**Async ranker path do UI**~~ — hotové: `generateAsyncResult()` +
@@ -850,14 +878,18 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 3. **features.v2 + ranker v2**: viac kandidátov (8→16?), učenie z dice favorites.
    *(otvorené)*
 
-### T2 — Symbolická generácia — ✅ v1 aj v2 HOTOVÉ (2026-09-19)
-- **v1**: symbolic drum prior (44→64→32→1, 19.9 kB, valAUC 0.916) — detail §5.2.
-- **v2**: melodic next-note prior (29→64→32→{8,4}, 17.7 kB) + favorites
+### T2 — Symbolická generácia — ✅ v1, v2 AJ v3 HOTOVÉ (P1 audit 2026-09-23)
+- **v1**: symbolic drum prior (44→64→32→1, 20 399 B, valAUC 0.916) — detail §5.2.
+- **v2**: melodic next-note prior (29→64→32→{8,4}, 18 145 B) + favorites
   feedback loop — detail §5.3, §5.4.
-- v3 návrhy: prior podmienený embeddingom namiesto one-hot vocab, väčší
-  tréningový korpus (public-domain MIDI). ~~pairwise preference head učený
-  priamo z favoritov~~ **HOTOVÉ (C2)** — ranker sa učí z preferenčných skupín;
-  ~~melodic prior trénovaný aj z favoritov~~ **HOTOVÉ (C1)**.
+- **v3 (embedding-conditioned, default)**: drums v2 (35-dim, 18 095 B,
+  valAUC 0.881) → drums v3 hybrid (60-dim, 24 495 B, valAUC **0.920**,
+  `conditioning: hybrid-v3`); melodic v2 (41-dim, 21 217 B — regresia,
+  fallback na v1). Flag `pf:embedding-conditioned` default **on**,
+  `pf:style-vector` default on (účinný len s embeddingom). Detail §5.9.
+- Ostáva: väčší tréningový korpus (public-domain MIDI), prevalenie melodic v2
+  až po dátach. ~~pairwise preference head~~ **HOTOVÉ (C2)**,
+  ~~melodic prior z favoritov~~ **HOTOVÉ (C1)**.
 
 ### T3 — Štruktúra a dlhá forma — ✅ HOTOVÉ (2026-09-19, A2 + v2 + transition sounds)
 - ~~Section planner (song form)~~ **HOTOVÉ**: song builder (§5.6) + songwriting
@@ -916,8 +948,10 @@ IndexedDB/Cache API cache po prvom stiahnutí, PWA precache len pre T0.
 
 ---
 
-*Posledná úplná revízia mapy: 2026-09-19 (T1 + krok 2 semantic layer, parser v3
-EN+SK, drum+melodic prior v1, C1+C2 favorites→retrain + artist slovník + revise
-routing, A1 audition, A2 song builder + v2 roles + transition sounds, D1 mix
-chain, D3 unified bar, C3 targeted section revise). Dokument sa dopĺňa pri
-každej zmene Intent Engine; fakty boli overené čítaním zdrojov uvedených v §3.*
+*Posledná úplná revízia mapy: 2026-09-19; P1 docs-sync audit 2026-09-23
+(ranker default active + golden holdout 0.75, embedding-conditioned default on
+s drums v3 valAUC 0.920, melodic v1 preferovaná pre v2 regresiu, IntentPanel
+defaults candidateCount 3 + symbolic 2, SUNO MODE composeFullTrack, 6 ONNX
+artefaktov + 2 lazy-fetch modely). Dokument sa dopĺňa pri každej zmene Intent
+Engine; fakty overené čítaním zdrojov uvedených v §3 + manifestov v
+`public/models/`.*

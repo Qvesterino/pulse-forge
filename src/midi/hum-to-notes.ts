@@ -1,6 +1,7 @@
 import type { NoteEvent, MusicalKey, Pattern, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { snapToScale } from "../project-model/scales";
+import { writeMidiFile } from "./midiFile";
 import { uid } from "../shared/ids";
 import { snapshot } from "../commands/commands";
 import type { PitchFrame } from "../audio-workers/pitch-tracker";
@@ -456,4 +457,34 @@ export function auditionTimings(
     velocity: note.velocity,
     durationSec: Math.max(0.05, note.duration * secPerTick),
   }));
+}
+
+/**
+ * Serialize the hummed draft as a Standard MIDI File (improvement 6) — the
+ * drafts already live in PPQ ticks, which is the MIDI division, so the map
+ * is 1:1 (start → startTick, duration → endTick−startTick). One melodic
+ * track carrying the take name; tempo baked into the conductor track so the
+ * file opens at the project's groove in any DAW.
+ */
+export function notesToMidiBlob(
+  notes: readonly NoteEvent[],
+  options: { bpm: number; name?: string },
+): Blob {
+  if (notes.length === 0) throw new Error("No hummed notes to export");
+  const bytes = writeMidiFile({
+    bpm: Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120,
+    tracks: [
+      {
+        name: options.name ?? "KYX hum",
+        channel: 0,
+        notes: notes.map((note) => ({
+          pitch: note.pitch,
+          startTick: note.start,
+          endTick: note.start + note.duration,
+          velocity: note.velocity,
+        })),
+      },
+    ],
+  });
+  return new Blob([bytes.buffer as ArrayBuffer], { type: "audio/midi" });
 }

@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import { FxAddPopover } from "./FxAddPopover";
+import { FxIntentBar } from "./FxIntentBar";
 import { parseProductionIntent } from "../intent/production";
-import {
-  addEffectWithLandingCommand,
-  applyProductionIntentToTrackCommand,
-} from "../commands/commands";
+import { addEffectWithLandingCommand, applyProductionIntentToTrackCommand } from "../commands/commands";
 import { applyEffectIntentOnTrack } from "./fxAddAssistant";
 import { roleOfTrack, rolePresetFor } from "../effects/role-presets";
 import {
@@ -357,6 +355,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
           ✚ ADD FX
         </button>
       </div>
+      <FxIntentBar trackId={track.id} />
       {addOpen && (
         <FxAddPopover
           trackLabel={track.name}

@@ -23,6 +23,15 @@ export interface Mp3Options {
 export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): Promise<Blob> {
   const kbps = options.kbps ?? 192;
   const channelCount = Math.min(2, Math.max(1, buffer.numberOfChannels));
+  // Audit 11 D7: LAME's MPEG tables only express standard rates — a 96 kHz
+  // buffer (e.g. a live-context-rate render) produced corrupt garbage
+  // instead of an error.
+  const SUPPORTED_RATES = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
+  if (!SUPPORTED_RATES.includes(buffer.sampleRate)) {
+    throw new Error(
+      `MP3 export does not support ${buffer.sampleRate} Hz — use 44100 or 48000 Hz, or export WAV`,
+    );
+  }
   const encoder = new Mp3Encoder(channelCount, buffer.sampleRate, kbps);
 
   // Soft-knee clip + TPDF dither before 16-bit quantization: hot masters

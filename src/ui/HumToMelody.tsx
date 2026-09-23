@@ -5,11 +5,14 @@ import { useServices } from "./context";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { detectHumReAttacks } from "../audio-workers/hum-onsets";
 import { trackPitchAsync } from "../audio-workers/pitch-tracker-client";
+import { downloadBlob } from "../export/download";
+import { sanitizeFilename } from "../rendering/wav";
 import type { PitchFrame } from "../audio-workers/pitch-tracker";
 import {
   auditionTimings,
   framesToNotes,
   humToNotesCommand,
+  notesToMidiBlob,
   patternLengthTicks,
   shiftNotesOctave,
   shiftNotesToBarStart,
@@ -597,6 +600,25 @@ export function HumToMelodyPanel({
               }}
             >
               {fillCopies > 1 ? `FILL ×${fillCopies}` : "FILL"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="Download the melody as a .mid file — use it in any other DAW"
+              onClick={() => {
+                stopAudition();
+                try {
+                  const blob = notesToMidiBlob(notes, {
+                    bpm: services.store.getDoc().bpm,
+                    name: track.name,
+                  });
+                  downloadBlob(blob, `${sanitizeFilename(track.name)}-hum.mid`);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err));
+                }
+              }}
+            >
+              ⤓ MIDI
             </button>
           </div>
           <label className="hum-mode">

@@ -34,7 +34,11 @@ export function buildStemProject(doc: ProjectDocument, filter: (track: Track) =>
   const parents = doc.tracks.filter((t) => t.kind === "group" && groupIds.has(t.id));
   const kept = new Map<string, Track>();
   for (const t of [...matched, ...parents]) {
-    if (!kept.has(t.id)) kept.set(t.id, { ...t, solo: false } as Track);
+    // Audit 11 D2: stems are deliverables for re-balancing in another DAW —
+    // live-session MUTE (like solo) must not bake a silent, "successful"
+    // stem. The engine silences muted tracks/groups, so preserving mute
+    // zeroed whole stems while the export still reported success.
+    if (!kept.has(t.id)) kept.set(t.id, { ...t, solo: false, mute: false } as Track);
   }
   // Deterministic order — same as the original doc.
   const ordered = doc.tracks.filter((t) => kept.has(t.id)).map((t) => kept.get(t.id)!);
