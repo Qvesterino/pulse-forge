@@ -24,6 +24,7 @@ import type { MaterializedPcmTake } from "../audio-engine/pcmRecording";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRepository";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
+import { isMountedInEcosystem, prepareBeatHandoff } from "../interop/qvesterHandoff";
 import { setMasterConfig, chopSampleToPads } from "../commands/commands";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
@@ -127,7 +128,7 @@ export function ExportPanel({
         sampleRate,
         quality,
         signal,
-        });
+      });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
 
@@ -171,8 +172,7 @@ export function ExportPanel({
       // yields per 64k-frame block, keeps the UI alive, reports progress
       // and honors Cancel. Byte-identical to the sync encoder.
       const wavBytes = await encodeWavAsync(buffer, bitDepth, {
-        onProgress: (f) =>
-          setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
+        onProgress: (f) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
       });
       downloadWav(wavBytes, `${baseName}-master.wav`);
@@ -183,6 +183,32 @@ export function ExportPanel({
       });
     } catch (error) {
       cancelOrElse(error, `Export failed: {err}`);
+    }
+  };
+
+  /** Qvester ecosystem: render + hand the WAV to Audio Canvas (same-origin
+   *  mount only — the handoff medium is shared IndexedDB + WebStorage). */
+  const sendToQvesterVisualizer = async () => {
+    const signal = beginExport();
+    setStatus({ kind: "busy", label: "Rendering beat for Audio Canvas…" });
+    try {
+      const { packet, record } = await prepareBeatHandoff(doc, services.bank, {
+        mode,
+        sampleRate,
+        quality,
+        signal,
+        onProgress: (f, label) => setStatus({ kind: "busy", label: `${label} ${Math.round(f * 100)}%` }),
+      });
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      const url = `${window.location.origin}/audio-canvas?handoff=${encodeURIComponent(packet.handoffId)}&handoffIntent=${encodeURIComponent(packet.intent)}`;
+      setStatus({
+        kind: "done",
+        label: `Handoff ready — ${record.name} (${(record.byteLength / 1e6).toFixed(1)} MB WAV) handed to Audio Canvas`,
+        summary: EMPTY_EXPORT_SUMMARY,
+      });
+      window.location.assign(url);
+    } catch (error) {
+      cancelOrElse(error, `Send to visualizer failed: {err}`);
     }
   };
 
@@ -203,9 +229,15 @@ export function ExportPanel({
           // Audit 11 D1: stems are deliverables for re-balancing elsewhere —
           // they must not bake the master limiter/tape/glue into every stem.
           masterProcessing: false,
-          });
+        });
         lastSummary = summarizeBuffer(buffer);
-        downloadWav(await encodeWavAsync(buffer, bitDepth, { onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }), signal }), `${baseName}-${group.id}.wav`);
+        downloadWav(
+          await encodeWavAsync(buffer, bitDepth, {
+            onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }),
+            signal,
+          }),
+          `${baseName}-${group.id}.wav`,
+        );
       }
       setStatus({
         kind: "done",
@@ -234,9 +266,15 @@ export function ExportPanel({
           sampleRate,
           quality,
           signal,
-          });
+        });
         lastSummary = summarizeBuffer(buffer);
-        downloadWav(await encodeWavAsync(buffer, bitDepth, { onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }), signal }), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
+        downloadWav(
+          await encodeWavAsync(buffer, bitDepth, {
+            onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }),
+            signal,
+          }),
+          `${baseName}-track-${sanitizeFilename(track.name)}.wav`,
+        );
       }
       setStatus({
         kind: "done",
@@ -680,6 +718,17 @@ export function ExportPanel({
           COPY EMBED CODE
         </button>
         <PublishToGalleryButton />
+        {isMountedInEcosystem() && (
+          <button
+            type="button"
+            className="btn btn-export"
+            disabled={busy}
+            title="Render this beat and hand it to Audio Canvas (SIQ) — its analysis and beat-reactive visuals run on your audio"
+            onClick={() => void sendToQvesterVisualizer()}
+          >
+            ✦ SEND TO QVESTER VISUALIZER
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-export btn-export-scorepack"
@@ -689,7 +738,10 @@ export function ExportPanel({
         >
           EXPORT SCOREPACK
         </button>
-        <label className="export-policy" title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large.">
+        <label
+          className="export-policy"
+          title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large."
+        >
           <input
             type="checkbox"
             checked={includeTrackStems}
