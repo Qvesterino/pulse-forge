@@ -513,6 +513,43 @@ export const pluckParams: ParamDef[] = [
   ...modMatrixParams(false),
 ];
 
+export const fluteParams: ParamDef[] = [
+  {
+    id: "wave",
+    label: "WAVE",
+    min: 0,
+    max: 2,
+    default: 0,
+    options: [
+      { value: 0, label: "Sine" },
+      { value: 1, label: "Tri" },
+      { value: 2, label: "Saw" },
+    ],
+  },
+  { id: "breath", label: "BREATH", min: 0, max: 1, default: 0.3, format: formatPct },
+  { id: "breathTone", label: "B-TONE", min: 600, max: 8000, default: 2200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "vibrato", label: "VIB", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "vibRate", label: "V-RATE", min: 0, max: 8, default: 5, unit: "Hz", format: (v) => `${v.toFixed(2)} Hz` },
+  {
+    id: "vibDelay",
+    label: "V-DELAY",
+    min: 0.05,
+    max: 1,
+    default: 0.35,
+    unit: "s",
+    format: formatMs,
+  },
+  { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.2, format: formatPct },
+  { id: "overblow", label: "OVERBLOW", min: 0, max: 1, default: 0.15, format: formatPct },
+  { id: "formant", label: "FORMANT", min: 200, max: 9000, default: 3200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.06, unit: "s", format: formatMs },
+  { id: "decay", label: "DECAY", min: 0.02, max: 3, default: 0.5, unit: "s", format: formatMs },
+  { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0.8, format: formatPct },
+  { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.25, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+];
+
 export const logdrumParams: ParamDef[] = [
   { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
   { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
@@ -629,6 +666,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   fm: { kind: "fm", name: "FM", params: fmParams },
   keys: { kind: "keys", name: "Keys", params: keysParams },
   pluck: { kind: "pluck", name: "Pluck Synth", params: pluckParams },
+  flute: { kind: "flute", name: "Flute", params: fluteParams },
   logdrum: { kind: "logdrum", name: "Log Drum", params: logdrumParams },
   spectral: { kind: "spectral", name: "Spectral Pad", params: spectralParams },
   vocalchop: { kind: "vocalchop", name: "Vocal Chop", params: vocalchopParams },
@@ -646,6 +684,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "keys",
   "fm",
   "pluck",
+  "flute",
   "logdrum",
   "spectral",
   "vocalchop",

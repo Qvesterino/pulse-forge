@@ -21,6 +21,7 @@ import {
   fmParams,
   keysParams,
   pluckParams,
+  fluteParams,
   logdrumParams,
   spectralParams,
   vocalchopParams,
@@ -3354,6 +3355,233 @@ const pluck: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Flute ---------------- */
+// Wind voice for melodic leads: carrier (sine/tri/saw) + bandpassed breath
+// noise + delayed-onset vibrato + portamento (engine slideFrom + GLIDE) +
+// an overblow harmonic layer — the drill/phonk flute leads, pan flutes and
+// airy liquid lines live here. Deterministic (seeded noise per track).
+
+const flute: InstrumentDefinition = {
+  kind: "flute",
+  name: "Flute",
+  params: fluteParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(10);
+    const breathSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x71a3);
+    const WAVE_TYPES = ["sine", "triangle", "sawtooth"] as const;
+
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.004, p.attack ?? 0.06);
+        const decay = Math.max(0.02, p.decay ?? 0.5);
+        const sustain = Math.max(0, Math.min(1, p.sustain ?? 0.8));
+        const release = Math.max(0.01, p.release ?? 0.25);
+        const hold = Math.max(durationSec, attack + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.3;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const wave = WAVE_TYPES[Math.max(0, Math.min(2, Math.round(p.wave ?? 0)))];
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(Math.max(level * sustain, 0.0002), when + attack, decay / 3);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // Formant body → optional drive → amp → out (shared by tone+breath).
+        const formant = ctx.createBiquadFilter();
+        formant.type = "lowpass";
+        formant.frequency.value = Math.max(200, Math.min(9000, p.formant ?? 3200));
+        formant.Q.value = 0.9;
+        let tail: AudioNode = formant;
+        const drive = Math.max(0, Math.min(1, p.drive ?? 0));
+        if (drive > 0.001) {
+          const shaper = ctx.createWaveShaper();
+          const curve = new Float32Array(new ArrayBuffer(1024 * 4));
+          for (let i = 0; i < 1024; i++) {
+            const x = (i / 1023) * 2 - 1;
+            curve[i] = Math.tanh(x * (1 + drive * 5));
+          }
+          shaper.curve = curve;
+          formant.connect(shaper);
+          tail = shaper;
+        }
+        tail.connect(amp);
+        amp.connect(output);
+
+        // Carrier with delayed vibrato (depth ramps in after vibDelay — the
+        // classical wind-player behavior; without the delay every note wobbles
+        // from sample one and reads as synth, not breath).
+        const osc = ctx.createOscillator();
+        osc.type = wave;
+        const vibDepth = Math.max(0, Math.min(1, p.vibrato ?? 0.25));
+        const vibRate = Math.max(0.1, Math.min(8, p.vibRate ?? 5));
+        const vibDelay = Math.max(0.05, Math.min(1, p.vibDelay ?? 0.35));
+        // Portamento: the engine's slideFrom (pattern glides) OR the GLIDE
+        // knob pulling from the track's last sounding pitch (legato leads).
+        const glideAmt = Math.max(0, Math.min(1, p.glide ?? 0.2));
+        const fromFreq = slideFrom ? midiToFreq(slideFrom.pitch) : glideAmt > 0.001 ? runtime.lastFreq : null;
+        if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
+          const glideSec = Math.max(0.01, glideAmt * 0.5);
+          osc.frequency.setValueAtTime(fromFreq, when);
+          osc.frequency.exponentialRampToValueAtTime(freq, Math.min(when + glideSec, off));
+        } else {
+          osc.frequency.setValueAtTime(freq, when);
+        }
+        if (vibDepth > 0.001) {
+          const lfo = ctx.createOscillator();
+          lfo.type = "sine";
+          lfo.frequency.value = vibRate;
+          const lfoGain = ctx.createGain();
+          lfoGain.gain.setValueAtTime(0.0001, when);
+          lfoGain.gain.linearRampToValueAtTime(vibDepth * 35, Math.min(when + vibDelay + 0.25, off));
+          lfo.connect(lfoGain).connect(osc.detune);
+          lfo.start(when);
+          lfo.stop(stopTime);
+        }
+        osc.connect(formant);
+        osc.start(when);
+        osc.stop(stopTime);
+
+        // Overblow layer: a slightly-detuned octave partial — the breathy
+        // edge of a pushed note. Sits under the formant so it never gets harsh.
+        const overblow = Math.max(0, Math.min(1, p.overblow ?? 0.15));
+        const obOscs: OscillatorNode[] = [];
+        if (overblow > 0.001) {
+          const ob = ctx.createOscillator();
+          ob.type = "sine";
+          ob.frequency.setValueAtTime(freq * 2.006, when);
+          const obGain = ctx.createGain();
+          obGain.gain.setValueAtTime(0.0001, when);
+          obGain.gain.exponentialRampToValueAtTime(
+            Math.max(level * overblow * 0.5, 0.0002),
+            when + Math.max(attack, 0.02),
+          );
+          obGain.gain.setTargetAtTime(0.0001, off, release / 3);
+          ob.connect(obGain).connect(formant);
+          ob.start(when);
+          ob.stop(stopTime);
+          obOscs.push(ob);
+        }
+
+        // Breath: looped seeded noise through a bandpass around the tone —
+        // air follows the note, not a fixed hiss.
+        const breathAmt = Math.max(0, Math.min(1, p.breath ?? 0.3));
+        let breathSrc: AudioBufferSourceNode | null = null;
+        if (breathAmt > 0.001) {
+          breathSrc = ctx.createBufferSource();
+          breathSrc.buffer = breathSeed;
+          breathSrc.loop = true;
+          const bp = ctx.createBiquadFilter();
+          bp.type = "bandpass";
+          bp.frequency.value = Math.max(600, Math.min(8000, p.breathTone ?? 2200));
+          bp.Q.value = 1.4;
+          const breathGain = ctx.createGain();
+          breathGain.gain.setValueAtTime(0.0001, when);
+          breathGain.gain.exponentialRampToValueAtTime(
+            Math.max(level * breathAmt * 0.35, 0.0002),
+            when + Math.max(attack, 0.01),
+          );
+          breathGain.gain.setTargetAtTime(0.0001, off, release / 3);
+          breathSrc.connect(bp).connect(breathGain).connect(formant);
+          breathSrc.start(when, (hashString(track.id) % 1000) / 1000);
+          breathSrc.stop(stopTime);
+        }
+
+        // Legato memory: the next GLIDE note pulls from this pitch.
+        runtime.lastFreq = freq;
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            try {
+              osc.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+            for (const ob of obOscs) {
+              try {
+                ob.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+            try {
+              breathSrc?.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            try {
+              osc.stop(now + 0.02);
+            } catch {
+              /* already stopped */
+            }
+            for (const ob of obOscs) {
+              try {
+                ob.stop(now + 0.02);
+              } catch {
+                /* already stopped */
+              }
+            }
+            try {
+              breathSrc?.stop(now + 0.02);
+            } catch {
+              /* already stopped */
+            }
+          },
+        );
+        // Clock oscillator for deterministic cleanup (works for both live and offline)
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            amp.disconnect();
+            formant.disconnect();
+            tail.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- Log Drum (Amapiano) ---------------- */
 // Tuned perc: 3× sine 1 / 2.15 / 3.8 → notch (hollow) → LP SVF + grit
 // pitchDrop on transient, glide + long decay, deterministic
@@ -4622,6 +4850,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   keys,
   fm,
   pluck,
+  flute,
   logdrum,
   spectral,
   vocalchop,

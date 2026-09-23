@@ -71,6 +71,7 @@ export type InstrumentKind =
   | "keys"
   | "fm"
   | "pluck"
+  | "flute"
   | "logdrum"
   | "spectral"
   | "vocalchop"

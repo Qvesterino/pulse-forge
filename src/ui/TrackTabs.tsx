@@ -22,6 +22,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   keys: "KEY",
   fm: "FM",
   pluck: "PLK",
+  flute: "FLT",
   logdrum: "LOG",
   spectral: "SPC",
   vocalchop: "VCX",
@@ -142,6 +143,7 @@ export function TrackTabs({
         <option value="granular">Granular Synth</option>
         <option value="keys">Keys Synth</option>
         <option value="pluck">Pluck Synth</option>
+        <option value="flute">Flute</option>
         <option value="logdrum">Log Drum</option>
         <option value="spectral">Spectral Pad</option>
         <option value="vocalchop">Vocal Chop</option>
