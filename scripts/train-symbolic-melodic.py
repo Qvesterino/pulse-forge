@@ -74,25 +74,34 @@ class TwoHeadMLP:
         degree_weights: np.ndarray,
         duration_weights: np.ndarray,
         lr: float,
+        label_smoothing: float = 0.0,
     ) -> float:
         n = len(x)
         h0, h1, degree_logits, duration_logits = self.forward(x)
         degree_probs = softmax(degree_logits)
         duration_probs = softmax(duration_logits)
 
+        # Label smoothing pulls the one-hot targets off 0/1 — without it
+        # the softmax head drives the logit gap past 35 on this sparse
+        # data and the semantic channel dies (opposite-mood prompts
+        # returned IDENTICAL distributions — melodic gate finding).
+        n_degree_classes = degree_probs.shape[1]
+        n_duration_classes = duration_probs.shape[1]
+        target_degree = np.full_like(degree_probs, label_smoothing / n_degree_classes)
+        target_degree[np.arange(n), y_degree] += 1.0 - label_smoothing
+        target_duration = np.full_like(duration_probs, label_smoothing / n_duration_classes)
+        target_duration[np.arange(n), y_duration] += 1.0 - label_smoothing
+
         wd = degree_weights[y_degree]
         wt = duration_weights[y_duration]
         eps = 1e-7
         loss = float(
-            np.mean(wd * -np.log(degree_probs[np.arange(n), y_degree] + eps))
-            + np.mean(wt * -np.log(duration_probs[np.arange(n), y_duration] + eps))
+            np.mean(wd * -np.sum(target_degree * np.log(degree_probs + eps), axis=1))
+            + np.mean(wt * -np.sum(target_duration * np.log(duration_probs + eps), axis=1))
         )
 
-        d_degree = degree_probs.copy()
-        d_degree[np.arange(n), y_degree] -= 1.0
-        d_degree *= (wd / n)[:, None]
-        d_duration = duration_probs.copy()
-        d_duration[np.arange(n), y_duration] -= 1.0
+        d_degree = (degree_probs - target_degree) * (wd / n)[:, None]
+        d_duration = (duration_probs - target_duration) * (wt / n)[:, None]
         d_duration *= (wt / n)[:, None]
 
         # backprop: heads → trunk (ReLU masks) → input
@@ -174,15 +183,26 @@ def main() -> None:
     if args.embedding:
         emb_payload = json.loads(Path(args.embedding).read_text())
         style_map = emb_payload.get("styles", {})
-        # Average semantic vectors per genre (melodic model is genre-level)
+        variant_map = emb_payload.get("variants", {})
+        # Average semantic vectors per genre (melodic model is genre-level).
+        # With the v2 embeddings pack, average across ALL description
+        # variants of every style in the genre — centroid-only averaging
+        # collapsed the genre's semantic spread (melodic gate finding).
         genre_vectors: dict[str, list[float]] = {}
+        genre_counts: dict[str, int] = {}
         for style_id, vector in style_map.items():
             genre = style_id.split(".")[0]
-            if genre not in genre_vectors:
-                genre_vectors[genre] = list(vector)
-            else:
-                for d in range(len(vector)):
-                    genre_vectors[genre][d] = (genre_vectors[genre][d] + vector[d]) / 2
+            for vec in [vector] + list(variant_map.get(style_id, [])):
+                if genre not in genre_vectors:
+                    genre_vectors[genre] = list(vec)
+                    genre_counts[genre] = 1
+                else:
+                    for d in range(len(vec)):
+                        genre_vectors[genre][d] += vec[d]
+                    genre_counts[genre] += 1
+        for genre, total in genre_counts.items():
+            for d in range(len(genre_vectors[genre])):
+                genre_vectors[genre][d] /= total
         genre_semantic = genre_vectors
         print(f"[train] embedding mode: {len(genre_vectors)} genre semantic vectors")
 
@@ -316,7 +336,8 @@ def main() -> None:
         batches = 0
         for start in range(0, len(order), BATCH):
             batch = order[start : start + BATCH]
-            epoch_loss += model.train_step(x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR)
+            smoothing = 0.1 if embedding_mode else 0.0
+            epoch_loss += model.train_step(x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR, smoothing)
             batches += 1
         if (epoch + 1) % 100 == 0 or epoch == 0:
             _, _, vd, vt = model.forward(x_val)
