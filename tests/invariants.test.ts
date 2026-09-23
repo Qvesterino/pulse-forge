@@ -133,6 +133,98 @@ describe("AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useC
     expect(known.length, "expected three known sites still present").toBe(3);
     expect(novel, "new AudioNode creation in src/ui outside AudioEngine.useContext").toEqual([]);
   });
+
+  it("src/intent/audition.ts has a single known AudioNode site (playAuditionBuffer via playbackContext)", () => {
+    // AI audition pipeline owns its own private context for candidate
+    // preview; the standard pattern is for it to live behind a dedicated
+    // playbackContext() helper (which already wraps engine.ensureContext
+    // semantics). One site is the current contract.
+    const hits = audioNodeHits("src/intent");
+    const knownSites = new Set(["src/intent/audition.ts:104"]);
+    const known: string[] = [];
+    const novel: Hit[] = [];
+    for (const h of hits) {
+      const tag = `${h.file}:${h.line}`;
+      if (knownSites.has(tag)) known.push(tag);
+      else novel.push(h);
+    }
+    expect(known.length, "expected one known site in audition.ts").toBe(1);
+    expect(novel, "new AudioNode creation in src/intent outside the audition pipeline").toEqual([]);
+  });
+
+  // Comprehensive cross-module invariant #7 guard. Modules in this list
+  // have no legitimate reason to construct AudioNodes — anything that
+  // appears here is by definition an invariant violation. The carve-outs
+  // (audio-engine, audio-worklets, vendor DSP cores, offline-render
+  // exporters, the intent audition pipeline) are explicitly allowed; UI
+  // AudioNode creation is captured by the whitelist test above.
+  // `src/intent` is handled by a dedicated test below because the
+  // audition pipeline owns one known site.
+  const AUDIO_NODE_FREE_DIRS = [
+    "src/ai",
+    "src/persistence",
+    "src/midi",
+    "src/collab",
+    "src/generative",
+    "src/analysis",
+    "src/services",
+    "src/project-model",
+    "src/scheduler",
+    "src/transport",
+    "src/store",
+  ];
+  for (const dir of AUDIO_NODE_FREE_DIRS) {
+    it(`no AudioNode factory calls under ${dir}/`, () => {
+      const hits = audioNodeHits(dir);
+      if (hits.length > 0) {
+        const lines = hits.map((h) => `${h.file}:${h.line} [${h.factory}]  ${h.text}`).join("\n");
+        expect(hits, `invariant #7 violations under ${dir}:\n${lines}`).toEqual([]);
+      }
+      expect(hits).toEqual([]);
+    });
+  }
+});
+
+describe("AGENTS.md invariant #9 — no Rust / WASM DSP path in the realtime layer", () => {
+  // ADR 0005 keeps WASM as a future option. Today the realtime boundary
+  // is AudioWorklet; the only WASM in the shipped app is non-DSP
+  // (LAME mp3 encode lives under src/export/, not in audio-engine/ or
+  // audio-worklets/). Pin the carve-out so a regression that imports a
+  // WASM DSP kernel into the realtime layer is caught immediately.
+  const WASM_FACTORIES = ["WebAssembly.compile", "WebAssembly.instantiate", "WebAssembly.compileStreaming", "WebAssembly.instantiateStreaming"];
+  const WASM_DSP_IMPORT_RE = /import\s+(?:type\s+)?\w+\s+from\s+["'][^"']*\.wasm["']/;
+  const REALTIME_DIRS = ["src/audio-engine", "src/audio-worklets"];
+
+  function audioWasmHits(): { file: string; line: number; text: string; rule: string }[] {
+    const out: { file: string; line: number; text: string; rule: string }[] = [];
+    for (const dir of REALTIME_DIRS) {
+      for (const f of listFiles(dir)) {
+        const rel = f.replace(/\\/g, "/");
+        const ls = lines(f);
+        for (let i = 0; i < ls.length; i++) {
+          const text = ls[i];
+          for (const factory of WASM_FACTORIES) {
+            if (text.includes(factory)) {
+              out.push({ file: rel, line: i + 1, text: text.trim(), rule: factory });
+            }
+          }
+          if (WASM_DSP_IMPORT_RE.test(text)) {
+            out.push({ file: rel, line: i + 1, text: text.trim(), rule: "import .wasm" });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it("no WebAssembly DSP path is linked from src/audio-engine or src/audio-worklets", () => {
+    const violations = audioWasmHits();
+    if (violations.length > 0) {
+      const lines = violations.map((v) => `${v.file}:${v.line} [${v.rule}]  ${v.text}`).join("\n");
+      expect(violations, `invariant #9 violations:\n${lines}`).toEqual([]);
+    }
+    expect(violations).toEqual([]);
+  });
 });
 
 describe("AGENTS.md invariant #10 — no innerHTML / eval / new Function in src/", () => {
