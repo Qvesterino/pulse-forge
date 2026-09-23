@@ -21,8 +21,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                     |
 | **Factory assets** (drum / tonal / FX) |  **68** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                       |
 | └─ curated WAV overrides               |      68 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure) |
-| **Factory presets**                    | **272** | `src/presets/factory.ts`                                                                                                   |
-| └─ instrument presets                  |     266 | `FACTORY_PRESETS`                                                                                                          |
+| **Factory presets**                    | **282** | `src/presets/factory.ts`                                                                                                   |
+| └─ instrument presets                  |     276 | `FACTORY_PRESETS`                                                                                                          |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                     |
 | **Architecture decision records**      |  **14** | `docs/adr/0001` … `0012`, plus 0006/0007 each have two companion files                                                     |
 | **Vitest spec files**                  | **452** | `tests/` files matching `*.test.ts` (353) and `*.test.tsx` (99)                                                            |
@@ -41,13 +41,16 @@ All five flagship suites use AudioWorklet DSP. PRISM, VLYX and VØID include sep
 
 ## AI models shipped in the browser
 
-| Model                      |   Size | Feature version                   | Role                                                   |
-| -------------------------- | -----: | --------------------------------- | ------------------------------------------------------ |
-| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)       | heuristic-vs-ONNX ranker over generated candidates     |
-| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features) | second candidate source merged into the candidate bank |
-| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1`             | melodic phrase generator                               |
+| Model                      |    Size | Feature version                        | Role                                                              |
+| -------------------------- | ------: | -------------------------------------- | ----------------------------------------------------------------- |
+| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)            | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)      |
+| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)      | drum prior fallback branch (one-hot style×role×position)          |
+| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)      | drum prior intermediate (16-dim semantic conditioning)            |
+| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)      | drum prior **default** branch (hybrid, valAUC 0.920)              |
+| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features)    | melodic next-note prior, **preferred** (valDegreeAcc 0.679)       |
+| `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features)    | melodic embedding variant, fallback only (regression on 190 rows) |
 
-All three are loaded lazily in dedicated Web Workers with bounded timeouts + circuit breaker + deterministic heuristic fallback (`src/ai/ranking/ranker-client.ts`, `src/ai/symbolic/prior-client.ts`). Inference never runs on the audio thread. The retrained `hybrid v3` symbolic prior (label smoothing + variant embeddings, logit saturation fix) is the active generation source behind the candidate bank; see `INTENT_ENGINE.md` for the full conditioning chain (semantic embedding, user style vector, SUNO MODE button).
+All six are loaded lazily in dedicated Web Workers with bounded timeouts + circuit breaker + deterministic heuristic fallback (`src/ai/ranking/ranker-client.ts`, `src/ai/symbolic/prior-client.ts`). Inference never runs on the audio thread. Two further models are lazy-fetched on demand (not in git): multilingual MiniLM q8 ~118 MB (`npm run semantic:fetch` → `public/models/semantic/`) and AST AudioSet q8 ~86.6 MB (`npm run audio:fetch` → `public/models/audio/`); both degrade to keyword/heuristic paths when absent. The retrained `hybrid v3` symbolic prior (label smoothing + variant embeddings, logit saturation fix) is the active generation source behind the candidate bank; see `INTENT_ENGINE.md` for the full conditioning chain (semantic embedding, user style vector, SUNO MODE button).
 
 ## Platform reach
 
@@ -115,7 +118,7 @@ The following historical results were recorded against candidate `b8c7a00` on 20
 | `npm run typecheck`                  | PASS (clean `tsc --noEmit`)                                              | candidate `b8c7a00`, 2026-09-14   |
 | Full Vitest suite                    | **239 files / 2351 tests passed / 103 skipped / 2454 total** (`424.94s`) | candidate `b8c7a00`, 2026-09-14   |
 | Real-browser verifier                | **226/226 in Chromium, Firefox and Edge**                                | candidate `b8c7a00`, 2026-09-14   |
-| Factory preset audio QA              | **266/266**                                                              | candidate `b8c7a00`, 2026-09-14   |
+| Factory preset audio QA              | **276/276**                                                              | candidate `b8c7a00`, 2026-09-14   |
 | 300 s plugin soaks (PRISM/VLYX/VØID) | PASS (≤ 6 MB heap growth, ≤ 0.003 dB drift, zero tail peak)              | candidate `b8c7a00`, 2026-09-14   |
 | `npm audit --omit=dev`               | 0 vulnerabilities                                                        | candidate `b8c7a00`, 2026-09-14   |
 | `npm run format:check`               | **DEVIATIONS DOCUMENTED — owner gate open**                              | `docs/FORMAT-CHECK-DEVIATIONS.md` |
