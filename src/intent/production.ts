@@ -27,7 +27,7 @@ export type ProductionConcept =
   | "robotic"
   | "metallic";
 
-export type ProductionTarget = "drums" | "bass" | "lead" | "chords";
+export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "kick" | "snare" | "hats";
 
 export interface ProductionGoal {
   concept: ProductionConcept;
@@ -38,6 +38,12 @@ export interface ProductionIntent {
   targets: ProductionTarget[];
   goals: ProductionGoal[];
   sourceText: string;
+  /**
+   * ELEMENT-LEVEL targets (vibe-code wave): "kick more knock" names a PAD
+   * family inside the drum track. The planner adds per-pad gain
+   * adjustments on top of the track FX.
+   */
+  padTargets?: Array<"kick" | "snare" | "hats">;
 }
 
 /** One planned DSP change on one track — params fold over effect defaults. */
@@ -54,7 +60,26 @@ export interface ProductionPlan {
   label: string;
   summary: string;
   actions: ProductionAction[];
+  /** Per-pad gain adjustments for pad-family targets (element-level intents). */
+  padAdjustments?: Array<{ family: "kicks" | "snares" | "hats"; factor: number }>;
 }
+
+/**
+ * Concept → per-pad gain factor for pad-family targets. All concepts are
+ * intensifiers, so every factor leans ≥ 1; amounts scale the step.
+ */
+const PAD_CONCEPT_FACTOR: Partial<Record<ProductionConcept, number>> = {
+  punchier: 1.3,
+  deeper: 1.15,
+  grittier: 1.2,
+  warmer: 1.05,
+  metallic: 1.1,
+  robotic: 1.1,
+  wobbly: 1.15,
+  brighter: 1.05,
+  glue: 1.1,
+  lofi: 0.9,
+};
 
 interface ConceptDef {
   concept: ProductionConcept;
@@ -91,7 +116,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "punchier",
     defaultTarget: "drums",
-    patterns: [/\bpunchier\b/, /\bmore punch\b/, /\bv\u00e4\u010d\u0161\u00ed punch\b/, /\braza(ntn)?\u017enej\u0161/i],
+    patterns: [/\bpunchier\b/, /\bmore punch\b/, /\bknock\b/, /\bv\u00e4\u010d\u0161\u00ed punch\b/, /\brazantnej/i],
   },
   {
     concept: "warmer",
@@ -152,6 +177,9 @@ export const CONCEPTS: readonly ConceptDef[] = [
 ];
 
 const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
+  [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák|((?:^|[^a-z0-9])808(?:[^a-z0-9]|$))/i, "kick"],
+  [/((?:^|[^a-z0-9])snares?(?:[^a-z0-9]|$))|claps?|ženír/i, "snare"],
+  [/hi-?hats?|((?:^|[^a-z0-9])hats?(?:[^a-z0-9]|$))|činel/i, "hats"],
   [/\bdrums?\b|\bbic\u00edc|\bbubny\b/i, "drums"],
   [/\bbass\b|\b808\b|\bsub\b|\bbasa\b/i, "bass"],
   [/\blead\b|\bsynth\b|\bsynt\u00e9z/i, "lead"],
@@ -205,7 +233,13 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
     }
   }
 
-  return { targets, goals, sourceText: text };
+  // ELEMENT-LEVEL targets: pad families ride along separately so the
+  // planner can add per-pad adjustments on top of the track FX.
+  const padTargets = targets.filter(
+    (target): target is "kick" | "snare" | "hats" => target === "kick" || target === "snare" || target === "hats",
+  );
+
+  return { targets, goals, sourceText: text, padTargets: padTargets.length > 0 ? padTargets : undefined };
 }
 
 /**
@@ -216,7 +250,9 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
 export function resolveProductionTargets(doc: ProjectDocument, targets: ProductionTarget[]): string[] {
   const ids: string[] = [];
   for (const target of targets) {
-    if (target === "drums") {
+    if (target === "drums" || target === "kick" || target === "snare" || target === "hats") {
+      // Pad-family targets land on the drum track too — the per-pad part
+      // rides in plan.padAdjustments, the track FX apply normally.
       const drum = doc.tracks.find((t) => t.kind === "drum");
       if (drum) ids.push(drum.id);
       continue;
@@ -247,7 +283,7 @@ export function resolveProductionTargets(doc: ProjectDocument, targets: Producti
 export function planProductionActions(
   doc: ProjectDocument,
   intent: ProductionIntent,
-): { actions: ProductionAction[]; plan: ProductionPlan } {
+): { actions: ProductionAction[]; padAdjustments?: Array<{ family: "kicks" | "snares" | "hats"; factor: number }>; plan: ProductionPlan } {
   const trackIds = resolveProductionTargets(doc, intent.targets);
   if (trackIds.length === 0) {
     throw new Error(
@@ -351,9 +387,26 @@ export function planProductionActions(
       }
     }
   }
+  // ELEMENT-LEVEL: pad families named in the intent get per-pad gain
+  // adjustments scaled by the concepts aimed at them — on top of the
+  // track FX actions above.
+  const FAMILY_ALIAS: Record<"kick" | "snare" | "hats", "kicks" | "snares" | "hats"> = {
+    kick: "kicks",
+    snare: "snares",
+    hats: "hats",
+  };
+  const padAdjustments = (intent.padTargets ?? []).map((family) => {
+    const factor = intent.goals.reduce((product, goal) => {
+      const per = PAD_CONCEPT_FACTOR[goal.concept] ?? 1.1;
+      return product * (1.0 + (per - 1.0) * goal.amount);
+    }, 1.0);
+    return { family: FAMILY_ALIAS[family], factor: Math.round(factor * 100) / 100 };
+  });
+
   const summary = intent.goals.map((g) => `${g.concept} ×${g.amount.toFixed(2)}`).join(", ");
   return {
     actions,
+    padAdjustments: (intent.padTargets ?? []).length > 0 ? padAdjustments : undefined,
     plan: {
       label: `Production: ${intent.targets.join("+")} → ${intent.goals.map((g) => g.concept).join(", ")}`,
       summary: `${summary} on ${trackIds.length} track(s)`,

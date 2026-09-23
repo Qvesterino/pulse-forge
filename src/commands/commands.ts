@@ -97,7 +97,7 @@ import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
 import { classifyPads } from "../assist/patternOps";
-import { applyVerbRows, type PatternVerb } from "../intent/pattern-verbs";
+import { applyVerbRows, padsForFamily, type PatternVerb } from "../intent/pattern-verbs";
 import type { ExactIntentPlan, ExactOp } from "../intent/exact";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
@@ -5022,8 +5022,21 @@ function foldProductionIntent(doc: ProjectDocument, intent: ProductionIntent): P
 }
 
 export function applyProductionIntentCommand(doc: ProjectDocument, intent: ProductionIntent): Command {
-  const { plan } = planProductionActions(doc, intent);
-  const next = foldProductionIntent(doc, intent);
+  const { plan, padAdjustments } = planProductionActions(doc, intent);
+  let next = foldProductionIntent(doc, intent);
+  // ELEMENT-LEVEL (vibe-code wave): pad-family targets get per-pad GAIN
+  // adjustments on the drum track — "kick more knock" hits the kick pads'
+  // gain, not a track-wide effect. Folded into the SAME snapshot.
+  for (const adjustment of padAdjustments ?? []) {
+    const drumTrack = next.tracks.find((t): t is DrumTrack => t.kind === "drum");
+    if (!drumTrack) break;
+    const familyPads = padsForFamily(drumTrack.pads, adjustment.family);
+    for (const pad of familyPads) {
+      const boosted = Math.round(Math.max(0.05, Math.min(1.5, pad.gain * adjustment.factor)) * 100) / 100;
+      if (boosted === pad.gain) continue;
+      next = setPadParams(next, pad.id, { gain: boosted }).execute(next);
+    }
+  }
   // Production intents are deterministic — undo restores the exact previous
   // chain state, and a redo replays the same folded operations.
   return snapshot("applyProductionIntent", plan.label, doc, next);
