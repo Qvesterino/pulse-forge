@@ -150,6 +150,12 @@ def main() -> None:
         help="style-embeddings.json (from generate-style-embeddings.mts) — replaces "
         "genre+style one-hot with a 16-dim semantic vector (v2, 35-dim input)",
     )
+    parser.add_argument(
+        "--hybrid",
+        action="store_true",
+        help="with --embedding: KEEP the genre+style one-hots on top of the "
+        "semantic vector (v3, 60-dim input) — the shadow-A/B hybrid",
+    )
     args = parser.parse_args()
 
     rng = np.random.default_rng(SEED)
@@ -174,17 +180,29 @@ def main() -> None:
     # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
     # runtime fallback (roadmap Fáza D.4).
     embedding_mode = bool(embedding_lookup)
-    artifact_name = "symbolic-prior-v2" if embedding_mode else "symbolic-prior-v1"
-    feature_version = "prior-features-v2" if embedding_mode else "prior-features.v1"
-    prior_version = "prior.v2" if embedding_mode else "prior.v1"
+    hybrid_mode = bool(args.hybrid) and embedding_mode
+    if args.hybrid and not embedding_mode:
+        raise SystemExit("--hybrid requires --embedding")
+    artifact_name = (
+        "symbolic-prior-v3" if hybrid_mode else ("symbolic-prior-v2" if embedding_mode else "symbolic-prior-v1")
+    )
+    feature_version = (
+        "prior-features-v3" if hybrid_mode else ("prior-features-v2" if embedding_mode else "prior-features.v1")
+    )
+    prior_version = "prior.v3" if hybrid_mode else ("prior.v2" if embedding_mode else "prior.v1")
 
     x_rows: list[list[float]] = []
     for i, sample in enumerate(data):
         if embedding_lookup:
             style_id = sample["groove"].split("#")[0]  # e.g. "house.driving" from "house.driving#0"
             semantic = embedding_lookup.get(style_id, [0.0] * 16)
-            structural = list(x_all_raw[i][25:])  # skip genre(4) + style(21) one-hot
-            x_rows.append(list(semantic) + structural)
+            if hybrid_mode:
+                # v3: semantic PREPENDED, the full 44-dim v1 row (genre+style
+                # one-hot + structural) stays intact — both conditioning channels.
+                x_rows.append(list(semantic) + list(x_all_raw[i]))
+            else:
+                structural = list(x_all_raw[i][25:])  # skip genre(4) + style(21) one-hot
+                x_rows.append(list(semantic) + structural)
         else:
             x_rows.append(list(x_all_raw[i]))
     x_all = np.array(x_rows, dtype=np.float64)
@@ -218,14 +236,17 @@ def main() -> None:
                 continue  # variant of a held-out groove — skip, don't leak
             row_x = sample["x"]
             if embedding_mode:
-                if len(row_x) == 35:
-                    pass  # already v2
+                if len(row_x) == x_all.shape[1]:
+                    pass  # already the current conditioning layout
                 elif len(row_x) == 44:
                     style_id = aug_groove.split("#")[0]
                     semantic = embedding_lookup.get(style_id)
                     if semantic is None:
                         continue  # style outside the embedding vocab — drop
-                    row_x = list(semantic) + list(row_x[25:])  # strip genre(4)+style(21) one-hot
+                    if hybrid_mode:
+                        row_x = list(semantic) + list(row_x)  # v3: semantic + full v1 row
+                    else:
+                        row_x = list(semantic) + list(row_x[25:])  # v2: strip genre(4)+style(21) one-hot
                 else:
                     raise SystemExit(
                         "augmented feature width mismatch — regenerate the augmented dataset "
@@ -257,14 +278,17 @@ def main() -> None:
         for sample in favorite_samples:
             row_x = sample["x"]
             if embedding_mode:
-                if len(row_x) == 35:
-                    pass  # already v2 (re-exported against prior-features-v2)
+                if len(row_x) == x_all.shape[1]:
+                    pass  # already the current conditioning layout
                 elif len(row_x) == 44:
                     style_id = str(sample.get("groove", "")).split("#")[0]
                     semantic = embedding_lookup.get(style_id)
                     if semantic is None:
                         continue  # style outside the embedding vocab — drop, don't fail
-                    row_x = list(semantic) + list(row_x[25:])  # strip genre(4)+style(21) one-hot
+                    if hybrid_mode:
+                        row_x = list(semantic) + list(row_x)  # v3: semantic + full v1 row
+                    else:
+                        row_x = list(semantic) + list(row_x[25:])  # v2: strip genre(4)+style(21) one-hot
                 else:
                     raise SystemExit(
                         "favorites feature width mismatch — regenerate the pack against the current prior-features version"
@@ -394,9 +418,9 @@ def main() -> None:
         "report": report,
     }
     if embedding_mode:
-        # v2 carries its kind explicitly so the runtime guard can route it.
-        manifest["kind"] = "drums-v2"
-        manifest["conditioning"] = "embedding"
+        # v2/v3 carry their kind explicitly so the runtime guard can route it.
+        manifest["kind"] = "drums-v3" if hybrid_mode else "drums-v2"
+        manifest["conditioning"] = "hybrid-v3" if hybrid_mode else "embedding"
     (MODELS_DIR / f"{artifact_name}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     validation_name = "symbolic-prior-v2-validation.json" if embedding_mode else "symbolic-prior-validation.json"
     (ROOT / "scripts" / "data" / validation_name).write_text(json.dumps(report, indent=2) + "\n")

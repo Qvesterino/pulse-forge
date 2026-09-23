@@ -773,6 +773,8 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 
 **Audio referenca (GOAL 31, `src/intent/audio-reference.ts`)**: 🎧 REF — nahraj WAV → AST labely + time-domain featury → **patch** (genre z labelov, energy/density/mood z RMS/crest/low-band) + **16-dim conditioning** (labely → textový most → MiniLM → PCA; žiadny retrén). `setAudioReferenceConditioning` — WAV nahrádza text ako base conditioningu (štýl blend zostáva). Panel: patch sa merguje do každého generovania, conditioning žije do vymazania.
 
+**HYBRID V3 + AKTIVÁCIA (GOAL 32, `src/ai/symbolic/prior-features-v3.ts`)**: v3 = semantic(16) ++ celý v1 riadok(44) = **60-dim** — OBA kanály. Model `symbolic-prior-v3.onnx` (valAUC 0.909, 23.9 kB, kind `drums-v3`), chain `npm run prior:v3`. A/B verdikt **RECOMMEND-ON**: mood-only páry v3 0.53/0.46 (v1 slepý — 0), style-varying páry v3 **2.08/3.07 — ostrejšie než v1** (kanály sa sčítavajú). **`pf:embedding-conditioned` je od GOAL 32 default ON** — runtime degraduje v3 → v2 → v1 per candidate pri každej nedostupnosti. Provider chain: `runPriorGridV3` → `runPriorGridV2` → `runPriorGrid`.
+
 **Embedding shadow A/B (GOAL 30, `npm run embedding:ab`)**: model-level gate (ort-web vo vite serveri) — **v2 je komplementárny, nie dominantný**: mood-only páry v1 SLEPÝ (dist 0) / v2 vidí (0.54); style-explicit páry v1 ostrejší (1.44 vs 0.54). Verdikt KEEP-OFF — flag `pf:embedding-conditioned` ostáva default off; cesta k ON = hybrid v3 conditioning (semantic + style one-hot, retrén) alebo listening-room verdikt.
 
 ## 6. Kvalita, testy, determinizmus

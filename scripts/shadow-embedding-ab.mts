@@ -37,6 +37,7 @@ import {
   PRIOR_STYLE_VOCAB,
 } from "../src/ai/symbolic/prior-features";
 import { buildPriorV2GridRows, V2_FEATURE_COUNT } from "../src/ai/symbolic/prior-features-v2";
+import { buildPriorV3GridRows, V3_FEATURE_COUNT } from "../src/ai/symbolic/prior-features-v3";
 import { projectEmbedding, pcaOutputDims } from "../src/ai/symbolic/pca-projection";
 
 const PROMPTS = [
@@ -86,8 +87,10 @@ try {
   };
   const { manifest: v1Manifest, bytes: v1Bytes } = loadModel("symbolic-prior-v1");
   const { manifest: v2Manifest, bytes: v2Bytes } = loadModel("symbolic-prior-v2");
+  const { manifest: v3Manifest, bytes: v3Bytes } = loadModel("symbolic-prior-v3");
   const sessionV1 = await ort.InferenceSession.create(new Uint8Array(v1Bytes), { executionProviders: ["wasm"] });
   const sessionV2 = await ort.InferenceSession.create(new Uint8Array(v2Bytes), { executionProviders: ["wasm"] });
+  const sessionV3 = await ort.InferenceSession.create(new Uint8Array(v3Bytes), { executionProviders: ["wasm"] });
 
   async function runPrior(
     session: ort.InferenceSession,
@@ -116,6 +119,7 @@ try {
 
   const gridsV1: Float64Array[] = [];
   const gridsV2: Float64Array[] = [];
+  const gridsV3: Float64Array[] = [];
   const rowsMeta: Array<{ prompt: string; genre: string; style: string; v1Mean: number; v2Mean: number }> = [];
 
   for (const prompt of PROMPTS) {
@@ -144,10 +148,23 @@ try {
       throw new Error("v2 feature layout drift");
     }
 
+    const v3Rows = buildPriorV3GridRows({
+      semantic,
+      genre: priorGenreOf(genre),
+      styleId,
+      padRoles: PAD_ROLES,
+      stepCount: STEPS,
+    });
+    if (v3Rows.length !== PAD_ROLES.length * STEPS || v3Rows[0].length !== V3_FEATURE_COUNT) {
+      throw new Error("v3 feature layout drift");
+    }
+
     const probsV1 = await runPrior(sessionV1, v1Manifest, v1Rows);
     const probsV2 = await runPrior(sessionV2, v2Manifest, v2Rows);
+    const probsV3 = await runPrior(sessionV3, v3Manifest, v3Rows);
     gridsV1.push(probsV1);
     gridsV2.push(probsV2);
+    gridsV3.push(probsV3);
     const mean = (grid: Float64Array) => grid.reduce((sum, value) => sum + value, 0) / grid.length;
     rowsMeta.push({
       prompt,
@@ -159,14 +176,14 @@ try {
     console.log(`[ab] ${prompt} → v1 mean ${mean(probsV1).toFixed(3)} | v2 mean ${mean(probsV2).toFixed(3)}`);
   }
 
-  // ── metrics + verdict ────────────────────────────────────────────────────────
+  // metrics + verdict
   const distance = (a: Float64Array, b: Float64Array) => {
     let sum = 0;
     for (let index = 0; index < a.length; index++) sum += (a[index] - b[index]) ** 2;
     return Math.sqrt(sum);
   };
   const meanOf = (grid: Float64Array) => grid.reduce((sum, value) => sum + value, 0) / grid.length;
-  const degenerateV2 = gridsV2.filter((grid) => {
+  const degenerateV3 = gridsV3.filter((grid) => {
     const mean = meanOf(grid);
     return mean < 0.02 || mean > 0.6;
   }).length;
@@ -174,34 +191,31 @@ try {
   const pairs = OPPOSITE_PAIRS.map(([a, b]) => {
     const dV1 = distance(gridsV1[a], gridsV1[b]);
     const dV2 = distance(gridsV2[a], gridsV2[b]);
+    const dV3 = distance(gridsV3[a], gridsV3[b]);
+    const moodOnly = dV1 < 0.01; // one-hot blind — semantic channels must see it
     return {
       pair: `${PROMPTS[a]}  ⇄  ${PROMPTS[b]}`,
+      kind: moodOnly ? ("mood-only" as const) : ("style-varying" as const),
       v1Distance: Number(dV1.toFixed(2)),
       v2Distance: Number(dV2.toFixed(2)),
-      // v1 = 0 on mood-only pairs (one-hot cannot see the difference) — report
-      // "new" instead of a division-by-zero monster number
-      ratio: dV1 < 1e-6 ? (dV2 > 1e-6 ? "new" : "flat") : Number((dV2 / dV1).toFixed(3)),
+      v3Distance: Number(dV3.toFixed(2)),
+      v3Pass: moodOnly ? dV3 > 0.05 : dV3 >= dV1 * 0.8,
     };
   });
-  const numericRatios = pairs.map((pair) => pair.ratio).filter((value): value is number => typeof value === "number");
-  const meanRatio =
-    numericRatios.length > 0 ? numericRatios.reduce((sum, value) => sum + value, 0) / numericRatios.length : 1;
-  const pairsImproved = pairs.filter((pair) =>
-    typeof pair.ratio === "number" ? pair.ratio >= 1 : pair.ratio === "new",
-  ).length;
+  const moodPairsPass = pairs.filter((pair) => pair.kind === "mood-only").every((pair) => pair.v3Pass);
+  const stylePairsPass = pairs.filter((pair) => pair.kind === "style-varying").every((pair) => pair.v3Pass);
 
-  // every prompt must produce non-degenerate v2 output
-  const functional = degenerateV2 === 0;
-  const nonDegradation = meanRatio >= 0.95;
-  const verdict = functional && nonDegradation ? "RECOMMEND-ON" : "KEEP-OFF";
+  // v3 must answer every prompt non-degenerately, SEE the mood-only pairs v1
+  // is blind to, and keep v1's sharpness (>=80 %) on style-varying pairs.
+  const functional = degenerateV3 === 0;
+  const verdict = functional && moodPairsPass && stylePairsPass ? "RECOMMEND-ON" : "KEEP-OFF";
 
-  console.log(`[ab] functional (v2 answers, no degenerate grids): ${functional} (degenerate=${degenerateV2})`);
-  console.log(
-    `[ab] opposite-pair differentiation (v2/v1): mean ratio ${meanRatio.toFixed(3)}, improved ${pairsImproved}/${pairs.length}`,
-  );
+  console.log(`[ab] functional (v3 answers, no degenerate grids): ${functional} (degenerate=${degenerateV3})`);
+  console.log(`[ab] mood-only pairs seen by v3: ${moodPairsPass ? "PASS" : "FAIL"}`);
+  console.log(`[ab] style-varying pairs keep v1 sharpness (>=0.8): ${stylePairsPass ? "PASS" : "FAIL"}`);
   for (const pair of pairs) {
     console.log(
-      `[ab]   ${pair.ratio >= 1 ? "▲" : "▼"} ${pair.pair} — v1 ${pair.v1Distance} / v2 ${pair.v2Distance} (ratio ${pair.ratio})`,
+      `[ab]   ${pair.v3Pass ? "▲" : "▼"} [${pair.kind}] ${pair.pair} — v1 ${pair.v1Distance} / v2 ${pair.v2Distance} / v3 ${pair.v3Distance}`,
     );
   }
   console.log(
@@ -214,10 +228,9 @@ try {
     prompts: PROMPTS,
     rows: rowsMeta,
     pairs,
-    meanRatio: Number(meanRatio.toFixed(3)),
-    pairsImproved,
+    moodPairsPass,
+    stylePairsPass,
     functional,
-    nonDegradation,
     verdict,
   };
   const outDir = path.join(ROOT, "scripts", "data");

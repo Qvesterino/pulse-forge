@@ -13,7 +13,7 @@ import { createServer } from "vite";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const variant = process.argv[2] === "v2" ? "v2" : "v1";
+const variant = process.argv[2] === "v3" ? "v3" : process.argv[2] === "v2" ? "v2" : "v1";
 const modelsDir = path.join(ROOT, "public", "models");
 const manifest = JSON.parse(readFileSync(path.join(modelsDir, `symbolic-prior-${variant}.manifest.json`), "utf8"));
 if (variant === "v2") {
@@ -21,6 +21,11 @@ if (variant === "v2") {
     throw new Error(`v2 manifest featureVersion mismatch: ${manifest.featureVersion}`);
   }
   if (manifest.kind !== "drums-v2") throw new Error(`v2 manifest kind mismatch: ${manifest.kind}`);
+} else if (variant === "v3") {
+  if (manifest.featureVersion !== "prior-features-v3") {
+    throw new Error(`v3 manifest featureVersion mismatch: ${manifest.featureVersion}`);
+  }
+  if (manifest.kind !== "drums-v3") throw new Error(`v3 manifest kind mismatch: ${manifest.kind}`);
 } else if (manifest.featureVersion !== "prior-features.v1") {
   throw new Error(`v1 manifest featureVersion mismatch: ${manifest.featureVersion}`);
 }

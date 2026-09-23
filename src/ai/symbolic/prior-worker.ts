@@ -18,6 +18,7 @@ import { assetUrl } from "../../shared/assetUrls";
 import {
   isDrumsPriorManifest,
   isDrumsV2PriorManifest,
+  isDrumsV3PriorManifest,
   isMelodicPriorManifest,
   isMelodicV2PriorManifest,
   type DualHeadPriorManifest,
@@ -65,6 +66,7 @@ async function ensureSession(kind: PriorKind, manifest: PriorManifest): Promise<
   const ortNs = await ensureOrt();
   if (kind === "drums" && !isDrumsPriorManifest(manifest)) throw new Error("invalid drums prior manifest");
   if (kind === "drums-v2" && !isDrumsV2PriorManifest(manifest)) throw new Error("invalid drums-v2 prior manifest");
+  if (kind === "drums-v3" && !isDrumsV3PriorManifest(manifest)) throw new Error("invalid drums-v3 prior manifest");
   if (kind === "melodic" && !isMelodicPriorManifest(manifest)) throw new Error("invalid melodic prior manifest");
   if (kind === "melodic-v2" && !isMelodicV2PriorManifest(manifest))
     throw new Error("invalid melodic-v2 prior manifest");
@@ -120,7 +122,7 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
       const output = await session.run({ [manifest.inputName]: input });
 
       const outputs: Record<string, number[]> = {};
-      if (request.kind === "drums" || request.kind === "drums-v2") {
+      if (request.kind === "drums" || request.kind === "drums-v2" || request.kind === "drums-v3") {
         // v1 and embedding-conditioned v2 share the sigmoid head — only the
         // manifest kind (and feature layout) differs.
         const sigmoidManifest = manifest as SigmoidPriorManifest;

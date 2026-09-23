@@ -1,6 +1,6 @@
 {
   "version": "embedding-ab-v2-model-level",
-  "generatedAt": "2026-09-22T20:16:03.292Z",
+  "generatedAt": "2026-09-23T03:48:54.014Z",
   "prompts": [
     "dark rainy berlin techno at 132",
     "sunny uplifting techno at 132",
@@ -88,32 +88,39 @@
   "pairs": [
     {
       "pair": "dark rainy berlin techno at 132  ⇄  sunny uplifting techno at 132",
+      "kind": "mood-only",
       "v1Distance": 0,
       "v2Distance": 0.54,
-      "ratio": "new"
+      "v3Distance": 0.53,
+      "v3Pass": true
     },
     {
       "pair": "aggressive peak time techno  ⇄  minimal hypnotic techno",
+      "kind": "style-varying",
       "v1Distance": 1.44,
       "v2Distance": 0.19,
-      "ratio": 0.129
+      "v3Distance": 2.08,
+      "v3Pass": true
     },
     {
       "pair": "aggressive hard trap at 145  ⇄  chill smooth trap at 135",
+      "kind": "mood-only",
       "v1Distance": 0,
       "v2Distance": 0.39,
-      "ratio": "new"
+      "v3Distance": 0.46,
+      "v3Pass": true
     },
     {
       "pair": "deep house sunset groove  ⇄  funky house party at 125",
+      "kind": "style-varying",
       "v1Distance": 1.45,
       "v2Distance": 0.54,
-      "ratio": 0.376
+      "v3Distance": 3.07,
+      "v3Pass": true
     }
   ],
-  "meanRatio": 0.253,
-  "pairsImproved": 2,
+  "moodPairsPass": true,
+  "stylePairsPass": true,
   "functional": true,
-  "nonDegradation": false,
-  "verdict": "KEEP-OFF"
+  "verdict": "RECOMMEND-ON"
 }

@@ -3731,3 +3731,16 @@ audit doc.
 - **semantic-conditioning**: `setAudioReferenceConditioning(vec|null)` — nainštalovaná referenca NAHRÁDZA textovú projekciu ako base (WAV JE intent), style blend zostáva; cache epoch (set bumpne kľúč — nová referenca = recompute).
 - **IntentPanel**: 🎧 REF button + hidden file input — decodeAudioData → downmixToMono → resampleLinear(16 kHz) → analyze → `setRefPatch` (merguje sa do VŠETKÝCH 4 intent assembly bodov) + conditioning live. Status "🎧 reference: techno — Techno 82%, ..."
 - **Testy** `tests/audio-reference.test.ts` 5/5 (label→genre, text-bridge numerická rovnosť, AST degradácia, slider heuristiky, override replacuje text + clear vráti text). Regresia 240/240 cez 24 súborov; typecheck 0.
+
+---
+
+## GOAL 32 — HYBRID V3 CONDITIONING + AKTIVÁCIA (2026-09-22)
+
+**Cieľ:** z A/B nálezu (v2 komplementárny, nie dominantný) spraviť hybrid a aktivovať v2/v3 pre každého.
+
+- **`prior-features-v3.ts`**: 60-dim = semantic(16) ++ celý v1 riadok(44). Builder KOMPOZUJE dva existujúce kontrakty (nula duplikácie). Heads nezmenené.
+- **Tréner `--hybrid`**: semantic PREPEND, v1 riadok ostáva celý (60); favorites/augmented width vetvy podľa režimu (60 pass, 44 transform, 35 skip). Manifest `kind: drums-v3`, `featureVersion: prior-features-v3`, `conditioning: hybrid-v3`. Chain `npm run prior:v3` → **valAUC 0.909, F1 0.4544, 23.9 kB**.
+- **Runtime**: `drums-v3` PriorKind + manifest guard + worker sigmoid routing + `runPriorGridV3` (rovnaký flag). Provider chain **v3 → v2 → v1** (v3 len pri supportsDrumPrior + semantic; každý fail = jeden diagnostický záznam, bez re-probe per seed).
+- **A/B gate s v3 (verdikt RECOMMEND-ON):** mood-only páry v3 0.53/0.46 (v1 slepý 0) ✓; style-varying páry v3 **2.08/3.07 — OSTREJŠIE než v1** (1.44/1.45) — kanály sa sčítavajú ✓; functional ✓.
+- **FLIP: `pf:embedding-conditioned` default ON.** Runtime degraduje v3 → v2 → v1 per candidate (offline/bez modelov = čisté v1), takže ON je low-risk. Testy upravené (empty-storage default = on; off-scenáre explicitný setItem).
+- **Testy**: prior-embedding (v3 chain: 60-dim batch, v3+v2 fallback, flag-off čisté v1), melodic v3 mock. Regresia **250/250 cez 25 súborov**; typecheck 0.

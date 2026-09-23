@@ -1,6 +1,6 @@
 /** Shared contract for the ONNX symbolic prior worker (drums + melodic, T2). */
 
-export type PriorKind = "drums" | "drums-v2" | "melodic" | "melodic-v2";
+export type PriorKind = "drums" | "drums-v2" | "drums-v3" | "melodic" | "melodic-v2";
 
 /** Drum prior: per-(pad,step) hit logits, sigmoid-normalized in the worker. */
 export interface DrumsPriorManifest {
@@ -22,6 +22,23 @@ export interface DrumsPriorManifest {
  */
 export interface DrumsV2PriorManifest {
   kind: "drums-v2";
+  priorVersion: string;
+  featureVersion: string;
+  featureCount: number;
+  modelPath: string;
+  inputName: string;
+  outputName: string;
+  modelHash: string;
+  hidden: readonly number[];
+}
+
+/**
+ * HYBRID drum prior (v3): semantic(16) + genre/style one-hot(25) + structural
+ * (19) = 60 dims — the shadow-A/B hybrid keeps v1's discrete sharpness AND
+ * v2's continuous semantics. Same sigmoid head.
+ */
+export interface DrumsV3PriorManifest {
+  kind: "drums-v3";
   priorVersion: string;
   featureVersion: string;
   featureCount: number;
@@ -68,10 +85,11 @@ export interface MelodicV2PriorManifest {
   hidden: readonly number[];
 }
 
-export type PriorManifest = DrumsPriorManifest | DrumsV2PriorManifest | MelodicPriorManifest | MelodicV2PriorManifest;
+export type PriorManifest =
+  DrumsPriorManifest | DrumsV2PriorManifest | DrumsV3PriorManifest | MelodicPriorManifest | MelodicV2PriorManifest;
 
 /** Sigmoid-head priors share the run/response shape; only the manifest kind differs. */
-export type SigmoidPriorManifest = DrumsPriorManifest | DrumsV2PriorManifest;
+export type SigmoidPriorManifest = DrumsPriorManifest | DrumsV2PriorManifest | DrumsV3PriorManifest;
 
 /** Dual softmax-head priors (melodic v1/v2) share the run/response shape. */
 export type DualHeadPriorManifest = MelodicPriorManifest | MelodicV2PriorManifest;
@@ -165,6 +183,18 @@ export function isDrumsV2PriorManifest(value: unknown): value is DrumsV2PriorMan
     commonManifestFieldsValid(manifest) &&
     manifest.kind === "drums-v2" &&
     manifest.featureVersion === "prior-features-v2" &&
+    typeof manifest.outputName === "string" &&
+    manifest.outputName.length > 0
+  );
+}
+
+export function isDrumsV3PriorManifest(value: unknown): value is DrumsV3PriorManifest {
+  if (!value || typeof value !== "object") return false;
+  const manifest = value as Record<string, unknown>;
+  return (
+    commonManifestFieldsValid(manifest) &&
+    manifest.kind === "drums-v3" &&
+    manifest.featureVersion === "prior-features-v3" &&
     typeof manifest.outputName === "string" &&
     manifest.outputName.length > 0
   );

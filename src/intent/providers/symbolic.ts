@@ -16,12 +16,14 @@ import {
   PRIOR_FEATURE_COUNT,
 } from "../../ai/symbolic/prior-features";
 import { buildPriorV2GridRows, V2_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v2";
+import { buildPriorV3GridRows, V3_FEATURE_COUNT } from "../../ai/symbolic/prior-features-v3";
 import { buildMelodicV2FeatureRow, MELV2_FEATURE_COUNT } from "../../ai/symbolic/melodic-features-v2";
 import {
   runMelodicNext,
   runMelodicNextV2,
   runPriorGrid,
   runPriorGridV2,
+  runPriorGridV3,
   type PriorRunResult,
 } from "../../ai/symbolic/prior-client";
 import { semanticConditioning } from "../semantic-conditioning";
@@ -280,6 +282,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
     // flag is on AND the semantic model answers. Null ⇒ pure v1 path.
     const semantic = await semanticConditioning(plan.intent.text);
     let v2Unavailable = false;
+    let v3Unavailable = false;
 
     for (const [offset, symbolicSeed] of plan.symbolicSeeds.entries()) {
       try {
@@ -345,11 +348,30 @@ export class SymbolicPriorProvider implements GenerationProvider {
         const rowsById: Record<string, number[]> = {};
         let semanticUsed = false;
         if (pads.length > 0 && (supportsDrumPrior || semantic)) {
-          // Preferred: embedding-conditioned v2 prior (35-dim — semantic
-          // projection + structural). Falls back to the v1 genre+style one-hot
-          // prior on first v2 failure, then for the rest of this call.
+          // Conditioning priority (shadow-A/B hybrid): v3 (semantic + one-hot,
+          // 60-dim — needs the style vocab) → v2 (semantic-only, 35-dim — any
+          // genre) → v1 (genre+style one-hot). First failure drops to the next
+          // channel for the rest of this call.
           let run: PriorRunResult | null = null;
-          if (semantic && !v2Unavailable) {
+          if (semantic && supportsDrumPrior && !v3Unavailable) {
+            const featureRows = buildPriorV3GridRows({
+              semantic,
+              genre: priorGenreOf(options.genre),
+              styleId,
+              padRoles,
+              stepCount,
+            });
+            const batch = new Float32Array(featureRows.length * V3_FEATURE_COUNT);
+            featureRows.forEach((row, index) => batch.set(row, index * V3_FEATURE_COUNT));
+            run = await runPriorGridV3(batch, featureRows.length);
+            if (run.ok) {
+              semanticUsed = true;
+            } else {
+              failures.push(`candidate-${startIndex + offset}:prior-v3-fallback`);
+              v3Unavailable = true;
+            }
+          }
+          if (semantic && !run?.ok && !v2Unavailable) {
             const featureRows = buildPriorV2GridRows({ semantic, padRoles, stepCount });
             const batch = new Float32Array(featureRows.length * V2_FEATURE_COUNT);
             featureRows.forEach((row, index) => batch.set(row, index * V2_FEATURE_COUNT));

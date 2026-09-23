@@ -19,6 +19,7 @@ vi.mock("../src/ai/symbolic/prior-client", () => ({
   embeddingConditionedMode: vi.fn(() => priorFlagState.value),
   runPriorGrid: vi.fn(),
   runPriorGridV2: vi.fn(),
+  runPriorGridV3: vi.fn(),
   runMelodicNext: vi.fn(async () => ({ ok: false, degree: null, duration: null, source: "fallback" as const })),
   runMelodicNextV2: vi.fn(async () => ({ ok: false, degree: null, duration: null, source: "fallback" as const })),
   resetPriorClient: vi.fn(),
@@ -53,6 +54,7 @@ import {
   runMelodicNextV2 as runMelodicNextV2Mocked,
   runPriorGrid,
   runPriorGridV2,
+  runPriorGridV3,
 } from "../src/ai/symbolic/prior-client";
 import { embedTexts } from "../src/ai/semantic/semantic-client";
 
@@ -61,6 +63,7 @@ const runMelodicNextMock = vi.mocked(runMelodicNext);
 const runMelodicNextV2Mock = vi.mocked(runMelodicNextV2Mocked);
 const runPriorGridMock = vi.mocked(runPriorGrid);
 const runPriorGridV2Mock = vi.mocked(runPriorGridV2);
+const runPriorGridV3Mock = vi.mocked(runPriorGridV3);
 
 /** Dual-head answer: degree 1 ("degree 0") + duration class 1, deterministic. */
 function stubMelodicRow(degreeHead: number[], durationHead: number[]) {
@@ -94,6 +97,12 @@ beforeEach(() => {
     source: "model" as const,
   }));
   runPriorGridV2Mock.mockImplementation(async (_batch: Float32Array, rowCount: number) => ({
+    ok: true,
+    probs: new Array(rowCount).fill(0.4),
+    source: "model" as const,
+  }));
+  runPriorGridV3Mock.mockReset();
+  runPriorGridV3Mock.mockImplementation(async (_batch: Float32Array, rowCount: number) => ({
     ok: true,
     probs: new Array(rowCount).fill(0.4),
     source: "model" as const,
@@ -151,6 +160,7 @@ describe("melodic-features-v2 contract", () => {
 
 describe("runMelodicNextV2 gating", () => {
   it("flag off → ok:false without any model work (source off)", async () => {
+    localStorage.setItem("pf:embedding-conditioned", "off");
     const actual = await vi.importActual<typeof import("../src/ai/symbolic/prior-client")>(
       "../src/ai/symbolic/prior-client",
     );
