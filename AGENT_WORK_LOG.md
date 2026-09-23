@@ -3771,3 +3771,23 @@ audit doc.
 **Validation:** App/Goldens/save-drain/fault-containment/velocity/persistence = 81+ green; tsc 0 campaign errors. ModPanel.test still hangs (theirs).
 
 **Recommendations for next session (GOAL 11 — platform capability matrix):** mostly SYNTHESIS — the campaign produced PORTABILITY_MAP, PLATFORM-CONTRACTS, STATE-MACHINES, PERSISTENCE-SCHEMAS, FAULT-CONTAINMENT, MOBILE-READINESS, GOLDEN-PARITY. Build `PLATFORM_CAPABILITY_MATRIX.md` per goal spec: per capability (project model, persistence, audio engine, filesystem, file picker, sharing, clipboard, notifications, permissions, background tasks, rendering, networking, import/export) × {web impl, Android expectation, iOS expectation, shared domain logic, required adapter, limitations, migration risk} — every cell sourced from the existing docs, no new claims. Read CAMPAIGN_STATE.md first.
+
+---
+
+## GOAL 11–13 (cross-platform campaign) — Capability matrix, readiness report, slice plan — CAMPAIGN CLOSED (2026-09-23)
+
+**Goals executed:** The three synthesis goals, closed in one session as planned — every deliverable synthesized from the seven campaign documents, no new claims.
+
+**Delivered:**
+
+- **`docs/PLATFORM_CAPABILITY_MATRIX.md` (new, GOAL 11)** — 15 capabilities (project model, persistence, audio engine, filesystem, pickers, sharing, clipboard, notifications, permissions, background, rendering, networking, import/export, concurrency, UI) × {web today, Android/iOS expected, shared logic, required adapter, limitations, risk}. Risk summary: **H** = DSP + offline render + recording-chunk binary; **M** = normalize drift, persistence backends, background audio, workers; **L** = filesystem/pickers/sharing/clipboard/encoders. Every "expected" row is labeled design guidance, not commitment.
+- **`CROSS_PLATFORM_READINESS_REPORT.md` (new, GOAL 12)** — per-subsystem classification: READY TO PORT (model, commands, serialization, transport/scheduler planning, intent, definitions, web-storage prefs); READY WITH KNOWN ADAPTATION (persistence backends, DSP runtimes, offline render, collab, containment, mobile UX); NOT READY (generative/MRT2 — unaudited new surface; latency probe — untested HIGH risk); PLATFORM-SPECIFIC BY DESIGN (studio UI, PWA delivery). Gate evidence at report time: campaign+core batch **200/200 across 25 files**; `tsc` RED at HEAD from the concurrent session's 6 committed test files; `vite build` BLOCKED by their `factory.ts` mid-edit syntax error; their last good dist shows **DAW JS AT budget (2500/2500)** — flagged as a dedicated-session item. All ownership-documented.
+- **`docs/PORTING-SLICE-PLAN.md` (new, GOAL 13)** — S1–S10 ordered slices (pure model → commands → serialization → transport/scheduler → persistence → host adapters → intent → DSP → collab → UI), each with source modules, dependencies, required contracts, reference tests (ALL already in-repo — the campaign's core gift), persistence/state-machine deps, expected output and parity criteria. Sequencing rationale: byte-gated pure slices first, H-risk DSP/collab last against the strictest gates.
+
+**Campaign closed:** GOAL 01–13 all DONE. CAMPAIGN_STATE.md carries the closure banner; open queues (theirs + maintenance) are consolidated in the report §3 and hand off to normal sessions.
+
+**Important files changed:** docs/{PLATFORM_CAPABILITY_MATRIX,PORTING-SLICE-PLAN}.md (new), CROSS_PLATFORM_READINESS_REPORT.md (new), CAMPAIGN_STATE.md.
+
+**Validation:** campaign+core batch 200/200 on the churned tree (25 files); the only reds are concurrent-session-owned and documented with exact errors (factory.ts:2794 syntax mid-edit; 6 test-file tsc drifts; ModPanel hang).
+
+**Post-campaign pointer:** the verification pass (full build + full suite on a quiet tree) remains the standing recommendation before any release — the DAW-budget exhaustion finding makes it concrete. The queued UX/coverage items (long-press workflows, bounce warning, latencyProbe harness) are product work in normal sessions now.
