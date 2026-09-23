@@ -252,7 +252,8 @@ export function resolveProductionTargets(doc: ProjectDocument, targets: Producti
   for (const target of targets) {
     if (target === "drums" || target === "kick" || target === "snare" || target === "hats") {
       // Pad-family targets land on the drum track too — the per-pad part
-      // rides in plan.padAdjustments, the track FX apply normally.
+      // rides in the planner result's padAdjustments field, the track FX
+      // apply normally.
       const drum = doc.tracks.find((t) => t.kind === "drum");
       if (drum) ids.push(drum.id);
       continue;
