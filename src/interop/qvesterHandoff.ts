@@ -163,6 +163,8 @@ export async function readBeatBlob(hash: string): Promise<BeatHandoffRecord | nu
 export interface BeatHandoffPacket {
   version: "2.0";
   handoffId: string;
+  /** ISO timestamp — required by the Audio Canvas packet validator. */
+  timestamp: string;
   sourceApp: "pulse_forge";
   targetApp: typeof TARGET_APP;
   initiatedBy: "user";
@@ -209,6 +211,7 @@ export function buildBeatHandoffPacket(record: BeatHandoffRecord, doc: ProjectDo
   return {
     version: "2.0",
     handoffId: generateHandoffId(),
+    timestamp: new Date(createdAt).toISOString(),
     sourceApp: "pulse_forge",
     targetApp: TARGET_APP,
     initiatedBy: "user",
