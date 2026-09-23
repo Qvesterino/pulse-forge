@@ -10,7 +10,7 @@ import {
   applyProductionIntentCommand,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import { reviseSection, replacePatternInPlaceCommand, applySongCommand } from "../intent/song";
+import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
@@ -144,7 +144,7 @@ export function IntentPanel() {
           symbolicCandidates: intentInput.symbolicCandidates ?? 2,
           roles: intentInput.roles ?? ["drums", "bass"],
         },
-        { mode: "apply", signal: controller.signal, includeBank: true },
+        { mode: "apply", signal: controller.signal, includeBank: true, sound: { bank: services.bank } },
       );
       if (controller.signal.aborted) return;
       if (!result.proposal) {
@@ -355,6 +355,10 @@ export function IntentPanel() {
   // previous flow measured loudness but never executed its trim command.
   interface SongDraft {
     result: ComposeResult;
+    /** Doc the draft was composed against — USE reuses the auditioned mix
+        only while the doc is untouched (reference-equal); after interim
+        edits the mix re-plans against the current doc (rebase). */
+    baseDoc: ProjectDocument;
     previewDoc: ProjectDocument;
     mixNote: string;
     lengthNote: string;
@@ -366,11 +370,25 @@ export function IntentPanel() {
   const songBufferRef = useRef<AudioBuffer | null>(null);
   const songTokenRef = useRef(0);
   const songTextRef = useRef("");
+  // Per-section audition — each built section pattern renders through the
+  // same candidate-audition path (ghost doc off the draft's base doc, the
+  // section's own scoped FX folded in), buffers cached per pattern id.
+  const [playingSectionId, setPlayingSectionId] = useState<string | null>(null);
+  const [renderingSectionId, setRenderingSectionId] = useState<string | null>(null);
+  const sectionBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const sectionTokenRef = useRef(0);
   // Audio reference ("sprav to ako tento WAV"): patch merges into every
   // generation path, the 16-dim conditioning installs for the v2 priors.
   const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
+  const [refSummary, setRefSummary] = useState<string | null>(null);
   const [refBusy, setRefBusy] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
+  const clearReference = () => {
+    setRefPatch(null);
+    setRefSummary(null);
+    setAudioReferenceConditioning(null);
+    setStatus("🎧 reference cleared — back to text-only intent");
+  };
   const handleReferenceFile = async (file: File | null) => {
     if (!file || refBusy) return;
     setRefBusy(true);
@@ -378,8 +396,12 @@ export function IntentPanel() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const ctx = new AudioContext();
-      const buffer = await ctx.decodeAudioData(arrayBuffer);
-      await ctx.close();
+      let buffer: AudioBuffer;
+      try {
+        buffer = await ctx.decodeAudioData(arrayBuffer);
+      } finally {
+        await ctx.close();
+      }
       const pcm = resampleLinear(downmixToMono(buffer), buffer.sampleRate, 16000);
       const result = await analyzeAudioReference(pcm);
       if (!result) {
@@ -387,6 +409,7 @@ export function IntentPanel() {
         return;
       }
       setRefPatch(result.patch);
+      setRefSummary(result.summary);
       setAudioReferenceConditioning(result.conditioning);
       setStatus(`🎧 reference: ${result.summary} — patch + conditioning live`);
     } catch (err) {
@@ -402,7 +425,10 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     setSongPlaying(false);
+    setPlayingSectionId(null);
     songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
+    sectionTokenRef.current++;
     try {
       const baseDoc = services.store.getDoc();
       const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(reviseInput ?? {}) };
@@ -428,7 +454,7 @@ export function IntentPanel() {
       const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
       const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
       const mixNote = result.mixSummary ? ` · mix: ${result.mixSummary}` : "";
-      setSongDraft({ result, previewDoc: preview, mixNote, lengthNote, seconds });
+      setSongDraft({ result, baseDoc, previewDoc: preview, mixNote, lengthNote, seconds });
       const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
       setStatus(
@@ -474,23 +500,65 @@ export function IntentPanel() {
     }
     const buffer = songBufferRef.current;
     if (!buffer) return;
+    // Full-song and section auditions share one playback channel.
+    setPlayingSectionId(null);
     playAuditionBuffer(buffer, () => setSongPlaying(false));
     setSongPlaying(true);
     setStatus(`▶ auditioning full song — ${songDraft?.result.build.sections.length ?? 0} sections`);
   };
-  const discardSongDraft = () => {
-    songTokenRef.current++;
+  const toggleSectionAudition = async (section: SongBuildSection) => {
+    if (!songDraft) return;
+    const id = section.pattern.id;
+    if (playingSectionId === id) {
+      stopAudition();
+      setPlayingSectionId(null);
+      return;
+    }
     stopAudition();
     setSongPlaying(false);
+    const token = ++sectionTokenRef.current;
+    setRenderingSectionId(id);
+    try {
+      let buffer = sectionBuffersRef.current.get(id);
+      if (!buffer) {
+        buffer = await renderAuditionBuffer(
+          songDraft.baseDoc,
+          services.bank,
+          section.pattern,
+          section.fx ?? songDraft.result.build.baseIntent.fx ?? null,
+        );
+        sectionBuffersRef.current.set(id, buffer);
+      }
+      if (sectionTokenRef.current !== token) return;
+      playAuditionBuffer(buffer, () => setPlayingSectionId(null));
+      setPlayingSectionId(id);
+      setStatus(`▶ auditioning ${section.label} (${section.bars} bars · ${section.roles.join("+")})`);
+    } catch (err) {
+      if (sectionTokenRef.current === token) {
+        setError(`section preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      if (sectionTokenRef.current === token) setRenderingSectionId(null);
+    }
+  };
+  const discardSongDraft = () => {
+    songTokenRef.current++;
+    sectionTokenRef.current++;
+    stopAudition();
+    setSongPlaying(false);
+    setPlayingSectionId(null);
     songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
     setSongDraft(null);
     setStatus("Song draft discarded — nothing applied.");
   };
   const useSongDraft = async () => {
     if (!songDraft || songBusy) return;
     songTokenRef.current++;
+    sectionTokenRef.current++;
     stopAudition();
     setSongPlaying(false);
+    setPlayingSectionId(null);
     setSongBusy(true);
     try {
       // Fresh commands against the CURRENT doc — a draft may sit open while
@@ -499,10 +567,21 @@ export function IntentPanel() {
       const songCmd = applySongCommand(current, songDraft.result.build);
       services.store.execute(songCmd);
       let afterSong = services.store.getDoc();
+      // P4 preview==USE: the audition rendered the COMPOSED mix, so install
+      // exactly that while the doc is untouched since the draft (same track
+      // resolution, zero re-planning). After interim edits, re-plan against
+      // the current doc so new tracks are covered (rebase).
+      const draftUntouched = current === songDraft.baseDoc;
+      const composedMix = draftUntouched ? songDraft.result.commands.mix : null;
+      let rebased = !draftUntouched;
       try {
-        const profile = planMixProfile(songDraft.result.build.baseIntent);
-        const mixCmd = applyMixIntent(afterSong, profile);
-        services.store.execute(mixCmd);
+        if (composedMix) {
+          services.store.execute(composedMix);
+        } else {
+          const profile = planMixProfile(songDraft.result.build.baseIntent);
+          const mixCmd = applyMixIntent(afterSong, profile);
+          services.store.execute(mixCmd);
+        }
         afterSong = services.store.getDoc();
       } catch {
         /* no mix decisions — song alone is complete */
@@ -523,10 +602,11 @@ export function IntentPanel() {
       const fxNote =
         songDraft.result.build.baseIntent.fx || songDraft.result.build.sections.some((s) => s.fx) ? " + FX" : "";
       songBufferRef.current = null;
+      sectionBuffersRef.current = new Map();
       setSongDraft(null);
       setJustApplied(true);
       setStatus(
-        `✓ SUNO MODE — ${songDraft.result.build.name} — ${songDraft.result.build.sections.length} sections, ${songDraft.result.build.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
+        `✓ SUNO MODE — ${songDraft.result.build.name} — ${songDraft.result.build.sections.length} sections, ${songDraft.result.build.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${rebased ? " · mix re-planned after edits" : ""}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -768,11 +848,25 @@ export function IntentPanel() {
           }}
         />
       </div>
+      {refPatch && (
+        <div className="intent-ref-chip" role="status">
+          <span className="intent-ref-chip-label">🎧 ref: {refSummary ?? "active"}</span>
+          <span className="intent-ref-chip-hint">shapes every generation</span>
+          <button
+            type="button"
+            className="intent-ref-chip-clear"
+            aria-label="Clear audio reference"
+            title="Clear the reference — back to text-only intent"
+            onClick={clearReference}
+          >
+            ×
+          </button>
+        </div>
+      )}
       {candidates && candidates.length > 0 && (
         <div className="intent-candidates" aria-label="Candidate bank">
           {candidates.map((candidate) => {
-            const isWinner =
-              bankResult?.proposal?.pattern.generation?.ranker?.selectedIndex === candidate.candidateIndex;
+            const isWinner = candidate.candidateIndex === bankResult?.bank?.[0]?.candidateIndex;
             const isPlaying = playingIndex === candidate.candidateIndex;
             const isRendering = renderingIndex === candidate.candidateIndex;
             return (
@@ -854,11 +948,27 @@ export function IntentPanel() {
             </button>
           </div>
           <div className="intent-song-sections" aria-label="Song sections">
-            {songDraft.result.build.sections.map((section) => (
-              <span key={section.pattern.id} className="intent-candidate-score" title={section.roles.join("+")}>
-                {section.label} · {section.bars}b · {section.roles.join("+")}
-              </span>
-            ))}
+            {songDraft.result.build.sections.map((section) => {
+              const id = section.pattern.id;
+              const isPlaying = playingSectionId === id;
+              const isRendering = renderingSectionId === id;
+              return (
+                <div key={id} className="intent-candidate-row">
+                  <button
+                    type="button"
+                    className="btn btn-small intent-audition-btn"
+                    disabled={songBusy || isRendering}
+                    onClick={() => void toggleSectionAudition(section)}
+                    title={isPlaying ? `Stop ${section.label} preview` : `Audition ${section.label} alone`}
+                  >
+                    {isRendering ? "…" : isPlaying ? "■" : "▶"}
+                  </button>
+                  <span className="intent-candidate-score" title={section.roles.join("+")}>
+                    {section.label} · {section.bars}b · {section.roles.join("+")}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <div className="intent-share-actions" aria-label="Revise song draft">
             <button

@@ -192,3 +192,42 @@
     text-align: left;
   }
 }
+
+
+/* ── Audio reference chip (T4: "sprav to ako tento WAV") ─────────────── */
+.intent-ref-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #7aa2f7;
+  border-radius: 6px;
+  background: rgba(122, 162, 247, 0.1);
+  padding: 6px 10px;
+  margin: 6px 0;
+  font: 11px var(--mono, monospace);
+}
+
+.intent-ref-chip-label {
+  color: #7aa2f7;
+  letter-spacing: 0.4px;
+}
+
+.intent-ref-chip-hint {
+  color: var(--text-faint, #777);
+  font-size: 10px;
+}
+
+.intent-ref-chip-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-faint, #999);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.intent-ref-chip-clear:hover {
+  color: #f87171;
+}
