@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { LandingPrompt } from "./LandingPrompt";
+import { appUrl } from "../shared/mountBase";
 
 /* Inline stroke icons — one visual language instead of mixed emoji. */
 function Icon({ children }: { children: ReactNode }) {
@@ -134,10 +135,10 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
             <span className="embed-brand-mark">KX</span> KYX
           </span>
           <div className="landing-nav-actions">
-            <a className="landing-btn landing-btn-ghost landing-btn-sm" href="/download">
+            <a className="landing-btn landing-btn-ghost landing-btn-sm" href={appUrl("/download")}>
               Download
             </a>
-            <a className="landing-btn landing-btn-ghost landing-btn-sm" href="/gallery">
+            <a className="landing-btn landing-btn-ghost landing-btn-sm" href={appUrl("/gallery")}>
               Beat gallery
             </a>
             <button type="button" className="landing-btn landing-btn-primary landing-btn-sm" onClick={onEnterStudio}>
@@ -164,12 +165,12 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
               this tab. Then open the full studio to chop, program and mix. Your audio never leaves the device.
             </p>
             <div className="landing-hero-actions">
-              <a className="landing-btn landing-btn-ghost landing-btn-lg" href="/gallery">
+              <a className="landing-btn landing-btn-ghost landing-btn-lg" href={appUrl("/gallery")}>
                 Explore the gallery
               </a>
             </div>
             <span className="landing-hint">
-              No install · Works offline · <a href="/download">Prefer a desktop app? Download for Windows</a>
+              No install · Works offline · <a href={appUrl("/download")}>Prefer a desktop app? Download for Windows</a>
             </span>
           </div>
           <div className="landing-hero-player-col" aria-label="Forge a beat">

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pwaOptions } from "../src/pwa";
@@ -90,6 +90,23 @@ describe("PWA caching strategy", () => {
 
   it("navigations fall back to index.html for SPA routing", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
+  });
+
+  it("derives manifest scope/start_url from STUDIO_APP_BASE for ecosystem mounts", async () => {
+    // Qvester Studio mounts the built app at /pulse-forge/ — the manifest
+    // scope must live inside that subpath or the browser rejects the
+    // service-worker registration. Unset (root deploy) stays "/".
+    vi.stubEnv("STUDIO_APP_BASE", "/pulse-forge/");
+    vi.resetModules();
+    try {
+      const mounted = (await import("../src/pwa")).pwaOptions as typeof pwaOptions;
+      const m = mounted.manifest as unknown as TestManifest;
+      expect(m.start_url).toBe("/pulse-forge/");
+      expect(m.scope).toBe("/pulse-forge/");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 
   it("uses PROMPT mode so a running session never loses its precache", () => {

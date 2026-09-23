@@ -1,5 +1,6 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { normalizeProject, validateProjectShape } from "../project-model/schema";
+import { appUrl } from "../shared/mountBase";
 import type { ProjectDocument } from "../project-model/types";
 
 /**
@@ -40,12 +41,12 @@ export function decodeShareCode(code: string): ProjectDocument | null {
 
 /** Studio URL that auto-opens the shared project (?import=…). */
 export function shareAppUrl(code: string, origin: string): string {
-  return `${origin}/?import=${code}`;
+  return `${origin}${appUrl("/?import=")}${code}`;
 }
 
 /** Self-contained embed player URL (/embed/#p=…). */
 export function embedUrl(code: string, origin: string): string {
-  return `${origin}/embed/#p=${code}`;
+  return `${origin}${appUrl("/embed/")}`.replace(/\/$/, "") + `/#p=${code}`;
 }
 
 /** iframe snippet for pasting into Discord/Reddit/websites. */
@@ -54,10 +55,6 @@ export function embedSnippet(url: string): string {
   // URL can't break out of the `src="..."` quote and inject arbitrary HTML
   // when the snippet is pasted into a page that doesn't sanitise. `&` is
   // escaped first so the subsequent entity replacements don't double-escape.
-  const safe = url
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const safe = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<iframe src="${safe}" width="100%" height="220" frameborder="0" style="border:1px solid #26272c;border-radius:8px" title="KYX beat"></iframe>`;
 }

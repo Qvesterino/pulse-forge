@@ -9,9 +9,17 @@ import { clearPendingHandoff, peekPendingHandoff, stashIntentPrefill, stashRegen
 import { funnelTiming } from "./services/funnel";
 import { initSwUpdate } from "./sw-update";
 import { detectWebAudioSupport, isWebAudioBootFailure } from "./shared/webAudioSupport";
+import { configureAssetBase } from "./shared/assetUrls";
+import { stripBasePath } from "./shared/mountBase";
 import "./styles/index.css";
 import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
+
+// Ecosystem mount (Qvester Studio subpath): when built with
+// STUDIO_APP_BASE=/pulse-forge/, BASE_URL carries the mount — root-absolute
+// asset paths (worklets, models, samples) must be prefixed ONCE before any
+// loader runs, and the router must strip the prefix from location.pathname.
+configureAssetBase(import.meta.env.BASE_URL);
 
 // Load persisted pad key bindings before the first paint.
 initPadKeys();
@@ -42,7 +50,7 @@ type RootContainer = HTMLElement & { __kyxReactRoot?: Root };
 const rootContainer = container as RootContainer;
 const root = (rootContainer.__kyxReactRoot ??= createRoot(container));
 
-const PATH = typeof location !== "undefined" ? location.pathname : "/";
+const PATH = typeof location !== "undefined" ? stripBasePath(location.pathname, import.meta.env.BASE_URL) : "/";
 const ONBOARDED_KEY = "pf-onboarded";
 
 // Set by the Electron shell's preload (desktop/main.cjs, ADR 0010).

@@ -23,6 +23,7 @@ import {
 import { buildRemix, remixTagsOf } from "./remix";
 import { funnelEvent } from "../services/funnel";
 import { randomRoomId } from "../collab/collabShared";
+import { appUrl } from "../shared/mountBase";
 
 type FeedState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: GalleryItem[] };
 
@@ -110,7 +111,7 @@ export function GalleryPage() {
           </div>
         </div>
         <nav className="gallery-nav">
-          <a className="btn btn-export" href="/studio">
+          <a className="btn btn-export" href={appUrl("/studio")}>
             OPEN STUDIO
           </a>
         </nav>

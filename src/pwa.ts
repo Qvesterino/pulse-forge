@@ -8,6 +8,12 @@ import type { VitePWAOptions } from "vite-plugin-pwa";
  * fully offline. Project/sample data already lives in IndexedDB, which is
  * inherently offline-first.
  */
+
+// Ecosystem mount: the same STUDIO_APP_BASE env vite.config.ts feeds to
+// `base` also drives the manifest scope/start_url — both must stay inside
+// the mount subpath or the browser rejects the service-worker scope.
+const mountBase = `${(process.env.STUDIO_APP_BASE ?? "/").replace(/\/?$/, "/")}`;
+
 export const pwaOptions: Partial<VitePWAOptions> = {
   // "prompt" (release roadmap Fáza 3): a new service worker WAITS until the
   // user accepts the reload banner. With "autoUpdate" the new precache
@@ -26,8 +32,8 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     lang: "en",
     dir: "ltr",
     orientation: "any",
-    scope: "/",
-    start_url: "/",
+    scope: mountBase,
+    start_url: mountBase,
     display: "standalone",
     // Molten app shell (mirrors --bg in src/styles/01-base.css / THEME_PRESETS[0]).
     background_color: "#0b0c10",

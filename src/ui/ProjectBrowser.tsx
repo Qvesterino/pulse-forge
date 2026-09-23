@@ -6,6 +6,7 @@ import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates
 import type { TemplateId } from "../project-model/templates";
 import { importProject } from "../export/project-io";
 import { uid } from "../shared/ids";
+import { appUrl } from "../shared/mountBase";
 
 /** One row of the library: openable, or written by a newer app version. */
 type ProjectRow = { kind: "ok"; meta: SavedProjectMeta } | { kind: "newer"; meta: IncompatibleProjectMeta };
@@ -209,7 +210,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       <header className="pb-header">
         {/* DAW convention: the logo always leads home — /?landing shows the
             KYX landing page even for returning users (main.tsx Entry). */}
-        <a className="brand" href="/?landing" title="KYX — landing page" aria-label="KYX — go to landing page">
+        <a className="brand" href={appUrl("/?landing")} title="KYX — landing page" aria-label="KYX — go to landing page">
           <span className="brand-mark">KX</span>
           <span className="brand-name">KYX</span>
         </a>

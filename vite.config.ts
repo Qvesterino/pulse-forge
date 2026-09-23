@@ -13,7 +13,14 @@ const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa
 // `virtual:pwa-register` import to the no-op stub.
 const desktopBuild = process.env.KYX_DESKTOP === "1";
 
+// Ecosystem mount (Qvester Studio): STUDIO_APP_BASE=/pulse-forge/ builds the
+// app for a subpath deployment — asset URLs, the PWA scope/start_url (see
+// src/pwa.ts) and SPA route parsing all derive from it. Unset (default) →
+// "/" — the standalone root deployment, byte-for-byte today's output.
+export const studioAppBase = process.env.STUDIO_APP_BASE ?? "/";
+
 export default defineConfig({
+  base: studioAppBase,
   plugins: [react(), ...(desktopBuild ? [] : [VitePWA(pwaOptions)])],
   resolve: {
     alias: [
