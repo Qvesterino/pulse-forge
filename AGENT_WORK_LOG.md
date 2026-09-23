@@ -3810,3 +3810,14 @@ audit doc.
 - ⚠️ zombie vite servery držia porty po crashi — netstat + taskkill.
 
 **Testy**: audio-reference 9/9 (click track tempo 128/90, chroma root, BPM v patchu), ranking-v3 4/4 (prerazenie pri blízkom preteku, render-fail, weight 0, finalists cap). Regresia 130/130 na 14 dotykových súboroch; typecheck 0.
+
+---
+
+## GOAL 34 — GROOVE EXTRACTION (2026-09-22)
+
+**„Nehraj len ako on — hraj JEHO pattern.**" 🎧 REF teraz navyše TRANSCRIBUJE groove a 🥁→DRUMS ho inštaluje ako reálne rows do aktívneho patternu (one undo).
+
+- **`src/intent/groove-extraction.ts`**: VLASTNÝ onset detektor (5 ms RMS frámy, positive flux, 3× medián threshold, local-max gate) — detTransients bol nepoužiteľný na syntetiku (log-flux s 64 ms oknom na 60 ms bursty = chaotické časy). Fázové ladenie: 16 sub-fáz sweep, kvantizačná tolerancia 0.35 stepu. Klasifikácia bandu z okna −20/+70 ms okolo onsetu (onsety majú latenciu!): low-pass ratio ≥ 0.6 → low (kick), ZCR ≥ 0.25 → high (haty), inak mid. Velocity = lokálny peak / globálny max, map 0.35–1. `grooveRowsForPads` = bandy na pady cez `inferPadRole`; viac padov tej istej bandy = layered (rovnaký pattern).
+- **Panel**: REF handler extrahuje groove z rovnakého PCM; 🥁→DRUMS button (visible pri refGroove) — `replacePatternInPlaceCommand` na aktívny pattern (rows swap, one undo). Status "🥁 groove installed — 120 BPM — 14 hits (4 low / 4 mid / 6 high)".
+- **Testy** `tests/groove-extraction.test.ts` 4/4: syntetický groove (kick downbeaty + hat off-beaty @120) obnoví steps aj bandy; determinizmus; ticho/krátky signál = null; rows mapping cez role.
+- Gotcha: **detTransients nie je vhodný na groove transkripciu** (neskoré/chaotické časy) — vlastný flux detektor. Regresia 172/172 na 17 súboroch; typecheck 0.

@@ -13,6 +13,8 @@ import { applyArrangeOps } from "../intent/arrangeWords";
 import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { analyzeAudioReference } from "../intent/audio-reference";
+import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
+import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
@@ -382,10 +384,12 @@ export function IntentPanel() {
   const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
   const [refSummary, setRefSummary] = useState<string | null>(null);
   const [refBusy, setRefBusy] = useState(false);
+  const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const clearReference = () => {
     setRefPatch(null);
     setRefSummary(null);
+    setRefGroove(null);
     setAudioReferenceConditioning(null);
     setStatus("🎧 reference cleared — back to text-only intent");
   };
@@ -408,15 +412,38 @@ export function IntentPanel() {
         setError("🎧 reference: audio models unavailable (fetch them or try later)");
         return;
       }
+      const groove = extractGrooveGrid(pcm, 16000);
+      setRefGroove(groove);
       setRefPatch(result.patch);
       setRefSummary(result.summary);
       setAudioReferenceConditioning(result.conditioning);
-      setStatus(`🎧 reference: ${result.summary} — patch + conditioning live`);
+      setStatus(
+        `🎧 reference: ${result.summary}${groove ? ` — groove ${groove.summary}` : ""} — patch + conditioning live`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRefBusy(false);
     }
+  };
+  // Groove install: transcribed band hits become REAL rows on the active
+  // pattern's drum track (one undo step).
+  const installGroove = () => {
+    if (!refGroove) return;
+    const drumTrack = doc.tracks.find((track) => track.kind === "drum");
+    if (!drumTrack || drumTrack.kind !== "drum" || drumTrack.pads.length === 0) {
+      setError("🥁 groove: no drum track with pads in this project");
+      return;
+    }
+    const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    if (!pattern) {
+      setError("🥁 groove: no active pattern to install into");
+      return;
+    }
+    const pads = drumTrack.pads.map((pad, index) => ({ id: pad.id, role: inferPadRole(pad.name, index) }));
+    const rows = grooveRowsForPads(refGroove.hits, pads, refGroove.steps);
+    services.store.execute(replacePatternInPlaceCommand(doc, pattern.id, { ...pattern, rows }));
+    setStatus(`🥁 groove installed — ${refGroove.summary} (one undo step)`);
   };
   const buildSongDraft = async (sections?: SectionParse, reviseInput?: IntentInput) => {
     setError(null);
@@ -836,6 +863,15 @@ export function IntentPanel() {
           title="Audio reference — drop a WAV and the engine listens: genre + energy patch, plus a semantic conditioning vector for the v2 priors"
         >
           {refBusy ? "🎧…" : "🎧 REF"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-groove-btn"
+          disabled={!refGroove || refBusy}
+          onClick={installGroove}
+          title="Install the extracted groove (kick/snare/hat rows) into the active pattern"
+        >
+          🥁→DRUMS
         </button>
         <input
           ref={referenceInputRef}
