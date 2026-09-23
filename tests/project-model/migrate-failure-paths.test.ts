@@ -15,6 +15,8 @@
  * The test is intentionally pure: no IndexedDB, no fixtures, no async.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { migrateProject, SCHEMA_VERSION } from "../../src/project-model/schema";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 
@@ -58,5 +60,38 @@ describe("migrateProject — failure paths", () => {
     expect(() => migrateProject(huge)).toThrow(
       new RegExp(`Project schema 9999 is newer than supported ${SCHEMA_VERSION}`),
     );
+  });
+
+  it("v1 doc round-trips into v2 without losing user data (no-op bump + normalize)", () => {
+    // The v1 -> v2 migration in this codebase does not introduce
+    // destructive shape changes (GenerativeTrack was ADDED, nothing was
+    // REMOVED), so an identity version bump + normalizeProject must
+    // preserve every existing field. This is the regression guard against
+    // a future schema bump that silently drops data.
+    const v1 = { ...createProjectFromTemplate("house"), schemaVersion: SCHEMA_VERSION - 1 };
+    const migrated = migrateProject(v1 as Parameters<typeof migrateProject>[0]);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    // Sanity: track count, BPM, name, and activePatternId survive.
+    expect(migrated.bpm).toBe(v1.bpm);
+    expect(migrated.name).toBe(v1.name);
+    expect(migrated.tracks).toHaveLength(v1.tracks.length);
+    expect(migrated.activePatternId).toBe(v1.activePatternId);
+  });
+});
+
+describe("migrateProject — schema v2 surface (source-grep regression)", () => {
+  // Pin the wiring behind the v1 -> v2 bump so a future refactor that
+  // drops the GenerativeTrack sanitizer from normalizeProject is caught
+  // (a regression would crash on load for any v2 doc containing a
+  // generative track).
+  const src = readFileSync(resolve(process.cwd(), "src/project-model/schema.ts"), "utf8");
+
+  it("declares sanitizeGenerativeConfig in the project-model", () => {
+    expect(src).toMatch(/function\s+sanitizeGenerativeConfig\s*\(/);
+  });
+
+  it("wires sanitizeGenerativeConfig and the generative track kind into normalize", () => {
+    expect(src).toMatch(/sanitizeGenerativeConfig\s*\(/);
+    expect(src).toMatch(/kind\s*===\s*["']generative["']/);
   });
 });
