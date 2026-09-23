@@ -18,11 +18,22 @@ import { normalizeProject } from "../project-model/schema";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult } from "../intent/pipeline";
 import { applyGenerationResultCommand } from "../commands/commands";
+import { buildSong, applySongCommand, parseSongLength } from "../intent/song";
+import { planMixProfile, applyMixIntent } from "../intent/mix";
 
 export interface LandingBeat {
   doc: ProjectDocument;
   prompt: string;
   template: TemplateId;
+}
+
+export interface LandingSong {
+  doc: ProjectDocument;
+  prompt: string;
+  template: TemplateId;
+  sections: number;
+  totalBars: number;
+  resolvedBpm: number | null;
 }
 
 /** Genre keywords → template. Checked against the RAW prompt (the intent
@@ -80,4 +91,62 @@ export async function generateLandingBeat(prompt: string, signal?: AbortSignal):
   const command = applyGenerationResultCommand(doc, result, nameFromPrompt(prompt, template));
   const forged = normalizeProject({ ...command.execute(doc), name: nameFromPrompt(prompt, template) });
   return { doc: forged, prompt, template };
+}
+
+/**
+ * Landing song generation — "napíš vetu, počuj pesničku".
+ *
+ * Same offline guarantees as the beat path (no candidate bank, no ONNX, no
+ * network), but through the full song pipeline: per-section generation with
+ * transitions (buildSong) → genre kit + master tilt (applySongCommand) → mix
+ * profile (planMixProfile/applyMixIntent, best-effort garnish). No loudness
+ * render here — the landing must stay instant; the per-genre trim baked by
+ * applySongCommand keeps songs consistent and the studio's USE flow runs the
+ * measured loudness pass later.
+ *
+ * Length defaults to the SHORT form (≈20 bars) so the hero preview stays
+ * digestible; an explicit length phrase in the prompt ("extended", "3
+ * minutes") is honored. Cancels through `signal` (AbortError propagates).
+ */
+export async function generateLandingSong(
+  prompt: string,
+  signal?: AbortSignal,
+  onProgress?: (done: number, label: string, total: number) => void,
+): Promise<LandingSong> {
+  signal?.throwIfAborted?.();
+  const template = templateForPrompt(prompt);
+  const doc = createProjectFromTemplate(template);
+  const parsed = parseIntentText(prompt);
+  const build = await buildSong(
+    doc,
+    {
+      ...(parsed?.input ?? {}),
+      seed: `landing-song-${Date.now().toString(36)}`,
+      roles: parsed?.input?.roles ?? ["drums", "bass", "chords", "lead"],
+    },
+    {
+      length: parseSongLength(prompt) ?? { kind: "short", label: "short" },
+      onProgress: (done, label, total) => {
+        signal?.throwIfAborted?.();
+        onProgress?.(done, label, total);
+      },
+    },
+  );
+  signal?.throwIfAborted?.();
+  let cursor = applySongCommand(doc, build).execute(doc);
+  try {
+    const profile = planMixProfile(build.baseIntent);
+    cursor = applyMixIntent(cursor, profile).execute(cursor);
+  } catch {
+    /* mix is garnish — the song alone is complete */
+  }
+  const forged = normalizeProject({ ...cursor, name: nameFromPrompt(prompt, template) });
+  return {
+    doc: forged,
+    prompt,
+    template,
+    sections: build.sections.length,
+    totalBars: build.totalBars,
+    resolvedBpm: build.resolvedBpm,
+  };
 }

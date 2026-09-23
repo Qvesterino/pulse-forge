@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActivePatternId, useMarkers, useMaster, usePatterns, useServices, useTracks } from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
-import { downloadWav, encodeWav, sanitizeFilename } from "../rendering/wav";
+import { downloadWav, encodeWavAsync, sanitizeFilename } from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
@@ -167,7 +167,15 @@ export function ExportPanel({
         return;
       }
 
-      downloadWav(encodeWav(buffer, bitDepth), `${baseName}-master.wav`);
+      // Audit 11 (reliability wave): async encode — the per-sample loop
+      // yields per 64k-frame block, keeps the UI alive, reports progress
+      // and honors Cancel. Byte-identical to the sync encoder.
+      const wavBytes = await encodeWavAsync(buffer, bitDepth, {
+        onProgress: (f) =>
+          setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
+        signal,
+      });
+      downloadWav(wavBytes, `${baseName}-master.wav`);
       setStatus({
         kind: "done",
         label: `Master exported (${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit)`,
@@ -197,7 +205,7 @@ export function ExportPanel({
           masterProcessing: false,
           });
         lastSummary = summarizeBuffer(buffer);
-        downloadWav(encodeWav(buffer, bitDepth), `${baseName}-${group.id}.wav`);
+        downloadWav(await encodeWavAsync(buffer, bitDepth, { onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }), signal }), `${baseName}-${group.id}.wav`);
       }
       setStatus({
         kind: "done",
@@ -228,7 +236,7 @@ export function ExportPanel({
           signal,
           });
         lastSummary = summarizeBuffer(buffer);
-        downloadWav(encodeWav(buffer, bitDepth), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
+        downloadWav(await encodeWavAsync(buffer, bitDepth, { onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }), signal }), `${baseName}-track-${sanitizeFilename(track.name)}.wav`);
       }
       setStatus({
         kind: "done",

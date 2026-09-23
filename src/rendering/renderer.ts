@@ -183,10 +183,20 @@ export function renderQualityBumps(doc: ProjectDocument): {
  */
 export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): number {
   let maxMs = 0;
+  let maxReverbDecaySec = 0;
   const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
   for (const track of containers) {
     for (const fx of track.effects ?? []) {
-      if (fx.type !== "ozvena" || fx.bypassed) continue;
+      if (fx.bypassed) continue;
+      // Native reverb DECAY is expressed directly in seconds (0.1–6).
+      if (fx.type === "reverb") {
+        const decay = fx.params?.["decay"];
+        if (typeof decay === "number" && Number.isFinite(decay)) {
+          maxReverbDecaySec = Math.max(maxReverbDecaySec, decay);
+        }
+        continue;
+      }
+      if (fx.type !== "ozvena") continue;
       const g = fx.params?.["engines.e3.enabled"] ?? 1;
       const e3Time = g >= 0.5 ? (fx.params?.["engines.e3.time"] ?? 0) : 0;
       const e2g = fx.params?.["engines.e2.enabled"] ?? 1;
@@ -194,11 +204,12 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
       maxMs = Math.max(maxMs, e3Time, e2Time);
     }
   }
-  if (maxMs <= 0) return fallback;
-  // A T60 (amplitude −60 dB) leaves the last ~10% of its time below the
-  // noise floor; 1.1x the decay plus a 0.5 s release is a faithful tail
-  // without rendering the silent remainder in full.
-  return Math.max(fallback, Math.min(12, (maxMs / 1000) * 1.1 + 0.5));
+  // Same T60 policy for the native reverb decay (seconds): 1.1x + release.
+  const reverbTail = maxReverbDecaySec > 0 ? (maxReverbDecaySec * 1.1 + 0.5) : 0;
+  const ozvenaTail = maxMs > 0 ? (maxMs / 1000) * 1.1 + 0.5 : 0;
+  const longest = Math.max(reverbTail, ozvenaTail);
+  if (longest <= 0) return fallback;
+  return Math.max(fallback, Math.min(12, longest));
 }
 
 export interface ClipWindow {
@@ -496,7 +507,20 @@ export async function renderProject(
     // INSIDE the try: an abort here must still release the bank
     // subscription above, not leak it into the shared bank.
     throwIfAborted(options.signal);
-    return await ctx.startRendering();
+    // Audit 11 (reliability wave): OfflineAudioContext.startRendering is
+    // itself un-abortable — but the CALLER should not stay wedged in
+    // "exporting" for a 10-minute render after pressing Cancel. Race the
+    // render against the abort signal: on cancel we stop WAITING (the
+    // offline context finishes in the background and is discarded by GC)
+    // and the UI transitions to "cancelled".
+    const rendering = ctx.startRendering();
+    if (!options.signal) return rendering;
+    const abortPromise = new Promise<never>((_, reject) => {
+      const onAbort = () => reject(new DOMException("Export cancelled", "AbortError"));
+      if (options.signal!.aborted) onAbort();
+      else options.signal!.addEventListener("abort", onAbort, { once: true });
+    });
+    return await Promise.race([rendering, abortPromise]);
   } finally {
     engine.detachBank();
   }

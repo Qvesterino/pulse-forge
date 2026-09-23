@@ -355,6 +355,39 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     record({ name, ok, message: message || (ok ? "ok" : "failed") });
 
   const bank = await generateFactoryBank();
+
+  // Audit 12 lifecycle stress: repeated init → process → teardown → reinit.
+  // Each cycle builds a FRESH AudioContext + engine, plays a note against the
+  // project, then closes the context. A leak (uncleared node map, stale
+  // worklet cache, listener pile-up) shows up as a throw, a dead context, or
+  // an engine error on the third cycle.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const ctx = new AudioContext();
+      try {
+        if (ctx.state === "suspended") await ctx.resume();
+        const engine = new AudioEngine();
+        engine.attachBank(bank);
+        engine.useContext(ctx);
+        engine.setProject(doc);
+        engine.noteOn(drum.id, 36, 0.9, ctx.currentTime + 0.05, 0.2);
+        await new Promise((r) => setTimeout(r, 250));
+        engine.panic();
+      } finally {
+        await ctx.close();
+      }
+    }
+    check("engine lifecycle: 3× init→process→teardown→reinit cycles clean", true);
+  } catch (error) {
+    check(
+      "engine lifecycle: 3× init→process→teardown→reinit cycles clean",
+      false,
+      String(error instanceof Error ? error.message : error),
+    );
+  }
+
   const rrIds = Object.entries(RR_VARIATIONS).flatMap(([base, vars]) => vars.map((_, i) => `${base}.rr${i + 2}`));
   const missingBank = [
     ...FACTORY_ASSETS.filter((a) => !bank.has(a.id)).map((a) => a.id),

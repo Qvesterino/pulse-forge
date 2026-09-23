@@ -83,6 +83,9 @@ export async function buildScorepack(
       sampleRate,
       tailSeconds,
       ...qualityOpts,
+      // Audit 11 D1: scorepack stems are deliverables too — no master chain
+      // baked into them (the scorepack's master.wav carries the full mix).
+      masterProcessing: false,
     });
     throwIfAborted(signal);
     entries.push({

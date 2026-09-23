@@ -45,6 +45,12 @@ const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 // the instance returns to "idle" (every path that sets idle releases it).
 let activeCapture: PcmMicRecorder | null = null;
 
+/** Audit 14 D2: true while a mic take is live - used by the SW-update banner
+ * to avoid a mid-recording reload. */
+export function isMicRecordingActive(): boolean {
+  return activeCapture !== null;
+}
+
 /** Bound an awaited step so a hung browser API cannot wedge start() forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;

@@ -377,7 +377,11 @@ export class MorphDynamicsProcessor {
     }
     const q = this.params;
     const L = inputs[0];
-    const R = inputs[1] ?? inputs[0];
+    const mono = !inputs[1] || inputs[1] === inputs[0];
+    // Mono input: READ aliases L, but the right-channel RESULT must land in
+    // its own storage — writing into the aliased buffer let the right output
+    // overwrite the left mid-block.
+    const R = mono ? new Float32Array(frames) : (inputs[1] as Float32Array);
 
     // Morph scenes: glide params toward the active scene target BEFORE the
     // block reads them — sections 1+ run on the interpolated values.
@@ -684,12 +688,20 @@ export class MorphDynamicsProcessor {
       }
     }
 
+    // Mono input: fold the stereo result back into the caller's single
+    // buffer (mid downmix) — R was scratch, so without this the right half
+    // of the processing would silently vanish.
+    if (mono) {
+      for (let i = 0; i < frames; i++) L[i] = (L[i] + R[i]) * 0.5;
+    }
+
     // Non-finite sentinel: one bad sample means a recursive stage diverged
     // — reset instead of propagating (an audible glitch beats dead silence).
     // Check BOTH endpoints so a divergence that starts mid-block is caught in
     // the SAME block rather than waiting for the next call. First-sample-only
     // leaves the corrupted samples for the surrounding hardware to absorb.
     const last = frames - 1;
+    // Mono: R is the scratch right-channel result; stereo: R is inputs[1].
     if (!Number.isFinite(L[0]) || !Number.isFinite(R[0]) || !Number.isFinite(L[last]) || !Number.isFinite(R[last])) {
       this.reset();
       for (let i = 0; i < frames; i++) {

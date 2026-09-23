@@ -111,7 +111,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     for (let s = 0; s < coeffs.length; s++) {
       const c = coeffs[s];
       const xPrev = state[s * 2];
-      const yPrev = state[s * 2 + 1];
+      let yPrev = state[s * 2 + 1];
+      // Denormal flush — silence would otherwise park yPrev in the denormal
+      // range and stall the cascade for as long as the quiet tail lasts.
+      if (yPrev > -1e-20 && yPrev < 1e-20) yPrev = 0;
       const y = c * out + xPrev - c * yPrev;
       state[s * 2] = out;
       state[s * 2 + 1] = y;
@@ -222,9 +225,11 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
         wetR = xaR * cosR - xbR * sinR;
       }
 
-      // Wet tone trim (one-pole LP per channel).
+      // Wet tone trim (one-pole LP per channel, denormal-flushed).
       this.toneLpL += (wetL - this.toneLpL) * toneCoef;
       this.toneLpR += (wetR - this.toneLpR) * toneCoef;
+      if (this.toneLpL > -1e-20 && this.toneLpL < 1e-20) this.toneLpL = 0;
+      if (this.toneLpR > -1e-20 && this.toneLpR < 1e-20) this.toneLpR = 0;
 
       // Feedback write (post-tone wet feeds the loop).
       this.fbL[this.fbPos] = this.toneLpL;

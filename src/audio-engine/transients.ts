@@ -108,6 +108,9 @@ export function gridSlicePoints(bpm: number, divisionsPerBeat: number, durationS
   if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(divisionsPerBeat) || divisionsPerBeat <= 0) {
     return [];
   }
+  // Audit 12 D3: a non-finite duration would loop forever (t += finite step
+  // never reaches Infinity), OOM-ing the tab. Guard like every other input.
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return [];
   const step = 60 / bpm / divisionsPerBeat;
   const points: number[] = [];
   for (let t = 0; t < durationSec - 1e-6; t += step) points.push(t);

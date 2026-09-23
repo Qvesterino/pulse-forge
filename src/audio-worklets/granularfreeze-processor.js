@@ -232,6 +232,8 @@ class GranularFreezeProcessor extends AudioWorkletProcessor {
       // Wet tone trim (one-pole LP per channel) before the crossfade.
       this.toneLpL += (sumL - this.toneLpL) * this.toneCoef;
       this.toneLpR += (sumR - this.toneLpR) * this.toneCoef;
+      if (this.toneLpL > -1e-20 && this.toneLpL < 1e-20) this.toneLpL = 0;
+      if (this.toneLpR > -1e-20 && this.toneLpR < 1e-20) this.toneLpR = 0;
 
       // Real crossfade: the frozen envelope ducks the dry while raising the
       // cloud (idle passes the bus through untouched).

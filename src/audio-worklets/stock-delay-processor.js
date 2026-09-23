@@ -108,6 +108,15 @@ class StockDelayProcessor extends AudioWorkletProcessor {
     if (Math.abs(this.lpR) < 1e-20) this.lpR = 0;
     if (Math.abs(this.bufL[this.writeIdx]) < 1e-20) this.bufL[this.writeIdx] = 0;
     if (Math.abs(this.bufR[this.writeIdx]) < 1e-20) this.bufR[this.writeIdx] = 0;
+    // Full-ring sweep once per wrap — feedback ≤0.9 parks old slots in the
+    // subnormal range where the cubic read stalls; the write-slot flush
+    // above only ever covers one slot per block.
+    if (this.writeIdx === 0) {
+      for (let i = 0; i < STOCK_DELAY_RING; i++) {
+        if (this.bufL[i] > -1e-20 && this.bufL[i] < 1e-20) this.bufL[i] = 0;
+        if (this.bufR[i] > -1e-20 && this.bufR[i] < 1e-20) this.bufR[i] = 0;
+      }
+    }
 
     return true;
   }

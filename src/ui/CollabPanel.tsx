@@ -63,10 +63,24 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
       // panel does not re-render on doc edits, so the captured `doc` could
       // seed the room from a stale document and the collab autosave would
       // then persist that stale state over the flushed edits.
-      const next = await openProject(services.core, services.store.getDoc(), options);
+      const docAfterFlush = services.store.getDoc();
+      const next = await openProject(services.core, docAfterFlush, options);
       if (mounted.current) onReplaceServices(next);
     } catch (err) {
-      if (mounted.current) setSwitchError(`Project switch failed: ${err instanceof Error ? err.message : String(err)}`);
+      // Audit 13 D1: closeProject already tore down the old services (autosave
+      // guards uninstalled, onDocChanged dead) — leaving the studio mounted on
+      // them made every subsequent edit silently unsaved. Reopen the plain
+      // project so the user keeps a working (persisting) studio.
+      if (mounted.current) {
+        setSwitchError(`Project switch failed: ${err instanceof Error ? err.message : String(err)}`);
+        try {
+          const next = await openProject(services.core, services.store.getDoc());
+          if (mounted.current) onReplaceServices(next);
+          return;
+        } catch (reopenErr) {
+          if (mounted.current) setSwitchError(`Switch failed and reopen failed too — reload the page. (${reopenErr instanceof Error ? reopenErr.message : String(reopenErr)})`);
+        }
+      }
     } finally {
       switchingRef.current = false;
       if (mounted.current) setSwitching(false);

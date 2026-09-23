@@ -36,7 +36,7 @@ export function renderWarpPreserveAsync(
     return Promise.resolve(runSync());
   }
 
-  return new Promise<Float32Array[]>((resolve) => {
+  return new Promise<Float32Array[]>((resolve, reject) => {
     let worker: Worker;
     try {
       worker = new Worker(new URL("./warp-render.ts", import.meta.url), { type: "module" });
@@ -62,7 +62,16 @@ export function renderWarpPreserveAsync(
         finish(runSync());
       }
     };
-    worker.onerror = () => finish(runSync());
+    // Audit 12 D1: a throw inside runSync() must REJECT (settling the
+    // promise) rather than escaping the handler and leaving the promise
+    // pending forever — callers claim their cache key until settlement.
+    worker.onerror = () => {
+      try {
+        finish(runSync());
+      } catch (error) {
+        reject(error);
+      }
+    };
     if (signal) {
       const onAbort = () => finish([]);
       signal.addEventListener("abort", onAbort, { once: true });

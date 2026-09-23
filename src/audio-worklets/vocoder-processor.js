@@ -147,8 +147,9 @@ class VocoderProcessor extends AudioWorkletProcessor {
     s.x2 = s.x1;
     s.x1 = x;
     s.y2 = s.y1;
-    s.y1 = y;
-    return y;
+    // Denormal flush — 32 biquad states recirculating on silence stall here.
+    s.y1 = y > -1e-20 && y < 1e-20 ? 0 : y;
+    return s.y1;
   }
 
   process(inputs, outputs, parameters) {
@@ -253,6 +254,10 @@ class VocoderProcessor extends AudioWorkletProcessor {
         this.sibLp[1] += (modRv - this.sibLp[1]) * sibLpCoef;
         this.sibHpPrev[1] = this.sibHp[1];
         this.sibHp[1] = this.sibLp[1] - this.sibHpPrev[1] * (1 - sibHpCoef);
+        if (this.sibLp[0] > -1e-20 && this.sibLp[0] < 1e-20) this.sibLp[0] = 0;
+        if (this.sibLp[1] > -1e-20 && this.sibLp[1] < 1e-20) this.sibLp[1] = 0;
+        if (this.sibHp[0] > -1e-20 && this.sibHp[0] < 1e-20) this.sibHp[0] = 0;
+        if (this.sibHp[1] > -1e-20 && this.sibHp[1] < 1e-20) this.sibHp[1] = 0;
         sumL += this.sibHp[0] * sibilance * 0.8;
         sumR += this.sibHp[1] * sibilance * 0.8;
       }

@@ -2,16 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
 import { encodeShareCode } from "../export/shareCode";
 import { createProjectFromTemplate } from "../project-model/templates";
-import { generateLandingBeat } from "./landingBeat";
+import { generateLandingBeat, generateLandingSong } from "./landingBeat";
 import { savePendingHandoff } from "./handoff";
 import { funnelEvent, funnelTiming } from "../services/funnel";
 
 const PROMPT_CHIPS = ["dark trap 140", "deep house 124", "hard techno 145", "lo-fi chill 85", "uk garage 133"];
 
+type ForgeMode = "beat" | "song";
+
 type ForgePhase =
   | { kind: "idle" }
-  | { kind: "busy" }
-  | { kind: "ready"; code: string }
+  | { kind: "busy"; mode: ForgeMode; detail: string | null }
+  | { kind: "ready"; code: string; mode: ForgeMode; label: string | null }
   | { kind: "error"; message: string };
 
 /**
@@ -39,25 +41,46 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
     return () => abortRef.current?.abort();
   }, []);
 
-  const forge = async (rawPrompt: string) => {
+  const forge = async (rawPrompt: string, mode: ForgeMode = "beat") => {
     const text = rawPrompt.trim();
     if (!text || phase.kind === "busy") return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     forgeStartRef.current = performance.now();
-    setPhase({ kind: "busy" });
+    setPhase({ kind: "busy", mode, detail: null });
     try {
-      const beat = await generateLandingBeat(text, controller.signal);
-      if (controller.signal.aborted) return;
-      funnelEvent("landing_prompt_forged");
-      funnelTiming("landing_forge_generate_ms", performance.now() - forgeStartRef.current);
-      setPhase({ kind: "ready", code: encodeShareCode(beat.doc) });
+      if (mode === "song") {
+        const song = await generateLandingSong(text, controller.signal, (done, label, total) => {
+          if (controller.signal.aborted) return;
+          setPhase({ kind: "busy", mode, detail: `${label} (${done}/${total})` });
+        });
+        if (controller.signal.aborted) return;
+        funnelEvent("landing_song_forged");
+        funnelTiming("landing_forge_generate_ms", performance.now() - forgeStartRef.current);
+        setPhase({
+          kind: "ready",
+          code: encodeShareCode(song.doc),
+          mode: "song",
+          label: `${song.sections} sections · ${song.totalBars} bars${song.resolvedBpm ? ` · ${song.resolvedBpm} BPM` : ""}`,
+        });
+      } else {
+        const beat = await generateLandingBeat(text, controller.signal);
+        if (controller.signal.aborted) return;
+        funnelEvent("landing_prompt_forged");
+        funnelTiming("landing_forge_generate_ms", performance.now() - forgeStartRef.current);
+        setPhase({ kind: "ready", code: encodeShareCode(beat.doc), mode: "beat", label: null });
+      }
       setDemoUntilForge(false);
     } catch (err) {
       if (controller.signal.aborted) return;
       setPhase({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
+  };
+
+  const forgeAnother = () => {
+    if (phase.kind !== "ready") return;
+    void forge(prompt, phase.mode);
   };
 
   const openInStudio = () => {
@@ -83,7 +106,7 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
           type="text"
           value={prompt}
           maxLength={120}
-          placeholder="Describe your beat — e.g. dark trap 140"
+          placeholder="Describe your beat — e.g. dark trap 140 · ♪ Song for a whole track"
           aria-label="Describe the beat you want"
           onChange={(event) => setPrompt(event.target.value)}
         />
@@ -92,7 +115,16 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
           className="landing-btn landing-btn-primary landing-forge-btn"
           disabled={!prompt.trim() || phase.kind === "busy"}
         >
-          {phase.kind === "busy" ? "Forging…" : "Forge it"}
+          {phase.kind === "busy" && phase.mode === "beat" ? "Forging…" : "Forge it"}
+        </button>
+        <button
+          type="button"
+          className="landing-btn landing-btn-ghost landing-forge-btn"
+          disabled={!prompt.trim() || phase.kind === "busy"}
+          onClick={() => void forge(prompt, "song")}
+          title="Forge a whole arranged song from this sentence (intro → build → drop → outro)"
+        >
+          {phase.kind === "busy" && phase.mode === "song" ? "Composing…" : "♪ Song"}
         </button>
       </form>
 
@@ -116,7 +148,9 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
       <div className="landing-prompt-result">
         {phase.kind === "idle" && demoUntilForge && (
           <>
-            <p className="landing-prompt-hint">Or press play to hear a demo — then type your own and forge it.</p>
+            <p className="landing-prompt-hint">
+              Or press play to hear a demo — then type your own: Forge it for a beat, ♪ Song for a whole track.
+            </p>
             {/* Block-level player: must NOT sit inside the <p> above (invalid
                 div-in-p nesting trips React's validateDOMNesting warning). */}
             <span className="landing-hero-player landing-prompt-demo">
@@ -124,7 +158,10 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
             </span>
           </>
         )}
-        {phase.kind === "busy" && <p className="landing-prompt-hint">Composing your beat…</p>}
+        {phase.kind === "busy" && phase.mode === "beat" && <p className="landing-prompt-hint">Composing your beat…</p>}
+        {phase.kind === "busy" && phase.mode === "song" && (
+          <p className="landing-prompt-hint">Composing your song… {phase.detail ?? "intro → build → drop → outro"}</p>
+        )}
         {phase.kind === "error" && (
           <p className="landing-prompt-error" role="alert">
             Generation failed: {phase.message} — try another prompt.
@@ -132,6 +169,7 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
         )}
         {phase.kind === "ready" && (
           <>
+            {phase.mode === "song" && phase.label && <p className="landing-prompt-hint">♪ {phase.label}</p>}
             <span className="landing-hero-player">
               <EmbedApp
                 code={phase.code}
@@ -152,11 +190,7 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
               <button type="button" className="landing-btn landing-btn-primary" onClick={openInStudio}>
                 Open in studio →
               </button>
-              <button
-                type="button"
-                className="landing-btn landing-btn-ghost"
-                onClick={() => void forge(prompt)}
-              >
+              <button type="button" className="landing-btn landing-btn-ghost" onClick={forgeAnother}>
                 Forge another
               </button>
             </div>

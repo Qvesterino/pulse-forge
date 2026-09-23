@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LandingPrompt } from "../src/landing/LandingPrompt";
-import { templateForPrompt, generateLandingBeat } from "../src/landing/landingBeat";
+import { templateForPrompt, generateLandingBeat, generateLandingSong } from "../src/landing/landingBeat";
 import {
   INTENT_PREFILL_KEY,
   clearPendingHandoff,
@@ -131,6 +131,61 @@ describe("generateLandingBeat", () => {
   }, 30000);
 });
 
+describe("generateLandingSong", () => {
+  it("forges an arranged song: scenes + clips + markers, share-code round-trip", async () => {
+    const song = await generateLandingSong("dark trap 140");
+    expect(song.template).toBe("trap");
+    expect(song.sections).toBeGreaterThanOrEqual(4);
+    expect(song.totalBars).toBeGreaterThanOrEqual(16);
+    // Arrangement is real: contiguous clips bound to scenes (the template
+    // may contribute its own pre-existing scene, so scenes is a superset).
+    expect(song.doc.arrangement.clips.length).toBe(song.sections);
+    expect(song.doc.scenes.length).toBeGreaterThanOrEqual(song.sections);
+    for (const clip of song.doc.arrangement.clips) {
+      expect(song.doc.scenes.some((scene) => scene.id === clip.sceneId)).toBe(true);
+    }
+    const barCursor = song.doc.arrangement.clips.reduce((cursor, clip) => {
+      expect(clip.startBar).toBe(cursor);
+      return cursor + clip.lengthBars;
+    }, 0);
+    expect(barCursor).toBe(song.totalBars);
+    // At least one section pattern carries generated steps.
+    const hasContent = song.doc.patterns.some((pattern) =>
+      Object.values(pattern.rows).some((row) => row.some((v) => v > 0)),
+    );
+    expect(hasContent).toBe(true);
+    const decoded = decodeShareCode((await import("../src/export/shareCode")).encodeShareCode(song.doc));
+    expect(decoded).not.toBeNull();
+    expect(decoded!.arrangement.clips.length).toBe(song.sections);
+  }, 30000);
+
+  it("defaults to the short form; an explicit extended ask builds more bars", async () => {
+    const short = await generateLandingSong("deep house 124");
+    const extended = await generateLandingSong("deep house 124 extended mix");
+    expect(short.totalBars).toBeGreaterThan(0);
+    expect(extended.totalBars).toBeGreaterThan(short.totalBars);
+  }, 60000);
+
+  it("reports per-section progress while forging", async () => {
+    const seen: Array<{ done: number; label: string; total: number }> = [];
+    const song = await generateLandingSong("deep house 124", undefined, (done, label, total) =>
+      seen.push({ done, label, total }),
+    );
+    expect(seen.length).toBe(song.sections);
+    expect(seen.map((s) => s.done)).toEqual(
+      song.sections > 0 ? Array.from({ length: song.sections }, (_, i) => i + 1) : [],
+    );
+    for (const s of seen) expect(s.total).toBe(song.sections);
+    expect(seen[0].label.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("an aborted song forge rejects instead of touching state", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(generateLandingSong("hard techno 145", controller.signal)).rejects.toThrow();
+  }, 30000);
+});
+
 /* ------------------------------------------------------------------ */
 /* LandingPrompt component — forge → handoff wiring                    */
 /* ------------------------------------------------------------------ */
@@ -156,6 +211,27 @@ describe("LandingPrompt", () => {
     expect(handoff!.prompt).toBe("dark trap 140");
     expect(handoff!.code.length).toBeGreaterThan(16);
   }, 30000);
+
+  it("♪ Song forges an arranged song and hands it off the same way", async () => {
+    const onEnterStudio = vi.fn();
+    render(<LandingPrompt onEnterStudio={onEnterStudio} />);
+    const input = screen.getByLabelText(/describe the beat you want/i);
+    fireEvent.change(input, { target: { value: "deep house 124" } });
+    fireEvent.click(screen.getByRole("button", { name: /♪ song/i }));
+
+    const openBtn = await screen.findByRole("button", { name: /open in studio/i }, { timeout: 60000 });
+    // Song draft label proves the full form built (not a single loop).
+    expect(document.querySelector(".landing-prompt-hint")?.textContent ?? "").toMatch(/sections/);
+
+    fireEvent.click(openBtn);
+    expect(onEnterStudio).toHaveBeenCalledTimes(1);
+    const handoff = takePendingHandoff();
+    expect(handoff).not.toBeNull();
+    expect(handoff!.prompt).toBe("deep house 124");
+    const decoded = decodeShareCode(handoff!.code);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.arrangement.clips.length).toBeGreaterThanOrEqual(4);
+  }, 60000);
 
   it("a normal prompt resolves with busy-state cleared and no error alert", async () => {
     const onEnterStudio = vi.fn();

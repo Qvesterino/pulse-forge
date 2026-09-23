@@ -174,6 +174,8 @@ class ReverseSwellProcessor extends AudioWorkletProcessor {
       // Wet tone trim (one-pole LP per channel) before the envelope.
       this.toneLpL += (wetL - this.toneLpL) * this.toneCoef;
       this.toneLpR += (wetR - this.toneLpR) * this.toneCoef;
+      if (this.toneLpL > -1e-20 && this.toneLpL < 1e-20) this.toneLpL = 0;
+      if (this.toneLpR > -1e-20 && this.toneLpR < 1e-20) this.toneLpR = 0;
 
       // The smoothed envelope drives the whole gesture: idle (env 0) passes
       // the track through untouched, and as the swell rises the dry signal is

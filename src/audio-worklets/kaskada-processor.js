@@ -846,14 +846,17 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         wetR = this.readBuffer(R, writeIdx - delayPos - wobR);
       }
 
-      // One-pole DC block
+      // One-pole DC block (dcCoef ≈ 0.9994 — denormal decay is the slowest
+      // in the fleet, so flush the state as it hits the subnormal range).
       let dc = wetL - this.dcxL + this.dcCoef * this.dcyL;
       this.dcxL = wetL;
       this.dcyL = dc;
+      if (this.dcyL > -1e-20 && this.dcyL < 1e-20) this.dcyL = 0;
       wetL = dc;
       dc = wetR - this.dcxR + this.dcCoef * this.dcyR;
       this.dcxR = wetR;
       this.dcyR = dc;
+      if (this.dcyR > -1e-20 && this.dcyR < 1e-20) this.dcyR = 0;
       wetR = dc;
 
       // Character colour (per-repeat darkening in feedback)
@@ -861,6 +864,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
         // Tape: one-pole LP + mild saturation
         this.charLpz += this.charLpCoef * (wetL - this.charLpz);
         this.charRpz += this.charLpCoef * (wetR - this.charRpz);
+        if (this.charLpz > -1e-20 && this.charLpz < 1e-20) this.charLpz = 0;
+        if (this.charRpz > -1e-20 && this.charRpz < 1e-20) this.charRpz = 0;
         wetL = this.charLpz;
         wetR = this.charRpz;
       } else if (character === 2) {

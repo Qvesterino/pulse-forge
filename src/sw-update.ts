@@ -18,6 +18,7 @@
  * tests or hot reloads.
  */
 import { registerSW } from "virtual:pwa-register";
+import { isMicRecordingActive } from "./audio-engine/PcmMicRecorder";
 
 let update: (reloadPage?: boolean) => Promise<void> = async () => {};
 
@@ -46,6 +47,13 @@ export function initSwUpdate(): void {
       reload.className = "btn btn-small";
       reload.textContent = "RELOAD";
       reload.addEventListener("click", () => {
+        // Audit 14 D2: never reload mid-recording - the take is recoverable
+        // but the banner must not invite a session-kill. The banner re-checks
+        // on the next visibility/poll cycle.
+        if (isMicRecordingActive()) {
+          label.textContent = "Finish recording first";
+          return;
+        }
         void update(true).catch(() => undefined);
       });
       const dismiss = document.createElement("button");

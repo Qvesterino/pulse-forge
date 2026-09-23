@@ -821,6 +821,13 @@ export class AudioEngine {
     this.stretchProjectId = null;
     this.macroCache.clear();
     this.syncedBpm = 0;
+    // Warp buffers/stretches hold context-era AudioBuffers AND rate-dependent
+    // pre-renders: after a device change (44.1 → 48 kHz) a stale entry would
+    // play off-pitch. setProject clears these too — but a bare context swap
+    // (contextlost recovery) never runs setProject.
+    this.warpCache.clear();
+    this.warpInflight.clear();
+    this.warpEpoch++;
     this.ctx = ctx;
     this.buildMaster();
     if (this.doc) this.syncProject(this.doc);
@@ -2975,20 +2982,30 @@ export class AudioEngine {
     this.warpInflight.add(job.key);
     const channels: Float32Array[] = [];
     for (let c = 0; c < job.src.numberOfChannels; c++) channels.push(Float32Array.from(job.src.getChannelData(c)));
-    renderWarpPreserveAsync(channels, job.sampleRate, job.intervals, job.outLen).then((rendered) => {
-      this.warpInflight.delete(job.key);
-      const ctx = this.ctx;
-      if (rendered.length === 0 || this.warpEpoch !== epoch || !ctx || ctx !== warmCtx) return;
-      try {
-        const buf = ctx.createBuffer(rendered.length, job.outLen, job.sampleRate);
-        rendered.forEach((ch, i) => {
-          if (i < buf.numberOfChannels) buf.getChannelData(i).set(ch.subarray(0, job.outLen));
-        });
-        this.storeWarpBuffer(job.key, buf);
-      } catch {
-        /* context died mid-render */
-      }
-    });
+    // Audit 12 D1: ALWAYS release the in-flight claim — a rejected render
+    // (worker onerror falling into a throwing runSync) used to leave the key
+    // claimed forever, silently starving every later re-warm of this clip
+    // into repitch fallback for the rest of the session.
+    renderWarpPreserveAsync(channels, job.sampleRate, job.intervals, job.outLen)
+      .catch((error) => {
+        console.warn("[audio-engine] background warp render failed:", error);
+        return null;
+      })
+      .then((rendered) => {
+        this.warpInflight.delete(job.key);
+        if (!rendered) return;
+        const ctx = this.ctx;
+        if (rendered.length === 0 || this.warpEpoch !== epoch || !ctx || ctx !== warmCtx) return;
+        try {
+          const buf = ctx.createBuffer(rendered.length, job.outLen, job.sampleRate);
+          rendered.forEach((ch, i) => {
+            if (i < buf.numberOfChannels) buf.getChannelData(i).set(ch.subarray(0, job.outLen));
+          });
+          this.storeWarpBuffer(job.key, buf);
+        } catch {
+          /* context died mid-render */
+        }
+      });
   }
 
   previewNote(trackId: string, pitch: number): void {

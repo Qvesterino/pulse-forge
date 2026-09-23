@@ -337,6 +337,13 @@ export async function createCoreServices(): Promise<CoreServices> {
   // Export paths await `curatedReady()` so renders use the intended sound.
   void ensureCuratedLayer(bank);
   const library = new LibraryRepository();
+  // Audit 14 D1: best-effort durable storage - without persist() iOS Safari
+  // may evict ALL projects after ~7 days of non-use. Silent if refused.
+  try {
+    void navigator.storage?.persist?.().catch(() => undefined);
+  } catch {
+    /* unsupported - best-effort only */
+  }
   const userKits = new KitRepository();
   const groovePool = new GroovePoolRepository();
   void library.load();
@@ -374,6 +381,8 @@ export async function openProject(
   initial: ProjectDocument,
   options: OpenProjectOptions = {},
 ): Promise<Services> {
+  /** Audit 13 INFO: collab sync-guard handle — cleared in closeProject. */
+  let syncGuardTimerRef: ReturnType<typeof setTimeout> | null = null;
   const generativeProviders = core.generativeProviders ?? new GenerativeProviderRegistry();
   const { engine, repo, bank, library, userKits, groovePool, latency, snapshots } = core;
   const generativeLatency = core.generativeLatency ?? new GenerativeLatencyCalibrationController();
@@ -399,13 +408,13 @@ export async function openProject(
     // the room and defeat the adopt decision).
     store = YDocStoreImpl.empty(initial);
     collab = new CollabSessionImpl((store as YDocStore).yDocRef, collabConfig.roomId, collabConfig.serverUrl);
-    const syncGuardTimer: ReturnType<typeof setTimeout> = setTimeout(() => {
+    syncGuardTimerRef = setTimeout(() => {
       // Relay unreachable — degrade to the old self-seeding behavior rather
       // than wedging editing behind a buffered queue forever.
       (store as YDocStore).markSyncFailed();
     }, 8_000);
     collab.onFirstSync((hasRemote) => {
-      clearTimeout(syncGuardTimer);
+      if (syncGuardTimerRef) clearTimeout(syncGuardTimerRef);
       if (hasRemote) {
         // Offline-adopt safety net (GOAL 06): edits made while the websocket
         // was down live only in this tab's local copy — adopting the room
@@ -592,12 +601,12 @@ export async function openProject(
         if (!state.playing) {
           scheduler.stop();
           engine.panic();
-          void generativeRuntimeRef?.stopAll();
+          generativeRuntimeRef?.stopAll().catch((err) => console.warn("[generative] remote stopAll failed:", err));
         }
         applyTransportState(transport, state, Date.now() / 1000);
         if (shouldStartScheduler) {
           scheduler.start();
-          void generativeRuntimeRef?.startAll();
+          generativeRuntimeRef?.startAll().catch((err) => console.warn("[generative] remote startAll failed:", err));
         } else if (wasPlaying && state.playing) scheduler.resync();
         // A REMOTE pulse mutates the transport from outside the controller —
         // without this, the TopBar play button (and every playback
@@ -939,7 +948,14 @@ export async function openProject(
     // playback was running across the hide, re-anchor the scheduler's
     // window origin to the live playhead so it does not try to
     // schedule the events that piled up during the suspended gap.
-    engine.ensureContext();
+    // Audit 13 D4: ensureContext throws synchronously when the browser
+    // refuses a realtime context (device loss, iOS cap) — an uncaught throw
+    // here would also skip the scheduler resync and generative resume.
+    try {
+      engine.ensureContext();
+    } catch (error) {
+      console.warn("[services] context resume on visible failed:", error);
+    }
     if (transport.playing) {
       scheduler.resync();
       resumeGenerativeAfterContext();
@@ -966,6 +982,12 @@ export async function openProject(
     await generativeRuntime.dispose();
     playback.stop();
     collab?.dispose();
+    // Audit 13 INFO: the 8s sync-guard must not fire against a disposed
+    // session (it would flush buffered commands into a dead Y.Doc).
+    if (syncGuardTimerRef) {
+      clearTimeout(syncGuardTimerRef);
+      syncGuardTimerRef = null;
+    }
     midi.stop();
     midiClock.dispose();
     midiOutput.dispose();

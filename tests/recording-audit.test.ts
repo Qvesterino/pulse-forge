@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { PatternRecorder } from "../src/midi/patternRecorder";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";

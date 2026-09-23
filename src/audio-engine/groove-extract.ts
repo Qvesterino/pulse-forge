@@ -65,7 +65,10 @@ export function extractGroove(data: Float32Array, sampleRate: number, bpm: numbe
     }
     return { time: best / sampleRate, strength: bestV };
   });
-  const maxStrength = Math.max(...refined.map((r) => r.strength), 1e-9);
+  // Audit 12 D4: a spread over ~65k+ onsets exceeds the JS argument limit
+  // (RangeError) — loop instead. Latent for hour-long material only.
+  let maxStrength = 1e-9;
+  for (const r of refined) maxStrength = Math.max(maxStrength, r.strength);
 
   // Bar phase: the strongest onset anchors step 0 (a loop's downbeat is its
   // loudest attack far more often than its literal first sample).

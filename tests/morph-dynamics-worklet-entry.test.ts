@@ -230,6 +230,57 @@ describe("Morph Dynamics worklet and analysis", () => {
     expect(outputR[0]).toBe(0);
   });
 
+  it("survives a MONO input (single channel) and folds the stereo result back — regression", () => {
+    // Audit 12 P2: the core used to alias R onto L for mono input, so the
+    // right-channel result overwrote the left mid-block. The worklet entry
+    // always passes 2 channels, but the core contract must not corrupt the
+    // caller's buffer when only one is supplied.
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const proc = new Processor();
+    let outL = new Float32Array(BLOCK);
+    for (let block = 0; block < 40; block++) {
+      const inputL = new Float32Array(BLOCK);
+      for (let frame = 0; frame < BLOCK; frame++) {
+        inputL[frame] = 0.3 * Math.sin(2 * Math.PI * 330 * ((block * BLOCK + frame) / 48_000));
+      }
+      const outputL = new Float32Array(BLOCK);
+      const outputR = new Float32Array(BLOCK);
+      proc.process([[inputL]], [[outputL, outputR]]); // mono: single input channel
+      outL = outputL;
+    }
+    for (let i = 0; i < BLOCK; i++) {
+      expect(Number.isFinite(outL[i])).toBe(true);
+    }
+    // The sine fed the whole time — the downmix must carry signal.
+    let peak = 0;
+    for (const v of outL) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeGreaterThan(0.001);
+  });
+
+  it("handles a render quantum that is not 128 (chunked core loop)", () => {
+    (globalThis as typeof globalThis & { sampleRate: number }).sampleRate = 48_000;
+    workletTime = 0;
+    const proc = new Processor();
+    const frames = 37; // prime-sized quantum, deliberately != BLOCK
+    for (let block = 0; block < 30; block++) {
+      const inputL = new Float32Array(frames);
+      const inputR = new Float32Array(frames);
+      for (let frame = 0; frame < frames; frame++) {
+        const time = (block * frames + frame) / 48_000;
+        inputL[frame] = 0.25 * Math.sin(2 * Math.PI * 440 * time);
+        inputR[frame] = inputL[frame];
+      }
+      const outputL = new Float32Array(frames);
+      const outputR = new Float32Array(frames);
+      proc.process([[inputL, inputR]], [[outputL, outputR]]);
+      for (let i = 0; i < frames; i++) {
+        expect(Number.isFinite(outputL[i])).toBe(true);
+        expect(Number.isFinite(outputR[i])).toBe(true);
+      }
+    }
+  });
+
   it("reads the external sidechain from node input 2 (inputs[1]) — regression", () => {
     // The feed used to be read from inputs[0][2+c] — channels that cannot
     // exist (explicit channelCount 2) — so dyn.sidechainExt ducked against

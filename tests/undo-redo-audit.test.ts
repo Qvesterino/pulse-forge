@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
@@ -46,7 +45,6 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-type CommandFactory = (doc: ProjectDocument, rnd: () => number) => { make: () => ReturnType<typeof import("../src/commands/commands").setBpm> } | null;
 
 /** Command pool — every entry validates against the CURRENT doc before
  * returning a factory; anything invalid for this state is skipped (the
@@ -54,7 +52,6 @@ type CommandFactory = (doc: ProjectDocument, rnd: () => number) => { make: () =>
 function commandPool(): Array<(doc: ProjectDocument, rnd: () => number) => (() => ProjectDocument) | null> {
   const pick = <T>(arr: readonly T[], rnd: () => number): T => arr[Math.floor(rnd() * arr.length)]!;
   const instrument = (doc: ProjectDocument) => doc.tracks.find((t) => t.kind === "instrument")!.id;
-  const drum = (doc: ProjectDocument) => doc.tracks.find((t) => t.kind === "drum")!.id;
 
   return [
     // notes
@@ -77,7 +74,7 @@ function commandPool(): Array<(doc: ProjectDocument, rnd: () => number) => (() =
       const notes = doc.patterns.find((p) => p.id === doc.activePatternId)?.notes?.[trackId] ?? [];
       if (notes.length === 0) return null;
       const note = pick(notes, rnd);
-      return () => moveNote(doc, trackId, note.id, { tick: Math.floor(rnd() * 8) * 120 }).execute(doc);
+      return () => moveNote(doc, trackId, note.id, { start: Math.floor(rnd() * 8) * 120 }).execute(doc);
     },
     // steps
     (doc, rnd) => {
@@ -93,10 +90,8 @@ function commandPool(): Array<(doc: ProjectDocument, rnd: () => number) => (() =
       return () => setTrackParams(doc, trackId, { gain: Math.round(rnd() * 30) / 20 }).execute(doc);
     },
     (doc) => {
-      const trackId = instrument(doc);
       return () => setBpm(doc, 100 + Math.floor(Math.random() * 40)).execute(doc);
-    },
-    // plugins
+    }, // plugins
     (doc, rnd) => {
       const trackId = instrument(doc);
       const type = pick(["delay", "chorus", "compressor"] as const, rnd);
@@ -112,9 +107,8 @@ function commandPool(): Array<(doc: ProjectDocument, rnd: () => number) => (() =
         : () => moveEffectToIndex(doc, trackId, fx.id, Math.floor(rnd() * effects.length)).execute(doc);
     },
     // automation
-    (doc, rnd) => {
-      const trackId = instrument(doc);
-      return () => addSceneAutomation(doc, doc.scenes[0]!.id, { kind: "trackGain", trackId }).execute(doc);
+    (doc) => {
+      return () => addSceneAutomation(doc, doc.scenes[0]!.id, { kind: "trackGain", trackId: doc.tracks[0]!.id }).execute(doc);
     },
     (doc, rnd) => {
       const lane = pick(doc.automation, rnd);

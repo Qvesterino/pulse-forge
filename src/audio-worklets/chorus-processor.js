@@ -153,6 +153,16 @@ class ChorusProcessor extends AudioWorkletProcessor {
     for (const buf of this.bufs) {
       if (Math.abs(buf[this.writeIdx]) < 1e-20) buf[this.writeIdx] = 0;
     }
+    // Full-ring sweep once per wrap — feedback parks old slots in the
+    // subnormal range where the cubic read stalls; the per-block flush
+    // above only ever covers one slot per buffer.
+    if (this.writeIdx === 0) {
+      for (const buf of this.bufs) {
+        for (let i = 0; i < CHORUS_RING; i++) {
+          if (buf[i] > -1e-20 && buf[i] < 1e-20) buf[i] = 0;
+        }
+      }
+    }
 
     return true;
   }

@@ -101,6 +101,7 @@ describe("PlaybackController generative lifecycle", () => {
       { start: vi.fn(), stop: vi.fn(), resync: vi.fn() } as never,
       { mode: "pattern" },
       () => ({}) as never,
+      () => undefined, // applyPattern — added by concurrent session's signature
     );
     controller.attachGenerativeLifecycle(lifecycle);
 

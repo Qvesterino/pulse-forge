@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject, normalizeStepCount } from "../src/project-model/schema";
-import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
   addSceneAutomation,

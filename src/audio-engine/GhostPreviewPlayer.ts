@@ -61,10 +61,13 @@ export class GhostPreviewPlayer {
     this.transport.play();
     const pos = ((this.transport.position % PPQ) + PPQ) % PPQ;
     const beatPhase = pos / PPQ;
+    // Audit 12 D5: ensureContext BEFORE mutating player state — if it
+    // throws, isPlaying() stayed true with no timer (DiceTray lied) and all
+    // tempo-synced FX were re-phased for a preview that never sounds.
+    this.engine.ensureContext();
     this.engine.transportStarted(this.engine.currentTime, beatPhase, this.transport.position / PPQ);
     this.windowStart = 0;
     this.playing = true;
-    this.engine.ensureContext();
     this.timer = setInterval(() => this.tick(), 25);
     this.tick();
   }

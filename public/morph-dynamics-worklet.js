@@ -1749,7 +1749,8 @@
       }
       const q = this.params;
       const L = inputs[0];
-      const R = inputs[1] ?? inputs[0];
+      const mono = !inputs[1] || inputs[1] === inputs[0];
+      const R = mono ? new Float32Array(frames) : inputs[1];
       this.advanceMorph(frames / this.sampleRate);
       const Pn = q[MACRO_PRESSURE_ID] / 100;
       const dynScale = Pn;
@@ -1953,6 +1954,9 @@
           if (aIn > inPeak) inPeak = aIn;
           if (aOut > outPeak) outPeak = aOut;
         }
+      }
+      if (mono) {
+        for (let i = 0; i < frames; i++) L[i] = (L[i] + R[i]) * 0.5;
       }
       const last = frames - 1;
       if (!Number.isFinite(L[0]) || !Number.isFinite(R[0]) || !Number.isFinite(L[last]) || !Number.isFinite(R[last])) {

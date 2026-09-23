@@ -234,6 +234,11 @@ class VinylProcessor extends AudioWorkletProcessor {
       // Click shaping: one-pole LP at CRACKLE TONE (removes the dull thump).
       this.crackleLpState[0] += (popNoiseL - this.crackleLpState[0]) * crackleLpCoef;
       this.crackleLpState[1] += (popNoiseR - this.crackleLpState[1]) * crackleLpCoef;
+      // Denormal flush — pop envelopes decay exponentially into denormals.
+      if (this.popEnvL < 1e-20) this.popEnvL = 0;
+      if (this.popEnvR < 1e-20) this.popEnvR = 0;
+      if (this.crackleLpState[0] > -1e-20 && this.crackleLpState[0] < 1e-20) this.crackleLpState[0] = 0;
+      if (this.crackleLpState[1] > -1e-20 && this.crackleLpState[1] < 1e-20) this.crackleLpState[1] = 0;
 
       // --- Hiss: continuous filtered noise floor (per channel) ---
       let hissL = 0;
@@ -284,6 +289,15 @@ class VinylProcessor extends AudioWorkletProcessor {
       this.toneLpState[1] += (this.yearHpState[1] - this.toneLpState[1]) * toneLpCoef;
       this.toneHpState[1] = (1 - toneHpCoef) * (this.toneHpState[1] + this.toneLpState[1] - this.toneHpPrev[1]);
       this.toneHpPrev[1] = this.toneLpState[1];
+      // Denormal flush — the year/tone chains run on silence too.
+      if (this.yearLpState[0] > -1e-20 && this.yearLpState[0] < 1e-20) this.yearLpState[0] = 0;
+      if (this.yearLpState[1] > -1e-20 && this.yearLpState[1] < 1e-20) this.yearLpState[1] = 0;
+      if (this.yearHpState[0] > -1e-20 && this.yearHpState[0] < 1e-20) this.yearHpState[0] = 0;
+      if (this.yearHpState[1] > -1e-20 && this.yearHpState[1] < 1e-20) this.yearHpState[1] = 0;
+      if (this.toneLpState[0] > -1e-20 && this.toneLpState[0] < 1e-20) this.toneLpState[0] = 0;
+      if (this.toneLpState[1] > -1e-20 && this.toneLpState[1] < 1e-20) this.toneLpState[1] = 0;
+      if (this.toneHpState[0] > -1e-20 && this.toneHpState[0] < 1e-20) this.toneHpState[0] = 0;
+      if (this.toneHpState[1] > -1e-20 && this.toneHpState[1] < 1e-20) this.toneHpState[1] = 0;
       let trimL = this.toneHpState[0];
       let trimR = this.toneHpState[1];
 
