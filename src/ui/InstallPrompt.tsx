@@ -62,7 +62,7 @@ export function InstallPrompt() {
       <span className="install-prompt-icon">◈</span>
       <span className="install-prompt-text">
         Install KYX
-        <small>Offline-ready · launches like a native app</small>
+        <small>Offline-ready · your projects stay on this device — installing protects them from cleanup</small>
       </span>
       <button type="button" className="btn btn-small" onClick={() => void install()}>
         INSTALL

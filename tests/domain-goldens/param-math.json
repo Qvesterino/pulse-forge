@@ -284,6 +284,26 @@
           }
         },
         {
+          "kind": "flute",
+          "defaults": {
+            "wave": 0,
+            "breath": 0.3,
+            "breathTone": 2200,
+            "vibrato": 0.25,
+            "vibRate": 5,
+            "vibDelay": 0.35,
+            "glide": 0.2,
+            "overblow": 0.15,
+            "formant": 3200,
+            "drive": 0,
+            "attack": 0.06,
+            "decay": 0.5,
+            "sustain": 0.8,
+            "release": 0.25,
+            "level": -8
+          }
+        },
+        {
           "kind": "logdrum",
           "defaults": {
             "decay": 1.1,
@@ -1203,6 +1223,28 @@
         0.5,
         1,
         1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam flute:wave",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "flute",
+        "paramId": "wave",
+        "probes": [
+          -100,
+          0,
+          1,
+          2,
+          102
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        1,
+        2,
+        2
       ]
     },
     {

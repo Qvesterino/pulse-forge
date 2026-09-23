@@ -21,6 +21,12 @@ export function semanticMode(): SemanticMode {
   } catch {
     /* storage blocked — default below */
   }
+  // GOAL 10 (mobile): the ~118 MB q8 model is opt-OUT on constrained
+  // devices — save-data / low-memory browsers keep the keyword parser
+  // unless the user explicitly opts in via the flag above.
+  const nav = navigator as { connection?: { saveData?: boolean }; deviceMemory?: number };
+  if (nav.connection?.saveData === true) return "off";
+  if (typeof nav.deviceMemory === "number" && nav.deviceMemory > 0 && nav.deviceMemory <= 4) return "off";
   return "on";
 }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { openProject } from "../src/services";
 import type { CoreServices } from "../src/services";
-import { MidiInput } from "../src/midi/MidiInput";
 import { LatencyCalibrationController } from "../src/audio-engine/latencyCalibration";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { setBpm } from "../src/commands/commands";
@@ -48,6 +47,8 @@ function makeEngine(): AudioEngine {
     transportStarted: vi.fn(),
     restartFrozenSources: vi.fn(),
     setEffectiveBpm: vi.fn(),
+    // MRT2 context lifecycle (concurrent session's openProject wiring)
+    subscribeLiveContext: vi.fn(() => () => undefined),
   } as unknown as AudioEngine;
 }
 

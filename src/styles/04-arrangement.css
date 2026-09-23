@@ -1014,3 +1014,14 @@
     max-height: calc(100vh - 16px);
   }
 }
+
+/* ---------- Mobile readiness (GOAL 10) ---------- */
+/* Clip/fade/warp/marker drags live inside .arr-lane-scroll (overflow-x).
+   The drag surfaces opt out of touch panning; empty lane space keeps it. */
+.arr-clip,
+.arr-audio-clip,
+.arr-ruler {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

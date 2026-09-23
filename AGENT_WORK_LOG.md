@@ -3744,3 +3744,30 @@ audit doc.
 - **A/B gate s v3 (verdikt RECOMMEND-ON):** mood-only páry v3 0.53/0.46 (v1 slepý 0) ✓; style-varying páry v3 **2.08/3.07 — OSTREJŠIE než v1** (1.44/1.45) — kanály sa sčítavajú ✓; functional ✓.
 - **FLIP: `pf:embedding-conditioned` default ON.** Runtime degraduje v3 → v2 → v1 per candidate (offline/bez modelov = čisté v1), takže ON je low-risk. Testy upravené (empty-storage default = on; off-scenáre explicitný setItem).
 - **Testy**: prior-embedding (v3 chain: 60-dim batch, v3+v2 fallback, flag-off čisté v1), melodic v3 mock. Regresia **250/250 cez 25 súborov**; typecheck 0.
+
+---
+
+## GOAL 10 (cross-platform campaign) — Mobile readiness audit (2026-09-22)
+
+**Goal executed:** Audit assumptions that break on Android/iOS tablets and phones (touch/pointer/hover/keyboard + lifecycle/background/memory/eviction/PWA/export/MIDI), classify per campaign (portable / UI adaptation / native / blocker), fix blockers where safe. No UI redesign.
+
+**Headline: ZERO architecture blockers.** The audio-lifecycle core survives mobile-style suspension without reload (scheduler gate + re-anchor + contextlost/restored + recording interruption recovery with iOS-specific resume timeout), the PWA boots offline (worklets + curated samples precached), rotation/resize is clean (no fixed-width landmines, container queries, phone bottom sheet), and much touch sizing existed already (pointer:coarse in three panels, long-press menus on grid/notes/pads/sliders, 44 px pads with two-finger drumming).
+
+**Fixed (small and safe):**
+
+1. **Piano roll drag/scroll fight** — `.pianoroll-grid/.pr-note/.pr-velocity-lane/.pr-vel-bar` had no `touch-action`: note and velocity drags were hijacked by the roll's scroll on touch. Fixed (+ user-select), scroll keeps working on empty space.
+2. **Arrangement + automation canvas same fight** — `.arr-clip/.arr-audio-clip/.arr-ruler/.auto-canvas` → `touch-action: none` (the lane keeps panning on empty space).
+3. **Untouchable targets** — `.pr-note` (10 px) and `.pr-vel-bar` (8 px) get invisible `::before` inset hit pads on `pointer: coarse` (house pattern from `.step-amount-track`).
+4. **Notch/home indicator** — base shell had no safe-area padding → `.topbar`/`.statusbar` get `env(safe-area-inset-*)`.
+5. **iOS IndexedDB eviction (~7-day rule) had zero mitigation** — `navigator.storage.persist()` now called best-effort at project boot; InstallPrompt carries the data-safety line ("your projects stay on this device — installing protects them from cleanup").
+6. **118 MB semantic model was default-ON on constrained devices** — `semanticMode()` defaults **off** when `connection.saveData` or `deviceMemory ≤ 4`; explicit flag still wins; offline/mobile users keep the keyword parser (existing fallback).
+
+**Queued UI adaptations (recipe documented, needs a session):** right-click-only workflows are dead on iOS (audio-clip menu, delete clip/markers/automation points, marquee select — `useLongPress` is the generic in-repo pattern to reuse); add-marker is shift+click only (needs a tappable ruler control); collab "offline — edits stay local" wording (syncPhase has no UI consumer); Diagnostics heap row Chromium-only label.
+
+**Requires native:** Web MIDI absence on some iOS versions degrades silently (correct); data safety beyond storage.persist → iOS "Add to Home Screen" hint. **Recorded:** memory residents at boot (synth factory bank eager — deferral candidate), `performance.memory` Chromium-only.
+
+**Important files changed:** docs/MOBILE-READINESS.md (new), src/styles/{02-sequencer,04-arrangement,05-drop-zone,01-base}.css, src/ai/semantic/semantic-client.ts (device gate), src/ui/InstallPrompt.tsx (copy), src/services.ts (storage.persist — mixed file, rides for absorption), tests/persistence/groove-pool.test.ts (createdAt type fix), tests/services-save-drain.test.ts (fake engine grew `subscribeLiveContext` for the concurrent session's new openProject wiring), tests/domain-goldens/param-math.json (recaptured: their flute instrument landed → 34 cases — the parity pin caught the domain change exactly as designed).
+
+**Validation:** App/Goldens/save-drain/fault-containment/velocity/persistence = 81+ green; tsc 0 campaign errors. ModPanel.test still hangs (theirs).
+
+**Recommendations for next session (GOAL 11 — platform capability matrix):** mostly SYNTHESIS — the campaign produced PORTABILITY_MAP, PLATFORM-CONTRACTS, STATE-MACHINES, PERSISTENCE-SCHEMAS, FAULT-CONTAINMENT, MOBILE-READINESS, GOLDEN-PARITY. Build `PLATFORM_CAPABILITY_MATRIX.md` per goal spec: per capability (project model, persistence, audio engine, filesystem, file picker, sharing, clipboard, notifications, permissions, background tasks, rendering, networking, import/export) × {web impl, Android expectation, iOS expectation, shared domain logic, required adapter, limitations, migration risk} — every cell sourced from the existing docs, no new claims. Read CAMPAIGN_STATE.md first.

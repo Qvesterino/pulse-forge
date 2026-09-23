@@ -1053,3 +1053,32 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--bg) 65%, transparent);
 }
+
+
+/* ---------- Mobile readiness (GOAL 10) ---------- */
+/* Note and velocity drags must not fight the roll's scroll on touch.
+   Children of .pianoroll-scroll — the scroll itself keeps working on
+   empty space. */
+.pianoroll-grid,
+.pr-note,
+.pr-velocity-lane,
+.pr-vel-bar {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (pointer: coarse) {
+  /* 10 px notes and 8 px bars are untouchable on a tablet — invisible
+     inset hit pads (no visual change). */
+  .pr-note::before {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
+  .pr-vel-bar::before {
+    content: "";
+    position: absolute;
+    inset: 0 -6px;
+  }
+}

@@ -865,3 +865,13 @@ button {
   transition: height 0.08s linear;
   border-radius: 2px;
 }
+
+/* ---------- Mobile readiness (GOAL 10) ---------- */
+/* Standalone iOS with viewport-fit=cover: keep the top bar and the status
+   bar clear of the notch / home indicator. */
+.topbar {
+  padding-top: env(safe-area-inset-top);
+}
+.statusbar {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1020,3 +1020,10 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+
+/* ---------- Mobile readiness (GOAL 10) ---------- */
+/* Automation point drags must not pan the page on touch. */
+.auto-canvas {
+  touch-action: none;
+}

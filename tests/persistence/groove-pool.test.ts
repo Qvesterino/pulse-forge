@@ -11,7 +11,14 @@ import { openDb, STORE_GROOVE_POOL, tx } from "../../src/persistence/db";
  */
 
 function entry(id: string, createdAt: number) {
-  return { id, name: `Groove ${id}`, timing: [0, 0.5, 0.25], accent: [1, 0.6], createdAt };
+  // createdAt is an ISO string in the store — ordering is lexicographic.
+  return {
+    id,
+    name: `Groove ${id}`,
+    timing: [0, 0.5, 0.25],
+    accent: [1, 0.6],
+    createdAt: new Date(createdAt).toISOString(),
+  };
 }
 
 describe("GroovePoolRepository (GOAL 08 risk coverage)", () => {
