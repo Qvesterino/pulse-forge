@@ -252,11 +252,12 @@ describe("applySongCommand — cue lane + genre kit (one undo step)", () => {
     const drill = applySongCommand(testDoc(), fakeBuild("drill", "a", 140)).execute(testDoc());
     const drillPads = drill.tracks.find((t) => t.kind === "drum")!.pads;
     expect(drillPads[0]).toMatchObject({ assetId: "factory.kick.drill", name: "Kick 808" });
-    expect(drillPads[4].assetId).toBe("factory.snare.trap");
+    expect(drillPads[4].assetId).toBe("factory.snare.drill");
 
     const phonk = applySongCommand(testDoc(), fakeBuild("phonk", "a", 136)).execute(testDoc());
     const phonkPads = phonk.tracks.find((t) => t.kind === "drum")!.pads;
     expect(phonkPads[0].assetId).toBe("factory.kick.phonk");
+    expect(phonkPads[4].assetId).toBe("factory.snare.phonk");
     expect(phonkPads[15]).toMatchObject({ assetId: "factory.perc.cowbell", name: "Cowbell" });
 
     // house leaves the default kit alone
@@ -424,12 +425,12 @@ describe("jersey + dnb genre plumbing (wave 2)", () => {
     const jersey = applyGenreKitToDoc(testDoc(), "jersey");
     const jerseyPads = jersey.tracks.find((t) => t.kind === "drum")!.pads;
     expect(jerseyPads[0].assetId).toBe("factory.kick.jersey");
-    expect(jerseyPads[4].assetId).toBe("factory.snare.punch");
+    expect(jerseyPads[4].assetId).toBe("factory.snare.jersey");
 
     const dnb = applyGenreKitToDoc(testDoc(), "dnb");
     const dnbPads = dnb.tracks.find((t) => t.kind === "drum")!.pads;
     expect(dnbPads[0].assetId).toBe("factory.kick.dnb");
-    expect(dnbPads[4].assetId).toBe("factory.snare.punch");
+    expect(dnbPads[4].assetId).toBe("factory.snare.dnb");
     expect(dnbPads[9].assetId).toBe("factory.hat.pedal");
 
     expect(applyGenreKitToDoc(dnb, "dnb")).toBe(dnb);

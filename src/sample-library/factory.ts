@@ -149,6 +149,121 @@ function snare(toneHz: number, toneDecay: number, noiseDecay: number, noiseHz: n
   };
 }
 
+/** Hard crack snare: short bright tone + hard bandpassed noise + a click
+ * transient on top — the drill/jersey backbeat character (reads through a
+ * dense mix at 140+ BPM where a longer snare smears). */
+function snareCrack(opts: {
+  toneHz: number;
+  toneDecay: number;
+  noiseHz: number;
+  noiseDecay: number;
+  click: number;
+  seed: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(opts.toneHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(opts.toneHz * 0.62, t0 + opts.toneDecay);
+    osc.connect(env(ctx, t0, 0.72, opts.toneDecay)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + opts.toneDecay + 0.02);
+    const noise = noiseSource(ctx, opts.seed, opts.noiseDecay + 0.05, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = opts.noiseHz;
+    bp.Q.value = 1.4;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.85, opts.noiseDecay))
+      .connect(dest);
+    if (opts.click > 0) {
+      const click = noiseSource(ctx, opts.seed + 1, 0.015, t0);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 3000;
+      click
+        .connect(hp)
+        .connect(env(ctx, t0, opts.click, 0.012))
+        .connect(dest);
+    }
+  };
+}
+
+/** Dusty snare: tone through a lowpass + dark softened noise — phonk/lo-fi
+ * backbeat (the noise reads as tape grit, not bristle). */
+function snareDusty(opts: {
+  toneHz: number;
+  toneDecay: number;
+  noiseHz: number;
+  noiseDecay: number;
+  seed: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(opts.toneHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(opts.toneHz * 0.6, t0 + opts.toneDecay);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 2600;
+    osc
+      .connect(env(ctx, t0, 0.7, opts.toneDecay))
+      .connect(lpf)
+      .connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + opts.toneDecay + 0.02);
+    const noise = noiseSource(ctx, opts.seed, opts.noiseDecay + 0.05, t0);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = opts.noiseHz;
+    noise
+      .connect(lp)
+      .connect(env(ctx, t0, 0.75, opts.noiseDecay))
+      .connect(dest);
+  };
+}
+
+/** Metallic hat: highpassed noise plus a short square-wave ping bank —
+ * the tight Jersey/DnB hats that cut as groove markers, not just sizzle. */
+function hatMetallic(opts: {
+  decay: number;
+  hpHz: number;
+  level: number;
+  pingHz: number;
+  ping: number;
+  seed: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, opts.seed, opts.decay + 0.05, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = opts.hpHz;
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, opts.level, opts.decay))
+      .connect(dest);
+    if (opts.ping > 0) {
+      const ping = ctx.createOscillator();
+      ping.type = "square";
+      ping.frequency.value = opts.pingHz;
+      const bpf = ctx.createBiquadFilter();
+      bpf.type = "bandpass";
+      bpf.frequency.value = opts.pingHz;
+      bpf.Q.value = 9;
+      ping
+        .connect(bpf)
+        .connect(env(ctx, t0, opts.ping, Math.min(0.06, opts.decay)))
+        .connect(dest);
+      ping.start(t0);
+      ping.stop(t0 + 0.08);
+    }
+  };
+}
+
 function clap(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -891,6 +1006,41 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
   "factory.snare.punch": snarePunch(),
   "factory.snare.trap": snareTrap(),
+  // Snare/hat bank expansion (2026-09): genre backbeats + groove hats for
+  // the beatmaking genres (drill crack, phonk/lofi dust, jersey club, dnb
+  // break) — same design goal as the kick bank: distinct pockets, not
+  // variations of one sound.
+  "factory.snare.drill": snareCrack({
+    toneHz: 232,
+    toneDecay: 0.07,
+    noiseHz: 2100,
+    noiseDecay: 0.13,
+    click: 0.5,
+    seed: 41,
+  }),
+  "factory.snare.phonk": snareDusty({ toneHz: 186, toneDecay: 0.12, noiseHz: 1700, noiseDecay: 0.2, seed: 43 }),
+  "factory.snare.jersey": snareCrack({
+    toneHz: 240,
+    toneDecay: 0.06,
+    noiseHz: 2400,
+    noiseDecay: 0.11,
+    click: 0.7,
+    seed: 47,
+  }),
+  "factory.snare.dnb": snareCrack({
+    toneHz: 210,
+    toneDecay: 0.11,
+    noiseHz: 1900,
+    noiseDecay: 0.19,
+    click: 0.3,
+    seed: 53,
+  }),
+  "factory.snare.lofi": snareDusty({ toneHz: 172, toneDecay: 0.1, noiseHz: 1300, noiseDecay: 0.17, seed: 59 }),
+  "factory.hat.drill": hat(0.035, 9200, 0.5),
+  "factory.hat.phonk": hat(0.07, 4200, 0.4),
+  "factory.hat.jersey": hatMetallic({ decay: 0.055, hpHz: 8200, level: 0.55, pingHz: 6400, ping: 0.3, seed: 61 }),
+  "factory.hat.dnb": hatMetallic({ decay: 0.04, hpHz: 9600, level: 0.5, pingHz: 7100, ping: 0.24, seed: 67 }),
+  "factory.hat.open.cup": hatMetallic({ decay: 0.28, hpHz: 5200, level: 0.42, pingHz: 4600, ping: 0.22, seed: 71 }),
   "factory.clap.main": clap(),
   "factory.clap.soft": clapSoft(),
   "factory.shaker.soft": shaker(),
@@ -898,7 +1048,7 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.closed.soft": hat(0.04, 5800, 0.32),
   "factory.hat.open": hat(0.36, 7000, 0.5),
   "factory.hat.open.short": hat(0.18, 6800, 0.42),
-  "factory.hat.pedal": hat(0.03, 5000, 0.26),
+  "factory.hat.pedal": hat(0.035, 4600, 0.24),
   "factory.ride.ping": ride(),
   "factory.ride.bell": rideBell(),
   "factory.crash.main": crash(8200, 1.3, 0.6),
@@ -945,6 +1095,16 @@ export const DURATIONS: Record<string, number> = {
   "factory.snare.tight": 0.2,
   "factory.snare.punch": 0.32,
   "factory.snare.trap": 0.22,
+  "factory.snare.drill": 0.2,
+  "factory.snare.phonk": 0.32,
+  "factory.snare.jersey": 0.18,
+  "factory.snare.dnb": 0.28,
+  "factory.snare.lofi": 0.3,
+  "factory.hat.drill": 0.1,
+  "factory.hat.phonk": 0.12,
+  "factory.hat.jersey": 0.12,
+  "factory.hat.dnb": 0.1,
+  "factory.hat.open.cup": 0.32,
   "factory.clap.main": 0.3,
   "factory.clap.soft": 0.36,
   "factory.shaker.soft": 0.2,
@@ -1021,6 +1181,22 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
   "factory.kick.909": [
     { rate: 1.011, gain: 1.03 },
     { rate: 0.991, gain: 0.96 },
+  ],
+  "factory.snare.drill": [
+    { rate: 1.009, gain: 1.03 },
+    { rate: 0.993, gain: 0.96 },
+  ],
+  "factory.snare.dnb": [
+    { rate: 1.012, gain: 1.04 },
+    { rate: 0.99, gain: 0.95 },
+  ],
+  "factory.hat.jersey": [
+    { rate: 1.015, gain: 1.03 },
+    { rate: 0.988, gain: 0.95 },
+  ],
+  "factory.hat.dnb": [
+    { rate: 1.013, gain: 1.04 },
+    { rate: 0.99, gain: 0.95 },
   ],
 };
 

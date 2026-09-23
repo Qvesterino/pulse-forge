@@ -19,8 +19,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ primary Add Effect choices          |      24 | `CORE_EFFECT_ORDER` in same file                                                                                           |
 | └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                           |
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                     |
-| **Factory assets** (drum / tonal / FX) |  **50** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts` (15 kicks after the 2026-09 kick-bank expansion)                                                                       |
-| └─ curated WAV overrides               |      50 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure) |
+| **Factory assets** (drum / tonal / FX) |  **60** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts` (15 kicks + 9 snares + 10 hats after the 2026-09 drum-bank expansions)                                                                       |
+| └─ curated WAV overrides               |      60 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure) |
 | **Factory presets**                    | **248** | `src/presets/factory.ts`                                                                                                   |
 | └─ instrument presets                  |     242 | `FACTORY_PRESETS`                                                                                                          |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                     |

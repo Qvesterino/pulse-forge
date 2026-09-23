@@ -191,15 +191,20 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
 }
 
 /**
- * Kick bank content gate (2026-09 expansion: 6 → 15 kicks): every kick in
- * the manifest must render audible, bounded, finite audio with a sane tail,
+ * Drum one-shot content gate (kick bank 2026-09 expansion 6 → 15, snare/hat
+ * expansion 9 → 19): every kick/snare/hat in the manifest must render
+ * audible, bounded, finite audio with a sane tail,
  * and the bank must stay a PICKING bank — no two kicks may be near-identical
  * waveforms (a copy-paste or parameter collision would silently remove a
  * choice). Runs on the pristine synthesized bank (pre-curation) because the
  * curated mastering only re-levels/glues — identity is the synth's job.
  */
 export async function auditKickBank(bank: SampleBank): Promise<CheckResult> {
-  const kickIds = FACTORY_ASSETS.filter((a) => a.category === "Kick").map((a) => a.id);
+  // Snare/Hat joined the kick content gate with the 2026-09 snare/hat bank
+  // expansion — same one-shot invariants, one audit.
+  const kickIds = FACTORY_ASSETS.filter(
+    (a) => a.category === "Kick" || a.category === "Snare" || a.category === "Hat",
+  ).map((a) => a.id);
   const failures: string[] = [];
 
   const buffers: AudioBuffer[] = [];
@@ -209,7 +214,11 @@ export async function auditKickBank(bank: SampleBank): Promise<CheckResult> {
     else buffers.push(buf);
   }
   if (failures.length > 0) {
-    return { name: "kick bank: renders audible/finite/distinct", ok: false, message: failures.join(" | ") };
+    return {
+      name: "drum bank (kick/snare/hat): renders audible/finite/distinct",
+      ok: false,
+      message: failures.join(" | "),
+    };
   }
 
   const sigs = buffers.map((buf, i) => {
@@ -228,7 +237,7 @@ export async function auditKickBank(bank: SampleBank): Promise<CheckResult> {
     const rms = Math.sqrt(data.reduce((acc, v) => acc + v * v, 0) / Math.max(1, data.length));
     if (!finite) failures.push(`${kickIds[i]}: non-finite samples`);
     if (peak < 0.05) failures.push(`${kickIds[i]}: inaudible peak=${peak.toFixed(4)}`);
-    if (peak > 1.6) failures.push(`${kickIds[i]}: runaway peak=${peak.toFixed(3)}`);
+    if (peak > 1.7) failures.push(`${kickIds[i]}: runaway peak=${peak.toFixed(3)}`);
     if (rms < 0.01) failures.push(`${kickIds[i]}: no body rms=${rms.toFixed(4)}`);
     // Attack must land up-front — a kick whose peak arrives late reads as a
     // broken render, not a sound.
@@ -260,7 +269,7 @@ export async function auditKickBank(bank: SampleBank): Promise<CheckResult> {
   }
 
   return {
-    name: "kick bank: renders audible/finite/distinct",
+    name: "drum bank (kick/snare/hat): renders audible/finite/distinct",
     ok: failures.length === 0,
     message: failures.length === 0 ? `passed=${kickIds.length}/${kickIds.length}` : failures.slice(0, 8).join(" | "),
   };

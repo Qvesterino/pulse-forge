@@ -27,14 +27,16 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 0, assetId: "factory.kick.drill", name: "Kick 808" },
     { index: 1, assetId: "factory.kick.trap" },
     { index: 2, assetId: "factory.kick.soft", name: "Kick Soft" },
-    // Darker, shorter backbeat.
-    { index: 4, assetId: "factory.snare.trap" },
+    // Darker, shorter backbeat — the dedicated drill crack.
+    { index: 4, assetId: "factory.snare.drill" },
   ],
   phonk: [
     // Memphis dirt: the crunchy vintage thump up front, the distorted 808
     // as the alt slot.
     { index: 0, assetId: "factory.kick.phonk" },
     { index: 2, assetId: "factory.kick.808drive", name: "Kick 808 Drive" },
+    // Dusty memphis backbeat joins the genre kit colouring.
+    { index: 4, assetId: "factory.snare.phonk" },
     // THE phonk voice: the fx-role blip slot becomes a cowbell (pad 15 falls
     // back to role "fx" by index either way — generation is unaffected).
     { index: 15, assetId: "factory.perc.cowbell", name: "Cowbell" },
@@ -44,13 +46,13 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     // backbeat.
     { index: 0, assetId: "factory.kick.jersey" },
     { index: 2, assetId: "factory.kick.techno" },
-    { index: 4, assetId: "factory.snare.punch" },
+    { index: 4, assetId: "factory.snare.jersey" },
   ],
   dnb: [
     // Two-step character: the rolling dnb punch, cracking snare, 16th pedal
     // hat.
     { index: 0, assetId: "factory.kick.dnb" },
-    { index: 4, assetId: "factory.snare.punch" },
+    { index: 4, assetId: "factory.snare.dnb" },
     { index: 9, assetId: "factory.hat.pedal" },
   ],
 };

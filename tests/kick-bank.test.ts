@@ -6,19 +6,20 @@ import { GENRE_KIT_SWAPS } from "../src/intent/genre-kit";
 import { KIT_PRESETS } from "../src/project-model/kit-presets";
 
 /**
- * Kick bank coherence (2026-09 expansion 6 → 15 kicks): the manifest is the
- * driver — every Kick asset must have a synth builder, a render duration and
- * (like the rest of the full-kit curation) a curated seed override; every
- * kit/genre reference must point at a real asset. Data-only: the actual
- * audio gate (audible/finite/distinct renders) lives in the real-browser
- * suite (src/browser-checks.ts auditKickBank).
+ * Drum one-shot bank coherence (kick expansion 6 → 15, snare/hat expansion
+ * 9 → 19, both 2026-09): the manifest is the driver — every Kick/Snare/Hat
+ * asset must have a synth builder, a render duration and (like the rest of
+ * the full-kit curation) a curated seed override; every kit/genre reference
+ * must point at a real asset. Data-only: the actual audio gate
+ * (audible/finite/distinct renders) lives in the real-browser suite
+ * (src/browser-checks.ts auditKickBank, generalized to Kick+Snare+Hat).
  */
 
 const KICK_IDS = FACTORY_ASSETS.filter((a) => a.category === "Kick").map((a) => a.id);
 const ALL_ASSET_IDS = new Set(FACTORY_ASSETS.map((a) => a.id));
 
 describe("kick bank — manifest/builder/duration/curated coherence", () => {
-  it("expanded bank: 15 kicks, each with builder + duration + curated seed", () => {
+  it("expanded bank: 15 kicks + 9 snares + 10 hats, each with builder + duration + curated seed", () => {
     expect(KICK_IDS).toEqual([
       "factory.kick.deep",
       "factory.kick.punch",
@@ -36,7 +37,32 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       "factory.kick.knock",
       "factory.kick.909",
     ]);
-    for (const id of KICK_IDS) {
+    const SNARE_IDS = FACTORY_ASSETS.filter((a) => a.category === "Snare").map((a) => a.id);
+    const HAT_IDS = FACTORY_ASSETS.filter((a) => a.category === "Hat").map((a) => a.id);
+    expect(SNARE_IDS).toEqual([
+      "factory.snare.main",
+      "factory.snare.tight",
+      "factory.snare.punch",
+      "factory.snare.trap",
+      "factory.snare.drill",
+      "factory.snare.phonk",
+      "factory.snare.jersey",
+      "factory.snare.dnb",
+      "factory.snare.lofi",
+    ]);
+    expect(HAT_IDS).toEqual([
+      "factory.hat.closed",
+      "factory.hat.closed.soft",
+      "factory.hat.open",
+      "factory.hat.open.short",
+      "factory.hat.pedal",
+      "factory.hat.drill",
+      "factory.hat.phonk",
+      "factory.hat.jersey",
+      "factory.hat.dnb",
+      "factory.hat.open.cup",
+    ]);
+    for (const id of [...KICK_IDS, ...SNARE_IDS, ...HAT_IDS]) {
       expect(BUILDERS[id], `${id} builder`).toBeDefined();
       expect(DURATIONS[id], `${id} duration`).toBeGreaterThan(0);
       expect(DURATIONS[id], `${id} duration bounded`).toBeLessThanOrEqual(2);
@@ -74,7 +100,16 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       }
     }
     // The punchy new kicks get velocity variation like the originals.
-    for (const id of ["factory.kick.jersey", "factory.kick.dnb", "factory.kick.drill", "factory.kick.909"]) {
+    for (const id of [
+      "factory.kick.jersey",
+      "factory.kick.dnb",
+      "factory.kick.drill",
+      "factory.kick.909",
+      "factory.snare.drill",
+      "factory.snare.dnb",
+      "factory.hat.jersey",
+      "factory.hat.dnb",
+    ]) {
       expect(RR_VARIATIONS[id], `${id} RR pool`).toBeDefined();
     }
   });
@@ -87,7 +122,12 @@ describe("kick bank — kit and genre references resolve", () => {
         expect(ALL_ASSET_IDS.has(swap.assetId), `${genre} → ${swap.assetId}`).toBe(true);
       }
     }
-    // The dedicated kicks lead their genre kits (expansion's whole point).
+    // The dedicated kicks AND snares lead their genre kits (expansion's
+    // whole point — drill cracks, memphis dust, club backbeats, breaks).
+    expect(GENRE_KIT_SWAPS.drill?.find((s) => s.index === 4)?.assetId).toBe("factory.snare.drill");
+    expect(GENRE_KIT_SWAPS.phonk?.find((s) => s.index === 4)?.assetId).toBe("factory.snare.phonk");
+    expect(GENRE_KIT_SWAPS.jersey?.find((s) => s.index === 4)?.assetId).toBe("factory.snare.jersey");
+    expect(GENRE_KIT_SWAPS.dnb?.find((s) => s.index === 4)?.assetId).toBe("factory.snare.dnb");
     expect(GENRE_KIT_SWAPS.drill?.[0].assetId).toBe("factory.kick.drill");
     expect(GENRE_KIT_SWAPS.phonk?.[0].assetId).toBe("factory.kick.phonk");
     expect(GENRE_KIT_SWAPS.jersey?.[0].assetId).toBe("factory.kick.jersey");
