@@ -43,6 +43,7 @@ public/models/semantic/
 # Golden review pack (human listening) — local-only, not served
 golden-review/
 listening/
+v1v3-listening/
 
 # Local browser profiling artifacts. Browser profiles can contain cookies,
 # IndexedDB projects, local preferences and cache data; never commit them.
