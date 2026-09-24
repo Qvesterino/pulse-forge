@@ -39,11 +39,14 @@ import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
 import {
   planVariantIntents,
   producerSessionSummary,
+  producerSessionState,
   recordIntentDecisions,
   bumpGenerationCount,
   resolveProducerFollowUp,
   resetProducerSession,
 } from "../intent/producer-session";
+import { compileBriefContract } from "../intent/brief-contract";
+import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
@@ -178,6 +181,20 @@ export function IntentPanel() {
     if (!text.trim()) return null;
     return parseIntentText(text);
   }, [text]);
+
+  // Fáza 1 brief contract: "TOTO SOM POCHOPIL" — confirmable reading of the
+  // prompt. User fixes ride in their own patch state; a NEW prompt invalidates
+  // them (they described the previous reading, not this one).
+  const [briefFixes, setBriefFixes] = useState<IntentInput>({});
+  useEffect(() => {
+    setBriefFixes({});
+  }, [text]);
+  const briefContract = useMemo(
+    () =>
+      compileBriefContract(parsed, { project: doc, session: producerSessionState(), defaultRoles: ["drums", "bass"] }),
+    [parsed, doc],
+  );
+  const briefInput = useMemo<IntentInput>(() => ({ ...(parsed?.input ?? {}), ...briefFixes }), [parsed, briefFixes]);
 
   const candidates = bankResult?.bank ?? null;
 
@@ -317,7 +334,12 @@ export function IntentPanel() {
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
-    const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) };
+    const intentInput = {
+      ...(parsed?.input ?? {}),
+      ...(refPatch ?? {}),
+      ...briefFixes,
+      ...(consumeOneShotPatch() ?? {}),
+    };
     // Wave 1 — FX words remaining after section parsing ride WITH the
     // generation ("wobbly drill"): candidates carry them, USE applies
     // pattern + FX as one step.
@@ -981,7 +1003,7 @@ export function IntentPanel() {
     const buildToken = ++songTokenRef.current;
     try {
       const baseDoc = services.store.getDoc();
-      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(reviseInput ?? {}) };
+      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...briefFixes, ...(reviseInput ?? {}) };
       const globalFx = reviseInput?.fx ?? parseProductionIntent(sections?.remainingText ?? text);
       const result = await composeFullTrack(baseDoc, songTextRef.current || text, {
         ...(sections ? { sections } : {}),
@@ -1241,7 +1263,11 @@ export function IntentPanel() {
       const route = routeIntentText(text, doc);
       if (lastGeneration() && resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)!;
-        const merged: IntentInput = { ...(lastGeneration()?.intent ?? {}), ...(parsed?.input ?? {}), ...followUp.patch };
+        const merged: IntentInput = {
+          ...(lastGeneration()?.intent ?? {}),
+          ...(parsed?.input ?? {}),
+          ...followUp.patch,
+        };
         oneShotPatchRef.current = merged;
         setStatus(`🎛 session follow-up — ${followUp.reroll ? "reroll" : "modifikátor live"}`);
         await generate();
@@ -1312,7 +1338,12 @@ export function IntentPanel() {
         }
       } else if (route.kind === "mix") {
         stopAudition();
-        const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) };
+        const intentInput = {
+          ...(parsed?.input ?? {}),
+          ...(refPatch ?? {}),
+          ...briefFixes,
+          ...(consumeOneShotPatch() ?? {}),
+        };
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
@@ -1350,7 +1381,9 @@ export function IntentPanel() {
           setStatus(`⚡ ${route.attribute} ${route.direction === "more" ? "+0.15" : "−0.15"} — same seed`);
         } else {
           // Nothing generated yet — apply the attribute to the parsed intent.
-          const intentInput: IntentInput = { ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) } };
+          const intentInput: IntentInput = {
+            ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...briefFixes, ...(consumeOneShotPatch() ?? {}) },
+          };
           intentInput[route.attribute] = fallbackDefaults[route.attribute] + delta;
           await runGeneration(intentInput, controller);
           setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
@@ -1410,6 +1443,14 @@ export function IntentPanel() {
         <div className="intent-detected" aria-label="Detected keywords">
           {detectedText}
         </div>
+      )}
+      {text.trim() !== "" && (
+        <BriefContractSummary
+          contract={briefContract}
+          input={briefInput}
+          fixes={briefFixes}
+          onPatch={(patch) => setBriefFixes((prev) => ({ ...prev, ...patch }))}
+        />
       )}
       {semanticChip && (
         <div className="intent-detected" aria-label="Semantic match">
@@ -1556,7 +1597,7 @@ export function IntentPanel() {
           {bankResult &&
             bankResult.bank &&
             bankResult.bank.length > 0 &&
-            planVariantIntents(lastGeneration()?.intent ?? (parsed?.input ?? {})).map((variant) => (
+            planVariantIntents(lastGeneration()?.intent ?? parsed?.input ?? {}).map((variant) => (
               <button
                 key={variant.label}
                 type="button"

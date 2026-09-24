@@ -124,6 +124,22 @@ NEISTÉ: tónina nebola zadaná
 
 **Hotovo, keď:** golden sada spoľahlivo rozpozná tvrdé požiadavky a zákazy; neznáme/nejednoznačné veci sú viditeľné; chýbajúci model nemení bezpečnostné pravidlá ani nezablokuje generation.
 
+**Stav (2026-09-24): FÁZA 1 DODANÁ.**
+
+- Kontrakt: `src/intent/brief-contract.ts` kompiluje parsed brief + producer session + projekt do
+  POVINNÉ / PREFERENCIE / ZÁKAZY / ZACHOVAŤ / NEISTÉ; každý statement nesie `origin` a
+  `confidence` — neistoty sú prvotriedne a nepredávajú sa ako fakty.
+- Nové `preserve` pole v `IntentSpec` (explicitne chránené roly): parser SK/EN („nechaj bass a
+  akordy", „keep my drums"), sanitizácia + validácia + deterministický hash, enforcement v pláne
+  aj options — chránený obsah sa pri generovaní neprepíše. Kontrakt je transientný: project
+  schema zostáva nedotknutá.
+- UI: `BriefContractSummary` v IntentPaneli pod promptom — oprava jednotlivých bodov bez
+  prepisovania promptu (one-click návrhy zo session, inplace BPM/takty edit, × un-protect).
+- Testy: `tests/brief-contract.test.ts` (22) + `tests/ui/BriefContractSummary.test.tsx` (6);
+  regresia intent rodina 218/218; `tsc --noEmit` 0.
+- Otvorené: keyword parser ostáva jediným deterministic path; sémantický model je stále len
+  voliteľná pomôcka (Fáza 2+); golden fixtures rastú s `tests/intent-brief-suite.test.ts`.
+
 ### Fáza 2 — návrh, kandidáti a používateľské rozhodnutie
 
 **Cieľ:** každý beat návrh je počuteľný, porovnateľný a jeho aplikovanie použije presne ten kandidát, ktorý si človek vybral.

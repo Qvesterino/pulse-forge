@@ -4040,3 +4040,15 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - Nové groove id MIMO PRIOR_STYLE_VOCAB → template path (dokumentovaná politika); dataset generátor pri tréningu len varovanie. Kit swapy pre dnb/phonk už existujú (sound-quality wave).
 - **Testy** +4 v intent-text-parser (26/26): štýlová rezolúcia + 16-step shape validity nových groovov. Regresia **317/317 cez 30 súborov**; typecheck 0.
 - ⚠️ POTVRDENÁ NÁVODA (po štvrtýkrát): `` v pythone cez akýkoľvek string literál → BS bajt. Spoľahlivé riešenie: **konštrukcia cez chr(92)** (žiadny backslash v zdrojáku skriptu) alebo Edit/Write tool.
+
+---
+
+## FÁZA 1 — BRIEF AKO EXPLICITNÁ ŠPECIFIKÁCIA (2026-09-24)
+
+**Roadmap:** IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md Fáza 1 — „toto som pochopil" pred generovaním (POVINNÉ / PREFERENCIE / ZÁKAZY / ZACHOVAŤ / NEISTÉ).
+
+- **Nový modul** `src/intent/brief-contract.ts`: `compileBriefContract(ParsedIntent, {project, session, defaultRoles})` → statements so sekciami, origin (prompt/session/default), confidence (parsed/inferred/unknown) a voliteľným `patch` (one-click fix). Pure/deterministický, transientný — project schema sa nemení (roadmap podmienka).
+- **`preserve` pole v IntentSpec**: „nechaj môj bass"/„keep my drums" → chránené roly. Parser scanner `preservedRolesOf`: zoznam rolí len cez konjukcie („bass a akordy"); negácia („keep bass out") nechráni nič; čistá rola-ochrana NIE je generačná direktíva (default set ostáva). Normalize: kanonické poradie, prázdne = pole chýba (hash-kompatibilita so starými intentmi). Schema validácia. Enforcement v `generateOptionsFromIntent` aj `rolePlans` — chránený obsah sa neprepíše.
+- Parser bonusy: „bez **ďalších** bicích" (doteraz len „bez bic"), „no bass" detected token.
+- **UI**: `BriefContractSummary.tsx` v IntentPaneli — NEISTÉ návrhy = one-click fix čipy; BPM/takty inplace edit (oprava bez prepisovania promptu); ZACHOVAŤ × = un-protect. `briefFixes` merged do všetkých 4 assembly pointov (po refPatch, pred one-shot varianty), reset pri novej prompte.
+- **Testy**: `tests/brief-contract.test.ts` 22/22 + `tests/ui/BriefContractSummary.test.tsx` 6/6; regresia intent rodina **218/218 (20 súborov)**; tsc 0; moje súbory prettier-clean (repo-wide format warny = paralelná vlna, nesiahane).

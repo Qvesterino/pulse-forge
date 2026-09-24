@@ -90,7 +90,8 @@ describe("AI-first producer — SK/EN brief suite (Fáza 0)", () => {
     const a = generateLocalResult(base, input, "apply");
     const b = generateLocalResult(base, input, "apply");
     expect(intentHash(a.plan.intent)).toBe(intentHash(b.plan.intent));
-    expect(JSON.stringify(a.proposal.pattern.rows)).toBe(JSON.stringify(b.proposal.pattern.rows));
+    expect(a.proposal).toBeDefined();
+    expect(JSON.stringify(a.proposal?.pattern.rows)).toBe(JSON.stringify(b.proposal?.pattern.rows));
   });
 
   it("different seed → different content (variation is real, not a re-render)", () => {

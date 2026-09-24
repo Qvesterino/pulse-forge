@@ -213,30 +213,58 @@ const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /**
- * Protected-role phrases (Fáza 1): "keep my bass", "nechaj akordy" — these
- * name EXISTING content the generation must not rewrite. They are scanned
- * BEFORE the positive role loop so a protected mention does not add the
- * role to the generation set; the role lands in `input.preserve` instead.
- * Deaccented text, so SK stems match without diacritics.
+ * Protected-role clauses (Fáza 1): "keep my bass", "nechaj bass a akordy" —
+ * these name EXISTING content the generation must not rewrite. The clause
+ * starts at a preserve trigger and may list several roles ("bass a akordy");
+ * scanning stops at the first word outside the clause grammar
+ * (determiners/conjunctions), so "keep drums but darker" or
+ * "nechaj 808, pridaj lead" do not over-protect, and a negated clause
+ * ("keep bass out", "nechaj basu von") protects nothing. Scanned BEFORE the
+ * positive role loop so a protected mention does not add the role to the
+ * generation set. Deaccented text throughout.
  */
-const PRESERVE_PHRASES: ReadonlyArray<readonly [RegExp, IntentRole]> = [
-  [
-    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bubn|bic|bicia|drums)/,
-    "drums",
-  ],
-  [
-    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bas|808|sub|bass)/,
-    "bass",
-  ],
-  [
-    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:akord|chords|pads|keys)/,
-    "chords",
-  ],
-  [
-    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:melodi|lead|synth|arp|topline|top line)/,
-    "lead",
-  ],
+const PRESERVE_TRIGGER = /\b(?:nechaj|ponechaj|keep|leave)\b/;
+const PRESERVE_DETERMINERS = new Set(["my", "moj", "moje", "moju", "mom", "the"]);
+const PRESERVE_CONJUNCTIONS = new Set(["a", "and", "i", "aj", "plus", "s", "with"]);
+const PRESERVE_NEGATIONS = new Set(["out", "von", "mimo", "prec", "away"]);
+const PRESERVE_ROLE_STEMS: ReadonlyArray<readonly [RegExp, IntentRole]> = [
+  [/^(?:bubn|bic|bicia|drums?|beat)/, "drums"],
+  [/^(?:bas|bass|sub)/, "bass"],
+  [/^(?:akord|chords?|pads?|keys?)/, "chords"],
+  [/^(?:melodi|leads?|synth|arp|topline)/, "lead"],
 ];
+
+/**
+ * Scan a preserve clause into the protected role set (pure). The parser's
+ * `lower` has punctuation already collapsed to spaces, so clause structure
+ * is word-grammar only: after the first protected role, another role joins
+ * the list ONLY through a conjunction ("bass a akordy") — a bare role word
+ * ("keep my bass drums only") ends the clause, never over-protects.
+ */
+function preservedRolesOf(lower: string): IntentRole[] {
+  const trigger = PRESERVE_TRIGGER.exec(lower);
+  if (!trigger) return [];
+  const preserved = new Set<IntentRole>();
+  let conjunction = false;
+  for (const word of lower.slice(trigger.index + trigger[0].length).split(/[^a-z0-9]+/)) {
+    if (!word) continue;
+    if (PRESERVE_NEGATIONS.has(word)) return [];
+    if (PRESERVE_DETERMINERS.has(word)) continue;
+    if (PRESERVE_CONJUNCTIONS.has(word)) {
+      conjunction = true;
+      continue;
+    }
+    const role = word === "808" ? "bass" : PRESERVE_ROLE_STEMS.find(([re]) => re.test(word))?.[1];
+    if (role) {
+      if (preserved.size > 0 && !conjunction) break;
+      preserved.add(role);
+      conjunction = false;
+      continue;
+    }
+    break; // first word outside the clause grammar ends the preserve list
+  }
+  return [...preserved];
+}
 
 /** Note-name normalization for key parsing (flats → sharps). */
 const NOTE_NAMES: ReadonlyArray<readonly [RegExp, string]> = [
@@ -440,33 +468,33 @@ export function parseIntentText(text: string): ParsedIntent {
 
   // Protected roles — scanned BEFORE the positive loop so "nechaj bass"
   // names existing content instead of adding bass to the generation set.
-  const preserved = new Set<IntentRole>();
-  for (const [re, role] of PRESERVE_PHRASES) {
-    if (re.test(lower)) preserved.add(role);
-  }
+  const preserved = new Set<IntentRole>(preservedRolesOf(lower));
 
   // Roles. Negation phrases precede positive ones in ROLE_PHRASES, so an
   // exclusion seen earlier also suppresses the later positive match.
   let noDrums = false;
   let noBass = false;
+  let scopeOrNegation = false;
   const roles = new Set<IntentRole>();
-  let hasRoleKeyword = false;
   for (const [re, flag] of ROLE_PHRASES) {
     if (!re.test(lower)) continue;
-    hasRoleKeyword = true;
     if (flag === "nodrums") {
+      scopeOrNegation = true;
       noDrums = true;
       roles.delete("drums");
     } else if (flag === "nobass") {
       noBass = true;
       roles.delete("bass");
     } else if (flag === "drumsonly") {
+      scopeOrNegation = true;
       roles.clear();
       roles.add("drums");
     } else if (flag === "melodyonly") {
+      scopeOrNegation = true;
       roles.clear();
       roles.add("lead");
     } else if (flag === "all") {
+      scopeOrNegation = true;
       roles.add("drums");
       roles.add("bass");
       roles.add("chords");
@@ -478,7 +506,10 @@ export function parseIntentText(text: string): ParsedIntent {
       roles.add(flag as IntentRole);
     }
   }
-  if (hasRoleKeyword) {
+  // A mention that only NAMESED a protected role ("keep my drums but darker")
+  // is not a generation directive — the default generation set still applies
+  // (minus the protected roles, via input.preserve).
+  if (scopeOrNegation || roles.size > 0) {
     const resolved = noDrums ? [...roles].filter((role) => role !== "drums") : [...roles];
     // "no drums" with nothing else named still means the remaining roles.
     input.roles =
