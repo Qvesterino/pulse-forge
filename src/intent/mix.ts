@@ -26,7 +26,7 @@ import type { IntentSpec } from "./types";
  * arrangeWords).
  */
 
-export type MixTarget = "drums" | "bass" | "chords" | "lead";
+export type MixTarget = "drums" | "bass" | "chords" | "lead" | "vocal";
 
 export interface MixDecision {
   target: MixTarget;
@@ -226,16 +226,27 @@ export function planMixProfile(
   }
 
   // ── Pocket: leave room for the singer (V2 vocal-driven form) ───────────
-  // A gentle high-mid dip on the music tracks where the voice lives (~2.8
-  // kHz). Only when a vocal take is present; purely additive (disjoint EQ
-  // params from the tone tilt above) and clamped against the EQ defs on
-  // apply like every other decision. VLYX unmask instead of this static dip
-  // is the documented follow-up (heavier worklet, needs the vocal bus).
+  // Two layers with different failure modes, both additive:
+  // 1. Static high-mid dip (~2.8 kHz) on the music — universal, works even
+  //    without AudioWorklets (native EQ). Also lowers what the solver sees,
+  //    so the dynamic stage triggers less aggressively on top of it.
+  // 2. VLYX ecosystem unmask on chords/lead, keyed by every other ultina
+  //    instance through the SpectralRegistry (max-per-band aggregate). A
+  //    default (all-off) ultina rides on the vocal track as a pure
+  //    publisher — sonically neutral (all stages off), publishing the clean
+  //    vocal spectrum. No sidechainTrackId wiring is involved (the ultina
+  //    node exposes a single input; the ecosystem IS the bus).
+  // Without worklets the unmask stage sits inert and the dip carries the
+  // pocket alone; without installed takes the publisher resolves to nothing.
   if (options.vocalPresent) {
     const pocket = { highMidFreq: 2800, highMidGain: -2.5, highMidQ: 1.2 };
     decisions.push({ target: "chords", effectType: "eq", params: { ...pocket } });
     decisions.push({ target: "lead", effectType: "eq", params: { ...pocket } });
-    summary.push("pocket: vocal space (high-mid dip)");
+    const unmask = { "unmask.enabled": 1, "unmask.ecosystemEnabled": 1, "unmask.amount": 50 };
+    decisions.push({ target: "chords", effectType: "ultina", params: { ...unmask } });
+    decisions.push({ target: "lead", effectType: "ultina", params: { ...unmask } });
+    decisions.push({ target: "vocal", effectType: "ultina", params: {} });
+    summary.push("pocket: vocal space (high-mid dip + VLYX ecosystem unmask)");
   }
 
   // Master tilt (sound-quality pass): ONLY for the character genres, so a
@@ -255,6 +266,13 @@ export function planMixProfile(
 function trackIdsForTarget(doc: ProjectDocument, target: MixTarget): string[] {
   if (target === "drums") {
     return doc.tracks.filter((track) => track.kind === "drum").map((track) => track.id);
+  }
+  if (target === "vocal") {
+    // Tracks carrying arrangement audio (the singer's takes) — resolved from
+    // clip bindings, never from names. Empty when no take is installed, in
+    // which case vocal decisions apply to nothing (graceful, never a throw).
+    const clipTrackIds = new Set((doc.arrangement.audioClips ?? []).map((clip) => clip.trackId));
+    return doc.tracks.filter((track) => clipTrackIds.has(track.id)).map((track) => track.id);
   }
   // roleForTrack uses the melodic-part naming ("chord"); MixTarget uses the
   // IntentRole naming ("chords") — normalize before comparing.

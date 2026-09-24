@@ -154,6 +154,7 @@ Beatmakerov obsluhuje každý druhý nástroj. **Človek s hlasom a telefónom, 
 - **`composeFullTrack` vocal-wiring HOTOVÉ:** `ComposeOptions.vocalProfile` (efekt má len meraný profil) → `buildSong` bend + pocket mix; nemenaný profil stavia legacy song (uzamknuté testom).
 - **V2 engine HOTOVÉ:** `vocal/form.ts` (span energy + section adjust, identita pri 0.5) + `buildSong({vocalProfile})` (append-only, bez profilu bit-identicky); pocket mix (`planMixProfile(…, {vocalPresent})` — high-mid dip 2.8 kHz na chords/lead); loudness meria song mód vrátane audioClipov (overené seam testom s injektovaným renderom). Testy `vocal-form` (4) + `vocal-produce` (4).
 - **V3 engine HOTOVÉ:** `notes.ts` (SK+EN šablóny, len merané polia), `revise.ts` (phrase→role + delegácia na C3 `reviseSection`, `song.ts` nemenene), `sessions.ts` (lokálny ledger `pf:vocal-sessions`, cap 50). Testy `vocal-dialog` (8).
-- **Zostáva:** VLYX-unmask pocket namiesto statického dipu, blind A/B ušný gate, roadmap otázky Q1–Q5.
+- **VLYX-unmask pocket HOTOVÝ:** `unmask.ecosystemEnabled` + `unmask.amount` v `ultinaParams` (clamp + rack/panel metadata); pocket = statický high-mid dip (univerzálny floor) + VLYX ecosystem unmask na chords/lead + default ultina publisher na take tracku (žiadny sidechainTrackId — single-input node, ecosystem JE bus). Bez workletov sedí unmask inertne a nesie to dip; bez takeov publisher no-op. Testy vo `vocal-produce` (+5).
+- **Zostáva:** blind A/B ušný gate, roadmap otázky Q1–Q5.
 
 _Založené: 2026-11-04 (z P1–P5 auditov a vízie „producent, ktorý počúva"). Revidovať po každej V-fáze; fakty o existujúcich moduloch overené čítaním zdrojov v §2._

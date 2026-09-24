@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { normalizeIntent } from "../src/intent/normalize";
 import { applyMixIntent, planMixProfile } from "../src/intent/mix";
+import { clampEffectParam } from "../src/effects/definitions";
 import { applyLoudnessIntent } from "../src/intent/loudness";
 import { composeFullTrack } from "../src/intent/compose";
 import type { SampleBank } from "../src/sample-library/factory";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { VocalProfile } from "../src/vocal/types";
+import { createInstrumentTrackModel } from "../src/project-model/schema";
 
 /**
  * V2 POCKET MIX + VOCAL LOUDNESS SEAM.
@@ -52,6 +54,88 @@ describe("vocal pocket (planMixProfile vocalPresent)", () => {
     const profile = planMixProfile(intent, {}, {});
     expect(profile.summary.join(" ")).not.toContain("pocket");
     expect(profile.decisions.some((d) => "highMidGain" in d.params)).toBe(false);
+    expect(profile.decisions.some((d) => d.effectType === "ultina")).toBe(false);
+  });
+
+  it("plans VLYX ecosystem consumers + a neutral vocal publisher", () => {
+    const profile = planMixProfile(intent, {}, { vocalPresent: true });
+    const consumers = profile.decisions.filter((d) => d.effectType === "ultina" && d.target !== "vocal");
+    expect(consumers.length).toBeGreaterThanOrEqual(2);
+    for (const consumer of consumers) {
+      expect(consumer.params["unmask.enabled"]).toBe(1);
+      expect(consumer.params["unmask.ecosystemEnabled"]).toBe(1);
+      expect(consumer.params["unmask.amount"]).toBe(50);
+    }
+    const publishers = profile.decisions.filter((d) => d.effectType === "ultina" && d.target === "vocal");
+    expect(publishers.length).toBe(1);
+    expect(publishers[0].params).toEqual({}); // defaults = neutral publisher
+  });
+
+  it("clamps the new ultina params against their defs", () => {
+    expect(clampEffectParam("ultina", "unmask.ecosystemEnabled", 5)).toBe(1);
+    expect(clampEffectParam("ultina", "unmask.amount", 200)).toBe(100);
+    expect(clampEffectParam("ultina", "unmask.amount", -10)).toBe(0);
+  });
+
+  it("installs publisher on the clip track and consumers on the music", () => {
+    const doc = testDoc();
+    const trackId = doc.tracks[0].id;
+    // Guarantee a lead-role target by name (templates vary in track count).
+    const leadTrack = {
+      ...createInstrumentTrackModel("analog", doc.tracks.length),
+      name: "Lead",
+    };
+    const withVocal: ProjectDocument = {
+      ...doc,
+      tracks: [...doc.tracks, leadTrack],
+      arrangement: {
+        ...doc.arrangement,
+        audioClips: [
+          {
+            id: "clip-v",
+            trackId,
+            bufferId: "vocal.take1",
+            startBar: 0,
+            lengthBars: 4,
+            offsetSec: 0,
+            trimStart: 0,
+            trimEnd: 0,
+            gain: 1,
+            fadeIn: 0,
+            fadeOut: 0,
+            stretchRate: 1,
+            reverse: false,
+          },
+        ],
+      },
+    };
+    const cmd = applyMixIntent(withVocal, planMixProfile(intent, {}, { vocalPresent: true }));
+    const next = cmd.execute(withVocal);
+    // Publisher: default ultina on the take's track.
+    const vocalTrack = next.tracks.find((t) => t.id === trackId)!;
+    expect(vocalTrack.effects.some((fx) => fx.type === "ultina")).toBe(true);
+    // Consumers: unmask enabled + ecosystem on across the music.
+    const unmaskers = next.tracks.flatMap((t) =>
+      t.kind === "instrument" ? t.effects.filter((fx) => fx.type === "ultina") : [],
+    );
+    expect(unmaskers.filter((fx) => fx.params["unmask.enabled"] === 1).length).toBeGreaterThanOrEqual(2);
+    expect(
+      unmaskers
+        .filter((fx) => fx.params["unmask.enabled"] === 1)
+        .every((fx) => fx.params["unmask.ecosystemEnabled"] === 1),
+    ).toBe(true);
+    // One undo step restores the pre-mix chains.
+    expect(JSON.stringify(cmd.undo(next).tracks)).toBe(JSON.stringify(withVocal.tracks));
+  });
+
+  it("degrades gracefully with no installed takes (consumers still apply)", () => {
+    const doc = testDoc();
+    const cmd = applyMixIntent(doc, planMixProfile(intent, {}, { vocalPresent: true }));
+    const next = cmd.execute(doc);
+    const unmaskers = next.tracks.flatMap((t) =>
+      t.kind === "instrument" ? t.effects.filter((fx) => fx.type === "ultina") : [],
+    );
+    expect(unmaskers.some((fx) => fx.params["unmask.enabled"] === 1)).toBe(true);
   });
 
   it("applies and undoes as one step", () => {

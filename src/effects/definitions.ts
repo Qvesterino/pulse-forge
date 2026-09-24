@@ -304,6 +304,22 @@ export function clampEffectParam(type: EffectType, paramId: string, value: numbe
   return clamped;
 }
 
+/**
+ * Quality backlog A6: flagship rack mixes store 0..1 (same convention as
+ * the other 38 effects). Legacy docs stored 0..100 — any mix value above
+ * the new maximum is legacy and rescales once (idempotent: a rescaled doc
+ * re-normalizes as a no-op). Accepted edge: legacy automation curves ≤ 1
+ * keep their values; values > 1 clamp at the worklet ceiling.
+ */
+function rescaleLegacyRackMix(type: EffectType, id: string, value: number): number {
+  const legacy =
+    (type === "fxeq" && (id === "mix" || id === "globalMix")) ||
+    (type === "ultina" && id === "global.mix") ||
+    (type === "morphdynamics" && id === "global.mix") ||
+    (type === "ozvena" && id === "global.dryWet");
+  return legacy && value > 1 ? value / 100 : value;
+}
+
 export function normalizePluginParams(
   type: EffectType,
   source: Record<string, unknown>,
@@ -315,10 +331,12 @@ export function normalizePluginParams(
       ...defaultParamsOf(type),
       ...buildUltinaDefaultParams(),
     };
+    // A6: vendored deep defaults are 0..100 — the doc stores the mix keys 0..1.
+    if (params["global.mix"] > 1) params["global.mix"] /= 100;
     for (const [id, value] of Object.entries(source)) {
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       if (!ULTINA_PARAM_BY_ID.has(id)) continue; // unknown id from an older schema
-      params[id] = clampUltinaParam(id, value);
+      params[id] = clampUltinaParam(id, rescaleLegacyRackMix(type, id, value));
     }
     return params;
   }
@@ -331,10 +349,12 @@ export function normalizePluginParams(
     );
     const schema = buildFxEqSchema(bandCount);
     const params: Record<string, number> = { ...defaultParamsOf(type), ...schema.defaultParams };
+    // A6: the deep schema default for globalMix is 0..100 — the doc stores 0..1.
+    if (params.globalMix > 1) params.globalMix /= 100;
     for (const def of schema.defs) {
       const value = source[def.id];
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
-      params[def.id] = Math.min(def.maxValue, Math.max(def.minValue, value));
+      params[def.id] = Math.min(def.maxValue, Math.max(def.minValue, rescaleLegacyRackMix(type, def.id, value)));
     }
     // The rack surface exposes the global wet/dry as `mix`, but the deep
     // schema (and therefore the DSP) only knows `globalMix`. Without this
@@ -344,7 +364,7 @@ export function normalizePluginParams(
     // preview (which maps mix → globalMix in fxeqNode) kept playing the
     // dragged value. Accept the rack id as the source of truth.
     if (typeof source.mix === "number" && Number.isFinite(source.mix)) {
-      params.mix = Math.min(100, Math.max(0, source.mix));
+      params.mix = Math.min(1, Math.max(0, rescaleLegacyRackMix(type, "mix", source.mix)));
       params.globalMix = params.mix;
     }
     // Structural snap: the crossover slope only exists at {2,4,8} — a raw
@@ -365,10 +385,12 @@ export function normalizePluginParams(
     // Start from the complete audio parameter tree so loading an A/B slot is
     // a true restore rather than leaving deep parameters from the other slot.
     const params: Record<string, number> = { ...defaultParamsOf(type), ...OZVENA_DEFAULT_DEEP_PARAMS };
+    // A6: the deep default for dryWet is 0..100 — the doc stores 0..1.
+    if (params["global.dryWet"] > 1) params["global.dryWet"] /= 100;
     for (const [id, value] of Object.entries(source)) {
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       if (!OZVENA_PARAM_PATHS.has(id)) continue;
-      params[id] = clampOzvenaParam(id, value, OZVENA_DEFAULT_DEEP_PARAMS[id] ?? 0);
+      params[id] = clampOzvenaParam(id, rescaleLegacyRackMix(type, id, value), OZVENA_DEFAULT_DEEP_PARAMS[id] ?? 0);
     }
     return params;
   }
@@ -380,10 +402,12 @@ export function normalizePluginParams(
       ...defaultParamsOf(type),
       ...buildMorphDefaultParams(),
     };
+    // A6: the deep default for global.mix is 0..100 — the doc stores 0..1.
+    if (params["global.mix"] > 1) params["global.mix"] /= 100;
     for (const [id, value] of Object.entries(source)) {
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       if (!MORPH_PARAM_BY_ID.has(id)) continue; // unknown id from an older schema
-      params[id] = clampMorphParam(id, value);
+      params[id] = clampMorphParam(id, rescaleLegacyRackMix(type, id, value));
     }
     return params;
   }
@@ -1031,6 +1055,29 @@ export const ultinaParams: ParamDef[] = [
     default: 0,
     format: (v) => (v >= 0.5 ? "ON" : "OFF"),
     kind: "toggle",
+  },
+  {
+    // Cross-instance ecosystem: read the aggregate masker published by every
+    // other ultina instance (SpectralRegistry) instead of only the local
+    // signal. This is the vocal-pocket switch: a default (all-off) ultina on
+    // the vocal track publishes its spectrum, consumer instances duck where
+    // the ecosystem masks. Core default 0 = local behavior unchanged.
+    id: "unmask.ecosystemEnabled",
+    label: "U-ECO",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+    kind: "toggle",
+  },
+  {
+    id: "unmask.amount",
+    label: "U-AMOUNT",
+    min: 0,
+    max: 100,
+    default: 50,
+    unit: "%",
+    format: (v) => `${v.toFixed(0)}%`,
   },
 ];
 

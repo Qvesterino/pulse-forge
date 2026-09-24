@@ -1,15 +1,21 @@
 # Intent Engine — Feature Extractor v1 a ONNX Ranker
 
-Status: čiastočne implementované — shadow/fallback-only WIP, nie release feature
-Priorita: P2.5 (post-release candidate; shadow telemetry only before approval)
+Status: **active** — aktivovaný cez listening-room golden gate (Fáza 0 auditu
+`IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`), nie intentované na ďalšie zmeny
+bez re-validácie
+Priorita: prešlo z P2.5 do active; ďalší krok je Fáza 4 (ľudské preferencie →
+retrain), nie spätné prepnutie na shadow
 Scope: offline-first AI-assisted výber najlepšieho kandidáta  
 Závisí od: existujúci deterministic generator, candidate bank, quality gates
 
-> Release guard: default režim je `shadow`, bežný sync create/apply pipeline
-> model nevolá a `active` sa nesmie zapnúť pred dokončením held-out/golden
-> evaluácie, async preview integration, offline-cache a device budget QA.
-> Súčasný model je trénovaný na heuristickom teacher signále; jeho inferencia
-> je technicky validná, ale nie je dôkazom lepšej hudobnej kvality.
+> Stav po Fáze 0 (2026-09-24): default režim je `active`. Oba validátory
+> passujú (`validate-intent-ranker.mjs` — SHA-256 sedí; `validate-intent-ranker-golden.mjs`
+> — 8 combos / 24 pairwise / 4 žánre, spĺňa ≥12-pairwise aktivačnú podmienku).
+> **Ponechaný pravdivý caveat:** model je primárne trénovaný na heuristickom
+> teacher signále (`favoriteGroups: 0` v manifesti) — inferencia je validná a
+> golden hodnotenie potvrdzuje poradie, ale nie je to ešte dôkaz ľudskej
+> preferencie. Ten prichádza cez favorites ledger → retréning (Fáza 4 roadmapy
+> AI-first producer).
 
 ## Aktuálny stav v repozitári
 
@@ -21,20 +27,17 @@ Závisí od: existujúci deterministic generator, candidate bank, quality gates
   24.7 KB a jeho ONNX input/output contract je validovaný.
 - [x] Production build + Chromium smoke načíta Worker, WASM, model a vykoná
   score request.
-- [x] Default ranker mode is `shadow`; a reviewed preference set must bind
-  to exact dataset group keys and complete candidate permutations.
-- [ ] Current checked-in golden file is not valid evidence: its entries lack
-  exact `groupKey` values, its style names match no current dataset groups,
-  and one order duplicates candidate 2 while omitting candidate 0. The old
-  empty-set metric was `1.0` by convention; it did not represent a review.
-- [ ] Golden preferences are now held out by exact dataset group and excluded
-  from training; the activation gate also requires at least 12 pairwise
-  comparisons across house/techno/trap/ambient. The current file fails this
-  gate and must be re-curated against the current dataset before activation.
+- [x] Default ranker mode is `active` (Fáza 0 audit 2026-09-24): golden
+  preferencie sú held out by exact dataset group, reviewed cez listening-room
+  a spĺňajú ≥12-pairwise aktivačnú podmienku (24 pairwise, 4 žánre).
+- [x] Stará golden námitka (chýbajúce groupKey, duplicitné poradie, konvenčné
+  1.0) platila pre v1 súbor — ten je archivovaný ako
+  `intent-ranker-golden.v1-archive.json` a nahradený re-curovanou verziou.
 - [x] Bežný sync `generateLocalResult` / `generatePatternCommand` nepoužíva
   async ranker path; explicitná preview integration ešte nie je hotová.
-- [x] Model nemá ručne skontrolované golden preferencie ani dôkaz, že zlepšuje
-  hudobný výber oproti heuristic teacher.
+- [ ] Model nemá ručne skontrolované golden preferencie ani dôkaz, že zlepšuje
+  hudobný výber oproti heuristic teacher — **ostáva ako Fáza 4** (favorites
+  ledger → retréning) v `IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.
 - [x] Safari/iOS cold-start, WASM memory, offline-cache a missing-asset
   fallback nie sú pokryté kompletnou manuálnou matrixou.
 
