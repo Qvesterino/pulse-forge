@@ -105,9 +105,14 @@ export function genreMasterTiltDb(genre: IntentSpec["genre"]): number | undefine
 /**
  * Deterministic intent → mix profile. Only decisions the intent actually
  * calls for: tone (mood/override), punch (energy/punch override), space
- * (genre/mood/reverb override), pump (house/techno energy or override).
+ * (genre/mood/reverb override), pump (house/techno energy or override),
+ * pocket (V2 vocal presence — leaves room for the singer).
  */
-export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {}): MixProfile {
+export function planMixProfile(
+  intent: IntentSpec,
+  overrides: MixOverrides = {},
+  options: { vocalPresent?: boolean } = {},
+): MixProfile {
   const genre = intent.genre;
   // Genre character defaults (sound-quality pass): when neither the user nor
   // the mood asked for a tone/punch, the genre itself defines the color —
@@ -217,6 +222,19 @@ export function planMixProfile(intent: IntentSpec, overrides: MixOverrides = {})
       sidechainFromDrums: true,
     });
     summary.push(`pump: sidechain ${Math.round(amount * 100)}%`);
+  }
+
+  // ── Pocket: leave room for the singer (V2 vocal-driven form) ───────────
+  // A gentle high-mid dip on the music tracks where the voice lives (~2.8
+  // kHz). Only when a vocal take is present; purely additive (disjoint EQ
+  // params from the tone tilt above) and clamped against the EQ defs on
+  // apply like every other decision. VLYX unmask instead of this static dip
+  // is the documented follow-up (heavier worklet, needs the vocal bus).
+  if (options.vocalPresent) {
+    const pocket = { highMidFreq: 2800, highMidGain: -2.5, highMidQ: 1.2 };
+    decisions.push({ target: "chords", effectType: "eq", params: { ...pocket } });
+    decisions.push({ target: "lead", effectType: "eq", params: { ...pocket } });
+    summary.push("pocket: vocal space (high-mid dip)");
   }
 
   // Master tilt (sound-quality pass): ONLY for the character genres, so a

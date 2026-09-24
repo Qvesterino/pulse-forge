@@ -17,8 +17,7 @@ export interface VocalAnalyzeRequest {
 }
 
 export type VocalAnalyzeResponse =
-  | { requestId: number; ok: true; profile: VocalProfile }
-  | { requestId: number; ok: false; error: string };
+  { requestId: number; ok: true; profile: VocalProfile } | { requestId: number; ok: false; error: string };
 
 function isAnalyzeRequest(data: unknown): data is VocalAnalyzeRequest {
   if (typeof data !== "object" || data === null) return false;

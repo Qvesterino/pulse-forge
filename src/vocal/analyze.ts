@@ -47,7 +47,7 @@ function median(values: number[]): number {
 }
 
 /** Peak-to-quiet-decile ratio in dB over 2048-sample frames (rough SNR). */
-export function estimateSnrDb(pcm: Float32Array, sampleRate: number): number {
+export function estimateSnrDb(pcm: Float32Array): number {
   const frame = 2048;
   const hop = 1024;
   const levels: number[] = [];
@@ -172,7 +172,7 @@ export function buildVocalProfile(input: VocalAnalysisInput): VocalProfile {
       energyCurve,
       phrases,
       silenceRatio: round4(silentBars / Math.max(1, bars)),
-      snrDb: round4(estimateSnrDb(pcm, sampleRate)),
+      snrDb: round4(estimateSnrDb(pcm)),
       durationSec: round4(durationSec),
       bars,
       bpm: Math.round(bpm * 10) / 10,

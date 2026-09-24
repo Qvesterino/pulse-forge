@@ -28,6 +28,8 @@ import {
   type ProductionIntent,
 } from "./production";
 import { applySectionRequests, type SectionParse } from "./sections";
+import { vocalSectionAdjust } from "../vocal/form";
+import type { VocalProfile } from "../vocal/types";
 import { EFFECT_META } from "../effects/definitions";
 
 /**
@@ -1089,6 +1091,12 @@ export interface BuildSongOptions {
    * "epic journey", "3 minutes", "2:30") scale the core cycles.
    */
   length?: SongLengthHint | null;
+  /**
+   * V2 vocal-driven form — the singer's phrasing nudges per-section
+   * energy/density (sung peaks lift, pauses breathe). Absent = the genre
+   * form builds exactly as before.
+   */
+  vocalProfile?: VocalProfile | null;
 }
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -1114,12 +1122,18 @@ export async function buildSong(
   const ALL_ROLES: IntentRole[] = ["drums", "bass", "chords", "lead"];
   const userRoles = baseIntent.roles ?? ALL_ROLES;
 
+  // V2 vocal-driven form: running bar cursor lets the voice bend each
+  // section toward what the take does in that span (peaks lift, pauses
+  // breathe). Without a profile every adjust is 0 — legacy behavior.
+  let vocalBar = 0;
   for (const [index, section] of form.sections.entries()) {
     // A2 v2 role-aware instrumentation: the section plays only the roles its
     // form asks for, further limited by the USER's role request ("no drums"
     // keeps drums out of every section, including choruses).
     const wanted = section.instrumentation.filter((role) => userRoles.includes(role));
     const sectionRoles: IntentRole[] = wanted.length > 0 ? [...wanted] : [...userRoles];
+    const vocalAdjust = vocalSectionAdjust(options.vocalProfile, vocalBar, section.bars);
+    vocalBar += section.bars;
     const sectionIntent = normalizeIntent({
       genre: baseIntent.genre,
       style: baseIntent.style ?? undefined,
@@ -1128,8 +1142,8 @@ export async function buildSong(
       bpmRange: baseIntent.bpmRange,
       // pattern = the full section length (multi-bar phrase plans, fills)
       length: Math.min(256, section.bars * 16),
-      energy: section.energyDelta,
-      density: section.densityDelta,
+      energy: section.energyDelta + vocalAdjust.energy,
+      density: section.densityDelta + vocalAdjust.density,
       complexity: section.complexityDelta,
       variation: baseIntent.variation,
       candidateCount: 1,

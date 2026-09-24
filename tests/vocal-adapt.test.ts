@@ -46,39 +46,57 @@ describe("keyTransposeDelta (shortest path)", () => {
 describe("applyVocalKeyCommand", () => {
   it("sets the key and transposes melodic notes, drums untouched", () => {
     const doc = { ...testDoc(), key: "C Major" as const };
-    const drumRowsBefore = JSON.stringify(
-      doc.tracks.filter((t) => t.kind === "drum").map((t) => doc.patterns.map((p) => p.rows)),
+    // Drum rows are unpitched — transpose must leave every row untouched.
+    const rowsBefore = JSON.stringify(doc.patterns.map((p) => p.rows));
+    const before = doc.patterns.flatMap((p) =>
+      Object.values(p.notes)
+        .flat()
+        .map((n) => n.pitch),
     );
-    const before = doc.patterns.flatMap((p) => Object.values(p.notes).flat().map((n) => n.pitch));
 
     const cmd = applyVocalKeyCommand(doc, profileWith({ key: "D Major", keyMeasured: true }));
     const next = cmd.execute(doc);
 
     expect(next.key).toBe("D Major");
-    const after = next.patterns.flatMap((p) => Object.values(p.notes).flat().map((n) => n.pitch));
+    const after = next.patterns.flatMap((p) =>
+      Object.values(p.notes)
+        .flat()
+        .map((n) => n.pitch),
+    );
     expect(before.length).toBeGreaterThan(0);
     expect(after).toEqual(before.map((pitch) => Math.min(127, pitch + 2)));
-    // Drum rows are unpitched — identical object shape after transpose.
-    expect(
-      JSON.stringify(next.tracks.filter((t) => t.kind === "drum").map((t) => next.patterns.map((p) => p.rows))),
-    ).toBe(drumRowsBefore);
+    expect(JSON.stringify(next.patterns.map((p) => p.rows))).toBe(rowsBefore);
 
     // One undo step restores everything.
     const undone = cmd.undo(next);
     expect(undone.key).toBe("C Major");
-    expect(undone.patterns.flatMap((p) => Object.values(p.notes).flat().map((n) => n.pitch))).toEqual(before);
+    expect(
+      undone.patterns.flatMap((p) =>
+        Object.values(p.notes)
+          .flat()
+          .map((n) => n.pitch),
+      ),
+    ).toEqual(before);
   });
 
   it("transpose:false sets the key without moving notes (regenerate flow)", () => {
     const doc = { ...testDoc(), key: "C Major" as const };
-    const pitches = doc.patterns.flatMap((p) => Object.values(p.notes).flat().map((n) => n.pitch));
-    const next = applyVocalKeyCommand(
-      doc,
-      profileWith({ key: "G Major", keyMeasured: true }),
-      { transpose: false },
-    ).execute(doc);
+    const pitches = doc.patterns.flatMap((p) =>
+      Object.values(p.notes)
+        .flat()
+        .map((n) => n.pitch),
+    );
+    const next = applyVocalKeyCommand(doc, profileWith({ key: "G Major", keyMeasured: true }), {
+      transpose: false,
+    }).execute(doc);
     expect(next.key).toBe("G Major");
-    expect(next.patterns.flatMap((p) => Object.values(p.notes).flat().map((n) => n.pitch))).toEqual(pitches);
+    expect(
+      next.patterns.flatMap((p) =>
+        Object.values(p.notes)
+          .flat()
+          .map((n) => n.pitch),
+      ),
+    ).toEqual(pitches);
   });
 
   it("clamps transposed pitches into MIDI range", () => {
@@ -102,9 +120,7 @@ describe("applyVocalKeyCommand", () => {
           : p,
       ),
     };
-    const next = applyVocalKeyCommand(withHigh, profileWith({ key: "F Major", keyMeasured: true })).execute(
-      withHigh,
-    );
+    const next = applyVocalKeyCommand(withHigh, profileWith({ key: "F Major", keyMeasured: true })).execute(withHigh);
     const moved = next.patterns[0].notes[targetTrackId];
     expect(moved[moved.length - 1].pitch).toBe(127);
   });

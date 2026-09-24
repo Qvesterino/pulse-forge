@@ -3,6 +3,7 @@ import type {
   DrumTrack,
   DeviceState,
   EffectInstance,
+  EffectType,
   GenerativeTrack,
   GenerativeMacroAutomation,
   GenerativeMacroName,

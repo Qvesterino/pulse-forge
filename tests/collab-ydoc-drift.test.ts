@@ -83,7 +83,13 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
   it("round-trips the Remix-DNA lineage link (parent/root/depth survive collab)", () => {
     const doc = normalizeProject({
       ...createProjectFromTemplate("drill"),
-      lineage: { parentId: "project-parent", rootId: "project-root", depth: 2, prompt: "dark trap 140", seed: "seed-1" },
+      lineage: {
+        parentId: "project-parent",
+        rootId: "project-root",
+        depth: 2,
+        prompt: "dark trap 140",
+        seed: "seed-1",
+      },
     });
     const restored = roundTrip(doc);
     expect(restored.lineage).toEqual(doc.lineage);
