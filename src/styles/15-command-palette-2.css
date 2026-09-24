@@ -1,5 +1,3 @@
-
-
 .instrument-docked-content .env-svg {
   max-height: 125px;
 }
@@ -714,6 +712,41 @@
   .dl-title-accent {
     animation: none;
   }
+}
+
+/* ── Vocal-ready mode + A/B listening (GOAL 33/38) ────────────────────── */
+.vocal-hud {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 208, 0, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 208, 0, 0.06);
+  font-variant-numeric: tabular-nums;
+}
+
+.vocal-hud-bpm,
+.vocal-hud-key,
+.vocal-hud-loop,
+.vocal-hud-click {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.vocal-hud-key {
+  color: #ffd000;
+}
+
+.vocal-hud-click {
+  color: #8f8;
+}
+
+.intent-idea-btn.recording,
+.intent-idea-btn[disabled].recording {
+  color: #ff5555;
+  border-color: #ff5555;
 }
 
 /* ── Intent candidate audition (INTENT_ENGINE.md A1) ─────────────────── */

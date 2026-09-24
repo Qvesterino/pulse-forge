@@ -809,6 +809,8 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 
 **LIVE MONITORING (GOAL 37)**: 🎤 IDEA recordings sú **beat-synced** — transport sa zarotuje (pattern + click, ak nehral; restore po skončení), PcmMicRecorder dáva sample-accurate PCM, `transportStartTick` + pattern loop ticks sa passujú do `analyzeVoiceIdea` (noty padnú NA GRID, tempo = presné doc.bpm, nie flux guess). `🔊` monitor toggle (default off — slúchadlá, speaker feedback) cez `rec.setMonitoring`. Free-time fallback mimo pattern playback.
 
+**VOCAL-READY REŽIM (GOAL 39, IntentPanel 🎧 VOCAL)**: jeden klik → transport LOOPUJE aktívny pattern + click ON → HUD strip (BPM / tónina / loop bars / ⬇ BEAT ONLY). **Beat-only bounce** = `renderProject` s `masterProcessing: false` → WAV bez master chain (reálne stems infra) — spevák si stiahne čistý bed a naspieva na ňom kdekoľvek. OFF = transport stop + click/loop restore.
+
 **KONVERZAČNÉ INTENTY (GOAL 38, `src/intent/conversation.ts`)** — producent hovorí bežnou rečou a ZMENY SÚ REALNE:
 - **Fader**: „zníž basu", „hlasnejšie bicie", „turn down the drums" → `setTrackParams` gain ×0.82/×1.22 na target tracky (drums = celý drum track, bass/chords/lead = name-match → ROLE_INDEX fallback, master = masterGain). Smer aj target POVINNÉ („zníž" samotné = nejednoznačné → nie fader).
 - **Tempo**: „zníž tempo", „pomalší", „zrýchli to", „tempo na 128", „140 bpm" → `setBpm` (±6 alebo exact).

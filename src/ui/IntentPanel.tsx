@@ -46,7 +46,7 @@ import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { renderProject } from "../rendering/renderer";
-import { sanitizeFilename } from "../rendering/wav";
+import { sanitizeFilename, encodeWav } from "../rendering/wav";
 import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
@@ -630,6 +630,10 @@ export function IntentPanel() {
   const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
   const [refSummary, setRefSummary] = useState<string | null>(null);
   const [refBusy, setRefBusy] = useState(false);
+  // Vocal-ready mode: loop the active pattern with a click so a solo artist
+  // can rehearse/record vocals, plus a beat-only bounce (no master chain).
+  const [vocalMode, setVocalMode] = useState(false);
+  const [bounceBusy, setBounceBusy] = useState(false);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
   // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
   // + key, humNotes become the LEAD of the SUNO MODE song.
@@ -833,6 +837,50 @@ export function IntentPanel() {
     const rows = grooveRowsForPads(refGroove.hits, pads, refGroove.steps);
     services.store.execute(replacePatternInPlaceCommand(doc, pattern.id, { ...pattern, rows }));
     setStatus(`🥁 groove installed — ${refGroove.summary} (one undo step)`);
+  };
+  // Vocal-ready: loop the ACTIVE pattern with a click so the artist can
+  // rehearse/record vocals over it; OFF restores transport to clean state.
+  const toggleVocalMode = () => {
+    const next = !vocalMode;
+    setVocalMode(next);
+    const activePattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    const ticks = activePattern ? patternLengthTicks(activePattern) : 16 * 120;
+    if (next) {
+      services.transport.setLoop(true, 0, ticks);
+      services.transport.setMetronome(true);
+      if (!services.transport.playing) services.playback.playPause();
+      setStatus(`🎧 vocal mode — loop ${Math.round(ticks / 1920)} bars @ ${doc.bpm} BPM, click on. Spievaj!`);
+    } else {
+      if (services.transport.playing) services.playback.playPause();
+      services.transport.setMetronome(false);
+      services.transport.setLoop(false, 0, 0);
+      setStatus("🎧 vocal mode off");
+    }
+  };
+  // Beat-only bounce: full pattern render WITHOUT the master chain — the raw
+  // bed a vocalist wants to sing over (master squash fights the voice).
+  const bounceBeatOnly = async () => {
+    if (bounceBusy) return;
+    setBounceBusy(true);
+    try {
+      const currentDoc = services.store.getDoc();
+      setStatus("⬇ bouncing beat-only (no master chain)…");
+      const buffer = await renderProject(currentDoc, services.bank, {
+        mode: "pattern",
+        sampleRate: 44100,
+        tailSeconds: 1.5,
+        masterProcessing: false,
+      });
+      downloadBlob(
+        new Blob([encodeWav(buffer, 16)], { type: "audio/wav" }),
+        `${sanitizeFilename(currentDoc.name)}-beat-only.wav`,
+      );
+      setStatus("✓ beat-only bounce — nahraj na tom hlas kdekoľvek");
+    } catch (err) {
+      setError(`bounce failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBounceBusy(false);
+    }
   };
   const buildSongDraft = async (sections?: SectionParse, reviseInput?: IntentInput) => {
     setError(null);
@@ -1336,7 +1384,7 @@ export function IntentPanel() {
         </label>
         <button
           type="button"
-          className="btn intent-idea-btn"
+          className={`btn intent-idea-btn${ideaRecording ? " recording" : ""}`}
           disabled={refBusy}
           onClick={() => void toggleIdeaRecording()}
           title="Voice idea — record yourself humming/singing the hook; the beat builds around YOUR tempo, key and melody"
@@ -1351,6 +1399,14 @@ export function IntentPanel() {
           title="Audio reference — drop a WAV and the engine listens: genre + energy patch, plus a semantic conditioning vector for the v2 priors"
         >
           {refBusy ? "🎧…" : "🎧 REF"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-vocal-btn"
+          onClick={() => toggleVocalMode()}
+          title="Vocal-ready mode — loop the active pattern with a click so you can rehearse or record vocals"
+        >
+          {vocalMode ? "🎧 VOCAL ON" : "🎧 VOCAL"}
         </button>
         <button
           type="button"
@@ -1384,6 +1440,34 @@ export function IntentPanel() {
             onClick={clearReference}
           >
             ×
+          </button>
+        </div>
+      )}
+      {vocalMode && (
+        <div className="vocal-hud" aria-label="Vocal-ready HUD">
+          <span className="vocal-hud-bpm">{doc.bpm} BPM</span>
+          <span className="vocal-hud-key">{refPatch?.key ?? parsed?.input?.key ?? doc.key ?? "—"}</span>
+          <span className="vocal-hud-loop">
+            looping{" "}
+            {Math.max(
+              1,
+              Math.round(
+                (doc.patterns.find((candidate) => candidate.id === doc.activePatternId)
+                  ? patternLengthTicks(doc.patterns.find((candidate) => candidate.id === doc.activePatternId)!)
+                  : 1920) / 1920,
+              ),
+            )}{" "}
+            bars
+          </span>
+          <span className="vocal-hud-click">click ON</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            disabled={bounceBusy}
+            onClick={() => void bounceBeatOnly()}
+            title="Render this pattern WITHOUT the master chain — the raw bed for recording vocals"
+          >
+            {bounceBusy ? "…" : "⬇ BEAT ONLY"}
           </button>
         </div>
       )}

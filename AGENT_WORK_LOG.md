@@ -3955,3 +3955,15 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - **Router**: loudness → **fader → tempo → vibe** → effectIntent → production → mix → revise → pattern. Vibe sa vracia AKO production kind (panel vetva existuje).
 - **Testy** `tests/conversation-intents.test.ts` 16/16 (SK/EN parsery, master route, clamps, bpm delta/set, router priority). Regresia **289/289 cez 29 súborov**; typecheck 0.
 - ⚠️ ZOPAKOVANÁ GOTCHA (tretíkrát v tejto session!): SK stemy v regexoch MUSIA byť deaccentované + **python heredoc `` sa mení na BS bajt (0x08)** — zápis cez python string ops korumpuje regex hranice; riešenie: line-based replace alebo Write tool celého súboru. Fyzicky prítomné BS bajty sa dá smieť bytes.replace(bytes([8]), b"") — ale v tomto prostredí sa zápis neprejavil konzistentne (súbor možno drží externý proces) → najspoľahlivejšie: Write tool celého súboru.
+
+---
+
+## GOAL 39 — VOCAL-READY REŽIM (2026-09-22)
+
+**Dokončenie príbehu solo umelca:** 🎤 IDEA (hum) → ♪ SONG (beat okolo teba) → 🎧 VOCAL (nahrávaj si na tom).
+
+- **🎧 VOCAL toggle** (IntentPanel intent-actions): ON → `transport.setLoop(true, 0, activePatternTicks)` + metronome ON + playPause (len ak nehral — bez restore semantics, MVP clean-off vypne všetko). HUD strip: `{doc.bpm} BPM / key (refPatch → intent → doc) / loop bars / click ON / ⬇ BEAT ONLY`.
+- **⬇ BEAT ONLY**: `renderProject({ mode: "pattern", masterProcessing: false, tailSeconds: 1.5 })` → `encodeWav(buffer, 16)` → downloadBlob `{name}-beat-only.wav`. Bez master chain (reálne stems správanie) — hlas sa nahráva na nekomprimovaný bed.
+- **Štýly**: `.vocal-hud` strip (žltý rám, tabular-nums) + `.intent-idea-btn.recording` (červený blikajúci look počas 🎤 nahrávania) v 15-command-palette-2.css.
+- Wiring only over existing tested APIs (transport loop/metronome, renderProject masterProcessing, encodeWav) — regression 289/289 cez 29 súborov; typecheck 0.
+- MVP hranice: loop = aktívny pattern (nie song form); OFF = čistý stop (bez pôvodného transport stavu restore).
