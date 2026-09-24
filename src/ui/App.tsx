@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
+import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -156,6 +157,10 @@ export function App({
   useEffect(() => {
     selectionStore.clear();
   }, [services, selectionStore]);
+  // Qvester ecosystem: while we play, publish the bounded live-analysis
+  // window on channel pulse_forge so sibling audio-reactive apps can loop
+  // our curves. Cleared on unmount (the documented publisher sign-out).
+  useEffect(() => startQvesterProfileBus(services).stop, [services]);
   const [toolStore] = useState(() => new ToolStore());
   const tool = useSyncExternalStore(toolStore.subscribe, toolStore.getTool, toolStore.getTool);
   void tool;
