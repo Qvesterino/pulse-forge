@@ -78,10 +78,12 @@ describe("fxeq rack ↔ core parameter contract", () => {
 
   it("translates rack mix → core globalMix in live changes", () => {
     vi.stubGlobal("AudioWorkletNode", FakeAudioWorkletNode);
-    const rt = createFxEqNode(fakeCtx(), instance({ mix: 35 }), {});
+    const rt = createFxEqNode(fakeCtx(), instance({ mix: 0.35 }), {});
     lastPort!.posted.length = 0;
-    rt.setParameter("mix", 55);
-    expect(lastPort!.posted[0]).toEqual({ type: "param", id: "globalMix", value: 55 });
+    // Host/doc mix is 0..1 (quality backlog A6); the node bridges it to the
+    // core's 0..100 globalMix — 0.5 must arrive as 50, never 0.5 or 5000.
+    rt.setParameter("mix", 0.5);
+    expect(lastPort!.posted[0]).toEqual({ type: "param", id: "globalMix", value: 50 });
     rt.dispose();
   });
 
@@ -94,10 +96,10 @@ describe("fxeq rack ↔ core parameter contract", () => {
       }
     }
     vi.stubGlobal("AudioWorkletNode", Capturing);
-    const rt = createFxEqNode(fakeCtx(), instance({ mix: 35 }), { mix: 100 });
+    const rt = createFxEqNode(fakeCtx(), instance({ mix: 0.35 }), { mix: 1 });
     const opts = constructed[0] as { processorOptions?: { params?: Record<string, number> } };
     const params = opts.processorOptions!.params!;
-    expect(params.globalMix).toBe(35); // instance param wins, translated
+    expect(params.globalMix).toBe(35); // instance param wins, translated + scaled
     expect(params.mix).toBeUndefined(); // untranslated rack id must not leak
     rt.dispose();
   });

@@ -40,11 +40,13 @@ describe("MIDI commands", () => {
   it("clamps a valid plugin target to its complete parameter range", () => {
     const pluginDoc = createProjectFromTemplate("house");
     const track = pluginDoc.tracks.find((item) => item.kind === "instrument")!;
-    track.effects = [{ id: "fx-midi", type: "fxeq", bypassed: false, params: { bandCount: 6, mix: 100 } }];
+    // Rack mix is doc-scale 0..1 since the flagship mix unification; legacy
+    // 0..100 stored values are rescaled by normalizeProject, not here.
+    track.effects = [{ id: "fx-midi", type: "fxeq", bypassed: false, params: { bandCount: 6, mix: 1 } }];
     const effect = track.effects[0];
     const target = { kind: "fxParam" as const, trackId: track.id, fxId: effect.id, paramId: "mix" };
     const next = addMidiCcMapping(pluginDoc, 74, target, -999, 999).execute(pluginDoc);
-    expect(next.midi?.ccMappings[0]).toMatchObject({ min: 0, max: 100 });
+    expect(next.midi?.ccMappings[0]).toMatchObject({ min: 0, max: 1 });
   });
 
   it("removeMidiCcMapping removes mapping", () => {
