@@ -639,7 +639,7 @@
             "bandCount": 6,
             "crossoverOrder": 4,
             "crossoverEqualize": 1,
-            "mix": 100,
+            "mix": 1,
             "outputGainDb": 0,
             "limiterEnabled": 1,
             "limiterCeilDb": -0.3
@@ -649,12 +649,14 @@
           "type": "ultina",
           "defaults": {
             "global.inputGainDb": 0,
-            "global.mix": 100,
+            "global.mix": 1,
             "global.outputGainDb": 0,
             "comp.enabled": 0,
             "transient.enabled": 0,
             "exciter.enabled": 0,
-            "unmask.enabled": 0
+            "unmask.enabled": 0,
+            "unmask.ecosystemEnabled": 0,
+            "unmask.amount": 50
           }
         },
         {
@@ -663,7 +665,7 @@
             "global.inputGainDb": 0,
             "blendPad.x": 0.5,
             "blendPad.y": 0.5,
-            "global.dryWet": 25,
+            "global.dryWet": 0.25,
             "global.outputGainDb": 0,
             "engines.e1.enabled": 1,
             "engines.e2.enabled": 1,
@@ -675,7 +677,7 @@
           "type": "morphdynamics",
           "defaults": {
             "global.inputGainDb": 0,
-            "global.mix": 100,
+            "global.mix": 1,
             "macro.pressure": 35,
             "macro.punch": 20,
             "macro.body": 50,

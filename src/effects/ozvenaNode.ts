@@ -136,6 +136,10 @@ export function createOzvenaNode(
   initialBpm = 120,
 ): EffectRuntime {
   const initial: Record<string, number> = { ...defaults, ...instance.params };
+  // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
+  // 0..100 — the node bridges at the doc→worklet boundary (defaults arrive
+  // deep-scale and are not bridged).
+  for (const [id, v] of Object.entries(instance.params)) initial[id] = id === "global.dryWet" ? v * 100 : v;
 
   const node = new AudioWorkletNode(ctx, "ozvena-processor", {
     numberOfInputs: 1,
@@ -194,7 +198,7 @@ export function createOzvenaNode(
     },
     setParameter(id: string, value: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "param", id, value });
+      node.port.postMessage({ type: "param", id, value: id === "global.dryWet" ? value * 100 : value });
     },
     /**
      * Time-stamped parameter set (automation lanes, offline render). The
@@ -204,7 +208,7 @@ export function createOzvenaNode(
      */
     setParameterAt(id: string, value: number, when: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "paramAt", id, value, when });
+      node.port.postMessage({ type: "paramAt", id, value: id === "global.dryWet" ? value * 100 : value, when });
     },
     /**
      * Roadmap O7: load a user impulse response (convolution mode). The

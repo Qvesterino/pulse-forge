@@ -23,6 +23,9 @@ function normalizeHostValue(id: string, value: number): number {
   if (id === "bandCount") return Math.round(value);
   if (id === "crossoverOrder") return snapCrossoverOrder(value);
   if (id === "crossoverEqualize") return value >= 0.5 ? 1 : 0;
+  // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
+  // 0..100 — the node bridges at the doc→worklet boundary.
+  if (toCoreId(id) === "globalMix") return value * 100;
   return value;
 }
 

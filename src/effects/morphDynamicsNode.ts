@@ -16,7 +16,12 @@ export function createMorphDynamicsNode(
   // Full param merge (defaults + every instance param — the MORPH
   // parameter space is namespaced: "macro.pressure", "dyn.ratio",
   // "routes.0.amount", …).
+  // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
+  // 0..100 — the node bridges at the doc→worklet boundary. The defaults
+  // fallback arrives deep-scale and is not bridged.
+  const toDeepScale = (id: string, v: number): number => (id === "global.mix" ? v * 100 : v);
   const initial: Record<string, number> = { ...defaults, ...instance.params };
+  for (const [id, v] of Object.entries(instance.params)) initial[id] = toDeepScale(id, v);
 
   // Input 2 carries the external sidechain feed (dyn.sidechainExt): the
   // engine wires a source track's post-fader node here via setSidechainInput.
@@ -73,7 +78,7 @@ export function createMorphDynamicsNode(
     getMeters: () => meters,
     setParameter(id: string, value: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "param", id, value });
+      node.port.postMessage({ type: "param", id, value: toDeepScale(id, value) });
     },
     /**
      * Time-stamped parameter set (automation lanes, offline render). The
@@ -83,7 +88,7 @@ export function createMorphDynamicsNode(
      */
     setParameterAt(id: string, value: number, when: number) {
       if (disposed) return;
-      node.port.postMessage({ type: "paramAt", id, value, when });
+      node.port.postMessage({ type: "paramAt", id, value: toDeepScale(id, value), when });
     },
     setMetersEnabled(enabled: boolean) {
       if (disposed) return;

@@ -1002,7 +1002,7 @@ export const fxeqParams: ParamDef[] = [
     format: (v) => (v >= 0.5 ? "EQ" : "RAW"),
     kind: "toggle",
   },
-  { id: "mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   {
     id: "limiterEnabled",
@@ -1018,7 +1018,7 @@ export const fxeqParams: ParamDef[] = [
 
 export const ultinaParams: ParamDef[] = [
   { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
-  { id: "global.mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+  { id: "global.mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   {
     id: "comp.enabled",
@@ -1085,7 +1085,7 @@ export const ozvenaParams: ParamDef[] = [
   { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "blendPad.x", label: "PAD X", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
   { id: "blendPad.y", label: "PAD Y", min: 0, max: 1, default: 0.5, format: (v) => v.toFixed(2) },
-  { id: "global.dryWet", label: "MIX", min: 0, max: 100, default: 25, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+  { id: "global.dryWet", label: "MIX", min: 0, max: 1, default: 0.25, format: formatPct },
   { id: "global.outputGainDb", label: "OUT", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   {
     id: "engines.e1.enabled",
@@ -1119,7 +1119,7 @@ export const ozvenaParams: ParamDef[] = [
 
 export const morphdynamicsParams: ParamDef[] = [
   { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
-  { id: "global.mix", label: "MIX", min: 0, max: 100, default: 100, unit: "%", format: (v) => `${v.toFixed(0)}%` },
+  { id: "global.mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   {
     id: "macro.pressure",
     label: "PRESSURE",

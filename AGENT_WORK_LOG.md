@@ -4005,3 +4005,26 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - **Panel wiring**: ⚡ DO IT resolves follow-up PRVÝ (merged intent → GENERATE path, one-shot consumption); po GENERATE sa zaznamenajú decisions; session HUD chip (`🎛 techno · 132 BPM · E Natural Minor` + ✕ reset) + B/C variant chips (one-shot patch → GENERATE).
 - **Testy** `tests/producer-session.test.ts` 9/9 (decisions record, summary, follow-up pomalšie/tvrdší/reroll/null, varianty + energy clamps, voice idea coexistence). Regresia **311/311 cez 30 súborov**; typecheck 0.
 - ⚠️ PYTHON GOTCHA (opäť): `` a `\s` v heredoc stringoch sa korumpujú — line-based replace funguje, ale najčistejšie je Write tool celého súboru.
+
+---
+
+## Session A6 (post-campaign quality) — flagship mix scale unification (2026-09-23)
+
+**Scope:** A6 from QUALITY-BACKLOG — the mix-scale split (38 effects 0..1 vs 4 flagships 0..100) unified: all flagship rack mixes now store 0..1 like every other effect.
+
+**The migration design (doc 0..1, deep 0..100, node bridges):**
+
+- **Doc layer**: the four rack mixes (`fxeq.mix`, `ultina global.mix`, `morph global.mix`, `ozvena global.dryWet`) store 0..1; ParamDefs rescaled (min 0, max 1, default 1 / ozvena 0.25 matching its deep default 25/100); `formatPct` displays ×100 as before.
+- **Normalize layer** (`normalizePluginParams` in definitions.ts): new `rescaleLegacyRackMix(type, id, value)` — legacy stored values > 1 divide by 100 once (idempotent: rescaled docs re-normalize as no-op). Applied in all four flagship source loops before the vendored clamps (ultina `clampUltinaParam`, ozvena `clampOzvenaParam`, morph `clampMorphParam`, fxeq explicit mix clamp) AND to the vendored deep defaults after merge (`buildUltinaDefaultParams`/`buildMorphDefaultParams`/`OZVENA_DEFAULT_DEEP_PARAMS`/fxeq schema defaultParams globalMix) so fresh defaults land doc-scale. The fxeq `globalMix` alias re-syncs from `mix` after the rule ✓.
+- **Node layer** (doc→worklet boundary, ×100 bridge): `fxeqNode.normalizeHostValue` (globalMix via RACK_TO_CORE), `ultinaNode` + `morphDynamicsNode` + `ozvenaNode` initial-params merge and setParameter/setParameterAt. The deep DSP state stays 0..100 — **vendored contracts and worklet processors untouched** (no vendor-reconciliation review needed, contrary to the first deferral assessment).
+- **A/B deviceState slots**: restore flows through doc commands → the > 1 rule converts legacy slot values automatically; newly saved slots store doc-scale. Idempotent both directions.
+
+**Accepted edges (documented):** legacy automation curves ≤ 1 keep values, > 1 clamp at the worklet ceiling (rare); legacy mix ≈ 0..1 % wet values are ambiguous under the > 1 rule (rare — users set whole percentages).
+
+**Race note:** the parallel session bumped SCHEMA_VERSION 1 → 3 mid-session (Remix-DNA lineage domain with a real sanitize migration — our own GOAL 05 bump policy followed by them) which drifted the domain-golden encode case; recaptured with attribution proven via `git diff 6d112b7..HEAD -- schema.ts`. Decode pins preserved and still passing — a pre-v3 share code decodes identically under the migrated normalize.
+
+**Important files changed:** src/effects/definitions.ts (ParamDefs + rescaleLegacyRackMix + 4 branch rules), src/effects/{fxeqNode,ultinaNode,morphDynamicsNode,ozvenaNode}.ts (doc→deep bridges), tests/param-sanity.test.ts (+3 mix-scale pins), tests/domain-goldens/*.json (recaptured).
+
+**Validation:** param-sanity 10/10 (incl. legacy 70 → 0.7 idempotence + fxeq mix/globalMix sync); flagship battery fxeq-golden/ultina-vectors/ozvena-golden/morph-dynamics-golden/kaskada-vectors/fx-expansion/morph-dynamics-contract/fx-tempo-sync/intent-mix-route 115/115; follow-up batch 41/41. tsc campaign-clean (remaining noise: their in-flight intent-brief + interop files).
+
+**Remaining backlog:** A7 (EQ legacy shelf range), A9 (dB/threshold range unification decisions), D-consistency (documentation). The B-family and A-core are closed.

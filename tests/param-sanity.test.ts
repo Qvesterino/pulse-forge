@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { EFFECT_META, formatMs, formatSecMs } from "../src/effects/definitions";
+import { EFFECT_META, formatMs, formatSecMs, normalizePluginParams } from "../src/effects/definitions";
 
 /**
  * Session A (quality backlog) — plugin parameter sanity pins for the fixed
@@ -73,5 +73,38 @@ describe("utility DC BLOCK (GOAL-backlog A3)", () => {
     const registrySource = readFileSync(resolve(process.cwd(), "src/effects/registry.ts"), "utf8");
     expect(registrySource).toContain('case "dcBlock"');
     expect(registrySource).toContain("applyDcBlock");
+  });
+});
+
+describe("flagship mix scale unification (GOAL-backlog A6)", () => {
+  const cases = [
+    ["fxeq", "mix"],
+    ["ultina", "global.mix"],
+    ["morphdynamics", "global.mix"],
+    ["ozvena", "global.dryWet"],
+  ] as const;
+
+  it("all four flagship rack mixes store 0..1 like the other 38 effects", () => {
+    for (const [type, id] of cases) {
+      const def = EFFECT_META[type as keyof typeof EFFECT_META].params.find((p) => p.id === id)!;
+      expect(def.min, type).toBe(0);
+      expect(def.max, type).toBe(1);
+      expect(def.default, type).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("legacy 0..100 stored values rescale once and stay stable (idempotent)", () => {
+    for (const [type, id] of cases) {
+      const first = normalizePluginParams(type, { [id]: 70 });
+      expect(first![id], type).toBeCloseTo(0.7, 6);
+      const second = normalizePluginParams(type, first!);
+      expect(second![id], type).toBeCloseTo(0.7, 6);
+    }
+  });
+
+  it("fxeq keeps mix and globalMix in sync at the doc scale", () => {
+    const out = normalizePluginParams("fxeq", { mix: 0.7 });
+    expect(out!.mix).toBeCloseTo(0.7, 6);
+    expect(out!.globalMix).toBeCloseTo(0.7, 6);
   });
 });
