@@ -1178,15 +1178,17 @@ export function IntentPanel() {
           setError(err instanceof Error ? err.message : String(err));
         }
       } else if (route.kind === "fader") {
-        // GOAL 38: "zníž basu" / "hlasnejšie bicie" — real track gain change
+        // GOAL 38/40: "zníž basu" / "kick ťažší" / "hlasnejšie bicie" — real
+        // pad + track gain changes with amount modifiers
         const commands = applyFaderIntent(doc, route.intent);
         if (commands.length === 0) {
-          setError("no matching track for the fader intent");
+          setError("no matching track or pad for the fader intent");
           return;
         }
         commands.forEach((command) => services.store.execute(command));
+        const label = [...route.intent.targets, ...(route.intent.pads ?? [])].join(" + ");
         setStatus(
-          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"}: ${route.intent.targets.join(" + ")} — ${commands.length} fader(s) (one undo step)`,
+          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"} [${route.intent.amount}]: ${label} — ${commands.length} fader(s) (one undo step)`,
         );
       } else if (route.kind === "tempo") {
         // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step

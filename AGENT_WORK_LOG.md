@@ -3967,3 +3967,12 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - **Štýly**: `.vocal-hud` strip (žltý rám, tabular-nums) + `.intent-idea-btn.recording` (červený blikajúci look počas 🎤 nahrávania) v 15-command-palette-2.css.
 - Wiring only over existing tested APIs (transport loop/metronome, renderProject masterProcessing, encodeWav) — regression 289/289 cez 29 súborov; typecheck 0.
 - MVP hranice: loop = aktívny pattern (nie song form); OFF = čistý stop (bez pôvodného transport stavu restore).
+
+---
+
+## GOAL 40 — FADER AMOUNT MODIFIKÁTORY + PER-PAD FADERY (2026-09-23)
+
+- **Amount modifikátory** vo `FaderIntent.amount` ("subtle"/"normal"/"big"/"full"): „trochu" ×0.92/×1.08, default ×0.82/×1.22, „o dosť"/„harder" ×0.7/×1.35, „úplne" ×0.5/×1.6 (GAIN clamps 0..1.5). `FADER_FACTORS` tabuľka + `clampGain` (round ×100).
+- **Per-PAD fadery** vo `FaderIntent.pads` (`FaderPadFamily` = kick/snare/clap/hat/perc/tom): „kick ťažší" (up), „haty tichšie" (down), „snare hlasnejšie", „clap hore". `applyFaderIntent` pady PRVÉ: drum track pady cez `inferPadRole` rodinu → `setPadParams { gain }` (clamp 0.05..1.5, round ×100 — rovnaký vzor ako production padAdjustments). Track targety môžu byť prázdne (čisto padová zmena).
+- Panel fader branch: label = targets + pads, status ukazuje amount, chybová správa „track or pad".
+- **Testy** +5 (amount mapovanie vr. EN, pad family detekcia, amount+pad kombinácia, applyFaderIntent: len matching family pady sa hýbu, full clamp). Regresia **295/295 cez 29 súborov**; typecheck 0.

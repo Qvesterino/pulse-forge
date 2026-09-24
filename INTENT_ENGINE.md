@@ -811,6 +811,8 @@ Prvá vlna audio feedback: **time-domain features + genre target profily**.
 
 **VOCAL-READY REŽIM (GOAL 39, IntentPanel 🎧 VOCAL)**: jeden klik → transport LOOPUJE aktívny pattern + click ON → HUD strip (BPM / tónina / loop bars / ⬇ BEAT ONLY). **Beat-only bounce** = `renderProject` s `masterProcessing: false` → WAV bez master chain (reálne stems infra) — spevák si stiahne čistý bed a naspieva na ňom kdekoľvek. OFF = transport stop + click/loop restore.
 
+**AMOUNT MODIFIKÁTORY + PER-PAD FADERY (GOAL 40, `src/intent/conversation.ts`)**: „zníž basu **trochu**" (×0.92/×1.08 subtle), default (×0.82/×1.22), „**o dosť**" (×0.7/×1.35 big), „**úplne**" (×0.5/×1.6 full). **Per-PAD fadery**: „kick ťažší" (up), „haty tichšie" (down), „snare hlasnejšie", „clap hore" → `setPadParams` gain na pady匹配nuté cez `inferPadRole` rodinu (kick/snare/clap/hat/tom/perc; closedHat+openHat = hat). Fader bez track targetu ale s padmi = čisto padová zmena.
+
 **KONVERZAČNÉ INTENTY (GOAL 38, `src/intent/conversation.ts`)** — producent hovorí bežnou rečou a ZMENY SÚ REALNE:
 - **Fader**: „zníž basu", „hlasnejšie bicie", „turn down the drums" → `setTrackParams` gain ×0.82/×1.22 na target tracky (drums = celý drum track, bass/chords/lead = name-match → ROLE_INDEX fallback, master = masterGain). Smer aj target POVINNÉ („zníž" samotné = nejednoznačné → nie fader).
 - **Tempo**: „zníž tempo", „pomalší", „zrýchli to", „tempo na 128", „140 bpm" → `setBpm` (±6 alebo exact).

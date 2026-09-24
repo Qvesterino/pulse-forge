@@ -6,25 +6,42 @@ import {
   applyFaderIntent,
   applyTempoIntent,
 } from "../src/intent/conversation";
+import { inferPadRole } from "../src/ai/pad-roles";
+import type { DrumTrack } from "../src/project-model/types";
 import { routeIntentText } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
 
 describe("parseFaderIntent", () => {
   it("SK: zníž basu → down + bass target", () => {
     const intent = parseFaderIntent("zníž basu");
-    expect(intent).toEqual({ targets: ["bass"], direction: "down" });
+    expect(intent).toEqual({ targets: ["bass"], pads: [], direction: "down", amount: "normal" });
   });
 
   it("SK: hlasnejšie bicie → up + drums", () => {
-    expect(parseFaderIntent("hlasnejšie bicie")).toEqual({ targets: ["drums"], direction: "up" });
+    expect(parseFaderIntent("hlasnejšie bicie")).toEqual({
+      targets: ["drums"],
+      pads: [],
+      direction: "up",
+      amount: "normal",
+    });
   });
 
   it("EN: turn down the drums", () => {
-    expect(parseFaderIntent("turn down the drums")).toEqual({ targets: ["drums"], direction: "down" });
+    expect(parseFaderIntent("turn down the drums")).toEqual({
+      targets: ["drums"],
+      pads: [],
+      direction: "down",
+      amount: "normal",
+    });
   });
 
   it("master: stíš celý mix", () => {
-    expect(parseFaderIntent("stíš celý mix")).toEqual({ targets: ["master"], direction: "down" });
+    expect(parseFaderIntent("stíš celý mix")).toEqual({
+      targets: ["master"],
+      pads: [],
+      direction: "down",
+      amount: "normal",
+    });
   });
 
   it("no direction / no target → null", () => {
@@ -114,5 +131,91 @@ describe("router wiring", () => {
     expect(routeIntentText("popovejšie", doc).kind).toBe("production");
     // pattern requests still win their own route
     expect(routeIntentText("dark techno at 138", doc).kind).toBe("pattern");
+  });
+});
+
+describe("fader amount modifiers + per-pad targets (GOAL 40)", () => {
+  it("amount modifiers map to subtle / big / full", () => {
+    expect(parseFaderIntent("zníž basu trochu")?.amount).toBe("subtle");
+    expect(parseFaderIntent("zníž basu o dosť")?.amount).toBe("big");
+    expect(parseFaderIntent("zníž basu úplne")?.amount).toBe("full");
+    expect(parseFaderIntent("hlasnejšie bicie")?.amount).toBe("normal");
+    // EN amounts
+    expect(parseFaderIntent("turn down the drums a bit")?.amount).toBe("subtle");
+    expect(parseFaderIntent("raise the bass a lot")?.amount).toBe("big");
+  });
+
+  it("per-pad targets: kick / haty / snare / clap", () => {
+    expect(parseFaderIntent("kick ťažší")?.pads).toEqual(["kick"]);
+    expect(parseFaderIntent("kick ťažší")?.direction).toBe("up");
+    expect(parseFaderIntent("haty tichšie")?.pads).toEqual(["hat"]);
+    expect(parseFaderIntent("haty tichšie")?.direction).toBe("down");
+    expect(parseFaderIntent("snare hlasnejšie")?.pads).toEqual(["snare"]);
+    expect(parseFaderIntent("clap hore")?.pads).toEqual(["clap"]);
+    // no track target when only a pad family is named
+    expect(parseFaderIntent("kick ťažší")?.targets).toEqual([]);
+  });
+
+  it("amount + pad together", () => {
+    const intent = parseFaderIntent("kick o dosť ťažší");
+    expect(intent?.pads).toEqual(["kick"]);
+    expect(intent?.amount).toBe("big");
+  });
+});
+
+describe("applyFaderIntent — amounts and pads", () => {
+  const doc = testDoc();
+  const drumTrack = doc.tracks.find(
+    (track): track is Extract<(typeof doc.tracks)[number], { kind: "drum" }> => track.kind === "drum",
+  );
+  if (!drumTrack) throw new Error("fixture has no drum track");
+
+  it("subtle amount steps less than normal", () => {
+    const downNormal = applyFaderIntent(
+      { ...doc, tracks: doc.tracks },
+      { targets: ["master"], pads: [], direction: "down", amount: "normal" },
+    )[0].execute(doc);
+    const downSubtle = applyFaderIntent(
+      { ...doc, tracks: doc.tracks },
+      { targets: ["master"], pads: [], direction: "down", amount: "subtle" },
+    )[0].execute(doc);
+    expect(downSubtle.master?.masterGain).toBeGreaterThan(downNormal.master?.masterGain ?? 0);
+    expect(downNormal.master?.masterGain).toBeLessThan(doc.master?.masterGain ?? 1);
+  });
+
+  it("per-pad gain: only matching family pads move", () => {
+    const drum = drumTrack;
+    const kickPad = drum.pads.find((pad) => inferPadRole(pad.name, drum.pads.indexOf(pad)) === "kick");
+    expect(kickPad).toBeDefined();
+    // "other" must be a pad OUTSIDE the kick family — house kits often ship
+    // several kick-family pads, which legitimately move together
+    const kickRole = inferPadRole(kickPad!.name, drum.pads.indexOf(kickPad!));
+    const otherPad = drum.pads.find(
+      (pad) => pad.id !== kickPad!.id && inferPadRole(pad.name, drum.pads.indexOf(pad)) !== kickRole,
+    );
+    const beforeKick = kickPad!.gain;
+    const beforeOther = otherPad?.gain ?? 0;
+    const commands = applyFaderIntent(doc, { targets: [], pads: ["kick"], direction: "up", amount: "big" });
+    expect(commands.length).toBeGreaterThan(0);
+    let next = doc;
+    for (const command of commands) next = command.execute(next);
+    const nextDrum = next.tracks.find((track): track is DrumTrack => track.kind === "drum");
+    const afterKick = nextDrum?.pads.find((pad) => pad.id === kickPad!.id);
+    const afterOther = nextDrum?.pads.find((pad) => pad.id === otherPad?.id);
+    expect(afterKick?.gain).toBeGreaterThan(beforeKick);
+    if (otherPad) {
+      expect(afterOther?.gain).toBe(beforeOther);
+    }
+  });
+
+  it("full amount down clamps at the gain floor", () => {
+    const commands = applyFaderIntent(doc, {
+      targets: ["master"],
+      pads: [],
+      direction: "down",
+      amount: "full",
+    });
+    const next = commands[0].execute(doc);
+    expect(next.master?.masterGain).toBeGreaterThanOrEqual(0);
   });
 });
