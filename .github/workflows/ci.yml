@@ -230,6 +230,7 @@ jobs:
           node --check desktop/mrt2-windows-assets.cjs;
           node --check desktop/mrt2-bridge.cjs;
           node --check scripts/benchmark-mrt2-windows.mjs;
+          node --check scripts/desktop-package-mrt2-windows.mjs;
           node --check scripts/create-mrt2-windows-manifest.mjs;
           node --check scripts/verify-mrt2-windows-package.mjs
       - name: Validate Python companion source without installing model runtime

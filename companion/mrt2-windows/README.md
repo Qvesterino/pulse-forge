@@ -58,6 +58,21 @@ mrt checkpoints download mrt2_small --download-path $modelRoot
 The first line on stdout is the bounded `ready` handshake. All subsequent
 stdout bytes are binary protocol frames; diagnostics belong on stderr.
 
+Run the protocol benchmark against the packaged helper (the checked-in JAX
+adapter is capture-only, so the live mode is reserved for a promoted backend):
+
+```powershell
+$env:KYX_MRT2_WINDOWS_HOST = "$pwd\build\mrt2-windows\kyx-mrt2-windows-host.exe"
+$env:KYX_MRT2_WINDOWS_MODEL_ROOT = "$env:USERPROFILE\Documents\Magenta\magenta-rt-v2-windows"
+$env:KYX_MRT2_BENCHMARK_SECONDS = "10"
+npm run benchmark:mrt2:windows
+```
+
+Use `KYX_MRT2_BENCHMARK_REPORT` to save the JSON gate report. A realtime
+promotion run must use 600 seconds and pass the finite-PCM, coverage,
+sequence, no-underrun, frame-p95 and realtime-factor gates on representative
+hardware.
+
 For an explicit package release, create and verify the manifest before copying
 the helper into the desktop resources:
 

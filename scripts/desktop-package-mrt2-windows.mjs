@@ -55,6 +55,9 @@ if (process.platform !== "win32" || process.arch !== "x64") {
 if (!modelRoot) {
   throw new Error("Set KYX_MRT2_WINDOWS_MODEL_ROOT to the fixed Windows MRT2 model root before packaging.");
 }
+if (path.basename(hostPath) !== "kyx-mrt2-windows-host.exe") {
+  throw new Error("KYX_MRT2_WINDOWS_HOST must point to kyx-mrt2-windows-host.exe");
+}
 
 const verification = await verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath });
 if (!verification.ok) {
