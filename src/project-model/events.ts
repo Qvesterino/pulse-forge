@@ -2,6 +2,11 @@ import type { NoteEvent, Pattern, ProjectDocument } from "./types";
 import { STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
 
+// GOAL 08/B6: notes arrays are immutable (untouched patterns keep the same
+// reference across normalizes), so the per-track sort memoizes by reference
+// instead of re-sorting every track's note list on every 25 ms window.
+const sortedNotesCache = new WeakMap<NoteEvent[], NoteEvent[]>();
+
 export interface ScheduledNote {
   trackId: string;
   note: NoteEvent;
@@ -34,7 +39,11 @@ export function noteEventsInWindow(pattern: Pattern, base: number, fromTick: num
   const events: ScheduledNote[] = [];
   for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
     // Sorted by start within the track so "previous note" is deterministic
-    const sorted = [...notes].sort((a, b) => a.start - b.start);
+    let sorted = sortedNotesCache.get(notes);
+    if (!sorted) {
+      sorted = [...notes].sort((a, b) => a.start - b.start);
+      sortedNotesCache.set(notes, sorted);
+    }
     // lastNonSlide holds (pitch, absoluteTick) of the most recent non-slide note,
     // crossing pattern loops (previous cycle wraps as the slide source).
     let lastNonSlide: { pitch: number; tick: number } | null = null;

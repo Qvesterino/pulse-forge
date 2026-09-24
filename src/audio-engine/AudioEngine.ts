@@ -1929,19 +1929,29 @@ export class AudioEngine {
       // preset load evicts the user's live-tweak history.
       rt.beginParamSync?.();
       try {
+        // Quality backlog B3: only re-materialize the cached params object
+        // when something actually changed — a fresh {...spread} per FX per
+        // sync was pure churn on the unchanged 95 %.
+        let paramsChanged = false;
         for (const [k, v] of Object.entries(fx.params)) {
-          if (cached[k] !== v) rt.setParameter(k, v);
+          if (cached[k] !== v) {
+            rt.setParameter(k, v);
+            paramsChanged = true;
+          }
         }
         const outputTrimDb = fx.outputTrimDb ?? 0;
-        if (cached.__outputTrimDb !== outputTrimDb) rt.setOutputTrimDb?.(outputTrimDb);
+        if (cached.__outputTrimDb !== outputTrimDb) {
+          rt.setOutputTrimDb?.(outputTrimDb);
+          paramsChanged = true;
+        }
         // Step-envelope sync (beatMangler): the runtime reference-compares
         // and ignores identical arrays, so untouched envelopes never
         // re-upload to the audio thread.
         rt.setSteps?.(fx.volumeSteps, fx.pitchSteps);
+        if (paramsChanged) state.params.set(fx.id, { ...fx.params, __outputTrimDb: outputTrimDb });
       } finally {
         rt.endParamSync?.();
       }
-      state.params.set(fx.id, { ...fx.params, __outputTrimDb: fx.outputTrimDb ?? 0 });
     }
   }
 

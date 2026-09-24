@@ -106,6 +106,15 @@ export function drumHitsInWindow(
   const firstGrid = base + Math.ceil((fromTick - base) / STEP_TICKS - 1e-9) * STEP_TICKS - STEP_TICKS;
   const lastGrid = base + Math.floor((toTick - base) / STEP_TICKS + 1e-9) * STEP_TICKS + STEP_TICKS;
 
+  // GOAL 08/B6: per-track pad-solo scan hoisted out of the grid loop — it
+  // only depends on the track, not on the step (was O(steps × tracks × pads)).
+  const anyPadSoloByTrack = new Map<string, boolean>();
+  for (const track of tracks)
+    anyPadSoloByTrack.set(
+      track.id,
+      track.pads.some((p) => p.solo),
+    );
+
   for (let t = firstGrid; t <= lastGrid; t += STEP_TICKS) {
     const rel = t - base;
     const stepIndex = Math.floor(mod(rel, patternTicks) / STEP_TICKS) % pattern.stepCount;
@@ -113,7 +122,7 @@ export function drumHitsInWindow(
 
     for (const track of tracks) {
       if (track.mute || (anyTrackSolo && !track.solo)) continue;
-      const anyPadSolo = track.pads.some((p) => p.solo);
+      const anyPadSolo = anyPadSoloByTrack.get(track.id) ?? false;
       for (const pad of track.pads) {
         const velocity = pattern.rows[pad.id]?.[stepIndex] ?? 0;
         if (velocity <= 0 || pad.mute || (anyPadSolo && !pad.solo)) continue;

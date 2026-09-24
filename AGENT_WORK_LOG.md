@@ -3922,3 +3922,23 @@ audit doc.
 - Beat-sync nutný passthrough v `analyzeVoiceIdea` options (`transportStartTick`, `patternLengthTicks` → framesToNotes).
 
 Regresia 271/271 cez 28 súborov; typecheck 0.
+
+---
+
+## Session B3 (post-campaign quality) — scheduler/engine scale + piano-roll virtualization (2026-09-23)
+
+**Scope:** B6 + B3 + B5 from QUALITY-BACKLOG (all three remaining B-family items).
+
+**Fixed:**
+
+1. **B6 scheduler per-event lookups:** (a) `noteEventsInWindow` re-sorted every track's note list on every 25 ms window — now memoized by array reference (`sortedNotesCache` WeakMap; untouched patterns keep the same immutable ref, so the sort runs once per edit instead of once per tick); (b) `drumHitsInWindow` recomputed `track.pads.some(p => p.solo)` per grid step per track — hoisted to a per-call `anyPadSoloByTrack` Map (was O(steps × tracks × pads)); (c) Scheduler's per-event `doc.tracks.find` was O(tracks) per scheduled note — new ref-guarded `tracksById` Map (same invalidation contract as songCacheProject).
+2. **B3 syncProject cache churn:** `syncFxParams` allocated a fresh `{...fx.params, __outputTrimDb}` cache object per FX per sync even when nothing changed — now re-materializes only when a param or trim actually changed (the value-guarded upload was already there; only the cache churn is removed).
+3. **B5 PianoRoll pitch-window virtualization:** the roll is 854 px tall inside a ~180 px scroller — most notes were off-screen DOM. `visibleNotes`/`visibleIn` filter notes AND ghosts to the scroll viewport ±8 rows; selected/dragged/menued/velocity-anchored notes are always kept (interactions never lose their DOM anchor mid-gesture); no-layout hosts (jsdom, SSR, first paint) render everything — existing tests pass unchanged. Velocity lane intentionally stays unfiltered by pitch (it lists all notes by time).
+
+**Race notes:** the parallel session committed to schema/templates mid-session — SCHEMA_VERSION 1 → 3 (Remix-DNA lineage domain with real sanitize migration — exactly the GOAL 05 bump policy) drifted the domain-golden **encode** case; recaptured (decode pins preserved and still passing — a v1 code decodes identically under v3 because lineage is optional-absent). Attribution proven via `git diff 6d112b7..HEAD -- schema.ts`.
+
+**Important files changed:** src/scheduler/Scheduler.ts, src/project-model/{events,groove}.ts, src/project-model/schema.ts, src/project-model/modulators.ts, src/audio-engine/AudioEngine.ts, src/ui/PianoRoll.tsx, src/shared/jsonEqual.ts, tests/domain-goldens/*.json (recaptured), docs/QUALITY-BACKLOG.md.
+
+**Validation:** scheduler/engine/groove suites 205/205; final batch 180/180; goldens 12/12 (recaptured for schema v3); tsc campaign-clean.
+
+**Remaining backlog:** A4/A6/A7/A9 + D-consistency decisions only — the B-family is closed.

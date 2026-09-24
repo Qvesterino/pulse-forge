@@ -289,6 +289,36 @@ export function PianoRollTrack({
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
+  // Pitch-window virtualization (quality backlog B5): the roll is 854 px
+  // tall inside a ~180 px scroller, so most notes are off-screen at any
+  // moment. Measure the scroller on scroll/resize and render only the rows
+  // in view (± margin). jsdom and first paint have no layout — null view =
+  // render everything (tests, SSR, and drag correctness fall through).
+  const [prView, setPrView] = useState<{ top: number; h: number } | null>(null);
+  const prMeasureRaf = useRef<number | null>(null);
+  const measurePrViewport = () => {
+    if (prMeasureRaf.current !== null) cancelAnimationFrame(prMeasureRaf.current);
+    prMeasureRaf.current = requestAnimationFrame(() => {
+      prMeasureRaf.current = null;
+      const el = scrollRef.current;
+      if (!el) return;
+      setPrView((prev) =>
+        prev && prev.top === el.scrollTop && prev.h === el.clientHeight
+          ? prev
+          : { top: el.scrollTop, h: el.clientHeight },
+      );
+    });
+  };
+  useEffect(() => {
+    measurePrViewport();
+    const onResize = () => measurePrViewport();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (prMeasureRaf.current !== null) cancelAnimationFrame(prMeasureRaf.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Ghost notes from other patterns (30% opacity, non-interactive) — memoized
   // so drag re-renders reuse the same note objects and skip the diff.
   const ghostNotes: NoteEvent[] = useMemo(() => {
@@ -326,6 +356,37 @@ export function PianoRollTrack({
   const noteMenuTimer = useRef<number | null>(null);
   const noteMenuAnchor = useRef<{ x: number; y: number } | null>(null);
   const noteLongPressFired = useRef(false);
+  // Pitch-window filter (B5): always-keep selected/dragged/menued notes so
+  // interactions never lose their DOM anchor mid-gesture. Declared after the
+  // noteMenu state (it reads it).
+  const alwaysKeepIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (drag?.noteId) ids.add(drag.noteId);
+    if (noteMenu?.noteId) ids.add(noteMenu.noteId);
+    if (velDrag?.anchorId) ids.add(velDrag.anchorId);
+    if (selectedNote?.trackId === track.id) for (const id of selectedNote.noteIds) ids.add(id);
+    return ids;
+  }, [drag, noteMenu, velDrag, selectedNote, track.id]);
+  const visibleNotes = useMemo(() => {
+    if (!prView || prView.h <= 0) return notes;
+    const topRow = Math.floor(prView.top / ROW_HEIGHT) - 8;
+    const bottomRow = Math.ceil((prView.top + prView.h) / ROW_HEIGHT) + 8;
+    const minPitch = PITCH_MAX - bottomRow;
+    const maxPitch = PITCH_MAX - topRow;
+    const out = notes.filter((n) => (n.pitch >= minPitch && n.pitch <= maxPitch) || alwaysKeepIds.has(n.id));
+    return out.length === notes.length ? notes : out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, prView, alwaysKeepIds]);
+  const visibleIn = (n: { pitch: number; id: string }): boolean =>
+    !prView ||
+    prView.h <= 0 ||
+    (() => {
+      const topRow = Math.floor(prView.top / ROW_HEIGHT) - 8;
+      const bottomRow = Math.ceil((prView.top + prView.h) / ROW_HEIGHT) + 8;
+      const minPitch = PITCH_MAX - bottomRow;
+      const maxPitch = PITCH_MAX - topRow;
+      return (n.pitch >= minPitch && n.pitch <= maxPitch) || alwaysKeepIds.has(n.id);
+    })();
   // FL Chord Stamp menu (Shift+C) — shape picker anchored at cursor
   const [chordMenu, setChordMenu] = useState<{ x: number; y: number } | null>(null);
   // Step entry (FL-style): a grid cursor — QWERTY letter keys insert notes at
@@ -1618,6 +1679,7 @@ export function PianoRollTrack({
         <div
           className="pianoroll-scroll"
           ref={scrollRef}
+          onScroll={measurePrViewport}
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) onSelectNote(null);
           }}
@@ -1701,14 +1763,14 @@ export function PianoRollTrack({
               />
             ))}
             {/* Ghost notes from other patterns — 30% opaque, non-interactive */}
-            {ghostNotes.map((note) => (
+            {ghostNotes.filter(visibleIn).map((note) => (
               <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost" />
             ))}
             {/* Ghost notes per track — same pattern, other instrument tracks (20% opacity) */}
-            {ghostTrackNotes.map((note) => (
+            {ghostTrackNotes.filter(visibleIn).map((note) => (
               <GhostNote key={note.id} note={note} stepCount={pattern.stepCount} variant="ghost-track" />
             ))}
-            {notes.map((note) => {
+            {visibleNotes.map((note) => {
               const noteDrag = drag && drag.noteId === note.id && drag.mode !== "noteVelocity" ? drag : null;
               const selected = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
               return (

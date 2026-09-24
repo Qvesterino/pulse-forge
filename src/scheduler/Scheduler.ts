@@ -219,6 +219,22 @@ export class Scheduler {
   private songClipsCache: { sceneId: string; startBar: number; lengthBars: number }[] = [];
   private songScenesByIdCache = new Map<string, ProjectDocument["scenes"][number]>();
   private songPatternsByIdCache = new Map<string, ProjectDocument["patterns"][number]>();
+  private tracksByIdProject: ProjectDocument | null = null;
+  private tracksByIdCache = new Map<string, ProjectDocument["tracks"][number]>();
+
+  /**
+   * O(1) track lookup for per-event resolution (quality backlog B6): the
+   * per-event `doc.tracks.find` was O(tracks) per scheduled note. Same
+   * ref-guard invalidation as the song caches: commands build docs
+   * immutably, so a stable ref means "no edit since last tick".
+   */
+  private tracksById(doc: ProjectDocument): Map<string, ProjectDocument["tracks"][number]> {
+    if (this.tracksByIdProject !== doc) {
+      this.tracksByIdProject = doc;
+      this.tracksByIdCache = new Map(doc.tracks.map((track) => [track.id, track]));
+    }
+    return this.tracksByIdCache;
+  }
 
   constructor(private deps: SchedulerDeps) {}
 
@@ -836,7 +852,7 @@ export class Scheduler {
       });
       // MIDI output for drum tracks
       if (this.deps.midiNoteOn) {
-        const track = doc.tracks.find((t) => t.id === hit.trackId);
+        const track = this.tracksById(doc).get(hit.trackId);
         if (track?.kind === "instrument" && track.midiOutput?.enabled) {
           const ch = (track.midiOutput.channel || 1) - 1;
           const padIndex = 0; // GM map would need pad→note lookup
@@ -851,7 +867,7 @@ export class Scheduler {
     }
 
     for (const event of noteEventsInWindow(pattern, base, windowStart, windowEnd)) {
-      const track = doc.tracks.find((candidate) => candidate.id === event.trackId);
+      const track = this.tracksById(doc).get(event.trackId);
       if (!track || track.kind !== "instrument") continue;
       const when = timeAt(event.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;

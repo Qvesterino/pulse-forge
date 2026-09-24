@@ -30,6 +30,8 @@
 
 **Session B2 (2026-09-23) FIXED: B7 (factory boot pool — 4-worker bounded render, curated pattern) + B4 (arrangement smoothness — `ArrPlayheadLine` leaf owns the 1/8-bar rAF subscription, panel re-renders only on clip crossings via `useCurrentItemId`; IntensityLane owns its subscription; SceneLauncher/PatternBar take clip-crossing-granular `currentClipId`). 46/46 UI suites green.**
 
+**Session B3 (2026-09-23) FIXED: B6 (events sort WeakMap cache + groove per-track solo hoist + scheduler tracksById ref-guarded Map) + B3 (syncFxParams re-materializes the cache only on actual change) + B5 (PianoRoll pitch-window virtualization — visibleNotes/ghosts filtered by the scroll viewport ±8 rows, selected/dragged/menued notes always kept; no-layout hosts render everything). Verification: 205 scheduler/engine + 180 final-batch tests green.**
+
 ## B. PERFORMANCE AT SCALE (large projects: 20–50 tracks, 100+ bars, dense patterns)
 
 | #   | Hot spot                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Cost                                         | Fix shape                                                                                                                                |
