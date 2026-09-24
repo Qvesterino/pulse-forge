@@ -97,6 +97,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Embedding-conditioned prior v2** — Phases D–F of the conditioning chain. _(feat `c7df20b`)_
 - **Hybrid v3 prior (active)** — retrained with label smoothing + variant embeddings, logit-saturation fix; activation commit flips the runtime to the new model. _(feat `64e2b61`, `8bd904c`)_
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
+- **World roster + genre depth** — 61 artist presets total (researched BPM ranges), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
 
 ### Arrangement

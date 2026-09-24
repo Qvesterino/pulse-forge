@@ -4052,3 +4052,17 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - Parser bonusy: „bez **ďalších** bicích" (doteraz len „bez bic"), „no bass" detected token.
 - **UI**: `BriefContractSummary.tsx` v IntentPaneli — NEISTÉ návrhy = one-click fix čipy; BPM/takty inplace edit (oprava bez prepisovania promptu); ZACHOVAŤ × = un-protect. `briefFixes` merged do všetkých 4 assembly pointov (po refPatch, pred one-shot varianty), reset pri novej prompte.
 - **Testy**: `tests/brief-contract.test.ts` 22/22 + `tests/ui/BriefContractSummary.test.tsx` 6/6; regresia intent rodina **218/218 (20 súborov)**; tsc 0; moje súbory prettier-clean (repo-wide format warny = paralelná vlna, nesiahane).
+
+---
+
+## GOAL 43 — WORLD ROSTER: +19 INTERPRETOV (2026-09-24)
+
+**Research-driven BPM** (mixgraph.io, beatport.com, tunebat.com, r/DnB konsenzus, type-beat trhy — zdroje v správe). 41 → **61 presetov**:
+
+- **Techno**: Adam Beyer/Drumcode 130-138 driving; Enrico Sangiuliano 128-136; Klangkuenstler 145-155 industrial aggressive (hard techno median ~150); HI-LO 136-144; Kobosil 138-146 dark.
+- **Electronic/house**: Four Tet 122-128 organic; Bicep 122-128 deep; Jamie xx 120-128 ukg; Ben Böhmer 118-124 deep chill.
+- **New-school hip-hop**: Young Thug 130-142 bouncy; Don Toliver 118-128 sparse dark (atmospheric melodic); Lil Uzi 140-152 bouncy; Trippie Redd 140-150 rolling dark.
+- **Phonk**: MoonDeity 150-160 drift aggressive; DVRST 140-150.
+- **DNB**: Chase & Status 172-176 jumpup (Baddadan ~176 double-time); **Bou → dnb.roller** (nový GOAL 42 groove!); 1991 172-178; Calibre 170-174 liquid chill.
+
+Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v artists suite); regresia okolia 67/67.

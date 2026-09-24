@@ -228,3 +228,34 @@ describe("target-roster presets (genre-depth sprint)", () => {
     expect(parseIntentText("fred again type beat").input.bpmRange).toEqual([130, 145]);
   });
 });
+
+describe("world-roster wave (researched BPM)", () => {
+  it("techno block: beyer/klangkuenstler/hi-lo/kobosil", () => {
+    expect(parseIntentText("adam beyer type beat").input.bpmRange).toEqual([130, 138]);
+    expect(parseIntentText("klangkuenstler type beat").input.bpmRange).toEqual([145, 155]);
+    expect(parseIntentText("hi-lo type beat").input.bpmRange).toEqual([136, 144]);
+    expect(parseIntentText("kobosil type beat").input.mood).toBe("dark");
+  });
+
+  it("electronic block: four tet/bicep/jamie xx/ben bohmer", () => {
+    expect(parseIntentText("four tet type beat").input.style).toBe("organic");
+    expect(parseIntentText("bicep type beat").input.bpmRange).toEqual([122, 128]);
+    expect(parseIntentText("jamie xx type beat").input.style).toBe("ukg");
+    expect(parseIntentText("ben böhmer type beat").input.mood).toBe("chill");
+  });
+
+  it("hip-hop block: young thug/don toliver/lil uzi/trippie redd", () => {
+    expect(parseIntentText("young thug type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("don toliver type beat").input.bpmRange).toEqual([118, 128]);
+    expect(parseIntentText("lil uzi vert type beat").input.energy).toBe(0.85);
+    expect(parseIntentText("trippie redd type beat").input.mood).toBe("dark");
+  });
+
+  it("phonk + dnb block: moondeity/dvrst/chase & status/bou/1991/calibre", () => {
+    expect(parseIntentText("moondeity type beat").input.style).toBe("drift");
+    expect(parseIntentText("chase and status type beat").input.style).toBe("jumpup");
+    expect(parseIntentText("bou type beat").input.style).toBe("roller");
+    expect(parseIntentText("1991 type beat").input.bpmRange).toEqual([172, 178]);
+    expect(parseIntentText("calibre type beat").input.style).toBe("liquid");
+  });
+});
