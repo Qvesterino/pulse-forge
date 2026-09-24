@@ -3890,3 +3890,22 @@ audit doc.
 - **compose.ts `ComposeHum`**: `{notes, loopTicks, key?}` — po buildSong: `transposeHumToKey` (minimal semitone shift hum→song root + snapToScale song scale) + `tileNotesAcrossPattern` do KAŽDEJ lead sekcie; lead track = `resolveLeadTrackId` (name contains "lead" → 3. instrument). Skipped diagnostika bez lead tracku.
 - **IntentPanel 🎤 IDEA**: MediaRecorder (start/stop toggle) → blob → decodeAudioData → downmix/resample → analyzeVoiceIdea → refPatch (bpmRange/key — merguje do všetkých 4 assembly bodov) + voiceIdea state → composeFullTrack `hum` option. clearReference čistí aj idea.
 - **Testy** `tests/voice-idea.test.ts` 5/5: injected frames → noty C-D-E-G v C key + bpmRange; bez steady pitchov = patch bez melódie; SUNO: hum ids (tile-stamped) v lead sekciách; transpozícia C Major → D Minor posunie hook; bez humu nič. Regresia **271/271 cez 28 súborov**; typecheck 0.
+
+---
+
+## Session B2 (post-campaign quality) — smooth UI + boot (2026-09-23)
+
+**Scope:** B7 + B4 from QUALITY-BACKLOG (after Session B's B1/B2 typing-latency fixes).
+
+**Fixed:**
+
+1. **B7 boot storm** — `generateFactoryBank` fired all 69 factory renders concurrently via `Promise.all` (TTI tax + 69 OfflineAudioContext constructions on weak machines). Now a bounded 4-worker pool, same shape as the curated layer (same-id override semantics preserved; a missing builder still rejects).
+2. **B4 arrangement smoothness** — the panel-level `usePlayheadBar` re-rendered the WHOLE arrangement panel (all clips + 100 grid divs) at the 1/8-bar playhead cadence (~8-16 Hz while playing). Now: (a) `ArrPlayheadLine` leaf component owns the 1/8-bar rAF subscription for both playhead lines; (b) `useCurrentItemId` hook (playhead.ts) exposes the clip under the playhead at CLIP-CROSSING granularity, so `isCurrentClip`/`isCurrent` highlight updates only on clip crossings; (c) `IntensityLane` owns its playhead subscription internally (only the small lane re-renders for the live value readout); (d) `SceneLauncher` + `PatternBar` take clip-crossing-granular `currentClipId` instead of a per-tick value. The panel now re-renders on edits/selections/clip-crossings — not at the playhead cadence.
+
+**Race note:** the parallel session committed to ArrangementPanel twice mid-refactor — the moving-target failed the exact-match script twice (non-destructively: throws precede the write), and the third run on the settled tree applied cleanly. The substring-substring overlap gotcha (a 10-space generic prop match is a SUBSTRING of a 16-space line — split/join replaces all occurrences and destroys the longer match) was the root cause of the two script failures, not the file state.
+
+**Important files changed:** src/sample-library/factory.ts (bounded pool), src/ui/playhead.ts (useCurrentItemId), src/ui/ArrangementPanel.tsx (leaf + currentClipId + IntensityLane transport), src/ui/SceneLauncher.tsx + src/ui/PatternBar.tsx (prop swap).
+
+**Validation:** App/SceneLauncher/fine-grained-selectors/ArrangementPanel/arrangement-variations/mixer-audit 46/46; tsc campaign-clean.
+
+**Remaining backlog:** B3 (syncProject cache churn — engine zone, coordinate), B5 (PianoRoll virtualization — bigger redesign), B6 (scheduler per-event finds — tracksById Map), A4/A6/A7/A9, D-consistency.

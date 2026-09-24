@@ -107,9 +107,7 @@ export function useCurrentItemId<T extends { id: string; startBar: number; lengt
     let last: string | null = null;
     registerRaf(rafId, () => {
       const bar = Math.max(0, transport.position) / BAR_TICKS;
-      const hit = itemsRef.current.find(
-        (item) => bar >= item.startBar && bar < item.startBar + item.lengthBars,
-      );
+      const hit = itemsRef.current.find((item) => bar >= item.startBar && bar < item.startBar + item.lengthBars);
       const id = hit?.id ?? null;
       if (id !== last) {
         last = id;

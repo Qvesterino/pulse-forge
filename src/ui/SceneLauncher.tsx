@@ -1,11 +1,5 @@
 import { useRef, useState, useSyncExternalStore } from "react";
-import {
-  useActivePatternId,
-  useArrangement,
-  usePatterns,
-  useScenes,
-  useServices,
-} from "./context";
+import { useActivePatternId, useArrangement, usePatterns, useScenes, useServices } from "./context";
 import { sceneRoleOf } from "../project-model/schema";
 import { assistVary } from "../commands/commands";
 import type { Pattern, Scene } from "../project-model/types";
@@ -13,7 +7,8 @@ import type { PlayMode } from "../project-model/types";
 
 export interface SceneLauncherProps {
   variant: "bar" | "panel";
-  playheadBar: number;
+  /** Clip under the playhead (song mode) — updates only on clip crossings. */
+  currentClipId: string | null;
   selectedSceneId?: string;
   onSelectScene?: (scene: Scene) => void;
   onRenameScene?: (scene: Scene, name: string) => void;
@@ -60,21 +55,18 @@ function currentSceneIdFor(
   mode: PlayMode,
   activePatternId: string,
   scenes: Scene[],
-  clips: Array<{ sceneId: string; startBar: number; lengthBars: number }>,
-  playheadBar: number,
+  clips: Array<{ id: string; sceneId: string; startBar: number; lengthBars: number }>,
+  currentClipId: string | null,
 ): string | null {
   if (mode === "song") {
-    const clip = clips.find(
-      (candidate) => playheadBar >= candidate.startBar && playheadBar < candidate.startBar + candidate.lengthBars,
-    );
-    return clip?.sceneId ?? null;
+    return clips.find((candidate) => candidate.id === currentClipId)?.sceneId ?? null;
   }
   return scenes.find((scene) => scene.patternId === activePatternId)?.id ?? null;
 }
 
 export function SceneLauncher({
   variant,
-  playheadBar,
+  currentClipId,
   selectedSceneId: selectedSceneIdProp,
   onSelectScene,
   onRenameScene,
@@ -98,13 +90,7 @@ export function SceneLauncher({
   const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const currentSceneId = currentSceneIdFor(
-    runtime.mode,
-    activePatternId,
-    scenes,
-    arrangement.clips,
-    playheadBar,
-  );
+  const currentSceneId = currentSceneIdFor(runtime.mode, activePatternId, scenes, arrangement.clips, currentClipId);
   const selectedSceneId = selectedSceneIdProp ?? localSelectedSceneId ?? currentSceneId ?? scenes[0]?.id ?? null;
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0];
   const canReorder = Boolean(onReorderScenes);

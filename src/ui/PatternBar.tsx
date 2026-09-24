@@ -22,7 +22,7 @@ import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types
 import { DragNumber } from "./controls";
 import { GenerateDialog } from "./GenerateDialog";
 import { SceneLauncher } from "./SceneLauncher";
-import { usePlayheadBar } from "./playhead";
+import { useCurrentItemId } from "./playhead";
 
 /** Byte ceiling for .mid imports — mirrors MAX_PROJECT_IMPORT_BYTES. Kept
  * local (not in the lazy midi chunk) so checking it never pulls the chunk. */
@@ -56,7 +56,9 @@ export function PatternBar({
   const [draft, setDraft] = useState("");
   const active = patterns.find((p) => p.id === activePatternId)!;
   const groove = grooveOf(doc);
-  const playheadBar = usePlayheadBar(services.transport);
+  // Clip-crossing granularity: the launcher bar highlights the current
+  // scene, which changes only when the playhead crosses a clip.
+  const currentClipId = useCurrentItemId(services.store.doc.arrangement.clips, services.transport);
   const chipsRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -426,7 +428,7 @@ export function PatternBar({
 
       <SceneLauncher
         variant="bar"
-        playheadBar={playheadBar}
+        currentClipId={currentClipId}
         onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
       />
 

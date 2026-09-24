@@ -96,7 +96,8 @@ import {
   recordedTakeAlreadyPlaced,
   recordingStartBar,
 } from "./timelineRec";
-import { usePlayheadBar } from "./playhead";
+import { useCurrentItemId, usePlayheadBar } from "./playhead";
+import type { Transport } from "../transport/Transport";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 
 const BASE_BAR_WIDTH = 30;
@@ -257,7 +258,6 @@ export function ArrangementPanel() {
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
-  const playheadBar = usePlayheadBar(services.transport);
   const selection = useSelection();
   const selectionStore = useSelectionStore();
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
@@ -765,14 +765,14 @@ export function ArrangementPanel() {
   // playback — clip copies+sorts (and totalBars) must not rerun per tick.
   // Memoized on arrangement identity (structural sharing keeps it stable
   // across unrelated mutations).
-  const clips = useMemo(
-    () => [...arrangement.clips].sort((a, b) => a.startBar - b.startBar),
-    [arrangement.clips],
-  );
+  const clips = useMemo(() => [...arrangement.clips].sort((a, b) => a.startBar - b.startBar), [arrangement.clips]);
   const audioClips = useMemo(
     () => [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar),
     [arrangement.audioClips],
   );
+  // Playhead leaves own the 1/8-bar rAF subscription (see ArrPlayheadLine);
+  // the panel itself only re-renders when the playhead CROSSES a clip.
+  const currentClipId = useCurrentItemId(clips, services.transport);
   const totalBars = Math.max(
     16,
     ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),
@@ -1137,10 +1137,10 @@ export function ArrangementPanel() {
       }
     } else {
       for (const id of ids) {
-      const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
-      if (!clip) continue;
-      const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
-      if (!firstName) firstName = scene?.name ?? "clip";
+        const clip = beforeDoc.arrangement.clips.find((c) => c.id === id);
+        if (!clip) continue;
+        const scene = scenes.find((sceneItem) => sceneItem.id === clip.sceneId);
+        if (!firstName) firstName = scene?.name ?? "clip";
         nextDoc = deleteArrangementClip(nextDoc, id).execute(nextDoc);
       }
     }
@@ -1398,7 +1398,7 @@ export function ArrangementPanel() {
         </div>
         <SceneLauncher
           variant="panel"
-          playheadBar={playheadBar}
+          currentClipId={currentClipId}
           selectedSceneId={selectedScene?.id}
           onSelectScene={(scene) => setSelectedSceneId(scene.id)}
           onRenameScene={(scene, name) => execute(renameScene(services.store.doc, scene.id, name))}
@@ -1500,9 +1500,10 @@ export function ArrangementPanel() {
               }}
             >
               <option value="">MIC: system default</option>
-              {recordingInputDeviceId && !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
-                <option value={recordingInputDeviceId}>Saved microphone (not listed)</option>
-              )}
+              {recordingInputDeviceId &&
+                !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
+                  <option value={recordingInputDeviceId}>Saved microphone (not listed)</option>
+                )}
               {recordingInputDevices.map((device) => (
                 <option key={device.deviceId} value={device.deviceId}>
                   {device.label}
@@ -1523,7 +1524,10 @@ export function ArrangementPanel() {
               {micMonitoring ? "DRY MON ON" : "DRY MON OFF"}
             </button>
             <label className="arr-arm-gain" aria-label="Microphone input gain">
-              <span className="arr-arm-gain-value" title="Pre-capture input trim (applies to the saved take and monitoring)">
+              <span
+                className="arr-arm-gain-value"
+                title="Pre-capture input trim (applies to the saved take and monitoring)"
+              >
                 GAIN {inputGainDb > 0 ? "+" : ""}
                 {inputGainDb.toFixed(1)} dB
               </span>
@@ -1758,7 +1762,8 @@ export function ArrangementPanel() {
                     {(session.totalFrames / session.sampleRate).toFixed(1)}s
                     {session.status === "recording" && (
                       <span className="arr-rec-saving" role="status">
-                        {" "}· interrupted capture; the final uncommitted audio may be incomplete
+                        {" "}
+                        · interrupted capture; the final uncommitted audio may be incomplete
                       </span>
                     )}
                   </span>
@@ -1852,7 +1857,11 @@ export function ArrangementPanel() {
                     <span
                       key={`${chip.type}-${chip.label}`}
                       className={`arr-role-flow-fx${chip.sweep ? " sweep" : ""}`}
-                      title={chip.sweep ? `${chip.label} — automated through this section` : `${chip.label} — active in this section`}
+                      title={
+                        chip.sweep
+                          ? `${chip.label} — automated through this section`
+                          : `${chip.label} — active in this section`
+                      }
                     >
                       {chip.sweep ? `${chip.label} →` : chip.label}
                     </span>
@@ -1869,54 +1878,56 @@ export function ArrangementPanel() {
           )}
         </div>
 
-        {selectedClipId && clips.some((c) => c.id === selectedClipId) && (() => {
-          const clip = clips.find((c) => c.id === selectedClipId)!;
-          const clipScene = scenes.find((candidate) => candidate.id === clip.sceneId);
-          return (
-            <div className="arr-swap-bar" role="toolbar" aria-label="Selected clip tools">
-              <span className="arr-swap-label">
-                CLIP · {clipScene?.name ?? "?"} · {clip.startBar + 1}–{clip.startBar + clip.lengthBars}
-              </span>
-              <label className="arr-swap-variant">
-                VARIANT{" "}
-                <select
-                  value={clip.sceneId}
-                  aria-label="Swap clip variant"
-                  onChange={(event) => {
-                    try {
-                      execute(setArrangementClipScene(services.store.doc, clip.id, event.target.value));
-                    } catch (err) {
-                      setActionError(err instanceof Error ? err.message : String(err));
-                    }
-                  }}
+        {selectedClipId &&
+          clips.some((c) => c.id === selectedClipId) &&
+          (() => {
+            const clip = clips.find((c) => c.id === selectedClipId)!;
+            const clipScene = scenes.find((candidate) => candidate.id === clip.sceneId);
+            return (
+              <div className="arr-swap-bar" role="toolbar" aria-label="Selected clip tools">
+                <span className="arr-swap-label">
+                  CLIP · {clipScene?.name ?? "?"} · {clip.startBar + 1}–{clip.startBar + clip.lengthBars}
+                </span>
+                <label className="arr-swap-variant">
+                  VARIANT{" "}
+                  <select
+                    value={clip.sceneId}
+                    aria-label="Swap clip variant"
+                    onChange={(event) => {
+                      try {
+                        execute(setArrangementClipScene(services.store.doc, clip.id, event.target.value));
+                      } catch (err) {
+                        setActionError(err instanceof Error ? err.message : String(err));
+                      }
+                    }}
+                  >
+                    {scenes.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className={`arr-swap-loop${clip.loop ? " on" : ""}`}
+                  aria-pressed={Boolean(clip.loop)}
+                  title="Loop this clip's content for its whole length"
+                  onClick={() => execute(setArrangementClipLoop(services.store.doc, clip.id, !clip.loop))}
                 >
-                  {scenes.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className={`arr-swap-loop${clip.loop ? " on" : ""}`}
-                aria-pressed={Boolean(clip.loop)}
-                title="Loop this clip's content for its whole length"
-                onClick={() => execute(setArrangementClipLoop(services.store.doc, clip.id, !clip.loop))}
-              >
-                LOOP
-              </button>
-              <button
-                type="button"
-                className="arr-swap-delete"
-                title={rippleMode ? "Delete and close the gap" : "Delete"}
-                onClick={() => deleteClipsWithToast([clip.id], true)}
-              >
-                {rippleMode ? "DEL GAP" : "DEL"}
-              </button>
-            </div>
-          );
-        })()}
+                  LOOP
+                </button>
+                <button
+                  type="button"
+                  className="arr-swap-delete"
+                  title={rippleMode ? "Delete and close the gap" : "Delete"}
+                  onClick={() => deleteClipsWithToast([clip.id], true)}
+                >
+                  {rippleMode ? "DEL GAP" : "DEL"}
+                </button>
+              </div>
+            );
+          })()}
         <div className="arr-lane-scroll" ref={scrollRef}>
           <div
             className="arr-ruler"
@@ -2013,7 +2024,7 @@ export function ArrangementPanel() {
                 }}
               />
             )}
-            <div className="arr-playhead" style={{ left: playheadBar * barWidth }} />
+            <ArrPlayheadLine transport={services.transport} barWidth={barWidth} className="arr-playhead" />
           </div>
           <div
             className="arr-lane"
@@ -2068,7 +2079,10 @@ export function ArrangementPanel() {
                 // Floor: a plain click PLACES a clip — fractional bars used
                 // to persist off-grid (moveArrangementClip rounds, this
                 // path did not; addArrangementClip even toasted "bar 4.37").
-                const bar = Math.max(0, Math.floor((event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth));
+                const bar = Math.max(
+                  0,
+                  Math.floor((event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth),
+                );
                 const from = Math.min(marqueeStartRef.current, bar);
                 const to = Math.max(marqueeStartRef.current, bar);
                 marqueeStartRef.current = null;
@@ -2131,7 +2145,11 @@ export function ArrangementPanel() {
               placeScene(sceneId, bar);
             }}
           >
-            <div className="arr-playhead arr-playhead-lane" style={{ left: playheadBar * barWidth }} />
+            <ArrPlayheadLine
+              transport={services.transport}
+              barWidth={barWidth}
+              className="arr-playhead arr-playhead-lane"
+            />
             {selection.timeRange && (
               <div
                 className="arr-time-range arr-time-range-lane"
@@ -2194,7 +2212,7 @@ export function ArrangementPanel() {
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
               const nextClip = clips[index + 1];
               const selected = selectedClipId === clip.id || selectionStore.isClipSelected(clip.id);
-              const isCurrentClip = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
+              const isCurrentClip = clip.id === currentClipId;
               return (
                 <div key={clip.id}>
                   <div
@@ -2257,7 +2275,7 @@ export function ArrangementPanel() {
               const startBar = isDragging ? audioDrag.startBar : clip.startBar;
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;
               const selected = selectedAudioClipId === clip.id;
-              const isCurrent = playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars;
+              const isCurrent = clip.id === currentClipId;
               const track = tracks.find((t) => t.id === clip.trackId);
               const buffer = services.bank.get(clip.bufferId);
               const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
@@ -2390,7 +2408,7 @@ export function ArrangementPanel() {
                 scenes={scenes}
                 clips={clips}
                 totalBars={totalBars}
-                playheadBar={playheadBar}
+                transport={services.transport}
                 barWidth={barWidth}
                 onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
               />
@@ -3254,18 +3272,37 @@ interface IntensityHandle {
  * one curve segment per scene clip window, points committed through the same
  * undoable `setSceneIntensityCurve` command the ModPanel editor uses.
  */
+/**
+ * Playhead line as a LEAF: the 1/8-bar rAF subscription lives here, so the
+ * arrangement panel stops re-rendering at the playhead cadence (quality
+ * backlog B4 — the panel now only re-renders when the playhead crosses a
+ * clip, on an edit, or on a selection change).
+ */
+function ArrPlayheadLine({
+  transport,
+  barWidth,
+  className,
+}: {
+  transport: Transport;
+  barWidth: number;
+  className: string;
+}) {
+  const playheadBar = usePlayheadBar(transport);
+  return <div className={className} style={{ left: playheadBar * barWidth }} />;
+}
+
 function IntensityLane({
   scenes,
   clips,
   totalBars,
-  playheadBar,
+  transport,
   barWidth,
   onEdit,
 }: {
   scenes: ProjectDocument["scenes"];
   clips: ArrangementClip[];
   totalBars: number;
-  playheadBar: number;
+  transport: Transport;
   barWidth: number;
   onEdit: (sceneId: string, curve: IntensityPoint[]) => void;
 }) {
@@ -3424,6 +3461,9 @@ function IntensityLane({
     );
   };
 
+  // The lane owns its playhead subscription: only this small subtree
+  // re-renders at the playhead cadence (quality backlog B4).
+  const playheadBar = usePlayheadBar(transport);
   // Live value readout at the playhead (the number the engine feeds macros).
   const activeClip = clips.find(
     (clip) => playheadBar >= clip.startBar && playheadBar < clip.startBar + clip.lengthBars,
