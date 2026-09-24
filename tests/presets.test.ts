@@ -58,11 +58,11 @@ describe("factory presets", () => {
     }
   });
 
-  it("sample-driven presets reference a real factory sample (tonal + mallet pack)", () => {
+  it("sample-driven presets reference a real factory sample (tonal + mallet + perc/phonk pack)", () => {
     for (const preset of FACTORY_PRESETS.filter((p) => ["sampler", "granular", "vocalchop"].includes(p.instrument))) {
       expect(preset.sampleId).toBeTruthy();
       expect(preset.sampleId).toMatch(
-        /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp)|mallet\.(vibes|marimba|celesta))$/,
+        /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp|sitar|erhu)|mallet\.(vibes|marimba|celesta)|perc\.(cowbell\.dark|cowbell\.scream|cowbell\.drill|cowbell\.bright))$/,
       );
     }
   });

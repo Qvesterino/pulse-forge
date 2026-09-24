@@ -4137,3 +4137,20 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - Regeneration consequence handled: the sampler family gained members → medians moved → 4 quiet slow-attack presets crossed the +18 dB cap exactly at 18.0 (pluck.house.brightpick, sampler.ambient.harpswell, sampler.ambient.padwarmdrift, sampler.techno.padwarmdark) — KNOWN_CLAMPED pin updated explicitly per the pin's own contract (`c173406`).
 - **Attribution note:** the concurrent session's `9167b8f` (01:10, MRT2-windows wave) absorbed the campaign's regenerated loudness map + slider-taper fix — verified byte-identical to the campaign's versions before accepting. Campaign commits this goal: `a955ad4` (map+docs+WorkletType), `9078046` (A6 stale tests ×3), `c173406` (clamp pin). Validation after all fixes: 6-file targeted gate 45/46 (only curated-samples red, as scoped).
 - **GOAL 01 verdict: complete.** Map trustworthy for 2026-09-25 state; one known red test on main with owner and path recorded.
+
+---
+
+## Phonk/oriental pack (post-campaign quality) — cowbell variety + sitar/erhu (2026-09-23)
+
+**Scope:** the oriental/phonk wave pack from the sound-coverage audit — cowbell variety (phonk had ONE cowbell) + the sitar/erhu oriental strings that the drill/phonk wave kept missing (0 hits).
+
+**Delivered:**
+
+1. **4 cowbell variety builders** (factory.ts, same two-square + per-osc bandpass recipe as the classic, retuned per pocket): `cowbellDark` (400/570 Hz, LPF 2800, longer body), `cowbellScream` (memphis edge — 620/890 through a real WaveShaper soft-clip, tanh 2.2 — the OfflineAudioContext render is float and never hard-clips internally, so real saturation needs the shaper), `cowbellDrill` (545/810 classic, tight 0.16 + HPF 400), `cowbellBright` (740/1065/1400 shimmer).
+2. **sitar + erhu builders** — sitar: saw + slightly-sharp square jawari buzz + sympathetic shimmer (octave/fifth partials fading in after the pluck); erhu: detuned saw pair through a bow-resonance bandpass with delayed vibrato (depth ramps in at 0.35 s — the bow settles first). D3/D4 anchors.
+3. **Manifest**: 4 Percussion + 2 Tonal entries. **8 sampler presets**: phonk (Dark Cowbell, Scream Cowbell, Phonk Sitar), drill (Drill Cowbell, Dark Sitar), trap (Bright Cowbell, Dark Erhu), score (Erhu Song).
+4. **Contract**: presets.test sample regex extended to `factory.perc.cowbell.{dark,scream,drill,bright}`.
+
+**Validation:** presets/kick-bank/fx-expansion 29/29; tsc campaign-clean. Sample contract now covers tonal + mallet + perc packs.
+
+**Remaining backlog:** A7 (EQ legacy shelf range), A9 (dB/threshold unification decisions), D-consistency (documentation) — decisions/documentation only.

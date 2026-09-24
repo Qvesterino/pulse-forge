@@ -1057,6 +1057,213 @@ function cowbell(): Builder {
   };
 }
 
+/** Cowbell variety (quality backlog: phonk/oriental pack) — the classic
+ * two-square recipe (545/810 through per-osc bandpass) re-tuned per pocket:
+ * phonk dark sits lower with a longer body and LPF, the memphis "scream"
+ * pushes a WaveShaper edge, drill tightens with a highpass, bright adds a
+ * shimmer square. Each targets a distinct spectral pocket so a phonk beat
+ * can actually stack cowbells without phase-stacking. */
+function cowbellDark(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 2800;
+    lpf.connect(dest);
+    for (const [freq, level] of [
+      [400, 0.55],
+      [570, 0.38],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = freq;
+      bp.Q.value = 2;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.38))
+        .connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 0.42);
+    }
+  };
+}
+
+function cowbellScream(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    // Memphis edge: soft-clip curve on a WaveShaper — real saturation (a
+    // hot gain node alone would not distort, the OfflineAudioContext render
+    // is float and never hard-clips internally).
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(257);
+    for (let i = 0; i < 257; i++) {
+      const x = i / 128 - 1;
+      curve[i] = Math.tanh(2.2 * x);
+    }
+    shaper.curve = curve;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 4500;
+    shaper.connect(lpf).connect(dest);
+    for (const [freq, level] of [
+      [620, 0.5],
+      [890, 0.34],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = freq;
+      bp.Q.value = 2.2;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level * 1.6, 0.42))
+        .connect(shaper);
+      osc.start(t0);
+      osc.stop(t0 + 0.46);
+    }
+  };
+}
+
+function cowbellDrill(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = "highpass";
+    hpf.frequency.value = 400;
+    hpf.connect(dest);
+    for (const [freq, level] of [
+      [545, 0.5],
+      [810, 0.32],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = freq;
+      bp.Q.value = 2.4;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.16))
+        .connect(hpf);
+      osc.start(t0);
+      osc.stop(t0 + 0.2);
+    }
+  };
+}
+
+function cowbellBright(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [freq, level] of [
+      [740, 0.45],
+      [1065, 0.32],
+      [1400, 0.12],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = freq;
+      bp.Q.value = 2.2;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.24))
+        .connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + 0.28);
+    }
+  };
+}
+
+/** Sitar (quality backlog: oriental pack) — the jawari buzz: saw + a
+ * slightly detuned square beat against the bridge, plus sympathetic shimmer
+ * (octave + fifth partials) that fades in AFTER the pluck as the
+ * sympathetic strings ring up. D3 anchor. */
+function sitar(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 146.83; // D3
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 5200;
+    lpf.connect(dest);
+    const body = env(ctx, t0, 0.42, 1.6);
+    body.connect(lpf);
+    const saw = ctx.createOscillator();
+    saw.type = "sawtooth";
+    saw.frequency.value = f;
+    saw.connect(body);
+    saw.start(t0);
+    saw.stop(t0 + 1.9);
+    // Jawari buzz: a square a quarter-tone sharp beats against the saw.
+    const buzz = ctx.createOscillator();
+    buzz.type = "square";
+    buzz.frequency.value = f * 1.03;
+    const buzzGain = ctx.createGain();
+    buzzGain.gain.setValueAtTime(0.12, t0);
+    buzz.connect(buzzGain).connect(lpf);
+    buzz.start(t0);
+    buzz.stop(t0 + 1.9);
+    // Sympathetic shimmer: octave + fifth fade in after the pluck.
+    for (const [ratio, level] of [
+      [2.01, 0.1],
+      [3.02, 0.06],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f * ratio;
+      osc.connect(env(ctx, t0 + 0.15, level, 1.7)).connect(lpf);
+      osc.start(t0 + 0.15);
+      osc.stop(t0 + 2);
+    }
+  };
+}
+
+/** Erhu (quality backlog: oriental pack) — the singing bowed nasal tone:
+ * saw through a bow-resonance bandpass, delayed vibrato (the bow settles
+ * before the hand starts rocking), detuned second bow for width. D4 anchor.
+ * Sustained by design — a bowed note holds while the bow travels. */
+function erhu(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 293.66; // D4
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1200;
+    bp.Q.value = 0.8;
+    bp.connect(dest);
+    const body = env(ctx, t0, 0.4, 1.5);
+    body.connect(bp);
+    // Delayed vibrato: the LFO depth ramps in after the bow settles.
+    const vibrato = ctx.createOscillator();
+    vibrato.type = "sine";
+    vibrato.frequency.value = 5.5;
+    const vibGain = ctx.createGain();
+    vibGain.gain.setValueAtTime(0, t0);
+    vibGain.gain.linearRampToValueAtTime(14, t0 + 0.35);
+    vibrato.connect(vibGain);
+    vibrato.start(t0);
+    vibrato.stop(t0 + 1.8);
+    for (const detune of [0, 4]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      vibGain.connect(osc.detune);
+      osc.connect(body);
+      osc.start(t0);
+      osc.stop(t0 + 1.8);
+    }
+  };
+}
+
 function conga(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1268,7 +1475,10 @@ function mallet(opts: {
       const bp = ctx.createBiquadFilter();
       bp.type = "bandpass";
       bp.frequency.value = opts.fundamental * 4;
-      click.connect(bp).connect(env(ctx, t0, opts.clickLevel, 0.004)).connect(dest);
+      click
+        .connect(bp)
+        .connect(env(ctx, t0, opts.clickLevel, 0.004))
+        .connect(dest);
     }
   };
 }
@@ -1397,6 +1607,13 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.perc.tick": tick(),
   "factory.perc.blip": blip(880, 620, 0.09),
   "factory.perc.cowbell": cowbell(),
+  // Phonk/oriental pack (quality backlog): cowbell variety + sitar/erhu.
+  "factory.perc.cowbell.dark": cowbellDark(),
+  "factory.perc.cowbell.scream": cowbellScream(),
+  "factory.perc.cowbell.drill": cowbellDrill(),
+  "factory.perc.cowbell.bright": cowbellBright(),
+  "factory.tonal.sitar": sitar(),
+  "factory.tonal.erhu": erhu(),
   "factory.perc.conga": conga(),
   "factory.perc.tambourine": tambourine(),
   "factory.fx.riser": fxRiser(),
@@ -1508,6 +1725,12 @@ export const DURATIONS: Record<string, number> = {
   "factory.perc.tick": 0.05,
   "factory.perc.blip": 0.15,
   "factory.perc.cowbell": 0.36,
+  "factory.perc.cowbell.dark": 0.5,
+  "factory.perc.cowbell.scream": 0.55,
+  "factory.perc.cowbell.drill": 0.25,
+  "factory.perc.cowbell.bright": 0.3,
+  "factory.tonal.sitar": 2.1,
+  "factory.tonal.erhu": 1.9,
   "factory.perc.conga": 0.32,
   "factory.perc.tambourine": 0.3,
   "factory.fx.riser": 2.0,
