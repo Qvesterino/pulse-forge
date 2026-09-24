@@ -86,7 +86,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
  */
 const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdriving\b|\bdrive\b/, "driving"],
-  [/\bminimal(?:ny)?\b/, "minimal"],
+  [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
@@ -94,31 +94,31 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
   [/\bdub\b/, "dub"],
   [/\bacid\b/, "acid"],
-  [/\bclassic\b|\btraditional\b|\bklasick/, "classic"],
+  [/\bclassic\b|\btraditional\b|\bklasick|\bretro\b|\bvintage\b|\bnostalgick|\bstaromodn/, "classic"],
   [/\brolling\b|\broll\b|\broluj/, "rolling"],
   [/\bsparse\b/, "sparse"],
   [/\bbouncy\b|\bbounce\b/, "bouncy"],
   [/\bdrifting\b|\bdrift\b|\bplavu?j/, "drifting"],
-  [/\bglitch(?:y)?\b/, "glitch"],
-  [/\borganic\b|\borganick/, "organic"],
+  [/\bglitch(?:y)?\b|\bchybn|\bchybov|\bsekan/, "glitch"],
+  [/\borganic\b|\borganick|\bprirodzen|\bzivy/, "organic"],
 ];
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */
 const MOOD_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [
-    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn/,
+    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn|\bstrasideln|\bdesiv|\bznepokoj/,
     "dark",
   ],
   [
-    /\baggressive\b|\bhard\b|\bharsh\b|\bbrutal\b|\bviolent\b|\bangry\b|\bwild\b|\bhostile\b|\bfuriou|\btvrd|\bagresiv|\bzuriv|\bdivok/,
+    /\baggressive\b|\bhard\b|\bharsh\b|\bbrutal\b|\bviolent\b|\bangry\b|\bwild\b|\bhostile\b|\bfuriou|\btvrd|\bagresiv|\bzuriv|\bdivok|\bdravy/,
     "aggressive",
   ],
   [
-    /\bchill\b|\bsoft\b|\bmellow\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bserene\b|\bpoko|\bjemn|\bmakk|\btlm|\bsnov|\bleniv|\bpohodov/,
+    /\bchill\b|\bsoft\b|\bmellow\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bserene\b|\bpoko|\bjemn|\bmakk|\btlm|\bsnov|\bleniv|\bpohodov|\bmierov|\bkludn|\btichy/,
     "chill",
   ],
   [
-    /\benergetic\b|\bbright\b|\buplifting\b|\beuphoric\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bfestive\b|\bcelebrator|\belated\b|\bsvetl|\bvesel|\bradostn|\boslavn|\bsviatocn/,
+    /\benergetic\b|\bbright\b|\buplifting\b|\beuphoric\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bfestive\b|\bcelebrator|\belated\b|\bsvetl|\bvesel|\bradostn|\boslavn|\bsviatocn|\bstastn/,
     "energetic",
   ],
 ];
@@ -134,33 +134,36 @@ interface CharacterTrait {
 const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
   [/\bwarm\b|\btepl/, { energy: 0.5 }],
   [/\bcold\b|\bicy\b|\bstuden|\bchladn/, { energy: 0.35 }],
-  [/\bsparse\b|\bminimal(?:ny)?\b/, { density: 0.25, complexity: 0.25 }],
-  [/\bbusy\b|\bdense\b|\bhust/, { density: 0.8 }],
+  [/\bsparse\b|\bminimal(?:ny)?\b|\bminimalistick/, { density: 0.25, complexity: 0.25 }],
+  [/\bbusy\b|\bdense\b|\bhust|\bvrstv/, { density: 0.8 }],
   [/\bsimple\b|\bstraightforward\b|\bjednoduch/, { complexity: 0.2 }],
-  [/\bcomplex\b|\bintricate\b|\bdetailed\b|\bzlozit|\bkomplex/, { complexity: 0.8 }],
+  [/\bcomplex\b|\bintricate\b|\bdetailed\b|\bzlozit|\bkomplex|\bkomplikov/, { complexity: 0.8 }],
   [/\bhypnot(?:ic|ick)/, { variation: 0.2, complexity: 0.3 }],
   [/\bevolving\b|\bdynamic\b/, { variation: 0.8 }],
-  [/\bpunchy\b/, { energy: 0.75, density: 0.6 }],
-  [/\bsmooth\b|\bsilky\b/, { energy: 0.4, complexity: 0.35 }],
-  [/\bheavy\b|\bweighty\b|\btazk/, { energy: 0.85, density: 0.7 }],
-  [/\blight\b|\bairy\b|\blehky/, { energy: 0.35, density: 0.4 }],
-  [/\btight\b/, { complexity: 0.4 }],
-  [/\bwide\b|\bbig\b|\bsirok/, { complexity: 0.6 }],
+  [/\bpunchy\b|\bpriebojn/, { energy: 0.75, density: 0.6 }],
+  [/\bsmooth\b|\bsilky\b|\bhladk/, { energy: 0.4, complexity: 0.35 }],
+  [/\bheavy\b|\bweighty\b|\btazk|\bsiln|\brobustn/, { energy: 0.85, density: 0.7 }],
+  [/\blight\b|\bairy\b|\blehky|\bjemn/, { energy: 0.35, density: 0.4 }],
+  [/\btight\b|\btesn/, { complexity: 0.4 }],
+  [/\bwide\b|\bbig\b|\bsirok|\bvelk|\bpriestorn/, { complexity: 0.6 }],
   [/\bgroovy\b/, { variation: 0.6, energy: 0.7 }],
   [/\bfast\b|\brychl/, { energy: 0.85 }],
   [/\bslow\b|\bpomal/, { energy: 0.3 }],
   // moods also nudge sliders so "dark" both tweaks mood AND lowers energy
   [
-    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn/,
+    /\bdark\b|\bmoody\b|\bmenacing\b|\beerie\b|\bsinister\b|\bevil\b|\bgrim\b|\bbrooding\b|\bominous\b|\btmav|\btemn|\bnocn|\bstrasideln|\bdesiv|\bznepokoj/,
     { energy: 0.3 },
   ],
   [
-    /\bchill\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bpoko/,
+    /\bchill\b|\brelaxed\b|\blaid back\b|\blaid-?back\b|\bcalm\b|\bpeaceful\b|\bcozy\b|\blazy\b|\bdream(?:y)?\b|\bpoko|\btichy|\bmierov|\bkludn/,
     { energy: 0.3, density: 0.4 },
   ],
-  [/\baggressive\b|\bhard\b|\btvrd|\bviolent\b|\bangry\b|\bwild\b|\bzuriv|\bdivok/, { energy: 0.9, density: 0.7 }],
   [
-    /\benergetic\b|\beuphoric\b|\buplifting\b|\bbright\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bsvetl|\bvesel|\bradostn/,
+    /\baggressive\b|\bhard\b|\btvrd|\bviolent\b|\bangry\b|\bwild\b|\bzuriv|\bdivok|\bdravy/,
+    { energy: 0.9, density: 0.7 },
+  ],
+  [
+    /\benergetic\b|\beuphoric\b|\buplifting\b|\bbright\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bsvetl|\bvesel|\bradostn|\bstastn/,
     { energy: 0.95, density: 0.7 },
   ],
   [/\bdriving\b/, { energy: 0.8, density: 0.7 }],
@@ -178,6 +181,12 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
   [/\bfloat(?:ing)?\b|\bplavaj/, { energy: 0.35, density: 0.35 }],
   [/\bhaunting\b|\bdesiv/, { energy: 0.35, complexity: 0.55 }],
   [/\bfestival\b|\bfestiv|\bpeak time\b/, { energy: 0.95, density: 0.8 }],
+  // SK vocabulary wave: more adjective variants — each pinned by tests on
+  // multiple inflected forms (krehký/krehká/krehké → stem "krehky").
+  [/\bfragile\b|\bdelicate\b|\bkrehk/, { complexity: 0.4 }],
+  [/\bold[- ]?school\b|\bretro\b|\bvintage\b|\bstaromodn|\bnostalgick/, { variation: 0.3 }],
+  [/\bedgy\b|\bcutting\b|\bostry\b|\bstiplav|\brezav/, { complexity: 0.65 }],
+  [/\bshallow\b|\bflat\b|\bplytk/, { density: 0.3 }],
 ];
 
 /**
@@ -186,12 +195,15 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
  * "bez bubnov" contains "bubn").
  */
 const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\bno drums\b|\bwithout drums\b|\bdrumless\b|\bdrum-?less\b|\bbez (?:bubn|bic)/, "nodrums"],
+  [
+    /\bno drums\b|\bwithout drums\b|\bdrumless\b|\bdrum-?less\b|\bbez (?:bubn|bic|rytmu)|\b(?:ziaden|ziadny|ziadna|ziadne)\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)\b|\bnula\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)/,
+    "nodrums",
+  ],
   [/\bno bass\b|\bwithout bass\b|\bbassless\b|\bbez bas/, "nobass"],
   [/\bdrums only\b|\bbeat only\b|\bpercussion only\b|\b(?:len|iba) (?:bubn|bic)/, "drumsonly"],
   [/\bmelody only\b|\bno drums just melody\b|\b(?:len|iba) melodi/, "melodyonly"],
-  [/\bfull beat\b|\beverything\b|\bfull arrangement\b|\bcely (?:beat|bit)\b|\bvsetko\b/, "all"],
-  [/\bdrums\b|\bthe beat\b|\bpercussion\b|\bkick\b|\bbubn|\bbic/, "drums"],
+  [/\bfull beat\b|\beverything\b|\bfull arrangement\b|\bcely (?:beat|bit)\b|\bvsetko/, "all"],
+  [/\bdrums\b|\bthe beat\b|\bpercussion\b|\bkick\b|\bbubn|\bbic|\bbicia\b/, "drums"],
   [/\bbass\b|\b808\b|\bsub\b|\bbas(?:a|u|y|ou|ov)?\b/, "bass"],
   [/\bchords\b|\bpads\b|\bstabs\b|\bkeys\b|\bakord/, "chords"],
   [/\blead(?:om|u|a)?\b|\bmelody\b|\barp\b|\barpeggio\b|\btopline\b|\btop line\b|\bsynth\b|\bmelodi/, "lead"],
@@ -304,17 +316,17 @@ export function parseIntentText(text: string): ParsedIntent {
     if (blend.patch.bpmRange) input.bpmRange = [...blend.patch.bpmRange] as IntentInput["bpmRange"];
     detected.push(`♪ ${blend.label}`);
   } else {
-  const artist = matchArtistPreset(lower);
-  if (artist) {
-    const preset = artist.preset;
-    input.genre = preset.genre;
-    if (preset.style) input.style = preset.style;
-    if (preset.mood) input.mood = preset.mood;
-    if (preset.energy !== undefined) input.energy = preset.energy;
-    if (preset.density !== undefined) input.density = preset.density;
-    if (preset.bpmRange) input.bpmRange = [...preset.bpmRange] as IntentInput["bpmRange"];
-    detected.push(`♪ ${preset.label}`);
-  }
+    const artist = matchArtistPreset(lower);
+    if (artist) {
+      const preset = artist.preset;
+      input.genre = preset.genre;
+      if (preset.style) input.style = preset.style;
+      if (preset.mood) input.mood = preset.mood;
+      if (preset.energy !== undefined) input.energy = preset.energy;
+      if (preset.density !== undefined) input.density = preset.density;
+      if (preset.bpmRange) input.bpmRange = [...preset.bpmRange] as IntentInput["bpmRange"];
+      detected.push(`♪ ${preset.label}`);
+    }
   }
 
   // Genre detection (list order = specificity; first hit wins).

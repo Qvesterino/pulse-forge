@@ -186,6 +186,14 @@ describe("vocabulary wave — sub-genres, moods, traits", () => {
     expect(parseIntentText("pohodový house").input.mood).toBe("chill");
     expect(parseIntentText("radostný beat").input.mood).toBe("energetic");
     expect(parseIntentText("nočný techno").input.mood).toBe("dark");
+    // SK vocabulary wave: each new SK adjective variant must parse to the
+    // same canonical mood as its English equivalent.
+    expect(parseIntentText("strašidelný techno").input.mood).toBe("dark");
+    expect(parseIntentText("desivý ambient").input.mood).toBe("dark");
+    expect(parseIntentText("dravý trap").input.mood).toBe("aggressive");
+    expect(parseIntentText("tichý ambient").input.mood).toBe("chill");
+    expect(parseIntentText("mierový house").input.mood).toBe("chill");
+    expect(parseIntentText("šťastný house").input.mood).toBe("energetic");
   });
 
   it("resolves the expanded trait vocabulary into sliders", () => {
@@ -198,5 +206,42 @@ describe("vocabulary wave — sub-genres, moods, traits", () => {
     // SK stems
     expect(parseIntentText("surový drill").input.energy).toBe(0.8);
     expect(parseIntentText("bohatý ambient").input.density).toBe(0.65);
+    // SK vocabulary wave: new stems + inflected forms (krehký / krehká / krehké all → "krehky").
+    expect(parseIntentText("silný techno").input.energy).toBe(0.85);
+    expect(parseIntentText("krehký ambient").input.complexity).toBe(0.4);
+    expect(parseIntentText("krehká melódia").input.complexity).toBe(0.4);
+    expect(parseIntentText("staromódny house").input.variation).toBe(0.3);
+    expect(parseIntentText("retro beat").input.variation).toBe(0.3);
+    expect(parseIntentText("vrstvený techno").input.density).toBe(0.8);
+    expect(parseIntentText("plytký house").input.density).toBe(0.3);
+    expect(parseIntentText("priebojný drill").input.energy).toBe(0.75);
+    expect(parseIntentText("ostrý techno").input.complexity).toBe(0.65);
+    expect(parseIntentText("šťastný beat").input.energy).toBe(0.95);
+    expect(parseIntentText("tichý techno").input.energy).toBe(0.3);
+  });
+
+  it("resolves the expanded style vocabulary with SK stems", () => {
+    expect(parseIntentText("minimal techno").input.style).toBe("minimal");
+    expect(parseIntentText("minimalistický techno").input.style).toBe("minimal");
+    expect(parseIntentText("retro house").input.style).toBe("classic");
+    expect(parseIntentText("staromódny beat").input.style).toBe("classic");
+    expect(parseIntentText("prirodzený ambient").input.style).toBe("organic");
+    expect(parseIntentText("živý techno").input.style).toBe("organic");
+    expect(parseIntentText("chybný beat").input.style).toBe("glitch");
+  });
+
+  it("resolves SK role negation and 'only' phrases", () => {
+    // "no drums" with no other roles named falls back to the remaining roles
+    // (the negation phrase suppresses drums via the noDrums flag pipeline).
+    expect(parseIntentText("žiadne bicie").input.roles).toEqual(["bass", "chords", "lead"]);
+    expect(parseIntentText("žiaden beat").input.roles).toEqual(["bass", "chords", "lead"]);
+    expect(parseIntentText("nula bubnov").input.roles).toEqual(["bass", "chords", "lead"]);
+    expect(parseIntentText("bez rytmu").input.roles).toEqual(["bass", "chords", "lead"]);
+    // When the user explicitly names other instruments alongside the
+    // negation, only those are kept (drums is suppressed, others remain).
+    expect(parseIntentText("žiadne bicie, len basu").input.roles).toEqual(["bass"]);
+    expect(parseIntentText("žiaden beat s melódiou").input.roles).toEqual(["lead"]);
+    // Parser flags the negation in the detection trail.
+    expect(parseIntentText("žiadne bicie").detected).toContain("no drums");
   });
 });
