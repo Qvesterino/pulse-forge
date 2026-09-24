@@ -1,0 +1,15 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/fxeq-plugin-surface.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 136[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-rack-contract.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-host-integration.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 69[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-effect-intent-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-worklet-entry.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 1245[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq worklet entry (message port Ôćö DSP core wiring)[2m > [22mgates band-peak metering on setMetersEnabled (~20 Hz while on, zero off) [33m377[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[32m55 passed[39m[22m[90m (55)[39m
+[2m   Start at [22m 15:13:04
+[2m   Duration [22m 4.11s[2m (transform 1.36s, setup 2.36s, collect 3.13s, tests 1.49s, environment 8.69s, prepare 1.00s)[22m
+

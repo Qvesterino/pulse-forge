@@ -1,0 +1,15 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/fxeq-plugin-surface.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 141[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-effect-intent-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32mÔťô[39m tests/effect-reset.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent-store.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 67[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent.test.ts [2m([22m[2m39 tests[22m[2m)[22m[90m 197[2mms[22m[39m
+ [32mÔťô[39m tests/intent-effect-targets.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 70[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m6 passed[39m[22m[90m (6)[39m
+[2m      Tests [22m [1m[32m65 passed[39m[22m[90m (65)[39m
+[2m   Start at [22m 11:09:49
+[2m   Duration [22m 4.93s[2m (transform 2.45s, setup 3.22s, collect 8.38s, tests 492ms, environment 11.51s, prepare 1.31s)[22m
+

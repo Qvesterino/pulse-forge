@@ -1,0 +1,32 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/effects-wave1-upgrade.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 571[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-plugin-surface.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 228[2mms[22m[39m
+ [32mÔťô[39m tests/multi-tap-delay.test.ts [2m([22m[2m9 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[90m 18[2mms[22m[39m
+ [32mÔťô[39m tests/effects.test.ts [2m([22m[2m61 tests[22m[2m | [22m[33m54 skipped[39m[2m)[22m[90m 125[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave3-upgrade.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 324[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave2-upgrade.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 803[2mms[22m[39m
+   [33m[2mÔťô[22m[39m character engine ÔÇö Tape mode[2m > [22mall five curves stay bounded across the drive range [33m668[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-effect-intent-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 18[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave4-upgrade.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 1070[2mms[22m[39m
+   [33m[2mÔťô[22m[39m B1/B2 ÔÇö parameter glide kills the zipper[2m > [22msvfilter: automated cutoff sweep stays smooth and finite [33m419[2mms[22m[39m
+ [32mÔťô[39m tests/effect-reset.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32mÔťô[39m tests/plugins-effects-audit.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 37[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent-store.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 111[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent.test.ts [2m([22m[2m39 tests[22m[2m)[22m[33m 340[2mms[22m[39m
+ [32mÔťô[39m tests/intent-effect-targets.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 117[2mms[22m[39m
+ [32mÔťô[39m tests/chorus-delay-buss.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 5219[2mms[22m[39m
+   [33m[2mÔťô[22m[39m chorus-processor sound[2m > [22mmix = 0 is unity (dry passes bit-exact) [33m428[2mms[22m[39m
+   [33m[2mÔťô[22m[39m chorus-processor sound[2m > [22mextremes soak: finite, bounded, no NaN [33m2337[2mms[22m[39m
+   [33m[2mÔťô[22m[39m stock-delay-processor sound[2m > [22mfeedback decays (no runaway) and mix = 0 is unity [33m1353[2mms[22m[39m
+   [33m[2mÔťô[22m[39m stock-delay-processor sound[2m > [22mswitching TIME mid-render stays finite (glide, no zipper blowup) [33m960[2mms[22m[39m
+ [32mÔťô[39m tests/kaskada.test.ts [2m([22m[2m64 tests[22m[2m)[22m[33m 5893[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada freeze[2m > [22mseals the write head: a post-freeze impulse cannot reach the output [33m361[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada extremes soak[2m > [22mrandomised param grid stays finite, bounded and non-growing (24 draws) [33m2346[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m15 passed[39m[22m[90m (15)[39m
+[2m      Tests [22m [1m[32m201 passed[39m[22m[2m | [22m[33m56 skipped[39m[90m (257)[39m
+[2m   Start at [22m 11:03:02
+[2m   Duration [22m 14.22s[2m (transform 5.70s, setup 22.60s, collect 26.57s, tests 14.89s, environment 70.69s, prepare 4.02s)[22m
+

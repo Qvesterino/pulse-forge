@@ -1,0 +1,24 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+src/interop/qvesterHandoff.ts(111,56): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer>', gave the following error.
+    Argument of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>' is not assignable to parameter of type 'BufferSource'.
+      Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'BufferSource'.
+        Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+          Types of property 'buffer' are incompatible.
+            Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+              Type 'SharedArrayBuffer' is missing the following properties from type 'ArrayBuffer': resizable, resize, detached, transfer, transferToFixedLength
+  Overload 2 of 2, '(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer>', gave the following error.
+    Argument of type 'ArrayBuffer | Uint8Array<ArrayBufferLike>' is not assignable to parameter of type 'BufferSource'.
+      Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'BufferSource'.
+        Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+          Types of property 'buffer' are incompatible.
+            Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+              Type 'SharedArrayBuffer' is missing the following properties from type 'ArrayBuffer': resizable, resize, detached, transfer, transferToFixedLength
+tests/prior-embedding-conditioning.test.ts(14,10): error TS6133: 'buildPriorFeatureRow' is declared but its value is never read.
+tests/qvester-profile-bus.test.ts(148,3): error TS2304: Cannot find name 'afterEach'.
+tests/qvester-profile-bus.test.ts(209,23): error TS6133: 'setPlaying' is declared but its value is never read.
+tests/suno-mode.test.ts(3,41): error TS6133: 'buildSong' is declared but its value is never read.
+tests/suno-mode.test.ts(3,52): error TS6133: 'applySongCommand' is declared but its value is never read.

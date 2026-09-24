@@ -1,0 +1,253 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/ultina-hardening2.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 184[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-worklet-entry.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 788[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-hardening3.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 577[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ultina hardening #3 ÔÇö phase sidechain correlation window[2m > [22mmulti-chunk blocks correlate identically to single-chunk blocks [33m367[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-hardening2.test.ts [2m([22m[2m16 tests[22m[2m)[22m[33m 1000[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-worklet-entry.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 2873[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq worklet entry (message port Ôćö DSP core wiring)[2m > [22mgates band-peak metering on setMetersEnabled (~20 Hz while on, zero off) [33m1187[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave4-upgrade.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 1395[2mms[22m[39m
+   [33m[2mÔťô[22m[39m B1/B2 ÔÇö parameter glide kills the zipper[2m > [22msvfilter: automated cutoff sweep stays smooth and finite [33m482[2mms[22m[39m
+   [33m[2mÔťô[22m[39m C ÔÇö chorus feedback/voices/shape[2m > [22mvoices=4 changes the wet character vs voices=2 [33m367[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-ir-spectra.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 3476[2mms[22m[39m
+   [33m[2mÔťô[22m[39m partitioned convolver ÔÇö precomputed spectra parity[2m > [22mprecomputed convolver output is bit-identical to the time-domain convolver (block=1024) [33m322[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mstereo IR: precomputed load output is bit-identical to loadIr [33m885[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mmono IR broadcast: precomputed load output is bit-identical to loadIr [33m679[2mms[22m[39m
+   [33m[2mÔťô[22m[39m convolution engine ÔÇö loadIrPrecomputed parity[2m > [22mtrue-stereo quad IR: precomputed load output is bit-identical to loadIr [33m695[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent.test.ts [2m([22m[2m39 tests[22m[2m)[22m[33m 645[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-host-integration.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 170[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-core-hardening.test.ts [2m([22m[2m34 tests[22m[2m)[22m[33m 6866[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (sine) [33m410[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (triangle) [33m361[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (saw) [33m314[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (square) [33m386[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mreadInto matches read sample-for-sample (random) [33m338[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core LFO readInto (allocation-free reads)[2m > [22mrandom S&H is deterministic: independent instances and reset restart the same sequence [33m522[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq-core limiter linked true-peak path (hoisted scratch)[2m > [22mstereo-linked limiting keeps output bounded at the ceiling from block 0 [33m878[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq ping-pong hermite cross-read (roadmap P)[2m > [22mping-pong type runs stereo without NaN and bounces between channels [33m910[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb tank upgrade (roadmap Q1)[2m > [22m8-line modulated tank is deterministic and finite [33m530[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb tank upgrade (roadmap Q1)[2m > [22mmodulated tank still decays under sustained silence [33m482[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq latency-transition stale-buffer regression (alignment rings)[2m > [22msilence stays silent when drive automation re-crosses the oversample threshold [33m494[2mms[22m[39m
+ [32mÔťô[39m tests/effects.test.ts [2m([22m[2m61 tests[22m[2m | [22m[33m54 skipped[39m[2m)[22m[90m 126[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-core-hardening.test.ts [2m([22m[2m55 tests[22m[2m)[22m[33m 4315[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U3: hybrid crossover mix is latency-compensated[2m > [22mmix = 0 through a unity hybrid comp returns the input delayed by the reported latency [33m401[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U3: HQ quality mode oversamples the comp gain path[2m > [22mhq + all modules under deep settings stays far inside the audio budget [33m1622[2mms[22m[39m
+   [33m[2mÔťô[22m[39m U-P: LUFS meter reports silence after a long feed gap[2m > [22mgetMeters shows -70 until the short-term window turns over [33m449[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-hardening2.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1776[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena-core hardening #2 ÔÇö NaN-safe clamp + engine heal[2m > [22ma NaN attack parameter cannot permanently silence the hall/plate engines [33m452[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ozvena-core hardening #2 ÔÇö processor output poison guard[2m > [22mthe final output stage never emits non-finite samples [33m947[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave1-upgrade.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 949[2mms[22m[39m
+   [33m[2mÔťô[22m[39m character engine (saturation/distortion curves)[2m > [22mkeeps every mode's curve bounded and zero at center [33m512[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-contract-params.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 753[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ultina contract params ÔÇö eq.channelMode transient/sustain[2m > [22ma fresh burst reaches the EQ in transient mode but bypasses it in sustain mode [33m333[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-crossover-quality.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1530[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-prepare-hardening.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 11569[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq reverb re-prepare capacity (P1 regression)[2m > [22mhall at 96 kHz after a 44.1 kHz prepare stays finite AND audible [33m307[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq processor re-prepare lifecycle (all modules active)[2m > [22mre-prepare 44.1Ôćĺ96 kHz then reset is bit-identical to a fresh processor [33m2395[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq processor re-prepare lifecycle (all modules active)[2m > [22mre-prepare survives repeated toggling across sample rates [33m302[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq determinism and decay[2m > [22mtwo identically-driven processors produce bit-identical output [33m523[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq determinism and decay[2m > [22mreverb+delay tails decay under sustained silence [33m452[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq randomized fuzz (out-of-range values included)[2m > [22mrandom schema-range and beyond-range parameter sets stay finite and bounded [33m6391[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq randomized fuzz (out-of-range values included)[2m > [22mrapid automation bursts keep the processor finite [33m602[2mms[22m[39m
+ [32mÔťô[39m tests/chorus-delay-buss.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 11409[2mms[22m[39m
+   [33m[2mÔťô[22m[39m chorus-processor sound[2m > [22mmix = 0 is unity (dry passes bit-exact) [33m376[2mms[22m[39m
+   [33m[2mÔťô[22m[39m chorus-processor sound[2m > [22mextremes soak: finite, bounded, no NaN [33m4435[2mms[22m[39m
+   [33m[2mÔťô[22m[39m stock-delay-processor sound[2m > [22mfeedback decays (no runaway) and mix = 0 is unity [33m3742[2mms[22m[39m
+   [33m[2mÔťô[22m[39m stock-delay-processor sound[2m > [22mswitching TIME mid-render stays finite (glide, no zipper blowup) [33m2638[2mms[22m[39m
+ [32mÔťô[39m tests/kaskada.test.ts [2m([22m[2m64 tests[22m[2m)[22m[33m 12342[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada freeze[2m > [22mseals the write head: a post-freeze impulse cannot reach the output [33m500[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada extremes soak[2m > [22mall-max stays finite and settles [33m379[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada extremes soak[2m > [22mrandomised param grid stays finite, bounded and non-growing (24 draws) [33m5056[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada extremes soak[2m > [22mdelta listen outputs exactly what the solver removes [33m575[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada unmask solver[2m > [22mducks the masked echo: the output drops where the dry dominates the same band [33m342[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada unmask solver[2m > [22mrings free in pauses: reduction recovers after the dry stops [33m446[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada unmask solver[2m > [22man inaudible masker masks nothing (below the Ôłĺ60 dB floor the output is bit-exact) [33m371[2mms[22m[39m
+   [33m[2mÔťô[22m[39m kaskada unmask solver[2m > [22mhot settings soak: solver wide open at min sensitivity stays finite and bounded [33m601[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-ab-persistence.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 98[2mms[22m[39m
+ [32mÔťô[39m tests/multi-tap-delay.test.ts [2m([22m[2m9 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[90m 26[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-stale-state.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 590[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-parity.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1981[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mworklet entry output is bit-identical to the raw processor [33m593[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22m512-sample host blocks render identically to 128-sample blocks [33m348[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mentry driven with a 256-sample quantum renders identically to 128 [33m334[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina render parity[2m > [22mtrueEnvelope boundary artifact is fixed to an inaudible residual (regression) [33m697[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-extremes.test.ts [2m([22m[2m36 tests[22m[2m)[22m[33m 2158[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina numeric stress ÔÇö parameter extremes[2m > [22mexciter survives all-max [33m303[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-morph.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 317[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave3-upgrade.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 408[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-worklet-entry.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 19468[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: post-construction param updates reach the DSP core [33m1900[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22minitial params via processorOptions reach the DSP core [33m832[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22munknown params do not throw and do not corrupt the state root [33m369[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: bpm message retimes the tempo-synced pre-delay [33m3083[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: initial bpm rides processorOptions [33m1617[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mbpm messages clamp to the core's 20..300 range [33m1641[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mregression: paramAt events apply at their scheduled time, not on arrival [33m929[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mparamAt events due in the past apply on the next block [33m696[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22ma manual param cancels later paramAt events for the same id [33m1197[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mreset clears pending paramAt events [33m1241[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22msequential paramAt events fire in order across blocks [33m1160[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry (message port Ôćö DSP core wiring)[2m > [22mswitching factory IRs during playback stays finite, bounded and continuous (listening proxy) [33m928[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry ÔÇö precomputed IR spectra path[2m > [22mthe spectra path renders BIT-IDENTICAL audio to the legacy samples path [33m2190[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena worklet entry ÔÇö precomputed IR spectra path[2m > [22mthe consume-once blockSpectra handover keeps re-loads correct (finite render) [33m516[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-adversarial.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 2754[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22msurvives rapid module/band/mute toggle spam under signal with finite output [33m1355[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22mhandles predelay shrink mid-stream without stale clicks or NaN (reverb cursor clamp) [33m331[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq adversarial sweep[2m > [22mtoggle paths stay finite across sample rates (44.1/48/88.2/96 kHz) [33m736[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-tempo-sync.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 1198[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq delay tempo sync[2m > [22mevery sync division lands within the buffer without NaN [33m1018[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-env-routing.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 8078[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq envelope routing (roadmap Q6)[2m > [22mdepth back to 0 restores the base ÔÇö output converges back to the reference [33m2092[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq envelope routing (roadmap Q6)[2m > [22mevery target at full depth stays deterministic, finite and bounded [33m5508[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-rack-contract.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-band-eq.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 764[2mms[22m[39m
+ [32mÔťô[39m tests/plugins-effects-audit.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 56[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-samplerates.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1692[2mms[22m[39m
+   [33m[2mÔťô[22m[39m CrossoverNetwork allpass sum across sample rates[2m > [22m96000 Hz: 2-band and 3-band sums keep a steady tone's amplitude [33m302[2mms[22m[39m
+   [33m[2mÔťô[22m[39m UltinaProcessor loudness + dynamics across sample rates[2m > [22m96000 Hz: Ôłĺ23 dBFS stereo tone reads Ôëł Ôłĺ23 LUFS through the full processor [33m321[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-crossover-order.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 107[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-ozvena-biquad-hardening.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 344[2mms[22m[39m
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: passthrough_default
+[22m[39m[ultina-parity] passthrough_default: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: input_gain_plus6
+[22m[39m[ultina-parity] input_gain_plus6: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: input_gain_minus6
+[22m[39m[ultina-parity] input_gain_minus6: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: output_gain_plus3
+[22m[39m[ultina-parity] output_gain_plus3: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: mix_50_percent
+[22m[39m[ultina-parity] mix_50_percent: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: noise_passthrough
+[22m[39m[ultina-parity] noise_passthrough: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: low_freq_sine
+[22m[39m[ultina-parity] low_freq_sine: rms╬ö=0.0000dB maxErr=0.00e+0
+
+[90mstdout[2m | tests/ultina-vectors.test.ts[2m > [22m[2mUltina golden parity (vendored core vs upstream vectors)[2m > [22m[2mparity: high_freq_sine
+[22m[39m[ultina-parity] high_freq_sine: rms╬ö=0.0000dB maxErr=0.00e+0
+
+ [32mÔťô[39m tests/ultina-vectors.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 249[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-meters.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 1596[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina metering gate[2m > [22mmeters OFF freezes LUFS briefly, then reports silence once the window goes stale [33m308[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina metering gate[2m > [22mmeters OFF + gain-match ON keeps the LUFS feedback loop alive [33m434[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina pooled meter snapshot[2m > [22mpooled buffers still carry FRESH data every call (no stale pooling) [33m365[2mms[22m[39m
+ [32mÔťô[39m tests/intent-effect-targets.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 133[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-preview-degraded.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 22[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-assistant.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 1041[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-plugin-surface.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 392[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-crossover.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 288[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mkeeps a fully-loaded 6-band instance within the calibrated cost ratio
+[22m[39m[fxeq-perf] passthrough=278┬Ás (p95 440) fully-loaded=3966┬Ás (p95 5474) ÔÇö ratios 14.3/12.4 (budget 22/25)
+
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mloads every factory preset (83) within the calibrated budget
+[22m[39m[fxeq-perf] worst loadParameters: warmth-allround 658┬Ás = 2.5├Ś passthrough (budget 35├Ś)
+
+[90mstdout[2m | tests/fxeq-performance-gates.test.ts[2m > [22m[2mfxeq real-time performance gate[2m > [22m[2mkeeps an active full-state morph within the self-calibrated budget
+[22m[39m[fxeq-perf] morph: idle=266┬Ás morphing=431┬Ás (1.62├Ś, budget 2.4├Ś)
+
+ [32mÔťô[39m tests/fxeq-performance-gates.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 20425[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mkeeps a fully-loaded 6-band instance within the calibrated cost ratio [33m16196[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mloads every factory preset (83) within the calibrated budget [33m1504[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq real-time performance gate[2m > [22mkeeps an active full-state morph within the self-calibrated budget [33m2722[2mms[22m[39m
+ [32mÔťô[39m tests/ultina-analysis-client.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32mÔťô[39m tests/audio-engine-effect-intent-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/effect-intent-store.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 137[2mms[22m[39m
+ [32mÔťô[39m tests/effects-wave2-upgrade.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 675[2mms[22m[39m
+   [33m[2mÔťô[22m[39m character engine ÔÇö Tape mode[2m > [22mall five curves stay bounded across the drive range [33m574[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-processor-workflow.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 107[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: bypass-transparent
+[22m[39m[fxeq-parity] bypass-transparent: envelope╬ö=1.3e-4 peak╬ö=8.0e-6 rms╬ö=0.0e+0 hash=differs
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: impulse-response
+[22m[39m[fxeq-parity] impulse-response: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: warmth-saturation
+[22m[39m[fxeq-parity] warmth-saturation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: reverb-plate
+[22m[39m[fxeq-parity] reverb-plate: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: lofi-degradation
+[22m[39m[fxeq-parity] lofi-degradation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: delay-feedback
+[22m[39m[fxeq-parity] delay-feedback: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: phaser-modulation
+[22m[39m[fxeq-parity] phaser-modulation: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: combined-chain
+[22m[39m[fxeq-parity] combined-chain: envelope╬ö=0.0e+0 peak╬ö=0.0e+0 rms╬ö=0.0e+0 hash=EXACT
+
+[90mstdout[2m | tests/fxeq-golden.test.ts[2m > [22m[2mFXEQ golden parity (vendored core vs upstream fixtures)[2m > [22m[2mreports how many cases are bit-exact (informational)
+[22m[39m[fxeq-parity] 7/8 cases bit-exact vs fixtures
+
+ [32mÔťô[39m tests/fxeq-golden.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 508[2mms[22m[39m
+ [32mÔťô[39m tests/effect-reset.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 11[2mms[22m[39m
+[90mstdout[2m | tests/ozvena-golden.test.ts[2m > [22m[2mOzvena golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: hall-blend
+[22m[39m[ozvena-parity] hall-blend: tailEnergy=1.05e-8 (min 1.00e-10)
+
+[90mstdout[2m | tests/ozvena-golden.test.ts[2m > [22m[2mOzvena golden parity (vendored core vs upstream fixtures)[2m > [22m[2mparity: small-room
+[22m[39m[ozvena-parity] small-room: tailEnergy=5.30e-13 (min 1.00e-13)
+
+ [32mÔťô[39m tests/ozvena-golden.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 14280[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena golden parity (vendored core vs upstream fixtures)[2m > [22mparity: hall-blend [33m10137[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena golden parity (vendored core vs upstream fixtures)[2m > [22mparity: small-room [33m4135[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-analyzer-gating.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 5146[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mdisabling analyzers leaves the audio bit-for-bit identical [33m2280[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mthe flag is observable and defaults to enabled [33m1484[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mthe flag survives a reset (re-prepare recreates the analyzers) [33m684[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena analyzer gating[2m > [22mre-enabling restores analyzer output [33m696[2mms[22m[39m
+ [32mÔťô[39m tests/ozvena-hardening.test.ts [2m([22m[2m35 tests[22m[2m)[22m[33m 42920[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22ma NaN numeric param is dropped and the previous value survives [33m580[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mregression: a NaN enum index no longer throws inside the audio path [33m392[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mparamAt with a NaN value is dropped; valid paramAt events still land [33m693[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö parameter boundary validation (message port)[2m > [22mNaN initial params via processorOptions are dropped too [33m314[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.outputGainDb=1000000000 stays finite and audible (clamped, not muted) [33m494[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.levelDb=1000000000 stays finite and audible (clamped, not muted) [33m444[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö global gain clamping (documented ranges)[2m > [22mextreme global.inputGainDb=1000000000 stays finite and audible (clamped, not muted) [33m490[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mE2 at max shimmer + longest decay decays instead of running away [33m3975[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mE3 at max shimmer + 24 s decay decays instead of running away [33m5604[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mboth engines at max shimmer stay finite with a decaying tail [33m8974[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mthe guard is a no-op inside the stable region (sonic preservation) [33m3104[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö shimmer feedback stability (FDN loop guard)[2m > [22mzero shimmer is untouched: default-state tail energy band [33m2997[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö sample-rate robustness[2m > [22mat 88200 Hz the output stays finite, the tail lands, and latency scales [33m2766[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö sample-rate robustness[2m > [22mat 96000 Hz the output stays finite, the tail lands, and latency scales [33m2631[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mcycling all four quality tiers keeps a CONSTANT reported latency and stays finite [33m1561[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mrapid quality flicker while rendering keeps the output finite and bounded [33m859[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö quality switches are scalar-only on the audio thread[2m > [22mswitching quality mid-tail does not click via an envelope reset (gain carried) [33m360[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö reset() restores a freshly-prepared processor[2m > [22mregression: an engaged auto-duck is released by reset() [33m1139[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö freeze loop-gain safety (2026-09-19 audit)[2m > [22mE2 freeze with bassDecay 2 holds instead of pinning the limiter [33m1705[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena hardening ÔÇö freeze loop-gain safety (2026-09-19 audit)[2m > [22mE3 freeze with bassDecay 4 holds [33m2178[2mms[22m[39m
+ [32mÔťô[39m tests/fxeq-sample-rate-sweep.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 16110[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 44100 Hz [33m7619[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 48000 Hz [33m4405[2mms[22m[39m
+   [33m[2mÔťô[22m[39m fxeq sample-rate sweep (all presets ├Ś 44.1/48/96 kHz)[2m > [22mkeeps every preset finite and bounded at 96000 Hz [33m4054[2mms[22m[39m
+[90mstdout[2m | tests/ultina-soak.test.ts[2m > [22m[2mUltina soak (300 s full-graph render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[ultina-soak] heap growth over 300s render: -6.6 MB (drift -0.001 dB, tail peak 0.00e+0)
+
+ [32mÔťô[39m tests/ultina-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 55771[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ultina soak (300 s full-graph render)[2m > [22mstays finite, does not drift, and decays to silence [33m55769[2mms[22m[39m
+[90mstdout[2m | tests/fxeq-soak.test.ts[2m > [22m[2mFXEQ soak (300 s worst-case render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[fxeq-soak] heap growth over 300s render: -7.3 MB (drift -0.003 dB, tail peak 0.00e+0, maxAbs 0.962)
+
+ [32mÔťô[39m tests/fxeq-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 164689[2mms[22m[39m
+   [33m[2mÔťô[22m[39m FXEQ soak (300 s worst-case render)[2m > [22mstays finite, does not drift, and decays to silence [33m164686[2mms[22m[39m
+[90mstdout[2m | tests/ozvena-soak.test.ts[2m > [22m[2mOzvena soak (300 s full-core render)[2m > [22m[2mstays finite, does not drift, and decays to silence
+[22m[39m[ozvena-soak] heap growth over 300s render: 50.3 MB (drift -0.006 dB, tail peak 5.70e-11, maxAbs 0.854)
+
+ [32mÔťô[39m tests/ozvena-soak.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 194173[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Ozvena soak (300 s full-core render)[2m > [22mstays finite, does not drift, and decays to silence [33m194171[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m58 passed[39m[22m[90m (58)[39m
+[2m      Tests [22m [1m[32m687 passed[39m[22m[2m | [22m[33m56 skipped[39m[90m (743)[39m
+[2m   Start at [22m 15:14:18
+[2m   Duration [22m 218.25s[2m (transform 10.82s, setup 61.20s, collect 37.26s, tests 621.55s, environment 251.60s, prepare 15.70s)[22m
+

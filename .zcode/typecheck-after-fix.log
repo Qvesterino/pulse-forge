@@ -1,0 +1,5 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+tests/prior-embedding-conditioning.test.ts(224,56): error TS2552: Cannot find name 'PRIOR_FEATURE_COUNT'. Did you mean 'V2_FEATURE_COUNT'?
