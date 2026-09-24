@@ -227,6 +227,8 @@ jobs:
         shell: pwsh
         run: >-
           node --check desktop/mrt2-windows-host-manager.cjs;
+          node --check desktop/mrt2-wsl2-host-manager.cjs;
+          node --check desktop/main.cjs;
           node --check desktop/mrt2-windows-assets.cjs;
           node --check desktop/mrt2-bridge.cjs;
           node --check scripts/benchmark-mrt2-windows.mjs;

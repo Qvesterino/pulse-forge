@@ -20,6 +20,8 @@ const { verifyWindowsMrt2Manifest } = require("../desktop/mrt2-windows-assets.cj
 
 const hostPath =
   process.env.KYX_MRT2_WINDOWS_HOST ?? path.join(root, "build", "mrt2-windows", "kyx-mrt2-windows-host.exe");
+const hostScriptPath =
+  process.env.KYX_MRT2_WINDOWS_HOST_SCRIPT ?? path.join(root, "companion", "mrt2-windows", "kyx_mrt2_windows_host.py");
 const modelRoot = process.env.KYX_MRT2_WINDOWS_MODEL_ROOT;
 const manifestPath =
   process.env.KYX_MRT2_WINDOWS_MANIFEST ?? path.join(root, "build", "mrt2-windows", "kyx-mrt2-windows-manifest.json");
@@ -59,7 +61,7 @@ if (path.basename(hostPath) !== "kyx-mrt2-windows-host.exe") {
   throw new Error("KYX_MRT2_WINDOWS_HOST must point to kyx-mrt2-windows-host.exe");
 }
 
-const verification = await verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath });
+const verification = await verifyWindowsMrt2Manifest({ hostPath, hostScriptPath, modelRoot, manifestPath });
 if (!verification.ok) {
   throw new Error(`MRT2 Windows package verification failed:\n${verification.errors.join("\n")}`);
 }
@@ -77,6 +79,7 @@ const config = {
   extends: path.join(root, "electron-builder.yml"),
   extraResources: [
     { from: hostPath, to: "mrt2-windows/kyx-mrt2-windows-host.exe" },
+    { from: hostScriptPath, to: "mrt2-windows/kyx_mrt2_windows_host.py" },
     { from: manifestPath, to: "mrt2-windows/kyx-mrt2-windows-manifest.json" },
   ],
 };

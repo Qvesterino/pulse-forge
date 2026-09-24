@@ -11,21 +11,21 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 
 ## Headline numbers
 
-| What                                   |   Count | Source of truth                                                                                                            |
-| -------------------------------------- | ------: | -------------------------------------------------------------------------------------------------------------------------- |
-| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                     |
-| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                    |
-| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                   |
-| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                        |
-| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                           |
-| **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                     |
-| **Factory assets** (drum / tonal / FX) |  **71** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                       |
+| What                                   |   Count | Source of truth                                                                                                                                                           |
+| -------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                                                                    |
+| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                                                                   |
+| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                                                                  |
+| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                                                                       |
+| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                                                                          |
+| **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                                                                    |
+| **Factory assets** (drum / tonal / FX) |  **71** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                                                                      |
 | └─ curated WAV overrides               |      68 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure — the 3 mallet assets are synthesis-only today) |
-| **Factory presets**                    | **325** | `src/presets/factory.ts`                                                                                                   |
-| └─ instrument presets                  |     319 | `FACTORY_PRESETS`                                                                                                          |
-| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                     |
-| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                     |
-| **Vitest spec files**                  | **494** | `tests/` files matching `*.test.ts` (393) and `*.test.tsx` (101)                                                           |
+| **Factory presets**                    | **325** | `src/presets/factory.ts`                                                                                                                                                  |
+| └─ instrument presets                  |     319 | `FACTORY_PRESETS`                                                                                                                                                         |
+| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                                                                    |
+| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                                                                    |
+| **Vitest spec files**                  | **494** | `tests/` files matching `*.test.ts` (393) and `*.test.tsx` (101)                                                                                                          |
 
 ## Flagship plugin implementations
 
@@ -109,7 +109,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 ### Architecture
 
 - **ADR 0012 — MRT2 generative tracks** records the Mac Apple-Silicon-only generative-tracks helper path; the helper builds in `native/mrt2-host/`, packaging lives in `electron-builder.yml` and `desktop:build:mac:mrt2`. `.github/workflows/ci.yml` gates its downloadable QA artifact on the shared test suite and packaged-app smoke verification.
-- **ADR 0013 — Windows generative companion tiers** records the separate Windows manager/transport, capture-first capability tiers, benchmark gate and fixed optional companion/model paths. The checked-in JAX capture host, package hash manifest verifier and guarded model-data uninstall script live under `companion/mrt2-windows/` and `scripts/`; the macOS helper remains Apple Silicon-only.
+- **ADR 0013 — Windows generative companion tiers** records the separate Windows manager/transport, capture-first capability tiers, benchmark gate and fixed optional companion/model paths. The checked-in JAX capture host, opt-in WSL2/CUDA near-realtime launcher, SHA-256 package manifest verifier and guarded model-data uninstall script live under `companion/mrt2-windows/`, `desktop/` and `scripts/`; the macOS helper remains Apple Silicon-only. The 2026-09-25 RTX 3060 Laptop 600 s WSL2 stream failed promotion (35.98 ms p95, 9 overruns), so Windows live playback is still experimental and is not advertised as promoted realtime.
 
 ## Prior test-gate baseline — not verified on the current revision
 

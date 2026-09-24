@@ -288,8 +288,16 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
     }
     const sessionId = this.requireSessionId();
     this.setStatus({ state: "starting" });
-    await this.request({ version: 1, type: "session.start", requestId: requestId("start"), sessionId }, "status");
-    this.setStatus({ state: "running" });
+    const response = await this.request(
+      { version: 1, type: "session.start", requestId: requestId("start"), sessionId },
+      "status",
+    );
+    if (response.type === "status") {
+      this.setStatus({
+        state: response.state as GenerativeSessionState,
+        ...(response.message ? { message: response.message } : {}),
+      });
+    }
   }
 
   async stop(): Promise<void> {
@@ -511,6 +519,13 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
         state: message.state as GenerativeSessionState,
         ...(message.message ? { message: message.message } : {}),
       });
+      if (message.metrics && this.capabilities.runtimeProfile) {
+        this.capabilities.runtimeProfile = {
+          ...this.capabilities.runtimeProfile,
+          frameP95Ms: message.metrics.frameP95Ms,
+          realtimeFactor: message.metrics.realtimeFactor,
+        };
+      }
     }
     if (message.requestId) {
       const pending = this.pending.get(message.requestId);

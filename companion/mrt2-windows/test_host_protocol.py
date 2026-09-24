@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 
-from kyx_mrt2_windows_host import AUDIO_HEADER_BYTES, AUDIO_HEADER_FORMAT
+from kyx_mrt2_windows_host import AUDIO_HEADER_BYTES, AUDIO_HEADER_FORMAT, Mrt2WindowsHost, _percentile
 
 
 HOST = Path(__file__).with_name("kyx_mrt2_windows_host.py")
@@ -26,6 +26,29 @@ class WindowsCompanionProtocolTest(unittest.TestCase):
   def test_output_packet_header_matches_shared_electron_layout(self):
     self.assertEqual(struct.calcsize(AUDIO_HEADER_FORMAT), 32)
     self.assertEqual(AUDIO_HEADER_BYTES, 32)
+
+  def test_frame_percentile_uses_nearest_rank_and_handles_empty_input(self):
+    self.assertEqual(_percentile([], 0.95), 0.0)
+    self.assertEqual(_percentile([9.0, 1.0, 5.0, 3.0], 0.95), 9.0)
+
+  def test_live_capability_is_opt_in_and_never_claims_promoted_realtime(self):
+    with tempfile.TemporaryDirectory(prefix="kyx-mrt2-host-") as model_root:
+      capture = Mrt2WindowsHost(Path(model_root))
+      capture._has_runtime = True
+      capture._has_assets = True
+      capture._has_cuda = True
+      capture.checkpoint.parent.mkdir(parents=True)
+      capture.checkpoint.touch()
+      self.assertFalse(capture.supports_realtime())
+      self.assertEqual(capture.runtime_profile()["executionMode"], "capture")
+
+      experimental = Mrt2WindowsHost(Path(model_root), "near-realtime")
+      experimental._has_runtime = True
+      experimental._has_assets = True
+      experimental._has_cuda = True
+      self.assertTrue(experimental.supports_realtime())
+      self.assertEqual(experimental.runtime_profile()["executionMode"], "near-realtime")
+      self.assertIn("10-minute benchmark", experimental.runtime_profile()["warning"])
 
   def test_ready_and_unavailable_handshake_without_runtime(self):
     with tempfile.TemporaryDirectory(prefix="kyx-mrt2-host-") as model_root:
@@ -57,6 +80,7 @@ class WindowsCompanionProtocolTest(unittest.TestCase):
           process.stdin.write(frame(3, ""))
           process.stdin.close()
         process.wait(timeout=5)
+        self.assertEqual(process.returncode, 0)
         if process.stdout:
           process.stdout.close()
         if process.stderr:

@@ -101,6 +101,14 @@ export interface SchedulerDeps {
 
 const INTERVAL_MS = 25;
 const HORIZON_SECONDS = 0.12;
+/**
+ * Flip-commit cadence (ms). The scheduled scene-tempo flip must land as close
+ * to its boundary instant as possible; waiting for the 25 ms tick would hold
+ * tempo-synced runtimes (SYNC delays, LFO syncs) on the old tempo for up to a
+ * tick. The committer only ever runs while a flip is pending (armed on
+ * schedule, disarmed on commit/seek/stop) — zero steady-state cost.
+ */
+const FLIP_COMMIT_MS = 5;
 
 const mod = (value: number, m: number): number => ((value % m) + m) % m;
 
@@ -135,6 +143,8 @@ function resolveLoopEnd(transport: Transport, doc: ProjectDocument, mode: PlayMo
 
 export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Fast flip-commit loop — non-null only while a tempo flip is pending. */
+  private flipTimer: ReturnType<typeof setInterval> | null = null;
   /** Last invalid active-pattern signature reported by this scheduler. */
   private invalidPatternSignature: string | null = null;
   /**
@@ -204,7 +214,7 @@ export class Scheduler {
   /** Marker ids scheduled to fire in the current window (deferred trigger). */
   private pendingMarkers: { assetId: string | null; when: number; trackId?: string }[] = [];
   /** `failedWindows` = scheduling windows skipped after an exception (see tick). */
-  stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0 };
+  stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0, flipFastCommits: 0 };
   private listeners = new Set<() => void>();
   /**
    * Per-tick allocations in song mode (sorted clips + id → entity
@@ -279,6 +289,7 @@ export class Scheduler {
   stop(): void {
     // Playback ended — hand tempo control back to the project BPM.
     this.pendingTempoFlip = null;
+    this.disarmFlipCommitter();
     this.applyTempo(null);
     if (this.timer !== null) {
       clearInterval(this.timer);
@@ -337,6 +348,56 @@ export class Scheduler {
     this.deps.applySceneTempo(bpm);
   }
 
+  /**
+   * Commit a scheduled scene-tempo flip whose boundary the playhead crossed:
+   * re-anchor the transport EXACTLY on the pre-computed boundary point (a
+   * position-preserving setBpm() here would quantize the anchor to the tick
+   * and skip up to one tick-worth of grid right after the seam) and flip the
+   * tempo-synced engine runtimes at the same instant. Idempotent — the first
+   * caller (fast committer or 25 ms tick) clears the flip. Returns true when
+   * it committed.
+   */
+  private commitTempoFlip(viaFastLoop = false): boolean {
+    const flip = this.pendingTempoFlip;
+    if (!flip) return false;
+    const transport = this.deps.getTransport();
+    if (transport.position < flip.atTick) return false;
+    this.pendingTempoFlip = null;
+    transport.setBpmAnchored(flip.bpm, flip.atTick, flip.boundaryTime);
+    this.lastAppliedTempo = flip.bpm;
+    this.deps.applyEngineTempo?.(flip.bpm);
+    if (viaFastLoop) this.stats.flipFastCommits += 1;
+    this.disarmFlipCommitter();
+    return true;
+  }
+
+  /**
+   * Arm the 5 ms flip committer. Called when a flip is scheduled; the loop
+   * self-disarms on commit, and on the next fire when the flip is gone
+   * (seek/loop-wrap/stop), so it never outlives the seam it watches.
+   */
+  private armFlipCommitter(): void {
+    if (this.flipTimer !== null) return;
+    this.flipTimer = setInterval(() => {
+      if (!this.pendingTempoFlip) {
+        this.disarmFlipCommitter();
+        return;
+      }
+      try {
+        this.commitTempoFlip(true);
+      } catch {
+        this.disarmFlipCommitter();
+      }
+    }, FLIP_COMMIT_MS);
+  }
+
+  private disarmFlipCommitter(): void {
+    if (this.flipTimer !== null) {
+      clearInterval(this.flipTimer);
+      this.flipTimer = null;
+    }
+  }
+
   private tick(): void {
     const transport = this.deps.getTransport();
     if (!transport.playing) {
@@ -344,23 +405,10 @@ export class Scheduler {
       return;
     }
     // Tempo-seam flip (roadmap 2.2): the playhead crossed the scheduled
-    // boundary — re-anchor the transport now (setBpm is position-preserving,
-    // so it lands within one tick quantization of the boundary). The events
-    // past the boundary were already pre-scheduled on the new tempo, so this
-    // only aligns position()/timeAtTick for everything scheduled from here.
-    if (this.pendingTempoFlip && transport.position >= this.pendingTempoFlip.atTick) {
-      const flip = this.pendingTempoFlip;
-      this.pendingTempoFlip = null;
-      // Anchor EXACTLY on the pre-computed boundary point — a position-
-      // preserving setBpm() here would quantize the anchor to the tick and
-      // skip up to one tick-worth of grid right after the seam.
-      transport.setBpmAnchored(flip.bpm, flip.atTick, flip.boundaryTime);
-      this.lastAppliedTempo = flip.bpm;
-      // Tempo-synced engine runtimes (SYNC delays, LFO syncs) flip at the
-      // same instant — otherwise they stay at the project tempo while the
-      // transport runs the scene tempo.
-      this.deps.applyEngineTempo?.(flip.bpm);
-    }
+    // boundary — re-anchor the transport now. The fast committer below
+    // usually beats this tick to it (5 ms cadence); whoever commits first
+    // clears the flip so the second path is a no-op.
+    this.commitTempoFlip();
     // Defect A01.D2 (scheduler precision audit): windowEnd is declared
     // before the loop-wrap block so the post-wrap clamp can shorten it
     // to the loop boundary. If a seek fires inside the wrap block, the
@@ -698,6 +746,9 @@ export class Scheduler {
             fromBpm: currentBpm,
             boundaryTime: transport.timeAtTick(boundaryTick),
           };
+          // Wake the 5 ms committer so tempo-synced runtimes flip at the
+          // boundary instant instead of up to a 25 ms tick later.
+          this.armFlipCommitter();
           tempoSplit = buildSplit(boundaryTick, boundaryBpm);
           break; // one flip per window — further changes land in later windows
         }

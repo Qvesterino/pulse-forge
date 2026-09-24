@@ -5,7 +5,7 @@
  */
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,10 +14,11 @@ const source = path.join(root, "companion", "mrt2-windows", "kyx_mrt2_windows_ho
 const outputDir = path.join(root, "build", "mrt2-windows");
 const workDir = path.join(root, "build", ".pyinstaller-mrt2-windows");
 const executable = path.join(outputDir, "kyx-mrt2-windows-host.exe");
+const python = process.env.KYX_MRT2_WINDOWS_PYTHON ?? "python";
 
-function run(command, args) {
+function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: "inherit", windowsHide: true });
+    const child = spawn(command, args, { cwd: options.cwd ?? root, stdio: "inherit", windowsHide: true });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();
@@ -34,33 +35,54 @@ if (!existsSync(source)) throw new Error(`Missing companion source: ${source}`);
 await mkdir(outputDir, { recursive: true });
 await mkdir(workDir, { recursive: true });
 console.log("• verify magenta_rt + JAX are installed before packaging");
-await run("python", [
+await run(python, [
   "-c",
-  "import importlib.util; missing = [name for name in ('magenta_rt', 'jax', 'jaxlib') if importlib.util.find_spec(name) is None]; raise SystemExit('Missing Windows MRT2 runtime modules: ' + ', '.join(missing)) if missing else None",
+  "import importlib.util, sys; missing = [name for name in ('magenta_rt', 'jax', 'jaxlib') if importlib.util.find_spec(name) is None]; sys.exit('Missing Windows MRT2 runtime modules: ' + ', '.join(missing)) if missing else None",
 ]);
+const sequenceLayersPath = execFileSync(
+  python,
+  [
+    "-c",
+    "from pathlib import Path; import magenta_rt; print(Path(magenta_rt.__file__).resolve().parent / '_vendor' / 'sequence-layers')",
+  ],
+  { cwd: root, encoding: "utf8", windowsHide: true },
+).trim();
+if (!existsSync(path.join(sequenceLayersPath, "sequence_layers"))) {
+  throw new Error(`Missing Magenta vendored sequence_layers package at ${sequenceLayersPath}`);
+}
 console.log("• build KYX Windows MRT2 companion with the local Python environment");
-await run("python", [
-  "-m",
-  "PyInstaller",
-  "--noconfirm",
-  "--clean",
-  "--onefile",
-  "--name",
-  "kyx-mrt2-windows-host",
-  "--distpath",
-  outputDir,
-  "--workpath",
-  workDir,
-  "--specpath",
-  workDir,
-  "--collect-all",
-  "magenta_rt",
-  "--collect-submodules",
-  "jax",
-  "--hidden-import",
-  "jaxlib",
-  source,
-]);
+await run(
+  python,
+  [
+    "-m",
+    "PyInstaller",
+    "--noconfirm",
+    "--clean",
+    "--onefile",
+    "--name",
+    "kyx-mrt2-windows-host",
+    "--distpath",
+    outputDir,
+    "--workpath",
+    workDir,
+    "--specpath",
+    workDir,
+    "--collect-all",
+    "magenta_rt",
+    "--paths",
+    sequenceLayersPath,
+    "--collect-submodules",
+    "sequence_layers",
+    "--collect-submodules",
+    "jax",
+    "--exclude-module",
+    "coverage",
+    "--hidden-import",
+    "jaxlib",
+    source,
+  ],
+  { cwd: path.dirname(source) },
+);
 if (!existsSync(executable)) throw new Error(`PyInstaller completed without producing ${executable}`);
 console.log("• ready: " + executable);
 console.log("  Copy it to resources/mrt2-windows/ before packaging the Windows desktop app.");

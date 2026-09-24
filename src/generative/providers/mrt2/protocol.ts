@@ -98,6 +98,9 @@ export type Mrt2ControlMessage =
       frames: number;
       durationSec: number;
       inputHash: string;
+      frameP95Ms?: number;
+      frameMeanMs?: number;
+      realtimeFactor?: number;
     }
   | {
       version: typeof MRT2_PROTOCOL_VERSION;
@@ -117,6 +120,16 @@ export type Mrt2ControlMessage =
         | "error"
         | "unavailable";
       message?: string;
+      metrics?: {
+        frameP95Ms: number;
+        frameMeanMs: number;
+        realtimeFactor: number;
+        underrunCount: number;
+        generatedFrames: number;
+        deviceBytesInUse?: number;
+        deviceBytesReserved?: number;
+        devicePeakBytesReserved?: number;
+      };
     }
   | {
       version: typeof MRT2_PROTOCOL_VERSION;
@@ -382,6 +395,18 @@ export function parseMrt2ControlMessage(raw: unknown): Mrt2ControlMessage {
         throw new Error("message.durationSec exceeds the capture limit");
       }
       requiredString(value.inputHash, "message.inputHash");
+      for (const metric of ["frameP95Ms", "frameMeanMs", "realtimeFactor"] as const) {
+        if (value[metric] !== undefined) {
+          if (
+            typeof value[metric] !== "number" ||
+            !Number.isFinite(value[metric]) ||
+            value[metric] < 0 ||
+            value[metric] > 60_000
+          ) {
+            throw new Error(`message.${metric} is invalid`);
+          }
+        }
+      }
       return value as unknown as Mrt2ControlMessage;
     case "status":
       if (
@@ -402,6 +427,27 @@ export function parseMrt2ControlMessage(raw: unknown): Mrt2ControlMessage {
         throw new Error("MRT2 status state is invalid");
       }
       if (typeof value.message !== "undefined") requiredString(value.message, "status.message");
+      if (value.metrics !== undefined) {
+        if (!isRecord(value.metrics)) throw new Error("MRT2 status metrics are invalid");
+        for (const metric of ["frameP95Ms", "frameMeanMs", "realtimeFactor"] as const) {
+          if (
+            typeof value.metrics[metric] !== "number" ||
+            !Number.isFinite(value.metrics[metric]) ||
+            value.metrics[metric] < 0 ||
+            value.metrics[metric] > 60_000
+          ) {
+            throw new Error(`MRT2 status metrics.${metric} is invalid`);
+          }
+        }
+        for (const metric of ["underrunCount", "generatedFrames"] as const) {
+          boundedInteger(value.metrics[metric], `status.metrics.${metric}`, 100_000_000);
+        }
+        for (const metric of ["deviceBytesInUse", "deviceBytesReserved", "devicePeakBytesReserved"] as const) {
+          if (value.metrics[metric] !== undefined) {
+            boundedInteger(value.metrics[metric], `status.metrics.${metric}`, Number.MAX_SAFE_INTEGER);
+          }
+        }
+      }
       return value as unknown as Mrt2ControlMessage;
     case "error":
       requiredString(value.code, "message.code");

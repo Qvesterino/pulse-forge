@@ -20,6 +20,17 @@ import process from "node:process";
 
 const HOST_PATH = process.env.KYX_MRT2_WINDOWS_HOST;
 const MODEL_ROOT = process.env.KYX_MRT2_WINDOWS_MODEL_ROOT;
+let hostArgs = [];
+try {
+  const parsedHostArgs = JSON.parse(process.env.KYX_MRT2_BENCHMARK_HOST_ARGS ?? "[]");
+  if (!Array.isArray(parsedHostArgs) || parsedHostArgs.some((argument) => typeof argument !== "string")) {
+    throw new Error("KYX_MRT2_BENCHMARK_HOST_ARGS must be a JSON array of strings");
+  }
+  hostArgs = parsedHostArgs;
+} catch (error) {
+  throw new Error(`Invalid KYX_MRT2_BENCHMARK_HOST_ARGS: ${error instanceof Error ? error.message : String(error)}`);
+}
+const HOST_CWD = process.env.KYX_MRT2_BENCHMARK_CWD ?? MODEL_ROOT;
 const DURATION_SECONDS = Number(process.env.KYX_MRT2_BENCHMARK_SECONDS ?? 10);
 const BENCHMARK_MODE = process.env.KYX_MRT2_BENCHMARK_MODE ?? "capture";
 const REPORT_PATH = process.env.KYX_MRT2_BENCHMARK_REPORT;
@@ -40,23 +51,30 @@ if (REPORT_PATH && (REPORT_PATH.length > 4096 || REPORT_PATH.includes("\0"))) {
   throw new Error("KYX_MRT2_BENCHMARK_REPORT must be a bounded filesystem path");
 }
 
-const child = spawn(HOST_PATH, ["--model-root", MODEL_ROOT], {
+const child = spawn(HOST_PATH, [...hostArgs, "--model-root", MODEL_ROOT], {
   shell: false,
   windowsHide: true,
   stdio: ["pipe", "pipe", "pipe"],
-  cwd: MODEL_ROOT,
+  cwd: HOST_CWD,
 });
 
 let stdoutBuffer = Buffer.alloc(0);
 let startupReady = false;
 let exitError = null;
+let resolveChildExit;
+const childExitPromise = new Promise((resolve) => {
+  resolveChildExit = resolve;
+});
 const controls = [];
 const audioPackets = [];
 const statusEvents = [];
 const waiters = [];
+let streamMetrics = null;
+const deviceMemorySamples = [];
 let previousSequence = null;
 let sequenceGapCount = 0;
 let underrunCount = 0;
+let lastReportedState = null;
 
 function fail(error) {
   const reason = error instanceof Error ? error : new Error(String(error));
@@ -112,7 +130,20 @@ function waitFor(predicate, timeoutMs = 15_000) {
 function deliverControl(message) {
   controls.push(message);
   if (message?.type === "status") {
-    statusEvents.push({ state: message.state, receivedAt: performance.now() });
+    if (message.state !== lastReportedState) {
+      statusEvents.push({ state: message.state, receivedAt: performance.now() });
+      lastReportedState = message.state;
+    }
+    if (message.metrics) {
+      streamMetrics = message.metrics;
+      if (
+        message.metrics.deviceBytesInUse !== undefined ||
+        message.metrics.deviceBytesReserved !== undefined ||
+        message.metrics.devicePeakBytesReserved !== undefined
+      ) {
+        deviceMemorySamples.push({ receivedAt: performance.now(), ...message.metrics });
+      }
+    }
     if (message.state === "buffering") underrunCount++;
   }
   for (let index = waiters.length - 1; index >= 0; index--) {
@@ -195,13 +226,25 @@ child.stdout.on("data", (chunk) => {
     fail(error);
   }
 });
+child.stderr.on("data", (chunk) => process.stderr.write(chunk));
 child.once("error", fail);
 child.once("exit", (code, signal) => {
+  resolveChildExit({ code, signal });
   if (code !== 0 && !exitError) fail(new Error(`MRT2 companion exited with ${code ?? signal ?? "unknown status"}`));
 });
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForChildExit(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("MRT2 companion did not stop cleanly")), timeoutMs);
+    childExitPromise.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
 }
 
 try {
@@ -258,14 +301,26 @@ try {
   await waitFor((message) => message.type === "status" && message.requestId === inputRequest);
   const inputReceivedAt = performance.now();
   const startedAt = performance.now();
+  let streamStartedAt = null;
   let operationResponseAt = startedAt;
   let operationFrames = null;
+  let captureMetrics = null;
   if (BENCHMARK_MODE === "live") {
     const startRequest = requestId("start");
     sendControl(transportId, { version: 1, type: "session.start", requestId: startRequest, sessionId });
     await waitFor((message) => message.type === "status" && message.requestId === startRequest);
     operationResponseAt = performance.now();
+    const firstAudioDeadline = Date.now() + 600_000;
+    while (audioPackets.length === 0 && Date.now() < firstAudioDeadline) {
+      if (exitError) throw exitError;
+      await sleep(25);
+    }
+    if (audioPackets.length === 0) throw new Error("MRT2 live stream did not produce its first PCM packet");
+    streamStartedAt = audioPackets[0].receivedAt;
     await sleep(DURATION_SECONDS * 1000);
+    const stopRequest = requestId("stop");
+    sendControl(transportId, { version: 1, type: "session.stop", requestId: stopRequest, sessionId });
+    await waitFor((message) => message.type === "status" && message.requestId === stopRequest, 5_000);
   } else {
     const captureRequest = requestId("capture");
     sendControl(transportId, {
@@ -276,22 +331,37 @@ try {
       durationSec: DURATION_SECONDS,
     });
     const capture = await waitFor(
-      (message) => message.type === "capture.ok" && message.requestId === captureRequest,
+      (message) => (message.type === "capture.ok" || message.type === "error") && message.requestId === captureRequest,
       600_000,
     );
+    if (capture.type === "error") {
+      throw new Error(`MRT2 capture failed (${capture.code}): ${capture.message}`);
+    }
     operationFrames = capture.frames;
+    captureMetrics = {
+      frameP95Ms: capture.frameP95Ms ?? null,
+      frameMeanMs: capture.frameMeanMs ?? null,
+      realtimeFactor: capture.realtimeFactor ?? null,
+    };
     operationResponseAt = performance.now();
   }
   const endedAt = performance.now();
   const outputFrames = audioPackets.reduce((total, packet) => total + packet.frames, 0);
   const generatedSeconds = outputFrames / 48_000;
-  const wallSeconds = (endedAt - startedAt) / 1000;
+  const wallSeconds =
+    (BENCHMARK_MODE === "live" ? endedAt - (streamStartedAt ?? startedAt) : endedAt - startedAt) / 1000;
   const realtimeFactor = generatedSeconds / wallSeconds;
   const packetIntervals = audioPackets
     .slice(1)
     .map((packet, index) => packet.receivedAt - audioPackets[index].receivedAt);
   packetIntervals.sort((a, b) => a - b);
   const p95Index = Math.min(packetIntervals.length - 1, Math.floor(packetIntervals.length * 0.95));
+  const memoryInUse = deviceMemorySamples.flatMap((sample) =>
+    typeof sample.deviceBytesInUse === "number" ? [sample.deviceBytesInUse] : [],
+  );
+  const memoryReserved = deviceMemorySamples.flatMap((sample) =>
+    typeof sample.deviceBytesReserved === "number" ? [sample.deviceBytesReserved] : [],
+  );
   const result = {
     backendId: hello.runtimeProfile?.backendId ?? "unknown",
     benchmarkMode: BENCHMARK_MODE,
@@ -307,13 +377,41 @@ try {
     measuredRealtimeFactor: realtimeFactor,
     packetCount: audioPackets.length,
     captureResponseFrames: operationFrames,
+    captureMetrics,
     packetIntervalP95Ms: packetIntervals.length ? packetIntervals[p95Index] : null,
+    frameP95MetricSource:
+      captureMetrics?.frameP95Ms !== null && captureMetrics?.frameP95Ms !== undefined
+        ? "capture-frame-inference"
+        : streamMetrics?.frameP95Ms !== undefined
+          ? "stream-frame-inference"
+          : hello.runtimeProfile?.frameP95Ms !== undefined
+            ? "runtime-profile"
+            : "unavailable",
     timing: {
       startupReadyMs: readyAt - processStartedAt,
       helloRoundTripMs: helloReceivedAt - helloSentAt,
       inputRoundTripMs: inputReceivedAt - inputSentAt,
       operationResponseMs: operationResponseAt - startedAt,
+      ...(streamStartedAt !== null ? { streamWarmupMs: streamStartedAt - operationResponseAt } : {}),
     },
+    streamMetrics,
+    deviceMemory: deviceMemorySamples.length
+      ? {
+          sampleCount: deviceMemorySamples.length,
+          startBytesInUse: memoryInUse[0] ?? null,
+          endBytesInUse: memoryInUse.at(-1) ?? null,
+          minBytesInUse: memoryInUse.length ? Math.min(...memoryInUse) : null,
+          maxBytesInUse: memoryInUse.length ? Math.max(...memoryInUse) : null,
+          startBytesReserved: memoryReserved[0] ?? null,
+          endBytesReserved: memoryReserved.at(-1) ?? null,
+          minBytesReserved: memoryReserved.length ? Math.min(...memoryReserved) : null,
+          maxBytesReserved: memoryReserved.length ? Math.max(...memoryReserved) : null,
+          maxPeakBytesReserved: Math.max(
+            0,
+            ...deviceMemorySamples.map((sample) => sample.devicePeakBytesReserved ?? 0),
+          ),
+        }
+      : null,
     sequenceGapCount,
     underrunCount,
     statusEvents,
@@ -321,8 +419,9 @@ try {
     gate: {
       hasAudioPackets: audioPackets.length > 0,
       frameP95Under32Ms:
-        (hello.runtimeProfile?.frameP95Ms ?? (packetIntervals.length ? packetIntervals[p95Index] : Infinity)) < 32,
-      realtimeFactorAtLeast1_25: realtimeFactor >= 1.25,
+        (captureMetrics?.frameP95Ms ?? streamMetrics?.frameP95Ms ?? hello.runtimeProfile?.frameP95Ms ?? Infinity) < 32,
+      realtimeFactorAtLeast1_25:
+        (captureMetrics?.realtimeFactor ?? streamMetrics?.realtimeFactor ?? realtimeFactor) >= 1.25,
       outputCoverageAtLeast99Percent: generatedSeconds >= DURATION_SECONDS * 0.99,
       captureResponseMatchesPcm:
         BENCHMARK_MODE !== "capture" || (operationFrames !== null && operationFrames === outputFrames),
@@ -330,17 +429,23 @@ try {
         audioPackets.every((packet) => packet.sampleRate === 48_000 && packet.channels === 2) &&
         audioPackets.every((packet) => packet.finite),
       noSequenceGaps: sequenceGapCount === 0,
-      noUnderruns: underrunCount === 0,
+      noUnderruns: (streamMetrics?.underrunCount ?? 0) === 0 && underrunCount === 0,
     },
   };
+  sendControl(transportId, { version: 1, type: "session.stop", requestId: requestId("stop"), sessionId });
+  sendControl(transportId, { version: 1, type: "session.close", requestId: requestId("close"), sessionId });
+  child.stdin.end(encodeFrame(3, ""));
+  const childExitResult = await waitForChildExit(15_000);
+  if (childExitResult.code !== 0) {
+    throw new Error(
+      `MRT2 companion did not exit cleanly (${childExitResult.code ?? childExitResult.signal ?? "unknown status"})`,
+    );
+  }
   if (REPORT_PATH) {
     await mkdir(path.dirname(path.resolve(REPORT_PATH)), { recursive: true });
     await writeFile(REPORT_PATH, JSON.stringify(result, null, 2) + "\n", "utf8");
   }
   console.log(JSON.stringify(result, null, 2));
-  sendControl(transportId, { version: 1, type: "session.stop", requestId: requestId("stop"), sessionId });
-  sendControl(transportId, { version: 1, type: "session.close", requestId: requestId("close"), sessionId });
-  child.stdin.end(encodeFrame(3, ""));
 } catch (error) {
   fail(error);
   child.kill();

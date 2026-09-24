@@ -233,6 +233,10 @@ export class GenerativeRuntime {
       entry.unsubscribePlayer = player.subscribeStatus((status) => {
         const current = this.getStatus(trackId);
         if (status.type === "underrun") {
+          if (current.state === "starting") {
+            this.setStatus(trackId, { state: "starting", message: "waiting for the companion's first audio frame" });
+            return;
+          }
           this.setStatus(trackId, {
             state: "buffering",
             message: `audio underrun (${status.missingFrames ?? 0} frames)`,
@@ -262,7 +266,13 @@ export class GenerativeRuntime {
       entry.refreshTimer = setInterval(() => {
         void this.refreshTrack(trackId, epoch);
       }, REFRESH_INTERVAL_MS);
-      this.setStatus(trackId, { state: "running" });
+      const sessionStatus = session.getStatus();
+      this.setStatus(
+        trackId,
+        sessionStatus.state === "starting" || sessionStatus.state === "buffering"
+          ? sessionStatus
+          : { state: "running" },
+      );
     } catch (error) {
       if (this.isCurrent(trackId, epoch)) {
         const entry = this.entries.get(trackId);

@@ -181,6 +181,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     this.childEnv = options.childEnv ?? null;
     this.startTimeoutMs = options.startTimeoutMs ?? 60_000;
     this.stopTimeoutMs = options.stopTimeoutMs ?? 3_000;
+    this.stopSignalTimeoutMs = options.stopSignalTimeoutMs ?? Math.min(500, this.stopTimeoutMs);
     this.child = null;
     this.ready = false;
     this.startupComplete = false;
@@ -221,6 +222,10 @@ class Mrt2NativeHostManager extends EventEmitter {
     }
   }
 
+  getHostArgs() {
+    return ["--model-root", this.modelPaths.modelRoot];
+  }
+
   start() {
     if (this.isReady()) return Promise.resolve({ ready: true });
     if (this.startPromise) return this.startPromise;
@@ -230,7 +235,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     this.readyProfile = null;
     this.ready = false;
     this.startupComplete = false;
-    const child = this.spawn(this.nativeHostPath, ["--model-root", this.modelPaths.modelRoot], {
+    const child = this.spawn(this.nativeHostPath, this.getHostArgs(), {
       shell: false,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
@@ -492,7 +497,7 @@ class Mrt2NativeHostManager extends EventEmitter {
             finish();
           }
         },
-        Math.min(500, this.stopTimeoutMs),
+        Math.min(this.stopSignalTimeoutMs, this.stopTimeoutMs),
       );
       child.once("exit", finish);
     });

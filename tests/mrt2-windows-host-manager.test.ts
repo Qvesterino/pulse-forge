@@ -20,6 +20,15 @@ const { Mrt2WindowsHostManager, defaultWindowsPaths } = require("../desktop/mrt2
 const { parseReadyLine } = require("../desktop/mrt2-host-manager.cjs") as {
   parseReadyLine: (line: string) => { runtimeProfile?: Record<string, unknown> };
 };
+const { Mrt2Wsl2HostManager, windowsPathToWslPath } = require("../desktop/mrt2-wsl2-host-manager.cjs") as {
+  Mrt2Wsl2HostManager: new (options?: Record<string, unknown>) => {
+    getAvailability: () => Record<string, unknown>;
+    assertInstallAvailable: () => void;
+    getHostArgs: () => string[];
+    nativeHostPath: string;
+  };
+  windowsPathToWslPath: (value: string) => string;
+};
 
 describe("Windows MRT2 companion manager", () => {
   it("uses a separate Windows executable and model root", () => {
@@ -89,6 +98,50 @@ describe("Windows MRT2 companion manager", () => {
         }),
       ),
     ).toMatchObject({ runtimeProfile: { backendId: "mrt2-windows-cuda", executionMode: "near-realtime" } });
+  });
+
+  it("builds a fixed WSL2 command line from main-process paths only", () => {
+    expect(windowsPathToWslPath("C:\\Program Files\\KYX\\resources\\mrt2-windows\\host.py")).toBe(
+      "/mnt/c/Program Files/KYX/resources/mrt2-windows/host.py",
+    );
+    expect(() => windowsPathToWslPath("\\\\server\\share\\host.py")).toThrow(/drive-letter/u);
+    const manager = new Mrt2Wsl2HostManager({
+      appIsPackaged: true,
+      resourcesPath: "C:/KYX/resources",
+      homeDirectory: "C:/Users/producer",
+      wslExePath: "C:/Windows/System32/wsl.exe",
+      hostScriptPath: "C:/KYX/resources/mrt2-windows/kyx_mrt2_windows_host.py",
+      manifestPath: "C:/KYX/resources/mrt2-windows/kyx-mrt2-windows-manifest.json",
+      wslDistro: "Ubuntu",
+      wslPythonPath: "/home/producer/.venvs/kyx-mrt2-wsl/bin/python",
+      verifyHostScript: () => ({ ok: true }),
+      fileExists: () => true,
+      lstat: () => ({ isFile: () => true, isSymbolicLink: () => false }),
+      assertExecutable: () => undefined,
+    });
+
+    manager.assertInstallAvailable();
+    expect(manager.nativeHostPath).toBe("C:/Windows/System32/wsl.exe");
+    expect(manager.getHostArgs()).toEqual([
+      "--distribution",
+      "Ubuntu",
+      "--exec",
+      "/usr/bin/env",
+      "XLA_PYTHON_CLIENT_PREALLOCATE=false",
+      "XLA_FLAGS=--xla_gpu_autotune_level=1",
+      "TF_GPU_ALLOCATOR=cuda_malloc_async",
+      "/home/producer/.venvs/kyx-mrt2-wsl/bin/python",
+      "/mnt/c/KYX/resources/mrt2-windows/kyx_mrt2_windows_host.py",
+      "--model-root",
+      "/mnt/c/Users/producer/Documents/Magenta/magenta-rt-v2-windows",
+      "--execution-mode",
+      "near-realtime",
+    ]);
+    expect(manager.getAvailability()).toMatchObject({
+      backendId: "mrt2-windows-wsl2-cuda",
+      executionMode: "near-realtime",
+      nativeRealtime: false,
+    });
   });
 
   it("cleans up a crashed helper and can restart the fixed companion", async () => {

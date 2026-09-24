@@ -18,6 +18,14 @@ class FakeTransport implements Mrt2CompanionTransport {
   private sequence = 0;
   bufferDuringCapture = false;
   supportsRealtime = true;
+  startState: "starting" | "running" = "running";
+  startMetrics?: {
+    frameP95Ms: number;
+    frameMeanMs: number;
+    realtimeFactor: number;
+    underrunCount: number;
+    generatedFrames: number;
+  };
 
   sendControl(message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
     queueMicrotask(() => {
@@ -77,7 +85,8 @@ class FakeTransport implements Mrt2CompanionTransport {
               type: "status",
               requestId: message.requestId,
               sessionId: message.sessionId,
-              state: "running",
+              state: this.startState,
+              ...(this.startMetrics ? { metrics: this.startMetrics } : {}),
             },
           });
           break;
@@ -309,6 +318,36 @@ describe("MRT2 companion protocol", () => {
     ).toThrow(/pitchState/u);
   });
 
+  it("validates bounded live-stream inference metrics", () => {
+    const status = {
+      version: 1 as const,
+      type: "status" as const,
+      state: "running" as const,
+      metrics: {
+        frameP95Ms: 28.4,
+        frameMeanMs: 21.6,
+        realtimeFactor: 1.7,
+        underrunCount: 0,
+        generatedFrames: 250,
+        deviceBytesInUse: 1024,
+        deviceBytesReserved: 4096,
+        devicePeakBytesReserved: 4096,
+      },
+    };
+    expect(parseMrt2ControlMessage(JSON.stringify(status))).toEqual(status);
+    expect(() =>
+      parseMrt2ControlMessage(JSON.stringify({ ...status, metrics: { ...status.metrics, underrunCount: -1 } })),
+    ).toThrow(/underrunCount/u);
+    expect(() =>
+      parseMrt2ControlMessage(JSON.stringify({ ...status, metrics: { ...status.metrics, frameP95Ms: Number.NaN } })),
+    ).toThrow(/frameP95Ms/u);
+    expect(() =>
+      parseMrt2ControlMessage(
+        JSON.stringify({ ...status, metrics: { ...status.metrics, deviceBytesReserved: Number.MAX_SAFE_INTEGER + 1 } }),
+      ),
+    ).toThrow(/deviceBytesReserved/u);
+  });
+
   it("validates optional runtime capability diagnostics", () => {
     const message = parseMrt2ControlMessage({
       version: 1,
@@ -375,6 +414,35 @@ describe("MRT2 companion protocol", () => {
     }
   });
 
+  it("validates optional capture inference metrics from a companion", () => {
+    expect(
+      parseMrt2ControlMessage({
+        version: 1,
+        type: "capture.ok",
+        requestId: "capture-1",
+        sessionId: "session-1",
+        frames: 48_000,
+        durationSec: 1,
+        inputHash: "a".repeat(64),
+        frameP95Ms: 41.2,
+        frameMeanMs: 22.5,
+        realtimeFactor: 0.8,
+      }),
+    ).toMatchObject({ frameP95Ms: 41.2, frameMeanMs: 22.5, realtimeFactor: 0.8 });
+    expect(() =>
+      parseMrt2ControlMessage({
+        version: 1,
+        type: "capture.ok",
+        requestId: "capture-2",
+        sessionId: "session-1",
+        frames: 48_000,
+        durationSec: 1,
+        inputHash: "a".repeat(64),
+        frameP95Ms: "fast",
+      }),
+    ).toThrow(/frameP95Ms/u);
+  });
+
   it("keeps style PCM on the binary plane and exposes capture as GeneratedAudio", async () => {
     const transport = new FakeTransport();
     const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
@@ -431,6 +499,30 @@ describe("MRT2 companion protocol", () => {
     await expect(session.start()).rejects.toThrow(/does not support realtime/u);
     const audio = await session.capture({ input: input("text"), durationSec: 2 / 48_000 });
     expect(audio.frames).toBe(2);
+    await session.dispose();
+  });
+
+  it("preserves asynchronous live startup state and refreshes host-local stream metrics", async () => {
+    const transport = new FakeTransport();
+    transport.startState = "starting";
+    transport.startMetrics = {
+      frameP95Ms: 27.4,
+      frameMeanMs: 20.2,
+      realtimeFactor: 1.6,
+      underrunCount: 0,
+      generatedFrames: 250,
+    };
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+
+    await session.start();
+
+    expect(session.getStatus().state).toBe("starting");
+    expect(session.capabilities.runtimeProfile).toMatchObject({ frameP95Ms: 27.4, realtimeFactor: 1.6 });
     await session.dispose();
   });
 

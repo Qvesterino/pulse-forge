@@ -80,7 +80,7 @@ function isAllowedAssetPath(value) {
   return MODEL_ASSET_DIRECTORIES.some((directory) => value.startsWith(`${directory}/`));
 }
 
-function createWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath, attribution } = {}) {
+function createWindowsMrt2Manifest({ hostPath, hostScriptPath, modelRoot, manifestPath, attribution } = {}) {
   if (typeof hostPath !== "string" || !hostPath) throw new Error("MRT2 Windows host path is required");
   if (typeof modelRoot !== "string" || !modelRoot) throw new Error("MRT2 Windows model root is required");
   const hostStat = fs.lstatSync(hostPath);
@@ -102,6 +102,17 @@ function createWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath, attribut
         "Google Magenta RealTime 2; source and model attribution: https://github.com/magenta/magenta-realtime",
     },
   };
+  if (hostScriptPath) {
+    const scriptStat = fs.lstatSync(hostScriptPath);
+    if (!scriptStat.isFile() || scriptStat.isSymbolicLink()) {
+      throw new Error("MRT2 WSL host script must be a regular file");
+    }
+    manifest.wslHostScript = {
+      file: path.basename(hostScriptPath),
+      bytes: scriptStat.size,
+      sha256: sha256FileSync(hostScriptPath),
+    };
+  }
   const serialized = JSON.stringify(manifest, null, 2) + "\n";
   if (Buffer.byteLength(serialized, "utf8") > MAX_MANIFEST_BYTES) {
     throw new Error("MRT2 Windows manifest is too large");
@@ -161,10 +172,21 @@ function readManifest(manifestPath) {
   ) {
     throw new Error("MRT2 Windows manifest package metadata is invalid");
   }
+  if (
+    value.wslHostScript !== undefined &&
+    (!value.wslHostScript ||
+      typeof value.wslHostScript.file !== "string" ||
+      value.wslHostScript.file !== "kyx_mrt2_windows_host.py" ||
+      !Number.isSafeInteger(value.wslHostScript.bytes) ||
+      value.wslHostScript.bytes < 0 ||
+      !/^[a-f0-9]{64}$/u.test(value.wslHostScript.sha256))
+  ) {
+    throw new Error("MRT2 Windows manifest WSL host script metadata is invalid");
+  }
   return value;
 }
 
-async function verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath } = {}) {
+async function verifyWindowsMrt2Manifest({ hostPath, hostScriptPath, modelRoot, manifestPath } = {}) {
   if (typeof hostPath !== "string" || !hostPath) throw new Error("MRT2 Windows host path is required");
   if (typeof modelRoot !== "string" || !modelRoot) throw new Error("MRT2 Windows model root is required");
   if (typeof manifestPath !== "string" || !manifestPath) throw new Error("MRT2 Windows manifest path is required");
@@ -185,6 +207,29 @@ async function verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath } =
     if (hostStat.size !== manifest.companion.bytes) errors.push("companion: byte length does not match manifest");
     if ((await sha256File(hostPath)) !== manifest.companion.sha256)
       errors.push("companion: SHA-256 does not match manifest");
+  }
+  if (manifest.wslHostScript) {
+    if (!hostScriptPath) {
+      errors.push("WSL companion: host script path is required by the manifest");
+    } else {
+      try {
+        const scriptStat = fs.lstatSync(hostScriptPath);
+        if (!scriptStat.isFile() || scriptStat.isSymbolicLink()) throw new Error("not a regular file");
+        if (path.basename(hostScriptPath) !== manifest.wslHostScript.file) {
+          errors.push("WSL companion: filename does not match manifest");
+        }
+        if (scriptStat.size !== manifest.wslHostScript.bytes) {
+          errors.push("WSL companion: byte length does not match manifest");
+        }
+        if (sha256FileSync(hostScriptPath) !== manifest.wslHostScript.sha256) {
+          errors.push("WSL companion: SHA-256 does not match manifest");
+        }
+      } catch (error) {
+        errors.push(`WSL companion: ${error instanceof Error ? error.message : "missing"}`);
+      }
+    }
+  } else if (hostScriptPath) {
+    errors.push("WSL companion: host script is not listed in the manifest");
   }
   const seen = new Set();
   for (const entry of manifest.modelRoot.files) {
@@ -225,7 +270,27 @@ async function verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath } =
     runtimeLicense: manifest.modelRoot.runtimeLicense,
     modelLicense: manifest.modelRoot.modelLicense,
     attribution: manifest.modelRoot.attribution,
+    ...(manifest.wslHostScript ? { wslHostScript: manifest.wslHostScript } : {}),
   };
+}
+
+function verifyWindowsMrt2HostScript({ hostScriptPath, manifestPath } = {}) {
+  if (typeof hostScriptPath !== "string" || !hostScriptPath) throw new Error("MRT2 WSL host script path is required");
+  if (typeof manifestPath !== "string" || !manifestPath) throw new Error("MRT2 Windows manifest path is required");
+  const manifest = readManifest(manifestPath);
+  if (!manifest.wslHostScript) return { ok: false, error: "WSL host script is not listed in the manifest" };
+  try {
+    const stat = fs.lstatSync(hostScriptPath);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("not a regular file");
+    if (path.basename(hostScriptPath) !== manifest.wslHostScript.file)
+      throw new Error("filename does not match manifest");
+    if (stat.size !== manifest.wslHostScript.bytes) throw new Error("byte length does not match manifest");
+    if (sha256FileSync(hostScriptPath) !== manifest.wslHostScript.sha256)
+      throw new Error("SHA-256 does not match manifest");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "invalid host script" };
+  }
 }
 
 module.exports = {
@@ -234,4 +299,5 @@ module.exports = {
   createWindowsMrt2Manifest,
   readManifest,
   verifyWindowsMrt2Manifest,
+  verifyWindowsMrt2HostScript,
 };

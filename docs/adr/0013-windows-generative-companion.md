@@ -58,10 +58,14 @@ AudioWorklet/AudioEngine path. Capture remains the reproducibility boundary.
 ### 4. Backend order of preference
 
 The implementation validates the upstream Python/JAX path first, then an
-NVIDIA CUDA/WSL2 companion if native Windows GPU execution is not viable. A
-native Windows C++ port is a separate future backend and is not implied by this
-ADR. A failed benchmark downgrades the companion to `capture`, never to a
-mislabelled realtime mode.
+NVIDIA CUDA/WSL2 companion if native Windows GPU execution is not viable. The
+WSL2 launcher is opt-in from Electron's main-process environment and uses the
+same framed companion protocol. Its script is included in the optional Windows
+package and pinned by the package SHA-256 manifest; distro and interpreter
+paths never come from renderer input. A native Windows C++ port is a separate
+future backend and is not implied by this ADR. A failed benchmark leaves the
+provider at `capture` or the explicitly experimental `near-realtime` tier,
+never a mislabelled promoted `realtime` mode.
 
 ### 5. Distribution is optional and explicit
 
@@ -79,11 +83,30 @@ underruns during a 10-minute soak, finite PCM, stable memory, and successful
 text, note-conditioning, drums and capture paths. Until then the UI reports
 the measured tier and warning.
 
+### Windows WSL2 prototype result (2026-09-25)
+
+An RTX 3060 Laptop GPU under WSL2, Magenta RT 2.0.3 and JAX 0.11.2/CUDA 13
+ran the protocol live benchmark for 600 seconds after a roughly 36-second
+first-stream warmup and produced 597.44 seconds of PCM. The report measured
+finite samples, no sequence gaps, inference RTF 1.53, frame p95 35.98 ms and 9
+over-budget frames. Because the p95 and underrun gates failed, this backend is
+not promoted. A subsequent 60-second check with
+`TF_GPU_ALLOCATOR=cuda_malloc_async` still reported p95 32.95 ms and one
+over-budget frame; it does not change the decision. CUDA also logged an
+unsuccessful 4.1 GiB workspace allocation, so stable GPU memory remains
+unproven. A further 60-second check with the allocator flag and the new memory
+telemetry produced 59.56 seconds of PCM, no sequence gaps, stream RTF 1.46,
+frame p95 44.88 ms and 22 host-reported overruns (24 including buffering
+events). JAX reported a constant 1.20 GB in-use value and zero reserved/high-
+watermark bytes for every sample, so that API did not provide useful GPU
+memory-stability evidence. The p95/underrun gates still fail.
+
 ## Consequences
 
 - Existing projects keep their `mrt2` provider id and remain portable.
 - macOS native packaging and runtime checks remain unchanged.
-- Windows can ship capture-only functionality before live inference is ready.
+- Windows ships capture-first functionality; WSL2/CUDA can be opted into as
+  near-realtime only while the release gate remains unmet.
 - The companion protocol and provider contract need capability-aware tests.
 - A Windows model/runtime package needs its own dependency and license audit
   before release.

@@ -24,6 +24,7 @@ const os = require("node:os");
 const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
+const { Mrt2Wsl2HostManager } = require("./mrt2-wsl2-host-manager.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
@@ -33,11 +34,17 @@ let mainWindow = null;
 let quittingAfterMrt2Stop = false;
 const mrt2NativeHost =
   process.platform === "win32"
-    ? new Mrt2WindowsHostManager({
-        appIsPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
-        homeDirectory: os.homedir(),
-      })
+    ? process.env.KYX_MRT2_WINDOWS_BACKEND === "wsl2"
+      ? new Mrt2Wsl2HostManager({
+          appIsPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          homeDirectory: os.homedir(),
+        })
+      : new Mrt2WindowsHostManager({
+          appIsPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          homeDirectory: os.homedir(),
+        })
     : new Mrt2NativeHostManager({
         appIsPackaged: app.isPackaged,
         resourcesPath: process.resourcesPath,

@@ -96,6 +96,12 @@ class Mrt2WindowsHostManager extends Mrt2NativeHostManager {
     return this.fileExists(this.modelPaths.model) || this.fileExists(this.checkpointPath);
   }
 
+  getHostArgs() {
+    return this.executionMode === "capture"
+      ? super.getHostArgs()
+      : [...super.getHostArgs(), "--execution-mode", this.executionMode];
+  }
+
   getAvailability() {
     let installed = false;
     try {

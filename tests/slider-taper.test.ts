@@ -82,7 +82,9 @@ describe("taper contract", () => {
 
 describe("insert defaults audit", () => {
   it("VØID inserts at a musical MIX, not full-wet", () => {
-    expect(defaultParamsOf("ozvena")["global.dryWet"]).toBe(25);
+    // Rack mixes are doc-scale 0..1 since the flagship mix unification —
+    // 0.25 is the musical 25% insert default (deep 0..100 state = 25).
+    expect(defaultParamsOf("ozvena")["global.dryWet"]).toBe(0.25);
   });
 
   it("time-based stock inserts keep musical mixes", () => {
