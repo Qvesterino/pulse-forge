@@ -158,9 +158,9 @@ STILL OPEN:
 
 ### 2026-09-24 re-verification (re-run 4, GOAL 01)
 
-- **HEAD:** `523c4b5` (the concurrent session committed its mallet pack + intent sub-genre wave mid-session; 154 commits since the 2026-09-20 audited baseline `a91ad77`), plus two untracked in-flight test files from that session (left in place).
+- **HEAD:** `9167b8f` (the concurrent session committed its mallet pack + intent sub-genre wave mid-session, then an MRT2-windows wave that also absorbed the campaign's regenerated loudness map + slider-taper fix — verified byte-identical to the campaign's versions; 158 commits since the 2026-09-20 audited baseline `a91ad77`). Campaign follow-ups: `9078046` (3 stale A6 mix-scale tests), `c173406` (clamp-pin +4).
 - `tsc --noEmit` strict: **PASS** (twice — before and after the registry cast fix).
-- Full Vitest suite: running at map-write time (494 spec files); result appended to AGENT_WORK_LOG on completion.
+- Full Vitest suite: **490/495 files, 4931 passed / 4 failed / 117 skipped** (72 min, complete log; the 4 failures were 3 stale A6-scale/content tests — fixed in `9078046`/`c173406` + the absorbed fixes — and curated-samples, the concurrent session's open item: 71 assets vs 68 curated entries, `523c4b5` shipped without the curated pipeline). One tinypool worker-exit error (environmental, machine shared with the concurrent session). A first run earlier in the session showed 8 failed tests but its log was truncated by a shell pipe; the re-run's deterministic set accounts for 7 — the 8th did not reproduce (environmental class).
 - `npm run build` / browser suites / factory-preset QA: not re-run this session (GOAL 12 gate). Budgets: entry 1070 KB, DAW 2500 KB, AI runtimes 650 KB, worklets 150 KB — `scripts/check-bundle-size.mjs`.
 - Prior gate (re-run 3, 2026-09-21): 4097/4101 tests, build+preflight+server-smoke+audit PASS → "PASS WITH KNOWN RISKS" (4 failures attributed to concurrent session, later fixed by them per AGENT_WORK_LOG).
 
