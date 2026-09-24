@@ -99,6 +99,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bsparse\b/, "sparse"],
   [/\bbouncy\b|\bbounce\b/, "bouncy"],
   [/\bdrifting\b|\bdrift\b|\bplavu?j/, "drifting"],
+  [/\broller(?:i|y)?\b|\broluj(?:u|e|ec)?\b/, "roller"],
+  [/\bamen\b|\bchop\b/, "amen"],
+  [/\bhorror(?:core)?\b|\bhoror\b/, "horror"],
   [/\bglitch(?:y)?\b|\bchybn|\bchybov|\bsekan/, "glitch"],
   [/\borganic\b|\borganick|\bprirodzen|\bzivy/, "organic"],
 ];
@@ -196,7 +199,7 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
  */
 const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [
-    /\bno drums\b|\bwithout drums\b|\bdrumless\b|\bdrum-?less\b|\bbez (?:bubn|bic|rytmu)|\b(?:ziaden|ziadny|ziadna|ziadne)\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)\b|\bnula\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)/,
+    /\bno drums\b|\bwithout drums\b|\bdrumless\b|\bdrum-?less\b|\bbez (?:dalsich\s+)?(?:bubn|bic|rytmu)|\b(?:ziaden|ziadny|ziadna|ziadne)\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)\b|\bnula\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)/,
     "nodrums",
   ],
   [/\bno bass\b|\bwithout bass\b|\bbassless\b|\bbez bas/, "nobass"],
@@ -221,7 +224,10 @@ const PRESERVE_PHRASES: ReadonlyArray<readonly [RegExp, IntentRole]> = [
     /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bubn|bic|bicia|drums)/,
     "drums",
   ],
-  [/(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bas|808|sub|bass)/, "bass"],
+  [
+    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bas|808|sub|bass)/,
+    "bass",
+  ],
   [
     /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:akord|chords|pads|keys)/,
     "chords",

@@ -4028,3 +4028,15 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 **Validation:** param-sanity 10/10 (incl. legacy 70 → 0.7 idempotence + fxeq mix/globalMix sync); flagship battery fxeq-golden/ultina-vectors/ozvena-golden/morph-dynamics-golden/kaskada-vectors/fx-expansion/morph-dynamics-contract/fx-tempo-sync/intent-mix-route 115/115; follow-up batch 41/41. tsc campaign-clean (remaining noise: their in-flight intent-brief + interop files).
 
 **Remaining backlog:** A7 (EQ legacy shelf range), A9 (dB/threshold range unification decisions), D-consistency (documentation). The B-family and A-core are closed.
+
+---
+
+## GOAL 42 — ŽÁNROVÝ SPRINT vlna 1: GROOVE HŁBKA (2026-09-24)
+
+**Userove ciele:** elektronická moderná (fred again), new-school hip-hop, phonk, techno, dnb. Interpreti prvej vlny: Travis Scott ✓, Fred Again (UKG type-beat 130-145 vs plain deep 128-136), Suicideboys (phonk/memphis/dark 130-150), Macky Gee (dnb/jumpup 172-177) — presety v a1e1a1b.
+
+- **3 nové groove vzory z referencií**: `dnb.roller` (Macky Gee — syncopated kick medzi two-step kotvami, busy ghost snarey, open-hat offbeat), `dnb.amen` (chopped-break feel — najhustejší ghost-snare povrch v slovníku), `phonk.horror` (Suicideboys — HALF-TIME snare len na stepe 8, sub-heavy kick s neskorou synkopou, minimálny cowbell v medzerách).
+- **STYLE_PHRASES**: `roller(i/y)/roluj`, `amen/chop`, `horror(core)/horor` — deaccentované, zoznamové poradie za existujúcimi („rolujuci" naďalej legacy „rolling" — zdokumentované v teste).
+- Nové groove id MIMO PRIOR_STYLE_VOCAB → template path (dokumentovaná politika); dataset generátor pri tréningu len varovanie. Kit swapy pre dnb/phonk už existujú (sound-quality wave).
+- **Testy** +4 v intent-text-parser (26/26): štýlová rezolúcia + 16-step shape validity nových groovov. Regresia **317/317 cez 30 súborov**; typecheck 0.
+- ⚠️ POTVRDENÁ NÁVODA (po štvrtýkrát): `` v pythone cez akýkoľvek string literál → BS bajt. Spoľahlivé riešenie: **konštrukcia cez chr(92)** (žiadny backslash v zdrojáku skriptu) alebo Edit/Write tool.

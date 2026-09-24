@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseIntentText, parseKeyPhrase } from "../src/intent/text-parser";
+import { getGrooveById } from "../src/ai/grooves/index";
 import { normalizeIntent } from "../src/intent/normalize";
 
 describe("text-parser v2", () => {
@@ -243,5 +244,32 @@ describe("vocabulary wave — sub-genres, moods, traits", () => {
     expect(parseIntentText("žiaden beat s melódiou").input.roles).toEqual(["lead"]);
     // Parser flags the negation in the detection trail.
     expect(parseIntentText("žiadne bicie").detected).toContain("no drums");
+  });
+});
+
+describe("genre-depth sprint — roller / amen / horrorcore", () => {
+  it("dnb: roller and amen resolve as styles", () => {
+    expect(parseIntentText("roller dnb at 174").input.style).toBe("roller");
+    expect(parseIntentText("amen chop dnb").input.style).toBe("amen");
+    // SK: 'rolujuci' stays on the legacy 'rolling' stem (predates the sprint);
+    // the roller SK phrasing is the -er/-ery form
+    expect(parseIntentText("rollery dnb").input.style).toBe("roller");
+    expect(parseIntentText("rolujuci dnb").input.style).toBe("rolling");
+  });
+
+  it("phonk: horrorcore resolves (and the preset wins for suicideboys)", () => {
+    expect(parseIntentText("horrorcore phonk").input.style).toBe("horror");
+    expect(parseIntentText("horor phonk").input.style).toBe("horror");
+  });
+
+  it("new grooves exist with valid 16-step shapes", () => {
+    for (const id of ["dnb.roller", "dnb.amen", "phonk.horror"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
   });
 });
