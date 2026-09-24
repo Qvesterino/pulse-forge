@@ -577,4 +577,28 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["harp", "liquid", "gliss"],
     mood: ["clean", "atmosphere"],
   },
+  {
+    id: "factory.mallet.vibes",
+    name: "Vibraphone",
+    category: "Tonal",
+    character: "Metallic, Motor Tremolo",
+    tags: ["mallet", "vibraphone", "jazz"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.mallet.marimba",
+    name: "Marimba",
+    category: "Tonal",
+    character: "Wooden, Punchy",
+    tags: ["mallet", "marimba", "lofi"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.mallet.celesta",
+    name: "Celesta",
+    category: "Tonal",
+    character: "Bright, Bell-Pure",
+    tags: ["mallet", "celesta", "sparkle"],
+    mood: ["bright", "clean"],
+  },
 ];

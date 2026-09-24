@@ -1198,6 +1198,81 @@ function fxNoise(): Builder {
   };
 }
 
+/**
+ * Mallet family (quality backlog: mallet pack) — struck-bar synthesis.
+ * Classic mallet bars ring at inharmonic partial ratios (vibraphone and
+ * marimba tune their resonators to 1:4, the celesta stacks 1:3:6), so the
+ * builder takes a partial table instead of a wave shape. Optional motor
+ * tremolo (the vibes' rotating discs) and a woody/bright strike click that
+ * bypasses the tremolo (the mallet contact happens before the motor is
+ * audible). One C anchor per instrument; the sampler's root/pitch params
+ * transpose.
+ */
+function mallet(opts: {
+  fundamental: number;
+  partials: Array<[number, number]>;
+  decay: number;
+  attack?: number;
+  tremoloHz?: number;
+  tremoloDepth?: number;
+  clickLevel?: number;
+  lpfHz?: number;
+}): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const attack = opts.attack ?? 0.004;
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + attack);
+    vca.gain.setTargetAtTime(0.0005, t0 + attack + 0.01, opts.decay / 3);
+    let head: AudioNode = vca;
+    if (opts.tremoloHz) {
+      // Motor tremolo: a slow LFO ducks the post-strike gain — the classic
+      // vibraphone shimmer. Depth is half-range so the tremolo never
+      // phase-cancels the strike transient.
+      const trem = ctx.createGain();
+      trem.gain.value = 1 - (opts.tremoloDepth ?? 0.35) / 2;
+      const lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = opts.tremoloHz;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = (opts.tremoloDepth ?? 0.35) / 2;
+      lfo.connect(lfoGain).connect(trem.gain);
+      lfo.start(t0);
+      lfo.stop(t0 + opts.decay + 1);
+      vca.connect(trem);
+      head = trem;
+    }
+    if (opts.lpfHz) {
+      const lpf = ctx.createBiquadFilter();
+      lpf.type = "lowpass";
+      lpf.frequency.value = opts.lpfHz;
+      head.connect(lpf).connect(dest);
+    } else {
+      head.connect(dest);
+    }
+    for (const [ratio, level] of opts.partials) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = opts.fundamental * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + opts.decay + 1);
+    }
+    if (opts.clickLevel) {
+      // Strike transient: short band-passed noise at 4× fundamental, dry
+      // (pre-motor) — reads as the mallet contact.
+      const click = noiseSource(ctx, 8, 0.02, t0);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = opts.fundamental * 4;
+      click.connect(bp).connect(env(ctx, t0, opts.clickLevel, 0.004)).connect(dest);
+    }
+  };
+}
+
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
@@ -1334,6 +1409,41 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.stab": stab(),
   "factory.tonal.keys": keys(),
   "factory.tonal.bell": bell(),
+  // Mallet pack (quality backlog): the struck-bar family the bank lacked.
+  "factory.mallet.vibes": mallet({
+    fundamental: 262, // C4
+    partials: [
+      [1, 0.5],
+      [4, 0.22],
+      [9.2, 0.06],
+    ],
+    decay: 2.6,
+    attack: 0.005,
+    tremoloHz: 5.2,
+    tremoloDepth: 0.55,
+  }),
+  "factory.mallet.marimba": mallet({
+    fundamental: 131, // C3 — marimba lives an octave below the vibes
+    partials: [
+      [1, 0.6],
+      [4, 0.18],
+      [10, 0.04],
+    ],
+    decay: 0.9,
+    attack: 0.002,
+    clickLevel: 0.25,
+    lpfHz: 6500,
+  }),
+  "factory.mallet.celesta": mallet({
+    fundamental: 1046.5, // C6 — celesta reads an octave above the keyboard
+    partials: [
+      [1, 0.5],
+      [3, 0.2],
+      [6, 0.08],
+    ],
+    decay: 1.6,
+    attack: 0.002,
+  }),
   // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
   // actually reaches for — memphis guitar, drill strings, rhodes, mariachi
   // trumpet, anime pluck, sad piano, warm pad, harp. Carriers for sampler
@@ -1410,6 +1520,9 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.stab": 0.5,
   "factory.tonal.keys": 1.1,
   "factory.tonal.bell": 1.5,
+  "factory.mallet.vibes": 3.2,
+  "factory.mallet.marimba": 1.2,
+  "factory.mallet.celesta": 1.9,
   "factory.tonal.memphisguitar": 1.4,
   "factory.tonal.darkstrings": 2.2,
   "factory.tonal.rhodes": 1.8,

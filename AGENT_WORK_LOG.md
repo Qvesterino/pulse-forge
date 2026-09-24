@@ -4075,3 +4075,24 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **GENRE_PHRASES +6**: acid trap/acid rap → trap; speed garage / bassline(house) / 2-step garage / uk funky → house; baile funk / funk mandela / brazilian phonk → phonk; neurofunk / neuro → dnb; hard groove → techno; darkwave / witch house / wave music → ambient (holé „wave" vypustené — new-wave kolízia).
 - **STYLE_PHRASES +5**: liquid/likvid → liquid; 2.?step / two step / dvojkrok → ukg (dnb kontext fallbackne na twostep ako prvý groove — OK); hard groove → driving; neurofunk → twostep; baile/mandela → bounce. ⚠️ Poradie: baile PRED generic „funk" (inak „baile funk" → funky).
 - **Testy** +5 (31/31 v parseri): acid trap route dôkaz, garage rodina, liquid dnb style, neuro/hard groove, baile. Regresia 167/167 na 13 dotykových súboroch; typecheck 0.
+
+---
+
+## Mallet pack (post-campaign quality) — vibes / marimba / celesta (2026-09-23)
+
+**Scope:** the mallet pack from the sound-coverage audit — the struck-bar family the bank completely lacked (vibraphone/marimba/celesta = 0 hits across presets + samples).
+
+**Delivered:**
+
+1. **`mallet()` builder** (factory.ts) — struck-bar synthesis: inharmonic partial table (vibraphone/marimba ring at 1:4, celesta stacks 1:3:6), optional motor tremolo (the vibes' rotating discs — LFO ducks the post-strike gain, never phase-cancels the strike), optional lpf (wooden tone), optional band-passed strike click at 4× fundamental (pre-motor mallet contact).
+2. **3 factory assets** — `factory.mallet.vibes` (C4, 1:4:9.2 partials, 5.2 Hz motor, decay 2.6), `factory.mallet.marimba` (C3, 1:4:10, woody click, LPF 6500, decay 0.9), `factory.mallet.celesta` (C6, 1:3:6, decay 1.6) + BUILDERS/DURATIONS/manifest entries (category Tonal — AssetCategory union untouched).
+3. **9 sampler presets** — lofi (vibes/marimba), jersey (celesta club, marimba bounce), score (jazz vibes, harp... wait harp already), house (marimba groove), trap (dark celesta), dnb (liquid vibes), ambient (celesta shimmer) — roots matched to each instrument's C anchor (60/48/84).
+4. **Contract extension** — `tests/presets.test.ts` sample-reference regex now accepts `factory.mallet.*`; kick-bank coherence test still green (Tonal category, no AssetCategory change).
+
+**Race note:** the parallel session committed to manifest.ts mid-edit — prettier settled the file; the mallet entries applied cleanly on top.
+
+**Important files changed:** src/sample-library/factory.ts (mallet builder + 3 registrations + 3 durations), src/sample-library/manifest.ts (3 assets), src/presets/factory.ts (9 presets), tests/presets.test.ts (sample contract).
+
+**Validation:** presets.test 14/14 (incl. the extended sample contract), kick-bank coherence 5/5, velocity-layers 10/10. Factory bank renders at boot — browser QA (292→301 presets) is the standing browser gate.
+
+**Remaining backlog:** A7/A9 + D-consistency (decisions), sound-coverage wave 2 (organ tonewheel, wurli sample, choir pad, sitar/oriental, cowbell variety — see the audit findings).
