@@ -1502,17 +1502,26 @@ function deriveVariation(src: AudioBuffer, rate: number, gain: number): AudioBuf
   return out;
 }
 
+const FACTORY_RENDER_PARALLEL = 4;
+
 export async function generateFactoryBank(): Promise<SampleBank> {
   const bank = new SampleBank();
   const assets: FactoryAsset[] = FACTORY_ASSETS;
-  await Promise.all(
-    assets.map(async (asset) => {
+  // Bounded render pool (quality backlog B7): 69 concurrent
+  // OfflineAudioContexts spiked memory and serialized inside the browser
+  // anyway — a small worker pool (same shape as the curated layer) keeps
+  // boot TTI predictable on weak machines.
+  const queue = [...assets];
+  const worker = async (): Promise<void> => {
+    while (queue.length > 0) {
+      const asset = queue.shift()!;
       const builder = BUILDERS[asset.id];
       if (!builder) throw new Error(`No builder for factory asset ${asset.id}`);
       const buffer = await render(DURATIONS[asset.id] ?? 0.3, builder);
       bank.add(asset.id, buffer);
-    }),
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(FACTORY_RENDER_PARALLEL, assets.length) }, worker));
   for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
     const base = bank.get(baseId);
     if (!base) throw new Error(`No base buffer for RR variation of ${baseId}`);

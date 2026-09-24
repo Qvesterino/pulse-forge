@@ -1,45 +1,34 @@
-# Fáza 2: KYX → Audio Canvas (SIQ) audio handoff — "beat drives the visualizer"
+# KYX → Qvester audio-profile bus: `pulse_forge` ako live audio kanál ekosystému
 
-**Cieľ:** V KYX Export panele akcia **"Send to Qvester Visualizer"**: renderuje beat na WAV, uloží ho do shared IndexedDB a prenesie používateľa do Audio Canvasu (`/audio-canvas?handoff=<id>`), kde jedna akcia nabinduje beat do ich audio engine — ich vlastná deterministická analýza (bpm/key/Camelot/beatGrid cez `@qvester/audio-analysis`) naháňa beat-reactive vizuály. Metadáta (bpm/key z projektu KYX) idú v packetе ako hint.
+**Cieľ:** Kým KYX hrá, periodicky publikuje **ohraničený 10-s analytický profil** (energy/beat/band krivky + bpm + beatPhase + bands) na channel `pulse_forge` cez ich `publishAudioProfile` konvenciu. Konzumenti (canvas-virtuoso ako prvý) krivky loopujú lokálne — vizuály reagujú na KYX playback. Rešpektuje ich doktrínu: žiadne per-frame streamovanie, publish throttle, clear ako sign-out.
 
-**Kľúčové zistenia z prieskumu (všetko existuje, nič nevynachávame):**
-- Packet konvencia: V1/V2 envelope, `InputArtifact.value` je vždy string — **binárka sa nikdy nevkladá**; sanctioned pattern pre veľké payloady je `qvester-blob:<hash>` pointer (SPEC V2 §2.2, imageSource.ts:45 + IDB `qvester-image-source-library` premoska).
-- Bounded audio profil už cestuje medzi appkami: `AUDIO-CANVAS/src/interop/sendAudioAnalysisToCanvas.ts` (intent `apply_audio_to_canvas`, `?handoff=` + `?handoffIntent=`, sessionStorage+localStorage `qvester:handoff:<id>`, TTL 30 min, MAX_FRAMES=600).
-- AC receiver reťaz: `bindAudioFile(file)` (audioProjectBinding.ts:109) = fingerprint → `engine.loadFile` → session update → vlastná analýza → reactive visuals. Receiver pattern: `readSiqHandoff.ts` (peek-then-consume, source/target/intent match) + `interopBanner.tsx` (explicitná akcia — rešpektuje ich `previewRequired/requiresExplicitCommit` konvenciu).
-- Audio Canvas je mountnutý na `/audio-canvas` (config :298); `getRouteForApp` má route mapu pre return results.
+## Fáza A — Publisher modul (D:\pulse-forge)
 
-## Fáza A — KYX sender (D:\pulse-forge)
+1. `src/interop/qvesterProfileBus.ts` (nový):
+   - **Rolling window**: Float32Array okná (300 vzoriek ≈ 10 s @ 30 Hz) pre energy/beat + bandCurves {bass, lowMid, mid, highMid, high}; write-index ring.
+   - **Vzorkovanie** (v RAF, gate ~33 ms, len keď `transport.playing`):
+     - energy = RMS z `getMasterLevels()` (existujúce, žiadna nová DSP),
+     - bands = bin-suma z `getMasterSpectrogramAnalyser()` (`getFloatFrequencyData` dB → [0,1] mapou −90..−10 dB) cez existujúce `createSpectrogramBandMap` (spectrogram.ts:56),
+     - beat krivka = 1 na beat gride z transport pozície (positionBeats frakcia × bpm) — presné, nie detekcia.
+   - **Publish každé ~3 s** (ak window ≥ 2 s): downsample ≤600 framov → `CanvasAudioAnalysisProfile` {bands (aktuálne), bpm: doc.bpm, beatPhase, duration, sampleRate: 30, curves} → `publishAudioProfile("pulse_forge", profile)`. Tvary podľa ich kontraktu presne (≤600, ≤10 s, clamp [0,1]) — aby ich `sanitizeAudioProfileForBus` nič nerobil.
+   - **Životný cyklus**: start = studio mount (App.tsx efekt, idempotentné); stop publishu pri pauze (okno mrazí, posledný profil ostáva — konzumenti loopujú ďalej); `clearAudioProfile("pulse_forge")` pri unmounte (ich sign-out path).
+2. wiring v `src/ui/App.tsx`: jeden useEffect → `startQvesterProfileBus(services)`.
+3. Testy `tests/qvester-profile-bus.test.ts`: window ring roll, profile builder bounds (600/10 s/clamp), beat grid fázovanie, publish gating + channel/key — s fake localStorage; tvar validovaný zrkadlom ich kontraktu.
 
-1. `src/interop/qvesterHandoff.ts` (nový modul):
-   - `keyToCamelot(key: MusicalKey)` — parse "<Root> <Scale>" → {key, mode, camelot} (12 roots; Major=8B… mapa podľa Camelot kruhu; mimo major/minor mode podľa treťej).
-   - `storeBeatHandoff(blob, meta)`: IDB `qvester-audio-handoff` / store `blobs`, kľúč = SHA-256 hash (crypto.subtle), záznam {blob, name, bpm, key, mode, camelot, durationSec, sampleRate, createdAt} + prune >24h.
-   - `sendBeatToAudioCanvas()`: render buffer (renderProject) → WAV blob (encodeWavAsync → Blob) → store → V2-style packet (`sourceApp:"pulse_forge"`, `targetApp:"audio_canvas"`, intent **`send_beat_to_audio_canvas`**, TTL 30 min) s artifactom `{type:"audio_master", label, uri:"qvester-blob:<hash>", value: JSON metadata}` + ArtifactPassport `{transport:"local-reference", privacy:"local-only"}` → persist `qvester:handoff:<id>` (session+local) → `location.assign(<origin>/audio-canvas?handoff=<id>&handoffIntent=send_beat_to_audio_canvas)`.
-2. ExportPanel: nová akcia **"Send to Qvester Visualizer"** (render → send), zobrazená len keď `import.meta.env.BASE_URL !== "/"` (mounted context — cross-origin standalone nedáva zmysel; inline vysvetlenie).
-3. Testy: `tests/qvester-handoff.test.ts` — camelot mapa, packet tvar (validovateľný), IDB write/read round-trip (fake-indexeddb alebo min stub), metadata bounds.
+## Fáza B — Prvý konzument (QVESTER repa)
 
-## Fáza B — Audio Canvas receiver (QVESTER repa, apps/atoma-visualizer/AUDIO-CANVAS)
+4. `apps/canvas-virtuoso/src/services/signals.ts`: pridať subscription `subscribeAudioProfile("pulse_forge", …)` s rovnakým handlerom ako `audio_canvas` (3 riadky — ich last-writer-wins slot už má loop mechaniku). Od tej chvíle **canvas-virtuoso vizuály modulujú z KYX playbacku**.
+5. `docs/QVESTER_AUDIO_PROFILE_BUS_V1.md`: follow-up #1 doplniť — pulse_forge je prvý stojaci publisher (okrem plánovaného Audio Canvas).
 
-4. `src/interop/kyxBeatHandoff.ts`: `readKyxBeatHandoff()` — `?handoff=` → `readHandoffPacket` (existujúci inboundHandoff) → validácia source=pulse_forge, intent, TTL → artifact `audio_master` → IDB read blob.
-5. `StudioRoute.tsx` mount effect (vedľa existujúcich receiverov :921-949): keď príde KYX handoff → banner (interopBanner pattern) **"KYX beat: <name> — BPM <bpm> · <key> · Bind & visualize"** → akcia = `new File([blob], name)` → `bindAudioFile(file)` (celá ich reťaz: engine + analýza + reactive) → consume packet.
-6. `returnResult.ts` `getRouteForApp`: `pulse_forge: "/pulse-forge"`.
-7. Test: `src/interop/__tests__/kyxBeatHandoff.test.ts` (packet validácia + IDB round-trip + File wrap) v ich test štýle.
+## Fáza C — Brány + verifikácia
 
-## Fáza C — Registrácia + certifikácia (QVESTER repa)
-
-8. KG: `audio_canvas.handoffIn` += `pulse_forge/send_beat_to_audio_canvas`; `pulse_forge.handoffOut` += `audio_canvas/send_beat_to_audio_canvas`.
-9. `docs/ECOSYSTEM_HANDOFF_MAP.md`: registry riadok + H-entry (Status | Priority | Rationale | Intent | Payload | Consumer logic | Monetization | QMR trigger) + `docs/QMR_HANDOFF_CERTIFICATION_REPORT.md` riadok (status packet-verified po overení).
-10. `scripts/verify-kyx-handoff.mjs` (mirror verify-siq-interop-truth): AC receiver existuje, intent v AC zdroji, KG edge, dokandida; KYX sender strana = external (poznámka). npm script `verify:kyx-handoff`.
-11. AGENTS.md riadok do interop sekcie.
-
-## Fáza D — Verifikácia
-
-12. Brány oboch rep: KYX (typecheck filtr., nové testy, build), QVESTER (typecheck, AC testy, constellation/content-integrity, drift — očakávam rovnaký pred-existujúci baseline 96).
-13. **Živá E2E**: dev :4000 → `/pulse-forge` → template → Export → Send to Qvester Visualizer → AC sa otvorí s bannerom → Bind → beat hrá, analýza ready, vizuály reagujú. Screenshot.
-14. Commity v oboch repách (len moje súbory — v QVESTER repu funguje ich session, ktorá resetuje tracked súbory → commitovať ihneď po každej fáze).
+6. KYX: typecheck (filtrovaný), nové testy, `vite build` default (nezmenený) — žiadny SW/bundle dopad okrem nového chunku.
+7. QVESTER: ich typecheck, canvas-virtuoso build (`--app canvas-virtuoso`), ich testy canvas-virtuoso interop (audioProfileBus.test), constellation/content-integrity.
+8. **Živá E2E**: :4000 → /pulse-forge → House → play → evaluate read `qvester:audio-profile:v1:pulse_forge` (revision rastie, bpm 124, krivky živé) → otvoriť /canvas-virtuoso v druhej karte → vizuály modulované. Screenshot.
+9. Commity v oboch repách hneď po fázach (QVESTER session resetuje tracked súbory!).
 
 ## Riziká
 
-- Veľkosť WAV (master stereo 44.1k, ~10 MB/min) — IDB zvládne; packet ostáva malý (len pointer+metadata).
-- Funguje len same-origin (mounted kontext) — v standalone KYX sa akcia nezobrazí; zdokumentované v UI.
-- Ich session v QVESTER repu resetuje tracked súbory → po každej fáze commit len mojich súborov.
-- Žiadne zmeny ich AudioEngine — receiver skladá existujúce API (bindAudioFile + banner pattern).
+- localStorage zápis ~5–15 KB JSON každé 3 s — akceptovateľné (ich kontrakt počíta s tým; quota guarded).
+- Per-frame join medzi RAF a audio vláknom — len existujúce gettery (žiadne nové DSP/worker).
+- canvas-virtuoso diff je malý, ale v ich release repu — commitovať odlišene.

@@ -22,6 +22,7 @@ import { applyArrangeOps } from "../intent/arrangeWords";
 import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { analyzeAudioReference } from "../intent/audio-reference";
+import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
@@ -32,6 +33,7 @@ import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
+import type { NoteEvent } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
@@ -460,11 +462,24 @@ export function IntentPanel() {
   const [refSummary, setRefSummary] = useState<string | null>(null);
   const [refBusy, setRefBusy] = useState(false);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
+  // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
+  // + key, humNotes become the LEAD of the SUNO MODE song.
+  const [voiceIdea, setVoiceIdea] = useState<{
+    notes: NoteEvent[];
+    loopTicks: number;
+    key: string | null;
+    summary: string;
+  } | null>(null);
+  const [ideaRecording, setIdeaRecording] = useState(false);
+  const ideaRecorderRef = useRef<MediaRecorder | null>(null);
+  const ideaChunksRef = useRef<Blob[]>([]);
+  const ideaStreamRef = useRef<MediaStream | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const clearReference = () => {
     setRefPatch(null);
     setRefSummary(null);
     setRefGroove(null);
+    setVoiceIdea(null);
     setAudioReferenceConditioning(null);
     setStatus("🎧 reference cleared — back to text-only intent");
   };
@@ -501,6 +516,63 @@ export function IntentPanel() {
       setRefBusy(false);
     }
   };
+  // Voice idea: record the artist humming/singing via MediaRecorder, decode,
+  // then analyze — tempo + key become the patch, the hum becomes the LEAD.
+  const startIdeaRecording = async () => {
+    if (ideaRecording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      ideaStreamRef.current = stream;
+      ideaChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      ideaRecorderRef.current = recorder;
+      recorder.start();
+      setIdeaRecording(true);
+      setStatus("🎤 recording your idea — hum or sing the hook, then press stop");
+    } catch (err) {
+      setError(`🎤 mic unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  const stopIdeaRecording = async () => {
+    const recorder = ideaRecorderRef.current;
+    if (!recorder || !ideaRecording) return;
+    setIdeaRecording(false);
+    await new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+      recorder.stop();
+    });
+    ideaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    ideaStreamRef.current = null;
+    try {
+      const blob = new Blob(ideaChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      const arrayBuffer = await blob.arrayBuffer();
+      const ctx = new AudioContext();
+      let buffer: AudioBuffer;
+      try {
+        buffer = await ctx.decodeAudioData(arrayBuffer);
+      } finally {
+        await ctx.close();
+      }
+      const pcm = resampleLinear(downmixToMono(buffer), buffer.sampleRate, 16000);
+      const result = await analyzeVoiceIdea(pcm, 16000);
+      if (!result) {
+        setError("🎤 idea: could not analyze the recording — try again, hum louder");
+        return;
+      }
+      setRefPatch(result.patch);
+      if (result.noteCount > 0) {
+        setVoiceIdea({ notes: result.notes, loopTicks: result.loopTicks, key: result.key, summary: result.summary });
+        setStatus(`🎤 idea: ${result.summary} — hook live, ♪ SONG builds around it`);
+      } else {
+        setVoiceIdea(null);
+        setStatus(`🎤 idea: ${result.summary} — patch live (no steady melody detected)`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const toggleIdeaRecording = () => void (ideaRecording ? stopIdeaRecording() : startIdeaRecording());
+
   // Groove install: transcribed band hits become REAL rows on the active
   // pattern's drum track (one undo step).
   const installGroove = () => {
@@ -542,6 +614,7 @@ export function IntentPanel() {
         ...(sections ? { sections } : {}),
         input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
         ...(reviseInput?.seed ? { seed: reviseInput.seed } : {}),
+        ...(voiceIdea ? { hum: { notes: voiceIdea.notes, loopTicks: voiceIdea.loopTicks, key: voiceIdea.key } } : {}),
         bank: services.bank,
         onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
       });
@@ -991,6 +1064,15 @@ export function IntentPanel() {
           title="Build a full arranged song from this intent (intro → build → drop → break → drop → outro)"
         >
           {songBusy ? "BUILDING…" : "♪ SONG"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-idea-btn"
+          disabled={refBusy}
+          onClick={() => void toggleIdeaRecording()}
+          title="Voice idea — record yourself humming/singing the hook; the beat builds around YOUR tempo, key and melody"
+        >
+          {ideaRecording ? "■ STOP" : "🎤 IDEA"}
         </button>
         <button
           type="button"

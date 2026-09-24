@@ -31,6 +31,7 @@ const ALL_TOP_LEVEL_KEYS: Record<keyof ProjectDocument, true> = {
   timeSignature: true,
   key: true,
   tags: true,
+  lineage: true,
   tracks: true,
   patterns: true,
   activePatternId: true,
@@ -77,6 +78,15 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
     projectToYDoc(doc, yMap);
     applyAgain(doc, yMap);
     expect(yDocToProject(yMap)).toEqual(roundTrip(doc));
+  });
+
+  it("round-trips the Remix-DNA lineage link (parent/root/depth survive collab)", () => {
+    const doc = normalizeProject({
+      ...createProjectFromTemplate("drill"),
+      lineage: { parentId: "project-parent", rootId: "project-root", depth: 2, prompt: "dark trap 140", seed: "seed-1" },
+    });
+    const restored = roundTrip(doc);
+    expect(restored.lineage).toEqual(doc.lineage);
   });
 
   it("preserves every master/track/pad scalar key (the historical silent-loss class)", () => {

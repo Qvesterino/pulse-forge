@@ -18,6 +18,9 @@ import { parseIntentText } from "./text-parser";
 import type { IntentInput } from "./types";
 import { parseSectionRequests, type SectionParse } from "./sections";
 import { buildSong, applySongCommand, parseSongLength, type SongBuild, type SongLengthHint } from "./song";
+import { tileNotesAcrossPattern } from "../midi/hum-to-notes";
+import { parseKey, snapToScale } from "../project-model/scales";
+import { STEP_TICKS, type MusicalKey, type NoteEvent, type InstrumentTrack } from "../project-model/types";
 import { planMixProfile, applyMixIntent } from "./mix";
 import { parseLoudnessIntent, applyLoudnessIntent, type LoudnessApplyResult, type LoudnessRenderFn } from "./loudness";
 import { SONG_LOUDNESS_TARGET_LUFS } from "./genre-reference.generated";
@@ -28,6 +31,15 @@ import type { ProjectDocument } from "../project-model/types";
 export interface ComposeLoudness {
   summary: string;
   run: (doc: ProjectDocument) => Promise<LoudnessApplyResult | null>;
+}
+
+/** The artist's hummed hook — injected as the LEAD of every lead section. */
+export interface ComposeHum {
+  notes: readonly NoteEvent[];
+  /** Tick length of one hum loop (notes tile/clamp into each section). */
+  loopTicks: number;
+  /** Estimated key of the hum — notes transpose to the song key. */
+  key?: string | null;
 }
 
 export interface ComposeResult {
@@ -60,6 +72,8 @@ export interface ComposeOptions {
    * the text parse found are used when omitted.
    */
   input?: IntentInput;
+  /** The artist's hummed hook — becomes the LEAD of the song. */
+  hum?: ComposeHum;
   /** Run the loudness pass after install. Default true when a bank is provided. */
   loudness?: boolean;
   /** Sample bank for the loudness render — loudness needs it; without it the stage skips. */
@@ -67,6 +81,36 @@ export interface ComposeOptions {
   /** Injected renderer (tests); default renders offline through the engine. */
   render?: LoudnessRenderFn;
   seed?: string;
+}
+
+/** Lead instrument: by name, else the third instrument track (bass/chord/lead). */
+function resolveLeadTrackId(doc: ProjectDocument): string | null {
+  const instruments = doc.tracks.filter((track): track is InstrumentTrack => track.kind === "instrument");
+  const named = instruments.find((track) => track.name.toLowerCase().includes("lead"));
+  return (named ?? instruments[2] ?? instruments[0])?.id ?? null;
+}
+
+/**
+ * Transpose the hummed melody from its estimated key into the song key
+ * (minimal semitone shift, then snap into the song scale). Same key = copy.
+ */
+export function transposeHumToKey(
+  notes: readonly NoteEvent[],
+  humKey: string | null,
+  songKey: MusicalKey | null,
+): NoteEvent[] {
+  if (!humKey || !songKey) return [...notes];
+  const hum = parseKey(humKey as MusicalKey);
+  const song = parseKey(songKey);
+  if (!hum || !song) return [...notes];
+  let delta = song.root - hum.root;
+  if (delta > 6) delta -= 12;
+  if (delta < -6) delta += 12;
+  if (delta === 0) return [...notes];
+  return notes.map((note) => {
+    const pitch = Math.max(0, Math.min(120, snapToScale(note.pitch + delta, songKey)));
+    return { ...note, pitch };
+  });
 }
 
 /**
@@ -102,6 +146,33 @@ export async function composeFullTrack(
       onProgress: (done, label, total) => options.onProgress?.(`section ${label} (${done}/${total})`),
     },
   );
+
+  // Hummed hook (Fáza 2): transpose the artist's melody into the song key and
+  // tile it across every section that plays a LEAD — the beat is built
+  // AROUND the artist's idea.
+  if (options.hum && options.hum.notes.length > 0) {
+    const leadId = resolveLeadTrackId(doc);
+    if (!leadId) {
+      skipped.push("hum: no lead instrument track in this project");
+    } else {
+      const songKey = build.key ?? (options.hum.key as MusicalKey | null) ?? null;
+      const transposed = transposeHumToKey(options.hum.notes, options.hum.key ?? null, songKey);
+      if (transposed.length === 0) {
+        skipped.push("hum: transposition emptied the melody");
+      } else {
+        build.sections = build.sections.map((section) => {
+          if (!section.roles.includes("lead")) return section;
+          const sectionTicks = section.stepCount * STEP_TICKS;
+          const tiled = tileNotesAcrossPattern(transposed, sectionTicks);
+          if (tiled.length === 0) return section;
+          return {
+            ...section,
+            pattern: { ...section.pattern, notes: { ...section.pattern.notes, [leadId]: tiled } },
+          };
+        });
+      }
+    }
+  }
 
   // 3 — mix profile: mood/genre-driven targeted FX, one undoable snapshot.
   let mix: Command | null = null;

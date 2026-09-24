@@ -17,6 +17,7 @@ import type {
   MasterConfig,
   Pattern,
   ProjectDocument,
+  ProjectLineage,
   ReturnTrack,
   Scene,
   SceneRole,
@@ -36,7 +37,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1645,6 +1646,51 @@ function normalizeKeyAndTagsDomain(s: NormalizeState): void {
   s.doc = doc;
 }
 
+/** Schema v3 — Remix-DNA family link. Invalid shapes are dropped (the beat
+ * stays loadable); valid ones are rebuilt canonically so equivalent links
+ * compare equal. Never throws. */
+export const LINEAGE_ID_MAX = 128;
+export const LINEAGE_TEXT_MAX = 160;
+export const LINEAGE_DEPTH_MAX = 1000;
+
+export function sanitizeLineage(value: unknown): ProjectLineage | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.rootId !== "string" || v.rootId.trim() === "" || v.rootId.length > LINEAGE_ID_MAX) {
+    return undefined;
+  }
+  const parentId =
+    v.parentId === null || v.parentId === undefined
+      ? null
+      : typeof v.parentId === "string" && v.parentId.trim() !== "" && v.parentId.length <= LINEAGE_ID_MAX
+        ? v.parentId
+        : null;
+  const depth =
+    typeof v.depth === "number" && Number.isInteger(v.depth) && v.depth >= 0 && v.depth <= LINEAGE_DEPTH_MAX
+      ? v.depth
+      : 0;
+  const prompt = typeof v.prompt === "string" && v.prompt.trim() !== "" ? v.prompt.slice(0, LINEAGE_TEXT_MAX) : null;
+  const seed = typeof v.seed === "string" && v.seed !== "" && v.seed.length <= LINEAGE_ID_MAX ? v.seed : null;
+  return { parentId, rootId: v.rootId, depth, prompt, seed };
+}
+
+function normalizeLineageDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  if (doc.lineage === undefined) return;
+  const cleaned = sanitizeLineage(doc.lineage);
+  if (cleaned === undefined) {
+    const rest = { ...doc };
+    delete rest.lineage;
+    s.doc = rest;
+    s.changed = true;
+    return;
+  }
+  if (!jsonEqual(cleaned, doc.lineage)) {
+    s.doc = { ...doc, lineage: cleaned };
+    s.changed = true;
+  }
+}
+
 function normalizeMarkersDomain(s: NormalizeState): void {
   const doc = s.doc;
   // markers — backfill array, clamp each.
@@ -2122,6 +2168,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeMacrosDomain,
   normalizeSceneDetailsDomain,
   normalizeKeyAndTagsDomain,
+  normalizeLineageDomain,
   normalizeMarkersDomain,
   normalizeSceneAutomationDomain,
   normalizeTimestampsDomain,
@@ -2152,6 +2199,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   }
   let migrated = doc;
   if (migrated.schemaVersion === SCHEMA_VERSION) return normalizeProject(migrated);
+  // v3 adds the optional `lineage` family link — older docs simply load
+  // without one (no transform needed); the normalize pass sanitizes it.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
 }

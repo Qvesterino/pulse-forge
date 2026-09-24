@@ -980,6 +980,26 @@ export function isMusicalKey(value: unknown): value is MusicalKey {
   return typeof value === "string" && (MUSICAL_KEYS as string[]).includes(value);
 }
 
+/**
+ * Remix-DNA family link (schema v3). Stamped by `mutateBeat`
+ * (`src/gallery/lineage.ts`), carried by share codes, so a beat's family
+ * survives outside the gallery: every child knows its parent doc id, the
+ * root of its tree and its depth. Prompt/seed are display provenance —
+ * the musical truth stays in `pattern.generation`.
+ */
+export interface ProjectLineage {
+  /** Doc id of the direct parent (`null` = tree root). */
+  parentId: string | null;
+  /** Doc id of the tree root (own id for roots). */
+  rootId: string;
+  /** Generations below the root (root = 0). */
+  depth: number;
+  /** Prompt that forged the family (if any). */
+  prompt: string | null;
+  /** Family identity seed (if any). */
+  seed: string | null;
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -990,6 +1010,8 @@ export interface ProjectDocument {
   key?: MusicalKey;
   /** Optional project-level tags (display + scorepack). */
   tags?: string[];
+  /** Optional Remix-DNA family link (schema v3). Absent = pre-lineage beat. */
+  lineage?: ProjectLineage;
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;

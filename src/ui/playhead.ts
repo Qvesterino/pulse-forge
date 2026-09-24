@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
 import type { ProjectDocument } from "../project-model/types";
@@ -86,4 +86,37 @@ export function usePlayheadBar(transport: Transport): number {
     return () => unregisterRaf(rafId);
   }, [transport, rafId]);
   return bar;
+}
+
+/**
+ * Id of the arrangement item under the playhead — updates ONLY when the
+ * playhead crosses an item boundary. Clip crossings are rare compared to the
+ * 1/8-bar playhead cadence, so panels can highlight "the current clip"
+ * without re-rendering themselves at the playhead's tick rate (quality
+ * backlog B4). Restart-free: the item list is read through a ref.
+ */
+export function useCurrentItemId<T extends { id: string; startBar: number; lengthBars: number }>(
+  items: T[],
+  transport: Transport,
+): string | null {
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const rafId = useId();
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  useEffect(() => {
+    let last: string | null = null;
+    registerRaf(rafId, () => {
+      const bar = Math.max(0, transport.position) / BAR_TICKS;
+      const hit = itemsRef.current.find(
+        (item) => bar >= item.startBar && bar < item.startBar + item.lengthBars,
+      );
+      const id = hit?.id ?? null;
+      if (id !== last) {
+        last = id;
+        setCurrentId(id);
+      }
+    });
+    return () => unregisterRaf(rafId);
+  }, [transport, rafId]);
+  return currentId;
 }
