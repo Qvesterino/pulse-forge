@@ -23,6 +23,8 @@ import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type Son
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
+import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
+import { patternLengthTicks } from "../midi/hum-to-notes";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
@@ -471,9 +473,11 @@ export function IntentPanel() {
     summary: string;
   } | null>(null);
   const [ideaRecording, setIdeaRecording] = useState(false);
-  const ideaRecorderRef = useRef<MediaRecorder | null>(null);
-  const ideaChunksRef = useRef<Blob[]>([]);
-  const ideaStreamRef = useRef<MediaStream | null>(null);
+  const [ideaMicMonitor, setIdeaMicMonitor] = useState(false);
+  const ideaRecorderRef = useRef<PcmMicRecorder | null>(null);
+  const ideaBeatSyncRef = useRef(false);
+  const ideaStartTickRef = useRef<number | null>(null);
+  const ideaTransportRestoreRef = useRef<{ startedByIdea: boolean; metronomeBefore: boolean } | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const clearReference = () => {
     setRefPatch(null);
@@ -518,43 +522,114 @@ export function IntentPanel() {
   };
   // Voice idea: record the artist humming/singing via MediaRecorder, decode,
   // then analyze — tempo + key become the patch, the hum becomes the LEAD.
+  const restoreIdeaTransport = () => {
+    const restore = ideaTransportRestoreRef.current;
+    ideaTransportRestoreRef.current = null;
+    if (!restore) return;
+    if (restore.startedByIdea && services.transport.playing) services.playback.playPause();
+    if (restore.startedByIdea || !services.transport.playing) {
+      services.transport.setMetronome(restore.metronomeBefore);
+    }
+  };
+  const teardownIdeaRecorder = async () => {
+    const rec = ideaRecorderRef.current;
+    ideaRecorderRef.current = null;
+    if (rec) await rec.cancel().catch(() => undefined);
+  };
+  const setIdeaMicMonitoring = (enabled: boolean) => {
+    setIdeaMicMonitor(enabled);
+    ideaRecorderRef.current?.setMonitoring(enabled);
+  };
   const startIdeaRecording = async () => {
     if (ideaRecording) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      ideaStreamRef.current = stream;
-      ideaChunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      ideaRecorderRef.current = recorder;
-      recorder.start();
+      services.engine.ensureContext();
+      const ctx = services.engine.getLiveAudioContext();
+      if (!ctx) {
+        setError("🎤 audio engine not ready yet — try again in a second");
+        return;
+      }
+      // Beat-synced hum: roll the transport first so there IS a beat to hum
+      // to (pattern + click). Outside pattern playback: free-time fallback.
+      const beatSync = services.playback.mode === "pattern" && typeof services.transport.position === "number";
+      ideaBeatSyncRef.current = beatSync;
+      ideaStartTickRef.current = null;
+      ideaTransportRestoreRef.current = null;
+      if (beatSync) {
+        const startedByIdea = !services.transport.playing;
+        ideaTransportRestoreRef.current = {
+          startedByIdea,
+          metronomeBefore: services.transport.metronome,
+        };
+        if (startedByIdea) {
+          services.transport.setMetronome(true);
+          services.playback.playPause();
+        }
+      }
+      const docBpm = services.store.getDoc().bpm;
+      const rec = new PcmMicRecorder({ ctx, recovery: services.recordingRecovery });
+      ideaRecorderRef.current = rec;
+      rec.setMonitoring(ideaMicMonitor);
+      rec.onError = (message) => {
+        setError(message);
+        void teardownIdeaRecorder()
+          .catch(() => undefined)
+          .then(() => {
+            restoreIdeaTransport();
+            setIdeaRecording(false);
+          });
+      };
+      await rec.start(() => {
+        // Sample the transport tick as close to the first captured sample as
+        // possible — the grid quantize absorbs the residue.
+        if (beatSync) ideaStartTickRef.current = Math.max(0, services.transport.position);
+        return {
+          projectId: services.store.getDoc().id,
+          trackId: "",
+          trackName: "voice idea",
+          placeOnTimeline: false,
+          startBar: 0,
+          bpm: docBpm,
+        };
+      });
       setIdeaRecording(true);
-      setStatus("🎤 recording your idea — hum or sing the hook, then press stop");
+      const bpmNote = beatSync ? `the beat at ${docBpm} BPM` : "free time (nothing playing)";
+      setStatus(`🎤 recording with ${bpmNote} — hum the hook, press stop`);
     } catch (err) {
+      void teardownIdeaRecorder();
+      restoreIdeaTransport();
       setError(`🎤 mic unavailable: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
   const stopIdeaRecording = async () => {
-    const recorder = ideaRecorderRef.current;
-    if (!recorder || !ideaRecording) return;
+    if (!ideaRecording) return;
     setIdeaRecording(false);
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-      recorder.stop();
-    });
-    ideaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    ideaStreamRef.current = null;
+    const rec = ideaRecorderRef.current;
+    ideaRecorderRef.current = null;
+    const startTick = ideaStartTickRef.current;
+    const beatSync = ideaBeatSyncRef.current;
+    ideaStartTickRef.current = null;
+    restoreIdeaTransport();
+    if (!rec) return;
     try {
-      const blob = new Blob(ideaChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-      const arrayBuffer = await blob.arrayBuffer();
-      const ctx = new AudioContext();
-      let buffer: AudioBuffer;
-      try {
-        buffer = await ctx.decodeAudioData(arrayBuffer);
-      } finally {
-        await ctx.close();
+      const take = await rec.stop();
+      if (!take || take.buffer.length === 0) {
+        setError("🎤 nothing was captured — check that the microphone is not muted");
+        return;
       }
-      const pcm = resampleLinear(downmixToMono(buffer), buffer.sampleRate, 16000);
-      const result = await analyzeVoiceIdea(pcm, 16000);
+      try {
+        await services.recordingRecovery.remove(take.session.id);
+      } catch {
+        /* recovery cleanup is best-effort */
+      }
+      const channel = take.buffer.getChannelData(0);
+      const doc = services.store.getDoc();
+      const activePattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+      const result = await analyzeVoiceIdea(channel, take.buffer.sampleRate, {
+        ...(beatSync ? { bpm: doc.bpm } : {}),
+        ...(beatSync && startTick !== null ? { transportStartTick: startTick } : {}),
+        ...(beatSync && activePattern ? { patternLengthTicks: patternLengthTicks(activePattern) } : {}),
+      });
       if (!result) {
         setError("🎤 idea: could not analyze the recording — try again, hum louder");
         return;
@@ -1065,6 +1140,17 @@ export function IntentPanel() {
         >
           {songBusy ? "BUILDING…" : "♪ SONG"}
         </button>
+        <label
+          className="intent-monitor-toggle"
+          title="Hear yourself through the app — HEADPHONES ONLY (speakers feed back into the mic)"
+        >
+          <input
+            type="checkbox"
+            checked={ideaMicMonitor}
+            onChange={(event) => setIdeaMicMonitoring(event.target.checked)}
+          />
+          🔊
+        </label>
         <button
           type="button"
           className="btn intent-idea-btn"

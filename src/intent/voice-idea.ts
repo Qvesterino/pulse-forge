@@ -44,6 +44,13 @@ export interface VoiceIdeaOptions {
   track?: TrackPitchFn;
   /** Hum loop length in bars. Default 4. */
   loopBars?: number;
+  /**
+   * Beat-synced take: transport tick at the recording start — note times map
+   * from this position and wrap modulo `patternLengthTicks` (the loop grid).
+   */
+  transportStartTick?: number;
+  /** Loop grid length in ticks for the transportStartTick mapping. */
+  patternLengthTicks?: number;
 }
 
 export const DEFAULT_HUM_LOOP_BARS = 4;
@@ -74,6 +81,8 @@ export async function analyzeVoiceIdea(
             key: (keyEstimate?.key as IntentInput["key"]) ?? null,
             patternLengthTicks: loopTicks,
             quantize: true,
+            ...(options.transportStartTick !== undefined ? { transportStartTick: options.transportStartTick } : {}),
+            ...(options.patternLengthTicks !== undefined ? { patternLengthTicks: options.patternLengthTicks } : {}),
           })
         : [];
 

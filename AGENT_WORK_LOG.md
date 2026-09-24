@@ -3909,3 +3909,16 @@ audit doc.
 **Validation:** App/SceneLauncher/fine-grained-selectors/ArrangementPanel/arrangement-variations/mixer-audit 46/46; tsc campaign-clean.
 
 **Remaining backlog:** B3 (syncProject cache churn — engine zone, coordinate), B5 (PianoRoll virtualization — bigger redesign), B6 (scheduler per-event finds — tracksById Map), A4/A6/A7/A9, D-consistency.
+
+---
+
+## GOAL 37 — IDEA LIVE MONITORING + BEAT-SYNC (2026-09-22)
+
+**„Počuješ beat už počas humovania."** IDEA flow prepnutý z MediaRecorder (decode + codec jitter) na **PcmMicRecorder** (sample-accurate PCM, rovnaká infra ako nahrávanie — shared claim + recovery):
+
+- **Beat-sync**: pri štarte nahrávania sa zarotuje transport (pattern + click; len ak nehral — restore po skončení: playPause back + metronome). `ideaStartTickRef` zachytí `services.transport.position` pri prvej vzorke (start callback), `transportStartTick` + aktívny pattern loop ticks sa passujú do `analyzeVoiceIdea` → noty padajú NA GRID a tempo = presné `doc.bpm` (flux estimátor sa nepoužije — nie je treba).
+- **Free-time fallback**: mimo pattern playbacku žiadny sync — flux estimátor ako doteraz.
+- **🔊 monitor toggle** (default OFF — speaker feedback hazard, hint "headphones"): `rec.setMonitoring` live počas nahrávania.
+- Beat-sync nutný passthrough v `analyzeVoiceIdea` options (`transportStartTick`, `patternLengthTicks` → framesToNotes).
+
+Regresia 271/271 cez 28 súborov; typecheck 0.
