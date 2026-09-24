@@ -306,3 +306,27 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parseIntentText("brazilian phonk").input.genre).toBe("phonk");
   });
 });
+
+describe("genre-depth wave 2 — techno hard/melodic + trap lux/hyper", () => {
+  it("hard techno / klangkuenstler resolve to the hard groove family", () => {
+    expect(parseIntentText("hard techno at 150").input.genre).toBe("techno");
+    expect(parseIntentText("melodic techno at 126").input.genre).toBe("techno");
+    expect(parseIntentText("melodic techno at 126").input.style).toBe("melodic");
+  });
+
+  it("trap: lux and hyper styles resolve", () => {
+    expect(parseIntentText("lux trap at 122").input.style).toBe("lux");
+    expect(parseIntentText("hyper trap at 150").input.style).toBe("hyper");
+  });
+
+  it("new groove definitions exist with valid 16-step shapes", () => {
+    for (const id of ["techno.hard", "techno.melodic", "trap.lux", "trap.hyper"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+  });
+});

@@ -4154,3 +4154,12 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validation:** presets/kick-bank/fx-expansion 29/29; tsc campaign-clean. Sample contract now covers tonal + mallet + perc packs.
 
 **Remaining backlog:** A7 (EQ legacy shelf range), A9 (dB/threshold unification decisions), D-consistency (documentation) — decisions/documentation only.
+
+---
+
+## GOAL 43b — STYLE_PHRASES + NOVÉ GROOVES (2026-09-24, pokračovanie)
+
+- **STYLE_PHRASES +6**: melodic(ke/a), hyper, lux/lush, roller(i/y)/roluj, amen/chop, horror(core)/horor — všetky deaccentované. BOL BS-byte problém (python heredoc escape) — vyriešené step-by-step byte replace s fsync + overením.
+- **Žánrové frázy**: „hard techno" a „melodic techno" už boli v GENRE_PHRASES; nové grooves (techno.hard, techno.melodic, trap.lux, trap.hyper) dosiahnuteľné cez style frázy („melodic techno at 126" → genre techno + style melodic → techno.melodic groove).
+- **Testy** +6 (wave 2: hard/melodic/lux/hyper štýly + groove validity 16-step). Regresia **329/329 cez 30 súborov**; typecheck 0.
+- Panel wiring netreba — style frázy tečú cez existujúci parseIntentText → resolveGroove pipeline.
