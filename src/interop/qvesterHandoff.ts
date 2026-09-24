@@ -20,11 +20,16 @@
  */
 import type { MusicalKey, ProjectDocument } from "../project-model/types";
 import { renderProject, type RenderOptions } from "../rendering/renderer";
+import { buildStemProject } from "../rendering/stems";
 import { encodeWavAsync } from "../rendering/wav";
+import { roleOfTrack } from "../effects/role-presets";
 import type { SampleBank } from "../sample-library/factory";
 
 export const KYX_HANDOFF_INTENT = "send_beat_to_audio_canvas";
 export const KYX_ARTIFACT_TYPE = "audio_master";
+export const KYX_SOURCE_MAP_ARTIFACT_TYPE = "kyx_source_map";
+/** Bound on per-track stems per send — keeps the shared IDB payload sane. */
+export const KYX_MAX_STEMS = 6;
 export const HANDOFF_DB_NAME = "qvester-audio-handoff";
 export const HANDOFF_STORE_NAME = "blobs";
 export const HANDOFF_TTL_MS = 30 * 60 * 1000;
@@ -100,6 +105,31 @@ export interface BeatHandoffRecord {
   sampleRate: number;
   byteLength: number;
   createdAt: number;
+  /** Stem records only: which track this isolated render belongs to. */
+  trackName?: string;
+  /** Stem records only: the mapped FxTrackRole (drums/bass/chords/lead). */
+  role?: string;
+}
+
+export interface KyxSourceMapEntry {
+  hash: string;
+  trackName: string;
+  role: string;
+  durationSec: number;
+  byteLength: number;
+}
+
+/** Non-group tracks in document order, capped — the tool map of the send. */
+export function buildSourceMapEntries(
+  doc: ProjectDocument,
+): Array<{ trackId: string; trackName: string; role: string }> {
+  return doc.tracks
+    .filter((t) => (t as { kind: string }).kind !== "group")
+    .slice(0, KYX_MAX_STEMS)
+    .map((t) => {
+      const track = t as { id: string; name: string };
+      return { trackId: track.id, trackName: track.name, role: roleOfTrack(t as never) ?? "lead" };
+    });
 }
 
 /** Reconstruct the handoff WAV as a Blob (the receiver wraps it in a File). */
@@ -178,7 +208,7 @@ export interface BeatHandoffPacket {
   ttl: number;
   payload: {
     inputs: Array<{
-      type: typeof KYX_ARTIFACT_TYPE;
+      type: string;
       label: string;
       uri: string;
       value: string;
@@ -199,7 +229,11 @@ function generateHandoffId(): string {
   return `kyx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function buildBeatHandoffPacket(record: BeatHandoffRecord, doc: ProjectDocument): BeatHandoffPacket {
+export function buildBeatHandoffPacket(
+  record: BeatHandoffRecord,
+  doc: ProjectDocument,
+  sourceMap: KyxSourceMapEntry[] = [],
+): BeatHandoffPacket {
   const createdAt = Date.now();
   const key = keyToCamelot(doc.key);
   const metadata = {
@@ -212,6 +246,24 @@ export function buildBeatHandoffPacket(record: BeatHandoffRecord, doc: ProjectDo
     sampleRate: record.sampleRate,
     byteLength: record.byteLength,
   };
+  const inputs: BeatHandoffPacket["payload"]["inputs"] = [
+    {
+      type: KYX_ARTIFACT_TYPE,
+      label: `${record.name} (KYX render)`,
+      uri: `qvester-blob:${record.hash}`,
+      value: JSON.stringify(metadata),
+      metadata: { format: "audio/wav", transport: "local-reference" },
+    },
+  ];
+  if (sourceMap.length > 0) {
+    inputs.push({
+      type: KYX_SOURCE_MAP_ARTIFACT_TYPE,
+      label: `Instrument map — ${sourceMap.length} track(s)`,
+      uri: `qvester-blob:${record.hash}`,
+      value: JSON.stringify({ stems: sourceMap }),
+      metadata: { roles: [...new Set(sourceMap.map((e) => e.role))] },
+    });
+  }
   return {
     version: "2.0",
     handoffId: generateHandoffId(),
@@ -224,17 +276,9 @@ export function buildBeatHandoffPacket(record: BeatHandoffRecord, doc: ProjectDo
     expiresAt: createdAt + HANDOFF_TTL_MS,
     ttl: HANDOFF_TTL_MS,
     payload: {
-      inputs: [
-        {
-          type: KYX_ARTIFACT_TYPE,
-          label: `${record.name} (KYX render)`,
-          uri: `qvester-blob:${record.hash}`,
-          value: JSON.stringify(metadata),
-          metadata: { format: "audio/wav", transport: "local-reference" },
-        },
-      ],
+      inputs,
       recommendedAction:
-        "Bind the beat as the audio source — the deterministic analysis (bpm/key/beatGrid) then drives the reactive visuals.",
+        "Bind the beat as the audio source — the deterministic analysis (bpm/key/beatGrid) then drives the reactive visuals. The instrument map lists per-track stems you can bind instead to isolate one instrument.",
     },
     returnTarget: { appId: "pulse_forge", route: "/pulse-forge", mode: "manual" },
     tracking: { createdAt: new Date(createdAt).toISOString() },
@@ -283,15 +327,40 @@ export interface SendBeatOptions {
 export interface SendBeatResult {
   packet: BeatHandoffPacket;
   record: BeatHandoffRecord;
+  /** Per-track stems (master record excluded) — the instrument map of the send. */
+  sourceMap: KyxSourceMapEntry[];
 }
 
-/** Render the current project, store the WAV, persist the handoff packet.
- *  Navigation is the caller's job (returns the target URL in packet form). */
+async function renderStemWav(
+  doc: ProjectDocument,
+  bank: SampleBank,
+  trackId: string,
+  options: SendBeatOptions,
+): Promise<{ bytes: ArrayBuffer; durationSec: number; sampleRate: number }> {
+  const stemDoc = buildStemProject(doc, (t) => t.id === trackId);
+  // Stems skip the master limiter/glue stage (same convention as the stems
+  // export) — each tool is heard in isolation.
+  const buffer = await renderProject(stemDoc, bank, {
+    mode: options.mode,
+    sampleRate: options.sampleRate,
+    ...(options.quality !== undefined ? { quality: options.quality } : {}),
+    masterProcessing: false,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const bytes = await encodeWavAsync(buffer, 16, {
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  return { bytes, durationSec: buffer.duration, sampleRate: buffer.sampleRate };
+}
+
+/** Render the current project (master + per-track stems), store everything,
+ *  persist the handoff packet. Navigation is the caller's job. */
 export async function prepareBeatHandoff(
   doc: ProjectDocument,
   bank: SampleBank,
   options: SendBeatOptions,
 ): Promise<SendBeatResult> {
+  const createdAt = Date.now();
   const buffer = await renderProject(doc, bank, {
     mode: options.mode,
     sampleRate: options.sampleRate,
@@ -314,12 +383,46 @@ export async function prepareBeatHandoff(
     durationSec: buffer.duration,
     sampleRate: buffer.sampleRate,
     byteLength: wavBytes.byteLength,
-    createdAt: Date.now(),
+    createdAt,
   };
   await storeBeatBlob(record);
-  const packet = buildBeatHandoffPacket(record, doc);
+
+  // ── Instrument map: one isolated stem per non-group track ──
+  const entries = buildSourceMapEntries(doc);
+  const sourceMap: KyxSourceMapEntry[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    options.onProgress?.((i + 0.5) / (entries.length + 1), `Rendering stem: ${entry.trackName}…`);
+    const stem = await renderStemWav(doc, bank, entry.trackId, options);
+    const stemHash = await sha256Hex(stem.bytes);
+    const stemRecord: BeatHandoffRecord = {
+      hash: stemHash,
+      wav: stem.bytes,
+      name: `${doc.name} — ${entry.trackName}`,
+      bpm: Number.isFinite(doc.bpm) ? doc.bpm : null,
+      key: doc.key ?? null,
+      mode: keyToCamelot(doc.key).mode,
+      camelot: keyToCamelot(doc.key).camelot,
+      durationSec: stem.durationSec,
+      sampleRate: stem.sampleRate,
+      byteLength: stem.bytes.byteLength,
+      createdAt,
+      trackName: entry.trackName,
+      role: entry.role,
+    };
+    await storeBeatBlob(stemRecord);
+    sourceMap.push({
+      hash: stemHash,
+      trackName: entry.trackName,
+      role: entry.role,
+      durationSec: stem.durationSec,
+      byteLength: stem.bytes.byteLength,
+    });
+  }
+
+  const packet = buildBeatHandoffPacket(record, doc, sourceMap);
   if (!persistBeatHandoffPacket(packet)) {
     throw new Error("WebStorage rejected the handoff packet (private mode or quota) — nothing was sent.");
   }
-  return { packet, record };
+  return { packet, record, sourceMap };
 }

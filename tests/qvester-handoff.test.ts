@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildAudioCanvasHandoffUrl,
   buildBeatHandoffPacket,
+  buildSourceMapEntries,
   HANDOFF_TTL_MS,
   KYX_ARTIFACT_TYPE,
   KYX_HANDOFF_INTENT,
@@ -15,6 +16,7 @@ import {
   type BeatHandoffRecord,
 } from "../src/interop/qvesterHandoff";
 import type { ProjectDocument } from "../src/project-model/types";
+import { createProjectFromTemplate } from "../src/project-model/templates";
 
 /**
  * QVESTER handoff (KYX beat → Audio Canvas). The packet follows the
@@ -146,5 +148,51 @@ describe("beat blob store (shared IndexedDB)", () => {
     await storeBeatBlob(fresh);
     expect(await readBeatBlob(old.hash)).toBeNull();
     expect(await readBeatBlob(fresh.hash)).not.toBeNull();
+  });
+});
+
+describe("source map (instrument mapping)", () => {
+  it("maps every non-group track to its role via roleOfTrack", () => {
+    const doc = createProjectFromTemplate("house");
+    const entries = buildSourceMapEntries(doc);
+    expect(entries.length).toBeGreaterThan(0);
+    const roles = entries.map((e) => e.role);
+    expect(roles).toContain("drums");
+    expect(roles).toContain("bass");
+    expect(entries.every((e) => e.trackId.length > 0 && e.trackName.length > 0)).toBe(true);
+  });
+
+  it("caps the map at six stems", () => {
+    const doc = createProjectFromTemplate("house");
+    // pad with extra non-group tracks beyond the cap
+    const base = doc.tracks[doc.tracks.length - 1]!;
+    for (let i = 0; i < 9; i++) {
+      doc.tracks.push({ ...(base as object), id: `extra-${i}`, name: `Extra ${i}` } as never);
+    }
+    const entries = buildSourceMapEntries(doc);
+    expect(entries.length).toBeLessThanOrEqual(6);
+  });
+
+  it("carries the source map as a second artifact with per-stem pointers", () => {
+    const doc = createProjectFromTemplate("house");
+    const record = fakeRecord();
+    const sourceMap = [
+      { hash: "d".repeat(64), trackName: "Drums", role: "drums", durationSec: 9.6, byteLength: 100 },
+      { hash: "e".repeat(64), trackName: "808", role: "bass", durationSec: 9.6, byteLength: 100 },
+    ];
+    const packet = buildBeatHandoffPacket(record, doc, sourceMap);
+    expect(packet.payload.inputs.length).toBe(2);
+    const map = packet.payload.inputs[1]!;
+    expect(map.type).toBe("kyx_source_map");
+    const parsed = JSON.parse(map.value!) as { stems: Array<{ trackName: string; role: string; hash: string }> };
+    expect(parsed.stems.length).toBe(2);
+    expect(parsed.stems[0]).toMatchObject({ trackName: "Drums", role: "drums", hash: "d".repeat(64) });
+    expect(map.metadata).toMatchObject({ roles: ["drums", "bass"] });
+  });
+
+  it("omits the source map artifact when no stems are mapped", () => {
+    const packet = buildBeatHandoffPacket(fakeRecord(), fakeDoc(), []);
+    expect(packet.payload.inputs.length).toBe(1);
+    expect(packet.payload.inputs[0]!.type).toBe("audio_master");
   });
 });
