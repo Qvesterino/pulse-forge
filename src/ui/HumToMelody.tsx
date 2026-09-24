@@ -246,6 +246,9 @@ export function HumToMelodyPanel({
   const [contour, setContour] = useState<{ frames: PitchFrame[]; anchorTick: number | null } | null>(null);
   const recRef = useRef<PcmMicRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
+  /** Analyze-phase cancellation — aborting the pitch-tracking worker run and
+   *  gating every setState after an await (unmount / re-entry safety). */
+  const analyzeAbortRef = useRef<AbortController | null>(null);
   /** Pending AUDITION timeouts — cleared for instant stop (nothing is ever
    *  scheduled ahead inside the engine, so clearing = silence). */
   const auditionTimersRef = useRef<number[]>([]);
@@ -304,7 +307,8 @@ export function HumToMelodyPanel({
   };
 
   // Leftover recorder at unmount would keep the mic stream alive — and a
-  // transport WE started must stop with the panel (pending audition notes too).
+  // transport WE started must stop with the panel (pending audition notes and
+  // an in-flight pitch-tracking run too).
   useEffect(
     () => () => {
       const rec = recRef.current;
@@ -316,6 +320,8 @@ export function HumToMelodyPanel({
       if (timerRef.current !== null) clearInterval(timerRef.current);
       for (const t of auditionTimersRef.current) clearTimeout(t);
       auditionTimersRef.current = [];
+      analyzeAbortRef.current?.abort();
+      analyzeAbortRef.current = null;
       restoreTransport();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -450,19 +456,24 @@ export function HumToMelodyPanel({
         onsets,
         ...(startTick !== null ? { transportStartTick: startTick } : {}),
       });
+      if (analyzeAbort.signal.aborted) return;
       if (extracted.length === 0) {
         setPhase("error");
         setError("No steady pitches found — hum louder and hold each note a beat or two.");
         return;
       }
+      analyzeAbortRef.current = null;
       setNotes(extracted);
       // Keep the contour inputs so the canvas can draw hum-vs-notes: raw
       // frames + the transport anchor that mapped them into pattern space.
       setContour({ frames, anchorTick: startTick });
       setPhase("preview");
     } catch (err) {
+      if (analyzeAbort.signal.aborted) return;
       setPhase("error");
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (analyzeAbortRef.current === analyzeAbort) analyzeAbortRef.current = null;
     }
   };
 

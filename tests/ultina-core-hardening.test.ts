@@ -491,8 +491,9 @@ describe("normalizeProject: flagship deep params survive load", () => {
     const loaded = normalizeProject(JSON.parse(JSON.stringify(tuned)));
     const after = findEffect(firstInstrumentTrack(loaded), "ultina");
     expect(after.params["eq.band3.gainDb"]).toBe(-6);
-    // Rack params keep their rack defaults/clamps.
-    expect(after.params["global.mix"]).toBe(100);
+    // Rack params keep their rack defaults/clamps — session A6 unified the
+    // flagship mixes to 0..1, so the legacy 0..100 default rescales on load.
+    expect(after.params["global.mix"]).toBe(1);
   });
 
   it("unknown ids are dropped and out-of-range values clamped on restore", () => {

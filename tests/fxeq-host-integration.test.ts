@@ -314,13 +314,17 @@ describe("FXEQ host-integration audit fixes (2026-09-19)", () => {
     expect(render(-24)).toBeLessThan(-15);
   });
 
-  it("normalizePluginParams keeps the rack `mix` and mirrors it to globalMix", () => {
+  it("normalizePluginParams keeps the rack `mix` and mirrors it to globalMix (A6: 0..1 doc scale)", () => {
+    // Session A6 unified the flagship rack mixes to 0..1: a legacy 0..100
+    // stored value rescales ONCE here; the doc shape is 0..1 from now on.
     const out = normalizePluginParams("fxeq", { bandCount: 4, mix: 42, inputGainDb: -6 });
     expect(out).not.toBeNull();
-    expect(out!.mix).toBe(42);
-    expect(out!.globalMix).toBe(42);
+    expect(out!.mix).toBeCloseTo(0.42, 5);
+    expect(out!.globalMix).toBeCloseTo(0.42, 5);
     expect(out!.inputGainDb).toBe(-6);
-    expect(normalizePluginParams("fxeq", { mix: 500 })!.mix).toBe(100);
+    expect(normalizePluginParams("fxeq", { mix: 500 })!.mix).toBeCloseTo(1, 5); // clamped after rescale
     expect(normalizePluginParams("fxeq", { mix: -20 })!.mix).toBe(0);
+    // Already-scaled values pass through untouched (idempotent).
+    expect(normalizePluginParams("fxeq", { mix: 0.42 })!.mix).toBeCloseTo(0.42, 5);
   });
 });
