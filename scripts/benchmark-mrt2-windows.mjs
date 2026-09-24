@@ -14,12 +14,15 @@
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
 
 const HOST_PATH = process.env.KYX_MRT2_WINDOWS_HOST;
 const MODEL_ROOT = process.env.KYX_MRT2_WINDOWS_MODEL_ROOT;
 const DURATION_SECONDS = Number(process.env.KYX_MRT2_BENCHMARK_SECONDS ?? 10);
 const BENCHMARK_MODE = process.env.KYX_MRT2_BENCHMARK_MODE ?? "capture";
+const REPORT_PATH = process.env.KYX_MRT2_BENCHMARK_REPORT;
 const FRAME_HEADER_BYTES = 32;
 const MAX_FRAME_BYTES = 5_760_288;
 const MAX_BENCHMARK_SECONDS = BENCHMARK_MODE === "live" ? 600 : 120;
@@ -32,6 +35,9 @@ if (!Number.isFinite(DURATION_SECONDS) || DURATION_SECONDS < 1 || DURATION_SECON
 }
 if (BENCHMARK_MODE !== "capture" && BENCHMARK_MODE !== "live") {
   throw new Error("KYX_MRT2_BENCHMARK_MODE must be capture or live");
+}
+if (REPORT_PATH && (REPORT_PATH.length > 4096 || REPORT_PATH.includes("\0"))) {
+  throw new Error("KYX_MRT2_BENCHMARK_REPORT must be a bounded filesystem path");
 }
 
 const child = spawn(HOST_PATH, ["--model-root", MODEL_ROOT], {
@@ -46,9 +52,11 @@ let startupReady = false;
 let exitError = null;
 const controls = [];
 const audioPackets = [];
+const statusEvents = [];
 const waiters = [];
 let previousSequence = null;
 let sequenceGapCount = 0;
+let underrunCount = 0;
 
 function fail(error) {
   const reason = error instanceof Error ? error : new Error(String(error));
@@ -103,6 +111,10 @@ function waitFor(predicate, timeoutMs = 15_000) {
 
 function deliverControl(message) {
   controls.push(message);
+  if (message?.type === "status") {
+    statusEvents.push({ state: message.state, receivedAt: performance.now() });
+    if (message.state === "buffering") underrunCount++;
+  }
   for (let index = waiters.length - 1; index >= 0; index--) {
     const waiter = waiters[index];
     if (!waiter.predicate(message)) continue;
@@ -247,6 +259,7 @@ try {
   const inputReceivedAt = performance.now();
   const startedAt = performance.now();
   let operationResponseAt = startedAt;
+  let operationFrames = null;
   if (BENCHMARK_MODE === "live") {
     const startRequest = requestId("start");
     sendControl(transportId, { version: 1, type: "session.start", requestId: startRequest, sessionId });
@@ -262,7 +275,11 @@ try {
       sessionId,
       durationSec: DURATION_SECONDS,
     });
-    await waitFor((message) => message.type === "capture.ok" && message.requestId === captureRequest, 600_000);
+    const capture = await waitFor(
+      (message) => message.type === "capture.ok" && message.requestId === captureRequest,
+      600_000,
+    );
+    operationFrames = capture.frames;
     operationResponseAt = performance.now();
   }
   const endedAt = performance.now();
@@ -278,6 +295,7 @@ try {
   const result = {
     backendId: hello.runtimeProfile?.backendId ?? "unknown",
     benchmarkMode: BENCHMARK_MODE,
+    requestedSeconds: DURATION_SECONDS,
     executionMode: hello.runtimeProfile?.executionMode ?? (hello.supportsRealtime ? "realtime" : "capture"),
     runtimeVersion: hello.runtimeProfile?.runtimeVersion ?? null,
     advertisedLatencyMs: hello.runtimeProfile?.measuredLatencyMs ?? null,
@@ -288,6 +306,7 @@ try {
     generatedSeconds,
     measuredRealtimeFactor: realtimeFactor,
     packetCount: audioPackets.length,
+    captureResponseFrames: operationFrames,
     packetIntervalP95Ms: packetIntervals.length ? packetIntervals[p95Index] : null,
     timing: {
       startupReadyMs: readyAt - processStartedAt,
@@ -296,17 +315,28 @@ try {
       operationResponseMs: operationResponseAt - startedAt,
     },
     sequenceGapCount,
+    underrunCount,
+    statusEvents,
     finitePcm: audioPackets.every((packet) => packet.finite),
     gate: {
+      hasAudioPackets: audioPackets.length > 0,
       frameP95Under32Ms:
         (hello.runtimeProfile?.frameP95Ms ?? (packetIntervals.length ? packetIntervals[p95Index] : Infinity)) < 32,
       realtimeFactorAtLeast1_25: realtimeFactor >= 1.25,
+      outputCoverageAtLeast99Percent: generatedSeconds >= DURATION_SECONDS * 0.99,
+      captureResponseMatchesPcm:
+        BENCHMARK_MODE !== "capture" || (operationFrames !== null && operationFrames === outputFrames),
       producedFinite48kStereo:
         audioPackets.every((packet) => packet.sampleRate === 48_000 && packet.channels === 2) &&
         audioPackets.every((packet) => packet.finite),
       noSequenceGaps: sequenceGapCount === 0,
+      noUnderruns: underrunCount === 0,
     },
   };
+  if (REPORT_PATH) {
+    await mkdir(path.dirname(path.resolve(REPORT_PATH)), { recursive: true });
+    await writeFile(REPORT_PATH, JSON.stringify(result, null, 2) + "\n", "utf8");
+  }
   console.log(JSON.stringify(result, null, 2));
   sendControl(transportId, { version: 1, type: "session.stop", requestId: requestId("stop"), sessionId });
   sendControl(transportId, { version: 1, type: "session.close", requestId: requestId("close"), sessionId });

@@ -265,3 +265,32 @@
   border-color: var(--accent, #f59e0b);
   color: var(--accent, #f59e0b);
 }
+
+/* ── Vocal take card (V-roadmap V1: "producer listens") ─────────────── */
+.intent-take-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 208, 0, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 208, 0, 0.06);
+  padding: 6px 10px;
+  margin: 6px 0;
+  font: 11px var(--mono, monospace);
+}
+
+.intent-take-lines {
+  color: #ffd000;
+  letter-spacing: 0.4px;
+}
+
+.intent-take-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.intent-take-clear:hover {
+  color: #f87171;
+}

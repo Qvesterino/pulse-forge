@@ -5,10 +5,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { createWindowsMrt2Manifest, verifyWindowsMrt2Manifest } = require("../desktop/mrt2-windows-assets.cjs") as {
-  createWindowsMrt2Manifest: (options: Record<string, string>) => Record<string, unknown>;
-  verifyWindowsMrt2Manifest: (options: Record<string, string>) => Promise<Record<string, unknown>>;
-};
+const { createWindowsMrt2Manifest, readManifest, verifyWindowsMrt2Manifest } =
+  require("../desktop/mrt2-windows-assets.cjs") as {
+    createWindowsMrt2Manifest: (options: Record<string, string>) => Record<string, unknown>;
+    readManifest: (manifestPath: string) => Record<string, unknown>;
+    verifyWindowsMrt2Manifest: (options: Record<string, string>) => Promise<Record<string, unknown>>;
+  };
 
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), "kyx-mrt2-assets-"));
@@ -47,5 +49,21 @@ describe("MRT2 Windows package manifest", () => {
     expect(result.errors).toEqual(expect.arrayContaining(["companion: SHA-256 does not match manifest"]));
     expect((result.errors as string[]).some((error) => error.includes("mrt2_small.safetensors"))).toBe(true);
     expect(readFileSync(paths.manifestPath, "utf8")).toContain('"modelLicense": "CC-BY-4.0"');
+  });
+
+  it("rejects unlisted model files and manifest paths outside the managed asset roots", async () => {
+    const paths = fixture();
+    createWindowsMrt2Manifest(paths);
+    writeFileSync(path.join(paths.modelRoot, "resources", "unexpected.bin"), Buffer.from("extra"));
+    const result = await verifyWindowsMrt2Manifest(paths);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("model: unlisted asset resources/unexpected.bin");
+
+    const manifest = readManifest(paths.manifestPath) as {
+      modelRoot: { files: Array<Record<string, unknown>> };
+    };
+    manifest.modelRoot.files[0]!.path = "outside/asset.bin";
+    writeFileSync(paths.manifestPath, JSON.stringify(manifest), "utf8");
+    expect(() => readManifest(paths.manifestPath)).toThrow(/invalid model file entry/u);
   });
 });

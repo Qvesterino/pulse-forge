@@ -174,19 +174,24 @@ export type RoutedIntent =
  * executors. Priority:
  *   1. ARRANGE — the doc has scenes and the text parses into arrangement ops
  *      ("shorten the intro", "add a break before the drop").
- *   2. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
+ *   2. FADER — a NAMED track fader ask ("zníž basu", "hlasitosť 808s o 10 %"):
+ *      targeted beats global, so it wins over the loudness loop below.
+ *   3. LOUDNESS — untargeted louder/quieter shouts ("make it louder") and
+ *      explicit targets ("loudness na −9") — the master measure→trim loop.
+ *   4. TEMPO / POP VIBE — "tempo na 128", "popovejšie".
+ *   5. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
  *      target × direction ("viac delayu na leade", "remove reverb from the
  *      bass") — more specific than the mix profile, so it wins over it.
- *   3. PRODUCTION — a production concept ("darker", "punchier", "deeper"…)
+ *   6. PRODUCTION — a production concept ("darker", "punchier", "deeper"…)
  *      with an EXPLICIT target track named ("make the drums darker") and no
  *      genre signal: the user said WHERE, so the change lands on that track's
  *      FX (mirrors the GENERATE button's production path). Without a named
  *      target, tone comparatives stay with the mix profile.
- *   4. MIX — mix nouns/verbs or tone comparatives without a target ("more
+ *   7. MIX — mix nouns/verbs or tone comparatives without a target ("more
  *      reverb", "punchier", "darker mix") — SOUND processing.
- *   5. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
+ *   8. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
  *      result, same seed (identity preserved).
- *   6. PATTERN — everything else is a generation intent (default).
+ *   9. PATTERN — everything else is a generation intent (default).
  * Ambiguity is resolved toward the LEAST destructive interpretation: arrange
  * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
  * revise only on comparative + attribute pairs.
@@ -198,15 +203,19 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
       return { kind: "arrange", ops: arrange.ops, unrecognized: arrange.unrecognized };
     }
   }
-  const loudness = parseLoudnessIntent(text);
-  if (loudness) {
-    return { kind: "loudness", parse: loudness };
-  }
   // GOAL 38 conversation intents — everyday producer asks: per-track fader,
-  // project tempo, and the "popovejšie"-style vibe composite.
+  // project tempo, and the "popovejšie"-style vibe composite. Fader runs
+  // BEFORE loudness on purpose: a NAMED track ("hlasitosť 808s", "louder
+  // bass") is a track ask, the master loop only owns untargeted shouts
+  // ("make it louder"). parseFaderIntent is null without a target, so the
+  // global path below is untouched.
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
+  }
+  const loudness = parseLoudnessIntent(text);
+  if (loudness) {
+    return { kind: "loudness", parse: loudness };
   }
   const tempo = parseTempoIntent(text);
   if (tempo) {

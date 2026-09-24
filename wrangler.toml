@@ -1,0 +1,19 @@
+name = "kyx"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "dist"
+
+# Cloudflare Pages deploy (Audit 14 / deploy readiness):
+#   npm run build            → dist/ (app shell + precache + worklets)
+#   npx wrangler pages deploy  → uses pages_build_output_dir above
+#
+# First-time setup (CLI):  npx wrangler pages login
+#                          npx wrangler pages project create kyx --production-branch=main
+# Then `npm run deploy:cf` works without flags.
+#
+# Dashboard alternative: Workers & Pages → Create → Pages → "Upload assets"
+# → drag dist/ after `npm run build`. Same result, no CLI.
+#
+# NOTE: the collab/gallery server (server/collab-server.mjs) is a Node
+# websocket app — Cloudflare Pages hosts only the STATIC app. Point clients
+# at a Node host (Fly.io / Railway / VPS) via KYX_COLLAB_URL, or leave collab
+# self-hosted (the deployed-smoke marks those checks as skipped).

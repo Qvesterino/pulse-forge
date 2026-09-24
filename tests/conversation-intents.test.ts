@@ -132,6 +132,61 @@ describe("router wiring", () => {
     // pattern requests still win their own route
     expect(routeIntentText("dark techno at 138", doc).kind).toBe("pattern");
   });
+
+  it("named tracks beat the global loudness loop", () => {
+    const doc = testDoc();
+    // "hlasitosť 808s" names a track → fader, not the master nudge
+    const routed = routeIntentText("zvýš hlasitosť 808s o 10%", doc);
+    expect(routed.kind).toBe("fader");
+    if (routed.kind === "fader") {
+      expect(routed.intent.targets).toContain("bass");
+      expect(routed.intent.direction).toBe("up");
+      expect(routed.intent.percent).toBe(10);
+    }
+    // untargeted shouts still belong to loudness
+    expect(routeIntentText("make it louder", doc).kind).toBe("loudness");
+    expect(routeIntentText("hlasitosť hore", doc).kind).toBe("loudness");
+  });
+});
+
+describe("fader percent + 808 targets", () => {
+  it("parses o 10 % with 808s target", () => {
+    expect(parseFaderIntent("zvýš hlasitosť 808s o 10%")).toEqual({
+      targets: ["bass"],
+      pads: [],
+      direction: "up",
+      amount: "normal",
+      percent: 10,
+    });
+  });
+
+  it("word fractions and EN forms", () => {
+    expect(parseFaderIntent("stíš basu o polovicu")?.percent).toBe(50);
+    expect(parseFaderIntent("turn down the drums by 25 percent")?.percent).toBe(25);
+    expect(parseFaderIntent("bass hore +30%")?.percent).toBe(30);
+  });
+
+  it("808 inflections and hlasitosť noun match", () => {
+    expect(parseFaderIntent("stíš 808s")?.targets).toContain("bass");
+    expect(parseFaderIntent("urob 808ky hlasitejšie")?.direction).toBe("up");
+    expect(parseFaderIntent("hlasitosť basov hore")?.targets).toContain("bass");
+  });
+
+  it("percent drives exact relative gain (10 % → ×1.10)", () => {
+    const doc = testDoc();
+    const commands = applyFaderIntent(doc, { targets: ["master"], direction: "up", percent: 10 });
+    const next = commands[0].execute(doc);
+    const before = doc.master?.masterGain ?? 1;
+    expect(next.master?.masterGain).toBeCloseTo(before * 1.1, 2);
+    const down = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 10 })[0].execute(doc);
+    expect(down.master?.masterGain).toBeCloseTo(before * 0.9, 2);
+  });
+
+  it("down 100 % mutes without going negative", () => {
+    const doc = testDoc();
+    const next = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 100 })[0].execute(doc);
+    expect(next.master?.masterGain).toBe(0);
+  });
 });
 
 describe("fader amount modifiers + per-pad targets (GOAL 40)", () => {

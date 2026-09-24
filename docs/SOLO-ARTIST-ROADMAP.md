@@ -149,10 +149,11 @@ Beatmakerov obsluhuje každý druhý nástroj. **Človek s hlasom a telefónom, 
 - **V1 engine HOTOVÉ** (`src/vocal/` — 18 testov zelených):
   - `types.ts` (VocalProfile + hash), `analyze.ts` (buildVocalProfile: Goertzel/Krumhansl key + transient tempo z `ai/audio-tempo-key.ts`, vlastné energy/frázy/SNR + honesty gates), `analyzer-worker.ts` + `analyzer-client.ts` (lazy worker, timeout, breaker, sync fallback — DSP je pure),
   - `adapt.ts` (key transpose shortest-path + tempo cez kanonický `setBpm`, 1 undo krok, drums imunné).
-- **V1.4 UI ODLOŽENÉ (nevynechané):** `IntentPanel.tsx`/`compose.ts` práve stavia paralelná voice-idea session (hum→lead flow, rozpracované). Vokálna karta sa namontuje po jej pristátí; zdieľaný slovník je pripravený (`summarizeVocalProfile` v `notes.ts`).
-- **PCM resolver HOTOVÝ:** `vocal/resolve.ts` (clip → bank buffer → mono PCM + trim window + gain, pure, 6 testov) — analyzér už vie čítať priamo arrangement take; file drop netreba.
+- **V1.4 UI HOTOVÉ:** 🎤 TAKE button + karta v `IntentPanel.tsx` (vedľa 🎧 VOCAL, štýly v `17-effect-intent.css`): longest-clip analyze → card riadky → KEY / TEMPO / ♪ SONG (potrebuje textový prompt — take ho ohýba) / ×. Každý SONG draft automaticky nesie meraný profil.
+- **PCM resolver HOTOVÝ:** `vocal/resolve.ts` (clip → bank buffer → mono PCM + trim window + gain, pure, 6 testov) — karta číta priamo arrangement take; file drop netreba.
+- **`composeFullTrack` vocal-wiring HOTOVÉ:** `ComposeOptions.vocalProfile` (efekt má len meraný profil) → `buildSong` bend + pocket mix; nemenaný profil stavia legacy song (uzamknuté testom).
 - **V2 engine HOTOVÉ:** `vocal/form.ts` (span energy + section adjust, identita pri 0.5) + `buildSong({vocalProfile})` (append-only, bez profilu bit-identicky); pocket mix (`planMixProfile(…, {vocalPresent})` — high-mid dip 2.8 kHz na chords/lead); loudness meria song mód vrátane audioClipov (overené seam testom s injektovaným renderom). Testy `vocal-form` (4) + `vocal-produce` (4).
 - **V3 engine HOTOVÉ:** `notes.ts` (SK+EN šablóny, len merané polia), `revise.ts` (phrase→role + delegácia na C3 `reviseSection`, `song.ts` nemenene), `sessions.ts` (lokálny ledger `pf:vocal-sessions`, cap 50). Testy `vocal-dialog` (8).
-- **Zostáva (mimo engine):** UI montáž (karta + apply tlačidlá + arrange-take PCM resolver), `composeFullTrack` vocal-wiring (`{vocalPresent}` + `vocalProfile` pass-through — `compose.ts` je v cudzej práci, nesiahať), VLYX-unmask pocket namiesto statického dipu, blind A/B ušný gate.
+- **Zostáva:** VLYX-unmask pocket namiesto statického dipu, blind A/B ušný gate, roadmap otázky Q1–Q5.
 
 _Založené: 2026-11-04 (z P1–P5 auditov a vízie „producent, ktorý počúva"). Revidovať po každej V-fáze; fakty o existujúcich moduloch overené čítaním zdrojov v §2._

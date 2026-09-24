@@ -26,6 +26,11 @@ import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
+import { resolveVocalTake } from "../vocal/resolve";
+import { analyzeVocalTake } from "../vocal/analyzer-client";
+import { applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
+import { summarizeVocalProfile } from "../vocal/notes";
+import type { VocalProfile } from "../vocal/types";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { patternLengthTicks } from "../midi/hum-to-notes";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
@@ -634,6 +639,12 @@ export function IntentPanel() {
   // can rehearse/record vocals, plus a beat-only bounce (no master chain).
   const [vocalMode, setVocalMode] = useState(false);
   const [bounceBusy, setBounceBusy] = useState(false);
+  // 🎤 TAKE card — the producer listens to the arrangement take: analyze the
+  // longest clip (or the chosen one), show what was heard, apply key/tempo,
+  // and feed the measured profile into the next SONG draft (bent sections +
+  // pocket mix via compose vocal-wiring).
+  const [takeProfile, setTakeProfile] = useState<VocalProfile | null>(null);
+  const [takeBusy, setTakeBusy] = useState(false);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
   // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
   // + key, humNotes become the LEAD of the SUNO MODE song.
@@ -882,6 +893,54 @@ export function IntentPanel() {
       setBounceBusy(false);
     }
   };
+  // Analyze the arrangement take (longest clip) into a VocalProfile card.
+  const analyzeTake = async () => {
+    if (takeBusy) return;
+    setTakeBusy(true);
+    setError(null);
+    try {
+      const currentDoc = services.store.getDoc();
+      const resolved = resolveVocalTake(currentDoc, services.bank, {});
+      if (!resolved.ok) {
+        setError(`🎤 take: ${resolved.error}`);
+        return;
+      }
+      setStatus("🎤 listening to the take…");
+      const outcome = await analyzeVocalTake(resolved.take.pcm, resolved.take.sampleRate, currentDoc.bpm);
+      if (!outcome.ok) {
+        setError(`🎤 analyze failed: ${outcome.error}`);
+        return;
+      }
+      setTakeProfile(outcome.profile);
+      setStatus(`🎤 take heard — ${summarizeVocalProfile(outcome.profile).join(" · ")}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTakeBusy(false);
+    }
+  };
+  const applyTakeKey = () => {
+    if (!takeProfile?.keyMeasured) return;
+    try {
+      services.store.execute(applyVocalKeyCommand(services.store.getDoc(), takeProfile));
+      setStatus(`✓ vocal key ${takeProfile.key} applied (one undo step)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const applyTakeTempo = () => {
+    if (!takeProfile?.tempoMeasured) return;
+    try {
+      services.store.execute(applyVocalTempoCommand(services.store.getDoc(), takeProfile));
+      setStatus(`✓ vocal tempo ${takeProfile.tempoBpm} BPM applied (one undo step)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const clearTake = () => {
+    setTakeProfile(null);
+    setStatus("🎤 take cleared");
+  };
   const buildSongDraft = async (sections?: SectionParse, reviseInput?: IntentInput) => {
     setError(null);
     setStatus(null);
@@ -905,6 +964,7 @@ export function IntentPanel() {
         input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
         ...(reviseInput?.seed ? { seed: reviseInput.seed } : {}),
         ...(voiceIdea ? { hum: { notes: voiceIdea.notes, loopTicks: voiceIdea.loopTicks, key: voiceIdea.key } } : {}),
+        ...(takeProfile?.measured ? { vocalProfile: takeProfile } : {}),
         bank: services.bank,
         onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
       });
@@ -1187,8 +1247,12 @@ export function IntentPanel() {
         }
         commands.forEach((command) => services.store.execute(command));
         const label = [...route.intent.targets, ...(route.intent.pads ?? [])].join(" + ");
+        const sizeNote =
+          route.intent.percent != null
+            ? `${route.intent.direction === "down" ? "−" : "+"}${route.intent.percent}%`
+            : route.intent.amount;
         setStatus(
-          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"} [${route.intent.amount}]: ${label} — ${commands.length} fader(s) (one undo step)`,
+          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label} — ${commands.length} fader(s) (one undo step)`,
         );
       } else if (route.kind === "tempo") {
         // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step
@@ -1412,6 +1476,15 @@ export function IntentPanel() {
         </button>
         <button
           type="button"
+          className="btn intent-take-btn"
+          disabled={takeBusy}
+          onClick={() => void analyzeTake()}
+          title="Analyze the arrangement take — key, tempo, energy and phrases, then apply key/tempo or bend a SONG around it"
+        >
+          {takeBusy ? "🎤…" : "🎤 TAKE"}
+        </button>
+        <button
+          type="button"
           className="btn intent-groove-btn"
           disabled={!refGroove || refBusy}
           onClick={installGroove}
@@ -1471,6 +1544,49 @@ export function IntentPanel() {
           >
             {bounceBusy ? "…" : "⬇ BEAT ONLY"}
           </button>
+        </div>
+      )}
+      {takeProfile && (
+        <div className="intent-take-card" role="status" aria-label="Vocal take analysis">
+          <span className="intent-take-lines">{summarizeVocalProfile(takeProfile).join(" · ")}</span>
+          <div className="intent-take-actions">
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!takeProfile.keyMeasured}
+              onClick={applyTakeKey}
+              title="Set the project key from the take (transposes melodic notes, one undo step)"
+            >
+              KEY
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!takeProfile.tempoMeasured}
+              onClick={applyTakeTempo}
+              title="Match the transport tempo to the take flow (one undo step)"
+            >
+              TEMPO
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!takeProfile.measured || songBusy || busy}
+              onClick={() => void generateSong()}
+              title="Build a SONG bent to this take — sections follow the phrasing, mix opens the vocal pocket (needs a text prompt)"
+            >
+              ♪ SONG
+            </button>
+            <button
+              type="button"
+              className="btn btn-small intent-take-clear"
+              onClick={clearTake}
+              aria-label="Clear take analysis"
+              title="Clear the take analysis"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
       {candidates && candidates.length > 0 && (

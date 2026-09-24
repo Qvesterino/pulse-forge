@@ -27,7 +27,6 @@ export function createBitcrusherNode(
   // TONE lowpasses the crushed signal (tames the aliasing harshness).
   const drive = ctx.createGain();
   const tone = ctx.createBiquadFilter();
-  tone.type = "lowpass";
   tone.Q.value = 0.7;
   input.connect(dry).connect(output);
   input.connect(wet).connect(drive).connect(node).connect(tone).connect(out).connect(output);
@@ -43,8 +42,15 @@ export function createBitcrusherNode(
   // or it would abort the engine's whole-track bulk param sync.
   const driveVal = instance.params.drive ?? 0;
   if (Number.isFinite(driveVal)) drive.gain.value = 1 + driveVal * 7;
+  const setTone = (value: number) => {
+    // At the top of the control range TONE means "air / transparent". An
+    // all-pass stage keeps the worklet's sample-hold steps intact instead of
+    // smearing them with a low-pass startup transient.
+    tone.type = value >= ctx.sampleRate * 0.4 ? "allpass" : "lowpass";
+    tone.frequency.value = value;
+  };
   const toneVal = instance.params.tone ?? 18000;
-  if (Number.isFinite(toneVal)) tone.frequency.value = toneVal;
+  if (Number.isFinite(toneVal)) setTone(toneVal);
 
   // Set initial mix
   const mixVal = instance.params.mix ?? 1;
@@ -73,7 +79,10 @@ export function createBitcrusherNode(
           if (Number.isFinite(v)) drive.gain.setTargetAtTime(1 + v * 7, now, 0.02);
           break;
         case "tone":
-          if (Number.isFinite(v)) tone.frequency.setTargetAtTime(v, now, 0.02);
+          if (Number.isFinite(v)) {
+            setTone(v);
+            tone.frequency.setTargetAtTime(v, now, 0.02);
+          }
           break;
         case "mix":
           if (Number.isFinite(v)) {
@@ -98,7 +107,10 @@ export function createBitcrusherNode(
           if (Number.isFinite(v)) drive.gain.setTargetAtTime(1 + v * 7, when, 0.02);
           break;
         case "tone":
-          if (Number.isFinite(v)) tone.frequency.setTargetAtTime(v, when, 0.02);
+          if (Number.isFinite(v)) {
+            setTone(v);
+            tone.frequency.setTargetAtTime(v, when, 0.02);
+          }
           break;
         case "mix":
           if (Number.isFinite(v)) {

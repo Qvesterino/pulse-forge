@@ -27,6 +27,7 @@ import { SONG_LOUDNESS_TARGET_LUFS } from "./genre-reference.generated";
 import type { Command } from "../commands/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
+import type { VocalProfile } from "../vocal/types";
 
 export interface ComposeLoudness {
   summary: string;
@@ -74,6 +75,12 @@ export interface ComposeOptions {
   input?: IntentInput;
   /** The artist's hummed hook — becomes the LEAD of the song. */
   hum?: ComposeHum;
+  /**
+   * The singer's analyzed take — bends section energy/density toward the
+   * phrasing (buildSong) and opens the vocal pocket in the mix. Only a
+   * MEASURED profile takes effect; anything else builds the legacy song.
+   */
+  vocalProfile?: VocalProfile | null;
   /** Run the loudness pass after install. Default true when a bank is provided. */
   loudness?: boolean;
   /** Sample bank for the loudness render — loudness needs it; without it the stage skips. */
@@ -131,6 +138,9 @@ export async function composeFullTrack(
   const length = options.length !== undefined ? options.length : parseSongLength(trimmed);
 
   // 2 — generate: whole song, transitions and scoped FX baked per section.
+  // A measured vocal take bends section energy/density toward the phrasing;
+  // anything unmeasured (or absent) builds the legacy song.
+  const vocalProfile = options.vocalProfile?.measured ? options.vocalProfile : null;
   options.onProgress?.(`composing song — ${length?.label ?? "standard form"}`);
   const build = await buildSong(
     doc,
@@ -143,6 +153,7 @@ export async function composeFullTrack(
     {
       ...(sectionRequests ? { sections: sectionRequests } : {}),
       ...(length ? { length } : {}),
+      ...(vocalProfile ? { vocalProfile } : {}),
       onProgress: (done, label, total) => options.onProgress?.(`section ${label} (${done}/${total})`),
     },
   );
@@ -175,10 +186,11 @@ export async function composeFullTrack(
   }
 
   // 3 — mix profile: mood/genre-driven targeted FX, one undoable snapshot.
+  // A measured vocal take opens the pocket (high-mid dip on the music).
   let mix: Command | null = null;
   let mixSummary: string | null = null;
   try {
-    const profile = planMixProfile(build.baseIntent);
+    const profile = planMixProfile(build.baseIntent, {}, { vocalPresent: vocalProfile !== null });
     mix = applyMixIntent(doc, profile);
     mixSummary = profile.summary.length > 0 ? profile.summary.join(" · ") : null;
   } catch (error) {

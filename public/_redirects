@@ -1,0 +1,16 @@
+# Cloudflare Pages SPA fallback (Audit 14 / deploy readiness).
+# The app ships `registerType: "prompt"` + SW navigateFallback (src/pwa.ts),
+# so INSTALLED clients get every deep link from the precache. These explicit
+# routes only matter for the FIRST visit before the service worker is
+# installed. Deliberately NOT a `/*` catch-all: a missing JS chunk should
+# 404 loudly instead of returning index.html.
+
+/studio      /index.html 200
+/gallery     /index.html 200
+/embed       /index.html 200
+/download    /index.html 200
+/landing     /index.html 200
+
+# Optional collab relay on the same Pages project (not needed for the static
+# app — remove if you host the collab server elsewhere):
+# /api/*    https://collab.example.com/:splat   200

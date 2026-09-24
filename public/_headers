@@ -1,0 +1,9 @@
+# Cloudflare Pages headers (Audit 14 / deploy readiness).
+# The service worker and manifest must always revalidate — a stale sw.js
+# delays updates by a full cache TTL.
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: no-cache

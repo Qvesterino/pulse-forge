@@ -58,6 +58,28 @@ function collectRegularFiles(root, directory) {
   return result;
 }
 
+function collectRegularFilePaths(root, directory) {
+  const base = path.join(root, directory);
+  if (!fs.existsSync(base)) return [];
+  const result = [];
+  const visit = (current) => {
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink()) throw new Error(`MRT2 asset symlink is not allowed: ${current}`);
+    if (stat.isDirectory()) {
+      for (const entry of fs.readdirSync(current)) visit(path.join(current, entry));
+      return;
+    }
+    if (!stat.isFile()) throw new Error(`MRT2 asset is not a regular file: ${current}`);
+    result.push(relativeAssetPath(root, current));
+  };
+  visit(base);
+  return result;
+}
+
+function isAllowedAssetPath(value) {
+  return MODEL_ASSET_DIRECTORIES.some((directory) => value.startsWith(`${directory}/`));
+}
+
 function createWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath, attribution } = {}) {
   if (typeof hostPath !== "string" || !hostPath) throw new Error("MRT2 Windows host path is required");
   if (typeof modelRoot !== "string" || !modelRoot) throw new Error("MRT2 Windows model root is required");
@@ -115,6 +137,7 @@ function readManifest(manifestPath) {
       !entry ||
       typeof entry.path !== "string" ||
       !entry.path ||
+      !isAllowedAssetPath(entry.path) ||
       entry.path.includes("\\") ||
       entry.path.startsWith("/") ||
       entry.path.includes("../") ||
@@ -184,6 +207,16 @@ async function verifyWindowsMrt2Manifest({ hostPath, modelRoot, manifestPath } =
     } catch (error) {
       errors.push(`model: ${entry.path} — ${error instanceof Error ? error.message : "missing"}`);
     }
+  }
+  try {
+    const listed = new Set(manifest.modelRoot.files.map((entry) => entry.path));
+    for (const directory of MODEL_ASSET_DIRECTORIES) {
+      for (const actualPath of collectRegularFilePaths(modelRoot, directory)) {
+        if (!listed.has(actualPath)) errors.push(`model: unlisted asset ${actualPath}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`model: asset tree — ${error instanceof Error ? error.message : "invalid"}`);
   }
   return {
     ok: errors.length === 0,

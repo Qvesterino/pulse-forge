@@ -54,6 +54,26 @@ describe("targeted effect intents (D1 v2a)", () => {
     // generic mix words without a target stay mix
     expect(routeIntentText("more reverb please", doc).kind).toBe("mix");
   });
+
+  it("percent: o 50 % parses and turns the full knob fraction", () => {
+    const parsed = parseEffectIntent("viac delayu na 808s o 50%");
+    expect(parsed).not.toBeNull();
+    expect(parsed!.targets).toContain("bass");
+    expect(parsed!.percent).toBe(50);
+    const doc = testDoc();
+    const mixOf = (d: typeof doc) =>
+      d.tracks.find((t) => t.name.toLowerCase().includes("808"))!.effects.find((fx) => fx.type === "delay")!.params.mix;
+    const command = applyEffectIntent(doc, parsed!);
+    const next = command.execute(doc);
+    const wordNext = applyEffectIntent(doc, parseEffectIntent("viac delayu na basu")!).execute(doc);
+    // 50 % of the mix range dwarfs the calibrated word step
+    expect(mixOf(next) - mixOf(wordNext)).toBeGreaterThan(0.3);
+    // ONE undo restores (delay was added by the command)
+    const undone = command.undo(next);
+    expect(
+      undone.tracks.find((t) => t.name.toLowerCase().includes("808"))!.effects.some((fx) => fx.type === "delay"),
+    ).toBe(false);
+  });
 });
 
 describe("applyEffectIntent execution", () => {

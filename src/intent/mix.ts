@@ -9,6 +9,7 @@ import {
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { roleForTrack } from "./favorites";
+import { parsePercent } from "./percent";
 import type { IntentSpec } from "./types";
 
 /**
@@ -353,6 +354,11 @@ export interface EffectIntent {
   targets: MixTarget[];
   direction: "more" | "less" | "remove";
   amount: "subtle" | "medium" | "huge";
+  /**
+   * Explicit percent ("o 20 %") — fraction of the knob's own range in the
+   * parsed direction. Wins over vibe `amount` when present.
+   */
+  percent?: number;
   detected: string[];
 }
 
@@ -402,7 +408,7 @@ const ROLE_TARGETS: Record<string, MixTarget[]> = {
 
 const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
   [/\bdrum|\bbic/, "drums"],
-  [/\bbass\b|\bbas(?:a|u|y|i|ou|ov)?\b|\b808\b/, "bass"],
+  [/\bbass\w*|\bbas(?:a|u|y|i|ou|ov|om)?\b|\b808\w*/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],
   [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
 ];
@@ -449,9 +455,12 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   if (/\bsubtle\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
   else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi/.test(lower)) amount = "huge";
 
+  // Explicit numbers beat vibe words ("o 20 %" wins over "trochu").
+  const percent = parsePercent(text);
   const detected = [`${direction} ${effectType}`, `→ ${[...targets].join("+")}`];
-  if (amount !== "medium") detected.push(amount);
-  return { effectType, targets: [...targets], direction, amount, detected };
+  if (percent != null) detected.push(`${percent}%`);
+  else if (amount !== "medium") detected.push(amount);
+  return { effectType, targets: [...targets], direction, amount, ...(percent != null ? { percent } : {}), detected };
 }
 
 const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medium: 1, huge: 1.75 };
@@ -514,7 +523,13 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
     const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
     const base = fx.params[knob] ?? knobDef.default;
-    const step = (TARGETED_KNOB_DELTA[intent.effectType] ?? 0.16 * (knobDef.max - knobDef.min) * 0.25) * scale;
+    // Percent = fraction of the knob's own range ("o 20 %" turns mix by a
+    // fifth); vibe amounts keep the calibrated fixed steps.
+    const range = knobDef.max - knobDef.min;
+    const step =
+      intent.percent != null
+        ? (intent.percent / 100) * range
+        : (TARGETED_KNOB_DELTA[intent.effectType] ?? 0.16 * range * 0.25) * scale;
     const value = intent.direction === "more" ? base + step : base - step;
     const clamped = clampEffectParam(intent.effectType, knob, value);
     if (fx.params[knob] === clamped) continue;
@@ -524,9 +539,10 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
 
   if (updates === 0) throw new Error("effect intent changed nothing — the mix already matches");
 
+  const scaleNote = intent.percent != null ? `±${intent.percent}%` : `×${scale}`;
   return snapshot(
     "applyEffectIntent",
-    `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ×${scale}`].join(", ")}`,
+    `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ${scaleNote}`].join(", ")}`,
     doc,
     cursor,
   );

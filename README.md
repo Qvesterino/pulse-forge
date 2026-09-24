@@ -147,7 +147,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 ### Generative and assist
 
-- **Generative tracks (experimental)** — provider-neutral generative accompaniment with KYX note/chord conditioning, a bounded AudioWorklet playback path, capture/freeze into durable AudioClips, and MusicCoCa-style audio resampling. MRT2 Small connects only through an explicitly selected localhost companion in the browser. The Electron IPC/provider adapter and macOS arm64 helper source/build path are implemented; the native executable still needs a real Apple Silicon build/model smoke before release. Native v1 advertises text style, notes and drumless mode; audio-style, seed and product macros are explicitly unsupported. Windows correctly reports native MRT2 unavailable.
+- **Generative tracks (experimental)** — provider-neutral generative accompaniment with KYX note/chord conditioning, a bounded AudioWorklet playback path, capture/freeze into durable AudioClips, and MusicCoCa-style audio resampling. MRT2 Small connects only through an explicitly selected localhost companion in the browser. The Electron IPC/provider adapter and macOS arm64 helper source/build path are implemented; the native executable still needs a real Apple Silicon build/model smoke before release. Native v1 advertises text style, notes and drumless mode; audio-style, seed and product macros are explicitly unsupported. Windows has a separate optional companion with honest capability tiers: capture is supported first when the JAX runtime and model assets are installed, while near-realtime/realtime require the measured benchmark gate. The browser bundle never contains the Windows runtime or model weights.
 - **Dice / seed-locked generation** — `MUT`, `FILL`, full/vary rolls, seed chain (cap 100), per-row locks (kick / snare / hats / kit / bass / chords / lead), favorites, kit dice.
 - **AI Bandmate** (collab-only) — when a remote jam session is running, an autonomous drum player takes unassigned roles and writes a fresh 16-step groove into its own track through the same command path humans use; the CRDT broadcasts it to every peer.
 - **Intent engine** — text → beat (e.g. `"dark rolling techno at 140 with lead"`), with EN keyword parsing, sliders, seed, length, candidate count. Sync path for instant preview, async path with a 54-feature ONNX MLP ranker (`intent-ranker-v1.onnx`, ~25 KB) that ranks candidates against the heuristic. Lazy-loaded in a Web Worker, bounded by timeout + circuit breaker + fallback heuristic (`src/intent/providers/local.ts`).
@@ -443,6 +443,12 @@ The same web build ships as a Windows desktop app — a thin Electron shell (`de
 ```bash
 npm run desktop:build       # vite build without the PWA layer → NSIS installer + portable exe in release/
 ```
+
+The optional Windows MRT2 companion is never included by the normal package.
+After building and verifying its fixed helper/model manifest, use
+`npm run desktop:build:windows:mrt2`; this packages only the helper and
+manifest, while model assets remain in the user-owned
+`Documents/Magenta/magenta-rt-v2-windows` root.
 
 The packaged artifacts are `KYX-Setup-<version>.exe` (NSIS, per-user install) and `KYX-Portable-<version>.exe` (portable). The Electron shell adds exactly four things the browser used to provide:
 

@@ -19,6 +19,7 @@
  */
 import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setTrackParams } from "../commands/commands";
+import { parsePercent } from "./percent";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import type { ProductionIntent, ProductionTarget } from "./production";
@@ -39,16 +40,21 @@ export interface FaderIntent {
   direction: "down" | "up";
   /** Fader step size. Default "normal" (×0.82 down / ×1.22 up). */
   amount?: FaderAmount;
+  /**
+   * Explicit percent ("o 10 %") — relative gain change in the parsed
+   * direction (up ×1.10 / down ×0.90). Wins over vibe `amount` when present.
+   */
+  percent?: number;
 }
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
   /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b/;
 const FADER_UP =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b/;
 
 const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
-  [/\bbas(?:u|e|y|ov)?\b|\bbass\b|\b808\b/, "bass"],
+  [/\bbas(?:u|e|y|ov|om)?\b|\bbass\w*|\b808\w*/, "bass"],
   [/\bbic(?:i|ie|ich)?\b|\bbubn\w*|\bdrums?\b|\bbeat\b/, "drums"],
   [/\bklaves|\bakord\w*|\bchords?\b|\bkeys\b|\bpadov?\b/, "chords"],
   [/\blead\w*\b|\bmelodi\w*|\bsynth\w*\b/, "lead"],
@@ -90,7 +96,9 @@ export function parseFaderIntent(text: string): FaderIntent | null {
       : AMOUNT_SUBTLE.test(lower)
         ? "subtle"
         : "normal";
-  return { targets, pads, direction: down ? "down" : "up", amount };
+  // Explicit numbers beat vibe words ("o 10 %" wins over "trochu").
+  const percent = parsePercent(text);
+  return { targets, pads, direction: down ? "down" : "up", amount, ...(percent != null ? { percent } : {}) };
 }
 
 // ── TEMPO ("zníž tempo", "pomalší", "zrýchli to", "na 128") ──────────────────
@@ -193,8 +201,17 @@ function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] 
  * then tracks.
  */
 export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Command[] {
-  const factors = FADER_FACTORS[intent.amount ?? "normal"];
-  const factor = intent.direction === "down" ? factors.down : factors.up;
+  // Percent = relative gain change in the parsed direction (10 % → ×1.10 up
+  // / ×0.90 down); vibe amounts are the fallback when no number is named.
+  const factor =
+    intent.percent != null
+      ? intent.direction === "down"
+        ? Math.max(0, 1 - intent.percent / 100)
+        : 1 + intent.percent / 100
+      : (() => {
+          const factors = FADER_FACTORS[intent.amount ?? "normal"];
+          return intent.direction === "down" ? factors.down : factors.up;
+        })();
   const commands: Command[] = [];
 
   if ((intent.pads?.length ?? 0) > 0) {

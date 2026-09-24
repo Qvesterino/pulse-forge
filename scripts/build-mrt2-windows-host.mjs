@@ -33,6 +33,11 @@ if (!existsSync(source)) throw new Error(`Missing companion source: ${source}`);
 
 await mkdir(outputDir, { recursive: true });
 await mkdir(workDir, { recursive: true });
+console.log("• verify magenta_rt + JAX are installed before packaging");
+await run("python", [
+  "-c",
+  "import importlib.util; missing = [name for name in ('magenta_rt', 'jax', 'jaxlib') if importlib.util.find_spec(name) is None]; raise SystemExit('Missing Windows MRT2 runtime modules: ' + ', '.join(missing)) if missing else None",
+]);
 console.log("• build KYX Windows MRT2 companion with the local Python environment");
 await run("python", [
   "-m",

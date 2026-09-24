@@ -3,8 +3,10 @@ import { testDoc } from "./fixtures/doc";
 import { normalizeIntent } from "../src/intent/normalize";
 import { applyMixIntent, planMixProfile } from "../src/intent/mix";
 import { applyLoudnessIntent } from "../src/intent/loudness";
+import { composeFullTrack } from "../src/intent/compose";
 import type { SampleBank } from "../src/sample-library/factory";
 import type { ProjectDocument } from "../src/project-model/types";
+import type { VocalProfile } from "../src/vocal/types";
 
 /**
  * V2 POCKET MIX + VOCAL LOUDNESS SEAM.
@@ -60,6 +62,68 @@ describe("vocal pocket (planMixProfile vocalPresent)", () => {
     expect(pocketEqs(next).some((eq) => eq.highMidGain === -2.5 && eq.highMidFreq === 2800)).toBe(true);
     expect(JSON.stringify(cmd.undo(next).tracks)).toBe(before);
   });
+});
+
+describe("composeFullTrack vocal wiring (take → bent song + pocket mix)", () => {
+  function sungProfile(): VocalProfile {
+    return {
+      version: 1,
+      key: null,
+      keyConfidence: 0,
+      keyMeasured: false,
+      tempoBpm: null,
+      tempoConfidence: 0,
+      tempoMeasured: false,
+      energyCurve: [...Array<number>(20).fill(0.9), ...Array<number>(24).fill(0.2)],
+      phrases: [{ startBar: 0, endBar: 4, peakEnergy: 0.9 }],
+      silenceRatio: 0.2,
+      snrDb: 18,
+      durationSec: 88,
+      bars: 44,
+      bpm: 124,
+      measured: true,
+      profileHash: "produce-song",
+    };
+  }
+
+  it("a measured take bends sections and opens the pocket", async () => {
+    const text = "house at 124";
+    const plain = await composeFullTrack(testDoc(), text, {
+      input: { genre: "house" },
+      seed: "vocal-compose",
+      loudness: false,
+    });
+    const sung = await composeFullTrack(testDoc(), text, {
+      input: { genre: "house" },
+      seed: "vocal-compose",
+      loudness: false,
+      vocalProfile: sungProfile(),
+    });
+    // Pocket in the mix…
+    expect(sung.mixSummary ?? "").toContain("pocket");
+    expect(plain.mixSummary ?? "").not.toContain("pocket");
+    // …and phrasing in the sections (same seed, moved content).
+    const hashes = (b: typeof plain.build) => b.sections.map((s) => s.pattern.generation?.outputContentHash);
+    expect(hashes(sung.build)).not.toEqual(hashes(plain.build));
+  }, 120_000);
+
+  it("an unmeasured take builds the legacy song (no pocket, identical sections)", async () => {
+    const text = "house at 124";
+    const plain = await composeFullTrack(testDoc(), text, {
+      input: { genre: "house" },
+      seed: "vocal-compose-flat",
+      loudness: false,
+    });
+    const flat = await composeFullTrack(testDoc(), text, {
+      input: { genre: "house" },
+      seed: "vocal-compose-flat",
+      loudness: false,
+      vocalProfile: { ...sungProfile(), measured: false, energyCurve: [] },
+    });
+    expect(flat.mixSummary ?? "").not.toContain("pocket");
+    const hashes = (b: typeof plain.build) => b.sections.map((s) => s.pattern.generation?.outputContentHash);
+    expect(hashes(flat.build)).toEqual(hashes(plain.build));
+  }, 120_000);
 });
 
 describe("loudness hears the vocal arrangement", () => {

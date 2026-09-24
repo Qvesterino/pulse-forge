@@ -1049,6 +1049,10 @@ const clipper: EffectDefinition = {
     shaper.oversample = "4x";
     const post = ctx.createGain();
     mix.wet.connect(pre).connect(shaper).connect(post).connect(mix.output);
+    const ceilingGuard = ctx.createWaveShaper();
+    ceilingGuard.oversample = "4x";
+    const output = ctx.createGain();
+    mix.output.connect(ceilingGuard).connect(output);
     let ceiling = instance.params.ceiling ?? -1;
     let softness = instance.params.softness ?? 0.2;
     const curveOf = () => {
@@ -1066,6 +1070,12 @@ const clipper: EffectDefinition = {
         }
         curve[i] = c * shaped;
       }
+      const guardCurve = new Float32Array(new ArrayBuffer(n * 4));
+      for (let i = 0; i < n; i++) {
+        const u = (i / (n - 1)) * 2 - 1;
+        guardCurve[i] = Math.max(-c, Math.min(c, u));
+      }
+      ceilingGuard.curve = guardCurve;
       return curve;
     };
     const apply = (id: string, v: number, when: number) => {
@@ -1092,7 +1102,7 @@ const clipper: EffectDefinition = {
     for (const [k, v] of Object.entries(instance.params)) apply(k, v, ctx.currentTime);
     return {
       input: mix.input,
-      output: mix.output,
+      output,
       setParameter: (id, v) => apply(id, v, ctx.currentTime),
       setParameterAt: (id, v, when) => apply(id, v, when),
       dispose: () => {
@@ -1101,6 +1111,8 @@ const clipper: EffectDefinition = {
         pre.disconnect();
         shaper.disconnect();
         post.disconnect();
+        ceilingGuard.disconnect();
+        output.disconnect();
       },
     };
   },
@@ -3001,6 +3013,7 @@ const utility: EffectDefinition = {
     const dcDry = ctx.createGain();
     merger.connect(dcHp).connect(dcWet).connect(pan);
     merger.connect(dcDry).connect(pan);
+    pan.connect(output);
     let dcBlockOn = instance.params.dcBlock === 1;
     dcWet.gain.value = dcBlockOn ? 1 : 0;
     dcDry.gain.value = dcBlockOn ? 0 : 1;

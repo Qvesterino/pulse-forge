@@ -33,6 +33,19 @@ After the smoke run, `npm run build:mrt2-windows-host` creates the fixed
 and its verified manifest to the desktop packaging resources only for an
 explicitly tested Windows build.
 
+The opt-in Electron package validates the helper and model hashes again and
+ships the helper plus manifest under `resources/mrt2-windows/`:
+
+```powershell
+$env:KYX_MRT2_WINDOWS_HOST = "$pwd\build\mrt2-windows\kyx-mrt2-windows-host.exe"
+$env:KYX_MRT2_WINDOWS_MODEL_ROOT = "$env:USERPROFILE\Documents\Magenta\magenta-rt-v2-windows"
+$env:KYX_MRT2_WINDOWS_MANIFEST = "$pwd\build\mrt2-windows\kyx-mrt2-windows-manifest.json"
+npm run desktop:build:windows:mrt2
+```
+
+The model weights are intentionally not copied into the installer; the
+companion reads the fixed user model root and refuses to download assets.
+
 With the upstream `mrt` CLI, the asset root can be prepared explicitly (the
 Windows companion does not download anything at runtime):
 

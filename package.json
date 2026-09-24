@@ -53,6 +53,7 @@
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:build": "node scripts/desktop-package.mjs",
     "desktop:build:mac:mrt2": "node scripts/desktop-package-mrt2-mac.mjs",
+    "desktop:build:windows:mrt2": "node scripts/desktop-package-mrt2-windows.mjs",
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
     "build:mrt2-native-host": "node scripts/build-mrt2-native-host.mjs",
     "build:mrt2-windows-host": "node scripts/build-mrt2-windows-host.mjs",
@@ -81,7 +82,9 @@
     "taste:train": "node scripts/train-my-taste.mjs",
     "goldens:capture": "vite-node scripts/capture-domain-goldens.mts",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs",
-    "ecosystem:sync": "node scripts/sync-to-qvester.mjs"
+    "ecosystem:sync": "node scripts/sync-to-qvester.mjs",
+    "preview:cf": "npm run build && npx wrangler pages dev dist",
+    "deploy:cf": "npm run build && npx wrangler pages deploy dist"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
