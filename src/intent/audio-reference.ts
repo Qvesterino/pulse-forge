@@ -7,22 +7,23 @@
  *   1. an IntentInput PATCH — genre (from AST labels), energy/density/mood
  *      (from pure time-domain features), so v1 priors and the template
  *      generator react immediately;
- *   2. a 16-dim CONDITIONING VECTOR — the AST label words are embedded with
- *      the SAME MiniLM the training corpus used (a TEXT BRIDGE: no new model,
- *      no retrain — audio becomes a point in the existing semantic space)
- *      and projected through the existing PCA.
+ *   2. a 16-dim CONDITIONING VECTOR — REFERENCE-INFORMED (T4 depth): AST
+ *      labels embed separately weighted by posterior AND the measured
+ *      features interpolate a fixed vocabulary of pole phrases, so the
+ *      signal itself shapes the vector even when the classifier has nothing
+ *      to say (see reference-embedding.ts). Projected through the same PCA.
  *
  * The conditioning vector is installed via `setAudioReferenceConditioning`
- * (semantic-conditioning blends it in place of the text embedding — the WAV
- * IS the intent). Never throws: an unavailable AST or embedder degrades to
- * the parts that did resolve.
+ * (semantic-conditioning blends it as the base with a mild text pull — the
+ * WAV IS the intent, the words steer ±25%). Never throws: an unavailable AST
+ * or embedder degrades to the parts that did resolve.
  */
 import { classifyAudio } from "../ai/audio/audio-client";
 import type { AudioLabel } from "../ai/audio/audio-types";
 import { extractAudioFeatures, type AudioFeatures } from "../ai/audio-features";
 import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
-import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import type { IntentGenre, IntentInput } from "./types";
+import { buildReferenceEmbedding } from "./reference-embedding";
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
 export type ClassifyFn = (audio: Float32Array) => Promise<AudioLabel[] | null>;
@@ -82,7 +83,7 @@ export interface AudioReferenceResult {
   genre: IntentGenre | null;
   /** Ready-to-merge intent patch (genre/energy/density/mood/style). */
   patch: IntentInput;
-  /** The label words that were embedded — for provenance/status. */
+  /** Label words + active feature poles — for provenance/status. */
   conditioningText: string;
   /** 16-dim conditioning vector, or null when the embedder was unavailable. */
   conditioning: readonly number[] | null;
@@ -116,18 +117,13 @@ export async function analyzeAudioReference(
     if (tempo) patch.bpmRange = [Math.round(tempo.bpm) - 2, Math.round(tempo.bpm) + 2];
     if (key) patch.key = key.key as IntentInput["key"];
 
-    const conditioningText = labels
-      .slice(0, 6)
-      .map((entry) => entry.label)
-      .join(" ");
-    let conditioning: readonly number[] | null = null;
-    if (labels.length > 0) {
-      const embed =
-        options.embed ??
-        ((texts: string[]) => import("../ai/semantic/semantic-client").then((module) => module.embedTexts(texts)));
-      const vectors = await embed([conditioningText]);
-      conditioning = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
-    }
+    const embed =
+      options.embed ??
+      ((texts: string[]) => import("../ai/semantic/semantic-client").then((module) => module.embedTexts(texts)));
+    // Reference-informed embedding (T4 depth): labels + feature poles in one
+    // batch — works even when the AST answered nothing.
+    const reference = await buildReferenceEmbedding({ labels, features, tempo }, embed);
+    const conditioning = reference?.projected ?? null;
 
     const top = labels
       .slice(0, 3)
@@ -142,7 +138,7 @@ export async function analyzeAudioReference(
       key,
       genre: genreHit?.key ?? null,
       patch,
-      conditioningText,
+      conditioningText: reference?.text ?? "",
       conditioning,
       summary,
     };

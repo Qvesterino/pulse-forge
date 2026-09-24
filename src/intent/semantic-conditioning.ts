@@ -4,13 +4,15 @@
  *
  * Chain: raw intent text → MiniLM embedding (semantic worker, timeout +
  * circuit breaker) → PCA projection → an installed AUDIO REFERENCE vector
- * ("sprav to ako tento WAV") REPLACES the text projection as the base — the
- * WAV IS the intent — then the USER STYLE VECTOR blend applies as usual
- * (INTENT_BLEND_WEIGHT) → conditioning vector for the v2 priors (drum +
- * melodic — both consume this ONE vector). Returns null when the flag is
- * off, the text is empty, the semantic model is unavailable, or the
- * projection is degenerate — the provider then falls back to the v1
- * genre+style one-hot prior. NEVER throws.
+ * ("sprav to ako tento WAV") forms the BASE with a mild TEXT PULL
+ * (AUDIO_REF_TEXT_PULL — the WAV IS the intent, the words steer ±25%: "ten
+ * beat ale tvrdší" leans the reference harder instead of being ignored),
+ * then the USER STYLE VECTOR blend applies as usual (INTENT_BLEND_WEIGHT)
+ * → conditioning vector for the v2 priors (drum + melodic — both consume
+ * this ONE vector). Returns null when the flag is off, the text is empty,
+ * the semantic model is unavailable, or the projection is degenerate — the
+ * provider then falls back to the v1 genre+style one-hot prior. NEVER
+ * throws.
  *
  * Memoization key = trimmed text + style-vector SIGNATURE + audio EPOCH:
  * a new ★, a dropped one, or a new reference changes the key, so
@@ -26,6 +28,18 @@ export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
 
 const MAX_TEXT_LENGTH = 300;
 const MAX_CACHE_ENTRIES = 64;
+
+/** With a reference installed, the prompt still pulls this much (0..1). */
+export const AUDIO_REF_TEXT_PULL = 0.25;
+
+/** Linear mix, no renormalization — same convention as blendSemantic. */
+export function mixWithReference(reference: readonly number[], text: readonly number[], pull: number): number[] {
+  const size = Math.min(reference.length, text.length);
+  const keep = 1 - pull;
+  const out = new Array<number>(size);
+  for (let index = 0; index < size; index++) out[index] = keep * reference[index] + pull * text[index];
+  return out;
+}
 
 const projectionCache = new Map<string, readonly number[] | null>();
 
@@ -71,20 +85,30 @@ export async function semanticConditioning(
     // (see style-vector.ts).
     const embed = embedFn ?? embedOverride ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     const trimmed = (text ?? "").trim().slice(0, MAX_TEXT_LENGTH);
-    if (!trimmed) return null;
+    // An empty prompt with a reference installed is legitimate ("🎧 REF +
+    // generate") — the reference alone drives the conditioning. Without a
+    // reference there is nothing to say, so empty text stays null.
+    if (!trimmed && !audioReferenceOverride) return null;
     if (embeddingConditionedMode() !== "on") return null;
 
     const ledger = readFavoriteLedger();
     const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}`;
     if (projectionCache.has(cacheKey)) return projectionCache.get(cacheKey) ?? null;
 
-    const vectors = await embed([trimmed]);
-    const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
-    // An installed audio reference REPLACES the text projection as the base —
-    // "sprav to ako tento WAV" means the WAV outranks the words.
-    const pure =
-      audioReferenceOverride ??
-      (projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null);
+    let projectedValid: readonly number[] | null = null;
+    if (trimmed) {
+      const vectors = await embed([trimmed]);
+      const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
+      projectedValid =
+        projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null;
+    }
+    // An installed audio reference is the BASE ("sprav to ako tento WAV");
+    // the prompt pulls it by AUDIO_REF_TEXT_PULL instead of being replaced.
+    const pure = audioReferenceOverride
+      ? projectedValid
+        ? mixWithReference(audioReferenceOverride, projectedValid, AUDIO_REF_TEXT_PULL)
+        : audioReferenceOverride
+      : projectedValid;
 
     let result: readonly number[] | null = null;
     if (pure) {

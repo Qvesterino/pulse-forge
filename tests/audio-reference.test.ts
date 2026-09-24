@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { analyzeAudioReference, featuresToSliders } from "../src/intent/audio-reference";
+import { buildReferenceEmbedding } from "../src/intent/reference-embedding";
 import { estimateKey, estimateTempo } from "../src/ai/audio-tempo-key";
 import { projectEmbedding } from "../src/ai/symbolic/pca-projection";
 import {
@@ -75,23 +76,29 @@ describe("audio reference — analysis", () => {
     expect(result?.labels).toHaveLength(3);
   });
 
-  it("builds a text-bridge conditioning vector in the corpus space", async () => {
-    const classify = async (): Promise<AudioLabel[]> => [
+  it("builds a reference-informed conditioning vector (labels + feature poles, exact mix contract)", async () => {
+    const labels: AudioLabel[] = [
       { label: "Techno", score: 0.9 },
       { label: "Synth", score: 0.5 },
     ];
-    const result = await analyzeAudioReference(quietBassPcm(), { classify, embed });
+    const result = await analyzeAudioReference(quietBassPcm(), { classify: async () => labels, embed });
     expect(result?.conditioningText).toContain("Techno");
-    // exact same arithmetic as the PCA module: project the label-text embedding
-    expect(result?.conditioning).toEqual(projectEmbedding(vectorFor("Techno Synth")));
+    expect(result?.conditioningText).toContain("poles:");
+    // exact same arithmetic as the reference-embedding module, recomputed
+    // from the RESULT's own measurements: per-label score-weighted centroid
+    // mixed 0.65/0.35 with the feature-pole interpolation, unit-normalized
+    const rebuilt = await buildReferenceEmbedding({ labels, features: result!.features, tempo: result!.tempo }, embed);
+    expect(result?.conditioning).toEqual(rebuilt!.projected);
   });
 
-  it("unavailable AST degrades to a features-only patch (no genre, no conditioning)", async () => {
+  it("unavailable AST degrades to a features-only patch — and the conditioning SURVIVES on poles alone", async () => {
     const classify = async (): Promise<AudioLabel[] | null> => null;
     const result = await analyzeAudioReference(quietBassPcm(), { classify, embed });
     expect(result).not.toBeNull();
     expect(result?.genre).toBeNull();
-    expect(result?.conditioning).toBeNull();
+    // T4 depth: the measured signal, not the classifier, carries the vector
+    expect(result?.conditioning).not.toBeNull();
+    expect(result?.conditioningText).toContain("poles:");
     expect(result?.patch.energy).toBeGreaterThan(0);
   });
 
@@ -112,17 +119,30 @@ describe("audio reference — analysis", () => {
 });
 
 describe("audio reference conditioning override", () => {
-  it("installed reference REPLACES the text projection as the conditioning base", async () => {
+  it("installed reference is the conditioning BASE, prompt pulls it by AUDIO_REF_TEXT_PULL", async () => {
     localStorage.setItem("pf:embedding-conditioned", "on");
     embedTextsMock.mockImplementation((texts: string[]) => Promise.resolve(texts.map(vectorFor)));
-    setAudioReferenceConditioning(projectEmbedding(vectorFor("the wav sounds like this")));
+    const ref = projectEmbedding(vectorFor("the wav sounds like this"))!;
+    setAudioReferenceConditioning(ref);
     const conditioning = await semanticConditioning("totally different words", embedTextsMock);
-    expect(conditioning).toEqual(projectEmbedding(vectorFor("the wav sounds like this")));
-    // clearing returns to text-driven conditioning
+    // 0.75 reference + 0.25 text — the WAV leads, the words steer
+    const textProj = projectEmbedding(vectorFor("totally different words"))!;
+    const expected = ref.map((value, index) => 0.75 * value + 0.25 * textProj[index]!);
+    expect(conditioning).toEqual(expected);
+    // clearing returns to pure text-driven conditioning
     setAudioReferenceConditioning(null);
     resetSemanticConditioning();
     const backToText = await semanticConditioning("totally different words", embedTextsMock);
     expect(backToText).toEqual(projectEmbedding(vectorFor("totally different words")));
+  });
+
+  it("reference with an empty prompt → exactly the reference vector (no pull source)", async () => {
+    localStorage.setItem("pf:embedding-conditioned", "on");
+    embedTextsMock.mockImplementation((texts: string[]) => Promise.resolve(texts.map(vectorFor)));
+    const ref = projectEmbedding(vectorFor("the wav sounds like this"))!;
+    setAudioReferenceConditioning(ref);
+    const conditioning = await semanticConditioning("   ", embedTextsMock);
+    expect(conditioning).toEqual(ref);
   });
 });
 
