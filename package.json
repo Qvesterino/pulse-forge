@@ -35,6 +35,7 @@
     "prior:favorites": "vite-node scripts/export-favorites-training.mts",
     "favorites:retrain": "vite-node scripts/export-favorites-training.mts",
     "semantic:fetch": "node scripts/fetch-semantic-model.mjs",
+    "semantic:smoke": "vite-node scripts/smoke-semantic.mts",
     "audio:fetch": "node scripts/fetch-audio-model.mjs",
     "embedding:train": "npx vite-node scripts/train-embedding-prior.mts",
     "embedding:ab": "vite-node scripts/shadow-embedding-ab.mts",

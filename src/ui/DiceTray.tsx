@@ -8,6 +8,7 @@ import { isPadKey, padKeysArmed } from "./padKeys";
 import { PAD_NAMES } from "../ai/types";
 import { KIT_PRESETS } from "../project-model/kit-presets";
 import { pitchName } from "../project-model/types";
+import { readFavoriteLedger } from "../intent/favorites";
 
 function MiniPreview({ rows, activePads }: { rows: number[][]; activePads: number[] }) {
   if (!rows.length || activePads.length === 0) return <div className="dice-preview-empty">— no preview —</div>;
@@ -77,6 +78,28 @@ export function DiceTray() {
     target,
     setTarget,
   } = useDice();
+
+  // Favorites ledger coverage (T2 v2 feedback loop, INTENT_ENGINE.md §10 #4).
+  // Refreshed whenever the in-session favorites Set changes size — that fires
+  // on every ★ toggle and on jumpSession with an unfavorited slot. localStorage
+  // is cheap to read; re-reading here keeps the badge in sync with the ledger
+  // without coupling the DiceTray to the full DiceContext internal state.
+  const [ledgerCount, setLedgerCount] = useState(() => readFavoriteLedger().length);
+  const [ledgerCoverage, setLedgerCoverage] = useState<{ genres: number; grooves: number }>(() => {
+    const entries = readFavoriteLedger();
+    return {
+      genres: new Set(entries.map((e) => e.genre)).size,
+      grooves: new Set(entries.map((e) => e.grooveId)).size,
+    };
+  });
+  useEffect(() => {
+    const entries = readFavoriteLedger();
+    setLedgerCount(entries.length);
+    setLedgerCoverage({
+      genres: new Set(entries.map((e) => e.genre)).size,
+      grooves: new Set(entries.map((e) => e.grooveId)).size,
+    });
+  }, [session.favorites.size]);
 
   const styles = getStyleNamesForGenre(session.intent.genre);
   const seed = preview.seed;
@@ -494,6 +517,14 @@ export function DiceTray() {
         >
           {session.favorites.has(session.cursor) ? "★ FAV" : "☆ Fav"}
         </button>
+        <span
+          className="dice-favorites-stat"
+          title={`${ledgerCount} starred roll${ledgerCount === 1 ? "" : "s"} across ${ledgerCoverage.genres} genre${ledgerCoverage.genres === 1 ? "" : "s"} and ${ledgerCoverage.grooves} groove${ledgerCoverage.grooves === 1 ? "" : "s"} — local-only feedback loop, export to retrain the symbolic drum prior`}
+        >
+          {ledgerCount === 0
+            ? "0 ★"
+            : `${ledgerCount} ★ · ${ledgerCoverage.genres}/${GENRES.length}g · ${ledgerCoverage.grooves}g${""}`}
+        </span>
         <button
           type="button"
           className="btn btn-small"
