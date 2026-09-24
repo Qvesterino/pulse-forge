@@ -46,6 +46,7 @@ import {
   resetProducerSession,
 } from "../intent/producer-session";
 import { compileBriefContract } from "../intent/brief-contract";
+import { evaluateBriefCompliance } from "../intent/brief-gate";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
@@ -105,6 +106,9 @@ export function IntentPanel() {
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
   const playTokenRef = useRef(0);
+  // Fáza 2 stale guard — the document revision the current preview was
+  // computed against; USE blocks while the store's doc has moved on.
+  const previewDocRef = useRef<ProjectDocument | null>(null);
   // Ghost versions (time machine) — every pattern USE pushes its applied
   // content; A/B + slider audition and morph between takes. Buffers cache
   // per ghost id; the morph preview holds one slot keyed by A:B:t.
@@ -198,6 +202,10 @@ export function IntentPanel() {
 
   const candidates = bankResult?.bank ?? null;
 
+  // Fáza 2: truthful per-fact compliance of the preview against the brief —
+  // ✓ provable from the pattern, · plan-enforced/unset. Never a quality score.
+  const bankCompliance = useMemo(() => (bankResult?.proposal ? evaluateBriefCompliance(bankResult) : []), [bankResult]);
+
   // C2 revise: the intent of the LAST generation — "more energetic" re-runs
   // THIS intent with a shifted slider (same seed = same beat, new character).
   const lastIntentRef = useRef<IntentInput | null>(null);
@@ -248,6 +256,10 @@ export function IntentPanel() {
       rememberPrompt(text);
       setHistoryTick((tick) => tick + 1);
       setBankResult(result);
+      // Fáza 2 stale guard: the preview belongs to THIS document revision.
+      // Any command applied afterwards makes the bank stale — USE must not
+      // write a preview computed against an older project.
+      previewDocRef.current = doc;
       recordIntentDecisions(intentInput, text);
       bumpGenerationCount();
       setSessionTick((tick) => tick + 1);
@@ -403,6 +415,16 @@ export function IntentPanel() {
 
   const useCandidate = (candidate: RankedCandidate | null) => {
     if (!bankResult?.proposal) return;
+    // Fáza 2 stale guard: the project changed since this preview was
+    // generated (user edit, collab peer). Applying would write content
+    // computed against an older document — block with a clear message and
+    // keep the bank listenable instead of silently regenerating.
+    if (previewDocRef.current && services.store.getDoc() !== previewDocRef.current) {
+      stopAudition();
+      setPlayingIndex(null);
+      setError("Návrh je zastaraný — projekt sa zmenil počas náhľadu. Vygeneruj znova.");
+      return;
+    }
     stopAudition();
     setPlayingIndex(null);
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
@@ -1704,6 +1726,30 @@ export function IntentPanel() {
               ×
             </button>
           </div>
+        </div>
+      )}
+      {bankCompliance.length > 0 && (
+        <div className="intent-compliance" aria-label="Brief compliance">
+          {bankCompliance.map((item) => (
+            <span
+              key={item.id}
+              className={
+                "intent-compliance-item" +
+                (item.satisfied === false ? " bad" : item.satisfied === true ? " ok" : " muted")
+              }
+              title={
+                item.detail ??
+                (item.satisfied === true
+                  ? "splnené"
+                  : item.satisfied === false
+                    ? "porušené"
+                    : "vynútené plánom / nezadané")
+              }
+            >
+              {item.satisfied === false ? "✗" : item.satisfied === true ? "✓" : "·"} {item.label}
+              {item.detail && item.satisfied !== true ? ` (${item.detail})` : ""}
+            </span>
+          ))}
         </div>
       )}
       {candidates && candidates.length > 0 && (

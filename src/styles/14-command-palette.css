@@ -558,6 +558,24 @@ button.brief-chip:hover {
   border-radius: 3px;
   padding: 1px 4px;
 }
+/* Fáza 2 — brief compliance line above the candidate bank. */
+.intent-compliance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10px;
+  color: #888;
+  letter-spacing: 0.02em;
+}
+.intent-compliance-item.ok {
+  color: #4ade80;
+}
+.intent-compliance-item.bad {
+  color: #f87171;
+}
+.intent-compliance-item.muted {
+  color: #666;
+}
 .intent-error {
   font-size: 11px;
   color: #f87171;
