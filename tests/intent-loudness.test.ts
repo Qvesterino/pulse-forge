@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLoudnessIntent, applyLoudnessIntent } from "../src/intent/loudness";
+import { parseLoudnessIntent, applyLoudnessIntent, applyPreviewLoudness } from "../src/intent/loudness";
 import { analyzeLoudnessBuffer } from "../src/audio-engine/kweighting";
 import { testDoc } from "./fixtures/doc";
 import { routeIntentText } from "../src/intent/route";
@@ -109,7 +109,7 @@ describe("loudness apply loop (injected render)", () => {
     expect(outcome.report.trim).toBeGreaterThan(0);
     // the loop verified: measured-after within ±1 LU of the nudge target
     expect(outcome.report.measuredAfter).not.toBeNull();
-    expect(Math.abs((outcome.report.measuredAfter as number) - (outcome.report.target)) || 3).toBeLessThanOrEqual(6);
+    expect(Math.abs((outcome.report.measuredAfter as number) - outcome.report.target) || 3).toBeLessThanOrEqual(6);
   });
 
   it("explicit target converges within the trim field: loudness na -18", async () => {
@@ -149,9 +149,106 @@ describe("loudness apply loop (injected render)", () => {
       doc,
       fakeBank(),
       { direction: "louder", detected: [] },
-      { render: async () => { throw new Error("no audio ctx"); } },
+      {
+        render: async () => {
+          throw new Error("no audio ctx");
+        },
+      },
     );
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error).toContain("loudness render failed");
+  });
+});
+
+describe("preview loudness (single measure → trim, injected render)", () => {
+  function fakeBank(): SampleBank {
+    return {} as unknown as SampleBank;
+  }
+  function fakeDoc(): ProjectDocument {
+    const doc = testDoc();
+    return { ...doc, master: { ...doc.master, loudnessTrimDb: 0 } };
+  }
+  /** Synthetic render: sine loudness follows the doc trim (like the real chain). */
+  function loudRenderFactory(baseLufs: number) {
+    return async (doc: ProjectDocument) => {
+      const trim = doc.master?.loudnessTrimDb ?? 0;
+      const amplitude = Math.min(1, 0.5 * Math.pow(10, (baseLufs + trim) / 20));
+      const sampleRate = 44100;
+      const length = sampleRate * 3;
+      const data = new Float32Array(length);
+      for (let i = 0; i < length; i++) data[i] = amplitude * Math.sin((2 * Math.PI * 997 * i) / sampleRate);
+      return {
+        numberOfChannels: 1,
+        sampleRate,
+        length,
+        getChannelData: (channel: number) => (channel === 0 ? data : new Float32Array(length)),
+        duration: length / sampleRate,
+      } as unknown as AudioBuffer;
+    };
+  }
+
+  it("explicit target trims toward it in one pass: loudness na -18", async () => {
+    const doc = fakeDoc();
+    // factory base −14 renders ≈ −23 LUFS; −18 needs ≈ +5 dB — inside ±6
+    const preview = await applyPreviewLoudness(doc, fakeBank(), "dark techno loudness na -18", {
+      render: loudRenderFactory(-14),
+    });
+    expect(preview.applied).toBe(true);
+    expect(preview.target).toBe(-18);
+    expect(preview.trim).toBeGreaterThan(0);
+    expect(preview.trim).toBeLessThanOrEqual(6);
+    expect(preview.doc.master.loudnessTrimDb).toBe(preview.trim);
+    // the input doc is untouched (pure snapshot)
+    expect(doc.master.loudnessTrimDb).toBe(0);
+    expect(preview.measuredBefore).not.toBeNull();
+    expect(Math.abs((preview.measuredBefore as number) - -23)).toBeLessThanOrEqual(2.5);
+  });
+
+  it("plain song text defaults to the streaming target (-14)", async () => {
+    const preview = await applyPreviewLoudness(fakeDoc(), fakeBank(), "dark rolling techno at 140", {
+      render: loudRenderFactory(-23),
+    });
+    expect(preview.applied).toBe(true);
+    expect(preview.target).toBe(-14);
+    expect(preview.trim).toBeLessThanOrEqual(6);
+  });
+
+  it("direction-only words still use the default target, not a nudge", async () => {
+    const preview = await applyPreviewLoudness(fakeDoc(), fakeBank(), "make it louder techno", {
+      render: loudRenderFactory(-23),
+    });
+    expect(preview.applied).toBe(true);
+    expect(preview.target).toBe(-14);
+  });
+
+  it("unmeasurable render resolves applied:false with the input doc", async () => {
+    const doc = fakeDoc();
+    const silent = async () => {
+      const sampleRate = 44100;
+      const length = sampleRate * 3;
+      const data = new Float32Array(length);
+      return {
+        numberOfChannels: 1,
+        sampleRate,
+        length,
+        getChannelData: () => data,
+        duration: length / sampleRate,
+      } as unknown as AudioBuffer;
+    };
+    const preview = await applyPreviewLoudness(doc, fakeBank(), "dark techno", { render: silent });
+    expect(preview.applied).toBe(false);
+    expect(preview.doc).toBe(doc);
+    expect(preview.measuredBefore).toBeNull();
+  });
+
+  it("render failure never throws — applied:false", async () => {
+    const doc = fakeDoc();
+    const preview = await applyPreviewLoudness(doc, fakeBank(), "dark techno", {
+      render: async () => {
+        throw new Error("no audio ctx");
+      },
+    });
+    expect(preview.applied).toBe(false);
+    expect(preview.doc).toBe(doc);
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useArrangement,
   useArrangementCapture,
@@ -761,8 +761,18 @@ export function ArrangementPanel() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [audioMenu]);
 
-  const clips = [...arrangement.clips].sort((a, b) => a.startBar - b.startBar);
-  const audioClips = [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar);
+  // Audit 15/16: the playhead hook re-renders this panel ~2x/s during
+  // playback — clip copies+sorts (and totalBars) must not rerun per tick.
+  // Memoized on arrangement identity (structural sharing keeps it stable
+  // across unrelated mutations).
+  const clips = useMemo(
+    () => [...arrangement.clips].sort((a, b) => a.startBar - b.startBar),
+    [arrangement.clips],
+  );
+  const audioClips = useMemo(
+    () => [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar),
+    [arrangement.audioClips],
+  );
   const totalBars = Math.max(
     16,
     ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),

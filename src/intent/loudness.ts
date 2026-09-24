@@ -68,6 +68,60 @@ export type LoudnessRenderFn = (doc: ProjectDocument, bank: SampleBank) => Promi
 export type LoudnessApplyResult =
   { ok: true; command: ReturnType<typeof setMasterConfig>; report: LoudnessReport } | { ok: false; error: string };
 
+export interface PreviewLoudness {
+  /** Trimmed doc — identical to the input when nothing was applied. */
+  doc: ProjectDocument;
+  /** Resulting `master.loudnessTrimDb` (1-decimal). */
+  trim: number;
+  /** Gated integrated LUFS of the pre-trim render (null when unmeasurable). */
+  measuredBefore: number | null;
+  /** LUFS target used (explicit words win, else the SUNO streaming target). */
+  target: number;
+  /** True when a trim was measured and applied. */
+  applied: boolean;
+}
+
+/**
+ * PREVIEW loudness — single measure → single trim for the song-draft
+ * audition. Unlike applyLoudnessIntent (measure → trim → verify loop, up to
+ * three renders) this renders ONCE: the draft's own audition render doubles
+ * as the verify measurement, so preview == USE at minimum background cost.
+ * Never throws — any failure resolves `applied: false` with the input doc,
+ * and the draft stays auditionable untrimmed.
+ */
+export async function applyPreviewLoudness(
+  doc: ProjectDocument,
+  bank: SampleBank,
+  text: string,
+  options: { render?: LoudnessRenderFn } = {},
+): Promise<PreviewLoudness> {
+  const fallback = { direction: "louder" as const, targetDb: LOUDNESS_TARGET_LUFS, detected: [] };
+  const parse = parseLoudnessIntent(text) ?? fallback;
+  // Direction-only words ("make it louder") carry no number — the SUNO
+  // default target still applies; nudges belong to the post-USE loop.
+  const target = parse.targetDb ?? LOUDNESS_TARGET_LUFS;
+  const currentTrim = doc.master?.loudnessTrimDb ?? 0;
+  const render: LoudnessRenderFn =
+    options.render ??
+    (async (d, b) =>
+      (await import("../rendering/renderer")).renderProject(d, b, {
+        mode: "song",
+        sampleRate: 44100,
+        tailSeconds: 0.4,
+      }));
+  try {
+    const reading = await measureWithRender(doc, bank, render);
+    if (!reading.measured) {
+      return { doc, trim: currentTrim, measuredBefore: null, target, applied: false };
+    }
+    const trim = Math.round(neededTrim(currentTrim, reading.integrated, target) * 10) / 10;
+    const next = setMasterConfig(doc, { loudnessTrimDb: trim }).execute(doc);
+    return { doc: next, trim, measuredBefore: Math.round(reading.integrated * 10) / 10, target, applied: true };
+  } catch {
+    return { doc, trim: currentTrim, measuredBefore: null, target, applied: false };
+  }
+}
+
 /** Measure gated integrated LUFS of the whole project (song, or active pattern). */
 export async function measureLoudness(
   doc: ProjectDocument,

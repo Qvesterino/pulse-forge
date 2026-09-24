@@ -16,6 +16,7 @@ import {
   applyGenerationResultCommand,
   applyGenerationResultWithFxCommand,
   applyProductionIntentCommand,
+  setMasterConfig,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
@@ -26,7 +27,8 @@ import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
-import { applyLoudnessIntent } from "../intent/loudness";
+import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
+import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -430,6 +432,14 @@ export function IntentPanel() {
     mixNote: string;
     lengthNote: string;
     seconds: number;
+    /** Preview loudness trim (master.loudnessTrimDb) — the audition plays
+        the trimmed doc, USE installs this exact trim with no re-render. */
+    trimDb: number;
+    loudnessTarget: number;
+    measuredBefore: number | null;
+    /** Gated LUFS measured on the audition buffer itself (the free verify). */
+    measuredAfter: number | null;
+    loudnessApplied: boolean;
   }
   const [songDraft, setSongDraft] = useState<SongDraft | null>(null);
   const [songPlaying, setSongPlaying] = useState(false);
@@ -521,6 +531,9 @@ export function IntentPanel() {
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
     sectionTokenRef.current++;
+    // Guard token: a superseding build, DROP or USE during the awaits below
+    // bumps songTokenRef and this run must not install a stale draft.
+    const buildToken = ++songTokenRef.current;
     try {
       const baseDoc = services.store.getDoc();
       const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(reviseInput ?? {}) };
@@ -543,23 +556,58 @@ export function IntentPanel() {
           /* garnish must not block the preview */
         }
       }
+      if (songTokenRef.current !== buildToken) return;
+      // Loudness-in-preview: one background measure → trim, then the
+      // AUDITION renders the trimmed doc — what you hear is what USE
+      // installs (the audition buffer itself is the verify measurement).
+      setStatus("⚡ SUNO MODE — loudness measure…");
+      const loud = await applyPreviewLoudness(preview, services.bank, songTextRef.current || text);
+      if (songTokenRef.current !== buildToken) return;
+      preview = loud.doc;
       const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
       const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
       const mixNote = result.mixSummary ? ` · mix: ${result.mixSummary}` : "";
-      setSongDraft({ result, baseDoc, previewDoc: preview, mixNote, lengthNote, seconds });
+      const trimSign = loud.trim >= 0 ? "+" : "";
+      const loudNote = loud.applied
+        ? ` · 🔊 ${loud.measuredBefore ?? "?"} → ${loud.target} LUFS (trim ${trimSign}${loud.trim} dB)`
+        : "";
+      setSongDraft({
+        result,
+        baseDoc,
+        previewDoc: preview,
+        mixNote,
+        lengthNote,
+        seconds,
+        trimDb: loud.trim,
+        loudnessTarget: loud.target,
+        measuredBefore: loud.measuredBefore,
+        measuredAfter: null,
+        loudnessApplied: loud.applied,
+      });
       const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
       setStatus(
-        `✓ SUNO MODE — ${result.build.name} — ${result.build.sections.length} sections, ${result.build.totalBars} bars${lengthNote}${fxNote}${mixNote}${skipNote} — ▶ to audition, USE to keep`,
+        `✓ SUNO MODE — ${result.build.name} — ${result.build.sections.length} sections, ${result.build.totalBars} bars${lengthNote}${fxNote}${mixNote}${loudNote}${skipNote} — ▶ to audition, USE to keep`,
       );
-      // Background audition render — PLAY enables when done. Loudness runs
-      // on USE against the installed doc, not here.
+      // Background audition render — PLAY enables when done.
       const token = ++songTokenRef.current;
       setSongRendering(true);
       try {
         const buffer = await renderSongAuditionBuffer(services.bank, preview);
         if (songTokenRef.current !== token) return;
         songBufferRef.current = buffer;
+        // Free verify: measure what the preview actually plays.
+        try {
+          const channels: Float32Array[] = [];
+          for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+          const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
+          if (reading.measured) {
+            const after = Math.round(reading.integrated * 10) / 10;
+            setSongDraft((prev) => (prev && prev.result === result ? { ...prev, measuredAfter: after } : prev));
+          }
+        } catch {
+          /* display-only — the buffer still plays */
+        }
       } catch (err) {
         if (songTokenRef.current === token) {
           setError(`song preview render failed: ${err instanceof Error ? err.message : String(err)} — USE still works`);
@@ -678,17 +726,20 @@ export function IntentPanel() {
       } catch {
         /* no mix decisions — song alone is complete */
       }
+      // Stored preview trim — no re-render: USE installs exactly what the
+      // audition played. After interim edits the mix was re-planned, so the
+      // trim is an estimate carried from the preview (flagged honestly).
       let loudnessNote = "";
-      if (songDraft.result.loudness) {
-        setStatus("⚡ SUNO MODE — loudness pass (render + trim)…");
-        const outcome = await songDraft.result.loudness.run(afterSong);
-        if (outcome && outcome.ok) {
-          services.store.execute(outcome.command);
-          loudnessNote = ` — loudness ${outcome.report.measuredAfter ?? "?"} LUFS (trim ${
-            outcome.report.trim >= 0 ? "+" : ""
-          }${outcome.report.trim} dB)`;
-        } else if (outcome && !outcome.ok) {
-          loudnessNote = ` — loudness skipped (${outcome.error})`;
+      if (songDraft.loudnessApplied) {
+        try {
+          services.store.execute(setMasterConfig(services.store.getDoc(), { loudnessTrimDb: songDraft.trimDb }));
+          const sign = songDraft.trimDb >= 0 ? "+" : "";
+          const heard = songDraft.measuredAfter ?? songDraft.measuredBefore ?? "?";
+          loudnessNote = ` — loudness ≈${heard} LUFS (trim ${sign}${songDraft.trimDb} dB${
+            rebased ? ", from preview" : ""
+          })`;
+        } catch {
+          /* master trim is garnish — the song stands without it */
         }
       }
       const fxNote =
@@ -1048,6 +1099,10 @@ export function IntentPanel() {
               <span className="intent-candidate-score">
                 {songDraft.result.build.sections.length} sections · {songDraft.result.build.totalBars} bars
                 {songDraft.lengthNote} · {Math.round(songDraft.result.build.resolvedBpm ?? 120)} BPM
+                {songDraft.loudnessApplied &&
+                  (songDraft.measuredAfter != null
+                    ? ` · plays ≈${songDraft.measuredAfter} LUFS`
+                    : " · loudness trim set")}
               </span>
             </span>
             <button

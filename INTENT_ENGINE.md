@@ -760,6 +760,17 @@ Najväčší hudobný upgrade — tri melodic voices sú teraz **harmonicky prep
 - Testy: `tests/harmony-multi-voice.test.ts` (12) — progresie štruktúra,
   determinizmus, chord intervals, roman numerals, voice leading, scale
   conformity, lead-za-energiou, determinizmus.
+- **P3 HARMÓNIA 2.0 (2026-09-23)**: knižnica 12 → **36 progresií** (core žánre
+  6 ks — nové appendované, seedy 0..2 držia legacy výber; drill/phonk/jersey/
+  dnb dostali vlastné sady a prestali padať na house fallback) + **bass
+  passing tones** (chromatický approach do ďalšieho rootu na poslednej 16tine
+  pred zmenou akordu — deterministické, bez rand(), density-gated) + **lead
+  motif carry** (bar 0 = motív, každý 4. bar ho replayuje transponovaný na
+  vlastný akord). Pri 64 krokoch + default density sa výstup nemení (žiadny
+  4. bar, žiadne passing) — golden baselines zelené. Testy:
+  `tests/harmony-v2.test.ts` (8 — 16-step sumy, append-only disciplína,
+  nové žánre hrajú full band, chromatika vs. default, motif replay,
+  determinizmus).
 
 ### 5.18 AUDIO FEEDBACK LOOP (D1 v3 / #5 — "ranking počúva", HOTOVÉ)
 

@@ -458,3 +458,79 @@ export function matchArtistPreset(lowerText: string): ArtistMatch | null {
   }
   return null;
 }
+
+/**
+ * MULTI-VIBE BLEND ("Travis stretne Burial", vibe-code wave): every DISTINCT
+ * artist preset mentioned in the text, in match order. Two+ matches make a
+ * blend — the intent patch merges (first artist is the base, the second
+ * contributes its mood and averages the sliders), and the intent TEXT keeps
+ * both names, so the MiniLM conditioning embeds the blend naturally.
+ */
+export function matchAllArtistPresets(lowerText: string): ArtistMatch[] {
+  const matches: Array<ArtistMatch & { position: number }> = [];
+  for (const preset of ARTIST_PRESETS) {
+    for (const name of preset.names) {
+      const escaped = name.replace(/[-.]/g, "\$&");
+      const pattern = new RegExp(`\b${escaped}\b`);
+      const match = pattern.exec(lowerText);
+      if (match) {
+        matches.push({ preset, matched: name, position: match.index });
+        break;
+      }
+    }
+  }
+  return matches.sort((a, b) => a.position - b.position);
+}
+
+export interface VibeBlend {
+  presetA: ArtistPreset;
+  presetB: ArtistPreset;
+  /** Merged intent patch — genre/style from A, mood/sliders blended. */
+  patch: {
+    genre: ArtistPreset["genre"];
+    style?: string;
+    mood?: ArtistPreset["mood"];
+    energy?: number;
+    density?: number;
+    bpmRange?: [number, number];
+  };
+  label: string;
+}
+
+/**
+ * Blend two artist presets: the FIRST is the base (repo convention — first
+ * hit wins), the second contributes its mood and averages the sliders.
+ * Explicit words in the prompt still override the blend afterwards
+ * (text-parser applies them on top, same as the single-artist path).
+ */
+export function parseVibeBlend(lowerText: string): VibeBlend | null {
+  const all = matchAllArtistPresets(lowerText);
+  const distinct: ArtistPreset[] = [];
+  for (const match of all) {
+    if (!distinct.some((p) => p === match.preset)) distinct.push(match.preset);
+    if (distinct.length === 2) break;
+  }
+  if (distinct.length < 2) return null;
+  const [a, b] = distinct;
+  const avg = (x: number | undefined, y: number | undefined): number | undefined =>
+    x !== undefined && y !== undefined ? Math.round(((x + y) / 2) * 100) / 100 : (x ?? y);
+  return {
+    presetA: a,
+    presetB: b,
+    patch: {
+      genre: a.genre,
+      ...(a.style || b.style ? { style: a.style ?? b.style } : {}),
+      ...(a.mood || b.mood ? { mood: a.mood ?? b.mood } : {}),
+      ...(avg(a.energy, b.energy) !== undefined ? { energy: avg(a.energy, b.energy) } : {}),
+      ...(avg(a.density, b.density) !== undefined ? { density: avg(a.density, b.density) } : {}),
+      ...(a.bpmRange && b.bpmRange
+        ? { bpmRange: [Math.max(a.bpmRange[0], b.bpmRange[0]), Math.min(a.bpmRange[1], b.bpmRange[1])] as [number, number] }
+        : a.bpmRange
+          ? { bpmRange: [...a.bpmRange] as [number, number] }
+          : b.bpmRange
+            ? { bpmRange: [...b.bpmRange] as [number, number] }
+            : {}),
+    },
+    label: `${a.label} × ${b.label}`,
+  };
+}

@@ -85,6 +85,37 @@ const HOUSE_PROGRESSIONS: ChordProgression[] = [
       { degree: 0, quality: "maj7", duration: 8, func: "T" },
     ],
   },
+  // ── P3 additions (appended — seeds 0..2 keep their progression) ─────────
+  {
+    name: "I-V-vi-IV (anthem)",
+    genre: "house",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+  {
+    name: "vi-IV-I-V (sensitive loop)",
+    genre: "house",
+    events: [
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-iv-VI-v (deep tech)",
+    genre: "house",
+    events: [
+      { degree: 0, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "min7", duration: 4, func: "S" },
+      { degree: 5, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "min", duration: 4, func: "D" },
+    ],
+  },
 ];
 
 const TECHNO_PROGRESSIONS: ChordProgression[] = [
@@ -114,6 +145,33 @@ const TECHNO_PROGRESSIONS: ChordProgression[] = [
       { degree: 1, quality: "maj", duration: 8, func: "D" },
     ],
   },
+  // ── P3 additions (appended — seeds 0..2 keep their progression) ─────────
+  {
+    name: "i-VI-III-VII (driving minor)",
+    genre: "techno",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 5, quality: "maj", duration: 4, func: "p" },
+      { degree: 2, quality: "maj", duration: 4, func: "p" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-v (hypnotic two-chord)",
+    genre: "techno",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 4, quality: "min", duration: 8, func: "D" },
+    ],
+  },
+  {
+    name: "♭VII-i (lift loop)",
+    genre: "techno",
+    events: [
+      { degree: 6, quality: "maj", duration: 8, func: "p" },
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+    ],
+  },
 ];
 
 const TRAP_PROGRESSIONS: ChordProgression[] = [
@@ -141,10 +199,38 @@ const TRAP_PROGRESSIONS: ChordProgression[] = [
     name: "i-♭VI-♭III-♭VII (anthem loop)",
     genre: "trap",
     events: [
-      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
       { degree: 5, quality: "maj", duration: 4, func: "S" },
       { degree: 2, quality: "maj", duration: 4, func: "p" },
       { degree: 6, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+  // ── P3 additions (appended — seeds 0..2 keep their progression) ─────────
+  {
+    name: "i-v-VI-VII (dark cycle)",
+    genre: "trap",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 4, quality: "min", duration: 4, func: "D" },
+      { degree: 5, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "p" },
+    ],
+  },
+  {
+    name: "VI-VII-i (uplift to tonic)",
+    genre: "trap",
+    events: [
+      { degree: 5, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "p" },
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+    ],
+  },
+  {
+    name: "i-ii° (tense two-chord)",
+    genre: "trap",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 1, quality: "dim", duration: 8, func: "D" },
     ],
   },
 ];
@@ -174,6 +260,157 @@ const AMBIENT_PROGRESSIONS: ChordProgression[] = [
       { degree: 2, quality: "sus2", duration: 8, func: "p" },
     ],
   },
+  // ── P3 additions (appended — seeds 0..2 keep their progression) ─────────
+  {
+    name: "vi-IV-I-V (soft anthem)",
+    genre: "ambient",
+    events: [
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj7", duration: 4, func: "S" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "I-iii-IV (pastoral)",
+    genre: "ambient",
+    events: [
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 2, quality: "min7", duration: 4, func: "p" },
+      { degree: 3, quality: "maj7", duration: 8, func: "S" },
+    ],
+  },
+  {
+    name: "i-♭VII-♭VI (atlas descent)",
+    genre: "ambient",
+    events: [
+      { degree: 0, quality: "min7", duration: 4, func: "T" },
+      { degree: 6, quality: "maj7", duration: 4, func: "p" },
+      { degree: 5, quality: "maj7", duration: 8, func: "S" },
+    ],
+  },
+];
+
+// ── P3 new genre sets — drill/phonk/jersey/dnb previously fell through to
+// the house library via the selectProgression fallback; they now speak their
+// own harmony (808 glide beds, cursed Memphis loops, club bounce, rollers).
+const DRILL_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VI (slide bed)",
+    genre: "drill",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 5, quality: "maj", duration: 8, func: "S" },
+    ],
+  },
+  {
+    name: "i-♭VII-♭VI (dark glide)",
+    genre: "drill",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "p" },
+      { degree: 5, quality: "maj", duration: 8, func: "S" },
+    ],
+  },
+  {
+    name: "i-iv (doom two-chord)",
+    genre: "drill",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 3, quality: "min", duration: 8, func: "S" },
+    ],
+  },
+];
+
+const PHONK_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VII (cursed loop)",
+    genre: "phonk",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 6, quality: "maj", duration: 8, func: "p" },
+    ],
+  },
+  {
+    name: "i-iv-VII (smoked cycle)",
+    genre: "phonk",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 8, func: "p" },
+    ],
+  },
+  {
+    name: "VI-VII-i (phonk lift)",
+    genre: "phonk",
+    events: [
+      { degree: 5, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "p" },
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+    ],
+  },
+];
+
+const JERSEY_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "I-IV-vi-V (bounce)",
+    genre: "jersey",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "ii-V-I (club jazz)",
+    genre: "jersey",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 8, func: "T" },
+    ],
+  },
+  {
+    name: "vi-V-IV-V (cycle)",
+    genre: "jersey",
+    events: [
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+];
+
+const DNB_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-iv-♭VII (roller)",
+    genre: "dnb",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 8, func: "p" },
+    ],
+  },
+  {
+    name: "ii-V-I (liquid)",
+    genre: "dnb",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 8, func: "T" },
+    ],
+  },
+  {
+    name: "vi-IV-V (uplift)",
+    genre: "dnb",
+    events: [
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 8, func: "D" },
+    ],
+  },
 ];
 
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
@@ -181,6 +418,10 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   techno: TECHNO_PROGRESSIONS,
   trap: TRAP_PROGRESSIONS,
   ambient: AMBIENT_PROGRESSIONS,
+  drill: DRILL_PROGRESSIONS,
+  phonk: PHONK_PROGRESSIONS,
+  jersey: JERSEY_PROGRESSIONS,
+  dnb: DNB_PROGRESSIONS,
 };
 
 /**

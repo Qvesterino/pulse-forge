@@ -3833,3 +3833,25 @@ audit doc.
 - **`scripts/fit-rerank-weights.mjs`** (`npm run rerank:fit -- pack.json`): playwright + vite (rovnaký vzor ako listening pack) — pre každú ★ rolku: REGENERUJ bank z uloženého intent+seed (engine deterministický) → rankCandidateBank → render top-4 → audio-fit; kept kandidát = najbližší role-usporiadaný drum grid k uloženým rows (pad-id drift bezpečný). Fit v browseri cez import pure modulu. Výstup: report + hotový `localStorage.setItem` riadok na inštaláciu.
 - **Testy** `tests/rerank-weights.test.ts` 7/7: audio-rozhodnuté generácie zvýšia váhu s accuracy 1; first-pass-rozhodnuté držia 0; < 2 generácie null; localStorage round-trip + garbage + out-of-range; **ranking-v3 konzumuje learned váhu** (0.55 preklopí pretek, ktorý 0.3 nepreloží) a bez nej zostáva default. Regresia **260/260 cez 27 súborov**; typecheck 0.
 - FIT GOTCHA (poctivo): regenerácia starých ★ roliek je približná — engine sa medzi tým menil (v3 conditioning, nové modely), takže kept match je nearest-neighbor na drum gride, nie presný replay. Presnejšie fitovanie: ★ len čerstvo vygenerované rolky.
+
+---
+
+## Session A (post-campaign quality) — plugin repair (2026-09-23)
+
+**Scope:** the A-family from `docs/QUALITY-BACKLOG.md` (plugin parameter sanity audit) — the user-visible breakage class.
+
+**Fixed:**
+
+1. **A1 stutter SMOOTH (broken plugin):** the ParamDef claimed 0..20 ms while node+processor work in seconds (0..0.02 AudioParam clamp) — default 3 landed at 20 ms (6.7× intended smoothing) and the knob was dead above 0.02. ParamDef now seconds (0..0.02, default 0.003, `formatSecMs`); old stored values >0.02 clamp to 20 ms exactly as the broken behavior did, small values keep working — no migration needed.
+2. **A2 `formatSecMs`:** effects' `formatMs` displayed raw seconds ("0 ms" on every dynamics attack/release). New `formatSecMs` (×1000) switched onto all 16 `unit:"s"` params; `formatMs` stays for genuinely ms-stored params (delayMs, time, lookaheadMs, flanger depth/base, comb delayMs, stutter's old home). Source-pin test prevents regression.
+3. **A3 utility DC BLOCK (dead knob → real):** 12 Hz highpass crossed wet/dry inside the utility chain, switched by the param (construction state + live apply case). Engaged removes sub-audio DC (the thump when a downstream gain moves); disengaged is a unity wire.
+4. **A8 labels:** tremolo SHAPE "Tri" → "Blend" (DSP is a sine↔square crossfade — no triangle exists); sidechain SPLIT ≤10 Hz → "OFF" (DSP full-band zone); flute V-RATE 0 → "OFF".
+5. **A5 verified OK, no change:** freqShifter FINE in Hz is correct — a frequency shifter is a linear-Hz device; coarse semitones + fine Hz is the standard hybrid. Audit overflagged.
+
+**New tests:** `tests/param-sanity.test.ts` (7) — formatter scaling pins, the "no raw-seconds display" source pin, stutter seconds contract + node pass-through, tremolo/sidechain labels, DC BLOCK wiring source pin.
+
+**Important files changed:** src/effects/definitions.ts, src/effects/registry.ts, src/instruments/definitions.ts, tests/param-sanity.test.ts (new), docs/QUALITY-BACKLOG.md (A-items struck).
+
+**Validation:** param-sanity 7/7; effects + instrument-definitions + fault-containment + worklet-hardening-r4 + domain-goldens 58 passed. tsc campaign-clean. Goldens recaptured (stutter default 3 → 0.003 in effectDefaults — the intentional A1 change).
+
+**Remaining from the backlog:** B-family (performance: normalizeProject stringify detection = #1 typing latency, syncProject churn, arrangement/piano-roll virtualization, scheduler caches, boot pool) + A4/A6/A7/A9 + D-family consistency decisions. Session B (typing latency) is the recommended next quality session.

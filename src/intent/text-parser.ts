@@ -1,6 +1,6 @@
 import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
-import { matchArtistPreset } from "./artists";
+import { matchArtistPreset, parseVibeBlend } from "./artists";
 
 /**
  * Natural language → IntentInput parser (goal: "dark rolling techno at 140
@@ -289,6 +289,21 @@ export function parseIntentText(text: string): ParsedIntent {
   // genre/style/mood/sliders/BPM, and the explicit-word steps below still
   // override it ("travis scott type beat bright" → energetic wins over the
   // preset's dark). No artist match ⇒ everything behaves exactly as before.
+  // MULTI-VIBE BLEND (vibe-code wave): "travis scott meets metro boomin" —
+  // two distinct artist presets in one sentence blend instead of
+  // first-hit-wins. The blend is the BASE; explicit words below still
+  // override it. The text keeps both names, so the MiniLM conditioning
+  // embeds the blend naturally.
+  const blend = parseVibeBlend(lower);
+  if (blend) {
+    input.genre = blend.patch.genre;
+    if (blend.patch.style) input.style = blend.patch.style;
+    if (blend.patch.mood) input.mood = blend.patch.mood;
+    if (blend.patch.energy !== undefined) input.energy = blend.patch.energy;
+    if (blend.patch.density !== undefined) input.density = blend.patch.density;
+    if (blend.patch.bpmRange) input.bpmRange = [...blend.patch.bpmRange] as IntentInput["bpmRange"];
+    detected.push(`♪ ${blend.label}`);
+  } else {
   const artist = matchArtistPreset(lower);
   if (artist) {
     const preset = artist.preset;
@@ -299,6 +314,7 @@ export function parseIntentText(text: string): ParsedIntent {
     if (preset.density !== undefined) input.density = preset.density;
     if (preset.bpmRange) input.bpmRange = [...preset.bpmRange] as IntentInput["bpmRange"];
     detected.push(`♪ ${preset.label}`);
+  }
   }
 
   // Genre detection (list order = specificity; first hit wins).

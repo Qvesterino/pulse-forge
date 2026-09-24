@@ -159,15 +159,34 @@ export function generateMultiVoice(
   const bassEvents: NoteEvent[] = [];
   const bassOctave = octaveOffsetFor(genre, "bass");
 
-  for (const slot of slots) {
+  for (const [slotIndex, slot] of slots.entries()) {
     const rootPitch = root + intervals[slot.event.degree % intervals.length];
     const bassPitch = 3 * 12 + bassOctave * 12 + rootPitch;
+    // Next chord root for the P3 chromatic approach (null on the last slot).
+    const nextSlot = slotIndex + 1 < slots.length ? slots[slotIndex + 1] : null;
+    const nextBassPitch =
+      nextSlot !== null ? 3 * 12 + bassOctave * 12 + (root + intervals[nextSlot.event.degree % intervals.length]) : null;
 
     // Bass rhythm: 8th notes with accent on downbeat (P2: density above the
     // 0.5 default adds quiet 16th pickups between them). At the default no
     // extra rand() is consumed, so the 8th-note stream stays bit-identical.
     for (let step = slot.startStep; step < slot.endStep; step += 1) {
       const isEighth = step % 2 === 0;
+      const isTail = step === slot.endStep - 1;
+      // P3 passing tone: the last 16th before a chord change walks
+      // chromatically into the next root from below (jazz approach into the
+      // downbeat). Fully determined by the harmony — fixed velocity, no
+      // rand() — density-gated alongside the pickups (off at the default).
+      if (!isEighth && isTail && nextBassPitch !== null && bassPickupChance > 0) {
+        bassEvents.push({
+          id: uid("note"),
+          pitch: Math.max(0, Math.min(127, nextBassPitch - 1)),
+          start: step * STEP_TICKS,
+          duration: 1 * STEP_TICKS,
+          velocity: Math.max(0.15, Math.min(1, 0.35 * energyVelocityGain)),
+        });
+        continue;
+      }
       if (!isEighth && bassPickupChance <= 0) continue;
       if (!isEighth && rand() >= bassPickupChance) continue;
       const isDownbeat = step - slot.startStep === 0;
@@ -195,9 +214,18 @@ export function generateMultiVoice(
     // Lead exists only when energy is high enough (P2: the rhythm thins to a
     // sparse subset below 0.7 instead of vanishing — identity at/above 0.7).
     const rhythmSteps = energy >= 0.7 ? RHYTHM_LEAD_FULL : RHYTHM_LEAD_SPARSE;
+    // P3 motif carry: bar 0 is the motif — every 4th bar replays its rhythm
+    // and tone choices transposed onto that bar's own chord (same idea, new
+    // harmony — call-and-response across the phrase). Recorded, not
+    // re-sampled: motif bars skip the tone/approach draws, velocities stay
+    // fresh from the stream.
+    const motif: Array<{ rhythmStep: number; toneIndex: number; approachDir: number }> = [];
     for (let bar = 0; bar < bars; bar++) {
       const barStart = bar * 16;
-      for (const rhythmStep of rhythmSteps) {
+      const replay = bar > 0 && bar % 4 === 0 && motif.length > 0;
+      const steps = replay ? motif.map((m) => m.rhythmStep) : rhythmSteps;
+      for (let i = 0; i < steps.length; i++) {
+        const rhythmStep = steps[i];
         const step = barStart + rhythmStep;
         if (step >= stepCount) continue;
         const slot = chordAtStep(slots, step);
@@ -206,13 +234,22 @@ export function generateMultiVoice(
         // Chord tone selection: root, 3rd, or 5th of the current chord
         const chordRoot = root + intervals[slot.event.degree % intervals.length];
         const tones = chordToneSemitones(slot.event.quality);
-        const toneIndex = Math.floor(rand() * tones.length);
-        const toneOffset = tones[toneIndex];
+        let toneIndex: number;
+        let approachDir = 0;
+        if (replay) {
+          toneIndex = motif[i].toneIndex;
+          approachDir = motif[i].approachDir;
+        } else {
+          toneIndex = Math.floor(rand() * tones.length);
+          // Approach tone: a scale neighbour instead of the chord tone itself
+          // (P2: chance widens with complexity — 0.3 at the 0.5 default).
+          const isApproach = rand() < approachChance && step > 0;
+          approachDir = isApproach ? (rand() > 0.5 ? 1 : -1) : 0;
+          if (bar === 0) motif.push({ rhythmStep, toneIndex, approachDir });
+        }
+        const toneOffset = tones[toneIndex % tones.length];
 
-        // Approach tone: a scale neighbour instead of the chord tone itself
-        // (P2: chance widens with complexity — 0.3 at the 0.5 default).
-        const isApproach = rand() < approachChance && step > 0;
-        const pitch = 3 * 12 + leadOctave * 12 + chordRoot + toneOffset + (isApproach ? (rand() > 0.5 ? 1 : -1) : 0);
+        const pitch = 3 * 12 + leadOctave * 12 + chordRoot + toneOffset + approachDir;
         const snapped = key ? snapToScale(pitch, key) : pitch;
 
         const velocity = Math.max(
