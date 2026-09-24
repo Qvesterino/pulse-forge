@@ -17,6 +17,7 @@ class FakeTransport implements Mrt2CompanionTransport {
   readonly binary: ArrayBuffer[] = [];
   private sequence = 0;
   bufferDuringCapture = false;
+  supportsRealtime = true;
 
   sendControl(message: Parameters<Mrt2CompanionTransport["sendControl"]>[0]): void {
     queueMicrotask(() => {
@@ -32,7 +33,7 @@ class FakeTransport implements Mrt2CompanionTransport {
               modelIds: ["mrt2_small"],
               outputSampleRates: [48_000],
               outputChannels: [2],
-              supportsRealtime: true,
+              supportsRealtime: this.supportsRealtime,
               supportsCapture: true,
               supportsTextStyle: true,
               supportsNoteConditioning: true,
@@ -40,6 +41,13 @@ class FakeTransport implements Mrt2CompanionTransport {
               supportsDrumsMode: true,
               supportsSeed: false,
               maxCaptureSeconds: 120,
+              runtimeProfile: {
+                backendId: "test-companion",
+                executionMode: this.supportsRealtime ? "realtime" : "capture",
+                runtimeVersion: "test",
+                measuredLatencyMs: 42,
+                realtimeFactor: this.supportsRealtime ? 1.5 : 0.4,
+              },
             },
           });
           break;
@@ -301,6 +309,63 @@ describe("MRT2 companion protocol", () => {
     ).toThrow(/pitchState/u);
   });
 
+  it("validates optional runtime capability diagnostics", () => {
+    const message = parseMrt2ControlMessage({
+      version: 1,
+      type: "hello.ok",
+      requestId: "hello-1",
+      providerId: "mrt2",
+      modelIds: ["mrt2_small"],
+      outputSampleRates: [48_000],
+      outputChannels: [2],
+      supportsRealtime: true,
+      supportsCapture: true,
+      supportsTextStyle: true,
+      supportsNoteConditioning: true,
+      supportsAudioStyle: false,
+      supportsDrumsMode: true,
+      supportsSeed: false,
+      maxCaptureSeconds: 120,
+      runtimeProfile: {
+        backendId: "mrt2-windows-cuda",
+        executionMode: "near-realtime",
+        measuredLatencyMs: 210,
+        frameP95Ms: 28,
+        realtimeFactor: 1.1,
+        warning: "experimental backend",
+      },
+    });
+    expect(message).toMatchObject({
+      type: "hello.ok",
+      runtimeProfile: {
+        backendId: "mrt2-windows-cuda",
+        executionMode: "near-realtime",
+        frameP95Ms: 28,
+        realtimeFactor: 1.1,
+      },
+    });
+    expect(() =>
+      parseMrt2ControlMessage({
+        version: 1,
+        type: "hello.ok",
+        requestId: "hello-2",
+        providerId: "mrt2",
+        modelIds: ["mrt2_small"],
+        outputSampleRates: [48_000],
+        outputChannels: [2],
+        supportsRealtime: true,
+        supportsCapture: true,
+        supportsTextStyle: true,
+        supportsNoteConditioning: true,
+        supportsAudioStyle: false,
+        supportsDrumsMode: true,
+        supportsSeed: false,
+        maxCaptureSeconds: 120,
+        runtimeProfile: { backendId: "mrt2-windows-cuda", executionMode: "invalid" },
+      }),
+    ).toThrow(/runtimeProfile.executionMode/u);
+  });
+
   it("accepts the full provider lifecycle state vocabulary", () => {
     for (const state of ["loading", "downloading", "buffering", "reconnecting"] as const) {
       expect(parseMrt2ControlMessage({ version: 1, type: "status", state, message: `state:${state}` })).toMatchObject({
@@ -347,6 +412,25 @@ describe("MRT2 companion protocol", () => {
     expect(statuses).toContain("buffering");
     expect(audio.frames).toBe(2);
     expect([...audio.data]).toEqual([0.1, -0.1, 0.2, -0.2].map((value) => expect.closeTo(value, 6)));
+    await session.dispose();
+  });
+
+  it("supports capture-only companions without pretending that live playback works", async () => {
+    const transport = new FakeTransport();
+    transport.supportsRealtime = false;
+    const provider = new Mrt2CompanionProvider({ transportFactory: async () => transport, timeoutMs: 1000 });
+    const session = await provider.createSession({
+      modelId: "mrt2_small",
+      outputSampleRate: 48_000,
+      outputChannels: 2,
+    });
+    expect(session.capabilities.supportsRealtime).toBe(false);
+    expect(session.capabilities.runtimeProfile).toMatchObject({ executionMode: "capture" });
+    expect(provider.getCapabilities().supportsRealtime).toBe(false);
+    await session.updateInput(input("text"));
+    await expect(session.start()).rejects.toThrow(/does not support realtime/u);
+    const audio = await session.capture({ input: input("text"), durationSec: 2 / 48_000 });
+    expect(audio.frames).toBe(2);
     await session.dispose();
   });
 

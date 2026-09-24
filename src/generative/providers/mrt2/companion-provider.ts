@@ -105,7 +105,7 @@ export class Mrt2CompanionProvider implements GenerativeAudioProvider {
   readonly id: string;
   private readonly modelId: string;
   private readonly timeoutMs: number;
-  private readonly capabilities: GenerativeCapabilities;
+  private capabilities: GenerativeCapabilities;
   private readonly transportFactory: Mrt2CompanionProviderOptions["transportFactory"];
 
   constructor(options: Mrt2CompanionProviderOptions) {
@@ -138,6 +138,7 @@ export class Mrt2CompanionProvider implements GenerativeAudioProvider {
     const session = new Mrt2CompanionSession(this.capabilities, config, transport, this.timeoutMs);
     try {
       await session.handshake();
+      this.capabilities = session.capabilities;
       return session;
     } catch (error) {
       await transport.close();
@@ -203,7 +204,9 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
       "hello.ok",
     );
     if (response.type !== "hello.ok") throw new Error("MRT2 companion handshake failed");
-    if (!response.supportsRealtime) throw new Error("MRT2 companion does not support realtime playback");
+    if (!response.supportsRealtime && !response.supportsCapture) {
+      throw new Error("MRT2 companion supports neither realtime playback nor capture");
+    }
     if (!response.modelIds.includes(this.config.modelId)) {
       throw new Error(`MRT2 companion does not support model ${this.config.modelId}`);
     }
@@ -228,6 +231,7 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
       supportsSeed: response.supportsSeed,
       maxCaptureSeconds: response.maxCaptureSeconds,
       ...(response.macroSupport ? { macroSupport: response.macroSupport } : {}),
+      ...(response.runtimeProfile ? { runtimeProfile: response.runtimeProfile } : {}),
     };
     const session = await this.request(
       {
@@ -279,6 +283,9 @@ class Mrt2CompanionSession implements GenerativeAudioSession {
 
   async start(): Promise<void> {
     this.assertUsable();
+    if (!this.capabilities.supportsRealtime) {
+      throw new Error("MRT2 companion does not support realtime playback");
+    }
     const sessionId = this.requireSessionId();
     this.setStatus({ state: "starting" });
     await this.request({ version: 1, type: "session.start", requestId: requestId("start"), sessionId }, "status");

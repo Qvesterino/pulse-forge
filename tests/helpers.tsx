@@ -260,6 +260,10 @@ export function mockServices(doc?: ProjectDocument): Services {
         metronome = !!enabled;
       }),
       leadInBars: vi.fn(() => countInBars + preRollBars),
+      leadInTicks: vi.fn(() => (countInBars + preRollBars) * 1920),
+      get secondsPerTick() {
+        return 60 / (120 * 480);
+      },
     } as any,
     scheduler: {
       start: vi.fn(),

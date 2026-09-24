@@ -1,34 +1,33 @@
-# KYX → Qvester audio-profile bus: `pulse_forge` ako live audio kanál ekosystému
+# KYX → Audio Canvas: stemy + mapa nástrojov (world-class upgrade)
 
-**Cieľ:** Kým KYX hrá, periodicky publikuje **ohraničený 10-s analytický profil** (energy/beat/band krivky + bpm + beatPhase + bands) na channel `pulse_forge` cez ich `publishAudioProfile` konvenciu. Konzumenti (canvas-virtuoso ako prvý) krivky loopujú lokálne — vizuály reagujú na KYX playback. Rešpektuje ich doktrínu: žiadne per-frame streamovanie, publish throttle, clear ako sign-out.
+**Cieľ:** "Send to Qvester Visualizer" pošle **master + per-track stemy** (každý KYX track ako izolované WAV v shared IDB) + **source map artifact** (track name → rola drums/bass/chords/lead). Audio Canvas review karta zobrazí mapu nástrojov a umožní bindnúť master (default) alebo ľubovoľný stem — "drums only" vizualizácia jedným klikom. Vizuálová analýza ostáva ich vlastná (bindAudioFile reťaz).
 
-## Fáza A — Publisher modul (D:\pulse-forge)
+## Fáza A — KYX sender (D:\pulse-forge)
 
-1. `src/interop/qvesterProfileBus.ts` (nový):
-   - **Rolling window**: Float32Array okná (300 vzoriek ≈ 10 s @ 30 Hz) pre energy/beat + bandCurves {bass, lowMid, mid, highMid, high}; write-index ring.
-   - **Vzorkovanie** (v RAF, gate ~33 ms, len keď `transport.playing`):
-     - energy = RMS z `getMasterLevels()` (existujúce, žiadna nová DSP),
-     - bands = bin-suma z `getMasterSpectrogramAnalyser()` (`getFloatFrequencyData` dB → [0,1] mapou −90..−10 dB) cez existujúce `createSpectrogramBandMap` (spectrogram.ts:56),
-     - beat krivka = 1 na beat gride z transport pozície (positionBeats frakcia × bpm) — presné, nie detekcia.
-   - **Publish každé ~3 s** (ak window ≥ 2 s): downsample ≤600 framov → `CanvasAudioAnalysisProfile` {bands (aktuálne), bpm: doc.bpm, beatPhase, duration, sampleRate: 30, curves} → `publishAudioProfile("pulse_forge", profile)`. Tvary podľa ich kontraktu presne (≤600, ≤10 s, clamp [0,1]) — aby ich `sanitizeAudioProfileForBus` nič nerobil.
-   - **Životný cyklus**: start = studio mount (App.tsx efekt, idempotentné); stop publishu pri pauze (okno mrazí, posledný profil ostáva — konzumenti loopujú ďalej); `clearAudioProfile("pulse_forge")` pri unmounte (ich sign-out path).
-2. wiring v `src/ui/App.tsx`: jeden useEffect → `startQvesterProfileBus(services)`.
-3. Testy `tests/qvester-profile-bus.test.ts`: window ring roll, profile builder bounds (600/10 s/clamp), beat grid fázovanie, publish gating + channel/key — s fake localStorage; tvar validovaný zrkadlom ich kontraktu.
+1. `src/interop/qvesterHandoff.ts` rozšírenie:
+   - `buildSourceMapEntries(doc)` (pure, testovateľné): non-group tracks → `{ trackName, role: roleOfTrack(track) ?? "lead", }` — roly z existujúceho `roleOfTrack` (role-presets.ts:27, FxTrackRole drums/bass/chords/lead).
+   - `prepareBeatHandoff` rozšírenie: po masteri renderuje **per-track stemy** (max 6, `buildStemProject(doc, t => t.id === id)` + `renderProject(..., { masterProcessing: false })` — konzistentné s ich stems exportom), každý → IDB záznam + `sourceMap` pole v pakete: nový artifact `{ type: "kyx_source_map", value: JSON(entries) }`.
+   - Záznamy zdieľajú ten istý IDB store + 24 h prune; `BeatHandoffRecord` dostane `role`/`trackName` polia.
+2. Testy: source map builder (roly podľa inštrumentu aj name-fallback), paket so 2 artifactmi, IDB multi-record round-trip.
 
-## Fáza B — Prvý konzument (QVESTER repa)
+## Fáza B — AC receiver (QVESTER repa)
 
-4. `apps/canvas-virtuoso/src/services/signals.ts`: pridať subscription `subscribeAudioProfile("pulse_forge", …)` s rovnakým handlerom ako `audio_canvas` (3 riadky — ich last-writer-wins slot už má loop mechaniku). Od tej chvíle **canvas-virtuoso vizuály modulujú z KYX playbacku**.
-5. `docs/QVESTER_AUDIO_PROFILE_BUS_V1.md`: follow-up #1 doplniť — pulse_forge je prvý stojaci publisher (okrem plánovaného Audio Canvas).
+3. `kyxBeatHandoff.ts`: `extractKyxSourceMap(context)` — nájde `kyx_source_map` artifact, parsuje entries; `bindKyxStem(hash)` — IDB read → File → `bindAudioFileWithLegacyPrompt`.
+4. `KyxBeatHandoffCard.tsx`: pod hlavným BIND tlačidlom zoznam **"Nástroje"** — riadky `♪ Drums · House Drums.wav [BIND]` — každý binduje ten stem; master BIND ostáva primárny (default akcia, zvýraznený).
+5. Test: source map extraction (valid/junk/missing) v ich node-test štýle + registrácia do AC test scriptu.
 
-## Fáza C — Brány + verifikácia
+## Fáza C — Registrácia + gates
 
-6. KYX: typecheck (filtrovaný), nové testy, `vite build` default (nezmenený) — žiadny SW/bundle dopad okrem nového chunku.
-7. QVESTER: ich typecheck, canvas-virtuoso build (`--app canvas-virtuoso`), ich testy canvas-virtuoso interop (audioProfileBus.test), constellation/content-integrity.
-8. **Živá E2E**: :4000 → /pulse-forge → House → play → evaluate read `qvester:audio-profile:v1:pulse_forge` (revision rastie, bpm 124, krivky živé) → otvoriť /canvas-virtuoso v druhej karte → vizuály modulované. Screenshot.
-9. Commity v oboch repách hneď po fázach (QVESTER session resetuje tracked súbory!).
+6. `verify-kyx-handoff.mjs`: pridať check na source map (receiver + sender stringy). Docs: HANDOFF_MAP H53 payload riadok doplnený o stemy/mapu.
+7. Gates: KYX typecheck+testy+sync; QVESTER typecheck+AC testy+build AC; commity oddelene (KYX → QVESTER), hneď po fázach.
+
+## Fáza D — Verifikácia
+
+8. Živá E2E (ak prostredie dovolí — inak manuálny návod): send → karta ukáže mapu nástrojov → bind master hrá mix → bind "Drums" hrá sólo bubny. Screenshot.
+9. Produkčná poznámka: IDB ~8–10 MB na send (master + 3 stemy House), 24 h prune — OK.
 
 ## Riziká
 
-- localStorage zápis ~5–15 KB JSON každé 3 s — akceptovateľné (ich kontrakt počíta s tým; quota guarded).
-- Per-frame join medzi RAF a audio vláknom — len existujúce gettery (žiadne nové DSP/worker).
-- canvas-virtuoso diff je malý, ale v ich release repu — commitovať odlišene.
+- IDB veľkosť ×4 — rieši prune + TTL.
+- roleOfTrack pre "Chords" (analog) ide cez name-fallback — priznané v mede (role "chords" cez regex \bchord\b ✓ pre House).
+- AC multi-source PLAYBACK (všetky stemy naraz) je zámerne v1 nie — to je ich produktové rozhodnutie; v1 = master hrá, stemy sú bindovateľné zdroje + mapa.

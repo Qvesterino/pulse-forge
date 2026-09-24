@@ -39,7 +39,16 @@ await mkdir(releaseDir, { recursive: true });
 const staging = await mkdtemp(stagingParent);
 try {
   console.log("• electron-builder (mac arm64) → " + staging);
-  await run("npx", ["electron-builder", "--mac", "dmg", "zip", "--arm64", "-c.directories.output=" + staging]);
+  await run("npx", [
+    "electron-builder",
+    "--mac",
+    "dmg",
+    "zip",
+    "--arm64",
+    "--publish",
+    "never",
+    "-c.directories.output=" + staging,
+  ]);
 
   const artifacts = (await readdir(staging)).filter(
     (entry) => entry !== "builder-debug.yml" && entry !== "builder-effective-config.yaml",

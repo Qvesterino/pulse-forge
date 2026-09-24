@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 const require = createRequire(import.meta.url);
 const bridge = require("../desktop/mrt2-bridge.cjs") as {
   getMrt2Availability: (options?: Record<string, unknown>) => Record<string, unknown>;
+  getMrt2WindowsAvailability: (options?: Record<string, unknown>) => Record<string, unknown>;
   validateMrt2Endpoint: (value: string) => { url: string; host: string; port: number };
   registerMrt2IpcHandlers: (
     ipcMain: {
@@ -22,6 +23,34 @@ describe("Electron MRT2 boundary", () => {
       localCompanion: true,
       status: "unavailable",
       message: "MRT2 realtime requires an Apple Silicon Mac",
+    });
+  });
+
+  it("reports the optional Windows companion separately from the macOS native helper", () => {
+    const resourcesPath = "C:/KYX/resources";
+    const modelRoot = "C:/Users/producer/Documents/Magenta/magenta-rt-v2-windows";
+    const existing = new Set([
+      path.join(resourcesPath, "mrt2-windows", "kyx-mrt2-windows-host.exe"),
+      path.join(modelRoot, "resources"),
+      path.join(modelRoot, "models", "mrt2_small"),
+    ]);
+    expect(
+      bridge.getMrt2WindowsAvailability({
+        platform: "win32",
+        arch: "x64",
+        appIsPackaged: true,
+        resourcesPath,
+        homeDirectory: "C:/Users/producer",
+        fileExists: (filePath: string) => existing.has(filePath),
+        lstat: () => ({ isFile: () => true, isSymbolicLink: () => false }),
+        assertExecutable: () => undefined,
+      }),
+    ).toMatchObject({
+      windowsCompanionInstalled: true,
+      windowsCompanionReady: false,
+      nativeRealtime: false,
+      executionMode: "capture",
+      status: "unavailable",
     });
   });
 

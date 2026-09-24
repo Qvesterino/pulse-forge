@@ -61,6 +61,7 @@ function makeEngine(): AudioEngine {
   return {
     currentTime: 0,
     ensureContext: vi.fn(() => ({ state: "running" })),
+    subscribeLiveContext: vi.fn(() => () => {}),
     setProject: vi.fn(),
     panic: vi.fn(),
     automationReset: vi.fn(),

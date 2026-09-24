@@ -2,6 +2,7 @@ import type {
   GenerativeInput,
   GenerativeMacroName,
   GenerativeMacroSupport,
+  GenerativeRuntimeProfile,
   GenerativeSessionConfig,
 } from "../../types";
 
@@ -55,6 +56,7 @@ export type Mrt2ControlMessage =
       supportsSeed: boolean;
       maxCaptureSeconds: number;
       macroSupport?: Partial<Record<GenerativeMacroName, GenerativeMacroSupport>>;
+      runtimeProfile?: GenerativeRuntimeProfile;
     }
   | {
       version: typeof MRT2_PROTOCOL_VERSION;
@@ -171,6 +173,54 @@ function boundedInteger(value: unknown, label: string, max: number): number {
     throw new Error(`${label} must be a bounded non-negative integer`);
   }
   return value;
+}
+
+function validateRuntimeProfile(value: unknown): GenerativeRuntimeProfile {
+  if (!isRecord(value)) throw new Error("hello.ok.runtimeProfile is invalid");
+  const backendId = requiredString(value.backendId, "hello.ok.runtimeProfile.backendId");
+  const executionMode = value.executionMode;
+  if (executionMode !== "capture" && executionMode !== "near-realtime" && executionMode !== "realtime") {
+    throw new Error("hello.ok.runtimeProfile.executionMode is invalid");
+  }
+  const profile: GenerativeRuntimeProfile = { backendId, executionMode };
+  if (value.runtimeVersion !== undefined) {
+    profile.runtimeVersion = requiredString(value.runtimeVersion, "hello.ok.runtimeProfile.runtimeVersion");
+  }
+  if (value.measuredLatencyMs !== undefined) {
+    if (
+      typeof value.measuredLatencyMs !== "number" ||
+      !Number.isFinite(value.measuredLatencyMs) ||
+      value.measuredLatencyMs < 0 ||
+      value.measuredLatencyMs > 60_000
+    ) {
+      throw new Error("hello.ok.runtimeProfile.measuredLatencyMs is invalid");
+    }
+    profile.measuredLatencyMs = value.measuredLatencyMs;
+  }
+  if (value.frameP95Ms !== undefined) {
+    if (
+      typeof value.frameP95Ms !== "number" ||
+      !Number.isFinite(value.frameP95Ms) ||
+      value.frameP95Ms < 0 ||
+      value.frameP95Ms > 60_000
+    ) {
+      throw new Error("hello.ok.runtimeProfile.frameP95Ms is invalid");
+    }
+    profile.frameP95Ms = value.frameP95Ms;
+  }
+  if (value.realtimeFactor !== undefined) {
+    if (
+      typeof value.realtimeFactor !== "number" ||
+      !Number.isFinite(value.realtimeFactor) ||
+      value.realtimeFactor < 0 ||
+      value.realtimeFactor > 100
+    ) {
+      throw new Error("hello.ok.runtimeProfile.realtimeFactor is invalid");
+    }
+    profile.realtimeFactor = value.realtimeFactor;
+  }
+  if (value.warning !== undefined) profile.warning = requiredString(value.warning, "hello.ok.runtimeProfile.warning");
+  return profile;
 }
 
 function validateSerializableInput(value: unknown): Mrt2SerializableInput {
@@ -293,6 +343,7 @@ export function parseMrt2ControlMessage(raw: unknown): Mrt2ControlMessage {
           }
         }
       }
+      if (value.runtimeProfile !== undefined) validateRuntimeProfile(value.runtimeProfile);
       return value as unknown as Mrt2ControlMessage;
     case "session.create":
       requiredString(value.requestId, "message.requestId");

@@ -55,7 +55,40 @@ function parseReadyLine(line) {
   ) {
     throw new Error("MRT2 native host reported an incompatible runtime");
   }
-  return { version: 1, type: "ready", providerId: "mrt2", modelId: "mrt2_small" };
+  const ready = { version: 1, type: "ready", providerId: "mrt2", modelId: "mrt2_small" };
+  if (value.runtimeProfile !== undefined) {
+    const profile = value.runtimeProfile;
+    if (
+      !profile ||
+      typeof profile !== "object" ||
+      typeof profile.backendId !== "string" ||
+      profile.backendId.length === 0 ||
+      !["capture", "near-realtime", "realtime"].includes(profile.executionMode)
+    ) {
+      throw new Error("MRT2 native host runtime profile is invalid");
+    }
+    for (const name of ["measuredLatencyMs", "frameP95Ms", "realtimeFactor"]) {
+      if (
+        profile[name] !== undefined &&
+        (typeof profile[name] !== "number" ||
+          !Number.isFinite(profile[name]) ||
+          profile[name] < 0 ||
+          profile[name] > 60_000)
+      ) {
+        throw new Error(`MRT2 native host runtime profile ${name} is invalid`);
+      }
+    }
+    ready.runtimeProfile = {
+      backendId: profile.backendId,
+      executionMode: profile.executionMode,
+      ...(typeof profile.runtimeVersion === "string" ? { runtimeVersion: profile.runtimeVersion } : {}),
+      ...(typeof profile.measuredLatencyMs === "number" ? { measuredLatencyMs: profile.measuredLatencyMs } : {}),
+      ...(typeof profile.frameP95Ms === "number" ? { frameP95Ms: profile.frameP95Ms } : {}),
+      ...(typeof profile.realtimeFactor === "number" ? { realtimeFactor: profile.realtimeFactor } : {}),
+      ...(typeof profile.warning === "string" ? { warning: profile.warning } : {}),
+    };
+  }
+  return ready;
 }
 
 function asBuffer(value, label) {
@@ -145,6 +178,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     this.lstat = options.lstat ?? ((filePath) => fs.lstatSync(filePath));
     this.assertExecutable = options.assertExecutable ?? ((filePath) => fs.accessSync(filePath, fs.constants.X_OK));
     this.spawn = options.spawn ?? spawnProcess;
+    this.childEnv = options.childEnv ?? null;
     this.startTimeoutMs = options.startTimeoutMs ?? 60_000;
     this.stopTimeoutMs = options.stopTimeoutMs ?? 3_000;
     this.child = null;
@@ -154,6 +188,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     this.stopPromise = null;
     this.stdoutBuffer = Buffer.alloc(0);
     this.transportIds = new Set();
+    this.readyProfile = null;
   }
 
   isReady() {
@@ -192,6 +227,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     if (this.child) throw new Error("MRT2 native host is still shutting down");
     this.assertInstallAvailable();
     this.stdoutBuffer = Buffer.alloc(0);
+    this.readyProfile = null;
     this.ready = false;
     this.startupComplete = false;
     const child = this.spawn(this.nativeHostPath, ["--model-root", this.modelPaths.modelRoot], {
@@ -199,7 +235,7 @@ class Mrt2NativeHostManager extends EventEmitter {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
       cwd: this.modelPaths.modelRoot,
-      env: { HOME: this.homeDirectory, PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin" },
+      env: this.childEnv ?? { HOME: this.homeDirectory, PATH: process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin" },
     });
     this.child = child;
     this.attachChild(child);
@@ -314,7 +350,7 @@ class Mrt2NativeHostManager extends EventEmitter {
         return;
       }
       const line = this.stdoutBuffer.subarray(0, newline).toString("utf8").replace(/\r$/u, "");
-      parseReadyLine(line);
+      this.readyProfile = parseReadyLine(line).runtimeProfile ?? null;
       this.stdoutBuffer = this.stdoutBuffer.subarray(newline + 1);
       this.startupComplete = true;
     }
@@ -399,6 +435,7 @@ class Mrt2NativeHostManager extends EventEmitter {
     this.ready = false;
     this.startupComplete = false;
     this.stdoutBuffer = Buffer.alloc(0);
+    this.readyProfile = null;
     this._startupFinish?.(new Error(reason));
     this._startupFinish = null;
     for (const transportId of this.transportIds) {

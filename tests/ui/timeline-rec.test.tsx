@@ -20,6 +20,25 @@ import { createDefaultProject } from "../../src/project-model/schema";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 import { renderWithContext, mockServices } from "../helpers";
 
+const recorderMock = vi.hoisted(() => ({
+  implementation: null as (new (...args: any[]) => any) | null,
+}));
+
+vi.mock("../../src/audio-engine/PcmMicRecorder", async () => {
+  const actual = await vi.importActual<typeof import("../../src/audio-engine/PcmMicRecorder")>(
+    "../../src/audio-engine/PcmMicRecorder",
+  );
+  return {
+    ...actual,
+    PcmMicRecorder: class {
+      constructor(options: any) {
+        const Implementation = recorderMock.implementation;
+        return Implementation ? new Implementation(options) : new actual.PcmMicRecorder(options);
+      }
+    },
+  };
+});
+
 describe("recording placement math", () => {
   it("computes seconds per bar (4/4)", () => {
     expect(secondsPerBar(120)).toBe(2);
@@ -71,6 +90,7 @@ describe("recording placement math", () => {
 
 describe("arrangement REC wiring", () => {
   afterEach(() => {
+    recorderMock.implementation = null;
     vi.restoreAllMocks();
   });
 
@@ -107,20 +127,18 @@ describe("arrangement REC wiring", () => {
       removeEventListener: vi.fn(),
     };
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
-    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
-      PcmMicRecorder: class {
-        onError: ((message: string) => void) | null = null;
-        constructor(options: { inputDeviceId?: string }) {
-          recorderInputId = options.inputDeviceId;
-        }
-        setMonitoring() {}
-        async start() {}
-        async cancel() {}
-        async stop() {
-          return null;
-        }
-      },
-    }));
+    recorderMock.implementation = class {
+      onError: ((message: string) => void) | null = null;
+      constructor(options: { inputDeviceId?: string }) {
+        recorderInputId = options.inputDeviceId;
+      }
+      setMonitoring() {}
+      async start() {}
+      async cancel() {}
+      async stop() {
+        return null;
+      }
+    };
 
     try {
       const doc = createDocWithTracks();
@@ -143,7 +161,7 @@ describe("arrangement REC wiring", () => {
       saveRecordingInputDeviceId(previousInputId);
       if (originalDevices) Object.defineProperty(navigator, "mediaDevices", originalDevices);
       else Reflect.deleteProperty(navigator, "mediaDevices");
-      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+      recorderMock.implementation = null;
     }
   });
 
@@ -192,20 +210,18 @@ describe("arrangement REC wiring", () => {
       unblockStart = resolve;
     });
     let startCount = 0;
-    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
-      PcmMicRecorder: class {
-        onError = null;
-        setMonitoring() {}
-        async start() {
-          startCount++;
-          await startGate;
-        }
-        async cancel() {}
-        async stop() {
-          return null;
-        }
-      },
-    }));
+    recorderMock.implementation = class {
+      onError = null;
+      setMonitoring() {}
+      async start() {
+        startCount++;
+        await startGate;
+      }
+      async cancel() {}
+      async stop() {
+        return null;
+      }
+    };
 
     try {
       const doc = createDocWithTracks();
@@ -232,25 +248,23 @@ describe("arrangement REC wiring", () => {
       expect(startCount).toBe(1);
     } finally {
       unblockStart();
-      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+      recorderMock.implementation = null;
     }
   });
 
   it("does not open the microphone if the arrangement unmounts while REC is loading", async () => {
     const startSpy = vi.fn();
     const cancelSpy = vi.fn();
-    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
-      PcmMicRecorder: class {
-        onError = null;
-        setMonitoring() {}
-        async start() {
-          startSpy();
-        }
-        async cancel() {
-          cancelSpy();
-        }
-      },
-    }));
+    recorderMock.implementation = class {
+      onError = null;
+      setMonitoring() {}
+      async start() {
+        startSpy();
+      }
+      async cancel() {
+        cancelSpy();
+      }
+    };
 
     try {
       const doc = createDocWithTracks();
@@ -269,35 +283,35 @@ describe("arrangement REC wiring", () => {
       expect(startSpy).not.toHaveBeenCalled();
       expect(cancelSpy).not.toHaveBeenCalled();
     } finally {
-      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+      recorderMock.implementation = null;
     }
   });
 
   it("warns when the take is usable now but its audio could not be persisted", async () => {
-    vi.doMock("../../src/audio-engine/PcmMicRecorder", () => ({
-      PcmMicRecorder: class {
-        elapsedSeconds = 1;
-        metadata: any;
-        onError = null;
-        setMonitoring() {}
-        async start(getMetadata: () => unknown) {
-          this.metadata = getMetadata();
-        }
-        async stop() {
-          return {
-            session: {
-              id: "recording.test",
-              ...this.metadata,
-            },
-            buffer: { duration: 1, sampleRate: 48_000, numberOfChannels: 1 } as AudioBuffer,
-          };
-        }
-        cancel() {}
-      },
-    }));
+    const doc = createDocWithTracks();
+    let metadata: any;
+    recorderMock.implementation = class {
+      elapsedSeconds = 1;
+      onError = null;
+      setMonitoring() {}
+      async start(getMetadata: () => unknown) {
+        metadata = getMetadata();
+      }
+      async stop() {
+        return {
+          session: {
+            id: "recording.test",
+            ...metadata,
+            projectId: doc.id,
+            trackId: doc.tracks[0].id,
+          },
+          buffer: { duration: 1, sampleRate: 48_000, numberOfChannels: 1 } as AudioBuffer,
+        };
+      }
+      cancel() {}
+    };
 
     try {
-      const doc = createDocWithTracks();
       const services = mockServices(doc);
       (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
       services.recordingRecovery.finalize = vi.fn(async () => {
@@ -310,13 +324,12 @@ describe("arrangement REC wiring", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: "● REC" }));
       fireEvent.click(await screen.findByRole("button", { name: /STOP/ }));
-
       expect(await screen.findByRole("alert")).toHaveTextContent(/committed PCM blocks remain in recovery storage/i);
       expect(services.recordingRecovery.finalize).toHaveBeenCalledOnce();
       expect(services.bank.add).toHaveBeenCalledOnce();
       expect(services.store.execute).toHaveBeenCalledOnce();
     } finally {
-      vi.doUnmock("../../src/audio-engine/PcmMicRecorder");
+      recorderMock.implementation = null;
     }
   });
 });

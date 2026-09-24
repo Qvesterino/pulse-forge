@@ -98,6 +98,75 @@ function getMrt2Availability(options = {}) {
   };
 }
 
+/** Windows reports the optional companion through the same narrow bridge. */
+function getMrt2WindowsAvailability(options = {}) {
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
+  const appIsPackaged = options.appIsPackaged ?? false;
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath ?? "";
+  const homeDirectory = options.homeDirectory ?? require("node:os").homedir();
+  const path = require("node:path");
+  const fs = require("node:fs");
+  const hostPath = options.nativeHostPath ?? path.join(resourcesPath, "mrt2-windows", "kyx-mrt2-windows-host.exe");
+  const modelRoot = options.modelRoot ?? path.join(homeDirectory, "Documents", "Magenta", "magenta-rt-v2-windows");
+  const resourcesPathOnDisk = options.resourcesPathForModel ?? path.join(modelRoot, "resources");
+  const modelPath = options.modelPath ?? path.join(modelRoot, "models", "mrt2_small");
+  const fileExists = options.fileExists ?? fs.existsSync;
+  let helperIsFile = false;
+  try {
+    const stat = (options.lstat ?? ((filePath) => fs.lstatSync(filePath)))(hostPath);
+    helperIsFile = stat.isFile() && !stat.isSymbolicLink();
+  } catch {
+    helperIsFile = false;
+  }
+  let helperExecutable = false;
+  if (helperIsFile && platform === "win32" && arch === "x64") {
+    try {
+      (options.assertExecutable ?? ((filePath) => fs.accessSync(filePath, fs.constants.X_OK)))(hostPath);
+      helperExecutable = true;
+    } catch {
+      helperExecutable = false;
+    }
+  }
+  const windowsCompanionInstalled =
+    platform === "win32" &&
+    arch === "x64" &&
+    appIsPackaged &&
+    helperExecutable &&
+    fileExists(resourcesPathOnDisk) &&
+    fileExists(modelPath);
+  const windowsCompanionReady = windowsCompanionInstalled && options.companionReady === true;
+  const executionMode = options.executionMode ?? "capture";
+  return {
+    nativeInstalled: windowsCompanionInstalled,
+    nativeRealtime: windowsCompanionReady && executionMode === "realtime",
+    windowsCompanionInstalled,
+    windowsCompanionReady,
+    localCompanion: true,
+    platform,
+    arch,
+    status: windowsCompanionReady ? "available" : "unavailable",
+    executionMode,
+    backendId: options.backendId ?? "mrt2-windows-companion",
+    ...(options.runtimeVersion ? { runtimeVersion: options.runtimeVersion } : {}),
+    ...(typeof options.measuredLatencyMs === "number" ? { measuredLatencyMs: options.measuredLatencyMs } : {}),
+    ...(typeof options.frameP95Ms === "number" ? { frameP95Ms: options.frameP95Ms } : {}),
+    ...(typeof options.realtimeFactor === "number" ? { realtimeFactor: options.realtimeFactor } : {}),
+    ...(typeof options.warning === "string" ? { warning: options.warning } : {}),
+    message: windowsCompanionReady
+      ? `Windows MRT2 companion is ready (${executionMode})`
+      : platform !== "win32" || arch !== "x64"
+        ? "Windows MRT2 companion requires Windows x64"
+        : !appIsPackaged
+          ? "Windows MRT2 companion is available only in a packaged KYX desktop build"
+          : !helperIsFile || !helperExecutable
+            ? "The packaged Windows MRT2 companion is missing or not executable"
+            : !fileExists(resourcesPathOnDisk) || !fileExists(modelPath)
+              ? "Windows MRT2 model resources are not installed in ~/Documents/Magenta/magenta-rt-v2-windows"
+              : "Windows MRT2 companion is installed but has not reported ready",
+  };
+}
+
 function registerMrt2IpcHandlers(ipcMain, options = {}) {
   if (!ipcMain || typeof ipcMain.handle !== "function") throw new Error("Electron ipcMain is required");
   const { nativeHostManager, isTrustedSender, ...availabilityOptions } = options;
@@ -128,9 +197,10 @@ function registerMrt2IpcHandlers(ipcMain, options = {}) {
       if (event.kind === "closed") forgetTransport(event.transportId);
     });
   }
-  ipcMain.handle("kyx:mrt2:get-availability", () =>
-    getMrt2Availability({ ...availabilityOptions, nativeReady: nativeHostManager?.isReady() === true }),
-  );
+  ipcMain.handle("kyx:mrt2:get-availability", () => {
+    if (typeof nativeHostManager?.getAvailability === "function") return nativeHostManager.getAvailability();
+    return getMrt2Availability({ ...availabilityOptions, nativeReady: nativeHostManager?.isReady() === true });
+  });
   ipcMain.handle("kyx:mrt2:validate-endpoint", (_event, value) => {
     try {
       return { ok: true, endpoint: validateMrt2Endpoint(value) };
@@ -192,6 +262,7 @@ function registerMrt2IpcHandlers(ipcMain, options = {}) {
 module.exports = {
   MAX_ENDPOINT_LENGTH,
   getMrt2Availability,
+  getMrt2WindowsAvailability,
   registerMrt2IpcHandlers,
   validateMrt2Endpoint,
 };

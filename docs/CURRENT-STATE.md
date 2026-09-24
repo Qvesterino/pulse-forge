@@ -1,6 +1,6 @@
 # Current State — single source of truth
 
-**Last verified:** 2026-09-23
+**Last verified:** 2026-09-24
 **Verified by:** direct count against `src/effects/registry.ts`, `src/instruments/registry.ts`, `docs/adr/` and `tests/`.
 
 This document is the **single source of truth** for the headline numbers about KYX / Pulse Forge. Older documents in this repo (`RELEASE_ROADMAP.md`, `DSP-ROADMAP.md`, `EDIT-ROADMAP.md`, `INSTRUMENT-ROADMAP.md`, `SCENE-MODE-ROADMAP.md`, `INTENT_ENGINE.md`, `KYX_CURRENT_STATE.md`, `MAINTENANCE_AUDIT_PROGRESS.md`, `PERFORMANCE.md`) may carry their own point-in-time numbers; when those disagree with the figures below, **this document wins** for the question "how many / what ships today?".
@@ -24,8 +24,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Factory presets**                    | **298** | `src/presets/factory.ts`                                                                                                   |
 | └─ instrument presets                  |     292 | `FACTORY_PRESETS`                                                                                                          |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                     |
-| **Architecture decision records**      |  **14** | `docs/adr/0001` … `0012`, plus 0006/0007 each have two companion files                                                     |
-| **Vitest spec files**                  | **452** | `tests/` files matching `*.test.ts` (353) and `*.test.tsx` (99)                                                            |
+| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                     |
+| **Vitest spec files**                  | **484** | `tests/` files matching `*.test.ts` (383) and `*.test.tsx` (100)                                                            |
 
 ## Flagship plugin implementations
 
@@ -41,23 +41,23 @@ All five flagship suites use AudioWorklet DSP. PRISM, VLYX and VØID include sep
 
 ## AI models shipped in the browser
 
-| Model                      |    Size | Feature version                        | Role                                                              |
-| -------------------------- | ------: | -------------------------------------- | ----------------------------------------------------------------- |
-| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)            | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)      |
-| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)      | drum prior fallback branch (one-hot style×role×position)          |
-| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)      | drum prior intermediate (16-dim semantic conditioning)            |
-| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)      | drum prior **default** branch (hybrid, valAUC 0.920)              |
-| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features)    | melodic next-note prior, **preferred** (valDegreeAcc 0.679)       |
-| `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features)    | melodic embedding variant, fallback only (regression on 190 rows) |
+| Model                      |   Size | Feature version                     | Role                                                              |
+| -------------------------- | -----: | ----------------------------------- | ----------------------------------------------------------------- |
+| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)         | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)      |
+| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)   | drum prior fallback branch (one-hot style×role×position)          |
+| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)   | drum prior intermediate (16-dim semantic conditioning)            |
+| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)   | drum prior **default** branch (hybrid, valAUC 0.920)              |
+| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features) | melodic next-note prior, **preferred** (valDegreeAcc 0.679)       |
+| `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features) | melodic embedding variant, fallback only (regression on 190 rows) |
 
 All six are loaded lazily in dedicated Web Workers with bounded timeouts + circuit breaker + deterministic heuristic fallback (`src/ai/ranking/ranker-client.ts`, `src/ai/symbolic/prior-client.ts`). Inference never runs on the audio thread. Two further models are lazy-fetched on demand (not in git): multilingual MiniLM q8 ~118 MB (`npm run semantic:fetch` → `public/models/semantic/`) and AST AudioSet q8 ~86.6 MB (`npm run audio:fetch` → `public/models/audio/`); both degrade to keyword/heuristic paths when absent. The retrained `hybrid v3` symbolic prior (label smoothing + variant embeddings, logit saturation fix) is the active generation source behind the candidate bank; see `INTENT_ENGINE.md` for the full conditioning chain (semantic embedding, user style vector, SUNO MODE button).
 
 ## Platform reach
 
 - **Browser** — Chromium-family, Firefox and Microsoft Edge are target environments. The last recorded 226/226-per-browser result is a historical baseline from 2026-09-14, not verification of the current revision.
-- **Desktop** — Windows x64 shipped (NSIS installer + portable exe via `electron-builder`). MRT2 macOS arm64 helper source and packaging path exist (`native/mrt2-host/`, ADR 0012) but are not released or runtime-verified; Windows MRT2 reports unavailable. Auto-update through GitHub Releases (ADR 0011).
+- **Desktop** — Windows x64 shipped (NSIS installer + portable exe via `electron-builder`). The MRT2 macOS arm64 path now has a GitHub Actions package gate: after all shared CI checks pass, it builds a DMG + ZIP, verifies the DMG and packaged arm64 app/helper, boots the packaged Electron app in smoke mode, then uploads a 14-day QA artifact. This artifact is unsigned/unnotarized and does not include model weights; it is not a public macOS release or proof of MRT2 inference. Windows MRT2 uses a separate optional companion boundary and remains capture/near-realtime/realtime only after capability and benchmark evidence. Auto-update through GitHub Releases (ADR 0011).
 - **Safari / iOS Safari** — manual smoke only; not covered by automated browser verifier.
-- **macOS / Linux desktop** — not shipped (ADR 0010 is Windows-only by current target list); macOS MRT2 packaging remains an experimental, unverified path rather than a supported desktop target.
+- **macOS / Linux desktop** — not shipped (ADR 0010 is Windows-only by current target list). The macOS MRT2 CI artifact is an opt-in QA build only; signing/notarization and a real model-inference test remain release requirements.
 
 ## Recent additions (last two weeks)
 
@@ -107,7 +107,8 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 
 ### Architecture
 
-- **ADR 0012 — MRT2 generative tracks** records the Mac Apple-Silicon-only generative-tracks helper path; the helper builds in `native/mrt2-host/`, packaging lives in `electron-builder.yml` desktop:build:mac:mrt2.
+- **ADR 0012 — MRT2 generative tracks** records the Mac Apple-Silicon-only generative-tracks helper path; the helper builds in `native/mrt2-host/`, packaging lives in `electron-builder.yml` and `desktop:build:mac:mrt2`. `.github/workflows/ci.yml` gates its downloadable QA artifact on the shared test suite and packaged-app smoke verification.
+- **ADR 0013 — Windows generative companion tiers** records the separate Windows manager/transport, capture-first capability tiers, benchmark gate and fixed optional companion/model paths. The checked-in JAX capture host, package hash manifest verifier and guarded model-data uninstall script live under `companion/mrt2-windows/` and `scripts/`; the macOS helper remains Apple Silicon-only.
 
 ## Prior test-gate baseline — not verified on the current revision
 

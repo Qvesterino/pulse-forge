@@ -43,4 +43,5 @@ export {
   type Mrt2LocalhostWebSocketOptions,
 } from "./providers/mrt2/websocket-transport";
 export { createMrt2ElectronProvider } from "./providers/mrt2/electron-transport";
+export { createMrt2WindowsProvider } from "./providers/mrt2/windows-transport";
 export * from "./types";

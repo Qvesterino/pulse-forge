@@ -131,7 +131,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
         // D2: say WHAT was skipped — the old early-return silently discarded
         // every file after the first bad one.
         setError(
-          `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"}: ${skipped.slice(0, 3).join(", ")}${
+          `Skipped ${skipped.length} file${skipped.length === 1 ? "" : "s"} — Unsupported format: ${skipped.slice(0, 3).join(", ")}${
             skipped.length > 3 ? "…" : ""
           }`,
         );

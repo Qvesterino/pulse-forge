@@ -128,3 +128,112 @@ jobs:
       # dev-server one nested under vitest 2) are consciously deferred — see
       # RELEASE_ROADMAP.md 2.5.
       - run: npm audit --omit=dev --audit-level=high
+
+  desktop-macos-mrt2:
+    name: macOS arm64 Electron package (MRT2)
+    runs-on: macos-15
+    needs:
+      - typecheck
+      - test
+      - build
+      - test-browser
+      - test-browser-production
+      - e2e-smoke
+      - audit-prod
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout KYX
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned Magenta RealTime source
+        uses: actions/checkout@v4
+        with:
+          repository: magenta/magenta-realtime
+          ref: v2.0.3
+          path: upstream-magenta-realtime
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Verify Apple Silicon runner and CMake
+        run: |
+          test "$(uname -m)" = "arm64"
+          xcode-select -p
+          if ! command -v cmake >/dev/null 2>&1; then brew install cmake; fi
+          cmake --version
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            const version = execFileSync("cmake", ["--version"], { encoding: "utf8" }).match(/cmake version (\d+)\.(\d+)/);
+            if (!version || Number(version[1]) < 3 || (Number(version[1]) === 3 && Number(version[2]) < 27)) {
+              throw new Error("CMake 3.27 or newer is required by the MRT2 native host.");
+            }
+          '
+      - run: npm ci
+      - name: Run MRT2 provider and Electron bridge tests on macOS
+        run: >-
+          npx vitest run tests/generative-mrt2-protocol.test.ts
+          tests/generative-mrt2-electron-transport.test.ts
+          tests/mrt2-native-host-manager.test.ts
+          tests/mrt2-electron-bridge.test.ts
+      - name: Build KYX MRT2 macOS DMG and ZIP
+        run: npm run desktop:build:mac:mrt2
+        env:
+          MAGENTA_REALTIME_SOURCE: ${{ github.workspace }}/upstream-magenta-realtime
+          CMAKE_BUILD_PARALLEL_LEVEL: "1"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Verify artifacts and boot packaged Electron app
+        run: node scripts/verify-mrt2-mac-package.mjs
+      - name: Offer tested macOS artifacts for download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KYX-macOS-arm64-MRT2-${{ github.sha }}
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  mrt2-windows-boundary:
+    name: Windows MRT2 companion boundary
+    runs-on: windows-latest
+    needs:
+      - typecheck
+      - test
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate Windows manager, bridge and provider contract
+        shell: pwsh
+        run: >-
+          npx vitest run
+          tests/generative-mrt2-protocol.test.ts
+          tests/generative-mrt2-electron-transport.test.ts
+          tests/generative-mrt2-windows-transport.test.ts
+          tests/mrt2-windows-host-manager.test.ts
+          tests/mrt2-windows-assets.test.ts
+          tests/mrt2-electron-bridge.test.ts
+      - name: Validate desktop and benchmark entrypoints
+        shell: pwsh
+        run: >-
+          node --check desktop/mrt2-windows-host-manager.cjs;
+          node --check desktop/mrt2-windows-assets.cjs;
+          node --check desktop/mrt2-bridge.cjs;
+          node --check scripts/benchmark-mrt2-windows.mjs;
+          node --check scripts/create-mrt2-windows-manifest.mjs;
+          node --check scripts/verify-mrt2-windows-package.mjs
+      - name: Validate Python companion source without installing model runtime
+        shell: pwsh
+        run: |
+          python -m py_compile companion/mrt2-windows/kyx_mrt2_windows_host.py
+          python -m unittest discover -s companion/mrt2-windows -p "test_*.py"

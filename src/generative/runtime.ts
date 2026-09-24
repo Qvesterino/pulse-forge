@@ -124,9 +124,12 @@ export class GenerativeRuntime {
     if (!provider.getCapabilities().supportsRealtime) {
       const cached = this.derivedStatuses.get(trackId);
       if (cached) return cached;
+      const capabilities = provider.getCapabilities();
       const unavailable = {
         state: "unavailable",
-        message: "Provider does not support realtime playback",
+        message: capabilities.supportsCapture
+          ? "Provider is capture-only; realtime playback is unavailable"
+          : "Provider does not support realtime playback",
       } satisfies GenerativeStatus;
       this.derivedStatuses.set(trackId, unavailable);
       return unavailable;

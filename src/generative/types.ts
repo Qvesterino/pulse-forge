@@ -27,6 +27,22 @@ export type GenerativeMacroSupport = "native" | "wrapper" | "unsupported";
 export type GenerativeMacroSupportMap = Readonly<Partial<Record<GenerativeMacroName, GenerativeMacroSupport>>>;
 export const GENERATIVE_MACRO_NAMES = ["energy", "density", "variation", "texture"] as const;
 
+/** Runtime tier reported by a provider companion after hardware probing. */
+export type GenerativeExecutionMode = "capture" | "near-realtime" | "realtime";
+
+/** Host-local diagnostics; never persisted in a ProjectDocument. */
+export interface GenerativeRuntimeProfile {
+  backendId: string;
+  executionMode: GenerativeExecutionMode;
+  runtimeVersion?: string;
+  measuredLatencyMs?: number;
+  /** P95 wall time to generate one provider frame, when measured by the companion. */
+  frameP95Ms?: number;
+  /** Audio seconds generated per wall-clock second. Values >= 1 can sustain playback. */
+  realtimeFactor?: number;
+  warning?: string;
+}
+
 /** One provider-time frame. Pitch states use 0=off, 1=sustain, 2=onset, 3=provider decides. */
 export interface GenerativeNoteFrame {
   frameIndex: number;
@@ -78,6 +94,8 @@ export interface GenerativeCapabilities {
   outputSampleRates: readonly number[];
   outputChannels: readonly number[];
   maxCaptureSeconds: number;
+  /** Optional host-local backend diagnostics supplied by a companion handshake. */
+  runtimeProfile?: GenerativeRuntimeProfile;
 }
 
 export interface GenerativeSessionConfig {

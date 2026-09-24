@@ -20,7 +20,10 @@ function setup(overrides?: { doc?: ProjectDocument }) {
     getDoc: () => doc,
     execute: (cmd) => executed.push(cmd),
     getTick: () => tick,
-    isPlaying: () => false,
+    // PatternRecorder intentionally ignores performed input while the
+    // transport is stopped; stopped-transport coverage lives in
+    // tests/recording-audit.test.ts.
+    isPlaying: () => true,
     beginUndoFrame,
     endUndoFrame,
   });

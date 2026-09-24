@@ -98,6 +98,7 @@ export function Inspector({
   const [mrt2NativeRunning, setMrt2NativeRunning] = useState(false);
   const [mrt2NativeInstalled, setMrt2NativeInstalled] = useState(false);
   const [mrt2NativeStatus, setMrt2NativeStatus] = useState("");
+  const [mrt2HostPlatform, setMrt2HostPlatform] = useState<string | null>(null);
   const generativeStatus = useGenerativeStatus(track.id);
 
   useEffect(() => {
@@ -110,6 +111,7 @@ export function Inspector({
         if (!active) return;
         setMrt2NativeInstalled(availability.nativeInstalled);
         setMrt2NativeStatus(availability.message);
+        setMrt2HostPlatform(availability.platform);
       })
       .catch(() => {
         if (active) setMrt2NativeStatus("NATIVE MRT2 STATUS IS UNAVAILABLE");
@@ -340,6 +342,8 @@ export function Inspector({
     const sourceTracks = doc.tracks.filter((candidate) => candidate.id !== track.id && candidate.kind !== "group");
     const capabilities = services.generativeProviders.capabilities(track.generative.providerId);
     const macroSupport = capabilities?.macroSupport;
+    const runtimeProfile = capabilities?.runtimeProfile;
+    const isWindowsCompanion = mrt2HostPlatform === "win32";
     const generativeLatency = services.generativeLatency?.getSnapshot();
     const resampleSources = (doc.arrangement.audioClips ?? []).filter((clip) => services.bank.get(clip.bufferId));
     const selectedResampleSource = resampleSources.find((clip) => clip.id === generativeResampleSourceId);
@@ -384,14 +388,38 @@ export function Inspector({
       try {
         await bridge.startNativeHost();
         setMrt2NativeRunning(true);
-        const { createMrt2ElectronProvider } = await import("../generative/providers/mrt2/electron-transport");
-        const provider = createMrt2ElectronProvider();
+        const availability = await bridge.getAvailability();
+        const provider = isWindowsCompanion
+          ? (await import("../generative/providers/mrt2/windows-transport")).createMrt2WindowsProvider({
+              capabilities: {
+                supportsRealtime:
+                  availability.executionMode === "near-realtime" || availability.executionMode === "realtime",
+                supportsCapture: true,
+                ...(availability.backendId
+                  ? {
+                      runtimeProfile: {
+                        backendId: availability.backendId,
+                        executionMode: availability.executionMode ?? "capture",
+                        ...(availability.runtimeVersion ? { runtimeVersion: availability.runtimeVersion } : {}),
+                        ...(availability.measuredLatencyMs !== undefined
+                          ? { measuredLatencyMs: availability.measuredLatencyMs }
+                          : {}),
+                        ...(availability.frameP95Ms !== undefined ? { frameP95Ms: availability.frameP95Ms } : {}),
+                        ...(availability.realtimeFactor !== undefined
+                          ? { realtimeFactor: availability.realtimeFactor }
+                          : {}),
+                        ...(availability.warning ? { warning: availability.warning } : {}),
+                      },
+                    }
+                  : {}),
+              },
+            })
+          : (await import("../generative/providers/mrt2/electron-transport")).createMrt2ElectronProvider();
         services.generativeProviders.unregister(provider.id);
         services.generativeProviders.register(provider);
         setMrt2CompanionState("configured");
         setMrt2CompanionError("");
         void services.generativeRuntime.refreshAll();
-        const availability = await bridge.getAvailability();
         setMrt2NativeInstalled(availability.nativeInstalled);
         setMrt2NativeStatus(availability.message);
       } catch (error) {
@@ -464,7 +492,7 @@ export function Inspector({
         <p className="inspector-subtitle">
           {track.generative.providerId} / {track.generative.modelId}
         </p>
-        <h3 className="inspector-subtitle">LOCAL MRT2 COMPANION</h3>
+        <h3 className="inspector-subtitle">{isWindowsCompanion ? "WINDOWS MRT2 COMPANION" : "LOCAL MRT2 COMPANION"}</h3>
         {window.kyxDesktop?.mrt2 && (
           <>
             <p className="inspector-subtitle">{mrt2NativeStatus || "CHECKING NATIVE MRT2 HOST…"}</p>
@@ -474,7 +502,11 @@ export function Inspector({
               disabled={!mrt2NativeInstalled || mrt2CompanionState === "starting"}
               onClick={() => void startNativeMrt2()}
             >
-              {mrt2CompanionState === "starting" ? "STARTING MRT2 SMALL…" : "START NATIVE MRT2 SMALL"}
+              {mrt2CompanionState === "starting"
+                ? "STARTING MRT2 SMALL…"
+                : isWindowsCompanion
+                  ? "START WINDOWS MRT2 COMPANION"
+                  : "START NATIVE MRT2 SMALL"}
             </button>
             {mrt2NativeRunning && (
               <button type="button" className="btn btn-small" onClick={() => void stopNativeMrt2()}>
@@ -631,6 +663,17 @@ export function Inspector({
           {track.generative.latencyMode.toUpperCase()} · {generativeStatus.state.toUpperCase()}
           {generativeStatus.message ? ` · ${generativeStatus.message}` : ""}
         </p>
+        {runtimeProfile && (
+          <p className="inspector-subtitle" title="Host-local runtime capability; not stored in the project">
+            BACKEND · {runtimeProfile.backendId} · {runtimeProfile.executionMode.toUpperCase()}
+            {runtimeProfile.measuredLatencyMs !== undefined
+              ? ` · ${Math.round(runtimeProfile.measuredLatencyMs)}MS`
+              : ""}
+            {runtimeProfile.frameP95Ms !== undefined ? ` · FRAME P95 ${Math.round(runtimeProfile.frameP95Ms)}MS` : ""}
+            {runtimeProfile.realtimeFactor !== undefined ? ` · RTF ${runtimeProfile.realtimeFactor.toFixed(2)}` : ""}
+            {runtimeProfile.warning ? ` · ${runtimeProfile.warning}` : ""}
+          </p>
+        )}
         {generativeLatency && (
           <p className="inspector-subtitle" title="Host-local provider calibration; not stored in the project">
             PROVIDER LATENCY · WARMUP{" "}
@@ -641,9 +684,13 @@ export function Inspector({
         <button
           type="button"
           className="btn btn-small"
-          disabled={generativeCaptureState === "capturing"}
+          disabled={generativeCaptureState === "capturing" || !capabilities?.supportsCapture}
           onClick={captureFourBars}
-          title="Capture four bars as a normal KYX audio clip"
+          title={
+            capabilities?.supportsCapture
+              ? "Capture four bars as a normal KYX audio clip"
+              : "The current MRT2 provider does not support capture"
+          }
         >
           {generativeCaptureState === "capturing" ? "CAPTURING…" : "CAPTURE 4 BARS"}
         </button>

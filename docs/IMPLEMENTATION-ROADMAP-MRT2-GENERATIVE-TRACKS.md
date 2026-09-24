@@ -6,17 +6,17 @@
 
 ## Priebežný stav implementácie
 
-Overené v pracovnom strome 2026-09-23:
+Overené v pracovnom strome 2026-09-24:
 
-| Oblasť                                                                    | Stav                                                                                                            |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| ADR, persisted track model, schema v1 → v2 normalizácia                   | hotové a testované                                                                                              |
-| provider-neutral contract, mock provider, capability registry, validation | hotové a testované                                                                                              |
-| bounded PCM queue s explicitným overrun/underrun stavom                   | hotové a testované                                                                                              |
-| capture → durable generated user sample → undoable `AudioClip` command    | hotové na mock provider flow vrátane runtime/UI commitu                                                         |
-| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                | hotové a testované                                                                                              |
-| live engine/worklet bus, persisted macro lanes + scene intensity          | prvý vertical slice hotový; hardening otvorený                                                                  |
-| MRT2 protocol/IPC safety, host-local latency calibration, resample UI     | prvý slice hotový; native helper source/build/package path hotový; arm64 build a Apple Silicon runtime otvorené |
+| Oblasť                                                                    | Stav                                                                                                                                                |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ADR, persisted track model, schema v1 → v2 normalizácia                   | hotové a testované                                                                                                                                  |
+| provider-neutral contract, mock provider, capability registry, validation | hotové a testované                                                                                                                                  |
+| bounded PCM queue s explicitným overrun/underrun stavom                   | hotové a testované                                                                                                                                  |
+| capture → durable generated user sample → undoable `AudioClip` command    | hotové na mock provider flow vrátane runtime/UI commitu                                                                                             |
+| conditioning z KYX pattern notes do 25 Hz/128-pitch frames                | hotové a testované                                                                                                                                  |
+| live engine/worklet bus, persisted macro lanes + scene intensity          | prvý vertical slice hotový; hardening otvorený                                                                                                      |
+| MRT2 protocol/IPC safety, host-local latency calibration, resample UI     | prvý slice hotový; macOS native helper path hotový; Windows companion capability/manager slice otvorený; arm64/native and model benchmarks otvorené |
 
 ### Dôkazy posledného implementation passu
 
@@ -248,6 +248,7 @@ Persisted config nesmie obsahovať socket state, model path, generated PCM, conn
 - [ ] potvrdiť na reálnom Apple Silicon runtime, že deklarované text/note/drumless/capture správanie zodpovedá upstream inference a že buffer underrun/recovery nestráca capture PCM;
 - [x] pre browser režim podporiť iba deliberate localhost companion connection s origin/token kontrolou, ak to ADR schváli;
 - [x] deklarovať platform capability: Apple Silicon realtime, offline-only alebo unavailable; Windows KYX musí mať jasný fallback stav;
+- [x] oddeliť Windows companion manager/transport od macOS MLX helpera; Windows musí reportovať capture/near-realtime/realtime tier cez handshake a nesmie spúšťať macOS binárku;
 - [x] zobraziť/propagovať model loading, downloading, ready, buffering, unavailable, error a reconnect stavy;
 - [x] browser Inspector smoke overuje vytvorenie generative tracku, provider/model surface, localhost-only companion endpoint a bezpečný idle stav bez native hosta;
 - [x] neukladať absolútne model paths, IPC tokeny ani host-local capabilities do project documentu;

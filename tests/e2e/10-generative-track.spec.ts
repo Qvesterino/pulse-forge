@@ -189,6 +189,135 @@ test.describe("10 — MRT2 generative track", () => {
     }
   });
 
+  test("captures from a capture-only companion without attempting live start", async ({ page }) => {
+    await openAudioStudioOrSkip(page);
+    const companion = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await new Promise<void>((resolve, reject) => {
+      companion.once("listening", resolve);
+      companion.once("error", reject);
+    });
+    const address = companion.address();
+    if (!address || typeof address === "string") throw new Error("MRT2 capture companion did not bind a TCP port");
+    const endpoint = `ws://127.0.0.1:${address.port}`;
+    const receivedTypes: string[] = [];
+    let captureSocket: import("ws").WebSocket | undefined;
+
+    companion.on("connection", (socket) => {
+      captureSocket = socket;
+      socket.on("message", (raw, isBinary) => {
+        if (isBinary) return;
+        let message: Mrt2ControlMessage;
+        try {
+          message = JSON.parse(raw.toString()) as Mrt2ControlMessage;
+        } catch {
+          return;
+        }
+        receivedTypes.push(message.type);
+        const send = (response: Mrt2ControlMessage): void => socket.send(serializeMrt2ControlMessage(response));
+        switch (message.type) {
+          case "hello":
+            send({
+              version: 1,
+              type: "hello.ok",
+              requestId: message.requestId,
+              providerId: "mrt2-capture-e2e",
+              modelIds: ["mrt2_small"],
+              outputSampleRates: [48_000],
+              outputChannels: [2],
+              supportsRealtime: false,
+              supportsCapture: true,
+              supportsTextStyle: true,
+              supportsNoteConditioning: true,
+              supportsAudioStyle: false,
+              supportsDrumsMode: true,
+              supportsSeed: false,
+              maxCaptureSeconds: 120,
+              runtimeProfile: {
+                backendId: "mrt2-capture-e2e",
+                executionMode: "capture",
+                runtimeVersion: "e2e",
+                warning: "capture-only test companion",
+              },
+            });
+            break;
+          case "session.create":
+            send({ version: 1, type: "session.ok", requestId: message.requestId, sessionId: "capture-session" });
+            break;
+          case "input.update":
+            send({
+              version: 1,
+              type: "status",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              state: "ready",
+            });
+            break;
+          case "capture.start": {
+            const frames = Math.round(message.durationSec * 48_000);
+            const packetFrames = 48_000;
+            for (let offset = 0, sequence = 0; offset < frames; offset += packetFrames, sequence++) {
+              const currentFrames = Math.min(packetFrames, frames - offset);
+              const pcm = new Float32Array(currentFrames * 2).fill(0.03);
+              socket.send(
+                Buffer.from(
+                  encodeMrt2AudioPacket({
+                    kind: "output",
+                    sequence,
+                    sampleRate: 48_000,
+                    channels: 2,
+                    frames: currentFrames,
+                    data: pcm,
+                  }),
+                ),
+              );
+            }
+            send({
+              version: 1,
+              type: "capture.ok",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              frames,
+              durationSec: frames / 48_000,
+              inputHash: "e2e-capture-input",
+            });
+            break;
+          }
+          case "session.close":
+            send({
+              version: 1,
+              type: "status",
+              requestId: message.requestId,
+              sessionId: message.sessionId,
+              state: "idle",
+            });
+            break;
+          default:
+            break;
+        }
+      });
+    });
+
+    try {
+      await page.locator('select[aria-label="Add track"]').selectOption("generative");
+      const generativeTab = page.getByRole("tab", { name: /Generative 1 \(Generative track\)/ });
+      await expect(generativeTab).toBeVisible();
+      await generativeTab.click();
+      await page.locator('input[placeholder="ws://127.0.0.1:8765"]').fill(endpoint);
+      await page.getByRole("button", { name: "USE LOCAL COMPANION" }).click();
+      await expect(page.getByText("COMPANION CONFIGURED — PLAY TO CONNECT")).toBeVisible();
+      const captureButton = page.getByRole("button", { name: "CAPTURE 4 BARS" });
+      await expect(captureButton).toBeEnabled();
+      await captureButton.click();
+      await expect.poll(() => receivedTypes.includes("capture.start"), { timeout: 20_000 }).toBe(true);
+      await expect.poll(() => receivedTypes.includes("session.start")).toBe(false);
+      await expect(page.getByText("CAPTURE FAILED — check provider status")).not.toBeVisible();
+    } finally {
+      captureSocket?.close();
+      for (const client of companion.clients) client.close();
+      await new Promise<void>((resolve) => companion.close(() => resolve()));
+    }
+  });
+
   test("renders a persisted generative clip after reload and WAV round-trip", async ({ page }) => {
     await openAudioStudioOrSkip(page);
     const report = await page.evaluate(async () => {

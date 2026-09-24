@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
+import type { EffectRuntime } from "../src/effects/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import type { EffectRuntime, ProjectDocument } from "../src/project-model/types";
+import type { ProjectDocument } from "../src/project-model/types";
 
 /**
  * Regression: AudioEngine.previewFxParam must skip degraded (bypass) runtimes.
@@ -52,6 +53,7 @@ describe("AudioEngine.previewFxParam — degraded runtime suppression", () => {
       input: {} as AudioNode,
       output: {} as AudioNode,
       setParameter,
+      dispose: vi.fn(),
     });
 
     engine.previewFxParam(track.id, "fx-fxeq", "band1.gainDb", -3.5);
@@ -67,6 +69,7 @@ describe("AudioEngine.previewFxParam — degraded runtime suppression", () => {
       input: {} as AudioNode,
       output: {} as AudioNode,
       setParameter,
+      dispose: vi.fn(),
       degraded: true,
       degradedReason: "AudioWorklet unavailable — PRISM is bypassed (1:1 signal)",
     });
@@ -84,6 +87,7 @@ describe("AudioEngine.previewFxParam — degraded runtime suppression", () => {
       input: {} as AudioNode,
       output: {} as AudioNode,
       setParameter: vi.fn(),
+      dispose: vi.fn(),
     });
 
     // Track not registered — simulates the brief dispose→clear→rebuild window
@@ -104,6 +108,7 @@ describe("AudioEngine.previewFxParam — degraded runtime suppression", () => {
       input: {} as AudioNode,
       output: {} as AudioNode,
       setParameter: vi.fn(),
+      dispose: vi.fn(),
       degraded: true,
     });
 

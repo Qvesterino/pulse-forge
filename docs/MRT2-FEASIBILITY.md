@@ -1,6 +1,6 @@
 # MRT2 Small feasibility report
 
-> Overené: 2026-09-23
+> Overené: 2026-09-24
 > Scope: Magenta RealTime 2 provider boundary pre KYX/Pulse Forge
 > Status: upstream contract verified; native runtime experiment still requires an Apple Silicon host
 
@@ -36,8 +36,9 @@ controller/background threadoch. [Zdroj: `realtime_runner.h`](https://github.com
 `mrt2_small` má 230M parametrov a upstream ho označuje ako realtime-capable na
 Apple Silicon Macoch vrátane Air modelov. Python/JAX cesta vie robiť offline
 inference aj mimo tejto platformy, ale to nie je realtime desktop bridge pre KYX.
-Windows/browser build preto musí zostať v stave `unavailable` alebo použiť už
-zachytený AudioClip.
+Windows/browser build preto musí zostať v stave `unavailable` pre upstream
+MLX runtime alebo použiť Windows companion/capture backend. Zachytený
+AudioClip ostáva vždy funkčný aj bez live providera.
 
 ## Životný cyklus, ktorý musí adapter pokryť
 
@@ -70,12 +71,12 @@ Adapter ich môže mapovať iba cez explicitný capability/profile mapping.
 
 ## Platform decision
 
-| Host                | MRT2 live                                                                        | KYX behaviour                                                     |
-| ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Apple Silicon macOS | supported by upstream C++/MLX path, subject to measured model/runtime capability | optional explicit companion/native provider                       |
-| Intel macOS         | not accepted as realtime target                                                  | unavailable or capture-only provider                              |
-| Windows Electron    | no upstream MLX realtime target                                                  | unavailable; captured clips still play/export                     |
-| Browser/PWA         | no model/native dependency in bundle                                             | unavailable unless user deliberately starts a localhost companion |
+| Host                | MRT2 live                                                                        | KYX behaviour                                                           |
+| ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Apple Silicon macOS | supported by upstream C++/MLX path, subject to measured model/runtime capability | optional explicit companion/native provider                             |
+| Intel macOS         | not accepted as realtime target                                                  | unavailable or capture-only provider                                    |
+| Windows Electron    | no upstream MLX realtime target; separate companion must be benchmarked          | capture/near-realtime/realtime only when capability handshake proves it |
+| Browser/PWA         | no model/native dependency in bundle                                             | unavailable unless user deliberately starts a localhost companion       |
 
 ## License and distribution boundary
 
@@ -98,6 +99,21 @@ integrátora a používateľa; app nesmie sľubovať právny status generovanéh
 The KYX implementation can and should finish the transport-neutral protocol,
 mock IPC, validation and fallback behaviour on any host. It must not claim the
 Apple Silicon experiment is complete until the native smoke/soak report exists.
+
+Windows companion benchmark entry point:
+
+```powershell
+$env:KYX_MRT2_WINDOWS_HOST = "C:\Program Files\KYX\resources\mrt2-windows\kyx-mrt2-windows-host.exe"
+$env:KYX_MRT2_WINDOWS_MODEL_ROOT = "$env:USERPROFILE\Documents\Magenta\magenta-rt-v2-windows"
+$env:KYX_MRT2_BENCHMARK_MODE = "capture"
+npm run benchmark:mrt2:windows
+```
+
+The benchmark speaks the same framed protocol as Electron, prints the
+companion-advertised profile plus measured output throughput, and must be run
+on representative hardware before any Windows build is promoted to realtime.
+The default capture run measures the JAX path without prematurely promoting it
+to live playback; use `live` only after the companion advertises realtime.
 
 ## Sources
 

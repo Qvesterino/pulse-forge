@@ -62,6 +62,15 @@ declare global {
         getAvailability: () => Promise<{
           nativeInstalled: boolean;
           nativeRealtime: boolean;
+          windowsCompanionInstalled?: boolean;
+          windowsCompanionReady?: boolean;
+          executionMode?: "capture" | "near-realtime" | "realtime";
+          backendId?: string;
+          runtimeVersion?: string;
+          measuredLatencyMs?: number;
+          frameP95Ms?: number;
+          realtimeFactor?: number;
+          warning?: string;
           localCompanion: boolean;
           platform: string;
           arch: string;

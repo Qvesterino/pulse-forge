@@ -1,9 +1,11 @@
-# KYX MRT2 native host protocol v1
+# KYX MRT2 companion protocol v1
 
 This document specifies the private, local stdio protocol between Electron's
-main process and the packaged kyx-mrt2-host executable. The host is a fixed
-release artifact, not a renderer-selectable service. It must not bind a network
-socket or accept executable/model paths from protocol messages.
+main process and a packaged MRT2 companion executable. The macOS artifact is
+`kyx-mrt2-host`; a future Windows artifact is a separate companion, not a
+cross-compiled MLX helper. Both are fixed release artifacts, not
+renderer-selectable services. Neither may bind a network socket or accept
+executable/model paths from protocol messages.
 
 ## Startup and shutdown
 
@@ -11,8 +13,9 @@ Electron launches the fixed packaged executable with:
 
     kyx-mrt2-host --model-root ~/Documents/Magenta/magenta-rt-v2
 
-The helper loads the installed MusicCoCa assets and MRT2 Small model before
-reporting ready. The first stdout line must be UTF-8 JSON, at most 4 KiB,
+The helper validates its fixed runtime/model boundary before reporting ready;
+model loading may be lazy for capture-tier adapters. The first stdout line
+must be UTF-8 JSON, at most 4 KiB,
 followed by LF:
 
     {"version":1,"type":"ready","providerId":"mrt2","modelId":"mrt2_small"}
@@ -21,6 +24,26 @@ No other startup message is accepted. After that line, stdout and stdin carry
 length-prefixed binary frames. Stderr is diagnostic-only and is not forwarded
 to the renderer. Electron sends a shutdown frame and closes stdin, then
 escalates to SIGTERM/SIGKILL if the helper does not exit.
+
+The startup line may gain optional backend diagnostics in a compatible future
+helper, but the provider-level `hello.ok` message is authoritative for runtime
+capabilities. Its optional `runtimeProfile` has the following shape:
+
+```json
+{
+  "backendId": "mrt2-windows-cuda",
+  "executionMode": "capture",
+  "runtimeVersion": "0.1.0",
+  "measuredLatencyMs": 310,
+  "frameP95Ms": 44,
+  "realtimeFactor": 0.74,
+  "warning": "live playback has not passed the benchmark gate"
+}
+```
+
+`executionMode` is `capture`, `near-realtime` or `realtime`. A companion must
+never advertise `realtime` without the measured frame/soak gate documented in
+ADR 0013.
 
 ## Binary framing
 
@@ -113,6 +136,25 @@ PCM, while `inputHash` is SHA-256 of the sorted serialized conditioning input.
 Text-encoder progress is surfaced as loading/ready/error status events.
 
 ## Build and remaining release validation
+
+The Windows manager is intentionally separate from the macOS manager. It
+expects a fixed `resources/mrt2-windows/kyx-mrt2-windows-host.exe` companion
+and the explicit model root `~/Documents/Magenta/magenta-rt-v2-windows`. The
+checked-in reference source is
+`companion/mrt2-windows/kyx_mrt2_windows_host.py`; build it with
+`npm run build:mrt2-windows-host` on Windows x64 after installing a compatible
+JAX wheel and `magenta-rt[jax]`. Until a real Windows inference implementation
+is benchmarked, that manager reports a capture tier or unavailable state; it
+never executes the macOS helper.
+
+The reference Windows JAX adapter supports text style, 25 Hz piano-roll note
+conditioning and drum mode during bounded capture. Audio-style conditioning
+and seed control remain unsupported until their JAX representations are
+validated against the installed model.
+
+The standalone benchmark defaults to the capture path. Set
+`KYX_MRT2_BENCHMARK_MODE=live` only when the companion already advertises
+`supportsRealtime`; a capture result alone cannot promote the live tier.
 
 Electron's manager, fixed-path launch checks, framed transport, renderer
 ownership boundary, and TypeScript provider adapter are implemented and unit

@@ -23,6 +23,7 @@ const { pathToFileURL } = require("node:url");
 const os = require("node:os");
 const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
+const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
 
 const DIST_DIR = path.join(__dirname, "..", "dist");
 const APP_URL = "app://bundle/index.html";
@@ -30,11 +31,18 @@ const IS_SMOKE = process.env.KYX_SMOKE === "1";
 
 let mainWindow = null;
 let quittingAfterMrt2Stop = false;
-const mrt2NativeHost = new Mrt2NativeHostManager({
-  appIsPackaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
-  homeDirectory: os.homedir(),
-});
+const mrt2NativeHost =
+  process.platform === "win32"
+    ? new Mrt2WindowsHostManager({
+        appIsPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        homeDirectory: os.homedir(),
+      })
+    : new Mrt2NativeHostManager({
+        appIsPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        homeDirectory: os.homedir(),
+      });
 
 // Must be called before app `ready`.
 protocol.registerSchemesAsPrivileged([

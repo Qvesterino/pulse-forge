@@ -1,0 +1,3 @@
+# The exact JAX wheel is hardware/driver-specific on Windows. Install a
+# Windows-compatible JAX build first, then install the upstream package:
+magenta-rt[jax]
