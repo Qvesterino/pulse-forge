@@ -156,6 +156,21 @@ NEISTÉ: tónina nebola zadaná
 
 **Hotovo, keď:** presne ten vypočutý kandidát sa aplikuje cez jeden undoable command; všetky hard constraints sú gate-ované pred rankingom; timeout, chýbajúci model aj offline režim dávajú deterministic fallback alebo jasnú chybu bez pádu UI.
 
+**Stav (2026-09-25): FÁZA 2 DODANÁ.**
+
+- Hard brief gate PRED rankingom: `src/intent/brief-gate.ts` → `briefGateViolations(pattern, plan)`
+  beží v `evaluateCandidate` (accepted aj repaired path) — zlý stepCount, úplne tichý kandidát
+  (invarianty ho pustia!) a prohibovaný bicí obsah (ZÁKAZY/ZACHOVAŤ na úrovni obsahu) dropnú
+  kandidáta ešte pred bankou; dôvody v diagnostike (`candidate-N:brief-gate:<id>`).
+- Compliance report: `evaluateBriefCompliance(result)` — pravdivé ✓/✗/· per hard fakt; `·` =
+  plan-enforced alebo neoverovateľné; žiadne technické skóre sa neprezentuje ako umelecká známka.
+- UI: compliance riadok nad kandidátnou bankou; stale guard — USE zablokuje s jasnou chybou,
+  keď sa projekt zmenil od vypočúvania (žiadne tiché prepísanie starým návrhom).
+- Overené existujúce: `resultForCandidate` → `applyGenerationResultCommand` (presne vypočutý
+  kandidát, jeden undo); model timeout/absencia/offline → deterministický fallback
+  (circuit breaker, `tests/intent-async-fallback.test.ts`).
+- Testy: `tests/brief-gate.test.ts` (12); regresia intent+candidate rodina 222/222 (19 súborov).
+
 ### Fáza 3 — konverzačný beatmaker a cielené zmeny
 
 **Cieľ:** používateľ môže iterovať: „druhý je lepší, ale temnejší; nechaj bass a akordy“ — bez resetu celej session.

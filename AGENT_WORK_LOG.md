@@ -4192,3 +4192,16 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Remaining risks:** the allowlist legitimizes 5 cycles — if any gets a NEW value edge the SCC grows and the test catches it, but REMOVING an allowlisted cycle makes the allowlist entry stale (the "covers" direction is not asserted; acceptable — stale allowlist entries are documentation debt, not hidden cycles).
 
 **Recommendations for next session (GOAL 03):** critical-path audit — (1) the curated-samples contract decision sits ON the critical sample-boot path: if the concurrent session resolves it synthesis-only, the boot fetch layer must tolerate 404 gracefully (it does — test pins the fallback); (2) vocal-profile lifecycle end-to-end (record → analyze → proposal → adapt commands) — new subsystem, never audited on the critical path; (3) Qvester handoff timestamp contract under clock skew (`src/interop/qvesterHandoff.ts`); (4) generative-runtime races on project switch (MRT2 wave just landed in `9167b8f` — Scheduler.ts touched, their zone, coordinate first).
+
+---
+
+## FÁZA 2 — NÁVRH, KANDIDÁTI A POUŽÍVATEĽSKÉ ROZHODNUTIE (2026-09-25)
+
+**Roadmap:** IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md Fáza 2 — banka nesmie obsahovať výsledok porušujúci tvrdý brief; návrh reportuje splnenie; Apply = presne vypočutý kandidát, nikdy záhadne starý.
+
+- **Nový modul** `src/intent/brief-gate.ts`: `briefGateViolations(pattern, plan)` — tvrdé brief fakty, ktoré invarianty nevidia: zlý `stepCount`, **úplne tichý kandidát** (všetky nuly prejde invariant gate!), a **prohibovaný bicí obsah** (rows nesú content, kým drums sú mimo generation setu = ZÁKAZY „no drums" / ZACHOVAŤ „nechaj bicie" na úrovni OBSAHU). Gate beží v `evaluateCandidate` na oboch pathoch (accepted aj repaired) → porušujúci kandidát sa dropne PRED rankingom; dôvody idú do diagnostiky (`candidate-N:brief-gate:<id>`).
+- **`evaluateBriefCompliance(result)`** — pravdivé ✓/✗/· per hard fakt (bpm v rozsahu, dĺžka, tónina, generation set content, no-drums, preserve). `·` = plan-enforced/neoverovateľné — nikdy to nie je umelecká známka.
+- **UI**: compliance riadok nad kandidátnou bankou; **stale guard** — USE zablokuje s jasnou chybou, keď sa projekt zmenil od vypočúvania (`previewDocRef` vs store doc): žiadne tiché prepísanie novšieho obsahu starým návrhom.
+- **Existujúce (overené, netýkané):** resultForCandidate → applyGenerationResultCommand = presne vypočutý kandidát v jednom undo; timeout/missing model/offline → deterministický fallback (circuit breaker).
+- **Testy**: `tests/brief-gate.test.ts` 12/12; celková regresia intent+candidate rodina **222/222 (19 súborov)** vrátane ich architecture-cycles; tsc čistý na mojich súboroch (tests/services-*.test.ts chyby = ich CoreServices DI vlna).
+- ⚠️ Race poznámka: ich commit `94cb52e` (GOAL 02 re-run) absorboval moje provider edity (candidate.ts extraction + gate wiring) — HEAD overený grepom, nič nestratené; smer `providers/candidate.ts` ako leaf je ich zámer (arch test to pinuje).
