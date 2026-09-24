@@ -141,6 +141,20 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── house / club ────────────────────────────────────────────────────────
   {
+    names: ["fred again type beat", "fred again.. type", "actual life"],
+    // The Actual Life sound: choppy UKG-influenced house, emotional vocal
+    // cuts, punchy low end — lands on ukg grooves with driving energy.
+    // Listed BEFORE the plain-name preset so the "type beat" phrasing
+    // (the beat-maker language) wins the first-match order.
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.65,
+    bpmRange: [130, 145],
+    label: "fred again (ukg)",
+  },
+  {
     names: ["fred again", "fred again.."],
     genre: "house",
     style: "deep",
@@ -148,6 +162,29 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.6,
     bpmRange: [128, 136],
     label: "fred again",
+  },
+  {
+    names: ["suicideboys", "suicide boys", "$uicideboy$", "g59", "grey 59"],
+    // NOLA horrorcore: dark sparse trap with memphis phonk DNA — the darkest
+    // corner of our vocab on purpose
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.45,
+    bpmRange: [130, 150],
+    label: "suicideboys",
+  },
+  {
+    names: ["macky gee", "mackie gee"],
+    // Jump-up / dancefloor DNB — punchy rollers, festival energy
+    genre: "dnb",
+    style: "jumpup",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [172, 177],
+    label: "macky gee",
   },
   {
     names: ["disclosure", "uk garage house"],

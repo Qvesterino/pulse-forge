@@ -205,3 +205,26 @@ describe("expanded artist roster (vocabulary wave)", () => {
     expect(bright.input.genre).toBe("techno");
   });
 });
+
+describe("target-roster presets (genre-depth sprint)", () => {
+  it("suicideboys → phonk/memphis/dark with the horrorcore tempo", () => {
+    const parsed = parseIntentText("suicideboys type beat");
+    expect(parsed.input.genre).toBe("phonk");
+    expect(parsed.input.style).toBe("memphis");
+    expect(parsed.input.mood).toBe("dark");
+    expect(parsed.input.bpmRange).toEqual([130, 150]);
+  });
+
+  it("macky gee → jump-up dnb at roller tempo", () => {
+    const parsed = parseIntentText("macky gee type beat");
+    expect(parsed.input.genre).toBe("dnb");
+    expect(parsed.input.style).toBe("jumpup");
+    expect(parsed.input.bpmRange).toEqual([172, 177]);
+  });
+
+  it("fred again variants: base deep + UKG Actual-Life phrasing", () => {
+    expect(parseIntentText("fred again").input.style).toBe("deep");
+    expect(parseIntentText("fred again type beat").input.style).toBe("ukg");
+    expect(parseIntentText("fred again type beat").input.bpmRange).toEqual([130, 145]);
+  });
+});
