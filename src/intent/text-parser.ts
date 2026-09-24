@@ -53,6 +53,13 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bchillhop\b|\bstudy beats\b|\blofi hip hop\b/, "ambient"],
   [/\bdrone\b|\bdark ambient\b|\bnew age\b|\bmeditation\b/, "ambient"],
   [/\bbreakcore\b/, "dnb"],
+  // sub-genre wave (world-roster follow-up) — specifics still BEFORE generics
+  [/\bacid trap\b|\bacid rap\b/, "trap"],
+  [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b/, "house"],
+  [/\bbaile funk\b|\bfunk mandel\w*|\bbrazilian phonk\b|\bbr phonk\b/, "phonk"],
+  [/\bneurofunk\b|\bneuro\b/, "dnb"],
+  [/\bhard groove\b/, "techno"],
+  [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   // canonical / generic
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],
@@ -87,6 +94,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
 const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdriving\b|\bdrive\b/, "driving"],
   [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
+  [/\bbaile\b|\bmandel\w*\b/, "bounce"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
@@ -99,6 +107,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bsparse\b/, "sparse"],
   [/\bbouncy\b|\bbounce\b/, "bouncy"],
   [/\bdrifting\b|\bdrift\b|\bplavu?j/, "drifting"],
+  [/\bliquid\b|\blikvid\b/, "liquid"],
+  [/\b2.?step\b|\btwo step\b|\bdvoj(?:krok|taktn)/, "ukg"],
+  [/\bhard groove\b/, "driving"],
+  [/\bneurofunk\b|\bneuro\b/, "twostep"],
   [/\broller(?:i|y)?\b|\broluj(?:u|e|ec)?\b/, "roller"],
   [/\bamen\b|\bchop\b/, "amen"],
   [/\bhorror(?:core)?\b|\bhoror\b/, "horror"],

@@ -4066,3 +4066,12 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - **DNB**: Chase & Status 172-176 jumpup (Baddadan ~176 double-time); **Bou → dnb.roller** (nový GOAL 42 groove!); 1991 172-178; Calibre 170-174 liquid chill.
 
 Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v artists suite); regresia okolia 67/67.
+
+---
+
+## GOAL 44 — SUB-ŽÁNROVÁ VLNÁ (2026-09-24)
+
+- **ROUTING BUG FIX**: „acid trap" padal do generic `acid → techno`! Nový špecifický záznam PRED generikom → „acid trap at 145" = **trap** + acid style.
+- **GENRE_PHRASES +6**: acid trap/acid rap → trap; speed garage / bassline(house) / 2-step garage / uk funky → house; baile funk / funk mandela / brazilian phonk → phonk; neurofunk / neuro → dnb; hard groove → techno; darkwave / witch house / wave music → ambient (holé „wave" vypustené — new-wave kolízia).
+- **STYLE_PHRASES +5**: liquid/likvid → liquid; 2.?step / two step / dvojkrok → ukg (dnb kontext fallbackne na twostep ako prvý groove — OK); hard groove → driving; neurofunk → twostep; baile/mandela → bounce. ⚠️ Poradie: baile PRED generic „funk" (inak „baile funk" → funky).
+- **Testy** +5 (31/31 v parseri): acid trap route dôkaz, garage rodina, liquid dnb style, neuro/hard groove, baile. Regresia 167/167 na 13 dotykových súboroch; typecheck 0.

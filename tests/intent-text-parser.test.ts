@@ -273,3 +273,36 @@ describe("genre-depth sprint — roller / amen / horrorcore", () => {
     }
   });
 });
+
+describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () => {
+  it("acid trap routes to TRAP (not techno — the acid generic must not win)", () => {
+    const parsed = parseIntentText("acid trap at 145");
+    expect(parsed.input.genre).toBe("trap");
+    expect(parsed.input.style).toBe("acid"); // acid style on trap grooves
+  });
+
+  it("UK garage family: speed garage / bassline / 2-step land on house+ukg", () => {
+    expect(parseIntentText("speed garage at 132").input.genre).toBe("house");
+    expect(parseIntentText("speed garage at 132").input.style).toBe("ukg");
+    expect(parseIntentText("bassline house at 138").input.genre).toBe("house");
+    expect(parseIntentText("2-step garage at 130").input.style).toBe("ukg");
+  });
+
+  it("liquid dnb sets the liquid style", () => {
+    const parsed = parseIntentText("liquid dnb at 174");
+    expect(parsed.input.genre).toBe("dnb");
+    expect(parsed.input.style).toBe("liquid");
+  });
+
+  it("neurofunk → dnb twostep, hard groove → techno driving", () => {
+    expect(parseIntentText("neurofunk at 174").input.genre).toBe("dnb");
+    expect(parseIntentText("neurofunk at 174").input.style).toBe("twostep");
+    expect(parseIntentText("hard groove techno").input.style).toBe("driving");
+  });
+
+  it("baile funk / brazilian phonk → phonk bounce", () => {
+    expect(parseIntentText("baile funk at 130").input.genre).toBe("phonk");
+    expect(parseIntentText("baile funk at 130").input.style).toBe("bounce");
+    expect(parseIntentText("brazilian phonk").input.genre).toBe("phonk");
+  });
+});
