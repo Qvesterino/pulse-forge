@@ -20,7 +20,10 @@ import {
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
 import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
+import { morphPatterns } from "../intent/morph";
+import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
+import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
@@ -86,6 +89,20 @@ export function IntentPanel() {
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
   const playTokenRef = useRef(0);
+  // Ghost versions (time machine) — every pattern USE pushes its applied
+  // content; A/B + slider audition and morph between takes. Buffers cache
+  // per ghost id; the morph preview holds one slot keyed by A:B:t.
+  const [ghosts, setGhosts] = useState<readonly GhostVersion[]>(() => listGhosts());
+  const [ghostAId, setGhostAId] = useState<string | null>(null);
+  const [ghostBId, setGhostBId] = useState<string | null>(null);
+  const [morphT, setMorphT] = useState(50);
+  const [morphPlaying, setMorphPlaying] = useState(false);
+  const [morphRendering, setMorphRendering] = useState(false);
+  const [ghostPlayingId, setGhostPlayingId] = useState<string | null>(null);
+  const [ghostRenderingId, setGhostRenderingId] = useState<string | null>(null);
+  const ghostBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const morphBufferRef = useRef<{ key: string; buffer: AudioBuffer } | null>(null);
+  const ghostTokenRef = useRef(0);
 
   // A pending generation must not touch state after unmount (or after a
   // newer generate() superseded it) — the AbortController + token make the
@@ -364,7 +381,157 @@ export function IntentPanel() {
         ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})${fx ? " + FX" : ""}`
         : `✓ pattern applied${fx ? " + FX" : ""}`,
     );
+    // Ghost versions: remember the applied content (read back post-execute
+    // for exactness — the command may rename) for A/B + morph later.
+    const appliedDoc = services.store.getDoc();
+    const appliedPattern = appliedDoc.patterns.find((p) => p.id === appliedDoc.activePatternId);
+    if (appliedPattern) {
+      pushGhost(appliedPattern, nextGhostLabel(appliedPattern.name), text.trim() || null);
+      const grown = listGhosts();
+      setGhosts(grown);
+      setGhostAId((prev) => prev ?? grown[grown.length - 2]?.id ?? grown[0]?.id ?? null);
+      setGhostBId((prev) => prev ?? grown[grown.length - 1]?.id ?? null);
+    }
     // A3: the applied beat is the share moment — reveal Publish/Video/Copy.
+    setJustApplied(true);
+  };
+
+  /** Stable V-numbers across remounts and cap eviction (max existing + 1). */
+  function nextGhostLabel(patternName: string): string {
+    let max = 0;
+    for (const g of listGhosts()) {
+      const match = /\bV(\d+)\b/.exec(g.label);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+    return `V${max + 1} · ${patternName}`;
+  }
+
+  /** Stop every other audition channel before starting a ghost one. */
+  function silenceOthers(): void {
+    stopAudition();
+    setPlayingIndex(null);
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    setMorphPlaying(false);
+    setGhostPlayingId(null);
+  }
+
+  const toggleGhostAudition = async (ghost: GhostVersion) => {
+    if (ghostPlayingId === ghost.id) {
+      stopAudition();
+      setGhostPlayingId(null);
+      return;
+    }
+    silenceOthers();
+    const token = ++ghostTokenRef.current;
+    setGhostRenderingId(ghost.id);
+    try {
+      let buffer = ghostBuffersRef.current.get(ghost.id);
+      if (!buffer) {
+        buffer = await renderAuditionBuffer(services.store.getDoc(), services.bank, ghost.pattern, null);
+        ghostBuffersRef.current.set(ghost.id, buffer);
+      }
+      if (ghostTokenRef.current !== token) return;
+      playAuditionBuffer(buffer, () => setGhostPlayingId(null));
+      setGhostPlayingId(ghost.id);
+      setStatus(`👻 auditioning ${ghost.label}`);
+    } catch (err) {
+      if (ghostTokenRef.current === token) {
+        setError(`ghost audition failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      if (ghostTokenRef.current === token) setGhostRenderingId(null);
+    }
+  };
+
+  const restoreGhost = (ghost: GhostVersion) => {
+    const current = services.store.getDoc();
+    silenceOthers();
+    services.store.execute(replacePatternInPlaceCommand(current, current.activePatternId, ghost.pattern));
+    setStatus(`👻 restored ${ghost.label} (one undo step)`);
+    setJustApplied(true);
+  };
+
+  const dropGhost = (ghost: GhostVersion) => {
+    removeGhost(ghost.id);
+    ghostBuffersRef.current.delete(ghost.id);
+    morphBufferRef.current = null;
+    setGhosts(listGhosts());
+    setGhostAId((prev) => (prev === ghost.id ? null : prev));
+    setGhostBId((prev) => (prev === ghost.id ? null : prev));
+    if (ghostPlayingId === ghost.id) {
+      stopAudition();
+      setGhostPlayingId(null);
+    }
+  };
+
+  function morphPair(): { a: GhostVersion; b: GhostVersion } | null {
+    const a = ghostAId ? getGhost(ghostAId) : null;
+    const b = ghostBId ? getGhost(ghostBId) : null;
+    return a && b ? { a, b } : null;
+  }
+
+  const previewMorph = async () => {
+    const pair = morphPair();
+    if (!pair) {
+      setStatus("👻 pick ghost A and B first (need two takes to morph)");
+      return;
+    }
+    if (pair.a.id === pair.b.id) {
+      setStatus("👻 A and B are the same take — pick two different ghosts");
+      return;
+    }
+    const t = morphT / 100;
+    const morphed = morphPatterns(pair.a.pattern, pair.b.pattern, t);
+    if (!morphed) {
+      setError("👻 morph needs equal-length patterns — these takes differ in bars");
+      return;
+    }
+    silenceOthers();
+    const key = `${pair.a.id}:${pair.b.id}:${morphT}`;
+    const token = ++ghostTokenRef.current;
+    setMorphRendering(true);
+    try {
+      let buffer = morphBufferRef.current?.key === key ? morphBufferRef.current.buffer : null;
+      if (!buffer) {
+        buffer = await renderAuditionBuffer(services.store.getDoc(), services.bank, morphed, null);
+        morphBufferRef.current = { key, buffer };
+      }
+      if (ghostTokenRef.current !== token) return;
+      playAuditionBuffer(buffer, () => setMorphPlaying(false));
+      setMorphPlaying(true);
+      setStatus(`👻 morph ${pair.a.label} ⟷ ${pair.b.label} @ ${morphT}%`);
+    } catch (err) {
+      if (ghostTokenRef.current === token) {
+        setError(`morph preview failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      if (ghostTokenRef.current === token) setMorphRendering(false);
+    }
+  };
+
+  const useMorph = () => {
+    const pair = morphPair();
+    if (!pair || pair.a.id === pair.b.id) {
+      setStatus("👻 pick two different ghosts for A and B first");
+      return;
+    }
+    const t = morphT / 100;
+    const morphed = morphPatterns(pair.a.pattern, pair.b.pattern, t);
+    if (!morphed) {
+      setError("👻 morph needs equal-length patterns — these takes differ in bars");
+      return;
+    }
+    silenceOthers();
+    const current = services.store.getDoc();
+    services.store.execute(replacePatternInPlaceCommand(current, current.activePatternId, morphed));
+    const appliedDoc = services.store.getDoc();
+    const appliedPattern = appliedDoc.patterns.find((p) => p.id === appliedDoc.activePatternId);
+    if (appliedPattern) {
+      pushGhost(appliedPattern, nextGhostLabel(`morph ${morphT}%`), text.trim() || null);
+      setGhosts(listGhosts());
+    }
+    setStatus(`👻 morph applied @ ${morphT}% — and ghosted as a new take (one undo step)`);
     setJustApplied(true);
   };
 
@@ -962,6 +1129,22 @@ export function IntentPanel() {
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
         }
+      } else if (route.kind === "fader") {
+        // GOAL 38: "zníž basu" / "hlasnejšie bicie" — real track gain change
+        const commands = applyFaderIntent(doc, route.intent);
+        if (commands.length === 0) {
+          setError("no matching track for the fader intent");
+          return;
+        }
+        commands.forEach((command) => services.store.execute(command));
+        setStatus(
+          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"}: ${route.intent.targets.join(" + ")} — ${commands.length} fader(s) (one undo step)`,
+        );
+      } else if (route.kind === "tempo") {
+        // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step
+        services.store.execute(applyTempoIntent(doc, route.intent));
+        const newBpm = services.store.getDoc().bpm;
+        setStatus(`⚡ tempo: ${newBpm} BPM (one undo step)`);
       } else if (route.kind === "loudness") {
         // D1 loudness loop: measure → trim → verify
         stopAudition();
@@ -1249,6 +1432,104 @@ export function IntentPanel() {
         <button type="button" className="btn intent-generate-btn" onClick={() => useCandidate(null)}>
           USE RESULT
         </button>
+      )}
+      {ghosts.length > 0 && (
+        <div className="intent-song-draft" aria-label="Ghost versions">
+          <div className="intent-detected">👻 Ghosts — every USE remembered. Audition takes, pick A/B, morph.</div>
+          <div className="intent-song-sections" aria-label="Ghost takes">
+            {ghosts.map((ghost) => {
+              const isPlaying = ghostPlayingId === ghost.id;
+              const isRendering = ghostRenderingId === ghost.id;
+              return (
+                <div key={ghost.id} className="intent-candidate-row">
+                  <button
+                    type="button"
+                    className="btn btn-small intent-audition-btn"
+                    disabled={isRendering}
+                    onClick={() => void toggleGhostAudition(ghost)}
+                    title={isPlaying ? `Stop ${ghost.label}` : `Audition ${ghost.label}`}
+                  >
+                    {isRendering ? "…" : isPlaying ? "■" : "▶"}
+                  </button>
+                  <span className="intent-candidate-score" title={ghost.prompt ?? ghost.label}>
+                    {ghost.label} · {new Date(ghost.createdAt).toLocaleTimeString()}
+                    {ghostAId === ghost.id ? " · [A]" : ""}
+                    {ghostBId === ghost.id ? " · [B]" : ""}
+                  </span>
+                  <button
+                    type="button"
+                    className={`btn btn-small${ghostAId === ghost.id ? " intent-use-btn" : ""}`}
+                    onClick={() => setGhostAId(ghost.id)}
+                    title="Use this take as morph source A"
+                  >
+                    A
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-small${ghostBId === ghost.id ? " intent-use-btn" : ""}`}
+                    onClick={() => setGhostBId(ghost.id)}
+                    title="Use this take as morph source B"
+                  >
+                    B
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small intent-use-btn"
+                    onClick={() => restoreGhost(ghost)}
+                    title="Restore this take into the active pattern (one undo step)"
+                  >
+                    USE
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => dropGhost(ghost)}
+                    title="Forget this ghost"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="intent-share-actions" aria-label="Morph controls">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={morphT}
+              onChange={(e) => setMorphT(Number(e.target.value))}
+              aria-label="Morph position A to B"
+              title={`Morph ${morphT}% from A to B`}
+              style={{ flex: 1 }}
+            />
+            <span className="intent-candidate-score">{morphT}%</span>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={morphRendering}
+              onClick={() => {
+                if (morphPlaying) {
+                  stopAudition();
+                  setMorphPlaying(false);
+                  return;
+                }
+                void previewMorph();
+              }}
+              title="Audition the A⟷B blend at the slider position"
+            >
+              {morphRendering ? "…" : morphPlaying ? "■" : "▶ MORPH"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-small intent-use-btn"
+              onClick={useMorph}
+              title="Apply the A⟷B blend into the active pattern (ghosted as a new take)"
+            >
+              USE MORPH
+            </button>
+          </div>
+        </div>
       )}
       {songDraft && (
         <div className="intent-song-draft" aria-label="Song draft preview">

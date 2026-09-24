@@ -3942,3 +3942,16 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 **Validation:** scheduler/engine/groove suites 205/205; final batch 180/180; goldens 12/12 (recaptured for schema v3); tsc campaign-clean.
 
 **Remaining backlog:** A4/A6/A7/A9 + D-consistency decisions only — the B-family is closed.
+
+---
+
+## GOAL 38 — CONVERSATION INTENTS: FADER / TEMPO / VIBE (2026-09-22)
+
+**„zníž basu a realne sa zníži."** Tri bežné producentské požiadavky, ktoré doteraz potrebovali Mixer/transport:
+
+- **Fader** (`parseFaderIntent` + `applyFaderIntent`): smer (zníž/stíš/dole/turn down vs zvýš/hlasnej/hore/raise) + TARGET (basu/bicie/klávesy/lead/master) — obe POVINNÉ. Aplikácia: `setTrackParams` gain ×0.82 (down) / ×1.22 (up) na vyriešené tracky (drums = celý drum track; bass/chords/lead = name match → ROLE_INDEX fallback; master = `setMasterConfig.masterGain`). Jeden command na track.
+- **Tempo** (`parseTempoIntent` + `applyTempoIntent`): down/up ±6 BPM, set exact („tempo na 128", „140 bpm") → `setBpm` (clamp 40-220 v command).
+- **Vibe** (`parsePopIntent`): „popovejšie" = kompozitný production intent brighter+punchier+wider na všetky 4 tracky — beží cez EXISTUJÚCI production planner (nulová nová DSP logika).
+- **Router**: loudness → **fader → tempo → vibe** → effectIntent → production → mix → revise → pattern. Vibe sa vracia AKO production kind (panel vetva existuje).
+- **Testy** `tests/conversation-intents.test.ts` 16/16 (SK/EN parsery, master route, clamps, bpm delta/set, router priority). Regresia **289/289 cez 29 súborov**; typecheck 0.
+- ⚠️ ZOPAKOVANÁ GOTCHA (tretíkrát v tejto session!): SK stemy v regexoch MUSIA byť deaccentované + **python heredoc `` sa mení na BS bajt (0x08)** — zápis cez python string ops korumpuje regex hranice; riešenie: line-based replace alebo Write tool celého súboru. Fyzicky prítomné BS bajty sa dá smieť bytes.replace(bytes([8]), b"") — ale v tomto prostredí sa zápis neprejavil konzistentne (súbor možno drží externý proces) → najspoľahlivejšie: Write tool celého súboru.

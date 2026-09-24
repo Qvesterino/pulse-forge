@@ -3,6 +3,7 @@ import { parseArrangeIntent, type ArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
+import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 
@@ -104,10 +105,8 @@ export interface ReviseParse {
 /** Per-revise slider step (clamped at apply time). */
 export const REVISE_DELTA = 0.15;
 
-const REVISE_ENERGY_MORE =
-  /\bmore (?:energetic|energic|energy)\b|\benergickejsi\b|\bviac (?:energie|energicky)\b/;
-const REVISE_ENERGY_LESS =
-  /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bmenej (?:energie|energicky)\b/;
+const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergickejsi\b|\bviac (?:energie|energicky)\b/;
+const REVISE_ENERGY_LESS = /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bmenej (?:energie|energicky)\b/;
 const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejsi\b|\bviac prvkov\b/;
 const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
 
@@ -132,7 +131,10 @@ function reviseRoleIn(lower: string): string | null {
 
 /** Parse "more energetic"-style content revisions. Null = not a revise. */
 export function parseReviseIntent(text: string): ReviseParse | null {
-  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `;
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
   const targetRole = reviseRoleIn(lower);
   const detected = targetRole ? [`${targetRole} §`] : [];
   if (REVISE_ENERGY_MORE.test(lower)) {
@@ -152,11 +154,19 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
+  | { kind: "fader"; intent: FaderIntent }
+  | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
   | { kind: "loudness"; parse: { direction: "louder" | "quieter"; targetDb?: number; detected: string[] } }
   | { kind: "production"; intent: ProductionIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
-  | { kind: "revise"; attribute: ReviseAttribute; direction: ReviseDirection; detected: string[]; targetRole: string | null }
+  | {
+      kind: "revise";
+      attribute: ReviseAttribute;
+      direction: ReviseDirection;
+      detected: string[];
+      targetRole: string | null;
+    }
   | { kind: "pattern"; input: ParsedIntent["input"]; detected: string[] };
 
 /**
@@ -192,6 +202,20 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   if (loudness) {
     return { kind: "loudness", parse: loudness };
   }
+  // GOAL 38 conversation intents — everyday producer asks: per-track fader,
+  // project tempo, and the "popovejšie"-style vibe composite.
+  const fader = parseFaderIntent(text);
+  if (fader) {
+    return { kind: "fader", intent: fader };
+  }
+  const tempo = parseTempoIntent(text);
+  if (tempo) {
+    return { kind: "tempo", intent: tempo };
+  }
+  const popVibe = parsePopIntent(text);
+  if (popVibe) {
+    return { kind: "production", intent: popVibe };
+  }
   const effectIntent = parseEffectIntent(text);
   if (effectIntent) {
     return { kind: "effectIntent", intent: effectIntent };
@@ -199,9 +223,7 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   // Genre signal flips production words into generation-time FX ("wobbly
   // drill" GENERATES with the mangler) — same rule as the GENERATE path.
   const pattern = parseIntentText(text);
-  const genreSignal = Boolean(
-    pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")),
-  );
+  const genreSignal = Boolean(pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")));
   if (!genreSignal) {
     const production = parseProductionIntent(text);
     if (production && namesProductionTarget(text)) {
