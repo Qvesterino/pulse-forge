@@ -3994,3 +3994,14 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 **Validation:** beatmangler-node 3/3; fx-expansion/fx-tempo-sync/param-sanity 33/33; tsc campaign-clean.
 
 **Remaining backlog:** B5 done (previous session) — left: A7/A9 (range unification decisions), D-consistency (documentation decisions), B3-follow-up (WeakMap-memo pattern for syncProject walks — engine zone, coordinate).
+
+---
+
+## GOAL 41 — PRODUCENTSKÝ DIALÓG SO SESSION PAMÄŤOU (bod 3) (2026-09-23)
+
+**Posledný veľký arc:** producent, ktorý SI PAMÄTÁ session a vedie ju.
+
+- **`src/intent/producer-session.ts`**: decisions store (genre/bpm/key/mood/style, session-scoped) + `recordIntentDecisions` (po každej generácii) + `producerSessionSummary` (HUD line) + `resolveProducerFollowUp` („ten istý, len pomalšie" / „ale tvrdší" / „ešte raz" → patch/reroll proti last generation intent) + `planVariantIntents` (B tmavšie / C energetické, energy clamp 0.15..0.95).
+- **Panel wiring**: ⚡ DO IT resolves follow-up PRVÝ (merged intent → GENERATE path, one-shot consumption); po GENERATE sa zaznamenajú decisions; session HUD chip (`🎛 techno · 132 BPM · E Natural Minor` + ✕ reset) + B/C variant chips (one-shot patch → GENERATE).
+- **Testy** `tests/producer-session.test.ts` 9/9 (decisions record, summary, follow-up pomalšie/tvrdší/reroll/null, varianty + energy clamps, voice idea coexistence). Regresia **311/311 cez 30 súborov**; typecheck 0.
+- ⚠️ PYTHON GOTCHA (opäť): `` a `\s` v heredoc stringoch sa korumpujú — line-based replace funguje, ale najčistejšie je Write tool celého súboru.

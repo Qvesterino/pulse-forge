@@ -36,6 +36,14 @@ import { patternLengthTicks } from "../midi/hum-to-notes";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
+import {
+  planVariantIntents,
+  producerSessionSummary,
+  recordIntentDecisions,
+  bumpGenerationCount,
+  resolveProducerFollowUp,
+  resetProducerSession,
+} from "../intent/producer-session";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
@@ -223,6 +231,9 @@ export function IntentPanel() {
       rememberPrompt(text);
       setHistoryTick((tick) => tick + 1);
       setBankResult(result);
+      recordIntentDecisions(intentInput, text);
+      bumpGenerationCount();
+      setSessionTick((tick) => tick + 1);
       const count = result.bank?.length ?? 0;
       setStatus(
         count > 0
@@ -306,7 +317,7 @@ export function IntentPanel() {
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
-    const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
+    const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) };
     // Wave 1 — FX words remaining after section parsing ride WITH the
     // generation ("wobbly drill"): candidates carry them, USE applies
     // pattern + FX as one step.
@@ -638,6 +649,18 @@ export function IntentPanel() {
   // Vocal-ready mode: loop the active pattern with a click so a solo artist
   // can rehearse/record vocals, plus a beat-only bounce (no master chain).
   const [vocalMode, setVocalMode] = useState(false);
+  // Producer session (bod 3): decisions HUD + B/C variant chips + follow-up
+  // resolve ("ten istý, len pomalšie") before the generic routes.
+  const [sessionTick, setSessionTick] = useState(0);
+  const oneShotPatchRef = useRef<IntentInput | null>(null);
+  /** One-shot: variant chips / follow-ups plant a patch, the NEXT generation
+   *  consumes it once. */
+  const consumeOneShotPatch = (): IntentInput | null => {
+    const patch = oneShotPatchRef.current;
+    oneShotPatchRef.current = null;
+    return patch;
+  };
+  const sessionSummary = producerSessionSummary();
   const [bounceBusy, setBounceBusy] = useState(false);
   // 🎤 TAKE card — the producer listens to the arrangement take: analyze the
   // longest clip (or the chosen one), show what was heard, apply key/tempo,
@@ -1215,6 +1238,14 @@ export function IntentPanel() {
     setJustApplied(false);
     try {
       const route = routeIntentText(text, doc);
+      if (lastGeneration() && resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)) {
+        const followUp = resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)!;
+        const merged: IntentInput = { ...(lastGeneration()?.intent ?? {}), ...(parsed?.input ?? {}), ...followUp.patch };
+        oneShotPatchRef.current = merged;
+        setStatus(`🎛 session follow-up — ${followUp.reroll ? "reroll" : "modifikátor live"}`);
+        await generate();
+        return;
+      }
       if (route.kind === "arrange") {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));
@@ -1280,7 +1311,7 @@ export function IntentPanel() {
         }
       } else if (route.kind === "mix") {
         stopAudition();
-        const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}) };
+        const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) };
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
@@ -1318,7 +1349,7 @@ export function IntentPanel() {
           setStatus(`⚡ ${route.attribute} ${route.direction === "more" ? "+0.15" : "−0.15"} — same seed`);
         } else {
           // Nothing generated yet — apply the attribute to the parsed intent.
-          const intentInput: IntentInput = { ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}) } };
+          const intentInput: IntentInput = { ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...(consumeOneShotPatch() ?? {}) } };
           intentInput[route.attribute] = fallbackDefaults[route.attribute] + delta;
           await runGeneration(intentInput, controller);
           setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
@@ -1515,6 +1546,40 @@ export function IntentPanel() {
             onClick={clearReference}
           >
             ×
+          </button>
+        </div>
+      )}
+      {sessionSummary !== null && sessionTick >= 0 && (
+        <div className="producer-session-hud" aria-label="Producer session">
+          <span className="producer-session-chip">🎛 {sessionSummary}</span>
+          {bankResult &&
+            bankResult.bank &&
+            bankResult.bank.length > 0 &&
+            planVariantIntents(lastGeneration()?.intent ?? (parsed?.input ?? {})).map((variant) => (
+              <button
+                key={variant.label}
+                type="button"
+                className="btn btn-small producer-variant-chip"
+                title={`Generate a ${variant.label} direction off this intent`}
+                onClick={() => {
+                  oneShotPatchRef.current = variant.patch;
+                  void generate();
+                }}
+              >
+                {variant.chip}
+              </button>
+            ))}
+          <button
+            type="button"
+            className="btn btn-small producer-session-reset"
+            title="Clear the producer session memory"
+            onClick={() => {
+              resetProducerSession();
+              setSessionTick((tick) => tick + 1);
+              setStatus("🎛 session cleared");
+            }}
+          >
+            ✕
           </button>
         </div>
       )}

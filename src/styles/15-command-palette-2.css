@@ -715,6 +715,33 @@
 }
 
 /* ── Vocal-ready mode + A/B listening (GOAL 33/38) ────────────────────── */
+.producer-session-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(140, 170, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(80, 120, 255, 0.07);
+  flex-wrap: wrap;
+}
+
+.producer-session-chip {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #9cb8ff;
+}
+
+.producer-variant-chip {
+  border-color: rgba(140, 170, 255, 0.4);
+}
+
+.producer-session-reset {
+  margin-left: auto;
+  color: #9a9aa5;
+}
+
 .vocal-hud {
   display: flex;
   align-items: center;
