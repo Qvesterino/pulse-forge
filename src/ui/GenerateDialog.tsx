@@ -139,7 +139,18 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
     const controller = new AbortController();
     abortRef.current = controller;
     setPending(true);
-    generateAsyncResult(doc, generationOptions, { mode: "preview", signal: controller.signal })
+    // Ranking v3 audio-aware: identical to IntentPanel GENERATE. The dialog
+    // doesn't surface the candidate bank yet (GenerateDialog auditions live
+    // elsewhere), but including the bank + sound option means the previewed
+    // `result.proposal` is the audio-fit winner — not just the ranker winner.
+    // Apply below commits that exact previewed result, so the user hears what
+    // the dialog showed.
+    generateAsyncResult(doc, generationOptions, {
+      mode: "preview",
+      signal: controller.signal,
+      includeBank: true,
+      sound: { bank: services.bank },
+    })
       .then((result) => {
         if (requestRef.current !== requestId) return;
         setPreview({ options: generationOptions, result });
@@ -157,7 +168,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
         if (requestRef.current === requestId) setPending(false);
       });
     return () => controller.abort();
-  }, [doc, generationOptions]);
+  }, [doc, generationOptions, services.bank]);
 
   // Unmount cleanup (dialog close) — stop any in-flight generation.
   useEffect(() => {
