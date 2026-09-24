@@ -4163,3 +4163,32 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Žánrové frázy**: „hard techno" a „melodic techno" už boli v GENRE_PHRASES; nové grooves (techno.hard, techno.melodic, trap.lux, trap.hyper) dosiahnuteľné cez style frázy („melodic techno at 126" → genre techno + style melodic → techno.melodic groove).
 - **Testy** +6 (wave 2: hard/melodic/lux/hyper štýly + groove validity 16-step). Regresia **329/329 cez 30 súborov**; typecheck 0.
 - Panel wiring netreba — style frázy tečú cez existujúci parseIntentText → resolveGroove pipeline.
+
+---
+
+## GOAL 02 (campaign re-run 4) — Architecture consistency & ownership audit (2026-09-25)
+
+**Goal executed:** Architecture/ownership audit of everything since the re-run-3 GOAL 02 sweep, prioritized by the GOAL 01 queue: the monitored intent↔commands cycle, Morph/Ultina DI bypasses, command-exclusivity spot-check of the NEW intent surfaces, programmatic cycle guard.
+
+**Areas inspected:**
+
+- Madge circular sweep (618 files): **9 cycles vs the 5 recorded by re-run 3** — four new (providers local↔symbolic, pipeline→ranking-v3→audition→commands, sections↔song, UserSample↔RecordingRecovery). The monitored "one careless import from closing a hard cycle" HAD HAPPENED.
+- Command-exclusivity of new surfaces: conversation faders/tempo (`src/intent/conversation.ts` builds setPadParams/setMasterConfig/setTrackParams/setBpm; IntentPanel executes every one via `services.store.execute`), producer-session (pure module — zero doc access), briefFixes (transient `useState` merged into the generation input at the 4 assembly points; generation itself command-wrapped). VERDICT: exclusivity HOLDS for all new surfaces.
+- Morph/Ultina panel construction sites (8), services CoreServices construction + Services flattening, test mock surfaces.
+- INSTRUMENT_ORDER exhaustiveness: guard EXISTS (tests/instrument-definitions.test.ts:20) — map §17.7 verified item closed.
+
+**Fixes implemented (all A-class):**
+
+1. **Providers value-cycle BROKEN** — `attachProvenance`/`candidatePlan`/`evaluateCandidate`/`invariantErrors` extracted from `intent/providers/local.ts` into a new leaf `intent/providers/candidate.ts`; symbolic.ts now imports them from ./candidate (was ./local). local→symbolic stays sanctioned (template-provider fallback branch); the back edge is gone. local keeps re-exports so `src/intent/index.ts` consumers are unaffected.
+2. **Morph/Ultina DI bypass RESOLVED** — `MorphPresetRepository` + `UltinaPresetRepository` added to `CoreServices` (and flattened onto `Services`, groovePool pattern); all 8 panel sites (`MorphDynamicsPanel` ×4, `UltinaPanel` ×4) now use `services.morphPresets`/`services.ultinaPresets`. Side benefit: ONE shared preset cache per app instead of a fresh cache per panel callback (stale-list class impossible). Test mocks updated: `tests/helpers.tsx` mockServices + `tests/ui/ProjectBrowser.test.tsx` makeCore.
+3. **Pipeline↔commands cycle: NOT broken (B-class, with evidence) — PINNED instead.** The only commands-edge is `audition.ts` needing `foldFxIntoDoc` (ghost-doc FX fold); extraction would drag foldProductionActions → addEffect/setEffectParam/setBeatManglerSteps (half the command layer), and DI would push the same import one hop over (ranking-v3). Runtime-safe BY CONSTRUCTION: ranking-v3 loads audition via dynamic import, so module evaluation never re-enters commands (no TDZ, no partially-initialized binding). `tests/architecture-cycles.test.ts` (NEW, 4 tests) makes the safety property enforceable: (a) every multi-file SCC in the static import graph must be in the 5-entry documented allowlist (Tarjan, dynamic imports ignored — the pipeline cycle is invisible statically BY DESIGN); (b) ranking-v3's audition import must stay dynamic; (c) the three type-only back edges (packCode→commands, RecordingRecovery→UserSample, sections→song) must stay `import type`; (d) symbolic must never import local again. Cycle drift now fails a test instead of waiting for the next manual madge sweep.
+
+**Important files changed:** src/intent/providers/{candidate.ts(NEW),local.ts,symbolic.ts}, src/services.ts, src/ui/{MorphDynamicsPanel,UltinaPanel}.tsx, tests/architecture-cycles.test.ts(NEW), tests/helpers.tsx, tests/ui/ProjectBrowser.test.tsx, SYSTEM_AUDIT_MAP.md (§16/§17 refresh).
+
+**Validation:** `tsc --noEmit` strict PASS after each step; cycle test 4/4; services-save-drain + services-close-race + ProjectBrowser 9/9 (CoreServices fields); intent-area regression pipeline/regen-chain/gallery-carry/gallery-contract/conversation/producer-session/brief-contract **82/82**; prettier — new files clean, touched files were already in the documented deviation baseline (no reformat noise).
+
+**Unresolved issues:** curated-samples red test remains the concurrent session's (GOAL 01 ledger). UserSampleRepository still constructs `new RecordingRecoveryRepository()` inline at 2 sites (persistence-internal, stateless — recorded, not fixed: both repos would need a shared parent or DI at services level for marginal gain).
+
+**Remaining risks:** the allowlist legitimizes 5 cycles — if any gets a NEW value edge the SCC grows and the test catches it, but REMOVING an allowlisted cycle makes the allowlist entry stale (the "covers" direction is not asserted; acceptable — stale allowlist entries are documentation debt, not hidden cycles).
+
+**Recommendations for next session (GOAL 03):** critical-path audit — (1) the curated-samples contract decision sits ON the critical sample-boot path: if the concurrent session resolves it synthesis-only, the boot fetch layer must tolerate 404 gracefully (it does — test pins the fallback); (2) vocal-profile lifecycle end-to-end (record → analyze → proposal → adapt commands) — new subsystem, never audited on the critical path; (3) Qvester handoff timestamp contract under clock skew (`src/interop/qvesterHandoff.ts`); (4) generative-runtime races on project switch (MRT2 wave just landed in `9167b8f` — Scheduler.ts touched, their zone, coordinate first).

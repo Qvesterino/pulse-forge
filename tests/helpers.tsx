@@ -352,6 +352,16 @@ export function mockServices(doc?: ProjectDocument): Services {
       save: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
     } as any,
+    morphPresets: {
+      list: vi.fn(async () => []),
+      save: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+    } as any,
+    ultinaPresets: {
+      list: vi.fn(async () => []),
+      save: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+    } as any,
     recordingRecovery: {
       begin: vi.fn(async () => {}),
       appendChunk: vi.fn(async () => {}),

@@ -9,6 +9,8 @@ import { PresetRepository } from "./persistence/PresetRepository";
 import { LibraryRepository } from "./persistence/LibraryRepository";
 import { KitRepository } from "./persistence/KitRepository";
 import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
+import { MorphPresetRepository } from "./persistence/MorphPresetRepository";
+import { UltinaPresetRepository } from "./persistence/UltinaPresetRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
@@ -76,6 +78,9 @@ export interface CoreServices {
   library: ILibraryRepository;
   userKits: IKitRepository;
   groovePool: IGroovePoolRepository;
+  /** Flagship user-preset stores — shared instances so every panel sees one cache. */
+  morphPresets: MorphPresetRepository;
+  ultinaPresets: UltinaPresetRepository;
   latency: LatencyCalibrationController;
 }
 
@@ -103,6 +108,9 @@ export interface Services {
   library: ILibraryRepository;
   userKits: IKitRepository;
   groovePool: IGroovePoolRepository;
+  /** Flagship user-preset stores (shared CoreServices instances). */
+  morphPresets: MorphPresetRepository;
+  ultinaPresets: UltinaPresetRepository;
   playback: PlaybackController;
   midi: MidiInput;
   /** Live MIDI record-to-pattern controller (record arm + overdub/replace). */
@@ -358,6 +366,8 @@ export async function createCoreServices(): Promise<CoreServices> {
     library,
     userKits,
     groovePool,
+    morphPresets: new MorphPresetRepository(),
+    ultinaPresets: new UltinaPresetRepository(),
     latency: new LatencyCalibrationController(),
   };
 }
@@ -385,6 +395,8 @@ export async function openProject(
   let syncGuardTimerRef: ReturnType<typeof setTimeout> | null = null;
   const generativeProviders = core.generativeProviders ?? new GenerativeProviderRegistry();
   const { engine, repo, bank, library, userKits, groovePool, latency, snapshots } = core;
+  const morphPresets = core.morphPresets;
+  const ultinaPresets = core.ultinaPresets;
   const generativeLatency = core.generativeLatency ?? new GenerativeLatencyCalibrationController();
 
   const collabConfig =
@@ -1034,6 +1046,8 @@ export async function openProject(
     library,
     userKits,
     groovePool,
+    morphPresets,
+    ultinaPresets,
     playback,
     patternRecorder,
     selectionBridge,

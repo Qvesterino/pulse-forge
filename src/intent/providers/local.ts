@@ -7,12 +7,7 @@ import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
 import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
 import { rankerMode } from "../../ai/ranking/ranker-client";
 import { symbolicPriorProvider, symbolicWanted } from "./symbolic";
-import {
-  createFallbackPattern,
-  refreshPatternQuality,
-  repairGeneratedPattern,
-  refreshPatternOutputHash,
-} from "../quality";
+import { createFallbackPattern } from "../quality";
 import type {
   GenerationContext,
   GenerationDiagnostics,
@@ -44,67 +39,9 @@ function diagnosticsFor(
   };
 }
 
-export function attachProvenance(pattern: Pattern, plan: GenerationPlan, doc: ProjectDocument): Pattern {
-  const intentMetadata = JSON.parse(JSON.stringify(plan.intent)) as Record<string, unknown>;
-  const generation = pattern.generation ?? plan.recipe;
-  return refreshPatternOutputHash(doc, {
-    ...pattern,
-    generation: {
-      ...generation,
-      intentHash: plan.intentHash,
-      intent: intentMetadata,
-      ...(plan.resolvedBpm !== null ? { resolvedBpm: plan.resolvedBpm } : {}),
-      ...(plan.options.candidateCount !== undefined && plan.options.candidateCount > 1
-        ? { candidateCount: plan.options.candidateCount }
-        : {}),
-    },
-  });
-}
+import { attachProvenance, candidatePlan, evaluateCandidate, invariantErrors } from "./candidate";
 
-function invariantErrors(report: ReturnType<typeof inspectPatternInvariants>): string[] {
-  return report.issues.map((issue) => `invariant:${issue.code}`);
-}
-
-export function candidatePlan(plan: GenerationPlan, seed: string): GenerationPlan {
-  return {
-    ...plan,
-    options: { ...plan.options, seed },
-    recipe: { ...plan.recipe, seed },
-  };
-}
-
-/**
- * Shared candidate gate: attach provenance, run the hard invariants and —
- * when needed — the deterministic repair, then re-inspect. Used by BOTH the
- * template provider and the symbolic-prior provider, so every candidate in
- * the bank crosses exactly the same gates (INTENT_ENGINE.md §9).
- */
-export function evaluateCandidate(
-  candidate: Pattern,
-  plan: GenerationPlan,
-  context: GenerationContext,
-): { pattern: Pattern; status: "accepted" | "repaired"; repairs: string[] } | null {
-  const effectiveKey = plan.options.key ?? context.project.key;
-  const attached = attachProvenance(candidate, plan, context.project);
-  const report = inspectPatternInvariants(context.project, attached, {
-    checkScale: Boolean(effectiveKey),
-    key: effectiveKey,
-  });
-  if (report.ok) return { pattern: attached, status: "accepted", repairs: [] };
-
-  const repaired = repairGeneratedPattern(context.project, attached, plan.options.stepCount, effectiveKey);
-  const repairedPattern = attachProvenance(repaired.pattern, plan, context.project);
-  const repairedReport = inspectPatternInvariants(context.project, repairedPattern, {
-    checkScale: Boolean(effectiveKey),
-    key: effectiveKey,
-  });
-  if (!repairedReport.ok) return null;
-  return {
-    pattern: refreshPatternQuality(context.project, repairedPattern, plan.options),
-    status: "repaired",
-    repairs: repaired.repairs.length > 0 ? repaired.repairs : invariantErrors(report),
-  };
-}
+export { attachProvenance, candidatePlan, evaluateCandidate, invariantErrors } from "./candidate";
 
 /** Synchronous local implementation used by commands, with async provider parity. */
 export class LocalDeterministicProvider implements GenerationProvider {
@@ -127,10 +64,16 @@ export class LocalDeterministicProvider implements GenerationProvider {
 
     for (const [candidateIndex, seed] of candidateSeeds.entries()) {
       const currentPlan = candidatePlan(plan, seed);
+      const reasons: string[] = [];
       try {
-        const evaluated = evaluateCandidate(this.generator(context.project, currentPlan.options), currentPlan, context);
+        const evaluated = evaluateCandidate(
+          this.generator(context.project, currentPlan.options),
+          currentPlan,
+          context,
+          reasons,
+        );
         if (!evaluated) {
-          failures.push(`candidate-${candidateIndex}:invariant-gate`);
+          failures.push(`candidate-${candidateIndex}:${reasons.length > 0 ? reasons.join("+") : "invariant-gate"}`);
           continue;
         }
         candidates.push({

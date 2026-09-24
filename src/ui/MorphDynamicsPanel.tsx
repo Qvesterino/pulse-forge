@@ -73,7 +73,6 @@ import {
   type MorphScenesState,
 } from "../effects/morph-dynamics-core/contracts/state";
 import {
-  MorphPresetRepository,
   MORPH_PRESET_SCHEMA_VERSION,
   type MorphPresetEntry,
 } from "../persistence/MorphPresetRepository";
@@ -249,7 +248,7 @@ export function MorphDynamicsPanel({
   const [presetError, setPresetError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void new MorphPresetRepository()
+    void services.morphPresets
       .list()
       .then((presets) => {
         if (!cancelled) setUserPresets(presets);
@@ -258,7 +257,7 @@ export function MorphDynamicsPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [services.morphPresets]);
 
   const valueOf = (id: string): number => params[id] ?? 0;
 
@@ -275,7 +274,7 @@ export function MorphDynamicsPanel({
     const existing = userPresets.find((p) => p.name === name);
     if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
     try {
-      const repo = new MorphPresetRepository();
+      const repo = services.morphPresets;
       await repo.save({
         id: existing?.id ?? `morph-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
@@ -297,7 +296,7 @@ export function MorphDynamicsPanel({
     const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
     if (!name || name === current.name) return;
     try {
-      const repo = new MorphPresetRepository();
+      const repo = services.morphPresets;
       await repo.save({ ...current, name });
       setUserPresets(await repo.list());
       setPresetError(null);
@@ -312,7 +311,7 @@ export function MorphDynamicsPanel({
     if (!current) return;
     if (!window.confirm(`Delete preset "${current.name}"?`)) return;
     try {
-      const repo = new MorphPresetRepository();
+      const repo = services.morphPresets;
       await repo.remove(current.id);
       setSelectedUserPresetId(null);
       setUserPresets(await repo.list());

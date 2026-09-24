@@ -7,7 +7,6 @@ import {
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
 import {
-  UltinaPresetRepository,
   ULTINA_PRESET_SCHEMA_VERSION,
   type UltinaPresetEntry,
 } from "../persistence/UltinaPresetRepository";
@@ -136,7 +135,7 @@ export function UltinaPanel({
   const [selectedUserPresetId, setSelectedUserPresetId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    void new UltinaPresetRepository()
+    void services.ultinaPresets
       .list()
       .then((all) => {
         if (!cancelled) setUserPresets(all);
@@ -147,7 +146,7 @@ export function UltinaPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [services.ultinaPresets]);
 
   // ── REFERENCE MATCH state ──
   const [refSources, setRefSources] = useState<{ id: string; name: string }[]>([]);
@@ -957,7 +956,7 @@ export function UltinaPanel({
               const existing = userPresets.find((p) => p.name === name);
               if (existing && !window.confirm(`Preset "${name}" already exists — overwrite it?`)) return;
               try {
-                const repo = new UltinaPresetRepository();
+                const repo = services.ultinaPresets;
                 await repo.save({
                   id: existing?.id ?? `ultina-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   name,
@@ -987,7 +986,7 @@ export function UltinaPanel({
                   const name = (window.prompt("Rename preset:", current.name) ?? "").trim();
                   if (!name || name === current.name) return;
                   try {
-                    const repo = new UltinaPresetRepository();
+                    const repo = services.ultinaPresets;
                     await repo.save({ ...current, name });
                     setUserPresets(await repo.list());
                     setPresetError(null);
@@ -1008,7 +1007,7 @@ export function UltinaPanel({
                   if (!current) return;
                   if (!window.confirm(`Delete preset "${current.name}"?`)) return;
                   try {
-                    const repo = new UltinaPresetRepository();
+                    const repo = services.ultinaPresets;
                     await repo.remove(current.id);
                     setSelectedUserPresetId(null);
                     setUserPresets(await repo.list());

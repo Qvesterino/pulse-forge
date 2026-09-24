@@ -37,7 +37,7 @@ import {
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
-import { attachProvenance, candidatePlan, evaluateCandidate } from "./local";
+import { attachProvenance, candidatePlan, evaluateCandidate } from "./candidate";
 import type { GenerationContext, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
 import type { GenerateOptions } from "../../ai/types";
 

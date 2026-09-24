@@ -46,6 +46,8 @@ function makeCore(saved: ProjectDocument[]): CoreServices {
     library: {} as CoreServices["library"],
     userKits: {} as CoreServices["userKits"],
     groovePool: {} as CoreServices["groovePool"],
+    morphPresets: {} as CoreServices["morphPresets"],
+    ultinaPresets: {} as CoreServices["ultinaPresets"],
     latency: {} as CoreServices["latency"],
   };
 }
