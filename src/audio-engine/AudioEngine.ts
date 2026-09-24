@@ -5120,13 +5120,22 @@ export class AudioEngine {
    * is audible DURING the drag instead of only after pointer-up. The document
    * write still happens once on commit (syncFxParams then pushes the final
    * value), so the document stays authoritative between gestures.
+   *
+   * Skips degraded (bypass) runtimes: the worklet DSP isn't loaded yet and
+   * the bypass runtime's setParameter is a deliberate no-op. Wasting the
+   * port message hides the fact that a drag is silent (the banner tells the
+   * user PRISM is bypassed, but the slider still visually moves). The doc
+   * commit path is unaffected — values written by the panel still land in
+   * the document and replay through syncFxParams once the real runtime is
+   * installed after the worklet lands.
    */
   previewFxParam(trackId: string, fxId: string, paramId: string, value: number): void {
     const rt =
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
-    rt?.setParameter?.(paramId, value);
+    if (!rt || rt.degraded) return;
+    rt.setParameter?.(paramId, value);
   }
 
   /**
