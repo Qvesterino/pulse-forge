@@ -61,6 +61,17 @@ describe("summarizeVocalProfile / producerNotes (SK+EN, honest)", () => {
     expect(en.join("\n")).toContain("3 phrases");
   });
 
+  it("card shows the alt reading when the feel is ambiguous", () => {
+    const lines = summarizeVocalProfile(
+      { ...sungProfile(), tempoBpm: 140, tempoAltBpm: 70, tempoMeasured: true },
+      "sk",
+    ).join("\n");
+    expect(lines).toContain("140");
+    expect(lines).toContain("alt 70");
+    const plain = summarizeVocalProfile(sungProfile(), "sk").join("\n");
+    expect(plain).not.toContain("alt");
+  });
+
   it("silence gets honesty, not guesses", () => {
     expect(summarizeVocalProfile(silentProfile(), "sk").join("\n")).toContain("Neslyším");
     expect(summarizeVocalProfile(silentProfile(), "en").join("\n")).toContain("No singing");

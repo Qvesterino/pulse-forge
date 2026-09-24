@@ -951,11 +951,12 @@ export function IntentPanel() {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
-  const applyTakeTempo = () => {
+  const applyTakeTempo = (useAlt = false) => {
     if (!takeProfile?.tempoMeasured) return;
     try {
-      services.store.execute(applyVocalTempoCommand(services.store.getDoc(), takeProfile));
-      setStatus(`✓ vocal tempo ${takeProfile.tempoBpm} BPM applied (one undo step)`);
+      services.store.execute(applyVocalTempoCommand(services.store.getDoc(), takeProfile, { useAlt }));
+      const applied = useAlt ? takeProfile.tempoAltBpm : takeProfile.tempoBpm;
+      setStatus(`✓ vocal tempo ${applied} BPM applied (one undo step)`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -1628,11 +1629,21 @@ export function IntentPanel() {
               type="button"
               className="btn btn-small"
               disabled={!takeProfile.tempoMeasured}
-              onClick={applyTakeTempo}
+              onClick={() => applyTakeTempo(false)}
               title="Match the transport tempo to the take flow (one undo step)"
             >
               TEMPO
             </button>
+            {takeProfile.tempoAltBpm ? (
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => applyTakeTempo(true)}
+                title={`Apply the alternative reading (${takeProfile.tempoAltBpm} BPM half/double-time feel, one undo step)`}
+              >
+                ALT
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-small"

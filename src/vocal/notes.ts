@@ -36,11 +36,11 @@ export function summarizeVocalProfile(profile: VocalProfile, lang: NotesLang = "
     );
   }
   if (profile.tempoMeasured && profile.tempoBpm) {
-    lines.push(
-      lang === "sk"
-        ? `🥁 Flow ${profile.tempoBpm} BPM (${pct(profile.tempoConfidence)})`
-        : `🥁 Flow ${profile.tempoBpm} BPM (${pct(profile.tempoConfidence)})`,
-    );
+    // The sibling is an honest alternative reading (half/double-time feel),
+    // deliberately unlabeled — flow-vs-beat depends on the genre, and the
+    // singer knows theirs. TEMPO applies the measured value, ALT the sibling.
+    const alt = profile.tempoAltBpm ? (lang === "sk" ? ` · alt ${profile.tempoAltBpm}` : ` · alt ${profile.tempoAltBpm}`) : "";
+    lines.push(`🥁 Tempo ${profile.tempoBpm} BPM${alt} (${pct(profile.tempoConfidence)})`);
   } else {
     lines.push(
       lang === "sk"

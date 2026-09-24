@@ -27,6 +27,13 @@ export interface VocalProfile {
   keyMeasured: boolean;
   /** Estimated beat tempo (BPM, folded 70..180) — null when unmeasurable. */
   tempoBpm: number | null;
+  /**
+   * The octave sibling reading (half/double-time feel — trap flow vs. beat).
+   * Present only when the sibling lands in the musical 70..180 range;
+   * absent = flow and beat coincide (or tempo unmeasured). The card shows it
+   * as an alternative reading, the TEMPO button applies the measured value.
+   */
+  tempoAltBpm?: number | null;
   /** Share of autocorrelation mass at the tempo peak (0..1). */
   tempoConfidence: number;
   tempoMeasured: boolean;

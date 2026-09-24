@@ -72,10 +72,24 @@ export function applyVocalKeyCommand(
   );
 }
 
-/** Match the transport tempo to the vocal flow (canonical setBpm, 1 undo). */
-export function applyVocalTempoCommand(doc: ProjectDocument, profile: VocalProfile): Command {
+/**
+ * Match the transport tempo to the vocal flow (canonical setBpm, 1 undo).
+ * `useAlt` applies the octave-sibling reading (half/double-time feel) —
+ * the card shows it, TEMPO takes the measured value by default.
+ */
+export function applyVocalTempoCommand(
+  doc: ProjectDocument,
+  profile: VocalProfile,
+  options: { useAlt?: boolean } = {},
+): Command {
   if (!profile.tempoMeasured || !profile.tempoBpm) {
     throw new Error("The take carries no measurable tempo — sing over a steadier pulse first");
+  }
+  if (options.useAlt) {
+    if (!profile.tempoAltBpm) {
+      throw new Error("This take has no alternative tempo reading — flow and beat coincide here");
+    }
+    return setBpm(doc, profile.tempoAltBpm);
   }
   return setBpm(doc, profile.tempoBpm);
 }

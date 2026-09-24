@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseKey } from "../src/project-model/scales";
-import { buildVocalProfile, extractPhrases, frameRms, perBarEnergy } from "../src/vocal/analyze";
+import { buildVocalProfile, extractPhrases, frameRms, perBarEnergy, tempoAltReading } from "../src/vocal/analyze";
 
 /**
  * V1 VOCAL PROFILE — the engine hears key/tempo/energy/phrases in a take.
@@ -90,6 +90,24 @@ describe("buildVocalProfile (key / tempo / honesty gates)", () => {
     const profile = buildVocalProfile({ pcm: clicks(120, 8), sampleRate: SR, bpm: 120 });
     expect(profile.tempoMeasured).toBe(true);
     expect(Math.abs(profile.tempoBpm! - 120)).toBeLessThanOrEqual(2);
+  });
+
+  it("octave sibling: 140 offers 70, 120 offers nothing (flow==beat)", () => {
+    expect(tempoAltReading(140)).toBe(70);
+    expect(tempoAltReading(80)).toBe(160);
+    expect(tempoAltReading(120)).toBeNull();
+    expect(tempoAltReading(96)).toBeNull();
+    expect(tempoAltReading(null)).toBeNull();
+  });
+
+  it("a 140 BPM train yields the 70/140 pair (half/double ambiguity is honest)", () => {
+    const profile = buildVocalProfile({ pcm: clicks(140, 8), sampleRate: SR, bpm: 140 });
+    expect(profile.tempoMeasured).toBe(true);
+    // The estimator cannot know which octave is "truth" — but the pair must
+    // straddle it: one reading near 140, the sibling near 70.
+    const readings = [profile.tempoBpm!, profile.tempoAltBpm!].sort((a, b) => a - b);
+    expect(Math.abs(readings[0] - 70)).toBeLessThanOrEqual(2);
+    expect(Math.abs(readings[1] - 140)).toBeLessThanOrEqual(2);
   });
 
   it("a steady sine carries no tempo (honest null, not a guess)", () => {

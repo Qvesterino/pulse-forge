@@ -638,7 +638,12 @@ export class Scheduler {
           break;
         }
       }
-      if (this.deps.setSceneIntensity) {
+      // Live/export parity: when the exact point scheduler is wired, IT owns
+      // this window (boundary ticks land sample-exact via scheduleSceneIntensity
+      // below). The immediate control-rate write would re-trigger the macro
+      // envelope every tick and smear seams by up to a tick — keep it only as
+      // the fallback for engines without the exact path.
+      if (this.deps.setSceneIntensity && !this.deps.scheduleSceneIntensity) {
         if (activeScene) {
           this.deps.setSceneIntensity(computeSceneIntensity(activeScene, activeClipStart, contentWindowStart));
         } else {
@@ -966,7 +971,19 @@ function sceneIntensityPointsForWindow(
   }
   if (points.length === 0) points.push({ tick: fromTick, value: 0.7 });
   else if (cursor < toTick) points.push({ tick: cursor, value: 0.7 }, { tick: toTick, value: 0.7 });
-  return points;
+  // Boundary rule mirrored from the offline buildSceneIntensityPoints: at a
+  // clip seam the LATER point is authoritative (the next scene wins at its
+  // exact start). Without this the closing value of the old scene and the
+  // opening value of the new one share the tick and live carries a duplicate
+  // the export never writes.
+  const ordered = points.slice().sort((a, b) => a.tick - b.tick);
+  const deduped: Array<{ tick: number; value: number }> = [];
+  for (const point of ordered) {
+    const previous = deduped[deduped.length - 1];
+    if (previous && previous.tick === point.tick) previous.value = point.value;
+    else deduped.push(point);
+  }
+  return deduped;
 }
 
 /** Map a marker type to its auto-trigger asset (or null for no cue). */

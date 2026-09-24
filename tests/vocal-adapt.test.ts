@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { testDoc } from "./fixtures/doc";
+import { normalizeIntent } from "../src/intent/normalize";
+import { buildSong } from "../src/intent/song";
 import { applyVocalKeyCommand, applyVocalTempoCommand, keyTransposeDelta } from "../src/vocal/adapt";
 import type { VocalProfile } from "../src/vocal/types";
 
@@ -131,6 +133,22 @@ describe("applyVocalKeyCommand", () => {
   });
 });
 
+describe("applied key propagates into generation (Q3 regenerate path)", () => {
+  it("SONG built after KEY apply generates in the singer key", async () => {
+    const { key: _drop, ...keyless } = testDoc();
+    const keyed = applyVocalKeyCommand(
+      { ...keyless, key: undefined },
+      profileWith({ key: "D Major", keyMeasured: true }),
+      { transpose: false },
+    ).execute(keyless);
+    expect(keyed.key).toBe("D Major");
+    const build = await buildSong(keyed, normalizeIntent({ genre: "house", seed: "vocal-key-flow" }), {
+      yieldBetweenSections: false,
+    });
+    expect(build.key).toBe("D Major");
+  }, 60_000);
+});
+
 describe("applyVocalTempoCommand", () => {
   it("matches the transport tempo in one undo step", () => {
     const doc = testDoc();
@@ -141,5 +159,14 @@ describe("applyVocalTempoCommand", () => {
 
   it("throws honestly on an unmeasured tempo", () => {
     expect(() => applyVocalTempoCommand(testDoc(), profileWith({}))).toThrow(/no measurable tempo/);
+  });
+
+  it("useAlt applies the sibling reading, and refuses when absent", () => {
+    const doc = testDoc();
+    const withAlt = profileWith({ tempoBpm: 140, tempoMeasured: true, tempoAltBpm: 70 });
+    expect(applyVocalTempoCommand(doc, withAlt, { useAlt: true }).execute(doc).bpm).toBe(70);
+    expect(applyVocalTempoCommand(doc, withAlt).execute(doc).bpm).toBe(140);
+    const withoutAlt = profileWith({ tempoBpm: 120, tempoMeasured: true, tempoAltBpm: null });
+    expect(() => applyVocalTempoCommand(doc, withoutAlt, { useAlt: true })).toThrow(/no alternative/);
   });
 });

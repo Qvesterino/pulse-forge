@@ -104,7 +104,7 @@ const packs = await page.evaluate(
     if (!preset) continue;
     const entry = {
       id: preset.id,
-      label: preset.label,
+      label: preset.label ?? preset.name,
       category: preset.category,
       description: preset.description ?? "",
       paths: {},

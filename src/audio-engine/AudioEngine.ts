@@ -354,6 +354,48 @@ export function sendPdcDelaySec(downstreamLatSec: number, returnLatSec: number):
   return Math.max(0, downstreamLatSec - returnLatSec);
 }
 
+/**
+ * Expand a scene-relative automation lane to absolute-tick events for one
+ * window: interpolated boundary values plus every interior lane point
+ * (mirrors the offline scheduleSceneAutomation expansion). Pure —
+ * unit-tested; the live lane writer and any future caller share it.
+ */
+export function expandSceneLaneWindow(
+  lane: { points: AutomationPoint[] },
+  fromTick: number,
+  toTick: number,
+  sceneStartTick: number,
+): Array<{ tick: number; value: number }> {
+  const valueAtLocal = (tick: number): number => {
+    if (lane.points.length === 0) return 0;
+    if (tick <= lane.points[0].tick) return lane.points[0].value;
+    if (tick >= lane.points[lane.points.length - 1].tick) return lane.points[lane.points.length - 1].value;
+    for (let i = 0; i < lane.points.length - 1; i++) {
+      const a = lane.points[i];
+      const b = lane.points[i + 1];
+      if (tick >= a.tick && tick <= b.tick) {
+        const span = b.tick - a.tick;
+        if (span <= 0) return a.value;
+        return a.value + ((b.value - a.value) * (tick - a.tick)) / span;
+      }
+    }
+    return lane.points[lane.points.length - 1].value;
+  };
+  const expanded = [
+    { tick: fromTick, value: valueAtLocal(Math.max(0, fromTick - sceneStartTick)) },
+    { tick: toTick, value: valueAtLocal(Math.max(0, toTick - sceneStartTick)) },
+  ];
+  const sorted = [...lane.points].sort((a, b) => a.tick - b.tick);
+  for (const point of sorted) {
+    const absoluteTick = sceneStartTick + point.tick;
+    if (absoluteTick > fromTick && absoluteTick < toTick) {
+      expanded.push({ tick: absoluteTick, value: point.value });
+    }
+  }
+  expanded.sort((a, b) => a.tick - b.tick);
+  return expanded;
+}
+
 export class AudioEngine {
   private ctx: BaseAudioContext | null = null;
   private liveContextListeners = new Set<(context: AudioContext | null) => void>();
@@ -1164,17 +1206,12 @@ export class AudioEngine {
         params: { drive: 0.35, hysteresis: 0.3, tone: 6500, mix: 1, output: 0 },
       });
     } else {
-      const shaper = ctx.createWaveShaper();
-      shaper.oversample = "4x";
-      const curve = new Float32Array(1024);
-      for (let i = 0; i < 1024; i++) {
-        const x = (i / 1023) * 2 - 1;
-        curve[i] = Math.tanh(x * 1.8);
-      }
-      shaper.curve = curve;
+      // Worklet-less: unity bypass (same policy as the tapeSat effect —
+      // a plain-tanh stand-in would diverge from the hysteresis model in
+      // both character AND aliasing, and a fake color is worse than none).
       const input = ctx.createGain();
       const output = ctx.createGain();
-      input.connect(shaper).connect(output);
+      input.connect(output);
       this.masterTape = {
         input,
         output,
@@ -1183,7 +1220,6 @@ export class AudioEngine {
         getAudioParam: () => null,
         dispose() {
           input.disconnect();
-          shaper.disconnect();
           output.disconnect();
         },
       };
@@ -3478,6 +3514,9 @@ export class AudioEngine {
    * Apply a scene automation lane within an absolute tick window. The lane
    * is scene-relative, so we interpolate scene-local ticks and dispatch the
    * resulting target/value to the existing track / FX / instrument pipeline.
+   * Interior lane points inside the window are written at their exact ticks
+   * (same boundary+interior rule the offline scheduleSceneAutomation uses) —
+   * endpoint-only collapse played dense sweeps as straight lines live.
    */
   applySceneAutomationLane(
     lane: SceneAutomation,
@@ -3508,6 +3547,18 @@ export class AudioEngine {
     const v0 = valueAt(t0Local);
     const v1 = valueAt(t1Local);
     this.applyLane(lane, v0, v1, fromTick, toTick, scheduleOffsetSec, timeAt);
+    // Interior expansion (offline parity): every lane point strictly inside
+    // the window lands at its exact tick through the same tick→time map.
+    const ctx = this.ctx;
+    if (ctx && timeAt) {
+      const offset = Number.isFinite(scheduleOffsetSec) ? scheduleOffsetSec : 0;
+      for (const ev of expandSceneLaneWindow(lane, fromTick, toTick, sceneStartTick)) {
+        if (ev.tick <= fromTick || ev.tick >= toTick) continue;
+        const when = timeAt(ev.tick);
+        if (!Number.isFinite(when)) continue;
+        this.writeAutomationTargetAt(lane.target, ev.value, Math.max(ctx.currentTime, when + offset));
+      }
+    }
   }
 
   /** Apply a single automation lane directly (not via doc.automation). */

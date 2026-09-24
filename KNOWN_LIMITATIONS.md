@@ -7,18 +7,19 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
 ## Export & rendering
 
 - **Scene intensity is scheduled into exports.** Live and offline both resolve
-  `source: "intensity"` through the same AudioEngine macro writer. The live
-  scheduler is still control-rate driven (25 ms look-ahead), so a scene seam
-  can differ from the offline sample-exact timeline by up to one scheduler
-  tick; the scene-tempo caveat below describes the same class of boundary
-  residual.
+  `source: "intensity"` through the same AudioEngine macro writer, and the
+  live scheduler now writes the same exact point timeline (one point per seam
+  tick, next scene wins — the offline dedupe rule). The remaining residual is
+  the transport's tempo-flip commit below, not the intensity values.
 - **Scene-tempo timing.** Since the tempo-seam fix, live playback applies a
   scene BPM change within one scheduler tick (≤ 25 ms) of the clip boundary,
   and exports apply it exactly at the boundary. Events within ±25 ms of the
   boundary may therefore differ by a few milliseconds between live and export.
 - **Automation near a scene-tempo boundary.** Project automation writes follow
-  the tempo map now, but the engine's smoothing window can still straddle a
-  boundary by up to one window (~120 ms) during a tempo change.
+  the tempo map now, and scene lanes expand their interior points live exactly
+  like the offline schedule. The smoothing envelope (`setTargetAtTime`) still
+  straddles a tempo change by its own time constant (~8 ms), which is
+  identical on both paths by construction.
 - **Marker cue one-shots are not part of the master WAV export.** Bounce-zone
   and scorepack exports deliberately exclude them; the master export follows
   the same rule. Live playback does fire them. The Export panel shows this
@@ -132,8 +133,9 @@ the bounded memory footprint of the prepare-time delay reservation:
 ## Platform
 
 - **AudioWorklet-less environments degrade audibly.** Without worklet support
-  the master tape and look-ahead limiter fall back to simpler native nodes —
-  quieter, cleaner, but not the same algorithm. All modern Chromium/Firefox/
+  the master tape is bypassed 1:1 (same policy as the tapeSat effect — a fake
+  tanh stand-in would diverge in character and aliasing) and the look-ahead
+  limiter falls back to a simpler native node. All modern Chromium/Firefox/
   Safari builds ship worklets.
 - **MIDI clock master output uses timer scheduling.** External gear synced as
   slave may see a few milliseconds of jitter (the internal audio path uses
@@ -219,9 +221,9 @@ the bounded memory footprint of the prepare-time delay reservation:
   Matching source/test commit je `D:/VocalForge_DAW:c0a549d`; lokálny vendor
   script dirty source defaultne odmietne.
 - **Zámerne NEopravené (produktové rozhodnutia, nie defekty):** manuálny dotyček parametra
-   nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
-   opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
-   4 samostatné undo kroky namiesto 1 (ostatné assistant gesty sú 1-krokové).
+  nepreberá už-DUE automation eventy v rovnakom quantume (preberie až budúce; samo sa
+  opraví ďalším dragom — Web Audio "scheduled event wins" flavor); EQ LEARN APPLY robí
+  4 samostatné undo kroky namiesto 1 (ostatné assistant gesty sú 1-krokové).
 - **Opravené v tomto priechode:** duplicitné meno "Vocal Warmth" (EQ + density) spôsobovalo,
   že panel vždy aplikoval EQ verziu — lookup teraz beží podľa preset ID; meters cadence
   je rate-derived (~20 Hz aj na 96/192 kHz, predtým ~47/94 Hz); automation queue má cap

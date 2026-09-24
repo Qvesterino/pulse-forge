@@ -172,7 +172,7 @@ const packs = await page.evaluate(
     if (!preset) continue;
     const entry = {
       id: preset.id,
-      label: preset.label,
+      label: preset.label ?? preset.name,
       category: preset.category,
       description: preset.description ?? "",
       paths: {},
@@ -205,7 +205,7 @@ const packs = await page.evaluate(
     const wetAudio = await renderDoc(wet);
     out.scenes.push({
       id: preset.id,
-      label: preset.label,
+      label: preset.label ?? preset.name,
       templateId,
       description: preset.description ?? "",
       bypass,

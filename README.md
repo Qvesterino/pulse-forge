@@ -77,22 +77,22 @@ It explicitly avoids: simultaneous multi-input studio recording, VST/AU plugin h
 
 ### 14 melodic instruments (`src/instruments/registry.ts`)
 
-| # | Instrument | Engine highlights |
-|---|---|---|
-| 1 | **Sampler** | root-note transposition, ADSR, per-voice LP/BP/HP filter, key tracking, velocity layers, round-robin kits, keyzones, pitch / stretch / loop modes, L-XFADE, reverse, spread |
-| 2 | **Analog Synth** | 2 oscillators + sub + noise → SVF lowpass with envelope, ADSR amp; cutoff/resonance live on sounding voices |
-| 3 | **Bass Synth** | SUB / BODY / PUNCH / GRIT / MOVEMENT / WIDTH macros → saw/square/sub voice with drive, filter envelope, LFO movement, stereo width |
-| 4 | **808 Synth** | sine body with pitch-drop envelope, decay, transient click, drive, tone; monophonic with retrigger-clean slides |
-| 5 | **Texture Synth** | pad/drone with shared LFOs, filtered noise, tremolo, feedback delay space, tempo-synced delay |
-| 6 | **Wavetable Synth** | two crossfaded single-cycle frame loopers per oscillator + detuned unison + sub; 5 factory tables (Sine Grow, PWM, Formant, Digital, FM Drive); drop any sample to extract a table; morph and per-voice scan engine |
-| 7 | **Granular Synth** | deterministic grain cloud scheduled upfront per note; POSITION/GRAIN/RATE/JITTER/SPREAD/REVERSE/PITCH/P-RAND; canvas waveform preview |
-| 8 | **Keys** | 4-op FM electric piano, two parallel FM pairs, tremolo, scale-aware unison |
-| 9 | **FM Synth** | 2-operator DX-style FM with self-feedback, mod and feedback envelopes, M-WAVE (SIN/TRI/SQR), live retuning of in-flight voices |
-| 10 | **Pluck Synth** | Karplus-Strong physical model, excite by noise burst |
-| 11 | **Log Drum** | 3 inharmonic sine partials (1 / ~2.15 / ~3.8) with partial-specific pitch-drop dispersion; "log drum" amapiano character |
-| 12 | **Spectral Pad** | additive pad up to 8 sine partials with per-partial amplitude, decay and stereo placement; profiles (Harmonic, Bright, Odd, Formant, Bell) |
-| 13 | **Vocal Chop** | parallel three-band formant bank (A/E/I/O/U Peterson-Barney formants), consonant transient, vibrato, glide, MORPH through vowel table |
-| 14 | **Drum Synth** | 13 analytically-modelled drum voices (Kick / Snare / Hat C / Hat O / Clap / Perc / …) played chromatically from the piano roll, with choke on the hats |
+| #   | Instrument          | Engine highlights                                                                                                                                                                                                   |
+| --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Sampler**         | root-note transposition, ADSR, per-voice LP/BP/HP filter, key tracking, velocity layers, round-robin kits, keyzones, pitch / stretch / loop modes, L-XFADE, reverse, spread                                         |
+| 2   | **Analog Synth**    | 2 oscillators + sub + noise → SVF lowpass with envelope, ADSR amp; cutoff/resonance live on sounding voices                                                                                                         |
+| 3   | **Bass Synth**      | SUB / BODY / PUNCH / GRIT / MOVEMENT / WIDTH macros → saw/square/sub voice with drive, filter envelope, LFO movement, stereo width                                                                                  |
+| 4   | **808 Synth**       | sine body with pitch-drop envelope, decay, transient click, drive, tone; monophonic with retrigger-clean slides                                                                                                     |
+| 5   | **Texture Synth**   | pad/drone with shared LFOs, filtered noise, tremolo, feedback delay space, tempo-synced delay                                                                                                                       |
+| 6   | **Wavetable Synth** | two crossfaded single-cycle frame loopers per oscillator + detuned unison + sub; 5 factory tables (Sine Grow, PWM, Formant, Digital, FM Drive); drop any sample to extract a table; morph and per-voice scan engine |
+| 7   | **Granular Synth**  | deterministic grain cloud scheduled upfront per note; POSITION/GRAIN/RATE/JITTER/SPREAD/REVERSE/PITCH/P-RAND; canvas waveform preview                                                                               |
+| 8   | **Keys**            | 4-op FM electric piano, two parallel FM pairs, tremolo, scale-aware unison                                                                                                                                          |
+| 9   | **FM Synth**        | 2-operator DX-style FM with self-feedback, mod and feedback envelopes, M-WAVE (SIN/TRI/SQR), live retuning of in-flight voices                                                                                      |
+| 10  | **Pluck Synth**     | Karplus-Strong physical model, excite by noise burst                                                                                                                                                                |
+| 11  | **Log Drum**        | 3 inharmonic sine partials (1 / ~2.15 / ~3.8) with partial-specific pitch-drop dispersion; "log drum" amapiano character                                                                                            |
+| 12  | **Spectral Pad**    | additive pad up to 8 sine partials with per-partial amplitude, decay and stereo placement; profiles (Harmonic, Bright, Odd, Formant, Bell)                                                                          |
+| 13  | **Vocal Chop**      | parallel three-band formant bank (A/E/I/O/U Peterson-Barney formants), consonant transient, vibrato, glide, MORPH through vowel table                                                                               |
+| 14  | **Drum Synth**      | 13 analytically-modelled drum voices (Kick / Snare / Hat C / Hat O / Clap / Perc / …) played chromatically from the piano roll, with choke on the hats                                                              |
 
 Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke groups) and a separate **7-voice synth drum kit** that the rack's pads map onto. All instruments support mod matrix routes (MOD A / B with ENV/LFO/VEL/PRESS → CUTOFF/AMP/MORPH), MPE poly aftertouch and per-note timbre (CC74), and live parameter changes that propagate to sounding voices.
 
@@ -100,13 +100,13 @@ Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke
 
 **Flagship plugin suites** (AudioWorklet DSP with dedicated regression/golden coverage):
 
-| Type | Brand name | Notes |
-|---|---|---|
-| `fxeq` | **PRISM** | spectral EQ, 2–6 bands, Linkwitz-Riley 2/4/8 crossover, phase alignment, in-rack limiter |
-| `ultina` | **VLYX** | intelligent mixing suite (comp / transient / exciter / unmask stages) |
-| `ozvena` | **VØID** | spatial convolution reverb with three engines, blend-pad routing, true-stereo factory IRs, precomputed FFT spectra |
-| `kaskada` | **Kaskáda Delay** | tempo-synced multi-tap delay |
-| `morphdynamics` | **MORPH** | macro-driven dynamics, character, motion and space processing |
+| Type            | Brand name        | Notes                                                                                                              |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `fxeq`          | **PRISM**         | spectral EQ, 2–6 bands, Linkwitz-Riley 2/4/8 crossover, phase alignment, in-rack limiter                           |
+| `ultina`        | **VLYX**          | intelligent mixing suite (comp / transient / exciter / unmask stages)                                              |
+| `ozvena`        | **VØID**          | spatial convolution reverb with three engines, blend-pad routing, true-stereo factory IRs, precomputed FFT spectra |
+| `kaskada`       | **Kaskáda Delay** | tempo-synced multi-tap delay                                                                                       |
+| `morphdynamics` | **MORPH**         | macro-driven dynamics, character, motion and space processing                                                      |
 
 **Native/core mix effects** (native Web Audio / AudioWorklet — 40 of them): EQ, M/S EQ, Multiband, Haas Widener, Compressor, Saturation, Tape Sat, Clipper, Reverb, Delay, Pump, Distortion, Bitcrusher, Chorus, Phaser, Sidechain, Transient Shaper, Gate, Shimmer, Drum Buss, Bass Buss, Utility, Limiter, Step Gate, SV Filter, Flanger, Tremolo, Autowah, Stutter, Comb, Vowel, Duck Delay, Multi-Tap Delay, Ring Mod, Tape Stop, Frequency Shifter, Pitch Shift, Vinyl, Beat Mangler, Vocoder.
 
@@ -232,33 +232,33 @@ Every step is undoable (`Ctrl+Z` / `Ctrl+Y`) and persists automatically.
 
 KYX is a single-page app with a top bar, a dockable bottom panel row, and modal overlays. The bottom panel row is split-dockable; the panels are `mixer`, `fx`, `plugin`, `arr`, `mod`, `exp`, `midi`, `dice`, `intent` (defined in `src/ui/dockLayout.ts`).
 
-| Area | Source | Purpose |
-|---|---|---|
-| **Project Browser** | `src/ui/ProjectBrowser.tsx` | First screen on boot — recent projects, template grid, continue-last card |
-| **Landing Page** (`/landing`) | `src/landing/LandingPage.tsx` | First-visit marketing page with a live beat preview; skipped once onboarded |
-| **Embed Player** (`/embed`) | `src/embed/EmbedApp.tsx` | Self-contained beat player for share codes |
-| **Beat Gallery** (`/gallery`) | `src/gallery/GalleryPage.tsx` | Community feed with publish, fork, remix |
-| **Top Bar** | `src/ui/TopBar.tsx` | Transport, BPM, save status, undo/redo, panel toggles, palette, help, diagnostics, history |
-| **Sequencer** | `src/ui/Sequencer.tsx`, `StepGridEditor.tsx` | 16/32-step drum grid, per-track rows, beat grouping, playhead |
-| **Piano Roll** | `src/ui/PianoRoll.tsx` | Note editing per instrument track; keyboard column; scale lock |
-| **Pattern Bar** | `src/ui/PatternBar.tsx`, `SceneLauncher.tsx` | Pattern chips, scene chips, swing/humanize controls |
-| **Mixer** | `src/ui/Mixer.tsx` | Channel strips, returns, sends, master, real meters |
-| **Effect Rack** | `src/ui/EffectRack.tsx`, `RackStrip.tsx` | Add/remove/reorder/bypass; shared parameter metadata drives the UI |
-| **Flagship Plugin Panels** | `src/ui/FxEqPanel.tsx`, `UltinaPanel.tsx`, `OzvenaPanel.tsx`, `KaskadaPanel.tsx` | Vendor-brand editors for PRISM / VLYX / VØID / Kaskáda Delay |
-| **Arrangement Panel** | `src/ui/ArrangementPanel.tsx` | Clips on a song-mode timeline; markers; scene intensity curve; scene automation |
-| **Modulation Panel** | `src/ui/ModPanel.tsx`, `ModMatrixRow.tsx` | Automation point editor, LFO editor, macro mapping, scene-intensity source |
-| **Export Panel** | `src/ui/ExportPanel.tsx` | WAV / MP3 / video / stems / scorepack / share code; live measured peak / true-peak / RMS / correlation summary |
-| **MIDI Panel** | `src/ui/MidiPanel.tsx` | MIDI device list, learn, pattern record arm |
-| **Dice Tray** | `src/ui/DiceTray.tsx`, `DiceContext.tsx` | Seed-locked beat generator with locks and favorites |
-| **Intent Panel** | `src/ui/IntentPanel.tsx`, `GenerateDialog.tsx` | Text → beat, slider-based generation |
-| **Preset / Sample Browser** | `src/ui/PresetBrowser.tsx`, `SampleBrowser.tsx` | Curated browsers with category, mood, search, RECENT, hearts |
-| **Master Meter** | `src/ui/MasterMeter.tsx`, `LoudnessHistory.tsx`, `Goniometer.tsx`, `SpectrumAnalyzer.tsx` | LUFS history, correlation, print-ready verdict, goniometer, spectrum |
-| **Slice Lab** | `src/ui/SliceLab.tsx` | Drop a sample, transient-detect chop onto 16 pads |
-| **Diagnostics** | `src/ui/Diagnostics.tsx` | Engine / scheduler / save status readout |
-| **Help Overlay** | `src/ui/HelpOverlay.tsx`, `helpContent.ts`, `shortcuts.ts` | Full shortcut reference |
-| **Onboarding** | `src/ui/OnboardingTour.tsx`, `OnboardingHint.tsx` | First-run three-step interactive tour |
-| **Command Palette** | `src/ui/PaletteOverlay.tsx`, `commandPalette.ts` | `⌘K` keyboard-driven actions |
-| **Themes** | `src/ui/ThemePanel.tsx`, `theme.ts` | Light/dark themes with persisted preference |
+| Area                          | Source                                                                                    | Purpose                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Project Browser**           | `src/ui/ProjectBrowser.tsx`                                                               | First screen on boot — recent projects, template grid, continue-last card                                      |
+| **Landing Page** (`/landing`) | `src/landing/LandingPage.tsx`                                                             | First-visit marketing page with a live beat preview; skipped once onboarded                                    |
+| **Embed Player** (`/embed`)   | `src/embed/EmbedApp.tsx`                                                                  | Self-contained beat player for share codes                                                                     |
+| **Beat Gallery** (`/gallery`) | `src/gallery/GalleryPage.tsx`                                                             | Community feed with publish, fork, remix                                                                       |
+| **Top Bar**                   | `src/ui/TopBar.tsx`                                                                       | Transport, BPM, save status, undo/redo, panel toggles, palette, help, diagnostics, history                     |
+| **Sequencer**                 | `src/ui/Sequencer.tsx`, `StepGridEditor.tsx`                                              | 16/32-step drum grid, per-track rows, beat grouping, playhead                                                  |
+| **Piano Roll**                | `src/ui/PianoRoll.tsx`                                                                    | Note editing per instrument track; keyboard column; scale lock                                                 |
+| **Pattern Bar**               | `src/ui/PatternBar.tsx`, `SceneLauncher.tsx`                                              | Pattern chips, scene chips, swing/humanize controls                                                            |
+| **Mixer**                     | `src/ui/Mixer.tsx`                                                                        | Channel strips, returns, sends, master, real meters                                                            |
+| **Effect Rack**               | `src/ui/EffectRack.tsx`, `RackStrip.tsx`                                                  | Add/remove/reorder/bypass; shared parameter metadata drives the UI                                             |
+| **Flagship Plugin Panels**    | `src/ui/FxEqPanel.tsx`, `UltinaPanel.tsx`, `OzvenaPanel.tsx`, `KaskadaPanel.tsx`          | Vendor-brand editors for PRISM / VLYX / VØID / Kaskáda Delay                                                   |
+| **Arrangement Panel**         | `src/ui/ArrangementPanel.tsx`                                                             | Clips on a song-mode timeline; markers; scene intensity curve; scene automation                                |
+| **Modulation Panel**          | `src/ui/ModPanel.tsx`, `ModMatrixRow.tsx`                                                 | Automation point editor, LFO editor, macro mapping, scene-intensity source                                     |
+| **Export Panel**              | `src/ui/ExportPanel.tsx`                                                                  | WAV / MP3 / video / stems / scorepack / share code; live measured peak / true-peak / RMS / correlation summary |
+| **MIDI Panel**                | `src/ui/MidiPanel.tsx`                                                                    | MIDI device list, learn, pattern record arm                                                                    |
+| **Dice Tray**                 | `src/ui/DiceTray.tsx`, `DiceContext.tsx`                                                  | Seed-locked beat generator with locks and favorites                                                            |
+| **Intent Panel**              | `src/ui/IntentPanel.tsx`, `GenerateDialog.tsx`                                            | Text → beat, slider-based generation                                                                           |
+| **Preset / Sample Browser**   | `src/ui/PresetBrowser.tsx`, `SampleBrowser.tsx`                                           | Curated browsers with category, mood, search, RECENT, hearts                                                   |
+| **Master Meter**              | `src/ui/MasterMeter.tsx`, `LoudnessHistory.tsx`, `Goniometer.tsx`, `SpectrumAnalyzer.tsx` | LUFS history, correlation, print-ready verdict, goniometer, spectrum                                           |
+| **Slice Lab**                 | `src/ui/SliceLab.tsx`                                                                     | Drop a sample, transient-detect chop onto 16 pads                                                              |
+| **Diagnostics**               | `src/ui/Diagnostics.tsx`                                                                  | Engine / scheduler / save status readout                                                                       |
+| **Help Overlay**              | `src/ui/HelpOverlay.tsx`, `helpContent.ts`, `shortcuts.ts`                                | Full shortcut reference                                                                                        |
+| **Onboarding**                | `src/ui/OnboardingTour.tsx`, `OnboardingHint.tsx`                                         | First-run three-step interactive tour                                                                          |
+| **Command Palette**           | `src/ui/PaletteOverlay.tsx`, `commandPalette.ts`                                          | `⌘K` keyboard-driven actions                                                                                   |
+| **Themes**                    | `src/ui/ThemePanel.tsx`, `theme.ts`                                                       | Light/dark themes with persisted preference                                                                    |
 
 ---
 
@@ -290,19 +290,19 @@ The **same `AudioEngine`** drives both realtime playback and offline export. The
 
 The architectural decisions are recorded in `docs/adr/`:
 
-| ADR | Topic |
-|---|---|
-| 0001 | Browser-first platform |
-| 0002 | Audio clock scheduling |
-| 0003 | Project model / runtime separation |
-| 0004 | AudioWorklet boundary |
-| 0005 | Rust/WASM DSP policy |
-| 0006 | Effect rack and native effects |
-| 0007 | Instruments and notes |
+| ADR  | Topic                                            |
+| ---- | ------------------------------------------------ |
+| 0001 | Browser-first platform                           |
+| 0002 | Audio clock scheduling                           |
+| 0003 | Project model / runtime separation               |
+| 0004 | AudioWorklet boundary                            |
+| 0005 | Rust/WASM DSP policy                             |
+| 0006 | Effect rack and native effects                   |
+| 0007 | Instruments and notes                            |
 | 0008 | Composition systems (intent / dice / automation) |
-| 0009 | Offline render and export |
-| 0010 | Desktop packaging (Electron shell) |
-| 0011 | Desktop auto-update (electron-updater) |
+| 0009 | Offline render and export                        |
+| 0010 | Desktop packaging (Electron shell)               |
+| 0011 | Desktop auto-update (electron-updater)           |
 
 ---
 
@@ -556,42 +556,51 @@ Owner gates still open (not blocking local development): manual Firefox / Safari
 The honest list of caveats lives in `KNOWN_LIMITATIONS.md`. Highlights:
 
 ### Export and rendering
+
 - Scene intensity, scene-tempo seams and scene automation are written through the same engine macro path in live and offline renders; near a scene boundary the live scheduler is control-rate driven (25 ms look-ahead), so a seam can differ from the offline sample-exact timeline by up to one scheduler tick.
 - Marker cue one-shots are deliberately excluded from the master WAV export (they live in scorepacks instead).
 - WAV overflow is intentionally soft-kneed, not transparent; the 16-bit path uses deterministic TPDF dither.
 - Offline render of a single stage cannot be interrupted; the CANCEL button stops between master / stem / track stages, between SCOREPACK stages and during MP3 encoding or video recording.
 
 ### Sound and mixer
+
 - Chorus / Delay / Drum Buss / Bass Buss were upgraded on 2026-09-18 to worklet DSP — intentionally not bit-exact, same params, new character.
 - The look-ahead limiter is true-peak since 2026-09-18; on transient-hot masters the export may sit a fraction of a dB under the ceiling.
 - Group tracks cannot be frozen (a group has no generators, so its buffer would be silence — freeze the child tracks instead).
 
 ### Ultina / VLYX vendored core
+
 - DSP-inert vendor-reserved parameters (`comp.autoLearnThreshold`, `transient.crossoverLearn`, `clipper.crossoverLearn`) are reserved schema placeholders, not implemented.
 - Mix assist / reference match use a dedicated host-side worker; analysis uses a v1 simplified K-weighting approximation (not a full BS.1770 implementation).
 
 ### VØID vendored core
+
 - Pre-delay reserves its maximum supported range at `prepare()` to remove runtime ring growth — at 48 kHz one stereo instance costs about 37 MB; at 96 kHz about 74 MB; at 192 kHz about 147 MB. Multiple high-rate VØID instances should be included in device-memory QA.
 
 ### Mod matrix
+
 - Granular is intentionally omitted from the mod-matrix rollout — its modulation story is its own `POSITION / SCAN / JITTER / RATE` parameters.
 - Destination `DETUNE` (2) is reserved and not implemented on either path (worklet or fallback).
 
 ### Collaboration
+
 - Undo is local; remote edits never enter your undo stack (deliberate — CRDT merges cannot be inverted locally).
 - Collab session undo history is unbounded; very long jam sessions grow it; reload resets it.
 - Custom collab servers are trusted by design; the server URL is used as-is.
 
 ### Platform
-- AudioWorklet-less environments degrade audibly (the master tape and look-ahead limiter fall back to simpler native nodes). All modern Chromium / Firefox / Safari ship worklets.
+
+- AudioWorklet-less environments degrade audibly (the master tape is bypassed 1:1, the look-ahead limiter falls back to a simpler native node). All modern Chromium / Firefox / Safari ship worklets.
 - MIDI clock master output uses timer scheduling (a few milliseconds of jitter).
 - Import size caps: 25 MB per audio sample, 10 MB per project JSON.
 
 ### Deferred by decision
+
 - Vitest 5 + Vite 8 migration.
 - `bounceStemsToAudioClip` command exists and is tested but has no UI wiring.
 
 ### Environment-sensitive QA
+
 - The `verify-browser` suite is not safe to run in parallel with another active session or build on the same machine — co-tenant load can push CPU metrics across gates; on a quiet machine 218/218 pass.
 
 ---

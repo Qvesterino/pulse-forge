@@ -76,6 +76,17 @@ export function perBarEnergy(pcm: Float32Array, sampleRate: number, bpm: number,
   return curve.map((level) => Math.min(1, level / peak));
 }
 
+/**
+ * Octave sibling of a measured tempo (half/double-time feel). Returns null
+ * when the sibling falls outside the musical 70..180 range — then flow and
+ * beat coincide and there is no honest alternative to offer.
+ */
+export function tempoAltReading(tempoBpm: number | null): number | null {
+  if (tempoBpm === null || !Number.isFinite(tempoBpm)) return null;
+  const sibling = tempoBpm <= 105 ? tempoBpm * 2 : Math.round(tempoBpm / 2);
+  return sibling >= 70 && sibling <= 180 ? sibling : null;
+}
+
 /** Contiguous above-threshold bar runs → phrases (audible 1-bar gaps bridge, silence splits). */
 export function extractPhrases(energyCurve: number[]): VocalPhrase[] {
   if (energyCurve.length === 0) return [];
@@ -116,6 +127,7 @@ export function canonicalizeVocalProfile(profile: Omit<VocalProfile, "profileHas
     keyConfidence: round4(profile.keyConfidence),
     keyMeasured: profile.keyMeasured,
     tempoBpm: profile.tempoBpm,
+    tempoAltBpm: profile.tempoAltBpm ?? null,
     tempoConfidence: round4(profile.tempoConfidence),
     tempoMeasured: profile.tempoMeasured,
     energyCurve: profile.energyCurve.map(round4),
@@ -167,6 +179,7 @@ export function buildVocalProfile(input: VocalAnalysisInput): VocalProfile {
       keyConfidence: key && keyRaw ? round4(keyRaw.confidence) : 0,
       keyMeasured: key !== null,
       tempoBpm: tempoRaw ? tempoRaw.bpm : null,
+      tempoAltBpm: tempoAltReading(tempoRaw ? tempoRaw.bpm : null),
       tempoConfidence: tempoRaw ? round4(tempoRaw.confidence) : 0,
       tempoMeasured: tempoRaw !== null,
       energyCurve,

@@ -78,6 +78,24 @@ Fázy sú zoradené podľa rizika a závislostí. Začať sa má fázou 0; ďal�
 
 **Hotovo, keď:** ranker status je jednoznačne zdokumentovaný a zopakovateľne validovaný; existuje baseline a prompt suite, ktorá oddeľuje presné požiadavky od subjektívnych preferencií. Ak gate zlyhá, ranker sa nesmie potichu vydávať za overeného selektora.
 
+**Stav (2026-09-24): Fáza 0 DOKONČENÁ.**
+
+- Ranker: `DEFAULT_RANKER_MODE = "active"` (`src/ai/ranking/ranker-client.ts`), oba validátory
+  passujú — `validate-intent-ranker.mjs` (SHA-256 sedí) a `validate-intent-ranker-golden.mjs`
+  (8 groups / 24 pairwise / 4 žánre, spĺňa ≥12-pairwise bránu). Goal doc zosúladený, starý
+  nevalidný golden archivovaný. Ponechaný pravdivý caveat: model učí z heuristic teacher
+  signálu (`favoriteGroups: 0`), nie z ľudských preferencií.
+- Brief suite: `tests/intent-brief-suite.test.ts` — SK/EN interpretácia (BPM, key, žáner),
+  determinizmus (rovnaký brief + seed → identický `intentHash` aj pattern rows), seed variácia;
+  očakávania testujú extrahované požiadavky (`normalizeIntent`), nie subjektívnu kvalitu.
+- Blind listening scaffold: `listening/room/room.html?blind=1` — maskuje názvy/kategórie
+  („Variant N“), mieša poradie variantov, tlačidlo REVEAL odhalí identity; verdikty sa
+  ukladajú so skutočnými id + `blind` flagom (ingest kontrakt nezmenený). Pri tom vyriešený
+  latentný bug: morph/scenes labely v room json boli doteraz `undefined` (factory presets
+  majú pole `name`, render skripty čítali `label`).
+- **Otvorené (ľudská práca, nie kód):** reálne blind posedenie — verdikty cez room UI →
+  `listening/verdicts.json` → `npm run listening:ingest`; to je vstup pre Fázu 4 (retrain).
+
 ### Fáza 1 — používateľský brief ako explicitná špecifikácia
 
 **Cieľ:** z voľného textu zostaviť krátke, opraviteľné „toto som pochopil“ ešte pred generovaním.

@@ -39,12 +39,16 @@
   .toolbar { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
   .verdict-ok { color: var(--ok); }
   .sent { color: var(--ok); font-size: 11px; margin-left: 8px; }
+  .blind-hidden { display: none !important; }
+  #blind-banner { color: var(--acc); border: 1px dashed var(--acc); border-radius: 6px; padding: 8px 12px; }
 </style>
 </head>
 <body>
 <h1>KYX <span>Listening Room</span></h1>
 <p class="hint">Počúj, porovnaj, rozhodni — tvoje verdikty sa ukladajú (POST → listening/verdicts.json) a
 <code>npm run listening:ingest</code> ich pretaví do tréningu intent enginu (ranker golden + favorites retrain všetkých 3 modelov).</p>
+<p id="blind-banner" class="hint" style="display:none">BLIND režim (?blind=1) — názvy verzií sú skryté a poradie zamiešané;
+hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="blind-reveal">REVEAL — odhaliť názvy</button></p>
 <div class="tabs">
   <button data-suite="morph" class="active">MORPH ★ (A/B)</button>
   <button data-suite="scenes">SCENE presety (A/B)</button>
@@ -89,6 +93,50 @@ async function loadVerdictCount() {
       "uložené verdikty: " + data.count + "  (listening/verdicts.json → npm run listening:ingest)";
   } catch { /* server without API — ignore */ }
 }
+
+// ── blind mode (?blind=1): mask identity + shuffle order; verdicts keep real ids ──
+const BLIND = new URLSearchParams(location.search).has("blind");
+function shuffleSiblings(el) {
+  const kids = Array.from(el.children);
+  for (let i = kids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    el.append(kids[j]);
+  }
+}
+function applyBlind() {
+  if (!BLIND) return;
+  document.getElementById("blind-banner").style.display = "";
+  let n = 0;
+  const morphTable = document.querySelector("#suite-morph table");
+  morphTable.querySelectorAll("tr").forEach((tr) => {
+    const b = tr.querySelector("b");
+    b.dataset.blindOrig = b.textContent;
+    b.textContent = "Variant " + ++n;
+    tr.querySelectorAll(".cat, .desc").forEach((el) => el.classList.add("blind-hidden"));
+  });
+  shuffleSiblings(morphTable);
+  const scenes = document.getElementById("suite-scenes");
+  let m = 0;
+  scenes.querySelectorAll(".group h3").forEach((h3) => {
+    h3.dataset.blindOrig = h3.innerHTML;
+    h3.textContent = "Variant " + ++m;
+  });
+  scenes.querySelectorAll(".group .desc").forEach((el) => el.classList.add("blind-hidden"));
+  shuffleSiblings(scenes);
+  document.querySelectorAll("#suite-intent .group").forEach((div) => {
+    div.querySelector(".gk").classList.add("blind-hidden");
+    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+    shuffleSiblings(div.querySelector(".cands"));
+  });
+}
+document.getElementById("blind-reveal").addEventListener("click", () => {
+  document.querySelectorAll("[data-blind-orig]").forEach((el) => {
+    el.innerHTML = el.dataset.blindOrig;
+    delete el.dataset.blindOrig;
+  });
+  document.querySelectorAll(".blind-hidden").forEach((el) => el.classList.remove("blind-hidden"));
+  document.getElementById("blind-reveal").disabled = true;
+});
 
 // ── suite builders ──────────────────────────────────────────────────────
 function buildMorph(entries) {
@@ -169,7 +217,7 @@ function buildIntent(groups) {
         card.classList.add("r" + rank);
         order.push(c.seed);
         if (order.length === g.candidates.length) {
-          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, savedAt: Date.now() })
+          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, blind: BLIND, savedAt: Date.now() })
             .then(() => { sent.textContent = "✓ odoslané"; })
             .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
         }
@@ -178,7 +226,7 @@ function buildIntent(groups) {
       card.querySelector(".fav").addEventListener("click", () => {
         const on = card.querySelector(".fav").classList.toggle("on");
         if (!on || !c.favorite) return;
-        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, savedAt: Date.now() })
+        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
           .then(() => { sent.textContent = "✓ favorite uložený"; })
           .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
       });
@@ -215,6 +263,7 @@ fetch("room.json")
     buildMorph(room.morph);
     buildScenes(room.scenes);
     buildIntent(room.intent);
+    applyBlind();
   });
 loadVerdictCount();
 

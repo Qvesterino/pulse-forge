@@ -134,13 +134,13 @@ Beatmakerov obsluhuje každý druhý nástroj. **Človek s hlasom a telefónom, 
 - **Cloud čokoľvek** — analýza, profily aj ledger ostávajú lokálne; zdieľanie maximálne ako exportovateľný `vocal-profile.json` vedľa `.scorepack`.
 - **Multitrack kapely** — solo artista a jeho take; VISION scope sa nemení.
 
-## 9. Otvorené otázky
+## 9. Otvorené otázky — ROZHODNUTÉ 2026-11-04 (kód + testy nižšie)
 
-1. Kľúč vs. škála: stačí key estimate (12 tonín × dur/mol), alebo treba aj mód (dorian/mixolydian pre žánrové beaty)?
-2. Flow tempo vs. beat tempo pri half-time/double-time feel (trap!): ktoré ponúknuť prvé?
-3. Transpose vs. regenerate default pri key mismatch — čo čaká spevák?
-4. Kde býva vokálna karta: IntentPanel tab, alebo vlastný dock panel `vocal`?
-5. Koľko profilu ukladať do project JSON (veľkosť vs. re-analyzovateľnosť)?
+1. **Kľúč vs. škála → dur/mol stačí.** Krumhansl na krátkom take spoľahlivo rozlíši práve dur/mol; jemné módy by boli hádanie. Módy až s väčším overovacím datasetom. (Bez zmeny kódu.)
+2. **Flow vs. beat → ukázať obe, defaultne sadne merané.** `VocalProfile.tempoAltBpm` (oktávový súrodenec, len ak padne do 70..180, inak absent) + `applyVocalTempoCommand(…, {useAlt})` + ALT button na karte. Vedome NElabelované flow/beat v engine (závisí od žánru — protiklad: boom-bap 80); karta píše „Tempo X · alt Y". Dôkaz že nejde o teóriu: 140 BPM kliky estimátor vrátil ako 70 — pár 70/140 drží pravdu aj pri zlej oktáve (uzamknuté testom).
+3. **Transpose default, regenerate sekundárne.** `transpose !== false` je default (nedestruktívne, hneď počuteľné); po KEY apply nesie `doc.key` a SONG/GENERATE generujú v ňom (uzamknuté: `build.key === "D Major"` po apply). `transpose:false` pre regenerate flow.
+4. **Karta v IntentPanely.** Vlastný dock panel až po ustálení voice-idea UI vedľa; dnes nie je brzdou.
+5. **Persistencia = ledger, nie project JSON.** Žiadna schema zmena: `pf:vocal-sessions` drží kompaktné záznamy (key/tempo/frázy/applied/rating, bez energyCurve); po reload re-analýza cez `resolveVocalTake` (rýchla, deterministická).
 
 ---
 
