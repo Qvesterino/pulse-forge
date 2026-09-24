@@ -3876,3 +3876,17 @@ audit doc.
 **Important files changed:** src/shared/jsonEqual.ts (new), src/project-model/schema.ts, src/project-model/modulators.ts, scripts/bench-normalize.mts (new, re-runnable measurement), docs/QUALITY-BACKLOG.md (B1/B2 struck with numbers).
 
 **Remaining backlog:** B3 (syncProject cache churn), B4 (arrangement windowing + playhead leaf), B5 (PianoRoll virtualization), B7 (boot pool), A4/A6/A7/A9, D-consistency decisions. Session B2 candidate: apply the same WeakMap-memo pattern to `syncProject` per-owner walks (engine zone — coordinate with the parallel session).
+
+---
+
+## GOAL 36 — VOICE IDEA: PRODUCENT POČÚVA TEBA (Fázy 1+2) (2026-09-22)
+
+**Vízia:** osobný producent pre solo umelcov, čo sa beatom nevenujú — hovoríš/poznáš nápad, KYX postaví beat OKOLO teba.
+
+- **`src/intent/voice-idea.ts`** `analyzeVoiceIdea(pcm, sampleRate, {bpm?, track?, loopBars?})`:
+  - KEY = Goertzel chroma (funguje na harmonický hlas), TEMPO = flux autokorelácia (slabičné pulzy), obe z GOAL 33 estimátorov — znovupoužitie bez nových modelov.
+  - MELOÓDIA = `trackPitchAsync` (YIN worker, sync fallback) + `framesToNotes` ({bpm, key: estimated, patternLengthTicks: 4 bary}) → kvantizované noty v umelecovom tóne.
+  - `track` injectable (testy = syntetické PitchFrames). Nikdy nehádže.
+- **compose.ts `ComposeHum`**: `{notes, loopTicks, key?}` — po buildSong: `transposeHumToKey` (minimal semitone shift hum→song root + snapToScale song scale) + `tileNotesAcrossPattern` do KAŽDEJ lead sekcie; lead track = `resolveLeadTrackId` (name contains "lead" → 3. instrument). Skipped diagnostika bez lead tracku.
+- **IntentPanel 🎤 IDEA**: MediaRecorder (start/stop toggle) → blob → decodeAudioData → downmix/resample → analyzeVoiceIdea → refPatch (bpmRange/key — merguje do všetkých 4 assembly bodov) + voiceIdea state → composeFullTrack `hum` option. clearReference čistí aj idea.
+- **Testy** `tests/voice-idea.test.ts` 5/5: injected frames → noty C-D-E-G v C key + bpmRange; bez steady pitchov = patch bez melódie; SUNO: hum ids (tile-stamped) v lead sekciách; transpozícia C Major → D Minor posunie hook; bez humu nič. Regresia **271/271 cez 28 súborov**; typecheck 0.
