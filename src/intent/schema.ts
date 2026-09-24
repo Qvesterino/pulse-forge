@@ -66,6 +66,8 @@ export function validateIntentSpec(value: unknown): string[] {
   }
   if (!Array.isArray(value.roles) || value.roles.length === 0 || !value.roles.every(isRole))
     errors.push("roles are invalid");
+  if (value.preserve !== undefined && (!Array.isArray(value.preserve) || !value.preserve.every(isRole)))
+    errors.push("preserve must be an array of roles when present");
   if (!isRecord(value.targetTracks)) errors.push("targetTracks must be an object");
   if (!isRecord(value.constraints)) errors.push("constraints must be an object");
   if (!isRecord(value.controls)) errors.push("controls must be an object");

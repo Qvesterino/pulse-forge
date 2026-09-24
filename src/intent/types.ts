@@ -52,6 +52,14 @@ export interface IntentSpec {
    */
   symbolicCandidates?: number;
   roles: readonly IntentRole[];
+  /**
+   * Fáza 1 (AI-first producer): roles explicitly PROTECTED by the brief
+   * ("keep my bass", "nechaj akordy") — existing content the generation
+   * must not rewrite. plan/options exclude them even when `roles` would
+   * include them. Optional and only present when non-empty, so canonical
+   * hashes of pre-Fáza-1 intents are unchanged.
+   */
+  preserve?: readonly IntentRole[];
   targetTracks: {
     drumTrackId: string | null;
     instrumentTrackIds: readonly string[];

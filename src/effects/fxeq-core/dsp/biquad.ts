@@ -10,6 +10,7 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
+// (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush on DF2T z-states — see processBiquad.)
 // ═══════════════════════════════════════════════════════════
 // FXEQ — Biquad filter engine
 //
@@ -182,6 +183,11 @@ export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCo
     const buf = channels[ch];
     let z1 = bq.z1[ch];
     let z2 = bq.z2[ch];
+    // (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush —
+    // a z-state decaying through the subnormal range after silence stalls
+    // the DF2T recursion for the whole block.)
+    if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
+    if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
 
     for (let i = 0; i < frameCount; i++) {
       const x = buf[i];

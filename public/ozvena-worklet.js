@@ -133,6 +133,8 @@
       const buf = channels[ch];
       let z1 = bq.z1[ch];
       let z2 = bq.z2[ch];
+      if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
+      if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
       for (let i = 0; i < frameCount; i++) {
         const x = buf[i];
         const y = b0 * x + z1;

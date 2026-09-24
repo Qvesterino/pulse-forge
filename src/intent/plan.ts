@@ -9,6 +9,10 @@ import { mapIntentToOptions } from "./mapping";
 import type { GenerationPlan, IntentInput, IntentRole, IntentSpec } from "./types";
 
 export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
+  // Protected roles never reach the generator: "keep my bass" means the
+  // bass content in the project survives this generation untouched, even
+  // when `roles` still lists the role.
+  const preserved = intent.preserve ?? [];
   const base: GenerateOptions = {
     genre: intent.genre,
     style: intent.style ?? undefined,
@@ -17,7 +21,7 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     key: intent.key,
     bpmRange: intent.bpmRange,
     candidateCount: intent.candidateCount ?? 1,
-    roles: intent.roles,
+    roles: intent.roles.filter((role) => !preserved.includes(role)),
     constraints: intent.constraints,
     ghostWeight: intent.controls.ghostWeight,
     microWeight: intent.controls.microWeight,
@@ -67,6 +71,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     intent.targetTracks.instrumentTrackIds.length > 0
       ? [...intent.targetTracks.instrumentTrackIds]
       : doc.tracks.filter((track) => track.kind === "instrument").map((track) => track.id);
+  const preserved = intent.preserve ?? [];
   const rolePlans = Object.fromEntries(
     (
       [
@@ -78,8 +83,9 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     ).map(([role, targetTrackIds]) => [
       role,
       {
-        enabled: intent.roles.includes(role as IntentRole),
-        targetTrackIds: intent.roles.includes(role as IntentRole) ? targetTrackIds : [],
+        enabled: intent.roles.includes(role as IntentRole) && !preserved.includes(role as IntentRole),
+        targetTrackIds:
+          intent.roles.includes(role as IntentRole) && !preserved.includes(role as IntentRole) ? targetTrackIds : [],
       },
     ]),
   ) as GenerationPlan["rolePlans"];

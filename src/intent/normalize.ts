@@ -67,6 +67,12 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
       : {};
   const constraints =
     source.constraints && typeof source.constraints === "object" ? (source.constraints as Record<string, unknown>) : {};
+  // Protected roles — sanitized to the canonical role order (deterministic
+  // hash regardless of phrase order); empty → field omitted entirely so
+  // pre-Fáza-1 canonical hashes are unchanged.
+  const preserve = Array.isArray(source.preserve)
+    ? DEFAULT_ROLES.filter((role) => (source.preserve as unknown[]).includes(role))
+    : [];
   const genre = GENRES.includes(source.genre as (typeof GENRES)[number])
     ? (source.genre as GenerateOptions["genre"])
     : DEFAULT_GENERATE_OPTIONS.genre;
@@ -89,6 +95,7 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     candidateCount: candidateCountOf(source.candidateCount),
     symbolicCandidates: symbolicCandidatesOf(source.symbolicCandidates),
     roles: rolesOf(source.roles),
+    ...(preserve.length > 0 ? { preserve } : {}),
     targetTracks: {
       drumTrackId:
         typeof targetTracks.drumTrackId === "string" && targetTracks.drumTrackId.length > 0

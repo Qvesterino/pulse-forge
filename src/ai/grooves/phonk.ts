@@ -67,4 +67,24 @@ export const PHONK_GROOVES: GrooveData[] = [
       },
     ],
   },
+  // ── Horrorcore (Suicideboys — sparse half-time dread) ──
+  // The $uicideboy$ corner: HALF-TIME snare (step 8 only), sub-heavy kick
+  // with a late syncopation, minimal cowbell lurking in the gaps.
+  {
+    id: "phonk.horror",
+    genre: "phonk",
+    name: "Horrorcore",
+    bpm: [132, 150],
+    swing: 0.1,
+    activePads: [0, 2, 4, 8, 15],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0, 0, 0],
+        2: [0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0.45, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0.3, 0],
+        8: [0.4, 0, 0, 0, 0.35, 0, 0, 0, 0.4, 0, 0, 0, 0.35, 0, 0, 0],
+        15: [0, 0, 0.4, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
 ];

@@ -12,6 +12,7 @@
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
 // (Reconciled from Pulse Forge hardening pass, 2026-09-14: designLowPassFir cutoff clamp below Nyquist.)
+// (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush on DF2T z-states — see processBiquad.)
 // ═══════════════════════════════════════════════════════════
 // Ultina — DSP Primitives (TypeScript Reference)
 //
@@ -305,6 +306,11 @@ export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCo
   for (let ch = 0; ch < bq.z1.length && ch < channels.length; ch++) {
     let z1 = bq.z1[ch];
     let z2 = bq.z2[ch];
+    // (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush —
+    // a z-state decaying through the subnormal range after silence stalls
+    // the DF2T recursion for the whole block.)
+    if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
+    if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
     const data = channels[ch];
     for (let i = 0; i < frameCount; i++) {
       const x = data[i];

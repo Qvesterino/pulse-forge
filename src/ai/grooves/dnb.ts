@@ -68,4 +68,44 @@ export const DNB_GROOVES: GrooveData[] = [
       },
     ],
   },
+  // ── Roller (Macky Gee / dancefloor rollers) ────────────
+  // The rolling feel: extra syncopated kick work between the two-step
+  // anchors, busier ghost snares, open-hat offbeats carrying momentum.
+  {
+    id: "dnb.roller",
+    genre: "dnb",
+    name: "Roller",
+    bpm: [172, 178],
+    swing: 0.04,
+    activePads: [0, 2, 4, 5, 8, 10],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.9, 0, 0, 0.4, 0, 0],
+        2: [0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0.5, 0],
+        4: [0, 0, 0, 0, 0.95, 0, 0, 0.35, 0, 0.25, 0, 0, 0.95, 0, 0, 0.3],
+        5: [0, 0.3, 0, 0.25, 0, 0, 0.3, 0, 0, 0, 0.25, 0, 0, 0, 0.3, 0],
+        8: [0.5, 0, 0.45, 0, 0.5, 0, 0.45, 0.35, 0.5, 0, 0.45, 0, 0.5, 0, 0.45, 0.35],
+        10: [0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0.35],
+      },
+    ],
+  },
+  // ── Amen chop (breakbeat heritage) ─────────────────────
+  // Busiest ghost-snare surface in the vocab — the chopped-break feel.
+  {
+    id: "dnb.amen",
+    genre: "dnb",
+    name: "Amen Chop",
+    bpm: [170, 178],
+    swing: 0.08,
+    activePads: [0, 2, 4, 5, 8],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0],
+        2: [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0.45],
+        4: [0, 0, 0.3, 0, 0.95, 0, 0.35, 0, 0, 0.3, 0, 0, 0.95, 0, 0.4, 0],
+        5: [0, 0.35, 0, 0.25, 0, 0.3, 0, 0.25, 0.3, 0, 0.25, 0, 0, 0.3, 0, 0.25],
+        8: [0.45, 0, 0.4, 0, 0.45, 0, 0.4, 0, 0.45, 0, 0.4, 0, 0.45, 0, 0.4, 0.4],
+      },
+    ],
+  },
 ];

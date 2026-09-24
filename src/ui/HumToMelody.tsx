@@ -406,6 +406,11 @@ export function HumToMelodyPanel({
   const stopAndAnalyze = async () => {
     if (phase !== "recording") return;
     setPhase("analyzing");
+    // Analyze cancellation: unmount (or a re-entry) aborts the worker run —
+    // without this the pitch tracking keeps burning CPU and its result would
+    // setState into a closed panel.
+    const analyzeAbort = new AbortController();
+    analyzeAbortRef.current = analyzeAbort;
     const rec = await teardownRecorder();
     // The hum is over — hand the transport back (stop it if we started it,
     // restore the click state we found).
@@ -418,6 +423,7 @@ export function HumToMelodyPanel({
     }
     try {
       const take = await rec.stop();
+      if (analyzeAbort.signal.aborted) return;
       if (!take || take.buffer.length === 0) {
         setPhase("error");
         setError("Nothing was captured — check that the microphone is not muted.");
@@ -433,7 +439,8 @@ export function HumToMelodyPanel({
       // Pitch tracking (worker) + hum re-attack detection (cheap, sync) —
       // the re-attacks split same-pitch notes ("da-da") that pitch-only
       // segmentation would merge into one long note.
-      const frames = await trackPitchAsync(channel, take.buffer.sampleRate);
+      const frames = await trackPitchAsync(channel, take.buffer.sampleRate, analyzeAbort.signal);
+      if (analyzeAbort.signal.aborted) return;
       const onsets = detectHumReAttacks(channel, take.buffer.sampleRate);
       const extracted = framesToNotes(frames, {
         bpm: services.store.getDoc().bpm,

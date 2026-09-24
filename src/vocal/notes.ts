@@ -39,7 +39,7 @@ export function summarizeVocalProfile(profile: VocalProfile, lang: NotesLang = "
     // The sibling is an honest alternative reading (half/double-time feel),
     // deliberately unlabeled — flow-vs-beat depends on the genre, and the
     // singer knows theirs. TEMPO applies the measured value, ALT the sibling.
-    const alt = profile.tempoAltBpm ? (lang === "sk" ? ` · alt ${profile.tempoAltBpm}` : ` · alt ${profile.tempoAltBpm}`) : "";
+    const alt = profile.tempoAltBpm ? ` · alt ${profile.tempoAltBpm}` : "";
     lines.push(`🥁 Tempo ${profile.tempoBpm} BPM${alt} (${pct(profile.tempoConfidence)})`);
   } else {
     lines.push(

@@ -209,6 +209,29 @@ const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\blead(?:om|u|a)?\b|\bmelody\b|\barp\b|\barpeggio\b|\btopline\b|\btop line\b|\bsynth\b|\bmelodi/, "lead"],
 ];
 
+/**
+ * Protected-role phrases (Fáza 1): "keep my bass", "nechaj akordy" — these
+ * name EXISTING content the generation must not rewrite. They are scanned
+ * BEFORE the positive role loop so a protected mention does not add the
+ * role to the generation set; the role lands in `input.preserve` instead.
+ * Deaccented text, so SK stems match without diacritics.
+ */
+const PRESERVE_PHRASES: ReadonlyArray<readonly [RegExp, IntentRole]> = [
+  [
+    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bubn|bic|bicia|drums)/,
+    "drums",
+  ],
+  [/(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:bas|808|sub|bass)/, "bass"],
+  [
+    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:akord|chords|pads|keys)/,
+    "chords",
+  ],
+  [
+    /(?:\bnechaj|\bponechaj|\bzostav|\bkeep|\bleave)\s+(?:(?:my|moj|moje|moju|mom|the)\s+)?(?:melodi|lead|synth|arp|topline|top line)/,
+    "lead",
+  ],
+];
+
 /** Note-name normalization for key parsing (flats → sharps). */
 const NOTE_NAMES: ReadonlyArray<readonly [RegExp, string]> = [
   [/c#/, "C#"],
@@ -409,6 +432,13 @@ export function parseIntentText(text: string): ParsedIntent {
     }
   }
 
+  // Protected roles — scanned BEFORE the positive loop so "nechaj bass"
+  // names existing content instead of adding bass to the generation set.
+  const preserved = new Set<IntentRole>();
+  for (const [re, role] of PRESERVE_PHRASES) {
+    if (re.test(lower)) preserved.add(role);
+  }
+
   // Roles. Negation phrases precede positive ones in ROLE_PHRASES, so an
   // exclusion seen earlier also suppresses the later positive match.
   let noDrums = false;
@@ -438,6 +468,7 @@ export function parseIntentText(text: string): ParsedIntent {
     } else {
       if (flag === "drums" && noDrums) continue;
       if (flag === "bass" && noBass) continue;
+      if (preserved.has(flag as IntentRole)) continue;
       roles.add(flag as IntentRole);
     }
   }
@@ -451,6 +482,11 @@ export function parseIntentText(text: string): ParsedIntent {
           ? (["bass", "chords", "lead"] as IntentRole[])
           : (["drums", "bass"] as IntentRole[]);
     if (noDrums) detected.push("no drums");
+  }
+  if (noBass) detected.push("no bass");
+  if (preserved.size > 0) {
+    input.preserve = [...preserved];
+    for (const role of preserved) detected.push(`preserve ${role}`);
   }
 
   return { input, detected };

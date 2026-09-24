@@ -915,6 +915,8 @@
     for (let ch = 0; ch < bq.z1.length && ch < channels.length; ch++) {
       let z1 = bq.z1[ch];
       let z2 = bq.z2[ch];
+      if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
+      if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
       const data = channels[ch];
       for (let i = 0; i < frameCount; i++) {
         const x = data[i];

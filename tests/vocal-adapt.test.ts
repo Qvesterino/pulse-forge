@@ -135,12 +135,10 @@ describe("applyVocalKeyCommand", () => {
 
 describe("applied key propagates into generation (Q3 regenerate path)", () => {
   it("SONG built after KEY apply generates in the singer key", async () => {
-    const { key: _drop, ...keyless } = testDoc();
-    const keyed = applyVocalKeyCommand(
-      { ...keyless, key: undefined },
-      profileWith({ key: "D Major", keyMeasured: true }),
-      { transpose: false },
-    ).execute(keyless);
+    const keyless = { ...testDoc(), key: undefined };
+    const keyed = applyVocalKeyCommand(keyless, profileWith({ key: "D Major", keyMeasured: true }), {
+      transpose: false,
+    }).execute(keyless);
     expect(keyed.key).toBe("D Major");
     const build = await buildSong(keyed, normalizeIntent({ genre: "house", seed: "vocal-key-flow" }), {
       yieldBetweenSections: false,
