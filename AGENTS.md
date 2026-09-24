@@ -22,7 +22,7 @@ A browser-first, fully offline-capable, production-grade digital audio workstati
 npm install
 npm run dev           # vite dev server — http://127.0.0.1:5173
 npm run typecheck     # strict tsc --noEmit
-npm run test          # vitest (jsdom, ~449 collected spec files)
+npm run test          # vitest (jsdom, ~494 collected spec files)
 npm run build         # production build + bundle budgets
 ```
 
@@ -46,11 +46,11 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
 | `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 15 instrument kinds. Mod matrix, randomization.                                                                                                 |
 | `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 42 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.   |
-| `src/sample-library/`                        | `manifest.ts` (41 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                         |
-| `src/presets/`                               | `factory.ts` (199 instrument presets + 6 drum presets = 205), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                           |
+| `src/sample-library/`                        | `manifest.ts` (71 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                         |
+| `src/presets/`                               | `factory.ts` (319 instrument presets + 6 drum presets = 325), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                           |
 | `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                               |
 | `src/export/`                                | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`. |
-| `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                                   |
+| `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina + morph presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                           |
 | `src/midi/`                                  | Web MIDI input/output/clock; pattern recorder; midiFile/midiProject import-export.                                                                                                                           |
 | `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                |
 | `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                        |
@@ -62,8 +62,8 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                              |
 | `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
 | `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                 |
-| `tests/`                                     | Vitest specs (452 files), Playwright E2E, golden-vector locks for the three vendored plugin cores, intent suite, persistence round-trip.                                                                    |
-| `docs/adr/`                                  | Architecture decision records 0001–0012. Read the relevant ADR before touching the area.                                                                                                                     |
+| `tests/`                                     | Vitest specs (494 files), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                                                          |
+| `docs/adr/`                                  | Architecture decision records 0001–0013. Read the relevant ADR before touching the area.                                                                                                                     |
 | `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
 
 ---
@@ -117,7 +117,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 3. Register it in `EFFECT_DEFS` and the relevant `*_EFFECT_ORDER`.
 4. Add at least one automated test in `tests/effects/`.
 5. Verify live render and offline render parity (the same engine drives both — see `src/rendering/renderer.ts`).
-6. Update `docs/CURRENT-STATE.md` (bump the 36 → new count).
+6. Update `docs/CURRENT-STATE.md` (bump the 42 → new count).
 
 ### Adding a new vendored plugin suite (flagship DSP)
 
@@ -153,8 +153,8 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 | Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                 |
 | Full Vitest suite         | `npm run test`                         | 449+ files / 4.5k+ tests / 100+ skipped, all PASS             |
 | Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                  |
-| Real-browser audio        | `npm run test:browser`                 | 226/226 in Chromium, Firefox and Edge                         |
-| Factory preset QA         | `npm run test:browser:factory-presets` | 199/199                                                       |
+| Real-browser audio        | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226) |
+| Factory preset QA         | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)  |
 | Targeted plugin hardening | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                    |
 | 300 s plugin soaks        | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples |
 | Production build          | `npm run build`                        | exit 0, bundle budgets respected                              |

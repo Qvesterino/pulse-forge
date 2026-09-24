@@ -139,8 +139,8 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 ### Sounds
 
-- **41 factory assets** (`src/sample-library/manifest.ts`) — kicks, snares, claps, hats, cymbals/crashes, toms, rims, percussion (cowbell/conga/tambourine/shaker/tick/blip), FX transitions (Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise), tonal samples. Each has a procedurally synthesized fallback in `src/sample-library/factory.ts`; the curated layer (`src/sample-library/curated.ts`) overrides them with curated WAVs in `public/samples/` on a best-effort basis (failing or missing curated files leave the synthesized fallback in place). All assets are tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere).
-- **205 factory presets** — 199 instrument presets + 6 drum-synth presets in `src/presets/factory.ts`, tagged by genre (House / Techno / Trap / Ambient / Score / UKG / Jersey / Phonk / Drill / Lo-Fi / Reggaeton) and mood, with curated sound-design intent ("Acid Line", "FM Growl", "Cinematic Strings", "Shimmer").
+- **71 factory assets** (`src/sample-library/manifest.ts`) — kicks, snares, claps, hats, cymbals/crashes, toms, rims, percussion (cowbell/conga/tambourine/shaker/tick/blip), FX transitions (Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise), tonal samples. Each has a procedurally synthesized fallback in `src/sample-library/factory.ts`; the curated layer (`src/sample-library/curated.ts`) overrides them with curated WAVs in `public/samples/` on a best-effort basis (failing or missing curated files leave the synthesized fallback in place). All assets are tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere).
+- **325 factory presets** — 319 instrument presets + 6 drum-synth presets in `src/presets/factory.ts`, tagged by genre (House / Techno / Trap / Ambient / Score / UKG / Jersey / Phonk / Drill / Lo-Fi / Reggaeton) and mood, with curated sound-design intent ("Acid Line", "FM Growl", "Cinematic Strings", "Shimmer").
 - **Curated layer** — a higher-quality curated override that renders the same factory ids but with longer, hand-tuned samples; exports wait briefly for the curated sound so "what you hear is what you export", with a synthesized fallback after timeout.
 - **Preset browser** with genre + mood chips, ALL / FAVORITES / RECENT scope, search, hearts, "save as user preset".
 - **Sample browser** — search, category filter, mood filter, click-to-preview, RECENT section, heart toggle, persisted to IndexedDB.
@@ -338,9 +338,9 @@ pulse-forge/
 │  ├─ commands/            ← Command system, undo/redo, yjs bridge
 │  ├─ store/               ← ProjectStore, SelectionStore, ToolStore
 │  ├─ instruments/         ← Instrument registry (14 kinds), mod matrix, randomize
-│  ├─ effects/             ← Effect registry (37 types), fxeq-core, ultina-core, ozvena-core vendored cores
+│  ├─ effects/             ← Effect registry (47 types), fxeq-core, ultina-core, ozvena-core vendored cores
 │  ├─ sample-library/      ← Manifest, factory synthesis, curated layer, kit pools, velocity layers
-│  ├─ presets/             ← Factory presets (199 + 6), normalization, similarity, audio quality
+│  ├─ presets/             ← Factory presets (319 + 6), normalization, similarity, audio quality
 │  ├─ rendering/           ← renderProject, bounce, stems, WAV encoder
 │  ├─ export/              ← Project I/O, share codes, MP3 encoder, video export, scorepack, theme/kit/pack/bind/share code helpers
 │  ├─ persistence/         ← IndexedDB repositories, autosave debouncer, save lifecycle

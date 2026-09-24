@@ -12,9 +12,11 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
   tick, next scene wins — the offline dedupe rule). The remaining residual is
   the transport's tempo-flip commit below, not the intensity values.
 - **Scene-tempo timing.** Since the tempo-seam fix, live playback applies a
-  scene BPM change within one scheduler tick (≤ 25 ms) of the clip boundary,
-  and exports apply it exactly at the boundary. Events within ±25 ms of the
-  boundary may therefore differ by a few milliseconds between live and export.
+  scene BPM change at the clip boundary itself (a dedicated 5 ms flip
+  committer, 25 ms scheduler tick as fallback), and exports apply it exactly
+  at the boundary. The transport re-anchor still commits on crossing, so
+  events within a few milliseconds of the boundary may differ minimally
+  between live and export.
 - **Automation near a scene-tempo boundary.** Project automation writes follow
   the tempo map now, and scene lanes expand their interior points live exactly
   like the offline schedule. The smoothing envelope (`setTargetAtTime`) still
@@ -24,10 +26,12 @@ Tracked in [`RELEASE_ROADMAP.md`](./RELEASE_ROADMAP.md).
   and scorepack exports deliberately exclude them; the master export follows
   the same rule. Live playback does fire them. The Export panel shows this
   policy before export and points to SCOREPACK for cue assets and markers.
-- **WAV overflow is intentionally soft-kneed, not transparent.** The 24/32-bit
-  paths run finite samples through the shared soft-knee policy; the 16-bit path
-  quantizes with deterministic dither. This prevents an accidental hard clip,
-  but a very hot master is still audibly limited. The limiter remains the
+- **WAV overflow is intentionally soft-kneed, not transparent.** The 16/24-bit
+  paths run finite samples through the shared soft-knee policy (16-bit
+  quantizes with deterministic dither); the 32-bit float path deliberately
+  retains finite over-range samples so a receiving DAW preserves the headroom.
+  This prevents an accidental hard clip on integer formats, but a very hot
+  master is still audibly limited. The limiter remains the
   correct place to control a release mix rather than relying on export repair.
 - **Standalone FXEQ callers that omit a seed retain the deterministic fallback.**
   KYX's PRISM host path now derives a stable seed from the project, owner and

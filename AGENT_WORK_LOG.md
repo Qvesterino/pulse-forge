@@ -4096,3 +4096,32 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validation:** presets.test 14/14 (incl. the extended sample contract), kick-bank coherence 5/5, velocity-layers 10/10. Factory bank renders at boot — browser QA (292→301 presets) is the standing browser gate.
 
 **Remaining backlog:** A7/A9 + D-consistency (decisions), sound-coverage wave 2 (organ tonewheel, wurli sample, choir pad, sitar/oriental, cowbell variety — see the audit findings).
+
+---
+
+## GOAL 01 (campaign re-run 4) — Repository reconnaissance & system map refresh (2026-09-24)
+
+**Goal executed:** Full re-verification of SYSTEM_AUDIT_MAP.md against HEAD `6edd31b` (152 commits since the 2026-09-20 audited baseline `a91ad77`), plus immediately-dangerous-issue sweep and doc-drift repair en route. Concurrent session's uncommitted mallet-pack work (`src/sample-library/factory.ts` +113 L, `manifest.ts` +25 L — new `mallet()` struck-bar builder family + 3 assets) reviewed and LEFT IN PLACE (not mine to commit or revert; typecheck-clean).
+
+**Areas inspected:**
+
+- Campaign continuity: re-run 3 closed 2026-09-21/22 (GOAL 12 "PASS WITH KNOWN RISKS"); since then post-campaign quality sessions (A/A2/A6/B/B2/B3), cross-platform campaign GOAL 01–13 (CLOSED 2026-09-23), AI-first producer goals 24–43.
+- Fresh recon of drifted facts: SCHEMA_VERSION 1→3 (Remix-DNA lineage migration), IndexedDB v11→v12 (15 stores, +morph-presets), DEFAULT_RANKER_MODE shadow→**active** (listening-room golden holdout 0.75), 47 effects / 15 instruments / 68 assets / 298 presets / 494 spec files (docs/CURRENT-STATE.md 2026-09-24 is canonical), new subsystems `src/vocal/` (VocalProfile V1 "Počujem ťa" — take→analysis→proposal→undoable adapt, worker-backed, no new recording infra), `src/interop/` (Qvester handoff + profile bus), `src/reference/` (audio-reference T4+), `src/generative/` on the Services surface.
+- Re-verified every §13/§17 residual from the 2026-09-20 map by grep: 4 RESOLVED (publish-key single-source, EFFECT_ORDER exhaustive guard exists in tests/effects.test.ts, genre-reference now measured, WORKLET_EFFECTS complete), 4 STAND (funnel consumer absent, tracked root scratch, shared/dice.ts + services→ui/playActivity mislocation, Morph/Ultina repo DI bypass).
+
+**Confirmed problems & fixes:**
+
+1. **Drifting 25-member cast union in `effectProcessorStatus` (registry.ts) — FIXED (type-level):** the literal `isWorkletReady(type as "bitcrusher" | ... | "kaskada")` had silently missed 9 worklet kinds added since (ringMod, tapeStop, freqShifter, pitchShift, vinyl, beatMangler, vocoder, reverseSwell, granularFreeze). Verified HARMLESS at runtime (isWorkletReady returns true for any non-plugin kind once the core bundle is ready) but a recurring doc-drift trap. Replaced with `type as WorkletType` (the complete named union from audio-worklets/loader.ts) — new kinds can no longer drift it. Zero runtime change.
+2. **Doc drift batch (all grep-verified before edit):** AGENTS.md (test-file counts 449/452→494, assets 41→68, presets 199+6→292+6, ADRs 0001–0012→0013, "existing 14 definitions"→15, effect-recipe bump 36→42, browser/factory-QA gate rows now describe dynamic counts); README (41→68 assets, 205/199→298/292 presets, "registry (37 types)"→47); KNOWN_LIMITATIONS 32-float soft-knee claim CORRECTED (wav.ts:72 — 32-bit float deliberately retains finite over-range samples; only integer paths soft-knee); docs/CURRENT-STATE.md spec-file row 484→494 (393+101). README's dated 2026-09-14 verification-record section deliberately NOT edited (history, not claim).
+
+**Important files changed:** SYSTEM_AUDIT_MAP.md (full rewrite for 2026-09-24), src/effects/registry.ts (WorkletType cast), AGENTS.md, README.md, KNOWN_LIMITATIONS.md, docs/CURRENT-STATE.md.
+
+**Validation:** `tsc --noEmit` strict PASS twice (pre/post fix, whole tree, exit 0); targeted vitest effects.test.ts + param-sanity + fx-catalog **20/20 PASS** (54 audio-render skips are jsdom-normal). Full Vitest suite (494 files) launched in background — **still running at log-write time**; result appended below on completion. Build/browser gates deferred to GOAL 12 per campaign convention.
+
+**Unresolved issues:** none new; map §16 carries the re-run-4 queue (Morph/Ultina DI bypass, vocal-profile lifecycle, schema v3 migration matrix, root scratch cleanup).
+
+**Remaining risks:** tree hot (uncommitted mallet pack can vanish if the other session resets — their work, their risk, recorded in map caveat); full-suite result pending; jsdom suite runtime on this machine historically 15–90 min.
+
+**Recommendations for next session (GOAL 02):** architecture consistency — (1) Morph/Ultina preset repos → shared services surface (pattern: GroovePoolRepository fix); (2) spot-check command-path exclusivity of the NEW intent surfaces (producer-session one-shot patches, briefFixes merge, conversation faders — all must flow through store.execute); (3) intent↔commands cycle monitor (`intent/compose.ts` now also imports commands); (4) verify `INSTRUMENT_ORDER` has an exhaustiveness guard like EFFECT_ORDER's; (5) do NOT touch the ×100 flagship node bridges (they are the doc↔deep contract, see map §17.9).
+
+**GOAL 01 addendum (same session, 21:2x):** mid-session the concurrent session committed `523c4b5` (mallet pack: 3 assets + 9 presets) and `3b74e58` (intent sub-genre wave), moving HEAD and changing the headline counts. Counts re-verified by direct `vite-node` import: **FACTORY_PRESETS 319, DRUM_FACTORY_PRESETS 6 (=325), FACTORY_ASSETS 71, CURATED_SAMPLES 68** (mallet assets are synthesis-only). All doc corrections above updated to these numbers (AGENTS.md, README ×3, docs/CURRENT-STATE.md rows, SYSTEM_AUDIT_MAP §1/§5/§13/§15). `523c4b5` shipped without the CURRENT-STATE doc bump required by repo policy — covered by this entry. The stash round-trip used during the prettier baseline check was verified clean (stash list empty, their work intact — it landed in `523c4b5`). Spec-file count stays 494 (their commits modified, not added, test files).

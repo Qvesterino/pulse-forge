@@ -1,7 +1,7 @@
 import type { EffectDefinition, EffectRuntime } from "./types";
 import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
-import { isWorkletReady } from "../audio-worklets/loader";
+import { isWorkletReady, type WorkletType } from "../audio-worklets/loader";
 import { attachProcessorErrorGuard } from "../audio-worklets/processor-errors";
 import { createLfoSyncController } from "./tempo-sync";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
@@ -241,34 +241,7 @@ export function effectProcessorStatus(
 ): EffectProcessorStatus {
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
-  return isWorkletReady(
-    type as
-      | "bitcrusher"
-      | "sidechain"
-      | "transient"
-      | "gate"
-      | "limiter"
-      | "compressor"
-      | "stepGate"
-      | "svFilter"
-      | "flanger"
-      | "tremolo"
-      | "autowah"
-      | "stutter"
-      | "tapeSat"
-      | "comb"
-      | "vowel"
-      | "duckDelay"
-      | "chorus"
-      | "delay"
-      | "eq"
-      | "fxeq"
-      | "ultina"
-      | "ozvena"
-      | "morphdynamics"
-      | "kaskada",
-    ctx,
-  )
+  return isWorkletReady(type as WorkletType, ctx)
     ? "ok"
     : severity === "critical"
       ? "bypassed"
