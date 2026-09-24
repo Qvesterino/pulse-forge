@@ -3976,3 +3976,21 @@ Regresia 271/271 cez 28 súborov; typecheck 0.
 - **Per-PAD fadery** vo `FaderIntent.pads` (`FaderPadFamily` = kick/snare/clap/hat/perc/tom): „kick ťažší" (up), „haty tichšie" (down), „snare hlasnejšie", „clap hore". `applyFaderIntent` pady PRVÉ: drum track pady cez `inferPadRole` rodinu → `setPadParams { gain }` (clamp 0.05..1.5, round ×100 — rovnaký vzor ako production padAdjustments). Track targety môžu byť prázdne (čisto padová zmena).
 - Panel fader branch: label = targets + pads, status ukazuje amount, chybová správa „track or pad".
 - **Testy** +5 (amount mapovanie vr. EN, pad family detekcia, amount+pad kombinácia, applyFaderIntent: len matching family pady sa hýbu, full clamp). Regresia **295/295 cez 29 súborov**; typecheck 0.
+
+---
+
+## Session A2 (post-campaign quality) — beatMangler automation + A6 pipeline map (2026-09-23)
+
+**Scope:** A4 + A6 from QUALITY-BACKLOG (the remaining plugin-queue items the user picked).
+
+**A4 FIXED — beatMangler scheduled automation no longer silently dropped:** `setParameterAt` fell through to `safeApplyAudioParam` for ALL ids — but playMode/repeatFill are PORT-carried params (no AudioParams exist), so scheduled automation writes were silently dropped while live moves worked. `setParameterAt` now routes both ids through the same port path as `setParameter` (lastMode/lastFill + pushMode); AudioParams keep the scheduled safe-apply. Trade-off documented in-file: port-carried automation applies at window-plan time (≤ one scheduler horizon ≈ 120 ms early) instead of sample-accurate — vastly better than never applying.
+
+**New tests:** `tests/beatmangler-node.test.ts` (3) — first node-wrapper harness in the repo (mocked AudioWorkletNode with chainable ctx gains): immediate port routing, the A4 scheduled-routing pin, and AudioParams-keep-safe-apply.
+
+**A6 DEFERRED with a full implementation map (honest scope call):** tracing the four flagship mix pipelines showed each has a DIFFERENT param flow — fxeq rack `mix` ≠ core `globalMix` (translation via `RACK_TO_CORE` + `normalizeHostValue` in fxeqNode.ts); ultina/morph/ozvena rack id IS the deep id flowing via setPath/flat-map into vendored deep schemas clamped 0..100. A storage rescale touches 4 ParamDefs + normalizePluginParams (4 branches + legacy >1→/100 idempotent rule) + 3 node scaling points + 4 panel knob ranges + deviceState A/B restore paths + collab blobs — and the vendored contracts (ultina-core, morph-dynamics-core) carry upstream reconciliation markers (AGENTS.md §5: touch = vendor-reconciliation review) plus browser QA per the test gates. That is a dedicated session with its own verification plan, now written into the backlog row so it can be executed without re-deriving the pipelines. Verified-OK meanwhile: the deep schemas clamp everything, so stored legacy values stay legal; only the recall UX is inconsistent.
+
+**Important files changed:** src/audio-worklets/beatmangler-node.ts, tests/beatmangler-node.test.ts (new), docs/QUALITY-BACKLOG.md.
+
+**Validation:** beatmangler-node 3/3; fx-expansion/fx-tempo-sync/param-sanity 33/33; tsc campaign-clean.
+
+**Remaining backlog:** B5 done (previous session) — left: A7/A9 (range unification decisions), D-consistency (documentation decisions), B3-follow-up (WeakMap-memo pattern for syncProject walks — engine zone, coordinate).

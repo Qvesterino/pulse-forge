@@ -69,7 +69,21 @@ export function createBeatManglerNode(
         safeApplyAudioParam(node, id, v, ctx.currentTime);
       }
     },
-    setParameterAt: (id, v, when) => safeApplyAudioParam(node, id, v, when),
+    setParameterAt: (id, v, when) => {
+      // Port-carried params (GOAL-backlog A4): playMode/repeatFill have no
+      // AudioParam to schedule against, so scheduled automation applies at
+      // window-plan time (≤ one scheduler horizon early) instead of being
+      // silently dropped. AudioParams take the normal scheduled path.
+      if (id === "playMode") {
+        lastMode = v;
+        pushMode();
+      } else if (id === "repeatFill") {
+        lastFill = v;
+        pushMode();
+      } else {
+        safeApplyAudioParam(node, id, v, when);
+      }
+    },
     /** Engine sync path: doc `volumeSteps`/`pitchSteps` reference changed. */
     setSteps: (volume: readonly number[] | undefined, pitch: readonly number[] | undefined) =>
       pushSteps(volume as number[] | undefined, pitch as number[] | undefined),
