@@ -11,7 +11,7 @@ import {
 import { projectEmbedding, pcaInputDims, pcaOutputDims, pcaVersion } from "../src/ai/symbolic/pca-projection";
 import { runPriorGrid, runPriorGridV2, runPriorGridV3 } from "../src/ai/symbolic/prior-client";
 import { buildPriorV3FeatureRow, V3_FEATURE_COUNT, V3_SEMANTIC_DIMS } from "../src/ai/symbolic/prior-features-v3";
-import { buildPriorFeatureRow, PRIOR_FEATURE_COUNT } from "../src/ai/symbolic/prior-features";
+import { PRIOR_FEATURE_COUNT } from "../src/ai/symbolic/prior-features";
 import { resetSemanticConditioning, semanticConditioning } from "../src/intent/semantic-conditioning";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";

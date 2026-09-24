@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { testDoc } from "./fixtures/doc";
-import { parseSongLength, planSongForm, buildSong, applySongCommand } from "../src/intent/song";
+import { parseSongLength, planSongForm } from "../src/intent/song";
 import { composeFullTrack } from "../src/intent/compose";
 import type { LoudnessRenderFn } from "../src/intent/loudness";
 import { normalizeIntent } from "../src/intent/normalize";

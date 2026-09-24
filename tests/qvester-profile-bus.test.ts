@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { webcrypto } from "node:crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   bandLevel,
@@ -206,7 +206,7 @@ describe("live publisher (channel pulse_forge)", () => {
   });
 
   it("does not publish while the transport is paused", async () => {
-    const { services, setPlaying } = fakeServices(false);
+    const { services } = fakeServices(false);
     const handle = startQvesterProfileBus(services);
     for (let t = 0; t <= 6_000; t += 33) {
       await vi.advanceTimersByTimeAsync(33);

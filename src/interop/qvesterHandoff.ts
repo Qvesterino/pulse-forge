@@ -108,7 +108,11 @@ export function beatRecordToBlob(record: BeatHandoffRecord): Blob {
 }
 
 async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", data);
+  // crypto.subtle.digest requires BufferSource = ArrayBuffer | ArrayBufferView<ArrayBuffer>.
+  // Uint8Array<ArrayBufferLike> would fail the strict ArrayBuffer constraint; a Uint8Array
+  // built from a Blob-backed ArrayBuffer is never SharedArrayBuffer in this codebase.
+  const buffer: ArrayBuffer = data instanceof Uint8Array ? (data.buffer as ArrayBuffer) : data;
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
