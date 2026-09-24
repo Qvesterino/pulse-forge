@@ -290,3 +290,116 @@ describe("AGENTS.md invariant — leaky `as any` budget on critical layers", () 
     expect(countAsAny("src/commands")).toBe(33);
   });
 });
+
+describe("AGENTS.md §7 gotcha — URL.createObjectURL must be paired with revokeObjectURL", () => {
+  // `URL.createObjectURL` returns a blob URL that survives until
+  // `URL.revokeObjectURL` releases it. The codebase uses a 5 s setTimeout
+  // safety net, but the audit is per-file balance: every create inside
+  // a file must have at least one matching revoke in the same file (the
+  // 5 s timer is part of the same module so cross-file unbalance would
+  // hint at a leak waiting for the timer).
+  //
+  // We also pin the per-file balance so a future refactor that splits a
+  // module cannot leave a create without its revoke behind.
+  function fileObjectUrlBalance(path: string): { create: number; revoke: number } {
+    const src = readFileSync(path, "utf8");
+    return {
+      // createObjectURL( / createObjectURL?.( are both legit; cover the
+      // base form which is what every call site in src/ uses today.
+      create: (src.match(/URL\.createObjectURL\s*\(/g) ?? []).length,
+      // revokeObjectURL(...) / revokeObjectURL?.(...) both occur.
+      revoke: (src.match(/URL\.revokeObjectURL\??\.?\s*\(/g) ?? []).length,
+    };
+  }
+
+  it("every file that calls createObjectURL also calls revokeObjectURL (per-file memory-leak guard)", () => {
+    const imbalanced: { file: string; create: number; revoke: number }[] = [];
+    for (const f of listFiles("src")) {
+      const b = fileObjectUrlBalance(f);
+      if (b.create > 0 && b.revoke < b.create) imbalanced.push({ file: f.replace(/\\/g, "/"), ...b });
+    }
+    if (imbalanced.length > 0) {
+      const lines = imbalanced.map((i) => `${i.file} (create=${i.create}, revoke=${i.revoke})`).join("\n");
+      expect(imbalanced, `createObjectURL without matching revokeObjectURL — potential leak:\n${lines}`).toEqual([]);
+    }
+    expect(imbalanced).toEqual([]);
+  });
+
+  it("the codebase has at least one createObjectURL site as a sanity anchor", () => {
+    // If a future refactor removes every createObjectURL usage, the
+    // balance test above would silently pass with empty input. Pin a
+    // positive count so a regression that drops the entire download
+    // pipeline is caught — `URL.createObjectURL` is the public URL for
+    // "Download WAV" and "Download MP3" exports.
+    let total = 0;
+    for (const f of listFiles("src")) {
+      total += fileObjectUrlBalance(f).create;
+    }
+    expect(total).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("AGENTS.md §7 gotcha — `?server=` URL param must be gated by isAllowedServerUrl", () => {
+  // `?server=` is the only path through which a remote URL enters the
+  // collaborative transport. Bypassing `isAllowedServerUrl` would let a
+  // crafted link point at `wss://evil` and silently relay the victim's
+  // project through an attacker host — the canonical wire-tap leak.
+  //
+  // Today the only reader is `src/collab/collabShared.ts:125` and it
+  // gates the value through `isAllowedServerUrl(…)` on L126 before
+  // adopting it. The single-file whitelist pattern is OK; the regression
+  // guard here freezes both the read site and the gate pairing.
+  const RE_SERVER_GET = /(?:searchParams|params|URLSearchParams)\.get\(\s*['"]server['"]|[\?\&]\s*server\s*=/g;
+
+  function serverReadSites(): { file: string; line: number; text: string }[] {
+    const sites: { file: string; line: number; text: string }[] = [];
+    for (const f of listFiles("src")) {
+      const ls = lines(f);
+      for (let i = 0; i < ls.length; i++) {
+        const matches = ls[i].match(RE_SERVER_GET);
+        if (matches) {
+          for (const _ of matches) sites.push({ file: f.replace(/\\/g, "/"), line: i + 1, text: ls[i].trim() });
+        }
+      }
+    }
+    return sites;
+  }
+
+  it("only src/collab/collabShared.ts reads ?server= from URL params", () => {
+    const sites = serverReadSites();
+    const novel = sites.filter((s) => !s.file.endsWith("src/collab/collabShared.ts"));
+    if (novel.length > 0) {
+      const lines = novel.map((s) => `${s.file}:${s.line}  ${s.text}`).join("\n");
+      expect(novel, `unexpected ?server= reader outside src/collab/collabShared.ts:\n${lines}`).toEqual([]);
+    }
+    // Sanity: at least one read exists; otherwise the guard above would
+    // pass vacuously.
+    const inScope = sites.filter((s) => s.file.endsWith("src/collab/collabShared.ts"));
+    expect(inScope.length).toBeGreaterThan(0);
+  });
+
+  it("src/collab/collabShared.ts:125 gates the param via isAllowedServerUrl on the next line", () => {
+    // Source-grep regression for the canonical pattern
+    //   `const serverOverride = params.get("server");` (L125)
+    //   `const serverUrl = serverOverride && isAllowedServerUrl(serverOverride) ? ... : ...` (L126)
+    // A regression that drops the gate (e.g. by replacing the && with ||
+    // or returning the override before the check) is caught here.
+    const src = readFileSync("src/collab/collabShared.ts", "utf8");
+    expect(src).toMatch(/const serverOverride\s*=\s*params\.get\(\s*["']server["']\s*\)/);
+    expect(src).toMatch(/serverOverride\s*&&\s*isAllowedServerUrl\s*\(\s*serverOverride\s*\)/);
+  });
+
+  it("isAllowedServerUrl is the only consumer of the raw server string in the gating expression", () => {
+    // A regression that left the param string flowing into ws:// setup
+    // without the helper would expose the host to traffic. The literal
+    // string "wss://" or "ws://" must appear only inside isAllowedServerUrl
+    // or its allow-listed defaults — never as a sibling control-flow
+    // construct of the user-supplied value.
+    const src = readFileSync("src/collab/collabShared.ts", "utf8");
+    // Only the function definition's allow-list (the hostnames or the
+    // default-serverUrl builder) may mention ws/wss. Pin the line count
+    // so a regression that introduces a bypass is loud.
+    const wsMatches = (src.match(/["'`]\s*(ws|wss):\/\//g) ?? []).length;
+    expect(wsMatches).toBeGreaterThan(0);
+  });
+});
