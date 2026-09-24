@@ -3855,3 +3855,24 @@ audit doc.
 **Validation:** param-sanity 7/7; effects + instrument-definitions + fault-containment + worklet-hardening-r4 + domain-goldens 58 passed. tsc campaign-clean. Goldens recaptured (stutter default 3 → 0.003 in effectDefaults — the intentional A1 change).
 
 **Remaining from the backlog:** B-family (performance: normalizeProject stringify detection = #1 typing latency, syncProject churn, arrangement/piano-roll virtualization, scheduler caches, boot pool) + A4/A6/A7/A9 + D-family consistency decisions. Session B (typing latency) is the recommended next quality session.
+
+---
+
+## Session B (post-campaign quality) — typing latency (2026-09-23)
+
+**Scope:** B1+B2 from `docs/QUALITY-BACKLOG.md` — the per-keystroke normalize cost on large projects.
+
+**Measured (50 tracks × 50 patterns × 128 steps, 3200 notes, 350 FX instances, 100-bar arrangement — `scripts/bench-normalize.mts`):**
+
+- BEFORE: **11.99 / 10.11 ms per normalizeProject** (interleaved runs)
+- AFTER: **1.34 / 1.36 ms** — **×8.9**
+
+**What actually mattered (honest decomposition):** the audit's stringify-comparison hypothesis measured only ~12% (jsonEqual swap alone: 11.99 → 10.11 on the enriched bench). The real 90% was `normalizeEffects` **revalidating every FX instance on every normalize** — including `normalizePluginParams` → `buildFxEqSchema` per flagship instance per keystroke. Fix: pure-result **WeakMap memoization keyed on the immutable input references** (`cachedNormalizePluginParams`, `cachedSanitizeDeviceState`) — documents are structurally shared, so untouched effects (stable refs) skip revalidation entirely and only the edited instance re-pays. Verified no in-place `params` mutation exists (grep) — the shared cached objects are safe.
+
+**Also landed:** `src/shared/jsonEqual.ts` (drop-in for `JSON.stringify(a) !== JSON.stringify(b)` — reference shortcut, order-insensitive, NaN≈NaN per stringify semantics; schema.ts ×12 sites + modulators.ts ×2); notes walk validate-first fast path (allocate only on actual drops); `validPadIds` array→Set (O(pads²)→O(1)).
+
+**Validation:** 375 + 150 tests across the semantics-protecting suites — project-invariants (normalize identity), round-trip-integrity (deep round-trip + fixed point + corruption healing), schema-evolution, templates, ydoc-drift, doc-delta, undo sweeps, commands, goldens, scheduler, render parity — ALL green. tsc campaign-clean (remaining noise: concurrent session's hum-to/interop files).
+
+**Important files changed:** src/shared/jsonEqual.ts (new), src/project-model/schema.ts, src/project-model/modulators.ts, scripts/bench-normalize.mts (new, re-runnable measurement), docs/QUALITY-BACKLOG.md (B1/B2 struck with numbers).
+
+**Remaining backlog:** B3 (syncProject cache churn), B4 (arrangement windowing + playhead leaf), B5 (PianoRoll virtualization), B7 (boot pool), A4/A6/A7/A9, D-consistency decisions. Session B2 candidate: apply the same WeakMap-memo pattern to `syncProject` per-owner walks (engine zone — coordinate with the parallel session).

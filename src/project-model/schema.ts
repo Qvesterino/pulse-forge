@@ -29,6 +29,7 @@ import type {
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
+import { jsonEqual } from "../shared/jsonEqual";
 import { defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
 import { createProjectFromTemplate } from "./templates";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
@@ -612,6 +613,31 @@ export function sanitizeArrangementTransitions(
   return out;
 }
 
+// GOAL 08/B1: normalizeEffects revalidates every FX instance on every
+// normalize call (per keystroke on large projects). The expensive steps are
+// PURE functions of their input object, and documents are immutable — so the
+// results memoize by input reference. Untouched effects (stable refs) skip
+// revalidation entirely; only the edited instance re-pays. The cached params
+// object is shared read-only (verified: no in-place params mutation exists).
+const pluginParamsCache = new WeakMap<object, { type: string; params: Record<string, number> }>();
+function cachedNormalizePluginParams(type: EffectType, source: Record<string, unknown>): Record<string, number> | null {
+  const cached = pluginParamsCache.get(source);
+  if (cached && cached.type === type) return cached.params;
+  const params = normalizePluginParams(type, source);
+  if (params) pluginParamsCache.set(source, { type, params });
+  return params;
+}
+
+const deviceStateCache = new WeakMap<object, DeviceState>();
+function cachedSanitizeDeviceState(raw: unknown): DeviceState | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const cached = deviceStateCache.get(raw);
+  if (cached) return cached;
+  const result = sanitizeDeviceState(raw);
+  if (result) deviceStateCache.set(raw, result);
+  return result;
+}
+
 function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>): EffectInstance[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -631,7 +657,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
       // authored by their panels — validate them against the plugin's own
       // schema instead of retaining only the registry's rack defaults
       // (which silently reset every saved plugin mix on load).
-      const pluginParams = normalizePluginParams(type, source as Record<string, unknown>);
+      const pluginParams = cachedNormalizePluginParams(type, source as Record<string, unknown>);
       let params: Record<string, number>;
       if (pluginParams) {
         params = pluginParams;
@@ -668,7 +694,7 @@ function normalizeEffects(raw: unknown, trackId: string, trackIds: Set<string>):
           : undefined;
       // Plugin editor state (A/B snapshots…) — validated per kind; unknown
       // kinds fail closed so a plugin must ship its own validator.
-      const deviceState = sanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
+      const deviceState = cachedSanitizeDeviceState((item as { deviceState?: unknown }).deviceState);
       const rawOutputTrimDb = (item as { outputTrimDb?: unknown }).outputTrimDb;
       const outputTrimDb =
         typeof rawOutputTrimDb === "number" && Number.isFinite(rawOutputTrimDb)
@@ -1021,7 +1047,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
           // Per-pad mod (voice-local LFO) sanitization — null = disabled/off
           const rawMod: unknown = (pad as unknown as Record<string, unknown>).mod;
           const saneMod = rawMod !== undefined ? sanitizePadMod(rawMod) : undefined;
-          const modChanged = rawMod !== undefined && JSON.stringify(saneMod) !== JSON.stringify(rawMod ?? null);
+          const modChanged = rawMod !== undefined && !jsonEqual(saneMod, rawMod ?? null);
           const loopChanged =
             sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
             sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
@@ -1126,7 +1152,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
                 const body =
                   typeof obj.body === "number" && Number.isFinite(obj.body) ? Math.min(1, Math.max(0, obj.body)) : 0.5;
                 const nextSynth: any = { type, decay, tone, snap, body };
-                if (JSON.stringify(nextSynth) !== JSON.stringify((pad as any).synth)) {
+                if (!jsonEqual(nextSynth, (pad as any).synth)) {
                   nextPad = { ...nextPad, synth: nextSynth } as any;
                   padChanged = true;
                 }
@@ -1148,7 +1174,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
           tracksChanged = true;
         }
         const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
-        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+        if (t.effects === undefined || !jsonEqual(normalizedEffects, t.effects)) {
           t = { ...t, effects: normalizedEffects } as DrumTrack;
           tracksChanged = true;
         }
@@ -1175,12 +1201,12 @@ function normalizeTracksDomain(s: NormalizeState): void {
       if (track.kind === "generative") {
         let t: GenerativeTrack = track;
         const generative = sanitizeGenerativeConfig(t.generative, t.id, trackIds);
-        if (JSON.stringify(generative) !== JSON.stringify(t.generative)) {
+        if (!jsonEqual(generative, t.generative)) {
           t = { ...t, generative };
           tracksChanged = true;
         }
         const normalizedEffects = normalizeEffects(t.effects ?? [], t.id, trackIds);
-        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+        if (t.effects === undefined || !jsonEqual(normalizedEffects, t.effects)) {
           t = { ...t, effects: normalizedEffects };
           tracksChanged = true;
         }
@@ -1215,7 +1241,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
           tracksChanged = true;
         }
         const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
-        if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+        if (t.effects === undefined || !jsonEqual(normalizedEffects, t.effects)) {
           t = { ...t, effects: normalizedEffects };
           tracksChanged = true;
         }
@@ -1293,7 +1319,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
         tracksChanged = true;
       }
       const normalizedEffects = normalizeEffects(t.effects, t.id, trackIds);
-      if (t.effects === undefined || JSON.stringify(normalizedEffects) !== JSON.stringify(t.effects)) {
+      if (t.effects === undefined || !jsonEqual(normalizedEffects, t.effects)) {
         t = { ...t, effects: normalizedEffects };
         tracksChanged = true;
       }
@@ -1334,7 +1360,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
           });
         }
         const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;
-        if (JSON.stringify(canonical) !== JSON.stringify(t.velocityLayers)) {
+        if (!jsonEqual(canonical, t.velocityLayers)) {
           t = canonical ? { ...t, velocityLayers: canonical } : t;
           if (!canonical) {
             const { velocityLayers: _vl, ...rest } = t as unknown as Record<string, unknown>;
@@ -1416,9 +1442,8 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
   const audioClips = sanitizeAudioClips((arrangement as unknown as Record<string, unknown>).audioClips, trackIds);
   const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
-  const transitionsChanged = JSON.stringify(transitions) !== JSON.stringify(arrangement.transitions);
-  const audioChanged =
-    JSON.stringify(audioClips) !== JSON.stringify((arrangement as unknown as Record<string, unknown>).audioClips);
+  const transitionsChanged = !jsonEqual(transitions, arrangement.transitions);
+  const audioChanged = !jsonEqual(audioClips, (arrangement as unknown as Record<string, unknown>).audioClips);
   if (clipsChanged || transitionsChanged || audioChanged) {
     s.doc = {
       ...doc,
@@ -1457,7 +1482,7 @@ function normalizeAutomationDomain(s: NormalizeState): void {
       : [];
     filtered.push({ ...lane, points });
   }
-  if (JSON.stringify(filtered) !== JSON.stringify(automation)) {
+  if (!jsonEqual(filtered, automation)) {
     s.doc = { ...doc, automation: filtered };
     s.changed = true;
   }
@@ -1531,7 +1556,7 @@ function normalizeMacrosDomain(s: NormalizeState): void {
         sanitized.param !== mapping.param ||
         sanitized.amount !== mapping.amount ||
         sanitized.source !== (mapping.source ?? "macro") ||
-        JSON.stringify(sanitized.target) !== JSON.stringify(mapping.target)
+        !jsonEqual(sanitized.target, mapping.target)
       ) {
         macroChanged = true;
       }
@@ -2013,16 +2038,36 @@ function normalizePatternsDomain(s: NormalizeState): void {
       // past; the scheduler's `audible()` check would still accept
       // it within its 2 ms grace window, so the user could hear
       // one-shot ghost notes at pattern start. Filter both.
-      const filtered = noteList.filter(
-        (n) =>
-          Number.isFinite(n.start) &&
-          n.start >= 0 &&
-          Number.isFinite(n.duration) &&
-          n.duration > 0 &&
-          n.start + n.duration <= patternTicks,
-      );
-      if (filtered.length !== noteList.length) notesChanged = true;
-      notesByTrack[trackId] = filtered as never;
+      // Fast path (GOAL 08/B2): validate first, allocate only when a note
+      // is actually invalid — the 95 % clean case keeps the array reference
+      // instead of churning a fresh list per pattern per keystroke.
+      let hasInvalid = false;
+      for (const n of noteList) {
+        if (
+          !Number.isFinite(n.start) ||
+          n.start < 0 ||
+          !Number.isFinite(n.duration) ||
+          n.duration <= 0 ||
+          n.start + n.duration > patternTicks
+        ) {
+          hasInvalid = true;
+          break;
+        }
+      }
+      if (!hasInvalid) {
+        notesByTrack[trackId] = noteList as never;
+      } else {
+        const filtered = noteList.filter(
+          (n) =>
+            Number.isFinite(n.start) &&
+            n.start >= 0 &&
+            Number.isFinite(n.duration) &&
+            n.duration > 0 &&
+            n.start + n.duration <= patternTicks,
+        );
+        if (filtered.length !== noteList.length) notesChanged = true;
+        notesByTrack[trackId] = filtered as never;
+      }
     }
     if (notesChanged) {
       p = { ...p, notes: notesByTrack as typeof p.notes };
@@ -2030,7 +2075,7 @@ function normalizePatternsDomain(s: NormalizeState): void {
     }
     // Rows: drop unknown pad rows, fill missing pad rows, fix wrong length
     let rows = p.rows;
-    const validPadIds: string[] = [];
+    const validPadIds = new Set<string>();
     for (const [padId, row] of Object.entries(rows)) {
       if (!padIds.has(padId)) {
         if (rows === p.rows) rows = { ...rows };
@@ -2043,10 +2088,10 @@ function normalizePatternsDomain(s: NormalizeState): void {
         rows[padId] = new Array<number>(safeStepCount).fill(0).map((_, i) => (Array.isArray(row) ? (row[i] ?? 0) : 0));
         patternsChanged = true;
       }
-      validPadIds.push(padId);
+      validPadIds.add(padId);
     }
     for (const padId of padIds) {
-      if (!validPadIds.includes(padId)) {
+      if (!validPadIds.has(padId)) {
         if (rows === p.rows) rows = { ...rows };
         rows[padId] = new Array<number>(safeStepCount).fill(0);
         patternsChanged = true;

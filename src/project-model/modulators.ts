@@ -1,5 +1,6 @@
 import { hashString, mulberry32 } from "../shared/rng";
 import { PPQ } from "./types";
+import { jsonEqual } from "../shared/jsonEqual";
 import type { AutomationTarget, ID, Lfo, LfoKind } from "./types";
 
 /**
@@ -249,11 +250,11 @@ function lfoShallowEquals(a: Record<string, unknown>, b: unknown): boolean {
     const av = a[key];
     const bv = other[key];
     if (Array.isArray(av) || Array.isArray(bv)) {
-      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+      if (!jsonEqual(av, bv)) return false;
       continue;
     }
     if (av && typeof av === "object") {
-      if (JSON.stringify(av) !== JSON.stringify(bv)) return false;
+      if (!jsonEqual(av, bv)) return false;
       continue;
     }
     if (av !== bv) return false;
