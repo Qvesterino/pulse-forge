@@ -31,6 +31,16 @@ function makeCore(engine: AudioEngine, repo: CoreServices["repo"]): CoreServices
     } as unknown as CoreServices["snapshots"],
     presets: {} as CoreServices["presets"],
     library: { load: vi.fn(async () => undefined) } as unknown as CoreServices["library"],
+    morphPresets: {
+      list: vi.fn(async () => []),
+      save: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+    } as unknown as CoreServices["morphPresets"],
+    ultinaPresets: {
+      list: vi.fn(async () => []),
+      save: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+    } as unknown as CoreServices["ultinaPresets"],
     userKits: {} as CoreServices["userKits"],
     groovePool: {} as CoreServices["groovePool"],
     latency: new LatencyCalibrationController(null),

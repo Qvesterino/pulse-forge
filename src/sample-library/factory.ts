@@ -1483,6 +1483,58 @@ function mallet(opts: {
   };
 }
 
+/** Wurli (quality backlog: keys upgrade) — the barkier electric piano:
+ * strong 2nd/3rd harmonics (the midrange BARK a rhodes does not have),
+ * deeper faster tremolo (the 200A pulse), softer highs. C4 anchor; the
+ * sampler's root/pitch params transpose. */
+function wurli(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const attack = 0.003;
+    const decay = 1.9;
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + attack);
+    vca.gain.setTargetAtTime(0.0005, t0 + attack + 0.01, decay / 3);
+    // Tremolo: the 200A pulse — deeper and slower than a rhodes vibe.
+    const trem = ctx.createGain();
+    trem.gain.value = 0.72;
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 4.6;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.28;
+    lfo.connect(lfoGain).connect(trem.gain);
+    lfo.start(t0);
+    lfo.stop(t0 + decay + 1);
+    // Mid bark: a peaking push at the 2nd/3rd harmonic region.
+    const bark = ctx.createBiquadFilter();
+    bark.type = "peaking";
+    bark.frequency.value = 620;
+    bark.Q.value = 0.9;
+    bark.gain.value = 4.5;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 7200;
+    vca.connect(trem).connect(bark).connect(lpf).connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.5],
+      [2, 0.24],
+      [3, 0.1],
+      [4, 0.04],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 261.63 * ratio; // C4
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + decay + 1);
+    }
+  };
+}
+
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
@@ -1651,58 +1703,6 @@ export const BUILDERS: Record<string, Builder> = {
     clickLevel: 0.25,
     lpfHz: 6500,
   }),
-
-/** Wurli (quality backlog: keys upgrade) — the barkier electric piano:
- * strong 2nd/3rd harmonics (the midrange BARK a rhodes does not have),
- * deeper faster tremolo (the 200A pulse), softer highs. C4 anchor; the
- * sampler's root/pitch params transpose. */
-function wurli(): Builder {
-  return (ctx, dest) => {
-    const t0 = ctx.currentTime;
-    const attack = 0.003;
-    const decay = 1.9;
-    const vca = ctx.createGain();
-    vca.gain.setValueAtTime(0, t0);
-    vca.gain.linearRampToValueAtTime(1, t0 + attack);
-    vca.gain.setTargetAtTime(0.0005, t0 + attack + 0.01, decay / 3);
-    // Tremolo: the 200A pulse — deeper and slower than a rhodes vibe.
-    const trem = ctx.createGain();
-    trem.gain.value = 0.72;
-    const lfo = ctx.createOscillator();
-    lfo.type = "sine";
-    lfo.frequency.value = 4.6;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.28;
-    lfo.connect(lfoGain).connect(trem.gain);
-    lfo.start(t0);
-    lfo.stop(t0 + decay + 1);
-    // Mid bark: a peaking push at the 2nd/3rd harmonic region.
-    const bark = ctx.createBiquadFilter();
-    bark.type = "peaking";
-    bark.frequency.value = 620;
-    bark.Q.value = 0.9;
-    bark.gain.value = 4.5;
-    const lpf = ctx.createBiquadFilter();
-    lpf.type = "lowpass";
-    lpf.frequency.value = 7200;
-    vca.connect(trem).connect(bark).connect(lpf).connect(dest);
-    for (const [ratio, level] of [
-      [1, 0.5],
-      [2, 0.24],
-      [3, 0.1],
-      [4, 0.04],
-    ] as [number, number][]) {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = 261.63 * ratio; // C4
-      const g = ctx.createGain();
-      g.gain.value = level;
-      osc.connect(g).connect(vca);
-      osc.start(t0);
-      osc.stop(t0 + decay + 1);
-    }
-  };
-}
   "factory.mallet.celesta": mallet({
     fundamental: 1046.5, // C6 — celesta reads an octave above the keyboard
     partials: [
@@ -1712,7 +1712,8 @@ function wurli(): Builder {
     ],
     decay: 1.6,
     attack: 0.002,
-  }),  "factory.tonal.wurli": wurli(),
+  }),
+  "factory.tonal.wurli": wurli(),
 
   // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
   // actually reaches for — memphis guitar, drill strings, rhodes, mariachi

@@ -144,6 +144,11 @@ export function IntentPanel() {
     setPlayingIndex(null);
     setSongDraft(null);
     setJustApplied(false);
+    // GOAL 03 (re-run 4): the vocal-take card is the same race class as the
+    // candidate bank — a profile analyzed from the OLD project's take must
+    // never survive a project switch (apply buttons read the CURRENT doc).
+    takeTokenRef.current += 1;
+    setTakeProfile(null);
   }, [services]);
 
   // Landing handoff (viral growth plan A2): the prompt that forged the beat
@@ -712,6 +717,9 @@ export function IntentPanel() {
   // pocket mix via compose vocal-wiring).
   const [takeProfile, setTakeProfile] = useState<VocalProfile | null>(null);
   const [takeBusy, setTakeBusy] = useState(false);
+  // Bumped on project switch (effect above): an in-flight take analysis must
+  // not install a stale profile after the switch cleared the card.
+  const takeTokenRef = useRef(0);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
   // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
   // + key, humNotes become the LEAD of the SUNO MODE song.
@@ -965,6 +973,7 @@ export function IntentPanel() {
     if (takeBusy) return;
     setTakeBusy(true);
     setError(null);
+    const takeToken = takeTokenRef.current;
     try {
       const currentDoc = services.store.getDoc();
       const resolved = resolveVocalTake(currentDoc, services.bank, {});
@@ -978,6 +987,7 @@ export function IntentPanel() {
         setError(`🎤 analyze failed: ${outcome.error}`);
         return;
       }
+      if (takeToken !== takeTokenRef.current) return; // project switched mid-analysis
       setTakeProfile(outcome.profile);
       setStatus(`🎤 take heard — ${summarizeVocalProfile(outcome.profile).join(" · ")}`);
     } catch (err) {
