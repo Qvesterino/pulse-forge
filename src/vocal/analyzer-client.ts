@@ -20,6 +20,21 @@ let worker: Worker | null = null;
 let workerFailures = 0;
 let workerDisabled = false;
 let nextRequestId = 1;
+/** In-flight request resolvers — drained by death handling, keyed by requestId. */
+const pendingRequests = new Map<number, (response: VocalAnalyzeResponse | null) => void>();
+
+function handleWorkerDeath(): void {
+  // A worker that ERRORED stays broken for the session (script load failure,
+  // uncaught error) — disable immediately and hand every pending request to
+  // the synchronous fallback instead of burning the 20 s timeout three times
+  // before the failure breaker would (GOAL 04, re-run 4).
+  workerDisabled = true;
+  worker?.terminate();
+  worker = null;
+  const pending = [...pendingRequests.values()];
+  pendingRequests.clear();
+  for (const resolve of pending) resolve(null);
+}
 
 function spawnWorker(): Worker | null {
   if (workerDisabled) return null;
@@ -27,6 +42,7 @@ function spawnWorker(): Worker | null {
   if (worker) return worker;
   try {
     worker = new Worker(new URL("./analyzer-worker.ts", import.meta.url), { type: "module" });
+    worker.onerror = () => handleWorkerDeath();
     return worker;
   } catch {
     workerDisabled = true;
@@ -60,20 +76,21 @@ export async function analyzeVocalTake(
     const request: VocalAnalyzeRequest = { requestId, pcm, sampleRate, bpm };
     const response = await new Promise<VocalAnalyzeResponse | null>((resolve) => {
       let settled = false;
-      const timer = setTimeout(() => {
+      const settle = (value: VocalAnalyzeResponse | null) => {
         if (settled) return;
         settled = true;
-        active.removeEventListener("message", onMessage);
-        resolve(null);
-      }, ANALYZE_TIMEOUT_MS);
-      const onMessage = (event: MessageEvent<VocalAnalyzeResponse>) => {
-        if (event.data?.requestId !== requestId || settled) return;
-        settled = true;
+        pendingRequests.delete(requestId);
         active.removeEventListener("message", onMessage);
         clearTimeout(timer);
-        resolve(event.data);
+        resolve(value);
+      };
+      const timer = setTimeout(() => settle(null), ANALYZE_TIMEOUT_MS);
+      const onMessage = (event: MessageEvent<VocalAnalyzeResponse>) => {
+        if (event.data?.requestId !== requestId || settled) return;
+        settle(event.data);
       };
       active.addEventListener("message", onMessage);
+      pendingRequests.set(requestId, settle);
       active.postMessage(request);
     });
 
@@ -101,4 +118,5 @@ export function resetVocalAnalyzer(): void {
   workerFailures = 0;
   workerDisabled = false;
   nextRequestId = 1;
+  pendingRequests.clear();
 }

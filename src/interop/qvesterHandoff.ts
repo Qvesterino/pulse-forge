@@ -150,24 +150,51 @@ async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
 
 function withIdb<T>(run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolvePromise, rejectPromise) => {
+    // A blocked open (another tab holds an older DB version) or an aborted
+    // transaction would otherwise leave this promise unsettled forever — the
+    // send button would hang with no diagnostic (GOAL 04, re-run 4). Same
+    // bounded-open convention as persistence/db.ts (5 s).
+    let settled = false;
+    const resolve = (value: T) => {
+      if (settled) return;
+      settled = true;
+      resolvePromise(value);
+    };
+    const reject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      rejectPromise(error);
+    };
     const open = indexedDB.open(HANDOFF_DB_NAME, 1);
+    const blockedTimer = setTimeout(
+      () => reject(new Error("handoff IDB open blocked by another tab — close it and retry")),
+      5000,
+    );
     open.onupgradeneeded = () => {
       if (!open.result.objectStoreNames.contains(HANDOFF_STORE_NAME)) {
         open.result.createObjectStore(HANDOFF_STORE_NAME, { keyPath: "hash" });
       }
     };
-    open.onerror = () => rejectPromise(open.error ?? new Error("handoff IDB open failed"));
+    open.onerror = () => {
+      clearTimeout(blockedTimer);
+      reject(open.error ?? new Error("handoff IDB open failed"));
+    };
     open.onsuccess = () => {
+      clearTimeout(blockedTimer);
       const db = open.result;
       try {
         const tx = db.transaction(HANDOFF_STORE_NAME, "readwrite");
         const request = run(tx.objectStore(HANDOFF_STORE_NAME));
-        request.onsuccess = () => resolvePromise(request.result);
-        request.onerror = () => rejectPromise(request.error ?? new Error("handoff IDB request failed"));
-        tx.oncomplete = () => db.close();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("handoff IDB request failed"));
+        tx.onabort = () => reject(tx.error ?? new Error("handoff IDB transaction aborted"));
+        tx.oncomplete = () => {
+          resolve(request.result as T);
+          db.close();
+        };
       } catch (error) {
         db.close();
-        rejectPromise(error instanceof Error ? error : new Error(String(error)));
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     };
   });

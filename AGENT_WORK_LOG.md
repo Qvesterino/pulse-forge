@@ -4256,3 +4256,33 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **UI**: iteration branch v DO IT chain PRED instant re-apply — návrh tečie cez štandardnú banku: ▶ audition, USE = jeden undo (existujúci apply command), compliance riadok, stale guard. Čisté „ten druhý" ostáva instant re-apply; zamietnutý návrh = žiadna zmena v projekte.
 - **Existujúce (overené):** producer-session follow-upy („ten istý, len pomalšie") bežia pred týmto; ghost time-machine drží A/B pôvodného stavu; session ostáva session-scoped (reload = nová session), nič sa netrvale neukladá bez vedomia používateľa.
 - **Testy**: `tests/iteration.test.ts` 12/12 (splice content-hash identita, one-undo round-trip cez inverse-patch command, determinizmus, provenance warnings, reject no-op); regresia session/candidate/brief rodina 83/83 + 129/129; tsc čistý na mojich súboroch.
+
+---
+
+## GOAL 04 (campaign re-run 4) — Failure modes & resilience: vocal worker death + IDB hang (2026-09-25)
+
+**Goal executed:** Failure-path audit focused on the surfaces GOAL 03 touched, per its own recommendations: the vocal analyzer worker lifecycle, the handoff IDB helper, and re-verification of the previously-audited recording-recovery + collab-join suites against the current (post-Fáza 2/3) tree.
+
+**Areas inspected:**
+
+- `src/vocal/analyzer-worker.ts` — exemplary defensive shape (message validation, never-throw postMessage contract); NO issue.
+- `src/vocal/analyzer-client.ts` — the real gap: `worker.onerror` was never wired. A worker that dies (script-load failure, uncaught error) left every request to burn the full 20 s timeout, ×3 before the failure breaker disabled the worker — up to ~60 s of silent degradation per dead-worker session, with the client spawning a fresh doomed worker each time. **The client also had ZERO direct test coverage** (all vocal suites test the DSP/commands, not the transport).
+- `src/interop/qvesterHandoff.ts` `withIdb` — no `onblocked` handler and no `onabort`: an open blocked by another tab (future version bump) or an aborted transaction left the promise unsettled FOREVER — the send button hangs with no diagnostic. Main db.ts solved this exact class with a 5 s bounded open.
+- Re-verified: collab-session + collab-hardening + collab-edge-cases **31/31**, pcm-mic-recorder + latency + recorder **32/32** on the current tree — nothing regressed through the concurrent session's Fáza 2/3 + sample waves. Full `tsc --noEmit` now **completely clean** (their in-flight iteration errors resolved when they committed f064918).
+
+**Fixes implemented (2):**
+
+1. **Worker death fails fast** (`src/vocal/analyzer-client.ts`): `worker.onerror` → `handleWorkerDeath()` — terminates the worker, disables the session breaker immediately, and DRAINS all pending requests (new `pendingRequests` map keyed by requestId, also driving timeout settle) so each falls through to the synchronous DSP fallback in milliseconds. Next call goes straight to sync (no doomed respawn). `resetVocalAnalyzer` clears the new state for tests. The 20 s timeout remains the backstop for a HUNG (not dead) worker — that case still deserves its patience.
+2. **`withIdb` can no longer hang** (`src/interop/qvesterHandoff.ts`): 5 s `onblocked` timeout (same convention as db.ts), `tx.onabort` rejection with the transaction error, and a settled-guard so request-success vs tx-complete races cannot double-settle. Failures now surface through ExportPanel's existing `cancelOrElse` path instead of an eternal busy state.
+
+**New test:** `tests/vocal-analyzer-client.test.ts` (3) — first direct coverage of the client: a dying worker answers via sync fallback in <5 s (not the 20 s timeout) with a really-analyzed profile (keyMeasured on the 440 Hz fixture), the disabled worker does NOT respawn on the next call, and empty input refuses without touching the worker at all.
+
+**Important files changed:** src/vocal/analyzer-client.ts, src/interop/qvesterHandoff.ts, tests/vocal-analyzer-client.test.ts (NEW).
+
+**Validation:** vocal-analyzer-client 3/3 + vocal-profile 13/13; collab trio 31/31; PCM trio 32/32; qvester-handoff suite still green (prune test from GOAL 03 unaffected); prettier clean; full tsc EXIT 0.
+
+**Unresolved issues:** none new. curated-samples remains the only known red (theirs; re-checked — still waiting on their curated decision for phonk/oriental/mallet assets).
+
+**Remaining risks:** `handleWorkerDeath` disables the worker for the whole session — a TRANSIENT worker failure (e.g. OOM kill) also permanently downgrades to main-thread analysis until reload. Accepted: the sync path is the same pure DSP, just on the main thread (bounded by take length), and session-scoped repair would need a heartbeat/respawn policy that adds failure modes of its own.
+
+**Recommendations for next session (GOAL 05):** state integrity & rehydration — the natural target is the schema-v3 lineage domain (Remix-DNA) migration matrix: v1/v2 docs → v3 through migrateProject, share codes, and collab blobs (queued since GOAL 01); plus rehydration ordering of frozen-track buffers + user samples after the recent sample-bank waves (bank re-upload hook `1e579bf` predates 3 content waves).
