@@ -82,6 +82,10 @@ describe("beat handoff packet", () => {
     expect(packet.intent).toBe(KYX_HANDOFF_INTENT);
     expect(packet.ttl).toBe(HANDOFF_TTL_MS);
     expect(packet.expiresAt - packet.createdAt).toBe(HANDOFF_TTL_MS);
+    // The Audio Canvas packet validator requires an ISO timestamp (interop
+    // spec V2 §2.2) — pin the format, not just the presence.
+    expect(packet.timestamp).toBe(new Date(packet.createdAt).toISOString());
+    expect(packet.tracking.createdAt).toBe(packet.timestamp);
 
     const [artifact] = packet.payload.inputs;
     expect(artifact?.type).toBe(KYX_ARTIFACT_TYPE);

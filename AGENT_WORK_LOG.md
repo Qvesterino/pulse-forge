@@ -4349,3 +4349,28 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Post-punk/punk** (motorik koreň industrial techna!): Joy Division 120-135 dark (Disorder 172 half-time 85-86 — getsongbpm), Interpol 120-135, The Cure 125-150 driving, IDLES 140-160 aggressive, Fontaines D.C. 140-155, Turnstile → trap hyper 140-170 (hardcore).
 - **Sub-žánrové frázy**: bedroom pop → ambient; lo-fi house → house; post-punk → techno; trip hop/triphop → ambient; future bass → trap; motorik → industrial style.
 - **Testy** +5 blokov (39/39 parser + 24/24 artists = 68/68 na 2 súbory); regresia **343/343 cez 30 súborov**; typecheck 0. Presety 61 → **79**.
+
+---
+
+## GOAL 06 (campaign re-run 4) — Cross-component contracts: intent-brief/iteration + Qvester envelope (2026-09-25)
+
+**Goal executed:** Contract audit of the intent surface the concurrent session built across Fáza 1–3 (brief-contract → brief-gate → iteration), the IntentInput assembly through all generation entry points, and the Qvester handoff envelope as a cross-APP contract. NOTE: brief-gate.ts/iteration.ts/session-context.ts are the concurrent session's ACTIVE files — audited read-only, nothing edited in them.
+
+**Verified CLEAN (evidence):**
+
+1. **iteration.ts contract soundness** (337 L read end-to-end): own project-switch guard (`generation.docId !== doc.id → null`, mirroring the campaign's Audit 13/GOAL 03 pattern); the patch loop copies ONLY defined fields (`residual.input[field] !== undefined`), so the undefined-wipe class (spread merge clobbering defined values) is impossible by construction; the hand-built `RankedCandidate` (1-candidate bank) carries all 9 contract fields, and the `RankedCandidate.status: "accepted"|"repaired"` narrow holds at runtime via the explicit guard at line 213 (the earlier `GenerationStatus` tsc error they fixed was the compiler catching exactly this seam). Rejection paths always return a `rejected` GenerationResult with reasons — never a silent re-apply.
+2. **IntentInput assembly** — all 4 generation entry points merge in the SAME order (parsed → refPatch → briefFixes → last-wins one-shot|reviseInput); the song path's reviseInput-instead-of-oneShot is the documented divergence. All three patch producers (brief-contract statements, producer-session follow-ups/variants, iteration residual) emit literal defined values only.
+3. **Qvester envelope vs interop spec V2 §2.2** — version/sourceApp/targetApp/intent/ttl/expiresAt/value-always-string/uri-pointer/returnTarget all pinned by tests; stem blobs stored per stem; the source-map artifact pointing its uri at the MASTER hash while per-stem hashes ride in `value.stems[]` is the declared V2 convention.
+
+**Findings recorded (not fixed, with reasons):**
+
+- **P3 — iteration `source` provenance always "template"**: `SessionCandidate` does not carry the origin engine, so an iteration of a symbolic-prior candidate labels its bank entry "template" (iteration.ts:298). Cosmetic (bank is in-memory only, never serialized); fix belongs with the session's own iteration work — extend SessionCandidate with `source` and pass it through.
+- **Cross-APP gap (owned by Audio Canvas side)**: the KYX packet side is fully pinned, but the CONSUMER (Audio Canvas validator, different repo) is untestable from here. Our side now also pins the validator-required ISO `timestamp` format (added this goal — it was the one envelope field the tests did not assert).
+
+**Fix implemented (test-only):** `tests/qvester-handoff.test.ts` — pins `packet.timestamp === new Date(createdAt).toISOString()` and `tracking.createdAt === timestamp` (the field the Canvas validator requires; format pinned, not just presence).
+
+**Validation:** intent-brief/iteration/conversation/producer-session family **92/92** (6 files); qvester-handoff **13/13**; `tsc --noEmit` EXIT 0.
+
+**Unresolved issues:** none new. curated-samples remains theirs.
+
+**Recommendations for next session (GOAL 07):** async/concurrency sweep — the natural targets: (1) the concurrent session's iteration/preview path adds a second in-flight-generation class in IntentPanel (`runGeneration` abort + the new `compileIteration` synchronous path — verify only one can hold `abortRef` at a time and preview buffers can't leak across aborts); (2) `analyzeVocalTake` + `prepareBeatHandoff` cancellation semantics (GOAL 03/04 added guards — check they compose under rapid click sequences); (3) the standing applyToYDoc fast-path parity risk (22 sites) after their recent command additions.
