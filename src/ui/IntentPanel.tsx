@@ -47,6 +47,7 @@ import {
 } from "../intent/producer-session";
 import { compileBriefContract } from "../intent/brief-contract";
 import { evaluateBriefCompliance } from "../intent/brief-gate";
+import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
@@ -298,6 +299,21 @@ export function IntentPanel() {
     const last = lastGeneration();
     const reference = last ? resolveSessionReference(text, last.candidates) : null;
     if (reference && last) {
+      // Fáza 3 iteration: a residual CHANGE (mood/energy/bpm/… or a preserve
+      // clause) becomes a TARGETED PROPOSAL on the referenced candidate —
+      // audition first, USE applies (one undo). Scope is stated in the
+      // summary, never implicit. A pure reference ("ten druhý") keeps the
+      // instant re-apply below.
+      const iteration = compileIteration(text, last, doc);
+      if (iteration) {
+        setBankResult(iteration.result);
+        previewDocRef.current = doc;
+        buffersRef.current = new Map();
+        rememberPrompt(text);
+        setStatus(`↻ ${iteration.summary} — ▶ náhľad, USE na aplikovanie`);
+        setBusy(false);
+        return;
+      }
       const candidate = last.candidates[reference.index];
       services.store.execute(applySessionCandidateCommand(doc, candidate.pattern));
       rememberPrompt(text);
