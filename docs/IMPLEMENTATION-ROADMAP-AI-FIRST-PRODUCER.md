@@ -187,6 +187,25 @@ NEISTÉ: tónina nebola zadaná
 
 **Hotovo, keď:** konkrétny referenčný pokyn mení len deklarované targety, protected content ostáva bitovo/obsahovo rovnaký a odmietnutý proposal nezanechá zmenu v projekte.
 
+**Stav (2026-09-25): FÁZA 3 DODANÁ (jadro).**
+
+- `src/intent/iteration.ts`: `compileIteration(text, session, doc)` — session reference + reziduál
+  → cieľovaný návrh: `{reference, patch, preserve, targets, summary, 1-kandidátový result, before}`.
+  Rozsah zmeny je vyjadrený v summári; deterministický.
+- Splice pravdovravnosť: drums-only target splicne rows/stepMeta (notes content-identické —
+  hash test); melodika zdieľa tracky, takže sa regeneruje ako blok alebo sa ponechá pri
+  chránenej melodicej role — summary to vypovedá. Reziduálne role direktívy prepisujú
+  kandidátske („žiadne bicie" = drop), length patch = full regen.
+- UI: iteration branch pred instant re-apply; návrh ide cez štandardnú banku (audition, USE =
+  jeden undo, compliance riadok, stale guard z Fázy 2). Odmietnutý návrh nič nezanechá.
+- Session ostáva dočasná a projektom ohraničená (docId); trvalé uloženie neexistuje bez
+  vedomia používateľa (roadmap bod 1 ✓ v rozsahu „predvolene dočasná").
+- Testy: `tests/iteration.test.ts` (12) — content-hash identita chráneného obsahu, one-undo
+  round-trip, determinizmus, reject no-op, provenance warnings.
+- Otvorené: A/B audition pôvodného stavu ide cez ghost time-machine (existujúce), nie ako
+  druhé ▶ tlačidlo v návrhu; revízne ID proti collab peer zmenám pokrýva stale guard
+  (referenčná identita doc objektu) — plnohodnotný revision ledger je Fáza 5 priestor.
+
 ### Fáza 4 — ranker, ktorý sa zlepšuje podľa reálnych preferencií
 
 **Cieľ:** ONNX pomáha vyberať hudobne lepší a briefu vernejší výsledok, nie iba napodobňuje dnešnú heuristiku.

@@ -4243,3 +4243,16 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Remaining risks:** the vocal switch-guard discards the analysis result but cannot cancel the worker DSP (analyzeVocalTake has no cancellation) — bounded by the 20 s timeout, matches the "background render discarded" precedent.
 
 **Recommendations for next session (GOAL 04):** failure-modes focus on the surfaces this goal touched: (1) vocal analyzer-worker `onprocessorerror`-class coverage — the worker has no onerror handler; a crashed worker fails 3 requests (20 s each) before the breaker disables it — a first-request window of up to 60 s of degraded UX; consider failing fast on worker `onerror`; (2) `withIdb` in qvesterHandoff lacks `onblocked` (main db.ts has a 5 s timeout) — matters only on a future version bump; (3) then continue the standard GOAL 04 sweep (recording recovery, collab join under ws failure — both previously audited, re-verify nothing regressed through the recent waves).
+
+---
+
+## FÁZA 3 — KONVERZAČNÝ BEATMAKER A CIELENÉ ZMENY (2026-09-25)
+
+**Roadmap:** IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md Fáza 3 — „druhý je lepší, ale temnejší; nechaj bass a akordy" bez resetu session; rozsah zmeny je súčasť návrhu, nie implicitná side effect.
+
+- **Nový modul** `src/intent/iteration.ts`: `compileIteration(text, session, doc)` — session reference (existujúci resolver) + reziduál parse → `IterationProposal {referenceIndex, patch, preserve, targets, summary, result (1-kandidátová banka), before}`. Pure/deterministický.
+- **Splice pravdolúbivosť**: drum rows sú role-atribútovateľné → drums-only target splicne rows/stepMeta, notes ostávajú content-identické (hash test). Melodika zdieľa tracky bez per-note role atribúcie → regeneruje sa ako celok, ALEBO sa ponechá, keď je melodická rola chránená — a summary to VYPRAVÍ („melodika ponechaná (chránená rola zdieľa track)").
+- **Reziduál role direktívy prepisujú kandidátske**: „žiadne bicie" na bicím kandidátovi = DROP bicích z návrhu (nie regenerácia). Length patch = full regen idea na novej dĺžke (splice cez rôzne stepCount nemá zmysel).
+- **UI**: iteration branch v DO IT chain PRED instant re-apply — návrh tečie cez štandardnú banku: ▶ audition, USE = jeden undo (existujúci apply command), compliance riadok, stale guard. Čisté „ten druhý" ostáva instant re-apply; zamietnutý návrh = žiadna zmena v projekte.
+- **Existujúce (overené):** producer-session follow-upy („ten istý, len pomalšie") bežia pred týmto; ghost time-machine drží A/B pôvodného stavu; session ostáva session-scoped (reload = nová session), nič sa netrvale neukladá bez vedomia používateľa.
+- **Testy**: `tests/iteration.test.ts` 12/12 (splice content-hash identita, one-undo round-trip cez inverse-patch command, determinizmus, provenance warnings, reject no-op); regresia session/candidate/brief rodina 83/83 + 129/129; tsc čistý na mojich súboroch.
