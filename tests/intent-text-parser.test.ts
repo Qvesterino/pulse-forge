@@ -420,3 +420,38 @@ describe("culture wave — bedroom pop / lo-fi house / post-punk / trip-hop", ()
     expect(parseIntentText("turnstile type beat").input.bpmRange).toEqual([140, 170]);
   });
 });
+
+describe("ambient/experimental wave — drone / IDM / Berlin school", () => {
+  it("sub-genres: drone / IDM / vaporwave / berlin school / krautrock / deconstructed", () => {
+    expect(parseIntentText("drone ambient").input.genre).toBe("ambient");
+    expect(parseIntentText("IDM at 140").input.genre).toBe("ambient");
+    expect(parseIntentText("vaporwave at 75").input.genre).toBe("ambient");
+    expect(parseIntentText("berlin school at 100").input.genre).toBe("techno");
+    expect(parseIntentText("krautrock at 110").input.genre).toBe("techno");
+    expect(parseIntentText("deconstructed club at 120").input.genre).toBe("trap");
+  });
+
+  it("drone roster: stars of the lid / basinski / grouper / koner / hecker", () => {
+    expect(parseIntentText("stars of the lid type beat").input.bpmRange).toEqual([40, 65]);
+    expect(parseIntentText("basinski type beat").input.energy).toBe(0.15);
+    expect(parseIntentText("grouper type beat").input.mood).toBe("dark");
+    expect(parseIntentText("tim hecker type beat").input.style).toBe("glitch");
+    expect(parseIntentText("disintegration loops").input.genre).toBe("ambient");
+  });
+
+  it("experimental roster: autechre / arca / sophie / opn / fennesz / vaporwave", () => {
+    expect(parseIntentText("autechre type beat").input.bpmRange).toEqual([120, 160]);
+    expect(parseIntentText("arca type beat").input.style).toBe("hyper");
+    expect(parseIntentText("pc music type beat").input.style).toBe("hyper");
+    expect(parseIntentText("oneohtrix point never type beat").input.style).toBe("glitch");
+    expect(parseIntentText("fennesz type beat").input.bpmRange).toEqual([50, 80]);
+    expect(parseIntentText("vaporwave type beat").input.mood).toBe("dark");
+  });
+
+  it("berlin school roster: tangerine dream / klaus schulze / gotttsching e2-e4", () => {
+    expect(parseIntentText("tangerine dream type beat").input.style).toBe("melodic");
+    expect(parseIntentText("phaedra type beat").input.bpmRange).toEqual([80, 120]);
+    expect(parseIntentText("klaus schulze type beat").input.genre).toBe("techno");
+    expect(parseIntentText("e2-e4 type beat").input.genre).toBe("house");
+  });
+});

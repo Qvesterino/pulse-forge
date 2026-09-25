@@ -65,6 +65,12 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bpost-?punk\b/, "techno"],
   [/\btrip hop\b|\btriphop\b/, "ambient"],
   [/\bfuture bass\b/, "trap"],
+  [/\bdrone\b/, "ambient"],
+  [/\bidm\b/, "ambient"],
+  [/\bdeconstructed (?:club|music)\b/, "trap"],
+  [/\bvaporwave\b/, "ambient"],
+  [/\bberlin school\b/, "techno"],
+  [/\bkrautrock\b/, "techno"],
   // canonical / generic
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],

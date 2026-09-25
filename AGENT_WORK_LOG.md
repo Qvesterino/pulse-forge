@@ -4374,3 +4374,17 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Unresolved issues:** none new. curated-samples remains theirs.
 
 **Recommendations for next session (GOAL 07):** async/concurrency sweep — the natural targets: (1) the concurrent session's iteration/preview path adds a second in-flight-generation class in IntentPanel (`runGeneration` abort + the new `compileIteration` synchronous path — verify only one can hold `abortRef` at a time and preview buffers can't leak across aborts); (2) `analyzeVocalTake` + `prepareBeatHandoff` cancellation semantics (GOAL 03/04 added guards — check they compose under rapid click sequences); (3) the standing applyToYDoc fast-path parity risk (22 sites) after their recent command additions.
+
+---
+
+## GOAL 49 — AMBIENT/EXPERIMENTAL WAVE (2026-09-24)
+
+**Userova požiadavka:** ambient, experimental a podobné.
+
+- **Drone/deep ambient (40-70 BPM alebo beatless — [beatkey.app](https://beatkey.app) rešerš)**: Stars of the Lid 40-65, Tim Hecker 45-70 glitch dark, William Basinski 40-60 (aj „disintegration loops"), Grouper 40-65, Thomas Köner 40-60 — všetko ambient drifting/glitch s minimálnou energiou (0.15-0.2).
+- **Experimental/IDM**: Autechre 120-160 glitch (IDM micro-rhythm), Arca 100-140 trap hyper dark (deconstructed club), SOPHIE 120-140 trap hyper (PC Music), Oneohtrix Point Never 80-130 glitch dark, Fennesz 50-80 glitch chill.
+- **Vaporwave**: 2814/vaporwave 60-90 ambient drifting melancholic→dark.
+- **Berlin School/krautrock** ([Cambridge](https://www.cambridge.org) rešerš — analog sequencer 80-120): Tangerine Dream 80-120 techno melodic (aj „phaedra"), Klaus Schulze 80-110 techno minimal dark, Manuel Göttsching E2-E4 100-120 house minimal.
+- **Sub-žánre +6**: drone, IDM, deconstructed club, vaporwave, berlin school, krautrock.
+- Mood „melancholic" nie je v slovníku → dark (2 sites opravené).
+- **Testy** +4 bloky (72/72 na 2 súbory); regresia **349/349 cez 30 súborov**; typecheck 0. Presety 79 → **93**.
