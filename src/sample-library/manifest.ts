@@ -634,6 +634,22 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     mood: ["bright", "clean"],
   },
   {
+    id: "factory.tonal.wurli",
+    name: "Wurli Bark",
+    category: "Tonal",
+    character: "Barky, Tremolo",
+    tags: ["wurli", "keys", "warm"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.tonal.organ",
+    name: "Tonewheel Organ",
+    category: "Tonal",
+    character: "Drawbar, Sustained",
+    tags: ["organ", "tonewheel", "house"],
+    mood: ["warm", "clean"],
+  },
+  {
     id: "factory.tonal.sitar",
     name: "Sitar",
     category: "Tonal",

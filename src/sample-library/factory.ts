@@ -1535,6 +1535,64 @@ function wurli(): Builder {
   };
 }
 
+/** Organ (quality backlog: organ pack) — tonewheel drawbar synthesis: the
+ * classic Hammond drawbar harmonics (16' sub, 5⅓' quint, 8' unison, 4', 2⅔',
+ * 2', 1') as sine drawbars with live-appropriate levels, a percussive key
+ * click on attack, and a slight vibrato-chorus leak. SUSTAINED by design —
+ * an organ note holds while the key is down (2 s render; the sampler's
+ * release tail carries the sustain). C4 anchor. */
+function organ(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 261.63; // C4
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.012); // organ: fast but not percussive
+    vca.gain.setValueAtTime(1, t0 + 1.7);
+    vca.gain.linearRampToValueAtTime(0, t0 + 1.95);
+    // Drawbars: [harmonic multiple, level] — 16'/5⅓'/8'/4'/2'/1'
+    const drawbars: [number, number][] = [
+      [0.5, 0.22],
+      [1, 0.5],
+      [1.5, 0.14],
+      [2, 0.3],
+      [3, 0.1],
+      [4, 0.16],
+      [6, 0.06],
+      [8, 0.08],
+    ];
+    for (const [mult, level] of drawbars) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f * mult;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 2);
+    }
+    // Key click: the tonewheel gate transient every organ player knows.
+    const click = noiseSource(ctx, 6, 0.015, t0);
+    const clickHp = ctx.createBiquadFilter();
+    clickHp.type = "highpass";
+    clickHp.frequency.value = 1800;
+    click
+      .connect(clickHp)
+      .connect(env(ctx, t0, 0.14, 0.012))
+      .connect(dest);
+    // Chorus leak: a very quiet detuned second rank (the Ce-le-ii vibe).
+    const leak = ctx.createOscillator();
+    leak.type = "sine";
+    leak.frequency.value = f * 1.003;
+    const leakGain = ctx.createGain();
+    leakGain.gain.value = 0.06;
+    leak.connect(leakGain).connect(vca);
+    leak.start(t0);
+    leak.stop(t0 + 2);
+    vca.connect(dest);
+  };
+}
+
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
@@ -1714,6 +1772,7 @@ export const BUILDERS: Record<string, Builder> = {
     attack: 0.002,
   }),
   "factory.tonal.wurli": wurli(),
+  "factory.tonal.organ": organ(),
 
   // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
   // actually reaches for — memphis guitar, drill strings, rhodes, mariachi
@@ -1801,6 +1860,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.mallet.marimba": 1.2,
   "factory.mallet.celesta": 1.9,
   "factory.tonal.wurli": 2.2,
+  "factory.tonal.organ": 2.1,
   "factory.tonal.memphisguitar": 1.4,
   "factory.tonal.darkstrings": 2.2,
   "factory.tonal.rhodes": 1.8,
