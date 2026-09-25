@@ -4306,3 +4306,31 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **`scripts/render-groove-listening.mjs`** (`npm run listening:grooves`): playwright + vite (golden-pack vzor) — 10 nových groove štýlov × prvé 2 patterny → reálny engine render → `groove-listening/<id>-<n>.wav` + LISTENING.md. Doc.bpm = groove tempo midpoint. Output gitignored (WAVs lokalne).
 - **17 renderov** ✓ — každý groove z vĺn 1-3 (roller/amen/horror/hard/melodic/lux/hyper/sample) počuteľný na overenie identity (roller = Macky Gee? horror = Suicideboys? hard = Klangkuenstler?).
 - ⚠️ groove-listening/ pridaný do .gitignore (rovnaká politika ako golden-review/).
+
+---
+
+## GOAL 05 (campaign re-run 4) — State integrity, persistence & rehydration (2026-09-25)
+
+**Goal executed:** The two queued targets (schema-v3 migration matrix; rehydration ordering after 3 content waves) plus a defensive-parsing sweep, prioritizing what the current tree actually changed.
+
+**Verified CLEAN (evidence, no fixes needed):**
+
+1. **Schema-v3 migration matrix** — `migrateProject` is a trivial bump (lineage is optional; normalizeProject sanitizes it), and every matrix cell is pinned: v1/v2 → v3 (`tests/lineage.test.ts` "old docs migrate", `tests/project-model.test.ts` migrateProject block: no-op/older/newer-throws/partial, `tests/state-persistence-adversarial.test.ts` v1 docs), share codes (`lineage.test.ts` round-trip pin), **collab blobs by construction** — remote merges (foreign origin) go through `normalizeProject` in `YDocStore.readDoc` (`src/collab/YDocStore.ts:143-146`), so lineage sanitize applies on every peer edit; `fromDocument` normalizes too. Re-ran the battery on the current tree: lineage + adversarial + project-repository + library + collab-parity **84/84**.
+2. **Rehydration ordering (frozen + user samples)** — frozen-restore is closed-race guarded end-to-end (`closed` flag, track re-existence check, cross-project referenced-set GC, best-effort catch, finally re-points engine); user-sample restore is memoized per bank + render-ready bounded await (`userSamplesReadyWithin`), so a racing export cannot bake missing samples. The `1e579bf` bank re-upload hook chain is intact after the mallet/phonk/kick waves — those waves only add BUILDERS, the `SampleBank.add → notifySampleAdded → engine setSample` mechanics are untouched (content waves verified not to modify add()/attachBank()).
+3. **localStorage defensive-parsing invariant** — swept every consumer combining localStorage/sessionStorage with JSON.parse (theme, padKeys, dockLayout, gestureHints, funnel, favorites, rerank-weights, style-vector, galleryApi, handoff, profileBus, vocal sessions): ALL guarded. `DiceContext.tsx` JSON.parse hit was a false positive (structured-clone idiom on in-memory data).
+
+**Confirmed problem & fix:**
+
+4. **GroovePoolRepository + KitRepository returned RAW IndexedDB records** — unlike the Morph/Ultina preset stores (sanitizeEntry pattern), these two older repos cast `getAll()` results straight to their interfaces. Consumers dereference blindly: `applyGroove` indexes `map.timing.length` INSIDE command execution (`commands.ts:3026` — a missing timing array throws mid-undo-frame), `applyKitToDrumTrack` maps over `pads`, RackStrip dereferences `kit.pads.length`. FIX: rehydration-boundary sanitize in both — groove entries require non-empty finite timing (cap 128), accent optional finite array, id/name non-empty; kits require string fields + 1..16 fully-valid pads (idx 0..15 integer, finite gain/pan/pitch, object synth). Malformed records DROPPED (the user sees fewer entries, never a command-time crash); valid records byte-identical; sort/cache/transient-catch semantics unchanged.
+
+**New test:** `tests/pool-kit-rehydration.test.ts` (2) — raw corrupt records put directly into fake-indexeddb (junk shapes, NaN steps, 129-step overflow, out-of-range idx, non-finite pad fields, empty-shell objects), all dropped; valid records + optional fields survive; save round-trips work. Note recorded: a keyPath store physically cannot persist keyless junk (put throws DataError) — the reachable corruption class is object-shape drift, which the sanitize covers.
+
+**Important files changed:** src/persistence/GroovePoolRepository.ts, src/persistence/KitRepository.ts, tests/pool-kit-rehydration.test.ts (NEW).
+
+**Validation:** pool-kit 2/2 + full 7-file persistence battery 84/84; `tsc --noEmit` clean (EXIT 0); prettier clean on new/changed files.
+
+**Unresolved issues:** curated-samples red test remains the concurrent session's. Snapshot-restore (20/project) path re-verified via services-close-race in GOAL 04 — no further work.
+
+**Remaining risks:** the sanitize is entry-strict — a FUTURE legitimate schema change to kit pads (e.g. a new optional field type) must extend sanitizePad or new kits get dropped on load. The Morph/Ultina stores carry `schemaVersion` fields for this; groove/kit entries do not (no field to evolve yet). Recorded as the extension point.
+
+**Recommendations for next session (GOAL 06):** cross-component contracts — the natural target is the intent-brief/iteration surface the concurrent session is actively building (brief-gate.ts, iteration.ts: IntentInput field flow through 4 assembly points — verify no silent field dropping between parse → brief → generation, and that their new `SessionCandidate`/iteration types are contract-tested like the rest of the intent family). Then the Qvester packet envelope (v2.0) vs Audio Canvas validator — cross-APP contract, currently only KYX-side tested.
