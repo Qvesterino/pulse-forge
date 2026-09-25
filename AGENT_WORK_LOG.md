@@ -4410,3 +4410,17 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Remaining risks:** `busy` serialization is a UI-level guarantee — programmatic double-entry (collab remote trigger, future automation) would bypass it; the token contract now covers all four superseding actions (DO IT, USE, DROP, rebuild) and the next superseding action author must remember to bump (the comment on each bump site says so).
 
 **Recommendations for next session (GOAL 08):** import/export/format robustness was hardened in re-run 3 GOAL 08 (fuzz suite, lz-string defense, MIDI caps) — re-run that battery against the CURRENT tree (new format surfaces since: mallet/phonk sample ids in curated contracts, iteration/brief types in share codes? verify IntentSpec additions don't flow into serialized artifacts unclamped), plus the standing share-code envelope matrix.
+
+---
+
+## GOAL 50 — LISTENING ROOM ROZŠÍRENIE: CONDITIONING + GROOVE SADY (2026-09-24)
+
+**Skúšobňa teraz pokrýva celú žánrovú kampaň.** Dve nové sady v listening room:
+
+- **CONDITIONING suite** (4 promptové páry): v1 one-hot vs v3 hybrid cez `setEmbeddingConditionedOverride` — ranking verdikt na pár = priamy ear dôkaz pre flip `pf:embedding-conditioned`. groupKey `conditioning::<slug>` (vedomé — do ranker golden sa neingestujú, reportujú sa ako unmatched).
+- **GROOVE suite** (10 groove štýlov × 2 patterny): ★-favorite verdict s KOMPLETNÝM FavoriteLedgerEntry (rows keyed by REAL pad ids — groove pad index → drumTrack.pads[i].id, grooveId, genre, swing) → `listening:ingest` ich vleje do favorites-pack.json → retrén všetkých troch modelov. Nové groovy mimo PRIOR_STYLE_VOCAB začnú trénovať priory automaticky, keď vstúpia do vocab.
+- **Ingest +3**: conditioning verdikty → `listening/conditioning-verdicts.json` (winner v1/v3 per pár, v3Wins ratio, flip doporučenie pri ≥4 verdiktoch: ≥75% → ON dôkaz, ≤25% → OFF).
+- **Template +2 taby**: CONDITIONING (blind skryje v1/v3 → A/B), GROOVY (★ sedí identite). fetch room.json wiring.
+- **Render overený**: room.json = morph 8, scenes 4, intent 3, **conditioning 4**, **grooves 10**; WAVy v conditioning/ a grooves/.
+- Gotcha: `getGrooveById` musí byť v evaluate imports (prvý beh padol na ReferenceError). Python `
+` v JS stringu → reálny newline (7. escape pasca!) — Write/Edit tool vždy.

@@ -53,6 +53,8 @@ hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="b
   <button data-suite="morph" class="active">MORPH ★ (A/B)</button>
   <button data-suite="scenes">SCENE presety (A/B)</button>
   <button data-suite="intent">INTENT učenie (rank ★)</button>
+  <button data-suite="conditioning">CONDITIONING (v1 vs v3)</button>
+  <button data-suite="grooves">GROOVY ★ (nové)</button>
 </div>
 
 <div id="playerWrap"><audio id="player" controls preload="auto" style="width:100%"></audio></div>
@@ -60,6 +62,8 @@ hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="b
 <div class="suite active" id="suite-morph"></div>
 <div class="suite" id="suite-scenes"></div>
 <div class="suite" id="suite-intent"></div>
+<div class="suite" id="suite-conditioning"></div>
+<div class="suite" id="suite-grooves"></div>
 
 <p class="hint" id="verdicts-info">verdikty: …</p>
 
@@ -124,6 +128,22 @@ function applyBlind() {
   scenes.querySelectorAll(".group .desc").forEach((el) => el.classList.add("blind-hidden"));
   shuffleSiblings(scenes);
   document.querySelectorAll("#suite-intent .group").forEach((div) => {
+    div.querySelector(".gk").classList.add("blind-hidden");
+    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+    shuffleSiblings(div.querySelector(".cands"));
+  });
+  // conditioning: hide the v1/v3 identity + prompt phrasing, shuffle pairs
+  document.querySelectorAll("#suite-conditioning .group").forEach((div) => {
+    div.querySelector(".gk").classList.add("blind-hidden");
+    div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
+    div.querySelectorAll(".cand b").forEach((el) => {
+      el.dataset.blindOrig = el.textContent;
+      el.textContent = "Verzia " + (el.textContent.includes("V1") ? "A" : "B");
+    });
+    shuffleSiblings(div.querySelector(".cands"));
+  });
+  // grooves: hide the groove id, shuffle patterns
+  document.querySelectorAll("#suite-grooves .group").forEach((div) => {
     div.querySelector(".gk").classList.add("blind-hidden");
     div.querySelectorAll(".cand .desc").forEach((el) => el.classList.add("blind-hidden"));
     shuffleSiblings(div.querySelector(".cands"));
@@ -257,12 +277,115 @@ function buildIntent(groups) {
   }
 }
 
+// ── CONDITIONING suite — v1 vs v3 pair ranking (flip-decision evidence) ──
+function buildConditioning(groups) {
+  const root = document.getElementById("suite-conditioning");
+  for (const g of groups) {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML =
+      "<h3>" + g.prompt + "</h3>" +
+      '<div class="gk">' + g.groupKey + "</div>" +
+      '<div class="hint">Dve verzie toho istého promptu (A = one-hot, B = hybrid — v blind mode skryté). Klikni v poradí, ktoré ti hrá lepšie. Tvoj verdikt rozhoduje o default conditioning kanáli.</div>' +
+      '<div class="cands"></div>' +
+      '<div class="toolbar"><button class="reset">RESET poradia</button><span class="sent"></span></div>';
+    const cands = div.querySelector(".cands");
+    const order = [];
+    const sent = div.querySelector(".sent");
+    const cards = g.candidates.map((c) => {
+      const card = document.createElement("div");
+      card.className = "cand";
+      card.innerHTML =
+        '<div class="rank">·</div><b>' + c.label.toUpperCase() + "</b>" +
+        '<div class="desc">' + (c.label === "v1" ? "one-hot conditioning" : "hybrid semantic conditioning") + "</div>";
+      card.addEventListener("click", () => {
+        if (card.dataset.rank) return;
+        const rank = order.length + 1;
+        if (rank > g.candidates.length) return;
+        card.dataset.rank = String(rank);
+        card.querySelector(".rank").textContent = String(rank);
+        card.classList.add("r" + rank);
+        order.push(c.label);
+        if (order.length === g.candidates.length) {
+          postVerdict({ kind: "ranking", groupKey: g.groupKey, order, prompt: g.prompt, blind: BLIND, savedAt: Date.now() })
+            .then(() => { sent.textContent = "✓ verdikt odoslaný"; })
+            .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+        }
+        playFile(c.file, card);
+      });
+      cands.append(card);
+      return { card, c };
+    });
+    cards.forEach(({ card, c }) => {
+      const playBtn = document.createElement("button");
+      playBtn.textContent = "▶";
+      playBtn.addEventListener("click", () => playFile(c.file, card));
+      card.prepend(playBtn);
+    });
+    div.querySelector(".reset").addEventListener("click", () => {
+      order.length = 0;
+      sent.textContent = "";
+      cards.forEach(({ card }) => {
+        delete card.dataset.rank;
+        card.className = "cand";
+        card.querySelector(".rank").textContent = "·";
+      });
+    });
+    root.append(div);
+  }
+}
+
+// ── GROOVE suite — ★ the pattern that matches the reference identity ──
+function buildGrooves(grooves) {
+  const root = document.getElementById("suite-grooves");
+  for (const g of grooves) {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML =
+      "<h3>" + g.label + " · " + g.midBpm + " BPM</h3>" +
+      '<div class="gk">' + g.groupKey + "</div>" +
+      '<div class="hint">★ = tento pattern sedí referenčnej identite (roller = Macky Gee, horror = Suicideboys…). Favorite tečie do tréningu pri ďalšom retréne.</div>' +
+      '<div class="cands"></div>' +
+      '<div class="toolbar"><span class="sent"></span></div>';
+    const cands = div.querySelector(".cands");
+    const sent = div.querySelector(".sent");
+    for (const c of g.candidates) {
+      const card = document.createElement("div");
+      card.className = "cand";
+      card.innerHTML =
+        '<div class="rank">·</div><b>Pattern ' + (c.index + 1) + "</b>" +
+        '<div class="desc">' + g.grooveId + "</div>" +
+        '<button class="fav">★ sedí identite</button>';
+      card.addEventListener("click", (ev) => {
+        if (ev.target.classList.contains("fav")) return;
+        playFile(c.file, card);
+      });
+      card.querySelector(".fav").addEventListener("click", () => {
+        const on = card.querySelector(".fav").classList.toggle("on");
+        if (!on) return;
+        postVerdict({ kind: "favorite", groupKey: g.groupKey, entry: c.favorite, blind: BLIND, savedAt: Date.now() })
+          .then(() => { sent.textContent = "✓ favorite uložený"; })
+          .catch(() => { sent.textContent = "✗ server nefunguje — spusti listening:serve"; });
+      });
+      card.querySelector("button.fav").addEventListener("click", (ev) => ev.stopPropagation());
+      const playBtn = document.createElement("button");
+      playBtn.textContent = "▶";
+      playBtn.addEventListener("click", () => playFile(c.file, card));
+      card.prepend(playBtn);
+      cands.append(card);
+    }
+    root.append(div);
+  }
+}
+
 fetch("room.json")
   .then((r) => r.json())
   .then((room) => {
     buildMorph(room.morph);
     buildScenes(room.scenes);
     buildIntent(room.intent);
+    buildConditioning(room.conditioning ?? []);
+    buildGrooves(room.grooves ?? []);
     applyBlind();
   });
 loadVerdictCount();

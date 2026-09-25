@@ -40,6 +40,7 @@ if (!Array.isArray(verdicts) || verdicts.length === 0) {
 
 const rankings = verdicts.filter((v) => v.kind === "ranking" && Array.isArray(v.order) && v.groupKey);
 const favourites = verdicts.filter((v) => v.kind === "favorite" && v.entry && v.groupKey);
+const conditioning = verdicts.filter((v) => v.kind === "ranking" && String(v.groupKey ?? "").startsWith("conditioning::"));
 
 // ── 1) rankings → ranker golden ────────────────────────────────────────────
 let matched = 0;
@@ -134,6 +135,30 @@ if (favourites.length > 0) {
   };
   writeFileSync(favoritesPackPath, JSON.stringify(pack, null, 2));
   packCount = pack.entries.length;
+}
+
+// ── 3) conditioning verdicts → flip-decision summary ───────────────────────
+if (conditioning.length > 0) {
+  const summary = conditioning.map((v) => {
+    const winner = v.order?.[0] ?? null;
+    return {
+      groupKey: v.groupKey,
+      prompt: v.prompt ?? null,
+      winner,
+      blind: v.blind ?? false,
+      savedAt: v.savedAt ?? Date.now(),
+    };
+  });
+  const v3Wins = summary.filter((entry) => entry.winner === "v3").length;
+  const outPath = path.join(ROOT, "listening", "conditioning-verdicts.json");
+  const summaryJson = JSON.stringify({ version: 1, generatedAt: new Date().toISOString(), v3Wins, total: summary.length, verdicts: summary }, null, 2);
+  writeFileSync(outPath, summaryJson + "\n");
+  console.log(`[ingest] conditioning: ${summary.length} pair verdict(s) → v3 wins ${v3Wins}/${summary.length} → listening/conditioning-verdicts.json`);
+  if (summary.length >= 4 && v3Wins / summary.length >= 0.75) {
+    console.log("[ingest] → ear evidence supports pf:embedding-conditioned default ON");
+  } else if (summary.length >= 4 && v3Wins / summary.length <= 0.25) {
+    console.log("[ingest] → ear evidence suggests flipping pf:embedding-conditioned to OFF");
+  }
 }
 
 console.log(`[ingest] rankings: ${rankings.length} total → ${matched} merged into intent-ranker-golden.json`);

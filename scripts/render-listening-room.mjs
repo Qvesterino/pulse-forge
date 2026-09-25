@@ -71,6 +71,24 @@ const GROUPS_DATA = (() => {
     return [];
   }
 })();
+const CONDITIONING_PROMPTS = [
+  "dark rainy berlin techno at 132",
+  "sunny uplifting techno at 132",
+  "aggressive hard trap at 145",
+  "deep house sunset groove",
+];
+const GROOVE_IDS = [
+  "dnb.roller",
+  "dnb.amen",
+  "phonk.horror",
+  "techno.hard",
+  "techno.melodic",
+  "trap.lux",
+  "trap.hyper",
+  "drill.sample",
+  "drill.hyper",
+  "drill.melodic",
+];
 if (GROUPS_DATA.length === 0) {
   throw new Error("ranker dataset missing or has no usable groups — run the dataset script first");
 }
@@ -92,7 +110,9 @@ const packs = await page.evaluate(
   const { normalizeIntent } = await import("/src/intent/normalize.ts");
   const { planGeneration } = await import("/src/intent/plan.ts");
   const { generatePattern } = await import("/src/ai/generator.ts");
-  const { getStyleNamesForGenre } = await import("/src/ai/grooves/index.ts");
+  const { getStyleNamesForGenre, getGrooveById } = await import("/src/ai/grooves/index.ts");
+  const { symbolicPriorProvider } = await import("/src/intent/providers/symbolic.ts");
+  const { setEmbeddingConditionedOverride } = await import("/src/ai/symbolic/prior-client.ts");
   // roleForTrack + MELODIC_NOTES_CAP are mirrored LOCALLY (do NOT import
   // intent/favorites.ts here — its import chain currently crosses a broken
   // intermediate state in instruments/definitions.ts).
@@ -294,6 +314,91 @@ const packs = await page.evaluate(
     out.intent.push({ groupKey, genre: groupGenre, style, candidates });
   }
 
+  // ── CONDITIONING suite — v1 (one-hot) vs v3 (hybrid) on mood prompts ──
+  const CONDITIONING_PROMPTS = ${JSON.stringify(CONDITIONING_PROMPTS)};
+  out.conditioning = [];
+  for (const prompt of CONDITIONING_PROMPTS) {
+    const slug = prompt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const groupKey = "conditioning::" + slug;
+    const candidates = [];
+    for (const [modeIndex, mode] of [["v1", "off"], ["v3", "on"]].entries()) {
+      setEmbeddingConditionedOverride(mode[1]);
+      const intent = normalizeIntent({
+        genre: prompt.includes("trap") ? "trap" : prompt.includes("house") ? "house" : "techno",
+        seed: "room-cond-" + slug,
+        candidateCount: 0,
+        symbolicCandidates: 1,
+        text: prompt,
+        roles: ["drums", "bass"],
+      });
+      const plan = planGeneration(intent, baseDoc);
+      const collected = await symbolicPriorProvider.collectCandidates(plan, { project: baseDoc, mode: "apply" }, 0);
+      const pattern = collected.entries[0]?.pattern;
+      setEmbeddingConditionedOverride(null);
+      if (!pattern) continue;
+      const audio = await renderDoc({
+        ...baseDoc,
+        patterns: [pattern],
+        activePatternId: pattern.id,
+      });
+      candidates.push({ index: modeIndex, label: mode[0], audio });
+    }
+    if (candidates.length === 2) out.conditioning.push({ groupKey, prompt, candidates });
+  }
+
+  // ── GROOVE suite — genre-depth grooves as ★-favorite identity checks ──
+  const GROOVE_IDS = ${JSON.stringify(GROOVE_IDS)};
+  out.grooves = [];
+  for (const grooveId of GROOVE_IDS) {
+    const groove = getGrooveById(grooveId);
+    if (!groove) continue;
+    const midBpm = Math.round((groove.bpm[0] + groove.bpm[1]) / 2);
+    const genreTemplate = groove.genre === "house" ? "house" : groove.genre === "techno" ? "techno" : groove.genre === "trap" ? "trap" : groove.genre === "drill" ? "drill" : groove.genre === "phonk" ? "phonk" : "house";
+    const genreDoc = createProjectFromTemplate(genreTemplate);
+    const drumTrack = genreDoc.tracks.find((t) => t.kind === "drum");
+    const midBpmDoc = { ...genreDoc, bpm: midBpm };
+    const candidates = [];
+    for (const [patternIndex, groovePattern] of groove.patterns.slice(0, 2).entries()) {
+      const rowsById = {};
+      for (const [padIndex, row] of Object.entries(groovePattern)) {
+        const pad = drumTrack.pads[Number(padIndex)];
+        if (pad) rowsById[pad.id] = [...row];
+      }
+      const pattern = {
+        id: "room-groove-" + grooveId + "-" + patternIndex,
+        name: groove.name + " " + (patternIndex + 1),
+        trackId: drumTrack.id,
+        stepCount: 16,
+        rows: rowsById,
+        swing: groove.swing,
+        generation: { grooveId },
+      };
+      const audio = await renderDoc({ ...midBpmDoc, patterns: [pattern], activePatternId: pattern.id });
+      candidates.push({
+        index: patternIndex,
+        audio,
+        favorite: {
+          savedAt: Date.now(),
+          seed: "room-groove-" + grooveId + "-" + patternIndex,
+          genre: groove.genre,
+          grooveId,
+          energy: 0.7,
+          density: 0.6,
+          complexity: 0.5,
+          variation: 0.4,
+          padIds: drumTrack.pads.map((p) => p.id),
+          padNames: drumTrack.pads.map((p) => p.name),
+          rows: JSON.parse(JSON.stringify(rowsById)),
+          length: 16,
+          style: grooveId.split(".")[1] ?? null,
+          key: genreDoc.key ?? null,
+          melodic: [],
+        },
+      });
+    }
+    out.grooves.push({ groupKey: "groove::" + grooveId, grooveId, label: groove.name, midBpm, candidates });
+  }
+
   return out;
   })()
   `,
@@ -316,7 +421,7 @@ const roomDir = path.join(ROOT, "listening", "room");
 mkdirSync(path.join(roomDir, "morph"), { recursive: true });
 mkdirSync(path.join(roomDir, "scenes"), { recursive: true });
 mkdirSync(path.join(roomDir, "intent"), { recursive: true });
-const room = { generatedAt: new Date().toISOString(), morph: [], scenes: [], intent: [] };
+const room = { generatedAt: new Date().toISOString(), morph: [], scenes: [], intent: [], conditioning: [], grooves: [] };
 
 for (const entry of packs.presets) {
   const files = {};
@@ -350,6 +455,34 @@ for (const group of packs.intent) {
       const rel = `intent/${groupDir}--c${c.index}.wav`;
       writeFileSync(path.join(roomDir, rel), Buffer.from(c.audio, "base64"));
       return { seed: c.seed, index: c.index, file: rel, favorite: c.favorite };
+    }),
+  });
+}
+mkdirSync(path.join(roomDir, "conditioning"), { recursive: true });
+mkdirSync(path.join(roomDir, "grooves"), { recursive: true });
+for (const group of packs.conditioning ?? []) {
+  const groupDir = group.groupKey.replaceAll("::", "__").replaceAll(":", "_");
+  room.conditioning.push({
+    groupKey: group.groupKey,
+    prompt: group.prompt,
+    candidates: group.candidates.map((c) => {
+      const rel = `conditioning/${groupDir}--${c.label}.wav`;
+      writeFileSync(path.join(roomDir, rel), Buffer.from(c.audio, "base64"));
+      return { index: c.index, label: c.label, file: rel };
+    }),
+  });
+}
+for (const groove of packs.grooves ?? []) {
+  const grooveDir = groove.groupKey.replaceAll("::", "__").replaceAll(":", "_");
+  room.grooves.push({
+    groupKey: groove.groupKey,
+    grooveId: groove.grooveId,
+    label: groove.label,
+    midBpm: groove.midBpm,
+    candidates: groove.candidates.map((c) => {
+      const rel = `grooves/${grooveDir}--p${c.index + 1}.wav`;
+      writeFileSync(path.join(roomDir, rel), Buffer.from(c.audio, "base64"));
+      return { index: c.index, file: rel, favorite: c.favorite };
     }),
   });
 }
