@@ -100,6 +100,18 @@ frame p95 44.88 ms and 22 host-reported overruns (24 including buffering
 events). JAX reported a constant 1.20 GB in-use value and zero reserved/high-
 watermark bytes for every sample, so that API did not provide useful GPU
 memory-stability evidence. The p95/underrun gates still fail.
+Finally, a 5-second protocol smoke against the Windows Documents model tree
+mounted into WSL at `/mnt/c` produced 5.04 seconds of finite PCM with no
+sequence gaps or underruns, RTF 1.50 and frame p95 38.88 ms. This confirms the
+Windows-mounted model path is readable, but the short run does not satisfy
+the 10-minute promotion gate; the CUDA workspace warning remained.
+
+A fresh Windows x64 PyInstaller build from the current host source, using
+Python 3.12 and Magenta RT/JAX 2.0.3 on CPU, completed a one-second capture
+against the fixed Windows model root. It returned exactly 48,000 stereo frames
+of finite PCM with no sequence gaps or underruns. Capture took 19.70 seconds,
+with inference p95 265.71 ms and RTF 0.051. This validates the native Windows
+capture-only fallback; it is not a live-playback tier.
 
 ## Consequences
 
