@@ -1593,6 +1593,106 @@ function organ(): Builder {
   };
 }
 
+/**
+ * Acoustic guitar (quality backlog: the last sound holes) — steel-string
+ * strum: bright pluck with strong 2nd partial, quick body decay, long
+ * shimmer tail, and the string-scrape noise burst on attack. E2 anchor
+ * (guitars live low); the sampler's root/pitch transposes.
+ */
+function acousticGuitar(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 82.41; // E2
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(1, t0);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.05, 0.55);
+    // Bright top, warm body: parallel LPF (body) + full-range (shimmer).
+    const body = ctx.createBiquadFilter();
+    body.type = "lowpass";
+    body.frequency.value = 2400;
+    const shimmer = ctx.createGain();
+    shimmer.gain.value = 0.35;
+    vca.connect(body).connect(dest);
+    vca.connect(shimmer).connect(dest);
+    // Steel-string partials: fundamental + strong 2nd + a touch of 3rd/4th.
+    for (const [ratio, level] of [
+      [1, 0.55],
+      [2, 0.3],
+      [3, 0.1],
+      [4, 0.05],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 2.2);
+    }
+    // String scrape on attack.
+    const scrape = noiseSource(ctx, 11, 0.03, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 3200;
+    bp.Q.value = 0.7;
+    scrape
+      .connect(bp)
+      .connect(env(ctx, t0, 0.2, 0.02))
+      .connect(dest);
+  };
+}
+
+/**
+ * Choir pad (quality backlog: the last sound holes) — the "aah" vocal bed:
+ * formant-filtered detuned saws (two vowel formants stacked = the vocal
+ * cavity), slow breath attack, chorus shimmer. A3 anchor (choir pads sit
+ * mid-low); sustained by design.
+ */
+function choirPad(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 220; // A3
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.9, t0 + 0.9); // breath attack
+    vca.gain.setTargetAtTime(0.0005, t0 + 1.2, 0.7);
+    // Vocal cavity: two formant bandpasses (the "aah" pair).
+    for (const [formant, q, level] of [
+      [700, 5, 0.5],
+      [1080, 6, 0.32],
+    ] as [number, number, number][]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = formant;
+      bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      vca.connect(bp).connect(g).connect(dest);
+    }
+    // Three detuned voices per side of the unison — the choir width.
+    for (const detune of [-7, 0, 6]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 3);
+      // Octave whisper for the head-voice layer.
+      const oct = ctx.createOscillator();
+      oct.type = "triangle";
+      oct.frequency.value = f * 2;
+      oct.detune.value = detune / 2;
+      const og = ctx.createGain();
+      og.gain.value = 0.14;
+      oct.connect(og).connect(vca);
+      oct.start(t0);
+      oct.stop(t0 + 3);
+    }
+  };
+}
+
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
@@ -1773,6 +1873,8 @@ export const BUILDERS: Record<string, Builder> = {
   }),
   "factory.tonal.wurli": wurli(),
   "factory.tonal.organ": organ(),
+  "factory.tonal.acousticguitar": acousticGuitar(),
+  "factory.tonal.choirpad": choirPad(),
 
   // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
   // actually reaches for — memphis guitar, drill strings, rhodes, mariachi
@@ -1861,6 +1963,8 @@ export const DURATIONS: Record<string, number> = {
   "factory.mallet.celesta": 1.9,
   "factory.tonal.wurli": 2.2,
   "factory.tonal.organ": 2.1,
+  "factory.tonal.acousticguitar": 2.4,
+  "factory.tonal.choirpad": 3.1,
   "factory.tonal.memphisguitar": 1.4,
   "factory.tonal.darkstrings": 2.2,
   "factory.tonal.rhodes": 1.8,

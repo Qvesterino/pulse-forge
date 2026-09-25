@@ -530,8 +530,10 @@ export const eqParams: ParamDef[] = [
   {
     id: "highFreq",
     label: "HIGH FREQ",
+    // A7: widened to match highShelfFreq (16k) — the legacy alias capped the
+    // same physical shelf 4k lower than its canonical twin.
     min: 1500,
-    max: 12000,
+    max: 16000,
     default: 6000,
     unit: "Hz",
     format: formatHz,

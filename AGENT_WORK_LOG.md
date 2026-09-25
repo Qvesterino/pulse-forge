@@ -4424,3 +4424,24 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Render overený**: room.json = morph 8, scenes 4, intent 3, **conditioning 4**, **grooves 10**; WAVy v conditioning/ a grooves/.
 - Gotcha: `getGrooveById` musí byť v evaluate imports (prvý beh padol na ReferenceError). Python `
 ` v JS stringu → reálny newline (7. escape pasca!) — Write/Edit tool vždy.
+
+---
+
+## Final closure session (post-campaign quality) — last sound holes + A7/A9/D (2026-09-25)
+
+**Scope:** the user handed the decision over — this session EMPTIES the entire known-issue backlog: the last two sound-coverage holes (acoustic guitar, choir pad) + the formal A7/A9/D closure.
+
+**Delivered:**
+
+1. **A7 FIXED** — EQ legacy `highFreq` widened 12000 → 16000 to match its canonical twin `highShelfFreq` (the fxeq core bandEq even allows 20k). Pure range widening: old values stay legal, no migration.
+2. **`acousticGuitar()` builder** — steel-string strum: triangle partials (strong 2nd), parallel body-LPF + shimmer path, string-scrape noise burst on attack (E2 anchor).
+3. **`choirPad()` builder** — the "aah" vocal bed: three detuned saw voices + octave whisper through TWO stacked formant bandpasses (700/1080 Hz = the vocal cavity), slow breath attack, sustained.
+4. **7 sampler presets** — acoustic guitar ×3 (ambient strum, score ballad, trap dark), choir pad ×4 (trap bed, drill heaven, phonk haunt, ambient breathe).
+5. **A9 + D CLOSED as documented verdicts** — the dB/threshold range families are deliberate per-effect voicing (drive-scaled trims, detector-designed thresholds — unifying would REMOVE choice); instrument LEVEL-vs-GAIN semantics follow each synthesis model; RESO divergence worklet-vs-biquad is documented fallback behavior. No code changes — these were decisions, now written down.
+6. **presets.test sample contract** extended to `acousticguitar|choirpad`.
+
+**Important files changed:** src/effects/definitions.ts (A7), src/sample-library/{factory,manifest}.ts (2 builders + 2 assets), src/presets/factory.ts (7 presets), tests/presets.test.ts, docs/QUALITY-BACKLOG.md (A7/A9/D closed — backlog now fully EMPTY).
+
+**Validation:** targeted 56/56; **browser factory-presets QA 345/345 audible** (the audibility gate the sound waves owed, now current); earlier same-day bench: full build EXIT 0 (DAW 2644/2660), full suite 501 files/5006 tests/0 fail, E2E 07 PASSES (routing bug gone), npm audit 0 vulns.
+
+**BACKLOG STATE: EMPTY.** No known bugs, no open engineering queues from the campaign or the quality waves. The repo is in the best verified state it has ever been.

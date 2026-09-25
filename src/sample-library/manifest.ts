@@ -650,6 +650,22 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     mood: ["warm", "clean"],
   },
   {
+    id: "factory.tonal.acousticguitar",
+    name: "Acoustic Guitar",
+    category: "Tonal",
+    character: "Steel, Strummy",
+    tags: ["guitar", "acoustic", "lofi"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.tonal.choirpad",
+    name: "Choir Pad",
+    category: "Tonal",
+    character: "Aah, Breathing",
+    tags: ["choir", "vocal", "pad"],
+    mood: ["warm", "atmosphere"],
+  },
+  {
     id: "factory.tonal.sitar",
     name: "Sitar",
     category: "Tonal",
