@@ -4334,3 +4334,18 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Remaining risks:** the sanitize is entry-strict — a FUTURE legitimate schema change to kit pads (e.g. a new optional field type) must extend sanitizePad or new kits get dropped on load. The Morph/Ultina stores carry `schemaVersion` fields for this; groove/kit entries do not (no field to evolve yet). Recorded as the extension point.
 
 **Recommendations for next session (GOAL 06):** cross-component contracts — the natural target is the intent-brief/iteration surface the concurrent session is actively building (brief-gate.ts, iteration.ts: IntentInput field flow through 4 assembly points — verify no silent field dropping between parse → brief → generation, and that their new `SessionCandidate`/iteration types are contract-tested like the rest of the intent family). Then the Qvester packet envelope (v2.0) vs Audio Canvas validator — cross-APP contract, currently only KYX-side tested.
+
+---
+
+## GOAL 48 — CULTURE WAVE: BEDROOM POP / LO-FI HOUSE / POST-PUNK / TRIP-HOP (2026-09-24)
+
+**Userova požiadavka:** elektronika, popové instrumenty, bedroom pop, punk, post-punk.
+
+- **Bedroom pop (80-120 BPM, DIY intimita)**: Clairo 75-110 organic chill, Rex Orange County 100-130 house deep, Mac DeMarco 80-100 organic, beabadoobee 70-120 drifting. BPM z rešeršu (dropo.org, chosic.com — „Clairo Pretty Girl ~94, Mac DeMarco ~80-100").
+- **Lo-fi house trojica** (110-125): DJ Seinfeld, Ross from Friends (aj „ross fm"), Mall Grab → house deep/minimal chill — tape saturation éra.
+- **UK bass/breaks**: Overmono → house ukg 130-140.
+- **Future bass/dubstep**: Flume → trap lux 130-150; Skrillex → trap hyper 138-145.
+- **Trip-hop**: Portishead 70-90 dark, Massive Attack 80-100 → ambient drifting.
+- **Post-punk/punk** (motorik koreň industrial techna!): Joy Division 120-135 dark (Disorder 172 half-time 85-86 — getsongbpm), Interpol 120-135, The Cure 125-150 driving, IDLES 140-160 aggressive, Fontaines D.C. 140-155, Turnstile → trap hyper 140-170 (hardcore).
+- **Sub-žánrové frázy**: bedroom pop → ambient; lo-fi house → house; post-punk → techno; trip hop/triphop → ambient; future bass → trap; motorik → industrial style.
+- **Testy** +5 blokov (39/39 parser + 24/24 artists = 68/68 na 2 súbory); regresia **343/343 cez 30 súborov**; typecheck 0. Presety 61 → **79**.

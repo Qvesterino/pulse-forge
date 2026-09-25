@@ -60,6 +60,11 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bneurofunk\b|\bneuro\b/, "dnb"],
   [/\bhard groove\b/, "techno"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
+  [/\bbedroom pop\b/, "ambient"],
+  [/\blo-?fi house\b/, "house"],
+  [/\bpost-?punk\b/, "techno"],
+  [/\btrip hop\b|\btriphop\b/, "ambient"],
+  [/\bfuture bass\b/, "trap"],
   // canonical / generic
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],
@@ -123,6 +128,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bhorror(?:core)?\b|\bhoror\b/, "horror"],
   [/\bglitch(?:y)?\b|\bchybn|\bchybov|\bsekan/, "glitch"],
   [/\borganic\b|\borganick|\bprirodzen|\bzivy/, "organic"],
+  [/\bmotorik\b/, "industrial"],
 ];
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */

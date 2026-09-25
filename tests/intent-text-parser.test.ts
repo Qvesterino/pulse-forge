@@ -376,3 +376,47 @@ describe("genre-depth wave 4 — drill sample/hyper/melodic", () => {
     }
   });
 });
+
+describe("culture wave — bedroom pop / lo-fi house / post-punk / trip-hop", () => {
+  it("genre phrases: bedroom pop / lo-fi house / post-punk / trip hop / future bass", () => {
+    expect(parseIntentText("bedroom pop at 90").input.genre).toBe("ambient");
+    expect(parseIntentText("lo-fi house at 118").input.genre).toBe("house");
+    expect(parseIntentText("post-punk at 135").input.genre).toBe("techno");
+    expect(parseIntentText("trip hop at 85").input.genre).toBe("ambient");
+    expect(parseIntentText("future bass at 145").input.genre).toBe("trap");
+  });
+
+  it("bedroom pop roster: clairo / mac demarco / beabadoobee / rex orange", () => {
+    expect(parseIntentText("clairo type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("clairo type beat").input.bpmRange).toEqual([75, 110]);
+    expect(parseIntentText("mac demarco type beat").input.style).toBe("organic");
+    expect(parseIntentText("beabadoobee type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("rex orange county type beat").input.genre).toBe("house");
+  });
+
+  it("lo-fi house trio: dj seinfeld / ross from friends / mall grab", () => {
+    expect(parseIntentText("dj seinfeld type beat").input.bpmRange).toEqual([110, 125]);
+    expect(parseIntentText("ross fm type beat").input.genre).toBe("house");
+    expect(parseIntentText("mall grab type beat").input.style).toBe("minimal");
+  });
+
+  it("uk bass + future bass + trip-hop heavyweights", () => {
+    expect(parseIntentText("overmono type beat").input.style).toBe("ukg");
+    expect(parseIntentText("flume type beat").input.genre).toBe("trap");
+    expect(parseIntentText("flume type beat").input.style).toBe("lux");
+    expect(parseIntentText("skrillex type beat").input.style).toBe("hyper");
+    expect(parseIntentText("portishead type beat").input.bpmRange).toEqual([70, 90]);
+    expect(parseIntentText("massive attack type beat").input.mood).toBe("dark");
+  });
+
+  it("post-punk roster: joy division / interpol / the cure / idles / fontaines / turnstile", () => {
+    expect(parseIntentText("joy division type beat").input.genre).toBe("techno");
+    expect(parseIntentText("joy division type beat").input.mood).toBe("dark");
+    expect(parseIntentText("interpol type beat").input.style).toBe("industrial");
+    expect(parseIntentText("the cure type beat").input.bpmRange).toEqual([125, 150]);
+    expect(parseIntentText("idles type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("fontaines dc type beat").input.bpmRange).toEqual([140, 155]);
+    expect(parseIntentText("turnstile type beat").input.genre).toBe("trap");
+    expect(parseIntentText("turnstile type beat").input.bpmRange).toEqual([140, 170]);
+  });
+});
