@@ -1,7 +1,7 @@
 /**
- * Timeline recording — arm a track, REC the mic straight into the song.
+ * Timeline recording — arm a track, REC an audio input straight into the song.
  *
- * jsdom has no AudioWorklet or microphone. The UI tests cover the explicit
+ * jsdom has no AudioWorklet or physical audio input. The UI tests cover the explicit
  * unsupported-capability path; recorder persistence is tested separately.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
@@ -9,14 +9,17 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import {
   addRecordedAudioClip,
+  addRecordedAudioClips,
   clipLengthBars,
   compensateRecordingStartBar,
   recordedTakeAlreadyPlaced,
+  resolveRecordedAudioDestinations,
   recordingStartBar,
   secondsPerBar,
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
+import { createDrumTrack } from "../../src/commands/commands";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 import { renderWithContext, mockServices } from "../helpers";
 
@@ -86,6 +89,51 @@ describe("recording placement math", () => {
     expect(recordedTakeAlreadyPlaced(placed, takeBufferId)).toBe(true);
     expect(recordedTakeAlreadyPlaced(doc, takeBufferId)).toBe(false);
   });
+
+  it("places channel-split clips against one buffer as one undoable edit", () => {
+    const base = createDocWithTracks();
+    const doc = createDrumTrack(base).execute(base);
+    const firstTrack = doc.tracks[0].id;
+    const secondTrack = doc.tracks[doc.tracks.length - 1].id;
+    const command = addRecordedAudioClips(
+      doc,
+      [
+        { trackId: firstTrack, sourceChannel: 0 },
+        { trackId: secondTrack, sourceChannel: 1 },
+      ],
+      "recorded-stereo-take",
+      2 + 3 / BAR_TICKS,
+      1,
+      { fadeIn: 0.005 },
+    );
+    const added = command.execute(doc);
+    expect(added.arrangement.audioClips).toHaveLength(2);
+    expect(added.arrangement.audioClips!.map((clip) => clip.sourceChannel).sort()).toEqual([0, 1]);
+    expect(new Set(added.arrangement.audioClips!.map((clip) => clip.bufferId))).toEqual(
+      new Set(["recorded-stereo-take"]),
+    );
+    expect(added.arrangement.audioClips![0].startBar).toBeCloseTo(2 + 3 / BAR_TICKS, 12);
+    expect(command.undo(added).arrangement.audioClips ?? []).toHaveLength(0);
+    expect(command.execute(doc).arrangement.audioClips).toHaveLength(2);
+  });
+
+  it("validates saved channel destinations against the restored buffer and project", () => {
+    const base = createDocWithTracks();
+    const doc = createDrumTrack(base).execute(base);
+    const [primary, secondary] = doc.tracks;
+    const mapping = [
+      { channelIndex: 0, trackId: primary.id, trackName: primary.name },
+      { channelIndex: 1, trackId: "deleted-track", trackName: "Deleted" },
+    ];
+    expect(resolveRecordedAudioDestinations(doc, primary.id, mapping, 2)).toEqual({
+      destinations: [{ trackId: primary.id, sourceChannel: 0 }],
+      unavailableChannels: [],
+      missingTracks: ["Deleted"],
+      usedFallback: false,
+    });
+    expect(resolveRecordedAudioDestinations(doc, primary.id, mapping, 1).unavailableChannels).toEqual([1]);
+    expect(secondary).toBeTruthy();
+  });
 });
 
 describe("arrangement REC wiring", () => {
@@ -115,10 +163,21 @@ describe("arrangement REC wiring", () => {
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("routes the chosen audio-interface input into the vocal recorder", async () => {
+  it("labels the selected source and meter as a general audio input", () => {
+    const doc = createDocWithTracks();
+    renderWithContext(<ArrangementPanel />, { services: mockServices(doc) });
+
+    const inputSelect = screen.getByLabelText("Audio input device") as HTMLSelectElement;
+    expect(inputSelect.value).toBe("");
+    expect(inputSelect.selectedOptions[0]?.textContent).toBe("INPUT: system default");
+    expect(screen.getByRole("meter", { name: "Audio input level" })).toBeTruthy();
+  });
+
+  it("routes the chosen audio-interface input into the audio recorder", async () => {
     const originalDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
     const previousInputId = loadRecordingInputDeviceId();
     let recorderInputId: string | undefined;
+    let recorderMetadata: Record<string, unknown> | undefined;
     const mediaDevices = {
       enumerateDevices: vi.fn(async () => [
         { kind: "audioinput", deviceId: "interface-input-2", label: "Studio Interface · Input 2" },
@@ -129,11 +188,20 @@ describe("arrangement REC wiring", () => {
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
     recorderMock.implementation = class {
       onError: ((message: string) => void) | null = null;
+      captureInfo = {
+        capturedChannels: 2,
+        capturedSampleRate: 48_000,
+        inputTrackChannels: 2,
+        inputTrackSampleRate: 48_000,
+        supportedChannelCount: { min: 1, max: 2 },
+      };
       constructor(options: { inputDeviceId?: string }) {
         recorderInputId = options.inputDeviceId;
       }
       setMonitoring() {}
-      async start() {}
+      async start(getMetadata: () => Record<string, unknown> | null) {
+        recorderMetadata = getMetadata() ?? undefined;
+      }
       async cancel() {}
       async stop() {
         return null;
@@ -146,16 +214,33 @@ describe("arrangement REC wiring", () => {
       (services.engine as any).ensureContext = vi.fn();
       (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
       const view = renderWithContext(<ArrangementPanel />, { services });
-      const micSelect = screen.getByLabelText("Microphone input device");
+      const inputSelect = screen.getByLabelText("Audio input device");
       await screen.findByRole("option", { name: "Studio Interface · Input 2" });
-      fireEvent.change(micSelect, { target: { value: "interface-input-2" } });
+      fireEvent.change(inputSelect, { target: { value: "interface-input-2" } });
       fireEvent.change(screen.getByLabelText("Arm track for recording"), {
         target: { value: doc.tracks[0].id },
+      });
+      const channelDestination = screen.getByLabelText("Captured channel 2 destination") as HTMLSelectElement;
+      expect(channelDestination.options.length).toBeGreaterThan(1);
+      fireEvent.change(channelDestination, {
+        target: { value: doc.tracks.find((track) => track.id !== doc.tracks[0].id)!.id },
       });
       fireEvent.click(screen.getByRole("button", { name: "● REC" }));
       await screen.findByRole("button", { name: /STOP/ });
 
       expect(recorderInputId).toBe("interface-input-2");
+      expect(recorderMetadata?.channelDestinations).toEqual([
+        { channelIndex: 0, trackId: doc.tracks[0].id, trackName: doc.tracks[0].name },
+        {
+          channelIndex: 1,
+          trackId: doc.tracks.find((track) => track.id !== doc.tracks[0].id)!.id,
+          trackName: doc.tracks.find((track) => track.id !== doc.tracks[0].id)!.name,
+        },
+      ]);
+      expect(
+        await screen.findByText(/LAST CAPTURE: 2 ch @ 48 kHz · track 2 ch @ 48 kHz · browser range 1–2 ch/),
+      ).toBeTruthy();
+      expect(screen.getByText(/does not verify physical interface routing/i)).toBeTruthy();
       view.unmount();
     } finally {
       saveRecordingInputDeviceId(previousInputId);
@@ -204,7 +289,7 @@ describe("arrangement REC wiring", () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
-  it("serializes rapid REC clicks while the microphone is opening", async () => {
+  it("serializes rapid REC clicks while the audio input is opening", async () => {
     let unblockStart!: () => void;
     const startGate = new Promise<void>((resolve) => {
       unblockStart = resolve;
@@ -239,7 +324,7 @@ describe("arrangement REC wiring", () => {
         fireEvent.click(recButton);
       });
 
-      const openingButton = await screen.findByRole("button", { name: "◌ MIC…" });
+      const openingButton = await screen.findByRole("button", { name: "◌ INPUT…" });
       expect(openingButton).toBeDisabled();
       await vi.waitFor(() => expect(startCount).toBe(1));
 
@@ -252,7 +337,7 @@ describe("arrangement REC wiring", () => {
     }
   });
 
-  it("does not open the microphone if the arrangement unmounts while REC is loading", async () => {
+  it("does not open the audio input if the arrangement unmounts while REC is loading", async () => {
     const startSpy = vi.fn();
     const cancelSpy = vi.fn();
     recorderMock.implementation = class {

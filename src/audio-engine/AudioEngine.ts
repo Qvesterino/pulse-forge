@@ -37,6 +37,7 @@ import { createTapeNode } from "../audio-worklets/tape-node";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { timeStretch } from "./time-stretch";
+import { connectAudioClipSourceChannel } from "./audioClipChannels";
 import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
 import { renderWarpPreserveAsync } from "../audio-workers/warp-render-client";
 import { MeterRing } from "./MeterRing";
@@ -2739,7 +2740,8 @@ export class AudioEngine {
       gain.gain.setValueAtTime(gain.gain.value, outStart);
       gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
     }
-    source.connect(gain).connect(nodes.input);
+    const sourceSplitter = connectAudioClipSourceChannel(ctx, source, gain, clip.sourceChannel);
+    gain.connect(nodes.input);
 
     // Offset / trim handling
     const { duration, playOffset, contentDur } = audioClipPlayWindow(clip, playBuffer.duration, clipDurSec, timeScale);
@@ -2801,6 +2803,11 @@ export class AudioEngine {
       } catch {
         /* already disconnected */
       }
+      try {
+        sourceSplitter?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
       // One repitch source per segment through a private micro-fade gain, all
       // sharing the clip gain (musical fades still span the whole clip).
       // Interior joints overlap into a 3 ms crossfade (see
@@ -2828,7 +2835,8 @@ export class AudioEngine {
         segSource.buffer = playBuffer;
         segSource.playbackRate.value = seg.rate;
         const segGain = ctx.createGain();
-        segSource.connect(segGain).connect(gain);
+        const segSplitter = connectAudioClipSourceChannel(ctx, segSource, segGain, clip.sourceChannel);
+        segGain.connect(gain);
         const segWhen = when + render.startOffsetSec;
         if (render.fadeInDur > 0.0001) {
           segGain.gain.setValueAtTime(0, segWhen);
@@ -2856,6 +2864,9 @@ export class AudioEngine {
           } catch {}
           try {
             segGain.disconnect();
+          } catch {}
+          try {
+            segSplitter?.disconnect();
           } catch {}
           if (--pending <= 0) {
             try {
@@ -2887,6 +2898,9 @@ export class AudioEngine {
         this.oneShotSources.delete(source);
         try {
           source.disconnect();
+        } catch {}
+        try {
+          sourceSplitter?.disconnect();
         } catch {}
         try {
           gain.disconnect();

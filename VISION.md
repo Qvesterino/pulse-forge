@@ -1,7 +1,7 @@
 # VISION.md
 
 # Pulse Forge
-### A focused production-grade beat and scene-score workstation
+### A production-grade music workstation for creation, recording and sound design
 
 > Create music quickly. Shape it deeply. Connect it to motion.
 
@@ -9,7 +9,7 @@
 
 ## 1. Product Vision
 
-Pulse Forge is a focused music production workstation designed for creating:
+Pulse Forge is a full production DAW designed for creating, recording and finishing:
 
 - production-ready electronic beats,
 - rhythmic loops,
@@ -18,24 +18,18 @@ Pulse Forge is a focused music production workstation designed for creating:
 - adaptive scene accompaniment,
 - stems and synchronized audio assets for the wider Qvester ecosystem.
 
-It is not intended to become a traditional full-scale DAW.
-
-Pulse Forge deliberately avoids the complexity of:
-
-- vocal recording,
-- multitrack studio recording,
-- VST/AU plugin hosting,
-- ASIO/device-driver management,
-- advanced audio warping,
-- spectral restoration,
-- large-scale mixing workflows,
-- external plugin ecosystems.
-
-Instead, Pulse Forge provides a carefully designed closed production environment containing everything necessary to create excellent electronic instrumental music.
+It must support both fast, self-contained electronic production and the
+essential workflows expected of a serious recording studio: recording real
+instruments, arranging and editing audio, mixing, and finishing a complete
+project. The product target includes a browser-first Web edition and a separate
+desktop Studio profile for tested native audio hardware and plug-in workflows.
+Capabilities are not considered shipped until their implementation and support
+matrix prove them; see `docs/adr/0014-full-daw-scope.md` and
+`docs/ROADMAP-FULL-DAW.md`.
 
 The core idea is simple:
 
-> A producer should be able to open Pulse Forge with nothing, create a complete beat using only the built-in instruments, samples and effects, export it, and feel no immediate need to leave the application.
+> A producer should be able to sketch an idea, record real instruments, compose and mix a complete project with built-in tools, and export it without being forced into a cloud workflow or a particular plug-in ecosystem.
 
 At the same time, music created in Pulse Forge should be able to become a temporal and expressive layer inside other Qvester tools.
 
@@ -86,7 +80,8 @@ arrangement
 
 and turning those elements into a finished audio asset.
 
-Pulse Forge fills that gap.
+Pulse Forge fills that gap, while growing into a complete environment for
+recording and producing music from both virtual and physical instruments.
 
 It should become the primary environment for creating instrumental music and rhythmic accompaniment for Qvester projects.
 
@@ -153,11 +148,10 @@ it probably does not belong in the core product.
 
 ---
 
-# 4.2 Closed ecosystem, deep capabilities
+# 4.2 Built-in-first, extensible Studio
 
-Pulse Forge intentionally does not rely on external plugins.
-
-Instead, the application contains a high-quality collection of native:
+The built-in collection must be strong enough for complete projects without
+depending on third-party plug-ins. It contains high-quality native:
 
 - instruments,
 - samplers,
@@ -168,11 +162,11 @@ Instead, the application contains a high-quality collection of native:
 - utilities,
 - mastering tools.
 
-The built-in toolset must be capable enough that external VST support does not feel necessary for the intended workflow.
+Supported third-party plug-ins are an additional choice in KYX Studio, not a
+requirement for opening, editing or exporting projects that do not use them.
+KYX Web remains free of native plug-in dependencies.
 
-This constraint is a feature.
-
-It allows Pulse Forge to remain:
+For projects using only built-in tools, it keeps Pulse Forge:
 
 - deterministic,
 - portable,
@@ -752,7 +746,9 @@ The second system should support editable curves.
 
 # 16. Mixing
 
-The mixer should provide everything necessary for beat production without attempting to become a large studio console.
+The mixer should provide professional track, bus, routing, metering and
+automation workflows without imitating the physical surface of a large-format
+console. Its scope is not limited to beat-production track counts or use cases.
 
 Each channel should support:
 
@@ -890,7 +886,9 @@ The preset system should encourage exploration rather than menu archaeology.
 
 For Pulse Forge, "production-ready" means:
 
-A user can create an instrumental beat entirely inside the application and export an audio result suitable for:
+A user can create, record, edit, mix and export complete music projects inside
+the application, including audio from real instruments, and export results
+suitable for:
 
 - release workflows,
 - video,
@@ -900,11 +898,9 @@ A user can create an instrumental beat entirely inside the application and expor
 - Qvester projects,
 - further mixing or mastering elsewhere.
 
-Production-ready does **not** mean reproducing every capability of a professional recording studio.
-
-The target is narrower and more achievable:
-
-> Excellent electronic instrumental production inside a controlled environment.
+This does not mean copying every feature of every incumbent DAW. It means
+meeting the core professional workflow bar with reliable, measurable behavior,
+and choosing differentiated workflows where KYX can be better.
 
 ---
 
@@ -1148,41 +1144,37 @@ Meters, scopes and animations should operate as observers of the engine rather t
 
 ---
 
-# 29. Non-Goals
+# 29. Boundaries and Non-Goals
 
-Pulse Forge deliberately does not target the following.
+The full-DAW target is governed by ADR 0014. Its existence does not imply that
+every item below or in the roadmap has shipped.
 
-## No VST / AU Hosting
+## No VST2 Target
 
-The native effect and instrument ecosystem is the product.
+The initial third-party plug-in target is VST3 for Studio, with Audio Units
+considered only for a supported macOS host. VST2 is not a target.
 
-## No ASIO Management
+## No Unlicensed Driver or Plug-in Distribution
 
-Pulse Forge is not intended to compete with native recording studios.
+Native device and plug-in support must follow the relevant SDK licenses and
+redistribution terms. Do not bundle or advertise a backend before that review.
 
-## No Vocal Production
+## No Feature-Count Arms Race
 
-VocalForge owns that domain.
-
-## No Large Multitrack Recording
-
-Recording is not the core workflow.
-
-## No Melodyne-Style Editing
-
-Pitch correction and advanced vocal manipulation are outside scope.
-
-## No Massive Audio Warping System
-
-Basic sample timing features may exist, but rebuilding Ableton Warp is not a priority.
+KYX competes on dependable workflows, sound quality and a coherent product;
+it does not copy features without user value or evidence that the system can
+support them well.
 
 ## No Video Editor
 
-Pulse Forge may synchronize with scenes but should not become another visual editor.
+Pulse Forge may export synchronized visual assets, but it should not become a
+general-purpose video editor.
 
-## No Feature-Parity Arms Race With DAWs
+## No Unreviewed Scope Claims
 
-Pulse Forge wins through focus and workflow, not checkbox count.
+Pitch correction, restoration and other specialist workflows require their own
+product decision and quality bar. They are not implied by the recording or
+full-DAW goal.
 
 ---
 

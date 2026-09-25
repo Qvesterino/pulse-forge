@@ -982,6 +982,19 @@
   color: var(--text-dim);
 }
 
+.arr-rec-input-report {
+  display: grid;
+  gap: 3px;
+  max-width: 320px;
+  color: var(--text-dim);
+  font: 9px var(--mono);
+  line-height: 1.4;
+}
+
+.arr-rec-input-report-note {
+  color: var(--text-muted);
+}
+
 .arr-recording-recovery {
   display: grid;
   gap: 6px;

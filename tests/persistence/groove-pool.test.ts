@@ -4,8 +4,8 @@ import { GroovePoolRepository } from "../../src/persistence/GroovePoolRepository
 import { openDb, STORE_GROOVE_POOL, tx } from "../../src/persistence/db";
 
 /**
- * GOAL 08 — GroovePoolRepository had no dedicated suite (raw-cast reads).
- * Pins: round-trip + ordering, garbage-row tolerance, quota rejection
+ * GOAL 08 — GroovePoolRepository had no dedicated suite (rehydrated reads).
+ * Pins: round-trip + ordering, malformed-row rejection, quota rejection
  * surfaced (never swallowed) — the failure contract a future backend must
  * reproduce.
  */
@@ -32,7 +32,7 @@ describe("GroovePoolRepository (GOAL 08 risk coverage)", () => {
     expect((await repo.list()).map((g) => g.id)).toEqual(["new"]);
   });
 
-  it("garbage rows do not throw on list (raw-cast tolerance is the documented contract)", async () => {
+  it("malformed rows are dropped without throwing on list", async () => {
     const db = await openDb();
     await tx(db, STORE_GROOVE_POOL, "readwrite", (store) => {
       store.put({ id: "junk-1", timing: { nope: 1 } });
@@ -40,14 +40,16 @@ describe("GroovePoolRepository (GOAL 08 risk coverage)", () => {
     });
     const list = await new GroovePoolRepository().list();
     expect(Array.isArray(list)).toBe(true);
-    expect(list.map((g) => g.id)).toEqual(expect.arrayContaining(["junk-1", "junk-2"]));
+    expect(list.map((g) => g.id)).not.toContain("junk-1");
+    expect(list.map((g) => g.id)).not.toContain("junk-2");
+    expect(list.map((g) => g.id)).toContain("new");
   });
 
   it("save/remove invalidate the list cache — the next list re-reads the store", async () => {
     const repo = new GroovePoolRepository();
     await repo.save(entry("cache-a", 100));
     await repo.save(entry("cache-b", 200));
-    // The store may also contain junk rows from the tolerance test above —
+    // The store may also contain junk rows from the malformed-row test above —
     // the pin here is cache invalidation: removed rows disappear, saved rows
     // appear, without constructing a new repository.
     expect((await repo.list()).map((g) => g.id)).toContain("cache-a");

@@ -38,7 +38,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -541,6 +541,10 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
     const reverse = raw.reverse === true;
     const loop = raw.loop === true;
+    const sourceChannel =
+      Number.isSafeInteger(raw.sourceChannel) && Number(raw.sourceChannel) >= 0 && Number(raw.sourceChannel) < 32
+        ? Number(raw.sourceChannel)
+        : undefined;
     const stretchMode: "resample" | "stretch" | undefined = raw.stretchMode === "stretch" ? "stretch" : undefined;
     const warpMarkers: Array<{ timeSec: number; tick: number }> | undefined = (() => {
       if (!Array.isArray(raw.warpMarkers)) return undefined;
@@ -573,6 +577,7 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       fadeOut,
       stretchRate,
       reverse,
+      ...(sourceChannel !== undefined ? { sourceChannel } : {}),
       ...(loop ? { loop } : {}),
       ...(stretchMode ? { stretchMode } : {}),
       ...(warpMarkers ? { warpMarkers } : {}),
@@ -2200,8 +2205,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   }
   let migrated = doc;
   if (migrated.schemaVersion === SCHEMA_VERSION) return normalizeProject(migrated);
-  // v3 adds the optional `lineage` family link — older docs simply load
-  // without one (no transform needed); the normalize pass sanitizes it.
+  // v3 adds the optional `lineage` family link; v4 adds optional AudioClip
+  // source-channel routing. Both are backward-compatible and normalized
+  // without rewriting old project content.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
 }

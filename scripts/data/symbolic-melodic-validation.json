@@ -3,15 +3,15 @@
   "featureVersion": "melodic-features.v1",
   "featureCount": 29,
   "mode": "genre-onehot-v1",
-  "augmentedSamples": 2249,
+  "augmentedSamples": 2885,
   "hidden": [
     64,
     32
   ],
   "epochs": 800,
   "samples": 190,
-  "valDegreeAcc": 0.6786,
-  "trainDegreeAcc": 0.7511,
-  "valDurationAcc": 0.5714,
-  "trainDurationAcc": 0.8847
+  "valDegreeAcc": 0.6071,
+  "trainDegreeAcc": 0.7778,
+  "valDurationAcc": 0.5357,
+  "trainDurationAcc": 0.6373
 }

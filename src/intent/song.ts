@@ -11,7 +11,9 @@ import type {
 import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent } from "./plan";
-import { generateLocalResult } from "./pipeline";
+import { generateAsyncResult, generateLocalResult } from "./pipeline";
+import type { RenderCandidateFn } from "./audio-feedback";
+import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreKitToDoc } from "./genre-kit";
@@ -1073,6 +1075,8 @@ export interface SongBuild {
   key: MusicalKey | null;
   sections: SongBuildSection[];
   totalBars: number;
+  /** Number of deterministic alternatives considered for each section. */
+  candidateCount: number;
 }
 
 export interface BuildSongOptions {
@@ -1080,6 +1084,12 @@ export interface BuildSongOptions {
   onProgress?: (done: number, label: string, total: number) => void;
   /** Yield control between sections (UI responsiveness). Default true. */
   yieldBetweenSections?: boolean;
+  /** Deterministic candidate count per section. Defaults to the legacy fast path (one). */
+  candidateCount?: number;
+  /** Optional sample bank enables offline sound checks for ranked section finalists. */
+  bank?: SampleBank;
+  /** Injectable section renderer for sound ranking tests and host-specific renderers. */
+  renderCandidate?: RenderCandidateFn;
   /**
    * Wave 2 — section requests parsed from the sentence ("16-bar intro",
    * "no break", "vinyl break"). Applied to the planned form before
@@ -1102,11 +1112,11 @@ export interface BuildSongOptions {
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /**
- * Generate the whole song from one intent. Each section is generated through
- * the canonical Intent Engine (sync single-candidate path — deterministic and
- * fast; the audition/ranking UX applies to single patterns, not 7-at-once).
- * Sections share the base seed namespace, so the song feels like ONE idea
- * arranged, not seven unrelated beats.
+ * Generate the whole song from one intent. The default remains the sync,
+ * deterministic single-candidate path. Producer surfaces can request a small
+ * ranked bank per section; when a sample bank is provided, finalists are also
+ * rendered offline and scored by the shared audio-feedback pipeline. Sections
+ * share the base seed namespace, so the song feels like ONE idea arranged.
  */
 export async function buildSong(
   doc: ProjectDocument,
@@ -1115,6 +1125,10 @@ export async function buildSong(
 ): Promise<SongBuild> {
   const baseIntent = normalizeIntent(input);
   const form = planSongForm(baseIntent, options.sections, options.length);
+  const requestedCandidates = options.candidateCount ?? 1;
+  const candidateCount = Number.isFinite(requestedCandidates)
+    ? Math.max(1, Math.min(5, Math.floor(requestedCandidates)))
+    : 1;
   const sections: SongBuildSection[] = [];
   let resolvedBpm: number | null = null;
   let key: MusicalKey | null = baseIntent.key ?? doc.key ?? null;
@@ -1146,12 +1160,27 @@ export async function buildSong(
       density: section.densityDelta + vocalAdjust.density,
       complexity: section.complexityDelta,
       variation: baseIntent.variation,
-      candidateCount: 1,
+      candidateCount,
       roles: sectionRoles,
       constraints: baseIntent.constraints,
       controls: baseIntent.controls,
     });
-    const result = generateLocalResult(doc, sectionIntent, "apply");
+    const result =
+      candidateCount > 1
+        ? await generateAsyncResult(doc, sectionIntent, {
+            mode: "apply",
+            includeBank: true,
+            ...(options.bank
+              ? {
+                  sound: {
+                    bank: options.bank,
+                    finalists: Math.min(candidateCount, 2),
+                    ...(options.renderCandidate ? { render: options.renderCandidate } : {}),
+                  },
+                }
+              : {}),
+          })
+        : generateLocalResult(doc, sectionIntent, "apply");
     if (!result.proposal) {
       throw new Error(`section "${section.label}" failed generation: ${result.diagnostics.errors[0] ?? "rejected"}`);
     }
@@ -1196,6 +1225,7 @@ export async function buildSong(
     key,
     sections,
     totalBars: form.totalBars,
+    candidateCount,
   };
 }
 

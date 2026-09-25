@@ -81,6 +81,37 @@ describe("updateAudioClip", () => {
     expect(clip.stretchRate).toBe(1.5);
   });
 
+  it("adds, changes, and clears a mono source-channel route", () => {
+    const base = createDefaultProject();
+    const added = addAudioClip(base, base.tracks[0].id, "recorded-stereo-take", 0, 1, { sourceChannel: 1 }).execute(
+      base,
+    );
+    const clip = added.arrangement.audioClips![0];
+    expect(clip.sourceChannel).toBe(1);
+
+    const changed = updateAudioClip(added, clip.id, { sourceChannel: 0 }).execute(added);
+    expect(changed.arrangement.audioClips![0].sourceChannel).toBe(0);
+    const restoredStereo = updateAudioClip(changed, clip.id, { sourceChannel: null }).execute(changed);
+    expect(restoredStereo.arrangement.audioClips![0].sourceChannel).toBeUndefined();
+  });
+
+  it("sanitizes source-channel routing to safe channel indexes", () => {
+    const base = createDefaultProject();
+    const trackIds = new Set(base.tracks.map((track) => track.id));
+    const trackId = base.tracks[0].id;
+    const clips = sanitizeAudioClips(
+      [
+        { id: "valid", trackId, bufferId: "take", startBar: 0, lengthBars: 1, sourceChannel: 1 },
+        { id: "negative", trackId, bufferId: "take", startBar: 1, lengthBars: 1, sourceChannel: -1 },
+        { id: "high", trackId, bufferId: "take", startBar: 2, lengthBars: 1, sourceChannel: 32 },
+        { id: "string", trackId, bufferId: "take", startBar: 3, lengthBars: 1, sourceChannel: "1" },
+      ],
+      trackIds,
+    )!;
+    expect(clips[0].sourceChannel).toBe(1);
+    expect(clips.slice(1).every((clip) => clip.sourceChannel === undefined)).toBe(true);
+  });
+
   it("loop toggles on/off and rides the addAudioClip patch (texture beds)", () => {
     const { doc, clipId } = docWithClip();
     expect(doc.arrangement.audioClips!.find((c) => c.id === clipId)!.loop).toBeUndefined();

@@ -1,12 +1,12 @@
 # KYX
 
-**A browser-native, fully offline-capable beat, vocal-recording, and scene-score workstation.**
+**A browser-first music production workstation, growing into a complete DAW for composition, instrument recording, mixing and AI-assisted production.**
 
-KYX (internally known as **Pulse Forge**, the repository name) is a production-oriented digital audio workstation that runs entirely in the browser. It is built around six product pillars — **Sound, Rhythm, Composition, Processing, Arrangement, and Export** — and is designed to deliver a finished track without ever leaving the tab.
+KYX (internally known as **Pulse Forge**, the repository name) is a local-first digital audio workstation with two target profiles: KYX Web and KYX Studio. It is built around **Sound, Rhythm, Composition, Recording, Processing, Arrangement, and Export**. The expanded full-DAW target is recorded in ADR 0014; roadmap items below are not claims that those capabilities already ship.
 
-It is intentionally **not** a clone of a traditional DAW: there is no VST/AU hosting, no ASIO driver management, and no simultaneous multi-input studio recording. It does support single-input vocal takes directly on an arrangement track. In exchange, KYX ships a closed, carefully designed production environment containing 15 native instruments, 47 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, an arrangement view, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
+KYX already captures one selected browser audio input to one armed arrangement track as recoverable Float32 PCM. That input can be a guitar or other instrument when an audio interface exposes it to the browser; the current UI and routing remain single-input. Simultaneous multichannel recording, take lanes/comping, native low-latency device I/O and third-party plug-in hosting are not yet shipped. The existing product includes 15 native instruments, 47 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, arrangement, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
 
-The web build also ships as a standalone Windows desktop app (ADR 0010/0011) — the same code, served from a thin Electron shell — with auto-update through GitHub Releases.
+The web build also ships as a standalone Windows desktop app (ADR 0010/0011), currently a thin Electron shell around the same Web Audio application, with auto-update through GitHub Releases. That package is not yet the native-audio KYX Studio target; see [the full-DAW roadmap](docs/ROADMAP-FULL-DAW.md) and [capability audit](docs/DAW-CAPABILITY-AUDIT-2026-09.md).
 
 ---
 
@@ -35,7 +35,7 @@ The web build also ships as a standalone Windows desktop app (ADR 0010/0011) —
 
 KYX is built for a single core idea —
 
-> A producer should be able to open the app with nothing, build a complete beat using only the built-in instruments, samples and effects, export it, and feel no immediate need to leave the application.
+> A producer should be able to sketch quickly, record real instruments, arrange and mix a complete project, then export it without being forced into a cloud workflow or a specific plug-in ecosystem.
 
 Practically, that covers:
 
@@ -43,12 +43,12 @@ Practically, that covers:
 - **Electronic music composition** — instruments, melodic and pad roles, piano-roll editing, scene-based launching, deterministic groove, generative dice/AI assist.
 - **Sound design** — wavetable, granular, FM, Karplus-Strong, additive spectral, sampler with time-stretch and reverse.
 - **Arrangement** — pattern mode vs. song mode, named scenes, per-scene tempo, scene intensity curve, scene automation, markers.
-- **Vocal recording** — record a microphone take onto one armed arrangement track at a time; capture is uncompressed Float32 PCM, staged in IndexedDB, and recoverable after a reload when blocks were committed.
+- **Single-input audio recording (current)** — record one selected microphone, guitar or other audio-interface input onto one armed arrangement track at a time; capture is uncompressed Float32 PCM, staged in IndexedDB, and recoverable after a reload when blocks were committed. Multichannel simultaneous recording and native Studio I/O are roadmap work.
 - **Mixing** — multi-track mixer, send/return buses, master chain (input → soft-clipper → look-ahead limiter → analyser), per-track peak meters, LUFS history, mix-check warnings.
 - **Export** — WAV (16/24/32-bit float), MP3, vertical MP4/WebM for Reels/Shorts/TikTok, per-track stems, grouped Drums/Bass/Music stems, share codes, embed player, **scorepacks** (`.scorepack` ZIPs with master + stems + cue WAVs + manifest).
 - **Visual / interactive scene composition** — scene intensity can drive any effect or instrument parameter through the same mapping lane as macros; the same project file powers both music and a synchronized visual layer.
 
-It explicitly avoids: simultaneous multi-input studio recording, VST/AU plugin hosting, ASIO/device-driver management, advanced external warping, spectral restoration, large-scale mixing workflows, external plugin ecosystems.
+**Current recording and Studio limits (2026-09-25):** the input recorder is single-source; KYX does not yet provide simultaneous multichannel capture, loop-recorded takes/comping, a native low-latency Windows device backend, or a VST3/AU host. These are explicit full-DAW roadmap targets, not current features. See ADR 0014 for scope and licensing gates.
 
 ---
 
@@ -134,13 +134,13 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 - **12 starter templates** — House (4-on-the-floor + sub bass + chords), Techno (two loop variations), Trap (half-time snare + rolling hats + 808 + sparse lead), Ambient (evolving pads), Scene Score (INTRO/BUILD/DROP/BREAK/OUTRO pre-placed on a 24-bar timeline), UK Garage, Jersey Club, Phonk, Drill, Lo-Fi House, Reggaeton, Empty.
 - **Schema-versioned project model** — `schemaVersion: 1`, pure serializable data, JSON round-trip tested, loading auto-normalizes pattern rows.
 - **Autosave** — debounced 800 ms with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`), flush on tab-hide and page close.
-- **IndexedDB stores** — projects, user presets, user sample audio, frozen track buffers, kits, library, groove pool, recording-recovery sessions and Float32 PCM chunks. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and decode back into the sample bank on boot. Vocal recording uses half-second durable blocks; the selected input device is a browser-local preference, not project data.
+- **IndexedDB stores** — projects, user presets, user sample audio, frozen track buffers, kits, library, groove pool, recording-recovery sessions and Float32 PCM chunks. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and decode back into the sample bank on boot. Current single-input recording uses half-second durable blocks; the selected input device is a browser-local preference, not project data.
 - **Command system** — every mutation flows through commands with full undo/redo (`Ctrl+Z` / `Ctrl+Y`). Local undo stack is bounded only by available memory; reload resets it.
 
 ### Sounds
 
-- **71 factory assets** (`src/sample-library/manifest.ts`) — kicks, snares, claps, hats, cymbals/crashes, toms, rims, percussion (cowbell/conga/tambourine/shaker/tick/blip), FX transitions (Riser / Downlifter / Impact / Sweep / Reverse Rise / Noise), tonal samples. Each has a procedurally synthesized fallback in `src/sample-library/factory.ts`; the curated layer (`src/sample-library/curated.ts`) overrides them with curated WAVs in `public/samples/` on a best-effort basis (failing or missing curated files leave the synthesized fallback in place). All assets are tagged by category and mood (dark / bright / warm / aggressive / clean / deep / atmosphere).
-- **325 factory presets** — 319 instrument presets + 6 drum-synth presets in `src/presets/factory.ts`, tagged by genre (House / Techno / Trap / Ambient / Score / UKG / Jersey / Phonk / Drill / Lo-Fi / Reggaeton) and mood, with curated sound-design intent ("Acid Line", "FM Growl", "Cinematic Strings", "Shimmer").
+- **81 factory assets** (`src/sample-library/manifest.ts`) — kicks, snares, claps, hats, cymbals/crashes, toms, rims, percussion, FX transitions and tonal sounds. Each has a procedurally synthesized fallback in `src/sample-library/factory.ts`; the curated layer (`src/sample-library/curated.ts`) overrides 78 assets with WAV seeds in `public/samples/` on a best-effort basis (three mallet assets remain synthesis-only, and missing/corrupt files fall back to synthesis). All assets are tagged by category and mood.
+- **345 factory presets** — 339 instrument presets + 6 drum-synth presets in `src/presets/factory.ts`, tagged by genre and mood, with curated sound-design intent ("Acid Line", "FM Growl", "Cinematic Strings", "Shimmer").
 - **Curated layer** — a higher-quality curated override that renders the same factory ids but with longer, hand-tuned samples; exports wait briefly for the curated sound so "what you hear is what you export", with a synthesized fallback after timeout.
 - **Preset browser** with genre + mood chips, ALL / FAVORITES / RECENT scope, search, hearts, "save as user preset".
 - **Sample browser** — search, category filter, mood filter, click-to-preview, RECENT section, heart toggle, persisted to IndexedDB.
@@ -177,7 +177,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 - **Note Repeat** — hold a pad (mouse, QWERTY key or MIDI note) and the pad re-fires on a grid division (1/4–1/16T) with per-repeat velocity falloff. While the transport plays, repeats lock to the transport tick grid; while stopped they free-run.
 - **Ghost preview** — audition a pattern in isolation without touching the transport.
-- **Arrangement vocal recorder** — records the selected microphone as planar Float32 PCM in bounded AudioWorklet blocks. Each block is acknowledged only after its IndexedDB transaction commits; interrupted takes can be restored to the timeline or sample library. Audio not yet committed when the browser/device fails may be incomplete.
+- **Arrangement audio-input recorder** — records the selected browser audio input (including an instrument input exposed by an interface) as planar Float32 PCM in bounded AudioWorklet blocks. Each block is acknowledged only after its IndexedDB transaction commits; interrupted takes can be restored to the timeline or sample library. Audio not yet committed when the browser/device fails may be incomplete. The current UI records one input/track at a time.
 - **Live resampler** — records the master post-limiter or a track's post-FX tap through `MediaRecorder`; the resulting take is decoded to an `AudioBuffer` for use as a sample. Microphone capture uses the PCM recorder above, not this encoded resampling path.
 - **Latency calibration wizard** — measures audio round-trip and jitter, persists to localStorage; informs downstream scheduling.
 
@@ -303,6 +303,9 @@ The architectural decisions are recorded in `docs/adr/`:
 | 0009 | Offline render and export                        |
 | 0010 | Desktop packaging (Electron shell)               |
 | 0011 | Desktop auto-update (electron-updater)           |
+| 0012 | MRT2 generative tracks                           |
+| 0013 | Windows generative companion                     |
+| 0014 | Full-DAW product scope                           |
 
 ---
 
@@ -520,7 +523,7 @@ The architecture is governed by `ARCHITECTURE.md` and the ADRs in `docs/adr/`. K
 
 - **UI describes intent. Project model stores truth. Transport defines musical time. Scheduler plans audio events. AudioEngine executes them. DSP processes sound.** No layer silently absorbs responsibilities belonging to another.
 - **React must never become the source of truth for realtime audio execution.** Mutations go through commands; commands mutate the project model; the engine projects the model onto the audio graph.
-- **Browser-first, local-first.** All core creative work (sequencing, synthesis, sampling, mixing, automation, playback, editing, rendering, export) must work offline once required assets are present. Cloud services are optional, never mandatory.
+- **Web-first, local-first.** KYX Web keeps core creative work (sequencing, synthesis, sampling, mixing, automation, playback, editing, rendering, export) available offline once required assets are present. KYX Studio may add isolated native audio and plug-in adapters under ADR 0014 and follow-up decisions; cloud services remain optional, never mandatory.
 - **One shared engine for live and offline.** The renderer hands the same `AudioEngine` an `OfflineAudioContext`; only the event driver (realtime lookahead vs deterministic pre-scheduling) differs. Exports sound exactly like the project.
 - **Determinism.** Same seed + intent + project → same content (content hash). Groove, swing, microtiming, ratchets, AI generation, offline render — all deterministic. AI models live behind timeouts + circuit breaker + heuristic fallback so they can never throw into the UI or audio callback.
 - **AudioWorklet for custom realtime DSP, never the main thread.** Worklet modules are loaded per `BaseAudioContext` (live + every offline context); plugins load on demand (`ensureWorkletsForDoc`) so a beat that never touches PRISM doesn't pay for it.
@@ -534,7 +537,7 @@ The architecture is governed by `ARCHITECTURE.md` and the ADRs in `docs/adr/`. K
 
 ## 13. Current project status
 
-The codebase has been actively developed since mid-2026 and is in a working production-ready state for the browser and Windows desktop targets. Specific milestones verified on the latest candidate (`b8c7a00`) per `RELEASE_READINESS_REPORT.md`:
+The existing composition, built-in DSP and export paths have passed substantial historical QA, but that does **not** certify the newly expanded full-DAW scope. The following results were recorded on candidate `b8c7a00` per `RELEASE_READINESS_REPORT.md`; they are historical and do not prove current multitrack capture, native device I/O or hosted plug-ins:
 
 - `npm run typecheck` — PASS (clean `tsc --noEmit`).
 - Full Vitest suite — PASS (239 files / 2351 tests / 103 skipped / 2454 total).
@@ -547,7 +550,7 @@ The codebase has been actively developed since mid-2026 and is in a working prod
 - `npm audit --omit=dev` — 0 vulnerabilities.
 - `npm run ai:performance` — worst p95 3.35 ms vs 250 ms budget.
 
-Owner gates still open (not blocking local development): manual Firefox / Safari / iOS Safari smoke, deployed-host smoke (requires `KYX_DEPLOY_URL`), and the formatting decision (`prettier --check` reports repo-wide deviations; tracked in `docs/FORMAT-CHECK-DEVIATIONS.md`).
+Existing release gates still open: manual Firefox / Safari / iOS Safari smoke, deployed-host smoke (requires `KYX_DEPLOY_URL`), and the formatting decision (`prettier --check` reports repo-wide deviations; tracked in `docs/FORMAT-CHECK-DEVIATIONS.md`). The full-DAW hardware, multitrack and plugin gates are tracked separately in `docs/ROADMAP-FULL-DAW.md`.
 
 ---
 
@@ -614,13 +617,13 @@ A few clear directions visible in those documents, but **not commitments**:
 - **Intent engine expansion** — T3 structure / long form, T4 audio dimension, T5 neural audio synthesis (very long horizon) per `INTENT_ENGINE.md §8`.
 - **Scene Mode as a first-class identity** — wall-clock composition, intensity as the primary editable signal, sample-exact tempo seams (largely landed in 2026-09 per `SCENE-MODE-ROADMAP.md`).
 - **Vocal chops, spectral pads, log drums, FM** — recent instrument additions already shipped; further sound-design work tracked in `INSTRUMENT-ROADMAP.md`.
-- **VST/AU plugin hosting is explicitly out of scope** per `VISION.md §1`.
+- **Full-DAW expansion** — accepted in ADR 0014 and tracked in `docs/ROADMAP-FULL-DAW.md`; this includes real-instrument recording, multitrack/takes, native Studio audio I/O, supported plug-ins and quality-gated AI production. These are not all shipped today.
 
 ---
 
 ## 16. Contributing and development notes
 
-- **No proprietary plugins, no cloud-side processing, no accounts.** Everything runs in the user's browser; the only network calls are optional (freesound search, collab server, gallery feed, auto-update).
+- **Current Web build** does not host third-party native plug-ins or require cloud processing/accounts; optional network calls include Freesound search, collaboration, gallery, auto-update and explicit model/asset downloads. Any future native plug-in support is a Studio capability and must pass compatibility and licensing review.
 - **Strict TypeScript.** `strict`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`, `noUncheckedSideEffectImports`, `verbatimModuleSyntax`, `isolatedModules`. Run `npm run typecheck` before any non-trivial PR.
 - **Prettier.** Format with `npm run format`. The formatting deviation baseline is documented in `docs/FORMAT-CHECK-DEVIATIONS.md`.
 - **Tests.** Vitest (`npm run test`), Playwright (`npm run test:e2e`), and the real-browser verifier (`npm run test:browser`) cover different layers. Vitest alone cannot hear audio — `verify-browser` is the gate that confirms the audio chain works end-to-end in real engines.

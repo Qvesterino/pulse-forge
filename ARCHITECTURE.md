@@ -1,7 +1,8 @@
 # ARCHITECTURE.md
 
 # Pulse Forge
-## Browser-First Hybrid Audio Architecture
+
+## Web-First, Dual-Profile Audio Architecture
 
 ---
 
@@ -9,7 +10,9 @@
 
 This document defines the technical architecture of Pulse Forge.
 
-It exists to protect the project from architectural drift as the application grows from a focused beat workstation into a deeper browser-native music production environment.
+It exists to protect the project as it grows from a focused beat workstation
+into a complete production DAW with a first-class browser edition and a desktop
+Studio runtime.
 
 Pulse Forge must remain:
 
@@ -19,8 +22,7 @@ Pulse Forge must remain:
 - modular,
 - production-oriented,
 - testable,
-- extensible,
-- independent of external plugin ecosystems.
+- extensible through isolated, explicitly supported plug-in ecosystems.
 
 The architecture is designed around a strict principle:
 
@@ -93,21 +95,25 @@ Instead:
 
 # 3. Core Architectural Principles
 
-## 3.1 Browser-First
+## 3.1 Web-First, Dual Runtime Profiles
 
-Pulse Forge is designed to run as a serious browser-native application.
+KYX Web is a serious, first-class browser-native product, not a prototype. It
+preserves local-first creation and works without server-side processing once
+its required assets are available. Browser device capture is capability-driven
+and must report observed channel and latency behavior rather than promise
+native-driver guarantees.
 
-The browser is not treated as a prototype environment.
+KYX Studio is the desktop production profile. It may use native audio-device
+and plug-in backends behind explicit typed platform boundaries; those systems
+must not leak device handles, plug-in objects or realtime buffers into the
+serializable project model or browser runtime. Windows is the initial Studio
+target because it is the currently shipped desktop platform. The Electron
+package today is still a thin Web Audio shell, not a native low-latency host.
 
-Core production must work without:
-
-- native installers,
-- C++ runtimes,
-- system audio drivers,
-- VST hosting,
-- server-side processing.
-
-The architecture may later support desktop packaging, but desktop-specific requirements must not contaminate the core design prematurely.
+Both profiles share project semantics, commands, musical time and offline
+rendering contracts wherever their capabilities permit. Native backends are
+selected through dedicated ADRs and tested support matrices; they are not
+introduced by weakening the browser or offline invariants. See ADR 0014.
 
 ---
 
@@ -435,7 +441,7 @@ transport.stop();
 transport.seek({
   bar: 12,
   beat: 1,
-  tick: 0
+  tick: 0,
 });
 ```
 
@@ -886,7 +892,7 @@ audioEngine.removeTrack(trackId);
 audioEngine.setParameter({
   entityId,
   parameterId,
-  value
+  value,
 });
 ```
 
@@ -1029,10 +1035,7 @@ Conceptual example:
 interface DspProcessor {
   prepare(sampleRate: number): void;
   reset(): void;
-  process(
-    input: Float32Array,
-    output: Float32Array
-  ): void;
+  process(input: Float32Array, output: Float32Array): void;
 }
 ```
 
@@ -1540,7 +1543,7 @@ Example:
 
 ```json id="npvj35"
 {
-  "schemaVersion": 3
+  "schemaVersion": 4
 }
 ```
 
@@ -2307,31 +2310,28 @@ If quality changes for performance reasons, it must be explicit.
 
 ---
 
-# 88. Future Desktop Packaging
+# 88. Desktop Studio Runtime
 
-Desktop packaging may later use:
+Desktop packaging is now a product runtime, not only a convenience wrapper.
+The shipped Windows Electron build currently packages the Web Audio application
+and must not be described as a native pro-audio host. KYX Studio is expected to
+add native audio I/O and, after separate compatibility and licensing gates,
+third-party plug-in hosting.
 
-```text id="hv9yrw"
-PWA
-Tauri
-Electron
-```
-
-The core application must remain browser-compatible.
-
-Desktop packaging should initially add:
-
-- filesystem convenience,
-- native windowing,
-- local asset access.
-
-Not rewrite the audio architecture.
+Native functionality must sit behind narrow adapters with explicit lifecycle,
+device-loss, buffer, format and latency contracts. Shared project state remains
+serializable and backend-neutral, while platform capability and routing state
+must be validated and migrated deliberately. The browser build remains fully
+supported; native requirements must not silently become prerequisites for
+opening, editing or exporting ordinary projects. ADR 0014 establishes this
+direction; ADR 0015 must decide the audio-device backend after a measured spike.
 
 ---
 
-# 89. Future Native Bridge
+# 89. Native Platform Boundary
 
-If a genuine native requirement eventually appears, it should exist behind an adapter.
+Native audio and plug-in requirements must exist behind adapters rather than
+leaking into the shared application model.
 
 Example:
 

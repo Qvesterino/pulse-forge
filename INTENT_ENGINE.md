@@ -314,6 +314,17 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
 - **Overenie**: smoke 10/10 — house classic bass odpočíva po koreni na
   off-and (P(rest|step2,prev=root)=1.00), preferuje osminové noty (P=1.00),
   žánre sa diferencujú. Testy: `tests/symbolic-melodic.test.ts` (7).
+- **QA-2 verdikt (2026-09-24, keep-v1)**: augmentácia mala label-collapse bug
+  (octaveDisplace ±7 v 0..6 degree-priestore → všetko padalo do triedy 7;
+  nahradené modálnou rotáciou) + 72 nových trénovacích skupín syntetizovaných
+  z P3 progresií (`generate-augmented-data.mts`, skupiny `genre#role#synth#index`
+  — leak-guard ich drží train-only, validácia ostáva library-pure). Retrain na
+  fixnutých dátach, rovnaký protokol: v1 0.607/0.536, v2 0.500/0.321 (duration
+  hlava v2 POD majority baseline 0.469) vs shipnuté v1 0.679/0.571. Pri
+  n=28 má 95% CI ±18 p.b. — rozdiely sú šum, artefakty obnovené do shipnutých
+  (validátory zelené). Pravidlo bolo predregistrované: aktivovať v2 len pri
+  gape nad šumom. Skutočný blokér: val má 4 skupiny/28 vzoriek — ďalší QA krok
+  musí zväčšiť library grupy, nie augmentáciu.
 
 ### 5.4 Favorites feedback loop (T2 v2 — učenie z tvojich roliek, HOTOVÉ)
 

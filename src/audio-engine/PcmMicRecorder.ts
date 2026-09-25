@@ -4,6 +4,7 @@ import {
   RECORDING_OWNER_ID,
   RecordingRecoveryRepository,
   type RecordingPcmChunk,
+  type RecordingChannelDestination,
   type RecordingSession,
 } from "../persistence/RecordingRecoveryRepository";
 import type { IRecordingRecoveryRepository } from "../persistence/contracts";
@@ -14,6 +15,7 @@ export interface PcmRecordingMetadata {
   trackId: string;
   trackName: string;
   placeOnTimeline?: boolean;
+  channelDestinations?: RecordingChannelDestination[];
   startBar: number;
   bpm: number;
   recordingInputOffsetMs?: number;
@@ -26,6 +28,35 @@ export interface PcmRecordingMetadata {
 
 export type PcmRecorderState = "idle" | "starting" | "recording" | "stopping";
 
+export interface PcmCaptureInfo {
+  /** Channels and sample rate actually delivered to the PCM capture worklet. */
+  capturedChannels: number;
+  capturedSampleRate: number;
+  /** Browser-reported settings for the selected MediaStreamTrack, when exposed. */
+  inputTrackChannels: number | null;
+  inputTrackSampleRate: number | null;
+  /** Browser-reported track capability range; not a guarantee of hardware routing. */
+  supportedChannelCount: { min: number | null; max: number | null } | null;
+}
+
+function positiveIntegerOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function readSupportedChannelCount(track: MediaStreamTrack): PcmCaptureInfo["supportedChannelCount"] {
+  try {
+    const range = track.getCapabilities?.().channelCount;
+    if (!range) return null;
+    return {
+      min: positiveIntegerOrNull(range.min),
+      max: positiveIntegerOrNull(range.max),
+    };
+  } catch {
+    // Some browsers omit getCapabilities or reject it for an active track.
+    return null;
+  }
+}
+
 const PROCESSOR_NAME = "pulse-forge-pcm-capture";
 // Short durable blocks reduce the amount of a take that can be lost if the
 // browser or device disappears before the next IndexedDB commit.
@@ -34,18 +65,18 @@ const STOP_TIMEOUT_MS = 2_000;
 const READY_TIMEOUT_MS = 8_000;
 // ctx.resume() can stay pending indefinitely (interrupted state on iOS/Safari,
 // dead audio device after sleep); start() must still settle so the UI leaves
-// its "starting" state and the mic claim below is eventually released.
+// its "starting" state and the input claim below is eventually released.
 const RESUME_TIMEOUT_MS = 10_000;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
-// One live microphone capture per tab. ArrangementPanel takes and ExportPanel
-// mic resamples each construct their own recorder instance; without this claim
+// One live audio-input capture per tab. ArrangementPanel takes and ExportPanel
+// resamples each construct their own recorder instance; without this claim
 // both would open parallel getUserMedia streams from the same input and
 // interleave monitoring/capture. Claimed from synchronous start() entry until
 // the instance returns to "idle" (every path that sets idle releases it).
 let activeCapture: PcmMicRecorder | null = null;
 
-/** Audit 14 D2: true while a mic take is live - used by the SW-update banner
+/** Audit 14 D2: true while an input take is live - used by the SW-update banner
  * to avoid a mid-recording reload. */
 export function isMicRecordingActive(): boolean {
   return activeCapture !== null;
@@ -85,7 +116,7 @@ export function clampInputGainDb(value: number): number {
 }
 
 /**
- * Lossless microphone capture for arrangement takes. AudioWorklet emits
+ * Lossless audio-input capture for arrangement takes. AudioWorklet emits
  * transferable planar Float32 blocks; each block is acknowledged only after
  * IndexedDB commits it. MediaRecorder remains available for non-mic bounces.
  */
@@ -117,6 +148,7 @@ export class PcmMicRecorder {
   /** Reused level buffer for getInputLevel. */
   private levelBuf: Float32Array<ArrayBuffer> | null = null;
   private session: RecordingSession | null = null;
+  private captureInfo_: PcmCaptureInfo | null = null;
   private nextChunkSequence = 0;
   private writeTail: Promise<void> = Promise.resolve();
   private persistenceError: string | null = null;
@@ -140,7 +172,7 @@ export class PcmMicRecorder {
     return this.state_;
   }
 
-  /** Enable a dry, direct mic path independently of the silent capture worklet output. */
+  /** Enable a dry, direct input-monitor path independently of the silent capture worklet output. */
   setMonitoring(enabled: boolean): void {
     this.monitoringEnabled = enabled;
     const gain = this.monitorGain?.gain;
@@ -167,8 +199,13 @@ export class PcmMicRecorder {
     return this.inputGainDb;
   }
 
+  /** Exact PCM format plus browser-reported settings for the opened input track. */
+  get captureInfo(): PcmCaptureInfo | null {
+    return this.captureInfo_;
+  }
+
   /**
-   * Latest input peak/RMS (0..1, post-trim) for the UI meter; 0 when no mic
+   * Latest input peak/RMS (0..1, post-trim) for the UI meter; 0 when no input
    * session is wired. Cheap — one getFloatTimeDomainData poll per call.
    */
   getInputLevel(): { peak: number; rms: number } {
@@ -203,7 +240,7 @@ export class PcmMicRecorder {
       );
     }
     if (activeCapture && activeCapture !== this) {
-      throw new Error("The microphone is already in use by another recording — stop that recording first");
+      throw new Error("The audio input is already in use by another recording — stop that recording first");
     }
     activeCapture = this;
     this.startInFlight = true;
@@ -214,11 +251,12 @@ export class PcmMicRecorder {
     this.persistenceError = null;
     this.errorReported = false;
     this.session = null;
+    this.captureInfo_ = null;
     try {
       const { ctx } = this.deps;
       if (ctx.state === "closed") throw new Error("Audio engine is closed — reopen the project and try again");
       if (!ctx.audioWorklet || typeof AudioWorkletNode === "undefined") {
-        throw new Error("Lossless microphone recording needs AudioWorklet support in this browser");
+        throw new Error("Lossless audio-input recording needs AudioWorklet support in this browser");
       }
       if (ctx.state !== "running") {
         await withTimeout(
@@ -237,7 +275,7 @@ export class PcmMicRecorder {
         (typeof navigator !== "undefined"
           ? navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices)
           : undefined);
-      if (!getUserMedia) throw new Error("Microphone capture is not available in this browser");
+      if (!getUserMedia) throw new Error("Audio input capture is not available in this browser");
       try {
         const audio: MediaTrackConstraints = {
           echoCancellation: false,
@@ -251,22 +289,22 @@ export class PcmMicRecorder {
       } catch (error) {
         const name = error instanceof Error ? error.name : "";
         if (name === "NotAllowedError" || name === "SecurityError") {
-          throw new Error("Microphone access denied — allow the mic and try again");
+          throw new Error("Audio input permission denied — allow input access and try again");
         }
         if (name === "NotFoundError" || name === "DevicesNotFoundError") {
           if (this.inputDeviceId) {
-            throw new Error("The selected microphone is unavailable — choose another input or System default");
+            throw new Error("The selected audio input is unavailable — choose another input or System default");
           }
-          throw new Error("No microphone is available");
+          throw new Error("No audio input is available");
         }
         if (name === "OverconstrainedError" && this.inputDeviceId) {
-          throw new Error("The selected microphone is unavailable — choose another input or System default");
+          throw new Error("The selected audio input is unavailable — choose another input or System default");
         }
-        throw new Error(`Could not start microphone capture${error instanceof Error ? `: ${error.message}` : ""}`);
+        throw new Error(`Could not start audio-input capture${error instanceof Error ? `: ${error.message}` : ""}`);
       }
       this.assertStartIsCurrent(token);
       this.track = this.stream.getAudioTracks()[0] ?? null;
-      if (!this.track || this.track.readyState === "ended") throw new Error("The selected microphone is unavailable");
+      if (!this.track || this.track.readyState === "ended") throw new Error("The selected audio input is unavailable");
 
       this.source = ctx.createMediaStreamSource(this.stream);
       this.node = new AudioWorkletNode(ctx, PROCESSOR_NAME, {
@@ -300,11 +338,25 @@ export class PcmMicRecorder {
       const ready = await readyPromise;
       this.assertStartIsCurrent(token);
       if (!Number.isInteger(ready.channels) || ready.channels < 1 || ready.channels > 32) {
-        throw new Error("The microphone reported an unsupported channel layout");
+        throw new Error("The audio input reported an unsupported channel layout");
       }
       if (!Number.isInteger(ready.sampleRate) || ready.sampleRate < 8_000 || ready.sampleRate > 384_000) {
         throw new Error("The audio device reported an unsupported sample rate");
       }
+
+      let trackSettings: MediaTrackSettings = {};
+      try {
+        trackSettings = this.track.getSettings?.() ?? {};
+      } catch {
+        // The worklet's format remains authoritative when track settings are unavailable.
+      }
+      this.captureInfo_ = {
+        capturedChannels: ready.channels,
+        capturedSampleRate: ready.sampleRate,
+        inputTrackChannels: positiveIntegerOrNull(trackSettings.channelCount),
+        inputTrackSampleRate: positiveIntegerOrNull(trackSettings.sampleRate),
+        supportedChannelCount: readSupportedChannelCount(this.track),
+      };
 
       const metadata = getMetadata();
       if (!metadata) throw new Error("The armed track no longer exists");
@@ -334,17 +386,17 @@ export class PcmMicRecorder {
       }
 
       this.onTrackEnded = () =>
-        this.reportError("Microphone disconnected — the captured take is being stopped and kept for recovery");
+        this.reportError("Audio input disconnected — the captured take is being stopped and kept for recovery");
       this.track.addEventListener("ended", this.onTrackEnded);
       this.onTrackMuted = () =>
-        this.reportError("Microphone input was interrupted — the captured take is being stopped and kept for recovery");
+        this.reportError("Audio input was interrupted — the captured take is being stopped and kept for recovery");
       this.track.addEventListener("mute", this.onTrackMuted);
-      if (isTrackEnded(this.track)) throw new Error("The microphone disconnected before recording began");
-      if (this.track.muted) throw new Error("The selected microphone is not delivering audio");
+      if (isTrackEnded(this.track)) throw new Error("The audio input disconnected before recording began");
+      if (this.track.muted) throw new Error("The selected audio input is not delivering audio");
       this.onContextStateChange = () => {
         if (this.state_ !== "recording" || ctx.state === "running") return;
         this.reportError(
-          `Audio context became ${String(ctx.state)} during microphone recording. Recording stopped; previously committed blocks are recoverable, but the final uncommitted buffer may be incomplete.`,
+          `Audio context became ${String(ctx.state)} during input recording. Recording stopped; previously committed blocks are recoverable, but the final uncommitted buffer may be incomplete.`,
         );
       };
       ctx.addEventListener("statechange", this.onContextStateChange);
@@ -414,7 +466,7 @@ export class PcmMicRecorder {
       this.readyReject = reject;
       this.readyTimer = setTimeout(() => {
         this.readyTimer = null;
-        this.readyReject?.(new Error("Microphone produced no audio — check the selected input and try again"));
+        this.readyReject?.(new Error("Audio input produced no signal — check the selected input and try again"));
         this.readyResolve = null;
         this.readyReject = null;
       }, READY_TIMEOUT_MS);

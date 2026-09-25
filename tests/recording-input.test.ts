@@ -63,7 +63,7 @@ describe("recording input selection", () => {
 
     expect(devices).toEqual([
       { deviceId: "interface-1", label: "Studio interface · Input 1" },
-      { deviceId: "interface-2", label: "Microphone 2" },
+      { deviceId: "interface-2", label: "Audio input 2" },
     ]);
   });
 

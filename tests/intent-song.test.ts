@@ -12,6 +12,7 @@ import {
 import { normalizeIntent } from "../src/intent/normalize";
 import { getActivePattern } from "../src/project-model/types";
 import type { Pattern, Scene } from "../src/project-model/types";
+import { SampleBank } from "../src/sample-library/factory";
 
 const INTENT = normalizeIntent({ genre: "house", seed: "song-test", bpmRange: [140, 140] });
 
@@ -114,6 +115,29 @@ describe("song builder", () => {
     expect(first.sections.map((section) => section.pattern.generation?.outputContentHash)).toEqual(
       second.sections.map((section) => section.pattern.generation?.outputContentHash),
     );
+  }, 60_000);
+
+  it("ranks multiple candidates per section and sound-checks the top finalists when a bank is provided", async () => {
+    const rendered: string[] = [];
+    const build = await buildSong(testDoc(), normalizeIntent({ genre: "ambient", seed: "song-ranked" }), {
+      candidateCount: 2,
+      bank: new SampleBank(),
+      renderCandidate: async (_doc, _bank, pattern) => {
+        rendered.push(pattern.id);
+        return new Float32Array(512).fill(0.1);
+      },
+      yieldBetweenSections: false,
+    });
+
+    expect(build.sections).toHaveLength(5);
+    expect(rendered).toHaveLength(build.sections.length * 2);
+    expect(build.sections.every((section) => section.pattern.generation?.outputContentHash)).toBe(true);
+  }, 60_000);
+
+  it("bounds an invalid candidate count to the deterministic fast path", async () => {
+    const build = await buildSong(testDoc(), INTENT, { candidateCount: Number.NaN, yieldBetweenSections: false });
+
+    expect(build.candidateCount).toBe(1);
   }, 60_000);
 });
 

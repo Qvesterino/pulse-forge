@@ -39,6 +39,8 @@ function createRecorder(
   const recovery = new RecordingRecoveryRepository();
   const track = new EventTarget() as MediaStreamTrack;
   Object.defineProperty(track, "readyState", { value: "live" });
+  track.getSettings = vi.fn(() => ({ channelCount: 2, sampleRate: 44_100 }));
+  track.getCapabilities = vi.fn(() => ({ channelCount: { min: 1, max: 2 } }));
   track.stop = vi.fn();
   const stream = {
     getAudioTracks: () => [track],
@@ -192,7 +194,7 @@ describe("PcmMicRecorder", () => {
     const { recorder, metadata, getUserMedia } = createRecorder({ inputDeviceId: "removed-input" });
     getUserMedia.mockRejectedValueOnce(Object.assign(new Error("No device"), { name: "NotFoundError" }));
 
-    await expect(recorder.start(metadata)).rejects.toThrow(/selected microphone is unavailable/i);
+    await expect(recorder.start(metadata)).rejects.toThrow(/selected audio input is unavailable/i);
     expect(recorder.state).toBe("idle");
   });
 
@@ -220,6 +222,13 @@ describe("PcmMicRecorder", () => {
     const { recorder, recovery, metadata, samples, track, source, gains } = createRecorder();
     await recorder.start(metadata);
     expect(recorder.state).toBe("recording");
+    expect(recorder.captureInfo).toEqual({
+      capturedChannels: 1,
+      capturedSampleRate: 48_000,
+      inputTrackChannels: 2,
+      inputTrackSampleRate: 44_100,
+      supportedChannelCount: { min: 1, max: 2 },
+    });
     expect(lastNode?.options).toMatchObject({ processorOptions: { chunkFrames: 24_000 } });
     expect(gains[1].gain.value).toBe(0); // direct monitoring is opt-in
     recorder.setMonitoring(true);
@@ -290,7 +299,7 @@ describe("PcmMicRecorder", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     expect(recorder.state).toBe("idle");
-    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone disconnected/i));
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/audio input disconnected/i));
     await expect(recovery.listRecoverable()).resolves.toMatchObject([{ totalFrames: 2, status: "recoverable" }]);
     expect(track.stop).toHaveBeenCalledOnce();
   });
@@ -329,7 +338,7 @@ describe("PcmMicRecorder", () => {
 
     const take = await recorder.stop();
     expect(take?.session.totalFrames).toBe(2);
-    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/microphone input was interrupted/i));
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/audio input was interrupted/i));
     await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ status: "recoverable", totalFrames: 2 });
     expect(recorder.state).toBe("idle");
     expect(track.stop).toHaveBeenCalledOnce();

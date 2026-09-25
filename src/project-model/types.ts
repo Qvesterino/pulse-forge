@@ -640,6 +640,8 @@ export interface AudioClip {
   id: ID;
   trackId: ID;
   bufferId: string;
+  /** Optional zero-based source channel routed as mono; absent plays the full source layout. */
+  sourceChannel?: number;
   startBar: number;
   lengthBars: number;
   offsetSec: number;

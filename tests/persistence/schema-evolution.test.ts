@@ -122,7 +122,7 @@ describe("schema evolution — store layout (GOAL 05)", () => {
 });
 
 describe("schema evolution — malformed-row tolerance (GOAL 05)", () => {
-  it("raw-cast stores (kits, groove pool) tolerate garbage rows without throwing", async () => {
+  it("kit and groove stores drop malformed rows without throwing", async () => {
     const db = await openDb();
     await tx(db, STORE_USER_KITS, "readwrite", (store) => {
       store.put({ id: "kit-1" });
@@ -133,9 +133,11 @@ describe("schema evolution — malformed-row tolerance (GOAL 05)", () => {
     });
     const kits = await new KitRepository().list();
     expect(Array.isArray(kits)).toBe(true);
-    expect(kits.map((k) => k.id)).toEqual(expect.arrayContaining(["kit-1", "kit-2"]));
+    expect(kits.map((k) => k.id)).not.toContain("kit-1");
+    expect(kits.map((k) => k.id)).not.toContain("kit-2");
     const grooves = await new GroovePoolRepository().list();
     expect(Array.isArray(grooves)).toBe(true);
+    expect(grooves.map((groove) => groove.id)).not.toContain("g-1");
   });
 
   it("presets filter rows that fail the light shape gate", async () => {

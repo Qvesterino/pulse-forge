@@ -53,6 +53,7 @@ import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
+import { reviewSongAudio, type SongAudioReview } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -712,6 +713,7 @@ export function IntentPanel() {
     /** Gated LUFS measured on the audition buffer itself (the free verify). */
     measuredAfter: number | null;
     loudnessApplied: boolean;
+    audioReview: SongAudioReview | null;
   }
   const [songDraft, setSongDraft] = useState<SongDraft | null>(null);
   const [songPlaying, setSongPlaying] = useState(false);
@@ -1080,6 +1082,7 @@ export function IntentPanel() {
         ...(voiceIdea ? { hum: { notes: voiceIdea.notes, loopTicks: voiceIdea.loopTicks, key: voiceIdea.key } } : {}),
         ...(takeProfile?.measured ? { vocalProfile: takeProfile } : {}),
         bank: services.bank,
+        candidateCount: 3,
         onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
       });
       // Preview doc for the audition render only — nothing is applied yet.
@@ -1120,6 +1123,7 @@ export function IntentPanel() {
         measuredBefore: loud.measuredBefore,
         measuredAfter: null,
         loudnessApplied: loud.applied,
+        audioReview: null,
       });
       const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
@@ -1133,6 +1137,8 @@ export function IntentPanel() {
         const buffer = await renderSongAuditionBuffer(services.bank, preview);
         if (songTokenRef.current !== token) return;
         songBufferRef.current = buffer;
+        const audioReview = reviewSongAudio(buffer);
+        setSongDraft((prev) => (prev && prev.result === result ? { ...prev, audioReview } : prev));
         // Free verify: measure what the preview actually plays.
         try {
           const channels: Float32Array[] = [];
@@ -1958,7 +1964,8 @@ export function IntentPanel() {
               <span className="intent-candidate-index">{songDraft.result.build.name}</span>
               <span className="intent-candidate-score">
                 {songDraft.result.build.sections.length} sections · {songDraft.result.build.totalBars} bars
-                {songDraft.lengthNote} · {Math.round(songDraft.result.build.resolvedBpm ?? 120)} BPM
+                {songDraft.lengthNote} · {Math.round(songDraft.result.build.resolvedBpm ?? 120)} BPM ·{" "}
+                {songDraft.result.build.candidateCount} candidates/section
                 {songDraft.loudnessApplied &&
                   (songDraft.measuredAfter != null
                     ? ` · plays ≈${songDraft.measuredAfter} LUFS`
@@ -1984,6 +1991,31 @@ export function IntentPanel() {
               DROP
             </button>
           </div>
+          {songDraft.audioReview && (
+            <div className="intent-song-audio-review" aria-label="Technical audio review">
+              <div className="intent-song-audio-metrics">
+                <strong>RENDER CHECK</strong>
+                <span>Peak {songDraft.audioReview.peakDbfs.toFixed(1)} dBFS</span>
+                <span>RMS {songDraft.audioReview.rmsDbfs.toFixed(1)} dBFS</span>
+                <span>Crest {songDraft.audioReview.crestFactor.toFixed(2)}:1</span>
+                <span title="Low-frequency energy proxy below approximately 200 Hz">
+                  Bass {Math.round(songDraft.audioReview.lowBandRatio * 100)}%
+                </span>
+              </div>
+              {songDraft.audioReview.findings.length > 0 ? (
+                <ul>
+                  {songDraft.audioReview.findings.map((finding) => (
+                    <li key={finding.code} title={finding.evidence}>
+                      {finding.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span>No signal-health flags detected.</span>
+              )}
+              <small>Technical checks only — these metrics do not grade musicality.</small>
+            </div>
+          )}
           <div className="intent-song-sections" aria-label="Song sections">
             {songDraft.result.build.sections.map((section) => {
               const id = section.pattern.id;

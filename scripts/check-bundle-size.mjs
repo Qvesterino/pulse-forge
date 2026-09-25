@@ -45,7 +45,11 @@ const ENTRY_BUDGET_KB = 1070;
 // controls, favorites, stretch editing and Windows companion transport landed.
 // This keeps just 16 KB of headroom; entry, optional runtimes and the landing
 // route remain independently capped below.
-const TOTAL_BUDGET_KB = 2660;
+// 2670 (2026-09-25): audio-input observability reports worklet-captured PCM
+// channels/rate separately from browser track settings and capability ranges.
+// Keep the DAW cap independently enforced while retaining <9 KB of headroom;
+// entry, optional AI runtimes and landing remain under their own limits.
+const TOTAL_BUDGET_KB = 2670;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

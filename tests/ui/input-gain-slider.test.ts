@@ -91,7 +91,7 @@ describe("ArrangementPanel — input-gain wiring (source-grep regression)", () =
   });
 
   it("wires the slider to changeInputGain via onChange", () => {
-    expect(src).toMatch(/aria-label="Microphone input gain"/);
+    expect(src).toMatch(/aria-label="Audio input gain"/);
     expect(src).toMatch(/type="range"/);
     expect(src).toMatch(/min=\{MIN_INPUT_GAIN_DB\}/);
     expect(src).toMatch(/max=\{MAX_INPUT_GAIN_DB\}/);

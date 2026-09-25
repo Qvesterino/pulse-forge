@@ -111,6 +111,8 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.tonal.harp", file: "factory.tonal.harp.wav" },
   { id: "factory.tonal.wurli", file: "factory.tonal.wurli.wav" },
   { id: "factory.tonal.organ", file: "factory.tonal.organ.wav" },
+  { id: "factory.tonal.acousticguitar", file: "factory.tonal.acousticguitar.wav" },
+  { id: "factory.tonal.choirpad", file: "factory.tonal.choirpad.wav" },
   { id: "factory.tonal.sitar", file: "factory.tonal.sitar.wav" },
   { id: "factory.tonal.erhu", file: "factory.tonal.erhu.wav" },
 ];

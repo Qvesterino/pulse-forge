@@ -21,6 +21,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { MELODIC_BY_GENRE } from "../src/ai/grooves/melodic-data";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
+import { PROGRESSIONS_BY_GENRE, expandProgression } from "../src/ai/harmony";
 import {
   PRIOR_FEATURES_VERSION,
   PRIOR_FEATURE_COUNT,
@@ -86,12 +87,17 @@ function substituteDegree(seq: MelodicSeq, rand: () => number): MelodicSeq {
   });
 }
 
-/** Move random notes up or down an octave (±7 degrees for 7-note scales). */
-function octaveDisplace(seq: MelodicSeq, rand: () => number): MelodicSeq {
-  return seq.map((n) => {
-    if (n.degree < 0 || rand() > 0.15) return { ...n };
-    return { ...n, degree: n.degree + (rand() > 0.5 ? 7 : -7) };
-  });
+/**
+ * Modal rotation (QA-2 fix — REPLACES octave displacement): shift all
+ * non-rest degrees by ±1/±2 steps modulo 7. The old octaveDisplace added ±7
+ * to a 0..6 degree space, so every displaced note collapsed into label class
+ * 7 (indistinguishable from plain degree 6) — systematic label noise. The
+ * degree representation has no octave above 6 by construction (melodic.ts
+ * DEGREE_MAX), so rotation is the honest in-range variation: same contour
+ * vocabulary, new harmonic color, labels always exact.
+ */
+function rotateDegrees(seq: MelodicSeq, offset: number): MelodicSeq {
+  return seq.map((n) => (n.degree < 0 ? { ...n } : { ...n, degree: (((n.degree + offset) % 7) + 7) % 7 }));
 }
 
 /** Insert a passing tone between notes that leap more than 2 degrees. */
@@ -132,7 +138,7 @@ interface MelodicSample {
   degree: number;
   duration: number;
   group: string;
-  source: "library" | "augmented";
+  source: "library" | "augmented" | "synth";
 }
 
 function walkSequence(
@@ -192,7 +198,12 @@ function generateAugmentedMelodic(): MelodicSample[] {
             }
             case 1: variant = swapDurations(variant, rand); break;
             case 2: variant = substituteDegree(variant, rand); break;
-            case 3: variant = octaveDisplace(variant, rand); break;
+            case 3: {
+              // Modal rotation ±1/±2 (QA-2: replaces octave displacement).
+              const offsets = [1, -1, 2, -2];
+              variant = rotateDegrees(variant, offsets[Math.floor(rand() * offsets.length)]);
+              break;
+            }
             case 4: variant = insertPassingTones(variant, rand); break;
             case 5: {
               // Fragment recombination with another sequence from same role+genre
@@ -223,7 +234,66 @@ function generateAugmentedMelodic(): MelodicSample[] {
   return samples;
 }
 
+/**
+ * QA-2 progression-synthesized sequences — genuinely NEW harmonic contexts
+ * the hand library lacks (72 groups: 4 genres × 3 roles × 6 progressions).
+ * Deterministic walks over the functional-harmony progressions (P3): bass
+ * plays chord roots in 8ths, chords hold the root per slot, lead arpeggiates
+ * the chord tones in 16ths. Degrees wrap mod 7 (octave-free label space —
+ * labels stay exact, never clamped). No rests by construction (rests come
+ * from the library + variants); velocity is constant (features ignore it).
+ * Group keys `genre#role#synth#index` never collide with library groups, so
+ * the trainer's leak-guard keeps them train-only and validation stays
+ * library-pure.
+ */
+const DEGREE_VOICINGS: Record<string, number[]> = {
+  maj: [0, 2, 4],
+  min: [0, 2, 4],
+  dim: [0, 2, 4],
+  dom7: [0, 2, 4, 6],
+  maj7: [0, 2, 4, 6],
+  min7: [0, 2, 4, 6],
+  sus4: [0, 3, 4],
+  sus2: [0, 1, 4],
+};
+
+function generateProgressionSynth(): MelodicSample[] {
+  const samples: MelodicSample[] = [];
+  const genres = ["house", "techno", "trap", "ambient"];
+  const roles = ["bass", "chord", "lead"];
+  for (const genre of genres) {
+    const progressions = PROGRESSIONS_BY_GENRE[genre] ?? [];
+    for (const role of roles) {
+      for (const [progIndex, progression] of progressions.entries()) {
+        const events = expandProgression(progression, 16);
+        const seq: MelodicSeq = [];
+        let step = 0;
+        for (const event of events) {
+          if (step >= 16) break;
+          const span = Math.min(event.duration, 16 - step);
+          const voicing = DEGREE_VOICINGS[event.quality] ?? [0, 2, 4];
+          if (role === "bass") {
+            for (let s = 0; s + 2 <= span; s += 2) seq.push({ degree: event.degree, duration: 2, velocity: 0.8 });
+          } else if (role === "chord") {
+            seq.push({ degree: event.degree, duration: span, velocity: 0.6 });
+          } else {
+            for (let s = 0; s < span; s++) {
+              seq.push({ degree: (event.degree + voicing[s % voicing.length]) % 7, duration: 1, velocity: 0.7 });
+            }
+          }
+          step += span;
+        }
+        const group = `${genre}#${role}#synth${progIndex}`;
+        samples.push(...walkSequence(seq, genre, role, group, mulberry32(7)));
+      }
+    }
+  }
+  return samples;
+}
+
 const melodicSamples = generateAugmentedMelodic();
+const synthSamples = generateProgressionSynth();
+for (const sample of synthSamples) melodicSamples.push({ ...sample, source: "synth" });
 writeFileSync(
   path.join(OUT_DIR, "augmented-melodic-dataset.json"),
   JSON.stringify({
@@ -236,7 +306,11 @@ writeFileSync(
     data: melodicSamples,
   }),
 );
-console.log(`[augment-melodic] ${melodicSamples.length} samples`);
+console.log(
+  `[augment-melodic] ${melodicSamples.length} samples (${synthSamples.length} progression-synth across ${
+    new Set(synthSamples.map((s) => s.group)).size
+  } groups)`,
+);
 
 // ── DRUM AUGMENTATION ──────────────────────────────────────────────────────
 

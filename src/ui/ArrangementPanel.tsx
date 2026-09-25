@@ -31,6 +31,8 @@ import {
   duplicatePatternForScene,
   duplicateSceneAsVariation,
   fitAudioClipTempo,
+  previewStretchRate,
+  stretchAudioClip,
   stealGrooveIntoPattern,
   moveArrangementClip,
   moveAudioClip,
@@ -68,6 +70,7 @@ import type {
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
+import { audioClipChannelData } from "../audio-engine/audioClipChannels";
 import { warpBufferTimeAtTick } from "../audio-engine/AudioEngine";
 import { nearestOnset } from "../audio-workers/onset-detector";
 import { extractGroove } from "../audio-engine/groove-extract";
@@ -85,15 +88,21 @@ import {
   saveRecordingInputGainDb,
   type RecordingInputDevice,
 } from "../audio-engine/recordingInput";
-import { clampInputGainDb, MAX_INPUT_GAIN_DB, MIN_INPUT_GAIN_DB } from "../audio-engine/PcmMicRecorder";
+import {
+  clampInputGainDb,
+  MAX_INPUT_GAIN_DB,
+  MIN_INPUT_GAIN_DB,
+  type PcmCaptureInfo,
+} from "../audio-engine/PcmMicRecorder";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
 import {
-  addRecordedAudioClip,
+  addRecordedAudioClips,
   clipLengthBars,
   compensateRecordingStartBar,
   recordedTakeAlreadyPlaced,
+  resolveRecordedAudioDestinations,
   recordingStartBar,
 } from "./timelineRec";
 import { useCurrentItemId, usePlayheadBar } from "./playhead";
@@ -115,12 +124,27 @@ const warpOnsetInflight = new Set<string>();
 const WARP_SNAP_SEC = 0.06;
 /** Shared in-flight onset renders so parallel warmers/hooks never double-detect. */
 const warpOnsetPromises = new Map<string, Promise<number[]>>();
+function warpOnsetKey(bufferId: string, sourceChannel?: number): string {
+  return `${bufferId}:channel-${Number.isSafeInteger(sourceChannel) && sourceChannel! >= 0 ? sourceChannel : "all"}`;
+}
 
 function sameRecordingInputDevices(a: RecordingInputDevice[], b: RecordingInputDevice[]): boolean {
   return (
     a.length === b.length &&
     a.every((device, index) => device.deviceId === b[index].deviceId && device.label === b[index].label)
   );
+}
+
+function formatCaptureRate(sampleRate: number): string {
+  return `${Number.isInteger(sampleRate / 1_000) ? sampleRate / 1_000 : (sampleRate / 1_000).toFixed(1)} kHz`;
+}
+
+function formatChannelRange(range: NonNullable<PcmCaptureInfo["supportedChannelCount"]>): string {
+  const { min, max } = range;
+  if (min !== null && max !== null) return min === max ? String(min) : `${min}–${max}`;
+  if (max !== null) return `up to ${max}`;
+  if (min !== null) return `at least ${min}`;
+  return "unspecified";
 }
 
 /** Parse `#rrggbb` (or `#rgb`) into [r, g, b]; null when unparseable. */
@@ -145,28 +169,30 @@ function hexToRgb(hex: string): [number, number, number] | null {
 function getWarpOnsets(
   bank: { get(bufferId: string): AudioBuffer | null | undefined },
   bufferId: string,
+  sourceChannel?: number,
 ): Promise<number[]> | null {
-  const cached = warpOnsetCache.get(bufferId);
+  const key = warpOnsetKey(bufferId, sourceChannel);
+  const cached = warpOnsetCache.get(key);
   if (cached) return Promise.resolve(cached);
-  const inflight = warpOnsetPromises.get(bufferId);
+  const inflight = warpOnsetPromises.get(key);
   if (inflight) return inflight;
   const buf = bank.get(bufferId);
   if (!buf || !(buf.duration > 0) || buf.duration > 600) return null;
-  warpOnsetInflight.add(bufferId);
-  const p = detectTransientsAsync(buf.getChannelData(0), buf.sampleRate).then(
+  warpOnsetInflight.add(key);
+  const p = detectTransientsAsync(audioClipChannelData(buf, sourceChannel), buf.sampleRate).then(
     (times) => {
-      warpOnsetCache.set(bufferId, times);
-      warpOnsetPromises.delete(bufferId);
-      warpOnsetInflight.delete(bufferId);
+      warpOnsetCache.set(key, times);
+      warpOnsetPromises.delete(key);
+      warpOnsetInflight.delete(key);
       return times;
     },
     () => {
-      warpOnsetPromises.delete(bufferId);
-      warpOnsetInflight.delete(bufferId);
+      warpOnsetPromises.delete(key);
+      warpOnsetInflight.delete(key);
       return [];
     },
   );
-  warpOnsetPromises.set(bufferId, p);
+  warpOnsetPromises.set(key, p);
   return p;
 }
 const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
@@ -264,16 +290,18 @@ export function ArrangementPanel() {
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
-  // ── Timeline recording: arm a track, REC the mic straight into the song ──
+  // ── Timeline recording: arm a track, REC an audio input straight into the song ──
   const [armedTrackId, setArmedTrackId] = useState<string>("");
+  const [armedSecondTrackId, setArmedSecondTrackId] = useState<string>("");
   const [recState, setRecState] = useState<"idle" | "starting" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [micMonitoring, setMicMonitoring] = useState(false);
   const [recordingInputDeviceId, setRecordingInputDeviceId] = useState(loadRecordingInputDeviceId);
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
+  const [lastCaptureInfo, setLastCaptureInfo] = useState<PcmCaptureInfo | null>(null);
   const [inputGainDb, setInputGainDb] = useState<number>(() => clampInputGainDb(loadRecordingInputGainDb()));
-  /** Live mic level (peak 0..1) polled from the recorder while wiring exists. */
+  /** Live input level (peak 0..1) polled from the recorder while wiring exists. */
   const [micPeak, setMicPeak] = useState(0);
   /** Peak-hold since the last reset — a clip warning that does not blink. */
   const micClippedRef = useRef(false);
@@ -324,7 +352,7 @@ export function ArrangementPanel() {
     };
   }, []);
 
-  // Mic meter loop: ~15 Hz poll of the recorder's input analyser while a
+  // Input meter loop: ~15 Hz poll of the recorder's input analyser while a
   // session is wired (permission prompt onward). Peak-hold flags clipping
   // until the level is reset or the recorder unwires.
   useEffect(() => {
@@ -457,7 +485,7 @@ export function ArrangementPanel() {
   }, [deleteToast]);
 
   // A recorder left running at unmount (panel switch, project close) would
-  // keep the mic stream and its chunk buffer alive forever.
+  // keep the audio-input stream and its chunk buffer alive forever.
   useEffect(() => {
     recPanelMountedRef.current = true;
     return () => {
@@ -481,12 +509,13 @@ export function ArrangementPanel() {
     const attempt = ++recStartAttemptRef.current;
     setRecState("starting");
     setRecError(null);
+    setLastCaptureInfo(null);
     let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
     try {
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
       if (!ctx) throw new Error("Audio engine is not ready");
-      // Load the PCM capture engine only when the user starts a vocal take.
+      // Load the PCM capture engine only when the user starts an audio take.
       const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
       // The component may have unmounted while the lazy module was loading.
       if (!recPanelMountedRef.current || attempt !== recStartAttemptRef.current) return;
@@ -504,6 +533,10 @@ export function ArrangementPanel() {
         const currentDoc = services.store.doc;
         const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
         if (!track) return null;
+        const secondTrack = armedSecondTrackId
+          ? currentDoc.tracks.find((item) => item.id === armedSecondTrackId)
+          : undefined;
+        if (armedSecondTrackId && !secondTrack) return null;
         const startBar = Math.max(0, recordingStartBar(services.transport.position));
         // Audit 07 D1: capture whether the imminent playPause() will roll a
         // count-in/pre-roll lead-in BEFORE the content — the buffer starts at
@@ -520,6 +553,14 @@ export function ArrangementPanel() {
           projectId: currentDoc.id,
           trackId: track.id,
           trackName: track.name,
+          ...(secondTrack
+            ? {
+                channelDestinations: [
+                  { channelIndex: 0, trackId: track.id, trackName: track.name },
+                  { channelIndex: 1, trackId: secondTrack.id, trackName: secondTrack.name },
+                ],
+              }
+            : {}),
           placeOnTimeline: true,
           startBar,
           bpm: currentDoc.bpm,
@@ -541,6 +582,7 @@ export function ArrangementPanel() {
         return;
       }
       setRecSeconds(0);
+      setLastCaptureInfo(recorder.captureInfo ?? null);
       setRecState("recording");
       void refreshRecordingInputs();
       // Performers record against the backing track — roll the transport.
@@ -596,16 +638,20 @@ export function ArrangementPanel() {
       services.bank.add(bufferId, take.buffer);
       try {
         const currentDoc = services.store.doc;
-        if (
-          currentDoc.id !== take.session.projectId ||
-          !currentDoc.tracks.some((track) => track.id === take.session.trackId)
-        ) {
+        if (currentDoc.id !== take.session.projectId) {
           throw new Error("The original project or armed track is no longer open");
         }
+        const routing = resolveRecordedAudioDestinations(
+          currentDoc,
+          take.session.trackId,
+          take.session.channelDestinations,
+          take.buffer.numberOfChannels,
+        );
+        if (routing.destinations.length === 0) throw new Error("No recorded channel destination still exists");
         services.store.execute(
-          addRecordedAudioClip(
+          addRecordedAudioClips(
             currentDoc,
-            take.session.trackId,
+            routing.destinations,
             bufferId,
             compensateRecordingStartBar(
               take.session.startBar,
@@ -621,6 +667,23 @@ export function ArrangementPanel() {
             },
           ),
         );
+        const routingWarnings = [
+          ...(routing.unavailableChannels.length
+            ? [
+                `Captured channel${routing.unavailableChannels.length > 1 ? "s" : ""} ${routing.unavailableChannels.map((channel) => channel + 1).join(", ")} unavailable; remaining channel audio was placed.`,
+              ]
+            : []),
+          ...(routing.missingTracks.length
+            ? [
+                `Missing destination track${routing.missingTracks.length > 1 ? "s" : ""}: ${routing.missingTracks.join(", ")}; available channels were placed.`,
+              ]
+            : []),
+          ...(routing.usedFallback && take.session.channelDestinations?.length
+            ? ["The saved channel map was unavailable; the complete take was restored on its primary track."]
+            : []),
+        ];
+        if (routingWarnings.length)
+          persistenceWarning = [persistenceWarning, ...routingWarnings].filter(Boolean).join(" ");
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         persistenceWarning = [
@@ -671,28 +734,49 @@ export function ArrangementPanel() {
       services.bank.add(bufferId, take.buffer);
 
       const currentDoc = services.store.doc;
-      const originalTrackExists =
-        session.placeOnTimeline !== false &&
-        currentDoc.id === session.projectId &&
-        currentDoc.tracks.some((track) => track.id === session.trackId);
-      if (originalTrackExists) {
+      const sameProject = session.placeOnTimeline !== false && currentDoc.id === session.projectId;
+      if (sameProject) {
         if (recordedTakeAlreadyPlaced(currentDoc, bufferId)) {
           setRecError(`Recovered ${session.trackName}; its existing timeline clip now has restored audio.`);
           await refreshRecoverableTakes();
           return;
         }
         try {
+          const routing = resolveRecordedAudioDestinations(
+            currentDoc,
+            session.trackId,
+            session.channelDestinations,
+            take.buffer.numberOfChannels,
+          );
+          if (routing.destinations.length === 0) throw new Error("No recorded channel destination still exists");
           services.store.execute(
-            addRecordedAudioClip(
+            addRecordedAudioClips(
               currentDoc,
-              session.trackId,
+              routing.destinations,
               bufferId,
               compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, currentDoc.bpm),
               clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm),
               { fadeIn: 0.005, fadeOut: 0.02, offsetSec: session.leadInSec ?? 0 },
             ),
           );
-          setRecError(`Recovered ${session.trackName} and placed it back on the timeline.`);
+          const warningParts = [
+            ...(routing.unavailableChannels.length
+              ? [
+                  `captured channel${routing.unavailableChannels.length > 1 ? "s" : ""} ${routing.unavailableChannels.map((channel) => channel + 1).join(", ")} unavailable`,
+                ]
+              : []),
+            ...(routing.missingTracks.length
+              ? [
+                  `destination track${routing.missingTracks.length > 1 ? "s" : ""} missing: ${routing.missingTracks.join(", ")}`,
+                ]
+              : []),
+            ...(routing.usedFallback && session.channelDestinations?.length
+              ? ["restored the full take to the primary track"]
+              : []),
+          ];
+          setRecError(
+            `Recovered ${session.trackName} and placed it back on the timeline.${warningParts.length ? ` Routing note: ${warningParts.join("; ")}.` : ""}`,
+          );
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           setRecError(`Take recovered to the sample library, but timeline placement failed: ${detail}`);
@@ -731,9 +815,12 @@ export function ArrangementPanel() {
   }, [recState]);
   const audioDragRef = useRef<{
     clipId: string;
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain";
+    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain" | "stretch";
+    /** Stretch anchor: right edge pins the start, left edge pins the end. */
+    edge: "left" | "right";
     origStart: number;
     origLength: number;
+    origRate: number;
     origTrimStart: number;
     origTrimEnd: number;
     origFadeIn: number;
@@ -743,6 +830,7 @@ export function ArrangementPanel() {
     grabX: number;
     grabY: number;
   } | null>(null);
+  const [audioStretchPreview, setAudioStretchPreview] = useState<{ clipId: string; rate: number } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
   const [audioFadePreview, setAudioFadePreview] = useState<{ clipId: string; fadeIn: number; fadeOut: number } | null>(
     null,
@@ -780,8 +868,11 @@ export function ArrangementPanel() {
   const stretchSourceSec = stretchBuffer?.duration ?? 0;
   const stretchDetectedBpm = useMemo(
     () =>
-      stretchBuffer ? (detectLoopBpm(stretchBuffer.getChannelData(0), stretchBuffer.sampleRate)?.bpm ?? null) : null,
-    [stretchClipId, stretchBuffer],
+      stretchBuffer
+        ? (detectLoopBpm(audioClipChannelData(stretchBuffer, stretchTarget?.sourceChannel), stretchBuffer.sampleRate)
+            ?.bpm ?? null)
+        : null,
+    [stretchClipId, stretchBuffer, stretchTarget?.sourceChannel],
   );
   // Playhead leaves own the 1/8-bar rAF subscription (see ArrPlayheadLine);
   // the panel itself only re-renders when the playhead CROSSES a clip.
@@ -832,10 +923,11 @@ export function ArrangementPanel() {
    * sync fallback otherwise — see `detectTransientsAsync`). Idempotent:
    * cached and in-flight buffers are skipped.
    */
-  const warmWarpOnsets = (bufferId: string): void => {
-    if (warpOnsetCache.has(bufferId) || warpOnsetInflight.has(bufferId)) return;
+  const warmWarpOnsets = (bufferId: string, sourceChannel?: number): void => {
+    const key = warpOnsetKey(bufferId, sourceChannel);
+    if (warpOnsetCache.has(key) || warpOnsetInflight.has(key)) return;
     // Fire-and-forget: the shared promise caches the result for pins and dots.
-    void getWarpOnsets(services.bank, bufferId);
+    void getWarpOnsets(services.bank, bufferId, sourceChannel);
   };
 
   /**
@@ -884,12 +976,12 @@ export function ArrangementPanel() {
     // land on hits instead of between them. First placement warms the
     // detector and stays un-snapped; later placements snap.
     let finalTime = bufTime;
-    const cached = warpOnsetCache.get(clip.bufferId);
+    const cached = warpOnsetCache.get(warpOnsetKey(clip.bufferId, clip.sourceChannel));
     if (cached) {
       const snapped = nearestOnset(bufTime, cached, WARP_SNAP_SEC);
       if (snapped !== null) finalTime = Math.min(contentEnd, Math.max(contentStart, snapped));
     } else {
-      warmWarpOnsets(clip.bufferId);
+      warmWarpOnsets(clip.bufferId, clip.sourceChannel);
     }
     const markers = [
       ...(clip.warpMarkers ?? []),
@@ -910,9 +1002,9 @@ export function ArrangementPanel() {
   // Warm transient detection for every audio clip's buffer (magnet for
   // future pins). Keyed by buffer set — a project edit re-runs it, a
   // re-render does not.
-  const warpBufferIds = audioClips.map((c) => c.bufferId).join(",");
+  const warpBufferIds = audioClips.map((c) => warpOnsetKey(c.bufferId, c.sourceChannel)).join(",");
   useEffect(() => {
-    for (const c of audioClips) warmWarpOnsets(c.bufferId);
+    for (const c of audioClips) warmWarpOnsets(c.bufferId, c.sourceChannel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warpBufferIds]);
 
@@ -1167,7 +1259,8 @@ export function ArrangementPanel() {
   const beginAudioDrag = (
     event: React.PointerEvent,
     clipId: string,
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain",
+    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain" | "stretch",
+    edge: "left" | "right" = "right",
   ) => {
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -1179,8 +1272,10 @@ export function ArrangementPanel() {
     audioDragRef.current = {
       clipId,
       mode,
+      edge,
       origStart: clip.startBar,
       origLength: clip.lengthBars,
+      origRate: clip.stretchRate ?? 1,
       origTrimStart: clip.trimStart ?? 0,
       origTrimEnd: clip.trimEnd ?? 0,
       origFadeIn: clip.fadeIn ?? 0,
@@ -1208,6 +1303,14 @@ export function ArrangementPanel() {
       const newStart = Math.max(0, cur.origStart + delta);
       const newLen = Math.max(0.25, cur.origLength - delta);
       setAudioDrag({ startBar: newStart, lengthBars: newLen });
+    } else if (cur.mode === "stretch") {
+      // Alt+drag: length follows the pointer like resize/trim, the rate
+      // follows the length ratio (previewStretchRate) — the content keeps
+      // filling the clip. Right edge pins the start, left edge pins the end.
+      const newLen = Math.max(0.25, cur.edge === "right" ? cur.origLength + delta : cur.origLength - delta);
+      const newStart = cur.edge === "right" ? cur.origStart : Math.max(0, cur.origStart + delta);
+      setAudioDrag({ startBar: newStart, lengthBars: newLen });
+      setAudioStretchPreview({ clipId: cur.clipId, rate: previewStretchRate(cur.origRate, cur.origLength, newLen) });
     } else if (cur.mode === "fadeIn") {
       const deltaSec = delta * secPerBar;
       const clipSec = cur.origLength * secPerBar;
@@ -1231,16 +1334,22 @@ export function ArrangementPanel() {
     const final = audioDrag;
     const fadePrev = audioFadePreview;
     const gainPrev = audioGainPreview;
+    const stretchPrev = audioStretchPreview;
     audioDragRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
+    setAudioStretchPreview(null);
     if (!cur) return;
     if (cur.mode === "move" && final && final.startBar !== cur.origStart)
       execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
     else if (cur.mode === "resize" && final && final.lengthBars !== cur.origLength)
       execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
-    else if (cur.mode === "trimStart" && final) {
+    else if (cur.mode === "stretch" && final && stretchPrev && stretchPrev.clipId === cur.clipId) {
+      const rateChanged = Math.abs(stretchPrev.rate - cur.origRate) > 0.005;
+      if (final.lengthBars !== cur.origLength || rateChanged)
+        execute(stretchAudioClip(services.store.doc, cur.clipId, final.lengthBars, stretchPrev.rate));
+    } else if (cur.mode === "trimStart" && final) {
       const deltaSec = ((final.startBar - cur.origStart) * BAR_TICKS * 60) / (doc.bpm * PPQ);
       if (Math.abs(deltaSec) > 0.001)
         execute(
@@ -1270,6 +1379,7 @@ export function ArrangementPanel() {
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
+    setAudioStretchPreview(null);
   };
   const [bouncingZone, setBouncingZone] = useState(false);
   const bounceZoneToClip = async () => {
@@ -1488,10 +1598,14 @@ export function ArrangementPanel() {
             <select
               className="arr-arm-select"
               aria-label="Arm track for recording"
-              title="Arm a track — recorded mic takes land here as audio clips"
+              title="Arm a track — recorded audio-input takes land here as audio clips"
               value={armedTrackId}
               disabled={recState !== "idle"}
-              onChange={(event) => setArmedTrackId(event.target.value)}
+              onChange={(event) => {
+                const trackId = event.target.value;
+                setArmedTrackId(trackId);
+                if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
+              }}
             >
               <option value="">ARM: pick track…</option>
               {tracks.map((track) => (
@@ -1502,20 +1616,38 @@ export function ArrangementPanel() {
             </select>
             <select
               className="arr-arm-select"
-              aria-label="Microphone input device"
-              title="Choose the microphone or audio-interface input for recording. Names may be hidden until mic permission is granted."
+              aria-label="Captured channel 2 destination"
+              title="Optionally place browser-captured channel 2 on another track. This is the capture stream channel order, not a verified physical interface connector mapping."
+              value={armedSecondTrackId}
+              disabled={recState !== "idle"}
+              onChange={(event) => setArmedSecondTrackId(event.target.value)}
+            >
+              <option value="">CH 2: keep stereo</option>
+              {tracks
+                .filter((track) => track.id !== armedTrackId)
+                .map((track) => (
+                  <option key={track.id} value={track.id}>
+                    CH 2 → {track.name}
+                  </option>
+                ))}
+            </select>
+            <select
+              className="arr-arm-select"
+              aria-label="Audio input device"
+              title="Choose a microphone or audio-interface input for recording. Device names may be hidden until input permission is granted."
               value={recordingInputDeviceId}
               disabled={recState !== "idle"}
               onChange={(event) => {
                 const deviceId = event.target.value;
                 setRecordingInputDeviceId(deviceId);
+                setLastCaptureInfo(null);
                 saveRecordingInputDeviceId(deviceId);
               }}
             >
-              <option value="">MIC: system default</option>
+              <option value="">INPUT: system default</option>
               {recordingInputDeviceId &&
                 !recordingInputDevices.some((device) => device.deviceId === recordingInputDeviceId) && (
-                  <option value={recordingInputDeviceId}>Saved microphone (not listed)</option>
+                  <option value={recordingInputDeviceId}>Saved audio input (not listed)</option>
                 )}
               {recordingInputDevices.map((device) => (
                 <option key={device.deviceId} value={device.deviceId}>
@@ -1527,7 +1659,7 @@ export function ArrangementPanel() {
               type="button"
               className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
               aria-pressed={micMonitoring}
-              title="Dry direct mic monitoring. Headphones recommended; speakers can cause feedback."
+              title="Dry direct input monitoring. Headphones recommended; speakers can cause feedback."
               onClick={() => {
                 const next = !micMonitoring;
                 setMicMonitoring(next);
@@ -1536,7 +1668,7 @@ export function ArrangementPanel() {
             >
               {micMonitoring ? "DRY MON ON" : "DRY MON OFF"}
             </button>
-            <label className="arr-arm-gain" aria-label="Microphone input gain">
+            <label className="arr-arm-gain" aria-label="Audio input gain">
               <span
                 className="arr-arm-gain-value"
                 title="Pre-capture input trim (applies to the saved take and monitoring)"
@@ -1551,8 +1683,8 @@ export function ArrangementPanel() {
                 step={0.5}
                 value={inputGainDb}
                 disabled={recState !== "idle"}
-                aria-label="Microphone input gain"
-                title="Trim the mic BEFORE capture: raise until peaks read high but never red; lower if the clip warning shows"
+                aria-label="Audio input gain"
+                title="Trim the input before capture: raise until peaks are healthy but never clipped; lower if the clip warning shows"
                 onChange={(event) => changeInputGain(Number(event.target.value))}
               />
             </label>
@@ -1562,7 +1694,7 @@ export function ArrangementPanel() {
               aria-valuemin={0}
               aria-valuemax={1}
               aria-valuenow={Number(micPeak.toFixed(2))}
-              aria-label="Microphone input level"
+              aria-label="Audio input level"
             >
               <div className="arr-mic-meter-fill" style={{ width: `${Math.min(100, micPeak * 100)}%` }} />
               {micClipped && (
@@ -1577,6 +1709,29 @@ export function ArrangementPanel() {
                 </button>
               )}
             </div>
+            {lastCaptureInfo && (
+              <span
+                className="arr-rec-input-report"
+                role="status"
+                aria-label="Observed audio input capture format"
+                title="Web Audio reports the live stream and PCM capture format. Browser channel limits and mapping may differ from the physical interface."
+              >
+                LAST CAPTURE: {lastCaptureInfo.capturedChannels} ch @{" "}
+                {formatCaptureRate(lastCaptureInfo.capturedSampleRate)}
+                {lastCaptureInfo.inputTrackChannels !== null &&
+                  ` · track ${lastCaptureInfo.inputTrackChannels} ch${
+                    lastCaptureInfo.inputTrackSampleRate !== null
+                      ? ` @ ${formatCaptureRate(lastCaptureInfo.inputTrackSampleRate)}`
+                      : ""
+                  }`}
+                {lastCaptureInfo.supportedChannelCount
+                  ? ` · browser range ${formatChannelRange(lastCaptureInfo.supportedChannelCount)} ch`
+                  : " · browser channel range unavailable"}
+                <span className="arr-rec-input-report-note">
+                  Browser capture may limit or remap channels; this does not verify physical interface routing.
+                </span>
+              </span>
+            )}
             {recState === "recording" ? (
               <button type="button" className="btn btn-small btn-rec btn-rec-stop" onClick={() => void stopRec()}>
                 ■ STOP {recSeconds.toFixed(0)}s
@@ -1585,18 +1740,18 @@ export function ArrangementPanel() {
               <button
                 type="button"
                 className="btn btn-small btn-rec"
-                title="Record the mic straight onto the armed track at the playhead (rolls the transport)"
+                title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
                 disabled={!armedTrackId || recState !== "idle"}
                 onClick={() => void startRec()}
               >
-                {recState === "starting" ? "◌ MIC…" : "● REC"}
+                {recState === "starting" ? "◌ INPUT…" : "● REC"}
               </button>
             )}
-            {recState === "starting" && <span className="arr-rec-saving">opening microphone…</span>}
+            {recState === "starting" && <span className="arr-rec-saving">opening audio input…</span>}
             {recState === "saving" && <span className="arr-rec-saving">placing clip…</span>}
             {recordingInputListError && (
               <span className="arr-rec-saving" role="status" aria-live="polite">
-                mic list unavailable; system default remains usable
+                audio input list unavailable; system default remains usable
               </span>
             )}
             {recError && (
@@ -1761,8 +1916,8 @@ export function ArrangementPanel() {
         </div>
 
         {recoverableTakes.length > 0 && (
-          <section className="arr-recording-recovery" aria-label="Recoverable vocal recordings">
-            <strong>RECOVERABLE VOCAL TAKES</strong>
+          <section className="arr-recording-recovery" aria-label="Recoverable audio recordings">
+            <strong>RECOVERABLE AUDIO TAKES</strong>
             {recoverableTakes.map((session) => {
               const canPlaceOnTimeline =
                 session.placeOnTimeline !== false &&
@@ -2290,6 +2445,9 @@ export function ArrangementPanel() {
               const selected = selectedAudioClipId === clip.id;
               const isCurrent = clip.id === currentClipId;
               const track = tracks.find((t) => t.id === clip.trackId);
+              // Alt+drag stretch preview: badge + tooltip show the live rate.
+              const effRate =
+                audioStretchPreview?.clipId === clip.id ? audioStretchPreview.rate : (clip.stretchRate ?? 1);
               const buffer = services.bank.get(clip.bufferId);
               const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
               const effFadeOut = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeOut : (clip.fadeOut ?? 0);
@@ -2299,13 +2457,13 @@ export function ArrangementPanel() {
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${clip.stretchRate.toFixed(2)} ` : clip.stretchRate !== 1 ? `×${clip.stretchRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain, Alt+edge stretches`}
                   onPointerDown={(event) => {
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     const x = event.clientX - rect.left;
                     const w = rect.width;
-                    if (x < 8) beginAudioDrag(event, clip.id, "trimStart");
-                    else if (x > w - 8) beginAudioDrag(event, clip.id, "resize");
+                    if (x < 8) beginAudioDrag(event, clip.id, event.altKey ? "stretch" : "trimStart", "left");
+                    else if (x > w - 8) beginAudioDrag(event, clip.id, event.altKey ? "stretch" : "resize", "right");
                     else beginAudioDrag(event, clip.id, "move");
                   }}
                   onPointerMove={onAudioPointerMove}
@@ -2340,6 +2498,7 @@ export function ArrangementPanel() {
                   <AudioClipWaveform
                     buffer={buffer ?? null}
                     bufferId={clip.bufferId}
+                    sourceChannel={clip.sourceChannel}
                     reverse={clip.reverse}
                     showOnsets={selected || (clip.warpMarkers?.length ?? 0) > 0}
                   />
@@ -2361,16 +2520,19 @@ export function ArrangementPanel() {
                       }
                     }}
                   />
-                  <span className="arr-audio-clip-label">{track?.name ?? clip.bufferId.slice(0, 8)}</span>
+                  <span className="arr-audio-clip-label">
+                    {clip.sourceChannel !== undefined ? `CH ${clip.sourceChannel + 1} · ` : ""}
+                    {track?.name ?? clip.bufferId.slice(0, 8)}
+                  </span>
                   <span
                     className="arr-audio-clip-handle left"
-                    title="Trim start"
-                    onPointerDown={(e) => beginAudioDrag(e, clip.id, "trimStart")}
+                    title="Trim start (Alt = stretch, pins the end)"
+                    onPointerDown={(e) => beginAudioDrag(e, clip.id, e.altKey ? "stretch" : "trimStart", "left")}
                   />
                   <span
                     className="arr-audio-clip-handle right"
-                    title="Resize / trim end"
-                    onPointerDown={(e) => beginAudioDrag(e, clip.id, "resize")}
+                    title="Resize / trim end (Alt = stretch, pins the start)"
+                    onPointerDown={(e) => beginAudioDrag(e, clip.id, e.altKey ? "stretch" : "resize", "right")}
                   />
                   <span
                     className="arr-audio-clip-handle-fade left"
@@ -2527,6 +2689,41 @@ export function ArrangementPanel() {
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="context-menu-header">AUDIO CLIP</div>
+            {(() => {
+              const clip = audioClips.find((item) => item.id === audioMenu.clipId);
+              const buffer = clip ? services.bank.get(clip.bufferId) : null;
+              if (!clip || !buffer || buffer.numberOfChannels < 2) return null;
+              return (
+                <div role="group" aria-label="Audio clip channel routing">
+                  <div className="context-menu-header">SOURCE CHANNEL</div>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={clip.sourceChannel === undefined}
+                    onClick={() => {
+                      execute(updateAudioClip(services.store.doc, clip.id, { sourceChannel: null }));
+                      setAudioMenu(null);
+                    }}
+                  >
+                    All source channels (stereo)
+                  </button>
+                  {Array.from({ length: buffer.numberOfChannels }, (_, channel) => (
+                    <button
+                      key={channel}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={clip.sourceChannel === channel}
+                      onClick={() => {
+                        execute(updateAudioClip(services.store.doc, clip.id, { sourceChannel: channel }));
+                        setAudioMenu(null);
+                      }}
+                    >
+                      Captured channel {channel + 1} (mono)
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <button
               type="button"
               role="menuitem"
@@ -2613,7 +2810,7 @@ export function ArrangementPanel() {
                 const buf = c ? services.bank.get(c.bufferId) : null;
                 if (c && buf) {
                   let max = 0;
-                  const ch = buf.getChannelData(0);
+                  const ch = audioClipChannelData(buf, c.sourceChannel);
                   for (let i = 0; i < ch.length; i++) max = Math.max(max, Math.abs(ch[i]));
                   const gain = max > 0.001 ? Math.min(2, 0.99 / max) : 1;
                   execute(updateAudioClip(services.store.doc, c.id, { gain }));
@@ -2629,7 +2826,9 @@ export function ArrangementPanel() {
               onClick={() => {
                 const c = audioClips.find((x) => x.id === audioMenu.clipId);
                 const buf = c ? services.bank.get(c.bufferId) : null;
-                const detected = buf ? detectLoopBpm(buf.getChannelData(0), buf.sampleRate) : null;
+                const detected = buf
+                  ? detectLoopBpm(audioClipChannelData(buf, c?.sourceChannel), buf.sampleRate)
+                  : null;
                 if (c && detected) {
                   try {
                     execute(fitAudioClipTempo(services.store.doc, c.id, detected.bpm));
@@ -2659,8 +2858,9 @@ export function ArrangementPanel() {
                 }
                 // The groove lives in the loop's OWN tempo — use the detected
                 // one (falling back to the project tempo for steady loops).
-                const bpm = detectLoopBpm(buf.getChannelData(0), buf.sampleRate)?.bpm ?? doc.bpm;
-                const map = extractGroove(buf.getChannelData(0), buf.sampleRate, bpm, pattern.stepCount);
+                const channelData = audioClipChannelData(buf, c.sourceChannel);
+                const bpm = detectLoopBpm(channelData, buf.sampleRate)?.bpm ?? doc.bpm;
+                const map = extractGroove(channelData, buf.sampleRate, bpm, pattern.stepCount);
                 if (!map) {
                   setActionError("No groove found — need a rhythmic loop");
                   setAudioMenu(null);
@@ -2698,7 +2898,7 @@ export function ArrangementPanel() {
                   setAudioMenu(null);
                   return;
                 }
-                const analysis = analyzeLoopForFlip(buf.getChannelData(0), buf.sampleRate);
+                const analysis = analyzeLoopForFlip(audioClipChannelData(buf, c.sourceChannel), buf.sampleRate);
                 if (!analysis) {
                   setActionError("Could not analyse the loop — no steady groove found");
                   setAudioMenu(null);
@@ -2769,7 +2969,7 @@ export function ArrangementPanel() {
                 // cannot freeze the arrangement/timeline interaction.
                 try {
                   const times = await detectTransientsAsync(
-                    buf.getChannelData(0),
+                    audioClipChannelData(buf, c.sourceChannel),
                     buf.sampleRate,
                     1,
                     controller.signal,
@@ -2780,6 +2980,7 @@ export function ArrangementPanel() {
                   if (
                     !currentClip ||
                     currentClip.bufferId !== c.bufferId ||
+                    currentClip.sourceChannel !== c.sourceChannel ||
                     services.bank.get(currentClip.bufferId) !== buf
                   )
                     return;
@@ -2850,7 +3051,7 @@ export function ArrangementPanel() {
                   setAudioMenu(null);
                   return;
                 }
-                const data = buf.getChannelData(0);
+                const data = audioClipChannelData(buf, c.sourceChannel);
                 const win = 1024,
                   hop = 256,
                   thresh = 0.015;
@@ -3020,21 +3221,22 @@ export function ArrangementPanel() {
  * warp-onset cache (warmed by the arrangement effect); every hook awaiting
  * the same buffer shares one detection promise.
  */
-function useOnsetDots(bufferId: string, enabled: boolean): number[] | null {
+function useOnsetDots(bufferId: string, sourceChannel: number | undefined, enabled: boolean): number[] | null {
   const services = useServices();
-  const [times, setTimes] = useState<number[] | null>(() => warpOnsetCache.get(bufferId) ?? null);
+  const key = warpOnsetKey(bufferId, sourceChannel);
+  const [times, setTimes] = useState<number[] | null>(() => warpOnsetCache.get(key) ?? null);
   useEffect(() => {
     if (!enabled) {
       setTimes(null);
       return;
     }
-    const cached = warpOnsetCache.get(bufferId);
+    const cached = warpOnsetCache.get(key);
     if (cached) {
       setTimes(cached);
       return;
     }
     let live = true;
-    const p = getWarpOnsets(services.bank, bufferId);
+    const p = getWarpOnsets(services.bank, bufferId, sourceChannel);
     if (!p) {
       setTimes(null);
       return;
@@ -3046,23 +3248,25 @@ function useOnsetDots(bufferId: string, enabled: boolean): number[] | null {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bufferId, enabled]);
+  }, [bufferId, sourceChannel, enabled]);
   return times;
 }
 
 function AudioClipWaveform({
   buffer,
   bufferId,
+  sourceChannel,
   reverse,
   showOnsets,
 }: {
   buffer: AudioBuffer | null;
   bufferId: string;
+  sourceChannel?: number;
   reverse: boolean;
   showOnsets: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const onsets = useOnsetDots(bufferId, showOnsets && buffer !== null);
+  const onsets = useOnsetDots(bufferId, sourceChannel, showOnsets && buffer !== null);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !buffer) return;
@@ -3076,7 +3280,7 @@ function AudioClipWaveform({
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const data = buffer.getChannelData(0);
+    const data = audioClipChannelData(buffer, sourceChannel);
     const columns = Math.min(w, 240);
     const per = Math.floor(data.length / columns);
     const dim = getComputedStyle(canvas).getPropertyValue("--text-faint") || "#3a3d44";
@@ -3123,7 +3327,7 @@ function AudioClipWaveform({
     ctx.globalAlpha = 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
-  }, [buffer, bufferId, reverse, showOnsets, onsets]);
+  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets]);
   if (!buffer) return <div className="audio-waveform-empty">no buffer</div>;
   return (
     <canvas
@@ -3147,6 +3351,27 @@ function AudioClipWaveform({
  * - double-click empty waveform: add a neutral pin (sound does not jump)
  * - Alt-click / right-click a pin: delete it
  */
+/**
+ * Warp-pin drag math (pure): pointer delta → absolute tick, clamped to the
+ * clip span. Shift snaps to 1/16. Shared by the move preview and the pointer
+ * release — the release MUST recompute from the event (not from the preview
+ * state, which can lag one batched render behind a fast flick).
+ */
+export function warpPinTickFromClientX(
+  originTick: number,
+  startX: number,
+  clientX: number,
+  widthPx: number,
+  clipTicks: number,
+  clipStartTick: number,
+  snap: boolean,
+): number | null {
+  if (!(widthPx > 0) || !(clipTicks > 0)) return null;
+  let next = originTick + ((clientX - startX) / widthPx) * clipTicks;
+  if (snap) next = Math.round(next / STEP_TICKS) * STEP_TICKS;
+  return Math.max(clipStartTick + 1, Math.min(clipStartTick + clipTicks - 1, Math.round(next)));
+}
+
 function WarpPinsOverlay({
   clip,
   disabledReason,
@@ -3229,17 +3454,37 @@ function WarpPinsOverlay({
                 const dx = e.clientX - drag.startX;
                 if (!drag.moved && Math.abs(dx) < 3) return;
                 drag.moved = true;
-                let next = drag.originTick + (dx / width) * clipTicks;
-                if (e.shiftKey) next = Math.round(next / STEP_TICKS) * STEP_TICKS;
-                setDragTick(Math.max(clipStartTick + 1, Math.min(clipStartTick + clipTicks - 1, Math.round(next))));
+                const next = warpPinTickFromClientX(
+                  drag.originTick,
+                  drag.startX,
+                  e.clientX,
+                  width,
+                  clipTicks,
+                  clipStartTick,
+                  e.shiftKey,
+                );
+                if (next !== null) setDragTick(next);
               }}
               onPointerUp={(e) => {
                 const drag = dragRef.current;
                 if (!drag || drag.index !== i) return;
                 dragRef.current = null;
-                const final = dragTick;
                 setDragTick(null);
-                if (!drag.moved || final === null) return;
+                if (!drag.moved) return;
+                // Recompute from the release event — the preview state may lag
+                // a fast flick by one batched render.
+                const overlay = overlayRef.current;
+                const width = overlay?.getBoundingClientRect().width ?? 0;
+                const final = warpPinTickFromClientX(
+                  drag.originTick,
+                  drag.startX,
+                  e.clientX,
+                  width,
+                  clipTicks,
+                  clipStartTick,
+                  e.shiftKey,
+                );
+                if (final === null) return;
                 e.stopPropagation();
                 commitMove(i, final);
               }}

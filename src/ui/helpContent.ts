@@ -49,6 +49,18 @@ export const GESTURES: GestureEntry[] = [
     action: "With a note selected: S · Alt+S · L · Ctrl+B",
     detail: "Strum · slide · legato · duplicate",
   },
+  // ── Arrangement audio clips ──────────────────────────────────────────────
+  { area: "Arrangement", action: "Drag clip / clip edges", detail: "Move · right edge resizes, left edge trims" },
+  {
+    area: "Arrangement",
+    action: "Alt + drag clip edge",
+    detail: "Time-stretch — length and rate stay locked, content keeps filling the clip",
+  },
+  {
+    area: "Arrangement",
+    action: "Double-click waveform",
+    detail: "Drop a warp pin at that tick (drag pins to bend time)",
+  },
   // ── Values & dice ────────────────────────────────────────────────────────
   {
     area: "Values & dice",

@@ -244,6 +244,12 @@ NEISTÉ: tónina nebola zadaná
 
 **Hotovo, keď:** používateľ počuje aranžmán ešte pred commitom, môže meniť konkrétnu sekciu bez zmeny chránenej časti a aplikovanie/undo zodpovedá tomu, čo UI sľúbilo.
 
+**Stav (2026-09-25): prvý AI-producer vertical slice dodaný; fáza pokračuje.**
+
+- SUNO compose v `IntentPanel` posiela tri alternatívy na sekciu do async candidate/ranker pipeline. Pri dostupnej sample banke sa najlepšie dve alternatívy preveria offline audio-fit rankingom; bežné `buildSong()` volania si zachovávajú jednokandidátový rýchly režim. Výber ostáva deterministický a prechádza existujúcimi hard gate-mi/fallbackom.
+- Po vytvorení finálneho song audition bufferu `reviewSongAudio()` použije ten istý buffer na technickú kontrolu peak/RMS/crest/bass proxy a neplatných vzoriek. UI upozorní na near-full-scale peak, takmer ticho alebo non-finite PCM; nemení projekt a neopakuje render.
+- **Otvorené:** toto je technická spätná väzba, nie umelecký kritik ani automatická oprava. Ďalej treba pridať cieľené návrhy zmien na základe dôkazu, ich A/B audition na úrovni celej skladby/sekcie a kontrolovaný apply/undo.
+
 ### Fáza 6 — KYX ako zvukár: meranie, odporúčanie, potvrdenie
 
 **Cieľ:** produkčná pomoc je počuteľná aj technicky vysvetliteľná; nič sa automaticky „nemasteruje“ bez kontroly.

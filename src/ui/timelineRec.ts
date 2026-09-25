@@ -5,7 +5,8 @@
  */
 import { BAR_TICKS } from "../project-model/types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
-import { addAudioClip } from "../commands/commands";
+import type { RecordingChannelDestination } from "../persistence/RecordingRecoveryRepository";
+import { addAudioClip, snapshot } from "../commands/commands";
 import type { Command } from "../commands/types";
 
 /** One bar in seconds at the given tempo (4/4). */
@@ -75,4 +76,90 @@ export function addRecordedAudioClip(
       };
     },
   };
+}
+
+export interface RecordedAudioDestination {
+  trackId: string;
+  /** When set, route one captured source channel to this mono timeline clip. */
+  sourceChannel?: number;
+}
+
+export interface ResolvedRecordedAudioDestinations {
+  destinations: RecordedAudioDestination[];
+  unavailableChannels: number[];
+  missingTracks: string[];
+  usedFallback: boolean;
+}
+
+/** Validate durable channel-routing metadata against the restored take and current project. */
+export function resolveRecordedAudioDestinations(
+  doc: ProjectDocument,
+  fallbackTrackId: string,
+  channelDestinations: RecordingChannelDestination[] | undefined,
+  capturedChannels: number,
+): ResolvedRecordedAudioDestinations {
+  const trackIds = new Set(doc.tracks.map((track) => track.id));
+  const fallback = (): ResolvedRecordedAudioDestinations => ({
+    destinations: trackIds.has(fallbackTrackId) ? [{ trackId: fallbackTrackId }] : [],
+    unavailableChannels: [],
+    missingTracks: trackIds.has(fallbackTrackId) ? [] : [fallbackTrackId],
+    usedFallback: true,
+  });
+  if (!Array.isArray(channelDestinations) || channelDestinations.length === 0) return fallback();
+
+  const destinations: RecordedAudioDestination[] = [];
+  const unavailableChannels: number[] = [];
+  const missingTracks: string[] = [];
+  const seenChannels = new Set<number>();
+  for (const entry of channelDestinations) {
+    if (!entry || !Number.isSafeInteger(entry.channelIndex) || entry.channelIndex < 0 || entry.channelIndex >= 32) {
+      continue;
+    }
+    if (seenChannels.has(entry.channelIndex)) continue;
+    seenChannels.add(entry.channelIndex);
+    if (entry.channelIndex >= capturedChannels) {
+      unavailableChannels.push(entry.channelIndex);
+      continue;
+    }
+    if (typeof entry.trackId !== "string" || !trackIds.has(entry.trackId)) {
+      missingTracks.push(typeof entry.trackName === "string" && entry.trackName ? entry.trackName : entry.trackId);
+      continue;
+    }
+    destinations.push({ trackId: entry.trackId, sourceChannel: entry.channelIndex });
+  }
+  if (destinations.length > 0) {
+    return { destinations, unavailableChannels, missingTracks, usedFallback: false };
+  }
+  const restored = fallback();
+  return { ...restored, unavailableChannels, missingTracks, usedFallback: true };
+}
+
+/**
+ * Place channel-split takes as one undoable edit. All clips refer to the same
+ * saved buffer; selecting a channel never duplicates the captured PCM asset.
+ */
+export function addRecordedAudioClips(
+  doc: ProjectDocument,
+  destinations: RecordedAudioDestination[],
+  bufferId: string,
+  startBar: number,
+  lengthBars: number,
+  patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars" | "sourceChannel">> = {},
+): Command {
+  if (destinations.length === 0) throw new Error("No available track destination for the recorded audio");
+  const exactStartBar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar * BAR_TICKS) / BAR_TICKS) : 0;
+  let next = doc;
+  for (const destination of destinations) {
+    const channelPatch =
+      destination.sourceChannel === undefined ? patch : { ...patch, sourceChannel: destination.sourceChannel };
+    next = addRecordedAudioClip(next, destination.trackId, bufferId, exactStartBar, lengthBars, channelPatch).execute(
+      next,
+    );
+  }
+  return snapshot(
+    "addRecordedAudioClips",
+    destinations.length > 1 ? `Place ${destinations.length} captured channels` : "Place recorded audio",
+    doc,
+    next,
+  );
 }

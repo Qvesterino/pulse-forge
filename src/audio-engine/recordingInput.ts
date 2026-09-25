@@ -16,7 +16,7 @@ function browserStorage(): RecordingInputStorage | null {
   }
 }
 
-/** The selected mic is a per-browser preference, never part of a project. */
+/** The selected audio input is a per-browser preference, never part of a project. */
 export function loadRecordingInputDeviceId(storage: RecordingInputStorage | null = browserStorage()): string {
   try {
     return storage?.getItem(STORAGE_KEY) ?? "";
@@ -34,11 +34,11 @@ export function saveRecordingInputDeviceId(
     if (deviceId) storage.setItem(STORAGE_KEY, deviceId);
     else storage.removeItem(STORAGE_KEY);
   } catch {
-    // Blocked/full preference storage must never prevent a vocal take.
+    // Blocked/full preference storage must never prevent an audio take.
   }
 }
 
-/** Persisted input trim (dB) for the next mic session. */
+/** Persisted input trim (dB) for the next audio-input session. */
 export function loadRecordingInputGainDb(storage: RecordingInputStorage | null = browserStorage()): number {
   try {
     const raw = storage?.getItem(GAIN_STORAGE_KEY);
@@ -57,11 +57,11 @@ export function saveRecordingInputGainDb(gainDb: number, storage: RecordingInput
     // on the read/write side is the authoritative bounds guard.
     storage.setItem(GAIN_STORAGE_KEY, String(gainDb));
   } catch {
-    // Blocked storage must not prevent a vocal take.
+    // Blocked storage must not prevent an audio take.
   }
 }
 
-/** Device labels are often withheld until the user grants microphone access. */
+/** Device labels are often withheld until the user grants audio-input permission. */
 export async function listRecordingInputDevices(
   mediaDevices: Pick<MediaDevices, "enumerateDevices"> | null =
     typeof navigator !== "undefined" ? navigator.mediaDevices : null,
@@ -76,6 +76,6 @@ export async function listRecordingInputDevices(
     }
     seen.add(device.deviceId);
     anonymousIndex++;
-    return [{ deviceId: device.deviceId, label: device.label.trim() || `Microphone ${anonymousIndex}` }];
+    return [{ deviceId: device.deviceId, label: device.label.trim() || `Audio input ${anonymousIndex}` }];
   });
 }

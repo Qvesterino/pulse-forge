@@ -99,6 +99,7 @@ function fakeBuild(genre: GenerateOptions["genre"], suffix: string, bpm: number 
     key: null,
     sections,
     totalBars: 20,
+    candidateCount: 1,
   };
 }
 

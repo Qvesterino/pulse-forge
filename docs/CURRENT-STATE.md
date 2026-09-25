@@ -19,13 +19,13 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                      |
 | └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                         |
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
-| **Factory assets** (drum / tonal / FX) |  **79** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
-| └─ curated WAV overrides               |      76 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
-| **Factory presets**                    | **344** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     338 | `FACTORY_PRESETS`                                                                                                        |
+| **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
+| └─ curated WAV overrides               |      78 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
+| **Factory presets**                    | **345** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     339 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
-| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                   |
-| **Vitest spec files**                  | **501** | `tests/` files matching `*.test.ts` (399) and `*.test.tsx` (102)                                                         |
+| **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
+| **Vitest spec files**                  | **505** | `tests/` files matching `*.test.ts` (402) and `*.test.tsx` (103)                                                         |
 
 ## Flagship plugin implementations
 

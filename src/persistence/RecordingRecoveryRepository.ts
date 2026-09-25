@@ -17,6 +17,8 @@ export interface RecordingSession {
   trackName: string;
   /** False for a standalone sample resample that was not armed onto a timeline lane. */
   placeOnTimeline?: boolean;
+  /** Optional per-captured-channel destinations. Absent in older sessions, which restore as one multichannel clip. */
+  channelDestinations?: RecordingChannelDestination[];
   startBar: number;
   bpm: number;
   /** Manual mic-input alignment captured when the take started; absent in older sessions. */
@@ -32,6 +34,13 @@ export interface RecordingSession {
   status: "recording" | "recoverable";
   totalFrames: number;
   chunkCount: number;
+}
+
+export interface RecordingChannelDestination {
+  /** Zero-based channel index in the PCM buffer delivered by the browser capture worklet. */
+  channelIndex: number;
+  trackId: string;
+  trackName: string;
 }
 
 export interface RecordingPcmChunk {
@@ -51,10 +60,7 @@ const RECOVERY_STALE_MS = 5_000;
  */
 export class RecordingStorageQuotaError extends Error {
   override readonly name = "RecordingStorageQuotaError";
-  constructor(
-    message: string,
-    options?: { cause?: unknown },
-  ) {
+  constructor(message: string, options?: { cause?: unknown }) {
     super(message);
     if (options?.cause !== undefined) (this as Error & { cause?: unknown }).cause = options.cause;
   }

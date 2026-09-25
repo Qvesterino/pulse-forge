@@ -634,7 +634,7 @@ export function deletePattern(doc: ProjectDocument, patternId: string): Command 
       : {}),
     // Audit 08 D3: clamp markers to the shrunken project end IN-COMMAND so
     // undo restores their ticks (normalize clamps them outside any delta).
-    ...(markerClampPatch(doc.markers, finalScenes, remaining, arrangement)),
+    ...markerClampPatch(doc.markers, finalScenes, remaining, arrangement),
     arrangement,
     activePatternId: doc.activePatternId === patternId ? remaining[0].id : doc.activePatternId,
   };
@@ -1751,12 +1751,7 @@ export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[],
       .filter((r) => unique.has(r.id))
       .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
   if (removed === 0) throw new Error(`No ${EFFECT_META[type].name} instances on the selected tracks`);
-  return snapshot(
-    "removeEffectFromTracks",
-    `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`,
-    doc,
-    pruned,
-  );
+  return snapshot("removeEffectFromTracks", `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`, doc, pruned);
 }
 
 /** Clear SOLO on every track and group — one command, one undo. */
@@ -2607,7 +2602,10 @@ function clonePatternForVariation(source: Pattern, sourceName: string): Pattern 
     // SelectionStore, and shared `locks` object references aliased the
     // source pattern's performance state.
     notes: Object.fromEntries(
-      Object.entries(source.notes ?? {}).map(([id, notes]) => [id, notes.map((note) => ({ ...note, id: uid("note") }))]),
+      Object.entries(source.notes ?? {}).map(([id, notes]) => [
+        id,
+        notes.map((note) => ({ ...note, id: uid("note") })),
+      ]),
     ),
     stepMeta: source.stepMeta ? cloneStepMeta(source.stepMeta) : undefined,
     generation: source.generation ? { ...source.generation, sourcePatternId: source.id } : undefined,
@@ -2738,10 +2736,10 @@ export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
     scenes: remainingScenes,
     ...(sceneAutomation ? { sceneAutomation } : {}),
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...(markerClampPatch(doc.markers, remainingScenes, doc.patterns, {
+    ...markerClampPatch(doc.markers, remainingScenes, doc.patterns, {
       ...doc.arrangement,
       clips: remainingClips,
-    })),
+    }),
     arrangement: {
       ...doc.arrangement,
       clips: remainingClips,
@@ -2791,7 +2789,10 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   return snapshot("addArrangementClip", `Place ${scene.name} at bar ${bar + 1}`, doc, next);
 }
 
-export function transitionsForClips(doc: ProjectDocument, clips: ArrangementClip[]): ArrangementTransition[] | undefined {
+export function transitionsForClips(
+  doc: ProjectDocument,
+  clips: ArrangementClip[],
+): ArrangementTransition[] | undefined {
   return sanitizeArrangementTransitions(doc.arrangement.transitions, clips);
 }
 
@@ -2870,10 +2871,10 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
   const next: ProjectDocument = {
     ...doc,
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...(markerClampPatch(doc.markers, doc.scenes, doc.patterns, {
+    ...markerClampPatch(doc.markers, doc.scenes, doc.patterns, {
       ...doc.arrangement,
       clips: remainingClips,
-    })),
+    }),
     arrangement: {
       ...doc.arrangement,
       clips: remainingClips,
@@ -2938,6 +2939,11 @@ export function addAudioClip(
     fadeOut: Math.max(0, finiteOr(patch.fadeOut ?? 0, 0)),
     stretchRate: Math.min(4, Math.max(0.25, finiteOr(patch.stretchRate ?? 1, 1))),
     reverse: patch.reverse === true,
+    ...(Number.isSafeInteger(patch.sourceChannel) &&
+    (patch.sourceChannel ?? -1) >= 0 &&
+    (patch.sourceChannel ?? 32) < 32
+      ? { sourceChannel: patch.sourceChannel }
+      : {}),
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
     ...(patch.loop === true ? { loop: true as const } : {}),
     ...(patch.warpMarkers ? { warpMarkers: patch.warpMarkers.map((m) => ({ ...m })) } : {}),
@@ -2978,6 +2984,50 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
     },
   };
   return snapshot("moveAudioClip", `Move audio clip to bar ${bar + 1}`, doc, next);
+}
+
+/**
+ * Preview rate for Alt+drag clip stretching: the content scales with the
+ * clip, so the rate follows the length ratio (longer clip = slower playback
+ * = lower rate). Relative to the CURRENT rate — trims need no absolute
+ * buffer math. Pure, clamped to the engine 0.25–4 gate.
+ */
+export function previewStretchRate(origRate: number, origLengthBars: number, newLengthBars: number): number {
+  const base = Number.isFinite(origRate) && origRate > 0 ? origRate : 1;
+  const from = Number.isFinite(origLengthBars) && origLengthBars > 0 ? origLengthBars : 1;
+  const to = Number.isFinite(newLengthBars) && newLengthBars > 0 ? newLengthBars : from;
+  return Math.round(Math.min(4, Math.max(0.25, (base * from) / to)) * 100) / 100;
+}
+
+/**
+ * Alt+drag clip stretch: length AND rate in ONE undo step (the content keeps
+ * filling the clip). Same length/fade clamps as resizeAudioClip plus the
+ * 0.25–4 rate gate from updateAudioClip.
+ */
+export function stretchAudioClip(
+  doc: ProjectDocument,
+  clipId: string,
+  lengthBars: number,
+  stretchRate: number,
+): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (!Number.isFinite(lengthBars)) return snapshot("stretchAudioClip", "Stretch audio clip (no-op)", doc, doc);
+  const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
+  const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
+  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const fadeIn = Math.min(clip.fadeIn ?? 0, durSec);
+  const fadeOut = Math.min(clip.fadeOut ?? 0, durSec);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        c.id === clipId ? { ...c, lengthBars: bars, stretchRate: rate, fadeIn, fadeOut } : c,
+      ),
+    },
+  };
+  return snapshot("stretchAudioClip", `Stretch audio clip to ${bars} bars (×${rate})`, doc, next);
 }
 
 export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
@@ -3280,7 +3330,7 @@ export function updateAudioClip(
       | "bufferId"
       | "warpMarkers"
     >
-  >,
+  > & { sourceChannel?: number | null },
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
@@ -3291,6 +3341,10 @@ export function updateAudioClip(
     value === undefined || !Number.isFinite(value) ? undefined : Math.min(max, Math.max(min, value));
   const nextPatch: Partial<AudioClip> = {};
   if (patch.bufferId !== undefined) nextPatch.bufferId = patch.bufferId;
+  if (patch.sourceChannel === null) nextPatch.sourceChannel = undefined;
+  else if (Number.isSafeInteger(patch.sourceChannel) && patch.sourceChannel! >= 0 && patch.sourceChannel! < 32) {
+    nextPatch.sourceChannel = patch.sourceChannel!;
+  }
   const offsetSec = num(patch.offsetSec, 0, Infinity);
   if (offsetSec !== undefined) nextPatch.offsetSec = offsetSec;
   const trimStart = num(patch.trimStart, 0, Infinity);
@@ -4785,10 +4839,7 @@ export function addEffect(
  * the device back while its routings were permanently gone (the exact
  * deleteTrack bug class).
  */
-function stripDanglingEffectReferences(
-  doc: ProjectDocument,
-  removed: Set<string>,
-): ProjectDocument {
+function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set<string>): ProjectDocument {
   const keyOf = (target: import("../project-model/types").AutomationTarget | undefined | null): string =>
     target?.fxId ? `${String(target.trackId)}|${String(target.fxId)}` : "";
   const automation = doc.automation?.filter((lane) => !removed.has(keyOf(lane.target)));
@@ -5554,7 +5605,7 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
   const next: ProjectDocument = {
     ...doc,
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...(markerClampPatch(doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips })),
+    ...markerClampPatch(doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips }),
     arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
   };
   return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);
@@ -5636,7 +5687,8 @@ export function moveSceneAutomationPoint(
       if (at === -1) return l;
       const points = [...l.points];
       points[at] = {
-        tick: delta.tick !== undefined && Number.isFinite(delta.tick) ? Math.max(0, Math.floor(delta.tick)) : original.tick,
+        tick:
+          delta.tick !== undefined && Number.isFinite(delta.tick) ? Math.max(0, Math.floor(delta.tick)) : original.tick,
         value: nextValue ?? original.value,
       };
       points.sort((a, b) => a.tick - b.tick);

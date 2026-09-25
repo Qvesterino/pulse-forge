@@ -85,8 +85,12 @@ export interface ComposeOptions {
   loudness?: boolean;
   /** Sample bank for the loudness render — loudness needs it; without it the stage skips. */
   bank?: SampleBank;
+  /** Candidate variants to rank per song section. Defaults to one for API compatibility. */
+  candidateCount?: number;
   /** Injected renderer (tests); default renders offline through the engine. */
   render?: LoudnessRenderFn;
+  /** Injected per-section renderer for sound-based candidate ranking. */
+  renderCandidate?: import("./audio-feedback").RenderCandidateFn;
   seed?: string;
 }
 
@@ -154,6 +158,9 @@ export async function composeFullTrack(
       ...(sectionRequests ? { sections: sectionRequests } : {}),
       ...(length ? { length } : {}),
       ...(vocalProfile ? { vocalProfile } : {}),
+      ...(options.candidateCount !== undefined ? { candidateCount: options.candidateCount } : {}),
+      ...(options.bank ? { bank: options.bank } : {}),
+      ...(options.renderCandidate ? { renderCandidate: options.renderCandidate } : {}),
       onProgress: (done, label, total) => options.onProgress?.(`section ${label} (${done}/${total})`),
     },
   );

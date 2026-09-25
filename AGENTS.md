@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> Coding-agent entry point for the **KYX / Pulse Forge** browser-native DAW.
+> Coding-agent entry point for the **KYX / Pulse Forge** Web and Studio DAW.
 > Consumed by Codex, OpenCode, Cursor, Aider, Devin, Gemini CLI, and similar.
 > For user-facing docs see `README.md`. For architecture see `ARCHITECTURE.md`.
 > For the canonical inventory of "what ships today" see `docs/CURRENT-STATE.md`.
@@ -12,7 +12,7 @@
 
 This is **KYX** (display name; landing page, embed, gallery), internally and on GitHub known as **Pulse Forge** (repo name `pulse-forge`, `package.json#name`). Both names refer to the same product. Use **KYX** in user-facing copy; use **Pulse Forge** in file paths, ADRs and roadmap documents.
 
-A browser-first, fully offline-capable, production-grade digital audio workstation for instrumental beat and scene-score composition. Built on the Web Audio API + AudioWorklet, TypeScript, React 18 and IndexedDB. Ships as a PWA and as a Windows desktop app (Electron). Real-time collaboration, an ONNX-backed intent engine, vendored flagship DSP plugins (PRISM / VLYX / VØID / Kaskáda Delay), and a deterministic offline renderer that shares an `AudioEngine` with live playback.
+A browser-first, local-first digital audio workstation targeting complete music production: composition, real-instrument recording, editing, mixing and AI-assisted production. KYX Web is built on Web Audio + AudioWorklet, TypeScript, React 18 and IndexedDB; KYX Studio is the separate desktop target for tested native audio I/O and third-party plug-in workflows. The current Windows Electron package is still a thin Web Audio shell. See ADR 0014 and `docs/ROADMAP-FULL-DAW.md`; roadmap scope is not a claim that those features already ship.
 
 ---
 
@@ -41,7 +41,7 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/audio-workers/`                         | Web Workers that wrap heavy CPU work: `ir-generator.ts`, `onset-detector.ts`, `warp-render.ts`.                                                                                                              |
 | `src/scheduler/Scheduler.ts`                 | 25 ms tick / 120 ms lookahead scheduler; the only event driver for live playback.                                                                                                                            |
 | `src/transport/Transport.ts`                 | Musical-time model (PPQ 480, ticks ↔ seconds); play/pause/stop/loop/metronome.                                                                                                                               |
-| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 3`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
+| `src/project-model/`                         | `schema.ts` (`SCHEMA_VERSION = 4`), `types.ts`, transforms, `groove.ts`, `automation.ts`, `modulators.ts`, scenes, **templates** (12), kit-presets, `markers.ts`.                                            |
 | `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                      |
 | `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
 | `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 15 instrument kinds. Mod matrix, randomization.                                                                                                 |
@@ -63,7 +63,7 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
 | `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                   |
 | `tests/`                                     | Vitest specs (current count in `docs/CURRENT-STATE.md`), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                            |
-| `docs/adr/`                                  | Architecture decision records 0001–0013. Read the relevant ADR before touching the area.                                                                                                                     |
+| `docs/adr/`                                  | Architecture decision records 0001–0014. Read the relevant ADR before touching the area.                                                                                                                     |
 | `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
 
 ---
@@ -79,7 +79,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 5. **AudioWorklet for custom realtime DSP, never the main thread.** Plugins load on demand (`ensureWorkletsForDoc`) so a beat that never touches PRISM doesn't pay for it.
 6. **Schema migrations** change `SCHEMA_VERSION` and update `migrateProject`; loading code rejects unknown future versions.
 7. **The audio context is shared across projects.** `useContext(ctx)` is the only path that creates `AudioNode`s on a context — so a fresh `OfflineAudioContext` for export never leaks nodes into the live context.
-8. **No VST/AU hosting, no ASIO driver management, no multitrack studio recording, no vocal recording** (per `VISION.md §1`). Don't add infrastructure for these.
+8. **Full-DAW scope is authorized by ADR 0014.** Multitrack recording, native audio I/O and third-party plug-in hosting are in scope, but each requires its dedicated follow-up ADR, licensing review where applicable, measurable acceptance tests and an honest support matrix. Do not describe roadmap capabilities as shipped.
 9. **No Rust/WASM DSP path is shipped today.** AudioWorklet is the realtime DSP boundary. ADR 0005 keeps WASM as a future option. If you need new DSP, write a worklet.
 10. **No innerHTML, no dangerouslySetInnerHTML, no eval, no `new Function`** anywhere in `src/`. User-controlled strings (filenames, project names, sample names, share tokens) go through React JSX (auto-escaped) or are sanitized explicitly (see `sanitizeFilename` in `src/export/project-io.ts`).
 
@@ -244,19 +244,19 @@ npm run release:deployed-smoke                # requires KYX_DEPLOY_URL
 
 Before opening a PR or guessing at "how does X work", check the relevant ADR. ADRs are short, dated, and authoritative on the _why_ of architectural decisions.
 
-| Topic                                | Files                                                                               |
-| ------------------------------------ | ----------------------------------------------------------------------------------- |
-| Browser-first platform               | `docs/adr/0001-browser-first.md`, `docs/adr/0005-rust-wasm-dsp-policy.md`           |
-| Audio clock + scheduling             | `docs/adr/0002-audio-clock-scheduling.md`, `src/scheduler/Scheduler.ts`             |
-| Project model ↔ runtime              | `docs/adr/0003-project-model-runtime-separation.md`, `src/project-model/schema.ts`  |
-| AudioWorklet boundary                | `docs/adr/0004-audioworklet-boundary.md`, `src/audio-worklets/loader.ts`            |
-| Effect rack, devices, native effects | `docs/adr/0006-effect-rack-native-effects.md`, `docs/adr/0006-device-state-slot.md` |
-| Instruments and notes                | `docs/adr/0007-instruments-and-notes.md`, `src/instruments/registry.ts`             |
-| VØID / reverb per-frequency decay    | `docs/adr/0007-ozvena-per-frequency-decay-network.md`                               |
-| Composition systems (intent, dice)   | `docs/adr/0008-composition-systems.md`, `INTENT_ENGINE.md`                          |
-| Offline render + export              | `docs/adr/0009-offline-render-export.md`, `src/rendering/renderer.ts`               |
-| Desktop packaging                    | `docs/adr/0010-desktop-packaging.md`, `desktop/main.cjs`                            |
-| Desktop auto-update                  | `docs/adr/0011-desktop-auto-update.md`, `electron-builder.yml`                      |
+| Topic                                       | Files                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Runtime profiles and browser-first platform | `docs/adr/0014-full-daw-scope.md`, `docs/adr/0001-browser-first.md`, `docs/adr/0005-rust-wasm-dsp-policy.md` |
+| Audio clock + scheduling                    | `docs/adr/0002-audio-clock-scheduling.md`, `src/scheduler/Scheduler.ts`                                      |
+| Project model ↔ runtime                     | `docs/adr/0003-project-model-runtime-separation.md`, `src/project-model/schema.ts`                           |
+| AudioWorklet boundary                       | `docs/adr/0004-audioworklet-boundary.md`, `src/audio-worklets/loader.ts`                                     |
+| Effect rack, devices, native effects        | `docs/adr/0006-effect-rack-native-effects.md`, `docs/adr/0006-device-state-slot.md`                          |
+| Instruments and notes                       | `docs/adr/0007-instruments-and-notes.md`, `src/instruments/registry.ts`                                      |
+| VØID / reverb per-frequency decay           | `docs/adr/0007-ozvena-per-frequency-decay-network.md`                                                        |
+| Composition systems (intent, dice)          | `docs/adr/0008-composition-systems.md`, `INTENT_ENGINE.md`                                                   |
+| Offline render + export                     | `docs/adr/0009-offline-render-export.md`, `src/rendering/renderer.ts`                                        |
+| Desktop packaging                           | `docs/adr/0010-desktop-packaging.md`, `desktop/main.cjs`                                                     |
+| Desktop auto-update                         | `docs/adr/0011-desktop-auto-update.md`, `electron-builder.yml`                                               |
 
 If a decision feels arbitrary, look for an ADR. If none exists and you think there should be one, write it.
 
