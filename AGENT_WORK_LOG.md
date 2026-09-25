@@ -4388,3 +4388,25 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Sub-žánre +6**: drone, IDM, deconstructed club, vaporwave, berlin school, krautrock.
 - Mood „melancholic" nie je v slovníku → dark (2 sites opravené).
 - **Testy** +4 bloky (72/72 na 2 súbory); regresia **349/349 cez 30 súborov**; typecheck 0. Presety 79 → **93**.
+
+---
+
+## GOAL 07 (campaign re-run 4) — Async, concurrency & race sweep (2026-09-25)
+
+**Goal executed:** The three queued targets: iteration/preview vs runGeneration abort ownership, vocal/handoff cancellation composition under rapid clicks, and applyToYDoc fast-path parity after the recent command waves.
+
+**Audits and verdicts:**
+
+1. **Iteration/preview vs runGeneration — one REAL race found & fixed.** `generate()` is serialized by `busy`, so `compileIteration` (synchronous) can never interleave a running generation; every `setBankResult` pairs with `previewDocRef.current = doc`; USE blocks identity-stale previews with a clear message. THE GAP: the SONG-draft token contract (`songTokenRef` — "a superseding build, DROP or USE during the awaits below bumps songTokenRef") was missing TWO of its own listed superseding actions: **DO IT** and **USE(candidate)** never bump the token. Reproduced by trace: SONG build → loudness measure awaiting → user hits DO IT on a new prompt → plain generation lands → the abandoned song build's awaited continuation passes its token check and **installs the stale draft from the dead prompt** (overwriting the fresh result state). FIX: `songTokenRef.current++` at the head of `generate()` and inside `useCandidate` (mirroring `discardSongDraft`). Staged selectively — the concurrent session's audioReview feature landed in the same file mid-audit (filtered-patch staging, their hunks left working-tree-only).
+2. **Vocal + handoff cancellation — CLEAN.** `analyzeTake`: `takeBusy` serializes, token discards post-switch results (GOAL 03). ExportPanel: all export buttons `disabled={busy}`, `beginExport` re-points the abort controller, recorder has an unmount-cancel effect preserving committed PCM; blob revokes are the guarded optional-call pattern.
+3. **applyToYDoc parity — NO regression.** 19 commits touched commands.ts since the audited baseline; 23 fast-path sites; the 3 newest (toggleEffectBypass, setTrackPreset, midi program-map family) are small focused commands whose fast paths mirror their execute/undo baselines — spot-read verified. Systemic guarantee stays two-layered: the generic whole-doc Yjs diff fallback (new commands are CORRECT by default, just less granular) + targeted parity pins. collab-contract-parity + undo-redo-audit + collab-validation + edge-cases + hardening: **50/50**.
+
+**Important files changed:** src/ui/IntentPanel.tsx (+10: two token bumps with contract comments).
+
+**Validation:** IntentPanel + IntentPanelRegen + iteration suites **28/28** post-fix; collab/undo battery **50/50**; `tsc` clean on campaign files (remaining tree errors confined to the concurrent session's uncommitted `src/intent/artists.ts` — in-flight, watched).
+
+**Unresolved issues:** the song-token fix is behavior-tightening (a stale draft install that previously slipped through now dies silently) — no test added because reproducing it needs the full SONG+loudness async chain under jsdom timers; the token mechanics are pinned by the existing song suites' DROP case.
+
+**Remaining risks:** `busy` serialization is a UI-level guarantee — programmatic double-entry (collab remote trigger, future automation) would bypass it; the token contract now covers all four superseding actions (DO IT, USE, DROP, rebuild) and the next superseding action author must remember to bump (the comment on each bump site says so).
+
+**Recommendations for next session (GOAL 08):** import/export/format robustness was hardened in re-run 3 GOAL 08 (fuzz suite, lz-string defense, MIDI caps) — re-run that battery against the CURRENT tree (new format surfaces since: mallet/phonk sample ids in curated contracts, iteration/brief types in share codes? verify IntentSpec additions don't flow into serialized artifacts unclamped), plus the standing share-code envelope matrix.

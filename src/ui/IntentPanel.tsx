@@ -293,6 +293,12 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     buffersRef.current = new Map();
+    // A pending SONG draft is superseded by a fresh DO IT — without this
+    // bump its awaited continuations would install a stale draft from the
+    // abandoned prompt after this generation lands (GOAL 07, re-run 4;
+    // the token's own design comment lists superseding actions, DO IT was
+    // the missing one).
+    songTokenRef.current++;
     // SESSION REFERENCE (vibe-code wave 2): "that second one, darker" —
     // apply the referenced candidate from the last generation, then run the
     // residual words through the normal pipeline (production/verbs/song).
@@ -458,6 +464,10 @@ export function IntentPanel() {
     }
     stopAudition();
     setPlayingIndex(null);
+    // USE supersedes a pending SONG draft (same token contract as DROP and
+    // DO IT — GOAL 07, re-run 4): the draft's awaited continuations must
+    // not install after the user already applied a candidate.
+    songTokenRef.current++;
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
     const fx = picked.plan.intent.fx ?? null;
     services.store.execute(
