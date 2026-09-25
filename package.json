@@ -40,6 +40,7 @@
     "embedding:train": "npx vite-node scripts/train-embedding-prior.mts",
     "embedding:ab": "vite-node scripts/shadow-embedding-ab.mts",
     "listening:v1v3": "node scripts/render-v1v3-listening.mjs",
+    "listening:grooves": "node scripts/render-groove-listening.mjs",
     "rerank:fit": "node scripts/fit-rerank-weights.mjs",
     "ranker:golden-template": "vite-node scripts/generate-golden-template.mts",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",

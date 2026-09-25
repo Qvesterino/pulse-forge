@@ -4298,3 +4298,11 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Testy** +2 (39/39 v parseri): štýlová rezolúcia + 16-step shape validity × 3. Regresia **338/338 cez 30 súborov**; typecheck 0.
 
 **Drill finálny stav:** uk (UK classic), dark (sparse), bounce (busy hats), **sample**, **hyper**, **melodic** — 6 štýlov pokrývajúce UK aj NY scény aj melodic offshoot.
+
+---
+
+## GOAL 47 — GROOVE LISTENING PACK (2026-09-24)
+
+- **`scripts/render-groove-listening.mjs`** (`npm run listening:grooves`): playwright + vite (golden-pack vzor) — 10 nových groove štýlov × prvé 2 patterny → reálny engine render → `groove-listening/<id>-<n>.wav` + LISTENING.md. Doc.bpm = groove tempo midpoint. Output gitignored (WAVs lokalne).
+- **17 renderov** ✓ — každý groove z vĺn 1-3 (roller/amen/horror/hard/melodic/lux/hyper/sample) počuteľný na overenie identity (roller = Macky Gee? horror = Suicideboys? hard = Klangkuenstler?).
+- ⚠️ groove-listening/ pridaný do .gitignore (rovnaká politika ako golden-review/).
