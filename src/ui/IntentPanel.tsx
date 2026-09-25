@@ -299,6 +299,11 @@ export function IntentPanel() {
     const last = lastGeneration();
     const reference = last ? resolveSessionReference(text, last.candidates) : null;
     if (reference && last) {
+      if (last.docId !== doc.id) {
+        setError("Tento session kandidát patrí inému projektu. Vygeneruj kandidátov znova v aktuálnom projekte.");
+        setBusy(false);
+        return;
+      }
       // Fáza 3 iteration: a residual CHANGE (mood/energy/bpm/… or a preserve
       // clause) becomes a TARGETED PROPOSAL on the referenced candidate —
       // audition first, USE applies (one undo). Scope is stated in the
@@ -306,10 +311,15 @@ export function IntentPanel() {
       // instant re-apply below.
       const iteration = compileIteration(text, last, doc);
       if (iteration) {
+        rememberPrompt(text);
+        if (!iteration.result.proposal) {
+          setError(iteration.result.diagnostics.errors[0] ?? "Návrh iterácie neprešiel kontrolou briefu.");
+          setBusy(false);
+          return;
+        }
         setBankResult(iteration.result);
         previewDocRef.current = doc;
         buffersRef.current = new Map();
-        rememberPrompt(text);
         setStatus(`↻ ${iteration.summary} — ▶ náhľad, USE na aplikovanie`);
         setBusy(false);
         return;

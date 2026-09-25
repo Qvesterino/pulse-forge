@@ -28,6 +28,7 @@ const BLOCKS_PER_SECOND = SR / BLOCK;
 const SETTLE_SECONDS = 60;
 const WOBBLE_END = 240;
 const TOTAL_SECONDS = 300;
+const STABILITY_WINDOW_SECONDS = 50;
 const TAIL_SILENCE_SECONDS = 20;
 
 /** Worst-case graph: 6 bands, every module enabled (mirrors the CPU-budget
@@ -96,7 +97,9 @@ describe("FXEQ soak (300 s worst-case render)", () => {
     const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
     const settleFrom = 10 * BLOCKS_PER_SECOND;
     const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
-    const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
+    // Compare equal 50-second stationary windows; the final one starts
+    // 10 seconds after the restored parameters to exclude re-convergence.
+    const finalFrom = (TOTAL_SECONDS - STABILITY_WINDOW_SECONDS) * BLOCKS_PER_SECOND;
     const wobbleEvery = Math.round(BLOCKS_PER_SECOND / 2);
 
     let heapStart = 0;
@@ -123,7 +126,10 @@ describe("FXEQ soak (300 s worst-case render)", () => {
       // Control-thread band metering polls ~2 Hz over the whole session.
       if (b % wobbleEvery === 0) proc.getBandPeaks();
 
-      fill(chans, b);
+      // Replay the exact settled-window stimulus at the end so the RMS
+      // comparison isolates DSP-state drift from noise-window variance.
+      const signalBlock = b >= finalFrom ? settleFrom + (b - finalFrom) : b;
+      fill(chans, signalBlock);
       proc.process(chans, BLOCK);
       for (let i = 0; i < BLOCK; i++) {
         const l = chans[0][i];
@@ -149,7 +155,7 @@ describe("FXEQ soak (300 s worst-case render)", () => {
     const settleRms = Math.sqrt(settleSumSq / settleSamples);
     const finalRms = Math.sqrt(finalSumSq / finalSamples);
     const driftDb = 20 * Math.log10(finalRms / settleRms);
-    expect(Math.abs(driftDb)).toBeLessThan(1.0);
+    expect(Math.abs(driftDb)).toBeLessThanOrEqual(0.003);
 
     // Tail: silence must converge to silence (peak of the last second).
     const tailBlocks = TAIL_SILENCE_SECONDS * BLOCKS_PER_SECOND;
@@ -170,9 +176,9 @@ describe("FXEQ soak (300 s worst-case render)", () => {
       global.gc?.();
       const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
       console.log(
-        `[fxeq-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
+        `[fxeq-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(6)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
       );
-      expect(growthMb).toBeLessThan(100);
+      expect(growthMb).toBeLessThanOrEqual(6);
     }
   }, 600_000);
 });

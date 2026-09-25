@@ -140,7 +140,7 @@ describe("evaluateBriefCompliance (truthful UI mirror)", () => {
     expect(byId("no-drums")).toBeUndefined(); // drums ARE in the set — no prohibition row
   });
 
-  it("a prohibited-drums brief surfaces the ✗-able row and the preserve row", () => {
+  it("preserved drums are not mislabeled as a no-drums request", () => {
     const doc = testDoc();
     const result = generateLocalResult(
       doc,
@@ -149,7 +149,7 @@ describe("evaluateBriefCompliance (truthful UI mirror)", () => {
     );
     const items = evaluateBriefCompliance(result);
     const byId = (id: string) => items.find((item) => item.id === id);
-    expect(byId("no-drums")?.satisfied).toBe(true);
+    expect(byId("no-drums")).toBeUndefined();
     expect(byId("preserve")?.label).toContain("drums");
     expect(byId("preserve")?.satisfied).toBe(true);
   });

@@ -36,88 +36,102 @@ const server = await createServer({
 });
 await server.listen();
 
+// Browser harness (QA-1 fix): page.evaluate callbacks CANNOT contain
+// import() — vite-node rewrites them to __vite_ssr_dynamic_import__, which
+// does not exist in the browser. Instead we serve a tiny static module from
+// the gitignored golden-review/ dir (Vite dev transforms its static imports
+// natively, exactly like the app) and evaluate only plain function calls.
+const harnessLines = [
+  'import { createDefaultProject } from "/src/project-model/schema.ts";',
+  'import { encodeWav } from "/src/rendering/wav.ts";',
+  'import { renderProject } from "/src/rendering/renderer.ts";',
+  'import { generatePattern } from "/src/ai/generator.ts";',
+  'import { normalizeIntent } from "/src/intent/normalize.ts";',
+  'import { planGeneration } from "/src/intent/plan.ts";',
+  'import { generateFactoryBank } from "/src/sample-library/factory.ts";',
+  "",
+  "const bankPromise = generateFactoryBank();",
+  "window.__renderCombo = async ({ candidateSeeds, genre, style }) => {",
+  "  const bank = await bankPromise;",
+  "  const out = [];",
+  "  for (const seed of candidateSeeds) {",
+  "    const intent = normalizeIntent({ genre, ...(style ? { style } : {}), seed, roles: ['drums', 'bass'] });",
+  "    const baseDoc = createDefaultProject();",
+  "    const plan = planGeneration(intent, baseDoc);",
+  "    const pattern = generatePattern(baseDoc, plan.options);",
+  "    const doc = { ...baseDoc, patterns: [pattern], activePatternId: pattern.id };",
+  "    const buffer = await renderProject(doc, bank, { mode: 'pattern', sampleRate: 44100, tailSeconds: 0.6 });",
+  "    const bytes = new Uint8Array(encodeWav(buffer, 16));",
+  "    let binary = '';",
+  "    const CHUNK = 0x8000;",
+  "    for (let i = 0; i < bytes.length; i += CHUNK) {",
+  "      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));",
+  "    }",
+  "    out.push({ seed, b64: btoa(binary) });",
+  "  }",
+  "  return out;",
+  "};",
+  "window.__ready = true;",
+];
+mkdirSync(outRoot, { recursive: true });
+writeFileSync(path.join(outRoot, "harness.mjs"), harnessLines.join("\n"));
+writeFileSync(
+  path.join(outRoot, "harness.html"),
+  '<!doctype html><html><body><script type="module" src="./harness.mjs"></scr' + "ipt></body></html>",
+);
+
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+await page.goto(`http://127.0.0.1:${PORT}/golden-review/harness.html`, { waitUntil: "domcontentloaded" });
+await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
 
 const listeningLines = ["# Golden review — počúvaci pack", ""];
 let totalFiles = 0;
 
-for (const combo of golden.combos) {
-  const group = byGroupKey.get(combo.groupKey);
-  if (!group) throw new Error(`dataset group missing for ${combo.groupKey}`);
-  const safeCombo = combo.combo.replace(/[^a-z0-9-]/gi, "_");
-  const comboDir = path.join(outRoot, safeCombo);
-  mkdirSync(comboDir, { recursive: true });
+function comboDirSafe(combo) {
+  return path.join(outRoot, combo.combo.replace(/[^a-z0-9-]/gi, "_"));
+}
 
-  listeningLines.push(`## ${combo.combo}`, "");
-  listeningLines.push("| Súbor | Kandidát (index/seed) | Heuristické poradie |");
-  listeningLines.push("| ----- | --------------------- | ------------------- |");
+try {
+  for (const combo of golden.combos) {
+    const group = byGroupKey.get(combo.groupKey);
+    if (!group) throw new Error(`dataset group missing for ${combo.groupKey}`);
+    const comboDir = path.join(comboDirSafe(combo));
+    mkdirSync(comboDir, { recursive: true });
 
-  // Render each candidate through the REAL engine (pattern mode).
-  const rendered = await page.evaluate(
-    async ({ candidateSeeds, genre, style }) => {
-      const schema = await import("/src/project-model/schema.ts");
-      const wav = await import("/src/rendering/wav.ts");
-      const renderer = await import("/src/rendering/renderer.ts");
-      const { generatePattern } = await import("/src/ai/generator.ts");
-      const { normalizeIntent } = await import("/src/intent/normalize.ts");
-      const { planGeneration } = await import("/src/intent/plan.ts");
-      const { generateFactoryBank } = await import("/src/sample-library/factory.ts");
+    listeningLines.push(`## ${combo.combo}`, "");
+    listeningLines.push("| Súbor | Kandidát (index/seed) | Heuristické poradie |");
+    listeningLines.push("| ----- | --------------------- | ------------------- |");
 
-      const bank = await generateFactoryBank();
-      const out = [];
-      for (const seed of candidateSeeds) {
-        const intent = normalizeIntent({
-          genre,
-          ...(style ? { style } : {}),
-          seed,
-          roles: ["drums", "bass"],
-        });
-        const baseDoc = schema.createDefaultProject();
-        const plan = planGeneration(intent, baseDoc);
-        const pattern = generatePattern(baseDoc, plan.options);
-        const doc = {
-          ...baseDoc,
-          patterns: [pattern],
-          activePatternId: pattern.id,
-        };
-        const buffer = await renderer.renderProject(doc, bank, {
-          mode: "pattern",
-          sampleRate: 44100,
-          tailSeconds: 0.6,
-        });
-        const encoded = wav.encodeWav(buffer, 16);
-        const bytes = new Uint8Array(encoded);
-        let binary = "";
-        const CHUNK = 0x8000;
-        for (let i = 0; i < bytes.length; i += CHUNK) {
-          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-        }
-        out.push({ seed, b64: btoa(binary) });
-      }
-      return out;
-    },
-    {
+    // Render each candidate through the REAL engine (pattern mode) — a plain
+    // cross-boundary call into the harness module (no imports here: vite-node
+    // would rewrite them and the browser has no SSR helper).
+    const rendered = await page.evaluate((args) => window.__renderCombo(args), {
       candidateSeeds: group.candidates.map((candidate) => candidate.seed),
       genre: group.genre,
       style: group.style,
-    },
-  );
+    });
 
-  for (const [position, entry] of rendered.entries()) {
-    const candidateIndex = group.candidates.find((c) => c.seed === entry.seed)?.index ?? position;
-    const name = `cand-${candidateIndex}.wav`;
-    writeFileSync(path.join(comboDir, name), Buffer.from(entry.b64, "base64"));
-    totalFiles += 1;
-    const heuristicRank = combo.order.indexOf(candidateIndex) + 1;
-    listeningLines.push(`| ${safeCombo}/${name} | #${candidateIndex} (${entry.seed}) | heuristic: ${heuristicRank}. |`);
+    const safeCombo = combo.combo.replace(/[^a-z0-9-]/gi, "_");
+    for (const [position, entry] of rendered.entries()) {
+      const candidateIndex = group.candidates.find((c) => c.seed === entry.seed)?.index ?? position;
+      const name = `cand-${candidateIndex}.wav`;
+      writeFileSync(path.join(comboDir, name), Buffer.from(entry.b64, "base64"));
+      totalFiles += 1;
+      const heuristicRank = combo.order.indexOf(candidateIndex) + 1;
+      listeningLines.push(
+        `| ${safeCombo}/${name} | #${candidateIndex} (${entry.seed}) | heuristic: ${heuristicRank}. |`,
+      );
+    }
+    listeningLines.push(
+      "",
+      `→ Tvoje poradie pre ${combo.combo} zapíš do \`scripts/data/intent-ranker-golden.json\` (kandidát INDEXY, najlepší prvý).`,
+      "",
+    );
   }
-  listeningLines.push(
-    "",
-    `→ Tvoje poradie pre ${combo.combo} zapíš do \`scripts/data/intent-ranker-golden.json\` (kandidát INDEXY, najlepší prvý).`,
-    "",
-  );
+} finally {
+  await browser.close().catch(() => undefined);
+  await server.close().catch(() => undefined);
 }
 
 listeningLines.push(
@@ -128,6 +142,4 @@ listeningLines.push(
 );
 writeFileSync(path.join(outRoot, "LISTENING.md"), listeningLines.join("\n"));
 
-await browser.close();
-await server.close();
 console.log(`[review-pack] ${totalFiles} candidate render(s) → ${outRoot} (+ LISTENING.md)`);

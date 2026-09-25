@@ -28,8 +28,9 @@ const SR = 48000;
 const BLOCK = 128;
 const BLOCKS_PER_SECOND = SR / BLOCK;
 const SETTLE_SECONDS = 60;
-const WOBBLE_END = 240;
+const WOBBLE_END = 210;
 const TOTAL_SECONDS = 300;
+const STABILITY_WINDOW_SECONDS = 50;
 const TAIL_SILENCE_SECONDS = 20;
 
 /** The settled configuration measured before AND after the wobble phase. */
@@ -108,7 +109,9 @@ describe("Ozvena soak (300 s full-core render)", () => {
     const totalBlocks = TOTAL_SECONDS * BLOCKS_PER_SECOND;
     const settleFrom = 10 * BLOCKS_PER_SECOND;
     const settleTo = SETTLE_SECONDS * BLOCKS_PER_SECOND;
-    const finalFrom = (TOTAL_SECONDS - 10) * BLOCKS_PER_SECOND;
+    // Compare equal 50-second stationary windows. The restored state has
+    // 40 seconds to shed the maximum-decay wobble tail before this window.
+    const finalFrom = (TOTAL_SECONDS - STABILITY_WINDOW_SECONDS) * BLOCKS_PER_SECOND;
     const wobbleEvery = Math.round(BLOCKS_PER_SECOND / 2);
 
     let heapStart = 0;
@@ -119,7 +122,10 @@ describe("Ozvena soak (300 s full-core render)", () => {
 
     for (let b = 0; b < totalBlocks; b++) {
       const second = b / BLOCKS_PER_SECOND;
-      fill(b);
+      // Replay the exact settled-window stimulus at the end so the RMS
+      // comparison isolates DSP-state drift from noise-window variance.
+      const signalBlock = b >= finalFrom ? settleFrom + (b - finalFrom) : b;
+      fill(signalBlock);
       if (second >= SETTLE_SECONDS && second < WOBBLE_END && b % wobbleEvery === 0) {
         const i = Math.floor(b / wobbleEvery);
         const [path, valueOf] = WOBBLE[i % WOBBLE.length];
@@ -162,7 +168,7 @@ describe("Ozvena soak (300 s full-core render)", () => {
     const settleRms = Math.sqrt(settleSumSq / settleSamples);
     const finalRms = Math.sqrt(finalSumSq / finalSamples);
     const driftDb = 20 * Math.log10(finalRms / settleRms);
-    expect(Math.abs(driftDb)).toBeLessThan(1.0);
+    expect(Math.abs(driftDb)).toBeLessThanOrEqual(0.003);
 
     // Tail: 20 s of silence must converge to silence (peak of the last
     // second) — longest tail reachable in the wobble is ~10 s T60.
@@ -184,9 +190,9 @@ describe("Ozvena soak (300 s full-core render)", () => {
       global.gc?.();
       const growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
       console.log(
-        `[ozvena-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(3)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
+        `[ozvena-soak] heap growth over ${TOTAL_SECONDS}s render: ${growthMb.toFixed(1)} MB (drift ${driftDb.toFixed(6)} dB, tail peak ${tailPeak.toExponential(2)}, maxAbs ${maxAbs.toFixed(3)})`,
       );
-      expect(growthMb).toBeLessThan(100);
+      expect(growthMb).toBeLessThanOrEqual(6);
     }
   }, 600_000);
 });

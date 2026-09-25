@@ -7,6 +7,7 @@ import { applyGenerationResultCommand } from "../src/commands/commands";
 import { rememberGeneration, lastGeneration, type SessionGeneration } from "../src/intent/session-context";
 import { contentHash, canonicalizePattern } from "../src/ai/evaluation";
 import { hashString } from "../src/shared/rng";
+import { briefGateViolations } from "../src/intent/brief-gate";
 
 /**
  * FÁZA 3 (AI-first producer): the follow-up prompt as a targeted edit
@@ -20,11 +21,11 @@ function beforeEachHook() {
   localStorage.setItem("pf:intent-ranker", "off");
 }
 
-async function sessionWith(): Promise<{ generation: SessionGeneration; doc: ReturnType<typeof testDoc> }> {
+async function sessionWith(length = 16): Promise<{ generation: SessionGeneration; doc: ReturnType<typeof testDoc> }> {
   const doc = testDoc();
   const result = await generateAsyncResult(
     doc,
-    normalizeIntent({ genre: "house", seed: "iteration-base", candidateCount: 3, length: 16 }),
+    normalizeIntent({ genre: "house", seed: "iteration-base", candidateCount: 3, length }),
     { mode: "apply", includeBank: true },
   );
   const generation: SessionGeneration = {
@@ -74,6 +75,14 @@ describe("compileIteration — proposal shape", () => {
     // drums preserved + melodic preserved → no regenerable target
     expect(compileIteration("ten druhý, nechaj bicie a basu", generation, doc)).toBeNull();
   });
+
+  it("does not silently re-apply a candidate when every requested role is protected", async () => {
+    const { generation, doc } = await sessionWith();
+    const iteration = compileIteration("ten druhý, ale temnejší; nechaj bicie a basu", generation, doc);
+    expect(iteration).not.toBeNull();
+    expect(iteration!.result.status).toBe("rejected");
+    expect(iteration!.result.proposal).toBeUndefined();
+  });
 });
 
 describe("targeted regeneration — splice scope", () => {
@@ -87,20 +96,48 @@ describe("targeted regeneration — splice scope", () => {
     expect(hashOf(proposal.result.proposal!.pattern.rows)).not.toBe(hashOf(candidate.rows));
   });
 
-  it("melodic-only iteration keeps the drum rows identical", async () => {
+  it("an explicit no-drums iteration removes rows and passes the final hard gate", async () => {
     const { generation, doc } = await sessionWith();
     const proposal = compileIteration("ten druhý, ale temnejší, žiadne bicie", generation, doc)!;
-    const candidate = generation.candidates[1].pattern;
-    expect(hashOf(proposal.result.proposal!.pattern.rows)).toBe(hashOf(candidate.rows));
-    expect(hashOf(proposal.result.proposal!.pattern.notes)).not.toBe(hashOf(candidate.notes));
+    expect(proposal.result.proposal!.pattern.rows).toEqual({});
+    expect(hashOf(proposal.result.proposal!.pattern.notes)).not.toBe(hashOf(generation.candidates[1].pattern.notes));
+    expect(briefGateViolations(proposal.result.proposal!.pattern, proposal.result.plan)).toEqual([]);
+    expect(proposal.result.diagnostics.warnings).toContain("iteration:removed:drums");
     expect(proposal.summary).toContain("melodika regenerovaná");
   });
 
   it("a length patch regenerates the whole idea at the new length", async () => {
-    const { generation, doc } = await sessionWith();
+    const { generation, doc } = await sessionWith(32);
     const proposal = compileIteration("ten druhý na 1 takt", generation, doc)!;
     expect(proposal.result.proposal!.pattern.stepCount).toBe(16);
     expect(proposal.result.plan.intent.length).toBe(16);
+    expect(proposal.result.diagnostics.warnings).toContain("iteration:full-regen:length");
+    expect(briefGateViolations(proposal.result.proposal!.pattern, proposal.result.plan)).toEqual([]);
+  });
+
+  it("a protected drum part survives a length change with rows resized safely", async () => {
+    const { generation, doc } = await sessionWith(32);
+    const candidate = generation.candidates[1].pattern;
+    const proposal = compileIteration("ten druhý na 1 takt; nechaj bicie", generation, doc)!;
+    for (const [padId, row] of Object.entries(candidate.rows)) {
+      expect(proposal.result.proposal!.pattern.rows[padId]).toEqual(row.slice(0, 16));
+    }
+    expect(proposal.result.proposal!.pattern.stepCount).toBe(16);
+    expect(proposal.preserve).toContain("drums");
+    expect(
+      briefGateViolations(proposal.result.proposal!.pattern, proposal.result.plan, {
+        preservedRoles: proposal.preserve,
+      }),
+    ).toEqual([]);
+  });
+
+  it("a hard no-drums instruction wins over a contradictory keep-drums clause", async () => {
+    const { generation, doc } = await sessionWith();
+    const proposal = compileIteration("ten druhý, žiadne bicie; nechaj bicie", generation, doc)!;
+    expect(proposal.result.proposal!.pattern.rows).toEqual({});
+    expect(proposal.preserve).not.toContain("drums");
+    expect(proposal.result.diagnostics.warnings).toContain("iteration:conflict:no-drums-overrides-preserve");
+    expect(briefGateViolations(proposal.result.proposal!.pattern, proposal.result.plan)).toEqual([]);
   });
 
   it("iteration is deterministic (same input → same content)", async () => {
@@ -111,6 +148,51 @@ describe("targeted regeneration — splice scope", () => {
     expect(contentHash(canonicalizePattern(doc, a.result.proposal!.pattern))).toBe(
       contentHash(canonicalizePattern(doc, b.result.proposal!.pattern)),
     );
+  });
+
+  it("uses the selected candidate's own seed and source content", async () => {
+    const { generation, doc } = await sessionWith();
+    const first = compileIteration("ten prvý, ale temnejší; nechaj bass a akordy", generation, doc)!;
+    const second = compileIteration("ten druhý, ale temnejší; nechaj bass a akordy", generation, doc)!;
+    expect(first.result.plan.intent.seed).not.toBe(second.result.plan.intent.seed);
+    expect(first.result.plan.intent.sourcePatternId).toBe(generation.candidates[0].pattern.id);
+    expect(second.result.plan.intent.sourcePatternId).toBe(generation.candidates[1].pattern.id);
+  });
+
+  it("rejects session references from another project", async () => {
+    const { generation } = await sessionWith();
+    expect(compileIteration("ten druhý, ale temnejší", generation, testDoc())).toBeNull();
+  });
+
+  it("refreshes the composite output hash and generation provenance", async () => {
+    const { generation, doc } = await sessionWith();
+    const proposal = compileIteration("ten druhý, ale temnejší; nechaj bass a akordy", generation, doc)!;
+    const pattern = proposal.result.proposal!.pattern;
+    expect(pattern.generation?.outputContentHash).toBe(contentHash(canonicalizePattern(doc, pattern)));
+    expect(pattern.generation?.intentHash).toBe(proposal.result.plan.intentHash);
+    expect(pattern.generation?.intent).toEqual(proposal.result.plan.intent);
+    expect(proposal.result.bank?.[0].contentHash).toBe(contentHash(canonicalizePattern(doc, pattern)));
+  });
+
+  it("does not duplicate a persisted candidate's pattern or note identities", async () => {
+    const { generation, doc } = await sessionWith();
+    const candidate = generation.candidates[1].pattern;
+    const projectWithCandidate = { ...doc, patterns: [...doc.patterns, candidate] };
+    const proposal = compileIteration(
+      "ten druhý, ale temnejší; nechaj bass a akordy",
+      generation,
+      projectWithCandidate,
+    )!;
+    const next = applyGenerationResultCommand(projectWithCandidate, proposal.result, "iteration identity test").execute(
+      projectWithCandidate,
+    );
+    expect(new Set(next.patterns.map((pattern) => pattern.id)).size).toBe(next.patterns.length);
+    const noteIds = next.patterns.flatMap((pattern) =>
+      Object.values(pattern.notes ?? {})
+        .flat()
+        .map((note) => note.id),
+    );
+    expect(new Set(noteIds).size).toBe(noteIds.length);
   });
 });
 

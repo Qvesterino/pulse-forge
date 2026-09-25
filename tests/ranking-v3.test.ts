@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { rerankTopBySound } from "../src/intent/ranking-v3";
+import { RERANK_WEIGHTS_STORAGE_KEY } from "../src/intent/rerank-weights";
 import type { RankedCandidate } from "../src/intent/types";
 import type { Pattern } from "../src/project-model/types";
 import type { SampleBank } from "../src/sample-library/factory";
@@ -102,5 +103,68 @@ describe("ranking v3 — sound re-rank of the finalists", () => {
     });
     expect(result).toHaveLength(3);
     expect(result[2].candidateIndex).toBe(2);
+  });
+
+  describe("audio weight chain: explicit > learned (pf:rerank-weights) > shipped default", () => {
+    // Wider first-pass gap than the flip test above: at the default 0.3 the
+    // heuristic winner holds, at a learned 0.6 the fitting finalist takes it.
+    const pair = () => [entry(0, 0.9, patternB), entry(1, 0.6, patternA)];
+    const run = (weight?: number) =>
+      rerankTopBySound(doc, pair(), "techno", {
+        bank,
+        finalists: 2,
+        ...(weight !== undefined ? { weight } : {}),
+        render: render as Parameters<typeof rerankTopBySound>[3]["render"],
+      });
+    const orderOf = (bank: RankedCandidate[]) => bank.map((entry) => entry.candidateIndex);
+
+    afterEach(() => {
+      localStorage.removeItem(RERANK_WEIGHTS_STORAGE_KEY);
+    });
+
+    it("default (no learned weight): first-pass winner holds", async () => {
+      expect(orderOf(await run())).toEqual([0, 1]);
+    });
+
+    it("learned weight from storage flips the winner like an explicit one", async () => {
+      const explicit = orderOf(await run(0.6));
+      expect(explicit).toEqual([1, 0]); // calibration: 0.6 must actually flip here
+      localStorage.setItem(
+        RERANK_WEIGHTS_STORAGE_KEY,
+        JSON.stringify({
+          weight: 0.6,
+          source: "test",
+          fittedAt: "test",
+          accuracy: 1,
+          baselineAccuracy: 0,
+          generations: 2,
+          samples: 4,
+        }),
+      );
+      expect(orderOf(await run())).toEqual(explicit);
+    });
+
+    it("explicit weight wins over a learned one", async () => {
+      localStorage.setItem(
+        RERANK_WEIGHTS_STORAGE_KEY,
+        JSON.stringify({
+          weight: 0.6,
+          source: "test",
+          fittedAt: "test",
+          accuracy: 1,
+          baselineAccuracy: 0,
+          generations: 2,
+          samples: 4,
+        }),
+      );
+      expect(orderOf(await run(0))).toEqual([0, 1]);
+    });
+
+    it("garbage in storage falls back to the default", async () => {
+      localStorage.setItem(RERANK_WEIGHTS_STORAGE_KEY, "not-json{{{");
+      expect(orderOf(await run())).toEqual([0, 1]);
+      localStorage.setItem(RERANK_WEIGHTS_STORAGE_KEY, JSON.stringify({ weight: 99 }));
+      expect(orderOf(await run())).toEqual([0, 1]);
+    });
   });
 });

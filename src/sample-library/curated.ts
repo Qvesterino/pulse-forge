@@ -25,11 +25,17 @@ export interface CuratedSample {
 }
 
 /**
- * Full-kit curation (factory-content pass 2026-09): every factory asset id
- * gets a curated file, so the whole kit carries the mastering glue and the
- * per-category loudness balance (see scripts/render-curated-seeds.mjs for
- * the targets). The same-id override contract is unchanged.
+ * Full-kit curation (factory-content pass 2026-09): every factory asset gets
+ * a curated file except the three mallet slots, which intentionally remain
+ * synthesis-only. The curated layer carries the mastering glue and the
+ * per-category loudness balance (see scripts/render-curated-seeds.mjs).
  */
+export const SYNTHESIS_ONLY_ASSET_IDS = [
+  "factory.mallet.vibes",
+  "factory.mallet.marimba",
+  "factory.mallet.celesta",
+] as const;
+
 export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.kick.deep", file: "factory.kick.deep.wav" },
   { id: "factory.kick.punch", file: "factory.kick.punch.wav" },
@@ -79,6 +85,10 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.perc.tick", file: "factory.perc.tick.wav" },
   { id: "factory.perc.blip", file: "factory.perc.blip.wav" },
   { id: "factory.perc.cowbell", file: "factory.perc.cowbell.wav" },
+  { id: "factory.perc.cowbell.dark", file: "factory.perc.cowbell.dark.wav" },
+  { id: "factory.perc.cowbell.scream", file: "factory.perc.cowbell.scream.wav" },
+  { id: "factory.perc.cowbell.drill", file: "factory.perc.cowbell.drill.wav" },
+  { id: "factory.perc.cowbell.bright", file: "factory.perc.cowbell.bright.wav" },
   { id: "factory.perc.conga", file: "factory.perc.conga.wav" },
   { id: "factory.perc.tambourine", file: "factory.perc.tambourine.wav" },
   { id: "factory.fx.riser", file: "factory.fx.riser.wav" },
@@ -99,6 +109,10 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.tonal.sadpiano", file: "factory.tonal.sadpiano.wav" },
   { id: "factory.tonal.padwarm", file: "factory.tonal.padwarm.wav" },
   { id: "factory.tonal.harp", file: "factory.tonal.harp.wav" },
+  { id: "factory.tonal.wurli", file: "factory.tonal.wurli.wav" },
+  { id: "factory.tonal.organ", file: "factory.tonal.organ.wav" },
+  { id: "factory.tonal.sitar", file: "factory.tonal.sitar.wav" },
+  { id: "factory.tonal.erhu", file: "factory.tonal.erhu.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

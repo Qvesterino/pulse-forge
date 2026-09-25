@@ -1,6 +1,6 @@
 # Current State — single source of truth
 
-**Last verified:** 2026-09-24
+**Last verified:** 2026-09-25
 **Verified by:** direct count against `src/effects/registry.ts`, `src/instruments/registry.ts`, `docs/adr/` and `tests/`.
 
 This document is the **single source of truth** for the headline numbers about KYX / Pulse Forge. Older documents in this repo (`RELEASE_ROADMAP.md`, `DSP-ROADMAP.md`, `EDIT-ROADMAP.md`, `INSTRUMENT-ROADMAP.md`, `SCENE-MODE-ROADMAP.md`, `INTENT_ENGINE.md`, `KYX_CURRENT_STATE.md`, `MAINTENANCE_AUDIT_PROGRESS.md`, `PERFORMANCE.md`) may carry their own point-in-time numbers; when those disagree with the figures below, **this document wins** for the question "how many / what ships today?".
@@ -11,21 +11,21 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 
 ## Headline numbers
 
-| What                                   |   Count | Source of truth                                                                                                                                                           |
-| -------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                                                                    |
-| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                                                                   |
-| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                                                                  |
-| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                                                                       |
-| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                                                                          |
-| **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                                                                    |
-| **Factory assets** (drum / tonal / FX) |  **71** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                                                                      |
-| └─ curated WAV overrides               |      68 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; synthesized fallback retained on failure — the 3 mallet assets are synthesis-only today) |
-| **Factory presets**                    | **325** | `src/presets/factory.ts`                                                                                                                                                  |
-| └─ instrument presets                  |     319 | `FACTORY_PRESETS`                                                                                                                                                         |
-| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                                                                    |
-| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                                                                    |
-| **Vitest spec files**                  | **494** | `tests/` files matching `*.test.ts` (393) and `*.test.tsx` (101)                                                                                                          |
+| What                                   |   Count | Source of truth                                                                                                          |
+| -------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------ |
+| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                   |
+| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                  |
+| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                 |
+| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                      |
+| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                         |
+| **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
+| **Factory assets** (drum / tonal / FX) |  **79** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
+| └─ curated WAV overrides               |      76 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
+| **Factory presets**                    | **344** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     338 | `FACTORY_PRESETS`                                                                                                        |
+| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
+| **Architecture decision records**      |  **15** | `docs/adr/0001` … `0013`, plus 0006/0007 each have two companion files                                                   |
+| **Vitest spec files**                  | **501** | `tests/` files matching `*.test.ts` (399) and `*.test.tsx` (102)                                                         |
 
 ## Flagship plugin implementations
 
@@ -54,7 +54,7 @@ All six are loaded lazily in dedicated Web Workers with bounded timeouts + circu
 
 ## Platform reach
 
-- **Browser** — Chromium-family, Firefox and Microsoft Edge are target environments. The last recorded 226/226-per-browser result is a historical baseline from 2026-09-14, not verification of the current revision.
+- **Browser** — Chromium-family, Firefox and Microsoft Edge are target environments. The current revision passes the Chromium browser verifier at 260/260; Firefox/Edge cross-browser coverage and manual Safari/iOS Safari checks remain separate gates.
 - **Desktop** — Windows x64 shipped (NSIS installer + portable exe via `electron-builder`). The MRT2 macOS arm64 path now has a GitHub Actions package gate: after all shared CI checks pass, it builds a DMG + ZIP, verifies the DMG and packaged arm64 app/helper, boots the packaged Electron app in smoke mode, then uploads a 14-day QA artifact. This artifact is unsigned/unnotarized and does not include model weights; it is not a public macOS release or proof of MRT2 inference. Windows MRT2 uses a separate optional companion boundary and remains capture/near-realtime/realtime only after capability and benchmark evidence. Auto-update through GitHub Releases (ADR 0011).
 - **Safari / iOS Safari** — manual smoke only; not covered by automated browser verifier.
 - **macOS / Linux desktop** — not shipped (ADR 0010 is Windows-only by current target list). The macOS MRT2 CI artifact is an opt-in QA build only; signing/notarization and a real model-inference test remain release requirements.
@@ -113,7 +113,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 
 ## Prior test-gate baseline — not verified on the current revision
 
-The following historical results were recorded against candidate `b8c7a00` on 2026-09-14. The referenced `RELEASE_READINESS_REPORT.md` is not present in this checkout, so these figures are context only, not release evidence for the current revision. Re-run each gate before relying on it.
+The following historical results were recorded against candidate `b8c7a00` on 2026-09-14. `RELEASE_READINESS_REPORT.md` is present but records a separate 2026-09-21 campaign; neither source is evidence for the current revision. Re-run each gate before relying on it.
 
 | Gate                                 | Historical result                                                        | Source                            |
 | ------------------------------------ | ------------------------------------------------------------------------ | --------------------------------- |
@@ -133,7 +133,7 @@ These remain unverified for the current revision:
 
 1. Manual browser/device checks (Firefox, Safari, iOS Safari, physical audio-device lifecycle).
 2. Deployed smoke against a real `KYX_DEPLOY_URL` (`npm run release:deployed-smoke`).
-3. Prettier formatting decision (209-file deviation baseline; `npm run format` would clear it).
+3. Prettier formatting decision (the recorded 209-file baseline is historical; the 2026-09-25 recheck reports 199 pre-existing paths; `npm run format` across the repository would clear it but create broad churn).
 
 ## What this document is NOT
 

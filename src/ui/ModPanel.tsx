@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useActivePatternId,
   useAutomation,
@@ -1336,7 +1336,18 @@ function ScenePanel() {
   const groovePoolRef = useRef(services.groovePool);
   const [poolEntries, setPoolEntries] = useState<GroovePoolEntry[]>([]);
   const [poolStatus, setPoolStatus] = useState<string | null>(null);
-  const refreshPool = () => void groovePoolRef.current.list().then(setPoolEntries);
+  const refreshPool = useCallback(() => {
+    void groovePoolRef.current
+      .list()
+      .then((entries) => {
+        setPoolEntries(entries);
+        setPoolStatus(null);
+      })
+      .catch((error: unknown) => {
+        console.error("[mod-panel] groove pool load failed:", error);
+        setPoolStatus("Could not load saved grooves.");
+      });
+  }, []);
   useEffect(refreshPool, [refreshPool]);
   const [selectedSceneLaneId, setSelectedSceneLaneId] = useState<string | null>(sceneLanes[0]?.id ?? null);
   const selectedLane = sceneLanes.find((l) => l.id === selectedSceneLaneId) ?? null;

@@ -19,12 +19,8 @@
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import {
-  favoritesToDrumSamples,
-  favoritesToMelodicSamples,
-  type FavoritesPack,
-} from "../src/intent/favorites";
-import { buildFavoriteRankerGroups } from "./generate-intent-ranker-favorites.mts";
+import { favoritesToDrumSamples, favoritesToMelodicSamples, type FavoritesPack } from "../src/intent/favorites";
+import { buildFavoriteRankerGroups } from "../src/intent/ranker-favorites";
 
 const packPath = process.argv[2];
 if (!packPath) {

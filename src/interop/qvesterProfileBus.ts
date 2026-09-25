@@ -108,16 +108,36 @@ export interface PublisherProfile {
   energyCurve: number[];
   beatCurve: number[];
   bandCurves: Record<string, number[]>;
+  /** Optional metadata block (beat-locked handoff v2, 2026-09-25). Old
+   *  consumers ignore this; new consumers read it for phase alignment +
+   *  genre hints. Only set when KYX can supply the values (rendered
+   *  project with active pattern). */
+  meta?: PublisherProfileMeta;
+}
+
+export interface PublisherProfileMeta {
+  /** Offset of the first beat from t=0 in seconds. 0 = grid beat 0.
+   *  Consumers use this to align their own beat curves to KYX's. */
+  beatGridOffsetSec: number;
+  /** Active pattern's `PatternGeneration.genre`, or null. */
+  genre: string | null;
+  /** 0..1 tempo confidence. */
+  bpmConfidence: number;
 }
 
 /** Assemble the bus profile from the current window (contract-shaped). */
 export function buildProfileFromWindow(
   window: ProfileBusCurveWindow,
-  meta: { bpm: number; beatPhase: number; latestBands: Record<string, number> },
+  meta: {
+    bpm: number;
+    beatPhase: number;
+    latestBands: Record<string, number>;
+    beatMeta?: PublisherProfileMeta;
+  },
 ): PublisherProfile {
   const bandCurves: Record<string, number[]> = {};
   for (const name of BAND_NAMES) bandCurves[name] = windowToCurve(window.bands[name]!, window.filled);
-  return {
+  const profile: PublisherProfile = {
     bands: { ...meta.latestBands },
     bpm: Number.isFinite(meta.bpm) && meta.bpm > 0 ? meta.bpm : 0,
     beatPhase: Math.min(1, Math.max(0, meta.beatPhase)),
@@ -127,12 +147,15 @@ export function buildProfileFromWindow(
     beatCurve: windowToCurve(window.beat, window.filled),
     bandCurves,
   };
+  if (meta.beatMeta) profile.meta = meta.beatMeta;
+  return profile;
 }
 
-function writeEnvelope(profile: PublisherProfile): boolean {
+function writeEnvelope(profile: PublisherProfile, channel: string = PROFILE_BUS_CHANNEL): boolean {
+  const storageKey = `qvester:audio-profile:v1:${channel}`;
   let revision = 1;
   try {
-    const previous = localStorage.getItem(PROFILE_BUS_KEY);
+    const previous = localStorage.getItem(storageKey);
     if (previous) {
       const parsed = JSON.parse(previous) as { revision?: number };
       if (typeof parsed.revision === "number" && parsed.revision >= revision) revision = parsed.revision + 1;
@@ -143,7 +166,7 @@ function writeEnvelope(profile: PublisherProfile): boolean {
   const now = Date.now();
   const envelope = {
     schema: PROFILE_BUS_SCHEMA,
-    channel: PROFILE_BUS_CHANNEL,
+    channel,
     revision,
     publisherApp: PROFILE_BUS_PUBLISHER_APP,
     capturedAt: new Date(now).toISOString(),
@@ -151,10 +174,99 @@ function writeEnvelope(profile: PublisherProfile): boolean {
     profile,
   };
   try {
-    localStorage.setItem(PROFILE_BUS_KEY, JSON.stringify(envelope));
+    localStorage.setItem(storageKey, JSON.stringify(envelope));
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Beat-locked handoff v2 (2026-09-25): publish a stem sub-channel
+ * envelope. One call per stem group (rhythm/bass/melody). The sub-channel
+ * shape mirrors the master `PublisherProfile` but with a `meta.stemRole`
+ * + `meta.parentRevision` linking back to the master envelope.
+ */
+export interface StemProfileMeta extends PublisherProfileMeta {
+  stemRole: "rhythm" | "bass" | "melody";
+  parentRevision: number;
+  parentChannel: typeof PROFILE_BUS_CHANNEL;
+}
+
+export interface StemProfileInput {
+  role: "rhythm" | "bass" | "melody";
+  /** Decoded mono PCM samples in [-1, 1]. */
+  samples: Float32Array;
+  /** Sample rate of `samples` (Hz). */
+  sampleRate: number;
+  /** Master envelope revision this stem is published alongside. */
+  parentRevision: number;
+  beatMeta?: PublisherProfileMeta;
+}
+
+/** Build a stem PublisherProfile from raw mono PCM. Lightweight: no FFT
+ *  (stems don't need 5-band resolution for the visual layers), only an
+ *  RMS energy curve. Reuses the master's beat curve since the beat
+ *  grid is transport-derived and identical across stems. */
+export function buildStemProfileFromPcm(input: StemProfileInput): PublisherProfile {
+  const { samples, sampleRate, role, parentRevision, beatMeta } = input;
+  const windowSize = Math.max(1, Math.floor(sampleRate / SAMPLE_HZ));
+  const curveLength = Math.min(samples.length / windowSize, 600);
+  const energyCurve: number[] = new Array(Math.floor(curveLength)).fill(0);
+  for (let i = 0; i < curveLength; i++) {
+    const start = i * windowSize;
+    let sum = 0;
+    const end = Math.min(start + windowSize, samples.length);
+    for (let j = start; j < end; j++) sum += samples[j]! * samples[j]!;
+    const rms = Math.sqrt(sum / Math.max(1, end - start));
+    energyCurve[i] = Math.min(1, Math.max(0, rms * ENERGY_GAIN));
+  }
+  // Use the stem-energy curve as both energy and beat placeholders —
+  // a future iteration can split onset detection from RMS. The visual
+  // consumers want *energy pulses per stem*; beat-precision is the
+  // master's responsibility.
+  const profile: PublisherProfile = {
+    bands: {},
+    bpm: 0,
+    beatPhase: 0,
+    duration: samples.length / sampleRate,
+    sampleRate: SAMPLE_HZ,
+    energyCurve,
+    beatCurve: energyCurve,
+    bandCurves: {},
+  };
+  if (beatMeta || true) {
+    profile.meta = {
+      beatGridOffsetSec: beatMeta?.beatGridOffsetSec ?? 0,
+      genre: beatMeta?.genre ?? null,
+      bpmConfidence: beatMeta?.bpmConfidence ?? 0.9,
+      stemRole: role,
+      parentRevision,
+      parentChannel: PROFILE_BUS_CHANNEL,
+    } as StemProfileMeta;
+  }
+  return profile;
+}
+
+/** Write a stem profile envelope on its sub-channel (e.g.
+ *  `pulse_forge/rhythm`). Idempotent — overwrite is the standard publish
+ *  semantic. Best-effort: storage errors are swallowed so the handoff
+ *  sender never breaks on a quota. */
+export function publishStemProfile(stem: StemProfileInput): boolean {
+  const channel = `${PROFILE_BUS_CHANNEL}/${stem.role}`;
+  const profile = buildStemProfileFromPcm(stem);
+  return writeEnvelope(profile, channel);
+}
+
+/** Drop all stem envelopes for a clean sign-out (matches master sign-out). */
+export function clearStemProfiles(): void {
+  for (const role of ["rhythm", "bass", "melody"] as const) {
+    const storageKey = `qvester:audio-profile:v1:${PROFILE_BUS_CHANNEL}/${role}`;
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      /* storage unavailable */
+    }
   }
 }
 
@@ -237,7 +349,8 @@ export function startQvesterProfileBus(services: Services): QvesterProfileBusHan
       const windowSec = filled / SAMPLE_HZ;
       if (windowSec >= MIN_WINDOW_SEC && timestamp - lastPublishAt >= PUBLISH_INTERVAL_MS) {
         lastPublishAt = timestamp;
-        const bpm = services.store.getDoc().bpm;
+        const doc = services.store.getDoc();
+        const bpm = doc.bpm;
         const window: ProfileBusCurveWindow = { energy, beat, bands, filled, durationSec: windowSec };
         writeEnvelope(buildProfileFromWindow(window, { bpm, beatPhase, latestBands }));
       }
@@ -259,6 +372,8 @@ export function startQvesterProfileBus(services: Services): QvesterProfileBusHan
       } catch {
         /* storage already gone */
       }
+      // Beat-locked v2 (2026-09-25): also drop stem sub-channels.
+      clearStemProfiles();
     },
   };
   (startQvesterProfileBus as { handle?: QvesterProfileBusHandle }).handle = handle;

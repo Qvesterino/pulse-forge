@@ -42,6 +42,9 @@ function fakeRecord(overrides?: Partial<BeatHandoffRecord>): BeatHandoffRecord {
     sampleRate: 44100,
     byteLength: 3,
     createdAt: Date.now(),
+    beatGridOffsetSec: 0,
+    genre: null,
+    bpmConfidence: 0.9,
     ...overrides,
   };
 }

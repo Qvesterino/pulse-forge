@@ -195,13 +195,19 @@ NEISTÉ: tónina nebola zadaná
 - Splice pravdovravnosť: drums-only target splicne rows/stepMeta (notes content-identické —
   hash test); melodika zdieľa tracky, takže sa regeneruje ako blok alebo sa ponechá pri
   chránenej melodicej role — summary to vypovedá. Reziduálne role direktívy prepisujú
-  kandidátske („žiadne bicie" = drop), length patch = full regen.
+  kandidátske; explicitné „žiadne bicie" fyzicky odstráni rows aj step metadata a finálny
+  zložený pattern znovu prejde brief gate. Pri zmene dĺžky sa chránené rows/notes bezpečne
+  orežú alebo doplnia; summary túto zmenu rozsahu prizná.
 - UI: iteration branch pred instant re-apply; návrh ide cez štandardnú banku (audition, USE =
-  jeden undo, compliance riadok, stale guard z Fázy 2). Odmietnutý návrh nič nezanechá.
+  jeden undo, compliance riadok, stale guard z Fázy 2). Zamietnutý alebo bez cieľa návrh už
+  nespadne do okamžitého re-apply; session referencie sú kontrolované proti project ID.
+- Provenance sa počíta pre finálny splice; zvolený kandidát poskytuje seed aj source content,
+  výsledná banka má skutočný content hash a opätovné použitie ID nevytvorí duplicitné pattern/note IDs.
 - Session ostáva dočasná a projektom ohraničená (docId); trvalé uloženie neexistuje bez
   vedomia používateľa (roadmap bod 1 ✓ v rozsahu „predvolene dočasná").
-- Testy: `tests/iteration.test.ts` (12) — content-hash identita chráneného obsahu, one-undo
-  round-trip, determinizmus, reject no-op, provenance warnings.
+- Testy: `tests/iteration.test.ts` (19) — content-hash identita chráneného obsahu, hard gate po
+  splice, no-drums removal, resize + preservation, cross-project odmietnutie, one-undo
+  round-trip, determinizmus, odmietnutie bez cieľa a provenance/identity integrity.
 - Otvorené: A/B audition pôvodného stavu ide cez ghost time-machine (existujúce), nie ako
   druhé ▶ tlačidlo v návrhu; revízne ID proti collab peer zmenám pokrýva stale guard
   (referenčná identita doc objektu) — plnohodnotný revision ledger je Fáza 5 priestor.

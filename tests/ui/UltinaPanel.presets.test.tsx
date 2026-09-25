@@ -13,6 +13,11 @@ import { renderWithContext, mockServices } from "../helpers";
 import { UltinaPresetRepository } from "../../src/persistence/UltinaPresetRepository";
 
 function renderPanel(params: Record<string, number>, onApplyPreset = vi.fn()) {
+  const services = mockServices();
+  const ultinaPresets = new UltinaPresetRepository();
+  services.core.ultinaPresets = ultinaPresets;
+  services.ultinaPresets = ultinaPresets;
+
   return renderWithContext(
     <UltinaPanel
       trackId="t-ult"
@@ -22,7 +27,7 @@ function renderPanel(params: Record<string, number>, onApplyPreset = vi.fn()) {
       onApplyPreset={onApplyPreset}
       onApplyProposal={vi.fn()}
     />,
-    { services: mockServices() },
+    { services },
   );
 }
 

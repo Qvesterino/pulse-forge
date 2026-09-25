@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
+import { normalizeIntent } from "../../src/intent/normalize";
+import { rememberGeneration } from "../../src/intent/session-context";
 
 describe("IntentPanel", () => {
   it("renders the textarea and disabled GENERATE button initially", () => {
@@ -33,6 +35,31 @@ describe("IntentPanel", () => {
   it("renders the INTENT header", () => {
     renderWithContext(<IntentPanel />);
     expect(screen.getByText(/INTENT/i)).toBeInTheDocument();
+  });
+
+  it("does not re-apply a session candidate from another project", async () => {
+    const rendered = renderWithContext(<IntentPanel />);
+    const doc = rendered.services.store.getDoc();
+    const pattern = doc.patterns[0];
+    const intent = normalizeIntent({ genre: "house", seed: "foreign-session" });
+    rememberGeneration({
+      text: "house",
+      intent,
+      candidates: [
+        { index: 0, pattern, intent },
+        { index: 1, pattern: { ...pattern, id: `${pattern.id}-second` }, intent },
+      ],
+      appliedIndex: null,
+      docId: "another-project",
+      at: 0,
+    });
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "ten druhý" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/patrí inému projektu/i);
+    expect(rendered.services.store.execute).not.toHaveBeenCalled();
+    rememberGeneration({ text: "", intent, candidates: [], appliedIndex: null, docId: doc.id, at: 0 });
   });
 });
 

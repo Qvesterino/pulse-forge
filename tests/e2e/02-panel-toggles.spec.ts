@@ -9,14 +9,17 @@ import { clickPanelAction, openHouseTemplate } from "./_helpers";
  * button does not exist in the DOM while the menu is closed.
  */
 async function pressedOf(page: Page, label: string): Promise<boolean | null> {
-  const direct = page.locator(`.topbar button:has-text("${label}")`).first();
+  // FX is the rack's test-facing name; the current topbar action is labelled
+  // DEV in both its direct and overflow representations.
+  const actionLabel = label === "FX" ? "DEV" : label;
+  const direct = page.locator(`.topbar button:has-text("${actionLabel}")`).first();
   if (await direct.isVisible().catch(() => false)) {
     return (await direct.getAttribute("aria-pressed").catch(() => null)) === "true";
   }
   const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
   if (!(await trigger.isVisible().catch(() => false))) return null;
   await trigger.click();
-  const item = page.locator(`#topbar-overflow-menu button:has-text("${label}")`).first();
+  const item = page.locator(`#topbar-overflow-menu button:has-text("${actionLabel}")`).first();
   const pressed = await item.getAttribute("aria-pressed").catch(() => null);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(80);

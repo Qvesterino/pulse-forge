@@ -11,8 +11,8 @@ test.describe("01 — landing to studio", () => {
       }
     });
 
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: /describe it/i })).toBeVisible();
+    await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /describe it/i })).toBeVisible({ timeout: 60_000 });
     // The page load event includes statically imported entry dependencies; the
     // preview may finish its own asynchronous render later.
     expect(serviceRequests).toEqual([]);

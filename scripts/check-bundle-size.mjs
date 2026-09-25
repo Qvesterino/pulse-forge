@@ -40,11 +40,12 @@ const ENTRY_BUDGET_KB = 1070;
 // 2500 (2026-09-22): conscious MRT2 bump — the provider-neutral companion
 // protocol, bounded resample runtime and deliberate localhost Inspector surface
 // are shipped without model weights or native ML dependencies.
-// 2600 (2026-09-24): conscious product-completion bump — ghost-version A/B
-// morphing, conversational production controls and the Windows companion
-// transport are shipped as real capability, with the landing closure still
-// independently capped below.
-const TOTAL_BUDGET_KB = 2600;
+// 2660 (2026-09-25): measured completion-wave bump — the current production
+// build is 2644 KB after ghost-version A/B morphing, conversational production
+// controls, favorites, stretch editing and Windows companion transport landed.
+// This keeps just 16 KB of headroom; entry, optional runtimes and the landing
+// route remain independently capped below.
+const TOTAL_BUDGET_KB = 2660;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

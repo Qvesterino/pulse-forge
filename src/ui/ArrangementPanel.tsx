@@ -99,6 +99,7 @@ import {
 import { useCurrentItemId, usePlayheadBar } from "./playhead";
 import type { Transport } from "../transport/Transport";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
+import { StretchDialog } from "./StretchDialog";
 
 const BASE_BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
@@ -748,6 +749,8 @@ export function ArrangementPanel() {
   );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  // Time-stretch dialog — open from the AUDIO CLIP menu (replaces prompt()).
+  const [stretchClipId, setStretchClipId] = useState<string | null>(null);
   // Spectral Lab (RX-style clip surgery) — open from the AUDIO CLIP menu.
   const [spectralEditClipId, setSpectralEditClipId] = useState<string | null>(null);
   useEffect(() => {
@@ -769,6 +772,16 @@ export function ArrangementPanel() {
   const audioClips = useMemo(
     () => [...(arrangement.audioClips ?? [])].sort((a, b) => a.startBar - b.startBar),
     [arrangement.audioClips],
+  );
+  // Stretch dialog data — resolved once per opened clip (BPM detection is an
+  // autocorrelation pass; never run it per render).
+  const stretchTarget = stretchClipId ? (audioClips.find((c) => c.id === stretchClipId) ?? null) : null;
+  const stretchBuffer = stretchTarget ? services.bank.get(stretchTarget.bufferId) : null;
+  const stretchSourceSec = stretchBuffer?.duration ?? 0;
+  const stretchDetectedBpm = useMemo(
+    () =>
+      stretchBuffer ? (detectLoopBpm(stretchBuffer.getChannelData(0), stretchBuffer.sampleRate)?.bpm ?? null) : null,
+    [stretchClipId, stretchBuffer],
   );
   // Playhead leaves own the 1/8-bar rAF subscription (see ArrPlayheadLine);
   // the panel itself only re-renders when the playhead CROSSES a clip.
@@ -2725,29 +2738,9 @@ export function ArrangementPanel() {
             <button
               type="button"
               role="menuitem"
+              title="Rate slider, pitch mode, live duration math and one-click tempo fit"
               onClick={() => {
-                const c = audioClips.find((x) => x.id === audioMenu.clipId);
-                const currentRate = c?.stretchRate ?? 1;
-                const currentMode = c?.stretchMode ?? "resample";
-                const modeLabel = currentMode === "stretch" ? "preserve pitch" : "pitch+time";
-                const v = window.prompt(
-                  `Stretch rate 0.25–4 (1=normal, 0.5=half speed)\nMode: ${modeLabel} (type "preserve" for pitch-preserving stretch, or just the rate)`,
-                  String(currentRate),
-                );
-                if (v === null) {
-                  setAudioMenu(null);
-                  return;
-                }
-                const isPreserve = v.toLowerCase().includes("preserve");
-                const rate = Number(isPreserve ? v.replace(/preserve/i, "").trim() || currentRate : v);
-                if (Number.isFinite(rate) && rate >= 0.25 && rate <= 4) {
-                  execute(
-                    updateAudioClip(services.store.doc, audioMenu.clipId, {
-                      stretchRate: Math.round(rate * 100) / 100,
-                      stretchMode: isPreserve ? "stretch" : "resample",
-                    }),
-                  );
-                }
+                setStretchClipId(audioMenu.clipId);
                 setAudioMenu(null);
               }}
             >
@@ -3002,6 +2995,21 @@ export function ArrangementPanel() {
             if (!c || !buf) return null;
             return <SpectralEditPanel clip={c} buffer={buf} onClose={() => setSpectralEditClipId(null)} />;
           })()}
+        {stretchTarget && (
+          <StretchDialog
+            clipName={tracks.find((t) => t.id === stretchTarget.trackId)?.name ?? stretchTarget.trackId}
+            sourceSec={stretchSourceSec}
+            initialRate={stretchTarget.stretchRate ?? 1}
+            initialMode={stretchTarget.stretchMode ?? "resample"}
+            detectedBpm={stretchDetectedBpm}
+            projectBpm={doc.bpm}
+            onApply={(rate, mode) => {
+              execute(updateAudioClip(services.store.doc, stretchTarget.id, { stretchRate: rate, stretchMode: mode }));
+              setStretchClipId(null);
+            }}
+            onClose={() => setStretchClipId(null)}
+          />
+        )}
       </div>
     </section>
   );

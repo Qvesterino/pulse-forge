@@ -2,9 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 
-const virtualPwaRegisterStub = fileURLToPath(
-  new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url),
-);
+const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
@@ -22,6 +20,14 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     css: false,
+    // The 300 s DSP soak gates compare retained heap before/after GC. Vitest
+    // filters Node's process.execArgv when spawning workers, so pass the GC
+    // flag explicitly to both supported pools instead of silently measuring
+    // uncollected allocation churn.
+    poolOptions: {
+      forks: { execArgv: ["--expose-gc"] },
+      threads: { execArgv: ["--expose-gc"] },
+    },
     // Pool config (rejected 2026-09-18):
     //   - `isolate: false` collapsed 78-file setup time from 406 s to ~13 s
     //     in early testing, but it produced 7 contamination failures in

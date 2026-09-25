@@ -24,6 +24,7 @@ import { buildStemProject } from "../rendering/stems";
 import { encodeWavAsync } from "../rendering/wav";
 import { roleOfTrack } from "../effects/role-presets";
 import type { SampleBank } from "../sample-library/factory";
+import { publishStemProfile } from "./qvesterProfileBus";
 
 export const KYX_HANDOFF_INTENT = "send_beat_to_audio_canvas";
 export const KYX_ARTIFACT_TYPE = "audio_master";
@@ -109,6 +110,19 @@ export interface BeatHandoffRecord {
   trackName?: string;
   /** Stem records only: the mapped FxTrackRole (drums/bass/chords/lead). */
   role?: string;
+  /** Beat-locked handoff v2 (2026-09-25) — offset of the first beat from
+   *  t=0 in the rendered WAV (seconds). 0 = transport starts on grid beat 0.
+   *  Drives Audio Canvas's beat-grid phase alignment so AC visuals are
+   *  lock-step with the KYX transport. */
+  beatGridOffsetSec: number;
+  /** Active pattern's `PatternGeneration.genre` (e.g. "house", "dnb",
+   *  "ambient"). Null when the active pattern was authored manually or
+   *  the generation provenance is absent. Drives the AC preset
+   *  recommender's genre → mood hint. */
+  genre: string | null;
+  /** 0..1 confidence from KYX's tempo estimator (placeholder 0.9 today
+   *  — the estimator is currently the deterministic scheduler). */
+  bpmConfidence: number;
 }
 
 export interface KyxSourceMapEntry {
@@ -135,6 +149,45 @@ export function buildSourceMapEntries(
 /** Reconstruct the handoff WAV as a Blob (the receiver wraps it in a File). */
 export function beatRecordToBlob(record: BeatHandoffRecord): Blob {
   return new Blob([record.wav], { type: "audio/wav" });
+}
+
+/**
+ * Beat-locked handoff v2 (2026-09-25): extract the cross-app metadata
+ * (beatGridOffsetSec, genre, bpmConfidence) from the project document.
+ *
+ * - `beatGridOffsetSec` is the offset of the first beat from t=0 in
+ *   the rendered WAV. KYX renders with the transport starting at bar 1
+ *   / beat 0, so the value is 0 for a fresh render. The field exists so
+ *   future KYX scenes can choose any grid phase and Audio Canvas still
+ *   locks to it.
+ * - `genre` comes from the active pattern's `PatternGeneration.genre`.
+ *   Null when the pattern was authored manually (no generation provenance).
+ * - `bpmConfidence` is currently a fixed 0.9 — the KYX scheduler IS the
+ *   tempo authority (it's a deterministic transport), so the value is
+ *   not heuristic. Bumped later when a measured confidence exists.
+ */
+export function gatherBeatMetadata(doc: ProjectDocument): {
+  beatGridOffsetSec: number;
+  genre: string | null;
+  bpmConfidence: number;
+} {
+  // Defensive: test fixtures and a few transitional project shapes may
+  // not yet carry `patterns` / `activePatternId`. When the array is
+  // absent we return nulls — the packet still rides the bpm/key/camelot
+  // through the existing fields.
+  if (!Array.isArray(doc.patterns) || doc.patterns.length === 0) {
+    return { beatGridOffsetSec: 0, genre: null, bpmConfidence: 0.9 };
+  }
+  const activePattern = doc.patterns.find((p) => p.id === doc.activePatternId);
+  const generationGenre =
+    activePattern && typeof (activePattern as { generation?: { genre?: string } }).generation?.genre === "string"
+      ? (activePattern as { generation?: { genre?: string } }).generation?.genre ?? null
+      : null;
+  return {
+    beatGridOffsetSec: 0,
+    genre: generationGenre,
+    bpmConfidence: 0.9,
+  };
 }
 
 async function sha256Hex(data: ArrayBuffer | Uint8Array): Promise<string> {
@@ -263,6 +316,7 @@ export function buildBeatHandoffPacket(
 ): BeatHandoffPacket {
   const createdAt = Date.now();
   const key = keyToCamelot(doc.key);
+  const beatMeta = gatherBeatMetadata(doc);
   const metadata = {
     bpm: record.bpm,
     key: key.key,
@@ -272,6 +326,11 @@ export function buildBeatHandoffPacket(
     durationSec: record.durationSec,
     sampleRate: record.sampleRate,
     byteLength: record.byteLength,
+    // Beat-locked handoff v2 (2026-09-25) — cross-app rhythm alignment
+    // + genre hint for the AC preset recommender.
+    beatGridOffsetSec: record.beatGridOffsetSec ?? beatMeta.beatGridOffsetSec,
+    genre: record.genre ?? beatMeta.genre,
+    bpmConfidence: record.bpmConfidence ?? beatMeta.bpmConfidence,
   };
   const inputs: BeatHandoffPacket["payload"]["inputs"] = [
     {
@@ -389,7 +448,7 @@ async function renderStemWav(
   bank: SampleBank,
   trackId: string,
   options: SendBeatOptions,
-): Promise<{ bytes: ArrayBuffer; durationSec: number; sampleRate: number }> {
+): Promise<{ bytes: ArrayBuffer; mono: Float32Array; durationSec: number; sampleRate: number }> {
   const stemDoc = buildStemProject(doc, (t) => t.id === trackId);
   // Stems skip the master limiter/glue stage (same convention as the stems
   // export) — each tool is heard in isolation.
@@ -400,10 +459,53 @@ async function renderStemWav(
     masterProcessing: false,
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  const mono = mixDownToMono(buffer);
   const bytes = await encodeWavAsync(buffer, 16, {
     ...(options.signal ? { signal: options.signal } : {}),
   });
-  return { bytes, durationSec: buffer.duration, sampleRate: buffer.sampleRate };
+  return { bytes, mono, durationSec: buffer.duration, sampleRate: buffer.sampleRate };
+}
+
+/** Beat-locked handoff v2 (2026-09-25): mix a multi-channel AudioBuffer
+ *  down to a single mono Float32Array of samples in [-1, 1]. Used by the
+ *  stem-publisher path so each track stem can be summed into a
+ *  rhythm/bass/melody group envelope without an extra decode pass. */
+function mixDownToMono(buffer: AudioBuffer): Float32Array {
+  const length = buffer.length;
+  const out = new Float32Array(length);
+  const channels = buffer.numberOfChannels;
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) out[i] += data[i]!;
+  }
+  if (channels > 1) {
+    const inv = 1 / channels;
+    for (let i = 0; i < length; i++) out[i]! *= inv;
+  }
+  return out;
+}
+
+/** Map an FxTrackRole onto the three sub-channels the AC visual layer
+ *  exposes (rhythm/bass/melody). Drums collapse into "rhythm"; chords
+ *  and lead merge into "melody" — the AC visual contract collapses the
+ *  four roles into three visual layers without losing musical intent. */
+function mapRoleToStemChannel(role: string): "rhythm" | "bass" | "melody" | null {
+  if (role === "drums") return "rhythm";
+  if (role === "bass") return "bass";
+  if (role === "chords" || role === "lead") return "melody";
+  return null;
+}
+
+/** Sum several Float32Arrays of (possibly) differing lengths into one
+ *  Float32Array the length of the longest input. The mix is plain add —
+ *  we are NOT applying a limiter; the result is used only for envelope
+ *  analysis, not for playback. */
+function sumSamples(list: Float32Array[]): Float32Array {
+  if (list.length === 0) return new Float32Array(0);
+  const length = list.reduce((m, s) => Math.max(m, s.length), 0);
+  const out = new Float32Array(length);
+  for (const s of list) for (let i = 0; i < s.length; i++) out[i]! += s[i]!;
+  return out;
 }
 
 /** Render the current project (master + per-track stems), store everything,
@@ -414,6 +516,7 @@ export async function prepareBeatHandoff(
   options: SendBeatOptions,
 ): Promise<SendBeatResult> {
   const createdAt = Date.now();
+  const beatMeta = gatherBeatMetadata(doc);
   const buffer = await renderProject(doc, bank, {
     mode: options.mode,
     sampleRate: options.sampleRate,
@@ -437,12 +540,24 @@ export async function prepareBeatHandoff(
     sampleRate: buffer.sampleRate,
     byteLength: wavBytes.byteLength,
     createdAt,
+    beatGridOffsetSec: beatMeta.beatGridOffsetSec,
+    genre: beatMeta.genre,
+    bpmConfidence: beatMeta.bpmConfidence,
   };
   await storeBeatBlob(record);
 
   // ── Instrument map: one isolated stem per non-group track ──
   const entries = buildSourceMapEntries(doc);
   const sourceMap: KyxSourceMapEntry[] = [];
+  // Beat-locked handoff v2 (2026-09-25): also keep the per-track mono
+  // PCM around so we can sum them into role-group envelopes for the
+  // audio profile bus sub-channels. Dropped after the publish step.
+  const monoPerRole: Record<"rhythm" | "bass" | "melody", Float32Array[]> = {
+    rhythm: [],
+    bass: [],
+    melody: [],
+  };
+  let lastSampleRate = options.sampleRate;
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;
     options.onProgress?.((i + 0.5) / (entries.length + 1), `Rendering stem: ${entry.trackName}…`);
@@ -462,6 +577,9 @@ export async function prepareBeatHandoff(
       createdAt,
       trackName: entry.trackName,
       role: entry.role,
+      beatGridOffsetSec: beatMeta.beatGridOffsetSec,
+      genre: beatMeta.genre,
+      bpmConfidence: beatMeta.bpmConfidence,
     };
     await storeBeatBlob(stemRecord);
     sourceMap.push({
@@ -470,6 +588,29 @@ export async function prepareBeatHandoff(
       role: entry.role,
       durationSec: stem.durationSec,
       byteLength: stem.bytes.byteLength,
+    });
+
+    // Group the mono PCM by sub-channel role for the bus publish below.
+    const channel = mapRoleToStemChannel(entry.role);
+    if (channel) monoPerRole[channel].push(stem.mono);
+    lastSampleRate = stem.sampleRate;
+  }
+
+  // ── Beat-locked v2: publish per-group envelopes on the audio profile
+  //    bus sub-channels (pulse_forge/rhythm, pulse_forge/bass,
+  //    pulse_forge/melody). Best-effort: a publish failure must never break
+  //    the explicit WAV handoff — sibling apps simply keep looping the
+  //    master envelope. ──
+  for (const role of ["rhythm", "bass", "melody"] as const) {
+    const samplesList = monoPerRole[role];
+    if (samplesList.length === 0) continue;
+    const summed = sumSamples(samplesList);
+    publishStemProfile({
+      role,
+      samples: summed,
+      sampleRate: lastSampleRate,
+      parentRevision: 0, // sub-channel envelopes correlate by timestamp, not master revision
+      beatMeta,
     });
   }
 

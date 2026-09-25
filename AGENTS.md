@@ -22,7 +22,7 @@ A browser-first, fully offline-capable, production-grade digital audio workstati
 npm install
 npm run dev           # vite dev server — http://127.0.0.1:5173
 npm run typecheck     # strict tsc --noEmit
-npm run test          # vitest (jsdom, ~494 collected spec files)
+npm run test          # vitest (jsdom; current spec count is in docs/CURRENT-STATE.md)
 npm run build         # production build + bundle budgets
 ```
 
@@ -45,9 +45,9 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/commands/`                              | Command system; every mutation flows through commands; `yDocBridge.ts` for collab; `layerCommands.ts` for grouped redo.                                                                                      |
 | `src/store/`                                 | `ProjectStore`, `SelectionStore`, `ToolStore` — pure pub/sub state.                                                                                                                                          |
 | `src/instruments/`                           | `registry.ts` — `INSTRUMENT_DEFS` and `INSTRUMENT_ORDER` for 15 instrument kinds. Mod matrix, randomization.                                                                                                 |
-| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 42 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.   |
-| `src/sample-library/`                        | `manifest.ts` (71 factory assets), `factory.ts` (synthesized fallbacks), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                                                         |
-| `src/presets/`                               | `factory.ts` (319 instrument presets + 6 drum presets = 325), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                                           |
+| `src/effects/`                               | `registry.ts` — `EFFECT_DEFS` for 42 core effects + 5 flagship plugin suites. `fxeq-core/`, `ultina-core/`, `ozvena-core/` are vendored cores mirrored from upstream; vendor via `scripts/vendor-*.mjs`.     |
+| `src/sample-library/`                        | `manifest.ts` and `factory.ts` (factory assets + synthesized fallbacks; counts in `docs/CURRENT-STATE.md`), `curated.ts` (curated WAV overrides), `kit-pools.ts`, `velocity-layers.ts`.                      |
+| `src/presets/`                               | `factory.ts` (factory instrument + drum presets; counts in `docs/CURRENT-STATE.md`), `normalization.ts`, `similar.ts`, `audioQuality.ts`.                                                                    |
 | `src/rendering/`                             | `renderer.ts` (`renderProject()` — the offline render entry point), `bounce.ts`, `stems.ts`, `wav.ts` (16/24-bit + 32-bit float RIFF encoder).                                                               |
 | `src/export/`                                | `project-io.ts` (10 MB import cap), `shareCode.ts` (2 M-token / 8 M-char caps), `mp3.ts` (LAME via wasm), `video.ts`, `scorepack.ts`, `zip.ts`, `packCode.ts`, `themeCode.ts`, `kitCode.ts`, `bindsCode.ts`. |
 | `src/persistence/`                           | IndexedDB repositories (project, preset, library, kit, frozen buffers, user samples, ultina + morph presets, groove pool, snapshot), `save-lifecycle.ts`, `autosave-debouncer.ts`.                           |
@@ -55,14 +55,14 @@ The project browser (`src/ui/ProjectBrowser.tsx`) is the first screen on every b
 | `src/collab/`                                | `YDocStore.ts`, `CollaborationProvider.ts`, `CollabSession.ts` (lazy-loaded), `bandmate.ts` (AI Bandmate), `jamRoles.ts`, `transportSync.ts`.                                                                |
 | `src/intent/`                                | Text→beat pipeline: `pipeline.ts`, `plan.ts`, `normalize.ts`, `text-parser.ts`, `candidate-bank.ts`, `providers/{local,symbolic}.ts`.                                                                        |
 | `src/ai/`                                    | Generative engine, feature extractors, ONNX ranker + symbolic priors + their workers, datasets, golden vectors.                                                                                              |
-| `src/generative/`                            | Provider-neutral generative-track runtime, MRT2 browser/Electron adapters, KYX note conditioning, bounded AudioWorklet playback, durable capture and resample.                                                 |
+| `src/generative/`                            | Provider-neutral generative-track runtime, MRT2 browser/Electron adapters, KYX note conditioning, bounded AudioWorklet playback, durable capture and resample.                                               |
 | `src/analysis/`                              | `ultinaAnalysisClient.ts` + `ultinaAnalysisWorker.ts` — VLYX Mix Assist host.                                                                                                                                |
 | `src/services/`                              | `rafLoop.ts` (one-bus rAF shared by meters and animations), `services.ts` (long-lived services wiring).                                                                                                      |
 | `src/ui/`                                    | ~70 React components — every panel/dialog/editor. `App.tsx` (56 KB), `ArrangementPanel.tsx` (106 KB), `ModPanel.tsx` (70 KB), `Sequencer.tsx` (67 KB), `PianoRoll.tsx` (65 KB).                              |
 | `src/embed/`, `src/gallery/`, `src/landing/` | Route-level apps: `/embed` beat player, `/gallery` community feed, `/landing` first-visit page.                                                                                                              |
 | `server/collab-server.mjs`                   | y-websocket relay + `/api/gallery` JSON store. One process, one port.                                                                                                                                        |
-| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                 |
-| `tests/`                                     | Vitest specs (494 files), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                                                          |
+| `desktop/main.cjs` + `desktop/preload.cjs`   | Thin Electron shell (ADR 0010/0011), MRT2 helper process/IPC; native Objective-C++ adapter and CMake build live under `native/mrt2-host/`.                                                                   |
+| `tests/`                                     | Vitest specs (current count in `docs/CURRENT-STATE.md`), Playwright E2E, golden-vector locks for the vendored plugin cores, intent suite, persistence round-trip.                                            |
 | `docs/adr/`                                  | Architecture decision records 0001–0013. Read the relevant ADR before touching the area.                                                                                                                     |
 | `docs/CURRENT-STATE.md`                      | **Single source of truth** for "how many / what ships today". Update it in the same commit when you change a number.                                                                                         |
 
@@ -93,7 +93,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 - **Decompression-bomb and import caps** are mandatory. Existing ceilings: share tokens 2 M chars / 8 M decompressed chars (`src/export/shareCode.ts`), project JSON 10 MB (`src/export/project-io.ts`), audio samples 25 MB (`src/ui/DropZone.tsx`).
 - **`?server=` overrides** must use `isAllowedServerUrl` in `src/collab/collabShared.ts` — never bypass it. Self-hosted relays on other hosts must be entered in the UI deliberately, not via URL params.
 - **State-management discipline.** Mutations go through commands (with full undo/redo). Project model is a plain serializable object. React components are renderers, never owners, of audio state.
-- **Bundle budgets.** `npm run build` enforces budgets (entry 1070 KB, DAW JS 2500 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB). `scripts/check-bundle-size.mjs` reports the physical shipped JS total separately; if you need to grow a budget, justify it in the PR.
+- **Bundle budgets.** `npm run build` enforces budgets (entry 1070 KB, DAW JS 2660 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB). `scripts/check-bundle-size.mjs` reports the physical shipped JS total separately; any budget increase needs a measured justification there.
 - **AudioWorklet DSP lives in `src/audio-worklets/` and `src/effects/{fxeq,ultina,ozvena}-core/`.** Changes to those trees require running the matching `npm run build:core-worklets` / `build:fxeq` / `build:ultina` / `build:ozvena` before `npm run dev` or `npm run build`. The `predev` and `prebuild` npm hooks already do this automatically.
 
 ---
@@ -148,17 +148,17 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 
 ## 6. Test gates — what must be green before merging
 
-| Gate                      | Command                                | Expected result                                               |
-| ------------------------- | -------------------------------------- | ------------------------------------------------------------- |
-| Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                 |
-| Full Vitest suite         | `npm run test`                         | 449+ files / 4.5k+ tests / 100+ skipped, all PASS             |
-| Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                  |
-| Real-browser audio        | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226) |
-| Factory preset QA         | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)  |
-| Targeted plugin hardening | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                    |
-| 300 s plugin soaks        | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples |
-| Production build          | `npm run build`                        | exit 0, bundle budgets respected                              |
-| Vulnerability audit       | `npm audit --omit=dev`                 | 0 vulnerabilities                                             |
+| Gate                      | Command                                | Expected result                                                                                                   |
+| ------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                     |
+| Full Vitest suite         | `npm run test`                         | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest |
+| Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                                                                      |
+| Real-browser audio        | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                       |
+| Factory preset QA         | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)                                        |
+| Targeted plugin hardening | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                                                                        |
+| 300 s plugin soaks        | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples                                                     |
+| Production build          | `npm run build`                        | exit 0, bundle budgets respected                                                                                  |
+| Vulnerability audit       | `npm audit --omit=dev`                 | 0 vulnerabilities                                                                                                 |
 
 Owner gates still open (release-blocking, not feature-blocking): manual Firefox/Safari/iOS Safari smoke, `release:deployed-smoke` with a real `KYX_DEPLOY_URL`. See `RELEASE_READINESS_REPORT.md`.
 
@@ -185,7 +185,7 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
 - **`noUnusedLocals` is strict.** A line like `import type { ReactElement }` that's not referenced will fail `tsc --noEmit`. Run `npm run typecheck` before any non-trivial PR.
 - **Vitest specs under `tests/e2e/`** are run by Playwright, not vitest — `vitest.config.ts` excludes that directory explicitly to avoid double-execution. New E2E scenarios go in `tests/e2e/` and `playwright.config.ts`.
 - **Schema versioning**: any change to the on-disk project shape must bump `SCHEMA_VERSION` in `src/project-model/schema.ts` and add a migration in `migrateProject`. Loading code rejects unknown future versions.
-- **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 2500 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. If you need to grow a budget, justify it in the PR and update that script.
+- **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 2660 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
 - **Live and offline render parity**: the renderer hands the same `AudioEngine` an `OfflineAudioContext`. If a feature only works in one path, that's a bug. Verify by exporting the project and listening to the result.
 
 ---

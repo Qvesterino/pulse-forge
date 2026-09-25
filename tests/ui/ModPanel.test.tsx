@@ -52,7 +52,7 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
 
   it("offers grouped deep parameters with a filter input when an Ultina is present", async () => {
     const doc = docWithUltina();
-    const { container } = renderWithContext(<ModPanel />, { services: mockServices(doc) });
+    const { container, services } = renderWithContext(<ModPanel />, { services: mockServices(doc) });
 
     // Filter input appears only for tracks hosting an Ultina.
     const filter = screen.getByLabelText("Filter VLYX parameters") as HTMLInputElement;
@@ -71,6 +71,7 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
     const narrowed = [...picker.querySelectorAll("option")].map((o) => o.value);
     expect(narrowed).toContain("fxParam:fx-u1:comp.thresholdDb");
     expect(narrowed).not.toContain("fxParam:fx-u1:comp.attackMs");
+    expect(services.groovePool.list).toHaveBeenCalledTimes(1);
   });
 
   it("no filter input and no deep groups without an Ultina on the track", () => {

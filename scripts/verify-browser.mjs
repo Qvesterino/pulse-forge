@@ -85,7 +85,9 @@ try {
       results = await page.evaluate(async () => {
         const mod = await import("/src/browser-checks.ts");
         return mod.runChecks((result) => {
-          console.log(`[check] ${result.ok ? "PASS" : "FAIL"} ${result.name}${result.message ? ` — ${result.message}` : ""}`);
+          console.log(
+            `[check] ${result.ok ? "PASS" : "FAIL"} ${result.name}${result.message ? ` — ${result.message}` : ""}`,
+          );
         });
       });
     } catch (error) {
@@ -130,14 +132,12 @@ try {
     // First-time visitors get the landing page — exercise it: hero renders,
     // CTA enters the studio (and marks the browser onboarded). The landing
     // is a lazy chunk since the route split — wait for it OR the browser.
-    await appPage
-      .waitForSelector(".landing, .project-browser", { timeout: 60_000 })
-      .catch(async () => {
-        if (mountRetry) throw new Error("mount retry also timed out");
-        mountRetry = true;
-        await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
-        return appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 });
-      });
+    await appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 }).catch(async () => {
+      if (mountRetry) throw new Error("mount retry also timed out");
+      mountRetry = true;
+      await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+      return appPage.waitForSelector(".landing, .project-browser", { timeout: 60_000 });
+    });
     const onLanding = await appPage.$(".landing");
     if (onLanding) {
       await appPage.waitForSelector(".landing-hero-player .embed-play", { timeout: 60_000 });
@@ -464,7 +464,10 @@ try {
   let jamServer;
   try {
     const { spawn } = await import("node:child_process");
-    const JAM_PORT = 1249;
+    // Match the dev server's supported default relay port. The ?server=
+    // override intentionally rejects IP literals and non-default ports, so
+    // a custom ws://127.0.0.1:1249 URL silently falls back to port 1234.
+    const JAM_PORT = 1234;
     jamServer = spawn(process.execPath, ["server/collab-server.mjs"], {
       env: { ...process.env, PORT: String(JAM_PORT) },
       stdio: "ignore",
@@ -485,7 +488,7 @@ try {
     const openJam = async (name) => {
       const p = await browser.newPage();
       await p.addInitScript(SKIP_FLAGS);
-      await p.goto(`http://127.0.0.1:${PORT}/?import=${jamCode}&collab=${room}&server=ws://127.0.0.1:${JAM_PORT}`, {
+      await p.goto(`http://127.0.0.1:${PORT}/?import=${jamCode}&collab=${room}`, {
         waitUntil: "domcontentloaded",
         timeout: 60_000,
       });
@@ -715,9 +718,8 @@ try {
     await plugPage.locator('[aria-label="Undo PRISM parameter edit"]').first().click();
     await plugPage.waitForFunction(
       (value) =>
-        document
-          .querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')
-          ?.getAttribute("aria-valuenow") === value,
+        document.querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')?.getAttribute("aria-valuenow") ===
+        value,
       bGainBefore,
       { timeout: 5000 },
     );
@@ -727,9 +729,8 @@ try {
     await plugPage.locator('[aria-label="Redo PRISM parameter edit"]').first().click();
     await plugPage.waitForFunction(
       (value) =>
-        document
-          .querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')
-          ?.getAttribute("aria-valuenow") === value,
+        document.querySelector('.fxeq-panel [role="slider"][aria-label="B1 GAIN"]')?.getAttribute("aria-valuenow") ===
+        value,
       bGainAfter,
       { timeout: 5000 },
     );

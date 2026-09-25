@@ -9,11 +9,9 @@
  *   - `empty`      — a degenerate all-silent candidate (structurally valid,
  *                    musically useless — invariants pass it, this gate must
  *                    not);
- *   - `prohibited` — drum-row content while the drums role is excluded from
- *                    the generation set (ZÁKAZY "no drums" / ZACHOVAŤ
- *                    "keep my drums"). Drum rows are role-attributable;
- *                    melodic notes are not (bass/chords/lead share tracks),
- *                    so the melodic side stays plan-enforced.
+ *   - `prohibited` — drum-row content while drums are excluded, unless the
+ *                    caller explicitly identifies those rows as protected
+ *                    source content. Melodic notes are not role-attributable.
  *
  * Every gate runs AFTER the invariant/repair pass, so a candidate that
  * could not be repaired into brief compliance is dropped, never ranked —
@@ -23,7 +21,7 @@
  * what a pattern can prove, `null` ("·") for what only the plan enforces.
  */
 import type { Pattern } from "../project-model/types";
-import type { GenerationPlan, GenerationResult } from "./types";
+import type { GenerationPlan, GenerationResult, IntentRole } from "./types";
 
 export interface BriefViolation {
   id: string;
@@ -44,9 +42,15 @@ export function hasNoteContent(pattern: Pattern): boolean {
 
 /**
  * Hard brief violations of one candidate pattern. Pure — runs on the
- * already-invariant-clean (or repaired) candidate.
+ * already-invariant-clean (or repaired) candidate. `preservedRoles` is only
+ * for a composed iteration that spliced protected source content back in;
+ * provider output still uses the stricter default gate.
  */
-export function briefGateViolations(pattern: Pattern, plan: GenerationPlan): BriefViolation[] {
+export function briefGateViolations(
+  pattern: Pattern,
+  plan: GenerationPlan,
+  options: { preservedRoles?: readonly IntentRole[] } = {},
+): BriefViolation[] {
   const violations: BriefViolation[] = [];
   if (pattern.stepCount !== plan.options.stepCount) {
     violations.push({
@@ -55,10 +59,10 @@ export function briefGateViolations(pattern: Pattern, plan: GenerationPlan): Bri
     });
   }
   const generationRoles = plan.options.roles ?? [];
-  if (!generationRoles.includes("drums") && hasRowContent(pattern)) {
+  if (!generationRoles.includes("drums") && !options.preservedRoles?.includes("drums") && hasRowContent(pattern)) {
     violations.push({
       id: "prohibited-drums",
-      detail: "drum rows carry content while drums are excluded (prohibition/preserve)",
+      detail: "drum rows carry content while drums are excluded",
     });
   }
   if (!hasRowContent(pattern) && !hasNoteContent(pattern)) {
@@ -126,7 +130,8 @@ export function evaluateBriefCompliance(result: GenerationResult): readonly Brie
     satisfied: pattern ? hasRowContent(pattern) || hasNoteContent(pattern) : null,
   });
 
-  if (!generationRoles.includes("drums")) {
+  const drumsPreserved = intent.preserve?.includes("drums") ?? false;
+  if (!generationRoles.includes("drums") && !drumsPreserved) {
     items.push({
       id: "no-drums",
       label: "žiadne bicie",
@@ -135,12 +140,11 @@ export function evaluateBriefCompliance(result: GenerationResult): readonly Brie
   }
 
   if (intent.preserve && intent.preserve.length > 0) {
-    const drumsPreserved = intent.preserve.includes("drums");
     items.push({
       id: "preserve",
       label: `ponechané: ${intent.preserve.join(", ")}`,
-      satisfied: pattern ? (drumsPreserved ? !hasRowContent(pattern) : true) : null,
-      detail: drumsPreserved ? undefined : "vynútené plánom",
+      satisfied: pattern ? true : null,
+      detail: "vynútené plánom",
     });
   }
 
