@@ -4205,3 +4205,14 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **Existujúce (overené, netýkané):** resultForCandidate → applyGenerationResultCommand = presne vypočutý kandidát v jednom undo; timeout/missing model/offline → deterministický fallback (circuit breaker).
 - **Testy**: `tests/brief-gate.test.ts` 12/12; celková regresia intent+candidate rodina **222/222 (19 súborov)** vrátane ich architecture-cycles; tsc čistý na mojich súboroch (tests/services-*.test.ts chyby = ich CoreServices DI vlna).
 - ⚠️ Race poznámka: ich commit `94cb52e` (GOAL 02 re-run) absorboval moje provider edity (candidate.ts extraction + gate wiring) — HEAD overený grepom, nič nestratené; smer `providers/candidate.ts` ako leaf je ich zámer (arch test to pinuje).
+
+---
+
+## GOAL 45 — ŽÁNROVÁ HŁBKA vlna 2: HOUSE + DNB (2026-09-24)
+
+- **house.dancefloor** (124-128): festival Fisher/John Summit — BIG clap na 2+4, extra kick push pred downbeat, driving open-hat offbeats, ride accents.
+- **house.soulful** (120-126): Defected warm vocal-house — soft kick, klasický clap, swung shuffle haty, open-hat breathing, ride shuffle.
+- **dnb.dancefloor** (172-176): Chase & Status/Baddadan festival — BIG punchy kick, double snare accent, festival vocal-friendly štruktúra.
+- **dnb.neuro** (172-178): neurofunk rolling bass — tighter two-step skeleton, intricate ghost-snare, sparse kick (bas NESIE štýl).
+- **STYLE_PHRASES**: dancefloor/festival → dancefloor; soulful/warm house → soulful; neurofunk/neuro → neuro (prehodeno z twostep). Všetky mapované len na existujúce groove štýly.
+- **Testy** +5 (37/37 v parseri): house dncfl/soulful štýly, dnb dncfl/neuro, groove validity 16-step × 4. Regresia **332/332 cez 30 súborov**; typecheck 0.

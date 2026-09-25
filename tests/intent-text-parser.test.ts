@@ -294,9 +294,9 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parsed.input.style).toBe("liquid");
   });
 
-  it("neurofunk → dnb twostep, hard groove → techno driving", () => {
+  it("neurofunk → dnb neuro groove, hard groove → techno driving", () => {
     expect(parseIntentText("neurofunk at 174").input.genre).toBe("dnb");
-    expect(parseIntentText("neurofunk at 174").input.style).toBe("twostep");
+    expect(parseIntentText("neurofunk at 174").input.style).toBe("neuro");
     expect(parseIntentText("hard groove techno").input.style).toBe("driving");
   });
 
@@ -321,6 +321,30 @@ describe("genre-depth wave 2 — techno hard/melodic + trap lux/hyper", () => {
 
   it("new groove definitions exist with valid 16-step shapes", () => {
     for (const id of ["techno.hard", "techno.melodic", "trap.lux", "trap.hyper"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+  });
+});
+
+describe("genre-depth wave 3 — dancefloor / soulful / neuro", () => {
+  it("house: dancefloor and soulful styles resolve", () => {
+    expect(parseIntentText("dancefloor house at 126").input.style).toBe("dancefloor");
+    expect(parseIntentText("dancefloor house at 126").input.genre).toBe("house");
+    expect(parseIntentText("soulful house at 124").input.style).toBe("soulful");
+  });
+
+  it("dnb: dancefloor and neuro styles resolve", () => {
+    expect(parseIntentText("dancefloor dnb at 174").input.style).toBe("dancefloor");
+    expect(parseIntentText("neurofunk at 174").input.style).toBe("neuro");
+  });
+
+  it("new groove definitions exist with valid 16-step shapes", () => {
+    for (const id of ["house.dancefloor", "house.soulful", "dnb.dancefloor", "dnb.neuro"]) {
       const groove = getGrooveById(id);
       expect(groove).toBeDefined();
       expect(groove!.patterns.length).toBeGreaterThan(0);
