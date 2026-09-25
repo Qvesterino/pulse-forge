@@ -21,8 +21,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
 | **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
 | └─ curated WAV overrides               |      78 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
-| **Factory presets**                    | **345** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     339 | `FACTORY_PRESETS`                                                                                                        |
+| **Factory presets**                    | **347** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     341 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
 | **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
 | **Vitest spec files**                  | **505** | `tests/` files matching `*.test.ts` (402) and `*.test.tsx` (103)                                                         |
@@ -97,7 +97,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Embedding-conditioned prior v2** — Phases D–F of the conditioning chain. _(feat `c7df20b`)_
 - **Hybrid v3 prior (active)** — retrained with label smoothing + variant embeddings, logit-saturation fix; activation commit flips the runtime to the new model. _(feat `64e2b61`, `8bd904c`)_
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
-- **World roster + genre depth** — 61 artist presets total (researched BPM ranges), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
+- **World roster + genre depth** — 97 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
 
 ### Arrangement

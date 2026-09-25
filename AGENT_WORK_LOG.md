@@ -4445,3 +4445,25 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validation:** targeted 56/56; **browser factory-presets QA 345/345 audible** (the audibility gate the sound waves owed, now current); earlier same-day bench: full build EXIT 0 (DAW 2644/2660), full suite 501 files/5006 tests/0 fail, E2E 07 PASSES (routing bug gone), npm audit 0 vulns.
 
 **BACKLOG STATE: EMPTY.** No known bugs, no open engineering queues from the campaign or the quality waves. The repo is in the best verified state it has ever been.
+
+---
+
+## VLNA 1 — G-FUNK FOUNDATION (2026-09-25, user vision: West Coast + Fred Again DAW)
+
+**User cieľ:** prvotriedne DAW zamerané na West Coast / Snoop–Dre g-funk a Fred Again UKG. Research (web) + gap analýza: Fred strana ~80 % hotová (2 presety, UKG routing, twostep groove, vocalchop, 🎤 VocalProfile = Actual Life workflow); G-funk prázdny. Táto vlna zatvára G-funk foundation.
+
+**Research (BPM z tunebat/audiokeychain/kirk.is DJ databáz):** Still D.R.E. ~93 · Nuthin' but a G Thang 95 · Gin and Juice 95 · Regulate 95–96 — klasická kapsa 92–96. G-funk zvuk: whining high synth lead (Ohio Players „Funky Worm" rodokmeň), pomalá kotúľajúca basa, talkbox/vocoder, P-Funk sampling, molové tóniny.
+
+**Dodané:**
+
+1. **2 groovey** (`src/ai/grooves/westcoast.ts`, NOVÝ súbor, genre "trap" — žiadna zmena Genre unionu): `trap.headnod` (90–96, swing 0.16, rest-heavy lenivá kapsa: sparse swung hats, laid-back snare velocity, ghost fill + open-hat answer varikácie) a `trap.gfunk` (95–104, swing 0.12, kotúľajúci lope: syncopated kick 0/7/10, ghost snare 11, busier roll-into-hook variácia). Registrované v GROOVE_LIBRARY po TRAP.
+2. **STYLE_PHRASES** (text-parser): „west coast" / SK „zapadne pobrezie" (deaccent) / „head nod" → **headnod**; „g-funk"/„gfunk"/„lowrider" → **gfunk**. ⚠ PITFALL CHYTENÝ TESTOM: gfunk regex MUSÍ sedieť NAD generickým `\bfunk\b`→funky („- je non-word char, takže \bfunk\b matchne vnútri „g-funk"); gfunk ide nad funk, headnod zostáva na konci zoznamu.
+3. **4 artist presety** (artists.ts, roster 93 → 97): snoop dogg (headnod/chill 92–96), dr. dre (gfunk/dark 93–96, názvy chron/2001), warren g & nate dogg (zdieľaný Regulate entry, headnod/chill 94–96), ty dolla $ign (gfunk/energetic 95–105 modern west). Všetky len na existujúci genre trap + nové groove štýly (GOAL 42 politika).
+4. **2 signature zvuky** (analog, FACTORY_PRESETS 339 → 341): `factory.analog.west.whistle` — G-funk Whistle: sine+tri pár, 2-voice unison 7 ct, vibrato LFO 5.5 Hz/0.14, reso 2.2, drive 0.15, vysoký sustain (0.85) — Funky Worm whine; `factory.analog.west.lowrider` — Lowrider Bass: sine+sub 0.5, cutoff 520, drive 0.35, pluck envelope. ⚠ GATE CHYTIL MOJ OMYL: `glide` NIE je analog param (videl som ho v susednom 808 ParamDef bloke v tom istom definitions.ts) — presets.test range gate ho odmietol; glide vyňatý, portamento slide zapísaný ako analog-engine follow-up. **Talkbox** — už existuje (vocoder-talkbox preset), nič netreba.
+5. **Loudness regen** (347 presetov meraných; KNOWN_CLAMPED pin sa NEposunul — žiadne nové clamp-hity) + **počty**: CURRENT-STATE 345→347 (339→341), roster prose 61→97. AGENTS.md row už ich session prepísala na CURRENT-STATE odkaz.
+
+**Dôležité súbory:** src/ai/grooves/{westcoast.ts(NOVÝ),index.ts}, src/intent/{text-parser,artists}.ts, src/presets/{factory,preset-loudness.generated}.ts, tests/{intent-text-parser,intent-artists}.test.ts, docs/CURRENT-STATE.md.
+
+**Validácia:** parser+artists **78/78** (vrátane nových blokov), 10-súborová battery **191/191** po glide fixe (presets range gate, loudness audit+clamp pin, brief/conversation/producer/iteration, fx-catalog, param-sanity); `tsc --noEmit` EXIT 0. Ich session bola počas vlny extrémne aktívna (intent types/schema/plan refactor v letu + audioReview) — všetky zdieľané súbory verifikované na 100 % moje hunky pred stagingom.
+
+**Zostáva z vízie:** Vlna 2 — Fred depth (vocalchop.ukg.* presety, ukg.heartbeat groove, Fred-style song forma). Vlna 3 — hero feature „urob hook z môjho hlasu" (VocalProfile → vocalchop/granular rewire, one command). Analog glide param pre portamento slide.

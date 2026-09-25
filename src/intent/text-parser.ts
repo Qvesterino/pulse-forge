@@ -106,6 +106,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdriving\b|\bdrive\b/, "driving"],
   [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
   [/\bbaile\b|\bmandel\w*\b/, "bounce"],
+  // West Coast / G-funk (MUST sit above the generic "funk" entry — \bfunk\b
+  // matches inside "g-funk" because '-' is a non-word char). SK stems
+  // deaccented.
+  [/\bg[ -]?funk\b|\bgfunk\b|\blow ?rider\b/, "gfunk"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
@@ -135,6 +139,8 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bglitch(?:y)?\b|\bchybn|\bchybov|\bsekan/, "glitch"],
   [/\borganic\b|\borganick|\bprirodzen|\bzivy/, "organic"],
   [/\bmotorik\b/, "industrial"],
+  [/\bwest ?coast\b|\bzapadn\w* pobre[zz]i\w*/, "headnod"],
+  [/\bhead ?nod\b|\bheadnod\b/, "headnod"],
 ];
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */

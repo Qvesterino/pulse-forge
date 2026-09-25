@@ -139,6 +139,52 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [86, 92],
     label: "boom bap",
   },
+  // ── west coast / g-funk (researched pocket: Still D.R.E. ~93, G Thang /
+  // Gin and Juice / Regulate ~95 — all mapped to the trap.headnod /
+  // trap.gfunk grooves) ───────────────────────────────────────────────────
+  {
+    names: ["snoop", "snoop dogg", "snoop type beat", "doggy style", "doggystyle"],
+    genre: "trap",
+    style: "headnod",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.55,
+    bpmRange: [92, 96],
+    label: "snoop dogg",
+  },
+  {
+    names: ["dre", "dr dre", "dr. dre", "dre type beat", "chronic", "2001"],
+    genre: "trap",
+    style: "gfunk",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.55,
+    bpmRange: [93, 96],
+    label: "dr. dre",
+  },
+  {
+    names: ["warren g", "warren", "regulate", "nate dogg", "nate"],
+    // Regulate (Warren G ft. Nate Dogg) — same 95 BPM pocket, one entry
+    // serves both names; the sung-hook feel is the groove's laid-back snare.
+    genre: "trap",
+    style: "headnod",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [94, 96],
+    label: "warren g & nate dogg",
+  },
+  {
+    names: ["ty dolla", "ty dolla sign", "ty dolla $ign", "ty$", "modern west"],
+    // Modern west coast: a touch faster and harder than the 90s pocket.
+    genre: "trap",
+    style: "gfunk",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.6,
+    bpmRange: [95, 105],
+    label: "ty dolla $ign",
+  },
   // ── house / club ────────────────────────────────────────────────────────
   {
     names: ["fred again type beat", "fred again.. type", "actual life"],

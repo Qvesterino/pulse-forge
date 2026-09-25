@@ -89,6 +89,8 @@ export const FACTORY_PRESET_LOUDNESS: Record<string, number> = {
   "factory.analog.trap.lead": -25.9,
   "factory.analog.trap.strings": -22.8,
   "factory.analog.trap.supersaw": -23.8,
+  "factory.analog.west.lowrider": -21.9,
+  "factory.analog.west.whistle": -17.3,
   "factory.bass.ambient.drone": -16.7,
   "factory.bass.ambient.subdrone": -16.7,
   "factory.bass.dnb.reesebass": -9.9,
@@ -442,6 +444,8 @@ export const FACTORY_PRESET_GAIN_DB: Record<string, number> = {
   "factory.analog.trap.lead": 4.6,
   "factory.analog.trap.strings": 1.5,
   "factory.analog.trap.supersaw": 2.5,
+  "factory.analog.west.lowrider": 11.6,
+  "factory.analog.west.whistle": -4.0,
   "factory.bass.ambient.drone": 6.4,
   "factory.bass.ambient.subdrone": 6.4,
   "factory.bass.dnb.reesebass": -0.4,
@@ -740,11 +744,11 @@ export const FACTORY_PRESET_GAIN_DB: Record<string, number> = {
  * sits and adapts the mix chain when content changes.
  */
 export const FAMILY_REFERENCE: Record<string, { integrated: number; punchPlrDb: number; tiltDb: number }> = {
-  bass: { integrated: -10.3, punchPlrDb: 5.6, tiltDb: 19.2 },
+  bass: { integrated: -10.3, punchPlrDb: 5.7, tiltDb: 19.2 },
   drums: { integrated: -27.7, punchPlrDb: 15.5, tiltDb: 5.1 },
   fx: { integrated: -35.3, punchPlrDb: 8.7, tiltDb: 15.2 },
   keys: { integrated: -23.4, punchPlrDb: 11.0, tiltDb: 13.6 },
-  lead: { integrated: -21.3, punchPlrDb: 10.4, tiltDb: 12.3 },
+  lead: { integrated: -21.3, punchPlrDb: 10.3, tiltDb: 12.3 },
   pad: { integrated: -25.5, punchPlrDb: 9.5, tiltDb: 13.6 },
   pluck: { integrated: -29.2, punchPlrDb: 19.0, tiltDb: 11.9 },
   texture: { integrated: -28.8, punchPlrDb: 10.7, tiltDb: 10.1 },

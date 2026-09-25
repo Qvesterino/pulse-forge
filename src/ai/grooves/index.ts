@@ -8,11 +8,13 @@ import { DRILL_GROOVES } from "./drill";
 import { PHONK_GROOVES } from "./phonk";
 import { JERSEY_GROOVES } from "./jersey";
 import { DNB_GROOVES } from "./dnb";
+import { WESTCOAST_GROOVES } from "./westcoast";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
   ...TECHNO_GROOVES,
   ...TRAP_GROOVES,
+  ...WESTCOAST_GROOVES,
   ...AMBIENT_GROOVES,
   ...HYBRID_GROOVES,
   ...DRILL_GROOVES,

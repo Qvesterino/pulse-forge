@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { matchArtistPreset } from "../src/intent/artists";
 import { parseIntentText } from "../src/intent/text-parser";
+import { getGrooveById } from "../src/ai/grooves/index";
 import { normalizeIntent } from "../src/intent/normalize";
 import { parseReviseIntent, routeIntentText, REVISE_DELTA } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
@@ -257,5 +258,38 @@ describe("world-roster wave (researched BPM)", () => {
     expect(parseIntentText("bou type beat").input.style).toBe("roller");
     expect(parseIntentText("1991 type beat").input.bpmRange).toEqual([172, 178]);
     expect(parseIntentText("calibre type beat").input.style).toBe("liquid");
+  });
+});
+
+describe("west coast / g-funk roster (researched 92-96 pocket)", () => {
+  it("snoop → trap/headnod chill in the classic pocket", () => {
+    const parsed = parseIntentText("snoop type beat");
+    expect(parsed.input.genre).toBe("trap");
+    expect(parsed.input.style).toBe("headnod");
+    expect(parsed.input.mood).toBe("chill");
+    expect(parsed.input.bpmRange).toEqual([92, 96]);
+    expect(parsed.detected).toContain("♪ snoop dogg");
+  });
+
+  it("dre → trap/gfunk dark; warren g + nate dogg share the Regulate entry", () => {
+    const dre = parseIntentText("dre type beat");
+    expect(dre.input.style).toBe("gfunk");
+    expect(dre.input.bpmRange).toEqual([93, 96]);
+    const regulate = parseIntentText("regulate type beat");
+    expect(regulate.input.style).toBe("headnod");
+    expect(regulate.input.bpmRange).toEqual([94, 96]);
+    expect(parseIntentText("nate dogg type beat").input.style).toBe("headnod");
+  });
+
+  it("ty dolla → modern west, slightly faster", () => {
+    const parsed = parseIntentText("ty dolla type beat");
+    expect(parsed.input.style).toBe("gfunk");
+    expect(parsed.input.mood).toBe("energetic");
+    expect(parsed.input.bpmRange).toEqual([95, 105]);
+  });
+
+  it("both styles resolve to real groove ids (resolveGroove contract)", () => {
+    expect(getGrooveById("trap.headnod")).toBeDefined();
+    expect(getGrooveById("trap.gfunk")).toBeDefined();
   });
 });

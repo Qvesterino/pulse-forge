@@ -455,3 +455,26 @@ describe("ambient/experimental wave — drone / IDM / Berlin school", () => {
     expect(parseIntentText("e2-e4 type beat").input.genre).toBe("house");
   });
 });
+
+describe("west coast / g-funk sprint", () => {
+  it("headnod and gfunk resolve as styles (EN + SK)", () => {
+    expect(parseIntentText("west coast beat at 94").input.style).toBe("headnod");
+    expect(parseIntentText("zapadne pobrezie beat").input.style).toBe("headnod");
+    expect(parseIntentText("head nod type beat").input.style).toBe("headnod");
+    expect(parseIntentText("g-funk type beat").input.style).toBe("gfunk");
+    expect(parseIntentText("gfunk 100 bpm").input.style).toBe("gfunk");
+    expect(parseIntentText("lowrider music").input.style).toBe("gfunk");
+  });
+
+  it("west grooves exist with valid 16-step shapes", () => {
+    for (const id of ["trap.headnod", "trap.gfunk"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+      expect(groove!.bpm[0]).toBeGreaterThanOrEqual(90);
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+  });
+});
