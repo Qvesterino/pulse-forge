@@ -119,6 +119,28 @@ describe("beat handoff packet", () => {
       Storage.prototype.setItem = setItem;
     }
   });
+
+  it("prunes expired and unparseable packet keys from both stores on the next persist", () => {
+    sessionStorage.clear();
+    localStorage.clear();
+    const expiredPacket = buildBeatHandoffPacket(fakeRecord(), fakeDoc());
+    const expiredKey = `qvester:handoff:${expiredPacket.handoffId}`;
+    const stalePayload = JSON.stringify({ ...expiredPacket, expiresAt: Date.now() - 1, handoffId: "stale" });
+    sessionStorage.setItem(expiredKey, stalePayload);
+    localStorage.setItem(expiredKey, stalePayload);
+    localStorage.setItem("qvester:handoff:garbage", "{not json");
+    localStorage.setItem("unrelated:key", "keep me");
+    const packet = buildBeatHandoffPacket(fakeRecord(), fakeDoc());
+    expect(persistBeatHandoffPacket(packet)).toBe(true);
+    // Expired + unparseable keys are gone from BOTH stores...
+    expect(sessionStorage.getItem(expiredKey)).toBeNull();
+    expect(localStorage.getItem(expiredKey)).toBeNull();
+    expect(localStorage.getItem("qvester:handoff:garbage")).toBeNull();
+    // ...the unrelated key survives, and the fresh packet is present.
+    expect(localStorage.getItem("unrelated:key")).toBe("keep me");
+    expect(localStorage.getItem(`qvester:handoff:${packet.handoffId}`)).not.toBeNull();
+    expect(sessionStorage.getItem(`qvester:handoff:${packet.handoffId}`)).not.toBeNull();
+  });
 });
 
 describe("beat blob store (shared IndexedDB)", () => {

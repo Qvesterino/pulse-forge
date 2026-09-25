@@ -4216,3 +4216,30 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 - **dnb.neuro** (172-178): neurofunk rolling bass — tighter two-step skeleton, intricate ghost-snare, sparse kick (bas NESIE štýl).
 - **STYLE_PHRASES**: dancefloor/festival → dancefloor; soulful/warm house → soulful; neurofunk/neuro → neuro (prehodeno z twostep). Všetky mapované len na existujúce groove štýly.
 - **Testy** +5 (37/37 v parseri): house dncfl/soulful štýly, dnb dncfl/neuro, groove validity 16-step × 4. Regresia **332/332 cez 30 súborov**; typecheck 0.
+
+---
+
+## GOAL 03 (campaign re-run 4) — Critical path audit: vocal lifecycle + Qvester handoff (2026-09-25)
+
+**Goal executed:** End-to-end audit of the two critical paths that had NEVER been audited (both post-date the 25-audit vault): the vocal-profile lifecycle (record → resolve → analyze → proposal → apply) and the Qvester ecosystem handoff (render → hash → shared-IDB blob → packet → navigate). Most other critical paths are heavily pinned by prior campaigns (Audits 01–25 + reliability rounds).
+
+**Areas inspected (full-chain reads + test-coverage review):**
+
+- Vocal: `IntentPanel.analyzeTake/applyTakeKey/applyTakeTempo` (UI), `src/vocal/resolve.ts` (clip→PCM, trim window + gain, defensive), `analyzer-client.ts` (lazy worker, 20 s timeout, requestId correlation, 3-strike breaker, sync DSP fallback, never throws), `analyzer-worker.ts`, `sessions.ts` (validated, capped localStorage ledger), `adapt.ts` (both commands command-wrapped via snapshot/setBpm, honest no-op refusals, drum rows never transposed). Test coverage: 5 suites.
+- Qvester: `src/interop/qvesterHandoff.ts` (428 L), ExportPanel caller (beginExport signal passed through renders AND encodeWavAsync, aborted check before navigation), packet/blobs/TTL contracts. Test coverage: qvester-handoff + profile-bus suites.
+- **Clock-skew question from GOAL 02 resolved as MOOT:** the handoff medium is same-origin same-browser (IndexedDB + WebStorage) — sender and receiver share ONE clock. `expiresAt` math cannot skew.
+
+**Confirmed problems & fixes (2, both A-class):**
+
+1. **Vocal take card survived project switches (HIGH-impact, narrow window)** — the Audit 13 D2 `[services]` effect drops the candidate bank + song draft on project switch, but the vocal card shipped LATER and was missed: (a) a stale `takeProfile` from the OLD project stayed actionable — 🎤 KEY/TEMPO buttons apply it into the NEW project via CURRENT-doc commands (key overwrite / BPM jump); (b) an in-flight `analyzeVocalTake` (up to 20 s timeout + sync fallback) installed the old take's profile after the switch, and the SONG draft would then condition on it (`vocalProfile: takeProfile`). FIX mirrors the songTokenRef pattern: `takeTokenRef` bumped in the `[services]` switch effect + `setTakeProfile(null)`; `analyzeTake` captures the token and discards the result on mismatch.
+2. **Handoff packet keys leaked forever (LOW, slow)** — every send persists a NEW `qvester:handoff:<uuid>` key into sessionStorage AND localStorage; the blob store has a tested 24 h prune but nothing ever removed expired packets → unbounded localStorage growth. FIX: `pruneExpiredPackets()` sweeps both storages on every persist (expired `expiresAt` or unparseable payload; unrelated keys untouched) — mirrors the blob-prune convention. Regression test added (expired + garbage + unrelated keys → only stale ones die in both stores).
+
+**Important files changed:** src/ui/IntentPanel.tsx (+10), src/interop/qvesterHandoff.ts (+26), tests/qvester-handoff.test.ts (+22), tests/services-{save-drain,close-race}.test.ts (CoreServices stubs — completing my GOAL 02 interface change; the concurrent session added the same stubs mid-edit → duplicate-property collision resolved by keeping THEIR richer vi.fn stubs, dropping my empty ones).
+
+**Validation:** interop + vocal suites **51/51** (incl. the new prune test); services-save-drain + services-close-race + IntentPanel **14/14**; tsc — zero errors on campaign files; remaining tree errors confined to the concurrent session's in-flight `intent/iteration.ts` pair (their active work, watched shrinking 4→2 during this session).
+
+**Unresolved issues:** curated-samples red test still theirs (their `bfd83c9` phonk/oriental pack grew the gap further; their uncommitted factory.ts currently breaks that suite's collection entirely — "no tests").
+
+**Remaining risks:** the vocal switch-guard discards the analysis result but cannot cancel the worker DSP (analyzeVocalTake has no cancellation) — bounded by the 20 s timeout, matches the "background render discarded" precedent.
+
+**Recommendations for next session (GOAL 04):** failure-modes focus on the surfaces this goal touched: (1) vocal analyzer-worker `onprocessorerror`-class coverage — the worker has no onerror handler; a crashed worker fails 3 requests (20 s each) before the breaker disables it — a first-request window of up to 60 s of degraded UX; consider failing fast on worker `onerror`; (2) `withIdb` in qvesterHandoff lacks `onblocked` (main db.ts has a 5 s timeout) — matters only on a future version bump; (3) then continue the standard GOAL 04 sweep (recording recovery, collab join under ws failure — both previously audited, re-verify nothing regressed through the recent waves).

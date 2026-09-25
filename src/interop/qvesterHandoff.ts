@@ -291,7 +291,33 @@ export function buildAudioCanvasHandoffUrl(packet: BeatHandoffPacket, origin = w
   )}`;
 }
 
+/** Remove handoff packets whose TTL has passed. Every send persists a NEW
+ *  uuid key — without this sweep localStorage grows forever (the blob store
+ *  has its own 24 h prune; packets are useless past their 30 min TTL). */
+function pruneExpiredPackets(): void {
+  const now = Date.now();
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      const stale: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (!key?.startsWith(PACKET_KEY_PREFIX)) continue;
+        try {
+          const packet = JSON.parse(storage.getItem(key) ?? "") as { expiresAt?: number };
+          if (typeof packet.expiresAt !== "number" || packet.expiresAt < now) stale.push(key);
+        } catch {
+          stale.push(key); // unparseable — it can never be a valid handoff again
+        }
+      }
+      for (const key of stale) storage.removeItem(key);
+    } catch {
+      /* storage inaccessible — nothing to prune */
+    }
+  }
+}
+
 export function persistBeatHandoffPacket(packet: BeatHandoffPacket): boolean {
+  pruneExpiredPackets();
   let persisted = false;
   const serialized = JSON.stringify(packet);
   try {
