@@ -4286,3 +4286,15 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Remaining risks:** `handleWorkerDeath` disables the worker for the whole session — a TRANSIENT worker failure (e.g. OOM kill) also permanently downgrades to main-thread analysis until reload. Accepted: the sync path is the same pure DSP, just on the main thread (bounded by take length), and session-scoped repair would need a heartbeat/respawn policy that adds failure modes of its own.
 
 **Recommendations for next session (GOAL 05):** state integrity & rehydration — the natural target is the schema-v3 lineage domain (Remix-DNA) migration matrix: v1/v2 docs → v3 through migrateProject, share codes, and collab blobs (queued since GOAL 01); plus rehydration ordering of frozen-track buffers + user samples after the recent sample-bank waves (bank re-upload hook `1e579bf` predates 3 content waves).
+
+---
+
+## GOAL 46 — ŽÁNROVÁ HŁBKA vlna 3: DRILL (2026-09-24)
+
+- **drill.sample** (140-150, swing 0.1): Bronx/NY sample-driven bounce — bouncy syncopated 808, swung snare accent na poslednej 16tine, chopped-sample feel, punchy open-hat push.
+- **drill.hyper** (150-162, swing 0): NY hyper drill / Jersey crossover — aggressive sliding-808 bounce na postrčenom tempe, punchy open akcenty.
+- **drill.melodic** (138-145, swing 0.12): melodic/guitar drill loops — jemnejší groove, rolling haty, soft snare akcenty, priestor pre sample.
+- **STYLE_PHRASES**: sample drill/sample, hyper drill/hyper (duplicitný starý záznam odstránený), melodic drill → nové štýly. BS-byte pasca opäť (6. potvrdenie) — bytes replace s verify.
+- **Testy** +2 (39/39 v parseri): štýlová rezolúcia + 16-step shape validity × 3. Regresia **338/338 cez 30 súborov**; typecheck 0.
+
+**Drill finálny stav:** uk (UK classic), dark (sparse), bounce (busy hats), **sample**, **hyper**, **melodic** — 6 štýlov pokrývajúce UK aj NY scény aj melodic offshoot.

@@ -354,3 +354,25 @@ describe("genre-depth wave 3 — dancefloor / soulful / neuro", () => {
     }
   });
 });
+
+describe("genre-depth wave 4 — drill sample/hyper/melodic", () => {
+  it("drill style phrases resolve: sample / hyper / melodic", () => {
+    expect(parseIntentText("sample drill at 145").input.style).toBe("sample");
+    expect(parseIntentText("hyper drill at 155").input.style).toBe("hyper");
+    expect(parseIntentText("melodic drill at 140").input.style).toBe("melodic");
+    // genre stays drill in all cases
+    expect(parseIntentText("sample drill at 145").input.genre).toBe("drill");
+    expect(parseIntentText("hyper drill at 155").input.genre).toBe("drill");
+  });
+
+  it("new drill groove definitions exist with valid 16-step shapes", () => {
+    for (const id of ["drill.sample", "drill.hyper", "drill.melodic"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+  });
+});
