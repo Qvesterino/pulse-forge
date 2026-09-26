@@ -624,6 +624,26 @@ button.brief-chip:hover {
 .intent-compliance-item.muted {
   color: #666;
 }
+/* Fáza 5 — targeted section proposal (audition-first revise). */
+.section-proposal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.section-proposal-actions {
+  display: flex;
+  gap: 4px;
+}
+.section-proposal-apply {
+  color: #4ade80;
+  border-color: color-mix(in srgb, #4ade80 45%, transparent);
+}
 .intent-error {
   font-size: 11px;
   color: #f87171;

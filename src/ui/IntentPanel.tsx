@@ -81,7 +81,7 @@ import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
-import type { ProjectDocument } from "../project-model/types";
+import type { Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 
@@ -127,6 +127,56 @@ export function IntentPanel() {
   // Fáza 2 stale guard — the document revision the current preview was
   // computed against; USE blocks while the store's doc has moved on.
   const previewDocRef = useRef<ProjectDocument | null>(null);
+  // Fáza 5 section proposal — a targeted section revision (reviseSection
+  // outcome) previewed via audition; confirm applies the one-undo in-place
+  // swap, dismiss leaves nothing behind. docRef = stale guard.
+  const [sectionProposal, setSectionProposal] = useState<{
+    outcome: { patternId: string; pattern: Pattern; label: string };
+    docRef: ProjectDocument;
+  } | null>(null);
+  const sectionAuditionTokenRef = useRef(0);
+  const [sectionPlaying, setSectionPlaying] = useState(false);
+
+  const auditionSectionProposal = async (pattern: Pattern) => {
+    const token = ++sectionAuditionTokenRef.current;
+    try {
+      const buffer = await renderAuditionBuffer(services.store.getDoc(), services.bank, pattern, null);
+      if (token !== sectionAuditionTokenRef.current) return;
+      playAuditionBuffer(buffer, () => setSectionPlaying(false));
+      setSectionPlaying(true);
+    } catch (err) {
+      if (token === sectionAuditionTokenRef.current) {
+        setError(`náhľad sekcie zlyhal: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  };
+
+  const confirmSectionProposal = () => {
+    const proposal = sectionProposal;
+    if (!proposal) return;
+    // Fáza 2 stale-guard semantics: any command since the preview invalidates it.
+    if (services.store.getDoc() !== proposal.docRef) {
+      stopAudition();
+      setSectionPlaying(false);
+      setSectionProposal(null);
+      setError("Projekt sa zmenil od náhľadu — návrh je zastaraný. Spusť zmenu znova.");
+      return;
+    }
+    services.store.execute(
+      replacePatternInPlaceCommand(proposal.docRef, proposal.outcome.patternId, proposal.outcome.pattern),
+    );
+    stopAudition();
+    setSectionPlaying(false);
+    setSectionProposal(null);
+    setStatus(`✓ ${proposal.outcome.label} — aplikované (jeden undo)`);
+  };
+
+  const dismissSectionProposal = () => {
+    stopAudition();
+    setSectionPlaying(false);
+    setSectionProposal(null);
+    setStatus("Návrh sekcie odmietnutý — projekt ostal nezmenený.");
+  };
   // Ghost versions (time machine) — every pattern USE pushes its applied
   // content; A/B + slider audition and morph between takes. Buffers cache
   // per ghost id; the morph preview holds one slot keyed by A:B:t.
@@ -1750,6 +1800,9 @@ export function IntentPanel() {
         if (route.targetRole) {
           // C3 TARGETED revise: the role word names the section — regenerate
           // THAT scene's pattern from its own provenance intent (same seed).
+          // Fáza 5: audition-first — the outcome becomes a PREVIEW proposal
+          // (▶ heard before commit; ✓ applies the same one-undo in-place
+          // swap, ✗ leaves the project untouched). No silent write.
           try {
             const attribute = route.attribute as "energy" | "density";
             const outcome = reviseSection(doc, route.targetRole as never, attribute, delta);
@@ -1757,8 +1810,10 @@ export function IntentPanel() {
               setStatus(`⚡ ${outcome.error}`);
               return;
             }
-            services.store.execute(replacePatternInPlaceCommand(doc, outcome.patternId, outcome.pattern));
-            setStatus(`⚡ ${outcome.label}`);
+            stopAudition();
+            setSectionProposal({ outcome, docRef: doc });
+            void auditionSectionProposal(outcome.pattern);
+            setStatus(`↻ ${outcome.label} — ▶ náhľad, ✓ potvrdiť alebo ✗ ponechať`);
           } finally {
             // Unlike global revisions, this synchronous targeted path does
             // not enter runGeneration(), whose finally normally releases busy.
@@ -2141,6 +2196,36 @@ export function IntentPanel() {
           candidates={bankResult.bank ?? []}
           warnings={bankResult.diagnostics.warnings}
         />
+      )}
+      {sectionProposal && (
+        <div className="section-proposal" aria-label="Section change proposal">
+          <span className="section-proposal-label">↻ {sectionProposal.outcome.label}</span>
+          <span className="section-proposal-actions">
+            <button
+              type="button"
+              className="btn btn-small"
+              title={sectionPlaying ? "Stop náhľad" : "Náhľad upravenej sekcie"}
+              onClick={() =>
+                sectionPlaying
+                  ? (stopAudition(), setSectionPlaying(false))
+                  : void auditionSectionProposal(sectionProposal.outcome.pattern)
+              }
+            >
+              {sectionPlaying ? "■" : "▶"}
+            </button>
+            <button type="button" className="btn btn-small section-proposal-apply" onClick={confirmSectionProposal}>
+              ✓ POTVRDIŤ
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={dismissSectionProposal}
+              title="Odmietnuť — nič sa nezmení"
+            >
+              ✗
+            </button>
+          </span>
+        </div>
       )}
       {candidates && candidates.length > 1 && (
         <div className="intent-detected" aria-label="Candidate ranking explanation">
