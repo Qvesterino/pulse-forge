@@ -54,3 +54,17 @@ describe("artist mix signatures", () => {
     expect(masterTiltForIntent(normalize("trap beat"))).toBeUndefined();
   });
 });
+
+describe("artist FX hints (Vlna 8 polish)", () => {
+  it("signed presets carry their named-plugin words; unsigned yield empty", async () => {
+    const { fxWordsForArtist } = await import("../src/intent/artists");
+    expect(fxWordsForArtist("sophie")).toEqual(["metallic"]);
+    expect(fxWordsForArtist("dj screw / chopped and screwed")).toEqual(["tape"]);
+    expect(fxWordsForArtist("burial / future garage")).toEqual(["lofi"]);
+    expect(fxWordsForArtist("drake")).toEqual([]);
+    expect(fxWordsForArtist(undefined)).toEqual([]);
+    // The words must parse as production concepts (the fx pipeline contract).
+    const parsed = parseIntentText("sophie type beat");
+    expect(parsed.input.artist).toBe("sophie");
+  });
+});

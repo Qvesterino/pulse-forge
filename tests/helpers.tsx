@@ -154,6 +154,8 @@ export function mockServices(doc?: ProjectDocument): Services {
       },
       execute: vi.fn<(c: Command) => void>(),
       replaceDoc: vi.fn<(doc: ProjectDocument) => void>(),
+      beginUndoFrame: vi.fn<(label?: string) => void>(),
+      endUndoFrame: vi.fn(),
       undo: vi.fn(),
       redo: vi.fn(),
       canUndo: false,

@@ -4675,3 +4675,21 @@ Kompletný rozširovací plán zapísaný do **docs/ROSTER-EXPANSION-ROADMAP.md*
 - **Ballad pop**: Adele 70-100 ambient pop dark, Sam Smith 85-110 chill.
 
 Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; typecheck 0.
+
+---
+
+## VLNA 8 POLISH — artist mix pri USE + artist FX hinty (2026-09-26, user: „doladiť")
+
+**Kritický follow-up objavený auditom:** artist mix podpis z Vlny 8 sa aplikoval LEN cez SONG a MIX route — **plain GENERATE+USE ho ignoroval** (applyGenerationResultCommand berie pattern+swing+bpm+FX, mix nie). Podpis by bol teda na hlavnej ceste mŕtvy.
+
+**Dodané:**
+
+1. **USE aplikuje artist mix** (IntentPanel useCandidate): keď `plan.intent.artist` má signatúru → `planMixProfile` decisions sa foldingujú PO patterne v JEDNOM undo frame (`beginUndoFrame("Generate + artist mix")` → gen cmd → applyMixIntent → endUndoFrame) — Ctrl+Z uberá pattern+mix spolu. Status ukazuje „+ artist mix". Žiadna signatúra → presne pôvodné správanie (žiadna zmena pre ne-artist generácie).
+2. **Artist FX hinty:** `ArtistPreset.fx?: readonly string[]` (named-plugin concept slová) + `fxWordsForArtist(label)` helper. Vyplnené 8 hudobne-pravdivých: sophie (metallic), burial (lofi), dj screw (tape), yung lean (lofi), mf doom (lofi), old school (lofi), memphis phonk (tape), lil peep (lofi). Panel: hinty idú do generácie LEN keď user netypoval vlastné FX slová (user vyhráva), cez rovnaký `IntentInput.fx` pipeline (USE aplikuje WithFx).
+3. **helpers.tsx:** mock store doplnený o beginUndoFrame/endUndoFrame (A3 USE testy padali na chýbajúcom API — 48/48 po fixe).
+
+**Dôležité súbory:** src/ui/IntentPanel.tsx (USE frame + FX merge), src/intent/artists.ts (fx pole + helper), tests/helpers.tsx, tests/artist-mix.test.ts (+fx hinty test).
+
+**Validácia:** artist-mix+production+artists **151/151**; 11-súborová battery **369/369**; `tsc --noEmit` čistý na campaign súboroch. Ich in-flight `tests/intent-artist-mix-wiring.test.ts` (untracked) testuje MOJ artist field — nechávam im ho (jeden type error null-vs-undefined je ich strana; wiring smer je správny — stavajú na tom).
+
+**Intent engine finálny stav:** interpret → groove + BPM + productionProfile (generácia) + mix/master podpis (tone/punch/reverb/pump, aplikuje sa pri USE aj SONG) + FX hinty (aplikujú sa pri generácii) + 15 production konceptov + brief kontrakt + iterácie + reference audio + konverzačné intenty.
