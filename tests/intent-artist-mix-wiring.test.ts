@@ -349,12 +349,7 @@ describe("deepProfileToArtistMix — subEmphasis → sub mapping", () => {
 
 describe("planMixProfile — width wiring (Phase 2 slice 2)", () => {
   it("wide width pushes haasWidener decisions on chords + lead with width=0.85", () => {
-    const intent = baseIntent(undefined);
-    // Synthesize a deep profile with wide stereoWidth by routing through
-    // artistMixProfileOf. Travis Scott has dark tone + reverb=huge (curated
-    // wins), so we can't easily inject width via curated. Instead, test the
-    // decision tree directly: an artist that has width="wide" via deep
-    // fallback. Fred Again has stereoWidth="wide" in its deep profile.
+    // Fred Again has stereoWidth="wide" in its deep profile.
     const intentWithArtist = baseIntent("fred-again");
     const profile = planMixProfile(intentWithArtist, {}, {});
     const haasDecisions = profile.decisions.filter((d) => d.effectType === "haasWidener");
@@ -364,14 +359,9 @@ describe("planMixProfile — width wiring (Phase 2 slice 2)", () => {
   });
 
   it("narrow width pushes haasWidener decisions with width=0.35", () => {
-    // Drill (axl-beats) has stereoWidth="normal" in its deep profile so it
-    // does NOT emit haasWidener. Use a profileFixture-like scenario via a
-    // direct ArtistMixProfile call by simulating a narrow profile.
-    // Since artistMixProfileOf already returns the deep-derived profile for
-    // axl-beats, we need a fixture approach. Use Burial (narrowWidth — but
-    // burial is "dark" tone, NOT narrow width). Use DJ Tameil — he has
-    // "narrow" stereoWidth in his deep profile (punchy kick, tight stereo).
-    const intentWithArtist = baseIntent("dj-tameil");
+    // J Dilla has stereoWidth="narrow" in his deep profile (MPC swung drums,
+    // tight lo-fi character). Use his slug for the narrow-width test.
+    const intentWithArtist = baseIntent("j-dilla");
     const profile = planMixProfile(intentWithArtist, {}, {});
     const haasDecisions = profile.decisions.filter((d) => d.effectType === "haasWidener");
     expect(haasDecisions.length).toBeGreaterThan(0);
@@ -436,7 +426,7 @@ describe("planMixProfile — fixture pin (Phase 2 slice 2 deep profiles)", () =>
     expect(getArtistProfile("fred-again")?.mix.stereoWidth).toBe("wide");
   });
 
-  it("DJ Tameil has narrow stereoWidth", () => {
-    expect(getArtistProfile("dj-tameil")?.mix.stereoWidth).toBe("narrow");
+  it("J Dilla has narrow stereoWidth (Phase 2 slice 2 fixture pin)", () => {
+    expect(getArtistProfile("j-dilla")?.mix.stereoWidth).toBe("narrow");
   });
 });
