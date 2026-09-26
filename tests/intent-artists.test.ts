@@ -865,7 +865,7 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
   it("chris lake / acraze / sidepiece → bass house at the tech-house tempo", () => {
     const chris = parseIntentText("chris lake type beat");
     expect(chris.input.genre).toBe("house");
-    expect(chris.input.style).toBe("driving");
+    expect(chris.input.style).toBe("basshouse");
     expect(chris.input.bpmRange).toEqual([124, 130]);
     expect(chris.input.energy).toBe(0.85);
   });
@@ -873,7 +873,7 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
   it("don diablo / tchami / malaa → g-house (deep, chill, French vocal-chop floor)", () => {
     const don = parseIntentText("don diablo type beat");
     expect(don.input.genre).toBe("house");
-    expect(don.input.style).toBe("deep");
+    expect(don.input.style).toBe("ghouse");
     expect(don.input.bpmRange).toEqual([120, 126]);
     expect(don.input.mood).toBe("chill");
   });
@@ -897,7 +897,7 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
   it("headhunterz / sound rush / ran-d → hardstyle (techno hard, 150-155)", () => {
     const head = parseIntentText("headhunterz type beat");
     expect(head.input.genre).toBe("techno");
-    expect(head.input.style).toBe("hard");
+    expect(head.input.style).toBe("hardstyle");
     expect(head.input.bpmRange).toEqual([150, 155]);
     expect(head.input.energy).toBe(0.95);
   });
@@ -905,20 +905,24 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
   it("astrix / vini vici / infected mushroom → psytrance (techno acid, 138-145)", () => {
     const astrix = parseIntentText("astrix type beat");
     expect(astrix.input.genre).toBe("techno");
-    expect(astrix.input.style).toBe("acid");
+    expect(astrix.input.style).toBe("psytrance");
     expect(astrix.input.bpmRange).toEqual([138, 145]);
     expect(astrix.input.energy).toBe(0.9);
   });
 
   it("the electronic-depth lanes resolve to real groove ids (resolveGroove contract)", () => {
     // Engine integration smoke — each preset's style must resolve to a real
-    // `genre.style` grooveId via getGrooveById.
-    expect(getGrooveById("house.driving")).toBeDefined();
-    expect(getGrooveById("house.deep")).toBeDefined();
+    // `genre.style` grooveId via getGrooveById. Wave 3 added dedicated grooves
+    // for bass-house (house.basshouse), g-house (house.ghouse), hardstyle
+    // (techno.hardstyle), and psytrance (techno.psytrance); the corresponding
+    // artist presets now route to those first-class grooves instead of the
+    // closest-fit mappings.
+    expect(getGrooveById("house.basshouse")).toBeDefined();
+    expect(getGrooveById("house.ghouse")).toBeDefined();
     expect(getGrooveById("house.broken")).toBeDefined();
     expect(getGrooveById("trap.dubstep")).toBeDefined();
-    expect(getGrooveById("techno.hard")).toBeDefined();
-    expect(getGrooveById("techno.acid")).toBeDefined();
+    expect(getGrooveById("techno.hardstyle")).toBeDefined();
+    expect(getGrooveById("techno.psytrance")).toBeDefined();
   });
 });
 
@@ -1094,7 +1098,7 @@ describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwo
   it("rp boo / dj rashad → footwork (house dancefloor, 155-165)", () => {
     const rp = parseIntentText("rp boo type beat");
     expect(rp.input.genre).toBe("house");
-    expect(rp.input.style).toBe("dancefloor");
+    expect(rp.input.style).toBe("footwork");
     expect(rp.input.bpmRange).toEqual([155, 165]);
     expect(rp.input.energy).toBe(0.95);
   });
@@ -1109,10 +1113,12 @@ describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwo
 
   it("the club + global lanes resolve to real groove ids (resolveGroove contract)", () => {
     // Engine integration smoke — each preset's style must resolve to a real
-    // `genre.style` grooveId via getGrooveById.
+    // `genre.style` grooveId via getGrooveById. Wave 3 promoted footwork from
+    // house.dancefloor (closest-fit) to house.footwork (first-class).
     expect(getGrooveById("trap.hyper")).toBeDefined();
     expect(getGrooveById("trap.countrytune")).toBeDefined();
     expect(getGrooveById("techno.industrial")).toBeDefined();
+    expect(getGrooveById("house.footwork")).toBeDefined();
   });
 });
 

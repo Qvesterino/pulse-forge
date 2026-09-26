@@ -2925,15 +2925,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "clipping.",
   },
   // ── Bass house — heavy tech-house with rolling sub-bass + groovy drops ───
-  // The post-Fisher / ACRAZE wave (2018+). Tech-house groove + prominent
-  // sub-bass stabs; mid-tempo pocket 124-130. Routes to groove 'house.driving'
-  // (the closest existing groove — the bass-house micro-genre isn't yet
-  // first-class in src/ai/grooves/house.ts, so we map onto driving four-on-
-  // the-floor with high energy + density).
+  // The post-Fisher / ACRAZE wave (2018+). Tech-house groove with layered
+  // punch kick + offbeat clap + busy 16th-hat work; mid-tempo pocket 124-130.
+  // Routes to groove 'house.basshouse' (Wave 3 groove).
   {
     names: ["chris lake", "acraze", "sidepiece"],
     genre: "house",
-    style: "driving",
+    style: "basshouse",
     mood: "energetic",
     energy: 0.85,
     density: 0.7,
@@ -2943,11 +2941,11 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── G-house — French house / R&B vocal-chop tech-house ──────────────────
   // Don Diablo's "g-house" coinage (2014+): deep groove + pitched R&B
   // acapellas. 120-126 floor, the chill-deep side of the house spectrum.
-  // Routes to groove 'house.deep'.
+  // Routes to groove 'house.ghouse' (Wave 3 groove).
   {
     names: ["don diablo", "tchami", "malaa"],
     genre: "house",
-    style: "deep",
+    style: "ghouse",
     mood: "chill",
     energy: 0.75,
     density: 0.55,
@@ -2984,13 +2982,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "riddim dubstep",
   },
   // ── Hardstyle — euphoric reverse-bass kicks + supersaw leads ─────────────
-  // Hardstyle sits adjacent to techno (no dedicated genre in the engine);
-  // the 'hard' style is the closest fit (driving four-on-the-floor + hard
-  // kick + supersaw energy). 150-155 is the post-2015 euphoric pocket.
+  // Hardstyle sits adjacent to techno. The new 'techno.hardstyle' groove
+  // (Wave 3) captures the reverse-bass kick + layered kick-alt signature,
+  // 150-155 BPM (post-2015 euphoric pocket). Grid-locked swing 0.
   {
     names: ["headhunterz", "sound rush", "ran-d"],
     genre: "techno",
-    style: "hard",
+    style: "hardstyle",
     mood: "aggressive",
     energy: 0.95,
     density: 0.7,
@@ -3000,11 +2998,11 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── Psytrance — acid-driven 140 with rolling TB-303 lines + psy leads ─────
   // The harder psy side of trance. Existing trance entry (Tiesto/Armin)
   // covers melodic trance at 136-142 via 'driving'; this entry covers the
-  // psy side via 'acid' (closest groove for TB-303 rolls). 138-145 pocket.
+  // psy side via the new 'techno.psytrance' groove (Wave 3). 138-145 pocket.
   {
     names: ["astrix", "vini vici", "infected mushroom"],
     genre: "techno",
-    style: "acid",
+    style: "psytrance",
     mood: "energetic",
     energy: 0.9,
     density: 0.65,
@@ -3604,12 +3602,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Footwork / juke — RP Boo / DJ Rashad / Traxman / DJ Deeon ───────────
   // Chicago footwork / juke (RP Boo 'Baby Come On' / DJ Rashad 'Drumma
-  // Boy'). The closest groove is house.dancefloor (driving 4/4); the BPM
-  // pocket is 155-165 (footwork's signature faster 4/4). Routes there.
+  // Boy'). Routes to the new 'house.footwork' groove (Wave 3): polyrhythmic
+  // kick against a steady snare, busy hats, perc stabs. Straight-grid swing
+  // 0 — footwork's signature is dead-grid precision. BPM 155-165.
   {
     names: ["footwork", "juke", "rp boo", "dj rashad", "traxman", "dj deeon", "teklife"],
     genre: "house",
-    style: "dancefloor",
+    style: "footwork",
     mood: "energetic",
     energy: 0.95,
     density: 0.75,
