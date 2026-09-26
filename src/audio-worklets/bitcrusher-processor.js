@@ -7,7 +7,9 @@
  *
  * AudioParams (automated from main thread via AudioParam scheduling):
  *   bits       — bit depth (1..16, default 8)
- *   downsample — sample-and-hold factor (1..50, default 1)
+ *   downsample — sample-and-hold factor (1..64, default 1; the UI offers the
+ *                musical powers 1/2/4/8/16/32/64 — arbitrary legacy values
+ *                normalize-snap to the nearest power)
  *
  * NOTE: this file is served RAW to AudioWorklet.addModule() via
  * `new URL("./bitcrusher-processor.js", import.meta.url)` — it must stay
@@ -23,7 +25,7 @@ class BitcrusherProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: "bits", defaultValue: 8, minValue: 1, maxValue: 16, automationRate: "k-rate" },
-      { name: "downsample", defaultValue: 1, minValue: 1, maxValue: 50, automationRate: "k-rate" },
+      { name: "downsample", defaultValue: 1, minValue: 1, maxValue: 64, automationRate: "k-rate" },
     ];
   }
 

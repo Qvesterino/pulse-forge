@@ -1,11 +1,11 @@
 /**
  * Chorus AudioWorkletProcessor — multi-voice modulated delay in true stereo.
  *
- * VOICES (2–4): each voice has its OWN delay buffer, base time (12/18/24/29
- * ms), LFO phase and pan (±0.3 / ±0.6 constant-power). Voice 1 leans left,
- * voice 2 right, voices 3/4 harden outward. `spread` offsets each voice's
- * rate (voice n runs at rate·(1 + 0.4·spread·n/(voices−1))) and scales the
- * 1↔2 crossfeed.
+ * VOICES (2–6): each voice has its OWN delay buffer, base time (12/18/24/29/
+ * 33/38 ms + the additive BASE offset, 0–20 ms), LFO phase and pan (±0.3 /
+ * ±0.6 / ±0.85 constant-power). Voice 1 leans left, voice 2 right, voices
+ * 3+ harden outward. `spread` offsets each voice's rate (voice n runs at
+ * rate·(1 + 0.4·spread·n/(voices−1))) and scales the 1↔2 crossfeed.
  *
  * FEEDBACK: each voice's delayed output recirculates into its own buffer
  * (read-before-write, bounded ≤ 0.85 — damped modulated delays tolerate
@@ -19,10 +19,10 @@
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
-const CHORUS_RING = 16384; // 85 ms @192 kHz — covers 29 ms base + 9 ms depth
-const CHORUS_BASE_MS = [12, 18, 24, 29];
-const CHORUS_PANS = [-0.3, 0.3, -0.6, 0.6];
-const CHORUS_MAX_VOICES = 4;
+const CHORUS_RING = 16384; // 85 ms @192 kHz — covers 38 ms base + 20 ms BASE + 9 ms depth
+const CHORUS_BASE_MS = [12, 18, 24, 29, 33, 38];
+const CHORUS_PANS = [-0.3, 0.3, -0.6, 0.6, -0.85, 0.85];
+const CHORUS_MAX_VOICES = 6;
 
 function chorusRng(seed) {
   let a = seed >>> 0;
@@ -39,9 +39,9 @@ class ChorusProcessor extends AudioWorkletProcessor {
     super();
     this.bufs = Array.from({ length: CHORUS_MAX_VOICES }, () => new Float32Array(CHORUS_RING));
     this.writeIdx = 0;
-    this.phases = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2];
+    this.phases = [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, Math.PI / 4, (5 * Math.PI) / 4];
     // S&H: one held value per voice, re-rolled every half base period.
-    this.shValues = [0, 0, 0, 0];
+    this.shValues = [0, 0, 0, 0, 0, 0];
     this.shCount = 0;
     const seed = (options && options.processorOptions && options.processorOptions.seed) || 1;
     this.rng = chorusRng(seed);
@@ -49,12 +49,14 @@ class ChorusProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: "rate", defaultValue: 0.6, minValue: 0.1, maxValue: 8, automationRate: "k-rate" },
+      { name: "rate", defaultValue: 0.6, minValue: 0.05, maxValue: 8, automationRate: "k-rate" },
       { name: "depth", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      // Additive per-voice base delay (0–20 ms): 0 keeps the legacy centers.
+      { name: "base", defaultValue: 0, minValue: 0, maxValue: 20, automationRate: "k-rate" },
       { name: "spread", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0, minValue: 0, maxValue: 0.85, automationRate: "k-rate" },
-      { name: "voices", defaultValue: 2, minValue: 2, maxValue: 4, automationRate: "k-rate" },
+      { name: "voices", defaultValue: 2, minValue: 2, maxValue: 6, automationRate: "k-rate" },
       // 0 = sine, 1 = triangle, 2 = sample-and-hold
       { name: "lfoShape", defaultValue: 0, minValue: 0, maxValue: 2, automationRate: "k-rate" },
     ];
@@ -83,12 +85,13 @@ class ChorusProcessor extends AudioWorkletProcessor {
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
 
-    const rate = Math.max(0.1, Math.min(8, parameters.rate[0]));
+    const rate = Math.max(0.05, Math.min(8, parameters.rate[0]));
     const depth01 = Math.max(0, Math.min(1, parameters.depth[0]));
+    const baseMs = Math.max(0, Math.min(20, parameters.base ? parameters.base[0] : 0));
     const spread = Math.max(0, Math.min(1, parameters.spread[0]));
     const mix = Math.max(0, Math.min(1, parameters.mix[0]));
     const feedback = Math.max(0, Math.min(0.85, parameters.feedback ? parameters.feedback[0] : 0));
-    const voices = Math.max(2, Math.min(4, Math.round(parameters.voices ? parameters.voices[0] : 2)));
+    const voices = Math.max(2, Math.min(6, Math.round(parameters.voices ? parameters.voices[0] : 2)));
     const lfoShape = Math.round(parameters.lfoShape ? parameters.lfoShape[0] : 0);
 
     // Legacy depth law: 1 ms + depth·8 ms of LFO excursion.
@@ -116,7 +119,7 @@ class ChorusProcessor extends AudioWorkletProcessor {
         this.phases[v] += step;
         if (this.phases[v] > 2 * Math.PI) this.phases[v] -= 2 * Math.PI;
         const lfo = this.shapeLfoValue(v, this.phases[v], lfoShape);
-        const base = (CHORUS_BASE_MS[v] / 1000) * sr;
+        const base = ((CHORUS_BASE_MS[v] + baseMs) / 1000) * sr;
         const buf = this.bufs[v];
         // Read BEFORE write: the delayed tap feeds back into the write.
         const delayed = this.readCubic(buf, this.writeIdx - (base + depthSamples * (1 + lfo)));

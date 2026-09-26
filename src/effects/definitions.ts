@@ -301,7 +301,19 @@ export function clampEffectParam(type: EffectType, paramId: string, value: numbe
   const clamped = Math.min(def.max, Math.max(def.min, value));
   if (type === "fxeq" && paramId === "crossoverOrder") return snapCrossoverOrder(clamped);
   if (type === "fxeq" && paramId === "crossoverEqualize") return clamped >= 0.5 ? 1 : 0;
+  if (type === "bitcrusher" && paramId === "downsample") return snapDownsamplePower(clamped);
   return clamped;
+}
+
+/**
+ * A8 (PARAM-VALUE-AUDIT-2026-09): the CRUSH factor is a musical power of two
+ * (Decimort convention). Stored legacy values from the old 1..50 range snap
+ * to the NEAREST power by log distance (7 → 8, 50 → 64, 3 → 4) so the
+ * dropdown never faces an out-of-list value and old projects stay sane.
+ */
+function snapDownsamplePower(value: number): number {
+  const exp = Math.round(Math.log2(Math.max(1, value)));
+  return Math.pow(2, Math.min(6, Math.max(0, exp)));
 }
 
 /**
@@ -589,7 +601,7 @@ export const msEqParams: ParamDef[] = [
 ];
 
 export const haasWidenerParams: ParamDef[] = [
-  { id: "delayMs", label: "DELAY", min: 0.5, max: 40, default: 12, unit: "ms", format: formatMs },
+  { id: "delayMs", label: "DELAY", min: 0.5, max: 40, default: 12, unit: "ms", format: formatMs, taper: "log" },
   { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.7, format: formatPct },
   { id: "crossfeed", label: "CROSSFEED", min: 0, max: 1, default: 0.4, format: formatPct },
   {
@@ -653,8 +665,8 @@ export const multibandParams: ParamDef[] = [
 export const compressorParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 3, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.5, default: 0.01, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.5, default: 0.01, unit: "s", format: formatSecMs, taper: "log" },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs, taper: "log" },
   { id: "knee", label: "KNEE", min: 0, max: 40, default: 6, unit: "dB", format: formatDb },
   {
     id: "detector",
@@ -736,7 +748,7 @@ export const reverbParams: ParamDef[] = [
 ];
 
 export const delayParams: ParamDef[] = [
-  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
+  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs, taper: "log" },
   {
     id: "sync",
     label: "SYNC",
@@ -779,7 +791,7 @@ export const distortionParams: ParamDef[] = [
     label: "CHARACTER",
     min: 0,
     max: 4,
-    default: 3,
+    default: 0,
     kind: "enum",
     step: 1,
     format: (v) => CHARACTER_MODE_LABELS[Math.max(0, Math.min(4, Math.round(v)))],
@@ -805,12 +817,14 @@ export const bitcrusherParams: ParamDef[] = [
   {
     id: "downsample",
     label: "CRUSH",
+    // A8 (PARAM-VALUE-AUDIT): musical powers of two (Decimort convention)
+    // instead of 1..50 step 1; clampEffectParam snaps stored legacy values.
     min: 1,
-    max: 50,
+    max: 64,
     default: 1,
     format: (v) => `${v.toFixed(0)}x`,
+    options: [1, 2, 4, 8, 16, 32, 64].map((n) => ({ value: n, label: `${n}x` })),
     kind: "discrete",
-    step: 1,
   },
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
   { id: "tone", label: "TONE", min: 500, max: 18000, default: 18000, unit: "Hz", format: formatHz, taper: "log" },
@@ -822,7 +836,7 @@ export const chorusParams: ParamDef[] = [
   {
     id: "rate",
     label: "RATE",
-    min: 0.1,
+    min: 0.05,
     max: 8,
     default: 0.6,
     unit: "Hz",
@@ -839,13 +853,17 @@ export const chorusParams: ParamDef[] = [
   },
 
   { id: "depth", label: "DEPTH", min: 0, max: 1, default: 0.5, format: formatPct },
+  // B2/A5 (PARAM-VALUE-AUDIT): additive per-voice base delay — 0 keeps the
+  // legacy 12/18/24/29/33/38 ms centers exactly; up to +20 ms for the deep,
+  // wide-sheen character axis.
+  { id: "base", label: "BASE", min: 0, max: 20, default: 0, unit: "ms", format: formatMs },
   { id: "spread", label: "SPREAD", min: 0, max: 1, default: 1, format: formatPct },
   { id: "feedback", label: "FEEDBK", min: 0, max: 0.85, default: 0, format: formatPct },
   {
     id: "voices",
     label: "VOICES",
     min: 2,
-    max: 4,
+    max: 6,
     default: 2,
     format: (v) => `${Math.round(v)}`,
     kind: "discrete",
@@ -905,8 +923,17 @@ export const phaserParams: ParamDef[] = [
 export const sidechainParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 4, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs },
+  {
+    id: "attack",
+    label: "ATTACK",
+    min: 0.0002,
+    max: 0.5,
+    default: 0.005,
+    unit: "s",
+    format: formatSecMs,
+    taper: "log",
+  },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs, taper: "log" },
   { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
   {
     id: "splitFreq",
@@ -930,9 +957,18 @@ export const transientParams: ParamDef[] = [
 export const gateParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -80, max: 0, default: -36, unit: "dB", format: formatDb },
   { id: "hysteresis", label: "HYSTERESIS", min: 0, max: 1, default: 0.15, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.0001, max: 0.5, default: 0.002, unit: "s", format: formatSecMs },
+  {
+    id: "attack",
+    label: "ATTACK",
+    min: 0.0001,
+    max: 0.5,
+    default: 0.002,
+    unit: "s",
+    format: formatSecMs,
+    taper: "log",
+  },
   { id: "hold", label: "HOLD", min: 0, max: 1, default: 0.02, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.001, max: 2, default: 0.08, unit: "s", format: formatSecMs, taper: "log" },
   { id: "range", label: "RANGE", min: -80, max: 0, default: -48, unit: "dB", format: formatDb },
   {
     id: "lookahead",
@@ -1198,8 +1234,8 @@ export const bassBussParams: ParamDef[] = [
     taper: "log",
   },
   { id: "compression", label: "COMPRESSION", min: 0, max: 1, default: 0.25, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.2, default: 0.01, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.18, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.2, default: 0.01, unit: "s", format: formatSecMs, taper: "log" },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.18, unit: "s", format: formatSecMs, taper: "log" },
   {
     id: "monoBassFrequency",
     label: "MONO BASS",
@@ -1271,7 +1307,7 @@ export const utilityParams: ParamDef[] = [
 export const limiterParams: ParamDef[] = [
   { id: "ceiling", label: "CEILING", min: -24, max: 0, default: -1, unit: "dB", format: formatDb },
   { id: "threshold", label: "THRESHOLD", min: -24, max: 0, default: -6, unit: "dB", format: formatDb },
-  { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatSecMs, taper: "log" },
   { id: "lookaheadMs", label: "LOOKAHEAD", min: 1, max: 20, default: 5, unit: "ms", format: formatMs },
   { id: "link", label: "LINK", min: 0, max: 1, default: 1, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -1313,7 +1349,7 @@ export const flangerParams: ParamDef[] = [
   },
 
   { id: "depth", label: "DEPTH", min: 0, max: 10, default: 3, unit: "ms", format: formatMs },
-  { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs },
+  { id: "base", label: "BASE", min: 0.5, max: 20, default: 5, unit: "ms", format: formatMs, taper: "log" },
   { id: "feedback", label: "FEEDBACK", min: 0, max: 0.95, default: 0.4, format: formatPct },
   { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.7, format: formatPct },
   {
@@ -1374,8 +1410,8 @@ export const autowahParams: ParamDef[] = [
     taper: "log",
   },
   { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.7, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.1, default: 0.01, unit: "s", format: formatSecMs, taper: "log" },
+  { id: "release", label: "RELEASE", min: 0.05, max: 1, default: 0.15, unit: "s", format: formatSecMs, taper: "log" },
   { id: "sensitivity", label: "SENSITIVITY", min: 0.5, max: 3, default: 1.5, format: (v) => v.toFixed(2) },
   { id: "mode", label: "MODE", min: 0, max: 1, default: 0, options: AUTOWAH_MODES },
   {
@@ -1401,7 +1437,7 @@ export const stutterParams: ParamDef[] = [
 ];
 
 export const combParams: ParamDef[] = [
-  { id: "delayMs", label: "DELAY", min: 0.5, max: 60, default: 12, unit: "ms", format: formatMs },
+  { id: "delayMs", label: "DELAY", min: 0.5, max: 60, default: 12, unit: "ms", format: formatMs, taper: "log" },
   {
     id: "feedback",
     label: "FEEDBACK",
@@ -1430,13 +1466,31 @@ export const vowelParams: ParamDef[] = [
 ];
 
 export const duckDelayParams: ParamDef[] = [
-  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
+  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs, taper: "log" },
   { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
   { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz, taper: "log" },
   { id: "duckAmount", label: "DUCK", min: 0, max: 1, default: 0.7, format: formatPct },
   { id: "duckThresh", label: "THRESH", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
-  { id: "duckAttack", label: "DUCK ATK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
-  { id: "duckRelease", label: "DUCK REL", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatSecMs },
+  {
+    id: "duckAttack",
+    label: "DUCK ATK",
+    min: 0.001,
+    max: 0.5,
+    default: 0.005,
+    unit: "s",
+    format: formatSecMs,
+    taper: "log",
+  },
+  {
+    id: "duckRelease",
+    label: "DUCK REL",
+    min: 0.02,
+    max: 1,
+    default: 0.18,
+    unit: "s",
+    format: formatSecMs,
+    taper: "log",
+  },
   {
     id: "sync",
     label: "SYNC",
@@ -1503,7 +1557,16 @@ export const tapeStopParams: ParamDef[] = [
     ],
     format: (v) => (v > 0.5 ? "ON" : "ARMED"),
   },
-  { id: "time", label: "TIME", min: 0.1, max: 8, default: 1.5, unit: "s", format: (v) => `${v.toFixed(1)} s` },
+  {
+    id: "time",
+    label: "TIME",
+    min: 0.1,
+    max: 8,
+    default: 1.5,
+    unit: "s",
+    format: (v) => `${v.toFixed(1)} s`,
+    taper: "log",
+  },
   {
     id: "curve",
     label: "CURVE",
@@ -1539,7 +1602,7 @@ export const freqShifterParams: ParamDef[] = [
     label: "SHIFT",
     min: -1000,
     max: 1000,
-    default: 120,
+    default: 0,
     unit: "Hz",
     format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)} Hz`,
   },
@@ -1601,6 +1664,7 @@ export const freqShifterParams: ParamDef[] = [
     default: 30,
     unit: "ms",
     format: formatMs,
+    taper: "log",
   },
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
   { id: "tone", label: "TONE", min: 500, max: 16000, default: 16000, unit: "Hz", format: formatHz, taper: "log" },
@@ -1648,7 +1712,16 @@ export const pitchShiftParams: ParamDef[] = [
     unit: "ct",
     format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)}`,
   },
-  { id: "grainMs", label: "GRAIN", min: 20, max: 120, default: 55, unit: "ms", format: (v) => `${Math.round(v)} ms` },
+  {
+    id: "grainMs",
+    label: "GRAIN",
+    min: 20,
+    max: 120,
+    default: 55,
+    unit: "ms",
+    format: (v) => `${Math.round(v)} ms`,
+    taper: "log",
+  },
   { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
@@ -1823,8 +1896,8 @@ export const vocoderParams: ParamDef[] = [
     taper: "log",
   },
   { id: "q", label: "SHARPNESS", min: 1, max: 16, default: 4, format: (v) => v.toFixed(1) },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.004, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.005, max: 1, default: 0.06, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.004, unit: "s", format: formatSecMs, taper: "log" },
+  { id: "release", label: "RELEASE", min: 0.005, max: 1, default: 0.06, unit: "s", format: formatSecMs, taper: "log" },
   {
     id: "shift",
     label: "FORMANT",
@@ -1850,6 +1923,7 @@ export const reverseSwellParams: ParamDef[] = [
     default: 2,
     unit: "s",
     format: (v) => `${v.toFixed(2)} s`,
+    taper: "log",
   },
   {
     id: "reach",
@@ -1859,6 +1933,7 @@ export const reverseSwellParams: ParamDef[] = [
     default: 2,
     unit: "s",
     format: (v) => `${v.toFixed(2)} s`,
+    taper: "log",
   },
   {
     id: "curve",
@@ -1883,6 +1958,7 @@ export const granularFreezeParams: ParamDef[] = [
     default: 2,
     unit: "s",
     format: (v) => `${v.toFixed(2)} s`,
+    taper: "log",
   },
   { id: "position", label: "POSITION", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "drift", label: "DRIFT", min: 0, max: 1, default: 0.2, format: formatPct },
@@ -1894,6 +1970,7 @@ export const granularFreezeParams: ParamDef[] = [
     default: 90,
     unit: "ms",
     format: (v) => `${Math.round(v)} ms`,
+    taper: "log",
   },
   { id: "scatter", label: "SCATTER", min: 0, max: 1, default: 0.3, format: formatPct },
   {
@@ -1911,7 +1988,7 @@ export const granularFreezeParams: ParamDef[] = [
 ];
 
 export const kaskadaParams: ParamDef[] = [
-  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
+  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs, taper: "log" },
   {
     id: "sync",
     label: "SYNC",
@@ -1984,8 +2061,8 @@ export const kaskadaParams: ParamDef[] = [
   },
   { id: "unmask", label: "U-AMOUNT", min: 0, max: 1, default: 0.6, format: formatPct },
   { id: "unmaskSens", label: "U-SENS", min: 0, max: 1, default: 0.5, format: formatPct },
-  { id: "unmaskAtk", label: "U-ATK", min: 0.1, max: 100, default: 5, unit: "ms", format: formatMs },
-  { id: "unmaskRel", label: "U-REL", min: 10, max: 2000, default: 250, unit: "ms", format: formatMs },
+  { id: "unmaskAtk", label: "U-ATK", min: 0.1, max: 100, default: 5, unit: "ms", format: formatMs, taper: "log" },
+  { id: "unmaskRel", label: "U-REL", min: 10, max: 2000, default: 250, unit: "ms", format: formatMs, taper: "log" },
   {
     id: "character",
     label: "CHARACTER",

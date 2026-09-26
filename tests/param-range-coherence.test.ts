@@ -32,6 +32,8 @@ const PROC_CASES: { effect: EffectType; proc: string; params: string[] }[] = [
   { effect: "limiter", proc: "limiter-processor", params: ["ceiling", "release"] },
   { effect: "pitchShift", proc: "pitchshift-processor", params: ["fine"] },
   { effect: "eq", proc: "eq-processor", params: ["lowMidQ", "highMidQ"] },
+  { effect: "chorus", proc: "chorus-processor", params: ["rate", "base", "voices"] },
+  { effect: "bitcrusher", proc: "bitcrusher-processor", params: ["downsample"] },
 ];
 
 const EPS = 1e-9;
@@ -86,5 +88,69 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
     expect(defOf("pitchShift", "fine").max).toBe(100); // H3000/AlterBoy ct
     expect(defOf("eq", "midQ").max).toBe(16); // surgical-notch class
     expect(defOf("msEq", "midLowGain").max).toBe(15); // aligned with core EQ
+  });
+
+  it("headline audit values are pinned (Wave 2)", () => {
+    const defOf = (effect: EffectType, id: string) => {
+      const p = EFFECT_META[effect].params.find((q) => q.id === id);
+      expect(p).toBeDefined();
+      return p!;
+    };
+    // B1/B3: inserts land neutral — pro defaults.
+    expect(defOf("freqShifter", "shift").default).toBe(0);
+    expect(defOf("distortion", "character").default).toBe(0);
+    // A5: chorus character axis.
+    expect(defOf("chorus", "voices").max).toBe(6);
+    expect(defOf("chorus", "rate").min).toBe(0.05);
+    expect(defOf("chorus", "base").default).toBe(0); // legacy-exact at insert
+    // A8: musical powers of two, Decimort convention.
+    const crush = defOf("bitcrusher", "downsample");
+    expect(crush.max).toBe(64);
+    expect(crush.options?.map((o) => o.value)).toEqual([1, 2, 4, 8, 16, 32, 64]);
+    // B2: time-domain params carry the log taper (Hz params already did).
+    expect(defOf("delay", "time").taper).toBe("log");
+    expect(defOf("compressor", "attack").taper).toBe("log");
+    expect(defOf("compressor", "release").taper).toBe("log");
+    expect(defOf("haasWidener", "delayMs").taper).toBe("log");
+    expect(defOf("comb", "delayMs").taper).toBe("log");
+  });
+
+  it("chorus renders finite + bounded at the new extremes (6 voices, +20 ms BASE)", async () => {
+    const cls = registered.get("chorus-processor");
+    expect(cls).toBeDefined();
+    const proc = new (cls as any)();
+    const descriptors = (cls as any).parameterDescriptors as { name: string; defaultValue: number }[];
+    const params: Record<string, Float32Array> = {};
+    for (const d of descriptors) {
+      params[d.name] = Float32Array.from([
+        d.name === "voices" ? 6 : d.name === "base" ? 20 : d.name === "rate" ? 0.05 : d.defaultValue,
+      ]);
+    }
+    const sr = 48000;
+    const block = 128;
+    let peak = 0;
+    for (let b = 0; b < 40; b++) {
+      const input = [new Float32Array(block).map((_, i) => Math.sin((2 * Math.PI * 220 * (b * block + i)) / sr))];
+      const output = [new Float32Array(block), new Float32Array(block)];
+      proc.process([input], [output], params);
+      for (const ch of output)
+        for (const v of ch) {
+          expect(Number.isFinite(v)).toBe(true);
+          peak = Math.max(peak, Math.abs(v));
+        }
+    }
+    expect(peak).toBeGreaterThan(0); // audible
+    expect(peak).toBeLessThan(4); // bounded (norm + panning sum)
+  });
+
+  it("bitcrusher CRUSH snaps stored legacy values to the nearest power", async () => {
+    const { clampEffectParam } = await import("../src/effects/definitions");
+    expect(clampEffectParam("bitcrusher", "downsample", 7)).toBe(8);
+    expect(clampEffectParam("bitcrusher", "downsample", 50)).toBe(64);
+    expect(clampEffectParam("bitcrusher", "downsample", 3)).toBe(4);
+    expect(clampEffectParam("bitcrusher", "downsample", 2)).toBe(2);
+    expect(clampEffectParam("bitcrusher", "downsample", 1)).toBe(1);
+    expect(clampEffectParam("bitcrusher", "downsample", 64)).toBe(64);
+    expect(clampEffectParam("bitcrusher", "downsample", Number.NaN)).toBe(1); // default
   });
 });

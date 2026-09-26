@@ -52,6 +52,7 @@ export function createChorusNode(
   lfoSync.parameter("rate", instance.params.rate ?? 0.6, null);
 
   safeApplyAudioParam(node, "depth", instance.params.depth ?? 0.5);
+  safeApplyAudioParam(node, "base", instance.params.base ?? 0);
   safeApplyAudioParam(node, "spread", instance.params.spread ?? 1);
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
   safeApplyAudioParam(node, "voices", instance.params.voices ?? 2);

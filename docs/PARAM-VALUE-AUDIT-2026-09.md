@@ -88,4 +88,17 @@ not a numbers wave.
    the widened floors apply there too; its legacy native DynamicsCompressorNode fallback clamps at 1 s
    (accepted degradation, worklet is the primary path).
 2. **Vlna 2 — UX polish:** B1 default, B2 tapers, A5 chorus, A8 crush powers, B3.
+   **DELIVERED 2026-09-26.** B1 `freqShifter.shift` default +120 Hz → 0 (insert lands neutral).
+   B3 `distortion.character` default 3 → 0 (aligned with saturation). B2 log tapers on the whole
+   time-domain family — delay/duckDelay/RYFT TIME, Haas/comb DELAY, every compressor/sidechain/
+   bassBuss/gate/autowah/vocoder attack & release, limiter + duck release, RYFT unmask atk/rel,
+   tapeStop/reverseSwell/granularFreeze windows, grain sizes, flanger BASE (UI-only — `taper` is
+   def metadata, four surfaces already consume it). A5 chorus: voices 2–6 (new voices run
+   33/38 ms bases, ±0.85 pans, quarter-offset phases; ring 85 ms still covers worst case 67 ms),
+   rate floor 0.1 → 0.05 Hz, and a NEW `base` param (additive 0–20 ms per-voice offset — 0 keeps
+   the legacy centers exactly; the deep/sheen character axis). A8 bitcrusher CRUSH: 1..50 step 1
+   → musical powers {1,2,4,8,16,32,64} dropdown; `clampEffectParam` snaps stored legacy values to
+   the nearest power by log distance (7→8, 50→64, 3→4). Guarded in `tests/param-range-coherence.test.ts`
+   (14/14: descriptor coverage now also chorus + bitcrusher, headline pins, snap table, and a
+   6-voice/+20 ms render smoke — finite, audible, bounded).
 3. **Vlna 3 — DSP:** oversampling on the drive family (2×/4× polyphase pre/post), pattern per `morphDynamicsNode`.
