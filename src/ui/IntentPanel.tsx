@@ -28,6 +28,7 @@ import {
 } from "../intent/song";
 import type { SearchLane } from "../intent/candidate-search";
 import { fxWordsForArtist } from "../intent/artists";
+import { artistMixProfileOf } from "../intent/artist-mix";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";

@@ -1499,3 +1499,107 @@ export function countByVerificationStatus(): Readonly<Record<VerificationStatus,
   }
   return counts;
 }
+
+/* ---------------------------------------------------------------------------
+ * Phase 2 wiring — deep profile → artist-mix.ts producer-decision layer.
+ *
+ * The existing ArtistMixProfile (src/intent/artist-mix.ts) carries the 4
+ * fields planMixProfile actually reads: tone, punch, reverb, pump. Each
+ * field is a producer-decision knob (master tilt, dynamic pressure, space,
+ * sidechain) — not a descriptive audio profile.
+ *
+ * This helper translates the deeper profile (eqTilt / compression /
+ * signature sound / vibe keywords) into the same ArtistMixProfile shape.
+ * artistMixProfileOf() (artist-mix.ts:58) uses the curated ARTIST_MIX_PROFILES
+ * table first; the deep layer is the FALLBACK for artists that have a deep
+ * profile but were never curated into ARTIST_MIX_PROFILES (e.g. Kaytranada,
+ * J Dilla, Fred Again, Burial, AXL Beats, DJ Mustard, Skepta, Wiley, etc.).
+ *
+ * Architectural intent: do not duplicate decisions across two layers. The
+ * curated table wins when present; the deep layer fills the gap. Adding a
+ * row to ARTIST_MIX_PROFILES remains the source-of-truth override.
+ * ------------------------------------------------------------------------- */
+
+import type { ArtistMixProfile } from "../artist-mix";
+
+/** Normalize an `intent.artist` label into the slug form used by ARTIST_PROFILES.
+ *
+ *  Strips parenthetical suffixes ("fred again (ukg)" → "fred again"),
+ *  forward-slash qualifiers ("skepta / grime" → "skepta"), periods
+ *  ("dr. dre" → "dr dre"), then collapses whitespace to hyphens. */
+export function normalizeArtistSlug(label: string): string {
+  return label
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s*\/\s*.*$/, "")
+    .replace(/\./g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+/** Derive the existing ArtistMixProfile shape from a deep profile's mix traits.
+ *
+ *  Only fields with non-null signals are populated — undefined entries are
+ *  omitted from the returned object so planMixProfile's nullish coalescing
+ *  (`artistMix?.tone ?? GENRE_TONE_DEFAULT[genre]`) sees them as "no opinion".
+ *
+ *  Mapping rules:
+ *    - mix.eqTilt "bright"     → tone: "bright"
+ *    - mix.eqTilt "dark"       → tone: "dark"
+ *    - mix.eqTilt "neutral"    → tone: "warm"   (engine's "warm" is the closest
+ *                                            producer-decision to "neutral
+ *                                            tilt, character-forward mix")
+ *    - mix.compression "heavy" → punch: "more"
+ *    - mix.compression "light" → punch: "less"
+ *    - signature.sound / vibe mention "sidechain" / "pump" / "pumping" → pump: true
+ *    - vibe contains "huge" / "spacious" / "ethereal" / "atmospheric" / "cinematic"
+ *                              → reverb: "huge"
+ *    - vibe contains "tight" / "dry" / "club" / "forward" / "aggressive" / "menacing"
+ *                              → reverb: "less"
+ */
+export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile {
+  const derived: ArtistMixProfile = {};
+
+  // tone
+  const tone: ArtistMixProfile["tone"] | undefined =
+    profile.mix.eqTilt === "bright" ? "bright" :
+    profile.mix.eqTilt === "dark" ? "dark" :
+    profile.mix.eqTilt === "neutral" ? "warm" :
+    undefined;
+  if (tone) derived.tone = tone;
+
+  // punch
+  const punch: ArtistMixProfile["punch"] | undefined =
+    profile.mix.compression === "heavy" ? "more" :
+    profile.mix.compression === "light" ? "less" :
+    undefined;
+  if (punch) derived.punch = punch;
+
+  // pump — keyword scan across signature sound + vibe
+  const pumpSignal = [...profile.signature.sound, ...profile.vibe]
+    .some((text) => /\bsidechain|\bpump(?:ing|s|ed)?\b/i.test(text));
+  if (pumpSignal) derived.pump = true;
+
+  // reverb — keyword scan across vibe
+  const vibeJoined = profile.vibe.join(" ");
+  if (/\bhuge\b|\bspacious\b|\bethereal\b|\batmospheric\b|\bcinematic\b/i.test(vibeJoined)) {
+    derived.reverb = "huge";
+  } else if (/\btight\b|\bdry\b|\bclub\b|\bforward\b|\baggressive\b|\bmenacing\b/i.test(vibeJoined)) {
+    derived.reverb = "less";
+  }
+
+  return derived;
+}
+
+/** Look up an `intent.artist` label and derive an ArtistMixProfile from the
+ *  deep profile layer. Returns null when:
+ *  - no deep profile matches the normalized slug, or
+ *  - the derived profile carries no producer-decision signals (empty object). */
+export function artistMixProfileFromDeep(artistLabel: string): ArtistMixProfile | null {
+  const slug = normalizeArtistSlug(artistLabel);
+  const profile = getArtistProfile(slug);
+  if (!profile) return null;
+  const derived = deepProfileToArtistMix(profile);
+  if (Object.keys(derived).length === 0) return null;
+  return derived;
+}

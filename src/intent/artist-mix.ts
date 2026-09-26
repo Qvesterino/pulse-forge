@@ -1,4 +1,5 @@
 import type { IntentSpec } from "./types";
+import { artistMixProfileFromDeep } from "./artist-profiles";
 
 /**
  * ARTIST MIX SIGNATURES — the mix/master character an artist preset carries.
@@ -12,6 +13,14 @@ import type { IntentSpec } from "./types";
  *
  * Adding an artist: one row here + `label:` in the roster. No row = the
  * genre default applies (the table is an override layer, not a registry).
+ *
+ * Phase 2 fallback (2026-09-26): the deep profile layer
+ * (src/intent/artist-profiles/) carries a richer dataset (signature sound,
+ * mix traits, master target, gear, vibe) for ~22 artists that the curated
+ * ARTIST_MIX_PROFILES table does not cover. When the curated table misses,
+ * `artistMixProfileOf` falls through to the deep layer and derives an
+ * ArtistMixProfile shape from the deep profile's mix traits. The curated
+ * table is ALWAYS tried first so manually-tuned overrides win.
  */
 
 export interface ArtistMixProfile {
@@ -57,5 +66,12 @@ export const ARTIST_MIX_PROFILES: Readonly<Record<string, ArtistMixProfile>> = {
 /** Artist signature lookup; unknown/absent labels yield the genre default path. */
 export function artistMixProfileOf(intent: IntentSpec): ArtistMixProfile | null {
   if (!intent.artist) return null;
-  return ARTIST_MIX_PROFILES[intent.artist] ?? null;
+  const explicit = ARTIST_MIX_PROFILES[intent.artist];
+  if (explicit) return explicit;
+  // Phase 2 fallback: the curated ARTIST_MIX_PROFILES table covers 21
+  // artists; the deep profile layer covers 22 more (some overlap). If the
+  // parser matched an artist the curated table doesn't know, derive an
+  // ArtistMixProfile from the deep layer's mix traits. Curated overrides
+  // always win when present.
+  return artistMixProfileFromDeep(intent.artist);
 }
