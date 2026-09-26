@@ -461,7 +461,7 @@ describe("arrangement REC wiring", () => {
     const auditionDoc = renderCall[0];
     const options = renderCall[2];
     expect(auditionDoc.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.audition-1"]);
-    expect(auditionDoc.arrangement.clips).toEqual([]);
+    expect(auditionDoc.patterns.every((pattern) => Object.keys(pattern.notes).length === 0)).toBe(true);
     expect(auditionDoc.tracks.find((track) => track.id === trackId)?.mute).toBe(false);
     expect(options).toMatchObject({ mode: "song", sampleRate: 48_000, masterProcessing: false });
     expect(screen.getByRole("button", { name: "Stop audition TAKE 1" })).toBeTruthy();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatePattern, resolveGrooveForGeneration } from "../src/ai/generator";
-import { FEATURE_COUNT, FEATURE_NAMES } from "../src/ai/features/pattern-features";
+import { extractPatternFeatures, FEATURE_COUNT, FEATURE_NAMES } from "../src/ai/features/pattern-features";
 import { GENRES, type GrooveData } from "../src/ai/types";
 import { getGroovesForGenre } from "../src/ai/grooves";
 import { STEP_TICKS } from "../src/project-model/types";
@@ -9,7 +9,9 @@ import {
   applyCandidateSearchFamily,
   candidateSearchVariant,
   searchLaneForCandidate,
+  selectPersonalGrooveCandidate,
 } from "../src/intent/candidate-search";
+import { evaluateCandidate } from "../src/intent/providers/candidate";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
 import { inferPersonalSearchBias, type PersonalSearchBias } from "../src/intent/personal-ranker";
@@ -231,6 +233,58 @@ describe("Producer DNA candidate search lanes", () => {
     expect(lessGroove?.genre).toBe(plan.intent.genre);
     expect(score(moreGroove!)).toBeGreaterThan(score(baseGroove));
     expect(score(lessGroove!)).toBeLessThan(score(baseGroove));
+
+    // The template proxy is not enough: make sure the selected lane changes
+    // the actual generated drum pattern in the same measured direction.
+    const seed = plan.intent.seed;
+    const safeVariant = candidateSearchVariant(plan, seed, 0, null);
+    const safePattern = evaluateCandidate(
+      generatePattern(doc, safeVariant.generationPlan.options),
+      safeVariant.validationPlan,
+      { project: doc, mode: "preview" },
+    )?.pattern;
+    expect(safePattern).toBeDefined();
+    const measuredSyncopation = (pattern: typeof safePattern, variant: ReturnType<typeof candidateSearchVariant>) => {
+      if (!pattern) throw new Error("expected a valid generated pattern");
+      const feature = extractPatternFeatures({
+        doc,
+        pattern,
+        intent: variant.validationPlan.intent,
+        options: variant.generationPlan.options,
+        resolvedBpm: variant.validationPlan.resolvedBpm,
+      }).values[FEATURE_NAMES.indexOf("drums.syncopation")];
+      return feature ?? Number.NaN;
+    };
+    const safeSyncopation = measuredSyncopation(safePattern, safeVariant);
+    const selectAndMeasure = (personalBias: PersonalSearchBias) =>
+      selectPersonalGrooveCandidate({
+        plan,
+        seed,
+        candidateIndex: 1,
+        personalBias,
+        baselineSyncopation: safeSyncopation,
+        build: (variant) => {
+          const generated = generatePattern(doc, variant.generationPlan.options);
+          const prepared = applyCandidateSearchFamily(generated, doc, variant.generationPlan, variant.search).pattern;
+          const evaluated = evaluateCandidate(prepared, variant.validationPlan, { project: doc, mode: "preview" });
+          if (!evaluated) return null;
+          return {
+            candidate: evaluated.pattern,
+            syncopation: measuredSyncopation(evaluated.pattern, variant),
+          };
+        },
+      });
+
+    const moreResult = selectAndMeasure(bias);
+    const lessResult = selectAndMeasure(negativeBias);
+    expect(moreResult.candidate).not.toBeNull();
+    expect(lessResult.candidate).not.toBeNull();
+    expect(moreResult.outputDelta).toBeGreaterThanOrEqual(0.01);
+    expect(lessResult.outputDelta).toBeGreaterThanOrEqual(0.01);
+    expect(moreResult.attempts).toBeGreaterThanOrEqual(1);
+    expect(moreResult.attempts).toBeLessThanOrEqual(8);
+    expect(measuredSyncopation(moreResult.candidate, moreResult.variant)).toBeGreaterThan(safeSyncopation);
+    expect(measuredSyncopation(lessResult.candidate, lessResult.variant)).toBeLessThan(safeSyncopation);
   });
 
   it("routes real local A/B groove observations into the PERSONAL groove family", () => {

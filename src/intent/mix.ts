@@ -122,7 +122,10 @@ export function planMixProfile(
   // top-bright) but always punches. GENRE_TONE_DEFAULT (above) is the single
   // source for the tone defaults AND the master tilt mapping.
   const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
-  const tone = overrides.tone ?? moodTone(intent) ?? GENRE_TONE_DEFAULT[genre] ?? null;
+  // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
+  // and mood tones still win; the style default only fills silence.
+  const popSong = intent.style === "pop";
+  const tone = overrides.tone ?? moodTone(intent) ?? GENRE_TONE_DEFAULT[genre] ?? (popSong ? "bright" : null);
   const punch: MixOverrides["punch"] | null =
     overrides.punch ?? (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
   const lushGenre = genre === "ambient";
@@ -223,6 +226,27 @@ export function planMixProfile(
       sidechainFromDrums: true,
     });
     summary.push(`pump: sidechain ${Math.round(amount * 100)}%`);
+  }
+
+  // ── Pop production (Wave 4): vocal-friendly glue + controlled low-end ───
+  // Gentle music-bus compression so vocals sit on top without fighting, and
+  // a high-pass on the music (not the bass) so the sub stays clean. Merges
+  // with tone-tilt EQs on the same instances (disjoint params) and with the
+  // vocal pocket above (different bands/purposes).
+  if (popSong) {
+    decisions.push({
+      target: "chords",
+      effectType: "compressor",
+      params: { threshold: -16, ratio: 3, attack: 0.01, makeup: 1.5 },
+    });
+    decisions.push({
+      target: "lead",
+      effectType: "compressor",
+      params: { threshold: -16, ratio: 3, attack: 0.01, makeup: 1.5 },
+    });
+    decisions.push({ target: "chords", effectType: "eq", params: { hpFreq: 40 } });
+    decisions.push({ target: "lead", effectType: "eq", params: { hpFreq: 40 } });
+    summary.push("pop: vocal glue + low-end control");
   }
 
   // ── Pocket: leave room for the singer (V2 vocal-driven form) ───────────

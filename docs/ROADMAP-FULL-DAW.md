@@ -144,8 +144,17 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       arrangement-tick region and apply it to the comp with one undoable
       command; source takes remain untouched.
 - [x] Add isolated, cancelable offline audition for source and comp lanes.
-- [ ] Add adjustable musical crossfades and consolidation; verify every edit
-      remains non-destructive and undoable.
+- [ ] Implement adjustable, tempo-aware crossfades at take-comp boundaries;
+      keep both source passes immutable and make the overlap/fade curves
+      deterministic in live and offline playback.
+- [ ] Replace the current metadata-only `consolidateAudioClips` behavior with
+      a true offline-rendered comp asset saved through the user-sample store;
+      preserve the source takes and make the project replacement one undoable
+      command. Verify save/reopen, undo/redo and export parity before exposing
+      it as consolidation.
+- [ ] Verify repeated comp edits, sample-accurate boundaries and crossfade
+      behavior on recorded material; the existing 3 ms seam fade is only a
+      de-click and does not meet this gate.
 - [ ] Close the pro-editing gap: verify sample-accurate clip boundaries and
       moves, non-destructive fades/crossfades, clip gain, undo/redo and the
       existing warp workflow on real recorded material. Do not duplicate
@@ -164,9 +173,10 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
 - [x] Add cancelable offline audition for each source/comp lane using an
       ephemeral project that isolates the take while preserving its track,
       group, send and master processing; audition never mutates the project.
-- [ ] Extend comp editing with adjustable musical crossfades and
+- [ ] Extend comp editing with adjustable musical crossfades and real rendered
       consolidation; certify repeated edits and boundaries on real takes
-      through save/reopen and final export.
+      through save/reopen, undo/redo and final export. Do not treat the generic
+      clip-menu metadata-only consolidate command as satisfying this gate.
 - [x] Translate IndexedDB quota failure during PCM append into a clear stop
       warning; stop capture and preserve all earlier committed blocks for
       recovery. This is not long-session certification.

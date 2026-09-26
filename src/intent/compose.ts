@@ -29,6 +29,9 @@ import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 import type { VocalProfile } from "../vocal/types";
 
+/** Pop songs master louder than streaming (Wave 4) — pop lives at club levels. */
+export const POP_LOUDNESS_TARGET_LUFS = -9;
+
 export interface ComposeLoudness {
   summary: string;
   run: (doc: ProjectDocument) => Promise<LoudnessApplyResult | null>;
@@ -205,17 +208,20 @@ export async function composeFullTrack(
   }
 
   // 4 — loudness: explicit words win ("loudness na −9"), else the SUNO
-  // default trims toward the streaming target. Needs a bank to render.
+  // default trims toward the streaming target — except pop-styled songs,
+  // which master louder (Wave 4: pop lives at club/loud levels, −9 LUFS).
+  // Needs a bank to render.
   let loudness: ComposeLoudness | null = null;
   const wantsLoudness = options.loudness !== false;
   if (wantsLoudness) {
     if (!options.bank) {
       skipped.push("loudness: no sample bank provided for the render");
     } else {
+      const popTarget = build.baseIntent.style === "pop" ? POP_LOUDNESS_TARGET_LUFS : SONG_LOUDNESS_TARGET_LUFS;
       const parse = parseLoudnessIntent(text) ?? {
         direction: "louder" as const,
-        targetDb: SONG_LOUDNESS_TARGET_LUFS,
-        detected: [`target ${SONG_LOUDNESS_TARGET_LUFS} LUFS`],
+        targetDb: popTarget,
+        detected: [`target ${popTarget} LUFS`],
       };
       loudness = {
         summary: parse.detected.join(", ") || "loudness pass",

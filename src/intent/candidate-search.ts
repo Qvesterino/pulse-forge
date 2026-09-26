@@ -16,6 +16,10 @@ export interface CandidateSearchInfo {
   melodyFamily?: "repeating-hook";
   /** Exact in-library groove selected for a controlled rhythmic alternative. */
   grooveId?: string;
+  /** Measured syncopation change in the generated pattern vs SAFE; only set after direction is verified. */
+  measuredSyncopationDelta?: number;
+  /** Number of deterministic groove seeds auditioned to realize that direction. */
+  grooveSeedAttempts?: number;
   /** Personal lane without enough usable votes is explicitly cold-start. */
   mode: "baseline" | "personalized" | "cold-start" | "experimental";
   variant: number;
@@ -38,6 +42,8 @@ const EXPERIMENTAL_VARIANTS = [
 const PERSONAL_HOOK_BIAS_THRESHOLD = 0.025;
 const PERSONAL_GROOVE_BIAS_THRESHOLD = 0.025;
 const PERSONAL_GROOVE_MIN_DISTANCE = 0.02;
+const PERSONAL_GROOVE_OUTPUT_MIN_DISTANCE = 0.01;
+const PERSONAL_GROOVE_MAX_ATTEMPTS = 8;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
@@ -313,4 +319,57 @@ export function candidateSearchVariant(
       variant,
     },
   };
+}
+
+export interface PersonalGrooveSelection<T> {
+  variant: CandidateSearchVariant;
+  candidate: T | null;
+  attempts: number;
+  outputDelta: number | null;
+}
+
+/**
+ * A groove template's syncopation score is only a prior: the Markov generator can
+ * produce a result on the wrong side of the preference. Retry deterministic
+ * seeds until the actual candidate moves measurably in the learned direction.
+ * The caller's `build` callback must run the ordinary hard gates before it
+ * returns a candidate; a failed search is omitted rather than mislabeled.
+ */
+export function selectPersonalGrooveCandidate<T>(args: {
+  plan: GenerationPlan;
+  seed: string;
+  candidateIndex: number;
+  personalBias: PersonalSearchBias;
+  baselineSyncopation: number;
+  build: (variant: CandidateSearchVariant) => { candidate: T; syncopation: number } | null;
+  maxAttempts?: number;
+}): PersonalGrooveSelection<T> {
+  const initialVariant = candidateSearchVariant(args.plan, args.seed, args.candidateIndex, args.personalBias);
+  const direction = Math.sign(args.personalBias.grooveSyncopation);
+  const requestedAttempts = args.maxAttempts ?? PERSONAL_GROOVE_MAX_ATTEMPTS;
+  const maxAttempts = Number.isFinite(requestedAttempts) ? Math.max(1, Math.min(16, Math.floor(requestedAttempts))) : 1;
+  if (
+    initialVariant.search.family !== "personal-groove" ||
+    direction === 0 ||
+    !Number.isFinite(args.baselineSyncopation)
+  ) {
+    return { variant: initialVariant, candidate: null, attempts: 0, outputDelta: null };
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const seed = attempt === 0 ? args.seed : `${args.seed}|personal-groove-attempt:${attempt}`;
+    const variant = candidateSearchVariant(args.plan, seed, args.candidateIndex, args.personalBias);
+    try {
+      const built = args.build(variant);
+      if (!built || !Number.isFinite(built.syncopation)) continue;
+      const outputDelta = (built.syncopation - args.baselineSyncopation) * direction;
+      if (outputDelta >= PERSONAL_GROOVE_OUTPUT_MIN_DISTANCE) {
+        return { variant, candidate: built.candidate, attempts: attempt + 1, outputDelta };
+      }
+    } catch {
+      // A failed attempt is not a reason to skip later deterministic seeds.
+    }
+  }
+
+  return { variant: initialVariant, candidate: null, attempts: maxAttempts, outputDelta: null };
 }

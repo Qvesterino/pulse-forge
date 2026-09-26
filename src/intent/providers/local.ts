@@ -1,6 +1,7 @@
 import { generatePattern } from "../../ai/generator";
 import { inspectPatternInvariants } from "../../ai/invariants";
 import { LOCAL_ENGINE_ID, LOCAL_ENGINE_VERSION } from "../../ai/evaluation";
+import { extractPatternFeatures, FEATURE_NAMES } from "../../ai/features/pattern-features";
 import type { GenerateOptions } from "../../ai/types";
 import type { Pattern, ProjectDocument } from "../../project-model/types";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
@@ -8,7 +9,12 @@ import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
 import { rankerMode } from "../../ai/ranking/ranker-client";
 import { symbolicPriorProvider, symbolicWanted } from "./symbolic";
 import { createFallbackPattern } from "../quality";
-import { applyCandidateSearchFamily, candidateSearchVariant } from "../candidate-search";
+import {
+  applyCandidateSearchFamily,
+  candidateSearchVariant,
+  selectPersonalGrooveCandidate,
+  type CandidateSearchVariant,
+} from "../candidate-search";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
 import { inferPersonalSearchBias } from "../personal-ranker";
 import type {
@@ -22,6 +28,7 @@ import type {
 } from "../types";
 
 type PatternGenerator = (doc: ProjectDocument, options: GenerateOptions) => Pattern;
+const SYNCOPATION_FEATURE_INDEX = FEATURE_NAMES.indexOf("drums.syncopation");
 
 function diagnosticsFor(
   pattern: Pattern,
@@ -69,23 +76,31 @@ export class LocalDeterministicProvider implements GenerationProvider {
       searchLanes && isPreferenceLearningEnabled()
         ? inferPersonalSearchBias(readPreferenceLedger(), preferenceContextForIntent(plan.intent))
         : null;
+    let safeSyncopation: number | null = null;
 
-    for (const [candidateIndex, seed] of candidateSeeds.entries()) {
-      const variant = searchLanes ? candidateSearchVariant(plan, seed, candidateIndex, personalBias) : null;
-      const currentPlan = variant?.validationPlan ?? candidatePlan(plan, seed);
-      const generationPlan = variant?.generationPlan ?? currentPlan;
+    const buildCandidate = (
+      candidateIndex: number,
+      seed: string,
+      variant: CandidateSearchVariant | null,
+    ): { candidate: CandidateBankEntry | null; syncopation: number | null; failure?: string } => {
+      const validationPlan = variant?.validationPlan ?? candidatePlan(plan, seed);
+      const generationPlan = variant?.generationPlan ?? validationPlan;
       const reasons: string[] = [];
       try {
         const generated = this.generator(context.project, generationPlan.options);
         const prepared = variant
           ? applyCandidateSearchFamily(generated, context.project, generationPlan, variant.search)
           : { pattern: generated, search: undefined };
-        const evaluated = evaluateCandidate(prepared.pattern, currentPlan, context, reasons);
+        const evaluated = evaluateCandidate(prepared.pattern, validationPlan, context, reasons);
         if (!evaluated) {
-          failures.push(`candidate-${candidateIndex}:${reasons.length > 0 ? reasons.join("+") : "invariant-gate"}`);
-          continue;
+          return {
+            candidate: null,
+            syncopation: null,
+            failure: `candidate-${candidateIndex}:${reasons.length > 0 ? reasons.join("+") : "invariant-gate"}`,
+          };
         }
-        candidates.push({
+
+        const candidate: CandidateBankEntry = {
           candidateIndex,
           seed: generationPlan.options.seed,
           pattern: evaluated.pattern,
@@ -94,11 +109,72 @@ export class LocalDeterministicProvider implements GenerationProvider {
           score: 0,
           contentHash: "",
           ...(prepared.search ? { search: prepared.search } : {}),
-        });
+        };
+        const feature =
+          SYNCOPATION_FEATURE_INDEX >= 0
+            ? extractPatternFeatures({
+                doc: context.project,
+                pattern: evaluated.pattern,
+                intent: validationPlan.intent,
+                options: generationPlan.options,
+                resolvedBpm: validationPlan.resolvedBpm,
+              }).values[SYNCOPATION_FEATURE_INDEX]
+            : undefined;
+        return {
+          candidate,
+          syncopation: typeof feature === "number" && Number.isFinite(feature) ? feature : null,
+        };
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        failures.push(`candidate-${candidateIndex}:generator-error:${reason}`);
+        return { candidate: null, syncopation: null, failure: `candidate-${candidateIndex}:generator-error:${reason}` };
       }
+    };
+
+    for (const [candidateIndex, seed] of candidateSeeds.entries()) {
+      const variant = searchLanes ? candidateSearchVariant(plan, seed, candidateIndex, personalBias) : null;
+      if (
+        variant?.search.family === "personal-groove" &&
+        personalBias
+      ) {
+        if (safeSyncopation === null) {
+          failures.push(`candidate-${candidateIndex}:personal-groove-missing-safe-measurement`);
+          continue;
+        }
+        const selection = selectPersonalGrooveCandidate({
+          plan,
+          seed,
+          candidateIndex,
+          personalBias,
+          baselineSyncopation: safeSyncopation,
+          build: (attemptVariant) => {
+            const result = buildCandidate(candidateIndex, seed, attemptVariant);
+            return result.candidate && result.syncopation !== null
+              ? { candidate: result.candidate, syncopation: result.syncopation }
+              : null;
+          },
+        });
+        if (!selection.candidate || selection.outputDelta === null) {
+          failures.push(`candidate-${candidateIndex}:personal-groove-direction-not-realized:${selection.attempts}`);
+          continue;
+        }
+        candidates.push({
+          ...selection.candidate,
+          search: {
+            ...selection.variant.search,
+            measuredSyncopationDelta: selection.outputDelta * Math.sign(personalBias.grooveSyncopation),
+            grooveSeedAttempts: selection.attempts,
+          },
+        });
+        continue;
+      }
+
+      const result = buildCandidate(candidateIndex, seed, variant);
+      if (!result.candidate) {
+        failures.push(result.failure ?? `candidate-${candidateIndex}:invariant-gate`);
+        continue;
+      }
+      candidates.push(result.candidate);
+      if (candidateIndex === 0 && variant?.search.lane === "safe") safeSyncopation = result.syncopation;
     }
     return { candidates, failures, candidateSeeds };
   }

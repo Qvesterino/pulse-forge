@@ -4764,7 +4764,7 @@ export class AudioEngine {
   }
 
   /** Preview an ephemeral buffer through the same master preview bus as bank assets. */
-  previewBuffer(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void): void {
+  previewBuffer(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0): void {
     this.ensureContext();
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
@@ -4775,7 +4775,7 @@ export class AudioEngine {
     source.connect(gain).connect(this.master);
     const voice: PreviewVoice = { source, gain };
     this.previewVoices.add(voice);
-    source.start(ctx.currentTime + 0.005);
+    source.start(ctx.currentTime + 0.005, Math.max(0, Math.min(buffer.duration, offsetSec)));
     source.onended = () => {
       this.previewVoices.delete(voice);
       gain.disconnect();

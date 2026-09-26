@@ -99,7 +99,7 @@ import {
 } from "../audio-engine/PcmMicRecorder";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
-import { createAudioTakeAuditionDoc } from "../rendering/take-audition";
+import { audioTakeAuditionStartOffsetSec, createAudioTakeAuditionDoc } from "../rendering/take-audition";
 import { encodeWav } from "../rendering/wav";
 import {
   addRecordedAudioClips,
@@ -1408,6 +1408,7 @@ export function ArrangementPanel() {
       services.engine.ensureContext();
       const sourceDoc = services.store.getDoc();
       const auditionDoc = createAudioTakeAuditionDoc(sourceDoc, groupId, takeId);
+      const auditionStartOffsetSec = audioTakeAuditionStartOffsetSec(sourceDoc, groupId, takeId);
       const buffer = await renderProject(auditionDoc, services.bank, {
         mode: "song",
         sampleRate: 48_000,
@@ -1424,11 +1425,16 @@ export function ArrangementPanel() {
       }
       request.state = "playing";
       setAudioTakeAudition(request);
-      services.engine.previewBuffer(buffer, 0.9, () => {
-        if (audioTakeAuditionRef.current !== request) return;
-        audioTakeAuditionRef.current = null;
-        setAudioTakeAudition(null);
-      });
+      services.engine.previewBuffer(
+        buffer,
+        0.9,
+        () => {
+          if (audioTakeAuditionRef.current !== request) return;
+          audioTakeAuditionRef.current = null;
+          setAudioTakeAudition(null);
+        },
+        auditionStartOffsetSec,
+      );
     } catch (error) {
       if (!request.controller.signal.aborted) {
         setActionError(error instanceof Error ? error.message : "Take audition failed");

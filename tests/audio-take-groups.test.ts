@@ -9,7 +9,7 @@ import {
 import { audioClipsForPlayback } from "../src/project-model/audio-takes";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { computeRenderTicks } from "../src/rendering/renderer";
-import { createAudioTakeAuditionDoc } from "../src/rendering/take-audition";
+import { audioTakeAuditionStartOffsetSec, createAudioTakeAuditionDoc } from "../src/rendering/take-audition";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 
@@ -17,8 +17,17 @@ describe("non-destructive audio take groups", () => {
   it("builds an isolated audition document without mutating the project", () => {
     const doc = createProjectFromTemplate("empty");
     const track = doc.tracks[0];
-    if (!track) throw new Error("empty project track fixture missing");
-    const first = addAudioTakeClip(doc, "audition-group", "take-a", track.id, "audio.a", 0, 1).execute(doc);
+    const scene = doc.scenes[0];
+    if (!track || !scene) throw new Error("empty project fixture missing track or scene");
+    const atSceneTempo = setSceneBpm(doc, scene.id, 90).execute(doc);
+    const arranged = {
+      ...atSceneTempo,
+      arrangement: {
+        ...atSceneTempo.arrangement,
+        clips: [{ id: "audition-tempo-clip", sceneId: scene.id, startBar: 0, lengthBars: 4 }],
+      },
+    };
+    const first = addAudioTakeClip(arranged, "audition-group", "take-a", track.id, "audio.a", 0, 1).execute(arranged);
     const withAlternates = addAudioTakeClip(first, "audition-group", "take-b", track.id, "audio.b", 1, 1).execute(
       first,
     );
@@ -28,7 +37,9 @@ describe("non-destructive audio take groups", () => {
     expect(audition).not.toBe(withAlternates);
     expect(audition.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.b"]);
     expect(audition.arrangement.takeGroups?.[0]?.activeTakeId).toBe("take-b");
-    expect(audition.arrangement.clips).toEqual([]);
+    expect(audition.arrangement.clips).toHaveLength(1);
+    expect(audition.arrangement.clips[0]?.lengthBars).toBe(2);
+    expect(audioTakeAuditionStartOffsetSec(withAlternates, "audition-group", "take-b")).toBeCloseTo((60 / 90) * 4, 8);
     expect(audition.markers).toEqual([]);
     expect(audition.tracks.find((candidate) => candidate.id === track.id)?.mute).toBe(false);
     expect(

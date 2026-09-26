@@ -974,10 +974,126 @@ const FRED_FORM: SongSectionSpec[] = [
   },
 ];
 
+/**
+ * POP FORM (Wave 4) — verse / pre-chorus / chorus / bridge with an early
+ * chorus (pop rule: hook before ~45 s). Shorter intro, no instrumental
+ * build/drop logic — the chorus IS the drop (impact marker + riser in).
+ */
+const POP_FORM: SongSectionSpec[] = [
+  {
+    role: "intro",
+    label: "Intro",
+    bars: 4,
+    intensity: 0.4,
+    transitionIn: null,
+    energyDelta: -0.25,
+    densityDelta: -0.15,
+    complexityDelta: -0.1,
+    instrumentation: ["drums", "bass"],
+  },
+  {
+    role: "verse",
+    label: "Verse 1",
+    bars: 8,
+    intensity: 0.6,
+    transitionIn: "fill",
+    energyDelta: -0.05,
+    densityDelta: -0.05,
+    complexityDelta: 0,
+    instrumentation: ["drums", "bass", "chords"],
+  },
+  {
+    role: "build",
+    label: "Pre-Chorus",
+    bars: 4,
+    intensity: 0.75,
+    marker: { type: "buildup", name: "PRE-CHORUS" },
+    transitionIn: "fill",
+    energyDelta: 0.1,
+    densityDelta: 0.1,
+    complexityDelta: 0.05,
+    instrumentation: ["drums", "bass", "chords"],
+  },
+  {
+    role: "chorus",
+    label: "Chorus 1",
+    bars: 8,
+    intensity: 0.9,
+    marker: { type: "impact", name: "CHORUS 1" },
+    transitionIn: "riser",
+    energyDelta: 0.3,
+    densityDelta: 0.25,
+    complexityDelta: 0.1,
+    instrumentation: ["drums", "bass", "chords", "lead"],
+  },
+  {
+    role: "verse",
+    label: "Verse 2",
+    bars: 8,
+    intensity: 0.65,
+    transitionIn: "fill",
+    energyDelta: 0,
+    densityDelta: 0,
+    complexityDelta: 0,
+    instrumentation: ["drums", "bass", "chords"],
+  },
+  {
+    role: "chorus",
+    label: "Chorus 2",
+    bars: 8,
+    intensity: 0.9,
+    marker: { type: "impact", name: "CHORUS 2" },
+    transitionIn: "riser",
+    energyDelta: 0.3,
+    densityDelta: 0.25,
+    complexityDelta: 0.1,
+    instrumentation: ["drums", "bass", "chords", "lead"],
+  },
+  {
+    role: "bridge",
+    label: "Bridge",
+    bars: 4,
+    intensity: 0.35,
+    marker: { type: "cue", name: "BRIDGE" },
+    transitionIn: "break",
+    energyDelta: -0.35,
+    densityDelta: -0.25,
+    complexityDelta: 0.05,
+    instrumentation: ["chords", "lead"],
+  },
+  {
+    role: "chorus",
+    label: "Chorus 3",
+    bars: 8,
+    intensity: 0.95,
+    marker: { type: "impact", name: "CHORUS 3" },
+    transitionIn: "fill",
+    energyDelta: 0.35,
+    densityDelta: 0.3,
+    complexityDelta: 0.1,
+    instrumentation: ["drums", "bass", "chords", "lead"],
+  },
+  {
+    role: "outro",
+    label: "Outro",
+    bars: 4,
+    intensity: 0.5,
+    transitionIn: "break",
+    energyDelta: -0.2,
+    densityDelta: -0.1,
+    complexityDelta: 0,
+    instrumentation: ["drums", "bass"],
+  },
+];
+
+/** Pop styles get the POP_FORM shape regardless of genre (style wins, like FRED_FORM). */
+const POP_FORM_STYLES = new Set(["pop"]);
+
 /** The emotional-UKG styles that get the FRED_FORM shape. */
 const FRED_FORM_STYLES = new Set(["ukg", "heartbeat"]);
 
 function songFormFor(intent: IntentSpec): SongSectionSpec[] {
+  if (intent.style && POP_FORM_STYLES.has(intent.style)) return POP_FORM;
   if (intent.genre === "house" && intent.style && FRED_FORM_STYLES.has(intent.style)) return FRED_FORM;
   return SONG_FORMS[intent.genre];
 }
