@@ -1,6 +1,6 @@
 # Current State — single source of truth
 
-**Last verified:** 2026-09-25
+**Last verified:** 2026-09-26
 **Verified by:** direct count against `src/effects/registry.ts`, `src/instruments/registry.ts`, `docs/adr/` and `tests/`.
 
 This document is the **single source of truth** for the headline numbers about KYX / Pulse Forge. Older documents in this repo (`RELEASE_ROADMAP.md`, `DSP-ROADMAP.md`, `EDIT-ROADMAP.md`, `INSTRUMENT-ROADMAP.md`, `SCENE-MODE-ROADMAP.md`, `INTENT_ENGINE.md`, `KYX_CURRENT_STATE.md`, `MAINTENANCE_AUDIT_PROGRESS.md`, `PERFORMANCE.md`) may carry their own point-in-time numbers; when those disagree with the figures below, **this document wins** for the question "how many / what ships today?".
@@ -21,11 +21,11 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
 | **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
 | └─ curated WAV overrides               |      78 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
-| **Factory presets**                    | **352** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     346 | `FACTORY_PRESETS`                                                                                                        |
+| **Factory presets**                    | **354** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     348 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
 | **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
-| **Vitest spec files**                  | **517** | `tests/` files matching `*.test.ts` (413) and `*.test.tsx` (104)                                                         |
+| **Vitest spec files**                  | **519** | `tests/` files matching `*.test.ts` (415) and `*.test.tsx` (104)                                                         |
 
 ## Flagship plugin implementations
 

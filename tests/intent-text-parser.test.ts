@@ -530,3 +530,29 @@ describe("electronic wave — future garage / broken / hyperpop", () => {
     }
   });
 });
+
+describe("melo-club & bass music wave", () => {
+  it("dubstep routes to trap + the dubstep groove style", () => {
+    const parsed = parseIntentText("dubstep at 145");
+    expect(parsed.input.genre).toBe("trap");
+    expect(parsed.input.style).toBe("dubstep");
+    expect(parseIntentText("riddim at 145").input.style).toBe("dubstep");
+  });
+
+  it("melodic techno resolves the melodic style on techno genre", () => {
+    const parsed = parseIntentText("melodic techno at 125");
+    expect(parsed.input.genre).toBe("techno");
+    expect(parsed.input.style).toBe("melodic");
+  });
+
+  it("the dubstep groove exists — halftime signature, valid 16-step shapes", () => {
+    const groove = getGrooveById("trap.dubstep");
+    expect(groove).toBeDefined();
+    expect(groove!.bpm[0]).toBeGreaterThanOrEqual(140);
+    for (const pattern of groove!.patterns) {
+      for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      // Halftime signature: snare lands on step 8 (beat 3), nothing earlier.
+      expect((pattern[5] ?? [])[8] ?? 0).toBeGreaterThan(0.8);
+    }
+  });
+});

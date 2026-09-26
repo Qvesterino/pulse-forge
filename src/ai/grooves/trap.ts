@@ -279,9 +279,9 @@ export const TRAP_GROOVES: GrooveData[] = [
   // 140-152: halftime weight — kick on 1, big snare on the 3rd beat,
   // sparse hats leaving room for the wobble bass to BE the rhythm.
   {
-    id: 'trap.dubstep',
-    genre: 'trap',
-    name: 'Dubstep',
+    id: "trap.dubstep",
+    genre: "trap",
+    name: "Dubstep",
     bpm: [140, 152],
     swing: 0.04,
     activePads: [0, 5, 8, 10],

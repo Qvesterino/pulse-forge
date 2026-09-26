@@ -127,6 +127,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bsparse\b/, "sparse"],
   [/\bsample drill\b|\bsample\b/, "sample"],
   [/\bhyper ?pop\b|\bhyper (?:drill|beat)\b|\bhyper\b/, "hyper"],
+  [/\bdubstep\b|\briddim\b/, "dubstep"],
   [/\bmelodic drill\b/, "melodic"],
   [/\bmelodic(?:ke|a)?\b/, "melodic"],
   [/\blux\b|\blush\b/, "lux"],

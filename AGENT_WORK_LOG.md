@@ -4527,3 +4527,25 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** parser+artists **87/87**, 8-súborová battery **120/120**, `tsc --noEmit` EXIT 0, loudness **352 meraných**, počty CURRENT-STATE 352 (346+6). Konflikt s ich session resolve-ovaný v ich prospech (duplikáty von) — žiadne tiene v rosteri.
 
 **Vision ledger:** Vlna 1 G-funk ✓ · Vlna 2 Fred ✓ · Vlna 3 hero hook ✓ · Vlna 4 elektronika ✓. Roster 100 presetov.ďalšie podľa usera: kampaň GOAL 08–12 (alebo skok na 12 gate), ďalšie žánrové vlny, alebo doladenie po ušiach.
+
+---
+
+## VLNA 5 — MELO-CLUB & BASS MUSIC ROSTER (2026-09-26, user: rozširovanie zásoby interpretov)
+
+**RECONCILIÁCIA (znova, ich session paralelne buduje roster):** sophie existovala 2× (moja z Vlny 4 + ich novšia s type-beat menom a research BPM [120,140] — Ponyboy) — moja duplicita VYMAZANÁ, ich canonical ostáva. Ich „tech house" ×2 a „ukg" ×2 labely sú dvaja RÔZNI artisti na tom istom štýle (legitímne, nie duplikát).
+
+**Dodané (10 nových artistov, roster ~102 → 111):**
+
+- **Melodic techno corner** (techno.melodic groove — už existoval): anyma 122–126, tale of us (+afterlife) 124–128, artbat 124–128, camelphat 122–126 — všetko dark 0.65–0.72 energy.
+- **Dubstep corner** (NOVÝ groove `trap.dubstep` 140–152, swing 0.04 — halftime headbang: kick na 1, veľký snare na treťom downbeate (step 8), riedke haty nechávajú priestor pre wobble; 3 variácie vrátane one-tap pure-wobble-space a sampi kick movement): seven lions (melodic, energetic), illenium (chill), excision (aggressive 145–155, „headbanger"), subtronics (142–152, +riddim meno).
+- **Afro/UKG:** black coffee (house.afro 120–124 chill), pinkpantheress (house.ukg 132–140).
+
+**2 zvuky:** `factory.analog.dubstep.wobble` (saw pár, cutoff 380 + reso 6.5, LFO 3.2 Hz depth 0.85 → klasický filter wobble, sub 0.45, drive 0.45) a `factory.analog.melodic.aurora` (6-voice unison saw 18 ct, attack 0.35 / release 1.6 — Afterlife škála). **STYLE_PHRASES:** „dubstep"/„riddim" → dubstep (melodic techno už kryté „melodic" frázou).
+
+**⚠ PODMIENENÁ GOTCHA (piatykrát, zapísaná!:** node skript cez quoted heredoc: `"\bdubstep\b"` → v súbore RAW BACKSPACE bajty (0x08) namiesto `\b` — regex mlčal. Iba Edit/Write tool na regex-y do tohto repa; heredoc+backslash-b je ZAKÁZANÝ.
+
+**Dôležité súbory:** src/ai/grooves/trap.ts, src/intent/{artists,text-parser}.ts, src/presets/{factory,preset-loudness.generated}.ts, tests/{intent-text-parser,intent-artists}.test.ts, docs/CURRENT-STATE.md (354 = 348+6).
+
+**Validácia:** parser+artists+presets **101/101**, 9-súborová battery **168/168**; `tsc --noEmit` čistý na campaign súboroch (zostávajú 2 errory v providers/local+symbolic — ich in-flight evaluateCandidate rozšírenie o 4. argument, sedia si na moju GOAL 02 extrakciu; nesahal som). Loudness **354 meraných**.
+
+**Roster stav:** 111 entry (vrátane ich paralelných prírastkov). Nasýtené témy: west coast, g-funk, Fred/UKG, future garage, broken, hyperpop, dubstep, melodic techno, afro, amapiano, trance, drill, phonk, jersey, dnb. Nasledujúce prirodzené diery (pre budúce vlny): reggaeton/dembow groove, technique/future beats, K-pop/afrobeats — alebo pauza na GOAL 12 gate.

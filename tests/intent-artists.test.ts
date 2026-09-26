@@ -299,7 +299,7 @@ describe("electronic wave roster (sophie / burial / hyperpop)", () => {
   // campaign's additions are the ones the culture wave lacked.
   it("sophie → hyper groove at the hyperpop floor; generic hyperpop too", () => {
     expect(parseIntentText("sophie type beat").input.style).toBe("hyper");
-    expect(parseIntentText("sophie type beat").input.bpmRange).toEqual([140, 160]);
+    expect(parseIntentText("sophie type beat").input.bpmRange).toEqual([120, 140]);
     expect(parseIntentText("hyperpop beat").input.style).toBe("hyper");
     expect(parseIntentText("hyperpop beat").input.bpmRange).toEqual([145, 160]);
   });
@@ -316,5 +316,35 @@ describe("electronic wave roster (sophie / burial / hyperpop)", () => {
     expect(getGrooveById("house.broken")).toBeDefined();
     expect(getGrooveById("ambient.futuregarage")).toBeDefined();
     expect(getGrooveById("trap.hyper")).toBeDefined();
+  });
+});
+
+describe("melo-club & bass music roster", () => {
+  it("melodic techno corner: anyma / tale of us / artbat / camelphat", () => {
+    for (const name of ["anyma", "tale of us", "artbat", "camelphat"]) {
+      const parsed = parseIntentText(`${name} type beat`);
+      expect(parsed.input.genre).toBe("techno");
+      expect(parsed.input.style).toBe("melodic");
+    }
+    expect(parseIntentText("anyma type beat").input.bpmRange).toEqual([122, 126]);
+  });
+
+  it("dubstep corner: seven lions melodic vs excision headbanger", () => {
+    expect(parseIntentText("seven lions type beat").input.style).toBe("dubstep");
+    expect(parseIntentText("seven lions type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("excision type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("excision type beat").input.bpmRange).toEqual([145, 155]);
+    expect(parseIntentText("subtronics type beat").input.style).toBe("dubstep");
+    expect(parseIntentText("illenium type beat").input.mood).toBe("chill");
+  });
+
+  it("black coffee → afro house; pinkpantheress → ukg", () => {
+    const coffee = parseIntentText("black coffee type beat");
+    expect(coffee.input.genre).toBe("house");
+    expect(coffee.input.style).toBe("afro");
+    expect(coffee.input.bpmRange).toEqual([120, 124]);
+    const pink = parseIntentText("pinkpantheress type beat");
+    expect(pink.input.style).toBe("ukg");
+    expect(pink.input.bpmRange).toEqual([132, 140]);
   });
 });
