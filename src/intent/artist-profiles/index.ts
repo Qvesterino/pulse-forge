@@ -267,6 +267,230 @@ const DJ_TAMEIL: ArtistProfile = {
   lastUpdated: "2026-09-26",
 };
 
+const TRAVIS_SCOTT: ArtistProfile = {
+  slug: "travis-scott",
+  name: "Travis Scott",
+  genres: ["trap"],
+  signature: {
+    sound: [
+      "AUTO-TUNE-heavy lead vocals (the signature pitch-modulated croon)",
+      "long-decay 808 with heavy sub sustain (sometimes 3+ seconds)",
+      "dark cinematic pads and orchestral hits",
+      "reverb-drenched vocal chops and ad-libs",
+      "punchy trap hi-hats with rapid triplet rolls on transitions",
+    ],
+    samples: [
+      "orchestral hit stabs (often processed through tape)",
+      "vocal one-shots from features and ad-libs",
+      "filtered rave-style synth stabs (post-2018)",
+    ],
+    bpm: { typical: [140, 150], halfTime: [70, 75] },
+    keys: ["F minor", "G minor", "D minor", "C minor", "F♯ minor"],
+  },
+  mix: {
+    eqTilt: "dark",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "prominent",
+    notes: [
+      "vocal reverb tails long (1.5-2.5 s) — gives the 'psychedelic haze' character",
+      "808 vs kick duck ratio around 6 dB — heavy sidechain but the 808 still reads",
+      "orchestral hits pushed to the sides with mid-side EQ — center stays clean",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "sub-heavy, scooped low-mids, dark overall, controlled top-end",
+    dynamicRange: "moderate — louder than J Dilla, less crushed than modern loud-master tracks",
+  },
+  gear: [
+    "FL Studio (longtime primary DAW)",
+    "Antares Auto-Tune Pro",
+    "Omnisphere",
+    "Kontakt (orchestral libraries)",
+    "RC-20 Retro Color",
+    "FabFilter Pro-Q 3",
+    "Soundtoys Decapitator",
+    "Valhalla VintageVerb",
+    "Antares Auto-Tune EFX (vocal ad-lib bus)",
+  ],
+  vibe: ["cinematic", "dark", "hypnotic", "psychedelic", "atmospheric", "menacing"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Travis_Scott_production_discography",
+    "https://www.soundonsound.com/techniques/travis-scott-sicko-mode-production",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const METRO_BOOMIN: ArtistProfile = {
+  slug: "metro-boomin",
+  name: "Metro Boomin",
+  genres: ["trap"],
+  signature: {
+    sound: [
+      "orchestral-hit intros / drops (the 'If Young Metro don't trust you' lineage)",
+      "punchy 808s with tight attack and moderate decay (cleaner than Travis Scott 808s)",
+      "snappy trap hi-hats with crisp closed-hat layers",
+      "dark melodic pads layered under 808s",
+      "clean, present lead vocal (often less Auto-Tune than peers)",
+    ],
+    samples: ["orchestral stabs and risers", "pitched vocal chops", "cinematic string hits"],
+    bpm: { typical: [130, 145] },
+    keys: ["D minor", "F minor", "G minor", "A minor"],
+  },
+  mix: {
+    eqTilt: "dark",
+    compression: "medium",
+    stereoWidth: "normal",
+    subEmphasis: "prominent",
+    notes: [
+      "clean separation between sub (60-90 Hz) and 808 fundamental (40-60 Hz) — sub sits in its own lane",
+      "orchestral hits high-pass filtered at ~200 Hz so they don't muddy the low-end",
+      "lead vocal sits forward in the mix (often -4 to -6 dB above instrumental bed)",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "balanced dark, modern loud-master, sub-prominent",
+    dynamicRange: "moderate-limited — tight 6-8 dU crest",
+  },
+  gear: [
+    "FL Studio",
+    "Kontakt",
+    "Omnisphere",
+    "FabFilter Pro-Q 3",
+    "FabFilter Pro-L 2 (limiter)",
+    "Soundtoys Decapitator (parallel compression)",
+    "RC-20 Retro Color (orchestral hit bus)",
+  ],
+  vibe: ["dark", "cinematic", "punchy", "menacing", "modern"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Metro_Boomin",
+    "https://www.soundonsound.com/techniques/metro-boomin-production",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const J_DILLA: ArtistProfile = {
+  slug: "j-dilla",
+  name: "J Dilla",
+  genres: ["hiphop"],
+  // Dilla's catalog spans lo-fi hip-hop and boom-bap. We tag 'hiphop' (the
+  // engine's umbrella for non-drill/phonk/jersey hip-hop) — see docs/intent
+  // for whether a 'boom-bap' or 'lofi' enum slot should be added later.
+  signature: {
+    sound: [
+      "MPC-style swung drums (the off-kilter, behind-the-grid feel — sometimes called 'drunk drums')",
+      "dusty vinyl-sampled melodic loops (soul, jazz, fusion)",
+      "warm low-mid forward mix (kick + bass + sample sit together)",
+      "compressed room ambience baked in",
+      "sparse arrangement — every element earns its place",
+    ],
+    samples: [
+      "soul records (Curtis Mayfield, Roy Ayers, Stevie Wonder)",
+      "jazz fusion records (Lonnie Liston Smith)",
+      "Motown / Stax cuts",
+    ],
+    bpm: { typical: [80, 95] },
+    keys: ["varies — A minor, F minor, D minor, A♭ major all common"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "heavy",
+    stereoWidth: "narrow",
+    subEmphasis: "subtle",
+    notes: [
+      "everything slightly compressed — Dilla famously chained gear to bake compression in",
+      "vinyl crackle + tape hiss kept in the master, not removed — character, not noise",
+      "drum hits intentionally short (MPC sample decay), swing applied in the sequencer",
+    ],
+  },
+  master: {
+    targetLufs: -13,
+    tonalBalance: "warm, low-mid forward, rolled-off highs (vinyl-style tilt)",
+    dynamicRange: "wide — Dilla's masters are NOT loud-mastered, character over loudness",
+  },
+  gear: [
+    "Akai MPC 3000 (his primary production tool)",
+    "Akai MPC 60 (earlier work)",
+    "Ensoniq ASR-10 (sampling)",
+    "SP-1200 (sampling — earlier work)",
+    "Motu 2408 interface",
+    "various outboard compressors (often run in series for color)",
+    "vinyl sampling workflow (records as the source material)",
+  ],
+  vibe: ["dusty", "soulful", "swung", "intimate", "raw", "warm", "foundational"],
+  sources: [
+    "https://en.wikipedia.org/wiki/J_Dilla",
+    "https://www.soundonsound.com/techniques/j-dilla-donuts-production",
+    "https://www.dangermouse.net/dilla.html",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const FRED_AGAIN: ArtistProfile = {
+  slug: "fred-again",
+  name: "Fred Again..",
+  genres: ["house"],
+  // Fred's catalog spans house / UK garage / ambient-pop — we tag 'house'
+  // as the engine's closest umbrella. Profile data still travels with the
+  // full sonic context so wiring can pick the right intent.
+  signature: {
+    sound: [
+      "vocal-led arrangements (often chopped / fragmented as textural element)",
+      "UK garage-revival drum patterns (2-step swing, syncopated hats)",
+      "emotional synth pads and arpeggios (often major keys for warmth)",
+      "punchy sub-bass that sits in the 50-90 Hz range",
+      "field-recording textures (crowds, rain, traffic) woven in subtly",
+    ],
+    samples: [
+      "personal voice memos (he famously records on iPhone)",
+      "crowd recordings from his own shows",
+      "found-sound textures",
+    ],
+    bpm: { typical: [128, 135] },
+    keys: ["C major", "D minor", "F major", "A minor", "G major"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "vocals always forward and intimate — sitting close to the listener",
+      "pads wide and atmospheric (Valhalla reverbs common)",
+      "sub sits clearly without boom — kick and bass have separate frequency slots",
+    ],
+  },
+  master: {
+    targetLufs: -8,
+    tonalBalance: "bright top, present mids (vocals), tight sub, controlled low-end",
+    dynamicRange: "moderate — modern house loud-master target",
+  },
+  gear: [
+    "Ableton Live (primary DAW)",
+    "Serum (synth leads / pads)",
+    "RC-20 Retro Color",
+    "FabFilter Pro-Q 3",
+    "FabFilter Pro-C 2",
+    "Valhalla VintageVerb",
+    "Valhalla Supermassive",
+    "Soundtoys Decapitator (parallel vocal bus)",
+    "iPhone Voice Memos (sample source)",
+  ],
+  vibe: ["emotional", "bright", "garage-revival", "energetic", "intimate", "warm", "modern"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Fred_Again..",
+    "https://www.residentadvisor.net/features/4158",
+    "https://www.soundonsound.com/techniques/fred-again-production",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
 /* -----------------------------------------------------------------------
  * Registry (ordered by slug for deterministic JSON-equivalent output).
  * Add new profiles here as `{slug}-style` keys; keep the lookup table
@@ -278,6 +502,10 @@ export const ARTIST_PROFILES: Readonly<Record<string, ArtistProfile>> = Object.f
   "axl-beats": AXL_BEATS,
   "dj-tameil": DJ_TAMEIL,
   dvrst: DVRST,
+  "fred-again": FRED_AGAIN,
+  "j-dilla": J_DILLA,
+  "metro-boomin": METRO_BOOMIN,
+  "travis-scott": TRAVIS_SCOTT,
 });
 
 /** Lookup helper — undefined when the slug is unknown. */

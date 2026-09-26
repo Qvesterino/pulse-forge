@@ -8,11 +8,15 @@ import {
 } from "../src/intent/artist-profiles";
 
 describe("artist-profiles registry", () => {
-  it("ships the three pilot profiles (drill / phonk / jersey)", () => {
+  it("ships the seven profiles (drill / phonk / jersey / trap / trap / lofi / house)", () => {
     expect(Object.keys(ARTIST_PROFILES).sort()).toEqual([
       "axl-beats",
       "dj-tameil",
       "dvrst",
+      "fred-again",
+      "j-dilla",
+      "metro-boomin",
+      "travis-scott",
     ]);
   });
 
