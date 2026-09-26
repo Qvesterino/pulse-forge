@@ -93,6 +93,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // first (more specific). SK "pop" is indeclinable, "popovú" stem covered.
   [/\bpop rap\b|\bpop-rap\b/, "trap"],
   [/\bhyperpop\b/, "trap"],
+  // disco pop wave — before the generic pop entries ("disco pop" contains
+  // both words); rides house.disco. SK "disko" deaccented-safe.
+  [/\bnu[- ]?disco\b|\bdisco pop\b|\bpop disco\b|\bdisco funk\b|\bitalo disco\b|\bdisco\b|\bdisko\b/, "house"],
   [/\bdance pop\b|\bdance-pop\b|\bpop dance\b/, "house"],
   [/\bsynth pop\b|\bsynth-pop\b|\bsynthpop\b|\belectropop\b|\belectro pop\b/, "house"],
   [/\bpop beat\b|\bpop song\b|\bpop music\b|\bpop\b|\bpopov\w*/, "house"],
@@ -131,6 +134,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdriving\b|\bdrive\b/, "driving"],
   [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
   [/\bbaile\b|\bmandel\w*\b/, "bounce"],
+  // Disco BEFORE the g-funk/funky entries — "disco funk" must resolve to the
+  // disco groove, not be stolen by \bfunk\b.
+  [/\bnu[- ]?disco\b|\bdisco\b|\bdisko\b/, "disco"],
   // West Coast / G-funk (MUST sit above the generic "funk" entry — \bfunk\b
   // matches inside "g-funk" because '-' is a non-word char). SK stems
   // deaccented.
