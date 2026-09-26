@@ -47,6 +47,7 @@ function createRecorder(
     loopCapture?: boolean;
     punchCapture?: { startTick: number; endTick: number };
     estimateStorage?: () => Promise<{ quota?: number; usage?: number }>;
+    routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
   } = {},
 ) {
   const recovery = new RecordingRecoveryRepository();
@@ -136,6 +137,7 @@ function createRecorder(
     addWorkletModule: vi.fn(async () => {}),
     getUserMedia,
     estimateStorage: options.estimateStorage,
+    routeMonitorOutput: options.routeMonitorOutput,
   });
   const metadata = () => ({
     projectId: "project-1",
@@ -375,7 +377,7 @@ describe("PcmMicRecorder", () => {
       supportedChannelCount: { min: 1, max: 2 },
     });
     expect(lastNode?.options).toMatchObject({ processorOptions: { chunkFrames: 24_000 } });
-    expect(gains[1].gain.value).toBe(0); // direct monitoring is opt-in
+    expect(gains[1].gain.value).toBe(0); // software monitoring is opt-in
     recorder.setMonitoring(true);
     expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 1, 0.01);
     // source → trim (gains[2]) → worklet + monitor (gains[1])
@@ -398,6 +400,32 @@ describe("PcmMicRecorder", () => {
     expect(gains[0].disconnect).toHaveBeenCalledOnce();
     expect(gains[1].disconnect).toHaveBeenCalledOnce();
     expect(gains[2].disconnect).toHaveBeenCalled();
+  });
+
+  it("routes the dry software monitor through the supplied mixer path and detaches it on stop", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const detachMonitorRoute = vi.fn();
+    const routeMonitorOutput = vi.fn(() => detachMonitorRoute);
+    const { recorder, metadata, gains, context } = createRecorder({ routeMonitorOutput });
+
+    await recorder.start(metadata);
+
+    expect(routeMonitorOutput).toHaveBeenCalledOnce();
+    expect(routeMonitorOutput).toHaveBeenCalledWith(gains[1]);
+    expect(gains[1].connect).not.toHaveBeenCalledWith(context.destination);
+    await recorder.cancel();
+    expect(detachMonitorRoute).toHaveBeenCalledOnce();
+  });
+
+  it("fails cleanly when the armed track cannot accept a software monitor route", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata, track, gains, context } = createRecorder({ routeMonitorOutput: () => null });
+
+    await expect(recorder.start(metadata)).rejects.toThrow(/armed track cannot receive software input monitoring/i);
+
+    expect(gains[1].connect).not.toHaveBeenCalledWith(context.destination);
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(recorder.state).toBe("idle");
   });
 
   it("keeps alternate-pass identity in the durable recording recovery session", async () => {

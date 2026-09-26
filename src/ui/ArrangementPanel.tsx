@@ -685,6 +685,7 @@ export function ArrangementPanel() {
         recovery: recoveryRepoRef.current!,
         inputDeviceId: recordingInputDeviceId,
         inputGainDb,
+        routeMonitorOutput: (monitorOutput) => services.engine.attachDryInputMonitor(armedTrackId, monitorOutput),
         ...(requestedChannelCount !== null ? { requestedChannelCount } : {}),
       });
       // Publish ownership before the permission prompt/async start so an
@@ -2440,14 +2441,14 @@ export function ArrangementPanel() {
               type="button"
               className={`btn btn-small${micMonitoring ? " active-solo" : ""}`}
               aria-pressed={micMonitoring}
-              title="Dry direct input monitoring. Headphones recommended; speakers can cause feedback."
+              title="Dry software monitoring through the armed track's mixer, bypassing its FX. Latency depends on the browser and device. For lowest latency, use the interface's hardware direct-monitor control. Headphones recommended; speakers can cause feedback."
               onClick={() => {
                 const next = !micMonitoring;
                 setMicMonitoring(next);
                 recRef.current?.setMonitoring(next);
               }}
             >
-              {micMonitoring ? "DRY MON ON" : "DRY MON OFF"}
+              {micMonitoring ? "DRY SOFT MON ON" : "DRY SOFT MON OFF"}
             </button>
             <label className="arr-arm-gain" aria-label="Audio input gain">
               <span

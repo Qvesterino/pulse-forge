@@ -118,6 +118,7 @@ describe("preset gain sanity", () => {
       "factory.pluck.score.breathstring",
       "factory.pluck.score.kora",
       "factory.pluck.techno.muted",
+      "factory.pluck.trap.pluggbell",
       "factory.sampler.ambient.harpswell",
       "factory.sampler.ambient.padwarmdrift",
       "factory.sampler.techno.padwarmdark",

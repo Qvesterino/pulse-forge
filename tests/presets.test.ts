@@ -6,6 +6,7 @@ import { INSTRUMENT_DEFS, defaultInstrumentParams } from "../src/instruments/reg
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { applyInstrumentPreset } from "../src/commands/commands";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
+import { CORE_EFFECT_PRESETS } from "../src/effects/presets";
 
 function trackFor(instrument: InstrumentPreset["instrument"]): { doc: ProjectDocument; track: InstrumentTrack } {
   const doc = createProjectFromTemplate("empty");
@@ -204,5 +205,47 @@ describe("applyInstrumentPreset command", () => {
     const { doc } = trackFor("bass");
     const preset = FACTORY_PRESETS.find((p) => p.instrument === "bass")!;
     expect(() => applyInstrumentPreset(doc, "nope", preset)).toThrow();
+  });
+});
+
+describe("southern specialties + eski wave (signature sounds)", () => {
+  it("plugg bell is a bright koto/bell pluck for the plugg lane", () => {
+    const bell = FACTORY_PRESETS.find((p) => p.id === "factory.pluck.trap.pluggbell")!;
+    expect(bell).toBeDefined();
+    expect(bell.genre).toBe("trap");
+    expect(bell.tags).toContain("plugg");
+    expect(getPresetMetadata(bell).useCase).toBe("pluck");
+  });
+
+  it("eski lead is a cold detuned square for the grime lane", () => {
+    const eski = FACTORY_PRESETS.find((p) => p.id === "factory.analog.drill.eskilead")!;
+    expect(eski).toBeDefined();
+    expect(eski.params.oscA).toBe(3);
+    expect(eski.params.oscB).toBe(3);
+    expect(getPresetMetadata(eski).useCase).toBe("lead");
+  });
+
+  it("electro snare + triggerman set ride the drumsynth engine", () => {
+    for (const id of [
+      "factory.drumsynth.trap.electrosnare",
+      "factory.drumsynth.trap.triggclave",
+      "factory.drumsynth.trap.nolawhistle",
+    ]) {
+      const preset = FACTORY_PRESETS.find((p) => p.id === id)!;
+      expect(preset, id).toBeDefined();
+      expect(preset.instrument).toBe("drumsynth");
+      expect(preset.genre).toBe("trap");
+    }
+  });
+
+  it("syrup chain presets exist in order: pitch −3 → vinyl → dark LP", () => {
+    const ids = CORE_EFFECT_PRESETS.map((p) => p.id);
+    for (const id of ["pitchshift-syrup", "vinyl-syrup", "svf-syrup-dark"]) {
+      expect(ids).toContain(id);
+    }
+    const pitch = CORE_EFFECT_PRESETS.find((p) => p.id === "pitchshift-syrup")!;
+    expect(pitch.params.semitones).toBe(-3);
+    const lp = CORE_EFFECT_PRESETS.find((p) => p.id === "svf-syrup-dark")!;
+    expect(lp.params.mode).toBe(0);
   });
 });

@@ -29,8 +29,12 @@ Requires Visual Studio C++ build tools, the Windows SDK, and CMake.
 $probeBuildDir = Join-Path $env:TEMP 'kyx-windows-audio-probe'
 cmake -S native/windows-audio-probe -B $probeBuildDir -A x64
 cmake --build $probeBuildDir --config Release
+ctest --test-dir $probeBuildDir -C Release --output-on-failure
 & (Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe')
 ```
+
+The CTest target exercises the shared-period selection rules only; it does not
+enumerate devices or initialize an audio stream.
 
 Only after the audio owner approves temporarily opening a physical endpoint,
 run a short stream check by supplying its exact friendly name:

@@ -54,6 +54,17 @@ function sliceFunction(source: string, signature: RegExp): string {
 }
 
 describe("AudioEngine — lifecycle hardening (source-grep)", () => {
+  it("routes a dry input monitor through a live, non-frozen track and exposes edge cleanup", () => {
+    const body = sliceFunction(readEngine(), /attachDryInputMonitor\s*\(/);
+    expect(body, "attachDryInputMonitor() not found in AudioEngine.ts").not.toBe("");
+    expect(body).toMatch(/isLiveAudioContext\(ctx\)/);
+    expect(body).toMatch(/source\.context\s*!==\s*ctx/);
+    expect(body).toMatch(/track\.kind\s*===\s*["']group["']/);
+    expect(body).toMatch(/track\.frozen/);
+    expect(body).toMatch(/source\.connect\(nodes\.panner\)/);
+    expect(body).toMatch(/source\.disconnect\(nodes\.panner\)/);
+  });
+
   it("useContext() disposes the previous context's runtimes, LFOs and graph state", () => {
     // Defect 1.1 (lifecycle audit): the only path that fully discards
     // the engine's prior graph state was also leaking every

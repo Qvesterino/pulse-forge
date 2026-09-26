@@ -96,8 +96,8 @@ test.describe("13 — rendered audio consolidation", () => {
         const committed = consolidateAudioClips(sourceProject, selectedIds, consolidatedId).execute(sourceProject);
         await projects.save(committed);
 
-        // Simulate app reload: use fresh repositories and restore the WAV bytes
-        // from IndexedDB into a fresh SampleBank before loading the project.
+        // Simulate app reload: restore the WAV bytes from IndexedDB into a
+        // fresh bank, then load the project from a new repository instance.
         const restoredBank = new SampleBank();
         await restoreUserSampleAudio(restoredBank);
         const reopenedProject = await new ProjectRepository().load(projectId);
@@ -109,86 +109,15 @@ test.describe("13 — rendered audio consolidation", () => {
           sampleRate,
           tailSeconds: 0,
         });
-        const beforeDry = await renderProject(sourceProject, bank, {
-          mode: "song",
-          sampleRate,
-          tailSeconds: 0,
-          masterProcessing: false,
-        });
-        const afterDry = await renderProject(reopenedProject, restoredBank, {
-          mode: "song",
-          sampleRate,
-          tailSeconds: 0,
-          masterProcessing: false,
-        });
-        const amplitudeAt = (buffer: AudioBuffer, frequency: number, startSec: number): number => {
-          const samples = buffer.getChannelData(0);
-          const start = Math.round(startSec * sampleRate);
-          const count = Math.round(sampleRate * 0.25);
-          let real = 0;
-          let imaginary = 0;
-          for (let index = 0; index < count; index++) {
-            const sample = samples[start + index] ?? 0;
-            const phase = (2 * Math.PI * frequency * index) / sampleRate;
-            real += sample * Math.cos(phase);
-            imaginary -= sample * Math.sin(phase);
-          }
-          return (2 * Math.hypot(real, imaginary)) / count;
-        };
-        const beforeChannels: number[][] = Array.from({ length: before.numberOfChannels }, (_, channel): number[] =>
-          Array.from(before.getChannelData(channel)),
-        );
-        const afterChannels: number[][] = Array.from({ length: after.numberOfChannels }, (_, channel): number[] =>
-          Array.from(after.getChannelData(channel)),
-        );
         let maxAbsoluteError = 0;
-        let maxErrorFrame = -1;
-        let maxErrorChannel = -1;
-        let maxErrorPair: [number, number] = [0, 0];
         let rmsError = 0;
         let comparedSamples = 0;
-        let dryMaxAbsoluteError = 0;
-        let rawVsRestoredError = 0;
-        const beforeDrySamples = beforeDry.getChannelData(0);
-        const afterDrySamples = afterDry.getChannelData(0);
-        const persistedBuffer = restoredBank.get(consolidatedId)!;
-        const rawSamples = consolidatedBuffer.getChannelData(0);
-        const persistedSamples = persistedBuffer.getChannelData(0);
-        for (let frame = 0; frame < Math.min(rawSamples.length, persistedSamples.length); frame++) {
-          rawVsRestoredError = Math.max(
-            rawVsRestoredError,
-            Math.abs((rawSamples[frame] ?? 0) - (persistedSamples[frame] ?? 0)),
-          );
-        }
-        for (let frame = 0; frame < Math.min(beforeDry.length, afterDry.length); frame++) {
-          dryMaxAbsoluteError = Math.max(
-            dryMaxAbsoluteError,
-            Math.abs((beforeDrySamples[frame] ?? 0) - (afterDrySamples[frame] ?? 0)),
-          );
-        }
-        let bestLag = 0;
-        let bestCorrelation = -Infinity;
-        for (let lag = -256; lag <= 256; lag++) {
-          let correlation = 0;
-          for (let frame = 0; frame < sampleRate / 4; frame++) {
-            correlation += (beforeDrySamples[frame] ?? 0) * (afterDrySamples[frame + lag] ?? 0);
-          }
-          if (correlation > bestCorrelation) {
-            bestCorrelation = correlation;
-            bestLag = lag;
-          }
-        }
-        for (let channel = 0; channel < Math.min(beforeChannels.length, afterChannels.length); channel++) {
-          const original = beforeChannels[channel] ?? [];
-          const result = afterChannels[channel] ?? [];
+        for (let channel = 0; channel < Math.min(before.numberOfChannels, after.numberOfChannels); channel++) {
+          const original = before.getChannelData(channel);
+          const result = after.getChannelData(channel);
           for (let frame = 0; frame < Math.min(original.length, result.length); frame++) {
             const difference = Math.abs((original[frame] ?? 0) - (result[frame] ?? 0));
-            if (difference > maxAbsoluteError) {
-              maxAbsoluteError = difference;
-              maxErrorFrame = frame;
-              maxErrorChannel = channel;
-              maxErrorPair = [original[frame] ?? 0, result[frame] ?? 0];
-            }
+            maxAbsoluteError = Math.max(maxAbsoluteError, difference);
             rmsError += difference * difference;
             comparedSamples++;
           }
@@ -201,33 +130,7 @@ test.describe("13 — rendered audio consolidation", () => {
           audioPersisted: reloadedAudio instanceof ArrayBuffer || reloadedAudio instanceof Blob,
           beforeLength: before.length,
           afterLength: after.length,
-          before220: amplitudeAt(before, 220, 0.25),
-          after220: amplitudeAt(after, 220, 0.25),
-          before550: amplitudeAt(before, 550, 1.25),
-          after550: amplitudeAt(after, 550, 1.25),
           maxAbsoluteError,
-          dryMaxAbsoluteError,
-          rawVsRestoredError,
-          bestLag,
-          trackEffects: track.effects.map((effect: { type: string }) => effect.type),
-          groupIds:
-            sourceProject.tracks.find((candidate: { id: string }) => candidate.id === track.id)?.groupId ?? null,
-          maxErrorAtSeconds: maxErrorFrame / sampleRate,
-          maxErrorChannel,
-          maxErrorPair,
-          samplesAroundMax: {
-            before: Array.from(before.getChannelData(maxErrorChannel).slice(maxErrorFrame - 4, maxErrorFrame + 5)),
-            after: Array.from(after.getChannelData(maxErrorChannel).slice(maxErrorFrame - 4, maxErrorFrame + 5)),
-            consolidated: Array.from(
-              consolidatedBuffer.getChannelData(maxErrorChannel).slice(maxErrorFrame - 4, maxErrorFrame + 5),
-            ),
-            restoredAsset: Array.from(
-              (restoredBank.get(consolidatedId)?.getChannelData(maxErrorChannel) ?? new Float32Array()).slice(
-                maxErrorFrame - 4,
-                maxErrorFrame + 5,
-              ),
-            ),
-          },
           rmsError: comparedSamples > 0 ? Math.sqrt(rmsError / comparedSamples) : Number.POSITIVE_INFINITY,
         };
       } finally {
@@ -235,8 +138,6 @@ test.describe("13 — rendered audio consolidation", () => {
         await userSamples.remove(consolidatedId);
       }
     });
-
-    console.log("consolidation report", report);
 
     expect(report).toMatchObject({
       sourceClipCount: 2,

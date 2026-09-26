@@ -3535,6 +3535,102 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [138, 144],
     label: "digdat",
   },
+  // ── Hyperpop wave — A.G. Cook / 100 gecs / Underscores / Danny L Harle ───
+  // The PC Music / hyperpop scene (A.G. Cook 'Apple' / 100 gecs 'money
+  // machine' / Danny L Harle). Charli XCX's existing entry covers the pop-
+  // hyperpop lane; this entry covers the deconstructionist + maximalist side.
+  // Routes to trap.hyper (140-160, glitchy + dense).
+  {
+    names: [
+      "a.g. cook",
+      "ag cook",
+      "100 gecs",
+      "100gecs",
+      "underscores",
+      "danny l harle",
+      "iglooghost",
+      "hudson mohawke",
+    ],
+    genre: "trap",
+    style: "hyper",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.8,
+    bpmRange: [140, 160],
+    label: "hyperpop wave",
+  },
+  // ── Baile funk — Anitta / MC Kevin o Chris / DJ Rennan da Penha ──────────
+  // Brazilian baile funk (Anitta 'Envolver' / MC Kevin o Chris). The closest
+  // groove is house.dancefloor (driving four-on-the-floor) since baile funk
+  // shares the percussive-bass-led pocket. BPM 130-150.
+  {
+    names: ["baile funk", "funk carioca", "anitta", "mc kevin o chris", "mc kevin", "dj rennan da penha", "dj guh mix"],
+    genre: "house",
+    style: "dancefloor",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [130, 150],
+    label: "baile funk",
+  },
+  // ── Corridos tumbados — Peso Pluma / Natanael Cano / Junior H ───────────
+  // The corridos-tumbados movement (Peso Pluma 'Ella Baila Sola' / Natanael
+  // Cano). Mexican trap-Americana hybrid; closest groove is trap.countrytune
+  // (slower 75-90 BPM with country-tinged instrumentation). Routes there.
+  // BPM 90-130 to capture the tamborazo-sampling range.
+  {
+    names: ["corridos tumbados", "peso pluma", "natanael cano", "junior h", "eslabon armado", "fuerza regida"],
+    genre: "trap",
+    style: "countrytune",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [90, 130],
+    label: "corridos tumbados",
+  },
+  // ── Industrial techno / EBM — Surgeon / Ancient Methods / Vatican Shadow ─
+  // The industrial-techno / EBM scene (Surgeon 'Lum' / Ancient Methods).
+  // Routes to techno.industrial (driving distorted four-on-the-floor).
+  // BPM 130-140.
+  {
+    names: ["industrial techno", "ebm", "surgeon", "ancient methods", "vatican shadow", "boy harsher", "phase fatale"],
+    genre: "techno",
+    style: "industrial",
+    mood: "dark",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [130, 140],
+    label: "industrial techno",
+  },
+  // ── Footwork / juke — RP Boo / DJ Rashad / Traxman / DJ Deeon ───────────
+  // Chicago footwork / juke (RP Boo 'Baby Come On' / DJ Rashad 'Drumma
+  // Boy'). The closest groove is house.dancefloor (driving 4/4); the BPM
+  // pocket is 155-165 (footwork's signature faster 4/4). Routes there.
+  {
+    names: ["footwork", "juke", "rp boo", "dj rashad", "traxman", "dj deeon", "teklife"],
+    genre: "house",
+    style: "dancefloor",
+    mood: "energetic",
+    energy: 0.95,
+    density: 0.75,
+    bpmRange: [155, 165],
+    label: "footwork / juke",
+  },
+  // ── Melodic house — Tinlicker / Lane 8 / Yotto / Nora En Pure ────────────
+  // Melodic-house / progressive-house (Lane 8 'Brightest Lights' / Tinlicker
+  // / Nora En Pure). Ben Böhmer's existing entry covers one flavor; this
+  // covers the deeper / more club-oriented melodic side. Routes to
+  // house.deep. BPM 120-128.
+  {
+    names: ["melodic house", "tinlicker", "lane 8", "lane8", "yotto", "nora en pure", "le youth"],
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [120, 128],
+    label: "melodic house",
+  },
 ];
 
 export interface ArtistMatch {

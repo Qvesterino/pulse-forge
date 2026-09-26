@@ -42,6 +42,7 @@
     "listening:v1v3": "node scripts/render-v1v3-listening.mjs",
     "listening:grooves": "node scripts/render-groove-listening.mjs",
     "listening:producer-dna": "node scripts/render-producer-dna-listening.mjs",
+    "listening:producer-dna:song": "node scripts/render-producer-dna-song-listening.mjs",
     "rerank:fit": "node scripts/fit-rerank-weights.mjs",
     "ranker:golden-template": "vite-node scripts/generate-golden-template.mts",
     "ranker:ort-sync": "node scripts/sync-ort-assets.mjs",

@@ -6035,6 +6035,84 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     params: { type: 12, tune: 0, tone: 0.6, decay: 0.3, snap: 0.5, body: 0.4, drive: 0.1, level: -12 },
   },
 
+  /* ================= Southern specialties + eski wave (bounce/snap/ ──
+     afroswing/countrytune/grime) — signature sounds for the new grooves: ──
+     plugg bell (koto/bell pluck), eski square lead, electro snare, ─────────
+     triggerman perc set. ─────────────────────────────────────────────── */
+  {
+    id: "factory.pluck.trap.pluggbell",
+    name: "Plugg Bell",
+    instrument: "pluck",
+    genre: "trap",
+    mood: ["bright", "clean"],
+    tags: ["pluck", "bell", "koto", "plugg"],
+    params: {
+      pick: 0.7,
+      damp: 0.3,
+      body: 0.45,
+      tone: 6400,
+      decay: 0.8,
+      width: 0.3,
+      cutoff: 12000,
+      resonance: 0.9,
+      attack: 0.001,
+      release: 0.3,
+      level: -8,
+    },
+  },
+  {
+    id: "factory.analog.drill.eskilead",
+    name: "Eski Lead",
+    instrument: "analog",
+    genre: "drill",
+    mood: ["dark", "aggressive"],
+    tags: ["lead", "square", "eski", "grime", "cold"],
+    params: {
+      oscA: 3,
+      oscB: 3,
+      oscBDetune: 16,
+      subLevel: 0.1,
+      noiseLevel: 0.01,
+      cutoff: 3200,
+      resonance: 1.2,
+      filterEnv: 0.4,
+      unison: 2,
+      spread: 8,
+      attack: 0.004,
+      decay: 0.2,
+      sustain: 0.5,
+      release: 0.12,
+      level: -7,
+    },
+  },
+  {
+    id: "factory.drumsynth.trap.electrosnare",
+    name: "Electro Snare",
+    instrument: "drumsynth",
+    genre: "trap",
+    mood: ["bright", "clean"],
+    tags: ["snare", "electro", "oldschool", "snap"],
+    params: { type: 1, tune: 2, tone: 0.7, decay: 0.18, snap: 0.8, body: 0.25, drive: 0.1, level: -7 },
+  },
+  {
+    id: "factory.drumsynth.trap.triggclave",
+    name: "Triggerman Clave",
+    instrument: "drumsynth",
+    genre: "trap",
+    mood: ["bright", "aggressive"],
+    tags: ["clave", "bounce", "triggerman", "perc"],
+    params: { type: 7, tune: 3, tone: 0.6, decay: 0.12, snap: 0.7, body: 0.3, drive: 0.15, level: -8 },
+  },
+  {
+    id: "factory.drumsynth.trap.nolawhistle",
+    name: "NOLA Whistle",
+    instrument: "drumsynth",
+    genre: "trap",
+    mood: ["bright", "clean"],
+    tags: ["whistle", "bounce", "triggerman", "lead"],
+    params: { type: 6, tune: 5, tone: 0.65, decay: 0.3, snap: 0.5, body: 0.4, drive: 0.2, level: -9 },
+  },
+
   /* ================= Drum expansion (2026-09) =================
      Drum-synth voices for the beatmaking genres (drill/phonk/jersey/dnb)
      — the synth expansion gave them melodic voices; these are the drum

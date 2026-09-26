@@ -945,6 +945,43 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     output: -4,
   }),
 
+  // Syrup pack — the screwed-vocal chain (no new DSP): pitchShift −3 st into
+  // a slow wow-heavy vinyl into a dark LP. Stack all three in this order.
+  preset("pitchshift-syrup", "Syrup −3", "pitchShift", {
+    semitones: -3,
+    fine: -8,
+    grainMs: 60,
+    width: 0.3,
+    mix: 1,
+  }),
+  preset("vinyl-syrup", "Syrup Vinyl", "vinyl", {
+    amount: 0.6,
+    crackle: 0.35,
+    crackleTone: 2000,
+    crackleDecay: 0.5,
+    hiss: 0.4,
+    hissTone: 5000,
+    rumble: 0.5,
+    rumbleTone: 50,
+    wowRate: 0.5,
+    wow: 0.9,
+    flutterRate: 6,
+    flutter: 0.4,
+    drive: 0.3,
+    year: 0.8,
+    toneLp: 4200,
+    toneHp: 60,
+    width: 0.4,
+    mix: 1,
+  }),
+  preset("svf-syrup-dark", "Syrup LP", "svFilter", {
+    cutoff: 500,
+    resonance: 0.3,
+    mode: 0, // LP
+    drive: 0.4,
+    mix: 1,
+  }),
+
   manglerPreset(
     "beatmangler-halftime",
     "Halftime",

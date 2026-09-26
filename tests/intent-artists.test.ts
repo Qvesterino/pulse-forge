@@ -1053,6 +1053,66 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
   });
 });
 
+describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwork / melodic house (club + global wave)", () => {
+  // Each block covers one of the six new club / global presets, asserting
+  // genre + style + BPM + mood against the researched values.
+  it("a.g. cook / 100 gecs / underscores → hyperpop wave (trap hyper, 140-160)", () => {
+    const ag = parseIntentText("a.g. cook type beat");
+    expect(ag.input.genre).toBe("trap");
+    expect(ag.input.style).toBe("hyper");
+    expect(ag.input.bpmRange).toEqual([140, 160]);
+    expect(ag.input.energy).toBe(0.9);
+  });
+
+  it("anitta / mc kevin o chris → baile funk (house dancefloor, 130-150)", () => {
+    const ani = parseIntentText("anitta type beat");
+    expect(ani.input.genre).toBe("house");
+    expect(ani.input.style).toBe("dancefloor");
+    expect(ani.input.bpmRange).toEqual([130, 150]);
+    expect(ani.input.energy).toBe(0.85);
+  });
+
+  it("peso pluma / natanael cano → corridos tumbados (trap countrytune, 90-130)", () => {
+    const pp = parseIntentText("peso pluma type beat");
+    expect(pp.input.genre).toBe("trap");
+    expect(pp.input.style).toBe("countrytune");
+    expect(pp.input.bpmRange).toEqual([90, 130]);
+    expect(pp.input.mood).toBe("dark");
+  });
+
+  it("surgeon / ancient methods → industrial techno (techno industrial, 130-140)", () => {
+    const surg = parseIntentText("surgeon type beat");
+    expect(surg.input.genre).toBe("techno");
+    expect(surg.input.style).toBe("industrial");
+    expect(surg.input.bpmRange).toEqual([130, 140]);
+    expect(surg.input.mood).toBe("dark");
+  });
+
+  it("rp boo / dj rashad → footwork (house dancefloor, 155-165)", () => {
+    const rp = parseIntentText("rp boo type beat");
+    expect(rp.input.genre).toBe("house");
+    expect(rp.input.style).toBe("dancefloor");
+    expect(rp.input.bpmRange).toEqual([155, 165]);
+    expect(rp.input.energy).toBe(0.95);
+  });
+
+  it("tinlicker / lane 8 / yotto → melodic house (house deep, 120-128)", () => {
+    const t = parseIntentText("tinlicker type beat");
+    expect(t.input.genre).toBe("house");
+    expect(t.input.style).toBe("deep");
+    expect(t.input.bpmRange).toEqual([120, 128]);
+    expect(t.input.mood).toBe("chill");
+  });
+
+  it("the club + global lanes resolve to real groove ids (resolveGroove contract)", () => {
+    // Engine integration smoke — each preset's style must resolve to a real
+    // `genre.style` grooveId via getGrooveById.
+    expect(getGrooveById("trap.hyper")).toBeDefined();
+    expect(getGrooveById("trap.countrytune")).toBeDefined();
+    expect(getGrooveById("techno.industrial")).toBeDefined();
+  });
+});
+
 describe("regional now + female / latin / scloud / experimental (now wave)", () => {
   it("chicago: king von drill + conscious classic (SK-safe names)", () => {
     const von = parseIntentText("king von type beat");
@@ -1149,5 +1209,80 @@ describe("regional now + female / latin / scloud / experimental (now wave)", () 
     expect(matchArtistPreset(" add clipping to the master ")).toBeNull();
     expect(getGrooveById("dnb.amen")).toBeDefined();
     expect(getGrooveById("phonk.horror")).toBeDefined();
+  });
+});
+
+describe("trap producers + memphis OGs + UKG revival + UK drill second line (producer wave)", () => {
+  it("808 Mafia corner: wheezy lux / southside dark / tm88 bounce", () => {
+    const wheezy = parseIntentText("wheezy type beat");
+    expect(wheezy.input.genre).toBe("trap");
+    expect(wheezy.input.style).toBe("lux");
+    expect(wheezy.input.bpmRange).toEqual([130, 146]);
+    const southside = parseIntentText("southside type beat");
+    expect(southside.input.style).toBe("dark");
+    expect(southside.input.mood).toBe("aggressive");
+    expect(parseIntentText("808 mafia type beat").input.style).toBe("dark");
+    const tm88 = parseIntentText("tm88 type beat");
+    expect(tm88.input.style).toBe("bouncy");
+    expect(tm88.input.bpmRange).toEqual([138, 150]);
+  });
+
+  it("A-list producers: mike will / murda / hit-boy / london / wondagurl / sonny", () => {
+    const will = parseIntentText("mike will made it type beat");
+    expect(will.input.style).toBe("dark");
+    expect(will.input.bpmRange).toEqual([138, 150]);
+    expect(parseIntentText("mike will type beat").input.style).toBe("dark");
+    expect(parseIntentText("murda beatz type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("hit-boy type beat").input.style).toBe("rolling");
+    expect(parseIntentText("london on da track type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("wondagurl type beat").input.mood).toBe("dark");
+    expect(parseIntentText("sonny digital type beat").input.style).toBe("rolling");
+  });
+
+  it("memphis OG producers: squeeky / spanish fly / skinny pimp / playa fly / tommy wright", () => {
+    const squeeky = parseIntentText("dj squeeky type beat");
+    expect(squeeky.input.genre).toBe("phonk");
+    expect(squeeky.input.style).toBe("memphis");
+    expect(squeeky.input.bpmRange).toEqual([120, 140]);
+    expect(parseIntentText("dj spanish fly type beat").input.style).toBe("memphis");
+    expect(parseIntentText("kingpin skinny pimp type beat").input.style).toBe("memphis");
+    expect(parseIntentText("playa fly type beat").input.style).toBe("memphis");
+    expect(parseIntentText("tommy wright iii type beat").input.style).toBe("memphis");
+  });
+
+  it("UKG revival: conducta / interplanetary criminal / virji / piri", () => {
+    for (const name of ["conducta", "interplanetary criminal", "sammy virji", "piri"]) {
+      const parsed = parseIntentText(`${name} type beat`);
+      expect(parsed.input.genre, name).toBe("house");
+      expect(parsed.input.style, name).toBe("ukg");
+    }
+    expect(parseIntentText("interplanetary criminal type beat").input.bpmRange).toEqual([132, 142]);
+    expect(parseIntentText("piri type beat").input.mood).toBe("chill");
+    expect(parseIntentText("virji type beat").input.style).toBe("ukg");
+  });
+
+  it("UK drill second line: ofb / loski / harlem spartans / digdat", () => {
+    const ofb = parseIntentText("ofb type beat");
+    expect(ofb.input.genre).toBe("drill");
+    expect(ofb.input.style).toBe("uk");
+    expect(ofb.input.bpmRange).toEqual([138, 144]);
+    expect(parseIntentText("bandokay type beat").input.style).toBe("uk");
+    expect(parseIntentText("loski type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("harlem spartans type beat").input.style).toBe("uk");
+    expect(parseIntentText("digdat type beat").input.mood).toBe("dark");
+  });
+
+  it("producer-wave styles resolve to real groove ids", () => {
+    for (const id of [
+      "trap.lux",
+      "trap.dark",
+      "trap.bouncy",
+      "trap.rolling",
+      "phonk.memphis",
+      "house.ukg",
+      "drill.uk",
+    ]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
   });
 });

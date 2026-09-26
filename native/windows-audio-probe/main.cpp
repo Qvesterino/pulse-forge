@@ -4,6 +4,7 @@
 #include <propkeydef.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <wrl/client.h>
+#include "shared-period-selection.h"
 
 #include <iomanip>
 #include <iostream>
@@ -226,7 +227,10 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
                  << static_cast<unsigned long>(hr) << std::dec << L")\n";
       return false;
     }
-    *periodFrames = minimumFrames;
+    if (!selectLowestSupportedSharedPeriod(fundamentalFrames, minimumFrames, maximumFrames, periodFrames)) {
+      std::wcerr << L"No legal shared period is available within the reported range\n";
+      return false;
+    }
     hr = client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, *periodFrames, format, nullptr);
   } else {
     REFERENCE_TIME defaultPeriod = 0;

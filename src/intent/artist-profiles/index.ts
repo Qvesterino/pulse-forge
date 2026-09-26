@@ -48,6 +48,9 @@ export type SubEmphasis = "subtle" | "moderate" | "prominent";
  */
 export type VerificationStatus = "ai-inferred" | "mixed" | "verified";
 
+/** Descriptive artist tags may be richer than the currently supported generator genres. */
+export type ArtistProfileGenre = IntentGenre | "hiphop";
+
 export interface ArtistSignature {
   /** Short descriptive labels of the signature sound
    *  (e.g. "Reese bass", "sliding 808", "Memphis cowbell"). */
@@ -84,8 +87,8 @@ export interface ArtistProfile {
   slug: string;
   /** Display name (artist or producer). */
   name: string;
-  /** Genres this artist primarily produces. */
-  genres: readonly IntentGenre[];
+  /** Descriptive genres this artist primarily produces, not limited to generator taxonomy. */
+  genres: readonly ArtistProfileGenre[];
   signature: ArtistSignature;
   mix: ArtistMixTraits;
   master: ArtistMasterTraits;
@@ -259,10 +262,7 @@ const DJ_TAMEIL: ArtistProfile = {
     "LFO Tool (sidechain + rhythmic gating)",
   ],
   vibe: ["energetic", "bouncy", "danceable", "club", "tight", "forward"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Jersey_club",
-    "https://www.residentadvisor.net/features/3587",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Jersey_club", "https://www.residentadvisor.net/features/3587"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -377,9 +377,8 @@ const J_DILLA: ArtistProfile = {
   slug: "j-dilla",
   name: "J Dilla",
   genres: ["hiphop"],
-  // Dilla's catalog spans lo-fi hip-hop and boom-bap. We tag 'hiphop' (the
-  // engine's umbrella for non-drill/phonk/jersey hip-hop) — see docs/intent
-  // for whether a 'boom-bap' or 'lofi' enum slot should be added later.
+  // Dilla's catalog spans lo-fi hip-hop and boom-bap. Keep this descriptive
+  // profile tag separate from the generator's narrower Genre union.
   signature: {
     sound: [
       "MPC-style swung drums (the off-kilter, behind-the-grid feel — sometimes called 'drunk drums')",

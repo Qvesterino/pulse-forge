@@ -696,6 +696,46 @@ export class AudioEngine {
     this.generativeSources.delete(trackId);
   }
 
+  /**
+   * Route a dry software input monitor through the armed track's mixer path.
+   * Connecting after track FX avoids adding their latency while preserving
+   * track pan/level, mute/solo, group and master routing. The caller owns the
+   * source and must invoke the returned detach function when monitoring ends.
+   */
+  attachDryInputMonitor(trackId: string, source: AudioNode): (() => void) | null {
+    const ctx = this.ctx;
+    const track = this.doc?.tracks.find((candidate) => candidate.id === trackId);
+    const nodes = this.trackNodes.get(trackId);
+    if (
+      !ctx ||
+      !isLiveAudioContext(ctx) ||
+      source.context !== ctx ||
+      !track ||
+      track.kind === "group" ||
+      track.frozen ||
+      !nodes
+    ) {
+      return null;
+    }
+
+    try {
+      source.connect(nodes.panner);
+    } catch {
+      return null;
+    }
+
+    let attached = true;
+    return () => {
+      if (!attached) return;
+      attached = false;
+      try {
+        source.disconnect(nodes.panner);
+      } catch {
+        /* The graph may already have been disposed during a project/context change. */
+      }
+    };
+  }
+
   private setGenerativeSourceConnection(trackId: string, nodes: TrackNodes, connected: boolean): void {
     const source = this.generativeSources.get(trackId);
     if (!source || source.context !== this.ctx) {

@@ -49,6 +49,10 @@ describe("getArtistProfile", () => {
     expect(profile?.genres).toContain("drill");
   });
 
+  it("keeps descriptive artist genres broader than the generator taxonomy", () => {
+    expect(getArtistProfile("j-dilla")?.genres).toContain("hiphop");
+  });
+
   it("returns undefined for an unknown slug (no throw)", () => {
     expect(getArtistProfile("not-a-real-slug")).toBeUndefined();
     expect(getArtistProfile("")).toBeUndefined();
@@ -59,9 +63,7 @@ describe("findProfilesByVibe", () => {
   it("matches by vibe descriptor (case-insensitive)", () => {
     const matches = findProfilesByVibe("dark");
     expect(matches.length).toBeGreaterThan(0);
-    expect(matches.every((p) => p.vibe.some((word) => word.toLowerCase().includes("dark")))).toBe(
-      true,
-    );
+    expect(matches.every((p) => p.vibe.some((word) => word.toLowerCase().includes("dark")))).toBe(true);
   });
 
   it("matches by signature sound descriptor", () => {

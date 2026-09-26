@@ -132,6 +132,8 @@ export interface PcmMicRecorderDependencies {
   estimateStorage?: () => Promise<BrowserStorageEstimate>;
   /** Pre-capture input trim in dB (-24..+12). Applied to monitor + capture. */
   inputGainDb?: number;
+  /** Optional project-mixer destination for the dry software monitor; the recorder does not own its cleanup. */
+  routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
 }
 
 /** Input trim clamps — must mirror the UI slider. */
@@ -169,6 +171,7 @@ export class PcmMicRecorder {
   private node: AudioWorkletNode | null = null;
   private muteGain: GainNode | null = null;
   private monitorGain: GainNode | null = null;
+  private monitorRouteCleanup: (() => void) | null = null;
   private monitoringEnabled = false;
   /** Pre-capture trim stage (inputGainNode → capture/monitor). */
   private inputGainNode: GainNode | null = null;
@@ -203,7 +206,7 @@ export class PcmMicRecorder {
     return this.state_;
   }
 
-  /** Enable a dry, direct input-monitor path independently of the silent capture worklet output. */
+  /** Enable the dry software-monitor path independently of the silent capture worklet output. */
   setMonitoring(enabled: boolean): void {
     this.monitoringEnabled = enabled;
     const gain = this.monitorGain?.gain;
@@ -457,7 +460,12 @@ export class PcmMicRecorder {
       this.node.connect(this.muteGain);
       this.muteGain.connect(ctx.destination);
       this.inputGainNode.connect(this.monitorGain);
-      this.monitorGain.connect(ctx.destination);
+      if (this.deps.routeMonitorOutput) {
+        this.monitorRouteCleanup = this.deps.routeMonitorOutput(this.monitorGain);
+        if (!this.monitorRouteCleanup) throw new Error("The armed track cannot receive software input monitoring");
+      } else {
+        this.monitorGain.connect(ctx.destination);
+      }
 
       const ready = await readyPromise;
       this.assertStartIsCurrent(token);
@@ -839,6 +847,12 @@ export class PcmMicRecorder {
     } catch {
       /* already disconnected */
     }
+    try {
+      this.monitorRouteCleanup?.();
+    } catch {
+      /* monitor routing is already detached or its mixer graph was disposed */
+    }
+    this.monitorRouteCleanup = null;
     try {
       this.monitorGain?.disconnect();
     } catch {

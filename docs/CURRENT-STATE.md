@@ -11,21 +11,21 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 
 ## Headline numbers
 
-| What                                   |   Count | Source of truth                                                                                                          |
-| -------------------------------------- | ------: | ------------------------------------------------------------------------------------------------------------------------ |
-| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                   |
-| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                  |
-| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                 |
-| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                      |
-| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                         |
-| **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
-| **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
+| What                                   |   Count | Source of truth                                                                                                               |
+| -------------------------------------- | ------: | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                        |
+| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                       |
+| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                      |
+| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                           |
+| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                              |
+| **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                        |
+| **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                          |
 | └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only) |
-| **Factory presets**                    | **399** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     393 | `FACTORY_PRESETS`                                                                                                        |
-| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
-| **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
-| **Vitest spec files**                  | **523** | `tests/` files matching `*.test.ts` (419) and `*.test.tsx` (104)                                                         |
+| **Factory presets**                    | **404** | `src/presets/factory.ts`                                                                                                      |
+| └─ instrument presets                  |     398 | `FACTORY_PRESETS`                                                                                                             |
+| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
+| **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                        |
+| **Vitest spec files**                  | **523** | `tests/` files matching `*.test.ts` (419) and `*.test.tsx` (104)                                                              |
 
 ## Flagship plugin implementations
 
@@ -99,10 +99,12 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Embedding-conditioned prior v2** — Phases D–F of the conditioning chain. _(feat `c7df20b`)_
 - **Hybrid v3 prior (active)** — retrained with label smoothing + variant embeddings, logit-saturation fix; activation commit flips the runtime to the new model. _(feat `64e2b61`, `8bd904c`)_
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
-- **World roster + genre depth** — 235 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
+- **World roster + genre depth** — 257 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
 - **Club depth wave** — jersey (uniiqu3 / tameil / sliink / 2rare + jersey-club entry), sexy drill (cash cobain + chow lee on drill.bounce), NY/UK/Chicago drill corners (fivio / sheff g + sleepy / headie / digga / 808melo / axl / ghosty / herbo / m1) and phonk depth (kaito shoma / pharmacist drift; xavier wulf / night lovell / bones memphis-lofi) — all styles resolve to real groove ids.
+- **Club depth wave 2** — jersey second line (mcvertt / jayhood / nadus / r3ll / unicorn151), bronx drill (b-lovee / kay flock), UK forefront (unknown t) and drift anthems (interworld metamorphosis / dxrk rave).
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
 - **Pop wave** — pop routing (dance-pop/synth-pop/pop-rap/hyperpop → house/trap), 12 pop artist presets, 4 pop grooves (house.pop/synthpop, trap.pop, ambient.pop), POP_FORM (verse/pre-chorus/chorus, hook before ~45 s), pop mix (bright + vocal glue + low-end control) and −9 LUFS pop loudness target.
+- **Legends + southern specialties + now wave** — 90s NY (2pac/biggie/wu-tang/jay-z/mobb deep), Dirty South founders (outkast/ugk/scarface/t.i./jeezy/gucci/mannie→bounce), 2000s mainstream (eminem/50/wayne/ross/dmx/busta/missy-timbaland), Bay/LA g-era (too $hort/quik/kurupt/yg-mustard/nipsey/blueface), three 6 + griselda on existing grooves; 5 new grooves (trap.bounce/miamibass/snap/countrytune, house.afroswing) with parser routing + artist lanes; female rap (nicki/cardi/latto/glorilla/sexyy/doechii/simz), latin trap (bunny/myke/duki/pnl), chicago/detroit/LA now, soundcloud era, death grips→dnb.amen; signature sounds (plugg bell, eski lead, syrup FX chain, electro snare, triggerman perc set); artist-name masking in text-parser (a name never doubles as a descriptor unless the name IS the descriptor, e.g. neurofunk).
 
 ### Arrangement
 

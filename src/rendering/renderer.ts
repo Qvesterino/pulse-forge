@@ -17,10 +17,10 @@ export interface RenderOptions {
   sampleRate: number;
   tailSeconds?: number;
   /**
-   * Disable the project master stage for stem renders. Track, group and
-   * return processing stay intact; only the final master gain / tonal /
-   * glue / clipper / limiter stage is neutralized. The full mix should
-   * still be exported separately because nonlinear master processing
+   * Bypass the complete project master chain for stem or pre-master renders.
+   * Track, group and return processing stay intact; master gain, DC block,
+   * tonal shaping, glue, clipping and limiting are excluded. The full mix
+   * should still be exported separately because nonlinear master processing
    * cannot be reconstructed by summing isolated stems.
    * Defaults to true for backward compatibility.
    */
@@ -407,16 +407,18 @@ export async function renderProject(
   // chain, so live-chain rendering is the correct export content.
   const renderDoc = unfreezeDoc(doc);
   if (options.masterProcessing === false) {
-    // Transfer stems are intended to be rebalanced in another DAW. Preserve
-    // each source's instrument, channel, group and return processing, but do
-    // not bake the same nonlinear master chain onto every isolated render.
-    // Keep this on a fresh document object: export must never mutate the
-    // user's live project or its serialized master settings.
+    // Transfer stems are intended to be rebalanced in another DAW; pre-master
+    // clip renders must also avoid baking fixed master filters that are always
+    // wired even when the user's master effects are disabled. Preserve each
+    // source's instrument, channel, group and return processing, but route
+    // around the complete master chain. This uses a fresh document object:
+    // rendering must never mutate the user's live project/settings.
     engine.setProject({
       ...renderDoc,
       master: {
         ...renderDoc.master,
         masterGain: 1,
+        loudnessTrimDb: 0,
         limiterEnabled: false,
         clipperEnabled: false,
         tapeEnabled: false,

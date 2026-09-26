@@ -259,10 +259,10 @@ describe("arrangement REC wiring", () => {
 
     const rec = screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement;
     expect(rec.disabled).toBe(true);
-    const monitor = screen.getByRole("button", { name: "DRY MON OFF" });
+    const monitor = screen.getByRole("button", { name: "DRY SOFT MON OFF" });
     expect(monitor).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(monitor);
-    expect(screen.getByRole("button", { name: "DRY MON ON" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "DRY SOFT MON ON" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.change(select, { target: { value: doc.tracks[0].id } });
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);

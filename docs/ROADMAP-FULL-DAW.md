@@ -147,11 +147,12 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
 - [ ] Implement adjustable, tempo-aware crossfades at take-comp boundaries;
       keep both source passes immutable and make the overlap/fade curves
       deterministic in live and offline playback.
-- [ ] Replace the current metadata-only `consolidateAudioClips` behavior with
-      a true offline-rendered comp asset saved through the user-sample store;
-      preserve the source takes and make the project replacement one undoable
-      command. Verify save/reopen, undo/redo and export parity before exposing
-      it as consolidation.
+- [x] Replace metadata-only consolidation with a true offline-rendered asset
+      saved through the user-sample store; preserve source takes and replace
+      selected clips with one undoable command. A Chromium synthetic-tone E2E
+      verifies IndexedDB sample/project save-reopen and pre/post-export
+      sample-level parity. This does not certify recorded takes or repeated
+      comp edits.
 - [ ] Verify repeated comp edits, sample-accurate boundaries and crossfade
       behavior on recorded material; the existing 3 ms seam fade is only a
       de-click and does not meet this gate.
@@ -173,10 +174,10 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
 - [x] Add cancelable offline audition for each source/comp lane using an
       ephemeral project that isolates the take while preserving its track,
       group, send and master processing; audition never mutates the project.
-- [ ] Extend comp editing with adjustable musical crossfades and real rendered
-      consolidation; certify repeated edits and boundaries on real takes
-      through save/reopen, undo/redo and final export. Do not treat the generic
-      clip-menu metadata-only consolidate command as satisfying this gate.
+- [ ] Extend comp editing with adjustable musical crossfades; certify repeated
+      edits and boundaries on real takes through save/reopen, undo/redo and
+      final export. The rendered consolidation path is implemented, but its
+      synthetic test is not evidence for real recorded material.
 - [x] Translate IndexedDB quota failure during PCM append into a clear stop
       warning; stop capture and preserve all earlier committed blocks for
       recovery. This is not long-session certification.
@@ -284,10 +285,13 @@ all bundled/downloaded content has a documented license and storage policy.
 failures; tested platform/device matrix published; install, update, recording
 recovery and project interchange proven.
 
-## Immediate next engineering task
+## Immediate next engineering tasks
 
-Finish Phase 0's doc reconciliation and select the Phase 1 physical audio
-interface/reference host. Then audit the existing recorder against an actual
-guitar/line input. The software channel-split slice is in place; do not claim
-physical input routing or reference-interface readiness until the hardware
-procedure confirms connector-to-channel mapping and measures its clock.
+1. **Software:** implement adjustable, tempo-aware take-comp crossfades with
+   deterministic live/offline parity and undoable edits, starting with
+   synthetic overlapping passes. The fixed 3 ms seam de-click is not the
+   musical crossfade bar. Then test repeated comp edits, reload and export.
+2. **Owner/hardware gate:** approve a Windows reference PC/interface and the
+   exact device-use window before opening a physical endpoint. Until its
+   connector-to-channel mapping, latency and device-loss procedure are tested,
+   keep those Studio capabilities marked unverified.
