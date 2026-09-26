@@ -57,6 +57,19 @@ beforeEach(() => {
 });
 
 describe("ProducerDnaCompare", () => {
+  it("refuses a confounded suggestion without recording a vote", () => {
+    const { project, result } = buildFixture();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/niet páru s porovnateľným globálnym skóre a jasným rozdielom/i);
+    expect(
+      screen.getAllByRole("button", { name: "A" }).some((button) => button.getAttribute("aria-pressed") === "true"),
+    ).toBe(false);
+    expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
+  });
+
   it("records only the explicit A/B vote and keeps prompt/seed out of the ledger", () => {
     const { project, result } = buildFixture();
     render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);

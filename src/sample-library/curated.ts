@@ -1,5 +1,5 @@
 import { decodeAudioData } from "../services/audio-decode";
-import type { SampleBank } from "./factory";
+import { applyRoundRobinVariants, type SampleBank } from "./factory";
 
 /**
  * Curated factory sound layer (VISION §5 "factory content is part of the
@@ -199,6 +199,18 @@ export async function loadCuratedLayer(
         }
         const buffer = await decode(data);
         bank.add(sample.id, applyGain(buffer, sample.gain ?? 1));
+        // A curated override changes the base a round-robin set derives from.
+        // Re-derive its variants from the sound the user actually hears —
+        // otherwise base and variants are two different drums alternating.
+        // Best-effort by contract: this is an enhancement on top of a load
+        // that has already succeeded, so a derivation failure (e.g. a host
+        // without the AudioBuffer constructor) must never turn a good sample
+        // into a reported failure.
+        try {
+          applyRoundRobinVariants(bank, sample.id);
+        } catch (error) {
+          console.warn(`[curated] RR re-derivation skipped for ${sample.id}:`, error);
+        }
         result.loaded += 1;
       } catch (err) {
         if (options.signal?.aborted) return;

@@ -1,5 +1,4 @@
 import { generatePattern } from "../../ai/generator";
-import { inspectPatternInvariants } from "../../ai/invariants";
 import { LOCAL_ENGINE_ID, LOCAL_ENGINE_VERSION } from "../../ai/evaluation";
 import { extractPatternFeatures, FEATURE_NAMES } from "../../ai/features/pattern-features";
 import type { GenerateOptions } from "../../ai/types";
@@ -49,7 +48,7 @@ function diagnosticsFor(
   };
 }
 
-import { attachProvenance, candidatePlan, evaluateCandidate, invariantErrors } from "./candidate";
+import { attachProvenance, candidatePlan, evaluateCandidate } from "./candidate";
 
 export { attachProvenance, candidatePlan, evaluateCandidate, invariantErrors } from "./candidate";
 
@@ -184,7 +183,6 @@ export class LocalDeterministicProvider implements GenerationProvider {
   }
 
   generateSync(plan: GenerationPlan, context: GenerationContext): GenerationProposal {
-    const effectiveKey = plan.options.key ?? context.project.key;
     const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
 
     const ranked = rankCandidateBank(context.project, candidates);
@@ -205,12 +203,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
       };
     }
 
-    const fallback = attachProvenance(createFallbackPattern(context.project, plan.options), plan, context.project);
-    const fallbackReport = inspectPatternInvariants(context.project, fallback, {
-      checkScale: Boolean(effectiveKey),
-      key: effectiveKey,
-    });
-    if (fallbackReport.ok) {
+    const fallbackCandidate = createFallbackPattern(context.project, plan.options);
+    const fallbackFailures = [...failures];
+    const evaluatedFallback = evaluateCandidate(fallbackCandidate, plan, context, fallbackFailures);
+    const fallback = evaluatedFallback?.pattern ?? attachProvenance(fallbackCandidate, plan, context.project);
+    if (evaluatedFallback) {
       return {
         status: "fallback",
         pattern: fallback,
@@ -227,13 +224,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
     return {
       status: "rejected",
       pattern: fallback,
-      diagnostics: diagnosticsFor(
-        fallback,
-        [],
-        [],
-        [...failures, ...invariantErrors(fallbackReport)],
-        "fallback-failed-invariant-gate",
-      ),
+      diagnostics: diagnosticsFor(fallback, [], [], fallbackFailures, "fallback-failed-invariant-or-preserve-gate"),
     };
   }
 
@@ -268,7 +259,6 @@ export class LocalDeterministicProvider implements GenerationProvider {
         },
       };
     }
-    const effectiveKey = plan.options.key ?? context.project.key;
     const {
       candidates: templateCandidates,
       failures,
@@ -378,12 +368,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
       };
     }
 
-    const fallback = attachProvenance(createFallbackPattern(context.project, plan.options), plan, context.project);
-    const fallbackReport = inspectPatternInvariants(context.project, fallback, {
-      checkScale: Boolean(effectiveKey),
-      key: effectiveKey,
-    });
-    if (fallbackReport.ok) {
+    const fallbackCandidate = createFallbackPattern(context.project, plan.options);
+    const fallbackFailures = [...failures];
+    const evaluatedFallback = evaluateCandidate(fallbackCandidate, plan, context, fallbackFailures);
+    const fallback = evaluatedFallback?.pattern ?? attachProvenance(fallbackCandidate, plan, context.project);
+    if (evaluatedFallback) {
       return {
         proposal: {
           status: "fallback",
@@ -405,13 +394,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       proposal: {
         status: "rejected",
         pattern: fallback,
-        diagnostics: diagnosticsFor(
-          fallback,
-          [],
-          [],
-          [...failures, ...invariantErrors(fallbackReport)],
-          "fallback-failed-invariant-gate",
-        ),
+        diagnostics: diagnosticsFor(fallback, [], [], fallbackFailures, "fallback-failed-invariant-or-preserve-gate"),
       },
       ranked: [],
       modelScores: ranked.modelScores,

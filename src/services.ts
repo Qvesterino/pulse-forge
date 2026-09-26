@@ -508,7 +508,8 @@ export async function openProject(
     // getter the gate is dead code and the burst slips through.
     getContextState: () => engine.context?.state ?? "closed",
     getMode: () => modeRef.mode,
-    trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
+    trigger: (trackId, pad, when, velocity, locks, sampleId) =>
+      engine.trigger(trackId, pad, when, velocity, locks, sampleId),
     noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen),
     triggerAudioClip: (clip, when, durationSec, resumeOffsetSec) =>

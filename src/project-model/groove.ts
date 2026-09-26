@@ -36,6 +36,39 @@ export interface DrumHit {
   ratchetIndex: number;
   /** Per-step p-lock overrides for this hit (absolute). */
   locks?: Partial<Record<import("./types").StepLockKey, number>>;
+  /**
+   * Resolved sample id for this hit (velocity layers / round robin). Equal
+   * for the same absolute step ordinal in live playback and offline export —
+   * both schedule from this plan and the ordinal derives from the absolute
+   * grid tick, so no running counter can diverge between them.
+   */
+  sampleId?: string;
+}
+
+/**
+ * Resolve the sample a hit plays, honouring the pad's layer set.
+ *
+ * Deterministic by construction: the variant is picked from the hit's
+ * absolute step ordinal, not a running counter. Disjoint velocity windows act
+ * as velocity layers (soft/hard samples selected by velocity); overlapping
+ * windows (round robin) rotate with the ordinal — every consecutive hit takes
+ * the next variant, and the same ordinal always resolves to the same sample.
+ *
+ * Pure — same input ⇒ same output (live == offline).
+ */
+export function resolveHitSampleId(pad: DrumPad, velocity: number, ordinal: number): string | null {
+  const layers = pad.layers;
+  if (!layers || layers.length === 0) return pad.assetId;
+  const candidates: string[] = [];
+  for (const layer of layers) {
+    if (!layer.sampleId) continue;
+    const velocityOk = velocity >= layer.min && (velocity < layer.max || (layer.max >= 1 && velocity <= layer.max));
+    if (velocityOk) candidates.push(layer.sampleId);
+  }
+  if (candidates.length === 0) return pad.assetId;
+  if (candidates.length === 1) return candidates[0];
+  const index = ((Math.trunc(ordinal) % candidates.length) + candidates.length) % candidates.length;
+  return candidates[index];
 }
 
 const mod = (value: number, m: number): number => ((value % m) + m) % m;
@@ -159,6 +192,11 @@ export function drumHitsInWindow(
 
         const ratchet = Math.min(MAX_RATCHET, Math.max(1, Math.round(meta?.ratchet ?? 1)));
         const subdivision = STEP_TICKS / ratchet;
+        // Absolute grid step ordinal: identical for the same musical step in
+        // every playback pass and every render window. Round-robin variants
+        // therefore rotate hit-by-hit and LIVE == OFFLINE by construction —
+        // neither a window split nor a loop wrap can shift the phase.
+        const stepOrdinal = Math.round(t / STEP_TICKS);
         // Defect A.3 (performance / memory recon): every ratchet
         // sub-hit used to clone `meta.locks` via `{ ...meta.locks }`,
         // allocating one object per hit. Pattern stepMeta is treated
@@ -174,13 +212,22 @@ export function drumHitsInWindow(
         for (let k = 0; k < ratchet; k++) {
           const hitTick = tick + k * subdivision;
           if (hitTick < fromTick || hitTick >= toTick) continue;
+          const hitVelocity = k === 0 ? finalVelocity : clampRange(finalVelocity * Math.pow(RATCHET_DECAY, k), 0.05, 1);
+          // Ratchets advance the variant too: a 3-hit roll at a fixed step is
+          // exactly where the machine-gun read lives. A plain monotonic
+          // ordinal (step + sub-hit index) keeps consecutive hits on
+          // consecutive variants for ANY candidate count — multiplying by the
+          // ratchet budget would make 2-variant sets land on the same sample
+          // for every main hit (8 % 2 === 0).
+          const sampleId = resolveHitSampleId(pad, hitVelocity, stepOrdinal + k);
           hits.push({
             trackId: track.id,
             pad,
             tick: hitTick,
-            velocity: k === 0 ? finalVelocity : clampRange(finalVelocity * Math.pow(RATCHET_DECAY, k), 0.05, 1),
+            velocity: hitVelocity,
             ratchetIndex: k,
             ...(locks ? { locks } : {}),
+            ...(sampleId ? { sampleId } : {}),
           });
         }
       }

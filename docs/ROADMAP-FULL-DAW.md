@@ -185,10 +185,12 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       synthetic test is not evidence for real recorded material.
 - [x] Add a Chromium integration fixture that records two distinct synthetic
       PCM passes through AudioWorklet capture, reloads them from IndexedDB,
-      comps the passes through the take-lane UI, exercises Undo/Redo, and proves
-      identical 32-bit float WAV output before and after project reopen. This
-      certifies the software capture/edit/persistence/export path, not physical
-      input routing or the musical quality of real performances.
+      comps the passes through the take-lane UI, adds a warp pin from the comp
+      waveform context menu, exercises Undo/Redo for both edits, and proves
+      identical 32-bit float WAV output after project reopen. It also verifies
+      the marker and original PCM survive reload. This certifies the software
+      capture/edit/persistence/export path, not physical input routing or the
+      musical quality of real performances.
 - [x] Add runtime live take-lane audition as a non-destructive playback
       projection. Targeted scheduler, service-lifecycle and UI tests pass;
       Chromium verifies the actual buffer-source offset, resumed fade gain and
@@ -310,10 +312,11 @@ recovery and project interchange proven.
 1. **Certify editing in software:** exercise repeated comp edits, musical
    crossfades, sample-accurate boundaries, warp UI, undo/redo and final export
    over save/reopen. Synthetic tests cover crossfade implementation and
-   live/offline parity; a captured-PCM Chromium fixture now covers take-lane
-   comp, Undo/Redo and exact WAV parity across reopen. Sample-accurate edit
-   boundaries, warp UI and real hardware takes remain open. The fixed 3 ms
-   warp-segment de-click is separate from musical crossfades.
+   live/offline parity; a captured-PCM Chromium fixture covers take-lane comp,
+   context-menu warp-pin creation, Undo/Redo, PCM/marker persistence and exact
+   WAV parity across reopen. Sample-accurate edit boundaries, waveform-drag
+   warp on recorded material and physical hardware takes remain open. The fixed
+   3 ms warp-segment de-click is separate from musical crossfades.
 2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
    interface, driver mode and exact device-use window before opening a physical
    endpoint. Until then, do metadata-only/software work; do not claim measured

@@ -1,4 +1,5 @@
 import { generatePattern, resolveGrooveForGeneration } from "../../ai/generator";
+import { instrumentTrackForRole } from "../../ai/role-targets";
 import { extractPatternFeatures, FEATURE_NAMES } from "../../ai/features/pattern-features";
 import { degreeToPitch, expandChord } from "../../ai/melodic";
 import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "../../ai/grooves/melodic-data";
@@ -7,7 +8,7 @@ import { inferPadRole } from "../../ai/pad-roles";
 import { forkRandom } from "../../shared/rng";
 import { uid } from "../../shared/ids";
 import { parseKey, snapToScale, SCALE_INTERVALS } from "../../project-model/scales";
-import { STEP_TICKS, type InstrumentTrack, type NoteEvent, type Pattern } from "../../project-model/types";
+import { STEP_TICKS, type NoteEvent, type Pattern } from "../../project-model/types";
 import {
   buildPriorGridRows,
   priorGenreOf,
@@ -43,7 +44,6 @@ import { inferPersonalSearchBias } from "../personal-ranker";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
 import { candidatePlan, evaluateCandidate } from "./candidate";
 import type { GenerationContext, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
-import type { GenerateOptions } from "../../ai/types";
 
 /**
  * SymbolicPriorProvider — the SECOND generation source (INTENT_ENGINE.md T2).
@@ -76,20 +76,6 @@ export function symbolicWanted(plan: GenerationPlan): boolean {
 const NOTES_PER_BAR: Record<MelodicRole, number> = { bass: 4, chord: 2, lead: 3 };
 const SYNCOPATION_FEATURE_INDEX = FEATURE_NAMES.indexOf("drums.syncopation");
 const BASE_VELOCITY: Record<MelodicRole, number> = { bass: 0.8, chord: 0.6, lead: 0.7 };
-const ROLE_INDEX: Record<MelodicRole, number> = { bass: 0, chord: 1, lead: 2 };
-
-/** Mirror the generator's role→track mapping (name match, else positional). */
-function melodicTrackForRole(doc: GenerationContext["project"], options: GenerateOptions, role: MelodicRole) {
-  const instrumentTracks = doc.tracks.filter((track): track is InstrumentTrack => track.kind === "instrument");
-  const targetTracks =
-    options.instrumentTrackIds && options.instrumentTrackIds.length > 0
-      ? instrumentTracks.filter((track) => options.instrumentTrackIds!.includes(track.id))
-      : instrumentTracks;
-  if (targetTracks.length === 0) return null;
-  const named = targetTracks.find((track) => track.name.toLowerCase().includes(role));
-  return named ?? targetTracks[ROLE_INDEX[role] % targetTracks.length];
-}
-
 function normalizeDistribution(values: number[]): number[] {
   const total = values.reduce((sum, value) => sum + Math.max(0, value), 0);
   if (total <= 0) return values.map(() => 1 / values.length);
@@ -337,13 +323,13 @@ export class SymbolicPriorProvider implements GenerationProvider {
         let melodicSource: "mv" | "prior" | "template" = "template";
         const melodicRoleTrack = (role: "bass" | "chord" | "lead") =>
           !generationOptions.roles || generationOptions.roles.includes(role === "chord" ? "chords" : role)
-            ? melodicTrackForRole(doc, generationOptions, role)
+            ? instrumentTrackForRole(doc, role, generationOptions.instrumentTrackIds)
             : null;
         for (const role of ["bass", "chord", "lead"] as const) {
           const track = melodicRoleTrack(role);
           const part = multiVoice[role];
           if (!track || !part || part.length === 0) continue;
-          notes[track.id] = [...part];
+          notes[track.id] = [...(notes[track.id] ?? []), ...part];
         }
         if (Object.keys(notes).length > 0) {
           melodicSource = "mv";
@@ -360,7 +346,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
               const track = melodicRoleTrack(role);
               const part = priorMelody[role];
               if (!track || !part || part.length === 0) continue;
-              notes[track.id] = [...part];
+              notes[track.id] = [...(notes[track.id] ?? []), ...part];
             }
             if (Object.keys(notes).length > 0) melodicSource = "prior";
           }

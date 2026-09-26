@@ -5,6 +5,7 @@ import { uid } from "../shared/ids";
 import { getGroovesForGenre, getGrooveById } from "./grooves/index";
 import { generateDrumPattern } from "./drums";
 import { generateMelodicParts } from "./melodic";
+import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "./role-targets";
 import { inferPadRole } from "./pad-roles";
 import { canonicalizePattern, contentHash, createGenerationRecipe } from "./evaluation";
 import { measureDrumQuality, measureMelodicQuality } from "./quality";
@@ -81,9 +82,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   // Defensive: clamp stepCount to a finite positive value so downstream
   // array allocations (new Array(stepCount)) never throw on negative/NaN input.
   const safeStepCount =
-    Number.isFinite(options.stepCount) && options.stepCount > 0
-      ? Math.min(256, Math.floor(options.stepCount))
-      : 16;
+    Number.isFinite(options.stepCount) && options.stepCount > 0 ? Math.min(256, Math.floor(options.stepCount)) : 16;
 
   // Groove choice and every generation subsystem receive independent streams.
   const groove = resolveGrooveForGeneration(doc, options);
@@ -102,10 +101,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
 
   // Resolve the target drum track before generation so semantic pad metadata
   // (names/order) can participate in the local quality rules.
-  const drumTracks = doc.tracks.filter((t) => t.kind === "drum");
-  const targetDrumTrack = options.drumTrackId
-    ? (drumTracks.find((t) => t.id === options.drumTrackId) ?? drumTracks[0])
-    : drumTracks[0];
+  const targetDrumTrack = drumTrackForTarget(doc, options.drumTrackId);
   const padNames =
     targetDrumTrack && targetDrumTrack.kind === "drum" ? targetDrumTrack.pads.map((pad) => pad.name) : undefined;
 
@@ -208,11 +204,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
 
   // Build notes Record<ID, NoteEvent[]>
   const notesRecord: Record<string, NoteEvent[]> = {};
-  const instrumentTracks = doc.tracks.filter((t) => t.kind === "instrument");
-  const targetTracks =
-    options.instrumentTrackIds && options.instrumentTrackIds.length > 0
-      ? instrumentTracks.filter((t) => options.instrumentTrackIds!.includes(t.id))
-      : instrumentTracks;
+  const targetTracks = instrumentTargets(doc, options.instrumentTrackIds);
   const roleOrder = ["bass", "chord", "lead"] as const;
 
   if (targetTracks.length > 0) {
@@ -225,8 +217,8 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
           (role === "chord" && diceLocks.chords) ||
           (role === "lead" && diceLocks.lead);
         if (shouldLock) {
-          const namedTrack = targetTracks.find((track) => track.name.toLowerCase().includes(role));
-          const track = namedTrack ?? targetTracks[roleIndex % targetTracks.length];
+          const track = instrumentTrackForRole(doc, role, options.instrumentTrackIds);
+          if (!track) continue;
           const prevNotes = dicePrev.notes[track.id];
           if (prevNotes) {
             notesRecord[track.id] = JSON.parse(JSON.stringify(prevNotes));
@@ -236,11 +228,8 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
       }
       const part = melodicParts[role];
       if (part.length === 0) continue;
-      const namedTrack = targetTracks.find((track) => {
-        const name = track.name.toLowerCase();
-        return name.includes(role);
-      });
-      const track = namedTrack ?? targetTracks[roleIndex % targetTracks.length];
+      const track = instrumentTrackForRole(doc, role, options.instrumentTrackIds);
+      if (!track) continue;
       notesRecord[track.id] = [...(notesRecord[track.id] ?? []), ...part];
     }
   }

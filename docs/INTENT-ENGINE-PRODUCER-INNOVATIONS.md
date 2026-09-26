@@ -578,6 +578,8 @@ Nižší krok nikdy neprehlasuje vyšší: osobný vkus nesmie ospravedlniť por
 
 **Miesta:** `preference-ledger-core.ts`, `preference-ledger.ts`, `personal-ranker.ts`, `candidate-search.ts`, `src/ui/ProducerDnaCompare.tsx` a audition UI; `tests/intent-preference-ledger.test.ts`, `tests/rank-candidates.test.ts`.
 
+**Aktuálny rez:** `src/intent/taste-probe.ts` navrhne iba dvojicu s rovnakou verziou globálneho selektora, blízkym globálnym skóre a dominantným rozdielom na jednej podporovanej feature osi. Tlačidlo v Producer DNA compare iba predvyplní kandidátov a dôvod; žiadny feedback sa nezapíše, kým producent pár nevypočuje a výslovne nezahlasuje. Reálny blind posluch ešte musí potvrdiť, že označená os je zrozumiteľná a počuteľná.
+
 **Exit gate:** na dosiaľ nepoužitých pároch personal ranker prekoná baseline s uvedenou veľkosťou vzorky/neistotou; žiadny implicitný event nevytvorí preferenciu; používateľské údaje možno spravovať bez cloudu.
 
 ### 11.7 Vlna 5 — referencie a celý song používajú ten istý bezpečný cyklus

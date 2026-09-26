@@ -297,6 +297,7 @@ type PadParams = Partial<
     | "sliceFadeIn"
     | "sliceFadeOut"
     | "sliceReverse"
+    | "layers"
   >
 >;
 

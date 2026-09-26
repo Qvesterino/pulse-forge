@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { extractPatternFeatures } from "../ai/features/pattern-features";
 import type { ProjectDocument } from "../project-model/types";
+import { suggestTasteProbePair } from "../intent/taste-probe";
 import { isPreferenceReasonRankable } from "../intent/personal-ranker";
 import {
   buildPreferenceLedgerPack,
@@ -52,10 +53,38 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   const [learningEnabled, setLearningEnabled] = useState(isPreferenceLearningEnabled);
   const [comparisonCount, setComparisonCount] = useState(() => readPreferenceLedger().length);
   const [message, setMessage] = useState("");
+  const featureCache = useRef<{
+    result: GenerationResult;
+    project: ProjectDocument;
+    rows: Map<number, Float32Array>;
+  } | null>(null);
 
   const context = useMemo(() => preferenceContextForIntent(result.plan.intent), [result.plan.intent]);
   const candidateA = candidates.find((candidate) => candidate.candidateIndex === aIndex) ?? null;
   const candidateB = candidates.find((candidate) => candidate.candidateIndex === bIndex) ?? null;
+  const candidateFeatures = (requested: readonly RankedCandidate[]) => {
+    const cache =
+      featureCache.current?.result === result && featureCache.current.project === project
+        ? featureCache.current
+        : { result, project, rows: new Map<number, Float32Array>() };
+    const batch = candidates.map((candidate) => candidate.pattern);
+    for (const candidate of requested) {
+      if (cache.rows.has(candidate.candidateIndex)) continue;
+      cache.rows.set(
+        candidate.candidateIndex,
+        extractPatternFeatures({
+          doc: project,
+          pattern: candidate.pattern,
+          intent: result.plan.intent,
+          options: result.plan.options,
+          resolvedBpm: result.plan.resolvedBpm,
+          batch,
+        }).values,
+      );
+    }
+    featureCache.current = cache;
+    return cache.rows;
+  };
 
   useEffect(() => {
     setAIndex(null);
@@ -77,27 +106,18 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
 
   const vote = (choice: PreferenceChoice) => {
     if (!candidateA || !candidateB || !learningEnabled) return;
-    const batch = candidates.map((candidate) => candidate.pattern);
-    const featuresFor = (candidate: RankedCandidate) =>
-      extractPatternFeatures({
-        doc: project,
-        pattern: candidate.pattern,
-        intent: result.plan.intent,
-        options: result.plan.options,
-        resolvedBpm: result.plan.resolvedBpm,
-        batch,
-      }).values;
+    const features = candidateFeatures([candidateA, candidateB]);
     const observation = createPreferenceObservation(
       context,
       {
         contentHash: candidateA.contentHash,
-        features: featuresFor(candidateA),
+        features: features.get(candidateA.candidateIndex) ?? [],
         globalScore: candidateA.globalScore,
         globalScoreVersion: candidateA.globalScoreVersion,
       },
       {
         contentHash: candidateB.contentHash,
-        features: featuresFor(candidateB),
+        features: features.get(candidateB.candidateIndex) ?? [],
         globalScore: candidateB.globalScore,
         globalScoreVersion: candidateB.globalScoreVersion,
       },
@@ -128,6 +148,33 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     setReason("");
   };
 
+  const suggestProbe = () => {
+    const features = candidateFeatures(candidates);
+    const probe = suggestTasteProbePair(
+      candidates.map((candidate) => ({
+        candidate,
+        candidateIndex: candidate.candidateIndex,
+        contentHash: candidate.contentHash,
+        features: features.get(candidate.candidateIndex) ?? [],
+        globalScore: candidate.globalScore,
+        globalScoreVersion: candidate.globalScoreVersion,
+      })),
+    );
+    if (!probe) {
+      setMessage(
+        "V tomto banku niet páru s porovnateľným globálnym skóre a jasným rozdielom v jednej meranej osi; môžeš vybrať A/B ručne.",
+      );
+      return;
+    }
+    setAIndex(probe.candidateA.candidateIndex);
+    setBIndex(probe.candidateB.candidateIndex);
+    setReason(probe.reason);
+    const reasonLabel = REASONS.find((item) => item.value === probe.reason)?.label ?? probe.reason;
+    setMessage(
+      `Navrhnutý pár sa najviac líši v osi „${reasonLabel}“; globálny výber sa líši o ${Math.round(probe.globalScoreGap * 100)} p. b. Vypočuj obe strany — nič sa neuloží, kým nepotvrdíš voľbu.`,
+    );
+  };
+
   const toggleLearning = () => {
     const next = !learningEnabled;
     setPreferenceLearningEnabled(next);
@@ -146,6 +193,12 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     <section className="intent-song-draft" aria-label="Producer DNA A/B comparison">
       <div className="intent-detected">
         Producer DNA · vyber, ktorý take by si si nechal. Toto učí osobný vkus, nie hodnotenie plnenia briefu.
+      </div>
+      <div className="intent-candidate-row">
+        <span>Automatický návrh hľadá podobne vysoko vybrané take-y s jedným merateľným rozdielom.</span>
+        <button type="button" className="btn btn-small" onClick={suggestProbe}>
+          NAVRHNÚŤ TASTE PROBE
+        </button>
       </div>
       <div className="intent-candidates" aria-label="Choose candidates to compare">
         {candidates.map((candidate, position) => (

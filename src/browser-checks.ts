@@ -409,6 +409,40 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   await loadCuratedLayer(bank);
   record(await auditFactoryPresetAudio(bank));
   record(await auditFxExpansion(bank));
+  {
+    // Round-robin variants must be DERIVED from the bank's CURRENT base. The
+    // curated layer overrides bases AFTER the initial derivation, so a stale
+    // variant would be the synth fallback alternating with the mastered WAV —
+    // two different drums instead of one drum with micro-variation. Every
+    // variation must correlate strongly with its base (resample + ±4 % gain
+    // keeps correlation high; a different render does not).
+    const correlation = (baseId: string): number | null => {
+      const base = bank.get(baseId);
+      const rr2 = bank.get(`${baseId}.rr2`);
+      if (!base || !rr2) return null;
+      const a = base.getChannelData(0);
+      const b = rr2.getChannelData(0);
+      const n = Math.min(a.length, b.length);
+      let dot = 0;
+      let na = 0;
+      let nb = 0;
+      for (let i = 0; i < n; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+      }
+      return dot / Math.max(1e-12, Math.sqrt(na) * Math.sqrt(nb));
+    };
+    const readings = Object.keys(RR_VARIATIONS).map((baseId) => ({ baseId, corr: correlation(baseId) }));
+    const weak = readings.filter((entry) => entry.corr === null || entry.corr <= 0.7);
+    check(
+      "RR variants are re-derived from the curated base (same drum, micro-variation)",
+      weak.length === 0,
+      weak.length > 0
+        ? weak.map((entry) => `${entry.baseId}:${entry.corr === null ? "missing" : entry.corr.toFixed(3)}`).join(",")
+        : `min=${Math.min(...readings.map((entry) => entry.corr ?? 0)).toFixed(3)}/${readings.length}`,
+    );
+  }
 
   {
     // Curated factory layer (VISION §5): the seeds in public/samples must

@@ -51,7 +51,11 @@ function findExportNamed(lines: string[], kind: "class" | "function" | "const" |
   return null;
 }
 
-function findAnyNamed(lines: string[], kind: "class" | "function" | "const" | "let" | "interface" | "type", name: string): number | null {
+function findAnyNamed(
+  lines: string[],
+  kind: "class" | "function" | "const" | "let" | "interface" | "type",
+  name: string,
+): number | null {
   const re = new RegExp("^(?:export\\s+)?" + kind + "\\s+" + name + "\\b");
   for (let i = 0; i < lines.length; i++) {
     if (re.test(lines[i])) return i;
@@ -59,27 +63,13 @@ function findAnyNamed(lines: string[], kind: "class" | "function" | "const" | "l
   return null;
 }
 
-const PULSE_CONSTANTS: string[] = [
-  "PULSE_COUNT",
-  "PULSE_SPACING_SEC",
-  "PULSE_LEAD_SEC",
-  "PULSE_TAIL_SEC",
-];
+const PULSE_CONSTANTS: string[] = ["PULSE_COUNT", "PULSE_SPACING_SEC", "PULSE_LEAD_SEC", "PULSE_TAIL_SEC"];
 
 const PUBLIC_API: string[] = [
   "AudioLatencyCalibrationError", // class
 ];
 
-const INTERNAL_HELPERS: string[] = [
-  "makeCalibrationPulse",
-  "throwIfAborted",
-  "wait",
-  "pairDetections",
-];
-
-const MODULE_STATE: string[] = [
-  "probeModuleLoaded", // WeakSet, must stay module-private
-];
+const INTERNAL_HELPERS: string[] = ["makeCalibrationPulse", "throwIfAborted", "wait", "pairDetections"];
 
 describe("audio-engine/latencyProbe.ts — calibration baseline (source-grep)", () => {
   it("reads latencyProbe.ts", () => {
@@ -96,14 +86,16 @@ describe("audio-engine/latencyProbe.ts — calibration baseline (source-grep)", 
         for (const ln of lines) {
           expect(
             !letRe.test(ln),
-            name + " drifted to `let`. The click-pattern constants must be immutable once measured — a mid-run reassignment would silently invalidate every calibration reading.",
+            name +
+              " drifted to `let`. The click-pattern constants must be immutable once measured — a mid-run reassignment would silently invalidate every calibration reading.",
           ).toBe(true);
         }
         // Must not be exported (they're internal to the calibration).
         const expIdx = findExportNamed(lines, "const", name);
         expect(
           expIdx,
-          name + " is now `export const`. Pulse parameters are calibration internals — leaking them lets callers compose click patterns with stale module assumptions. Demote back or wrap in a config parameter factory.",
+          name +
+            " is now `export const`. Pulse parameters are calibration internals — leaking them lets callers compose click patterns with stale module assumptions. Demote back or wrap in a config parameter factory.",
         ).toBeNull();
       });
     }
@@ -115,7 +107,7 @@ describe("audio-engine/latencyProbe.ts — calibration baseline (source-grep)", 
       expect(idx, "AudioLatencyCalibrationError must be exported as a class").not.toBeNull();
     });
 
-    it("class body sets `this.name = \"AudioLatencyCalibrationError\"` (used in checks)", () => {
+    it('class body sets `this.name = "AudioLatencyCalibrationError"` (used in checks)', () => {
       const idx = findExportNamed(lines, "class", "AudioLatencyCalibrationError");
       if (idx === null) throw new Error("class not exported");
       // Walk forward 30 lines looking for the name assignment.
@@ -140,7 +132,8 @@ describe("audio-engine/latencyProbe.ts — calibration baseline (source-grep)", 
         const expFn = findExportNamed(lines, "function", name);
         expect(
           expFn,
-          name + " is now `export function` from latencyProbe.ts. The probe helpers compose the click/detect/measure pipeline in a specific order; callers outside the file would couple to that order. Demote back or wrap with a calibration-flow factory.",
+          name +
+            " is now `export function` from latencyProbe.ts. The probe helpers compose the click/detect/measure pipeline in a specific order; callers outside the file would couple to that order. Demote back or wrap with a calibration-flow factory.",
         ).toBeNull();
         const anyIdx = findAnyNamed(lines, "function", name);
         expect(anyIdx, name + " must still exist in latencyProbe.ts").not.toBeNull();

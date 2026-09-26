@@ -1,0 +1,10 @@
+import { canonicalize } from "./tests/domain-goldens/harness";
+import { deterministicTestDoc } from "./tests/fixtures/doc";
+import { normalizeProject } from "./src/project-model/schema";
+import { encodeShareCode, decodeShareCode } from "./src/export/shareCode";
+import { writeFileSync } from "node:fs";
+const doc = JSON.parse(JSON.stringify(canonicalize(normalizeProject(deterministicTestDoc())))) as never;
+const code = encodeShareCode(doc);
+const decoded = decodeShareCode(code);
+writeFileSync("dbg-clean-decoded.json", JSON.stringify(decoded, null, 1));
+console.log("clean decoded written");

@@ -302,7 +302,10 @@ export function IntentPanel() {
 
   // Fáza 2: truthful per-fact compliance of the preview against the brief —
   // ✓ provable from the pattern, · plan-enforced/unset. Never a quality score.
-  const bankCompliance = useMemo(() => (bankResult?.proposal ? evaluateBriefCompliance(bankResult) : []), [bankResult]);
+  const bankCompliance = useMemo(
+    () => (bankResult?.proposal ? evaluateBriefCompliance(bankResult, doc) : []),
+    [bankResult, doc],
+  );
 
   // C2 revise: the intent of the LAST generation — "more energetic" re-runs
   // THIS intent with a shifted slider (same seed = same beat, new character).

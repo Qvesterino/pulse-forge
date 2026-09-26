@@ -122,6 +122,8 @@ export type IntentInput = Partial<IntentSpec> & {
 export interface GenerationPlan {
   intent: IntentSpec;
   options: GenerateOptions;
+  /** Protected content source only; unlike `intent.sourcePatternId`, this does not alter the generation seed. */
+  preserveSourcePatternId?: string | null;
   groove: Pick<GrooveData, "id" | "genre" | "name" | "bpm" | "swing">;
   effectiveSeed: string;
   inputContentHash: string | null;

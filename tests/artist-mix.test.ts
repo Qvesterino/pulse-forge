@@ -71,7 +71,7 @@ describe("artist FX hints (Vlna 8 polish)", () => {
 
 describe("deep-profile fallback chain", () => {
   it("curated table wins; deep layer answers curated misses", async () => {
-    const { ARTIST_PROFILES, getArtistProfile } = await import("../src/intent/artist-profiles");
+    const { ARTIST_PROFILES } = await import("../src/intent/artist-profiles");
     const deepOnly = Object.keys(ARTIST_PROFILES).find((slug) => !(slug in ARTIST_MIX_PROFILES));
     expect(deepOnly).toBeDefined();
     const profile = artistMixProfileOf({ artist: deepOnly! } as never);

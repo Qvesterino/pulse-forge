@@ -21,6 +21,7 @@
  * roles/preserve), so the project schema is untouched.
  */
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../ai/types";
+import { drumTrackForTarget, instrumentTrackForRole } from "../ai/role-targets";
 import { isMusicalKey, type ProjectDocument } from "../project-model/types";
 import type { ProducerSessionState } from "./producer-session";
 import type { ParsedIntent, ParsedIntentConflictKind } from "./text-parser";
@@ -90,6 +91,50 @@ const ROLE_PROHIBITION_LABEL: Readonly<Record<IntentRole, string>> = {
 };
 
 const ALL_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
+const MELODIC_TRACK_ROLE: Readonly<Partial<Record<IntentRole, "bass" | "chord" | "lead">>> = {
+  bass: "bass",
+  chords: "chord",
+  lead: "lead",
+};
+
+function targetInstrumentTrackIds(value: unknown): readonly string[] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const ids = (value as { instrumentTrackIds?: unknown }).instrumentTrackIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : undefined;
+}
+
+function targetDrumTrackId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const id = (value as { drumTrackId?: unknown }).drumTrackId;
+  return typeof id === "string" ? id : undefined;
+}
+
+function preservationEvidence(
+  role: IntentRole,
+  project: ProjectDocument | null,
+  sourcePatternId: string | null,
+  instrumentTrackIds: readonly string[] | undefined,
+  drumTrackId: string | undefined,
+): string | null {
+  if (!project) return null;
+  const source = project.patterns.find((pattern) => pattern.id === sourcePatternId);
+  if (!source) return "zdrojový pattern chýba";
+
+  if (role === "drums") {
+    const track = drumTrackForTarget(project, drumTrackId);
+    if (!track) return "drum track chýba";
+    const hasContent = track.pads.some((pad) => source.rows[pad.id]?.some((velocity) => velocity > 0));
+    return hasContent ? `track „${track.name}“, aktívny pattern` : `track „${track.name}“, aktívny pattern bez hitov`;
+  }
+
+  const melodicRole = MELODIC_TRACK_ROLE[role];
+  if (!melodicRole) return null;
+  const track = instrumentTrackForRole(project, melodicRole, instrumentTrackIds);
+  if (!track) return "instrument track chýba";
+  return source.notes[track.id]?.length
+    ? `track „${track.name}“, aktívny pattern`
+    : `track „${track.name}“, aktívny pattern bez nôt`;
+}
 
 export interface BriefContractContext {
   project?: ProjectDocument | null;
@@ -124,6 +169,11 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
   const input = { ...(parsed?.input ?? {}), ...corrections };
   const prohibitedRoles = parsed?.prohibitedRoles ?? [];
   const session = context.session ?? null;
+  const project = context.project ?? null;
+  const sourcePatternId =
+    typeof input.sourcePatternId === "string" ? input.sourcePatternId : (project?.activePatternId ?? null);
+  const instrumentTrackIds = targetInstrumentTrackIds(input.targetTracks);
+  const drumTrackId = targetDrumTrackId(input.targetTracks);
   const provenance = (
     fields: readonly (keyof IntentInput)[],
     fallback: Pick<BriefStatement, "origin" | "confidence">,
@@ -319,21 +369,14 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
   }
 
   for (const role of preserved) {
-    const project = context.project ?? null;
-    const hasTracks = project
-      ? role === "drums"
-        ? project.tracks.some((track) => track.kind === "drum")
-        : project.tracks.some((track) => track.kind === "instrument")
-      : true;
+    const evidence = preservationEvidence(role, project, sourcePatternId, instrumentTrackIds, drumTrackId);
     statements.push({
       id: `preserve-${role}`,
       section: "preserve",
-      label: hasTracks
-        ? `ponechám existujúce: ${ROLE_LABEL_ACC[role]}`
-        : `ponechám existujúce: ${ROLE_LABEL_ACC[role]} (track v projekte chýba)`,
+      label: `ponechám existujúce: ${ROLE_LABEL_ACC[role]}${evidence ? ` · ${evidence}` : ""}`,
       ...provenance(["preserve"], {
         origin: "prompt",
-        confidence: hasTracks ? "parsed" : "inferred",
+        confidence: evidence?.includes("chýba") ? "inferred" : "parsed",
       }),
       patch: null,
       role,

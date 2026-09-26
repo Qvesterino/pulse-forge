@@ -261,11 +261,24 @@ describe("contract compilation", () => {
     expect(byId(contract.statements, "roles")?.label).not.toContain("basu");
   });
 
-  it("preserve statement flags a missing project track honestly", () => {
+  it("shows which active-pattern track a protected melodic role resolves to", () => {
     const doc = createProjectFromTemplate("house");
     const parsed = parseIntentText("nechaj akordy");
     const withProject = compileBriefContract(parsed, { project: doc });
-    expect(byId(withProject.statements, "preserve-chords")?.confidence).toBe("parsed");
+    expect(byId(withProject.statements, "preserve-chords")).toMatchObject({
+      confidence: "parsed",
+      label: expect.stringContaining("track „Chords“, aktívny pattern"),
+    });
+  });
+
+  it("does not claim an absent melodic source track can be preserved", () => {
+    const doc = createProjectFromTemplate("empty");
+    const parsed = parseIntentText("nechaj akordy");
+    const withProject = compileBriefContract(parsed, { project: doc });
+    expect(byId(withProject.statements, "preserve-chords")).toMatchObject({
+      confidence: "inferred",
+      label: expect.stringContaining("instrument track chýba"),
+    });
   });
 
   it("compilation is deterministic", () => {

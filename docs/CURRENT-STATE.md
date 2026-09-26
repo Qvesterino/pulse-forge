@@ -1,7 +1,7 @@
 # Current State — single source of truth
 
 **Last verified:** 2026-09-26
-**Verified by:** direct count against `src/effects/registry.ts`, `src/instruments/registry.ts`, `docs/adr/` and `tests/`.
+**Verified by:** direct count against `src/effects/registry.ts`, `src/instruments/registry.ts`, `src/presets/factory.ts`, `src/sample-library/`, `docs/adr/`, `tests/` and the `public/models/*.manifest.json` reports.
 
 This document is the **single source of truth** for the headline numbers about KYX / Pulse Forge. Older documents in this repo (`RELEASE_ROADMAP.md`, `DSP-ROADMAP.md`, `EDIT-ROADMAP.md`, `INSTRUMENT-ROADMAP.md`, `SCENE-MODE-ROADMAP.md`, `INTENT_ENGINE.md`, `KYX_CURRENT_STATE.md`, `MAINTENANCE_AUDIT_PROGRESS.md`, `PERFORMANCE.md`) may carry their own point-in-time numbers; when those disagree with the figures below, **this document wins** for the question "how many / what ships today?".
 
@@ -13,7 +13,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 
 | What                                   |   Count | Source of truth                                                                                                               |
 | -------------------------------------- | ------: | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Instruments** (melodic track kind)   |  **15** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                        |
+| **Instruments** (melodic track kind)   |  **16** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                        |
 | **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                       |
 | └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                      |
 | └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                           |
@@ -21,11 +21,11 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                        |
 | **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                          |
 | └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only) |
-| **Factory presets**                    | **411** | `src/presets/factory.ts`                                                                                                      |
-| └─ instrument presets                  |     405 | `FACTORY_PRESETS`                                                                                                             |
+| **Factory presets**                    | **425** | `src/presets/factory.ts`                                                                                                      |
+| └─ instrument presets                  |     419 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
 | **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **532** | `tests/` files matching `*.test.ts` (427) and `*.test.tsx` (105)                                                              |
+| **Vitest spec files**                  | **554** | `tests/` files matching `*.test.ts` (449) and `*.test.tsx` (105), excluding `tests/e2e/`                                      |
 
 ## Flagship plugin implementations
 
@@ -41,16 +41,18 @@ All five flagship suites use AudioWorklet DSP. PRISM, VLYX and VØID include sep
 
 ## AI models shipped in the browser
 
-| Model                      |   Size | Feature version                     | Role                                                              |
-| -------------------------- | -----: | ----------------------------------- | ----------------------------------------------------------------- |
-| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)         | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)      |
-| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)   | drum prior fallback branch (one-hot style×role×position)          |
-| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)   | drum prior intermediate (16-dim semantic conditioning)            |
-| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)   | drum prior **default** branch (hybrid, valAUC 0.920)              |
-| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features) | melodic next-note prior, **preferred** (valDegreeAcc 0.679)       |
-| `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features) | melodic embedding variant, fallback only (regression on 190 rows) |
+| Model                      |   Size | Feature version                     | Role                                                                              |
+| -------------------------- | -----: | ----------------------------------- | --------------------------------------------------------------------------------- |
+| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)         | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)                      |
+| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)   | drum prior fallback branch (one-hot style×role×position)                          |
+| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)   | drum prior intermediate (16-dim semantic conditioning; ds.v2, valAUC 0.845)       |
+| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)   | drum prior **default** branch (hybrid; ds.v2, valAUC 0.905)                       |
+| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features) | melodic next-note prior, **preferred** (valDegreeAcc 0.679)                       |
+| `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features) | melodic embedding variant, fallback (ds.v2, valDegreeAcc 0.483; v1 still sharper) |
 
 All six are loaded lazily in dedicated Web Workers with bounded timeouts + circuit breaker + deterministic heuristic fallback (`src/ai/ranking/ranker-client.ts`, `src/ai/symbolic/prior-client.ts`). Inference never runs on the audio thread. Two further models are lazy-fetched on demand (not in git): multilingual MiniLM q8 ~118 MB (`npm run semantic:fetch` → `public/models/semantic/`) and AST AudioSet q8 ~86.6 MB (`npm run audio:fetch` → `public/models/audio/`); both degrade to keyword/heuristic paths when absent. The retrained `hybrid v3` symbolic prior (label smoothing + variant embeddings, logit saturation fix) is the active generation source behind the candidate bank; see `INTENT_ENGINE.md` for the full conditioning chain (semantic embedding, user style vector, SUNO MODE button).
+
+**DnB retrain (2026-09-26)** — the DnB vocabulary wave extended the drum dataset from `symbolic-prior-ds.v1` (87 552 samples / 33 grooves) to **`symbolic-prior-ds.v2` (95 232 samples / 64 grooves)** by training all seven `dnb.*` grooves through the semantic pack (`style-embeddings.json` gained the dnb centroids + variants; the frozen one-hot `PRIOR_STYLE_VOCAB` is untouched). All three embedding-conditioned artifacts were retrained: **v3 valAUC 0.9203 → 0.9047** overall — but on the _identical old split_ (ds.v1 rows reproduced byte-for-byte) the new model scores **0.9247 vs 0.9163**, i.e. the drop is dilution by the hard new dnb groups, not a regression; per-group, `dnb.roller` rose **0.657 → 0.849** and old groups moved ≤ ±2 %. v2 rose **0.8805 → 0.8883** (old split), melodic-v2 rose **0.429 → 0.483** (239 rows / 33 groups, now training DnB bass/chord/lead references added to `MELODIC_BY_GENRE`). Runtime routes `dnb.*` styles past v3's one-hot gate straight to the v2 semantic branch. Full gate: `validate-symbolic-prior v2/v3`, `validate-symbolic-melodic v2`, `v3 hybrid gate 3/3 PASS`, `smoke-symbolic-prior 10/10`.
 
 ## Platform reach
 
@@ -100,13 +102,17 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Embedding-conditioned prior v2** — Phases D–F of the conditioning chain. _(feat `c7df20b`)_
 - **Hybrid v3 prior (active)** — retrained with label smoothing + variant embeddings, logit-saturation fix; activation commit flips the runtime to the new model. _(feat `64e2b61`, `8bd904c`)_
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
-- **World roster + genre depth** — 321 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
+- **World roster + genre depth** — 360 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
 - **Club depth wave** — jersey (uniiqu3 / tameil / sliink / 2rare + jersey-club entry), sexy drill (cash cobain + chow lee on drill.bounce), NY/UK/Chicago drill corners (fivio / sheff g + sleepy / headie / digga / 808melo / axl / ghosty / herbo / m1) and phonk depth (kaito shoma / pharmacist drift; xavier wulf / night lovell / bones memphis-lofi) — all styles resolve to real groove ids.
 - **Club depth wave 2** — jersey second line (mcvertt / jayhood / nadus / r3ll / unicorn151), bronx drill (b-lovee / kay flock), UK forefront (unknown t) and drift anthems (interworld metamorphosis / dxrk rave).
 - **Producer wave** — trap producers (wheezy / southside / tm88 / murda beatz / mike will made-it / hit-boy / london on da track / wondagurl / sonny digital), memphis OG producers (dj squeeky / dj spanish fly / kingpin skinny pimp / playa fly / tommy wright iii), UKG revival (conducta / interplanetary criminal / sammy virji / piri) and UK drill second line (ofb / loski / harlem spartans / digdat) — BPM anchors from SongBPM (Drip Too Hard 113, Black Beatles 146, HUMBLE. 150, Life Is Good 142).
+- **Producer wave 2** — plugg producers (mexikodro / cashcache / xangang / senseiatl / forza), opium room (f1lthy / outtatown / lil 88 / ojivolta / richie souf) + drain-gang production (whitearmor / yung gud), amapiano & afro-house producer school (kabza de small / maphorisa / mr jazziq / uncle waffles / major league djz / focalistic / kelvin momo / shimza / black motion / da capo / eno napa / kususa / caiiro / themba), phonk TikTok wave 2 (hensonn / g3ox_em / cypariss / kslv / sxmpra) + rare-phonk school (mythic / backwhen / yung vamp).
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
 - **Pop wave** — pop routing (dance-pop/synth-pop/pop-rap/hyperpop → house/trap), 12 pop artist presets, 4 pop grooves (house.pop/synthpop, trap.pop, ambient.pop), POP_FORM (verse/pre-chorus/chorus, hook before ~45 s), pop mix (bright + vocal glue + low-end control) and −9 LUFS pop loudness target.
 - **Legends + southern specialties + now wave** — 90s NY (2pac/biggie/wu-tang/jay-z/mobb deep), Dirty South founders (outkast/ugk/scarface/t.i./jeezy/gucci/mannie→bounce), 2000s mainstream (eminem/50/wayne/ross/dmx/busta/missy-timbaland), Bay/LA g-era (too $hort/quik/kurupt/yg-mustard/nipsey/blueface), three 6 + griselda on existing grooves; 5 new grooves (trap.bounce/miamibass/snap/countrytune, house.afroswing) with parser routing + artist lanes; female rap (nicki/cardi/latto/glorilla/sexyy/doechii/simz), latin trap (bunny/myke/duki/pnl), chicago/detroit/LA now, soundcloud era, death grips→dnb.amen; signature sounds (plugg bell, eski lead, syrup FX chain, electro snare, triggerman perc set); artist-name masking in text-parser (a name never doubles as a descriptor unless the name IS the descriptor, e.g. neurofunk).
+- **DnB wave** — 29 artist presets across the whole genre tree (liquid: netsky / hybrid minds / high contrast / ltj bukem / dj marky; jump-up: turno / kanine / upgrade / a.m.c / serum; dancefloor: andy c / dimension / culture shock / metrik / grafix; neuro: noisia / black sun empire / phace / misanthrop / ed rush & optical / dom & roland; rollers: break / skeptical / alix perez / dilinja; jungle/ragga: congo natty / shy fx / general levy; two-step: roni size) with researched 160–178 BPM pockets; sub-genre parser sweep (jump up / drumfunk / techstep / darkstep / ragga jungle / halftime / minimal dnb / deep drum and bass — the last fixed to stop falling into house via the bare "deep" stem); context-gated `two step dnb` style so plain "two step" stays UK garage; guarded aliases (`serum` / `break` / `upgrade` only qualified — never hijack synth or arrangement talk); semantic corpus + description vocabulary (12 EN/SK runtime entries, 8 style synonym sets, dnb tempo words). Every style resolves to a real `dnb.*` groove id (`twostep` / `liquid` / `jumpup` / `roller` / `amen` / `dancefloor` / `neuro`).
+- **Drum & Bass starter template** (kind #13 in `TemplateId`) — 174 BPM two-step roller with a Reese sub line and open-hat answers, registered in `TEMPLATES`, plus landing-page prompt routing (`liquid dnb 174` / `jump up jungle` forge from the dnb template).
+- **DnB mix default** — `GENRE_TONE_DEFAULT.dnb = "dark"` (+2 dB master tilt) with mood/explicit-tone overrides still winning (liquid chill stays warm).
 
 ### Arrangement
 

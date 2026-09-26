@@ -20,7 +20,8 @@
  * `evaluateBriefCompliance` is the truthful UI mirror: per-fact ✓/✗ for
  * what a pattern can prove, `null` ("·") for what only the plan enforces.
  */
-import type { Pattern } from "../project-model/types";
+import { drumTrackForTarget, instrumentTrackForRole } from "../ai/role-targets";
+import type { NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import type { GenerationPlan, GenerationResult, IntentRole } from "./types";
 
 export interface BriefViolation {
@@ -89,7 +90,86 @@ const stepCountLabel = (steps: number): string => `${steps / 16} taktov`;
  * own plan. Never a quality judgement — only the hard brief facts, with
  * `null` where the pattern cannot prove anything.
  */
-export function evaluateBriefCompliance(result: GenerationResult): readonly BriefComplianceItem[] {
+function sameArray(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function metadataKey(value: Record<string, unknown> | undefined, stepCount: number): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(value ?? {})
+        .filter(([step]) => Number(step) < stepCount)
+        .sort(([a], [b]) => Number(a) - Number(b)),
+    ),
+  );
+}
+
+function noteKey(note: NoteEvent): string {
+  return JSON.stringify([
+    note.pitch,
+    note.start,
+    note.duration,
+    note.velocity,
+    note.slide ?? false,
+    note.locks ?? null,
+  ]);
+}
+
+function sourceNotesRemain(source: readonly NoteEvent[], output: readonly NoteEvent[]): boolean {
+  if (source.length !== output.length) return false;
+  const counts = new Map<string, number>();
+  for (const note of source) {
+    const key = noteKey(note);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const note of output) {
+    const key = noteKey(note);
+    const count = counts.get(key) ?? 0;
+    if (count === 0) return false;
+    counts.set(key, count - 1);
+  }
+  return [...counts.values()].every((count) => count === 0);
+}
+
+function preservedContentSatisfied(result: GenerationResult, doc: ProjectDocument): boolean {
+  const pattern = result.proposal?.pattern;
+  if (!pattern) return false;
+  const sourceId = result.plan.preserveSourcePatternId ?? result.plan.intent.sourcePatternId;
+  const source = doc.patterns.find((candidate) => candidate.id === sourceId);
+  if (!source) return false;
+
+  for (const role of result.plan.intent.preserve ?? []) {
+    if (role === "drums") {
+      const drumTrack = drumTrackForTarget(doc, result.plan.options.drumTrackId);
+      if (!drumTrack) return false;
+      for (const pad of drumTrack.pads) {
+        const sourceRow = source.rows[pad.id] ?? [];
+        if (sourceRow.slice(pattern.stepCount).some((velocity) => velocity > 0)) return false;
+        const expected = Array.from({ length: pattern.stepCount }, (_, index) => sourceRow[index] ?? 0);
+        const actual = Array.from({ length: pattern.stepCount }, (_, index) => pattern.rows[pad.id]?.[index] ?? 0);
+        if (!sameArray(expected, actual)) return false;
+        if (
+          metadataKey(source.stepMeta?.[pad.id], pattern.stepCount) !==
+          metadataKey(pattern.stepMeta?.[pad.id], pattern.stepCount)
+        )
+          return false;
+      }
+      continue;
+    }
+
+    const melodicRole = role === "chords" ? "chord" : role;
+    if (melodicRole !== "bass" && melodicRole !== "chord" && melodicRole !== "lead") continue;
+    const track = instrumentTrackForRole(doc, melodicRole, result.plan.options.instrumentTrackIds);
+    if (!track) return false;
+    if (!sourceNotesRemain(source.notes[track.id] ?? [], pattern.notes[track.id] ?? [])) return false;
+  }
+  return true;
+}
+
+export function evaluateBriefCompliance(
+  result: GenerationResult,
+  sourceProject?: ProjectDocument,
+): readonly BriefComplianceItem[] {
   const intent = result.plan.intent;
   const pattern = result.proposal?.pattern ?? null;
   const items: BriefComplianceItem[] = [];
@@ -140,11 +220,17 @@ export function evaluateBriefCompliance(result: GenerationResult): readonly Brie
   }
 
   if (intent.preserve && intent.preserve.length > 0) {
+    const preserved = sourceProject ? preservedContentSatisfied(result, sourceProject) : null;
     items.push({
       id: "preserve",
       label: `ponechané: ${intent.preserve.join(", ")}`,
-      satisfied: pattern ? true : null,
-      detail: "vynútené plánom",
+      satisfied: pattern ? preserved : null,
+      detail:
+        preserved === true
+          ? "UUID-free obsah zdrojových rolí je v návrhu zachovaný"
+          : preserved === false
+            ? "zdrojový obsah alebo track chýba, prípadne sa líši od návrhu"
+            : "zdrojový projekt nie je dostupný na overenie",
     });
   }
 

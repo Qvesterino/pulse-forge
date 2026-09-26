@@ -2349,8 +2349,7 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
 /** Derive one variation: linear-resample (pitch + length together) and scale. */
 function deriveVariation(src: AudioBuffer, rate: number, gain: number): AudioBuffer {
   const length = Math.max(1, Math.round(src.length / rate));
-  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length, sampleRate: src.sampleRate });
-  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length, sampleRate: src.sampleRate });  for (let ch = 0; ch < src.numberOfChannels; ch++) {
     const s = src.getChannelData(ch);
     const d = out.getChannelData(ch);
     for (let i = 0; i < length; i++) {
@@ -2366,6 +2365,26 @@ function deriveVariation(src: AudioBuffer, rate: number, gain: number): AudioBuf
 }
 
 const FACTORY_RENDER_PARALLEL = 4;
+
+/**
+ * (Re)derive the round-robin variants for one base id from whatever buffer the
+ * bank CURRENTLY holds.
+ *
+ * Called at bank build and again whenever the curated layer overrides a base.
+ * Without the second call the base would be the mastered curated WAV while its
+ * variants were derived from the synth fallback — two different drums
+ * alternating, not one drum with micro-variation. Idempotent and a no-op for
+ * ids that have no variation map or whose base is absent.
+ */
+export function applyRoundRobinVariants(bank: SampleBank, baseId: string): void {
+  const variations = RR_VARIATIONS[baseId];
+  if (!variations) return;
+  const base = bank.get(baseId);
+  if (!base) return;
+  variations.forEach(({ rate, gain }, i) => {
+    bank.add(`${baseId}.rr${i + 2}`, deriveVariation(base, rate, gain));
+  });
+}
 
 export async function generateFactoryBank(): Promise<SampleBank> {
   const bank = new SampleBank();
@@ -2385,12 +2404,10 @@ export async function generateFactoryBank(): Promise<SampleBank> {
     }
   };
   await Promise.all(Array.from({ length: Math.min(FACTORY_RENDER_PARALLEL, assets.length) }, worker));
-  for (const [baseId, variations] of Object.entries(RR_VARIATIONS)) {
+  for (const baseId of Object.keys(RR_VARIATIONS)) {
     const base = bank.get(baseId);
     if (!base) throw new Error(`No base buffer for RR variation of ${baseId}`);
-    variations.forEach(({ rate, gain }, i) => {
-      bank.add(`${baseId}.rr${i + 2}`, deriveVariation(base, rate, gain));
-    });
+    applyRoundRobinVariants(bank, baseId);
   }
   return bank;
 }

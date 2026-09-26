@@ -443,11 +443,22 @@ describe("gallery flywheel: plays + remix chain", () => {
 
 describe("gallery Remix-DNA lineage", () => {
   it("extracts doc lineage into items and annotates children counts", async () => {
-    const { mutateBeat } = await import("../src/gallery/lineage");
     const { base } = await boot();
     const parent = createProjectFromTemplate("house");
-    const child = mutateBeat(parent, { prompt: "dark trap 140" }).doc;
-    const grandchild = mutateBeat(child, { sibling: 1 }).doc;
+    // Keep this integration test focused on the server's share-code metadata
+    // reader. mutateBeat's musical variation and lineage construction have
+    // their own unit coverage in tests/lineage.test.ts; running it here over
+    // every template pattern needlessly pushes this HTTP test past its budget.
+    const child = {
+      ...parent,
+      id: "gallery-lineage-child",
+      lineage: { parentId: parent.id, rootId: parent.id, depth: 1, prompt: "dark trap 140", seed: "test-seed" },
+    };
+    const grandchild = {
+      ...child,
+      id: "gallery-lineage-grandchild",
+      lineage: { parentId: child.id, rootId: parent.id, depth: 2, prompt: "dark trap 140", seed: "test-seed" },
+    };
 
     const publish = (title: string, doc: unknown) =>
       fetch(`${base}/api/gallery`, {

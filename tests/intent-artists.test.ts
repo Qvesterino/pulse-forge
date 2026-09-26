@@ -1330,3 +1330,81 @@ describe("pop wave 2 — dance-pop / pop-rap / retro revival / ballads", () => {
     expect(parseIntentText("sam smith type beat").input.style).toBe("pop");
   });
 });
+
+describe("plugg / opium producers + amapiano / afro-house + phonk TikTok wave 2", () => {
+  it("plugg producers: mexikodro / cashcache / xangang / senseiatl / forza", () => {
+    const mex = parseIntentText("mexikodro type beat");
+    expect(mex.input.genre).toBe("trap");
+    expect(mex.input.style).toBe("plugg");
+    expect(mex.input.bpmRange).toEqual([140, 160]);
+    expect(parseIntentText("cashcache type beat").input.style).toBe("plugg");
+    expect(parseIntentText("xangang type beat").input.style).toBe("plugg");
+    expect(parseIntentText("senseiatl type beat").input.style).toBe("plugg");
+    expect(parseIntentText("forza type beat").input.style).toBe("plugg");
+  });
+
+  it("opium room: f1lthy / outtatown / lil 88 / ojivolta / richie souf", () => {
+    const f1 = parseIntentText("f1lthy type beat");
+    expect(f1.input.genre).toBe("trap");
+    expect(f1.input.style).toBe("bouncy");
+    expect(f1.input.mood).toBe("aggressive");
+    expect(f1.input.bpmRange).toEqual([150, 165]);
+    expect(parseIntentText("outtatown type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("lil 88 type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("ojivolta type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("richie souf type beat").input.style).toBe("bouncy");
+  });
+
+  it("drain gang production: whitearmor / yung gud ethereal plugg", () => {
+    const armor = parseIntentText("whitearmor type beat");
+    expect(armor.input.style).toBe("plugg");
+    expect(armor.input.mood).toBe("chill");
+    expect(parseIntentText("yung gud type beat").input.style).toBe("plugg");
+    expect(parseIntentText("drain gang type beat").input.mood).toBe("chill");
+  });
+
+  it("amapiano producers: kabza / maphorisa / jazziq / waffles / major league / focalistic", () => {
+    const kabza = parseIntentText("kabza de small type beat");
+    expect(kabza.input.genre).toBe("house");
+    expect(kabza.input.style).toBe("afro");
+    expect(kabza.input.bpmRange).toEqual([110, 116]);
+    expect(parseIntentText("dj maphorisa type beat").input.style).toBe("afro");
+    expect(parseIntentText("mr jazziq type beat").input.style).toBe("afro");
+    expect(parseIntentText("uncle waffles type beat").input.style).toBe("afro");
+    expect(parseIntentText("major league djz type beat").input.style).toBe("afro");
+    expect(parseIntentText("focalistic type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("kelvin momo type beat").input.mood).toBe("chill");
+  });
+
+  it("afro-house producer school: shimza / black motion / da capo / eno napa / themba", () => {
+    const shimza = parseIntentText("shimza type beat");
+    expect(shimza.input.genre).toBe("house");
+    expect(shimza.input.style).toBe("afro");
+    expect(shimza.input.bpmRange).toEqual([118, 126]);
+    expect(parseIntentText("black motion type beat").input.style).toBe("afro");
+    expect(parseIntentText("da capo type beat").input.style).toBe("afro");
+    expect(parseIntentText("eno napa type beat").input.style).toBe("afro");
+    expect(parseIntentText("themba type beat").input.mood).toBe("energetic");
+  });
+
+  it("phonk TikTok wave 2: hensonn / g3ox_em / sxmpra drift; rare phonk school", () => {
+    const hensonn = parseIntentText("hensonn type beat");
+    expect(hensonn.input.genre).toBe("phonk");
+    expect(hensonn.input.style).toBe("drift");
+    expect(hensonn.input.bpmRange).toEqual([150, 170]);
+    expect(parseIntentText("g3ox_em type beat").input.style).toBe("drift");
+    expect(parseIntentText("cypariss type beat").input.style).toBe("drift");
+    expect(parseIntentText("sxmpra type beat").input.mood).toBe("aggressive");
+    const rare = parseIntentText("mythic type beat");
+    expect(rare.input.style).toBe("memphis");
+    expect(rare.input.mood).toBe("dark");
+    expect(parseIntentText("backwhen type beat").input.style).toBe("memphis");
+    expect(parseIntentText("yung vamp type beat").input.style).toBe("memphis");
+  });
+
+  it("wave-4 styles resolve to real groove ids", () => {
+    for (const id of ["trap.plugg", "trap.bouncy", "house.afro", "phonk.drift", "phonk.memphis"]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});

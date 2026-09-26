@@ -1,0 +1,12 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+tests/artist-mix.test.ts(74,30): error TS6133: 'getArtistProfile' is declared but its value is never read.
+tests/drive-oversampling.test.ts(41,28): error TS7016: Could not find a declaration file for module '../src/audio-worklets/freqshifter-processor.js'. 'D:/pulse-forge/src/audio-worklets/freqshifter-processor.js' implicitly has an 'any' type.
+tests/freq-shifter.test.ts(110,29): error TS7016: Could not find a declaration file for module '../src/audio-worklets/freqshifter-processor.js'. 'D:/pulse-forge/src/audio-worklets/freqshifter-processor.js' implicitly has an 'any' type.
+tests/fx-expansion.test.ts(101,31): error TS7016: Could not find a declaration file for module '../src/audio-worklets/freqshifter-processor.js'. 'D:/pulse-forge/src/audio-worklets/freqshifter-processor.js' implicitly has an 'any' type.
+tests/latency-probe-shape.test.ts(80,7): error TS6133: 'MODULE_STATE' is declared but its value is never read.
+tests/snapshot-repository-shape.test.ts(50,10): error TS6133: 'findAny' is declared but its value is never read.
+tests/snapshot-repository-shape.test.ts(130,7): error TS6133: 'ALLOWED_PURE_TOKENS' is declared but its value is never read.
+tests/user-sample-repository-shape.test.ts(110,7): error TS6133: 'MODULE_STATE' is declared but its value is never read.

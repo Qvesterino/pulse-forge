@@ -28,6 +28,8 @@ export interface SchedulerDeps {
     when: number,
     velocity: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+    /** Resolved velocity-layer / round-robin sample for this hit (see groove.ts). */
+    sampleId?: string | null,
   ): void;
   /** Trigger a note; optional slide origin (pitch + absolute when-tick) for FL portamento. */
   noteOn(
@@ -1061,7 +1063,7 @@ export class Scheduler {
     for (const hit of drumHitsInWindow(doc, pattern, base, windowStart, windowEnd)) {
       const when = timeAt(hit.tick) + scheduleOffsetSec;
       if (!audible(when)) continue;
-      this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
+      this.deps.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks, hit.sampleId);
       // Passive capture ring (Ableton) — always rolling, cheap ring push
       this.deps.recordCapturedEvent?.({
         trackId: hit.trackId,

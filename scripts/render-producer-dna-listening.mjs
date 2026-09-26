@@ -266,17 +266,22 @@ if (scorePath) {
   console.log("Generate a blind SAFE vs PERSONAL groove pack, a SAFE vs EXPERIMENTAL hook pack, or score verdicts.");
   console.log("npm run listening:producer-dna -- --genre=trap --seed=my-seed");
   console.log("npm run listening:producer-dna:hook -- --genre=trap --seed=my-seed --pairs=4");
+  console.log("Add --ready-timeout-ms=30000 to shorten the browser harness startup diagnostic window.");
   console.log("npm run listening:producer-dna -- --score listening/producer-dna/<pack>/verdicts.json");
 } else {
   const mode = option("--mode", "groove").trim().toLowerCase();
   const genre = option("--genre", "trap").trim().toLowerCase();
   const seed = option("--seed", mode === "hook" ? "producer-dna-hook-v1" : "producer-dna-groove-v1").trim();
   const pairCount = Number(option("--pairs", String(REPLICATES_PER_DIRECTION * 2)));
+  const readyTimeoutMs = Number(option("--ready-timeout-ms", "120000"));
   if (mode !== "groove" && mode !== "hook") throw new Error(`Unsupported listening mode: ${mode}`);
   if (!VALID_GENRES.has(genre)) throw new Error(`Unsupported genre: ${genre}`);
   if (!seed || seed.length > 100) throw new Error("Seed must contain 1–100 characters");
   if (!Number.isInteger(pairCount) || pairCount < 1 || pairCount > 8) {
     throw new Error("Pair count must be an integer from 1 to 8");
+  }
+  if (!Number.isInteger(readyTimeoutMs) || readyTimeoutMs < 5000 || readyTimeoutMs > 300000) {
+    throw new Error("Harness ready timeout must be an integer from 5000 to 300000 milliseconds");
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -561,6 +566,13 @@ window.__producerDnaReady = true;
   const server = await createServer({
     root: ROOT,
     logLevel: "error",
+    optimizeDeps: {
+      // The repository contains many listening HTML artifacts; crawl only
+      // this generated browser harness for the one-off offline render.
+      entries: [`listening/producer-dna/${path.basename(packDirectory)}/harness.html`],
+      noDiscovery: true,
+      holdUntilCrawlEnd: false,
+    },
     server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false },
   });
   await server.listen();
@@ -569,12 +581,51 @@ window.__producerDnaReady = true;
     browser = await chromium.launch();
     const page = await browser.newPage();
     const pageErrors = [];
+    const browserDiagnostics = [];
+    const requestsInFlight = new Set();
     page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") browserDiagnostics.push(`console: ${message.text()}`);
+    });
+    page.on("requestfailed", (request) => {
+      requestsInFlight.delete(request);
+      browserDiagnostics.push(`request failed: ${request.url()} — ${request.failure()?.errorText ?? "unknown error"}`);
+    });
+    page.on("request", (request) => requestsInFlight.add(request));
+    page.on("requestfinished", (request) => requestsInFlight.delete(request));
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        browserDiagnostics.push(`HTTP ${response.status()}: ${response.url()}`);
+      }
+    });
     await page.goto(`http://127.0.0.1:${PORT}/listening/producer-dna/${path.basename(packDirectory)}/harness.html`, {
       waitUntil: "commit",
       timeout: 120000,
     });
-    await page.waitForFunction(() => window.__producerDnaReady === true, null, { timeout: 120000 });
+    try {
+      await page.waitForFunction(() => window.__producerDnaReady === true, null, { timeout: readyTimeoutMs });
+    } catch (error) {
+      const documentState = await page
+        .evaluate(() => ({
+          readyState: document.readyState,
+          title: document.title,
+          bodyText: document.body?.innerText?.slice(0, 400) ?? "",
+          moduleScripts: Array.from(document.scripts)
+            .map((script) => script.src)
+            .filter(Boolean),
+        }))
+        .catch(() => null);
+      const details = [
+        ...pageErrors.map((message) => `page error: ${message}`),
+        ...browserDiagnostics,
+        `pending requests: ${[...requestsInFlight].map((request) => request.url()).join(", ") || "none"}`,
+        `document: ${JSON.stringify(documentState)}`,
+      ];
+      throw new Error(
+        `Producer DNA harness did not initialize within ${readyTimeoutMs} ms.${details.length ? `\n${details.join("\n")}` : ""}`,
+        { cause: error },
+      );
+    }
     const rendered = await page.evaluate((input) => window.__renderProducerDnaPack(input), {
       genre,
       seed,

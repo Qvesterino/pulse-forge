@@ -275,8 +275,8 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
   return true;
 }
 
-bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds, UINT32 bufferFrames,
-                      UINT32 sampleRate) {
+bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMODE mode, UINT32 seconds,
+                      UINT32 bufferFrames, UINT32 sampleRate) {
   ComPtr<IAudioCaptureClient> capture;
   HRESULT hr = client->GetService(IID_PPV_ARGS(capture.GetAddressOf()));
   if (FAILED(hr)) {
@@ -302,14 +302,74 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds,
   UINT64 firstDevicePosition = 0;
   UINT64 lastDevicePosition = 0;
   UINT64 lastQpcPosition = 0;
+  UINT64 expectedNextDevicePosition = 0;
   UINT64 packetCount = 0;
   UINT64 discontinuities = 0;
+  UINT64 firstPacketDiscontinuities = 0;
+  UINT64 laterDiscontinuities = 0;
   UINT64 silentPackets = 0;
+  UINT64 timestampErrors = 0;
+  UINT64 devicePositionGaps = 0;
+  UINT64 exclusiveBufferErrors = 0;
+  UINT64 exclusivePacketSizeMismatches = 0;
   UINT64 eventTimeouts = 0;
   bool ok = true;
   const auto started = std::chrono::steady_clock::now();
   const auto deadline = started + std::chrono::seconds(seconds);
   const DWORD waitMs = std::max<DWORD>(100, static_cast<DWORD>(10'000.0 * bufferFrames / sampleRate));
+
+  auto consumePacket = [&]() {
+    UINT32 packetFrames = 0;
+    BYTE* data = nullptr;
+    DWORD flags = 0;
+    UINT64 devicePosition = 0;
+    UINT64 qpcPosition = 0;
+    hr = capture->GetBuffer(&data, &packetFrames, &flags, &devicePosition, &qpcPosition);
+    if (hr == AUDCLNT_E_BUFFER_ERROR && mode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
+      ++exclusiveBufferErrors;
+      return true;
+    }
+    if (FAILED(hr)) {
+      std::wcerr << L"Capture GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                 << std::dec << L")\n";
+      ok = false;
+      return false;
+    }
+    if (mode == AUDCLNT_SHAREMODE_EXCLUSIVE && packetFrames != bufferFrames) {
+      ++exclusivePacketSizeMismatches;
+    }
+
+    // Deliberately inspect metadata only. PCM is never copied, played, or written.
+    const bool isFirstPacket = packetCount == 0;
+    if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
+      ++discontinuities;
+      if (isFirstPacket) {
+        ++firstPacketDiscontinuities;
+      } else {
+        ++laterDiscontinuities;
+      }
+    }
+    if (flags & AUDCLNT_BUFFERFLAGS_SILENT) ++silentPackets;
+    if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ++timestampErrors;
+    if (isFirstPacket) {
+      firstDevicePosition = devicePosition;
+    } else if (devicePosition != expectedNextDevicePosition) {
+      ++devicePositionGaps;
+    }
+    expectedNextDevicePosition = devicePosition + packetFrames;
+    lastDevicePosition = devicePosition;
+    lastQpcPosition = qpcPosition;
+    totalFrames += packetFrames;
+    ++packetCount;
+    hr = capture->ReleaseBuffer(packetFrames);
+    if (FAILED(hr)) {
+      std::wcerr << L"Capture ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                 << std::dec << L")\n";
+      ok = false;
+      return false;
+    }
+    return true;
+  };
 
   while (std::chrono::steady_clock::now() < deadline) {
     const DWORD waitResult = WaitForSingleObject(eventHandle, waitMs);
@@ -328,43 +388,24 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds,
       break;
     }
 
-    UINT32 packetFrames = 0;
-    for (;;) {
-      hr = capture->GetNextPacketSize(&packetFrames);
-      if (FAILED(hr)) {
-        std::wcerr << L"GetNextPacketSize failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
-                   << std::dec << L")\n";
-        ok = false;
-        break;
+    if (mode == AUDCLNT_SHAREMODE_SHARED) {
+      // GetNextPacketSize is supported only for shared-mode capture streams.
+      for (;;) {
+        UINT32 packetFrames = 0;
+        hr = capture->GetNextPacketSize(&packetFrames);
+        if (FAILED(hr)) {
+          std::wcerr << L"GetNextPacketSize failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                     << std::dec << L")\n";
+          ok = false;
+          break;
+        }
+        if (packetFrames == 0) break;
+        if (!consumePacket()) break;
       }
-      if (packetFrames == 0) break;
-
-      BYTE* data = nullptr;
-      DWORD flags = 0;
-      UINT64 devicePosition = 0;
-      UINT64 qpcPosition = 0;
-      hr = capture->GetBuffer(&data, &packetFrames, &flags, &devicePosition, &qpcPosition);
-      if (FAILED(hr)) {
-        std::wcerr << L"Capture GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
-                   << std::dec << L")\n";
-        ok = false;
-        break;
-      }
-      // Deliberately inspect metadata only. PCM is never copied, played, or written.
-      if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) ++discontinuities;
-      if (flags & AUDCLNT_BUFFERFLAGS_SILENT) ++silentPackets;
-      if (packetCount == 0) firstDevicePosition = devicePosition;
-      lastDevicePosition = devicePosition;
-      lastQpcPosition = qpcPosition;
-      totalFrames += packetFrames;
-      ++packetCount;
-      hr = capture->ReleaseBuffer(packetFrames);
-      if (FAILED(hr)) {
-        std::wcerr << L"Capture ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
-                   << std::dec << L")\n";
-        ok = false;
-        break;
-      }
+    } else {
+      // In exclusive event mode, service one whole endpoint buffer per event.
+      // Do not call the shared-mode-only GetNextPacketSize method here.
+      if (!consumePacket()) ok = false;
     }
     if (!ok) break;
   }
@@ -375,8 +416,13 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds,
   const HRESULT latencyHr = client->GetStreamLatency(&streamLatency);
   std::wcout << L"    capture result: elapsed=" << std::fixed << std::setprecision(2) << elapsed
             << L" s, packets=" << packetCount << L", frames=" << totalFrames << L" ("
-            << (sampleRate ? static_cast<double>(totalFrames) / sampleRate : 0.0) << L" s PCM), discontinuities="
-            << discontinuities << L", silent packets=" << silentPackets << L", event timeouts=" << eventTimeouts
+            << (sampleRate ? static_cast<double>(totalFrames) / sampleRate : 0.0)
+            << L" s PCM), discontinuities=" << discontinuities << L" (first packet="
+            << firstPacketDiscontinuities << L", later=" << laterDiscontinuities << L"), silent packets="
+            << silentPackets << L", timestamp errors=" << timestampErrors << L", device-position gaps="
+            << devicePositionGaps << L", exclusive buffer errors=" << exclusiveBufferErrors
+            << L", exclusive packet-size mismatches=" << exclusivePacketSizeMismatches
+            << L", event timeouts=" << eventTimeouts
             << L"\n    device positions: first=" << firstDevicePosition << L", last=" << lastDevicePosition
             << L", last QPC position=" << lastQpcPosition << L"\n";
   if (SUCCEEDED(latencyHr)) {
@@ -388,8 +434,9 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds,
                << L")\n";
     ok = false;
   }
-  if (totalFrames == 0 || discontinuities != 0) ok = false;
-  return ok;
+  return ok && totalFrames > 0 && laterDiscontinuities == 0 && timestampErrors == 0 &&
+         devicePositionGaps == 0 && exclusiveBufferErrors == 0 && exclusivePacketSizeMismatches == 0 &&
+         eventTimeouts == 0;
 }
 
 bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 seconds, UINT32 bufferFrames,
@@ -555,13 +602,17 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
   // preflight. Exclusive mode prefers the Volt's tested PCM16 format.
   WAVEFORMATEX candidateFormat = makeFormat(48'000, 2, 16, WAVE_FORMAT_PCM);
   WAVEFORMATEX* streamFormat = mode == AUDCLNT_SHAREMODE_SHARED ? mixFormat : &candidateFormat;
-  hr = client->IsFormatSupported(mode, streamFormat, nullptr);
+  WAVEFORMATEX* closestMatch = nullptr;
+  hr = client->IsFormatSupported(mode, streamFormat,
+                                 mode == AUDCLNT_SHAREMODE_SHARED ? &closestMatch : nullptr);
   if (hr != S_OK && mode == AUDCLNT_SHAREMODE_EXCLUSIVE) {
     streamFormat = mixFormat;
     hr = client->IsFormatSupported(mode, streamFormat, nullptr);
   }
+  if (closestMatch) CoTaskMemFree(closestMatch);
   if (hr != S_OK) {
-    std::wcerr << L"No exact endpoint format is supported for this stream mode\n";
+    std::wcerr << L"No exact endpoint format is supported for this stream mode (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
     CoTaskMemFree(mixFormat);
     return false;
   }
@@ -586,7 +637,7 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
             << periodMs << L" ms; allocated endpoint buffer=" << bufferFrames << L" frames / "
             << framesToMs(bufferFrames, sampleRate) << L" ms\n";
   const bool ok = flow == eCapture
-                      ? runCaptureStream(client.Get(), event.value, seconds, bufferFrames, sampleRate)
+                      ? runCaptureStream(client.Get(), event.value, mode, seconds, bufferFrames, sampleRate)
                       : runSilentRenderStream(client.Get(), event.value, seconds, bufferFrames, sampleRate);
   CoTaskMemFree(mixFormat);
   return ok;

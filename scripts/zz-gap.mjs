@@ -1,0 +1,71 @@
+import { readFileSync } from "node:fs";
+
+const t = readFileSync("src/intent/artists.ts", "utf8").toLowerCase();
+
+const candidates = {
+  "techno legends": [
+    "jeff mills",
+    "richie hawtin",
+    "plastikman",
+    "dave clarke",
+    "ben sims",
+    "oscar mulero",
+    "dvs1",
+    "dax j",
+    "len faki",
+    "speedy j",
+    "surgeon",
+    "regis",
+    "paula temple",
+    "rebecca black",
+  ],
+  "acid": ["acid" , "dj pierre", "phuture", "hardfloor", "emmanuel top", "luke vibert", "tin man", "donato dozzy"],
+  "detroit": ["jeff mills", "derrick may", "juan atkins", "kevin saunderson", "carl craig", "octave one", "moodymann", "theo parrish", "omar s", "robert hood", "terrence dixon", "ur"],
+  "dub techno": ["basic channel", "maurizio", "rhythm & sound", "deepchord", "deadbeat", "monolake", "yagya", "cv313", "bvdub", "quantec"],
+  "minimal/micro": ["villalobos", "richie hawtin", "robert hood", "zip", "sonja moonear", "zip"],
+  "hard techno now": ["999999999", "i hate models", "nico moreno", "shlomo", "sara landry", "klangkuenstler", "kobosil", "charlotte"],
+  "electro": ["daft punk", "kraftwerk", "afrika bambaataa", "drexciya", "aux 88", "dj stingray", "helena hauff", "client_03", "cybotron"],
+  "ambient/electronic": [
+    "kevin abstract",
+    "brockhampton",
+    "dalek",
+    "clouddead",
+    "rapsody",
+    "gherbo g herbo",
+    "wiz khalifa",
+    "currensy",
+    "flying lotus",
+    "oneohtrix",
+    "tangerine dream",
+    "vangelis",
+    "jean-michel jarre",
+    "klaus schulze",
+    "steve roach",
+    "robert rich",
+    "loscil",
+    "biosphere",
+    "hammock",
+    "sunn o",
+    "grouper",
+    "alva noto",
+    "ryuichi sakamoto",
+    "max richter",
+    "nils frahm",
+    "olafur arnalds",
+    "johann johannsson",
+    "hildur",
+    "ludovico einaudi",
+    "hans zimmer",
+    "clint mansell",
+    "trent reznor",
+    "vangelis",
+  ],
+  "footwork/juke": ["dj rashad", "dj spinn", "traxman", "rp boo", "dj nate", "dj earl", "teklife"],
+  "breaks/uk bass": ["fatboy slim", "prodigy", "chemical brothers", "orbital", "leftfield", "underworld", "fluke", "crystal method"],
+  "garage/2step": ["mj cole", "artful dodger", "craig david", "so solid", "oxide", "wookie", "zed bias", "el-b"],
+};
+
+for (const [group, names] of Object.entries(candidates)) {
+  const missing = names.filter((n) => !t.includes(n));
+  console.log(`${group}: missing ${missing.length}/${names.length} → ${missing.slice(0, 14).join(", ")}`);
+}

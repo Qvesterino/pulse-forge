@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
+import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "../ai/role-targets";
 import { forkRandom } from "../shared/rng";
 import { createGenerationRecipe } from "../ai/evaluation";
 import { resolveEffectiveSeed, resolveGrooveForGeneration, sourcePatternContentHash } from "../ai/generator";
@@ -52,6 +53,11 @@ function generationSeed(intent: IntentSpec, effectiveSeed: string, grooveId: str
 /** Pure, serializable plan shared by preview and apply. */
 export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocument): GenerationPlan {
   const intent = normalizeIntent(input);
+  const preserveSourcePatternId =
+    intent.preserve && intent.preserve.length > 0
+      ? (intent.sourcePatternId ??
+        (doc.patterns.some((pattern) => pattern.id === doc.activePatternId) ? doc.activePatternId : null))
+      : undefined;
   const options = generateOptionsFromIntent(intent);
   const effectiveSeed = resolveEffectiveSeed(doc, options);
   const groove = resolveGrooveForGeneration(doc, options);
@@ -66,20 +72,30 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     (intent.symbolicCandidates ?? 0) > 0
       ? Array.from({ length: intent.symbolicCandidates ?? 0 }, (_, index) => `${intent.seed}|symbolic:${index}`)
       : [];
-  const resolvedDrumTrackId =
-    intent.targetTracks.drumTrackId ?? doc.tracks.find((track) => track.kind === "drum")?.id ?? null;
-  const resolvedInstrumentTrackIds =
-    intent.targetTracks.instrumentTrackIds.length > 0
-      ? [...intent.targetTracks.instrumentTrackIds]
-      : doc.tracks.filter((track) => track.kind === "instrument").map((track) => track.id);
+  const resolvedDrumTrackId = drumTrackForTarget(doc, intent.targetTracks.drumTrackId ?? undefined)?.id ?? null;
+  const resolvedInstrumentTrackIds = instrumentTargets(doc, intent.targetTracks.instrumentTrackIds).map(
+    (track) => track.id,
+  );
   const preserved = intent.preserve ?? [];
+  const hasValidInstrumentTarget =
+    intent.targetTracks.instrumentTrackIds.length === 0 || resolvedInstrumentTrackIds.length > 0;
+  const instrumentScope = intent.targetTracks.instrumentTrackIds.length > 0 ? resolvedInstrumentTrackIds : undefined;
+  const bassTrack = hasValidInstrumentTarget ? instrumentTrackForRole(doc, "bass", instrumentScope) : null;
+  const chordTrack = hasValidInstrumentTarget ? instrumentTrackForRole(doc, "chord", instrumentScope) : null;
+  const leadTrack = hasValidInstrumentTarget ? instrumentTrackForRole(doc, "lead", instrumentScope) : null;
+  const resolvedRoleTracks: Record<IntentRole, readonly string[]> = {
+    drums: resolvedDrumTrackId ? [resolvedDrumTrackId] : [],
+    bass: bassTrack ? [bassTrack.id] : [],
+    chords: chordTrack ? [chordTrack.id] : [],
+    lead: leadTrack ? [leadTrack.id] : [],
+  };
   const rolePlans = Object.fromEntries(
     (
       [
-        ["drums", resolvedDrumTrackId ? [resolvedDrumTrackId] : []],
-        ["bass", [...resolvedInstrumentTrackIds]],
-        ["chords", [...resolvedInstrumentTrackIds]],
-        ["lead", [...resolvedInstrumentTrackIds]],
+        ["drums", resolvedRoleTracks.drums],
+        ["bass", resolvedRoleTracks.bass],
+        ["chords", resolvedRoleTracks.chords],
+        ["lead", resolvedRoleTracks.lead],
       ] as const
     ).map(([role, targetTrackIds]) => [
       role,
@@ -93,6 +109,7 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   return {
     intent,
     options,
+    ...(preserveSourcePatternId !== undefined ? { preserveSourcePatternId } : {}),
     groove: {
       id: groove.id,
       genre: groove.genre,

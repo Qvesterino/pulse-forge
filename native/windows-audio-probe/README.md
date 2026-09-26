@@ -14,6 +14,12 @@ The render test queues silence only. Neither mode writes or transmits PCM. The
 reported WASAPI stream latency is not a physical input-to-output round-trip
 measurement, and this tool does not host ASIO drivers.
 
+Capture packet servicing is mode-specific: shared mode drains available packets
+with `GetNextPacketSize`; exclusive event mode reads one endpoint buffer per
+event and must not call that shared-mode-only method. The diagnostic reports
+first-packet separately from later discontinuity flags, plus timestamp errors
+and device-position gaps.
+
 The default metadata-only mode does **not** initialize or start a stream, read
 microphone samples, record audio, change Windows device settings, or measure
 round-trip latency. The audio category is set only on the temporary client

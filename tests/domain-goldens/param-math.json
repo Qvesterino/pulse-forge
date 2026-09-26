@@ -243,6 +243,23 @@
           }
         },
         {
+          "kind": "organ",
+          "defaults": {
+            "bright": 0.5,
+            "sub": 0.4,
+            "click": 0.35,
+            "drive": 0.15,
+            "rotary": 0.35,
+            "rotaryRate": 1.2,
+            "glide": 0,
+            "cutoff": 6500,
+            "resonance": 0.8,
+            "attack": 0.003,
+            "release": 0.08,
+            "level": -8
+          }
+        },
+        {
           "kind": "fm",
           "defaults": {
             "ratio": 2,
@@ -541,7 +558,7 @@
           "type": "distortion",
           "defaults": {
             "drive": 0.4,
-            "character": 3,
+            "character": 0,
             "bias": 0,
             "tone": 5000,
             "preHpfHz": 20,
@@ -566,6 +583,7 @@
             "rate": 0.6,
             "sync": 0,
             "depth": 0.5,
+            "base": 0,
             "spread": 1,
             "feedback": 0,
             "voices": 2,
@@ -861,7 +879,7 @@
         {
           "type": "freqShifter",
           "defaults": {
-            "shift": 120,
+            "shift": 0,
             "fine": 0,
             "side": 0,
             "lfoRate": 0.1,
@@ -1184,6 +1202,28 @@
       ]
     },
     {
+      "name": "clampInstrumentParam organ:bright",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "organ",
+        "paramId": "bright",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
       "name": "clampInstrumentParam fm:ratio",
       "operation": "clampInstrumentParam",
       "input": {
@@ -1388,17 +1428,17 @@
         "type": "compressor",
         "paramId": "attack",
         "probes": [
-          -99.999,
-          0.001,
-          0.2505,
+          -99.9998,
+          0.0002,
+          0.2501,
           0.5,
           100.5
         ]
       },
       "expected": [
-        0.001,
-        0.001,
-        0.2505,
+        0.0002,
+        0.0002,
+        0.2501,
         0.5,
         0.5
       ]
@@ -1412,17 +1452,17 @@
         "probes": [
           -99.98,
           0.02,
-          0.51,
-          1,
-          101
+          1.01,
+          2,
+          102
         ]
       },
       "expected": [
         0.02,
         0.02,
-        0.51,
-        1,
-        1
+        1.01,
+        2,
+        2
       ]
     },
     {

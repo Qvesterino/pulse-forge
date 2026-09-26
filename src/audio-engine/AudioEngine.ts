@@ -309,6 +309,27 @@ export interface ResolvedSlicePlayback {
   reverse: boolean;
 }
 
+/**
+ * Guaranteed de-click tail on every one-shot voice (seconds). A drum sample
+ * that is still loud when its slice/source ends — a `length` p-lock cut, a
+ * slice edit into a sustained body, a looped-pad stop — steps from full
+ * amplitude to zero in one sample and clicks. 2 ms is short enough to be
+ * inaudible on any material and long enough to kill the step. Never applied
+ * to the ATTACK: a drum transient must stay instantaneous.
+ */
+export const DECLICK_TAIL_SEC = 0.002;
+
+/**
+ * Effective fade-out for a voice: the pad's configured fade when it is
+ * longer than the de-click floor, otherwise the floor itself (bounded to a
+ * quarter of the slice so a very short slice cannot be swallowed).
+ */
+export function declickFadeOut(configuredFadeOut: number, sliceDuration: number): number {
+  const floor = Math.min(DECLICK_TAIL_SEC, Math.max(0, sliceDuration) / 4);
+  const configured = Number.isFinite(configuredFadeOut) ? Math.max(0, configuredFadeOut) : 0;
+  return Math.max(configured, floor);
+}
+
 export function resolveSlicePlayback(pad: DrumPad, bufferDuration: number): ResolvedSlicePlayback {
   const duration = Math.max(0.001, Number.isFinite(bufferDuration) ? bufferDuration : 0.001);
   let start = Number.isFinite(pad.sliceStart) ? Math.max(0, Math.min(pad.sliceStart!, duration)) : 0;
@@ -4140,13 +4161,15 @@ export class AudioEngine {
     when: number,
     velocity: number,
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
+    /** Resolved velocity-layer / round-robin sample for this hit (see groove.ts). */
+    sampleId?: string | null,
   ): void {
     const ctx = this.ctx;
     const trackNodes = this.trackNodes.get(trackId);
     if (!ctx || !trackNodes) return;
     // Frozen tracks play back a pre-rendered buffer — skip individual triggers
     if (this.frozenBuffers.has(trackId)) return;
-    const buffer = this.bank?.get(pad.assetId);
+    const buffer = this.bank?.get(sampleId ?? pad.assetId ?? "");
     if (!buffer) {
       if (pad.synth) {
         if (pad.chokeGroup !== null) this.choke(trackId, pad.chokeGroup, when);
@@ -4193,12 +4216,23 @@ export class AudioEngine {
     const gain = ctx.createGain();
     const effectiveGain = locks?.gain !== undefined ? locks.gain : pad.gain;
     const peak = Math.max(0, velocity * effectiveGain);
+    // MPC-style pad loop: play the head into the region, then cycle
+    // loopStart→loopEnd until choked, retriggered or a 30 s safety cap.
+    const loopPlayback = pad.sliceLoop === true && !slice.reverse;
+    // De-click: every one-shot gets a guaranteed 2 ms tail even when no slice
+    // fade is configured (default) and when a `length` p-lock cut the slice
+    // mid-body. A step to zero at full amplitude is a click — this is the
+    // single place that makes every drum voice safe. Attack is never touched.
+    // A LOOPED pad schedules no slice-end fade (that would mute the loop) —
+    // its de-click lives on the safety stop below and on the choke path.
+    const fadeOut = declickFadeOut(slice.fadeOut, slice.duration);
     const endWhen = when + slice.duration;
     gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
     if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
-    if (slice.fadeOut > 0) {
-      gain.gain.setValueAtTime(peak, Math.max(when + slice.fadeIn, endWhen - slice.fadeOut));
-      gain.gain.linearRampToValueAtTime(0, endWhen);
+    if (!loopPlayback && fadeOut > 0) {
+      const fadeOutAt = Math.max(when + slice.fadeIn, endWhen - fadeOut);
+      gain.gain.setValueAtTime(peak, fadeOutAt);
+      gain.gain.linearRampToValueAtTime(0, fadeOutAt + fadeOut);
     }
     const panner = ctx.createStereoPanner();
     panner.pan.value = locks?.pan !== undefined ? locks.pan : pad.pan;
@@ -4266,7 +4300,12 @@ export class AudioEngine {
         source.loopEnd = loopEnd;
         source.start(when, slice.offset);
         // Safety cap: looped pads ring until choke/retrigger, at most 30 s.
-        source.stop(when + 30);
+        // De-click the cap itself — a hard source.stop mid-loop clicks.
+        const safetyStop = when + 30;
+        const safetyFade = Math.min(DECLICK_TAIL_SEC, 0.05);
+        gain.gain.setValueAtTime(peak, safetyStop - safetyFade);
+        gain.gain.linearRampToValueAtTime(0, safetyStop);
+        source.stop(safetyStop);
         void voiceOutput;
         return;
       }

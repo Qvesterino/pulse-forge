@@ -47,7 +47,12 @@ function findExport(lines: string[], kind: "class" | "interface" | "function" | 
   return null;
 }
 
-function findClassMethod(lines: string[], classIdx: number, methodName: string, visibility: "public" | "private"): number | null {
+function findClassMethod(
+  lines: string[],
+  classIdx: number,
+  methodName: string,
+  visibility: "public" | "private",
+): number | null {
   const explicitRe = new RegExp("^\\s+(public|private)\\s+(?:async\\s+)?" + methodName + "\\s*\\(");
   const implicitRe = new RegExp("^\\s+(?:async\\s+)?" + methodName + "\\s*\\(");
   for (let i = classIdx + 1; i < lines.length; i++) {
@@ -89,11 +94,7 @@ function readBody(lines: string[], startIdx: number): string[] {
   return buf;
 }
 
-const PUBLIC_INTERFACES: string[] = [
-  "UserSampleAsset",
-  "UserSampleAudio",
-  "PcmRecordingAudioRef",
-];
+const PUBLIC_INTERFACES: string[] = ["UserSampleAsset", "UserSampleAudio", "PcmRecordingAudioRef"];
 
 const PUBLIC_HELPERS: string[] = [
   "isPcmRecordingAudio",
@@ -102,12 +103,7 @@ const PUBLIC_HELPERS: string[] = [
   "restoreUserSampleAudioMemoized",
 ];
 
-const INTERNAL_HELPERS: string[] = [
-  "isBlob",
-  "defaultDecodeAudioBytes",
-];
-
-const MODULE_STATE: string[] = ["restoreByBank"];
+const INTERNAL_HELPERS: string[] = ["isBlob", "defaultDecodeAudioBytes"];
 
 const CLASS_API_PUBLIC: string[] = ["list", "save", "loadAudio", "listAudio", "remove"];
 
@@ -137,7 +133,8 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
         const idx = findExport(lines, "function", name);
         expect(
           idx,
-          name + " must be `export function` — drop-routes from the project store and the sample library depend on this symbol reaching other modules.",
+          name +
+            " must be `export function` — drop-routes from the project store and the sample library depend on this symbol reaching other modules.",
         ).not.toBeNull();
       });
     }
@@ -156,10 +153,7 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
           const classIdx = findExport(lines, "class", "UserSampleRepository");
           if (classIdx === null) throw new Error("class not exported");
           const methodIdx = findClassMethod(lines, classIdx, method, "public");
-          expect(
-            methodIdx,
-            "UserSampleRepository." + method + " missing or drifted to private/static.",
-          ).not.toBeNull();
+          expect(methodIdx, "UserSampleRepository." + method + " missing or drifted to private/static.").not.toBeNull();
         });
       }
     });
@@ -176,7 +170,9 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
           const matches = body.filter((ln) => /\btx\s*\(/.test(ln));
           expect(
             matches.length,
-            "UserSampleRepository." + method + " must open its work via tx(...). Found " +
+            "UserSampleRepository." +
+              method +
+              " must open its work via tx(...). Found " +
               matches.length +
               " tx(...) call site(s).",
           ).toBeGreaterThan(0);
@@ -194,11 +190,20 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
         for (const ln of lines) {
           expect(
             !reExp.test(ln) && !reClass.test(ln),
-            name + " is now exported from UserSampleRepository.ts. isBlob is a type predicate, defaultDecodeAudioBytes is a one-shot decoder — both are implementation details that callers should not couple to.",
+            name +
+              " is now exported from UserSampleRepository.ts. isBlob is a type predicate, defaultDecodeAudioBytes is a one-shot decoder — both are implementation details that callers should not couple to.",
           ).toBe(true);
         }
       });
     }
+  });
+
+  describe("module-private state — must stay unexported", () => {
+    it("restoreByBank remains private to the repository module", () => {
+      const exported = findExport(lines, "const", "restoreByBank");
+      expect(exported, "restoreByBank must not be exported").toBeNull();
+      expect(lines.some((line) => /^\\s*const\\s+restoreByBank\\b/.test(line))).toBe(true);
+    });
   });
 
   describe("module-private state — must NOT be exported", () => {
@@ -222,11 +227,7 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
         const m = ln.match(re);
         if (m) seen.push({ name: m[2], kind: m[1] });
       }
-      const tracked = new Set<string>([
-        ...PUBLIC_INTERFACES,
-        ...PUBLIC_HELPERS,
-        "UserSampleRepository",
-      ]);
+      const tracked = new Set<string>([...PUBLIC_INTERFACES, ...PUBLIC_HELPERS, "UserSampleRepository"]);
       const novel: string[] = [];
       for (const item of seen) {
         if (!tracked.has(item.name)) novel.push(item.name + ":" + item.kind);

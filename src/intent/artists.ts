@@ -3826,6 +3826,241 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [120, 128],
     label: "melodic house",
   },
+  // ── Plugg / opium producers (the type-beat search language) ─────────────
+  // Plugg stays in the 140-160 springy bell pocket (registry's plugg entry);
+  // opium/rage sits at 150-165 bouncy (registry's opium rage entry).
+  {
+    names: ["mexikodro"],
+    // The plugg architect (Playboi Carti / UnoTheActivist era) — the
+    // springy bell template the whole lane borrows.
+    genre: "trap",
+    style: "plugg",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [140, 160],
+    label: "mexikodro",
+  },
+  {
+    names: ["cashcache"],
+    // Pluggnb's modern face — soft bells, gliding 808s.
+    genre: "trap",
+    style: "plugg",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [140, 160],
+    label: "cashcache",
+  },
+  {
+    names: ["xangang"],
+    genre: "trap",
+    style: "plugg",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [140, 158],
+    label: "xangang",
+  },
+  {
+    names: ["senseiatl", "sensei atl"],
+    genre: "trap",
+    style: "plugg",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [140, 158],
+    label: "senseiatl",
+  },
+  {
+    names: ["forza"],
+    // Pluggnb keys + vocal-chop textures.
+    genre: "trap",
+    style: "plugg",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [140, 158],
+    label: "forza",
+  },
+  {
+    names: ["f1lthy", "outtatown", "lil 88", "star boy"],
+    // The opium production room (Whole Lotta Red era) — distorted rage.
+    genre: "trap",
+    style: "bouncy",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [150, 165],
+    label: "f1lthy / outtatown",
+  },
+  {
+    names: ["ojivolta", "richie souf"],
+    // Opium-adjacent A-list rage placements.
+    genre: "trap",
+    style: "bouncy",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [148, 162],
+    label: "ojivolta / richie souf",
+  },
+  {
+    names: ["whitearmor", "yung gud"],
+    // Drain Gang / sadboys — ethereal, blurred plugg-gaze. (Bare "drain
+    // gang" stays with the yung lean entry above — first-match order.)
+    genre: "trap",
+    style: "plugg",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [135, 155],
+    label: "whitearmor / yung gud",
+  },
+  // ── Amapiano / afro-house producers ────────────────────────────────────
+  // Registry anchors: amapiano 110-115, afro house 120-124 (both house/afro).
+  {
+    names: ["kabza de small", "dj maphorisa"],
+    // The amapiano kings (John Wick era) — log-drum-forward.
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [110, 116],
+    label: "kabza de small / maphorisa",
+  },
+  {
+    names: ["mr jazziq", "jazziq"],
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [110, 116],
+    label: "mr jazziq",
+  },
+  {
+    names: ["uncle waffles"],
+    // The amapiano-to-mainstream bridge (Tanzania).
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [110, 115],
+    label: "uncle waffles",
+  },
+  {
+    names: ["major league djz", "major league"],
+    genre: "house",
+    style: "afro",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [110, 115],
+    label: "major league djz",
+  },
+  {
+    names: ["focalistic"],
+    // Pitori rap over amapiano — energetic vocal-forward side.
+    genre: "house",
+    style: "afro",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [110, 115],
+    label: "focalistic",
+  },
+  {
+    names: ["kelvin momo", "sun-el musician", "sun el"],
+    // Soulful amapiano (smooth piano + vocal pads).
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [110, 116],
+    label: "kelvin momo",
+  },
+  {
+    names: ["shimza", "black motion"],
+    // Afro-house/afro-tech — deeper, more driving than amapiano.
+    genre: "house",
+    style: "afro",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [118, 126],
+    label: "shimza / black motion",
+  },
+  {
+    names: ["da capo", "eno napa", "kususa", "caiiro"],
+    // Afro-house producer school — percussive, melodic, patient.
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [118, 126],
+    label: "afro house producer school",
+  },
+  {
+    names: ["themba"],
+    genre: "house",
+    style: "afro",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [120, 126],
+    label: "themba",
+  },
+  // ── Phonk TikTok second wave (glitch/sigilkore + drift next gen) ───────
+  // Faster cowbell-forward lane, 145-170 (registry's drift pocket extends
+  // to 170 for the TikTok era).
+  {
+    names: ["hensonn", "g3ox_em", "g3ox em"],
+    // The sped-up drift remix generation — maximal cowbell, no restraint.
+    genre: "phonk",
+    style: "drift",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.7,
+    bpmRange: [150, 170],
+    label: "hensonn / g3ox_em",
+  },
+  {
+    names: ["cypariss", "kslv"],
+    genre: "phonk",
+    style: "drift",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [145, 165],
+    label: "cypariss / kslv",
+  },
+  {
+    names: ["sxmpra"],
+    // The "Cowbell Warrior" lane — hard, compressed, vocal-chop driven.
+    genre: "phonk",
+    style: "drift",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.7,
+    bpmRange: [150, 170],
+    label: "sxmpra",
+  },
+  {
+    names: ["mythic", "backwhen", "yung vamp"],
+    // The rare-phonk / dark-cloud school (slower, tape-warped).
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [125, 145],
+    label: "rare phonk",
+  },
 ];
 
 export interface ArtistMatch {

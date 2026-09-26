@@ -332,6 +332,94 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+
+    // Split one restored source pass at a sample-near musical boundary from
+    // the arrangement UI. The command must keep the fractional source window
+    // continuous; Undo/Redo must restore the same split without moving it.
+    const splitSourceClip = page.locator(".arr-audio-clip").last();
+    const splitSourceTitle = await splitSourceClip.getAttribute("title");
+    const splitBufferId = splitSourceTitle?.split(" · ")[1];
+    if (!splitBufferId) throw new Error("The restored source take has no visible PCM buffer identity");
+    const splitPlan = await page.evaluate(
+      async ({ expectedGroupId, expectedBufferId }) => {
+        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+        const [projectRepoModule, sampleModule, userRepoModule] = await Promise.all([
+          load("/src/persistence/ProjectRepository.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/persistence/UserSampleRepository.ts"),
+        ]);
+        const { ProjectRepository } = projectRepoModule;
+        const { SampleBank } = sampleModule;
+        const { restoreUserSampleAudio } = userRepoModule;
+        const project = await new ProjectRepository().loadMostRecent();
+        const group = project?.arrangement.takeGroups?.find(
+          (candidate: { id: string }) => candidate.id === expectedGroupId,
+        );
+        const sourceClip = (project?.arrangement.audioClips ?? []).find(
+          (clip: { takeGroupId?: string; takeId?: string; bufferId: string }) =>
+            clip.takeGroupId === expectedGroupId &&
+            clip.takeId !== group?.compTakeId &&
+            clip.bufferId === expectedBufferId,
+        );
+        if (!project || !sourceClip || !group) throw new Error("Could not resolve the restored PCM take for splitting");
+        const bank = new SampleBank();
+        await restoreUserSampleAudio(bank);
+        const buffer = bank.get(expectedBufferId);
+        if (!buffer) throw new Error("The restored PCM buffer is unavailable for sample-boundary measurement");
+        const startTick = sourceClip.startBar * 1_920;
+        const endTick = startTick + sourceClip.lengthBars * 1_920;
+        const centerTick = (startTick + endTick) / 2;
+        const secondsPerTick = 60 / (project.bpm * 480);
+        let splitTick = Math.round(centerTick);
+        let sourceFrameError = Number.POSITIVE_INFINITY;
+        for (let candidate = Math.floor(centerTick) - 24; candidate <= Math.ceil(centerTick) + 24; candidate++) {
+          if (candidate <= startTick + 96 || candidate >= endTick - 96) continue;
+          const sourceFrame =
+            ((sourceClip.offsetSec ?? 0) +
+              (sourceClip.trimStart ?? 0) +
+              (candidate - startTick) * secondsPerTick * (sourceClip.stretchRate ?? 1)) *
+            buffer.sampleRate;
+          const frameError = Math.abs(sourceFrame - Math.round(sourceFrame));
+          if (frameError < sourceFrameError) {
+            splitTick = candidate;
+            sourceFrameError = frameError;
+          }
+        }
+        const expectedRightSourceOffsetSec =
+          (sourceClip.offsetSec ?? 0) +
+          (sourceClip.trimStart ?? 0) +
+          (splitTick - startTick) * secondsPerTick * (sourceClip.stretchRate ?? 1);
+        return {
+          takeId: sourceClip.takeId,
+          tick: splitTick,
+          expectedRightSourceOffsetSec,
+          sampleRate: buffer.sampleRate,
+          sourceFrameError,
+        };
+      },
+      { expectedGroupId: groupId, expectedBufferId: splitBufferId },
+    );
+    const laneScroll = page.locator(".arr-lane-scroll");
+    await splitSourceClip.scrollIntoViewIfNeeded();
+    const laneBox = await laneScroll.boundingBox();
+    const splitRulerBox = await page.locator(".arr-ruler").boundingBox();
+    const barWidth = await page.locator(".arr-ruler").evaluate((element) => {
+      const marks = element.querySelectorAll<HTMLElement>(".arr-ruler-mark");
+      const fourBarOffset = Number.parseFloat(marks[1]?.style.left ?? "");
+      return Number.isFinite(fourBarOffset) && fourBarOffset > 0 ? fourBarOffset / 4 : 0;
+    });
+    if (!laneBox || !splitRulerBox || !(barWidth > 0)) throw new Error("Could not measure the arrangement ruler");
+    const laneScrollLeft = await laneScroll.evaluate((element) => element.scrollLeft);
+    const splitX = laneBox.x + (splitPlan.tick / 1_920) * barWidth - laneScrollLeft;
+    await page.mouse.click(splitX, splitRulerBox.y + splitRulerBox.height / 2);
+    await splitSourceClip.click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Separate at playhead/ }).click();
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(3);
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(2);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(3);
+
     // The two source passes are aligned, so the second clip visually covers
     // the first; select the topmost waveform to reach the take-group controls.
     await page.locator(".arr-audio-clip").last().click();
@@ -374,7 +462,7 @@ test.describe("11 — audio-input recording", () => {
 
     await page.getByLabel("Comp crossfade duration").selectOption("120");
     await takeTwoLane.scrollIntoViewIfNeeded();
-    const takeTwoBox = await takeTwoLane.locator(".arr-audio-take-lane-segment").first().boundingBox();
+    const takeTwoBox = await takeTwoLane.locator(".arr-audio-take-lane-segment").last().boundingBox();
     const takeTwoLaneBox = await takeTwoLane.boundingBox();
     const takeTwoBarWidth = await takeTwoLane.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).backgroundSize),
@@ -402,12 +490,39 @@ test.describe("11 — audio-input recording", () => {
     await page.locator('button[aria-label="Redo"]').click();
     await expect(compLane.locator(".arr-audio-take-lane-segment")).toHaveCount(secondCompSegmentCount);
 
+    // Exercise the actual waveform gesture on captured PCM, then prove the
+    // warp edit participates in the same project Undo/Redo history as comping.
+    const warpedCompClip = page.locator(".arr-audio-clip.comp").first();
+    await warpedCompClip.scrollIntoViewIfNeeded();
+    const warpedCompBox = await warpedCompClip.boundingBox();
+    if (!warpedCompBox || warpedCompBox.width < 3) throw new Error("The captured-PCM comp waveform is not editable");
+    const ruler = page.locator(".arr-ruler");
+    const rulerBox = await ruler.boundingBox();
+    if (!rulerBox) throw new Error("The arrangement ruler is not visible");
+    const warpPointX = warpedCompBox.x + warpedCompBox.width / 2;
+    await page.mouse.click(warpPointX, rulerBox.y + rulerBox.height / 2);
+    await warpedCompClip.click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Warp pin at playhead/ }).click();
+    await expect(warpedCompClip.locator(".warp-pin")).toHaveCount(1, { timeout: 10_000 });
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect(warpedCompClip.locator(".warp-pin")).toHaveCount(0);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect(warpedCompClip.locator(".warp-pin")).toHaveCount(1);
+
     const renderSavedTakeExport = async (): Promise<{
       groupId: string;
       compTakeId: string;
       activeTakeId: string;
       sourceTakeIds: string[];
       compSourceTakeIds: string[];
+      warpMarkers: Array<{ timeSec: number; tick: number }>;
+      sourceClipWindows: Array<{
+        takeId?: string;
+        startBar: number;
+        lengthBars: number;
+        offsetSec: number;
+        trimStart: number;
+      }>;
       bufferIds: string[];
       buffersRestored: boolean;
       sourcePcmSha256: string[];
@@ -448,6 +563,26 @@ test.describe("11 — audio-input recording", () => {
           ),
         ) as string[];
         const compClips = groupClips.filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId);
+        const warpMarkers = compClips.flatMap(
+          (clip: { warpMarkers?: Array<{ timeSec: number; tick: number }> }) => clip.warpMarkers ?? [],
+        );
+        const sourceClipWindows = groupClips
+          .filter((clip: { takeId?: string }) => clip.takeId !== group.compTakeId)
+          .map(
+            (clip: {
+              takeId?: string;
+              startBar: number;
+              lengthBars: number;
+              offsetSec?: number;
+              trimStart?: number;
+            }) => ({
+              takeId: clip.takeId,
+              startBar: clip.startBar,
+              lengthBars: clip.lengthBars,
+              offsetSec: clip.offsetSec ?? 0,
+              trimStart: clip.trimStart ?? 0,
+            }),
+          );
         const compSourceTakeIds = Array.from(
           new Set(compClips.map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId).filter(Boolean)),
         ) as string[];
@@ -528,6 +663,8 @@ test.describe("11 — audio-input recording", () => {
           activeTakeId: group.activeTakeId,
           sourceTakeIds,
           compSourceTakeIds,
+          warpMarkers,
+          sourceClipWindows,
           bufferIds,
           buffersRestored: bufferIds.every((bufferId: string) => bank.has(bufferId)),
           sourcePcmSha256,
@@ -566,7 +703,14 @@ test.describe("11 — audio-input recording", () => {
                 .filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId)
                 .map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId),
             );
-            return sourceTakeIds.length === 2 && sourceTakeIds.every((takeId) => compSourceTakeIds.has(takeId));
+            const compHasWarpPin = clips
+              .filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId)
+              .some((clip: { warpMarkers?: Array<{ tick: number }> }) => (clip.warpMarkers?.length ?? 0) > 0);
+            return (
+              sourceTakeIds.length === 2 &&
+              sourceTakeIds.every((takeId) => compSourceTakeIds.has(takeId)) &&
+              compHasWarpPin
+            );
           }, groupId),
         { timeout: 20_000, intervals: [250, 500, 1_000] },
       )
@@ -574,6 +718,24 @@ test.describe("11 — audio-input recording", () => {
     const beforeReloadExport = await renderSavedTakeExport();
     expect(beforeReloadExport.sourceTakeIds).toHaveLength(2);
     expect(beforeReloadExport.compSourceTakeIds).toEqual(expect.arrayContaining(beforeReloadExport.sourceTakeIds));
+    expect(beforeReloadExport.warpMarkers).toHaveLength(1);
+    expect(beforeReloadExport.sourceClipWindows).toHaveLength(3);
+    const splitTakeWindows = beforeReloadExport.sourceClipWindows
+      .filter((clip) => clip.takeId === splitPlan.takeId)
+      .sort((left, right) => left.startBar - right.startBar);
+    expect(splitTakeWindows).toHaveLength(2);
+    expect(splitTakeWindows[0]!.startBar + splitTakeWindows[0]!.lengthBars).toBeCloseTo(
+      splitTakeWindows[1]!.startBar,
+      12,
+    );
+    expect(splitTakeWindows[1]!.startBar * 1_920).toBeCloseTo(splitPlan.tick, 8);
+    expect(splitTakeWindows[1]!.offsetSec + splitTakeWindows[1]!.trimStart).toBeCloseTo(
+      splitPlan.expectedRightSourceOffsetSec,
+      12,
+    );
+    const rightSourceFrame = (splitTakeWindows[1]!.offsetSec + splitTakeWindows[1]!.trimStart) * splitPlan.sampleRate;
+    expect(Math.abs(rightSourceFrame - Math.round(rightSourceFrame))).toBeCloseTo(splitPlan.sourceFrameError, 8);
+    expect(splitPlan.sourceFrameError).toBeLessThanOrEqual(0.5);
     expect(beforeReloadExport.bufferIds).toHaveLength(2);
     expect(beforeReloadExport.buffersRestored).toBe(true);
     expect(beforeReloadExport.frames).toBeGreaterThan(48_000);
@@ -594,6 +756,8 @@ test.describe("11 — audio-input recording", () => {
       activeTakeId: beforeReloadExport.activeTakeId,
       sourceTakeIds: beforeReloadExport.sourceTakeIds,
       compSourceTakeIds: beforeReloadExport.compSourceTakeIds,
+      warpMarkers: beforeReloadExport.warpMarkers,
+      sourceClipWindows: beforeReloadExport.sourceClipWindows,
       bufferIds: beforeReloadExport.bufferIds,
       buffersRestored: true,
       sourcePcmSha256: beforeReloadExport.sourcePcmSha256,

@@ -47,15 +47,12 @@ function findExport(lines: string[], kind: "class" | "interface" | "function" | 
   return null;
 }
 
-function findAny(lines: string[], kind: "class" | "interface" | "function" | "const", name: string): number | null {
-  const re = new RegExp("^(?:export\\s+)?" + kind + "\\s+" + name + "\\b");
-  for (let i = 0; i < lines.length; i++) {
-    if (re.test(lines[i])) return i;
-  }
-  return null;
-}
-
-function findClassMethod(lines: string[], classIdx: number, methodName: string, visibility: "public" | "private"): number | null {
+function findClassMethod(
+  lines: string[],
+  classIdx: number,
+  methodName: string,
+  visibility: "public" | "private",
+): number | null {
   const explicitRe = new RegExp("^\\s+(public|private)\\s+(?:async\\s+)?" + methodName + "\\s*\\(");
   const implicitRe = new RegExp("^\\s+(?:async\\s+)?" + methodName + "\\s*\\(");
   for (let i = classIdx + 1; i < lines.length; i++) {
@@ -125,10 +122,6 @@ const SIDE_EFFECT_TOKENS = [
   "self",
   "globalThis",
 ];
-// Allowed tokens inside a pure helper. These touch the clock / math
-// library but stay synchronous and host-free.
-const ALLOWED_PURE_TOKENS = ["Date", "Math"];
-
 describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-grep)", () => {
   it("reads SnapshotRepository.ts", () => {
     expect(lines.length).toBeGreaterThan(50);
@@ -149,16 +142,15 @@ describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-gr
       it(title, () => {
         const idx = findExport(lines, "const", name);
         if (idx === null) {
-          throw new Error(
-            "Constant " + name + " no longer exported from SnapshotRepository.ts",
-          );
+          throw new Error("Constant " + name + " no longer exported from SnapshotRepository.ts");
         }
         // No `let` may exist anywhere for this name.
         const letRe = new RegExp("^(?:export\\s+)?let\\s+" + name + "\\b");
         for (const ln of lines) {
           expect(
             !letRe.test(ln),
-            name + " drifted to `let`. The autosnapshot thresholds are immutable - a mid-run reassignment would silently change the recovery cadence for every project.",
+            name +
+              " drifted to `let`. The autosnapshot thresholds are immutable - a mid-run reassignment would silently change the recovery cadence for every project.",
           ).toBe(true);
         }
       });
@@ -209,10 +201,7 @@ describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-gr
           const classIdx = findExport(lines, "class", "SnapshotRepository");
           if (classIdx === null) throw new Error("class not exported");
           const methodIdx = findClassMethod(lines, classIdx, method, "public");
-          expect(
-            methodIdx,
-            "SnapshotRepository." + method + " missing or drifted to private.",
-          ).not.toBeNull();
+          expect(methodIdx, "SnapshotRepository." + method + " missing or drifted to private.").not.toBeNull();
         });
       }
     });
@@ -226,7 +215,9 @@ describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-gr
           const methodIdx = findClassMethod(lines, classIdx, method, "private");
           expect(
             methodIdx,
-            "SnapshotRepository." + method + " must stay `private`. db() holds db-promise caching, nextSeq() owns the monotonic counter, indexKeysFor() encodes the in-memory index key shape.",
+            "SnapshotRepository." +
+              method +
+              " must stay `private`. db() holds db-promise caching, nextSeq() owns the monotonic counter, indexKeysFor() encodes the in-memory index key shape.",
           ).not.toBeNull();
         });
       }
@@ -244,7 +235,9 @@ describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-gr
           const matches = body.filter((ln) => /\btx\s*\(/.test(ln));
           expect(
             matches.length,
-            "SnapshotRepository." + method + " must open its work via tx(...). Found " +
+            "SnapshotRepository." +
+              method +
+              " must open its work via tx(...). Found " +
               matches.length +
               " tx(...) call site(s).",
           ).toBeGreaterThan(0);
@@ -261,12 +254,7 @@ describe("persistence/SnapshotRepository.ts — autosnapshot contract (source-gr
         const m = ln.match(re);
         if (m) seen.push({ name: m[2], kind: m[1] });
       }
-      const tracked = new Set<string>([
-        INTERFACE,
-        ...PUBLIC_CONSTS,
-        ...PURE_HELPERS,
-        "SnapshotRepository",
-      ]);
+      const tracked = new Set<string>([INTERFACE, ...PUBLIC_CONSTS, ...PURE_HELPERS, "SnapshotRepository"]);
       const novel: string[] = [];
       for (const item of seen) {
         if (!tracked.has(item.name)) novel.push(item.name + ":" + item.kind);

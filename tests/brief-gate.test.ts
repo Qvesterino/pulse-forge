@@ -131,7 +131,7 @@ describe("evaluateBriefCompliance (truthful UI mirror)", () => {
       normalizeIntent({ genre: "house", seed: "compliance", bpmRange: [140, 140], roles: ["drums"] }),
       "apply",
     );
-    const items = evaluateBriefCompliance(result);
+    const items = evaluateBriefCompliance(result, doc);
     const byId = (id: string) => items.find((item) => item.id === id);
     expect(byId("bpm")?.satisfied).toBe(true);
     expect(byId("length")?.satisfied).toBe(true);
@@ -147,10 +147,31 @@ describe("evaluateBriefCompliance (truthful UI mirror)", () => {
       normalizeIntent({ genre: "house", seed: "compliance2", roles: ["bass"], preserve: ["drums"] }),
       "apply",
     );
-    const items = evaluateBriefCompliance(result);
+    const items = evaluateBriefCompliance(result, doc);
     const byId = (id: string) => items.find((item) => item.id === id);
     expect(byId("no-drums")).toBeUndefined();
     expect(byId("preserve")?.label).toContain("drums");
     expect(byId("preserve")?.satisfied).toBe(true);
+    expect(byId("preserve")?.detail).toContain("zdrojových rolí je v návrhu zachovaný");
+  });
+
+  it("reports a preserve mismatch when the audition candidate loses protected source content", () => {
+    const doc = testDoc();
+    const result = generateLocalResult(
+      doc,
+      normalizeIntent({ genre: "house", seed: "compliance-preserve-mismatch", roles: ["bass"], preserve: ["drums"] }),
+      "apply",
+    );
+    const pattern = result.proposal?.pattern;
+    expect(pattern).toBeDefined();
+    const damaged = {
+      ...result,
+      proposal: result.proposal
+        ? { ...result.proposal, pattern: { ...result.proposal.pattern, rows: {}, stepMeta: undefined } }
+        : undefined,
+    };
+    const preserve = evaluateBriefCompliance(damaged, doc).find((item) => item.id === "preserve");
+    expect(preserve?.satisfied).toBe(false);
+    expect(preserve?.detail).toMatch(/zdrojový obsah.*líši/i);
   });
 });
