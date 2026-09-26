@@ -455,7 +455,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // but driving. Ambient carries it; the style phrase refines the drums.
     genre: "ambient",
     style: "future garage",
-    mood: "deep",
+    mood: "dark",
     energy: 0.55,
     density: 0.45,
     bpmRange: [130, 140],
