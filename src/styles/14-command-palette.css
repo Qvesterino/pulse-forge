@@ -515,6 +515,32 @@ button.brief-chip {
 button.brief-chip:hover {
   border-color: #666;
 }
+.brief-role-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.brief-role-prompt {
+  color: #aaa;
+  font-size: 10px;
+  margin-right: 2px;
+}
+.brief-chip.brief-role-toggle {
+  color: #888;
+}
+.brief-chip.brief-role-toggle.brief-role-selected {
+  color: #f6c76b;
+  background: color-mix(in srgb, #f59e0b 10%, #1c1c1c);
+  border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+}
+.brief-chip.brief-role-toggle:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.brief-chip.brief-role-toggle:disabled:hover {
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+}
 .brief-chip.brief-hard {
   border-color: color-mix(in srgb, #f59e0b 45%, transparent);
 }
@@ -534,6 +560,28 @@ button.brief-chip:hover {
   display: inline-flex;
   gap: 5px;
   align-items: center;
+}
+.brief-conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, #f87171 45%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, #f87171 7%, transparent);
+}
+.brief-conflict-title {
+  color: #f87171;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.brief-conflict-message,
+.brief-conflict-hint {
+  color: #f1b4b4;
+  font-size: 10px;
+}
+.brief-conflict-hint {
+  color: #c9a2a2;
 }
 .brief-unkeep {
   font: inherit;

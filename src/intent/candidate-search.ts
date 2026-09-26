@@ -257,14 +257,14 @@ function applyEvolvingHook(
     if (bar > 0 && bar % 2 === 1 && barNotes.length > 0) {
       const ending = barNotes.length - 1;
       const original = barNotes[ending];
-      if (original && original.duration > STEP_TICKS) {
+      if (original && original.duration > STEP_TICKS && original.duration % STEP_TICKS === 0) {
         // Shorten by one grid step: keep the motif and scale intact, but let
         // every other bar breathe before the next phrase begins.
         barNotes[ending] = { ...original, duration: original.duration - STEP_TICKS };
         changedEndings++;
       } else if (original && barNotes.length > 1) {
-        // A one-step ending cannot be shortened without leaving the musical
-        // grid; omit that cadence note instead, but never erase the whole hook.
+        // A short/off-grid ending cannot be shortened cleanly; omit it instead,
+        // but never erase the whole hook.
         barNotes.pop();
         changedEndings++;
       }

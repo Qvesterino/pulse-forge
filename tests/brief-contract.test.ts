@@ -54,6 +54,77 @@ describe("parser: protected roles (ZACHOVAŤ)", () => {
     expect(input.roles).not.toContain("bass");
   });
 
+  it.each([
+    ["leave my kick alone", ["drums"]],
+    ["keep my snare", ["drums"]],
+    ["keep my hi-hats", ["drums"]],
+    ["leave my percussion", ["drums"]],
+    ["nechaj kopák", ["drums"]],
+    ["keep my 808s", ["bass"]],
+  ] as const)("component alias is protected as its whole role: %s", (text, expected) => {
+    const { input } = parseIntentText(text);
+    expect(input.preserve).toEqual(expected);
+    // A protected component must not also turn its entire role into a target.
+    expect(input.roles ?? []).not.toContain(expected[0]);
+  });
+
+  it.each([
+    ["no drums, add kick", "drums", "prohibition-vs-addition"],
+    ["bez bicích, pridaj kopák", "drums", "prohibition-vs-addition"],
+    ["keep my kick but add snare", "drums", "preserve-vs-addition"],
+    ["no bass, keep my bass", "bass", "prohibition-vs-preserve"],
+    ["no chords, add keys", "chords", "prohibition-vs-addition"],
+    ["without lead, generate synth", "lead", "prohibition-vs-addition"],
+    ["no bass, full beat", "bass", "prohibition-vs-scope"],
+  ] as const)("surfaces explicit role conflict in %s", (text, role, kind) => {
+    const parsed = parseIntentText(text);
+    expect(parsed.conflicts).toContainEqual(expect.objectContaining({ role, kind }));
+  });
+
+  it.each([
+    ["no drums", "drums"],
+    ["no bass", "bass"],
+    ["bez akordov", "chords"],
+    ["without lead", "lead"],
+  ] as const)("a hard prohibition cannot return through parser defaults: %s", (text, prohibitedRole) => {
+    const parsed = parseIntentText(text);
+    expect(parsed.prohibitedRoles).toContain(prohibitedRole);
+    expect(parsed.input.roles).toBeDefined();
+    expect(parsed.input.roles).not.toContain(prohibitedRole);
+  });
+
+  it("does not misclassify a targeted sound change as a generation conflict", () => {
+    expect(parseIntentText("no bass, make the bass deeper").conflicts).toEqual([]);
+  });
+
+  it("protects the kick while still targeting an explicitly added lead", () => {
+    const { input } = parseIntentText("leave my kick but add lead");
+    expect(input.preserve).toEqual(["drums"]);
+    expect(input.roles).toEqual(["lead"]);
+  });
+
+  it("component-level drum protection reaches the generation plan as a hard exclusion", () => {
+    const doc = createProjectFromTemplate("house");
+    const parsed = parseIntentText("dark trap, leave my kick alone");
+    const plan = planGeneration({ ...parsed.input, seed: "preserve-kick-plan" }, doc);
+    expect(plan.options.roles).not.toContain("drums");
+    expect(plan.rolePlans.drums.enabled).toBe(false);
+    expect(plan.rolePlans.drums.targetTrackIds).toEqual([]);
+  });
+
+  it.each([
+    ["no bass", "bass"],
+    ["bez akordov", "chords"],
+    ["without lead", "lead"],
+  ] as const)("hard role prohibition reaches the generation plan: %s", (text, prohibitedRole) => {
+    const doc = createProjectFromTemplate("house");
+    const parsed = parseIntentText(text);
+    const plan = planGeneration({ ...parsed.input, seed: `prohibit-${prohibitedRole}` }, doc);
+    expect(plan.options.roles).not.toContain(prohibitedRole);
+    expect(plan.rolePlans[prohibitedRole].enabled).toBe(false);
+    expect(plan.rolePlans[prohibitedRole].targetTrackIds).toEqual([]);
+  });
+
   it("protection survives a positive generation scope", () => {
     const { input } = parseIntentText("beat only, nechaj akordy");
     expect(input.preserve).toEqual(["chords"]);
@@ -96,6 +167,19 @@ describe("contract compilation", () => {
     expect(roles?.label).not.toContain("akordy");
   });
 
+  it.each([
+    ["no drums", "no-drums", "drums"],
+    ["no bass", "no-bass", "bass"],
+    ["bez akordov", "no-chords", "chords"],
+    ["without lead", "no-lead", "lead"],
+  ] as const)("contract exposes the hard role prohibition: %s", (text, id, role) => {
+    const contract = compileBriefContract(parseIntentText(text));
+    expect(byId(contract.statements, id)).toMatchObject({ section: "prohibition", role });
+    expect(byId(contract.statements, "roles")?.label).not.toContain(
+      { drums: "bicie", bass: "basu", chords: "akordy", lead: "lead" }[role],
+    );
+  });
+
   it("unknown bpm/key surface as NEISTÉ, session fills them as inferred suggestions", () => {
     const bare = compileBriefContract(parseIntentText("nejaký beat"), {});
     expect(byId(bare.statements, "bpm")?.confidence).toBe("unknown");
@@ -132,6 +216,51 @@ describe("contract compilation", () => {
     expect(byId(contract.statements, "character")).toBeDefined();
   });
 
+  it("user corrections replace parsed values and carry explicit provenance", () => {
+    const parsed = parseIntentText("dark trap at 142");
+    const contract = compileBriefContract(parsed, { corrections: { bpmRange: [128, 128], genre: "house" } });
+    const bpm = byId(contract.statements, "bpm");
+    const genre = byId(contract.statements, "genre");
+    expect(bpm).toMatchObject({ label: "128 BPM", origin: "user", confidence: "confirmed" });
+    expect(genre).toMatchObject({ label: "žáner: house", origin: "user", confidence: "confirmed" });
+  });
+
+  it("corrected generation roles are reflected as user-confirmed facts", () => {
+    const parsed = parseIntentText("dark trap");
+    const contract = compileBriefContract(parsed, {
+      defaultRoles: ["drums", "bass"],
+      corrections: { roles: ["drums", "lead"] },
+    });
+    expect(byId(contract.statements, "roles")).toMatchObject({
+      label: "generovať: bicie, lead",
+      origin: "user",
+      confidence: "confirmed",
+    });
+  });
+
+  it("publishes a readable conflict and clears preserve conflicts after explicit unprotect", () => {
+    const parsed = parseIntentText("keep my kick but add snare");
+    const conflicted = compileBriefContract(parsed);
+    expect(conflicted.conflicts[0]?.label).toMatch(/zachovať bicie.*pridať ďalšie/i);
+
+    const corrections = unprotectRole(parsed.input, "drums", ["drums", "bass"]);
+    const resolved = compileBriefContract(parsed, { corrections });
+    expect(resolved.conflicts).toEqual([]);
+    expect(byId(resolved.statements, "preserve-drums")).toBeUndefined();
+  });
+
+  it("explains a hard prohibition conflicting with an explicit full-beat scope", () => {
+    const contract = compileBriefContract(parseIntentText("no bass, full beat"));
+    expect(contract.conflicts[0]?.label).toMatch(/zákaz generovania basy.*rozsah/i);
+  });
+
+  it("resolves a scope conflict when a user correction excludes the prohibited role", () => {
+    const parsed = parseIntentText("no bass, full beat");
+    const contract = compileBriefContract(parsed, { corrections: { roles: ["drums", "chords"] } });
+    expect(contract.conflicts).toEqual([]);
+    expect(byId(contract.statements, "roles")?.label).not.toContain("basu");
+  });
+
   it("preserve statement flags a missing project track honestly", () => {
     const doc = createProjectFromTemplate("house");
     const parsed = parseIntentText("nechaj akordy");
@@ -160,10 +289,24 @@ describe("per-point fixes", () => {
     expect(patch.preserve).toEqual(["chords"]);
   });
 
-  it("unprotecting the last protected role drops the field entirely", () => {
+  it("unprotecting the last role emits an explicit empty list to clear the parsed preserve", () => {
     const patch = unprotectRole({ preserve: ["bass"] }, "bass", ["drums", "bass"]);
     expect(patch.roles).toEqual(["drums", "bass"]);
-    expect(patch.preserve).toBeUndefined();
+    expect(patch.preserve).toEqual([]);
+  });
+
+  it("unprotectRole patch clears the original preserve when shallow-merged", () => {
+    const parsed = parseIntentText("keep my bass");
+    const patch = unprotectRole(parsed.input, "bass", ["drums", "bass"]);
+    expect({ ...parsed.input, ...patch }.preserve).toEqual([]);
+  });
+
+  it("unprotecting a prohibited role does not silently re-add it to generation", () => {
+    const parsed = parseIntentText("no drums, keep my kick");
+    const patch = unprotectRole(parsed.input, "drums", ["drums", "bass"], ["drums"]);
+    expect(patch.preserve).toEqual([]);
+    expect(patch.roles).not.toContain("drums");
+    expect(compileBriefContract(parsed, { corrections: patch }).conflicts).toEqual([]);
   });
 
   it("an applied fix normalizes into the spec (BPM override)", () => {

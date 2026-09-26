@@ -89,8 +89,18 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       }).values;
     const observation = createPreferenceObservation(
       context,
-      { contentHash: candidateA.contentHash, features: featuresFor(candidateA) },
-      { contentHash: candidateB.contentHash, features: featuresFor(candidateB) },
+      {
+        contentHash: candidateA.contentHash,
+        features: featuresFor(candidateA),
+        globalScore: candidateA.globalScore,
+        globalScoreVersion: candidateA.globalScoreVersion,
+      },
+      {
+        contentHash: candidateB.contentHash,
+        features: featuresFor(candidateB),
+        globalScore: candidateB.globalScore,
+        globalScoreVersion: candidateB.globalScoreVersion,
+      },
       choice,
       reason ? { reason } : {},
     );
@@ -134,7 +144,9 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
 
   return (
     <section className="intent-song-draft" aria-label="Producer DNA A/B comparison">
-      <div className="intent-detected">Producer DNA · porovnanie učí iba z tvojej výslovnej voľby, nie z USE.</div>
+      <div className="intent-detected">
+        Producer DNA · vyber, ktorý take by si si nechal. Toto učí osobný vkus, nie hodnotenie plnenia briefu.
+      </div>
       <div className="intent-candidates" aria-label="Choose candidates to compare">
         {candidates.map((candidate, position) => (
           <div className="intent-candidate-row" key={candidate.candidateIndex}>
@@ -163,6 +175,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
 
       {candidateA && candidateB && (
         <div className="intent-candidate-row" aria-label="Vote on A/B comparison">
+          <strong>Ktorý take by si nechal?</strong>
           <span>A #{candidateA.candidateIndex + 1}</span>
           <button type="button" className="btn btn-small" onClick={() => onAudition(candidateA)}>
             ▶ A
@@ -185,10 +198,10 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
             ))}
           </select>
           <button type="button" className="btn btn-small" onClick={() => vote("a")} disabled={!learningEnabled}>
-            A sedí viac
+            Nechal by som A
           </button>
           <button type="button" className="btn btn-small" onClick={() => vote("b")} disabled={!learningEnabled}>
-            B sedí viac
+            Nechal by som B
           </button>
           <button type="button" className="btn btn-small" onClick={() => vote("neither")} disabled={!learningEnabled}>
             Ani jeden

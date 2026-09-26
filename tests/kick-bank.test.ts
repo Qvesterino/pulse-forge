@@ -6,8 +6,8 @@ import { GENRE_KIT_SWAPS } from "../src/intent/genre-kit";
 import { KIT_PRESETS } from "../src/project-model/kit-presets";
 
 /**
- * Drum one-shot bank coherence (kick expansion 6 → 15, snare/hat expansion
- * 9 → 19, both 2026-09): the manifest is the driver — every Kick/Snare/Hat
+ * Drum one-shot bank coherence (15 genre/reference kicks plus the pop kick;
+ * snare/hat expansion 9 → 19, 2026-09): the manifest is the driver — every Kick/Snare/Hat
  * asset must have a synth builder, a render duration and (like the rest of
  * the full-kit curation) a curated seed override; every kit/genre reference
  * must point at a real asset. Data-only: the actual audio gate
@@ -19,7 +19,7 @@ const KICK_IDS = FACTORY_ASSETS.filter((a) => a.category === "Kick").map((a) => 
 const ALL_ASSET_IDS = new Set(FACTORY_ASSETS.map((a) => a.id));
 
 describe("kick bank — manifest/builder/duration/curated coherence", () => {
-  it("expanded bank: 15 kicks + 9 snares + 10 hats, each with builder + duration + curated seed", () => {
+  it("expanded bank: 16 kicks + 9 snares + 10 hats, each with builder + duration + curated seed", () => {
     expect(KICK_IDS).toEqual([
       "factory.kick.deep",
       "factory.kick.punch",
@@ -36,6 +36,7 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       "factory.kick.lofi",
       "factory.kick.knock",
       "factory.kick.909",
+      "factory.kick.pop",
     ]);
     const SNARE_IDS = FACTORY_ASSETS.filter((a) => a.category === "Snare").map((a) => a.id);
     const HAT_IDS = FACTORY_ASSETS.filter((a) => a.category === "Hat").map((a) => a.id);

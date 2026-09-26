@@ -59,6 +59,8 @@ export function preferenceContextForIntent(
 export interface PreferenceCandidateInput {
   contentHash: string;
   features: ArrayLike<number>;
+  globalScore?: number;
+  globalScoreVersion?: string;
 }
 
 function snapshot(candidate: PreferenceCandidateInput): PreferenceCandidateSnapshot {
@@ -66,6 +68,8 @@ function snapshot(candidate: PreferenceCandidateInput): PreferenceCandidateSnaps
     contentHash: candidate.contentHash,
     featureVersion: FEATURE_CONTRACT.version,
     features: Array.from(candidate.features),
+    ...(candidate.globalScore !== undefined ? { globalScore: candidate.globalScore } : {}),
+    ...(candidate.globalScoreVersion !== undefined ? { globalScoreVersion: candidate.globalScoreVersion } : {}),
   };
 }
 

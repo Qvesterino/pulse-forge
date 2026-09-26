@@ -413,14 +413,14 @@ describe("jersey + dnb genre plumbing (wave 2)", () => {
     }
   });
 
-  it("mix character: jersey bright + pump, dnb punched without a tone default", () => {
+  it("mix character: jersey bright + pump, dnb dark + punched by default", () => {
     const jersey = planMixProfile(normalizeIntent({ genre: "jersey", seed: "sq", energy: 0.7 }));
     expect(jersey.summary).toContain("tone: bright");
     expect(jersey.summary.some((s) => s.startsWith("pump:"))).toBe(true);
 
     const dnb = planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" }));
     expect(dnb.summary.some((s) => s.startsWith("punch:"))).toBe(true);
-    expect(dnb.summary.some((s) => s.startsWith("tone:"))).toBe(false);
+    expect(dnb.summary).toContain("tone: dark");
   });
 
   it("kit colouring: jersey punch kit, dnb pedal-hat kit (idempotent, one undo)", () => {
@@ -444,8 +444,8 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
     expect(planMixProfile(normalizeIntent({ genre: "drill", seed: "sq" })).masterTiltDb).toBe(2); // dark
     expect(planMixProfile(normalizeIntent({ genre: "phonk", seed: "sq" })).masterTiltDb).toBe(1.5); // warm
     expect(planMixProfile(normalizeIntent({ genre: "jersey", seed: "sq" })).masterTiltDb).toBe(-1.5); // bright
-    // dnb has no tone default → no tilt unless the user asks for a tone
-    expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" })).masterTiltDb).toBeUndefined();
+    // DnB's dark genre default supplies the master tilt unless the user overrides it.
+    expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq" })).masterTiltDb).toBe(2);
     expect(planMixProfile(normalizeIntent({ genre: "dnb", seed: "sq", mood: "dark" })).masterTiltDb).toBe(2);
 
     // Legacy gate: even an explicit mood word never tilts legacy genres'
@@ -460,7 +460,7 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
     expect(genreMasterTiltDb("drill")).toBe(2);
     expect(genreMasterTiltDb("phonk")).toBe(1.5);
     expect(genreMasterTiltDb("jersey")).toBe(-1.5);
-    expect(genreMasterTiltDb("dnb")).toBeUndefined();
+    expect(genreMasterTiltDb("dnb")).toBe(2);
     for (const legacy of ["house", "techno", "trap", "ambient"] as const) {
       expect(genreMasterTiltDb(legacy)).toBeUndefined();
     }

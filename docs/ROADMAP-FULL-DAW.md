@@ -85,7 +85,7 @@ live and offline export. Publish the verified Web capability table.
       the test harness; it is not evidence that any stream mode has passed.
 - [ ] Run stream-level WASAPI shared/exclusive and ASIO tests with explicit
       consent to temporarily initialize/use the physical audio endpoint.
-- [ ] Write ADR 0015 after a measured technical spike compares Web Audio,
+- [ ] Write ADR 0016 after a measured technical spike compares Web Audio,
       WASAPI shared low-period/`IAudioClient3`, WASAPI exclusive and ASIO.
 - [ ] Define a typed audio-device backend contract: enumerate/select device,
       input/output channel map, format negotiation, buffer/period, clock position,
@@ -144,17 +144,21 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       arrangement-tick region and apply it to the comp with one undoable
       command; source takes remain untouched.
 - [x] Add isolated, cancelable offline audition for source and comp lanes.
-- [ ] Implement adjustable, tempo-aware crossfades at take-comp boundaries;
+- [x] Implement adjustable, tempo-aware crossfades at take-comp boundaries;
       keep both source passes immutable and make the overlap/fade curves
-      deterministic in live and offline playback.
+      deterministic in live and offline playback. The working-tree command and
+      take-lane control are covered by synthetic tests for overlap/fades,
+      repeated compatible edits, undo, audible layers, energy continuity and
+      live/offline sample parity; real recorded material is not yet certified.
 - [x] Replace metadata-only consolidation with a true offline-rendered asset
       saved through the user-sample store; preserve source takes and replace
       selected clips with one undoable command. A Chromium synthetic-tone E2E
       verifies IndexedDB sample/project save-reopen and pre/post-export
       sample-level parity. This does not certify recorded takes or repeated
       comp edits.
-- [ ] Verify repeated comp edits, sample-accurate boundaries and crossfade
-      behavior on recorded material; the existing 3 ms seam fade is only a
+- [ ] Verify repeated comp edits, sample-accurate boundaries and musical
+      crossfade behavior on recorded material through save/reopen, undo/redo
+      and final export. The existing 3 ms warp-segment seam fade is a separate
       de-click and does not meet this gate.
 - [ ] Close the pro-editing gap: verify sample-accurate clip boundaries and
       moves, non-destructive fades/crossfades, clip gain, undo/redo and the
@@ -174,23 +178,39 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
 - [x] Add cancelable offline audition for each source/comp lane using an
       ephemeral project that isolates the take while preserving its track,
       group, send and master processing; audition never mutates the project.
-- [ ] Extend comp editing with adjustable musical crossfades; certify repeated
+- [x] Extend comp editing with adjustable musical crossfades. Synthetic tests
+      cover the software behavior and live/offline parity; certify repeated
       edits and boundaries on real takes through save/reopen, undo/redo and
       final export. The rendered consolidation path is implemented, but its
       synthetic test is not evidence for real recorded material.
+- [x] Add a Chromium integration fixture that records two distinct synthetic
+      PCM passes through AudioWorklet capture, reloads them from IndexedDB,
+      comps the passes through the take-lane UI, exercises Undo/Redo, and proves
+      identical 32-bit float WAV output before and after project reopen. This
+      certifies the software capture/edit/persistence/export path, not physical
+      input routing or the musical quality of real performances.
+- [x] Add runtime live take-lane audition as a non-destructive playback
+      projection. Targeted scheduler, service-lifecycle and UI tests pass;
+      Chromium verifies the actual buffer-source offset, resumed fade gain and
+      audible selected take. Initial support is song-mode only, with transport
+      looping disabled; reverse/loop/warp/stretch clips remain on stopped
+      offline audition.
 - [x] Translate IndexedDB quota failure during PCM append into a clear stop
       warning; stop capture and preserve all earlier committed blocks for
       recovery. This is not long-session certification.
 - [x] Add schema-backed whole-take groups, undoable pass selection, and shared
       live/offline playback filtering. Automatic loop capture now feeds this
       foundation; the aligned lane overview and direct region comping are
-      present, as is cancelable offline audition; adjustable musical
-      crossfades and consolidation remain open.
+      present, as are cancelable offline audition, adjustable musical
+      crossfades, rendered consolidation and runtime live take-lane audition
+      (ADR 0015); recorded-material/repeated-edit certification remains open.
 - [x] Expose single-track alternate audio passes in the arrangement: record a
       new group or align a later pass to the active pass start, keep recovery
       metadata, and switch the active whole pass through an undoable command.
       This remains useful for independent sequential passes; punch-in/out and
-      full comp UX/crossfade workflows remain open.
+      full recorded-material comp validation remains open; runtime live
+      take-lane audition (ADR 0015) has targeted unit/UI and Chromium
+      source-offset/fade-gain coverage.
 - [x] Before the first PCM block, compare the browser's estimated free storage
       with a 30-minute target for the actual capture format and warn when
       headroom is low. This is approximate, advisory only; runtime writes still
@@ -287,11 +307,29 @@ recovery and project interchange proven.
 
 ## Immediate next engineering tasks
 
-1. **Software:** implement adjustable, tempo-aware take-comp crossfades with
-   deterministic live/offline parity and undoable edits, starting with
-   synthetic overlapping passes. The fixed 3 ms seam de-click is not the
-   musical crossfade bar. Then test repeated comp edits, reload and export.
-2. **Owner/hardware gate:** approve a Windows reference PC/interface and the
-   exact device-use window before opening a physical endpoint. Until its
-   connector-to-channel mapping, latency and device-loss procedure are tested,
-   keep those Studio capabilities marked unverified.
+1. **Certify editing in software:** exercise repeated comp edits, musical
+   crossfades, sample-accurate boundaries, warp UI, undo/redo and final export
+   over save/reopen. Synthetic tests cover crossfade implementation and
+   live/offline parity; a captured-PCM Chromium fixture now covers take-lane
+   comp, Undo/Redo and exact WAV parity across reopen. Sample-accurate edit
+   boundaries, warp UI and real hardware takes remain open. The fixed 3 ms
+   warp-segment de-click is separate from musical crossfades.
+2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
+   interface, driver mode and exact device-use window before opening a physical
+   endpoint. Until then, do metadata-only/software work; do not claim measured
+   hardware latency, connector mapping or device-loss behavior.
+3. **Choose and prove the Windows backend:** after approval, run the bounded
+   stream tests, record measurements, compare Web Audio/WASAPI/ASIO, then write
+   ADR 0016 and implement the backend contract. Validate device selection,
+   channel routing, duplex latency, xruns and unplug/reconnect before expanding
+   to multi-stream capture.
+4. **Close the release gaps in dependency order:** complete simultaneous
+   capture and long-session recovery on the chosen backend; then certify the
+   recording/edit/export workflow. Follow with VST3 isolation/state/PDC and
+   mix/export conformance (P1), then loop discovery and fast-start (P2). Keep
+   AI quality work running alongside these tracks, but require blind human
+   evaluation before product-quality claims.
+
+Each milestone exits only on its listed evidence and tests, not implementation
+completion alone. Update the capability audit and support matrix when evidence
+changes; physical-device gates stay explicitly unverified until executed.

@@ -4662,3 +4662,16 @@ Kompletný rozširovací plán zapísaný do **docs/ROSTER-EXPANSION-ROADMAP.md*
 **Známe limity:** podpisy kľúčujú label — premenovanie labelu v rosteri zlomí ticho (dead-label guard test padne a upozorní). FX hinty v presetoch (sophie→distortion, burial→vinyl) sú zatiaľ v production konceptoch ručne; `IntentSpec.fx` pre artist-automatické reťazce je follow-up.
 
 **Intent engine stav:** interpret → groove + BPM + productionProfile (generácia) + **mix/master podpis (NOVÉ)** + 15 production konceptov (FX cez intent) + 8-vrstvová routing pipeline + brief kontrakt + iterácie + reference audio. Kompletný produkčný reťazec od vety po master.
+
+---
+
+## GOAL 51 — POP VLNÁ 2: +18 INTERPRETOV S REŠERŠOM (2026-09-24)
+
+**Existujúci pop blok** (12 mien: Dua Lipa, Weeknd, Billie, Ariana, Bruno, Olivia, Charli XCX, Taylor, Lorde, Tate, Gaga, Rihanna + Marshmello/PinkPantheress inde) + routing (pop→house, pop-rap→trap, hyperpop→trap, dance/synth-pop→house) a groovy (house.pop, trap.pop, ambient.pop) už boli na mieste. Pridaných 18 NOVÝCH (339 presetov celkovo):
+
+- **Dance-pop** (120-136, klubový ~125-128 sweet spot — [mixgraph](https://www.mixgraph.io)/[tunebat](https://tunebat.com)): Sia 120-133 (Titanium ~126), Katy Perry 100-128 (Roar 90 vs EDM 128), Ava Max 125-135 (Sweet But Psycho 133), Zedd 105-128 (The Middle 106), Calvin Harris 99-128 house dancefloor, Kesha 120-140.
+- **Pop-rap** (80-130, half-time feel — [tempo-tunes](https://www.tempo-tunes.com)/[jog.fm](https://jog.fm)): Post Malone 80-95 trap pop chill (92 songov, väčšina 80-90), Doja Cat 105-130 (Kiss Me More 111), The Kid LAROI 85-140 (Stay 85/170), Justin Bieber 90-130 house pop.
+- **Retro/funk-pop revival** (100-120 disco sweet spot — CPR-tempo playlist dôkaz): Miley 105-120 house FUNKY (Flowers 118), Sabrina 100-112 (Espresso 104), Chappell Roan 105-120 (Good Luck Babe 117), Harry Styles 85-130 chill, Troye Sivan 110-130, Halsey 90-136.
+- **Ballad pop**: Adele 70-100 ambient pop dark, Sam Smith 85-110 chill.
+
+Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; typecheck 0.

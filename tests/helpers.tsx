@@ -291,6 +291,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       subscribe: vi.fn(() => () => {}),
       stats: { scheduledEvents: 0, lastHorizonTick: 0, windows: 0 },
     } as any,
+    setLiveTakeAuditionProject: vi.fn(),
     repo: { save: vi.fn(), load: vi.fn(), list: vi.fn() } as any,
     bank: (() => {
       const m = new Map();

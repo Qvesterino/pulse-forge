@@ -1,5 +1,5 @@
 /**
- * Blind ear-check for the Producer DNA groove search lane.
+ * Blind ear-check for Producer DNA groove and hook search lanes.
  *
  * The pack compares SAFE and PERSONAL candidates rendered through the real
  * offline engine. Its pairwise observations are deliberately synthetic: this
@@ -7,7 +7,8 @@
  * not whether it has learned this user's taste. Listening votes stay in the
  * local pack and are never ingested into global training data.
  *
- * Generate: npm run listening:producer-dna -- --genre=trap --seed=my-seed
+ * Groove:   npm run listening:producer-dna -- --genre=trap --seed=my-seed
+ * Hook:     npm run listening:producer-dna:hook -- --genre=trap --seed=my-seed
  * Score:    npm run listening:producer-dna -- --score listening/producer-dna/<pack>/verdicts.json
  */
 import { createServer } from "vite";
@@ -62,9 +63,13 @@ function scorePack(verdictPath) {
   }
 
   const byId = new Map(answerKey.pairs.map((pair) => [pair.id, pair]));
+  const mode = answerKey.mode === "hook" ? "hook" : "groove";
+  const variantLabel = mode === "hook" ? "EXPERIMENTAL" : "PERSONAL";
   const seen = new Set();
   let directionHits = 0;
   let directionRated = 0;
+  let noDifference = 0;
+  let unsure = 0;
   let personalFavorites = 0;
   let safeFavorites = 0;
   let favoriteTies = 0;
@@ -74,21 +79,24 @@ function scorePack(verdictPath) {
     if (!answer || seen.has(verdict.pairId)) continue;
     seen.add(verdict.pairId);
 
-    if (verdict.directionVote === "A" || verdict.directionVote === "B") {
+    const variantSide = answer.variantSide ?? answer.personalSide;
+    if ((verdict.directionVote === "A" || verdict.directionVote === "B") && variantSide) {
       directionRated++;
-      if (verdict.directionVote === answer.personalSide) directionHits++;
-    }
-    if (verdict.favoriteVote === answer.personalSide) personalFavorites++;
+      if (verdict.directionVote === variantSide) directionHits++;
+    } else if (verdict.directionVote === "same") noDifference++;
+    else if (verdict.directionVote === "unsure") unsure++;
+    if (verdict.favoriteVote === variantSide) personalFavorites++;
     else if (verdict.favoriteVote === answer.safeSide) safeFavorites++;
     else if (verdict.favoriteVote === "both") favoriteTies++;
     else if (verdict.favoriteVote === "neither") favoriteNeithers++;
   }
 
   const expectedVotes = answerKey.pairs.length;
-  console.log(`# Producer DNA blind listening — ${answerKey.packId}`);
-  console.log(`Groove direction recognized: ${directionHits}/${directionRated} decisive votes`);
+  console.log(`# Producer DNA blind listening (${mode}) — ${answerKey.packId}`);
+  console.log(`Intended ${mode} difference recognized: ${directionHits}/${directionRated} decisive votes`);
+  console.log(`Difference not heard: ${noDifference}; unsure: ${unsure}`);
   console.log(
-    `Personal taste: PERSONAL ${personalFavorites}, SAFE ${safeFavorites}, both ${favoriteTies}, neither ${favoriteNeithers}`,
+    `Listener keep-choice: ${variantLabel} ${personalFavorites}, SAFE ${safeFavorites}, both ${favoriteTies}, neither ${favoriteNeithers}`,
   );
   console.log(`Completed pairs: ${seen.size}/${expectedVotes}`);
   console.log(
@@ -115,14 +123,23 @@ function uniquePackDirectory(baseDirectory, packId) {
   return directory;
 }
 
-function listeningHtml(packId, genre, publicPairs) {
+function listeningHtml(packId, genre, publicPairs, mode) {
   const payload = JSON.stringify({ packId, genre, pairs: publicPairs }).replaceAll("<", "\\u003c");
+  const modeLabel = mode === "hook" ? "hook" : "groove";
+  const targetPrompt =
+    mode === "hook"
+      ? "Ktorý lead hook opakuje motív a zároveň necháva viac priestoru v kadencii?"
+      : "Ktorý groove pôsobí syncopovanejšie — viac úderov mimo hlavný dôraz?";
+  const notice =
+    mode === "hook"
+      ? "Porovnávaj A a B bez hádania, ktorý je EXPERIMENTAL. Najprv označ, ktorý hook má opakujúci sa motív s obmenenou kadenciou; potom zvlášť vyber, ktorý by si si nechal. Zmenený pattern vznikol z rovnakého SAFE základu a upravuje iba lead hook. Hlasitosť ukážok je zrovnaná iba pre posluch."
+      : "Porovnávaj A a B bez hádania, ktorý je PERSONAL. Najprv vyber, ktorý lepšie spĺňa rytmický cieľ; potom zvlášť označ, ktorý by si si nechal v beate. Hlasitosť ukážok je zrovnaná iba pre posluch.";
   return `<!doctype html>
 <html lang="sk">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KYX Producer DNA — blind groove test</title>
+  <title>KYX Producer DNA — blind ${modeLabel} test</title>
   <style>
     :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #111318; color: #edf0f5; }
     body { margin: 0 auto; max-width: 880px; padding: 28px 18px 56px; }
@@ -145,9 +162,9 @@ function listeningHtml(packId, genre, publicPairs) {
   </style>
 </head>
 <body>
-  <h1>Producer DNA — zaslepený groove posluch</h1>
+  <h1>Producer DNA — zaslepený ${modeLabel} posluch</h1>
   <div class="muted">Žáner: ${genre} · pack ${packId}</div>
-  <div class="notice">Porovnávaj A a B bez hádania, ktorý je PERSONAL. Najprv vyber, ktorý lepšie spĺňa rytmický cieľ; potom zvlášť označ, ktorý by si si nechal v beate. Hlasitosť ukážok je zrovnaná iba pre posluch.</div>
+  <div class="notice">${notice}</div>
   <main id="pairs"></main>
   <p id="progress" class="muted"></p>
   <button id="save" disabled>STIAHNUŤ MOJE VERDIKTY</button>
@@ -162,6 +179,7 @@ function listeningHtml(packId, genre, publicPairs) {
     const directions = {
       more: "Ktorý groove pôsobí syncopovanejšie — viac úderov mimo hlavný dôraz?",
       less: "Ktorý groove pôsobí rovnejšie a priamočiarejšie?",
+      hook: ${JSON.stringify(targetPrompt)},
     };
     const root = document.getElementById("pairs");
     for (const pair of PACK.pairs) {
@@ -245,17 +263,24 @@ const scorePath = option("--score");
 if (scorePath) {
   scorePack(scorePath);
 } else if (process.argv.includes("--help")) {
-  console.log("Generate a blind SAFE vs PERSONAL groove pack, or score a downloaded verdicts.json.");
+  console.log("Generate a blind SAFE vs PERSONAL groove pack, a SAFE vs EXPERIMENTAL hook pack, or score verdicts.");
   console.log("npm run listening:producer-dna -- --genre=trap --seed=my-seed");
+  console.log("npm run listening:producer-dna:hook -- --genre=trap --seed=my-seed --pairs=4");
   console.log("npm run listening:producer-dna -- --score listening/producer-dna/<pack>/verdicts.json");
 } else {
+  const mode = option("--mode", "groove").trim().toLowerCase();
   const genre = option("--genre", "trap").trim().toLowerCase();
-  const seed = option("--seed", "producer-dna-groove-v1").trim();
+  const seed = option("--seed", mode === "hook" ? "producer-dna-hook-v1" : "producer-dna-groove-v1").trim();
+  const pairCount = Number(option("--pairs", String(REPLICATES_PER_DIRECTION * 2)));
+  if (mode !== "groove" && mode !== "hook") throw new Error(`Unsupported listening mode: ${mode}`);
   if (!VALID_GENRES.has(genre)) throw new Error(`Unsupported genre: ${genre}`);
   if (!seed || seed.length > 100) throw new Error("Seed must contain 1–100 characters");
+  if (!Number.isInteger(pairCount) || pairCount < 1 || pairCount > 8) {
+    throw new Error("Pair count must be an integer from 1 to 8");
+  }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const packId = `${timestamp}-${hash32(`${genre}:${seed}`).toString(16)}`;
+  const packId = `${timestamp}-${hash32(`${mode}:${genre}:${seed}`).toString(16)}`;
   const packDirectory = uniquePackDirectory(path.join(ROOT, "listening", "producer-dna"), packId);
   mkdirSync(packDirectory, { recursive: true });
 
@@ -343,96 +368,184 @@ function toBase64(arrayBuffer) {
   }
   return btoa(binary);
 }
-window.__renderProducerDnaPack = async ({ genre, seed, pairCount }) => {
+window.__renderProducerDnaPack = async ({ genre, seed, pairCount, mode }) => {
   const bank = await bankPromise;
   const rendered = [];
+  async function renderTakes(doc, patterns) {
+    const takes = [];
+    for (const pattern of patterns) {
+      const ghost = auditionDoc(doc, pattern);
+      const buffer = await renderProject(ghost, bank, { mode: "pattern", sampleRate: 44100, tailSeconds: 0.5 });
+      const gainDb = fitRms(buffer);
+      takes.push({ b64: toBase64(encodeWav(buffer, 16)), gainDb });
+    }
+    return takes;
+  }
+
   for (let pairIndex = 0; pairIndex < pairCount; pairIndex++) {
     const direction = pairIndex % 2 === 0 ? 1 : -1;
-    const target = direction > 0 ? "more" : "less";
+    const target = mode === "hook" ? "hook" : direction > 0 ? "more" : "less";
     const pairId = "P" + String(pairIndex + 1).padStart(2, "0");
     let completedPair = false;
     for (let seedAttempt = 0; seedAttempt < 8 && !completedPair; seedAttempt++) {
       const pairSeed = seed + "|" + pairId + (seedAttempt === 0 ? "" : "|base-retry:" + seedAttempt);
-    const doc = createDefaultProject();
-    const intent = normalizeIntent({
-      genre,
-      seed: pairSeed,
-      roles: ["drums"],
-      length: 64,
-      candidateCount: 3,
-      constraints: { preserveAnchors: true, allowGhosts: false, allowSwing: false },
-    });
-    const plan = planGeneration(intent, doc);
-    const preferenceContext = preferenceContextForIntent(plan.intent);
-    const personalBias = inferPersonalSearchBias(snapshots(preferenceContext, direction, pairId), preferenceContext);
-    if (!personalBias || Math.sign(personalBias.grooveSyncopation) !== direction) {
-      throw new Error("Synthetic preference did not produce the requested groove direction");
-    }
+      const doc = createDefaultProject();
+      const intent = normalizeIntent({
+        genre,
+        seed: pairSeed,
+        roles: mode === "hook" ? ["drums", "bass", "chords", "lead"] : ["drums"],
+        length: 64,
+        candidateCount: 3,
+        constraints: { preserveAnchors: true, allowGhosts: false, allowSwing: false },
+      });
+      const plan = planGeneration(intent, doc);
+      const safeVariant = candidateSearchVariant(plan, plan.candidateSeeds[0], 0, null);
+      const safeGenerated = generatePattern(doc, safeVariant.generationPlan.options);
+      const safeEvaluated = evaluateCandidate(safeGenerated, safeVariant.validationPlan, {
+        project: doc,
+        mode: "preview",
+      });
+      if (!safeEvaluated) throw new Error(pairId + ": SAFE candidate failed its ordinary hard gates");
 
-    const safeVariant = candidateSearchVariant(plan, plan.candidateSeeds[0], 0, null);
-    const safeGenerated = generatePattern(doc, safeVariant.generationPlan.options);
-    const safeEvaluated = evaluateCandidate(safeGenerated, safeVariant.validationPlan, { project: doc, mode: "preview" });
-    if (!safeEvaluated) throw new Error(pairId + ": SAFE candidate failed its ordinary hard gates");
-    const safeSyncopation = measure(safeEvaluated.pattern, safeVariant.validationPlan, {
-      doc,
-      generationOptions: safeVariant.generationPlan.options,
-    });
-
-    const selection = selectPersonalGrooveCandidate({
-      plan,
-      seed: plan.candidateSeeds[1],
-      candidateIndex: 1,
-      personalBias,
-      baselineSyncopation: safeSyncopation,
-      build(variant) {
-        const generated = generatePattern(doc, variant.generationPlan.options);
-        const prepared = applyCandidateSearchFamily(generated, doc, variant.generationPlan, variant.search);
-        const evaluated = evaluateCandidate(prepared.pattern, variant.validationPlan, { project: doc, mode: "preview" });
-        if (!evaluated) return null;
-        const syncopation = measure(evaluated.pattern, variant.validationPlan, {
+      if (mode === "hook") {
+        const experimentalVariant = candidateSearchVariant(plan, plan.candidateSeeds[2], 2, null);
+        if (experimentalVariant.search.melodyFamily !== "evolving-hook") {
+          console.warn("[producer-dna] " + pairId + ": no eligible evolving-hook family; retrying");
+          continue;
+        }
+        // Isolate the hook transform: both takes share the exact SAFE pattern,
+        // and only the named lead-hook family is applied to the second take.
+        const hookSearch = {
+          version: 1,
+          lane: "experimental",
+          family: "evolving-hook",
+          melodyFamily: "evolving-hook",
+          mode: "experimental",
+          variant: 0,
+        };
+        const hookPrepared = applyCandidateSearchFamily(
+          safeEvaluated.pattern,
           doc,
-          generationOptions: variant.generationPlan.options,
+          safeVariant.generationPlan,
+          hookSearch,
+        );
+        if (hookPrepared.search.melodyFamily !== "evolving-hook") {
+          console.warn("[producer-dna] " + pairId + ": hook family made no real change; retrying");
+          continue;
+        }
+        const hookEvaluated = evaluateCandidate(hookPrepared.pattern, safeVariant.validationPlan, {
+          project: doc,
+          mode: "preview",
         });
-        return { candidate: { pattern: evaluated.pattern, grooveId: variant.search.grooveId }, syncopation };
-      },
-    });
-    if (!selection.candidate || selection.outputDelta === null) {
-      console.warn(
-        "[producer-dna] " + pairId + ": no gated PERSONAL candidate on base seed " + (seedAttempt + 1) + "; retrying",
-      );
-      continue;
-    }
-    const personalSyncopation = measure(selection.candidate.pattern, selection.variant.validationPlan, {
-      doc,
-      generationOptions: selection.variant.generationPlan.options,
-    });
+        if (!hookEvaluated) {
+          console.warn("[producer-dna] " + pairId + ": transformed hook failed its ordinary hard gates; retrying");
+          continue;
+        }
+        const leadTargets = new Set(safeVariant.generationPlan.rolePlans.lead.targetTrackIds);
+        const leadTracks = doc.tracks.filter(
+          (track) => track.kind === "instrument" && leadTargets.has(track.id),
+        );
+        const leadTrack =
+          leadTracks.find((track) => track.name.toLowerCase().includes("lead")) ??
+          leadTracks[2 % Math.max(1, leadTracks.length)];
+        if (!leadTrack) throw new Error(pairId + ": no target lead track for hook comparison");
+        const noteTrackIds = new Set([
+          ...Object.keys(safeEvaluated.pattern.notes ?? {}),
+          ...Object.keys(hookEvaluated.pattern.notes ?? {}),
+        ]);
+        for (const trackId of noteTrackIds) {
+          if (trackId === leadTrack.id) continue;
+          if (
+            JSON.stringify(safeEvaluated.pattern.notes?.[trackId] ?? []) !==
+            JSON.stringify(hookEvaluated.pattern.notes?.[trackId] ?? [])
+          ) {
+            throw new Error(pairId + ": hook comparison changed a non-lead instrument part");
+          }
+        }
+        if (JSON.stringify(safeEvaluated.pattern.rows) !== JSON.stringify(hookEvaluated.pattern.rows)) {
+          throw new Error(pairId + ": hook comparison changed drum content");
+        }
+        const leadBefore = safeEvaluated.pattern.notes?.[leadTrack.id] ?? [];
+        const leadAfter = hookEvaluated.pattern.notes?.[leadTrack.id] ?? [];
+        if (JSON.stringify(leadBefore) === JSON.stringify(leadAfter)) {
+          throw new Error(pairId + ": evolving-hook did not change the rendered lead data");
+        }
+        const takes = await renderTakes(doc, [safeEvaluated.pattern, hookEvaluated.pattern]);
+        rendered.push({
+          id: pairId,
+          target,
+          safe: takes[0],
+          variant: takes[1],
+          variantName: "experimental",
+          leadNoteCounts: { safe: leadBefore.length, experimental: leadAfter.length },
+          baseSeedAttempt: seedAttempt + 1,
+        });
+        completedPair = true;
+        console.log("[producer-dna] " + pairId + ": evolving hook changed lead only, SAFE drum/melodic roles preserved");
+        continue;
+      }
 
-    const buffers = [];
-    for (const pattern of [safeEvaluated.pattern, selection.candidate.pattern]) {
-      const ghost = auditionDoc(doc, pattern);
-      const buffer = await renderProject(ghost, bank, { mode: "pattern", sampleRate: 44100, tailSeconds: 0.5 });
-      const gainDb = fitRms(buffer);
-      buffers.push({ b64: toBase64(encodeWav(buffer, 16)), gainDb });
-    }
-    rendered.push({
-      id: pairId,
-      target,
-      safe: buffers[0],
-      personal: buffers[1],
-      baselineSyncopation: safeSyncopation,
-      personalSyncopation,
-      measuredDelta: personalSyncopation - safeSyncopation,
-      grooveId: selection.candidate.grooveId,
-      seedAttempts: selection.attempts,
-      baseSeedAttempt: seedAttempt + 1,
-    });
-    completedPair = true;
-    console.log(
-      "[producer-dna] " + pairId + ": " + target + ", sync " + safeSyncopation.toFixed(3) + " → " + personalSyncopation.toFixed(3) + " (" + selection.attempts + " seed(s))",
-    );
+      const preferenceContext = preferenceContextForIntent(plan.intent);
+      const personalBias = inferPersonalSearchBias(snapshots(preferenceContext, direction, pairId), preferenceContext);
+      if (!personalBias || Math.sign(personalBias.grooveSyncopation) !== direction) {
+        throw new Error("Synthetic preference did not produce the requested groove direction");
+      }
+      const safeSyncopation = measure(safeEvaluated.pattern, safeVariant.validationPlan, {
+        doc,
+        generationOptions: safeVariant.generationPlan.options,
+      });
+      const selection = selectPersonalGrooveCandidate({
+        plan,
+        seed: plan.candidateSeeds[1],
+        candidateIndex: 1,
+        personalBias,
+        baselineSyncopation: safeSyncopation,
+        build(variant) {
+          const generated = generatePattern(doc, variant.generationPlan.options);
+          const prepared = applyCandidateSearchFamily(generated, doc, variant.generationPlan, variant.search);
+          const evaluated = evaluateCandidate(prepared.pattern, variant.validationPlan, {
+            project: doc,
+            mode: "preview",
+          });
+          if (!evaluated) return null;
+          const syncopation = measure(evaluated.pattern, variant.validationPlan, {
+            doc,
+            generationOptions: variant.generationPlan.options,
+          });
+          return { candidate: { pattern: evaluated.pattern, grooveId: variant.search.grooveId }, syncopation };
+        },
+      });
+      if (!selection.candidate || selection.outputDelta === null) {
+        console.warn(
+          "[producer-dna] " + pairId + ": no gated PERSONAL candidate on base seed " + (seedAttempt + 1) + "; retrying",
+        );
+        continue;
+      }
+      const personalSyncopation = measure(selection.candidate.pattern, selection.variant.validationPlan, {
+        doc,
+        generationOptions: selection.variant.generationPlan.options,
+      });
+      const takes = await renderTakes(doc, [safeEvaluated.pattern, selection.candidate.pattern]);
+      rendered.push({
+        id: pairId,
+        target,
+        safe: takes[0],
+        variant: takes[1],
+        variantName: "personal",
+        baselineSyncopation: safeSyncopation,
+        personalSyncopation,
+        measuredDelta: personalSyncopation - safeSyncopation,
+        grooveId: selection.candidate.grooveId,
+        seedAttempts: selection.attempts,
+        baseSeedAttempt: seedAttempt + 1,
+      });
+      completedPair = true;
+      console.log(
+        "[producer-dna] " + pairId + ": " + target + ", sync " + safeSyncopation.toFixed(3) + " → " + personalSyncopation.toFixed(3) + " (" + selection.attempts + " seed(s))",
+      );
     }
     if (!completedPair) {
-      throw new Error(pairId + ": no PERSONAL candidate realized the learned direction after 8 base seeds");
+      throw new Error(pairId + ": no valid " + mode + " alternative after 8 deterministic base seeds");
     }
   }
   return rendered;
@@ -448,42 +561,45 @@ window.__producerDnaReady = true;
   const server = await createServer({
     root: ROOT,
     logLevel: "error",
-    server: { port: PORT, host: "127.0.0.1", strictPort: true },
+    server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false },
   });
   await server.listen();
   let browser;
-  let packComplete = false;
   try {
     browser = await chromium.launch();
     const page = await browser.newPage();
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     await page.goto(`http://127.0.0.1:${PORT}/listening/producer-dna/${path.basename(packDirectory)}/harness.html`, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "commit",
+      timeout: 120000,
     });
     await page.waitForFunction(() => window.__producerDnaReady === true, null, { timeout: 120000 });
     const rendered = await page.evaluate((input) => window.__renderProducerDnaPack(input), {
       genre,
       seed,
-      pairCount: REPLICATES_PER_DIRECTION * 2,
+      pairCount,
+      mode,
     });
     if (pageErrors.length > 0) throw new Error(`Browser render failed: ${pageErrors.join("; ")}`);
 
     const answerPairs = [];
     const publicPairs = [];
-    const personalOnA = new Set(
+    const variantOnA = new Set(
       rendered
         .map((pair) => pair.id)
         .sort(
           (left, right) =>
             hash32(`${seed}:${left}:side`) - hash32(`${seed}:${right}:side`) || left.localeCompare(right),
         )
-        .slice(0, rendered.length / 2),
+        .slice(0, Math.ceil(rendered.length / 2)),
     );
     for (const pair of rendered) {
-      const personalIsA = personalOnA.has(pair.id);
-      const a = personalIsA ? pair.personal : pair.safe;
-      const b = personalIsA ? pair.safe : pair.personal;
+      const variantIsA = variantOnA.has(pair.id);
+      const variant = pair.variant ?? pair.personal;
+      if (!variant) throw new Error(`${pair.id}: missing generated alternative`);
+      const a = variantIsA ? variant : pair.safe;
+      const b = variantIsA ? pair.safe : variant;
       const aFile = `${pair.id}-A.wav`;
       const bFile = `${pair.id}-B.wav`;
       writeFileSync(path.join(packDirectory, aFile), Buffer.from(a.b64, "base64"));
@@ -491,8 +607,9 @@ window.__producerDnaReady = true;
       answerPairs.push({
         id: pair.id,
         target: pair.target,
-        personalSide: personalIsA ? "A" : "B",
-        safeSide: personalIsA ? "B" : "A",
+        variantSide: variantIsA ? "A" : "B",
+        safeSide: variantIsA ? "B" : "A",
+        variantName: pair.variantName ?? (mode === "hook" ? "experimental" : "personal"),
         baselineSyncopation: pair.baselineSyncopation,
         personalSyncopation: pair.personalSyncopation,
         measuredDelta: pair.measuredDelta,
@@ -511,10 +628,14 @@ window.__producerDnaReady = true;
         {
           version: 1,
           packId: path.basename(packDirectory),
+          mode,
           generatedAt: new Date().toISOString(),
           genre,
           seed,
-          preferenceSource: "synthetic pairwise feature probes; not the user's ledger",
+          preferenceSource:
+            mode === "hook"
+              ? "none; same SAFE source, isolated hook transformation"
+              : "synthetic groove probes; not the user's ledger",
           pairs: answerPairs,
         },
         null,
@@ -523,20 +644,24 @@ window.__producerDnaReady = true;
     );
     writeFileSync(
       path.join(packDirectory, "index.html"),
-      listeningHtml(path.basename(packDirectory), genre, publicPairs),
+      listeningHtml(path.basename(packDirectory), genre, publicPairs, mode),
     );
     writeFileSync(
       path.join(packDirectory, "LISTENING.md"),
       [
-        "# KYX Producer DNA — blind groove listening pack",
+        `# KYX Producer DNA — blind ${mode} listening pack`,
         "",
-        `Genre: **${genre}** · Pairs: **${answerPairs.length}** · Seed: \`${seed}\``,
+        `Mode: **${mode}** · Genre: **${genre}** · Pairs: **${answerPairs.length}** · Seed: \`${seed}\``,
         "",
-        "Open `index.html` in a browser. It hides whether A/B is SAFE or PERSONAL, asks separately about the requested groove direction and personal preference, then downloads `verdicts.json`.",
+        mode === "hook"
+          ? "Open `index.html` in a browser. A/B order is blinded. The EXPERIMENTAL take is made by applying only the evolving-hook family to the same SAFE source pattern; drums and all non-lead parts must remain content-identical. First identify the repeating motif with altered cadence, then separately choose which take you would keep."
+          : "Open `index.html` in a browser. It hides whether A/B is SAFE or PERSONAL, asks separately about the requested groove direction and personal preference, then downloads `verdicts.json`.",
         "",
-        "These pairs use synthetic high/low syncopation preference observations to exercise the existing personal-ranker → candidate-search path. They do **not** use or modify a user's preference ledger. The audio is rendered offline by KYX and RMS-matched for listening only; the underlying project/audio is not modified.",
+        mode === "hook"
+          ? "No preference observations are created or read. Both takes are rendered offline through KYX's real renderer and RMS-matched for listening only; the pack does not modify a project, the user's preference ledger, or global training data."
+          : "These pairs use synthetic high/low syncopation preference observations to exercise the existing personal-ranker → candidate-search path. They do **not** use or modify a user's preference ledger. The audio is rendered offline by KYX and RMS-matched for listening only; the underlying project/audio is not modified.",
         "",
-        "Do not open `answer-key.json` until votes are saved. To summarize afterward:",
+        "Do not open `answer-key.json` until votes are saved. The downloaded votes remain local and are not training data. To summarize afterward:",
         "",
         `\`npm run listening:producer-dna -- --score listening/producer-dna/${path.basename(packDirectory)}/verdicts.json\``,
         "",
@@ -544,16 +669,15 @@ window.__producerDnaReady = true;
         "",
       ].join("\n"),
     );
-    packComplete = true;
-    console.log(`[producer-dna] ${answerPairs.length} blind pair(s) → ${packDirectory}`);
+    console.log(`[producer-dna] ${answerPairs.length} blind ${mode} pair(s) → ${packDirectory}`);
     console.log(`[producer-dna] open ${path.join(packDirectory, "index.html")}`);
     console.log("[producer-dna] no user ledger or global training data was read or changed");
   } finally {
     await browser?.close().catch(() => undefined);
     await server.close().catch(() => undefined);
-    if (packComplete) {
-      unlinkSync(path.join(packDirectory, "harness.mjs"));
-      unlinkSync(path.join(packDirectory, "harness.html"));
+    for (const filename of ["harness.mjs", "harness.html"]) {
+      const helperPath = path.join(packDirectory, filename);
+      if (existsSync(helperPath)) unlinkSync(helperPath);
     }
   }
 }

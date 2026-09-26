@@ -788,6 +788,71 @@
   background: rgba(0, 0, 0, 0.25);
 }
 
+.intent-lane-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.intent-lane-receipt-heading {
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.intent-lane-receipt-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intent-lane-receipt-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.intent-lane-receipt-item.available strong {
+  color: var(--accent);
+}
+
+.intent-lane-receipt-item.missing .intent-lane-receipt-count {
+  color: #ffbf69;
+}
+
+.intent-lane-receipt-item.not-planned {
+  opacity: 0.65;
+}
+
+.intent-lane-receipt-count {
+  font-weight: 600;
+}
+
+.intent-lane-receipt-detail {
+  color: var(--text-muted, #aaa);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .intent-lane-receipt-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .intent-candidate-row {
   display: flex;
   align-items: center;

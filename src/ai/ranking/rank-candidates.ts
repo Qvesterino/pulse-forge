@@ -88,11 +88,20 @@ export async function rankCandidatesWithModel(
     rankerVersion: string | null,
     modelHash: string | null,
   ): RankerRanking => {
-    let order = baseOrder;
+    const globalScoreVersion =
+      source === "model" && mode === "active"
+        ? `global-selector.v1:hybrid:${rankerVersion ?? "unknown"}`
+        : "global-selector.v1:heuristic";
+    const globallyScored = baseOrder.map((entry) => ({
+      ...entry,
+      globalScore: baseScoreByIndex.get(entry.candidateIndex) ?? entry.score,
+      globalScoreVersion,
+    }));
+    let order = globallyScored;
     if (needsPersonalFeatures) {
       order = rerankWithPersonalPreferences(
-        baseOrder,
-        baseOrder.map((entry) => baseScoreByIndex.get(entry.candidateIndex) ?? entry.score),
+        globallyScored,
+        globallyScored.map((entry) => entry.globalScore ?? entry.score),
         featureByHash,
         observations,
         preferenceContextForIntent(plan.intent),

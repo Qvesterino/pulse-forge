@@ -14,6 +14,10 @@ export interface CandidateBankEntry {
   contentHash: string;
   /** Which engine produced this candidate — template generator or ONNX prior. */
   source?: CandidateSource;
+  /** Score from the non-personal selector, captured before Producer DNA is applied. */
+  globalScore?: number;
+  /** Versioned identity of the non-personal score policy for later evaluation. */
+  globalScoreVersion?: string;
   /** In-memory generation lane; persisted seed includes the policy/version for replay. */
   search?: CandidateSearchInfo;
 }

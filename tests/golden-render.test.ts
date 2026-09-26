@@ -72,7 +72,7 @@ describe("golden engine render — per template", () => {
     it(`${template.id} — engine output hash matches golden`, () => {
       const actual = engineHash(template.id);
       const expected = EXPECTED_GOLDEN_HASHES[template.id as keyof typeof EXPECTED_GOLDEN_HASHES];
-      expect(actual, `golden mismatch for ${template.id} — run: npm run ai:baseline to regenerate fixtures`).toBe(
+      expect(actual, `golden mismatch for ${template.id} — audit the template render before updating its fixture`).toBe(
         expected,
       );
     });

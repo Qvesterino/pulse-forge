@@ -99,7 +99,11 @@ import {
 } from "../audio-engine/PcmMicRecorder";
 import { buildAudioClipConsolidationDoc, buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
-import { audioTakeAuditionStartOffsetSec, createAudioTakeAuditionDoc } from "../rendering/take-audition";
+import {
+  audioTakeAuditionStartOffsetSec,
+  createAudioTakeAuditionDoc,
+  createLiveAudioTakeAuditionProject,
+} from "../rendering/take-audition";
 import { encodeWav, encodeWavAsync } from "../rendering/wav";
 import {
   addRecordedAudioClips,
@@ -268,7 +272,7 @@ interface AudioTakeLaneDrag extends AudioTakeLaneRange {
 interface AudioTakeAudition {
   groupId: string;
   takeId: string;
-  state: "rendering" | "playing";
+  state: "rendering" | "playing" | "live";
 }
 
 interface AudioTakeAuditionRequest extends AudioTakeAudition {
@@ -1303,9 +1307,7 @@ export function ArrangementPanel() {
   const compAudioRange = (groupId: string, sourceTakeId: string, startTick: number, endTick: number): void => {
     try {
       if (
-        execute(
-          compAudioTakeRange(services.store.doc, groupId, sourceTakeId, startTick, endTick, compCrossfadeTicks),
-        )
+        execute(compAudioTakeRange(services.store.doc, groupId, sourceTakeId, startTick, endTick, compCrossfadeTicks))
       ) {
         setAudioTakeLaneRange(null);
       }
@@ -1387,7 +1389,8 @@ export function ArrangementPanel() {
     if (!request) return;
     audioTakeAuditionRef.current = null;
     request.controller.abort();
-    services.engine.stopPreview();
+    if (request.state === "live") services.setLiveTakeAuditionProject(null);
+    else services.engine.stopPreview();
     setAudioTakeAudition(null);
   };
 
@@ -1397,8 +1400,8 @@ export function ArrangementPanel() {
       stopAudioTakeAudition();
       return;
     }
-    if (services.transport.playing) {
-      setActionError("Stop transport before auditioning a take lane");
+    if (services.transport.playing && services.playback.mode !== "song") {
+      setActionError("Switch to Song mode to audition a take lane during playback");
       return;
     }
     stopAudioTakeAudition();
@@ -1410,6 +1413,28 @@ export function ArrangementPanel() {
     };
     audioTakeAuditionRef.current = request;
     setAudioTakeAudition(request);
+
+    if (services.transport.playing) {
+      try {
+        const sourceDoc = services.store.getDoc();
+        const audition = createLiveAudioTakeAuditionProject(sourceDoc, groupId, takeId, services.transport.position);
+        services.setLiveTakeAuditionProject(audition.project, audition.resumedAudioClipOffsets);
+        if (audioTakeAuditionRef.current !== request) {
+          services.setLiveTakeAuditionProject(null);
+          return;
+        }
+        request.state = "live";
+        setAudioTakeAudition(request);
+      } catch (error) {
+        if (audioTakeAuditionRef.current === request) {
+          audioTakeAuditionRef.current = null;
+          setAudioTakeAudition(null);
+        }
+        setActionError(error instanceof Error ? error.message : "Live take audition failed");
+      }
+      return;
+    }
+
     try {
       services.engine.ensureContext();
       const sourceDoc = services.store.getDoc();
@@ -1458,13 +1483,32 @@ export function ArrangementPanel() {
     }
   }, [selectedAudioTakeGroup?.id, showAudioTakeLanes]);
 
+  useEffect(() => {
+    const request = audioTakeAuditionRef.current;
+    if (!request || request.state !== "live") return;
+    const sourceDoc = services.store.getDoc();
+    const stopIfStale = (): void => {
+      if (audioTakeAuditionRef.current !== request) return;
+      if (services.store.getDoc() !== sourceDoc || !services.transport.playing || services.playback.mode !== "song") {
+        stopAudioTakeAudition();
+      }
+    };
+    const unsubscribeStore = services.store.subscribe(stopIfStale);
+    const unsubscribePlayback = services.playback.subscribe(stopIfStale);
+    return () => {
+      unsubscribeStore();
+      unsubscribePlayback();
+    };
+  }, [audioTakeAudition?.state, services]);
+
   useEffect(
     () => () => {
       const request = audioTakeAuditionRef.current;
       audioTakeAuditionRef.current = null;
       if (request) {
         request.controller.abort();
-        services.engine.stopPreview();
+        if (request.state === "live") services.setLiveTakeAuditionProject(null);
+        else services.engine.stopPreview();
       }
     },
     [services.engine],
@@ -3598,17 +3642,26 @@ export function ArrangementPanel() {
                       <button
                         type="button"
                         className="btn btn-small arr-audio-take-lane-audition"
-                        aria-label={isAuditioning ? `Stop audition ${laneLabel}` : `Audition ${laneLabel}`}
+                        aria-label={
+                          isAuditioning
+                            ? `${audioTakeAudition?.state === "live" ? "Stop live audition" : "Stop audition"} ${laneLabel}`
+                            : `${services.transport.playing ? "Live solo" : "Audition"} ${laneLabel}`
+                        }
                         aria-pressed={isAuditioning}
-                        disabled={services.transport.playing && !isAuditioning}
                         title={
                           services.transport.playing
-                            ? "Stop transport to audition this lane in isolation"
+                            ? "Solo this take in the live song mix. It ends on stop, pause, project edit, or when take lanes close."
                             : "Render and audition this take lane alone through its track and master effects"
                         }
                         onClick={() => void auditionAudioTake(selectedAudioTakeGroup.id, takeId)}
                       >
-                        {isAuditioning ? (audioTakeAudition?.state === "rendering" ? "CANCEL" : "STOP") : "AUDITION"}
+                        {isAuditioning
+                          ? audioTakeAudition?.state === "rendering"
+                            ? "CANCEL"
+                            : "STOP"
+                          : services.transport.playing
+                            ? "LIVE SOLO"
+                            : "AUDITION"}
                       </button>
                     </div>
                     <div

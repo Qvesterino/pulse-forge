@@ -80,7 +80,12 @@ export interface SchedulerDeps {
   /** The transport's tempo actually changed (flip commit) — tempo-synced engine runtimes follow. */
   applyEngineTempo?(bpm: number): void;
   /** Trigger an arrangement AudioClip buffer at an absolute tick. */
-  triggerAudioClip?(clip: import("../project-model/types").AudioClip, when: number, durationSec: number): void;
+  triggerAudioClip?(
+    clip: import("../project-model/types").AudioClip,
+    when: number,
+    durationSec: number,
+    resumeOffsetSec?: number,
+  ): void;
   /** Metronome click for count-in / pre-roll (downbeat = bar start accent). */
   metronomeClick?(when: number, downbeat: boolean): void;
   /** Passive capture ring (Ableton): record every performed hit/note for later "Capture last take". */
@@ -98,6 +103,13 @@ export interface SchedulerDeps {
   midiNoteOff?(trackId: string, channel: number, note: number, when: number): void;
   /** MIDI output: send a CC message. */
   midiCC?(channel: number, cc: number, value: number): void;
+}
+
+/** Non-persistent playback projection used for isolated live take audition. */
+export interface SchedulerPlaybackOverride {
+  project: ProjectDocument;
+  /** Elapsed wall time for clips trimmed to the current playhead. */
+  resumedAudioClipOffsets?: ReadonlyMap<string, number>;
 }
 
 const INTERVAL_MS = 25;
@@ -244,6 +256,7 @@ export class Scheduler {
   private loopBoundaryListeners = new Set<(boundary: LoopTakeBoundary) => void>();
   private pendingLoopBoundary: LoopTakeBoundary | null = null;
   private tickBoundarySubscriptions = new Set<TickBoundarySubscription>();
+  private playbackProjectOverride: SchedulerPlaybackOverride | null = null;
   /**
    * Per-tick allocations in song mode (sorted clips + id → entity
    * Maps for scenes / patterns) used to fire every 25 ms even when
@@ -275,6 +288,17 @@ export class Scheduler {
   }
 
   constructor(private deps: SchedulerDeps) {}
+
+  /** Use a runtime-only playback view without changing the canonical project store. */
+  setPlaybackProjectOverride(override: SchedulerPlaybackOverride | null): void {
+    if (this.playbackProjectOverride === override) return;
+    this.playbackProjectOverride = override;
+    this.resync();
+  }
+
+  private getProject(): ProjectDocument {
+    return this.playbackProjectOverride?.project ?? this.deps.getProject();
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -524,7 +548,7 @@ export class Scheduler {
     const horizon = now + HORIZON_SECONDS;
     let windowEnd = transport.tickAt(horizon);
     if (transport.loopEnabled) {
-      const doc = this.deps.getProject();
+      const doc = this.getProject();
       const mode = this.deps.getMode();
       const loopStart = transport.loopStart;
       // Defect 2.1 (recovery): the loop end resolution calls
@@ -632,7 +656,7 @@ export class Scheduler {
 
   /** Schedule one lookahead window (pattern/song content, markers, automation, modulators). */
   private scheduleWindow(transport: Transport, now: number, windowStart: number, windowEnd: number): void {
-    const doc = this.deps.getProject();
+    const doc = this.getProject();
     const mode = this.deps.getMode();
     this.songTimeAt = null;
 
@@ -703,7 +727,7 @@ export class Scheduler {
         this.deps.applyPatternLaunch(this.pendingLaunch.patternId);
         this.pendingLaunch = null;
         this.notify();
-        currentDoc = this.deps.getProject();
+        currentDoc = this.getProject();
       }
       // The project model owns activePatternId. Do not hide a broken
       // document by rendering the first pattern: that produces the wrong
@@ -758,7 +782,7 @@ export class Scheduler {
         // Without this, events between boundary and windowEnd would never be
         // scheduled (the next tick resumes from windowEnd) and the first hits
         // of the launch would be silently dropped.
-        const nextDoc = this.deps.getProject();
+        const nextDoc = this.getProject();
         const nextPattern = nextDoc.patterns.find((p) => p.id === pending.patternId);
         currentDoc = nextDoc;
         if (nextPattern) {
@@ -962,7 +986,12 @@ export class Scheduler {
           // A clip starting past the tempo boundary runs at the NEW tempo.
           const spt = tempoSplit && clipStart >= tempoSplit.atTick ? tempoSplit.sptNew : transport.secondsPerTick;
           const durationSec = clip.lengthBars * BAR_TICKS * spt;
-          this.deps.triggerAudioClip(clip, when, durationSec);
+          this.deps.triggerAudioClip(
+            clip,
+            when,
+            durationSec,
+            this.playbackProjectOverride?.resumedAudioClipOffsets?.get(clip.id),
+          );
         }
       }
     }
@@ -1012,7 +1041,7 @@ export class Scheduler {
     timeAtOverride?: (tick: number) => number,
   ): void {
     const transport = this.deps.getTransport();
-    const doc = this.deps.getProject();
+    const doc = this.getProject();
     const now = this.deps.getAudioTime();
     const scheduleOffsetSec = this.scheduleOffsetSec();
     // A tempo split overrides the transport map for the post-boundary part of

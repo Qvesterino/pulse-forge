@@ -427,3 +427,201 @@ Každý rez má byť samostatne reviewovateľný a nesmie naraz meniť parser, g
 8. **Bez modelu alebo offline:** lokálny deterministický workflow zostáva funkčný; UI pravdivo označí použitý fallback.
 
 Toto je „hotové“ iba keď produktový scenár, čisté unit testy, browser/audio testy a aspoň jedno ľudské blind hodnotenie potvrdia príslušnú vrstvu. Zelený typecheck ani úspešný ONNX `session.run()` sám osebe nie je akceptačný dôkaz.
+
+## 10. Aktuálny implementačný a posluchový dôkaz (2026-09-26)
+
+Táto sekcia oddeľuje stav kódu od toho, čo ešte musí potvrdiť človek. Zelený test znamená iba splnenie konkrétneho technického kontraktu; sám osebe neznamená, že nový hook je hudobne lepší.
+
+### 10.1 Čo je teraz v pracovnej verzii
+
+- Async audition candidate bank má SAFE / PERSONAL / EXPERIMENTAL policy a experimentálna cesta vie pre podporovaný lead vytvoriť rodinu `evolving-hook`.
+- Candidate audition UI teraz sumarizuje, ktoré lane-y v danom behu naozaj prežili, ktoré neboli naplánované a pri neúspechu známy dôvod hard gate/generátora. PERSONAL cold-start je výslovne označený; nameraná zmena synkopácie a názov zvoleného groove sa zobrazujú iba vtedy, keď ich candidate metadata skutočne obsahujú.
+- Producer DNA A/B teraz výslovne pýta „ktorý take by si nechal?“ — nejde o hodnotenie plnenia briefu. Nové párové snapshoty ukladajú aj verziované skóre globálneho selektora pred personalizáciou; lokálny `producer-dna:evaluate` príkaz porovnáva neskoršie voľby chronologicky a s oddelenými candidate hashmi. Evaluátor zatiaľ nemá dôkaznú vzorku; nepridáva falošné tréningové dáta a nič neposiela do siete.
+- Hook variácia vychádza z rovnakého SAFE patternu a mení len kadenciu leadu; drum rows a ostatné časti zostávajú obsahovo rovnaké. Ak zmena nevznikne alebo výsledok neprejde gate, kandidát sa nesmie vydávať za úspešný experiment.
+- Samostatný počúvací režim vyrenderuje SAFE a experimental take cez reálny `renderProject()` a vytvorí zaslepené, hlasitosťou zrovnané A/B páry.
+- Testovací formulár oddeľuje dve otázky: „ktorý realizuje cieľovú hook variáciu?“ a „ktorý by som si nechal?“. Prvá skúma rozpoznateľnosť manipulovanej osi; druhá je preferencia. Jedna odpoveď sa nesmie používať ako náhrada druhej.
+- Režim hook nečíta ani nezapisuje preference ledger a jeho verdikty sa automaticky neimportujú do ranker tréningu.
+- Brief Debugger teraz znovu kompiluje contract po používateľovej oprave: zobrazený fakt a jeho pôvod sa zmenia spolu s efektívnym generation inputom. UI test overuje napr. opravu `142 → 128 BPM` až po uložený session intent.
+- Generation roles sa dajú opraviť priamo v Brief Debuggeri: prepínače pokrývajú bicie/basu/akordy/lead, hard zákaz a `preserve` ich vypnú, aspoň jedna rola musí zostať aktívna a opravený výber sa použije aj pri generovaní. Pri scope rozpore môže producent zúžiť „full beat“ na explicitnú povolenú množinu bez prepisovania promptu.
+- Odomknutie poslednej chránenej role posiela explicitné `preserve: []`, takže shallow merge už neobnoví pôvodnú ochranu; UI používa tie isté default roles ako generation. Pokrývajú to unit aj panelové regresné testy.
+- Parser rozlišuje hard zákazy všetkých štyroch generovaných rolí (bicie, basa, akordy, lead) od predvoleného generation scope; zákaz sa nesmie vrátiť cez fallback rolí a v kontrakte sa ukáže samostatne. Úzky conflict detector navyše označí explicitné rozpory, napr. zákaz bicích + „pridaj kick“, „zachovaj kick“ + „pridaj snare“ alebo „bez basy, full beat“. Intent panel pred pattern/song generation zobrazí dôvod a zastaví ho. Konfliktnú ochranu možno odstrániť v brief čipe, pričom zákaz role má stále prednosť. Pri konflikte sa ruší starý audition bank a abortuje rozbehnutá generácia, aby návrh z predošlého briefu neostal aplikovateľný. Toto nie je všeobecný detektor všetkých jazykových rozporov — pokrytie je založené na explicitných podporovaných SK/EN aliasoch a action/scope frázach.
+
+### 10.2 Pripravený ľudský test
+
+Spustenie:
+
+```bash
+npm run listening:producer-dna:hook -- --genre=trap --seed=hook-cadence-v1 --pairs=4
+```
+
+Aktuálny vygenerovaný balík:
+
+- `listening/producer-dna/2026-09-26T11-37-59-389Z-3d531020/index.html` — anonymný posluch a lokálne stiahnutie verdiktov;
+- `listening/producer-dna/2026-09-26T11-37-59-389Z-3d531020/LISTENING.md` — krátky protokol a limity testu;
+- osem anonymne pomenovaných WAV súborov pre štyri A/B páry;
+- `answer-key.json` — mapovanie variantov, ktoré sa má otvoriť až po uložení verdiktov.
+
+Automatická browser kontrola potvrdila štyri dvojice, nezávislé odpoveďové skupiny pre každú otázku, zamknuté uloženie pred dokončením všetkých odpovedí a načítanie metadát všetkých ôsmich WAV-ov (každý približne 8,24 s). Toto potvrdzuje, že testovací artefakt sa dá použiť; nie je to ľudský posluch ani hudobný výsledok.
+
+### 10.3 Čo z toho zatiaľ nemožno vyvodzovať
+
+- Zatiaľ neexistuje ľudský verdikt; výsledok hook variácie je preto **nevyhodnotený**.
+- Štyri dvojice od jedného poslucháča sú kvalitatívny pilot, nie štatistický dôkaz ani univerzálna preferencia producentov.
+- To, že poslucháč vie určiť experimental take, nedokazuje, že sa mu páči viac. To, že si ho vyberie, zase nedokazuje, že spoľahlivo počul deklarovanú kadenciu.
+- Úspešný render, rovnaká hlasitosť, rovnaké bicie a deterministický replay dokazujú korektnosť experimentu, nie „world-class“ hook generation.
+- Tento test neoveruje parser všeobecných pokynov, generovanie novej harmónie, call-and-response, celý aranžmán ani kvalitu MRT2.
+
+### 10.4 Ďalší rozhodovací krok
+
+1. Vypočuť všetky páry bez otvorenia `answer-key.json`; pri každom odpovedať na obe otázky alebo zvoliť neistotu/nerozpoznateľnosť.
+2. Uložiť stiahnutý `verdicts.json` v tom istom pack priečinku; potom až odhaliť answer key a spočítať rozpoznateľnosť aj preferenciu oddelene.
+3. Ak rozdiel nie je spoľahlivo počuteľný, najprv upraviť alebo zahodiť `evolving-hook` rodinu — nezvyšovať jej ranker váhu a neprezentovať štítok ako úspech.
+4. Ak je zmena počuteľná, ale preferencia zmiešaná, zachovať ju ako voliteľnú experimentálnu možnosť, nie ako nový predvolený hook.
+5. Až po opakovaných posluchoch na viacerých patternoch a brief kontextoch rozšíriť ľudské A/B na ďalšie generatívne rodiny. Verdikty z tohto izolovaného pilotu sa nesmú vydávať za tréningové dáta osobného vkusu.
+
+## 11. Detailný delivery plán: od dnešného intentu k osobnému producentovi
+
+Táto roadmapa je zoradená podľa závislostí, nie podľa toho, čo znie najviac „AI“. Jednotlivé vlny sa môžu zastaviť alebo zmeniť podľa dôkazov. Odhady v človekodňoch tu zámerne nie sú: pred prvým rezom treba zmerať rozsah existujúcich UI a testovacích ciest, inak by číslo vytváralo falošnú presnosť.
+
+### 11.1 Pravidlo priorít
+
+Každý návrh prechádza rozhodovaním v tomto poradí:
+
+```text
+1. Je výsledok platný pre projekt a nástroje KYX?
+2. Splnil všetky explicitné hard požiadavky a zákazy?
+3. Zachoval zamknutý obsah a upravil iba povolený rozsah?
+4. Ktoré zostávajúce možnosti najlepšie sedia briefu?
+5. Ktorú z nich preferuje tento používateľ v tomto kontexte?
+6. Sú shortlisty dosť odlišné na zmysluplné rozhodnutie?
+```
+
+Nižší krok nikdy neprehlasuje vyšší: osobný vkus nesmie ospravedlniť porušenú požiadavku a diverzita nesmie vyzdvihnúť neplatný kandidát. Jeden súhrnný „AI quality“ score by tieto rozdielne druhy dôkazu zakryl.
+
+### 11.2 Vlna 0 — uzavrieť posluchový pilot, bez tréningu
+
+**Cieľ:** zistiť, či je `evolving-hook` naozaj počuteľná, správne pomenovaná zmena a či si ju producent chce nechať.
+
+**Pracovné kroky:**
+
+1. Poslucháč vypočuje anonymné dvojice v existujúcom packu; answer key otvorí až po uzamknutí odpovedí.
+2. Zaznamená oddelene rozpoznanie kadencie, osobnú voľbu a mieru istoty. Neistota je platná odpoveď.
+3. Po odhalení answer key sa vyhodnotí každá otázka samostatne. Najprv sa kontroluje, či je zásah počuteľný; až potom, či je obľúbený.
+4. Ak pilot ukáže problém, zmeniť samotnú generatívnu rodinu alebo jej popis. Nezvyšovať jej váhu v rankeri.
+
+**Miesta:** `listening/producer-dna/2026-09-26T11-37-59-389Z-3d531020/`, `scripts/render-producer-dna-listening.mjs`, `tests/candidate-search.test.ts`.
+
+**Exit gate:** ľudský verdikt uložený spolu s packom a popísaný bez prehnaných tvrdení. Tento malý pilot je iba kvalitatívny signál; sám osebe neaktivuje PERSONAL ranker ani netrénuje model.
+
+### 11.3 Vlna 1 — „čo som pochopil“ musí byť opraviteľné a pravdivé
+
+**Cieľ:** používateľ vidí pred generovaním rozdiel medzi tým, čo prikázal, čo preferuje, čo zakázal, čo chce zachovať a čo KYX iba odhaduje.
+
+**Pracovné kroky:**
+
+1. Prejsť existujúce `BriefContract` statements a ku každému rozhodnúť, či má pôvod v prompt-e, session, projekte alebo predvolenej hodnote; nízka istota nesmie byť zobrazená ako potvrdený fakt.
+2. Zostaviť verziované SK/EN fixtures pre BPM/tóninu, štýl, energiu/hustotu, target role, `preserve`, zákazy, sekcie, referencie, opakované a protichodné pokyny.
+3. Oprava statementu v UI musí zmeniť nasledujúci `IntentInput`/plán a zneplatniť starý výsledok. Nesmie potichu meniť uložený projekt ani preference ledger.
+4. Pri nejednoznačnosti sa pýtať iba vtedy, keď dve vierohodné interpretácie vedú k podstatne iným výsledkom alebo rozsahu zásahu; inak ukázať vratný predpoklad.
+5. Konflikty neskrývať poradím parsera. Zobraziť ich a vyžiadať voľbu, ak ide o hard constraint; pri mäkkej preferencii pokračovať s viditeľným predpokladom.
+6. Zákazy rolí aplikovať pred defaultami a fallbackmi. Všetky aliasy tej istej role (napr. kick/snare → drums; 808/sub → bass) musia skončiť v jednom kanonickom hard gate; scope ako „full beat“ nesmie potichu prevalcovať zákaz.
+7. Umožniť inline úpravu generation role setu. Každá zmena musí nastaviť potvrdený `roles` patch, obnoviť contract a použiť rovnaký patch pre pattern aj song generation; zakázané/chránené role a prázdny generation set nie sú povolené.
+
+**Miesta:** `src/intent/text-parser.ts`, `normalize.ts`, `brief-contract.ts`, `brief-gate.ts`, `src/ui/IntentPanel.tsx`; `tests/intent-text-parser.test.ts`, `tests/brief-contract.test.ts`, `tests/intent-brief-suite.test.ts`, `tests/ui/IntentPanel.test.tsx`.
+
+**Exit gate:** každé fixture má správnu klasifikáciu alebo explicitné `unknown/conflict`; používateľská oprava sa preukázateľne dostane do generation planu; starý audition sa po zmene briefu nedá aplikovať.
+
+### 11.4 Vlna 2 — tri voľby musia znamenať tri hudobné dôvody
+
+**Cieľ:** SAFE, PERSONAL a EXPERIMENTAL sú odlišné stratégie výberu/generovania, nie tri marketingové menovky nad podobnými seedmi.
+
+**Pracovné kroky:**
+
+1. Pre každý kandidát evidovať internú rodinu, deklarovanú zmenu, seed, hard-gate výsledok a dôvod prípadného fallbacku.
+2. Urobiť inventár toho, ktoré osi v dnešnom generátore naozaj dokážu zmeniť obsah. Os bez takej rodiny sa v UI nesľubuje.
+3. Po úspechu hook pilotu vybrať iba jednu ďalšiu rodinu — odporúčanie: groove/syncopation alebo zmena melodickej kontúry — a doplniť deterministické testy, feature delta, preservation testy a blind posluch.
+4. Kandidát, ktorý po generovaní nedosiahol deklarovanú zmenu, sa odstráni alebo dostane pravdivý fallback label. Nový seed s rovnakým hudobným výsledkom sa nepovažuje za nový smer.
+5. Najprv odfiltrovať neplatné kandidáty, až potom radiť a diverzifikovať. Ak zostane iba jeden platný smer, povedať to používateľovi.
+
+**Miesta:** `src/intent/candidate-search.ts`, `candidate-bank.ts`, `candidate-diversity.ts`, `providers/local.ts`, `providers/symbolic.ts`, príslušný generátor v `src/ai/`; `tests/candidate-search.test.ts`, `tests/candidate-audition.test.ts`, golden brief suite.
+
+**Exit gate:** všetky ponúknuté kandidáty prejdú rovnakými hard gates; každá rodina vytvára deterministický, merateľný obsahový rozdiel; blind posluch potvrdí, že aspoň cieľová os je rozpoznateľná. Osobná obľuba je samostatný výsledok.
+
+### 11.5 Vlna 3 — „tento kandidát, ale zmeň iba X“
+
+**Cieľ:** používateľ nadväzuje na konkrétny návrh, nie na neurčitý posledný stav generátora. Rozsah zmeny je viditeľný ešte pred audition.
+
+**Pracovné kroky:**
+
+1. Pokyn ako „druhý, ale hook redší; bicie nechaj“ vyriešiť voči konkrétnej session generácii a zachovať rodičovskú identitu.
+2. Zostaviť target/preserve rozsah. Ak aktuálny model nevie odseparovať requested role — napríklad melodické roly zdieľajú pattern tracky — priznať širší rozsah alebo požiadavku bezpečne odmietnuť.
+3. Pred audition vypočítať a zobraziť zrozumiteľný diff: čo sa mení, čo ostáva a z čoho návrh vychádza.
+4. Pred Apply znovu overiť parent, base project a preserve hash-e. Zastaraný proposal sa neaplikuje; používateľ si vyžiada čerstvé preview.
+5. Apply vloží presne auditionovaný obsah jedným commandom; žiadna tichá regenerácia pri kliknutí. Undo vráti presný pôvodný stav.
+6. Otestovať zrušenie, rýchle dvojité Apply, zmenu projektu počas renderu/audition, render error a zmenu UI busy stavu na všetkých výsledkových vetvách.
+
+**Miesta:** `src/intent/session-context.ts`, `iteration.ts`, `song.ts`, `src/ui/IntentPanel.tsx`, relevantné commands; `tests/session-context-audit.test.ts`, `tests/iteration.test.ts`, `tests/intent-song.test.ts`, `tests/ui/IntentPanel.test.tsx`.
+
+**Exit gate:** protected content má po UUID-free canonicalizácii zhodný hash; obsah v preview je identický s Apply; jeden Undo obnoví pôvodný stav; žiadna chyba ani zrušenie nezablokuje ovládanie UI alebo nezmení projekt.
+
+### 11.6 Vlna 4 — Producer DNA a Taste Probe až po dôveryhodných pároch
+
+**Cieľ:** lokálna pamäť má predikovať explicitnú voľbu v podobnej hudobnej situácii, nie iba memorovať minulé kliknutia.
+
+**Pracovné kroky:**
+
+1. Rozlíšiť „lepšie plní brief“ od „viac sa mi páči“. Zaznamenať iba explicitne potvrdené voľby A/B; `ani jeden`, `obidva`, skip, undo a samotný Apply nemajú vymyslený winner.
+2. Zachovať kontext úlohy `pattern/section/song`, relevantnú rolu a podporované dôvody; nepodporovaný dôvod sa nesmie mapovať na inú os.
+3. Taste Probe navrhne kontrolovaný pár len pre nezamknutú os, ktorú generátor reálne vie ovplyvniť; limitovať frekvenciu a umožniť skip.
+4. Vyhodnotiť chronologicky oddelené/held-out páry oproti globálnemu selectoru a jednoduchej baseline. Reportovať vzorku aj neistotu.
+5. Personalizáciu vypnúť alebo neukazovať ako osobnú, ak nemá dosť relevantných dát či held-out prínos. Ledger musí zostať lokálny, pozastaviteľný, exportovateľný a vymazateľný.
+
+**Miesta:** `preference-ledger-core.ts`, `preference-ledger.ts`, `personal-ranker.ts`, `candidate-search.ts`, `src/ui/ProducerDnaCompare.tsx` a audition UI; `tests/intent-preference-ledger.test.ts`, `tests/rank-candidates.test.ts`.
+
+**Exit gate:** na dosiaľ nepoužitých pároch personal ranker prekoná baseline s uvedenou veľkosťou vzorky/neistotou; žiadny implicitný event nevytvorí preferenciu; používateľské údaje možno spravovať bez cloudu.
+
+### 11.7 Vlna 5 — referencie a celý song používajú ten istý bezpečný cyklus
+
+**Cieľ:** preniesť iba zvolenú vlastnosť z projektu/audio referencie a posudzovať song ako celok, pričom každá lokálna oprava ostáva chirurgická.
+
+**Pracovné kroky:**
+
+1. Rozdeliť referenciu na podporované donor osi a ukazovať zdroj, povolené osi a neistotu; nezačínať UI prepínačom pre feature, ktorú conditioning nevie oddeliť.
+2. Pre každú os vytvoriť toggle-off test, ktorý dokáže, že vypnutá vlastnosť nedosiahla conditioning vector/plán. Surové audio neukladať do preference ledgeru.
+3. V song compare merať a počúvať sekcie v susednom kontexte; pattern win-rate sa nesmie použiť ako song win-rate.
+4. Navrhnúť konkrétnu sekčnú zmenu — napr. lift hooku oproti verse — a znovu použiť target/preserve/proposal/Apply guard z vlny 3.
+5. Technické audio chyby, hudobný kontrast a osobnú preferenciu reportovať oddelene; žiadne všeobecné estetické percento.
+
+**Miesta:** `audio-reference.ts`, `reference-embedding.ts`, `semantic-conditioning.ts`, `compose.ts`, `song.ts`, `song-audio-review.ts`, `src/rendering/renderer.ts`.
+
+**Exit gate:** vypnutá donor os má nulový vplyv v testovanom conditioning path; whole-song blind test používa celé relevantné úseky; targeted song revision nemení ostatné zamknuté sekcie.
+
+### 11.8 Vlna 6 — MRT2 ako performer, nie náhrada intent engine
+
+MRT2 sa pripája až na stabilný kandidátsky a audition/apply cyklus. KYX pripraví prompt/conditioning z povoleného briefu, ponúkne generovaný part ako jednu z možností, nechá používateľa vypočuť a až potom ho zachytí/zmrazí do bežného editovateľného KYX materiálu. Model nesmie obísť hard brief, meniť projekt priamo, bežať v audio callbacku ani stať sa povinnou závislosťou browser intentu.
+
+**Exit gate:** host/browser support matrix, timeout/cancel, resource budget, deterministický fallback, audition pred commitom a úspešný freeze/resample-to-editable workflow; všetko samostatne otestované pre daný runtime.
+
+### 11.9 Čo zaradiť do najbližšieho pracovného cyklu
+
+1. **Najprv uzavrieť pilot:** ľudský posluch packu v sekcii 10; kým nie je verdikt, nemeniť preference model podľa domnienky.
+2. **Potom auditovať a doplniť Brief Debugger:** fixtures, opraviteľné statementy a invalidácia zastaraného auditionu — malý vertikálny rez bez project-schema migrácie.
+3. **Následne doručiť jednu počuteľnú rodinu:** rozšíriť creative search iba tam, kde máme merateľný hudobný transform a blind test.
+4. **Až potom spevniť end-to-end surgical follow-up:** konkrétny parent → target/preserve diff → audition → exact Apply/Undo.
+5. **Po nazbieraní explicitných párov** rozhodnúť, či personal ranker skutočne pomáha; až potom investovať do ONNX architektúry alebo väčšieho modelu.
+
+### 11.10 Konkrétny vertikálny rez: hard zákazy rolí
+
+Toto je malý, ale produktovo kritický rez, ktorý uzatvára jednu triedu „KYX urobil presný opak toho, čo som povedal“. Nepridáva nový model ani nemení project schema.
+
+| Vrstva                                             | Kontrakt                                                                                                                                                                               | Overenie                                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Parser (`text-parser.ts`)                          | Rozpoznané aliasy sa prevedú na kanonické `prohibitedRoles`; fallback zvolí iba povolené roly. Explicitný pozitívny scope sa nesmie tváriť, že zákaz neexistuje.                       | SK/EN fixture pre každú rolu, aliasy, samotný zákaz, zákaz + iná rola a zákaz + `full beat`.                   |
+| Brief contract (`brief-contract.ts`)               | Každý zákaz sa zobrazí v sekcii `ZÁKAZY` s `role`, stabilným id a pôvodom `prompt`; konflikt má zrozumiteľnú správu.                                                                   | Pure testy na všetky štyri role, konfliktové triedy a deterministickú kompiláciu.                              |
+| UI (`BriefContractSummary.tsx`, `IntentPanel.tsx`) | Opraviteľné role toggles aktualizujú generation input; hard zákaz a `preserve` sú nedostupné; konflikt blokuje tvorbu, kým sa rozsah nestane jednoznačným, a zneplatní starý audition. | UI test pre toggles, poslednú aktívnu rolu, zákaz/ochranu, conflict resolution aj výsledný `IntentSpec.roles`. |
+| Plán (`plan.ts`)                                   | Zakázaná rola nedostane generator target ani track IDs; ostatné povolené roly môžu pokračovať.                                                                                         | Integration assertion na `options.roles`, `rolePlans[role].enabled` a prázdne `targetTrackIds`.                |
+| Hranica                                            | Zoznam aliasov je explicitný a verziovaný testami; neznáma fráza sa nesmie vydávať za pochopený zákaz. Nejde o všeobecné porozumenie prirodzenému jazyku.                              | Negatívne fixtures pre podobné, ale nejednoznačné formulácie; manuálny SK/EN brief review.                     |
+
+**Hotovo znamená:** tá istá hard požiadavka je viditeľná v parser výstupe/brief kontrakte, v normalizovanom inpute aj v generation plan-e; konflikt neumožní aplikovať starý návrh; žiadna mäkká váha ani ranker nemôže zákaz zmeniť na kandidáta. Až po tejto bráne má zmysel pridávať ďalšie generatívne rodiny.
+
+Ak niektorá brána neprejde, ďalšia vlna sa neposúva automaticky. Výsledok brány určuje, či treba zlepšiť parser, generatívnu rodinu, poradie kandidátov, alebo samotný workflow — a každá z týchto príčin potrebuje iný zásah.

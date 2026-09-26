@@ -206,7 +206,7 @@ describe("symbolic prior provider", () => {
     expect(entries).toHaveLength(2);
     const experimental = entries.find((entry) => entry.search?.lane === "experimental");
     expect(experimental?.search?.family).toBe("alternate-groove");
-    expect(experimental?.search?.melodyFamily).toBe("repeating-hook");
+    expect(experimental?.search?.melodyFamily).toBe("evolving-hook");
     expect(experimental?.search?.grooveId).not.toBe(plan.groove.id);
     expect(experimental?.pattern.generation?.grooveId).toBe(experimental?.search?.grooveId);
     expect(experimental?.pattern.generation?.intent).toEqual(plan.intent);
@@ -228,7 +228,14 @@ describe("symbolic prior provider", () => {
         .filter((note) => note.start >= bar * barTicks && note.start < (bar + 1) * barTicks)
         .map(({ start, pitch, duration, velocity }) => ({ start: start - bar * barTicks, pitch, duration, velocity }));
     expect(motifInBar(0).length).toBeGreaterThan(0);
-    expect(motifInBar(1)).toEqual(motifInBar(0));
+    const firstMotif = motifInBar(0);
+    const secondMotif = motifInBar(1);
+    expect(secondMotif.length).toBeGreaterThan(0);
+    expect(secondMotif.length).toBeGreaterThanOrEqual(firstMotif.length - 1);
+    expect(secondMotif.slice(0, -1)).toEqual(firstMotif.slice(0, secondMotif.length - 1));
+    expect(secondMotif.length < firstMotif.length || secondMotif.at(-1)!.duration < firstMotif.at(-1)!.duration).toBe(
+      true,
+    );
   });
 
   it("is deterministic for the same plan and stubbed prior", async () => {

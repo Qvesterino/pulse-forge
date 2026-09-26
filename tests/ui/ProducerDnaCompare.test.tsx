@@ -32,6 +32,8 @@ function buildFixture(): { result: GenerationResult; project: ReturnType<typeof 
       repairs: [],
       score: 0.7 - variant * 0.1,
       modelScore: null,
+      globalScore: 0.7 - variant * 0.1,
+      globalScoreVersion: "global-selector.v1:heuristic",
       contentHash: `candidate-hash-${variant}`,
       pattern,
     };
@@ -60,13 +62,16 @@ describe("ProducerDnaCompare", () => {
     render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
-    fireEvent.click(screen.getByRole("button", { name: "A sedí viac" }));
+    expect(screen.getByText(/ktorý take by si nechal/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nechal by som A" }));
 
     const stored = localStorage.getItem(PREFERENCE_LEDGER_KEY);
     expect(stored).not.toBeNull();
     expect(JSON.parse(stored!)).toHaveLength(1);
     expect(stored).not.toContain("test-private-seed");
     expect(stored).not.toContain("private prompt");
+    expect(JSON.parse(stored!)[0].candidateA.globalScoreVersion).toBe("global-selector.v1:heuristic");
+    expect(JSON.parse(stored!)[0].candidateA.globalScore).toBe(0.7);
     expect(screen.getByRole("status")).toHaveTextContent(/všeobecná preferencia.*aspoň 2 porovnania/i);
   });
 
@@ -87,7 +92,7 @@ describe("ProducerDnaCompare", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
     fireEvent.change(screen.getByRole("combobox", { name: /optional reason/i }), { target: { value: "groove" } });
-    fireEvent.click(screen.getByRole("button", { name: "B sedí viac" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nechal by som B" }));
 
     const stored = JSON.parse(localStorage.getItem(PREFERENCE_LEDGER_KEY) ?? "[]");
     expect(stored[0].reason).toBe("groove");
@@ -102,7 +107,7 @@ describe("ProducerDnaCompare", () => {
     fireEvent.click(screen.getByRole("button", { name: /Učenie zapnuté/i }));
     fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
-    expect(screen.getByRole("button", { name: "A sedí viac" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nechal by som A" })).toBeDisabled();
     expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
   });
 });

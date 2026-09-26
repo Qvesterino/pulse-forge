@@ -3,7 +3,7 @@ import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
 import { normalizeIntent } from "../../src/intent/normalize";
-import { rememberGeneration } from "../../src/intent/session-context";
+import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
 import type { SongBuild } from "../../src/intent/song";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -66,6 +66,129 @@ describe("IntentPanel", () => {
     expect(detected.textContent!.length).toBeGreaterThan(0);
   });
 
+  it("updates the understood brief and generation input after an inline BPM correction", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "dark trap at 142" } });
+    fireEvent.click(screen.getByText(/^142 BPM/));
+
+    const bpmInput = screen.getByLabelText("Nové BPM");
+    fireEvent.change(bpmInput, { target: { value: "128" } });
+    fireEvent.keyDown(bpmInput, { key: "Enter" });
+
+    expect(screen.getByText(/128 BPM/)).toBeInTheDocument();
+    expect(screen.queryByText(/^142 BPM/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+    expect(await screen.findByLabelText("Stav kreatívnych smerov")).toBeInTheDocument();
+    expect(lastGeneration()?.intent.bpmRange).toEqual([128, 128]);
+  }, 40000);
+
+  it("unprotects a role in the effective brief, including the last protected role", () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "keep my bass" } });
+    expect(screen.getByText(/ponechám existujúce: basu/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Prestať chrániť bass" }));
+
+    expect(screen.queryByText(/ponechám existujúce: basu/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Generovať bicie" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Generovať basu" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("blocks generation for an unresolved role conflict", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "no drums, add kick" },
+    });
+    expect(screen.getByLabelText("Rozpory v zadaní")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+    expect(await screen.findByText(/zadanie si protirečí/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^USE$/ })).toBeNull();
+  });
+
+  it("blocks SONG generation for the same unresolved role conflict", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "no drums, add kick" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /♪ SONG/i }));
+
+    expect(await screen.findByText(/zadanie si protirečí/i)).toBeInTheDocument();
+    expect(screen.queryByText(/full-song preview ready/i)).toBeNull();
+  });
+
+  it("resolves a prohibited full-beat scope by editing roles and sends that correction to generation", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "no bass, full beat" },
+    });
+    expect(screen.getByLabelText("Rozpory v zadaní")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generovať lead" }));
+
+    expect(screen.queryByLabelText("Rozpory v zadaní")).toBeNull();
+    expect(screen.getByRole("button", { name: "Generovať basu" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+    expect(lastGeneration()?.intent.roles).toEqual(["drums", "chords"]);
+  }, 40000);
+
+  it("invalidates an auditioned candidate bank when the producer edits generation roles", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "dark trap" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generovať akordy" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^USE$/ })).toBeNull());
+    expect(screen.getByRole("button", { name: "Generovať akordy" })).toHaveAttribute("aria-pressed", "true");
+  }, 40000);
+
+  it("replays a history prompt only after its text and brief state are loaded", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "dark trap at 140" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+
+    const history = within(screen.getByLabelText("Prompt history"));
+    fireEvent.click(history.getAllByRole("button", { name: "dark trap at 140" })[0]);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^USE$/ })).toBeNull());
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+    expect(lastGeneration()?.intent.genre).toBe("trap");
+  }, 40000);
+
+  it("removes an older candidate bank when the current prompt becomes conflicting", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "dark trap 140" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "no drums, add kick" },
+    });
+
+    expect(screen.getByLabelText("Rozpory v zadaní")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^USE$/ })).toBeNull());
+  }, 40000);
+
+  it("resolves preserve-vs-addition by unprotecting the whole role", () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "keep my kick but add snare" },
+    });
+    expect(screen.getByLabelText("Rozpory v zadaní")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Prestať chrániť drums" }));
+
+    expect(screen.queryByLabelText("Rozpory v zadaní")).toBeNull();
+    expect(screen.queryByText(/ponechám existujúce: bicie/)).toBeNull();
+  });
+
   it("renders the INTENT header", () => {
     renderWithContext(<IntentPanel />);
     expect(screen.getByText(/INTENT/i)).toBeInTheDocument();
@@ -94,6 +217,18 @@ describe("IntentPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/patrí inému projektu/i);
     expect(rendered.services.store.execute).not.toHaveBeenCalled();
     rememberGeneration({ text: "", intent, candidates: [], appliedIndex: null, docId: doc.id, at: 0 });
+  });
+
+  it("releases the generating state when a targeted section revision has no matching section", async () => {
+    renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "make bridge more energic" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+    expect(await screen.findByText(/no bridge section in the project/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GENERATE" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /♪ SONG/i })).toBeEnabled();
   });
 });
 

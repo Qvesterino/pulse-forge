@@ -2726,7 +2726,12 @@ export class AudioEngine {
    * - "stretch": non-destructive time-stretch preserves pitch (pre-rendered
    *   grain buffer cached per bufferId+rate, deterministic live==offline)
    */
-  triggerAudioClip(clip: import("../project-model/types").AudioClip, when: number, durationSec?: number): void {
+  triggerAudioClip(
+    clip: import("../project-model/types").AudioClip,
+    when: number,
+    durationSec?: number,
+    resumeOffsetSec = 0,
+  ): void {
     const ctx = this.ctx;
     const doc = this.doc;
     if (!ctx || !doc) return;
@@ -2738,6 +2743,16 @@ export class AudioEngine {
 
     const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
     const reverse = clip.reverse;
+    const resumedBy = Number.isFinite(resumeOffsetSec) ? Math.max(0, resumeOffsetSec) : 0;
+    if (
+      resumedBy > 0 &&
+      (reverse ||
+        clip.loop ||
+        (clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01) ||
+        (clip.warpMarkers?.length ?? 0) > 0)
+    ) {
+      return;
+    }
 
     // --- stretchMode selection ---
     let playBuffer: AudioBuffer;
@@ -2789,33 +2804,54 @@ export class AudioEngine {
     const isCompClip = clip.compSourceTakeId !== undefined;
     let fadeIn = Math.max(0, clip.fadeIn ?? 0);
     let fadeOut = Math.max(0, clip.fadeOut ?? 0);
-    if (isCompClip && fadeIn + fadeOut > clipDurSec) {
-      const scale = clipDurSec / Math.max(0.001, fadeIn + fadeOut);
+    const originalClipDurSec = clipDurSec + resumedBy;
+    if (isCompClip && fadeIn + fadeOut > originalClipDurSec) {
+      const scale = originalClipDurSec / Math.max(0.001, fadeIn + fadeOut);
       fadeIn *= scale;
       fadeOut *= scale;
+    } else if (!isCompClip) {
+      // Match the original non-comp envelopes: linear fade-in tops out at
+      // half the clip duration, and fade-out can span at most the clip.
+      // Use the full pre-resume duration so a mid-clip start evaluates the
+      // same envelope progress the source had reached before audition began.
+      fadeIn = Math.min(fadeIn, originalClipDurSec / 2);
+      fadeOut = Math.min(fadeOut, originalClipDurSec);
     }
+    const fadeInActive = fadeIn > 0.001 && resumedBy < fadeIn;
+    const fadeInProgress = fadeIn > 0 ? Math.min(1, resumedBy / fadeIn) : 1;
+    const fadeInRemaining = fadeInActive ? fadeIn - resumedBy : 0;
+    const fadeOutStartSec = originalClipDurSec - fadeOut;
+    const fadeOutActive = fadeOut > 0.001 && resumedBy >= fadeOutStartSec;
+    const fadeOutProgress =
+      fadeOutActive && fadeOut > 0 ? Math.min(1, Math.max(0, (resumedBy - fadeOutStartSec) / fadeOut)) : 0;
+    const fadeOutRemaining = fadeOutActive ? clipDurSec : fadeOut;
+    const fadeOutAt = fadeOutActive ? when : when + Math.max(0, clipDurSec - fadeOut);
     if (isCompClip) {
-      const scheduleCurve = (startAt: number, duration: number, rising: boolean): void => {
+      const scheduleCurve = (startAt: number, duration: number, rising: boolean, startProgress = 0): void => {
         const pointCount = 64;
         const values = new Float32Array(pointCount + 1);
         for (let index = 0; index <= pointCount; index++) {
-          const angle = ((index / pointCount) * Math.PI) / 2;
+          const progress = startProgress + (index / pointCount) * (1 - startProgress);
+          const angle = (progress * Math.PI) / 2;
           values[index] = clipGain * (rising ? Math.sin(angle) : Math.cos(angle));
         }
         gain.gain.setValueCurveAtTime(values, startAt, duration);
       };
-      if (fadeIn > 0.001) scheduleCurve(when, Math.min(fadeIn, clipDurSec), true);
-      if (fadeOut > 0.001 && clipDurSec > 0.01) {
-        scheduleCurve(when + Math.max(0, clipDurSec - fadeOut), fadeOut, false);
+      const initialEnvelope = fadeOutActive ? Math.cos((fadeOutProgress * Math.PI) / 2) : 1;
+      gain.gain.setValueAtTime(clipGain * initialEnvelope, when);
+      if (fadeInActive) scheduleCurve(when, Math.min(fadeInRemaining, clipDurSec), true, fadeInProgress);
+      if (fadeOutRemaining > 0.001 && clipDurSec > 0.01) {
+        scheduleCurve(fadeOutAt, Math.min(fadeOutRemaining, clipDurSec), false, fadeOutProgress);
       }
     } else {
-      if (fadeIn > 0.001) {
-        gain.gain.setValueAtTime(0, when);
-        gain.gain.linearRampToValueAtTime(clipGain, when + Math.min(fadeIn, clipDurSec / 2));
+      const initialEnvelope = (fadeInActive ? fadeInProgress : 1) * (fadeOutActive ? 1 - fadeOutProgress : 1);
+      gain.gain.setValueAtTime(clipGain * initialEnvelope, when);
+      if (fadeInActive) {
+        gain.gain.linearRampToValueAtTime(clipGain, when + Math.min(fadeInRemaining, clipDurSec / 2));
       }
-      if (fadeOut > 0.001 && clipDurSec > 0.01) {
-        const outStart = when + Math.max(0, clipDurSec - fadeOut);
-        gain.gain.setValueAtTime(clipGain, outStart);
+      if (fadeOutRemaining > 0.001 && clipDurSec > 0.01) {
+        const outStart = fadeOutAt;
+        if (!fadeOutActive) gain.gain.setValueAtTime(clipGain, outStart);
         gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
       }
     }

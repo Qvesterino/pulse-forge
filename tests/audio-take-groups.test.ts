@@ -9,7 +9,11 @@ import {
 import { audioClipsForPlayback } from "../src/project-model/audio-takes";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { computeRenderTicks } from "../src/rendering/renderer";
-import { audioTakeAuditionStartOffsetSec, createAudioTakeAuditionDoc } from "../src/rendering/take-audition";
+import {
+  audioTakeAuditionStartOffsetSec,
+  createAudioTakeAuditionDoc,
+  createLiveAudioTakeAuditionProject,
+} from "../src/rendering/take-audition";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 
@@ -49,6 +53,40 @@ describe("non-destructive audio take groups", () => {
     ).toBe(true);
     expect(withAlternates.arrangement.audioClips).toHaveLength(2);
     expect(withAlternates.arrangement.takeGroups?.[0]?.activeTakeId).not.toBe("take-b");
+  });
+
+  it("builds a live audition at the playhead without changing the saved project or song tempo map", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    const scene = doc.scenes[0];
+    if (!track || !scene) throw new Error("empty project fixture missing track or scene");
+    const atSceneTempo = setSceneBpm(doc, scene.id, 90).execute(doc);
+    const arranged = {
+      ...atSceneTempo,
+      arrangement: {
+        ...atSceneTempo.arrangement,
+        clips: [{ id: "live-audition-scene", sceneId: scene.id, startBar: 0, lengthBars: 4 }],
+      },
+    };
+    const first = addAudioTakeClip(arranged, "live-audition-group", "take-a", track.id, "audio.take-a", 0, 1).execute(
+      arranged,
+    );
+    const source = addAudioTakeClip(first, "live-audition-group", "take-b", track.id, "audio.take-b", 1, 1).execute(
+      first,
+    );
+
+    const live = createLiveAudioTakeAuditionProject(source, "live-audition-group", "take-a", BAR_TICKS / 2);
+    const clip = live.project.arrangement.audioClips?.[0];
+
+    expect(clip).toMatchObject({ startBar: 0.5, lengthBars: 0.5, offsetSec: expect.closeTo((60 / 90) * 2, 8) });
+    expect(live.resumedAudioClipOffsets.get(clip!.id)).toBeCloseTo((60 / 90) * 2, 8);
+    expect(live.project.arrangement.clips).toBe(source.arrangement.clips);
+    expect(live.project.patterns.every((pattern) => Object.keys(pattern.notes).length === 0)).toBe(true);
+    expect(source.arrangement.audioClips?.find((item) => item.takeId === "take-a")).toMatchObject({
+      startBar: 0,
+      offsetSec: 0,
+    });
+    expect(source.arrangement.takeGroups?.[0]?.activeTakeId).toBe("take-a");
   });
 
   it("adds alternate passes and switches the active take through undoable commands", () => {
@@ -219,6 +257,43 @@ describe("non-destructive audio take groups", () => {
 
     expect(() => compAudioTakeRange(firstEdit, "repeated-crossfade-group", "take-2", 500, 560, 60)).toThrow(
       /include the full old seam/u,
+    );
+  });
+
+  it("supports repeated comp edits when the new boundaries do not cut through old seams", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    if (!track) throw new Error("empty project fixture missing track");
+    const first = addAudioTakeClip(doc, "repeat-edit-group", "take-1", track.id, "audio.take-1", 0, 1).execute(doc);
+    const both = addAudioTakeClip(first, "repeat-edit-group", "take-2", track.id, "audio.take-2", 0, 1).execute(first);
+    const wholeComp = compAudioTakeRange(both, "repeat-edit-group", "take-1", 0, BAR_TICKS).execute(both);
+    const firstEdit = compAudioTakeRange(
+      wholeComp,
+      "repeat-edit-group",
+      "take-2",
+      BAR_TICKS / 4,
+      (BAR_TICKS * 3) / 4,
+      120,
+    ).execute(wholeComp);
+    const secondEdit = compAudioTakeRange(
+      firstEdit,
+      "repeat-edit-group",
+      "take-1",
+      (BAR_TICKS * 2) / 5,
+      (BAR_TICKS * 3) / 5,
+      60,
+    ).execute(firstEdit);
+    const active = audioClipsForPlayback(secondEdit.arrangement);
+    const compTakeId = secondEdit.arrangement.takeGroups?.[0]?.compTakeId;
+
+    expect(active.every((clip) => clip.takeId === compTakeId)).toBe(true);
+    expect(active.some((clip) => clip.compSourceTakeId === "take-1" && clip.fadeIn > 0.003)).toBe(true);
+    expect(active.some((clip) => clip.compSourceTakeId === "take-2" && clip.fadeOut > 0.003)).toBe(true);
+    expect(secondEdit.arrangement.audioClips?.filter((clip) => clip.takeId === "take-1")).toEqual(
+      both.arrangement.audioClips?.filter((clip) => clip.takeId === "take-1"),
+    );
+    expect(secondEdit.arrangement.audioClips?.filter((clip) => clip.takeId === "take-2")).toEqual(
+      both.arrangement.audioClips?.filter((clip) => clip.takeId === "take-2"),
     );
   });
 

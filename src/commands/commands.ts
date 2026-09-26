@@ -3096,7 +3096,11 @@ export function compAudioTakeRange(
       fadeOut: endsAtClipEdge ? clip.fadeOut : declickFadeSec,
     };
   };
-  const segmentsForTake = (takeId: string, fromTick: number, toTick: number): Array<{
+  const segmentsForTake = (
+    takeId: string,
+    fromTick: number,
+    toTick: number,
+  ): Array<{
     clip: AudioClip;
     startTick: number;
     endTick: number;
@@ -3132,10 +3136,18 @@ export function compAudioTakeRange(
 
   const compClips = clipsForTake(compTakeId);
   const leftCandidates = compClips
-    .filter((clip) => clip.startBar * BAR_TICKS < startTick - epsilonTicks && clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= startTick - epsilonTicks)
+    .filter(
+      (clip) =>
+        clip.startBar * BAR_TICKS < startTick - epsilonTicks &&
+        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= startTick - epsilonTicks,
+    )
     .sort((a, b) => b.startBar - a.startBar);
   const rightCandidates = compClips
-    .filter((clip) => clip.startBar * BAR_TICKS <= endTick + epsilonTicks && clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > endTick + epsilonTicks)
+    .filter(
+      (clip) =>
+        clip.startBar * BAR_TICKS <= endTick + epsilonTicks &&
+        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > endTick + epsilonTicks,
+    )
     .sort((a, b) => a.startBar + a.lengthBars - (b.startBar + b.lengthBars));
   const leftNeighbor = leftCandidates[0];
   const rightNeighbor = rightCandidates[0];
@@ -3169,8 +3181,14 @@ export function compAudioTakeRange(
   if (rightHalfTicks > 0) ensureNoExistingCrossfadeInWindow(endTick - rightHalfTicks, endTick + rightHalfTicks);
 
   const sourceSegments = segmentsForTake(sourceTakeId, sourceRangeStartTick, sourceRangeEndTick);
-  const leftNeighborSegments = leftHalfTicks > 0 ? segmentsForTake(leftNeighbor!.compSourceTakeId!, startTick - leftHalfTicks, startTick + leftHalfTicks) : [];
-  const rightNeighborSegments = rightHalfTicks > 0 ? segmentsForTake(rightNeighbor!.compSourceTakeId!, endTick - rightHalfTicks, endTick + rightHalfTicks) : [];
+  const leftNeighborSegments =
+    leftHalfTicks > 0
+      ? segmentsForTake(leftNeighbor!.compSourceTakeId!, startTick - leftHalfTicks, startTick + leftHalfTicks)
+      : [];
+  const rightNeighborSegments =
+    rightHalfTicks > 0
+      ? segmentsForTake(rightNeighbor!.compSourceTakeId!, endTick - rightHalfTicks, endTick + rightHalfTicks)
+      : [];
   const leftFadeSec = leftHalfTicks > 0 ? secondsBetweenTicks(startTick - leftHalfTicks, startTick + leftHalfTicks) : 0;
   const rightFadeSec = rightHalfTicks > 0 ? secondsBetweenTicks(endTick - rightHalfTicks, endTick + rightHalfTicks) : 0;
 
@@ -3234,9 +3252,19 @@ export function compAudioTakeRange(
         compSourceTakeId: provenanceTakeId,
       };
     });
-  const leftCrossfadeClips = buildCompSegments(leftNeighborSegments, leftNeighbor?.compSourceTakeId ?? "", 0, leftFadeSec);
+  const leftCrossfadeClips = buildCompSegments(
+    leftNeighborSegments,
+    leftNeighbor?.compSourceTakeId ?? "",
+    0,
+    leftFadeSec,
+  );
   const selectedCompClips = buildCompSegments(sourceSegments, sourceTakeId, leftFadeSec, rightFadeSec);
-  const rightCrossfadeClips = buildCompSegments(rightNeighborSegments, rightNeighbor?.compSourceTakeId ?? "", rightFadeSec, 0);
+  const rightCrossfadeClips = buildCompSegments(
+    rightNeighborSegments,
+    rightNeighbor?.compSourceTakeId ?? "",
+    rightFadeSec,
+    0,
+  );
   if (continuesLeftOfCrossfade && leftCrossfadeClips[0]) leftCrossfadeClips[0].fadeIn = 0;
   if (continuesRightOfCrossfade && rightCrossfadeClips.length > 0) {
     rightCrossfadeClips[rightCrossfadeClips.length - 1]!.fadeOut = 0;

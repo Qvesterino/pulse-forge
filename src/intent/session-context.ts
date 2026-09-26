@@ -101,7 +101,11 @@ export function resolveSessionReference(text: string, candidates: SessionCandida
       .toLowerCase()
       .normalize("NFD")
       .replace(/[^a-z0-9 #]/g, "");
-  const words = text.replace(/[\s,.]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  const words = text
+    .replace(/[\s,.]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
   const folded = words.map(fold);
 
   const findReference = (): { index: number; start: number; end: number } | null => {
@@ -123,8 +127,10 @@ export function resolveSessionReference(text: string, candidates: SessionCandida
 
   const hit = findReference();
   if (!hit) return null;
-  const consumed = new Set(words.slice(hit.start, hit.end + 1).map((w) => w.toLowerCase()));
-  const rest = words.filter((w) => !consumed.has(w.toLowerCase())).join(" ");
+  // Remove this occurrence by position. A Set of token values would also
+  // erase repeated words from the actual edit, e.g. "the second one, keep the
+  // second lead" would lose the second "the/second" pair from the residual.
+  const rest = [...words.slice(0, hit.start), ...words.slice(hit.end + 1)].join(" ");
   return { index: hit.index, rest };
 }
 

@@ -103,6 +103,11 @@ export interface Services {
   generativeLatency?: GenerativeLatencyCalibrationController;
   transport: Transport;
   scheduler: Scheduler;
+  /** Install or clear an ephemeral live take-lane playback projection. */
+  setLiveTakeAuditionProject(
+    project: ProjectDocument | null,
+    resumedAudioClipOffsets?: ReadonlyMap<string, number>,
+  ): void;
   repo: IProjectRepository;
   bank: SampleBank;
   library: ILibraryRepository;
@@ -506,7 +511,8 @@ export async function openProject(
     trigger: (trackId, pad, when, velocity, locks) => engine.trigger(trackId, pad, when, velocity, locks),
     noteOn: (trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen) =>
       engine.noteOn(trackId, pitch, velocity, when, durationSec, slideFromTick, slideFromPitch, locks, slideFromWhen),
-    triggerAudioClip: (clip, when, durationSec) => engine.triggerAudioClip(clip, when, durationSec),
+    triggerAudioClip: (clip, when, durationSec, resumeOffsetSec) =>
+      engine.triggerAudioClip(clip, when, durationSec, resumeOffsetSec),
     metronomeClick: (when, downbeat) => engine.click(when, downbeat),
     recordCapturedEvent: (event) => capture.recordEvent(event),
     applyAutomation: (fromTick, toTick, relOf, scheduleOffsetSec, timeAt) =>
@@ -551,6 +557,29 @@ export async function openProject(
       }
     },
   });
+  let liveTakeAuditionActive = false;
+  const setLiveTakeAuditionProject = (
+    project: ProjectDocument | null,
+    resumedAudioClipOffsets?: ReadonlyMap<string, number>,
+  ): void => {
+    if (project && (!transport.playing || modeRef.mode !== "song")) {
+      throw new Error("Live take audition requires song-mode playback");
+    }
+    if (project && transport.loopEnabled) {
+      throw new Error("Turn off the transport loop to audition a take lane live");
+    }
+    if (!project && !liveTakeAuditionActive) return;
+
+    midiOutput.cancelPending();
+    engine.panic();
+    engine.automationReset();
+    liveTakeAuditionActive = project !== null;
+    scheduler.setPlaybackProjectOverride(
+      project ? { project, ...(resumedAudioClipOffsets ? { resumedAudioClipOffsets } : {}) } : null,
+    );
+    engine.setProject(project ?? store.doc);
+    if (transport.playing) engine.restartFrozenSources(transport.position);
+  };
   engine.setProject(store.doc);
   // Pre-load AudioWorklet modules (fire-and-forget — factories fall back
   // to bypass/fallback until modules are ready, then the engine rebuilds
@@ -580,6 +609,7 @@ export async function openProject(
       patternRecorder.onTransportInterrupted();
     },
     () => {
+      setLiveTakeAuditionProject(null);
       capture.markPause();
       patternRecorder.onTransportInterrupted();
     },
@@ -616,6 +646,7 @@ export async function openProject(
           generativeRuntimeRef?.stopAll().catch((err) => console.warn("[generative] remote stopAll failed:", err));
         }
         applyTransportState(transport, state, Date.now() / 1000);
+        if (!state.playing) setLiveTakeAuditionProject(null);
         if (shouldStartScheduler) {
           scheduler.start();
           generativeRuntimeRef?.startAll().catch((err) => console.warn("[generative] remote startAll failed:", err));
@@ -932,7 +963,14 @@ export async function openProject(
     // outlived closeProject) must not re-point the SHARED engine at the
     // closed project or re-arm the debouncer — the final flush already ran.
     if (closed) return;
+    if (liveTakeAuditionActive) {
+      liveTakeAuditionActive = false;
+      scheduler.setPlaybackProjectOverride(null);
+      engine.panic();
+      engine.automationReset();
+    }
     engine.setProject(doc);
+    if (transport.playing) engine.restartFrozenSources(transport.position);
     transport.setBarTicks(ticksPerBar(doc));
     transport.setBpm(doc.bpm);
     void generativeRuntime.refreshAll().catch((error) => {
@@ -987,6 +1025,7 @@ export async function openProject(
     // Ordered teardown; the flag first so pending fire-and-forget asyncs
     // (frozen restore, Web MIDI access grant) observe the close immediately.
     closed = true;
+    setLiveTakeAuditionProject(null);
     noteRepeat.stopAll();
     ghost.stop();
     capture.cancel();
@@ -1039,6 +1078,7 @@ export async function openProject(
     generativeLatency,
     transport,
     scheduler,
+    setLiveTakeAuditionProject,
     sharedTransportReapply,
     bandmate,
     repo,

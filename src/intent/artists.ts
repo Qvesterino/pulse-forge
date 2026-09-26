@@ -31,6 +31,8 @@ export interface ArtistPreset {
   density?: number;
   bpmRange?: [number, number];
   /** UI chip label. */
+  /** Optional named-plugin concept words riding the generation ("metallic"). */
+  fx?: readonly string[];
   label: string;
 }
 
@@ -237,6 +239,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.45,
     density: 0.45,
     bpmRange: [130, 140],
+    fx: ["lofi"],
     label: "burial / future garage",
   },
   {
@@ -379,6 +382,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.4,
     density: 0.4,
     bpmRange: [120, 135],
+    fx: ["lofi"],
     label: "yung lean / drain gang",
   },
   {
@@ -400,6 +404,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.3,
     density: 0.4,
     bpmRange: [66, 78],
+    fx: ["tape"],
     label: "dj screw / chopped and screwed",
   },
   {
@@ -527,6 +532,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.45,
     density: 0.5,
     bpmRange: [86, 94],
+    fx: ["lofi"],
     label: "mf doom",
   },
   {
@@ -538,6 +544,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.65,
     density: 0.5,
     bpmRange: [98, 110],
+    fx: ["lofi"],
     label: "old school / electro",
   },
   // ── mainstream heavyweights wave ───────────────────────────────────────
@@ -694,6 +701,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.45,
     density: 0.45,
     bpmRange: [120, 150],
+    fx: ["lofi"],
     label: "lil peep",
   },
   {
@@ -994,6 +1002,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.6,
     density: 0.5,
     bpmRange: [128, 140],
+    fx: ["tape"],
     label: "memphis phonk",
   },
   // ── Phonk bounce: TikTok-era cowbell-forward phonk, busy hat work ───────
@@ -1540,6 +1549,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.85,
     density: 0.7,
     bpmRange: [120, 140],
+    fx: ["metallic"],
     label: "sophie",
   },
   {
@@ -1725,6 +1735,192 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [95, 120],
     label: "rihanna",
+  },
+  // ── pop wave 2 (BPM researched: mixgraph.io / tunebat / tempo-tunes /
+  //    jog.fm — dance-pop 120-136, pop-rap 80-130, retro-pop 100-120) ─────
+  // Dance-pop block — club/EDM-pop crossover pocket (~125-128 sweet spot)
+  {
+    names: ["sia", "sia type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [120, 133],
+    label: "sia",
+  },
+  {
+    names: ["katy perry", "katy perry type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [100, 128],
+    label: "katy perry",
+  },
+  {
+    names: ["ava max", "ava max type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [125, 135],
+    label: "ava max",
+  },
+  {
+    names: ["zedd", "zedd type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [105, 128],
+    label: "zedd",
+  },
+  {
+    names: ["calvin harris", "calvin harris type beat"],
+    genre: "house",
+    style: "dancefloor",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [99, 128],
+    label: "calvin harris",
+  },
+  {
+    names: ["kesha", "ke$ha"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [120, 140],
+    label: "kesha",
+  },
+  // Pop-rap block — laid-back half-time pocket (80-110, double-time feel)
+  {
+    names: ["post malone", "post malone type beat"],
+    genre: "trap",
+    style: "pop",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.45,
+    bpmRange: [80, 95],
+    label: "post malone",
+  },
+  {
+    names: ["doja cat", "doja cat type beat"],
+    genre: "trap",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [105, 130],
+    label: "doja cat",
+  },
+  {
+    names: ["the kid laroi", "kid laroi", "kid laroi type beat"],
+    genre: "trap",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [85, 140],
+    label: "the kid laroi",
+  },
+  {
+    names: ["justin bieber", "bieber", "justin bieber type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [90, 130],
+    label: "justin bieber",
+  },
+  // Retro/funk-pop revival — the 100-120 disco-pop sweet spot
+  {
+    names: ["miley cyrus", "miley", "miley cyrus type beat"],
+    genre: "house",
+    style: "funky",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [105, 120],
+    label: "miley cyrus",
+  },
+  {
+    names: ["sabrina carpenter", "sabrina", "sabrina carpenter type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [100, 112],
+    label: "sabrina carpenter",
+  },
+  {
+    names: ["chappell roan", "chappell"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [105, 120],
+    label: "chappell roan",
+  },
+  {
+    names: ["harry styles", "harry styles type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [85, 130],
+    label: "harry styles",
+  },
+  {
+    names: ["troye sivan", "troye sivan type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [110, 130],
+    label: "troye sivan",
+  },
+  {
+    names: ["halsey", "halsey type beat"],
+    genre: "house",
+    style: "pop",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [90, 136],
+    label: "halsey",
+  },
+  // Ballad pop — slow, voice-first
+  {
+    names: ["adele", "adele type beat"],
+    genre: "ambient",
+    style: "pop",
+    mood: "dark",
+    energy: 0.3,
+    density: 0.3,
+    bpmRange: [70, 100],
+    label: "adele",
+  },
+  {
+    names: ["sam smith", "sam smith type beat"],
+    genre: "ambient",
+    style: "pop",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.35,
+    bpmRange: [85, 110],
+    label: "sam smith",
   },
   // ── drum & bass wave (researched pockets: dancefloor/jump-up 172–178,
   // liquid rollers 170–176, neuro 172–178, jungle/ragga 160–170) ─────────────
@@ -3773,4 +3969,10 @@ export function parseVibeBlend(lowerText: string): VibeBlend | null {
     },
     label: `${a.label} × ${b.label}`,
   };
+}
+
+/** Named-plugin concept words an artist preset carries (empty when none). */
+export function fxWordsForArtist(label: string | undefined | null): readonly string[] {
+  if (!label) return [];
+  return ARTIST_PRESETS.find((p) => p.label === label)?.fx ?? [];
 }

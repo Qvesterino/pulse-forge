@@ -1295,3 +1295,38 @@ describe("trap producers + memphis OGs + UKG revival + UK drill second line (pro
     }
   });
 });
+
+describe("pop wave 2 — dance-pop / pop-rap / retro revival / ballads", () => {
+  it("dance-pop block: sia / ava max / zedd / calvin harris / kesha / katy perry", () => {
+    expect(parseIntentText("sia type beat").input.bpmRange).toEqual([120, 133]);
+    expect(parseIntentText("ava max type beat").input.bpmRange).toEqual([125, 135]);
+    expect(parseIntentText("zedd type beat").input.genre).toBe("house");
+    expect(parseIntentText("calvin harris type beat").input.style).toBe("dancefloor");
+    expect(parseIntentText("ke$ha type beat").input.energy).toBe(0.85);
+    expect(parseIntentText("katy perry type beat").input.style).toBe("pop");
+  });
+
+  it("pop-rap block: post malone / doja cat / kid laroi / bieber", () => {
+    expect(parseIntentText("post malone type beat").input.bpmRange).toEqual([80, 95]);
+    expect(parseIntentText("post malone type beat").input.genre).toBe("trap");
+    expect(parseIntentText("doja cat type beat").input.style).toBe("pop");
+    expect(parseIntentText("kid laroi type beat").input.bpmRange).toEqual([85, 140]);
+    expect(parseIntentText("justin bieber type beat").input.mood).toBe("chill");
+  });
+
+  it("retro/funk-pop revival: miley / sabrina / chappell roan / harry styles / troye / halsey", () => {
+    expect(parseIntentText("miley cyrus type beat").input.style).toBe("funky");
+    expect(parseIntentText("miley cyrus type beat").input.bpmRange).toEqual([105, 120]);
+    expect(parseIntentText("sabrina carpenter type beat").input.bpmRange).toEqual([100, 112]);
+    expect(parseIntentText("chappell roan type beat").input.genre).toBe("house");
+    expect(parseIntentText("harry styles type beat").input.mood).toBe("chill");
+    expect(parseIntentText("troye sivan type beat").input.style).toBe("pop");
+    expect(parseIntentText("halsey type beat").input.bpmRange).toEqual([90, 136]);
+  });
+
+  it("ballad pop: adele / sam smith → ambient pop lane", () => {
+    expect(parseIntentText("adele type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("adele type beat").input.bpmRange).toEqual([70, 100]);
+    expect(parseIntentText("sam smith type beat").input.style).toBe("pop");
+  });
+});

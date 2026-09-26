@@ -297,10 +297,21 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
  */
 const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [
-    /\bno drums\b|\bwithout drums\b|\bdrumless\b|\bdrum-?less\b|\bbez (?:dalsich\s+)?(?:bubn|bic|rytmu)|\b(?:ziaden|ziadny|ziadna|ziadne)\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)\b|\bnula\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)/,
+    /\b(?:no|without)\s+(?:(?:the|my|a|an)\s+)?(?:drums?|kick|snare|hi[\s-]?hats?|hats?|cymbals?|claps?|percussion)\b|\b(?:drum|kick|snare|hat)-?less\b|\bbez (?:dalsich\s+)?(?:bubn\w*|bic\w*|kopak\w*|snare|hi[\s-]?hat\w*|hat\w*|cymbal\w*|clap\w*|percussion|rytmu)\b|\b(?:ziaden|ziadny|ziadna|ziadne)\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)\b|\bnula\s+(?:bicie|beat|bubn|bicia|rytmu|rytm)/,
     "nodrums",
   ],
-  [/\bno bass\b|\bwithout bass\b|\bbassless\b|\bbez bas/, "nobass"],
+  [
+    /\b(?:no|without)\s+(?:(?:the|my|a|an)\s+)?(?:bass(?:line)?|808s?|sub(?:bass)?)\b|\b(?:bass|sub|808)-?less\b|\bbez (?:bas\w*|808|sub\w*)/,
+    "nobass",
+  ],
+  [
+    /\b(?:no|without)\s+(?:(?:the|my|any|a|an)\s+)?(?:chords?|pads?|stabs?|keys?)\b|\bchordless\b|\bbez (?:akord\w*|pad\w*|klaves\w*)/,
+    "nochords",
+  ],
+  [
+    /\b(?:no|without)\s+(?:(?:the|my|any|a|an)\s+)?(?:lead|melody|synths?|arps?|arpeggios?|topline|top line)\b|\b(?:lead|melody|synth)-?less\b|\bbez (?:lead\w*|melodi\w*|synth\w*|arp\w*)/,
+    "nolead",
+  ],
   [/\bdrums only\b|\bbeat only\b|\bpercussion only\b|\b(?:len|iba) (?:bubn|bic)/, "drumsonly"],
   [/\bmelody only\b|\bno drums just melody\b|\b(?:len|iba) melodi/, "melodyonly"],
   [/\bfull beat\b|\beverything\b|\bfull arrangement\b|\bcely (?:beat|bit)\b|\bvsetko/, "all"],
@@ -309,6 +320,22 @@ const ROLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bchords\b|\bpads\b|\bstabs\b|\bkeys\b|\bakord/, "chords"],
   [/\blead(?:om|u|a)?\b|\bmelody\b|\barp\b|\barpeggio\b|\btopline\b|\btop line\b|\bsynth\b|\bmelodi/, "lead"],
 ];
+
+const PROHIBITION_FLAGS: Readonly<Record<string, IntentRole>> = {
+  nodrums: "drums",
+  nobass: "bass",
+  nochords: "chords",
+  nolead: "lead",
+};
+
+const PROHIBITION_DETECTED_LABEL: Readonly<Record<IntentRole, string>> = {
+  drums: "no drums",
+  bass: "no bass",
+  chords: "no chords",
+  lead: "no lead",
+};
+
+const ALL_INTENT_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
 
 /**
  * Protected-role clauses (Fáza 1): "keep my bass", "nechaj bass a akordy" —
@@ -326,7 +353,7 @@ const PRESERVE_DETERMINERS = new Set(["my", "moj", "moje", "moju", "mom", "the"]
 const PRESERVE_CONJUNCTIONS = new Set(["a", "and", "i", "aj", "plus", "s", "with"]);
 const PRESERVE_NEGATIONS = new Set(["out", "von", "mimo", "prec", "away"]);
 const PRESERVE_ROLE_STEMS: ReadonlyArray<readonly [RegExp, IntentRole]> = [
-  [/^(?:bubn|bic|bicia|drums?|beat)/, "drums"],
+  [/^(?:bubn|bic|bicia|drums?|beat|kick|kopak|snare|hihat|hats?|cymbal|clap|percussion)/, "drums"],
   [/^(?:bas|bass|sub)/, "bass"],
   [/^(?:akord|chords?|pads?|keys?)/, "chords"],
   [/^(?:melodi|leads?|synth|arp|topline)/, "lead"],
@@ -344,7 +371,12 @@ function preservedRolesOf(lower: string): IntentRole[] {
   if (!trigger) return [];
   const preserved = new Set<IntentRole>();
   let conjunction = false;
-  for (const word of lower.slice(trigger.index + trigger[0].length).split(/[^a-z0-9]+/)) {
+  const clause = lower
+    .slice(trigger.index + trigger[0].length)
+    // Treat the common compound as one role alias before punctuation-based
+    // tokenization splits "hi-hat" into an unrecognized "hi" + "hat".
+    .replace(/\bhi[\s-]?hats?\b/g, " hihat ");
+  for (const word of clause.split(/[^a-z0-9]+/)) {
     if (!word) continue;
     if (PRESERVE_NEGATIONS.has(word)) return [];
     if (PRESERVE_DETERMINERS.has(word)) continue;
@@ -352,7 +384,7 @@ function preservedRolesOf(lower: string): IntentRole[] {
       conjunction = true;
       continue;
     }
-    const role = word === "808" ? "bass" : PRESERVE_ROLE_STEMS.find(([re]) => re.test(word))?.[1];
+    const role = /^808s?$/.test(word) ? "bass" : PRESERVE_ROLE_STEMS.find(([re]) => re.test(word))?.[1];
     if (role) {
       if (preserved.size > 0 && !conjunction) break;
       preserved.add(role);
@@ -362,6 +394,45 @@ function preservedRolesOf(lower: string): IntentRole[] {
     break; // first word outside the clause grammar ends the preserve list
   }
   return [...preserved];
+}
+
+export type ParsedIntentConflictKind =
+  "prohibition-vs-addition" | "preserve-vs-addition" | "prohibition-vs-preserve" | "prohibition-vs-scope";
+
+export interface ParsedIntentConflict {
+  /** Stable key for diagnostics and UI rendering; not persisted to projects. */
+  id: string;
+  role: IntentRole;
+  kind: ParsedIntentConflictKind;
+}
+
+const ROLE_ADD_ACTION = /\b(?:add|generate|create|include|bring\s+in|pridaj|pridat|vygeneruj|vytvor|dopln)\b/g;
+const ROLE_MENTION_PATTERNS: ReadonlyArray<readonly [RegExp, IntentRole]> = [
+  [/\b(?:drums?|kick|snare|hi[\s-]?hats?|hats?|cymbals?|claps?|percussion|kopak|bubn\w*|bic\w*|bicia)\b/g, "drums"],
+  [/\b(?:bass|808s?|sub(?:bass)?|basa|basu|basy|basou|basov)\b/g, "bass"],
+  [/\b(?:chords?|pads?|stabs?|keys?|akord\w*)\b/g, "chords"],
+  [/\b(?:leads?|melody|melodi\w*|synths?|arps?|topline|top\s+line)\b/g, "lead"],
+];
+
+/**
+ * Find role mentions that are explicitly being added/generated. This is
+ * deliberately narrower than the general role parser: a fader/mix request
+ * such as "make the bass deeper" must not be mistaken for a generation ask.
+ */
+function explicitlyAddedRoles(text: string): Set<IntentRole> {
+  const actionText = ` ${deaccent(text).toLowerCase().replace(/\s+/g, " ")} `;
+  const roles = new Set<IntentRole>();
+  for (const action of actionText.matchAll(ROLE_ADD_ACTION)) {
+    const tail = actionText.slice((action.index ?? 0) + action[0].length);
+    const boundary =
+      /[;.!?]|\b(?:but|however|while|except|ale|len|iba|keep|leave|nechaj|ponechaj|without|no|bez)\b/.exec(tail);
+    const clause = tail.slice(0, boundary?.index ?? Math.min(tail.length, 96));
+    for (const [pattern, role] of ROLE_MENTION_PATTERNS) {
+      if (pattern.test(clause)) roles.add(role);
+      pattern.lastIndex = 0;
+    }
+  }
+  return roles;
 }
 
 /** Note-name normalization for key parsing (flats → sharps). */
@@ -403,6 +474,10 @@ export interface ParsedIntent {
   input: IntentInput;
   /** Keywords/phrases recognised by the parser (for diagnostics/UI feedback). */
   detected: string[];
+  /** Roles explicitly excluded by the brief; independent from generation defaults. */
+  prohibitedRoles: IntentRole[];
+  /** Explicit role-level contradictions that need user clarification. */
+  conflicts: ParsedIntentConflict[];
 }
 
 /** Find the first phrase (by list order = specificity) present in the text. */
@@ -669,58 +744,77 @@ export function parseIntentText(text: string): ParsedIntent {
 
   // Roles. Negation phrases precede positive ones in ROLE_PHRASES, so an
   // exclusion seen earlier also suppresses the later positive match.
-  let noDrums = false;
-  let noBass = false;
   let scopeOrNegation = false;
   const roles = new Set<IntentRole>();
+  const prohibited = new Set<IntentRole>();
+  const explicitlyScopedRoles = new Set<IntentRole>();
   for (const [re, flag] of ROLE_PHRASES) {
     if (!re.test(lower)) continue;
-    if (flag === "nodrums") {
+    const prohibitedRole = PROHIBITION_FLAGS[flag];
+    if (prohibitedRole) {
       scopeOrNegation = true;
-      noDrums = true;
-      roles.delete("drums");
-    } else if (flag === "nobass") {
-      noBass = true;
-      roles.delete("bass");
+      prohibited.add(prohibitedRole);
+      roles.delete(prohibitedRole);
     } else if (flag === "drumsonly") {
       scopeOrNegation = true;
       roles.clear();
       roles.add("drums");
+      explicitlyScopedRoles.add("drums");
     } else if (flag === "melodyonly") {
       scopeOrNegation = true;
       roles.clear();
       roles.add("lead");
+      explicitlyScopedRoles.add("lead");
     } else if (flag === "all") {
       scopeOrNegation = true;
       roles.add("drums");
       roles.add("bass");
       roles.add("chords");
       roles.add("lead");
+      ALL_INTENT_ROLES.forEach((role) => explicitlyScopedRoles.add(role));
     } else {
-      if (flag === "drums" && noDrums) continue;
-      if (flag === "bass" && noBass) continue;
-      if (preserved.has(flag as IntentRole)) continue;
-      roles.add(flag as IntentRole);
+      const role = flag as IntentRole;
+      if (prohibited.has(role) || preserved.has(role)) continue;
+      roles.add(role);
     }
   }
   // A mention that only NAMESED a protected role ("keep my drums but darker")
   // is not a generation directive — the default generation set still applies
   // (minus the protected roles, via input.preserve).
   if (scopeOrNegation || roles.size > 0) {
-    const resolved = noDrums ? [...roles].filter((role) => role !== "drums") : [...roles];
-    // "no drums" with nothing else named still means the remaining roles.
+    const resolved = [...roles].filter((role) => !prohibited.has(role));
+    // A prohibition with no explicit positive scope defaults to every
+    // remaining role. Never let the fallback re-introduce an excluded role.
     input.roles =
       resolved.length > 0
         ? (resolved as IntentRole[])
-        : noDrums
-          ? (["bass", "chords", "lead"] as IntentRole[])
+        : scopeOrNegation
+          ? ALL_INTENT_ROLES.filter((role) => !prohibited.has(role))
           : (["drums", "bass"] as IntentRole[]);
-    if (noDrums) detected.push("no drums");
   }
-  if (noBass) detected.push("no bass");
+  for (const role of prohibited) detected.push(PROHIBITION_DETECTED_LABEL[role]);
   if (preserved.size > 0) {
     input.preserve = [...preserved];
     for (const role of preserved) detected.push(`preserve ${role}`);
+  }
+
+  const conflicts: ParsedIntentConflict[] = [];
+  const conflictIds = new Set<string>();
+  const addConflict = (role: IntentRole, kind: ParsedIntentConflictKind) => {
+    const id = `${kind}:${role}`;
+    if (conflictIds.has(id)) return;
+    conflictIds.add(id);
+    conflicts.push({ id, role, kind });
+  };
+  for (const role of explicitlyAddedRoles(text)) {
+    if (prohibited.has(role)) addConflict(role, "prohibition-vs-addition");
+    if (preserved.has(role)) addConflict(role, "preserve-vs-addition");
+  }
+  for (const role of explicitlyScopedRoles) {
+    if (prohibited.has(role)) addConflict(role, "prohibition-vs-scope");
+  }
+  for (const role of preserved) {
+    if (prohibited.has(role)) addConflict(role, "prohibition-vs-preserve");
   }
 
   // Current production profiles contain trap-family melodic arrangements;
@@ -728,5 +822,5 @@ export function parseIntentText(text: string): ParsedIntent {
   // different genre.
   if (input.genre !== undefined && input.genre !== "trap") delete input.productionProfile;
 
-  return { input, detected };
+  return { input, detected, prohibitedRoles: [...prohibited], conflicts };
 }

@@ -93,6 +93,10 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     expect(scoreMock).not.toHaveBeenCalled();
     expect(ranking.order[0].candidateIndex).toBe(0);
     expect(new Set(ranking.order.map((c) => c.candidateIndex))).toEqual(new Set([0, 1, 2]));
+    expect(ranking.order.every((candidate) => candidate.globalScoreVersion === "global-selector.v1:heuristic")).toBe(
+      true,
+    );
+    expect(ranking.order.every((candidate) => typeof candidate.globalScore === "number")).toBe(true);
   });
 
   it("model unavailable: heuristic fallback order is the baseline", async () => {
@@ -141,6 +145,9 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.source).toBe("model");
     expect(ranking.mode).toBe("active");
+    expect(
+      ranking.order.every((candidate) => candidate.globalScoreVersion?.startsWith("global-selector.v1:hybrid:")),
+    ).toBe(true);
     // Deterministic re-run: identical scores → identical order.
     const again = await rankCandidatesWithModel(doc, candidates, plan);
     expect(again.order.map((c) => c.candidateIndex)).toEqual(ranking.order.map((c) => c.candidateIndex));
@@ -180,8 +187,18 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
       if (index === preferredIndex) continue;
       const observation = createPreferenceObservation(
         preferenceContextForIntent(plan.intent),
-        { contentHash: preferred.contentHash, features: preferredFeatures.values },
-        { contentHash: baseline[index].contentHash, features: vectors[index].values },
+        {
+          contentHash: preferred.contentHash,
+          features: preferredFeatures.values,
+          globalScore: preferred.score,
+          globalScoreVersion: "global-selector.v1:heuristic",
+        },
+        {
+          contentHash: baseline[index].contentHash,
+          features: vectors[index].values,
+          globalScore: baseline[index].score,
+          globalScoreVersion: "global-selector.v1:heuristic",
+        },
         "a",
         { createdAt: index + 1 },
       );
@@ -193,6 +210,13 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     expect(personalized.source).toBe("off");
     expect(personalized.order[0].contentHash).toBe(preferred.contentHash);
     expect(personalized.order).toHaveLength(baseline.length);
+    const globalScoreByHash = new Map(baseline.map((candidate) => [candidate.contentHash, candidate.score]));
+    expect(
+      personalized.order.every((candidate) => candidate.globalScore === globalScoreByHash.get(candidate.contentHash)),
+    ).toBe(true);
+    expect(new Set(personalized.order.map((candidate) => candidate.globalScoreVersion))).toEqual(
+      new Set(["global-selector.v1:heuristic"]),
+    );
   });
 });
 

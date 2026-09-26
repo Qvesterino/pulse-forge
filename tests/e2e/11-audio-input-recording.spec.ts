@@ -18,46 +18,52 @@ async function ensureArrangementVisible(page: Page): Promise<void> {
   await expect(timeline).toBeVisible({ timeout: 15_000 });
 }
 
-async function installSyntheticInput(page: Page, channels = 2): Promise<void> {
+async function installSyntheticInput(page: Page, channels = 2, captureFrequencies: number[][] = []): Promise<void> {
   // Distinct tones exercise the real AudioWorklet/PCM path without opening a
   // physical microphone or audio interface. Chromium's MediaStreamDestination
   // is stereo-only, so the test seam supplies its synthetic channels at the
   // app's MediaStreamAudioSourceNode boundary.
-  await page.addInitScript((channelCount: number) => {
-    const syntheticStreams = new WeakSet<MediaStream>();
-    const syntheticTracks = new WeakSet<MediaStreamTrack>();
-    const nativeCreateMediaStreamSource = AudioContext.prototype.createMediaStreamSource;
-    const nativeGetSettings = MediaStreamTrack.prototype.getSettings;
-    AudioContext.prototype.createMediaStreamSource = function (stream: MediaStream): MediaStreamAudioSourceNode {
-      if (!syntheticStreams.has(stream)) return nativeCreateMediaStreamSource.call(this, stream);
-      const merger = this.createChannelMerger(channelCount);
-      const frequencies = [220, 330, 440, 550, 660, 770, 880, 990];
-      for (let channel = 0; channel < channelCount; channel++) {
-        const oscillator = this.createOscillator();
-        const gain = this.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.value = frequencies[channel] ?? 220 + channel * 110;
-        gain.gain.value = 0.2;
-        oscillator.connect(gain).connect(merger, 0, channel);
-        oscillator.start();
-      }
-      return merger as unknown as MediaStreamAudioSourceNode;
-    };
-    MediaStreamTrack.prototype.getSettings = function (): MediaTrackSettings {
-      const settings = nativeGetSettings.call(this);
-      return syntheticTracks.has(this) ? { ...settings, channelCount } : settings;
-    };
-    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
-      configurable: true,
-      value: async () => {
-        const streamContext = new AudioContext({ sampleRate: 48_000 });
-        const stream = streamContext.createMediaStreamDestination().stream;
-        syntheticStreams.add(stream);
-        for (const track of stream.getAudioTracks()) syntheticTracks.add(track);
-        return stream;
-      },
-    });
-  }, channels);
+  await page.addInitScript(
+    ({ channelCount, frequencySets }: { channelCount: number; frequencySets: number[][] }) => {
+      const syntheticStreams = new WeakMap<MediaStream, number>();
+      const syntheticTracks = new WeakSet<MediaStreamTrack>();
+      let nextCaptureIndex = 0;
+      const nativeCreateMediaStreamSource = AudioContext.prototype.createMediaStreamSource;
+      const nativeGetSettings = MediaStreamTrack.prototype.getSettings;
+      AudioContext.prototype.createMediaStreamSource = function (stream: MediaStream): MediaStreamAudioSourceNode {
+        const captureIndex = syntheticStreams.get(stream);
+        if (captureIndex === undefined) return nativeCreateMediaStreamSource.call(this, stream);
+        const merger = this.createChannelMerger(channelCount);
+        const frequencies = frequencySets[captureIndex] ?? [220, 330, 440, 550, 660, 770, 880, 990];
+        for (let channel = 0; channel < channelCount; channel++) {
+          const oscillator = this.createOscillator();
+          const gain = this.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = frequencies[channel] ?? 220 + channel * 110;
+          gain.gain.value = 0.2;
+          oscillator.connect(gain).connect(merger, 0, channel);
+          oscillator.start();
+        }
+        return merger as unknown as MediaStreamAudioSourceNode;
+      };
+      MediaStreamTrack.prototype.getSettings = function (): MediaTrackSettings {
+        const settings = nativeGetSettings.call(this);
+        return syntheticTracks.has(this) ? { ...settings, channelCount } : settings;
+      };
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: async () => {
+          const captureIndex = nextCaptureIndex++;
+          const streamContext = new AudioContext({ sampleRate: 48_000 });
+          const stream = streamContext.createMediaStreamDestination().stream;
+          syntheticStreams.set(stream, captureIndex);
+          for (const track of stream.getAudioTracks()) syntheticTracks.add(track);
+          return stream;
+        },
+      });
+    },
+    { channelCount: channels, frequencySets: captureFrequencies },
+  );
 }
 
 test.describe("11 — audio-input recording", () => {
@@ -276,6 +282,325 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+  });
+
+  test("records alternate PCM takes, comps them with undo and preserves the export after reload", async ({ page }) => {
+    test.setTimeout(180_000);
+    await installSyntheticInput(page, 2, [
+      [220, 330],
+      [440, 550],
+    ]);
+    await openHouseTemplate(page);
+    const initialContinueCard = page.locator(".pb-continue-card").first();
+    if (await initialContinueCard.isVisible().catch(() => false)) await initialContinueCard.click();
+    await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
+    await ensureArrangementVisible(page);
+    await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
+    const takeMode = page.getByLabel("Recording take mode");
+    await takeMode.selectOption("new");
+
+    const recordPass = async (): Promise<void> => {
+      await page.getByRole("button", { name: /REC$/ }).click();
+      await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("meter", { name: "Audio input level" })).toHaveAttribute(
+        "aria-valuenow",
+        /^(?!0(?:\.0+)?$)/,
+      );
+      await page.waitForTimeout(1_400);
+      await page.getByRole("button", { name: /STOP/ }).click();
+      await expect(page.getByRole("button", { name: /REC$/ })).toBeEnabled({ timeout: 15_000 });
+    };
+
+    // Two distinct synthetic performances traverse the real worklet capture,
+    // durable PCM staging and take-group placement path; no hardware is opened.
+    await recordPass();
+    const groupId = await takeMode.inputValue();
+    expect(groupId).not.toBe("new");
+    await expect(takeMode.locator("option").filter({ hasText: "1 pass" })).toHaveCount(1);
+    await recordPass();
+    await expect(takeMode.locator("option").filter({ hasText: "2 passes" })).toHaveCount(1);
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(2);
+
+    // Reload before editing so the source passes and their PCM are recovered
+    // from IndexedDB, rather than relying on the still-live capture buffers.
+    await page.waitForTimeout(1_500);
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
+    const capturedProjectCard = page.locator(".pb-continue-card").first();
+    if ((await capturedProjectCard.count()) > 0) await capturedProjectCard.click();
+    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
+    await ensureArrangementVisible(page);
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+    // The two source passes are aligned, so the second clip visually covers
+    // the first; select the topmost waveform to reach the take-group controls.
+    await page.locator(".arr-audio-clip").last().click();
+    await page.getByRole("button", { name: "Show audio take lanes" }).click();
+
+    const takeOneLane = page.getByLabel("TAKE 1 timeline segments");
+    const takeTwoLane = page.getByLabel("TAKE 2 timeline segments");
+    await takeOneLane.scrollIntoViewIfNeeded();
+    const takeOneSegment = takeOneLane.locator(".arr-audio-take-lane-segment").first();
+    const takeOneBox = await takeOneSegment.boundingBox();
+    const takeOneLaneBox = await takeOneLane.boundingBox();
+    const takeOneBarWidth = await takeOneLane.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).backgroundSize),
+    );
+    if (!takeOneBox || !takeOneLaneBox || !Number.isFinite(takeOneBarWidth) || takeOneBarWidth <= 0) {
+      throw new Error("The first persisted PCM take lane is not visible");
+    }
+    const compStartX = takeOneBox.x + 1;
+    const seamX = takeOneBox.x + takeOneBox.width / 2;
+    const seamTick = ((seamX - takeOneLaneBox.x) / takeOneBarWidth) * 1_920;
+    const dragRange = async (lane: typeof takeOneLane, fromX: number, toX: number): Promise<void> => {
+      const laneBox = await lane.boundingBox();
+      if (!laneBox) throw new Error("The take-lane timeline is not visible");
+      const y = laneBox.y + laneBox.height / 2;
+      await page.mouse.move(fromX, y);
+      await page.mouse.down();
+      await page.mouse.move(toX, y, { steps: 5 });
+      await page.mouse.up();
+    };
+
+    await page.getByLabel("Comp crossfade duration").selectOption("0");
+    await dragRange(takeOneLane, compStartX, seamX);
+    await expect(page.getByLabel("Selected comp range from TAKE 1")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Comp selected take-lane range" })).toBeVisible();
+    await page.getByRole("button", { name: "Comp selected take-lane range" }).click();
+    const compLane = page.getByLabel("COMP timeline segments");
+    await expect(compLane).toBeVisible();
+    const firstCompSegmentCount = await compLane.locator(".arr-audio-take-lane-segment").count();
+    expect(firstCompSegmentCount).toBeGreaterThan(0);
+
+    await page.getByLabel("Comp crossfade duration").selectOption("120");
+    await takeTwoLane.scrollIntoViewIfNeeded();
+    const takeTwoBox = await takeTwoLane.locator(".arr-audio-take-lane-segment").first().boundingBox();
+    const takeTwoLaneBox = await takeTwoLane.boundingBox();
+    const takeTwoBarWidth = await takeTwoLane.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).backgroundSize),
+    );
+    if (!takeTwoBox || !takeTwoLaneBox || !Number.isFinite(takeTwoBarWidth) || takeTwoBarWidth <= 0) {
+      throw new Error("The second persisted PCM take lane is not visible");
+    }
+    const secondSeamX = takeTwoLaneBox.x + (seamTick / 1_920) * takeTwoBarWidth;
+    const compEndX = takeTwoBox.x + takeTwoBox.width - 2;
+    await dragRange(takeTwoLane, secondSeamX, compEndX);
+    await expect(page.getByLabel("Selected comp range from TAKE 2")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Comp selected take-lane range" })).toBeVisible();
+    await page.getByRole("button", { name: "Comp selected take-lane range" }).click();
+    await expect(compLane).toBeVisible();
+    const secondCompSegmentCount = await compLane.locator(".arr-audio-take-lane-segment").count();
+    expect(secondCompSegmentCount).toBeGreaterThan(firstCompSegmentCount);
+
+    // Exercise the actual project undo stack, then redo the comp before saving.
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect(compLane.locator(".arr-audio-take-lane-segment")).toHaveCount(firstCompSegmentCount);
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect(compLane).toHaveCount(0);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect(compLane.locator(".arr-audio-take-lane-segment")).toHaveCount(firstCompSegmentCount);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect(compLane.locator(".arr-audio-take-lane-segment")).toHaveCount(secondCompSegmentCount);
+
+    const renderSavedTakeExport = async (): Promise<{
+      groupId: string;
+      compTakeId: string;
+      activeTakeId: string;
+      sourceTakeIds: string[];
+      compSourceTakeIds: string[];
+      bufferIds: string[];
+      buffersRestored: boolean;
+      sourcePcmSha256: string[];
+      frames: number;
+      peak: number;
+      wavSha256: string;
+    }> => {
+      return page.evaluate(async (expectedGroupId: string) => {
+        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+        const [projectRepoModule, sampleModule, userRepoModule, rendererModule, wavModule] = await Promise.all([
+          load("/src/persistence/ProjectRepository.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/persistence/UserSampleRepository.ts"),
+          load("/src/rendering/renderer.ts"),
+          load("/src/rendering/wav.ts"),
+        ]);
+        const { ProjectRepository } = projectRepoModule;
+        const { SampleBank } = sampleModule;
+        const { restoreUserSampleAudio } = userRepoModule;
+        const { renderProject } = rendererModule;
+        const { encodeWavAsync } = wavModule;
+        const project = await new ProjectRepository().loadMostRecent();
+        if (!project) throw new Error("The captured take project did not reopen from IndexedDB");
+        const group = project.arrangement.takeGroups?.find(
+          (candidate: { id: string }) => candidate.id === expectedGroupId,
+        );
+        if (!group?.compTakeId || group.activeTakeId !== group.compTakeId) {
+          throw new Error("The saved take group has no active comp");
+        }
+        const groupClips = (project.arrangement.audioClips ?? []).filter(
+          (clip: { takeGroupId?: string }) => clip.takeGroupId === expectedGroupId,
+        );
+        const sourceTakeIds = Array.from(
+          new Set(
+            groupClips
+              .map((clip: { takeId?: string }) => clip.takeId)
+              .filter((takeId: string | undefined) => takeId && takeId !== group.compTakeId),
+          ),
+        ) as string[];
+        const compClips = groupClips.filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId);
+        const compSourceTakeIds = Array.from(
+          new Set(compClips.map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId).filter(Boolean)),
+        ) as string[];
+        const bufferIds: string[] = Array.from(
+          new Set<string>(groupClips.map((clip: { bufferId: string }) => clip.bufferId)),
+        );
+        const bank = new SampleBank();
+        await restoreUserSampleAudio(bank);
+        const sourcePcmSha256 = await Promise.all(
+          bufferIds.map(async (bufferId: string) => {
+            const buffer = bank.get(bufferId);
+            if (!buffer) throw new Error(`Recorded PCM buffer ${bufferId} was not restored`);
+            const channelDigests: string[] = [];
+            for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+              const samples = buffer.getChannelData(channel);
+              const sampleBytes = samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.byteLength);
+              const digest = await crypto.subtle.digest("SHA-256", sampleBytes);
+              channelDigests.push(
+                Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+              );
+            }
+            return channelDigests.join(":");
+          }),
+        );
+        const renderScene = project.scenes[0];
+        if (!renderScene) throw new Error("The captured-take project has no scene for an isolated render window");
+        const renderLengthBars = Math.max(
+          1,
+          Math.ceil(
+            Math.max(
+              ...groupClips.map((clip: { startBar: number; lengthBars: number }) => clip.startBar + clip.lengthBars),
+            ),
+          ),
+        );
+        const renderDoc = {
+          ...project,
+          patterns: project.patterns.map(
+            (pattern: { rows: Record<string, number[]>; notes: Record<string, unknown[]> }) => ({
+              ...pattern,
+              rows: {},
+              notes: {},
+            }),
+          ),
+          automation: [],
+          sceneAutomation: [],
+          arrangement: {
+            ...project.arrangement,
+            // An empty song arrangement intentionally falls back to the
+            // active pattern. Keep one blank scene window instead so the
+            // export witness contains only the recorded takes.
+            clips: [
+              {
+                id: `e2e-export-${expectedGroupId}`,
+                sceneId: renderScene.id,
+                startBar: 0,
+                lengthBars: renderLengthBars,
+              },
+            ],
+            audioClips: groupClips,
+            transitions: [],
+          },
+        };
+        const rendered = await renderProject(renderDoc, bank, {
+          mode: "song",
+          sampleRate: 48_000,
+          tailSeconds: 0,
+        });
+        const wav = await encodeWavAsync(rendered, 32);
+        const digest = await crypto.subtle.digest("SHA-256", wav);
+        const wavSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        let peak = 0;
+        for (let channel = 0; channel < rendered.numberOfChannels; channel++) {
+          for (const sample of rendered.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
+        }
+        return {
+          groupId: group.id,
+          compTakeId: group.compTakeId,
+          activeTakeId: group.activeTakeId,
+          sourceTakeIds,
+          compSourceTakeIds,
+          bufferIds,
+          buffersRestored: bufferIds.every((bufferId: string) => bank.has(bufferId)),
+          sourcePcmSha256,
+          frames: rendered.length,
+          peak,
+          wavSha256,
+        };
+      }, groupId);
+    };
+
+    // Wait for the autosave to commit the redo state before measuring the
+    // export. A second real app boot below then verifies durable reopen.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (expectedGroupId: string) => {
+            const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+            const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+            const project = await new ProjectRepository().loadMostRecent();
+            const group = project?.arrangement.takeGroups?.find(
+              (candidate: { id: string }) => candidate.id === expectedGroupId,
+            );
+            if (!group?.compTakeId || group.activeTakeId !== group.compTakeId) return false;
+            const clips = (project?.arrangement.audioClips ?? []).filter(
+              (clip: { takeGroupId?: string }) => clip.takeGroupId === expectedGroupId,
+            );
+            const sourceTakeIds = Array.from(
+              new Set(
+                clips
+                  .map((clip: { takeId?: string }) => clip.takeId)
+                  .filter((takeId: string | undefined) => takeId && takeId !== group.compTakeId),
+              ),
+            ) as string[];
+            const compSourceTakeIds = new Set(
+              clips
+                .filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId)
+                .map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId),
+            );
+            return sourceTakeIds.length === 2 && sourceTakeIds.every((takeId) => compSourceTakeIds.has(takeId));
+          }, groupId),
+        { timeout: 20_000, intervals: [250, 500, 1_000] },
+      )
+      .toBe(true);
+    const beforeReloadExport = await renderSavedTakeExport();
+    expect(beforeReloadExport.sourceTakeIds).toHaveLength(2);
+    expect(beforeReloadExport.compSourceTakeIds).toEqual(expect.arrayContaining(beforeReloadExport.sourceTakeIds));
+    expect(beforeReloadExport.bufferIds).toHaveLength(2);
+    expect(beforeReloadExport.buffersRestored).toBe(true);
+    expect(beforeReloadExport.frames).toBeGreaterThan(48_000);
+    expect(beforeReloadExport.peak).toBeGreaterThan(0.01);
+
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
+    const reopenedCard = page.locator(".pb-continue-card").first();
+    if ((await reopenedCard.count()) > 0) await reopenedCard.click();
+    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
+    await ensureArrangementVisible(page);
+    await expect(page.locator(".arr-audio-clip.comp").first()).toBeVisible({ timeout: 20_000 });
+    const afterReloadExport = await renderSavedTakeExport();
+    expect(afterReloadExport).toMatchObject({
+      groupId: beforeReloadExport.groupId,
+      compTakeId: beforeReloadExport.compTakeId,
+      activeTakeId: beforeReloadExport.activeTakeId,
+      sourceTakeIds: beforeReloadExport.sourceTakeIds,
+      compSourceTakeIds: beforeReloadExport.compSourceTakeIds,
+      bufferIds: beforeReloadExport.bufferIds,
+      buffersRestored: true,
+      sourcePcmSha256: beforeReloadExport.sourcePcmSha256,
+      frames: beforeReloadExport.frames,
+      peak: beforeReloadExport.peak,
+      wavSha256: beforeReloadExport.wavSha256,
+    });
   });
 
   test("captures four requested channels and routes each to a separate track", async ({ page }) => {

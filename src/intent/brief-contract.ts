@@ -23,12 +23,12 @@
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../ai/types";
 import { isMusicalKey, type ProjectDocument } from "../project-model/types";
 import type { ProducerSessionState } from "./producer-session";
-import type { ParsedIntent } from "./text-parser";
+import type { ParsedIntent, ParsedIntentConflictKind } from "./text-parser";
 import type { IntentInput, IntentRole } from "./types";
 
 export type BriefSection = "hard" | "preference" | "prohibition" | "preserve" | "unknown";
-export type BriefOrigin = "prompt" | "session" | "project" | "default";
-export type BriefConfidence = "parsed" | "inferred" | "unknown";
+export type BriefOrigin = "prompt" | "session" | "project" | "default" | "user";
+export type BriefConfidence = "parsed" | "inferred" | "unknown" | "confirmed";
 
 export interface BriefStatement {
   /** Stable id — UI keys and tests anchor on it. */
@@ -43,12 +43,20 @@ export interface BriefStatement {
    * facts (null) or offered as a one-click fix for unknown/inferred ones.
    */
   patch: IntentInput | null;
-  /** Set on preserve statements — the chip can un-protect this role. */
+  /** Role governed by this statement (preserve or hard prohibition). */
   role?: IntentRole;
 }
 
 export interface BriefContract {
   statements: readonly BriefStatement[];
+  conflicts: readonly BriefConflict[];
+}
+
+export interface BriefConflict {
+  id: string;
+  role: IntentRole;
+  kind: ParsedIntentConflictKind;
+  label: string;
 }
 
 /** Section → UI header. */
@@ -67,6 +75,20 @@ const ROLE_LABEL_ACC: Readonly<Record<IntentRole, string>> = {
   lead: "lead",
 };
 
+const ROLE_LABEL_GENITIVE: Readonly<Record<IntentRole, string>> = {
+  drums: "bicích",
+  bass: "basy",
+  chords: "akordov",
+  lead: "leadu",
+};
+
+const ROLE_PROHIBITION_LABEL: Readonly<Record<IntentRole, string>> = {
+  drums: "žiadne bicie — negenerovať ani nenahrádzať",
+  bass: "žiadna basa — negenerovať ani nenahrádzať",
+  chords: "žiadne akordy — negenerovať ani nenahrádzať",
+  lead: "žiadny lead — negenerovať ani nenahrádzať",
+};
+
 const ALL_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
 
 export interface BriefContractContext {
@@ -74,6 +96,8 @@ export interface BriefContractContext {
   session?: ProducerSessionState | null;
   /** Default generation set when the brief names no roles (panel default). */
   defaultRoles?: readonly IntentRole[];
+  /** Explicit corrections made in the brief UI; these override parser output. */
+  corrections?: IntentInput;
 }
 
 const clampBpm = (value: number): number => Math.max(40, Math.min(240, value));
@@ -96,9 +120,17 @@ function percent(value: number): string {
  */
 export function compileBriefContract(parsed: ParsedIntent | null, context: BriefContractContext = {}): BriefContract {
   const statements: BriefStatement[] = [];
-  const input = parsed?.input ?? {};
-  const detected = parsed?.detected ?? [];
+  const corrections = context.corrections ?? {};
+  const input = { ...(parsed?.input ?? {}), ...corrections };
+  const prohibitedRoles = parsed?.prohibitedRoles ?? [];
   const session = context.session ?? null;
+  const provenance = (
+    fields: readonly (keyof IntentInput)[],
+    fallback: Pick<BriefStatement, "origin" | "confidence">,
+  ): Pick<BriefStatement, "origin" | "confidence"> =>
+    fields.some((field) => Object.prototype.hasOwnProperty.call(corrections, field))
+      ? { origin: "user", confidence: "confirmed" }
+      : fallback;
 
   // ── HARD — exact requirements the brief stated ──────────────────────────
   const sessionBpm = session?.decisions.bpm ? Number(session.decisions.bpm.value) : NaN;
@@ -108,8 +140,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "bpm",
       section: "hard",
       label: lo === hi ? `${lo} BPM` : `${lo}–${hi} BPM`,
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["bpmRange"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   } else if (Number.isFinite(sessionBpm)) {
@@ -138,8 +169,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "key",
       section: "hard",
       label: `tónina ${input.key}`,
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["key"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   } else if (sessionKey && isMusicalKey(sessionKey)) {
@@ -167,8 +197,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "length",
       section: "hard",
       label: barsLabel(input.length),
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["length"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   } else {
@@ -189,8 +218,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "genre",
       section: "preference",
       label: `žáner: ${input.genre}`,
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["genre"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   } else if (sessionGenre && GENRES.includes(sessionGenre as (typeof GENRES)[number])) {
@@ -218,8 +246,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "style",
       section: "preference",
       label: `štýl: ${input.style}`,
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["style"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   }
@@ -228,8 +255,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "mood",
       section: "preference",
       label: `nálada: ${input.mood}`,
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["mood"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   }
@@ -244,8 +270,10 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "character",
       section: "preference",
       label: character.join(" · "),
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["energy", "density", "complexity", "variation"], {
+        origin: "prompt",
+        confidence: "parsed",
+      }),
       patch: null,
     });
   }
@@ -255,8 +283,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       id: "fx",
       section: "preference",
       label: "FX úpravy idú s generovaním",
-      origin: "prompt",
-      confidence: "parsed",
+      ...provenance(["fx"], { origin: "prompt", confidence: "parsed" }),
       patch: null,
     });
   }
@@ -264,37 +291,30 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
   // ── GENERATION SET + ZÁKAZY + ZACHOVAŤ ─────────────────────────────────
   const preserved: readonly IntentRole[] = input.preserve ?? [];
   const generationRoles = (input.roles ?? context.defaultRoles ?? ALL_ROLES).filter(
-    (role) => !preserved.includes(role),
+    (role) => !preserved.includes(role) && !prohibitedRoles.includes(role),
   );
   if (generationRoles.length > 0) {
     statements.push({
       id: "roles",
       section: "hard",
       label: `generovať: ${generationRoles.map((role) => ROLE_LABEL_ACC[role]).join(", ")}`,
-      origin: input.roles ? "prompt" : "default",
-      confidence: input.roles ? "parsed" : "inferred",
+      ...provenance(["roles", "preserve"], {
+        origin: input.roles ? "prompt" : "default",
+        confidence: input.roles ? "parsed" : "inferred",
+      }),
       patch: null,
     });
   }
 
-  if (detected.includes("no drums")) {
+  for (const role of parsed?.prohibitedRoles ?? []) {
     statements.push({
-      id: "no-drums",
+      id: `no-${role}`,
       section: "prohibition",
-      label: "žiadne bicie — negenerovať ani nenahrádzať",
+      label: ROLE_PROHIBITION_LABEL[role],
       origin: "prompt",
       confidence: "parsed",
       patch: null,
-    });
-  }
-  if (detected.includes("no bass")) {
-    statements.push({
-      id: "no-bass",
-      section: "prohibition",
-      label: "žiadna basa — negenerovať ani nenahrádzať",
-      origin: "prompt",
-      confidence: "parsed",
-      patch: null,
+      role,
     });
   }
 
@@ -311,14 +331,44 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
       label: hasTracks
         ? `ponechám existujúce: ${ROLE_LABEL_ACC[role]}`
         : `ponechám existujúce: ${ROLE_LABEL_ACC[role]} (track v projekte chýba)`,
-      origin: "prompt",
-      confidence: hasTracks ? "parsed" : "inferred",
+      ...provenance(["preserve"], {
+        origin: "prompt",
+        confidence: hasTracks ? "parsed" : "inferred",
+      }),
       patch: null,
       role,
     });
   }
 
-  return { statements };
+  const conflicts = (parsed?.conflicts ?? [])
+    .filter((conflict) => {
+      const preserveWasCorrected = Object.prototype.hasOwnProperty.call(corrections, "preserve");
+      const roleIsNoLongerPreserved = !(input.preserve ?? []).includes(conflict.role);
+      const rolesWereCorrected = Object.prototype.hasOwnProperty.call(corrections, "roles");
+      const roleIsNoLongerTargeted = !(input.roles ?? context.defaultRoles ?? ALL_ROLES).includes(conflict.role);
+      return (
+        !(
+          preserveWasCorrected &&
+          roleIsNoLongerPreserved &&
+          (conflict.kind === "preserve-vs-addition" || conflict.kind === "prohibition-vs-preserve")
+        ) && !(rolesWereCorrected && roleIsNoLongerTargeted && conflict.kind === "prohibition-vs-scope")
+      );
+    })
+    .map((conflict) => {
+      const role = ROLE_LABEL_ACC[conflict.role];
+      const genitiveRole = ROLE_LABEL_GENITIVE[conflict.role];
+      const label =
+        conflict.kind === "prohibition-vs-addition"
+          ? `Zákaz generovania ${genitiveRole} je v rozpore s pokynom pridať túto rolu.`
+          : conflict.kind === "preserve-vs-addition"
+            ? `Chceš zachovať ${role} a zároveň pridať ďalšie; KYX túto rolu vie zamknúť iba ako celok.`
+            : conflict.kind === "prohibition-vs-preserve"
+              ? `Zákaz generovania ${genitiveRole} je v rozpore so zachovaním existujúcej roly.`
+              : `Zákaz generovania ${genitiveRole} je v rozpore s rozsahom zadania, ktorý túto rolu zahŕňa.`;
+      return { ...conflict, label };
+    });
+
+  return { statements, conflicts };
 }
 
 /**
@@ -330,10 +380,13 @@ export function unprotectRole(
   input: IntentInput,
   role: IntentRole,
   defaultRoles: readonly IntentRole[] = ALL_ROLES,
+  prohibitedRoles: readonly IntentRole[] = [],
 ): IntentInput {
   const preserve = (input.preserve ?? []).filter((item) => item !== role);
-  const roles = [...new Set([...(input.roles ?? defaultRoles), role])];
-  const patch: IntentInput = { roles };
-  if (preserve.length > 0) patch.preserve = preserve;
-  return patch;
+  const roles = [...new Set([...(input.roles ?? defaultRoles), role])].filter(
+    (item) => !prohibitedRoles.includes(item),
+  );
+  // `preserve: []` is an explicit clearing patch when overlaid on parsed
+  // intent; omitting it would accidentally retain the original protection.
+  return { roles, preserve };
 }

@@ -230,6 +230,10 @@ export interface RankedCandidate {
   score: number;
   /** ONNX ranker score when the model participated, else null. */
   modelScore: number | null;
+  /** Non-personal selector score before any Producer DNA residual is applied. */
+  globalScore?: number;
+  /** Version of the non-personal selector used to calculate `globalScore`. */
+  globalScoreVersion?: string;
   contentHash: string;
   pattern: Pattern;
   search?: CandidateSearchInfo;

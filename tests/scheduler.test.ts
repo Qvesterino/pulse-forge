@@ -13,6 +13,8 @@ import { Scheduler } from "../src/scheduler/Scheduler";
 import { Transport } from "../src/transport/Transport";
 import type { DrumPad, Pattern, ProjectDocument } from "../src/project-model/types";
 import { setStepVelocity } from "../src/project-model/transform";
+import { addAudioTakeClip } from "../src/commands/commands";
+import { createLiveAudioTakeAuditionProject } from "../src/rendering/take-audition";
 
 describe("default project", () => {
   it("has 16 pads with factory assets assigned", () => {
@@ -82,6 +84,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
   const automationCalls: { from: number; to: number; relOf: (tick: number) => number }[] = [];
   const automationOffsets: number[] = [];
   const launches: string[] = [];
+  const audioClipEvents: Array<{ bufferId: string; when: number; durationSec: number; resumeOffsetSec?: number }> = [];
   let currentDoc = doc;
   let audioTime = 10;
   const transport = new Transport({ now: () => audioTime }, doc.bpm);
@@ -109,6 +112,9 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
       const next = currentDoc.patterns.find((p) => p.id === patternId);
       if (next) currentDoc = { ...currentDoc, activePatternId: patternId };
     },
+    triggerAudioClip: (clip, when, durationSec, resumeOffsetSec) => {
+      audioClipEvents.push({ bufferId: clip.bufferId, when, durationSec, resumeOffsetSec });
+    },
   });
   return {
     events,
@@ -117,6 +123,7 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
     automationCalls,
     automationOffsets,
     launches,
+    audioClipEvents,
     transport,
     scheduler,
     setDoc: (next: ProjectDocument) => (currentDoc = next),
@@ -126,6 +133,49 @@ function makeHarness(doc: ProjectDocument, mode: "pattern" | "song" = "pattern",
 }
 
 describe("scheduler", () => {
+  it("plays a live take-lane projection at the playhead and restores canonical scheduling afterward", () => {
+    const base = createDefaultProject();
+    const track = getDrumTrack(base);
+    const scene = base.scenes[0];
+    if (!scene) throw new Error("default project fixture missing scene");
+    const arranged: ProjectDocument = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: [{ id: "take-audition-scene", sceneId: scene.id, startBar: 0, lengthBars: 4 }],
+        audioClips: [],
+      },
+    };
+    const first = addAudioTakeClip(arranged, "scheduler-audition", "take-a", track.id, "audio.take-a", 0, 1).execute(
+      arranged,
+    );
+    const source = addAudioTakeClip(first, "scheduler-audition", "take-b", track.id, "audio.take-b", 0, 1).execute(
+      first,
+    );
+    const live = createLiveAudioTakeAuditionProject(source, "scheduler-audition", "take-b", BAR_TICKS / 2);
+    const harness = makeHarness(source, "song");
+
+    harness.scheduler.setPlaybackProjectOverride({
+      project: live.project,
+      resumedAudioClipOffsets: live.resumedAudioClipOffsets,
+    });
+    harness.transport.play(BAR_TICKS / 2, { leadIn: false });
+    harness.scheduler.start();
+
+    expect(harness.audioClipEvents.map((event) => event.bufferId)).toEqual(["audio.take-b"]);
+    expect(harness.audioClipEvents[0]?.resumeOffsetSec).toBeCloseTo((60 / source.bpm) * 2, 8);
+    expect(harness.noteEvents).toHaveLength(0);
+
+    harness.scheduler.stop();
+    harness.transport.stop();
+    harness.scheduler.setPlaybackProjectOverride(null);
+    harness.transport.play(0, { leadIn: false });
+    harness.scheduler.start();
+    expect(harness.noteEvents.length).toBeGreaterThan(0);
+    expect(harness.audioClipEvents.at(-1)?.bufferId).toBe("audio.take-a");
+    harness.scheduler.stop();
+  });
+
   it("keeps content silent during count-in while clicking every lead-in beat", () => {
     const doc = createDefaultProject();
     const harness = makeHarness(doc);

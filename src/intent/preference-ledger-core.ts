@@ -27,6 +27,10 @@ export interface PreferenceCandidateSnapshot {
   contentHash: string;
   featureVersion: typeof FEATURE_CONTRACT.version;
   features: number[];
+  /** Non-personal selector baseline; absent on legacy observations. */
+  globalScore?: number;
+  /** Identifies the global selector policy/model that produced the baseline. */
+  globalScoreVersion?: string;
 }
 
 export interface PreferenceObservationV1 {
@@ -80,7 +84,15 @@ function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapsh
     typeof value.contentHash === "string" &&
     HASH_RE.test(value.contentHash) &&
     value.featureVersion === FEATURE_CONTRACT.version &&
-    isFeatureVector(value.features)
+    isFeatureVector(value.features) &&
+    ((value.globalScore === undefined && value.globalScoreVersion === undefined) ||
+      (typeof value.globalScore === "number" &&
+        Number.isFinite(value.globalScore) &&
+        value.globalScore >= 0 &&
+        value.globalScore <= 1 &&
+        typeof value.globalScoreVersion === "string" &&
+        value.globalScoreVersion.length > 0 &&
+        value.globalScoreVersion.length <= 128))
   );
 }
 

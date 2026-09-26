@@ -1,4 +1,4 @@
-/** Auto-generated — do NOT hand-edit. */
+/** Audited deterministic engine-render hashes; update only after reviewing a changed template render. */
 export const EXPECTED_GOLDEN_HASHES: Record<string, string> = {
   house: "60a232e3545be6c8",
   techno: "d337337109ab13b6",
@@ -11,5 +11,6 @@ export const EXPECTED_GOLDEN_HASHES: Record<string, string> = {
   drill: "434613f22d42acde",
   "lofi-house": "c6af9db21c0882e4",
   reggaeton: "4c59384474ec135c",
+  dnb: "0d78fbd266c1858b",
   empty: "a75c20ed0948af6f",
 };

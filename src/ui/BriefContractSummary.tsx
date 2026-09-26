@@ -6,7 +6,7 @@ import {
   type BriefSection,
   type BriefStatement,
 } from "../intent/brief-contract";
-import type { IntentInput } from "../intent/types";
+import type { IntentInput, IntentRole } from "../intent/types";
 
 /**
  * "TOTO SOM POCHOPIL" (Fáza 1 — AI-first producer): the confirmable brief
@@ -16,6 +16,13 @@ import type { IntentInput } from "../intent/types";
  * corrects individual points without rewriting the prompt.
  */
 const SECTION_ORDER: readonly BriefSection[] = ["hard", "preference", "prohibition", "preserve", "unknown"];
+const INTENT_ROLES: readonly IntentRole[] = ["drums", "bass", "chords", "lead"];
+const ROLE_TOGGLE_LABELS: Readonly<Record<IntentRole, string>> = {
+  drums: "bicie",
+  bass: "basu",
+  chords: "akordy",
+  lead: "lead",
+};
 
 interface BriefContractSummaryProps {
   contract: BriefContract;
@@ -23,12 +30,35 @@ interface BriefContractSummaryProps {
   input: IntentInput;
   /** User fixes already merged into `input` (used to mark applied fixes). */
   fixes: IntentInput;
+  /** Must match the generation defaults so unprotecting a role is faithful. */
+  defaultRoles?: readonly IntentRole[];
   onPatch: (patch: IntentInput) => void;
 }
 
-export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefContractSummaryProps) {
+export function BriefContractSummary({
+  contract,
+  input,
+  fixes,
+  defaultRoles = ["drums", "bass"],
+  onPatch,
+}: BriefContractSummaryProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const prohibitedRoles = contract.statements
+    .filter((statement) => statement.section === "prohibition" && statement.role)
+    .map((statement) => statement.role as IntentRole);
+  const preservedRoles = input.preserve ?? [];
+  const selectedRoles = new Set(
+    (input.roles ?? defaultRoles).filter((role) => !prohibitedRoles.includes(role) && !preservedRoles.includes(role)),
+  );
+
+  const toggleGenerationRole = (role: IntentRole) => {
+    const next = new Set(selectedRoles);
+    if (next.has(role)) next.delete(role);
+    else next.add(role);
+    if (next.size === 0) return;
+    onPatch({ roles: INTENT_ROLES.filter((candidate) => next.has(candidate)) });
+  };
 
   const commitBpm = (raw: string) => {
     const value = Math.round(Number(raw.replace(",", ".")));
@@ -45,6 +75,47 @@ export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefC
   };
 
   const renderStatement = (statement: BriefStatement) => {
+    if (statement.id === "roles") {
+      const corrected = fixes.roles !== undefined;
+      return (
+        <div key={statement.id} className="brief-role-controls" role="group" aria-label="Roly na generovanie">
+          <span className="brief-role-prompt">Generovať</span>
+          {INTENT_ROLES.map((role) => {
+            const selected = selectedRoles.has(role);
+            const prohibited = prohibitedRoles.includes(role);
+            const preserved = preservedRoles.includes(role);
+            const lastSelectedRole = selected && selectedRoles.size === 1;
+            const disabled = prohibited || preserved || lastSelectedRole;
+            const title = prohibited
+              ? "Zakázané v zadaní"
+              : preserved
+                ? "Táto rola je chránená — odomkni ju v časti ZACHOVAŤ"
+                : lastSelectedRole
+                  ? "Aspoň jedna rola musí zostať vybraná"
+                  : `Prepnúť generovanie: ${ROLE_TOGGLE_LABELS[role]}`;
+            return (
+              <button
+                key={role}
+                type="button"
+                className={
+                  "brief-chip brief-hard brief-role-toggle" +
+                  (selected ? " brief-role-selected" : "") +
+                  (corrected ? " brief-fixed" : "")
+                }
+                aria-label={`Generovať ${ROLE_TOGGLE_LABELS[role]}`}
+                aria-pressed={selected}
+                disabled={disabled}
+                title={title}
+                onClick={() => toggleGenerationRole(role)}
+              >
+                {ROLE_TOGGLE_LABELS[role]}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
     // Suggested fix (unknown/inferred with a patch) — one click confirms it.
     if (statement.patch) {
       return (
@@ -70,7 +141,16 @@ export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefC
             className="brief-unkeep"
             title="Už nechrániť — bude sa generovať"
             aria-label={`Prestať chrániť ${statement.role}`}
-            onClick={() => onPatch(unprotectRole(input, statement.role as NonNullable<BriefStatement["role"]>))}
+            onClick={() =>
+              onPatch(
+                unprotectRole(
+                  input,
+                  statement.role as NonNullable<BriefStatement["role"]>,
+                  defaultRoles,
+                  prohibitedRoles,
+                ),
+              )
+            }
           >
             ×
           </button>
@@ -104,12 +184,17 @@ export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefC
 
     const editable = statement.id === "bpm" || statement.id === "length";
     const fixed = editable && fixes[statement.id === "bpm" ? "bpmRange" : "length"] !== undefined;
+    const corrected = statement.origin === "user";
     return (
       <button
         key={statement.id}
         type="button"
-        className={"brief-chip" + (statement.section === "hard" ? " brief-hard" : "") + (fixed ? " brief-fixed" : "")}
-        title={editable ? "Klikni a oprav" : ""}
+        className={
+          "brief-chip" +
+          (statement.section === "hard" ? " brief-hard" : "") +
+          (fixed || corrected ? " brief-fixed" : "")
+        }
+        title={corrected ? "Opravené tebou — klikni a zmeň" : editable ? "Klikni a oprav" : ""}
         onClick={
           editable
             ? () => {
@@ -122,7 +207,7 @@ export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefC
         }
       >
         {statement.label}
-        {fixed ? " ✎" : ""}
+        {corrected ? " ✓" : fixed ? " ✎" : ""}
       </button>
     );
   };
@@ -135,6 +220,17 @@ export function BriefContractSummary({ contract, input, fixes, onPatch }: BriefC
   return (
     <div className="brief-contract" aria-label="Toto som pochopil">
       <span className="brief-title">TOTO SOM POCHOPIL</span>
+      {contract.conflicts.length > 0 && (
+        <div className="brief-conflicts" aria-label="Rozpory v zadaní" role="alert">
+          <span className="brief-conflict-title">ROZPOR</span>
+          {contract.conflicts.map((conflict) => (
+            <span key={conflict.id} className="brief-conflict-message">
+              {conflict.label}
+            </span>
+          ))}
+          <span className="brief-conflict-hint">Uprav konfliktné pokyny. Generovanie čaká na jednoznačné zadanie.</span>
+        </div>
+      )}
       {groups.map((group) => (
         <div key={group.section} className="brief-row">
           <span className={"brief-section brief-section-" + group.section}>{BRIEF_SECTION_LABELS[group.section]}</span>

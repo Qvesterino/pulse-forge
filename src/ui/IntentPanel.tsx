@@ -81,6 +81,7 @@ import { funnelEvent } from "../services/funnel";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
+import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
@@ -97,6 +98,8 @@ import { ProducerDnaCompare } from "./ProducerDnaCompare";
 /** B1: a `?regen=1` arrival auto-runs exactly one generation per page load —
     StrictMode must not double-fire it. */
 let regenAutoRan = false;
+const BRIEF_CONFLICT_BLOCK_MESSAGE =
+  "Zadanie si protirečí. Uprav konfliktné požiadavky v texte alebo odstráň ochranný čip pred generovaním.";
 
 export function IntentPanel() {
   const services = useServices();
@@ -112,6 +115,8 @@ export function IntentPanel() {
   // Prompt history strip (vibe-code wave 2): reactivity tick over the
   // module-level session history.
   const [historyTick, setHistoryTick] = useState(0);
+  const [historyReplayTick, setHistoryReplayTick] = useState(0);
+  const historyReplayRef = useRef<string | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [renderingIndex, setRenderingIndex] = useState<number | null>(null);
   const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
@@ -219,10 +224,20 @@ export function IntentPanel() {
   }, [text]);
   const briefContract = useMemo(
     () =>
-      compileBriefContract(parsed, { project: doc, session: producerSessionState(), defaultRoles: ["drums", "bass"] }),
-    [parsed, doc],
+      compileBriefContract(parsed, {
+        project: doc,
+        session: producerSessionState(),
+        defaultRoles: ["drums", "bass"],
+        corrections: briefFixes,
+      }),
+    [parsed, doc, briefFixes],
   );
   const briefInput = useMemo<IntentInput>(() => ({ ...(parsed?.input ?? {}), ...briefFixes }), [parsed, briefFixes]);
+  const rejectUnresolvedBriefConflicts = () => {
+    if (briefContract.conflicts.length === 0) return false;
+    setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
+    return true;
+  };
 
   const candidates = bankResult?.bank ?? null;
 
@@ -303,6 +318,7 @@ export function IntentPanel() {
 
   const generate = async () => {
     if (!text.trim() || busy) return;
+    if (rejectUnresolvedBriefConflicts()) return;
     setBusy(true);
     setError(null);
     setStatus(null);
@@ -440,6 +456,18 @@ export function IntentPanel() {
     if (globalFx) finalInput = { ...finalInput, fx: globalFx };
     await runGeneration(finalInput, controller);
   };
+
+  useEffect(() => {
+    const replayText = historyReplayRef.current;
+    if (replayText === null) return;
+    if (replayText !== text) {
+      historyReplayRef.current = null;
+      return;
+    }
+    if (Object.keys(briefFixes).length > 0) return;
+    historyReplayRef.current = null;
+    void generate();
+  }, [text, briefFixes, historyReplayTick]);
 
   const toggleAudition = async (candidate: RankedCandidate) => {
     if (playingIndex === candidate.candidateIndex) {
@@ -767,6 +795,71 @@ export function IntentPanel() {
   const [renderingSectionId, setRenderingSectionId] = useState<string | null>(null);
   const sectionBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sectionTokenRef = useRef(0);
+  useEffect(() => {
+    if (briefContract.conflicts.length === 0) return;
+    // A conflict supersedes any previous preview: do not leave an older bank
+    // auditionable under a newly contradictory brief, and stop in-flight work.
+    abortRef.current?.abort();
+    stopAudition();
+    setBusy(false);
+    setSongBusy(false);
+    setBankResult(null);
+    setPlayingIndex(null);
+    setRenderingIndex(null);
+    buffersRef.current.clear();
+    setSongDraft(null);
+    setSongPlaying(false);
+    setSongRendering(false);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
+    setJustApplied(false);
+    setStatus(null);
+    songTokenRef.current++;
+    sectionTokenRef.current++;
+    songBufferRef.current = null;
+    sectionBuffersRef.current.clear();
+  }, [briefContract.conflicts]);
+
+  const invalidateBriefResults = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    playTokenRef.current++;
+    stopAudition();
+    setBusy(false);
+    setSongBusy(false);
+    setBankResult(null);
+    setPlayingIndex(null);
+    setRenderingIndex(null);
+    buffersRef.current.clear();
+    setSongDraft(null);
+    setSongPlaying(false);
+    setSongRendering(false);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
+    setJustApplied(false);
+    setSemanticChip(null);
+    setError(null);
+    setStatus(null);
+    previewDocRef.current = null;
+    songTokenRef.current++;
+    sectionTokenRef.current++;
+    songBufferRef.current = null;
+    sectionBuffersRef.current.clear();
+  };
+
+  const applyBriefPatch = (patch: IntentInput) => {
+    invalidateBriefResults();
+    setBriefFixes((previous) => ({ ...previous, ...patch }));
+  };
+
+  const replacePrompt = (nextText: string, replay = false) => {
+    invalidateBriefResults();
+    setBriefFixes((previous) => (Object.keys(previous).length > 0 ? {} : previous));
+    setText(nextText);
+    historyReplayRef.current = replay ? nextText : null;
+    if (replay) setHistoryReplayTick((tick) => tick + 1);
+  };
+
   // Audio reference ("sprav to ako tento WAV"): patch merges into every
   // generation path, the 16-dim conditioning installs for the v2 priors.
   const [refPatch, setRefPatch] = useState<IntentInput | null>(null);
@@ -1320,6 +1413,7 @@ export function IntentPanel() {
   };
   const generateSong = async () => {
     if (!text.trim() || songBusy || busy) return;
+    if (rejectUnresolvedBriefConflicts()) return;
     setSongBusy(true);
     try {
       await runSongBuild(parseSectionRequests(text) ?? undefined);
@@ -1529,6 +1623,7 @@ export function IntentPanel() {
     setJustApplied(false);
     try {
       const route = routeIntentText(text, doc);
+      if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)!;
         const merged: IntentInput = {
@@ -1635,14 +1730,20 @@ export function IntentPanel() {
         if (route.targetRole) {
           // C3 TARGETED revise: the role word names the section — regenerate
           // THAT scene's pattern from its own provenance intent (same seed).
-          const attribute = route.attribute as "energy" | "density";
-          const outcome = reviseSection(doc, route.targetRole as never, attribute, delta);
-          if (!outcome.ok) {
-            setStatus(`⚡ ${outcome.error}`);
-            return;
+          try {
+            const attribute = route.attribute as "energy" | "density";
+            const outcome = reviseSection(doc, route.targetRole as never, attribute, delta);
+            if (!outcome.ok) {
+              setStatus(`⚡ ${outcome.error}`);
+              return;
+            }
+            services.store.execute(replacePatternInPlaceCommand(doc, outcome.patternId, outcome.pattern));
+            setStatus(`⚡ ${outcome.label}`);
+          } finally {
+            // Unlike global revisions, this synchronous targeted path does
+            // not enter runGeneration(), whose finally normally releases busy.
+            setBusy(false);
           }
-          services.store.execute(replacePatternInPlaceCommand(doc, outcome.patternId, outcome.pattern));
-          setStatus(`⚡ ${outcome.label}`);
         } else if (last) {
           const current = last[route.attribute] ?? fallbackDefaults[route.attribute];
           await runGeneration({ ...last, [route.attribute]: Math.max(0, Math.min(1, current + delta)) }, controller);
@@ -1679,7 +1780,7 @@ export function IntentPanel() {
         className="intent-textarea"
         placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => replacePrompt(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void generate();
         }}
@@ -1697,10 +1798,7 @@ export function IntentPanel() {
                 type="button"
                 className="intent-history-chip"
                 title="Re-run this prompt"
-                onClick={() => {
-                  setText(entry.text);
-                  void generate();
-                }}
+                onClick={() => replacePrompt(entry.text, true)}
               >
                 {entry.text.length > 42 ? entry.text.slice(0, 40) + "…" : entry.text}
               </button>
@@ -1717,7 +1815,8 @@ export function IntentPanel() {
           contract={briefContract}
           input={briefInput}
           fixes={briefFixes}
-          onPatch={(patch) => setBriefFixes((prev) => ({ ...prev, ...patch }))}
+          defaultRoles={["drums", "bass"]}
+          onPatch={applyBriefPatch}
         />
       )}
       {semanticChip && (
@@ -2016,6 +2115,13 @@ export function IntentPanel() {
           ))}
         </div>
       )}
+      {bankResult && (
+        <CandidateLaneReceipt
+          plan={bankResult.plan}
+          candidates={bankResult.bank ?? []}
+          warnings={bankResult.diagnostics.warnings}
+        />
+      )}
       {candidates && candidates.length > 1 && (
         <div className="intent-detected" aria-label="Candidate ranking explanation">
           Poradie zohľadňuje plnenie briefu aj mieru hudobnej odlišnosti; nejde o objektívnu známku.
@@ -2049,11 +2155,16 @@ export function IntentPanel() {
                         candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
                       }${candidate.search.family === "personal-groove" ? "; selected for your learned groove preference" : ""}${
                         candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""
+                      }${
+                        candidate.search.melodyFamily === "evolving-hook"
+                          ? "; repeating lead motif with alternating cadence space"
+                          : ""
                       }`}
                     >
                       {candidate.search.lane.toUpperCase()}
                       {candidate.search.grooveId && " · GROOVE"}
                       {candidate.search.melodyFamily === "repeating-hook" && " · HOOK"}
+                      {candidate.search.melodyFamily === "evolving-hook" && " · HOOK VARIATION"}
                     </span>
                   )}
                   {isWinner && <span className="intent-candidate-win">★ best</span>}

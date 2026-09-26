@@ -160,6 +160,49 @@ describe("openProject close-race guards", () => {
     expect(engine.setProject).toHaveBeenLastCalledWith(docB);
     await servicesB.closeProject();
   });
+
+  it("clears the live take audition projection on pause and stop without UI ownership", async () => {
+    const doc = makeDoc();
+    const playbackDoc: ProjectDocument = {
+      ...doc,
+      arrangement: { ...doc.arrangement, audioClips: [] },
+    };
+    const services = await openProject(makeCore(engine), doc);
+    const setProjection = vi.spyOn(services.scheduler, "setPlaybackProjectOverride");
+    services.playback.setMode("song");
+    services.transport.play(0, { leadIn: false });
+
+    services.setLiveTakeAuditionProject(playbackDoc);
+    expect(engine.setProject).toHaveBeenLastCalledWith(playbackDoc);
+    services.playback.playPause();
+
+    expect(setProjection).toHaveBeenLastCalledWith(null);
+    expect(engine.setProject).toHaveBeenLastCalledWith(doc);
+
+    services.playback.playPause();
+    services.setLiveTakeAuditionProject(playbackDoc);
+    services.playback.stop();
+
+    expect(setProjection).toHaveBeenLastCalledWith(null);
+    expect(engine.setProject).toHaveBeenLastCalledWith(doc);
+    await services.closeProject();
+  });
+
+  it("does not start a live take audition while the transport loop is enabled", async () => {
+    const doc = makeDoc();
+    const playbackDoc: ProjectDocument = {
+      ...doc,
+      arrangement: { ...doc.arrangement, audioClips: [] },
+    };
+    const services = await openProject(makeCore(engine), doc);
+    services.playback.setMode("song");
+    services.transport.play(0, { leadIn: false });
+    services.transport.setLoop(true, 0, 1920);
+
+    expect(() => services.setLiveTakeAuditionProject(playbackDoc)).toThrow("Turn off the transport loop");
+    expect(engine.setProject).toHaveBeenLastCalledWith(doc);
+    await services.closeProject();
+  });
 });
 
 describe("openProject AudioContext-failure resilience (GOAL 04)", () => {

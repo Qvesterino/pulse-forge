@@ -51,6 +51,41 @@ describe("Producer DNA preference ledger", () => {
     expect(JSON.stringify(saved)).not.toContain("project json");
   });
 
+  it("stores a validated global-selector score while accepting legacy snapshots without one", () => {
+    const scored = createPreferenceObservation(
+      context,
+      {
+        contentHash: "baseline-a",
+        features: feature(0.8),
+        globalScore: 0.62,
+        globalScoreVersion: "global-selector.v1:heuristic",
+      },
+      {
+        contentHash: "baseline-b",
+        features: feature(0.2),
+        globalScore: 0.41,
+        globalScoreVersion: "global-selector.v1:heuristic",
+      },
+      "a",
+    );
+    const invalid = createPreferenceObservation(
+      context,
+      {
+        contentHash: "invalid-a",
+        features: feature(0.8),
+        globalScore: 1.1,
+        globalScoreVersion: "global-selector.v1:heuristic",
+      },
+      { contentHash: "invalid-b", features: feature(0.2) },
+      "a",
+    );
+
+    expect(scored?.candidateA.globalScore).toBe(0.62);
+    expect(scored?.candidateA.globalScoreVersion).toBe("global-selector.v1:heuristic");
+    expect(observation()?.candidateA.globalScore).toBeUndefined();
+    expect(invalid).toBeNull();
+  });
+
   it("records explicit comparisons, dedupes the same pair, and exports a versioned pack", () => {
     expect(recordPreferenceObservation(observation(100)!)).toBe(true);
     expect(recordPreferenceObservation(observation(200)!)).toBe(true);

@@ -24,8 +24,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Factory presets**                    | **404** | `src/presets/factory.ts`                                                                                                      |
 | └─ instrument presets                  |     398 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
-| **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **523** | `tests/` files matching `*.test.ts` (419) and `*.test.tsx` (104)                                                              |
+| **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
+| **Vitest spec files**                  | **531** | `tests/` files matching `*.test.ts` (426) and `*.test.tsx` (105)                                                              |
 
 ## Flagship plugin implementations
 

@@ -291,20 +291,28 @@ export interface PreferenceRankCandidate {
   contentHash: string;
 }
 
+/** Per-candidate score after adding the bounded DNA residual to the global baseline. */
+export interface PersonalPreferenceScore<T extends PreferenceRankCandidate> {
+  candidate: T;
+  score: number;
+}
+
 /**
- * Add a bounded personal residual to an already-valid, globally ranked bank.
- * `baseScores` must be in the same order and bounded [0, 1].
+ * Score an already-valid bank with the same bounded personal residual used by
+ * {@link rerankWithPersonalPreferences}. Returns null when no learnable model
+ * is available, which lets offline evaluation distinguish cold-start from a
+ * real personal prediction.
  */
-export function rerankWithPersonalPreferences<T extends PreferenceRankCandidate>(
+export function scoreWithPersonalPreferences<T extends PreferenceRankCandidate>(
   candidates: readonly T[],
   baseScores: readonly number[],
   featureByHash: ReadonlyMap<string, ArrayLike<number>>,
   observations: readonly PreferenceObservationV1[],
   context: PreferenceContext,
-): T[] {
-  if (candidates.length < 2 || candidates.length !== baseScores.length) return [...candidates];
+): PersonalPreferenceScore<T>[] | null {
+  if (candidates.length < 2 || candidates.length !== baseScores.length) return null;
   const models = fitAvailablePreferenceModels(observations, context);
-  if (models.length === 0) return [...candidates];
+  if (models.length === 0) return null;
 
   const featuresByCandidate = candidates.map((candidate) => featureByHash.get(candidate.contentHash));
   const residualByIndex = new Array<number>(candidates.length).fill(0);
@@ -326,14 +334,30 @@ export function rerankWithPersonalPreferences<T extends PreferenceRankCandidate>
   const maximumResidual = Math.max(...residualByIndex);
   const residualSpread = maximumResidual - minimumResidual;
   const scale = residualSpread > MAX_PERSONAL_RESIDUAL ? MAX_PERSONAL_RESIDUAL / residualSpread : 1;
-  return candidates
-    .map((candidate, index) => {
-      const base = Math.max(0, Math.min(1, Number.isFinite(baseScores[index]) ? baseScores[index] : 0));
-      return {
-        candidate,
-        score: base + residualByIndex[index] * scale,
-      };
-    })
+  return candidates.map((candidate, index) => {
+    const base = Math.max(0, Math.min(1, Number.isFinite(baseScores[index]) ? baseScores[index] : 0));
+    return {
+      candidate,
+      score: base + residualByIndex[index] * scale,
+    };
+  });
+}
+
+/**
+ * Add a bounded personal residual to an already-valid, globally ranked bank.
+ * `baseScores` must be in the same order and bounded [0, 1].
+ */
+export function rerankWithPersonalPreferences<T extends PreferenceRankCandidate>(
+  candidates: readonly T[],
+  baseScores: readonly number[],
+  featureByHash: ReadonlyMap<string, ArrayLike<number>>,
+  observations: readonly PreferenceObservationV1[],
+  context: PreferenceContext,
+): T[] {
+  if (candidates.length < 2 || candidates.length !== baseScores.length) return [...candidates];
+  const scored = scoreWithPersonalPreferences(candidates, baseScores, featureByHash, observations, context);
+  if (!scored) return [...candidates];
+  return scored
     .sort(
       (a, b) =>
         b.score - a.score ||

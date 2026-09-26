@@ -181,6 +181,7 @@ describe("Producer DNA candidate search lanes", () => {
     expect(leadTrack).toBeDefined();
     const leadNotes = prepared.pattern.notes?.[leadTrack!.id] ?? [];
     const barTicks = 16 * STEP_TICKS;
+    expect(leadNotes.every((note) => note.duration % STEP_TICKS === 0)).toBe(true);
     const motifInBar = (bar: number) =>
       leadNotes
         .filter((note) => note.start >= bar * barTicks && note.start < (bar + 1) * barTicks)
@@ -196,6 +197,32 @@ describe("Producer DNA candidate search lanes", () => {
     expect(secondMotif.length < firstMotif.length || secondEnding.duration < firstEnding.duration).toBe(true);
     expect(motifInBar(2)).toEqual(firstMotif);
     expect(prepared.pattern.generation?.quality?.melodicMotifRepetition).toBeDefined();
+  });
+
+  it("does not report an evolving hook when a one-note motif cannot be changed", () => {
+    const leadOnlyPlan = planGeneration(normalizeIntent({ ...plan.intent, roles: ["lead"], preserve: [] }), doc);
+    const variant = candidateSearchVariant(leadOnlyPlan, "one-note-hook-seed", 2, bias);
+    expect(variant.search.melodyFamily).toBe("evolving-hook");
+    const generated = generatePattern(doc, variant.generationPlan.options);
+    const targetIds = new Set(variant.generationPlan.rolePlans.lead.targetTrackIds);
+    const leadTracks = doc.tracks.filter((track) => track.kind === "instrument" && targetIds.has(track.id));
+    const leadTrack =
+      leadTracks.find((track) => track.name.toLowerCase().includes("lead")) ?? leadTracks[2 % leadTracks.length];
+    expect(leadTrack).toBeDefined();
+    const firstNote = generated.notes?.[leadTrack!.id]?.find((note) => note.start < 16 * STEP_TICKS);
+    expect(firstNote).toBeDefined();
+
+    const oneNotePattern = {
+      ...generated,
+      notes: {
+        ...generated.notes,
+        [leadTrack!.id]: [{ ...firstNote!, start: 0, duration: STEP_TICKS }],
+      },
+    };
+    const prepared = applyCandidateSearchFamily(oneNotePattern, doc, variant.generationPlan, variant.search);
+    expect(prepared.pattern).toBe(oneNotePattern);
+    expect(prepared.search.melodyFamily).toBeUndefined();
+    expect(prepared.search.family).toBe("soft-axis");
   });
 
   it("does not replace an explicit style or vary the groove when drums are protected", () => {

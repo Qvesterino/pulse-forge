@@ -32,6 +32,7 @@ import {
   setActiveAudioTake,
 } from "../../src/commands/commands";
 import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
+import { createLiveAudioTakeAuditionProject } from "../../src/rendering/take-audition";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
@@ -476,6 +477,55 @@ describe("arrangement REC wiring", () => {
     expect(services.engine.stopPreview).toHaveBeenCalled();
   });
 
+  it("solos a take lane in live Song playback without mutating the project or rendering offline", () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(
+      base,
+      "live-audition-ui-group",
+      "live-audition-ui-1",
+      trackId,
+      "audio.live-audition-1",
+      0,
+      1,
+    ).execute(base);
+    const withTwoTakes = addAudioTakeClip(
+      first,
+      "live-audition-ui-group",
+      "live-audition-ui-2",
+      trackId,
+      "audio.live-audition-2",
+      0,
+      1,
+    ).execute(first);
+    const services = mockServices(withTwoTakes);
+    Object.assign(services.playback, { mode: "song" });
+    Object.assign(services.transport, { playing: true, position: BAR_TICKS / 2 });
+    vi.mocked(renderProject).mockReset();
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live solo TAKE 1" }));
+
+    expect(services.setLiveTakeAuditionProject).toHaveBeenCalledOnce();
+    const [liveDoc, resumedOffsets] = (services.setLiveTakeAuditionProject as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const expected = createLiveAudioTakeAuditionProject(
+      withTwoTakes,
+      "live-audition-ui-group",
+      "live-audition-ui-1",
+      BAR_TICKS / 2,
+    );
+    expect(liveDoc).toEqual(expected.project);
+    expect(resumedOffsets).toEqual(expected.resumedAudioClipOffsets);
+    expect(renderProject).not.toHaveBeenCalled();
+    expect(services.store.getDoc()).toBe(withTwoTakes);
+    expect(screen.getByRole("button", { name: "Stop live audition TAKE 1" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop live audition TAKE 1" }));
+    expect(services.setLiveTakeAuditionProject).toHaveBeenLastCalledWith(null);
+  });
+
   it("renders, persists and undoably replaces selected audio clips on consolidation", async () => {
     const base = createDefaultProject();
     const track = base.tracks[0];
@@ -535,13 +585,9 @@ describe("arrangement REC wiring", () => {
       0,
       1,
     ).execute(first);
-    const initialComp = compAudioTakeRange(
+    const initialComp = compAudioTakeRange(withTwoTakes, "lane-comp-group", "lane-comp-pass-1", 0, BAR_TICKS).execute(
       withTwoTakes,
-      "lane-comp-group",
-      "lane-comp-pass-1",
-      0,
-      BAR_TICKS,
-    ).execute(withTwoTakes);
+    );
     const services = mockServices(initialComp);
     const { container } = renderWithContext(<ArrangementPanel />, { services });
 

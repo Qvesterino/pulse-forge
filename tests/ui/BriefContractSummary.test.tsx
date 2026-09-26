@@ -18,7 +18,11 @@ function renderBox(text: string, fixes: IntentInput = {}, session: Record<string
   resetProducerSession();
   for (const [kind, value] of Object.entries(session) as [string, string][])
     recordDecision(kind as never, value, "test");
-  const contract: BriefContract = compileBriefContract(parseIntentText(text), { session: producerSessionState() });
+  const contract: BriefContract = compileBriefContract(parseIntentText(text), {
+    session: producerSessionState(),
+    defaultRoles: ["drums", "bass"],
+    corrections: fixes,
+  });
   const input: IntentInput = { ...parseIntentText(text).input, ...fixes };
   render(<BriefContractSummary contract={contract} input={input} fixes={fixes} onPatch={onPatch} />);
   return { onPatch };
@@ -37,6 +41,45 @@ describe("BriefContractSummary", () => {
     expect(screen.getByText(/žiadne bicie/)).toBeTruthy();
   });
 
+  it("shows an actionable warning for conflicting role instructions", () => {
+    renderBox("no drums, add kick");
+    const conflict = screen.getByLabelText("Rozpory v zadaní");
+    expect(conflict).toHaveTextContent(/zákaz generovania bicích.*pridať/i);
+    expect(conflict).toHaveTextContent(/generovanie čaká/i);
+  });
+
+  it("explains that a prohibited role conflicts with the requested scope", () => {
+    renderBox("no bass, full beat");
+    const conflict = screen.getByLabelText("Rozpory v zadaní");
+    expect(conflict).toHaveTextContent(/zákaz generovania basy.*rozsah/i);
+    expect(conflict).toHaveTextContent(/uprav konfliktné pokyny/i);
+  });
+
+  it("lets the producer correct generation roles without rewriting the prompt", () => {
+    const { onPatch } = renderBox("dark trap");
+    const chords = screen.getByRole("button", { name: "Generovať akordy" });
+    expect(chords).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(chords);
+    expect(onPatch).toHaveBeenCalledWith({ roles: ["drums", "bass", "chords"] });
+  });
+
+  it("keeps prohibited and preserved roles unavailable in the generation controls", () => {
+    const { onPatch } = renderBox("no bass, keep my kick");
+    expect(screen.getByRole("button", { name: "Generovať basu" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Generovať bicie" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Generovať basu" })).toHaveAttribute("aria-pressed", "false");
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it("requires at least one generated role", () => {
+    const { onPatch } = renderBox("melody only");
+    const lead = screen.getByRole("button", { name: "Generovať lead" });
+    expect(lead).toBeDisabled();
+    expect(lead).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(lead);
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
   it("session suggestion is a one-click fix chip that emits its patch", () => {
     const { onPatch } = renderBox("nejaký beat", {}, { bpm: "120" });
     const fix = screen.getByText(/tempo nebolo zadané/);
@@ -52,6 +95,13 @@ describe("BriefContractSummary", () => {
     fireEvent.change(input, { target: { value: "128" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onPatch).toHaveBeenCalledWith({ bpmRange: [128, 128] });
+  });
+
+  it("shows the corrected value instead of the stale parsed BPM", () => {
+    renderBox("dark trap at 142", { bpmRange: [128, 128] });
+    expect(screen.getByText(/128 BPM/)).toBeTruthy();
+    expect(screen.queryByText(/^142 BPM/)).toBeNull();
+    expect(screen.getByText(/128 BPM/).closest("button")).toHaveClass("brief-fixed");
   });
 
   it("invalid BPM edits are dropped silently", () => {
@@ -77,6 +127,6 @@ describe("BriefContractSummary", () => {
     const unkeep = document.querySelector(".brief-unkeep") as HTMLButtonElement;
     expect(unkeep).toBeTruthy();
     fireEvent.click(unkeep);
-    expect(onPatch).toHaveBeenCalledWith({ roles: ["drums", "bass"] });
+    expect(onPatch).toHaveBeenCalledWith({ roles: ["drums", "bass"], preserve: [] });
   });
 });

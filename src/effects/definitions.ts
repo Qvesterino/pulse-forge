@@ -487,7 +487,7 @@ export const eqParams: ParamDef[] = [
     taper: "log",
   },
   { id: "lowMidGain", label: "LOW MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-  { id: "lowMidQ", label: "LOW MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
+  { id: "lowMidQ", label: "LOW MID Q", min: 0.2, max: 16, default: 1, format: (v) => v.toFixed(2) },
   {
     id: "highMidFreq",
     label: "HIGH MID FREQ",
@@ -499,7 +499,7 @@ export const eqParams: ParamDef[] = [
     taper: "log",
   },
   { id: "highMidGain", label: "HIGH MID", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
-  { id: "highMidQ", label: "HIGH MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
+  { id: "highMidQ", label: "HIGH MID Q", min: 0.2, max: 16, default: 1, format: (v) => v.toFixed(2) },
   {
     id: "highShelfFreq",
     label: "HIGH SHELF FREQ",
@@ -525,7 +525,7 @@ export const eqParams: ParamDef[] = [
     format: formatHz,
     taper: "log",
   },
-  { id: "midQ", label: "MID Q", min: 0.3, max: 8, default: 1, format: (v) => v.toFixed(2) },
+  { id: "midQ", label: "MID Q", min: 0.2, max: 16, default: 1, format: (v) => v.toFixed(2) },
   { id: "highGain", label: "HIGH", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
   {
     id: "highFreq",
@@ -653,8 +653,8 @@ export const multibandParams: ParamDef[] = [
 export const compressorParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 3, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.01, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.5, default: 0.01, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs },
   { id: "knee", label: "KNEE", min: 0, max: 40, default: 6, unit: "dB", format: formatDb },
   {
     id: "detector",
@@ -905,8 +905,8 @@ export const phaserParams: ParamDef[] = [
 export const sidechainParams: ParamDef[] = [
   { id: "threshold", label: "THRESH", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
   { id: "ratio", label: "RATIO", min: 1, max: 20, default: 4, format: (v) => `${v.toFixed(1)}:1` },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.2, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.5, default: 0.005, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.2, unit: "s", format: formatSecMs },
   { id: "amount", label: "AMOUNT", min: 0, max: 1, default: 1, format: formatPct },
   {
     id: "splitFreq",
@@ -1198,8 +1198,8 @@ export const bassBussParams: ParamDef[] = [
     taper: "log",
   },
   { id: "compression", label: "COMPRESSION", min: 0, max: 1, default: 0.25, format: formatPct },
-  { id: "attack", label: "ATTACK", min: 0.001, max: 0.2, default: 0.01, unit: "s", format: formatSecMs },
-  { id: "release", label: "RELEASE", min: 0.02, max: 1, default: 0.18, unit: "s", format: formatSecMs },
+  { id: "attack", label: "ATTACK", min: 0.0002, max: 0.2, default: 0.01, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.02, max: 2, default: 0.18, unit: "s", format: formatSecMs },
   {
     id: "monoBassFrequency",
     label: "MONO BASS",

@@ -58,10 +58,22 @@ describe("resolveSessionReference", () => {
     expect(hit.rest).toBe("darker");
   });
 
+  it("removes only the referenced English phrase, preserving repeated words in the edit", () => {
+    const hit = resolveSessionReference("the second one, keep the second lead", candidates(3))!;
+    expect(hit.index).toBe(1);
+    expect(hit.rest).toBe("keep the second lead");
+  });
+
   it("SK de-accented: 'ten treti ale tvrdsi' → index 2, modifiers kept", () => {
     const hit = resolveSessionReference("ten treti ale tvrdsi", candidates(4))!;
     expect(hit.index).toBe(2);
     expect(hit.rest).toBe("ale tvrdsi");
+  });
+
+  it("removes only the referenced Slovak phrase, preserving repeated ordinal words", () => {
+    const hit = resolveSessionReference("ten druhý, ale druhý lead nechaj", candidates(3))!;
+    expect(hit.index).toBe(1);
+    expect(hit.rest).toBe("ale druhý lead nechaj");
   });
 
   it('"prvy" alone resolves to index 0', () => {

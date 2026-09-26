@@ -124,6 +124,8 @@ export async function generateAsyncResult(
     repairs: entry.repairs,
     score: entry.score,
     modelScore: ranked.modelScores[index] ?? null,
+    globalScore: entry.globalScore ?? entry.score,
+    ...(entry.globalScoreVersion ? { globalScoreVersion: entry.globalScoreVersion } : {}),
     contentHash: entry.contentHash,
     pattern: entry.pattern,
     ...(entry.search ? { search: entry.search } : {}),
