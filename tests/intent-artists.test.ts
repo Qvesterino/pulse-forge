@@ -261,6 +261,69 @@ describe("world-roster wave (researched BPM)", () => {
   });
 });
 
+describe("dnb wave roster (sub-genres + researched 160–178 pockets)", () => {
+  it("liquid block: netsky / hybrid minds / ltj bukem / dj marky", () => {
+    expect(parseIntentText("netsky type beat").input.style).toBe("liquid");
+    expect(parseIntentText("hybrid minds type beat").input.mood).toBe("chill");
+    expect(parseIntentText("ltj bukem type beat").input.bpmRange).toEqual([168, 172]);
+    expect(parseIntentText("dj marky type beat").input.genre).toBe("dnb");
+  });
+
+  it("jump-up block: turno / kanine / amc (+ serum guard)", () => {
+    expect(parseIntentText("turno type beat").input.style).toBe("jumpup");
+    expect(parseIntentText("kanine type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("amc type beat").input.genre).toBe("dnb");
+    expect(parseIntentText("serum type beat").input.style).toBe("jumpup");
+    // bare "serum" is wavetable-synth talk, not the dnb artist
+    expect(matchArtistPreset("serum bass")).toBeNull();
+  });
+
+  it("dancefloor block: andy c / dimension / metrik", () => {
+    expect(parseIntentText("andy c type beat").input.style).toBe("dancefloor");
+    expect(parseIntentText("andy c type beat").input.bpmRange).toEqual([172, 176]);
+    expect(parseIntentText("dimension type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("metrik type beat").input.genre).toBe("dnb");
+  });
+
+  it("neuro block: noisia / black sun empire / ed rush", () => {
+    expect(parseIntentText("noisia type beat").input.style).toBe("neuro");
+    expect(parseIntentText("noisia type beat").input.energy).toBe(0.95);
+    expect(parseIntentText("black sun empire type beat").input.mood).toBe("dark");
+    expect(parseIntentText("ed rush and optical type beat").input.genre).toBe("dnb");
+  });
+
+  it("rollers + jungle + twostep: break guard / skeptical / congo natty / roni size", () => {
+    expect(parseIntentText("break dnb type beat").input.style).toBe("roller");
+    // bare "break" is arrangement talk, not the dnb artist
+    expect(matchArtistPreset("make the break longer")).toBeNull();
+    expect(parseIntentText("skeptical type beat").input.genre).toBe("dnb");
+    expect(parseIntentText("congo natty type beat").input.style).toBe("amen");
+    expect(parseIntentText("congo natty type beat").input.bpmRange).toEqual([160, 168]);
+    expect(parseIntentText("shy fx type beat").input.style).toBe("amen");
+    expect(parseIntentText("roni size type beat").input.style).toBe("twostep");
+  });
+
+  it("explicit words still override dnb presets", () => {
+    const chill = parseIntentText("andy c type beat chill");
+    expect(chill.input.mood).toBe("chill");
+    expect(chill.input.genre).toBe("dnb");
+  });
+
+  it("every dnb wave style resolves to a real groove id", () => {
+    for (const id of [
+      "dnb.liquid",
+      "dnb.jumpup",
+      "dnb.dancefloor",
+      "dnb.neuro",
+      "dnb.roller",
+      "dnb.amen",
+      "dnb.twostep",
+    ]) {
+      expect(getGrooveById(id)).toBeDefined();
+    }
+  });
+});
+
 describe("west coast / g-funk roster (researched 92-96 pocket)", () => {
   it("snoop → trap/headnod chill in the classic pocket", () => {
     const parsed = parseIntentText("snoop type beat");
@@ -420,5 +483,51 @@ describe("hip-hop sub-genre roster sweep", () => {
     const parsed = parseIntentText("billie eilish type beat bright");
     expect(parsed.input.mood).toBe("energetic");
     expect(parsed.input.genre).toBe("ambient");
+  });
+});
+
+describe("mainstream heavyweights roster", () => {
+  it("drake → sparse Toronto dark; kodak → Florida lazy chill", () => {
+    const drake = parseIntentText("drake type beat");
+    expect(drake.input.genre).toBe("trap");
+    expect(drake.input.style).toBe("sparse");
+    expect(drake.input.bpmRange).toEqual([128, 142]);
+    expect(parseIntentText("ovo beat").input.style).toBe("sparse");
+    const kodak = parseIntentText("kodak black type beat");
+    expect(kodak.input.mood).toBe("chill");
+    expect(kodak.input.style).toBe("sparse");
+  });
+
+  it("melodic drill corner: lil durk / polo g on the drill family", () => {
+    for (const name of ["lil durk", "polo g"]) {
+      const parsed = parseIntentText(`${name} type beat`);
+      expect(parsed.input.genre).toBe("drill");
+      expect(parsed.input.style).toBe("dark");
+    }
+  });
+
+  it("emo/aggro corner: juice wrld rolling, x hyper, denzel + jpegmafi", () => {
+    expect(parseIntentText("juice wrld type beat").input.style).toBe("rolling");
+    expect(parseIntentText("999 beat").input.style).toBe("rolling");
+    expect(parseIntentText("xxxtentacion type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("denzel curry type beat").input.bpmRange).toEqual([140, 160]);
+    expect(parseIntentText("jpegmafia type beat").input.style).toBe("hyper");
+  });
+
+  it("conscious boom bap corner: tyler / mac miller at the slow pocket", () => {
+    const tyler = parseIntentText("igor type beat");
+    expect(tyler.input.style).toBe("classic");
+    expect(tyler.input.bpmRange).toEqual([75, 105]);
+    expect(parseIntentText("mac miller type beat").input.mood).toBe("chill");
+    expect(parseIntentText("mac miller type beat").input.style).toBe("classic");
+  });
+
+  it("sing-rap corner: rod wave / lil peep / a boogie sparse; megan rolling houston", () => {
+    expect(parseIntentText("rod wave type beat").input.style).toBe("sparse");
+    expect(parseIntentText("lil peep type beat").input.mood).toBe("chill");
+    expect(parseIntentText("a boogie type beat").input.style).toBe("sparse");
+    const megan = parseIntentText("megan thee stallion type beat");
+    expect(megan.input.style).toBe("rolling");
+    expect(megan.input.bpmRange).toEqual([125, 140]);
   });
 });

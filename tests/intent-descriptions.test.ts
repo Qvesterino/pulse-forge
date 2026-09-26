@@ -53,4 +53,17 @@ describe("text description generator (Fáza A)", () => {
       expect(set.descriptions.length).toBeGreaterThan(0);
     }
   });
+
+  it("dnb vocabulary wave — liquid/jumpup/neuro/roller/amen/dancefloor/twostep/jungle", () => {
+    const descriptions = generateDescriptions("dnb", "liquid", "dark", [172, 176], 30);
+    const joined = descriptions.join(" ").toLowerCase();
+    expect(joined).toContain("drum and bass");
+    expect(joined).toContain("liquid");
+    expect(joined).toContain("174");
+    const all = generateAllDescriptions(["dnb"]);
+    for (const key of ["dnb:liquid", "dnb:jumpup", "dnb:neuro", "dnb:roller", "dnb:amen", "dnb:twostep"]) {
+      expect(all.has(key), key).toBe(true);
+      expect(all.get(key)!.descriptions.length).toBeGreaterThan(0);
+    }
+  });
 });

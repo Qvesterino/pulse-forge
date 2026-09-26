@@ -540,6 +540,173 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [98, 110],
     label: "old school / electro",
   },
+  // ── mainstream heavyweights wave ───────────────────────────────────────
+  {
+    names: ["drake", "drake type beat", "ovo", "6ix", "champagne papi"],
+    // Toronto atmospheric trap/R&B hybrid — sparse groove with room for
+    // the sung hook.
+    genre: "trap",
+    style: "sparse",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [128, 142],
+    label: "drake",
+  },
+  {
+    names: ["kodak black", "kodak", "kodak type beat"],
+    // Florida lazy melodic trap — laid-back drawl over sparse drums.
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.45,
+    bpmRange: [125, 140],
+    label: "kodak black",
+  },
+  {
+    names: ["lil durk", "durk", "lil durk type beat", "otf"],
+    // Chicago-adjacent melodic drill.
+    genre: "drill",
+    style: "dark",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.6,
+    bpmRange: [135, 145],
+    label: "lil durk",
+  },
+  {
+    names: ["nba youngboy", "youngboy", "youngboy never break again", "4ktrey"],
+    // Aggressive melodic trap — rolling and relentless.
+    genre: "trap",
+    style: "rolling",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [130, 150],
+    label: "nba youngboy",
+  },
+  {
+    names: ["polo g", "polo g type beat", "capalot"],
+    // Melodic drill/trap — the Hall of Fame pocket.
+    genre: "drill",
+    style: "dark",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.6,
+    bpmRange: [135, 150],
+    label: "polo g",
+  },
+  {
+    names: ["rod wave", "rod wave type beat", "nostalgia"],
+    // Emotional sung-trap — sparse, room for the vocal to carry.
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [128, 140],
+    label: "rod wave",
+  },
+  {
+    names: ["juice wrld", "juice wrld type beat", "999"],
+    // Emo trap — rolling 140s with melodic pain.
+    genre: "trap",
+    style: "rolling",
+    mood: "dark",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [135, 155],
+    label: "juice wrld",
+  },
+  {
+    names: ["xxxtentacion", "xxx type beat", "x type beat", "members only"],
+    // The aggro/sad split — hyper groove carries the Members Only energy.
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [140, 160],
+    label: "xxxtentacion",
+  },
+  {
+    names: ["tyler the creator", "tyler creator", "igor", "flower boy", "golf wang"],
+    // Neo-soul boom bap — the classic groove at Igor/Flower Boy tempo.
+    genre: "trap",
+    style: "classic",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [75, 105],
+    label: "tyler, the creator",
+  },
+  {
+    names: ["mac miller", "mac miller type beat", "circles", "kidd"],
+    // Jazz-tinged boom bap — laid-back pen over warm loops.
+    genre: "trap",
+    style: "classic",
+    mood: "chill",
+    energy: 0.45,
+    density: 0.5,
+    bpmRange: [80, 100],
+    label: "mac miller",
+  },
+  {
+    names: ["denzel curry", "denzel", "ultimate", "ta13oo"],
+    // Aggressive Florida rap — hyper tempo, mosh energy.
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [140, 160],
+    label: "denzel curry",
+  },
+  {
+    names: ["jpegmafia", "peggy", "devon hendryx", "experimental rap"],
+    // Glitchy experimental trap — hyper groove, maximum density.
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.75,
+    bpmRange: [135, 160],
+    label: "jpegmafia",
+  },
+  {
+    names: ["megan thee stallion", "megan", "hot girl", "megan thee stallion type beat"],
+    // Houston heritage — rolling trap at Tina Snow tempo.
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [125, 140],
+    label: "megan thee stallion",
+  },
+  {
+    names: ["lil peep", "lil peep type beat", "gbc", "hellboy"],
+    // Emo guitar trap — sparse and hazy under the samples.
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.45,
+    density: 0.45,
+    bpmRange: [120, 150],
+    label: "lil peep",
+  },
+  {
+    names: ["a boogie", "a boogie wit da hoodie", "a boogie type beat"],
+    // NY melodic — sparse bed for the sung hook.
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [128, 140],
+    label: "a boogie",
+  },
   {
     names: ["suicideboys", "suicide boys", "$uicideboy$", "g59", "grey 59"],
     // NOLA horrorcore: dark sparse trap with memphis phonk DNA — the darkest

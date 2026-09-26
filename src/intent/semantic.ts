@@ -121,11 +121,20 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     { text: "memphis phonk cassette tape vibe", patch: { genre: "phonk", style: "memphis", mood: "dark" } },
     { text: "liquid drum and bass rollers", patch: { genre: "dnb", style: "liquid", energy: 0.85 } },
     { text: "jump up dnb with reese bass", patch: { genre: "dnb", style: "jumpup", mood: "aggressive", energy: 0.9 } },
-    { text: "dark neurofunk tearout with reese pressure", patch: { genre: "dnb", style: "neuro", mood: "dark", energy: 0.95 } },
+    {
+      text: "dark neurofunk tearout with reese pressure",
+      patch: { genre: "dnb", style: "neuro", mood: "dark", energy: 0.95 },
+    },
     { text: "silky liquid dnb with warm sub", patch: { genre: "dnb", style: "liquid", mood: "chill", energy: 0.6 } },
-    { text: "ragga jungle with dancehall vocals", patch: { genre: "dnb", style: "amen", mood: "energetic", energy: 0.85 } },
+    {
+      text: "ragga jungle with dancehall vocals",
+      patch: { genre: "dnb", style: "amen", mood: "energetic", energy: 0.85 },
+    },
     { text: "deep minimal rollers at 174", patch: { genre: "dnb", style: "roller", mood: "dark", energy: 0.7 } },
-    { text: "festival dancefloor dnb anthem", patch: { genre: "dnb", style: "dancefloor", mood: "energetic", energy: 0.9 } },
+    {
+      text: "festival dancefloor dnb anthem",
+      patch: { genre: "dnb", style: "dancefloor", mood: "energetic", energy: 0.9 },
+    },
     { text: "chopped amen break science", patch: { genre: "dnb", style: "amen", energy: 0.8 } },
     { text: "two step drum and bass stepper", patch: { genre: "dnb", style: "twostep", energy: 0.75 } },
     { text: "tvrdý neurofunk s reese basou", patch: { genre: "dnb", style: "neuro", mood: "dark", energy: 0.9 } },

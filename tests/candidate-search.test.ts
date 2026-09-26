@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatePattern, resolveGrooveForGeneration } from "../src/ai/generator";
+import { FEATURE_COUNT, FEATURE_NAMES } from "../src/ai/features/pattern-features";
 import { GENRES, type GrooveData } from "../src/ai/types";
 import { getGroovesForGenre } from "../src/ai/grooves";
 import { STEP_TICKS } from "../src/project-model/types";
@@ -11,7 +12,8 @@ import {
 } from "../src/intent/candidate-search";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
-import type { PersonalSearchBias } from "../src/intent/personal-ranker";
+import { inferPersonalSearchBias, type PersonalSearchBias } from "../src/intent/personal-ranker";
+import { createPreferenceObservation, preferenceContextForIntent } from "../src/intent/preference-ledger";
 
 const doc = createDefaultProject();
 const plan = planGeneration(
@@ -229,6 +231,39 @@ describe("Producer DNA candidate search lanes", () => {
     expect(lessGroove?.genre).toBe(plan.intent.genre);
     expect(score(moreGroove!)).toBeGreaterThan(score(baseGroove));
     expect(score(lessGroove!)).toBeLessThan(score(baseGroove));
+  });
+
+  it("routes real local A/B groove observations into the PERSONAL groove family", () => {
+    const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
+    const offbeatIndex = FEATURE_NAMES.indexOf("drums.offbeatRatio");
+    const preferred = new Array<number>(FEATURE_COUNT).fill(0.5);
+    const rejected = new Array<number>(FEATURE_COUNT).fill(0.5);
+    preferred[syncopationIndex] = 0.9;
+    rejected[syncopationIndex] = 0.1;
+    preferred[offbeatIndex] = 0.9;
+    rejected[offbeatIndex] = 0.1;
+    const context = preferenceContextForIntent(plan.intent);
+    const observation = (suffix: string, createdAt: number) => {
+      const result = createPreferenceObservation(
+        context,
+        { contentHash: `preferred-${suffix}`, features: preferred },
+        { contentHash: `rejected-${suffix}`, features: rejected },
+        "a",
+        { reason: "groove", createdAt },
+      );
+      if (!result) throw new Error("test preference observation invalid");
+      return result;
+    };
+    const bias = inferPersonalSearchBias([observation("a", 1), observation("b", 2)], context);
+    expect(bias?.grooveSyncopation).toBeGreaterThan(0.025);
+
+    const personal = candidateSearchVariant(plan, "learned-groove-seed", 1, bias);
+    expect(personal.search.lane).toBe("personal");
+    expect(personal.search.mode).toBe("personalized");
+    expect(personal.search.family).toBe("personal-groove");
+    expect(personal.search.grooveId).not.toBe(plan.groove.id);
+    expect(personal.generationPlan.options.style).toBe(personal.generationPlan.groove.name);
+    expect(resolveGrooveForGeneration(doc, personal.generationPlan.options).id).toBe(personal.search.grooveId);
   });
 
   it("keeps groove-family alternatives inside each supported genre", () => {

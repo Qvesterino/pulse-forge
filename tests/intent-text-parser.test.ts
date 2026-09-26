@@ -300,6 +300,34 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parseIntentText("hard groove techno").input.style).toBe("driving");
   });
 
+  it("dnb sub-genre sweep — jump up, drumfunk, techstep, ragga, halftime", () => {
+    expect(parseIntentText("jump up dnb at 174").input.genre).toBe("dnb");
+    expect(parseIntentText("jump up dnb at 174").input.style).toBe("jumpup");
+    expect(parseIntentText("drumfunk rollers").input.genre).toBe("dnb");
+    expect(parseIntentText("techstep pressure").input.genre).toBe("dnb");
+    expect(parseIntentText("darkstep tearout").input.genre).toBe("dnb");
+    expect(parseIntentText("ragga jungle with vocals").input.genre).toBe("dnb");
+    expect(parseIntentText("halftime dnb").input.genre).toBe("dnb");
+    expect(parseIntentText("minimal dnb roller").input.genre).toBe("dnb");
+    expect(parseIntentText("deep drum and bass").input.genre).toBe("dnb");
+  });
+
+  it("dnb two-step needs the dnb context — plain two step stays UKG", () => {
+    expect(parseIntentText("two step dnb").input.style).toBe("twostep");
+    expect(parseIntentText("two step dnb").input.genre).toBe("dnb");
+    expect(parseIntentText("dnb two step stepper").input.style).toBe("twostep");
+    expect(parseIntentText("two step garage at 130").input.style).toBe("ukg");
+    expect(parseIntentText("two step swing").input.style).toBe("ukg");
+  });
+
+  it("new dnb styles resolve to real groove ids", () => {
+    for (const id of ["dnb.twostep", "dnb.liquid", "dnb.jumpup", "dnb.neuro", "dnb.dancefloor"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      expect(groove!.patterns.length).toBeGreaterThan(0);
+    }
+  });
+
   it("baile funk / brazilian phonk → phonk bounce", () => {
     expect(parseIntentText("baile funk at 130").input.genre).toBe("phonk");
     expect(parseIntentText("baile funk at 130").input.style).toBe("bounce");

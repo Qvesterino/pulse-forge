@@ -20,7 +20,8 @@ export function createAudioTakeAuditionDoc(doc: ProjectDocument, groupId: string
   let current = tracksById.get(group.trackId);
   while (current && !audibleTrackIds.has(current.id)) {
     audibleTrackIds.add(current.id);
-    current = current.groupId ? tracksById.get(current.groupId) : undefined;
+    const parentGroupId = current.kind === "group" ? undefined : current.groupId;
+    current = parentGroupId ? tracksById.get(parentGroupId) : undefined;
   }
   if (!tracksById.has(group.trackId)) throw new Error(`Audio take group ${groupId} has no track`);
 

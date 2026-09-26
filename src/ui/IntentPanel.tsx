@@ -1912,7 +1912,9 @@ export function IntentPanel() {
                       className={`intent-candidate-lane ${candidate.search.lane}`}
                       title={`Search policy: ${candidate.search.mode}; family: ${candidate.search.family}${
                         candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
-                      }${candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""}`}
+                      }${candidate.search.family === "personal-groove" ? "; selected for your learned groove preference" : ""}${
+                        candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""
+                      }`}
                     >
                       {candidate.search.lane.toUpperCase()}
                       {candidate.search.grooveId && " · GROOVE"}

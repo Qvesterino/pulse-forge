@@ -66,7 +66,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
   [/\bragga(?: jungle)?\b|\braggajungle\b|\bdancehall dnb\b/, "dnb"],
   [/\bhalftime (?:dnb|drum ?n ?bass|jungle)\b|\b(?:dnb|jungle) halftime\b/, "dnb"],
-  [/\bminimal dnb\b|\bdeep dnb\b|\bdeep drum ?n ?bass\b/, "dnb"],
+  [/\bminimal dnb\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
   [/\bhard groove\b/, "techno"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
@@ -164,7 +164,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bliquid\b|\blikvid\b/, "liquid"],
   // DnB two-step MUST precede the generic UKG 2-step below — "two step dnb"
   // is dnb.twostep, plain "two step" stays UK garage.
-  [/\b(?:two step|2.?step|dvojkrok|dvojtakt)(?: dnb| drum ?n ?bass| jungle)\b|\b(?:dnb|jungle) (?:two step|2.?step)\b/, "twostep"],
+  [
+    /\b(?:two step|2.?step|dvojkrok|dvojtakt)(?: dnb| drum ?n ?bass| jungle)\b|\b(?:dnb|jungle) (?:two step|2.?step)\b/,
+    "twostep",
+  ],
   [/\bjump ?up\b|\bjumpup\b/, "jumpup"],
   [/\b2.?step\b|\btwo step\b|\bdvoj(?:krok|taktn)/, "ukg"],
   [/\bhard groove\b/, "driving"],

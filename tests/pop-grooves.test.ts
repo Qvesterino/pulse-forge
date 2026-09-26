@@ -1,14 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { getGrooveById, getGroovesForGenre, getStyleNamesForGenre } from "../src/ai/grooves/index";
-import { resolveGroove, generatePattern } from "../src/ai/generator";
-import { inspectPatternInvariants } from "../src/ai/invariants";
-import {
-  PRIOR_STYLE_VOCAB,
-  buildPriorFeatureRow,
-  type PriorGenre,
-  type PriorRole,
-} from "../src/ai/symbolic/prior-features";
+import { resolveGroove } from "../src/ai/generator";
+import { generateLocalResult } from "../src/intent/pipeline";
+import { PRIOR_STYLE_VOCAB, buildPriorFeatureRow, type PriorGenre } from "../src/ai/symbolic/prior-features";
+import type { PadRole } from "../src/ai/pad-roles";
 import type { GrooveData } from "../src/ai/types";
 
 /**
@@ -70,24 +66,23 @@ describe("pop groove registration", () => {
   });
 });
 
-describe("pop groove generation smoke (real engine)", () => {
-  it("each pop style generates a valid pattern through generatePattern", () => {
+describe("pop groove generation smoke (production pipeline with gates)", () => {
+  it("each pop style produces an accepted/repaired pattern like the UI would", () => {
     const doc = testDoc();
     for (const expected of POP_GROOVES) {
-      const pattern = generatePattern(doc, {
-        genre: expected.genre,
-        style: expected.name,
-        seed: `pop-smoke-${expected.id}`,
-        stepCount: 32,
-        ghostWeight: 0.3,
-        microWeight: 0.2,
-        velocityVariation: 0.3,
-        temperature: 1,
-        replaceMode: "new",
-      });
-      expect(Object.keys(pattern.rows).length, expected.id).toBeGreaterThan(0);
-      const report = inspectPatternInvariants(doc, pattern);
-      expect(report.ok, `${expected.id}: ${report.issues.map((i) => i.code).join(",")}`).toBe(true);
+      const result = generateLocalResult(
+        doc,
+        {
+          genre: expected.genre,
+          style: expected.name,
+          seed: `pop-smoke-${expected.id}`,
+          length: 32,
+        },
+        "preview",
+      );
+      expect(result.proposal, expected.id).toBeDefined();
+      expect(["accepted", "repaired"], expected.id).toContain(result.status);
+      expect(Object.keys(result.proposal!.pattern.rows).length, expected.id).toBeGreaterThan(0);
     }
   });
 });
@@ -103,7 +98,7 @@ describe("prior contract untouched (new styles degrade to unknown)", () => {
     const row = buildPriorFeatureRow({
       genre: "house" as PriorGenre,
       styleId: "house.pop",
-      role: "kick" as PriorRole,
+      role: "kick" as PadRole,
       step: 0,
       stepCount: 16,
     });

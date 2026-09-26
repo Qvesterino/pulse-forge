@@ -1406,14 +1406,18 @@ export function ArrangementPanel() {
     setAudioTakeAudition(request);
     try {
       services.engine.ensureContext();
-      const auditionDoc = createAudioTakeAuditionDoc(services.store.getDoc(), groupId, takeId);
+      const sourceDoc = services.store.getDoc();
+      const auditionDoc = createAudioTakeAuditionDoc(sourceDoc, groupId, takeId);
       const buffer = await renderProject(auditionDoc, services.bank, {
         mode: "song",
         sampleRate: 48_000,
+        // Track/group/return FX are baked into the audition buffer. The
+        // live preview bus applies this project's master chain exactly once.
+        masterProcessing: false,
         signal: request.controller.signal,
       });
       if (audioTakeAuditionRef.current !== request) return;
-      if (services.transport.playing) {
+      if (services.transport.playing || services.store.getDoc() !== sourceDoc) {
         audioTakeAuditionRef.current = null;
         setAudioTakeAudition(null);
         return;

@@ -56,6 +56,19 @@ describe("semantic corpus (T1 krok 2)", () => {
     expect(corpus.some((entry) => /tmav/.test(entry.text))).toBe(true); // SK paraphrase
   });
 
+  it("dnb wave vocabulary present (vocab entries + auto-enriched artists)", () => {
+    const corpus = buildSemanticCorpus();
+    for (const text of ["neurofunk tearout", "ragga jungle", "minimal rollers", "andy c", "noisia"]) {
+      expect(
+        corpus.some((entry) => entry.text.includes(text)),
+        text,
+      ).toBe(true);
+    }
+    const neuro = corpus.find((entry) => entry.text.includes("neurofunk tearout"))!;
+    expect(neuro.patch.genre).toBe("dnb");
+    expect(neuro.patch.style).toBe("neuro");
+  });
+
   it("patches only use canonical vocabulary", () => {
     for (const entry of buildSemanticCorpus()) {
       if (entry.patch.genre) expect(GENRES).toContain(entry.patch.genre);
