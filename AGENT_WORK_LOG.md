@@ -4704,3 +4704,20 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 - **Stale guard** (sémantika Fázy 2): akýkoľvek command medzi náhľadom a potvrdením invaliduje návrh s jasnou chybou.
 - **Testy** `tests/section-iteration.test.ts` 3/3: revíza zmení IBA deklarovanú sekciu (všetky ostatné patterny content-hash identické, scene bindingy prežijú), nepotvrdený návrh nechá projekt bitovo rovnaký, in-place identita (id+seed, nový obsah) = to čo počuješ je presne to čo sa aplikuje.
 - Regresia song/iteration/candidate rodina 86/86 (intent-song, suno-mode, song-auto-produce, iteration, brief-gate, session-context, candidate-audition); tsc čistý na mojich súboroch.
+
+---
+
+## VLNA 9 — SIGNATÚRY PRE CELÝ ROSTER + DEEP CHAIN (2026-09-26, user: „vlna 8" pokračovanie)
+
+**Stav rosteru pri štarte:** 339 entry (ich session vykonala väčšinu ROSTER-EXPANSION-ROADMAP Wave 8–12 sama — legendy, juh, UK, producenti, R&B/pop, dnb/techno roster...) — a len 24 malo mix podpis. Tiež: ich session stavala `src/intent/artist-profiles/index.ts` (~1600 riadkov) — hlboké profily (eqTilt/compression/stereoWidth/subEmphasis/signature.sound/vibe) s `deepProfileToArtistMix` derive funkciou a dokumnetáciou „Phase 2 wiring do planMixProfile" — type error čakal na moje ArtistMixProfile polia.
+
+**Dodané:**
+
+1. **ARTIST_MIX_PROFILES: 24 → 305 curated podpisov** (celý roster pokrytý, prebytočné keyi odfiltrované proti rosteru). Hodnoty autorované per-artist podľa rodiny: rap/trap (dark/warm+punch, dry), drill/grime (dark/cold+punch+dry), phonk/memphis (dark+punch+dry), cloud/screwed (cold/warm+huge), house/techno/club (bright/dark+pump), dnb (dark/bright+punch), ambient (lush, bez punch), R&B/pop (bright/dark lush)...
+2. **Interface +width/sub** (deep-profile passthrough; planMixProfile konzument follow-up).
+3. **Deep chain wired:** `artistMixProfileOf` = curated tabuľka → `artistMixProfileFromDeep(label)` fallback (ich 339 hlbokých profilov cez normalizeArtistSlug). Runtime acyklické — ich spätná hrana je `import type` (erased); statický graf jeden smer. Unknown artist → null (žáner default).
+4. scratch/rebuild-full.mts — regeneračný skript celej tabuľky (dedupe + roster validácia), nechám v scratch/ (untracked).
+
+**Validácia:** artist-mix **7/7** (vrátane deep-chain testu: deep-only slug odpovedá, unknown → null, curated vyhráva); 8-súborová battery **302/302**; `tsc --noEmit` — campaign súbory čisté (zvyšok = ich in-flight organ inštrument + wiring test).
+
+**Intent engine konečný stav (Vlny 1–9):** interpret → groove+BPM+productionProfile → **mix/master podpis (305 curated + deep fallback = celý roster)** → FX hinty + 15 production konceptov → brief → iterácie → reference audio → konverzačné intenty.

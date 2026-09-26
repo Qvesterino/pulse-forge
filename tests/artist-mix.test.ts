@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseIntentText } from "../src/intent/text-parser";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planMixProfile, masterTiltForIntent } from "../src/intent/mix";
-import { ARTIST_MIX_PROFILES } from "../src/intent/artist-mix";
+import { ARTIST_MIX_PROFILES, artistMixProfileOf } from "../src/intent/artist-mix";
 
 /**
  * ARTIST MIX SIGNATURES (Vlna 8) — "drake type beat" carries the drake
@@ -66,5 +66,17 @@ describe("artist FX hints (Vlna 8 polish)", () => {
     // The words must parse as production concepts (the fx pipeline contract).
     const parsed = parseIntentText("sophie type beat");
     expect(parsed.input.artist).toBe("sophie");
+  });
+});
+
+describe("deep-profile fallback chain", () => {
+  it("curated table wins; deep layer answers curated misses", async () => {
+    const { ARTIST_PROFILES, getArtistProfile } = await import("../src/intent/artist-profiles");
+    const deepOnly = Object.keys(ARTIST_PROFILES).find((slug) => !(slug in ARTIST_MIX_PROFILES));
+    expect(deepOnly).toBeDefined();
+    const profile = artistMixProfileOf({ artist: deepOnly! } as never);
+    expect(profile).not.toBeNull();
+    // And a completely unknown artist still degrades to null (genre default).
+    expect(artistMixProfileOf({ artist: "nikto taky" } as never)).toBeNull();
   });
 });
