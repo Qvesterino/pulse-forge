@@ -24,7 +24,7 @@ import {
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
-import { addAudioTakeClip, compAudioTakeRange, createDrumTrack } from "../../src/commands/commands";
+import { addAudioClip, addAudioTakeClip, compAudioTakeRange, createDrumTrack } from "../../src/commands/commands";
 import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 
@@ -468,6 +468,44 @@ describe("arrangement REC wiring", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Stop audition TAKE 1" }));
     expect(services.engine.stopPreview).toHaveBeenCalled();
+  });
+
+  it("renders, persists and undoably replaces selected audio clips on consolidation", async () => {
+    const base = createDefaultProject();
+    const track = base.tracks[0];
+    if (!track) throw new Error("empty project fixture missing track");
+    const first = addAudioClip(base, track.id, "audio.consolidate-1", 0, 1).execute(base);
+    const second = addAudioClip(first, track.id, "audio.consolidate-2", 1, 1).execute(first);
+    const services = mockServices(second);
+    Object.assign(services.engine, { getLiveAudioContext: vi.fn(() => ({ sampleRate: 48_000 })) });
+    const renderedBuffer = {
+      duration: 4 / 48_000,
+      length: 4,
+      sampleRate: 48_000,
+      numberOfChannels: 2,
+      getChannelData: () => new Float32Array(4),
+    } as unknown as AudioBuffer;
+    vi.mocked(renderProject).mockResolvedValue(renderedBuffer);
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.contextMenu(container.querySelector(".arr-audio-clip")!, { clientX: 100, clientY: 100 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Consolidate" }));
+
+    await waitFor(() => expect(services.userSamples.save).toHaveBeenCalledOnce());
+    const renderCall = vi.mocked(renderProject).mock.calls.at(-1)!;
+    expect(renderCall[0].arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual([
+      "audio.consolidate-1",
+      "audio.consolidate-2",
+    ]);
+    expect(renderCall[2]).toMatchObject({ mode: "song", sampleRate: 48_000, tailSeconds: 0, masterProcessing: false });
+    expect(services.bank.add).toHaveBeenCalledOnce();
+    const savedAsset = (services.userSamples.save as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("consolidateAudioClips");
+    const consolidated = command.execute(second) as typeof second;
+    expect(consolidated.arrangement.audioClips).toHaveLength(1);
+    expect(consolidated.arrangement.audioClips?.[0]?.bufferId).toBe(savedAsset.id);
+    expect(command.undo(consolidated)).toEqual(second);
   });
 
   it("selects a take-lane region by dragging and comps it with one undoable edit", () => {

@@ -14,6 +14,7 @@ import { BAR_TICKS, PPQ, STEPS_PER_PATTERN } from "./types";
 import { uid } from "../shared/ids";
 import {
   buildDrill,
+  buildDrumBass,
   buildJerseyClub,
   buildLoFiHouse,
   buildPhonk,
@@ -41,7 +42,8 @@ export type TemplateId =
   | "phonk"
   | "drill"
   | "lofi-house"
-  | "reggaeton";
+  | "reggaeton"
+  | "dnb";
 
 export interface TemplateInfo {
   id: TemplateId;
@@ -128,6 +130,13 @@ export const TEMPLATES: TemplateInfo[] = [
     description: "The dembow riddim over a rolling sub at 96 BPM.",
     bpm: 96,
     tags: ["dembow", "club"],
+  },
+  {
+    id: "dnb",
+    name: "Drum & Bass",
+    description: "Two-step break, chopped-hat ghost snare and a Reese sub roller at 174 BPM.",
+    bpm: 174,
+    tags: ["break", "reese", "roller"],
   },
   {
     id: "empty",
@@ -770,5 +779,7 @@ export function createProjectFromTemplate(id: TemplateId): ProjectDocument {
       return buildLoFiHouse();
     case "reggaeton":
       return buildReggaeton();
+    case "dnb":
+      return buildDrumBass();
   }
 }

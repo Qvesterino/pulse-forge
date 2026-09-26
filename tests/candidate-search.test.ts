@@ -15,7 +15,13 @@ import { evaluateCandidate } from "../src/intent/providers/candidate";
 import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
 import { inferPersonalSearchBias, type PersonalSearchBias } from "../src/intent/personal-ranker";
-import { createPreferenceObservation, preferenceContextForIntent } from "../src/intent/preference-ledger";
+import {
+  createPreferenceObservation,
+  PREFERENCE_LEDGER_KEY,
+  PREFERENCE_LEARNING_KEY,
+  preferenceContextForIntent,
+} from "../src/intent/preference-ledger";
+import { LocalDeterministicProvider } from "../src/intent/providers/local";
 
 const doc = createDefaultProject();
 const plan = planGeneration(
@@ -279,10 +285,13 @@ describe("Producer DNA candidate search lanes", () => {
     const lessResult = selectAndMeasure(negativeBias);
     expect(moreResult.candidate).not.toBeNull();
     expect(lessResult.candidate).not.toBeNull();
+    if (moreResult.candidate === null || lessResult.candidate === null) {
+      throw new Error("expected both directions to produce a measured personal groove candidate");
+    }
     expect(moreResult.outputDelta).toBeGreaterThanOrEqual(0.01);
     expect(lessResult.outputDelta).toBeGreaterThanOrEqual(0.01);
     expect(moreResult.attempts).toBeGreaterThanOrEqual(1);
-    expect(moreResult.attempts).toBeLessThanOrEqual(8);
+    expect(moreResult.attempts).toBeLessThanOrEqual(16);
     expect(measuredSyncopation(moreResult.candidate, moreResult.variant)).toBeGreaterThan(safeSyncopation);
     expect(measuredSyncopation(lessResult.candidate, lessResult.variant)).toBeLessThan(safeSyncopation);
   });
@@ -318,6 +327,55 @@ describe("Producer DNA candidate search lanes", () => {
     expect(personal.search.grooveId).not.toBe(plan.groove.id);
     expect(personal.generationPlan.options.style).toBe(personal.generationPlan.groove.name);
     expect(resolveGrooveForGeneration(doc, personal.generationPlan.options).id).toBe(personal.search.grooveId);
+  });
+
+  it("keeps a generated PERSONAL groove only when the gated pattern moves in the learned direction", async () => {
+    const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
+    const offbeatIndex = FEATURE_NAMES.indexOf("drums.offbeatRatio");
+    const preferred = new Array<number>(FEATURE_COUNT).fill(0.5);
+    const rejected = new Array<number>(FEATURE_COUNT).fill(0.5);
+    preferred[syncopationIndex] = 0.9;
+    rejected[syncopationIndex] = 0.1;
+    preferred[offbeatIndex] = 0.9;
+    rejected[offbeatIndex] = 0.1;
+    const context = preferenceContextForIntent(plan.intent);
+    const observations = ["a", "b"].map((suffix, index) => {
+      const observation = createPreferenceObservation(
+        context,
+        { contentHash: `integration-preferred-${suffix}`, features: preferred },
+        { contentHash: `integration-rejected-${suffix}`, features: rejected },
+        "a",
+        { reason: "groove", createdAt: index + 1 },
+      );
+      if (!observation) throw new Error("test preference observation invalid");
+      return observation;
+    });
+
+    const previousLedger = localStorage.getItem(PREFERENCE_LEDGER_KEY);
+    const previousLearning = localStorage.getItem(PREFERENCE_LEARNING_KEY);
+    const previousRanker = localStorage.getItem("pf:intent-ranker");
+    localStorage.setItem(PREFERENCE_LEDGER_KEY, JSON.stringify(observations));
+    localStorage.setItem(PREFERENCE_LEARNING_KEY, "on");
+    localStorage.setItem("pf:intent-ranker", "off");
+    try {
+      const result = await new LocalDeterministicProvider().generateRanked(plan, { project: doc, mode: "preview" });
+      const personal = result.ranked.find((candidate) => candidate.candidateIndex === 1);
+      expect(personal?.search).toMatchObject({
+        lane: "personal",
+        family: "personal-groove",
+        mode: "personalized",
+      });
+      expect(personal?.search?.measuredSyncopationDelta).toBeGreaterThanOrEqual(0.01);
+      expect(personal?.search?.grooveSeedAttempts).toBeGreaterThanOrEqual(1);
+      expect(personal?.search?.grooveSeedAttempts).toBeLessThanOrEqual(16);
+    } finally {
+      if (previousLedger === null) localStorage.removeItem(PREFERENCE_LEDGER_KEY);
+      else localStorage.setItem(PREFERENCE_LEDGER_KEY, previousLedger);
+      if (previousLearning === null) localStorage.removeItem(PREFERENCE_LEARNING_KEY);
+      else localStorage.setItem(PREFERENCE_LEARNING_KEY, previousLearning);
+      if (previousRanker === null) localStorage.removeItem("pf:intent-ranker");
+      else localStorage.setItem("pf:intent-ranker", previousRanker);
+    }
   });
 
   it("keeps groove-family alternatives inside each supported genre", () => {

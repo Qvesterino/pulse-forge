@@ -65,7 +65,7 @@ import { FACTORY_PRESETS } from "../src/effects/ultina-core/presets/factoryPrese
 import { getDrumTrack } from "../src/project-model/types";
 
 describe("commands", () => {
-  it("refuses metadata-only audio consolidation instead of discarding clip sources", () => {
+  it("replaces selected clips with one rendered asset through a single undoable command", () => {
     const doc = createDefaultProject();
     const track = doc.tracks.find((candidate) => candidate.kind !== "group");
     if (!track) throw new Error("default project has no audio-capable track");
@@ -73,12 +73,21 @@ describe("commands", () => {
     const second = addAudioClip(first, track.id, "audio.second", 1, 1).execute(first);
     const clips = second.arrangement.audioClips ?? [];
 
-    expect(() =>
-      consolidateAudioClips(
-        second,
-        clips.map((clip) => clip.id),
-      ),
-    ).toThrow("Rendered audio consolidation is not available yet");
+    const clipIds = clips.map((clip) => clip.id);
+    expect(() => consolidateAudioClips(second, clipIds, "")).toThrow("Rendered audio buffer ID is required");
+    const command = consolidateAudioClips(second, clipIds, "user.consolidated");
+    const consolidated = command.execute(second);
+
+    expect(consolidated.arrangement.audioClips).toHaveLength(1);
+    expect(consolidated.arrangement.audioClips?.[0]).toMatchObject({
+      bufferId: "user.consolidated",
+      trackId: track.id,
+      startBar: 0,
+      lengthBars: 2,
+      offsetSec: 0,
+      gain: 1,
+    });
+    expect(command.undo(consolidated)).toEqual(second);
     expect(second.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.first", "audio.second"]);
   });
 

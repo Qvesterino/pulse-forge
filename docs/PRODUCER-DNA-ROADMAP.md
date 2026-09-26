@@ -47,7 +47,7 @@ Pri jednom brief-e KYX hľadá niekoľko skutočne odlišných riešení, nie tr
 
 Všetky smery používajú rovnaký kontrakt, invariant repair a brief gate. Ak platnú alternatívu nemožno vytvoriť, KYX vysvetlí dôvod namiesto toho, aby kozmetickú zmenu vydával za nový smer.
 
-**Základ v kóde:** `candidate-search.ts`, `candidate-bank.ts`, `providers/local.ts` a `providers/symbolic.ts` už spájajú lane policy s generation/audition cestou. Aktuálny slice zahŕňa experimental alternate-groove/hook a PERSONAL groove/hook odvodené z explicitného A/B vkusu. Personal groove zatiaľ vyberá podľa syncopation proxy v knižničných groove templates; treba potvrdiť blind posluchom, že sa proxy prenáša do výsledného patternu. Ďalej: rodiny pre meniaci sa motif a kontrolované aranžérske kontrasty.
+**Základ v kóde:** `candidate-search.ts`, `candidate-bank.ts`, `providers/local.ts` a `providers/symbolic.ts` už spájajú lane policy s generation/audition cestou. Aktuálny slice zahŕňa experimental alternate-groove/hook a PERSONAL groove/hook odvodené z explicitného A/B vkusu. Osobná groove rodina sa najprv vyberá podľa syncopation v knižničných templates, no výsledný pattern sa teraz meria cez `drums.syncopation`: lokálny generátor skúsi najviac 16 deterministických seedov a kandidáta ponechá iba vtedy, keď sa po hard gates posunie aspoň o 0,01 v naučenom smere. Inak sa kandidát vynechá. Symbolic prior kandidát používa rovnakú výstupnú kontrolu, zatiaľ bez retry. Toto dokazuje smer feature metriky, nie to, že groove subjektívne znie lepšie; stále treba blind posluch. Ďalej: rodiny pre meniaci sa motif a kontrolované aranžérske kontrasty.
 
 **Akceptácia:** rozdiel kandidátov je počuteľný aj blind poslucháčom; každý kandidát prejde rovnakými hard gates; seed a verzia policy reprodukujú rovnaký obsah; novota neznižuje brief compliance.
 
@@ -120,16 +120,16 @@ Tento plán nadväzuje na existujúce moduly; nezačína druhý generátor ani �
 
 ### Stav roadmapy podľa kódu
 
-| Oblasť                              | Stav dnes                                                                  | Čo ešte treba dokázať alebo dorobiť                                                           |
-| ----------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Brief contract a hard gates         | Základ implementovaný                                                      | Robustnejšie confidence, konflikty a oprava toho, čo parser pochopil.                         |
-| Explicitné lokálne párové voľby     | V1 implementovaná                                                          | Overiť kvalitu a reprezentatívnosť feedbacku na held-out voľbách.                             |
-| Personal re-ranking                 | V1 + reason-scoped adapters implementované                                 | Held-out blind dôkaz prínosu oproti globálnemu rankeru; lepšia kontextová/rolová granularita. |
-| Top-3 diverzita                     | Prvý MMR krok implementovaný                                               | Kandidátske rodiny musia byť rozdielne už pri generovaní.                                     |
-| SAFE / PERSONAL / EXPERIMENTAL      | Soft-axis + experimental groove/hook; PERSONAL groove/hook pri A/B signále | Blind-test prínosu; meniaci sa motif a aranžérske rodiny.                                     |
-| Audio referencia s voľbou donor osí | Analýza/conditioning implementované                                        | Vypínateľné osi a test, že vypnutá os do conditioning vôbec nevstúpi.                         |
-| Referenčný session graph            | Posledný generation/follow-up implementovaný                               | Vetvenie, návrat na ľubovoľný návrh a bezpečný, vysvetliteľný apply.                          |
-| Song generation a audition          | Základ implementovaný                                                      | Sekčné/song-level párové hodnotenie a DNA kontext, nie iba patternové voľby.                  |
+| Oblasť                              | Stav dnes                                                                               | Čo ešte treba dokázať alebo dorobiť                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Brief contract a hard gates         | Základ implementovaný                                                                   | Robustnejšie confidence, konflikty a oprava toho, čo parser pochopil.                         |
+| Explicitné lokálne párové voľby     | V1 implementovaná                                                                       | Overiť kvalitu a reprezentatívnosť feedbacku na held-out voľbách.                             |
+| Personal re-ranking                 | V1 + reason-scoped adapters implementované                                              | Held-out blind dôkaz prínosu oproti globálnemu rankeru; lepšia kontextová/rolová granularita. |
+| Top-3 diverzita                     | Prvý MMR krok implementovaný                                                            | Kandidátske rodiny musia byť rozdielne už pri generovaní.                                     |
+| SAFE / PERSONAL / EXPERIMENTAL      | Soft-axis + experimental groove/hook; PERSONAL groove/hook s výstupným syncopation gate | Blind-test prínosu; meniaci sa motif a aranžérske rodiny.                                     |
+| Audio referencia s voľbou donor osí | Analýza/conditioning implementované                                                     | Vypínateľné osi a test, že vypnutá os do conditioning vôbec nevstúpi.                         |
+| Referenčný session graph            | Posledný generation/follow-up implementovaný                                            | Vetvenie, návrat na ľubovoľný návrh a bezpečný, vysvetliteľný apply.                          |
+| Song generation a audition          | Základ implementovaný                                                                   | Sekčné/song-level párové hodnotenie a DNA kontext, nie iba patternové voľby.                  |
 
 Pred zmenou rankera treba zosúladiť živé validátory, modelový manifest a staršie stavové tvrdenia v `INTENT_ENGINE.md` a `docs/intent-engine-ai-ranker-goal.md`. Žiadny model nedostane označenie „personalizovaný“ len preto, že načíta ONNX súbor alebo dosiahne zhodu s heuristikou.
 
@@ -176,6 +176,8 @@ Následne vytvorí tri charakterovo odlišné smery. Každý prejde rovnakými h
 **Kód a dôkazy:** `scripts/validate-intent-ranker*.mjs`, `scripts/ai-performance.mts`, `tests/intent-brief-suite.test.ts`, `tests/intent-ranker-golden.test.ts`, `public/models/*.manifest.json`.
 
 **Hotovo, keď:** vieme zopakovať benchmark a odlíšiť modelovú validitu od hudobnej preferencie. Ak ľudské preferencie nie sú nazbierané, dokument to povie priamo.
+
+**Blind groove posluch (nástroj pripravený, ľudský výsledok zatiaľ chýba):** `npm run listening:producer-dna -- --genre=trap --seed=my-seed` vytvorí štyri SAFE/PERSONAL dvojice — dve s cieľom viac syncopovaný a dve rovnejší groove. Každý pattern prejde bežnými hard gates; PERSONAL kandidát navyše musí splniť meraný smer `drums.syncopation`. WAV-y sa renderujú cez `renderProject()` a pre posluch sa RMS-zrovnajú. Balík obsahuje anonymné `index.html`, `LISTENING.md` a `answer-key.json`; najprv treba zahlasovať v HTML a až potom otvoriť kľúč. Stiahnutý `verdicts.json` sa zosumarizuje príkazom `npm run listening:producer-dna -- --score <cesta-k-verdicts.json>`. Páry používajú syntetické feature preferencie — nečítajú ani nemenia osobný ledger a výsledok sa nikdy neimportuje do tréningu. Úspešný beh dokazuje iba, že nástroj a smerová metriku pipeline fungujú; bez reálneho posluchu nedokazuje, že človek preferuje PERSONAL kandidáta.
 
 ### Fáza 1 — Lokálna párová pamäť vkusu
 
@@ -259,11 +261,11 @@ interface PreferenceObservationV1 {
 
 **Hotovo, keď:** top návrhy sa hudobne odlišujú, každý spĺňa hard brief, ranking zostáva deterministický a používateľ dokáže jedným klikom vypočuť/apply presne zvolený kandidát.
 
-**Stav implementácie (2026-09-26):** audition candidate bank má prvú end-to-end lane policy. Index 0 ostáva nedotknutý SAFE baseline; ďalšie indexy sa deterministicky striedajú SAFE / PERSONAL / EXPERIMENTAL. PERSONAL premieňa explicitné, kontextovo relevantné A/B učenie na malé, ohraničené nudges energie, hustoty, komplexity a variácie. Samostatný groove-syncopation signál môže zvoliť najbližší rovnakého žánru groove template v preferovanom smere; explicitný style, chránené/nepoužívané bicie, slabý signál alebo chýbajúca platná alternatíva túto zmenu vypnú. Motif-repetition signál môže nezávisle vybrať repeating-hook rodinu pre generovaný lead. Bez použiteľného osobného signálu je lane jasne označený cold-start. EXPERIMENTAL používa malú pevnú sadu seedovaných nudges a — ak používateľ neurčil konkrétny groove a bicie sa generujú — vyberie inú pomenovanú groove rodinu z toho istého žánru; na vhodnom lead-e môže použiť repeating-hook. Používateľ vidí lane a `GROOVE`/`HOOK` označenie; tooltip pri osobnom groove vysvetlí, že vychádza z naučenej preferencie. MMR zachová prvého rankovaného víťaza a pred opakovaním lane-u sa pokúsi zastúpiť dostupné smery.
+**Stav implementácie (2026-09-26):** audition candidate bank má prvú end-to-end lane policy. Index 0 ostáva nedotknutý SAFE baseline; ďalšie indexy sa deterministicky striedajú SAFE / PERSONAL / EXPERIMENTAL. PERSONAL premieňa explicitné, kontextovo relevantné A/B učenie na malé, ohraničené nudges energie, hustoty, komplexity a variácie. Samostatný groove-syncopation signál vyberá rovnakého žánru groove template v preferovanom smere, potom lokálny generátor skúša deterministické varianty, kým finálny pattern po hard gates nedosiahne merateľný posun `drums.syncopation`; bez takého výsledku sa candidate nezobrazí ako úspešná PERSONAL groove voľba. Symbolic prior kandidát sa ponechá iba po rovnakej výstupnej kontrole. Explicitný style, chránené/nepoužívané bicie, slabý signál alebo chýbajúca platná alternatíva osobnú groove zmenu vypnú. Motif-repetition signál môže nezávisle vybrať repeating-hook rodinu pre generovaný lead. Bez použiteľného osobného signálu je lane jasne označený cold-start. EXPERIMENTAL používa malú pevnú sadu seedovaných nudges a — ak používateľ neurčil konkrétny groove a bicie sa generujú — vyberie inú pomenovanú groove rodinu z toho istého žánru; na vhodnom lead-e môže použiť repeating-hook. Používateľ vidí lane a `GROOVE`/`HOOK` označenie; tooltip pri osobnom groove vysvetlí, že vychádza z naučenej preferencie. MMR zachová prvého rankovaného víťaza a pred opakovaním lane-u sa pokúsi zastúpiť dostupné smery.
 
 Každý lane používa nezmenený brief/role/key/length/constraint plan na hard gates a provenance. Soft plan slúži iba generátorovi; candidate seed nesie `search:v1` a konkrétne osové hodnoty pre deterministický replay. Jednoklikový non-audition flow si zatiaľ ponecháva legacy generáciu; policy sa aktivuje pri explicitnom async audition banku. Kandidáti ostávajú v jednej shared banke a nededuplikujú sa podľa lane — identický hudobný obsah nie je umelo udržiavaný ako „odlišná“ voľba.
 
-Toto je **prvý generatívny search slice, nie hotový Producer/SUNO engine**. EXPERIMENTAL vie vytvoriť odlišnú rytmickú rodinu cez iný groove rovnakého žánru a pri generovanom lead-e zreťaziť prvotaktový motív naprieč ďalšími taktmi. PERSONAL vyberá groove podľa priemerného pomeru offbeat hitov v knižničných template patterns — je to zhodná proxy pre smer `drums.syncopation`, nie presná predikcia výsledného patternu, preto treba počuteľnú evaluáciu. PERSONAL tiež vyberie repeating-hook iba pri explicitnom, dostatočne silnom signále preferencie opakovania; pri signále pre novosť ho nevnúti. Ešte chýbajú samostatné rodiny pre meniaci sa motif, melodický contour, harmóniu a aranžérske/section kontrasty. Štyri všeobecné soft osi ostávajú coarse proxy a MMR môže zastúpiť iba kandidátov, ktorých generátory skutočne vytvorili a hard gates prepustili. Ďalší krok: blind listening, doladenie osobného groove výberu a kontrolované section kontrasty.
+Toto je **prvý generatívny search slice, nie hotový Producer/SUNO engine**. EXPERIMENTAL vie vytvoriť odlišnú rytmickú rodinu cez iný groove rovnakého žánru a pri generovanom lead-e zreťaziť prvotaktový motív naprieč ďalšími taktmi. PERSONAL vyberá počiatočný groove podľa priemeru template patterns, ale teraz kontroluje aj reálne `drums.syncopation` finálneho patternu oproti SAFE; pri lokálnom providerovi deterministicky skúsi najviac 16 seedov a pri neúspechu kandidatúru zruší. Tento feature gate nepreukazuje, že človek počuje alebo preferuje rozdiel — blind listening je stále otvorený. PERSONAL tiež vyberie repeating-hook iba pri explicitnom, dostatočne silnom signále preferencie opakovania; pri signále pre novosť ho nevnúti. Ešte chýbajú samostatné rodiny pre meniaci sa motif, melodický contour, harmóniu a aranžérske/section kontrasty. Štyri všeobecné soft osi ostávajú coarse proxy a MMR môže zastúpiť iba kandidátov, ktorých generátory skutočne vytvorili a hard gates prepustili. Ďalší krok: blind listening, doladenie osobného groove výberu a kontrolované section kontrasty.
 
 **Kontrakt lane policy (návrh, nie existujúci typ):**
 
@@ -442,3 +444,167 @@ Najdôležitejší experiment zostáva: **po explicitných rozhodnutiach má KYX
 - Generative tracks/MRT2: `docs/IMPLEMENTATION-ROADMAP-MRT2-GENERATIVE-TRACKS.md`.
 
 Tento dokument sa sústreďuje iba na osobný feedback loop, kreatívnu rozmanitosť a vysvetliteľnú iteráciu. Nevyhlasuje navrhované fázy za implementované.
+
+## 10. Ďalšie produktové inovácie — čo môže KYX odlíšiť
+
+Predchádzajúce fázy definujú základ Producer DNA. Nasledujúce nápady sú ďalšia vrstva produktu: nie nové veľké modely, ale producentovské interakcie, ktoré premieňajú existujúci parser, search, preview a command systém na súdržný tvorivý workflow. Stav pri každom bode je úmyselne rozlíšený od vízie.
+
+### 10.1 Intent Debugger — používateľ vidí a opraví, čo KYX pochopil
+
+**Moment:** používateľ napíše „sprav to viac west coast, ale nechaj moje bicie“ a pred generovaním uvidí krátku kartu:
+
+```text
+ZACHOVAŤ       bicie
+PREFERENCIA    West Coast bounce, melodický hook
+POŽIADAVKA     približne 92 BPM
+PREDPOKLAD     tónina ostane podľa projektu
+NEISTÉ         „viac bounce“ — groove alebo swing?
+```
+
+Kliknutím na riadok používateľ zmení jeho význam alebo ho odstráni; nemusí celý prompt formulovať nanovo. Ak nejasnosť nemôže zmeniť výsledok podstatne, KYX ju označí ako vratný predpoklad a pokračuje. Ak môže spôsobiť porušenie požiadavky alebo zmeniť hudobný cieľ, položí jednu konkrétnu otázku.
+
+**Základ:** `brief-contract.ts`, `text-parser.ts`, `brief-gate.ts`, `IntentPanel.tsx`.
+
+**Nová práca:** ku každej položke kontraktu pridať bezpečný pôvod (`prompt`, `session`, `project`, `default`), stav istoty a opravu používateľa; zobraziť konflikty ako „zachovať harmóniu“ verzus „zmeniť tóninu“. Tieto údaje sú vysvetlením plánu, nie oprávnením modelu oslabiť hard gate.
+
+**Prečo je to inovatívne:** prompt-to-audio systémy často skrývajú interpretáciu. KYX môže urobiť zadanie editovateľným objektom ešte predtým, než sa minie čas na generovanie alebo sa zmení projekt.
+
+**Hotovo, keď:** verziovaná SK/EN brief sada prejde extrakčnými testami; konflikt ani neistý odhad sa nikdy potichu nezmení na tvrdý fakt; používateľ vie opraviť každú zobrazenú položku a následný výsledok zodpovedá opravenému kontraktu.
+
+### 10.2 Counterfactual Producer — „zmeň iba túto jednu vec“
+
+**Moment:** po vypočutí B používateľ nežiada nový beat. Povie „B, ale hook nech má viac priestoru; bicie, 808 a sloha nechaj“. KYX ukáže pred/po rozdiel a pred prehratím oznámi rozsah:
+
+```text
+ZMENÍ SA       lead v hooku — menej tónov, dlhšie dozvuky
+ZOSTANE ROVNAKÉ bicie, 808, harmónia a verse
+ZÁKLAD          kandidát B, hash 8f…
+```
+
+Vytvorí sa potomok konkrétneho kandidáta, nie nové generovanie od prázdneho promptu. „Viac priestoru“ je najprv používateľsky zrozumiteľná požiadavka; až potom sa preloží na podporované feature osi, napríklad hustotu, dĺžku tónov alebo pauzy. Ak engine nevie tento význam bezpečne realizovať, musí ponúknuť užšiu voľbu alebo priznať, že návrh sa nedá spoľahlivo zostaviť.
+
+**Základ:** `iteration.ts` už rozlišuje referenciu na posledného kandidáta, patch intent, cielené roly a `preserve`; `session-context.ts` drží poslednú generation session; `commands.ts` poskytuje undoable apply. Tieto moduly nie sú ešte plnohodnotný graf ľubovoľných, trvalo dostupných vetiev.
+
+**Nová práca:** proposal má niesť parent content hash, zoznam target roly/sekcie, zoznam zachovaných oblastí a ich UUID-free hash-e. Pred audition aj apply sa overí, že projekt stále zodpovedá rodičovi a že zamknutý obsah zostal totožný. Porovnanie „pred“ musí používať presný parent, nie momentálny náhodne aktívny pattern.
+
+**Hotovo, keď:** cielená revízia zmení iba deklarovaný rozsah; chránené hash-e sú identické; auditionovaný proposal a aplikovaný proposal majú zhodný content hash; stale proposal sa odmietne; prijatie je jeden undoable command.
+
+### 10.3 Edit-to-Learn — vkus sa učí z práce producenta, nie z hádania
+
+**Moment:** používateľ vyberie generovaný hook a ručne vymaže každú druhú notu. KYX si z toho nič potichu nevyvodí. Až po dokončení editácie môže ponúknuť nenápadné potvrdenie: „Chceš si zapamätať, že v tomto type hooku preferuješ viac priestoru?“
+
+**Návrh mechaniky:**
+
+1. Porovnať východiskový a upravený obsah cez verzované hudobné features, nie cez audio nahrávku ani celý project JSON.
+2. Určiť rozsah zmeny — napríklad lead v hooku — a navrhnúť nanajvýš jeden vysvetliteľný dôvod.
+3. Zobraziť konkrétny pár „pred / po“ a kontext, ktorý sa uloží: žáner/profil, rola a task (`pattern`, `section`, `song`).
+4. Do preference ledgeru zapísať iba po výslovnom potvrdení. „Undo“, náhodné kliknutie alebo technická oprava projektu nie sú feedback.
+5. Ponúknuť spätné odvolanie posledného naučeného príkladu spolu s existujúcimi `pause`, `export` a `clear` nástrojmi.
+
+**Základ:** `preference-ledger.ts`, `preference-ledger-core.ts`, `personal-ranker.ts`, `commands.ts`. Ledger už vie niesť explicitné porovnania; bezpečný derivátor hudobných rozdielov z ľubovoľných ručných úprav je samostatná práca.
+
+**Ochrana pred zlým učením:** nepoužiť všeobecný „edit = dislike“ signál. Zmena mohla byť oprava chyby, mix rozhodnutie, kompenzácia iného nástroja alebo len jednorazový experiment. Kým používateľ nepotvrdí význam, nič sa nenaučí.
+
+**Hotovo, keď:** bez opt-inu sa ledger nezmení; po potvrdení sa uloží len podporovaný feature snapshot a kontext; osobný ranker sa zmení len v príslušnom kontexte; zrušenie príkladu vráti osobné správanie na stav pred ním.
+
+### 10.4 Taste Probe — jedna užitočná A/B otázka namiesto dotazníka
+
+**Moment:** keď KYX nevie, či používateľ pri melodickom trappe chce opakujúci sa hypnotický hook alebo meniacu sa frázu, nemusí sa pýtať na „celkový štýl“. Vytvorí jeden platný, brief-compliant pár, ktorý sa líši práve v tejto osi. Používateľ ho vypočuje a voliteľne povie, čo rozhodlo.
+
+**Pravidlá výberu otázky:**
+
+- Použiť uncertainty/rozptyl existujúcich lokálnych preference modelov iba vtedy, keď obidve alternatívy prejdú rovnakým brief gate.
+- Pár musí reprezentovať jednu vysvetliteľnú os. Ak sa súčasne mení groove, harmónia aj hustota, odpoveď nie je diagnostická.
+- Pýtať sa iba pri prirodzenej compare session a s obmedzenou frekvenciou; tvorba sa nesmie zmeniť na onboardingový test.
+- `ani jeden` znamená problém s párom/briefom, nie hlas pre jednu stranu. Pri takej odpovedi zmeniť generatívnu rodinu, nie učiť nesprávny smer.
+- Používateľ môže otázku preskočiť. Personalizácia pri nedostatku dát ostáva cold-start.
+
+**Základ:** `personal-ranker.ts` a `preference-ledger-core.ts` pracujú s explicitnými párovými voľbami; `candidate-search.ts` vytvára lane varianty. Chýba rozhodovač, ktorý cielene zvolí informatívnu dvojicu a preukáže, že sa odlišuje iba v jednej osi.
+
+**Hotovo, keď:** vybraná os je v kandidátoch merateľne odlišná, ostatné zamýšľané vlastnosti ostanú v tolerancii; otázka sa objaví len pri relevantnej neistote; odpoveď zlepší predikciu na neskorších, nepoužitých pároch oproti tomu istému modelu bez Taste Probe.
+
+### 10.5 Project DNA — referenciou je aj vlastná rozpracovaná skladba
+
+**Moment:** používateľ povie „urob hook, ktorý sedí k tomuto beatu“. KYX môže ako lokálny kontext využiť vybrané časti aktuálneho projektu: tempo, tóninu, groove, ktoré role už existujú a aký register/hustota v nich zaberajú. Nemá automaticky považovať všetko v projekte za želanie; používateľ zvolí, čo sa má zachovať a čo môže byť donor.
+
+**Rozlíšenie donorov:**
+
+```text
+PROJEKTOVÁ KOTVA   tempo, tónina, zamknuté stopy
+VZOR NA BOUNCE     časovanie/groove z vybranej stopy
+VZOR NA TEXTÚRU   spektrálne črty vybraného audia
+NEPRENÁŠAŤ         harmónia alebo forma, ktorú používateľ označil „nebrať“
+```
+
+**Základ:** `plan.ts`, `session-context.ts`, `audio-reference.ts`, `reference-embedding.ts`, `semantic-conditioning.ts`, `style-vector.ts` a `favorites.ts`. Audio referencia dnes môže podmieňovať generovanie; granularita donor masiek a projektový snapshot s nulovým vplyvom vypnutých osí zostáva samostatným cieľom. Projektové tracky alebo user samples sa nesmú automaticky uložiť do dlhodobej DNA.
+
+**Hotovo, keď:** každý conditioning zdroj má viditeľný pôvod; zamknuté projektové vlastnosti zostanú nedotknuté; vypnutý donor nemá vplyv na zodpovedajúcu cestu; snapshot projektu je session-only a neobsahuje audio dáta.
+
+### 10.6 Song Dramaturgy — hodnotiť oblúk, nie iba najlepší loop
+
+**Moment:** KYX nepovie iba „hook je silný“. Ukáže: „hook sa od slohy líši iba hlasitosťou; navrhujem pridať širší lead alebo zmeniť rytmickú hustotu“ a prehrá pred/po v kontexte celej skladby.
+
+**Vývoj:** z existujúcich section/song objektov vytvoriť časové črty energie, hustoty, návratu motívu, kontrastu a prechodov. Najprv deterministické pravidlá a merateľné diagnostiky; neskôr, až keď sú k dispozícii ľudské song-level porovnania, učiť osobnú preferenciu celých oblúkov. Pattern A/B a song A/B sa nesmú miešať do jedného tréningového kontextu.
+
+**Základ:** `compose.ts`, `song.ts`, `song-audio-review.ts`, `audition.ts` a offline `renderProject()` už podporujú vytvorenie a vypočutie skladby. `reviewSongAudio()` kontroluje technické vlastnosti renderu; nie je to umelecký song-quality model.
+
+**Hotovo, keď:** revízia iba jednej sekcie nemení ostatné section hash-e; preview počuje skutočné susedné sekcie aj prechody; používateľ vie A/B celú skladbu; blind hodnotenie ukáže prínos oproti baseline bez porušenia briefu.
+
+### 10.7 MRT2 ako hosťujúci hudobník, nie náhrada intent enginu
+
+MRT2 môže byť neskôr voliteľný performer pre akordický pad, odpoveď na vokálny motív alebo textúru. Intent Engine mu dodá jasne ohraničené podmienky a zodpovednosť; neurčuje celý výsledok z promptu a nemení projekt sám.
+
+```text
+Intent contract + vybraná sekcia + povolené conditioning zdroje
+                        ↓
+             MRT2 proposal / performer
+                        ↓
+          bezpečné renderovanie a audition
+                        ↓
+       používateľ vyberie → capture/freeze → editácia
+```
+
+**Hranice:** MRT2 adapter patrí do `src/generative/`; intent nesmie predstierať, že `Energy`/`Density` sú natívne MRT2 parametre, ak sú to KYX makrá. Každé mapovanie makra musí byť pomenované, verzované a testované. Ak model/host nie je dostupný, intent generovanie a editovanie funguje ďalej. Generovaný výsledok sa pred použitím počuje a jeho capture sa stáva obyčajným KYX editovateľným materiálom.
+
+**Prečo až neskôr:** najprv potrebujeme spoľahlivý intent, selektívny donor kontext, bezpečný audition/apply a jasné meranie. Pripojiť ďalší generatívny model skôr by zväčšilo počet pohyblivých častí bez dôkazu, že používateľ dostáva lepšiu kontrolu.
+
+## 11. Konkrétny cieľový workflow a poradie realizácie
+
+### Čo má používateľ zažiť
+
+1. **Napíše ľudský brief.** „Sprav 92 BPM west coast beat, temný, ale hook nech je svetlý; moje bicie a 808 nemen.“
+2. **Skontroluje krátky kontrakt.** KYX rozdelí požiadavky, preferencie, zákazy, zachované časti a neistoty. Opravy kontraktu nemusia meniť pôvodný text.
+3. **Dostane tri odlišné, férové smery.** SAFE, PERSONAL a EXPERIMENTAL používajú rovnaké hard constraints. UI vysvetlí, ak je PERSONAL cold-start alebo lane nebolo možné vytvoriť.
+4. **Porovná ich v kontexte.** A/B/X prehratie je hlasitosťou vyrovnané; pri kandidáte vidí krátky, faktický rozdiel. Pri patterni môže počuť izolovaný ghost aj celý projektový kontext.
+5. **Zvolí a spresní.** „B, ale hook s väčším priestorom.“ Návrh je potomok B a mení deklarovaný target; A ostáva dostupný.
+6. **Rozhodne, či sa to zapamätá.** A/B dôvod alebo explicitné „zapamätaj si“ vytvorí lokálny tréningový príklad. Základné použitie bez personalizácie ostáva plnohodnotné.
+7. **Rozšíri nápad na skladbu.** Verse/hook/build/drop majú odlišnú dramaturgickú rolu; KYX ponúka konkrétne sekčné alternatívy a používateľ si vypočuje celú formu.
+8. **Zachytí, upraví, exportuje.** Modelový alebo symbolický výstup sa stane bežným editovateľným obsahom; finálny projekt sa mení len potvrdeným commandom.
+
+### Priorita a rozhodovacie brány
+
+| Priorita | Dodávka                                                                                           | Prečo teraz                                                           | Brána pred posunom                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **P0**   | Zosúladiť pravdivý baseline; uzavrieť blind groove posluch; prejsť brief → compare → presný apply | Bez toho nevieme, či ranking a nové lane pomáhajú                     | Ľudské páry sú blind a oddelené od heuristického teacher signálu; výsledky sú reprodukovateľné |
+| **P1**   | Intent Debugger + kontraktové opravy + explicitné dôvody A/B                                      | Zlepšuje splnenie požiadaviek bez ďalšieho modelu                     | Golden brief compliance a nulové hard-gate obídenia                                            |
+| **P1**   | Counterfactual revízia s preserve hashmi a compare pred/po                                        | Mení generovanie na kontrolovaný producentský workflow                | Chránené hash-e a audition/apply hash sa zhodujú                                               |
+| **P2**   | Generatívne rodiny pre hook/motif, groove a aranžérsky kontrast; Taste Probe                      | Osobné učenie nemá zmysel bez alternatív, ktoré vkus vedia realizovať | Blind preference plus minimálna, počuteľná odlišnosť bez zhoršenia briefu                      |
+| **P2**   | Project DNA/donor masks + Edit-to-Learn po potvrdení                                              | Využije projekt a ručné rozhodnutia pri zachovaní súkromia            | Vypnuté zdroje nemajú vplyv; bez potvrdenia sa nič neučí                                       |
+| **P3**   | Song Dramaturgy a osobné whole-song preference                                                    | Je to najbližšie k osobnému „Suno, ale s kontrolou“                   | Celoskladbové blind porovnanie a správne sekčné preserve                                       |
+| **P3**   | MRT2 guest performer v intent workflow                                                            | Rozšíri paletu po tom, čo sú porovnávanie a zachytenie spoľahlivé     | Optional model/host, funkčný fallback, presné capture/apply a lokálny performance budget       |
+
+Toto poradie je zámerne **data-first, nie model-first**. Najprv treba potvrdiť, že kandidáti sú počuteľne odlišní a že používatelia vedia spoľahlivo pomenovať, ktorý lepšie plní zadanie a ktorý si chcú nechať. Až potom treba rozhodovať, či je limitom ranker, generatívna rodina, parser alebo mix.
+
+### Čo nepovažovať za inováciu samo osebe
+
+- Viac candidate seeds bez odlišných generatívnych rodín.
+- Ďalší ONNX model trénovaný na vlastných heuristikách bez ľudského held-out dôkazu.
+- Jedno percentuálne „AI quality“ skóre bez vysvetliteľných dôkazov.
+- Učenie zo všetkých klikov/editácií bez opt-inu a bez určenia kontextu.
+- Tiché preberanie všetkých vlastností z referenčného tracku alebo audia.
+- Celá skladba v jednom nepriehľadnom audio súbore bez možnosti vypočuť, upraviť a ponechať jednotlivé časti.
+- Povinný cloud účet alebo veľký model na to, aby základný text-to-beat workflow fungoval.
+
+### Definition of success pre „naše osobné SUNO“
+
+KYX môže používať toto označenie až vtedy, keď používateľ v reprezentatívnom slepom teste opakovane dostáva výsledky, ktoré lepšie plnia jeho brief aj jeho výslovne vyjadrený vkus než súčasný baseline; vie povedať, čo sa zmení; dokáže zachovať a zamknúť podstatné časti; a môže presne vypočutý výsledok aplikovať alebo odmietnuť. Model-size, počet features ani samotný fakt, že ONNX inference funguje, nie sú dôkazom tohto úspechu.

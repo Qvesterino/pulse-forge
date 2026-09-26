@@ -115,6 +115,22 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.tonal.choirpad", file: "factory.tonal.choirpad.wav" },
   { id: "factory.tonal.sitar", file: "factory.tonal.sitar.wav" },
   { id: "factory.tonal.erhu", file: "factory.tonal.erhu.wav" },
+  // Orphan backfill (full-kit contract): tonal carriers that shipped without
+  // curated overrides — seeds rendered by `npm run curated:seeds` like the rest.
+  { id: "factory.tonal.cello", file: "factory.tonal.cello.wav" },
+  { id: "factory.tonal.nylonguitar", file: "factory.tonal.nylonguitar.wav" },
+  { id: "factory.tonal.orchestrahit", file: "factory.tonal.orchestrahit.wav" },
+  { id: "factory.tonal.pizzicato", file: "factory.tonal.pizzicato.wav" },
+  { id: "factory.tonal.violin", file: "factory.tonal.violin.wav" },
+  // Pop wave (WAVs rendered by `npm run curated:seeds` from the builders).
+  { id: "factory.kick.pop", file: "factory.kick.pop.wav" },
+  { id: "factory.clap.pop", file: "factory.clap.pop.wav" },
+  { id: "factory.crash.pop", file: "factory.crash.pop.wav" },
+  { id: "factory.tom.floor", file: "factory.tom.floor.wav" },
+  { id: "factory.rim.pop", file: "factory.rim.pop.wav" },
+  { id: "factory.perc.shaker.pop", file: "factory.perc.shaker.pop.wav" },
+  { id: "factory.mallet.kalimba", file: "factory.mallet.kalimba.wav" },
+  { id: "factory.mallet.musicbox", file: "factory.mallet.musicbox.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

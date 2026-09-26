@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { testDoc, deterministicTestDoc } from "./fixtures/doc";
-import { planMixProfile, applyMixIntent } from "../src/intent/mix";
+import { planMixProfile, applyMixIntent, genreMasterTiltDb } from "../src/intent/mix";
 import { isMixIntentText, parseMixIntent, routeIntentText } from "../src/intent/route";
 import { normalizeIntent } from "../src/intent/normalize";
 import { createScene } from "../src/commands/commands";
@@ -37,6 +37,21 @@ describe("mix profile planner (D1)", () => {
   it("is conservative: a neutral intent without overrides touches nothing", () => {
     const profile = planMixProfile(normalizeIntent({ genre: "house", seed: "x" }));
     expect(profile.decisions.filter((d) => d.effectType === "eq")).toEqual([]);
+  });
+
+  it("dnb defaults to a dark tilt; mood and overrides still win", () => {
+    const plain = planMixProfile(normalizeIntent({ genre: "dnb", seed: "mix" }));
+    expect(plain.summary.join(" | ")).toContain("tone: dark");
+    expect(plain.summary.join(" | ")).toContain("punch");
+    const chill = planMixProfile(normalizeIntent({ genre: "dnb", mood: "chill", seed: "mix" }));
+    expect(chill.summary.join(" | ")).toContain("tone: warm");
+    const bright = planMixProfile(normalizeIntent({ genre: "dnb", seed: "mix" }), { tone: "bright" });
+    expect(bright.summary.join(" | ")).toContain("tone: bright");
+  });
+
+  it("dnb songs carry the dark master tilt", () => {
+    expect(genreMasterTiltDb("dnb")).toBe(2);
+    expect(genreMasterTiltDb("house")).toBeUndefined();
   });
 
   it("overrides steer the profile (huge reverb, pump off)", () => {

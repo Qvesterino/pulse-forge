@@ -99,6 +99,8 @@ describe("templateForPrompt", () => {
     expect(templateForPrompt("dark trap 140")).toBe("trap");
     expect(templateForPrompt("hard techno 145")).toBe("techno");
     expect(templateForPrompt("uk garage 133")).toBe("ukg");
+    expect(templateForPrompt("liquid dnb 174")).toBe("dnb");
+    expect(templateForPrompt("jump up jungle")).toBe("dnb");
     expect(templateForPrompt("lo-fi chill 85")).toBe("ambient");
     expect(templateForPrompt("sunny deep 124")).toBe("house");
     expect(templateForPrompt("")).toBe("house");

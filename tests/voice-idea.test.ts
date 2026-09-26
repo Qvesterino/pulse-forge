@@ -3,6 +3,8 @@ import { analyzeVoiceIdea } from "../src/intent/voice-idea";
 import { composeFullTrack } from "../src/intent/compose";
 import { testDoc } from "./fixtures/doc";
 import type { PitchFrame } from "../src/audio-workers/pitch-tracker";
+import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
+import { measureMelodicQuality } from "../src/ai/quality";
 
 /** A hummed C-major-ish phrase: C4 D4 E4 G4, one note per half second. */
 function sungFrames(): PitchFrame[] {
@@ -87,6 +89,49 @@ describe("SUNO MODE with a hummed hook", () => {
     const someSection = leadSections.find((section) => Object.keys(section.pattern.notes ?? {}).length > 0);
     const notes = Object.values(someSection?.pattern.notes ?? {}).flat();
     expect(notes.some((note) => note.id.startsWith("hum-"))).toBe(true);
+    for (const section of leadSections) {
+      expect(section.pattern.generation?.outputContentHash).toBe(
+        contentHash(canonicalizePattern(doc, section.pattern)),
+      );
+      const measured = measureMelodicQuality(
+        Object.values(section.pattern.notes ?? {}).flat(),
+        section.stepCount,
+        "C Major",
+      );
+      expect(section.pattern.generation?.quality?.melodicMotifRepetition).toBe(measured.motifRepetition);
+    }
+  });
+
+  it("repeats the hummed hook at loopTicks instead of inferring a shorter phrase period", async () => {
+    const doc = testDoc();
+    const result = await composeFullTrack(doc, "house at 124", {
+      seed: "voice-hook-loop-period",
+      loudness: false,
+      hum: {
+        notes: [
+          { id: "hook-a", pitch: 72, start: 0, duration: 240, velocity: 0.8 },
+          { id: "hook-b", pitch: 74, start: 240, duration: 240, velocity: 0.8 },
+        ],
+        loopTicks: 7_680,
+        key: "C Major",
+      },
+    });
+    const leadSection = result.build.sections.find((section) => section.roles.includes("lead"));
+    expect(leadSection).toBeDefined();
+    const instrumentTracks = doc.tracks.filter((track) => track.kind === "instrument");
+    const leadTrack =
+      instrumentTracks.find((track) => track.name.toLowerCase().includes("lead")) ??
+      instrumentTracks[2] ??
+      instrumentTracks[0];
+    expect(leadTrack?.kind).toBe("instrument");
+    if (!leadSection || leadTrack?.kind !== "instrument") return;
+
+    const hookNotes = leadSection.pattern.notes?.[leadTrack.id] ?? [];
+    expect(hookNotes.map((note) => note.start)).toEqual([0, 240, 7_680, 7_920]);
+    expect(hookNotes.map((note) => note.pitch)).toEqual([72, 74, 72, 74]);
+    expect(leadSection.pattern.generation?.outputContentHash).toBe(
+      contentHash(canonicalizePattern(doc, leadSection.pattern)),
+    );
   });
 
   it("transposes the hook when the song key differs from the hum key", async () => {

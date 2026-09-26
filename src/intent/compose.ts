@@ -18,9 +18,17 @@ import { parseIntentText } from "./text-parser";
 import type { IntentInput } from "./types";
 import { parseSectionRequests, type SectionParse } from "./sections";
 import { buildSong, applySongCommand, parseSongLength, type SongBuild, type SongLengthHint } from "./song";
-import { tileNotesAcrossPattern } from "../midi/hum-to-notes";
 import { parseKey, snapToScale } from "../project-model/scales";
-import { STEP_TICKS, type MusicalKey, type NoteEvent, type InstrumentTrack } from "../project-model/types";
+import {
+  STEP_TICKS,
+  type InstrumentTrack,
+  type MusicalKey,
+  type NoteEvent,
+  type Pattern,
+} from "../project-model/types";
+import { generateOptionsFromIntent } from "./plan";
+import { normalizeIntent } from "./normalize";
+import { refreshPatternOutputHash, refreshPatternQuality } from "./quality";
 import { planMixProfile, applyMixIntent } from "./mix";
 import { parseLoudnessIntent, applyLoudnessIntent, type LoudnessApplyResult, type LoudnessRenderFn } from "./loudness";
 import { SONG_LOUDNESS_TARGET_LUFS } from "./genre-reference.generated";
@@ -44,6 +52,73 @@ export interface ComposeHum {
   loopTicks: number;
   /** Estimated key of the hum — notes transpose to the song key. */
   key?: string | null;
+}
+
+/** Repeat a hummed phrase at its recorded loop period, clipping at section and loop boundaries. */
+export function tileNotesAtLoopPeriod(
+  notes: readonly NoteEvent[],
+  loopTicks: number,
+  patternLengthTicks: number,
+): NoteEvent[] {
+  if (!Number.isFinite(patternLengthTicks) || patternLengthTicks <= 0) return [];
+  const patternTicks = Math.floor(patternLengthTicks);
+  if (patternTicks <= 0) return [];
+  const period =
+    Number.isFinite(loopTicks) && loopTicks > 0
+      ? Math.min(patternTicks, Math.max(STEP_TICKS, Math.round(loopTicks)))
+      : patternTicks;
+  const tiled: NoteEvent[] = [];
+
+  for (let copy = 0, offset = 0; offset < patternTicks; copy++, offset += period) {
+    const loopEnd = Math.min(patternTicks, offset + period);
+    for (const [noteIndex, note] of notes.entries()) {
+      if (
+        !Number.isFinite(note.start) ||
+        !Number.isFinite(note.duration) ||
+        note.start < 0 ||
+        note.start >= period ||
+        note.duration <= 0
+      ) {
+        continue;
+      }
+      const start = offset + note.start;
+      if (start >= loopEnd) continue;
+      const duration = Math.min(note.duration, loopEnd - start);
+      if (duration <= 0) continue;
+      tiled.push({ ...note, id: `${note.id}-loop${copy}-note${noteIndex}`, start, duration });
+    }
+  }
+
+  return tiled;
+}
+
+function refreshHummedPattern(
+  doc: ProjectDocument,
+  section: SongBuild["sections"][number],
+  leadTrackId: string,
+  notes: readonly NoteEvent[],
+  songKey: MusicalKey | null,
+): SongBuild["sections"][number] {
+  const pattern: Pattern = {
+    ...section.pattern,
+    notes: { ...section.pattern.notes, [leadTrackId]: [...notes] },
+  };
+  const generation = pattern.generation;
+  if (!generation) return { ...section, pattern };
+
+  const intent = normalizeIntent({
+    ...(generation.intent ?? {}),
+    seed: generation.seed,
+    style: generation.style,
+    key: songKey ?? generation.intent?.key,
+    length: generation.stepCount,
+    roles: section.roles,
+  });
+  const measured = refreshPatternQuality(doc, pattern, generateOptionsFromIntent(intent));
+  return {
+    ...section,
+    pattern: refreshPatternOutputHash(doc, measured),
+  };
 }
 
 export interface ComposeResult {
@@ -171,25 +246,23 @@ export async function composeFullTrack(
   // Hummed hook (Fáza 2): transpose the artist's melody into the song key and
   // tile it across every section that plays a LEAD — the beat is built
   // AROUND the artist's idea.
-  if (options.hum && options.hum.notes.length > 0) {
+  const hum = options.hum;
+  if (hum && hum.notes.length > 0) {
     const leadId = resolveLeadTrackId(doc);
     if (!leadId) {
       skipped.push("hum: no lead instrument track in this project");
     } else {
-      const songKey = build.key ?? (options.hum.key as MusicalKey | null) ?? null;
-      const transposed = transposeHumToKey(options.hum.notes, options.hum.key ?? null, songKey);
+      const songKey = build.key ?? (hum.key as MusicalKey | null) ?? null;
+      const transposed = transposeHumToKey(hum.notes, hum.key ?? null, songKey);
       if (transposed.length === 0) {
         skipped.push("hum: transposition emptied the melody");
       } else {
         build.sections = build.sections.map((section) => {
           if (!section.roles.includes("lead")) return section;
           const sectionTicks = section.stepCount * STEP_TICKS;
-          const tiled = tileNotesAcrossPattern(transposed, sectionTicks);
+          const tiled = tileNotesAtLoopPeriod(transposed, hum.loopTicks, sectionTicks);
           if (tiled.length === 0) return section;
-          return {
-            ...section,
-            pattern: { ...section.pattern, notes: { ...section.pattern.notes, [leadId]: tiled } },
-          };
+          return refreshHummedPattern(doc, section, leadId, tiled, songKey);
         });
       }
     }

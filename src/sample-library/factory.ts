@@ -368,6 +368,45 @@ function shaker(): Builder {
   };
 }
 
+/** Pop rim — pitched-up tight click for backbeat layers. */
+function rimPop(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = 2050;
+    osc.connect(env(ctx, t0, 0.3, 0.028)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.05);
+    const noise = noiseSource(ctx, 67, 0.02, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 3600;
+    bp.Q.value = 2;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.35, 0.018))
+      .connect(dest);
+  };
+}
+
+/** Pop shaker — brighter, slightly longer driving shaker for pop 8ths. */
+function shakerPop(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 78, 0.16, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 6800;
+    bp.Q.value = 1.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.45, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.12);
+    noise.connect(bp).connect(g).connect(dest);
+  };
+}
+
 function ride(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -2110,6 +2149,40 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.sadpiano": sadPiano(),
   "factory.tonal.padwarm": padWarm(),
   "factory.tonal.harp": harpTone(),
+
+  // Pop wave (vocal-first + thin-spot fill): tight pop kick, stacked pop
+  // clap, bright crash, floor tom, clicky rim, driving shaker, kalimba and
+  // music-box mallets. Each targets a distinct spectral/decay pocket.
+  "factory.kick.pop": kick(190, 52, 0.26, 0.5),
+  "factory.clap.pop": (ctx, dest) => {
+    clap()(ctx, dest);
+    clapSoft()(ctx, dest);
+  },
+  "factory.crash.pop": crash(6500, 1.5, 0.55),
+  "factory.tom.floor": tom(130, 75),
+  "factory.rim.pop": rimPop(),
+  "factory.perc.shaker.pop": shakerPop(),
+  "factory.mallet.kalimba": mallet({
+    fundamental: 523.25, // C5 — kalimba sits above the keyboard
+    partials: [
+      [1, 0.55],
+      [4, 0.15],
+    ],
+    decay: 0.7,
+    attack: 0.002,
+    clickLevel: 0.2,
+    lpfHz: 7000,
+  }),
+  "factory.mallet.musicbox": mallet({
+    fundamental: 1046.5, // C6 — music-box register
+    partials: [
+      [1, 0.5],
+      [3, 0.22],
+      [6, 0.08],
+    ],
+    decay: 2.0,
+    attack: 0.002,
+  }),
 };
 
 /** Render length per asset, seconds — exported for coherence tests. */
@@ -2200,6 +2273,14 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.sadpiano": 2.2,
   "factory.tonal.padwarm": 2.8,
   "factory.tonal.harp": 1.4,
+  "factory.kick.pop": 0.35,
+  "factory.clap.pop": 0.35,
+  "factory.crash.pop": 1.7,
+  "factory.tom.floor": 0.45,
+  "factory.rim.pop": 0.08,
+  "factory.perc.shaker.pop": 0.2,
+  "factory.mallet.kalimba": 1.0,
+  "factory.mallet.musicbox": 2.2,
 };
 
 /**

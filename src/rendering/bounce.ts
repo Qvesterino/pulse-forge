@@ -80,6 +80,87 @@ export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zon
   };
 }
 
+export interface AudioClipConsolidationPlan {
+  /** Ephemeral project containing only the selected audio material, rendered dry. */
+  project: ProjectDocument;
+  trackId: string;
+  startBar: number;
+  lengthBars: number;
+}
+
+/**
+ * Build a dry, isolated render project for consolidating selected clips.
+ * Source clips and take lanes remain in the real project; this project exists
+ * only to sum their clip-level gain/fades/stretch/warp and timeline placement
+ * into one buffer. Track/group/master processing is intentionally excluded so
+ * the consolidated clip does not run through those processors twice.
+ */
+export function buildAudioClipConsolidationDoc(doc: ProjectDocument, clipIds: string[]): AudioClipConsolidationPlan {
+  const ids = new Set(clipIds);
+  const sourceClips = (doc.arrangement.audioClips ?? []).filter((clip) => ids.has(clip.id));
+  if (ids.size < 2 || sourceClips.length !== ids.size) {
+    throw new Error("Select at least 2 existing audio clips to consolidate");
+  }
+
+  const first = sourceClips[0];
+  if (!first) throw new Error("No audio clips selected");
+  if (sourceClips.some((clip) => clip.trackId !== first.trackId)) {
+    throw new Error("Consolidate requires clips on the same track");
+  }
+  if (sourceClips.some((clip) => clip.takeGroupId !== first.takeGroupId || clip.takeId !== first.takeId)) {
+    throw new Error("Consolidate clips from one take lane at a time");
+  }
+
+  const startBar = Math.min(...sourceClips.map((clip) => clip.startBar));
+  const endBar = Math.max(...sourceClips.map((clip) => clip.startBar + clip.lengthBars));
+  const lengthBars = endBar - startBar;
+  if (!Number.isFinite(startBar) || !Number.isFinite(lengthBars) || lengthBars < 0.25) {
+    throw new Error("Consolidation range must be at least 1/4 bar");
+  }
+
+  const track = doc.tracks.find((candidate) => candidate.id === first.trackId);
+  if (!track) throw new Error(`Track ${first.trackId} not found`);
+  const takeGroups = first.takeGroupId
+    ? (doc.arrangement.takeGroups ?? []).filter((group) => group.id === first.takeGroupId)
+    : [];
+  if (first.takeGroupId && (!first.takeId || takeGroups.length !== 1 || takeGroups[0]?.trackId !== first.trackId)) {
+    throw new Error("Selected audio clips have invalid take-lane metadata");
+  }
+
+  const sourceDoc: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: sourceClips,
+      takeGroups: takeGroups.map((group) => ({ ...group, activeTakeId: first.takeId! })),
+    },
+  };
+  const zoneDoc = buildBounceZoneDoc(sourceDoc, [track.id], { startBar, lengthBars });
+  const dryTracks = zoneDoc.tracks.map((candidate) => ({
+    ...candidate,
+    gain: 1,
+    pan: 0,
+    mute: false,
+    solo: false,
+    effects: [],
+    sends: {},
+  }));
+
+  return {
+    project: {
+      ...zoneDoc,
+      patterns: zoneDoc.patterns.map((pattern) => ({ ...pattern, rows: {}, notes: {} })),
+      tracks: dryTracks,
+      returns: [],
+      automation: [],
+      sceneAutomation: [],
+    },
+    trackId: track.id,
+    startBar,
+    lengthBars,
+  };
+}
+
 function bounceTempoWindows(doc: ProjectDocument): ClipWindow[] {
   return doc.arrangement.clips.flatMap((clip) => {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);

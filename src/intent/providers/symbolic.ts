@@ -1,4 +1,5 @@
 import { generatePattern, resolveGrooveForGeneration } from "../../ai/generator";
+import { extractPatternFeatures, FEATURE_NAMES } from "../../ai/features/pattern-features";
 import { degreeToPitch, expandChord } from "../../ai/melodic";
 import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "../../ai/grooves/melodic-data";
 import { generateMultiVoice } from "../multi-voice";
@@ -37,7 +38,7 @@ import {
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
-import { applyCandidateSearchFamily, candidateSearchVariant } from "../candidate-search";
+import { applyCandidateSearchFamily, candidateSearchVariant, verifiedPersonalGrooveDelta } from "../candidate-search";
 import { inferPersonalSearchBias } from "../personal-ranker";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
 import { candidatePlan, evaluateCandidate } from "./candidate";
@@ -73,6 +74,7 @@ export function symbolicWanted(plan: GenerationPlan): boolean {
 }
 
 const NOTES_PER_BAR: Record<MelodicRole, number> = { bass: 4, chord: 2, lead: 3 };
+const SYNCOPATION_FEATURE_INDEX = FEATURE_NAMES.indexOf("drums.syncopation");
 const BASE_VELOCITY: Record<MelodicRole, number> = { bass: 0.8, chord: 0.6, lead: 0.7 };
 const ROLE_INDEX: Record<MelodicRole, number> = { bass: 0, chord: 1, lead: 2 };
 
@@ -251,6 +253,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
     context: GenerationContext,
     startIndex: number,
     searchLanes = false,
+    safeSyncopation: number | null = null,
   ): Promise<{ entries: CandidateBankEntry[]; failures: string[] }> {
     const entries: CandidateBankEntry[] = [];
     const failures: string[] = [];
@@ -466,6 +469,32 @@ export class SymbolicPriorProvider implements GenerationProvider {
           failures.push(`candidate-${candidateIndex}:invariant-gate`);
           continue;
         }
+        let search = searched.search;
+        if (searchVariant?.search.family === "personal-groove" && personalBias) {
+          const feature =
+            SYNCOPATION_FEATURE_INDEX >= 0
+              ? extractPatternFeatures({
+                  doc,
+                  pattern: evaluated.pattern,
+                  intent: searchVariant.validationPlan.intent,
+                  options: generationOptions,
+                  resolvedBpm: searchVariant.validationPlan.resolvedBpm,
+                }).values[SYNCOPATION_FEATURE_INDEX]
+              : undefined;
+          const delta =
+            typeof feature === "number" && safeSyncopation !== null
+              ? verifiedPersonalGrooveDelta(feature, safeSyncopation, personalBias)
+              : null;
+          if (delta === null) {
+            failures.push(`candidate-${candidateIndex}:symbolic-personal-groove-direction-not-realized`);
+            continue;
+          }
+          search = {
+            ...searchVariant.search,
+            measuredSyncopationDelta: delta * Math.sign(personalBias.grooveSyncopation),
+            grooveSeedAttempts: 1,
+          };
+        }
         entries.push({
           candidateIndex,
           seed: generationOptions.seed,
@@ -475,7 +504,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           score: 0,
           contentHash: "",
           source: Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
-          ...(searched.search ? { search: searched.search } : {}),
+          ...(search ? { search } : {}),
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

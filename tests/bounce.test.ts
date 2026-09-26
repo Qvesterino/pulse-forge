@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBounceZoneDoc } from "../src/rendering/bounce";
+import { buildAudioClipConsolidationDoc, buildBounceZoneDoc } from "../src/rendering/bounce";
 import { createDefaultProject } from "../src/project-model/schema";
 import { addAudioClip, createScene } from "../src/commands/commands";
 import { BAR_TICKS, PPQ } from "../src/project-model/types";
@@ -84,5 +84,62 @@ describe("buildBounceZoneDoc", () => {
     expect(kinds).not.toContain("drum");
     expect(bounced.arrangement.transitions).toEqual([]);
     expect(bounced.markers).toEqual([]);
+  });
+});
+
+describe("buildAudioClipConsolidationDoc", () => {
+  it("isolates selected clips, clears musical content and renders without track processing", () => {
+    let doc = createDefaultProject();
+    const track = doc.tracks.find((candidate) => candidate.kind !== "group");
+    if (!track) throw new Error("default project has no audio-capable track");
+    doc = {
+      ...doc,
+      tracks: doc.tracks.map((candidate) =>
+        candidate.id === track.id ? { ...candidate, gain: 0.4, pan: 0.6, sends: { return1: 0.8 } } : candidate,
+      ),
+    };
+    doc = addAudioClip(doc, track.id, "audio.first", 0, 1).execute(doc);
+    doc = addAudioClip(doc, track.id, "audio.second", 1, 1).execute(doc);
+    doc = addAudioClip(doc, track.id, "audio.unselected", 4, 1).execute(doc);
+    const clipIds = doc.arrangement.audioClips!.slice(0, 2).map((clip) => clip.id);
+    const originalClips = doc.arrangement.audioClips;
+
+    const plan = buildAudioClipConsolidationDoc(doc, clipIds);
+    const renderedTrack = plan.project.tracks.find((candidate) => candidate.id === track.id);
+
+    expect(plan).toMatchObject({ trackId: track.id, startBar: 0, lengthBars: 2 });
+    expect(plan.project.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.first", "audio.second"]);
+    expect(renderedTrack).toMatchObject({ gain: 1, pan: 0, mute: false, solo: false, effects: [], sends: {} });
+    expect(plan.project.patterns.every((pattern) => Object.keys(pattern.rows).length === 0)).toBe(true);
+    expect(plan.project.patterns.every((pattern) => Object.keys(pattern.notes ?? {}).length === 0)).toBe(true);
+    expect(plan.project.returns).toEqual([]);
+    expect(plan.project.automation).toEqual([]);
+    expect(plan.project.sceneAutomation).toEqual([]);
+    expect(doc.arrangement.audioClips).toBe(originalClips);
+    expect(doc.arrangement.audioClips).toHaveLength(3);
+  });
+
+  it("rejects selections spanning multiple take lanes", () => {
+    let doc = createDefaultProject();
+    const track = doc.tracks[0];
+    if (!track) throw new Error("default project has no track");
+    doc = addAudioClip(doc, track.id, "audio.take-a", 0, 1).execute(doc);
+    doc = addAudioClip(doc, track.id, "audio.take-b", 1, 1).execute(doc);
+    const clips = doc.arrangement.audioClips ?? [];
+    doc = {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        audioClips: clips.map((clip, index) => ({ ...clip, takeGroupId: "takes", takeId: `take-${index}` })),
+        takeGroups: [{ id: "takes", trackId: track.id, activeTakeId: "take-0" }],
+      },
+    };
+
+    expect(() =>
+      buildAudioClipConsolidationDoc(
+        doc,
+        clips.map((clip) => clip.id),
+      ),
+    ).toThrow("Consolidate clips from one take lane at a time");
   });
 });

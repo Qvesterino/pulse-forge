@@ -39,7 +39,7 @@ KYX is built for a single core idea —
 
 Practically, that covers:
 
-- **Beat production** — house, techno, trap, ambient, UK garage, Jersey club, phonk, drill, lo-fi house, reggaeton (12 genre starter templates included).
+- **Beat production** — house, techno, trap, ambient, UK garage, Jersey club, phonk, drill, lo-fi house, reggaeton, drum & bass (13 genre starter templates included).
 - **Electronic music composition** — instruments, melodic and pad roles, piano-roll editing, scene-based launching, deterministic groove, generative dice/AI assist.
 - **Sound design** — wavetable, granular, FM, Karplus-Strong, additive spectral, sampler with time-stretch and reverse.
 - **Arrangement** — pattern mode vs. song mode, named scenes, per-scene tempo, scene intensity curve, scene automation, markers.
@@ -131,7 +131,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 ### Persistence and project management
 
 - **Project browser** on every boot — one-click "Continue last project" card, project list with open / duplicate / inline rename / delete-with-confirm, sorted by last update, freshness readouts (`saved X ago`).
-- **12 starter templates** — House (4-on-the-floor + sub bass + chords), Techno (two loop variations), Trap (half-time snare + rolling hats + 808 + sparse lead), Ambient (evolving pads), Scene Score (INTRO/BUILD/DROP/BREAK/OUTRO pre-placed on a 24-bar timeline), UK Garage, Jersey Club, Phonk, Drill, Lo-Fi House, Reggaeton, Empty.
+- **13 starter templates** — House (4-on-the-floor + sub bass + chords), Techno (two loop variations), Trap (half-time snare + rolling hats + 808 + sparse lead), Ambient (evolving pads), Scene Score (INTRO/BUILD/DROP/BREAK/OUTRO pre-placed on a 24-bar timeline), UK Garage, Jersey Club, Phonk, Drill, Lo-Fi House, Reggaeton, Drum & Bass (two-step roller + Reese sub at 174 BPM), Empty.
 - **Schema-versioned project model** — `schemaVersion: 1`, pure serializable data, JSON round-trip tested, loading auto-normalizes pattern rows.
 - **Autosave** — debounced 800 ms with a live status indicator (`SAVED hh:mm` / `UNSAVED` / `SAVING…` / `SAVE ERROR — RETRY`), flush on tab-hide and page close.
 - **IndexedDB stores** — projects, user presets, user sample audio, frozen track buffers, kits, library, groove pool, recording-recovery sessions and Float32 PCM chunks. Imported user samples (WAV/MP3/OGG/FLAC/AIFF) keep their encoded bytes in IndexedDB and decode back into the sample bank on boot. Current single-input recording uses half-second durable blocks; the selected input device is a browser-local preference, not project data.

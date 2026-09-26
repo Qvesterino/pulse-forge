@@ -337,6 +337,59 @@ export function buildReggaeton(): ProjectDocument {
   return finish(doc);
 }
 
+/* ---------------- Drum & Bass — 174 BPM two-step roller ---------------- */
+
+export function buildDrumBass(): ProjectDocument {
+  const doc = baseDocument("Drum & Bass", 174);
+  const drums = createDrumTrack();
+  const bass = createBass();
+  bass.name = "Reese Bass";
+
+  let pattern = emptyPattern("Roller", [drums]);
+  // Two-step kick: downbeat + the skip.
+  pattern = setSteps(pattern, drums.pads, 0, [
+    [0, 0.9],
+    [10, 0.85],
+  ]);
+  // Backbeat snare with a ghosted push.
+  pattern = setSteps(pattern, drums.pads, 5, [
+    [4, 0.9],
+    [12, 0.9],
+    [14, 0.4],
+  ]);
+  // Driving 16th hats with velocity lift.
+  pattern = setSteps(pattern, drums.pads, 8, [
+    [0, 0.3],
+    [2, 0.24],
+    [4, 0.34],
+    [6, 0.24],
+    [8, 0.36],
+    [10, 0.24],
+    [12, 0.34],
+    [14, 0.26],
+  ]);
+  // Open-hat answers off the beat.
+  pattern = setSteps(pattern, drums.pads, 10, [
+    [2, 0.3],
+    [6, 0.28],
+    [10, 0.32],
+  ]);
+  // Reese sub roller in F minor: long root, passing Eb, low C hold.
+  pattern = withNotes(pattern, bass.id, [
+    note(29, 0, PPQ, 0.9),
+    note(29, 2 * PPQ, PPQ / 2, 0.7),
+    note(27, 2 * PPQ + PPQ / 2, PPQ / 2, 0.85),
+    note(24, 3 * PPQ, PPQ / 2, 0.9),
+  ]);
+
+  doc.tracks = [drums, bass];
+  doc.patterns = [pattern];
+  doc.scenes = [scene("Roller", pattern.id)];
+  doc.arrangement = { clips: [clip(doc.scenes[0].id, 0, 4)] };
+  doc.macros = performanceMacros(drums.id, bass.id, null);
+  return finish(doc);
+}
+
 /* ---------------- local factories ---------------- */
 
 function createDrumTrack() {

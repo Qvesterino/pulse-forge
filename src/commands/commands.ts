@@ -3820,18 +3820,63 @@ export function stripSilenceAudioClip(
   return snapshot("stripSilence", `Strip silence → ${newClips.length} clips`, doc, next);
 }
 
-export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[]): Command {
-  const clips = (doc.arrangement.audioClips ?? []).filter((c) => clipIds.includes(c.id));
-  if (clips.length < 2) throw new Error("Select at least 2 audio clips to consolidate");
-  const trackIds = new Set(clips.map((c) => c.trackId));
-  if (trackIds.size > 1) throw new Error("Consolidate requires clips on same track");
-  // A metadata-only implementation used to replace every selected clip with
-  // the first clip's source stretched across the combined timeline span. That
-  // silently changed the audible content, so refuse the operation until the
-  // UI can provide a persisted offline-rendered buffer to this command.
-  throw new Error(
-    "Rendered audio consolidation is not available yet. Use Bounce (Ctrl+B) to render without replacing sources.",
+export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[], bufferId: string): Command {
+  const ids = new Set(clipIds);
+  const clips = (doc.arrangement.audioClips ?? []).filter((clip) => ids.has(clip.id));
+  if (ids.size < 2 || clips.length !== ids.size)
+    throw new Error("Select at least 2 existing audio clips to consolidate");
+  if (!bufferId) throw new Error("Rendered audio buffer ID is required");
+  const first = clips[0];
+  if (!first) throw new Error("No audio clips selected");
+  if (clips.some((clip) => clip.trackId !== first.trackId)) {
+    throw new Error("Consolidate requires clips on the same track");
+  }
+  if (clips.some((clip) => clip.takeGroupId !== first.takeGroupId || clip.takeId !== first.takeId)) {
+    throw new Error("Consolidate clips from one take lane at a time");
+  }
+  if (Boolean(first.takeGroupId) !== Boolean(first.takeId)) {
+    throw new Error("Selected audio clips have invalid take-lane metadata");
+  }
+  if (first.takeGroupId) {
+    const group = doc.arrangement.takeGroups?.find((candidate) => candidate.id === first.takeGroupId);
+    if (!group || group.trackId !== first.trackId)
+      throw new Error("Selected audio clips have invalid take-lane metadata");
+  }
+
+  const startBar = Math.min(...clips.map((clip) => clip.startBar));
+  const endBar = Math.max(...clips.map((clip) => clip.startBar + clip.lengthBars));
+  const lengthBars = endBar - startBar;
+  if (!Number.isFinite(startBar) || !Number.isFinite(lengthBars) || lengthBars < 0.25) {
+    throw new Error("Consolidation range must be at least 1/4 bar");
+  }
+
+  const sameSourceTake =
+    Boolean(first.compSourceTakeId) && clips.every((clip) => clip.compSourceTakeId === first.compSourceTakeId);
+  const consolidated: AudioClip = {
+    id: uid("audioClip"),
+    trackId: first.trackId,
+    bufferId,
+    startBar,
+    lengthBars,
+    offsetSec: 0,
+    trimStart: 0,
+    trimEnd: 0,
+    gain: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    stretchRate: 1,
+    reverse: false,
+    ...(first.takeGroupId && first.takeId ? { takeGroupId: first.takeGroupId, takeId: first.takeId } : {}),
+    ...(sameSourceTake ? { compSourceTakeId: first.compSourceTakeId } : {}),
+  };
+  const nextAudioClips = [...(doc.arrangement.audioClips ?? []).filter((clip) => !ids.has(clip.id)), consolidated].sort(
+    (a, b) => a.startBar - b.startBar,
   );
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, audioClips: nextAudioClips },
+  };
+  return snapshot("consolidateAudioClips", `Consolidate ${clips.length} clips`, doc, next);
 }
 
 /**

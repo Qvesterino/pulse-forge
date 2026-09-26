@@ -68,7 +68,12 @@ export class LocalDeterministicProvider implements GenerationProvider {
     plan: GenerationPlan,
     context: GenerationContext,
     searchLanes = false,
-  ): { candidates: CandidateBankEntry[]; failures: string[]; candidateSeeds: readonly string[] } {
+  ): {
+    candidates: CandidateBankEntry[];
+    failures: string[];
+    candidateSeeds: readonly string[];
+    safeSyncopation: number | null;
+  } {
     const candidates: CandidateBankEntry[] = [];
     const failures: string[] = [];
     const candidateSeeds = plan.candidateSeeds.length > 0 ? plan.candidateSeeds : [plan.options.seed];
@@ -110,8 +115,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
           contentHash: "",
           ...(prepared.search ? { search: prepared.search } : {}),
         };
+        const needsSyncopationMeasurement =
+          variant?.search.lane === "safe" || variant?.search.family === "personal-groove";
         const feature =
-          SYNCOPATION_FEATURE_INDEX >= 0
+          needsSyncopationMeasurement && SYNCOPATION_FEATURE_INDEX >= 0
             ? extractPatternFeatures({
                 doc: context.project,
                 pattern: evaluated.pattern,
@@ -132,10 +139,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
 
     for (const [candidateIndex, seed] of candidateSeeds.entries()) {
       const variant = searchLanes ? candidateSearchVariant(plan, seed, candidateIndex, personalBias) : null;
-      if (
-        variant?.search.family === "personal-groove" &&
-        personalBias
-      ) {
+      if (variant?.search.family === "personal-groove" && personalBias) {
         if (safeSyncopation === null) {
           failures.push(`candidate-${candidateIndex}:personal-groove-missing-safe-measurement`);
           continue;
@@ -176,7 +180,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       candidates.push(result.candidate);
       if (candidateIndex === 0 && variant?.search.lane === "safe") safeSyncopation = result.syncopation;
     }
-    return { candidates, failures, candidateSeeds };
+    return { candidates, failures, candidateSeeds, safeSyncopation };
   }
 
   generateSync(plan: GenerationPlan, context: GenerationContext): GenerationProposal {
@@ -269,6 +273,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
       candidates: templateCandidates,
       failures,
       candidateSeeds,
+      safeSyncopation,
     } = this.collectCandidates(plan, context, searchLanes);
     // Symbolic-prior candidates (T2): sampled from the ONNX drum prior, they
     // enter the SAME bank and cross the SAME invariant/repair/ranking gates.
@@ -281,6 +286,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
         context,
         candidateSeeds.length,
         searchLanes,
+        safeSyncopation,
       );
       if (collected.entries.length > 0) {
         candidates = [...templateCandidates, ...collected.entries];

@@ -16,11 +16,12 @@ function drumPadIds(doc: ProjectDocument): Set<string> {
 }
 
 describe("templates", () => {
-  it("ships the twelve promised templates", () => {
+  it("ships the thirteen promised templates", () => {
     expect(TEMPLATE_IDS.sort()).toEqual(
       [
         "ambient",
         "drill",
+        "dnb",
         "empty",
         "house",
         "jersey",
@@ -33,6 +34,23 @@ describe("templates", () => {
         "ukg",
       ].sort(),
     );
+  });
+
+  it("dnb template is a 174 BPM two-step roller with a reese sub", () => {
+    const doc = createProjectFromTemplate("dnb");
+    expect(doc.bpm).toBe(174);
+    expect(doc.tracks.some((t) => t.kind === "drum")).toBe(true);
+    const bass = doc.tracks.find((t) => t.kind === "instrument");
+    expect(bass?.name).toBe("Reese Bass");
+    // Two-step kick skeleton: downbeat + the skip.
+    const drums = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+    const kickRow = doc.patterns[0].rows[drums.pads[0].id]!;
+    expect(kickRow[0]).toBeGreaterThan(0);
+    expect(kickRow[10]).toBeGreaterThan(0);
+    // Backbeat snare on 2 and 4.
+    const snareRow = doc.patterns[0].rows[drums.pads[5].id]!;
+    expect(snareRow[4]).toBeGreaterThan(0);
+    expect(snareRow[12]).toBeGreaterThan(0);
   });
 
   it("every template has metadata with description, bpm and tags", () => {

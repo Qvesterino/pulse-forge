@@ -91,6 +91,9 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   drill: "dark",
   phonk: "warm",
   jersey: "bright",
+  // DnB leans dark by default (reese pressure, chopped breaks) — liquid and
+  // explicitly bright/chill asks still win via moodTone/overrides above.
+  dnb: "dark",
 };
 
 /**
@@ -118,9 +121,9 @@ export function planMixProfile(
   // Genre character defaults (sound-quality pass): when neither the user nor
   // the mood asked for a tone/punch, the genre itself defines the color —
   // drill reads dark and driven, phonk warm (tape-ish), jersey bright and
-  // club-pumping; dnb carries no tone default (its splits run sub-heavy AND
-  // top-bright) but always punches. GENRE_TONE_DEFAULT (above) is the single
-  // source for the tone defaults AND the master tilt mapping.
+  // club-pumping, dnb dark (reese pressure over crisp breaks) but always
+  // punching. GENRE_TONE_DEFAULT (above) is the single source for the tone
+  // defaults AND the master tilt mapping.
   const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.

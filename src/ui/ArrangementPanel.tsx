@@ -18,6 +18,7 @@ import {
   addArrangementTransition,
   addAudioClip,
   addMarker,
+  consolidateAudioClips,
   compAudioTakeRange,
   autoArrangeSong,
   generatePatternCommand,
@@ -96,10 +97,10 @@ import {
   MIN_INPUT_GAIN_DB,
   type PcmCaptureInfo,
 } from "../audio-engine/PcmMicRecorder";
-import { buildBounceZoneDoc } from "../rendering/bounce";
+import { buildAudioClipConsolidationDoc, buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { audioTakeAuditionStartOffsetSec, createAudioTakeAuditionDoc } from "../rendering/take-audition";
-import { encodeWav } from "../rendering/wav";
+import { encodeWav, encodeWavAsync } from "../rendering/wav";
 import {
   addRecordedAudioClips,
   addRecordedLoopSession,
@@ -1958,6 +1959,71 @@ export function ArrangementPanel() {
     setAudioStretchPreview(null);
   };
   const [bouncingZone, setBouncingZone] = useState(false);
+  const [consolidatingAudio, setConsolidatingAudio] = useState(false);
+  const consolidatingAudioRef = useRef(false);
+  const consolidateSelectedAudioClips = async (clipIds: string[]): Promise<void> => {
+    if (consolidatingAudioRef.current) return;
+    consolidatingAudioRef.current = true;
+    setConsolidatingAudio(true);
+    let bufferId: string | undefined;
+    let committed = false;
+    try {
+      const sourceDoc = services.store.doc;
+      const plan = buildAudioClipConsolidationDoc(sourceDoc, clipIds);
+      const sampleRate = services.engine.getLiveAudioContext()?.sampleRate ?? 44100;
+      const buffer = await renderProject(plan.project, services.bank, {
+        mode: "song",
+        sampleRate,
+        tailSeconds: 0,
+        masterProcessing: false,
+      });
+      if (services.store.doc !== sourceDoc) {
+        throw new Error("The project changed while rendering. Try consolidation again.");
+      }
+
+      const trackName = sourceDoc.tracks.find((track) => track.id === plan.trackId)?.name ?? "Audio";
+      const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+      bufferId = userSampleId(`consolidated-${trackName}-${Date.now()}-${uniqueSuffix}`);
+      const audioBytes = await encodeWavAsync(buffer, 32);
+      await services.userSamples.save(
+        {
+          id: bufferId,
+          name: `Consolidated ${trackName}`,
+          fileName: `${bufferId}.wav`,
+          category: "Custom",
+          duration: buffer.duration,
+          sampleRate: buffer.sampleRate,
+          channels: buffer.numberOfChannels,
+          createdAt: new Date().toISOString(),
+        },
+        audioBytes,
+      );
+      services.bank.add(bufferId, buffer);
+      if (!execute(consolidateAudioClips(sourceDoc, clipIds, bufferId))) {
+        services.bank.remove(bufferId);
+        try {
+          await services.userSamples.remove(bufferId);
+        } catch {
+          /* best-effort cleanup if the project command is rejected */
+        }
+        return;
+      }
+      committed = true;
+    } catch (error) {
+      if (bufferId && !committed) {
+        services.bank.remove(bufferId);
+        try {
+          await services.userSamples.remove(bufferId);
+        } catch {
+          /* best-effort cleanup after a failed render or save */
+        }
+      }
+      setActionError(error instanceof Error ? error.message : "Audio consolidation failed");
+    } finally {
+      consolidatingAudioRef.current = false;
+      setConsolidatingAudio(false);
+    }
+  };
   const bounceZoneToClip = async () => {
     if (!selection.timeRange || bouncingZone) return;
     const fromBar = selection.timeRange.fromTick / BAR_TICKS;
@@ -4071,14 +4137,46 @@ export function ArrangementPanel() {
               type="button"
               role="menuitem"
               onClick={() => {
-                setActionError(
-                  "Rendered consolidation is not available yet. Select a time range and use Bounce (Ctrl+B); it renders a new clip without replacing the source audio.",
-                );
+                let clipIds: string[];
+                if (selection.timeRange) {
+                  const { fromTick, toTick } = selection.timeRange;
+                  clipIds = (arrangement.audioClips ?? [])
+                    .filter((clip) => {
+                      const startTick = clip.startBar * BAR_TICKS;
+                      const endTick = startTick + clip.lengthBars * BAR_TICKS;
+                      return startTick >= fromTick && endTick <= toTick;
+                    })
+                    .map((clip) => clip.id);
+                  if (clipIds.length < 2) {
+                    setActionError("Select a time range containing at least two audio clips to consolidate");
+                    setAudioMenu(null);
+                    return;
+                  }
+                } else {
+                  const clip = audioClips.find((item) => item.id === audioMenu.clipId);
+                  if (!clip) {
+                    setAudioMenu(null);
+                    return;
+                  }
+                  const sameTrack = (arrangement.audioClips ?? [])
+                    .filter((item) => item.trackId === clip.trackId)
+                    .sort((a, b) => a.startBar - b.startBar);
+                  const index = sameTrack.findIndex((item) => item.id === clip.id);
+                  const next = sameTrack[index + 1];
+                  if (!next || Math.abs(next.startBar - (clip.startBar + clip.lengthBars)) > 0.5) {
+                    setActionError("Select a time range or an adjacent clip on the same track to consolidate");
+                    setAudioMenu(null);
+                    return;
+                  }
+                  clipIds = [clip.id, next.id];
+                }
                 setAudioMenu(null);
+                void consolidateSelectedAudioClips(clipIds);
               }}
-              title="Rendered consolidation is not implemented yet. Use Bounce (Ctrl+B) for a non-destructive render."
+              disabled={consolidatingAudio}
+              title="Render the selected clips into a persisted audio asset. Source takes remain intact; undo restores the original clips."
             >
-              Consolidate (render required)
+              {consolidatingAudio ? "Consolidating…" : "Consolidate"}
             </button>
             <button
               type="button"

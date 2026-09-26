@@ -43,7 +43,7 @@ const PERSONAL_HOOK_BIAS_THRESHOLD = 0.025;
 const PERSONAL_GROOVE_BIAS_THRESHOLD = 0.025;
 const PERSONAL_GROOVE_MIN_DISTANCE = 0.02;
 const PERSONAL_GROOVE_OUTPUT_MIN_DISTANCE = 0.01;
-const PERSONAL_GROOVE_MAX_ATTEMPTS = 8;
+const PERSONAL_GROOVE_MAX_ATTEMPTS = 16;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
@@ -328,6 +328,25 @@ export interface PersonalGrooveSelection<T> {
   outputDelta: number | null;
 }
 
+/** Positive result means the measured pattern moved far enough in the learned direction. */
+export function verifiedPersonalGrooveDelta(
+  candidateSyncopation: number,
+  baselineSyncopation: number,
+  personalBias: PersonalSearchBias,
+): number | null {
+  const direction = Math.sign(personalBias.grooveSyncopation);
+  if (
+    Math.abs(personalBias.grooveSyncopation) < PERSONAL_GROOVE_BIAS_THRESHOLD ||
+    direction === 0 ||
+    !Number.isFinite(candidateSyncopation) ||
+    !Number.isFinite(baselineSyncopation)
+  ) {
+    return null;
+  }
+  const outputDelta = (candidateSyncopation - baselineSyncopation) * direction;
+  return outputDelta >= PERSONAL_GROOVE_OUTPUT_MIN_DISTANCE ? outputDelta : null;
+}
+
 /**
  * A groove template's syncopation score is only a prior: the Markov generator can
  * produce a result on the wrong side of the preference. Retry deterministic
@@ -347,7 +366,7 @@ export function selectPersonalGrooveCandidate<T>(args: {
   const initialVariant = candidateSearchVariant(args.plan, args.seed, args.candidateIndex, args.personalBias);
   const direction = Math.sign(args.personalBias.grooveSyncopation);
   const requestedAttempts = args.maxAttempts ?? PERSONAL_GROOVE_MAX_ATTEMPTS;
-  const maxAttempts = Number.isFinite(requestedAttempts) ? Math.max(1, Math.min(16, Math.floor(requestedAttempts))) : 1;
+  const maxAttempts = Number.isFinite(requestedAttempts) ? Math.max(1, Math.min(24, Math.floor(requestedAttempts))) : 1;
   if (
     initialVariant.search.family !== "personal-groove" ||
     direction === 0 ||
@@ -362,8 +381,8 @@ export function selectPersonalGrooveCandidate<T>(args: {
     try {
       const built = args.build(variant);
       if (!built || !Number.isFinite(built.syncopation)) continue;
-      const outputDelta = (built.syncopation - args.baselineSyncopation) * direction;
-      if (outputDelta >= PERSONAL_GROOVE_OUTPUT_MIN_DISTANCE) {
+      const outputDelta = verifiedPersonalGrooveDelta(built.syncopation, args.baselineSyncopation, args.personalBias);
+      if (outputDelta !== null) {
         return { variant, candidate: built.candidate, attempts: attempt + 1, outputDelta };
       }
     } catch {

@@ -18,14 +18,14 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                 |
 | └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                      |
 | └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                         |
-| **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
-| **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
-| └─ curated WAV overrides               |      79 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 8 newest assets are synthesis-only) |
-| **Factory presets**                    | **375** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     369 | `FACTORY_PRESETS`                                                                                                        |
+| **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
+| **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
+| └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only) |
+| **Factory presets**                    | **399** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     393 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
 | **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
-| **Vitest spec files**                  | **519** | `tests/` files matching `*.test.ts` (415) and `*.test.tsx` (104)                                                         |
+| **Vitest spec files**                  | **523** | `tests/` files matching `*.test.ts` (419) and `*.test.tsx` (104)                                                         |
 
 ## Flagship plugin implementations
 
@@ -80,6 +80,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - Kick bank 6 → 15 — drill / phonk / 808s / vintage / club punches / boom-bap knock; genre kits carry dedicated kicks.
 - Snare bank 4 → 9 — drill crack, phonk / jersey / dnb backbeats, lofi dust.
 - Hat bank 5 → 10 — drill tick, phonk dusty, jersey / dnb metallic pings, open cup; hat.pedal synth pulled apart from closed.soft (0.993 duplicate pair). _(feat `38b8fd0`, `378ab36`)_
+- Pop wave — kick.pop, clap.pop stack, crash.pop, tom.floor, rim.pop, shaker.pop + kalimba/musicbox mallets (86 → 94 assets, all with curated WAVs; orphan backfill: cello/nylon/orchestrahit/pizzicato/violin seeds).
 
 ### Preset expansion
 
@@ -87,6 +88,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - Drum presets 220 → 232 — 12 genre-anchored drum-synth voices (drill crackers, memphis snare, dusty tom, jersey clap, dnb snare / rim / open cup, first Rimshot type). _(feat `027dcab`)_
 - 808 presets 232 → 242 — 10 genre-anchored 808 voices with `GLIDE` front and center for drill / phonk slide ladder. _(feat `2ba6a9d`)_
 - Browser factory preset audio QA currently green at 252/252 (after Flute preset addition).
+- Pop preset pack — 24 vocal-first presets (bright keys/plucks, lush/bedroom/air pads, marimba/celesta/nylon/rhodes/wurli/sad-piano carriers, round basses, tuned 808s, soft leads, FM bells), all measured into the loudness map.
 
 ### Intent and AI
 
@@ -99,6 +101,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
 - **World roster + genre depth** — 97 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
+- **Pop wave** — pop routing (dance-pop/synth-pop/pop-rap/hyperpop → house/trap), 12 pop artist presets, 4 pop grooves (house.pop/synthpop, trap.pop, ambient.pop), POP_FORM (verse/pre-chorus/chorus, hook before ~45 s), pop mix (bright + vocal glue + low-end control) and −9 LUFS pop loudness target.
 
 ### Arrangement
 

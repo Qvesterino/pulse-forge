@@ -42,6 +42,10 @@ export interface LandingSong {
 const TEMPLATE_HINTS: ReadonlyArray<{ words: readonly string[]; template: TemplateId }> = [
   { words: ["trap", "808", "drill"], template: "trap" },
   { words: ["techno", "rave", "acid"], template: "techno" },
+  {
+    words: ["dnb", "drum and bass", "jungle", "neurofunk", "jump up", "jumpup", "liquid dnb", "halftime"],
+    template: "dnb",
+  },
   { words: ["garage", "ukg", "2-step", "2step"], template: "ukg" },
   { words: ["ambient", "lofi", "lo-fi", "chill", "atmospheric"], template: "ambient" },
   { words: ["house", "deep", "disco"], template: "house" },
