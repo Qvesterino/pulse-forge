@@ -2631,6 +2631,299 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [78, 92],
     label: "lil nas x",
   },
+  // ── Chicago now (drill + conscious) ────────────────────────────────
+  {
+    // Bare "von" is German for "from" — qualified only.
+    names: ["king von", "king von type beat", "von type beat", "grandson", "otf"],
+    genre: "drill",
+    style: "dark",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [135, 145],
+    label: "king von",
+  },
+  {
+    // Bare "chance" is a common word — qualified only. "acid rap" doubles as
+    // the genre phrase (same trap family), so the pocket survives regardless.
+    names: [
+      "chance the rapper",
+      "chance type beat",
+      "acid rap",
+      "coloring book",
+      "noname",
+      "noname type beat",
+      "telefone",
+      "room 25",
+      "saba",
+      "saba type beat",
+      "care for me",
+      "pivot gang",
+    ],
+    genre: "trap",
+    style: "classic",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [82, 94],
+    label: "chicago conscious",
+  },
+  // ── Detroit now (the detroit loop-rap bounce carries all three) ────
+  {
+    // Bare "sada" is SK for "now" — qualified only. Bare "rio" is the city.
+    names: [
+      "sada baby",
+      "skuba",
+      "sada baby type beat",
+      "icewear vezzo",
+      "vezzo type beat",
+      "icewear",
+      "rich off pints",
+      "rio da yung og",
+      "rio type beat",
+    ],
+    genre: "trap",
+    style: "detroit",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [130, 148],
+    label: "detroit now",
+  },
+  // ── LA now (whisper-flow detroit + sung sparse) ─────────────────────
+  {
+    names: ["drakeo", "drakeo the ruler", "flu flam", "remble", "remble type beat"],
+    genre: "trap",
+    style: "detroit",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [130, 144],
+    label: "drakeo",
+  },
+  {
+    names: ["blxst", "blxst type beat", "sixtape", "bino rideaux", "bino type beat"],
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [125, 140],
+    label: "blxst",
+  },
+  // ── Rage / new jazz (opium-adjacent, jerk-plugg edge) ───────────────
+  {
+    // Bare "osa" is SK for "wasp" — qualified only. Nettspend / 2hollis live
+    // in the parallel "plugg newer wave" entry (plugg pocket) — this one
+    // carries the rage-bounce side (osamason) only.
+    names: ["osamason", "osamason type beat", "new rage type beat"],
+    genre: "trap",
+    style: "bouncy",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [148, 165],
+    label: "new rage",
+  },
+  // ── UK pop-drill (headie lives in the depth wave already) ───────────
+  {
+    // Bare "dave" is anyone's producer — qualified only.
+    names: ["santan dave", "dave type beat", "psychodrama"],
+    genre: "drill",
+    style: "melodic",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.55,
+    bpmRange: [138, 145],
+    label: "dave",
+  },
+  {
+    names: ["stormzy", "stormzy type beat", "vossi bop"],
+    genre: "drill",
+    style: "grime",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [138, 144],
+    label: "stormzy",
+  },
+  {
+    names: ["22gz", "22gz type beat"],
+    genre: "drill",
+    style: "dark",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [140, 150],
+    label: "22gz",
+  },
+  // ── Female rap (the biggest open lane) ─────────────────────────────
+  {
+    names: ["nicki minaj", "nicki type beat", "pink friday", "barbz"],
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 145],
+    label: "nicki minaj",
+  },
+  {
+    names: ["cardi b", "cardi type beat", "bodak yellow", "bodak"],
+    genre: "trap",
+    style: "rolling",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [130, 142],
+    label: "cardi b",
+  },
+  {
+    names: ["latto", "latto type beat", "big latto", "big energy"],
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [125, 140],
+    label: "latto",
+  },
+  {
+    // Dots never survive normalization ("f.n.f." → "f n f") — see t.i.
+    names: ["glorilla", "glo type beat", "f n f"],
+    genre: "trap",
+    style: "crunk",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [98, 108],
+    label: "glorilla",
+  },
+  {
+    names: ["sexyy red", "sexyy type beat", "pound town"],
+    genre: "trap",
+    style: "rolling",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [130, 145],
+    label: "sexyy red",
+  },
+  {
+    names: ["doechii", "doechii type beat", "swamp princess"],
+    genre: "trap",
+    style: "bouncy",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 145],
+    label: "doechii",
+  },
+  {
+    names: ["little simz", "simz", "simbi", "grey area"],
+    genre: "trap",
+    style: "classic",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [86, 94],
+    label: "little simz",
+  },
+  // ── Latin trap + French cloud ──────────────────────────────────────
+  {
+    names: ["bad bunny", "benito type beat", "un verano"],
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [95, 125],
+    label: "bad bunny",
+  },
+  {
+    names: ["myke towers", "myke type beat"],
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [95, 125],
+    label: "myke towers",
+  },
+  {
+    names: ["duki", "duki type beat"],
+    genre: "trap",
+    style: "rolling",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 150],
+    label: "duki",
+  },
+  {
+    names: ["pnl", "pnl type beat", "qlf", "deux freres"],
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [128, 142],
+    label: "pnl",
+  },
+  // ── SoundCloud era ─────────────────────────────────────────────────
+  {
+    names: ["ski mask", "slump god", "ski mask type beat", "stokeley"],
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [140, 160],
+    label: "ski mask",
+  },
+  {
+    names: ["smokepurpp", "smokepurpp type beat", "purpp", "deadstar"],
+    genre: "trap",
+    style: "rolling",
+    mood: "dark",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [130, 150],
+    label: "smokepurpp",
+  },
+  {
+    // Bare "pump" is a common verb — qualified only.
+    names: ["lil pump", "lil pump type beat", "gucci gang", "gazzy"],
+    genre: "trap",
+    style: "rolling",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [130, 150],
+    label: "lil pump",
+  },
+  // ── Experimental edge ──────────────────────────────────────────────
+  {
+    names: ["death grips", "death grips type beat", "mc ride"],
+    genre: "dnb",
+    style: "amen",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [160, 168],
+    label: "death grips",
+  },
+  {
+    // Bare "clipping" is an audio term — qualified only.
+    names: ["clipping type beat", "clipping band", "daveed diggs"],
+    genre: "phonk",
+    style: "horror",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [132, 150],
+    label: "clipping.",
+  },
   // ── Bass house — heavy tech-house with rolling sub-bass + groovy drops ───
   // The post-Fisher / ACRAZE wave (2018+). Tech-house groove + prominent
   // sub-bass stabs; mid-tempo pocket 124-130. Routes to groove 'house.driving'
@@ -2717,6 +3010,214 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.65,
     bpmRange: [138, 145],
     label: "psytrance",
+  },
+  // ── Club depth wave 2 (same research base as wave 1) ────────────────────
+  // Jersey second line: the Just-Wanna-Rock architect, the 2010s online
+  // wave (Jayhood / Nadus / R3LL) and the Jersey Drill song-format founder.
+  {
+    names: ["mcvertt", "just wanna rock"],
+    // Newark producer behind Lil Uzi Vert's Just Wanna Rock (2022) and
+    // Bandmanrill's HeartBroken — the mainstream jersey-club bounce.
+    genre: "jersey",
+    style: "club",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [136, 142],
+    label: "mcvertt",
+  },
+  {
+    names: ["dj jayhood", "jayhood"],
+    // 2010s online wave — pushed the club sound onto festival stages.
+    genre: "jersey",
+    style: "club",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 140],
+    label: "dj jayhood",
+  },
+  {
+    names: ["nadus", "thread"],
+    // #THREAD party series — eclectic club formats, bounce-forward.
+    genre: "jersey",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 140],
+    label: "nadus",
+  },
+  {
+    names: ["r3ll"],
+    // Festival-circuit club — clean big-room-ready bounce.
+    genre: "jersey",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [132, 142],
+    label: "r3ll",
+  },
+  {
+    names: ["unicorn151", "killa kherk cobain"],
+    // First Jersey Drill song-format record (Jack N Drill, 2021, with
+    // Bandmanrill) — drill delivery over the club bounce.
+    genre: "jersey",
+    style: "club",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [138, 144],
+    label: "unicorn151",
+  },
+  // Bronx drill — sample-heavy, raspy, a touch more aggressive than BK.
+  {
+    names: ["b-lovee", "blovee"],
+    // Bronx-to-sexy bridge (My Everything's Mary J. Blige flip) —
+    // melodic but still gutter.
+    genre: "drill",
+    style: "dark",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [140, 145],
+    label: "b-lovee",
+  },
+  {
+    names: ["kay flock", "kta"],
+    // Bronx drill front line — full-aggression sample drill.
+    genre: "drill",
+    style: "dark",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [140, 145],
+    label: "kay flock",
+  },
+  // UK drill — Homerton forefront.
+  {
+    names: ["unknown t", "homerton"],
+    genre: "drill",
+    style: "uk",
+    mood: "dark",
+    energy: 0.8,
+    density: 0.55,
+    bpmRange: [138, 144],
+    label: "unknown t",
+  },
+  // Drift phonk anthems — the two Spotify-era records.
+  {
+    names: ["interworld", "metamorphosis"],
+    // Metamorphosis — the drift anthem with Russian-hard-bass DNA.
+    genre: "phonk",
+    style: "drift",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.6,
+    bpmRange: [140, 155],
+    label: "interworld",
+  },
+  {
+    names: ["dxrk", "rave"],
+    // Rave — Algerian-French take on the cowbell lane.
+    genre: "phonk",
+    style: "drift",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [140, 155],
+    label: "dxrk",
+  },
+  // ── Vaporwave — slowed 80s-pop + chopped sample aesthetic ────────────────
+  // The 2010-2015 net-art movement (Macintosh Plus 'Floral Shoppe' / Vektroid
+  // 'Sacred Tapestry' / George Clanton's bright variant). Slowed & reverbed
+  // 80s pop, BPM 70-85, very low energy + density. Routes to ambient.drifting.
+  //
+  // The bare "vaporwave" name is owned by an earlier parallel-session entry
+  // (the 2814 / vaporwave ambient-drifting dark preset at L1566). We use the
+  // unique artist names here so the matcher priority picks this entry when
+  // the user names a specific vaporwave producer.
+  {
+    names: ["macintosh plus", "vektroid", "george clanton", "saint pepsi", "luxury elite"],
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.2,
+    density: 0.4,
+    bpmRange: [70, 85],
+    label: "vaporwave",
+  },
+  // ── Synthwave — 80s-style analog synth leads + driving four-on-the-floor ─
+  // Kavinsky 'Nightcall' / The Midnight / FM-84 / Mitch Murder / Timecop1983.
+  // Mid-tempo pocket 95-115, dreamy-energetic mood, organic instrumentation.
+  // Routes to ambient.organic (closest groove for the analog-synth side of
+  // the ambient spectrum; synthwave isn't a first-class groove).
+  {
+    names: ["synthwave", "kavinsky", "the midnight", "fm-84", "mitch murder", "timecop1983", "lazerhawk"],
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [95, 115],
+    label: "synthwave",
+  },
+  // ── Lo-fi hip-hop — Nujabes lane, jazz-sample boom-bap at slow tempo ────
+  // Nujabes 'Metaphorical Music' / DJ Okawari / Idealism / Tom Misch / Potsu.
+  // BPM 75-92, jazz chords, dusty drums. Routes to ambient.drifting.
+  {
+    names: ["lofi", "lo-fi", "nujabes", "dj okawari", "idealism", "tom misch", "potsu"],
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.45,
+    bpmRange: [75, 92],
+    label: "lofi (nujabes lane)",
+  },
+  // ── Downtempo — Bonobo / Caribou / Bibio / Oddisee ───────────────────────
+  // Organic-instrument downtempo (Bonobo 'The North Borders' / Caribou 'Our
+  // Love'). Four Tet's existing house/organic entry covers the dancier end;
+  // this covers the slower organic-instrument side via ambient/organic.
+  // BPM 92-110, chill mood.
+  {
+    names: ["downtempo", "bonobo", "caribou", "bibio", "oddisee"],
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [92, 110],
+    label: "downtempo",
+  },
+  // ── Plugg newer wave — Nettspend / Autumn! / Homixide Gang / 2hollis ────
+  // Post-Ken Carson / Destroy Lonely plugg wave (2023+). Plugg groove at
+  // 140-160 with auto-tune-heavy vocal chops. Routes to trap.plugg.
+  {
+    names: ["nettspend", "autumn", "homixide gang", "homixide", "2hollis"],
+    genre: "trap",
+    style: "plugg",
+    mood: "chill",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [130, 150],
+    label: "plugg newer wave",
+  },
+  // ── Trap soul / R&B-trap — Bryson Tiller / PartyNextDoor / 6LACK ─────────
+  // Slow R&B-leaning trap (Bryson Tiller 'TrapSoul' / PartyNextDoor). Drake's
+  // existing trap/sparse entry covers the mid-tempo Toronto hybrid; this
+  // covers the slow sung-R&B-trap side. BPM 78-95, sparse grooves for vocal
+  // lead. Routes to trap.sparse.
+  {
+    names: ["trap soul", "trapsoul", "bryson tiller", "partynextdoor", "6lack"],
+    genre: "trap",
+    style: "sparse",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [78, 95],
+    label: "trap soul",
   },
 ];
 

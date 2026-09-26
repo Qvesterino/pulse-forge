@@ -815,6 +815,50 @@ describe("jersey / drill / phonk depth wave (researched pockets)", () => {
   });
 });
 
+describe("club depth wave 2 (second line jersey + bronx + drift anthems)", () => {
+  it("jersey second line: mcvertt / jayhood / nadus / r3ll / unicorn151", () => {
+    const mcvertt = parseIntentText("mcvertt type beat");
+    expect(mcvertt.input.genre).toBe("jersey");
+    expect(mcvertt.input.style).toBe("club");
+    expect(mcvertt.input.bpmRange).toEqual([136, 142]);
+    expect(parseIntentText("just wanna rock beat").input.genre).toBe("jersey");
+    expect(parseIntentText("dj jayhood type beat").input.style).toBe("club");
+    expect(parseIntentText("nadus type beat").input.style).toBe("bounce");
+    expect(parseIntentText("r3ll type beat").input.bpmRange).toEqual([132, 142]);
+    const uni = parseIntentText("unicorn151 type beat");
+    expect(uni.input.genre).toBe("jersey");
+    expect(uni.input.mood).toBe("aggressive");
+    expect(parseIntentText("killa kherk cobain beat").input.genre).toBe("jersey");
+  });
+
+  it("bronx drill: b-lovee melodic bridge vs kay flock full aggression", () => {
+    const lovee = parseIntentText("b-lovee type beat");
+    expect(lovee.input.genre).toBe("drill");
+    expect(lovee.input.style).toBe("dark");
+    expect(lovee.input.mood).toBe("energetic");
+    const flock = parseIntentText("kay flock type beat");
+    expect(flock.input.mood).toBe("aggressive");
+    expect(flock.input.bpmRange).toEqual([140, 145]);
+  });
+
+  it("uk forefront: unknown t homerton dark", () => {
+    const unknown = parseIntentText("unknown t type beat");
+    expect(unknown.input.genre).toBe("drill");
+    expect(unknown.input.style).toBe("uk");
+    expect(unknown.input.bpmRange).toEqual([138, 144]);
+  });
+
+  it("drift anthems: interworld metamorphosis + dxrk rave", () => {
+    const inter = parseIntentText("interworld type beat");
+    expect(inter.input.genre).toBe("phonk");
+    expect(inter.input.style).toBe("drift");
+    expect(inter.input.bpmRange).toEqual([140, 155]);
+    expect(parseIntentText("metamorphosis beat").input.style).toBe("drift");
+    expect(parseIntentText("dxrk type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("rave phonk beat").input.style).toBe("drift");
+  });
+});
+
 describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psytrance (electronic depth)", () => {
   // Each block covers one of the six new electronic-lane presets, asserting
   // genre + style + BPM + mood against the researched values.
@@ -875,5 +919,171 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
     expect(getGrooveById("trap.dubstep")).toBeDefined();
     expect(getGrooveById("techno.hard")).toBeDefined();
     expect(getGrooveById("techno.acid")).toBeDefined();
+  });
+});
+
+describe("vaporwave / synthwave / lofi / downtempo / plugg-newer / trap-soul (chill + electronic-depth wave)", () => {
+  // Each block covers one of the six new chill/electronic presets, asserting
+  // genre + style + BPM + mood against the researched values. The synthwave
+  // lane maps onto ambient.organic (no dedicated synthwave groove yet);
+  // vaporwave + lofi both map onto ambient.drifting; downtempo onto
+  // ambient.organic; plugg-newer onto trap.plugg; trap-soul onto trap.sparse.
+  it("vaporwave / macintosh plus / vektroid → ambient drifting at 70-85", () => {
+    // 'vaporwave' (bare) lives in an earlier parallel-session entry (2814);
+    // we exercise this lane via the unique producer names instead.
+    const vw = parseIntentText("vektroid type beat");
+    expect(vw.input.genre).toBe("ambient");
+    expect(vw.input.style).toBe("drifting");
+    expect(vw.input.bpmRange).toEqual([70, 85]);
+    expect(vw.input.mood).toBe("chill");
+    expect(vw.input.energy).toBe(0.2);
+  });
+
+  it("synthwave / kavinsky / the midnight → ambient organic at 95-115", () => {
+    const kav = parseIntentText("kavinsky type beat");
+    expect(kav.input.genre).toBe("ambient");
+    expect(kav.input.style).toBe("organic");
+    expect(kav.input.bpmRange).toEqual([95, 115]);
+    expect(kav.input.mood).toBe("chill");
+  });
+
+  it("lofi / nujabes / dj okawari → ambient drifting at 75-92 (jazz-sample)", () => {
+    const nuj = parseIntentText("nujabes type beat");
+    expect(nuj.input.genre).toBe("ambient");
+    expect(nuj.input.style).toBe("drifting");
+    expect(nuj.input.bpmRange).toEqual([75, 92]);
+    expect(nuj.input.energy).toBe(0.35);
+  });
+
+  it("downtempo / bonobo / caribou / bibio → ambient organic at 92-110", () => {
+    const bon = parseIntentText("bonobo type beat");
+    expect(bon.input.genre).toBe("ambient");
+    expect(bon.input.style).toBe("organic");
+    expect(bon.input.bpmRange).toEqual([92, 110]);
+    expect(bon.input.mood).toBe("chill");
+  });
+
+  it("nettspend / homixide gang / 2hollis → trap plugg at 130-150", () => {
+    const ns = parseIntentText("nettspend type beat");
+    expect(ns.input.genre).toBe("trap");
+    expect(ns.input.style).toBe("plugg");
+    expect(ns.input.bpmRange).toEqual([130, 150]);
+    expect(ns.input.energy).toBe(0.7);
+  });
+
+  it("bryson tiller / partynextdoor / 6lack → trap sparse at 78-95 (R&B-trap)", () => {
+    const bt = parseIntentText("bryson tiller type beat");
+    expect(bt.input.genre).toBe("trap");
+    expect(bt.input.style).toBe("sparse");
+    expect(bt.input.bpmRange).toEqual([78, 95]);
+    expect(bt.input.mood).toBe("chill");
+  });
+
+  it("the chill + electronic-depth lanes resolve to real groove ids (resolveGroove contract)", () => {
+    // Engine integration smoke — each preset's style must resolve to a real
+    // `genre.style` grooveId via getGrooveById.
+    expect(getGrooveById("ambient.drifting")).toBeDefined();
+    expect(getGrooveById("ambient.organic")).toBeDefined();
+    expect(getGrooveById("trap.plugg")).toBeDefined();
+    expect(getGrooveById("trap.sparse")).toBeDefined();
+  });
+});
+
+describe("regional now + female / latin / scloud / experimental (now wave)", () => {
+  it("chicago: king von drill + conscious classic (SK-safe names)", () => {
+    const von = parseIntentText("king von type beat");
+    expect(von.input.genre).toBe("drill");
+    expect(von.input.style).toBe("dark");
+    expect(von.input.bpmRange).toEqual([135, 145]);
+    const chi = parseIntentText("chance the rapper type beat");
+    expect(chi.input.style).toBe("classic");
+    expect(chi.input.bpmRange).toEqual([82, 94]);
+    expect(parseIntentText("noname type beat").detected).toContain("♪ chicago conscious");
+    expect(parseIntentText("saba type beat").input.style).toBe("classic");
+    expect(getGrooveById("drill.dark")).toBeDefined();
+  });
+
+  it("detroit now + LA now ride detroit/sparse (SK-safe names)", () => {
+    const det = parseIntentText("sada baby type beat");
+    expect(det.input.genre).toBe("trap");
+    expect(det.input.style).toBe("detroit");
+    expect(det.input.bpmRange).toEqual([130, 148]);
+    expect(parseIntentText("icewear vezzo type beat").input.style).toBe("detroit");
+    expect(parseIntentText("rio da yung og type beat").input.style).toBe("detroit");
+    // "sada" alone is Slovak for "now" — must not match the artist
+    expect(matchArtistPreset(" sprav mi beat sada ")).toBeNull();
+    const drakeo = parseIntentText("drakeo the ruler type beat");
+    expect(drakeo.input.style).toBe("detroit");
+    expect(parseIntentText("remble type beat").input.style).toBe("detroit");
+    const blxst = parseIntentText("blxst type beat");
+    expect(blxst.input.style).toBe("sparse");
+    expect(blxst.input.bpmRange).toEqual([125, 140]);
+    expect(getGrooveById("trap.detroit")).toBeDefined();
+  });
+
+  it("new rage: osamason bouncy (nettspend/2hollis live in plugg newer wave)", () => {
+    const osa = parseIntentText("osamason type beat");
+    expect(osa.input.style).toBe("bouncy");
+    expect(osa.input.bpmRange).toEqual([148, 165]);
+    expect(parseIntentText("nettspend type beat").input.style).toBe("plugg");
+  });
+
+  it("uk pop-drill: dave melodic / stormzy grime / 22gz dark", () => {
+    const dave = parseIntentText("dave type beat");
+    expect(dave.input.genre).toBe("drill");
+    expect(dave.input.style).toBe("melodic");
+    expect(dave.input.bpmRange).toEqual([138, 145]);
+    expect(parseIntentText("stormzy type beat").input.style).toBe("grime");
+    expect(parseIntentText("22gz type beat").input.style).toBe("dark");
+    expect(getGrooveById("drill.melodic")).toBeDefined();
+    expect(getGrooveById("drill.grime")).toBeDefined();
+  });
+
+  it("female rap: nicki / cardi / latto / glorilla / sexyy / doechii / simz", () => {
+    expect(parseIntentText("nicki minaj type beat").input.style).toBe("rolling");
+    expect(parseIntentText("nicki minaj type beat").input.bpmRange).toEqual([130, 145]);
+    expect(parseIntentText("cardi b type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("latto type beat").input.style).toBe("rolling");
+    const glo = parseIntentText("glorilla type beat");
+    expect(glo.input.style).toBe("crunk");
+    expect(glo.input.bpmRange).toEqual([98, 108]);
+    expect(parseIntentText("f n f beat").detected).toContain("♪ glorilla");
+    expect(parseIntentText("sexyy red type beat").input.style).toBe("rolling");
+    expect(parseIntentText("doechii type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("little simz type beat").input.style).toBe("classic");
+    expect(getGrooveById("trap.crunk")).toBeDefined();
+  });
+
+  it("latin trap + french cloud: bunny / myke / duki / pnl", () => {
+    expect(parseIntentText("bad bunny type beat").input.style).toBe("rolling");
+    expect(parseIntentText("bad bunny type beat").input.bpmRange).toEqual([95, 125]);
+    expect(parseIntentText("myke towers type beat").input.style).toBe("rolling");
+    expect(parseIntentText("duki type beat").input.mood).toBe("aggressive");
+    const pnl = parseIntentText("pnl type beat");
+    expect(pnl.input.style).toBe("sparse");
+    expect(pnl.input.mood).toBe("chill");
+  });
+
+  it("soundcloud era: ski hyper / purpp rolling dark / pump rolling", () => {
+    expect(parseIntentText("ski mask type beat").input.style).toBe("hyper");
+    const purpp = parseIntentText("smokepurpp type beat");
+    expect(purpp.input.style).toBe("rolling");
+    expect(purpp.input.mood).toBe("dark");
+    expect(parseIntentText("lil pump type beat").input.style).toBe("rolling");
+    expect(parseIntentText("gucci gang beat").detected).toContain("♪ lil pump");
+  });
+
+  it("experimental edge: death grips → dnb.amen, clipping. → phonk horror", () => {
+    const dg = parseIntentText("death grips type beat");
+    expect(dg.input.genre).toBe("dnb");
+    expect(dg.input.style).toBe("amen");
+    expect(dg.input.bpmRange).toEqual([160, 168]);
+    const clip = parseIntentText("clipping type beat");
+    expect(clip.input.genre).toBe("phonk");
+    expect(clip.input.style).toBe("horror");
+    // bare "clipping" is an audio term — must not match
+    expect(matchArtistPreset(" add clipping to the master ")).toBeNull();
+    expect(getGrooveById("dnb.amen")).toBeDefined();
+    expect(getGrooveById("phonk.horror")).toBeDefined();
   });
 });
