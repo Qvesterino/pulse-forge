@@ -79,5 +79,13 @@ not a numbers wave.
    `src/effects/definitions.ts` + `reverb-processor.js` + `stock-delay-processor.js` + `ducking-delay-processor.js`
    + `compressor-processor.js` clamps → rebuild worklets → update value pins in `tests/effects-wave*.test.ts`.
    Golden vectors unaffected except where decay/delay values are baked — re-bless only those.
+   **DELIVERED 2026-09-26** — all ten items shipped; additionally the reverb comb-feedback stability
+   ceiling moved 0.98 → 0.995 (at 20 s decay the longest comb wants g ≈ 0.988; the old cap silently
+   shortened the tail to ~11 s) and the delay ring buffers were doubled (`STOCK_DELAY_RING` 384000 =
+   2 s @192 kHz; ducking ring growth target 2.05 s). Guarded by `tests/param-range-coherence.test.ts`
+   (descriptor bounds must cover `EFFECT_META` bounds — the test fails on any future def/engine drift).
+   Note: `bassBuss` attack/release route through the shared compressor worklet via `createBussComp`, so
+   the widened floors apply there too; its legacy native DynamicsCompressorNode fallback clamps at 1 s
+   (accepted degradation, worklet is the primary path).
 2. **Vlna 2 — UX polish:** B1 default, B2 tapers, A5 chorus, A8 crush powers, B3.
 3. **Vlna 3 — DSP:** oversampling on the drive family (2×/4× polyphase pre/post), pattern per `morphDynamicsNode`.
