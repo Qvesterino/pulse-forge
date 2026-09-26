@@ -9,7 +9,7 @@ import {
   splitAudioClipAtTick,
   updateAudioClip,
 } from "../src/commands/commands";
-import { BAR_TICKS } from "../src/project-model/types";
+import { BAR_TICKS, PPQ } from "../src/project-model/types";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -20,8 +20,7 @@ import type { AudioClip, ProjectDocument } from "../src/project-model/types";
  * Invariants:
  *  I1  clip positions/durations are finite, ≥ 0, duration ≥ 0.25 bars
  *  I2  split: left.end === right.start (no gap, no overlap), totals preserved
- *  I3  split: fades at the split point are neutralised (left.fadeOut = 0,
- *      right.fadeIn = 0); outer fades survive
+ *  I3  split: 3 ms de-click fades are applied at the seam; outer fades survive
  *  I4  duplicate/split copies do not share mutable arrays (warpMarkers)
  *  I5  NaN/Infinity patches can never poison the document
  *  I6  fades stay within clip bounds after resize/update
@@ -87,14 +86,38 @@ describe("I2/I3 split integrity", () => {
     expect(clips[0]!.lengthBars + clips[1]!.lengthBars).toBeCloseTo(4, 2);
   });
 
-  it("split neutralises fades at the split point, keeps outer fades", () => {
+  it("split applies a short de-click fade at the seam and keeps outer fades", () => {
     const { doc, clipId } = docWithClip({ fadeIn: 0.5, fadeOut: 0.7 });
     const next = splitAudioClipAtTick(doc, clipId, 4 * BAR + BAR / 2).execute(doc);
     const clips = clipsOf(next).sort((a, b) => a.startBar - b.startBar);
     expect(clips[0]!.fadeIn).toBeCloseTo(0.5); // outer fade survives
-    expect(clips[0]!.fadeOut).toBe(0); // split point is neutral
-    expect(clips[1]!.fadeIn).toBe(0); // split point is neutral
+    expect(clips[0]!.fadeOut).toBe(0.003); // short seam fade
+    expect(clips[1]!.fadeIn).toBe(0.003); // short seam fade
     expect(clips[1]!.fadeOut).toBeCloseTo(0.7); // outer fade survives
+  });
+
+  it("keeps fractional-tick split geometry and advances the source window without rounding", () => {
+    const { doc, clipId } = docWithClip({ offsetSec: 1.25, trimStart: 0.1, trimEnd: 0.3, stretchRate: 1.5 });
+    const clip = clipsOf(doc).find((candidate) => candidate.id === clipId)!;
+    const splitTick = clip.startBar * BAR + 137.25;
+    const split = splitAudioClipAtTick(doc, clipId, splitTick).execute(doc);
+    const [left, right] = clipsOf(split).sort((a, b) => a.startBar - b.startBar);
+    const expectedLeftBars = 137.25 / BAR;
+    const expectedSourceAdvance = (137.25 * 60 * clip.stretchRate) / (doc.bpm * PPQ);
+
+    expect(left!.lengthBars).toBeCloseTo(expectedLeftBars, 14);
+    expect(right!.startBar).toBe(splitTick / BAR);
+    expect(left!.startBar + left!.lengthBars).toBe(right!.startBar);
+    expect(right!.lengthBars).toBe(clip.lengthBars - expectedLeftBars);
+    expect(right!.offsetSec + right!.trimStart).toBeCloseTo(
+      clip.offsetSec + clip.trimStart + expectedSourceAdvance,
+      12,
+    );
+  });
+
+  it("rejects a non-finite split tick", () => {
+    const { doc, clipId } = docWithClip();
+    expect(() => splitAudioClipAtTick(doc, clipId, Number.NaN)).toThrow(/finite arrangement tick/i);
   });
 
   it("repeated splits stay adjacent and keep ids unique", () => {
@@ -176,7 +199,9 @@ describe("I5 duplicate placement + overlap contract", () => {
     // could not revert the first instance's copy.
     const cmd = duplicateAudioClip(withNeighbour, source.id);
     const next = cmd.execute(withNeighbour);
-    const mine = clipsOf(next).filter((c) => c.bufferId === "buf-1").sort((a, b) => a.startBar - b.startBar);
+    const mine = clipsOf(next)
+      .filter((c) => c.bufferId === "buf-1")
+      .sort((a, b) => a.startBar - b.startBar);
     expect(mine).toHaveLength(2);
     expect(mine[1]!.startBar).toBe(8); // adjacent to source — OVERLAPS neighbour (layering)
     expect(clipsOf(next)).toHaveLength(3); // neighbour untouched
@@ -283,7 +308,9 @@ describe("I8 combined stress sequence", () => {
     const halves = clipsOf(doc).sort((a, b) => a.startBar - b.startBar);
     // 3) duplicate the right half and park the copy far right
     apply(duplicateAudioClip(doc, halves[1]!.id));
-    const dup = clipsOf(doc).sort((a, b) => a.startBar - b.startBar).at(-1)!;
+    const dup = clipsOf(doc)
+      .sort((a, b) => a.startBar - b.startBar)
+      .at(-1)!;
     apply(moveAudioClip(doc, dup.id, 20));
     // 4) delete the duplicate, then the right half
     apply(deleteAudioClip(doc, dup.id));

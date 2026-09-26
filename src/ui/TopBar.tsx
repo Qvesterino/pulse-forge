@@ -794,13 +794,13 @@ export function TopBar({
             type="button"
             className={`btn btn-loop${loopEnabled ? " active" : ""}`}
             onClick={toggleLoop}
-            title="Toggle loop region (L)"
+            title="Toggle loop region (L). IN/OUT locators also define a single-pass punch range when LOOP is off."
             aria-label="Toggle loop region"
             aria-pressed={loopEnabled}
           >
             LOOP
           </button>
-          {loopEnabled && (
+          {(loopEnabled || loopEnd > loopStart) && (
             <>
               <DragNumber
                 label="IN"

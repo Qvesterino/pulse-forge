@@ -1,9 +1,10 @@
 # PLAN: Artist "type beat" references + "more X" routing (C1 + C2)
 
-> Plán implementácie pre dve medzery zistené pri odpovedi na otázku
+> Implementačný plán pre dve medzery zistené pri odpovedi na otázku
 > "bude to chápať aggressive / more energic / travis scott type beat?".
-> Status: **PLÁN — čaká na zelenú.** Súvisí s T1 krok 2 (text embedding),
-> ktorý je dlhodobejším riešením; tento plán je rýchly deterministický most.
+> Status (2026-09-25): C1/C2 sú v kóde; pridaný je aj Cudi × Travis
+> composition profile. Tento slovník zostáva deterministický fallback popri
+> budúcom text-embedding porozumení.
 
 ---
 
@@ -11,16 +12,17 @@
 
 Overené charakteristiky pre alias slovník (zdroje na konci):
 
-| Referencia | Žáner | BPM | Charakter |
-|---|---|---|---|
-| Travis Scott | trap | 130–140 (alebo 65–75 half-time) | dark/psychedelické pads, distorted 808s, spacious reverb |
-| Metro Boomin | trap | 130–140 (alebo 73–90 half-time) | dark cinematic, bells/piano loops, moody, measured |
-| Rage (Carti/Yeat/Southstar) | trap | 140–170 (typ. ~155) | bright DISTORTED synth leady, punk/hype energ, ethereal pads |
-| UK Drill (Central Cee) | trap/drill | ~140–145 | sliding 808s, dark, sparse |
-| Boom bap (Kanye) | trap (hip-hop) | 85–95 (typ. 90) | soul chops, swung drums, warm, laid back |
-| Fred again | house/UKG | 125–140 (medián ~132), minor | emotívne vocal chops, garage groove |
-| Amapiano (Tyla/Rema) | house | 110–115 | log drums, jazzy, laid back |
-| Ice Spice | trap | 140–150 | Bronx drill × jersey club |
+| Referencia                  | Žáner          | BPM                                         | Charakter                                                    |
+| --------------------------- | -------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| Travis Scott                | trap           | 130–140 (alebo 65–75 half-time)             | dark/psychedelické pads, distorted 808s, spacious reverb     |
+| Metro Boomin                | trap           | 130–140 (alebo 73–90 half-time)             | dark cinematic, bells/piano loops, moody, measured           |
+| Rage (Carti/Yeat/Southstar) | trap           | 140–170 (typ. ~155)                         | bright DISTORTED synth leady, punk/hype energ, ethereal pads |
+| UK Drill (Central Cee)      | trap/drill     | ~140–145                                    | sliding 808s, dark, sparse                                   |
+| Boom bap (Kanye)            | trap (hip-hop) | 85–95 (typ. 90)                             | soul chops, swung drums, warm, laid back                     |
+| Fred again                  | house/UKG      | 125–140 (medián ~132), minor                | emotívne vocal chops, garage groove                          |
+| Amapiano (Tyla/Rema)        | house          | 110–115                                     | log drums, jazzy, laid back                                  |
+| Ice Spice                   | trap           | 140–150                                     | Bronx drill × jersey club                                    |
+| Kid Cudi                    | trap           | 118–128 (napr. _Pursuit of Happiness_ ~120) | vzdušný, melodický, dlhšie harmónie                          |
 
 Dôležité zistenie: **"drill" dnes náš parser mapuje na techno**
 (`[/\bdrill\b/, "techno"]`) — to je zvláštne; drill (140–145, sliding 808s)
@@ -38,9 +40,10 @@ export interface ArtistPreset {
   names: readonly string[];
   /** Kanonický výstup — LEN existujúca slovná zásoba engine (žiadne nové能力). */
   genre: IntentGenre;
-  style?: string;              // musí existovať v groove knižnici pre daný žáner
+  style?: string; // musí existovať v groove knižnici pre daný žáner
+  productionProfile?: ProductionProfile; // voliteľný arrangement/melodic prior
   mood?: "dark" | "aggressive" | "chill" | "energetic";
-  energy?: number;             // 0..1 (override trait defaultov)
+  energy?: number; // 0..1 (override trait defaultov)
   density?: number;
   bpmRange?: [number, number];
   /** Chips v UI. */
@@ -49,33 +52,36 @@ export interface ArtistPreset {
 ```
 
 Pravidlá:
-- Každý preset mapuje LEN na existujúce genre/style/mood hodnoty — žiadne nové
-  schopnosti engine, čistá lookup vrstva. Právne čisté: meno → štýlový popis,
-  žiadne kopírovanie obsahu.
+
+- Preset mapuje meno na engine genre/groove, voliteľný všeobecný
+  `productionProfile`, mood, sliders a BPM prior. Profil vyberá originálne
+  scale-degree šablóny; nekopíruje melódie, nahrávky ani vokály referencie.
 - BPM z výskumu idú do `bpmRange` → `resolvedBpm` ich respektuje.
 
 ### 1.2 Registry (prvá vlna ~16 presetov, rozšíriteľná)
 
-| names (match) | genre | style | mood | energy | bpm |
-|---|---|---|---|---|---|
-| travis scott | trap | rolling | dark | 0.7 | [130,140] |
-| metro boomin | trap | dark | dark | 0.65 | [130,140] |
-| 21 savage | trap | dark | dark | 0.6 | [130,140] |
-| playboi carti, rage beat | trap | bouncy | aggressive | 0.9 | [150,165] |
-| yeat | trap | bouncy | energetic | 0.85 | [150,160] |
-| southstar, kyle beat | trap | bouncy | aggressive | 0.9 | [150,160] |
-| pop smoke, drill, uk drill, central cee | trap | sparse | dark | 0.65 | [140,145] |
-| ice spice, jersey | trap | bouncy | energetic | 0.8 | [140,150] |
-| kanye, kanye west, boom bap, boombap | trap | classic | warm | 0.55 | [86,92] |
-| hip hop, hip-hop, hiphop | trap | classic | — | 0.6 | [86,95] |
-| phonk | trap | drifting | dark | 0.75 | [130,140] |
-| fred again | house | deep | — | 0.75 | [128,136] |
-| disclosure, ukg garage (už máme žáner) | house | ukg | energetic | 0.8 | [128,135] |
-| fisher, tech house | house | driving | energetic | 0.85 | [124,128] |
-| amapiano, rema, tyla, afrobeat | house | afro | chill | 0.6 | [110,115] |
-| swedish house mafia, big room, martin garrix | house | driving | energetic | 0.95 | [126,130] |
+| names (match)                                | genre | style    | production profile    | mood       | energy | bpm       |
+| -------------------------------------------- | ----- | -------- | --------------------- | ---------- | ------ | --------- |
+| travis scott                                 | trap  | rolling  | dark-atmospheric-trap | dark       | 0.7    | [130,140] |
+| kid cudi                                     | trap  | lux      | spacey-melodic-rap    | chill      | 0.55   | [118,128] |
+| metro boomin                                 | trap  | dark     | —                     | dark       | 0.65   | [130,140] |
+| 21 savage                                    | trap  | dark     | —                     | dark       | 0.6    | [130,140] |
+| playboi carti, rage beat                     | trap  | bouncy   | —                     | aggressive | 0.9    | [150,165] |
+| yeat                                         | trap  | bouncy   | —                     | energetic  | 0.85   | [150,160] |
+| southstar, kyle beat                         | trap  | bouncy   | —                     | aggressive | 0.9    | [150,160] |
+| pop smoke, drill, uk drill, central cee      | trap  | sparse   | —                     | dark       | 0.65   | [140,145] |
+| ice spice, jersey                            | trap  | bouncy   | —                     | energetic  | 0.8    | [140,150] |
+| kanye, kanye west, boom bap, boombap         | trap  | classic  | —                     | —          | 0.55   | [86,92]   |
+| hip hop, hip-hop, hiphop                     | trap  | classic  | —                     | —          | 0.6    | [86,95]   |
+| phonk                                        | trap  | drifting | —                     | dark       | 0.75   | [130,140] |
+| fred again                                   | house | deep     | —                     | —          | 0.75   | [128,136] |
+| disclosure, ukg garage (už máme žáner)       | house | ukg      | —                     | energetic  | 0.8    | [128,135] |
+| fisher, tech house                           | house | driving  | —                     | energetic  | 0.85   | [124,128] |
+| amapiano, rema, tyla, afrobeat               | house | afro     | —                     | chill      | 0.6    | [110,115] |
+| swedish house mafia, big room, martin garrix | house | driving  | —                     | energetic  | 0.95   | [126,130] |
 
 Poznámky:
+
 - `rage beat` ako samostatná fráza (nie meno) — beatmaker jazyk.
 - Boom bap je v engine trap žáner (GENRE_PHRASES už mapuje hip hop → trap);
   klasický style + nízke BPM + warm mood = boom bap feel.
@@ -98,6 +104,7 @@ Poznámky:
   meniť, len parser obohatiť.
 
 ### 1.4 Testy
+
 - "travis scott type beat" → trap/rolling/dark/[130,140]
 - "travis scott type beat bright with a lead" → mood energetic (text override),
   roles +lead
@@ -109,6 +116,19 @@ Poznámky:
 - determinizmus + regression (existujúcich 18 parser testov nezmenených —
   OK, lebo artist match sa spustí len pri mene; "dark rolling techno"
   obsahuje žiadne meno)
+
+### 1.5 Kid Cudi × Travis Scott vertical slice
+
+- Jednotlivé aliasy vyberú všeobecný production profile; dvojica vyberie
+  stabilný `spacey-dark-trap` profil bez ohľadu na poradie mien.
+- Blend drží `trap.rolling` ako drum groove, no mení melodic prior: dlhšie
+  mollové akordy, redší hook a basová linka s väčším priestorom.
+- Zjednotenie BPM rieši neprekrývajúce sa priory explicitne; explicitný žáner,
+  key, tempo a character slová od používateľa majú stále prednosť.
+- Profile id sa prenáša cez IntentSpec, generátor aj generation recipe; project
+  schema v6 ho ukladá ako voliteľnú provenance položku.
+- Overené v `tests/cudi-travis-profile.test.ts`: alias matcher, poradie blendu,
+  normalizácia/plán, groove výber, deterministické tóny a mollová tónina.
 
 ---
 
@@ -161,6 +181,7 @@ energy/density komparatívy → REVISE. Zdôvodnenie: tón = mixovanie (EQ), ene
 - Status: "⚡ energy +0.15 (same seed)" — používateľ vidí, že ide o revíziu.
 
 ### 2.5 Testy
+
 - router: "more energetic" → revise/energy/more; "menej husty" → revise/
   density/less; "more punch" → MIX (nie revise); "darker" → MIX
 - panel-level: buildSong/GENERATE nastaví lastIntentRef; "more energetic"
@@ -199,5 +220,7 @@ Estimate: artists.ts + parser ~1 hod; routing ~45 min; testy ~45 min.
 - [BPM Music — Rage beats (Carti/Yeat) guide](https://blog.bpmmusic.io)
 - [Tellingbeatzz — Boom Bap 85–95 BPM](https://tellingbeatzz.com)
 - [mixgraph.io — Fred again BPM štatistiky](https://mixgraph.io)
+- [Pursuit of Happiness — odhadované tempo 120 BPM](https://songparts.com/songs/kid-cudi/pursuit-of-happiness)
+- [Goosebumps — Travis Scott, 130 BPM](https://songbpm.com/%40travis-scott/goosebumps-dd211878-7c6a-4246-afed-5f1d84b19829)
 - [Traktrain/BeatStars — trending type beat žánre 2025](https://traktrain.com)
 - [Pixabay — Central Cee type beat objem](https://pixabay.com)

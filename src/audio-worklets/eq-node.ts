@@ -1,4 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
+
+import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
@@ -56,6 +58,9 @@ export function createEqNode(ctx: BaseAudioContext, instance: { params: Record<s
     channelCount: 2,
     channelInterpretation: "speakers",
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "eq-processor");
 
   const input = ctx.createGain();
   const output = ctx.createGain();

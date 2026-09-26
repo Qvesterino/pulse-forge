@@ -99,7 +99,9 @@ describe("count-in lead-in placement trim (audit 07)", () => {
     expect(metadata).toContain("leadInSec?: number");
     const panel = readFileSync(resolve(process.cwd(), "src/ui/ArrangementPanel.tsx"), "utf8");
     expect(panel).toContain("leadInWillApply");
-    expect(panel.match(/offsetSec: (?:take\.session|session)\.leadInSec/g)?.length ?? 0).toBe(2);
+    expect(
+      panel.match(/offsetSec: punchWindow\?\.offsetSec \?\? (?:take\.session|session)\.leadInSec/g)?.length ?? 0,
+    ).toBe(2);
     expect(panel).toContain("take.buffer.duration - (take.session.leadInSec ?? 0)");
   });
 });

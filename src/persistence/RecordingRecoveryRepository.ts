@@ -19,6 +19,16 @@ export interface RecordingSession {
   placeOnTimeline?: boolean;
   /** Optional per-captured-channel destinations. Absent in older sessions, which restore as one multichannel clip. */
   channelDestinations?: RecordingChannelDestination[];
+  /** Optional non-destructive take lane for sequential alternate passes. */
+  takeGroupId?: string;
+  /** Unique identity for this pass inside `takeGroupId`. */
+  takeId?: string;
+  /** True when one continuous PCM stream contains multiple transport-loop passes. */
+  loopCapture?: boolean;
+  /** Punch locators in transport ticks; PCM ends at the exact stored punch-out frame. */
+  punchCapture?: { startTick: number; endTick: number };
+  /** True only when the final PCM block reached the scheduled punch-out frame. */
+  punchOutReached?: boolean;
   startBar: number;
   bpm: number;
   /** Manual mic-input alignment captured when the take started; absent in older sessions. */
@@ -34,6 +44,8 @@ export interface RecordingSession {
   status: "recording" | "recoverable";
   totalFrames: number;
   chunkCount: number;
+  /** Materialized boundary offsets; gathered from PCM chunks when restoring a take. */
+  takeBoundaries?: number[];
 }
 
 export interface RecordingChannelDestination {
@@ -49,9 +61,14 @@ export interface RecordingPcmChunk {
   frames: number;
   /** One transferable, planar Float32 PCM block per channel. */
   channels: ArrayBuffer[];
+  /** Chunk-local frame offsets for loop take boundaries, committed atomically with this PCM block. */
+  takeBoundaries?: number[];
+  /** Marks the final chunk that reached the scheduled punch-out frame. */
+  punchOut?: boolean;
 }
 
 const RECOVERY_STALE_MS = 5_000;
+const MAX_TAKE_BOUNDARIES_PER_CHUNK = 16_384;
 
 /**
  * Surfaced when `begin()` runs the IndexedDB out of disk budget while
@@ -110,6 +127,15 @@ export class RecordingRecoveryRepository {
   constructor(private readonly openDatabase: typeof openDb = openDb) {}
 
   async begin(session: RecordingSession): Promise<void> {
+    if (
+      session.punchCapture &&
+      (!Number.isSafeInteger(session.punchCapture.startTick) ||
+        session.punchCapture.startTick < 0 ||
+        !Number.isSafeInteger(session.punchCapture.endTick) ||
+        session.punchCapture.endTick <= session.punchCapture.startTick)
+    ) {
+      throw new Error("Recording punch locators are invalid");
+    }
     const db = await this.openDatabase();
     try {
       await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => store.add(session));
@@ -129,7 +155,7 @@ export class RecordingRecoveryRepository {
         } catch (overwriteErr) {
           if (isQuotaExceeded(overwriteErr)) {
             throw new RecordingStorageQuotaError(
-              `IndexedDB quota exceeded while re-arming recording session ${session.id}`,
+              "Not enough browser storage to start recording. Free up space and try again",
               { cause: overwriteErr },
             );
           }
@@ -138,7 +164,7 @@ export class RecordingRecoveryRepository {
       }
       if (isQuotaExceeded(err)) {
         throw new RecordingStorageQuotaError(
-          `IndexedDB quota exceeded while starting recording session ${session.id}`,
+          "Not enough browser storage to start recording. Free up space and try again",
           { cause: err },
         );
       }
@@ -155,38 +181,69 @@ export class RecordingRecoveryRepository {
       if (!isArrayBuffer(channel) || channel.byteLength !== chunk.frames * Float32Array.BYTES_PER_ELEMENT)
         throw new Error("Recording block has an invalid PCM channel");
     }
+    if (chunk.takeBoundaries !== undefined && !Array.isArray(chunk.takeBoundaries)) {
+      throw new Error("Recording block has invalid take boundaries");
+    }
+    if (chunk.punchOut !== undefined && typeof chunk.punchOut !== "boolean") {
+      throw new Error("Recording block has invalid punch-out metadata");
+    }
+    const localBoundaries = chunk.takeBoundaries ?? [];
+    if (
+      localBoundaries.length > MAX_TAKE_BOUNDARIES_PER_CHUNK ||
+      localBoundaries.some(
+        (frame, index) =>
+          !Number.isSafeInteger(frame) ||
+          frame < 0 ||
+          frame >= chunk.frames ||
+          (index > 0 && frame <= localBoundaries[index - 1]!),
+      )
+    ) {
+      throw new Error("Recording block has invalid take boundaries");
+    }
 
-    const db = await this.openDatabase();
-    await tx(db, [STORE_RECORDING_SESSIONS, STORE_RECORDING_CHUNKS], "readwrite", (stores) => {
-      const sessions = stores[STORE_RECORDING_SESSIONS];
-      const chunks = stores[STORE_RECORDING_CHUNKS];
-      const request = sessions.get(chunk.sessionId);
-      request.onsuccess = () => {
-        const session = request.result as RecordingSession | undefined;
-        if (
-          !session ||
-          session.status !== "recording" ||
-          chunk.sequence !== session.chunkCount ||
-          chunk.channels.length !== session.channels ||
-          chunk.frames > Math.max(128, Math.round(session.sampleRate))
-        ) {
-          request.transaction?.abort();
-          return;
-        }
-        const nextFrames = session.totalFrames + chunk.frames;
-        if (!Number.isSafeInteger(nextFrames)) {
-          request.transaction?.abort();
-          return;
-        }
-        chunks.add(chunk);
-        sessions.put({
-          ...session,
-          totalFrames: nextFrames,
-          chunkCount: session.chunkCount + 1,
-          updatedAt: Date.now(),
-        });
-      };
-    });
+    try {
+      const db = await this.openDatabase();
+      await tx(db, [STORE_RECORDING_SESSIONS, STORE_RECORDING_CHUNKS], "readwrite", (stores) => {
+        const sessions = stores[STORE_RECORDING_SESSIONS];
+        const chunks = stores[STORE_RECORDING_CHUNKS];
+        const request = sessions.get(chunk.sessionId);
+        request.onsuccess = () => {
+          const session = request.result as RecordingSession | undefined;
+          if (
+            !session ||
+            session.status !== "recording" ||
+            chunk.sequence !== session.chunkCount ||
+            chunk.channels.length !== session.channels ||
+            (chunk.punchOut === true && !session.punchCapture) ||
+            chunk.frames > Math.max(128, Math.round(session.sampleRate))
+          ) {
+            request.transaction?.abort();
+            return;
+          }
+          const nextFrames = session.totalFrames + chunk.frames;
+          if (!Number.isSafeInteger(nextFrames)) {
+            request.transaction?.abort();
+            return;
+          }
+          chunks.add(chunk);
+          sessions.put({
+            ...session,
+            totalFrames: nextFrames,
+            chunkCount: session.chunkCount + 1,
+            ...(chunk.punchOut ? { punchOutReached: true } : {}),
+            updatedAt: Date.now(),
+          });
+        };
+      });
+    } catch (err) {
+      if (isQuotaExceeded(err)) {
+        throw new RecordingStorageQuotaError(
+          "Browser storage filled during recording; previously committed audio blocks remain recoverable",
+          { cause: err },
+        );
+      }
+      throw err;
+    }
   }
 
   async markRecoverable(sessionId: string): Promise<void> {
@@ -196,6 +253,18 @@ export class RecordingRecoveryRepository {
       request.onsuccess = () => {
         const session = request.result as RecordingSession | undefined;
         if (session) store.put({ ...session, status: "recoverable", updatedAt: Date.now() });
+      };
+    });
+  }
+
+  /** Persist punch completion even when punch-out lands exactly on a PCM block edge. */
+  async markPunchOutReached(sessionId: string): Promise<void> {
+    const db = await this.openDatabase();
+    await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => {
+      const request = store.get(sessionId);
+      request.onsuccess = () => {
+        const session = request.result as RecordingSession | undefined;
+        if (session?.punchCapture) store.put({ ...session, punchOutReached: true, updatedAt: Date.now() });
       };
     });
   }

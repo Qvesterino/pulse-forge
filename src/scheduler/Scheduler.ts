@@ -4,6 +4,7 @@ import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
+import { audioClipsForPlayback } from "../project-model/audio-takes";
 import type { Transport } from "../transport/Transport";
 
 export interface SchedulerDeps {
@@ -112,6 +113,30 @@ const FLIP_COMMIT_MS = 5;
 
 const mod = (value: number, m: number): number => ((value % m) + m) % m;
 
+export interface LoopTakeBoundary {
+  loopStartTick: number;
+  loopEndTick: number;
+  /** Exact AudioContext time corresponding to loopEndTick. */
+  audioTime: number;
+  /** Retract a previously queued boundary when the transport time map changes. */
+  cancelled?: true;
+}
+
+export interface ScheduledTickBoundary {
+  tick: number;
+  /** Exact AudioContext time corresponding to the requested musical tick. */
+  audioTime: number;
+  /** Retract a queued boundary after playback stops or the time map changes. */
+  cancelled?: true;
+}
+
+interface TickBoundarySubscription {
+  tick: number;
+  listener: (boundary: ScheduledTickBoundary) => void;
+  pendingAudioTime: number | null;
+  fired: boolean;
+}
+
 /** Click dedup guard — fires only for future (not-yet-played) clicks like `audible`. */
 function audibleClick(when: number, now: number): boolean {
   return when >= now - 0.002;
@@ -216,6 +241,9 @@ export class Scheduler {
   /** `failedWindows` = scheduling windows skipped after an exception (see tick). */
   stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0, flipFastCommits: 0 };
   private listeners = new Set<() => void>();
+  private loopBoundaryListeners = new Set<(boundary: LoopTakeBoundary) => void>();
+  private pendingLoopBoundary: LoopTakeBoundary | null = null;
+  private tickBoundarySubscriptions = new Set<TickBoundarySubscription>();
   /**
    * Per-tick allocations in song mode (sorted clips + id → entity
    * Maps for scenes / patterns) used to fire every 25 ms even when
@@ -253,6 +281,81 @@ export class Scheduler {
     return () => this.listeners.delete(listener);
   };
 
+  /** Observe live loop wraps for PCM loop recording; this is runtime-only, never project state. */
+  subscribeLoopBoundaries = (listener: (boundary: LoopTakeBoundary) => void): (() => void) => {
+    this.loopBoundaryListeners.add(listener);
+    const pending = this.pendingLoopBoundary;
+    if (pending && pending.audioTime > this.deps.getAudioTime()) listener(pending);
+    return () => this.loopBoundaryListeners.delete(listener);
+  };
+
+  private cancelPendingLoopBoundary(): void {
+    const pending = this.pendingLoopBoundary;
+    if (!pending) return;
+    this.pendingLoopBoundary = null;
+    const cancellation = { ...pending, cancelled: true as const };
+    for (const listener of this.loopBoundaryListeners) listener(cancellation);
+  }
+
+  private publishLoopBoundary(boundary: LoopTakeBoundary): void {
+    this.pendingLoopBoundary = boundary;
+    for (const listener of this.loopBoundaryListeners) listener(boundary);
+  }
+
+  /** Queue a musical-time boundary from the scheduler lookahead, not the UI timer cadence. */
+  subscribeTickBoundary(tick: number, listener: (boundary: ScheduledTickBoundary) => void): () => void {
+    if (!Number.isFinite(tick) || tick < 0) throw new Error("A scheduled transport boundary needs a non-negative tick");
+    const subscription: TickBoundarySubscription = { tick, listener, pendingAudioTime: null, fired: false };
+    this.tickBoundarySubscriptions.add(subscription);
+    if (!this.stopped) this.updateTickBoundaries(this.deps.getAudioTime(), this.deps.getAudioTime() + HORIZON_SECONDS);
+    return () => {
+      this.cancelTickBoundary(subscription);
+      this.tickBoundarySubscriptions.delete(subscription);
+    };
+  }
+
+  private cancelTickBoundary(subscription: TickBoundarySubscription): void {
+    const audioTime = subscription.pendingAudioTime;
+    if (audioTime === null) return;
+    subscription.pendingAudioTime = null;
+    subscription.listener({ tick: subscription.tick, audioTime, cancelled: true });
+  }
+
+  private updateTickBoundaries(now: number, horizon: number): void {
+    const transport = this.deps.getTransport();
+    for (const subscription of this.tickBoundarySubscriptions) {
+      if (!transport.playing) {
+        this.cancelTickBoundary(subscription);
+        continue;
+      }
+      const scheduledTempoMap = this.songTimeAt;
+      const pendingFlip = this.pendingTempoFlip;
+      const audioTime = scheduledTempoMap
+        ? scheduledTempoMap(subscription.tick)
+        : pendingFlip && subscription.tick >= pendingFlip.atTick
+          ? pendingFlip.boundaryTime + (subscription.tick - pendingFlip.atTick) * (60 / (pendingFlip.bpm * PPQ))
+          : transport.timeAtTick(subscription.tick);
+      if (subscription.pendingAudioTime !== null && Math.abs(subscription.pendingAudioTime - audioTime) > 1e-7) {
+        this.cancelTickBoundary(subscription);
+      }
+      if (subscription.pendingAudioTime !== null) {
+        if (subscription.pendingAudioTime <= now) {
+          subscription.pendingAudioTime = null;
+          subscription.fired = true;
+        }
+        continue;
+      }
+      if (subscription.fired || transport.position >= subscription.tick) {
+        subscription.fired = true;
+        continue;
+      }
+      if (audioTime > now && audioTime <= horizon) {
+        subscription.pendingAudioTime = audioTime;
+        subscription.listener({ tick: subscription.tick, audioTime });
+      }
+    }
+  }
+
   private notify(): void {
     for (const listener of this.listeners) listener();
   }
@@ -287,6 +390,8 @@ export class Scheduler {
   }
 
   stop(): void {
+    this.cancelPendingLoopBoundary();
+    for (const subscription of this.tickBoundarySubscriptions) this.cancelTickBoundary(subscription);
     // Playback ended — hand tempo control back to the project BPM.
     this.pendingTempoFlip = null;
     this.disarmFlipCommitter();
@@ -314,6 +419,7 @@ export class Scheduler {
 
   /** Re-align the scheduling window to the transport (after a seek while playing). */
   resync(): void {
+    this.cancelPendingLoopBoundary();
     // A seek invalidates a scheduled tempo flip — the boundary is re-detected
     // against the new position on the next window.
     this.pendingTempoFlip = null;
@@ -428,7 +534,26 @@ export class Scheduler {
       const loopEnd = resolveLoopEnd(transport, doc, mode);
       this.activeLoopEnd = loopEnd;
       const position = transport.position;
+      const boundaryTime = transport.timeAtTick(loopEnd);
+      const pending = this.pendingLoopBoundary;
+      const pendingMatches =
+        pending !== null &&
+        pending.loopStartTick === loopStart &&
+        pending.loopEndTick === loopEnd &&
+        pending.audioTime === boundaryTime;
       if (position >= loopEnd || position < loopStart) {
+        const completedLoop = position >= loopEnd && loopEnd > loopStart;
+        if (completedLoop && pendingMatches) {
+          this.pendingLoopBoundary = null;
+        } else {
+          this.cancelPendingLoopBoundary();
+          if (completedLoop) {
+            // Preserve the exact intended seam. The capture worklet rejects a
+            // boundary that arrived after its frame instead of shifting it.
+            this.publishLoopBoundary({ loopStartTick: loopStart, loopEndTick: loopEnd, audioTime: boundaryTime });
+            this.pendingLoopBoundary = null;
+          }
+        }
         transport.seek(loopStart);
         // The wrap jumps position — a scheduled flip would fire at the wrong
         // place. Boundary detection re-runs from the wrapped window.
@@ -440,6 +565,11 @@ export class Scheduler {
         // the old anchor. Recompute against the post-seek anchor so
         // the clamp below sees the correct value.
         windowEnd = transport.tickAt(horizon);
+      } else {
+        if (pending && !pendingMatches) this.cancelPendingLoopBoundary();
+        if (loopEnd > loopStart && boundaryTime > now && boundaryTime <= horizon && !this.pendingLoopBoundary) {
+          this.publishLoopBoundary({ loopStartTick: loopStart, loopEndTick: loopEnd, audioTime: boundaryTime });
+        }
       }
       // Clamp windowEnd to loopEnd so we never schedule events past
       // the loop boundary in the same window. Without the clamp the
@@ -481,7 +611,10 @@ export class Scheduler {
       return;
     }
     try {
-      if (!transport.loopEnabled) this.activeLoopEnd = null;
+      if (!transport.loopEnabled) {
+        this.activeLoopEnd = null;
+        this.cancelPendingLoopBoundary();
+      }
       this.scheduleWindow(transport, now, windowStart, windowEnd);
     } catch (err) {
       // A scheduling failure must not wedge the transport: without advancing
@@ -492,6 +625,7 @@ export class Scheduler {
       console.error("[scheduler] scheduling window failed:", err);
     }
     this.windowStartTick = windowEnd;
+    this.updateTickBoundaries(now, horizon);
     this.stats.lastHorizonTick = windowEnd;
     this.stats.windows += 1;
   }
@@ -821,7 +955,7 @@ export class Scheduler {
       }
       // AudioClips: fire any clip whose start tick falls inside the current window
       if (this.deps.triggerAudioClip && doc.arrangement.audioClips) {
-        for (const clip of doc.arrangement.audioClips) {
+        for (const clip of audioClipsForPlayback(doc.arrangement)) {
           const clipStart = clip.startBar * BAR_TICKS;
           if (clipStart < contentWindowStart || clipStart >= windowEnd) continue;
           const when = timeAtForWindow(clipStart) + this.scheduleOffsetSec() + 0.005;

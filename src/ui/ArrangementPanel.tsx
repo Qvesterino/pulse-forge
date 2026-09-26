@@ -18,6 +18,7 @@ import {
   addAudioClip,
   addMarker,
   consolidateAudioClips,
+  compAudioTakeRange,
   autoArrangeSong,
   generatePatternCommand,
   createArrangementSkeleton,
@@ -50,6 +51,7 @@ import {
   setSceneIntensityCurve,
   setSceneRole,
   resizeAudioClip,
+  setActiveAudioTake,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
   updateArrangementTransition,
@@ -99,13 +101,17 @@ import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
 import {
   addRecordedAudioClips,
+  addRecordedLoopSession,
+  addRecordedAudioTakeClip,
   clipLengthBars,
   compensateRecordingStartBar,
   recordedTakeAlreadyPlaced,
   resolveRecordedAudioDestinations,
+  recordedPunchWindow,
   recordingStartBar,
 } from "./timelineRec";
 import { useCurrentItemId, usePlayheadBar } from "./playhead";
+import { useLongPress } from "./useLongPress";
 import type { Transport } from "../transport/Transport";
 import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 import { StretchDialog } from "./StretchDialog";
@@ -145,6 +151,17 @@ function formatChannelRange(range: NonNullable<PcmCaptureInfo["supportedChannelC
   if (max !== null) return `up to ${max}`;
   if (min !== null) return `at least ${min}`;
   return "unspecified";
+}
+
+function createRecordingTakeId(prefix: string): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+  } catch {
+    // Fall through to a collision-resistant local identifier.
+  }
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Parse `#rrggbb` (or `#rgb`) into [r, g, b]; null when unparseable. */
@@ -290,9 +307,38 @@ export function ArrangementPanel() {
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
+  const selectedAudioClip = (arrangement.audioClips ?? []).find((clip) => clip.id === selectedAudioClipId) ?? null;
+  const selectedAudioTakeGroup = selectedAudioClip?.takeGroupId
+    ? arrangement.takeGroups?.find((group) => group.id === selectedAudioClip.takeGroupId)
+    : undefined;
+  const selectedAudioTakeIds = selectedAudioTakeGroup
+    ? Array.from(
+        new Set(
+          (arrangement.audioClips ?? [])
+            .filter(
+              (clip) =>
+                clip.takeGroupId === selectedAudioTakeGroup.id &&
+                clip.takeId &&
+                clip.takeId !== selectedAudioTakeGroup.compTakeId,
+            )
+            .map((clip) => clip.takeId!),
+        ),
+      )
+    : [];
   // ── Timeline recording: arm a track, REC an audio input straight into the song ──
   const [armedTrackId, setArmedTrackId] = useState<string>("");
   const [armedSecondTrackId, setArmedSecondTrackId] = useState<string>("");
+  const [armedAdditionalTrackIds, setArmedAdditionalTrackIds] = useState<string[]>([]);
+  const [requestedChannelCount, setRequestedChannelCount] = useState<number | null>(null);
+  const [recordingTakeGroupSelection, setRecordingTakeGroupSelection] = useState("");
+  const [loopTakeCapture, setLoopTakeCapture] = useState(false);
+  const [punchCapture, setPunchCapture] = useState(false);
+  const recordingTakeGroups = (arrangement.takeGroups ?? []).filter((group) => group.trackId === armedTrackId);
+  const recordingTakeMode =
+    recordingTakeGroupSelection === "new" ||
+    recordingTakeGroups.some((group) => group.id === recordingTakeGroupSelection)
+      ? recordingTakeGroupSelection
+      : "";
   const [recState, setRecState] = useState<"idle" | "starting" | "recording" | "saving">("idle");
   const [recSeconds, setRecSeconds] = useState(0);
   const [micMonitoring, setMicMonitoring] = useState(false);
@@ -300,6 +346,7 @@ export function ArrangementPanel() {
   const [recordingInputDevices, setRecordingInputDevices] = useState<RecordingInputDevice[]>([]);
   const [recordingInputListError, setRecordingInputListError] = useState(false);
   const [lastCaptureInfo, setLastCaptureInfo] = useState<PcmCaptureInfo | null>(null);
+  const routingChannelCount = Math.min(8, requestedChannelCount ?? lastCaptureInfo?.capturedChannels ?? 2);
   const [inputGainDb, setInputGainDb] = useState<number>(() => clampInputGainDb(loadRecordingInputGainDb()));
   /** Live input level (peak 0..1) polled from the recorder while wiring exists. */
   const [micPeak, setMicPeak] = useState(0);
@@ -312,6 +359,8 @@ export function ArrangementPanel() {
   const recStartAttemptRef = useRef(0);
   const recPanelMountedRef = useRef(true);
   const stoppingRecRef = useRef(false);
+  const loopBoundaryUnsubscribeRef = useRef<(() => void) | null>(null);
+  const punchBoundaryUnsubscribeRef = useRef<(() => void) | null>(null);
   const recoveryRepoRef = useRef(services.recordingRecovery);
   const [recoverableTakes, setRecoverableTakes] = useState<RecordingSession[]>([]);
   const recoverableTakesRef = useRef<RecordingSession[]>([]);
@@ -494,8 +543,13 @@ export function ArrangementPanel() {
       recStartPendingRef.current = false;
       const recorder = recRef.current;
       recRef.current = null;
+      loopBoundaryUnsubscribeRef.current?.();
+      loopBoundaryUnsubscribeRef.current = null;
+      punchBoundaryUnsubscribeRef.current?.();
+      punchBoundaryUnsubscribeRef.current = null;
       if (recorder) {
         recorder.onError = null;
+        recorder.onPunchOut = null;
         void recorder.cancel();
       }
       sliceAnalysisRef.current?.abort();
@@ -512,6 +566,74 @@ export function ArrangementPanel() {
     setLastCaptureInfo(null);
     let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
     try {
+      if (loopTakeCapture && !services.transport.loopEnabled) {
+        throw new Error("Enable the transport loop and set its locators before recording loop passes");
+      }
+      if (punchCapture && services.transport.playing) {
+        throw new Error("Stop playback before arming a punch; REC will start from the punch-in locator");
+      }
+      if (punchCapture && services.transport.loopEnabled) {
+        throw new Error("Turn LOOP off for a single punch pass; punch uses the transport start/end locators");
+      }
+      if (
+        punchCapture &&
+        (services.transport.loopEnd <= services.transport.loopStart || services.transport.loopStart < 0)
+      ) {
+        throw new Error("Set valid transport start and end locators before recording a punch");
+      }
+      if (punchCapture && (loopTakeCapture || recordingTakeMode)) {
+        throw new Error("Punch recording currently uses one take at a time; turn off loop passes and take groups");
+      }
+      if (loopTakeCapture && services.transport.loopEnd <= services.transport.loopStart) {
+        throw new Error("Set an explicit loop end locator before recording loop passes");
+      }
+      if (loopTakeCapture && armedSecondTrackId) {
+        throw new Error("Loop take groups record one stereo track at a time. Set CH 2 to keep stereo.");
+      }
+      if (loopTakeCapture && armedAdditionalTrackIds.some(Boolean)) {
+        throw new Error("Loop take groups record one track at a time. Turn off extra input-channel routing first.");
+      }
+      if (recordingTakeMode && armedSecondTrackId) {
+        throw new Error("Take groups record one stereo track at a time. Set CH 2 to keep stereo, then record again.");
+      }
+      if (recordingTakeMode && armedAdditionalTrackIds.some(Boolean)) {
+        throw new Error("Take groups record one track at a time. Turn off extra input-channel routing first.");
+      }
+      if ((loopTakeCapture || recordingTakeMode) && (requestedChannelCount ?? 0) > 2) {
+        throw new Error("Loop and alternate-take capture currently support at most two input channels per take");
+      }
+      if (requestedChannelCount !== null && requestedChannelCount > 2) {
+        const routedTrackIds = [armedTrackId, armedSecondTrackId, ...armedAdditionalTrackIds].slice(
+          0,
+          requestedChannelCount,
+        );
+        if (
+          routedTrackIds.length !== requestedChannelCount ||
+          routedTrackIds.some((trackId) => !trackId) ||
+          new Set(routedTrackIds).size !== requestedChannelCount
+        ) {
+          throw new Error(
+            `Assign each of the ${requestedChannelCount} requested input channels to a different track before recording`,
+          );
+        }
+      }
+      const loopTakeLocators = loopTakeCapture
+        ? { start: services.transport.loopStart, end: services.transport.loopEnd }
+        : null;
+      const punchLocators = punchCapture
+        ? { start: services.transport.loopStart, end: services.transport.loopEnd }
+        : null;
+      const takeGroupId = loopTakeCapture
+        ? recordingTakeMode && recordingTakeMode !== "new"
+          ? recordingTakeMode
+          : createRecordingTakeId("take-group")
+        : recordingTakeMode === "new"
+          ? createRecordingTakeId("take-group")
+          : recordingTakeMode || undefined;
+      const takeId = takeGroupId ? createRecordingTakeId("take") : undefined;
+      let takeAnchorApplied = false;
+      let punchSuppressLeadIn = false;
+      let punchLeadInTicks = 0;
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
       if (!ctx) throw new Error("Audio engine is not ready");
@@ -524,6 +646,7 @@ export function ArrangementPanel() {
         recovery: recoveryRepoRef.current!,
         inputDeviceId: recordingInputDeviceId,
         inputGainDb,
+        ...(requestedChannelCount !== null ? { requestedChannelCount } : {}),
       });
       // Publish ownership before the permission prompt/async start so an
       // unmount or a second REC action can cancel this exact pending take.
@@ -533,34 +656,87 @@ export function ArrangementPanel() {
         const currentDoc = services.store.doc;
         const track = currentDoc.tracks.find((item) => item.id === armedTrackId);
         if (!track) return null;
-        const secondTrack = armedSecondTrackId
-          ? currentDoc.tracks.find((item) => item.id === armedSecondTrackId)
-          : undefined;
-        if (armedSecondTrackId && !secondTrack) return null;
-        const startBar = Math.max(0, recordingStartBar(services.transport.position));
+        if (
+          loopTakeLocators &&
+          (services.transport.loopStart !== loopTakeLocators.start ||
+            services.transport.loopEnd !== loopTakeLocators.end)
+        ) {
+          throw new Error("Transport loop locators changed while the audio input was opening; start REC again");
+        }
+        if (
+          punchLocators &&
+          (services.transport.loopStart !== punchLocators.start || services.transport.loopEnd !== punchLocators.end)
+        ) {
+          throw new Error("Punch locators changed while the audio input was opening; start REC again");
+        }
+        if (punchLocators) {
+          const requestedLeadInTicks = services.transport.paused ? 0 : services.transport.leadInTicks();
+          const canRollIntoPunch = requestedLeadInTicks > 0 && punchLocators.start >= requestedLeadInTicks;
+          punchSuppressLeadIn = requestedLeadInTicks > 0 && !canRollIntoPunch;
+          punchLeadInTicks = canRollIntoPunch ? requestedLeadInTicks : 0;
+          services.transport.seek(punchLocators.start - punchLeadInTicks);
+        }
+        if (takeGroupId) {
+          if (armedSecondTrackId || armedAdditionalTrackIds.some(Boolean)) return null;
+          const group = currentDoc.arrangement.takeGroups?.find((item) => item.id === takeGroupId);
+          if (loopTakeCapture) {
+            if (recordingTakeMode && recordingTakeMode !== "new" && (!group || group.trackId !== track.id)) return null;
+            if (!takeAnchorApplied) {
+              const loopStart = services.transport.loopStart;
+              if (Math.abs(services.transport.position - loopStart) > 1) {
+                if (services.transport.playing) services.playback.seek(loopStart);
+                else services.transport.seek(loopStart);
+              }
+              takeAnchorApplied = true;
+            }
+          } else if (recordingTakeMode !== "new") {
+            if (!group || group.trackId !== track.id) return null;
+            const groupClips = (currentDoc.arrangement.audioClips ?? []).filter(
+              (clip) => clip.takeGroupId === takeGroupId && clip.takeId,
+            );
+            if (groupClips.length === 0) return null;
+            if (!takeAnchorApplied) {
+              const activePassClips = groupClips.filter((clip) => clip.takeId === group.activeTakeId);
+              const anchorClips = activePassClips.length > 0 ? activePassClips : groupClips;
+              const anchorBar = Math.min(...anchorClips.map((clip) => clip.startBar));
+              services.transport.seek(Math.round(anchorBar * BAR_TICKS));
+              takeAnchorApplied = true;
+            }
+          }
+        }
+        const channelTrackIds = [armedTrackId, armedSecondTrackId, ...armedAdditionalTrackIds].slice(
+          0,
+          requestedChannelCount ?? routingChannelCount,
+        );
+        const channelDestinations = channelTrackIds.flatMap((destinationTrackId, channelIndex) => {
+          if (!destinationTrackId) return [];
+          const destinationTrack = currentDoc.tracks.find((item) => item.id === destinationTrackId);
+          if (!destinationTrack) return [];
+          return [{ channelIndex, trackId: destinationTrack.id, trackName: destinationTrack.name }];
+        });
+        const hasSplitChannelRouting = channelDestinations.some((destination) => destination.channelIndex > 0);
+        const startBar = Math.max(0, recordingStartBar(punchLocators?.start ?? services.transport.position));
         // Audit 07 D1: capture whether the imminent playPause() will roll a
         // count-in/pre-roll lead-in BEFORE the content — the buffer starts at
         // the REC press, so without this the take landed one lead-in late
         // with the count-in room audio at its head. Placement trims it via
         // clip offsetSec (non-destructive).
         const leadInTicks = services.transport.leadInTicks();
-        const leadInWillApply =
-          !services.transport.playing &&
-          !services.transport.paused &&
-          leadInTicks > 0 &&
-          services.transport.position >= leadInTicks;
+        const leadInWillApply = punchLocators
+          ? punchLeadInTicks > 0
+          : !loopTakeCapture &&
+            !services.transport.playing &&
+            !services.transport.paused &&
+            leadInTicks > 0 &&
+            services.transport.position >= leadInTicks;
         return {
           projectId: currentDoc.id,
           trackId: track.id,
           trackName: track.name,
-          ...(secondTrack
-            ? {
-                channelDestinations: [
-                  { channelIndex: 0, trackId: track.id, trackName: track.name },
-                  { channelIndex: 1, trackId: secondTrack.id, trackName: secondTrack.name },
-                ],
-              }
-            : {}),
+          ...(hasSplitChannelRouting ? { channelDestinations } : {}),
+          ...(takeGroupId && takeId ? { takeGroupId, takeId } : {}),
+          ...(loopTakeCapture ? { loopCapture: true } : {}),
+          ...(punchLocators ? { punchCapture: { startTick: punchLocators.start, endTick: punchLocators.end } } : {}),
           placeOnTimeline: true,
           startBar,
           bpm: currentDoc.bpm,
@@ -572,6 +748,7 @@ export function ArrangementPanel() {
         setRecError(message);
         void stopRec();
       };
+      recorder.onPunchOut = () => void stopRec();
       await startPromise;
       // An error during the "starting" phase already routed this take through
       // stopRec, which cleared the recorder slot. If start() resolved anyway
@@ -585,8 +762,81 @@ export function ArrangementPanel() {
       setLastCaptureInfo(recorder.captureInfo ?? null);
       setRecState("recording");
       void refreshRecordingInputs();
+      if (loopTakeCapture && typeof services.scheduler.subscribeLoopBoundaries === "function") {
+        loopBoundaryUnsubscribeRef.current = services.scheduler.subscribeLoopBoundaries((boundary) => {
+          if (recRef.current !== recorder) return;
+          if (
+            loopTakeLocators &&
+            (boundary.loopStartTick !== loopTakeLocators.start || boundary.loopEndTick !== loopTakeLocators.end)
+          ) {
+            recorder?.onError?.(
+              "Transport loop locators changed during loop recording; the saved audio is kept for recovery",
+            );
+            return;
+          }
+          if (boundary.cancelled) {
+            if (typeof recorder?.cancelTakeBoundary === "function") recorder.cancelTakeBoundary(boundary.audioTime);
+          } else if (typeof recorder?.scheduleTakeBoundary === "function") {
+            recorder.scheduleTakeBoundary(boundary.audioTime);
+          }
+        });
+      }
+      if (punchLocators && typeof services.scheduler.subscribeTickBoundary === "function") {
+        const onPunchInBoundary = (boundary: import("../scheduler/Scheduler").ScheduledTickBoundary) => {
+          if (recRef.current !== recorder) return;
+          if (boundary.cancelled) {
+            recorder?.cancelTakeBoundary(boundary.audioTime);
+          } else if (!recorder?.scheduleTakeBoundary(boundary.audioTime)) {
+            recorder?.onError?.(
+              "Punch-in could not be queued at the exact audio frame; the staged take remains recoverable",
+            );
+          }
+        };
+        const onPunchOutBoundary = (boundary: import("../scheduler/Scheduler").ScheduledTickBoundary) => {
+          if (recRef.current !== recorder) return;
+          if (boundary.cancelled) {
+            recorder?.cancelPunchOut(boundary.audioTime);
+          } else if (!recorder?.schedulePunchOut(boundary.audioTime)) {
+            recorder?.onError?.(
+              "Punch-out could not be queued at the exact audio frame; the staged take remains recoverable",
+            );
+          }
+        };
+        const unsubscribePunchIn = services.scheduler.subscribeTickBoundary(punchLocators.start, onPunchInBoundary);
+        const unsubscribePunchOut = services.scheduler.subscribeTickBoundary(punchLocators.end, onPunchOutBoundary);
+        punchBoundaryUnsubscribeRef.current = () => {
+          unsubscribePunchIn();
+          unsubscribePunchOut();
+        };
+      }
       // Performers record against the backing track — roll the transport.
-      if (!services.transport.playing) services.playback.playPause();
+      if (!services.transport.playing) {
+        if (loopTakeCapture) {
+          const countIn = services.transport.countInBars;
+          const preRoll = services.transport.preRollBars;
+          services.transport.setCountIn(0);
+          services.transport.setPreRoll(0);
+          try {
+            services.playback.playPause();
+          } finally {
+            services.transport.setCountIn(countIn);
+            services.transport.setPreRoll(preRoll);
+          }
+        } else if (punchLocators && punchSuppressLeadIn) {
+          const countIn = services.transport.countInBars;
+          const preRoll = services.transport.preRollBars;
+          services.transport.setCountIn(0);
+          services.transport.setPreRoll(0);
+          try {
+            services.playback.playPause();
+          } finally {
+            services.transport.setCountIn(countIn);
+            services.transport.setPreRoll(preRoll);
+          }
+        } else {
+          services.playback.playPause();
+        }
+      }
     } catch (error) {
       if (recorder) {
         if (recRef.current === recorder) recRef.current = null;
@@ -605,6 +855,10 @@ export function ArrangementPanel() {
     const rec = recRef.current;
     if (!rec || stoppingRecRef.current) return;
     stoppingRecRef.current = true;
+    loopBoundaryUnsubscribeRef.current?.();
+    loopBoundaryUnsubscribeRef.current = null;
+    punchBoundaryUnsubscribeRef.current?.();
+    punchBoundaryUnsubscribeRef.current = null;
     setRecState("saving");
     try {
       const take = await rec.stop();
@@ -648,25 +902,54 @@ export function ArrangementPanel() {
           take.buffer.numberOfChannels,
         );
         if (routing.destinations.length === 0) throw new Error("No recorded channel destination still exists");
-        services.store.execute(
-          addRecordedAudioClips(
-            currentDoc,
-            routing.destinations,
-            bufferId,
-            compensateRecordingStartBar(
-              take.session.startBar,
-              take.session.recordingInputOffsetMs ?? 0,
-              currentDoc.bpm,
-            ),
-            clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm),
-            {
-              fadeIn: 0.005,
-              fadeOut: 0.02,
-              // D1: skip the count-in/pre-roll head captured before content.
-              offsetSec: take.session.leadInSec ?? 0,
-            },
-          ),
+        const startBar = compensateRecordingStartBar(
+          take.session.startBar,
+          take.session.recordingInputOffsetMs ?? 0,
+          currentDoc.bpm,
         );
+        const punchWindow = take.session.punchCapture ? recordedPunchWindow(take.session) : null;
+        if (take.session.punchCapture && !punchWindow) {
+          throw new Error(
+            "Punch-in was not reached cleanly; the recovered audio is kept as a sample, not placed on the timeline",
+          );
+        }
+        const lengthBars =
+          punchWindow?.lengthBars ??
+          clipLengthBars(take.buffer.duration - (take.session.leadInSec ?? 0), currentDoc.bpm);
+        const patch = {
+          fadeIn: 0.005,
+          fadeOut: 0.02,
+          // D1: skip the count-in/pre-roll head captured before content.
+          offsetSec: punchWindow?.offsetSec ?? take.session.leadInSec ?? 0,
+        };
+        if (take.session.loopCapture && take.session.takeGroupId) {
+          if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== take.session.trackId) {
+            throw new Error("The saved loop take no longer has its original single-track routing");
+          }
+          services.store.execute(addRecordedLoopSession(currentDoc, take.session, bufferId, patch));
+          setRecordingTakeGroupSelection(take.session.takeGroupId);
+        } else if (take.session.takeGroupId && take.session.takeId) {
+          if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== take.session.trackId) {
+            throw new Error("The saved take lane no longer has its original single-track routing");
+          }
+          services.store.execute(
+            addRecordedAudioTakeClip(
+              currentDoc,
+              take.session.takeGroupId,
+              take.session.takeId,
+              take.session.trackId,
+              bufferId,
+              startBar,
+              lengthBars,
+              patch,
+            ),
+          );
+          setRecordingTakeGroupSelection(take.session.takeGroupId);
+        } else {
+          services.store.execute(
+            addRecordedAudioClips(currentDoc, routing.destinations, bufferId, startBar, lengthBars, patch),
+          );
+        }
         const routingWarnings = [
           ...(routing.unavailableChannels.length
             ? [
@@ -749,16 +1032,46 @@ export function ArrangementPanel() {
             take.buffer.numberOfChannels,
           );
           if (routing.destinations.length === 0) throw new Error("No recorded channel destination still exists");
-          services.store.execute(
-            addRecordedAudioClips(
-              currentDoc,
-              routing.destinations,
-              bufferId,
-              compensateRecordingStartBar(session.startBar, session.recordingInputOffsetMs ?? 0, currentDoc.bpm),
-              clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm),
-              { fadeIn: 0.005, fadeOut: 0.02, offsetSec: session.leadInSec ?? 0 },
-            ),
+          const startBar = compensateRecordingStartBar(
+            session.startBar,
+            session.recordingInputOffsetMs ?? 0,
+            currentDoc.bpm,
           );
+          const punchWindow = session.punchCapture ? recordedPunchWindow(session) : null;
+          if (session.punchCapture && !punchWindow) {
+            throw new Error("Punch-in was not reached; the recovered audio remains in the sample library");
+          }
+          const lengthBars =
+            punchWindow?.lengthBars ?? clipLengthBars(take.buffer.duration - (session.leadInSec ?? 0), currentDoc.bpm);
+          const patch = { fadeIn: 0.005, fadeOut: 0.02, offsetSec: punchWindow?.offsetSec ?? session.leadInSec ?? 0 };
+          if (session.loopCapture && session.takeGroupId) {
+            if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== session.trackId) {
+              throw new Error("The saved loop take no longer has its original single-track routing");
+            }
+            services.store.execute(addRecordedLoopSession(currentDoc, session, bufferId, patch));
+            setRecordingTakeGroupSelection(session.takeGroupId);
+          } else if (session.takeGroupId && session.takeId) {
+            if (routing.destinations.length !== 1 || routing.destinations[0]?.trackId !== session.trackId) {
+              throw new Error("The saved take lane no longer has its original single-track routing");
+            }
+            services.store.execute(
+              addRecordedAudioTakeClip(
+                currentDoc,
+                session.takeGroupId,
+                session.takeId,
+                session.trackId,
+                bufferId,
+                startBar,
+                lengthBars,
+                patch,
+              ),
+            );
+            setRecordingTakeGroupSelection(session.takeGroupId);
+          } else {
+            services.store.execute(
+              addRecordedAudioClips(currentDoc, routing.destinations, bufferId, startBar, lengthBars, patch),
+            );
+          }
           const warningParts = [
             ...(routing.unavailableChannels.length
               ? [
@@ -837,6 +1150,33 @@ export function ArrangementPanel() {
   );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  const clipLongPressTargetRef = useRef<string | null>(null);
+  const audioLongPressTargetRef = useRef<{ clipId: string; x: number; y: number } | null>(null);
+  const markerLongPressTargetRef = useRef<string | null>(null);
+
+  // Touch equivalents of the right-click workflows (LONGEVITY §3 / mobile):
+  // long-press deletes a scene clip (same toast+UNDO), opens the audio-clip
+  // menu, and deletes a marker. Mice keep the real context menu.
+  const clipLongPress = useLongPress(() => {
+    const clipId = clipLongPressTargetRef.current;
+    if (!clipId) return;
+    const ids = selectionStore.isClipSelected(clipId) ? [...selection.clipIds] : [clipId];
+    if (ids.length > 0) deleteClipsWithToast(ids);
+  });
+  const audioLongPress = useLongPress(() => {
+    const target = audioLongPressTargetRef.current;
+    if (target) setAudioMenu(target);
+  });
+  const markerLongPress = useLongPress(() => {
+    const markerId = markerLongPressTargetRef.current;
+    if (markerId) execute(removeMarker(services.store.doc, markerId));
+  });
+  const markerLongPressHandlers = {
+    onPointerMove: markerLongPress.onPointerMove,
+    onPointerUp: markerLongPress.onPointerUp,
+    onPointerLeave: markerLongPress.onPointerLeave,
+    onPointerCancel: markerLongPress.onPointerCancel,
+  };
   // Time-stretch dialog — open from the AUDIO CLIP menu (replaces prompt()).
   const [stretchClipId, setStretchClipId] = useState<string | null>(null);
   // Spectral Lab (RX-style clip surgery) — open from the AUDIO CLIP menu.
@@ -916,6 +1256,37 @@ export function ArrangementPanel() {
       setActionError(error instanceof Error ? error.message : "Operation failed");
       return false;
     }
+  };
+
+  /** AI FLIP for one genre chip — analyse the loop, generate the pattern, bake the groove. */
+  const runAiFlip = (clipId: string, genre: "house" | "techno" | "trap" | "ambient"): void => {
+    const c = audioClips.find((x) => x.id === clipId);
+    const buf = c ? services.bank.get(c.bufferId) : null;
+    if (!buf || !c) {
+      setActionError("Loop not loaded");
+      setAudioMenu(null);
+      return;
+    }
+    const analysis = analyzeLoopForFlip(audioClipChannelData(buf, c.sourceChannel), buf.sampleRate);
+    if (!analysis) {
+      setActionError("Could not analyse the loop — no steady groove found");
+      setAudioMenu(null);
+      return;
+    }
+    try {
+      execute(
+        generatePatternCommand(
+          services.store.doc,
+          buildFlipOptions(analysis, genre, flipSeed(analysis)),
+          `Flip ${c.startBar}b`,
+        ),
+      );
+      // The generated pattern is now active — bake the loop's groove on top.
+      execute(stealGrooveIntoPattern(services.store.doc, activePatternId, analysis.groove, { applyVelocity: true }));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "AI Flip failed");
+    }
+    setAudioMenu(null);
   };
 
   /**
@@ -1605,6 +1976,7 @@ export function ArrangementPanel() {
                 const trackId = event.target.value;
                 setArmedTrackId(trackId);
                 if (trackId === armedSecondTrackId) setArmedSecondTrackId("");
+                if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
               }}
             >
               <option value="">ARM: pick track…</option>
@@ -1619,17 +1991,155 @@ export function ArrangementPanel() {
               aria-label="Captured channel 2 destination"
               title="Optionally place browser-captured channel 2 on another track. This is the capture stream channel order, not a verified physical interface connector mapping."
               value={armedSecondTrackId}
-              disabled={recState !== "idle"}
-              onChange={(event) => setArmedSecondTrackId(event.target.value)}
+              disabled={recState !== "idle" || !!recordingTakeMode || loopTakeCapture || requestedChannelCount === 1}
+              onChange={(event) => {
+                const trackId = event.target.value;
+                setArmedSecondTrackId(trackId);
+                if (trackId) setArmedAdditionalTrackIds((current) => current.map((id) => (id === trackId ? "" : id)));
+              }}
             >
               <option value="">CH 2: keep stereo</option>
               {tracks
-                .filter((track) => track.id !== armedTrackId)
+                .filter((track) => track.id !== armedTrackId && !armedAdditionalTrackIds.includes(track.id))
                 .map((track) => (
                   <option key={track.id} value={track.id}>
                     CH 2 → {track.name}
                   </option>
                 ))}
+            </select>
+            <details className="arr-input-channel-routing" hidden={routingChannelCount <= 2}>
+              <summary>INPUT ROUTING · {routingChannelCount} CHANNELS</summary>
+              {Array.from({ length: Math.max(0, routingChannelCount - 2) }, (_, routeIndex) => {
+                const channelIndex = routeIndex + 2;
+                const currentTrackId = armedAdditionalTrackIds[routeIndex] ?? "";
+                const assignedElsewhere = new Set([
+                  armedTrackId,
+                  armedSecondTrackId,
+                  ...armedAdditionalTrackIds.filter((_, index) => index !== routeIndex),
+                ]);
+                return (
+                  <select
+                    key={channelIndex}
+                    className="arr-arm-select"
+                    aria-label={`Captured channel ${channelIndex + 1} destination`}
+                    title={`Route captured input channel ${channelIndex + 1} to a separate timeline track; channel order is not verified against physical connectors.`}
+                    value={currentTrackId}
+                    disabled={recState !== "idle" || !!recordingTakeMode || loopTakeCapture}
+                    onChange={(event) => {
+                      const trackId = event.target.value;
+                      setArmedAdditionalTrackIds((current) => {
+                        const next = current.slice();
+                        while (next.length <= routeIndex) next.push("");
+                        next[routeIndex] = trackId;
+                        return trackId
+                          ? next.map((id, index) => (index !== routeIndex && id === trackId ? "" : id))
+                          : next;
+                      });
+                    }}
+                  >
+                    <option value="">CH {channelIndex + 1}: select track…</option>
+                    {tracks
+                      .filter((track) => track.id === currentTrackId || !assignedElsewhere.has(track.id))
+                      .map((track) => (
+                        <option key={track.id} value={track.id}>
+                          CH {channelIndex + 1} → {track.name}
+                        </option>
+                      ))}
+                  </select>
+                );
+              })}
+            </details>
+            <select
+              className="arr-arm-select"
+              aria-label="Recording take mode"
+              title="Record one standalone take, start a take group, or add an alternate pass aligned to an existing take group."
+              value={recordingTakeMode}
+              disabled={!armedTrackId || recState !== "idle" || punchCapture}
+              onChange={(event) => {
+                const mode = event.target.value;
+                setRecordingTakeGroupSelection(mode);
+                if (mode) {
+                  setArmedSecondTrackId("");
+                  setArmedAdditionalTrackIds([]);
+                }
+              }}
+            >
+              <option value="">SINGLE TAKE</option>
+              <option value="new">NEW TAKE GROUP</option>
+              {recordingTakeGroups.map((group, index) => {
+                const passCount = new Set(
+                  (arrangement.audioClips ?? [])
+                    .filter((clip) => clip.takeGroupId === group.id && clip.takeId)
+                    .map((clip) => clip.takeId),
+                ).size;
+                return (
+                  <option key={group.id} value={group.id}>
+                    ALT TAKE · GROUP {index + 1} ({passCount} pass{passCount === 1 ? "" : "es"})
+                  </option>
+                );
+              })}
+            </select>
+            <button
+              type="button"
+              className={`btn btn-small${loopTakeCapture ? " active-solo" : ""}`}
+              aria-pressed={loopTakeCapture}
+              aria-label="Record transport loop as alternate takes"
+              title="Capture each complete transport-loop pass as a selectable alternate. Requires explicit loop start and end locators; single-track capture only."
+              disabled={
+                recState !== "idle" ||
+                punchCapture ||
+                !services.transport.loopEnabled ||
+                services.transport.loopEnd <= services.transport.loopStart
+              }
+              onClick={() => {
+                setLoopTakeCapture((enabled) => !enabled);
+                setArmedSecondTrackId("");
+                setArmedAdditionalTrackIds([]);
+              }}
+            >
+              LOOP PASSES {loopTakeCapture ? "ON" : "OFF"}
+            </button>
+            <button
+              type="button"
+              className={`btn btn-small${punchCapture ? " active-solo" : ""}`}
+              aria-pressed={punchCapture}
+              aria-label="Arm punch-in and punch-out recording"
+              title="Use the transport IN/OUT locators as one punch range. REC rolls into IN using the existing count-in/pre-roll; PCM is trimmed at the exact in frame, stops at the exact out frame, and playback continues. Turn LOOP off first."
+              disabled={
+                recState !== "idle" ||
+                !armedTrackId ||
+                services.transport.playing ||
+                services.transport.loopEnabled ||
+                services.transport.loopEnd <= services.transport.loopStart ||
+                loopTakeCapture ||
+                !!recordingTakeMode
+              }
+              onClick={() => setPunchCapture((enabled) => !enabled)}
+            >
+              PUNCH {punchCapture ? "ON" : "OFF"}
+            </button>
+            <select
+              className="arr-arm-select"
+              aria-label="Capture input channel count"
+              title="Request an exact independent input-channel count from the selected device. Unsupported counts stop before recording; Auto leaves browser defaults unchanged."
+              value={requestedChannelCount ?? "auto"}
+              disabled={recState !== "idle"}
+              onChange={(event) => {
+                const value = event.target.value;
+                const next = value === "auto" ? null : Number(value);
+                setRequestedChannelCount(next);
+                if (next === 1) setArmedSecondTrackId("");
+                if (next !== null) {
+                  setArmedAdditionalTrackIds((current) => current.slice(0, Math.max(0, next - 2)));
+                }
+              }}
+            >
+              <option value="auto">INPUT CH: AUTO</option>
+              {Array.from({ length: 8 }, (_, index) => index + 1).map((count) => (
+                <option key={count} value={count} disabled={(!!recordingTakeMode || loopTakeCapture) && count > 2}>
+                  INPUT CH: {count}
+                </option>
+              ))}
             </select>
             <select
               className="arr-arm-select"
@@ -1741,7 +2251,7 @@ export function ArrangementPanel() {
                 type="button"
                 className="btn btn-small btn-rec"
                 title="Record the selected audio input onto the armed track at the playhead (rolls the transport)"
-                disabled={!armedTrackId || recState !== "idle"}
+                disabled={!armedTrackId || recState !== "idle" || (punchCapture && services.transport.playing)}
                 onClick={() => void startRec()}
               >
                 {recState === "starting" ? "◌ INPUT…" : "● REC"}
@@ -1752,6 +2262,23 @@ export function ArrangementPanel() {
             {recordingInputListError && (
               <span className="arr-rec-saving" role="status" aria-live="polite">
                 audio input list unavailable; system default remains usable
+              </span>
+            )}
+            {loopTakeCapture && (
+              <span className="arr-rec-saving" role="status">
+                Each transport-loop wrap marks an alternate pass in the PCM source; stop to place and select the
+                captured passes.
+              </span>
+            )}
+            {!loopTakeCapture && recordingTakeMode && (
+              <span className="arr-rec-saving" role="status">
+                Alternate passes align to the group start; stereo stays together on the armed track.
+              </span>
+            )}
+            {punchCapture && (
+              <span className="arr-rec-saving" role="status">
+                Punch range is armed: REC rolls into IN, audio is trimmed at that frame, capture ends at OUT, and
+                playback rolls on for post-roll.
               </span>
             )}
             {recError && (
@@ -1883,6 +2410,73 @@ export function ArrangementPanel() {
             >
               BOUNCE ZONE
             </button>
+            {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+              <label className="arr-arm-gain">
+                <span>ACTIVE PASS</span>
+                <select
+                  className="arr-arm-select"
+                  aria-label="Active audio take"
+                  title="Only the active pass plays and exports; alternate passes stay editable and undoable."
+                  value={selectedAudioTakeGroup.activeTakeId}
+                  onChange={(event) => {
+                    const nextTakeId = event.target.value;
+                    execute(setActiveAudioTake(doc, selectedAudioTakeGroup.id, nextTakeId));
+                    const nextClip = (arrangement.audioClips ?? []).find(
+                      (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === nextTakeId,
+                    );
+                    if (nextClip) setSelectedAudioClipId(nextClip.id);
+                  }}
+                >
+                  {selectedAudioTakeIds.map((takeId, index) => (
+                    <option key={takeId} value={takeId}>
+                      TAKE {index + 1}
+                    </option>
+                  ))}
+                  {selectedAudioTakeGroup.compTakeId && <option value={selectedAudioTakeGroup.compTakeId}>COMP</option>}
+                </select>
+              </label>
+            )}
+            {selectedAudioTakeGroup &&
+              selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
+              selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  aria-label="Comp selected transport range from active take"
+                  title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
+                  onClick={() => {
+                    const startTick = services.transport.loopStart;
+                    const endTick = services.transport.loopEnd;
+                    try {
+                      const command = compAudioTakeRange(
+                        services.store.doc,
+                        selectedAudioTakeGroup.id,
+                        selectedAudioTakeGroup.activeTakeId,
+                        startTick,
+                        endTick,
+                      );
+                      const nextDoc = command.execute(services.store.doc);
+                      if (execute(command)) {
+                        const compClip = nextDoc.arrangement.audioClips?.find(
+                          (clip) =>
+                            clip.takeGroupId === selectedAudioTakeGroup.id &&
+                            clip.takeId ===
+                              nextDoc.arrangement.takeGroups?.find((group) => group.id === selectedAudioTakeGroup.id)
+                                ?.compTakeId &&
+                            clip.compSourceTakeId === selectedAudioTakeGroup.activeTakeId &&
+                            clip.startBar * BAR_TICKS < endTick &&
+                            (clip.startBar + clip.lengthBars) * BAR_TICKS > startTick,
+                        );
+                        setSelectedAudioClipId(compClip?.id ?? null);
+                      }
+                    } catch (error) {
+                      setActionError(error instanceof Error ? error.message : "Comp range failed");
+                    }
+                  }}
+                >
+                  COMP RANGE
+                </button>
+              )}
             {selectedAudioClipId && (
               <button
                 type="button"
@@ -2176,11 +2770,16 @@ export function ArrangementPanel() {
                 className={`arr-marker arr-marker-${marker.type}`}
                 style={{ left: (marker.tick / BAR_TICKS) * barWidth - 6 }}
                 title={`${marker.name} (${marker.type})`}
-                onContextMenu={(event) => {
+                onPointerDown={(event) => {
+                  markerLongPressTargetRef.current = marker.id;
+                  markerLongPress.onPointerDown(event);
+                }}
+                onContextMenu={markerLongPress.wrapContextMenu((event) => {
                   event.preventDefault();
                   event.stopPropagation();
                   execute(removeMarker(services.store.doc, marker.id));
-                }}
+                })}
+                {...markerLongPressHandlers}
               />
             ))}
             {selection.timeRange && (
@@ -2387,24 +2986,36 @@ export function ArrangementPanel() {
                     className={`arr-clip role-${role}${selected ? " selected" : ""}${isCurrentClip ? " current" : ""}${runtime.playing && isCurrentClip ? " playing" : ""}`}
                     style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                     title={`${scene?.name ?? "?"} · ${role.toUpperCase()} · bars ${startBar + 1}–${startBar + lengthBars}`}
-                    onPointerDown={(event) =>
+                    onPointerDown={(event) => {
+                      clipLongPressTargetRef.current = clip.id;
+                      clipLongPress.onPointerDown(event);
                       beginClipDrag(
                         event,
                         clip.id,
                         event.clientX > event.currentTarget.getBoundingClientRect().right - 10 ? "resize" : "move",
-                      )
-                    }
-                    onPointerMove={onClipPointerMove}
-                    onPointerUp={onClipPointerUp}
-                    onPointerCancel={onClipPointerCancel}
+                      );
+                    }}
+                    onPointerMove={(event) => {
+                      clipLongPress.onPointerMove();
+                      onClipPointerMove(event);
+                    }}
+                    onPointerLeave={clipLongPress.onPointerLeave}
+                    onPointerUp={() => {
+                      clipLongPress.onPointerUp();
+                      onClipPointerUp();
+                    }}
+                    onPointerCancel={() => {
+                      clipLongPress.onPointerCancel();
+                      onClipPointerCancel();
+                    }}
                     onClick={() => setSelectedClipId(clip.id)}
-                    onContextMenu={(event) => {
+                    onContextMenu={clipLongPress.wrapContextMenu((event) => {
                       event.preventDefault();
                       // Right-click deletes the whole active selection (or the
                       // clicked clip) as one undoable gesture + toast with UNDO.
                       const ids = selectionStore.isClipSelected(clip.id) ? [...selection.clipIds] : [clip.id];
                       deleteClipsWithToast(ids);
-                    }}
+                    })}
                   >
                     <span className="arr-clip-copy">
                       <span className="arr-clip-role">{role.toUpperCase()}</span>
@@ -2445,6 +3056,23 @@ export function ArrangementPanel() {
               const selected = selectedAudioClipId === clip.id;
               const isCurrent = clip.id === currentClipId;
               const track = tracks.find((t) => t.id === clip.trackId);
+              const clipTakeGroup = clip.takeGroupId
+                ? arrangement.takeGroups?.find((group) => group.id === clip.takeGroupId)
+                : undefined;
+              const compSourceTakeNumber = clip.compSourceTakeId
+                ? Array.from(
+                    new Set(
+                      (arrangement.audioClips ?? [])
+                        .filter(
+                          (candidate) =>
+                            candidate.takeGroupId === clip.takeGroupId &&
+                            candidate.takeId &&
+                            candidate.takeId !== clipTakeGroup?.compTakeId,
+                        )
+                        .map((candidate) => candidate.takeId!),
+                    ),
+                  ).indexOf(clip.compSourceTakeId) + 1
+                : 0;
               // Alt+drag stretch preview: badge + tooltip show the live rate.
               const effRate =
                 audioStretchPreview?.clipId === clip.id ? audioStretchPreview.rate : (clip.stretchRate ?? 1);
@@ -2455,10 +3083,12 @@ export function ArrangementPanel() {
               return (
                 <div
                   key={clip.id}
-                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}`}
+                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                   title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain, Alt+edge stretches`}
                   onPointerDown={(event) => {
+                    audioLongPressTargetRef.current = { clipId: clip.id, x: event.clientX, y: event.clientY };
+                    audioLongPress.onPointerDown(event);
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
                     const x = event.clientX - rect.left;
                     const w = rect.width;
@@ -2466,9 +3096,19 @@ export function ArrangementPanel() {
                     else if (x > w - 8) beginAudioDrag(event, clip.id, event.altKey ? "stretch" : "resize", "right");
                     else beginAudioDrag(event, clip.id, "move");
                   }}
-                  onPointerMove={onAudioPointerMove}
-                  onPointerUp={onAudioPointerUp}
-                  onPointerCancel={onAudioPointerCancel}
+                  onPointerMove={(event) => {
+                    audioLongPress.onPointerMove();
+                    onAudioPointerMove(event);
+                  }}
+                  onPointerLeave={audioLongPress.onPointerLeave}
+                  onPointerUp={(event) => {
+                    audioLongPress.onPointerUp();
+                    onAudioPointerUp(event);
+                  }}
+                  onPointerCancel={() => {
+                    audioLongPress.onPointerCancel();
+                    onAudioPointerCancel();
+                  }}
                   onClick={() => {
                     setSelectedAudioClipId(clip.id);
                     setSelectedClipId(null);
@@ -2489,11 +3129,11 @@ export function ArrangementPanel() {
                     const frac = (event.clientX - rect.left) / rect.width;
                     addWarpPinAtTick(clip, Math.round(clip.startBar * BAR_TICKS + frac * clip.lengthBars * BAR_TICKS));
                   }}
-                  onContextMenu={(event) => {
+                  onContextMenu={audioLongPress.wrapContextMenu((event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     setAudioMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
-                  }}
+                  })}
                 >
                   <AudioClipWaveform
                     buffer={buffer ?? null}
@@ -2521,9 +3161,21 @@ export function ArrangementPanel() {
                     }}
                   />
                   <span className="arr-audio-clip-label">
-                    {clip.sourceChannel !== undefined ? `CH ${clip.sourceChannel + 1} · ` : ""}
+                    {clip.compSourceTakeId
+                      ? `COMP · TAKE ${compSourceTakeNumber}`
+                      : clip.sourceChannel !== undefined
+                        ? `CH ${clip.sourceChannel + 1} · `
+                        : ""}
                     {track?.name ?? clip.bufferId.slice(0, 8)}
                   </span>
+                  {selected && (clip.warpMarkers ?? []).length === 0 && !clip.reverse && !clip.loop && buffer && (
+                    <span
+                      className="arr-audio-clip-hint"
+                      title="Double-click the waveform to drop a warp pin, then drag pins to bend time (Shift = snap 1/16)"
+                    >
+                      2×click: +pin · drag pins to bend
+                    </span>
+                  )}
                   <span
                     className="arr-audio-clip-handle left"
                     title="Trim start (Alt = stretch, pins the end)"
@@ -2887,54 +3539,20 @@ export function ArrangementPanel() {
             >
               Steal groove → active pattern
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const c = audioClips.find((x) => x.id === audioMenu.clipId);
-                const buf = c ? services.bank.get(c.bufferId) : null;
-                if (!buf || !c) {
-                  setActionError("Loop not loaded");
-                  setAudioMenu(null);
-                  return;
-                }
-                const analysis = analyzeLoopForFlip(audioClipChannelData(buf, c.sourceChannel), buf.sampleRate);
-                if (!analysis) {
-                  setActionError("Could not analyse the loop — no steady groove found");
-                  setAudioMenu(null);
-                  return;
-                }
-                const genre = (window.prompt("AI FLIP — genre (house / techno / trap / ambient):", "house") ?? "")
-                  .trim()
-                  .toLowerCase();
-                const safeGenre = (["house", "techno", "trap", "ambient"] as const).includes(
-                  genre as "house" | "techno" | "trap" | "ambient",
-                )
-                  ? (genre as "house" | "techno" | "trap" | "ambient")
-                  : "house";
-                try {
-                  execute(
-                    generatePatternCommand(
-                      services.store.doc,
-                      buildFlipOptions(analysis, safeGenre, flipSeed(analysis)),
-                      `Flip ${c.startBar}b`,
-                    ),
-                  );
-                  // The generated pattern is now active — bake the loop's groove on top.
-                  execute(
-                    stealGrooveIntoPattern(services.store.doc, activePatternId, analysis.groove, {
-                      applyVelocity: true,
-                    }),
-                  );
-                } catch (err) {
-                  setActionError(err instanceof Error ? err.message : "AI Flip failed");
-                }
-                setAudioMenu(null);
-              }}
-              title="Generate a fresh pattern from this loop's feel — your BPM, your key, its groove. Lands as a new scene."
-            >
-              AI FLIP → new scene
-            </button>
+            <div role="group" aria-label="AI FLIP genre">
+              <div className="context-menu-header">AI FLIP → NEW SCENE</div>
+              {(["house", "techno", "trap", "ambient"] as const).map((genre) => (
+                <button
+                  key={genre}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runAiFlip(audioMenu.clipId, genre)}
+                  title={`Generate a fresh ${genre} pattern from this loop's feel — your BPM, your key, its groove. Lands as a new scene.`}
+                >
+                  {genre[0].toUpperCase() + genre.slice(1)}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               role="menuitem"

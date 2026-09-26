@@ -8,6 +8,7 @@ import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
+import { audioClipsForPlayback } from "../project-model/audio-takes";
 
 export type ExportQuality = "live" | "studio";
 
@@ -62,7 +63,7 @@ export interface RenderOptions {
  * sound the user heard live.
  */
 export function assertGenerativeExportSources(doc: ProjectDocument, bank: SampleBank): void {
-  const audioClips = doc.arrangement.audioClips ?? [];
+  const audioClips = audioClipsForPlayback(doc.arrangement);
   for (const track of doc.tracks) {
     if (track.kind !== "generative" || track.mute) continue;
     const captured = audioClips.filter((clip) => clip.trackId === track.id);
@@ -205,7 +206,7 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
     }
   }
   // Same T60 policy for the native reverb decay (seconds): 1.1x + release.
-  const reverbTail = maxReverbDecaySec > 0 ? (maxReverbDecaySec * 1.1 + 0.5) : 0;
+  const reverbTail = maxReverbDecaySec > 0 ? maxReverbDecaySec * 1.1 + 0.5 : 0;
   const ozvenaTail = maxMs > 0 ? (maxMs / 1000) * 1.1 + 0.5 : 0;
   const longest = Math.max(reverbTail, ozvenaTail);
   if (longest <= 0) return fallback;
@@ -229,7 +230,10 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
     // Audio clips can sit past the last scene clip (outro vocals, ad-libs).
     // Duration must cover them or they are silently truncated/dropped from
     // the export while live playback plays them fine.
-    const audioEnd = (doc.arrangement.audioClips ?? []).reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+    const audioEnd = audioClipsForPlayback(doc.arrangement).reduce(
+      (max, c) => Math.max(max, c.startBar + c.lengthBars),
+      0,
+    );
     const total = Math.max(end, audioEnd);
     if (total > 0) return total * BAR_TICKS;
   }
@@ -481,7 +485,7 @@ export async function renderProject(
   // branch, so a pattern-mode export must not include arrangement audio the
   // user never hears in pattern playback.
   if (options.mode === "song" && doc.arrangement.audioClips) {
-    for (const clip of doc.arrangement.audioClips) {
+    for (const clip of audioClipsForPlayback(doc.arrangement)) {
       const clipStartTick = clip.startBar * BAR_TICKS;
       const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
       // Only schedule if clip overlaps the total render window

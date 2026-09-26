@@ -10,6 +10,7 @@
  */
 import { safeApplyAudioParam } from "./safeAudioParam";
 
+import { attachProcessorErrorGuard } from "./processor-errors";
 export interface EnvFollowerHandle {
   input: AudioNode;
   output: AudioNode;
@@ -30,6 +31,9 @@ export function createEnvFollowerNode(
     channelInterpretation: "speakers",
     outputChannelCount: [1],
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "envfollower-processor");
 
   // safeApplyAudioParam guards non-finite writes (defensive layer for
   // automation curves / preset applies against corrupt stored values).

@@ -1,4 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
+
+import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
@@ -16,6 +18,9 @@ export function createBitcrusherNode(
     channelCount: 2,
     channelInterpretation: "speakers",
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "bitcrusher-processor");
 
   // Wet/dry mix bus
   const input = ctx.createGain();

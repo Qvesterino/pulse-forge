@@ -7,6 +7,7 @@ const source = readFileSync(resolve(process.cwd(), "public/recording-capture-wor
 
 function createProcessor() {
   let Processor: new (options: unknown) => any;
+  let frame = 0;
   class FakeAudioWorkletProcessor {
     port: {
       onmessage: ((event: { data: unknown }) => void) | null;
@@ -21,14 +22,20 @@ function createProcessor() {
       };
     }
   }
-  runInNewContext(source, {
+  const sandbox = {
     AudioWorkletProcessor: FakeAudioWorkletProcessor,
     sampleRate: 48_000,
     registerProcessor: (_name: string, processor: new (options: unknown) => any) => {
       Processor = processor;
     },
-  });
-  return new Processor!({ processorOptions: { chunkFrames: 128 } });
+  };
+  Object.defineProperty(sandbox, "currentFrame", { get: () => frame });
+  runInNewContext(source, sandbox);
+  const instance = new Processor!({ processorOptions: { chunkFrames: 128 } });
+  instance.setCurrentFrame = (nextFrame: number) => {
+    frame = nextFrame;
+  };
+  return instance;
 }
 
 function renderQuantum(processor: any, input: Float32Array) {
@@ -78,5 +85,60 @@ describe("recording AudioWorklet PCM protocol", () => {
     expect(
       processor.messages.some((message: any) => message.type === "error" && /could not keep up/i.test(message.reason)),
     ).toBe(true);
+  });
+
+  it("stops instead of clamping a loop boundary that arrived after its audio frame", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start", loopCapture: true } });
+    processor.setCurrentFrame(256);
+
+    processor.port.onmessage!({ data: { type: "take-boundary", atTime: 128 / 48_000 } });
+
+    expect(processor.messages.find((message: any) => message.type === "error")?.reason).toMatch(/reached .* too late/i);
+    expect(processor.stopped).toBe(true);
+    expect(processor.takeBoundaryFrames).toEqual([0]);
+  });
+
+  it("retracts a queued loop boundary before the capture frame reaches it", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start", loopCapture: true } });
+    processor.port.onmessage!({ data: { type: "take-boundary", atTime: 1 } });
+    processor.port.onmessage!({ data: { type: "cancel-take-boundary", atTime: 1 } });
+
+    expect(processor.takeBoundaryFrames).toEqual([0]);
+    expect(processor.messages.some((message: any) => message.type === "error")).toBe(false);
+  });
+
+  it("flushes and stops at the exact punch-out frame inside a render quantum", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start", punchInNow: true } });
+    renderQuantum(processor, new Float32Array(128).fill(0.25));
+    processor.port.onmessage!({ data: { type: "stop-at", atTime: 200 / 48_000 } });
+    processor.setCurrentFrame(128);
+
+    const result = renderQuantum(processor, new Float32Array(128).fill(0.5));
+    const chunks = processor.messages.filter((message: any) => message.type === "chunk");
+    const stopped = processor.messages.find((message: any) => message.type === "stopped");
+
+    expect(result.keepAlive).toBe(false);
+    expect(chunks.map((chunk: any) => chunk.frames)).toEqual([128, 72]);
+    expect(chunks.reduce((total: number, chunk: any) => total + chunk.frames, 0)).toBe(200);
+    expect(chunks[0]?.takeBoundaries).toEqual([0]);
+    expect(chunks[1]?.punchOut).toBe(true);
+    expect(stopped).toMatchObject({ reason: "punch-out", sequence: 2 });
+  });
+
+  it("cancels a queued punch-out before its target frame", () => {
+    const processor = createProcessor();
+    renderQuantum(processor, new Float32Array(128));
+    processor.port.onmessage!({ data: { type: "start" } });
+    processor.port.onmessage!({ data: { type: "stop-at", atTime: 1 } });
+    processor.port.onmessage!({ data: { type: "cancel-stop-at", atTime: 1 } });
+
+    expect(processor.stopAtFrame).toBeNull();
+    expect(processor.messages.some((message: any) => message.type === "error")).toBe(false);
   });
 });

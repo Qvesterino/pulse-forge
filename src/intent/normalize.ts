@@ -1,5 +1,5 @@
 import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../ai/types";
-import { isMusicalKey } from "../project-model/types";
+import { isMusicalKey, PRODUCTION_PROFILES } from "../project-model/types";
 import { INTENT_SCHEMA_VERSION, type IntentInput, type IntentRole, type IntentSpec } from "./types";
 import { assertIntentSpec } from "./schema";
 import { sanitizeFxIntent } from "./production";
@@ -80,6 +80,10 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     version: INTENT_SCHEMA_VERSION,
     genre,
     style: text(source.style),
+    ...(genre === "trap" &&
+    PRODUCTION_PROFILES.includes(source.productionProfile as (typeof PRODUCTION_PROFILES)[number])
+      ? { productionProfile: source.productionProfile as (typeof PRODUCTION_PROFILES)[number] }
+      : {}),
     mood: text(source.mood),
     energy: unit(source.energy, 0.7),
     density: unit(source.density, 0.5),
@@ -130,6 +134,7 @@ export function intentFromGenerateOptions(options: GenerateOptions): IntentSpec 
   return normalizeIntent({
     genre: options.genre,
     style: options.style,
+    productionProfile: options.productionProfile,
     seed: options.seed,
     key: options.key ?? null,
     bpmRange: options.bpmRange ?? null,

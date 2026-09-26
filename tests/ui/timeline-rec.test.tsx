@@ -10,16 +10,21 @@ import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import {
   addRecordedAudioClip,
   addRecordedAudioClips,
+  addRecordedLoopTakeClips,
+  addRecordedAudioTakeClip,
   clipLengthBars,
   compensateRecordingStartBar,
   recordedTakeAlreadyPlaced,
+  recordedLoopPasses,
+  recordedPunchWindow,
   resolveRecordedAudioDestinations,
   recordingStartBar,
   secondsPerBar,
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
-import { createDrumTrack } from "../../src/commands/commands";
+import { addAudioTakeClip, createDrumTrack } from "../../src/commands/commands";
+import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 import { renderWithContext, mockServices } from "../helpers";
 
@@ -70,6 +75,51 @@ describe("recording placement math", () => {
     expect(compensateRecordingStartBar(0.01, 500, 120)).toBe(0);
   });
 
+  it("uses durable punch-in frames and exact locators for completed punch placement", () => {
+    expect(
+      recordedPunchWindow({
+        id: "punch-1",
+        projectId: "project-1",
+        trackId: "track-1",
+        trackName: "Guitar",
+        startBar: 1,
+        bpm: 120,
+        sampleRate: 48_000,
+        channels: 1,
+        createdAt: "2026-09-26T00:00:00.000Z",
+        updatedAt: 1,
+        status: "recoverable",
+        totalFrames: 48_100,
+        chunkCount: 2,
+        punchCapture: { startTick: 960, endTick: 1920 },
+        punchOutReached: true,
+        takeBoundaries: [1_000],
+      }),
+    ).toEqual({ offsetSec: 1_000 / 48_000, lengthBars: 0.5 });
+  });
+
+  it("uses only the recovered audio duration for a manually stopped partial punch", () => {
+    const window = recordedPunchWindow({
+      id: "punch-2",
+      projectId: "project-1",
+      trackId: "track-1",
+      trackName: "Guitar",
+      startBar: 1,
+      bpm: 120,
+      sampleRate: 48_000,
+      channels: 1,
+      createdAt: "2026-09-26T00:00:00.000Z",
+      updatedAt: 1,
+      status: "recoverable",
+      totalFrames: 48_100,
+      chunkCount: 2,
+      punchCapture: { startTick: 960, endTick: 1920 },
+      takeBoundaries: [1_000],
+    });
+    expect(window?.offsetSec).toBeCloseTo(1_000 / 48_000, 12);
+    expect(window?.lengthBars).toBe(0.49);
+  });
+
   it("preserves recorded clip tick placement through add, undo, and redo", () => {
     const doc = createDefaultProject();
     const startBar = 3 + 17 / BAR_TICKS;
@@ -117,6 +167,55 @@ describe("recording placement math", () => {
     expect(command.execute(doc).arrangement.audioClips).toHaveLength(2);
   });
 
+  it("adds a selected alternate take at exact tick placement as one undoable command", () => {
+    const doc = createDefaultProject();
+    const trackId = doc.tracks[0].id;
+    const startBar = 3 + 17 / BAR_TICKS;
+    const first = addRecordedAudioTakeClip(doc, "group-1", "pass-1", trackId, "recorded-pass-1", startBar, 2).execute(
+      doc,
+    );
+    const command = addRecordedAudioTakeClip(first, "group-1", "pass-2", trackId, "recorded-pass-2", startBar, 2.5);
+    const selected = command.execute(first);
+
+    expect(selected.arrangement.audioClips).toHaveLength(2);
+    expect(selected.arrangement.audioClips![1]?.startBar).toBeCloseTo(startBar, 12);
+    expect(selected.arrangement.takeGroups).toEqual([{ id: "group-1", trackId, activeTakeId: "pass-2" }]);
+    expect(audioClipsForPlayback(selected.arrangement).map((clip) => clip.bufferId)).toEqual(["recorded-pass-2"]);
+    expect(command.undo(selected)).toEqual(first);
+  });
+
+  it("turns durable loop-boundary frames into selectable source windows in one undoable edit", () => {
+    const doc = createDefaultProject();
+    const passes = recordedLoopPasses(288_000, 48_000, [0, 96_000, 192_000], 120, "recording-42");
+    expect(passes).toEqual([
+      { takeId: "recording-42-pass-1", startFrame: 0, endFrame: 96_000, lengthBars: 1 },
+      { takeId: "recording-42-pass-2", startFrame: 96_000, endFrame: 192_000, lengthBars: 1 },
+      { takeId: "recording-42-pass-3", startFrame: 192_000, endFrame: 288_000, lengthBars: 1 },
+    ]);
+
+    const command = addRecordedLoopTakeClips(
+      doc,
+      "loop-group",
+      doc.tracks[0].id,
+      "recording-audio",
+      1 + 7 / BAR_TICKS,
+      48_000,
+      288_000,
+      passes,
+    );
+    const placed = command.execute(doc);
+    expect(placed.arrangement.audioClips).toHaveLength(3);
+    expect(placed.arrangement.audioClips?.map((clip) => clip.offsetSec).sort((a, b) => a - b)).toEqual([0, 2, 4]);
+    expect(placed.arrangement.audioClips?.map((clip) => clip.trimEnd).sort((a, b) => a - b)).toEqual([0, 2, 4]);
+    expect(placed.arrangement.audioClips?.map((clip) => clip.lengthBars).sort((a, b) => a - b)).toEqual([1, 1, 1]);
+    expect(placed.arrangement.audioClips?.every((clip) => Math.abs(clip.startBar - (1 + 7 / BAR_TICKS)) < 1e-12)).toBe(
+      true,
+    );
+    expect(placed.arrangement.takeGroups?.[0]?.activeTakeId).toBe("recording-42-pass-3");
+    expect(audioClipsForPlayback(placed.arrangement).map((clip) => clip.offsetSec)).toEqual([4]);
+    expect(command.undo(placed)).toEqual(doc);
+  });
+
   it("validates saved channel destinations against the restored buffer and project", () => {
     const base = createDocWithTracks();
     const doc = createDrumTrack(base).execute(base);
@@ -161,6 +260,179 @@ describe("arrangement REC wiring", () => {
 
     fireEvent.change(select, { target: { value: doc.tracks[0].id } });
     expect((screen.getByRole("button", { name: "● REC" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("arms loop-pass recording only when explicit transport locators are set", () => {
+    const services = mockServices(createDocWithTracks());
+    Object.assign(services.transport, { loopEnabled: true, loopStart: 0, loopEnd: BAR_TICKS });
+    renderWithContext(<ArrangementPanel />, { services });
+
+    const loopPasses = screen.getByLabelText("Record transport loop as alternate takes");
+    expect(loopPasses).toBeEnabled();
+    fireEvent.click(loopPasses);
+    expect(loopPasses).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Captured channel 2 destination")).toBeDisabled();
+  });
+
+  it("arms one-pass punch recording from disabled-loop transport locators", async () => {
+    let metadata: Record<string, unknown> | undefined;
+    recorderMock.implementation = class {
+      onError: ((message: string) => void) | null = null;
+      onPunchOut: (() => void) | null = null;
+      captureInfo = null;
+      constructor(_options: unknown) {}
+      setMonitoring() {}
+      async start(getMetadata: () => Record<string, unknown> | null) {
+        metadata = getMetadata() ?? undefined;
+      }
+      async cancel() {}
+      async stop() {
+        return null;
+      }
+    };
+
+    try {
+      const doc = createDocWithTracks();
+      const services = mockServices(doc);
+      const punchBoundary = vi.fn(() => () => {});
+      (services.scheduler as any).subscribeTickBoundary = punchBoundary;
+      Object.assign(services.transport, { loopEnabled: false, loopStart: BAR_TICKS, loopEnd: BAR_TICKS * 2 });
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+
+      renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), {
+        target: { value: doc.tracks[0].id },
+      });
+      const punch = screen.getByRole("button", { name: "Arm punch-in and punch-out recording" });
+      expect(punch).toBeEnabled();
+      fireEvent.click(punch);
+      expect(screen.getByRole("button", { name: "Arm punch-in and punch-out recording" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      await screen.findByRole("button", { name: /STOP/ });
+
+      expect(metadata).toMatchObject({ startBar: 1, punchCapture: { startTick: BAR_TICKS, endTick: BAR_TICKS * 2 } });
+      expect(services.transport.seek).toHaveBeenCalledWith(BAR_TICKS);
+      expect(punchBoundary).toHaveBeenNthCalledWith(1, BAR_TICKS, expect.any(Function));
+      expect(punchBoundary).toHaveBeenNthCalledWith(2, BAR_TICKS * 2, expect.any(Function));
+    } finally {
+      recorderMock.implementation = null;
+    }
+  });
+
+  it("switches audible passes from the selected audio take group", () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(base, "group-ui", "pass-ui-1", trackId, "audio.pass-1", 1, 2).execute(base);
+    const withTwoPasses = addAudioTakeClip(first, "group-ui", "pass-ui-2", trackId, "audio.pass-2", 1, 2).execute(
+      first,
+    );
+    const services = mockServices(withTwoPasses);
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    const activeTake = screen.getByLabelText("Active audio take") as HTMLSelectElement;
+    expect(activeTake.value).toBe("pass-ui-1");
+    expect(activeTake.options).toHaveLength(2);
+    fireEvent.change(activeTake, { target: { value: "pass-ui-2" } });
+
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("setActiveAudioTake");
+    const selected = command.execute(withTwoPasses);
+    expect(selected.arrangement.takeGroups?.[0]?.activeTakeId).toBe("pass-ui-2");
+    expect(audioClipsForPlayback(selected.arrangement).map((clip) => clip.bufferId)).toEqual(["audio.pass-2"]);
+  });
+
+  it("exposes an undoable comp-range action using the transport locators", () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(base, "comp-ui-group", "comp-source-1", trackId, "audio.comp-1", 0, 1).execute(base);
+    const withTwoPasses = addAudioTakeClip(
+      first,
+      "comp-ui-group",
+      "comp-source-2",
+      trackId,
+      "audio.comp-2",
+      0,
+      1,
+    ).execute(first);
+    const services = mockServices(withTwoPasses);
+    Object.assign(services.transport, { loopStart: BAR_TICKS / 4, loopEnd: (BAR_TICKS * 3) / 4 });
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Comp selected transport range from active take" }));
+
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("compAudioTakeRange");
+    const comped = command.execute(withTwoPasses);
+    expect(comped.arrangement.takeGroups?.[0]?.activeTakeId).toBe(comped.arrangement.takeGroups?.[0]?.compTakeId);
+    expect(
+      audioClipsForPlayback(comped.arrangement).map((clip) => [clip.compSourceTakeId, clip.startBar, clip.lengthBars]),
+    ).toEqual([["comp-source-1", 0.25, 0.5]]);
+  });
+
+  it("aligns an alternate recording to the take-group start and persists its pass identity", async () => {
+    let metadata: Record<string, unknown> | undefined;
+    recorderMock.implementation = class {
+      onError = null;
+      captureInfo = {
+        capturedChannels: 2,
+        capturedSampleRate: 48_000,
+        inputTrackChannels: 2,
+        inputTrackSampleRate: 48_000,
+        supportedChannelCount: { min: 1, max: 2 },
+      };
+      constructor(_options: unknown) {}
+      setMonitoring() {}
+      async start(getMetadata: () => Record<string, unknown> | null) {
+        metadata = getMetadata() ?? undefined;
+      }
+      async cancel() {}
+    };
+
+    try {
+      const base = createDocWithTracks();
+      const trackId = base.tracks[0].id;
+      const withTake = addAudioTakeClip(
+        base,
+        "existing-take-group",
+        "pass-original",
+        trackId,
+        "audio.original",
+        2,
+        2,
+      ).execute(base);
+      const services = mockServices(withTake);
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      (services.transport as any).seek = vi.fn((tick: number) => {
+        (services.transport as any).position = tick;
+      });
+
+      renderWithContext(<ArrangementPanel />, { services });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), { target: { value: trackId } });
+      fireEvent.change(screen.getByLabelText("Recording take mode"), {
+        target: { value: "existing-take-group" },
+      });
+      expect(screen.getByLabelText("Captured channel 2 destination")).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      await screen.findByRole("button", { name: /STOP/ });
+
+      expect(services.transport.seek).toHaveBeenCalledWith(2 * BAR_TICKS);
+      expect(metadata).toMatchObject({
+        trackId,
+        startBar: 2,
+        takeGroupId: "existing-take-group",
+      });
+      expect(typeof metadata?.takeId).toBe("string");
+      expect(metadata?.channelDestinations).toBeUndefined();
+    } finally {
+      recorderMock.implementation = null;
+    }
   });
 
   it("labels the selected source and meter as a general audio input", () => {
@@ -244,6 +516,89 @@ describe("arrangement REC wiring", () => {
       view.unmount();
     } finally {
       saveRecordingInputDeviceId(previousInputId);
+      if (originalDevices) Object.defineProperty(navigator, "mediaDevices", originalDevices);
+      else Reflect.deleteProperty(navigator, "mediaDevices");
+      recorderMock.implementation = null;
+    }
+  });
+
+  it("requests four distinct input channels and maps each one to its own timeline track", async () => {
+    const originalDevices = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    let requestedChannelCount: number | undefined;
+    let recorderMetadata: Record<string, unknown> | undefined;
+    const mediaDevices = {
+      enumerateDevices: vi.fn(async () => [
+        { kind: "audioinput", deviceId: "interface-multichannel", label: "Multichannel Interface" },
+      ]),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: mediaDevices });
+    recorderMock.implementation = class {
+      onError: ((message: string) => void) | null = null;
+      captureInfo = {
+        capturedChannels: 4,
+        capturedSampleRate: 48_000,
+        inputTrackChannels: 4,
+        inputTrackSampleRate: 48_000,
+        supportedChannelCount: { min: 1, max: 8 },
+      };
+      constructor(options: { requestedChannelCount?: number }) {
+        requestedChannelCount = options.requestedChannelCount;
+      }
+      setMonitoring() {}
+      async start(getMetadata: () => Record<string, unknown> | null) {
+        recorderMetadata = getMetadata() ?? undefined;
+      }
+      async cancel() {}
+      async stop() {
+        return null;
+      }
+    };
+
+    try {
+      let doc = createDocWithTracks();
+      while (doc.tracks.length < 4) {
+        const template = doc.tracks[0];
+        doc = {
+          ...doc,
+          tracks: [
+            ...doc.tracks,
+            { ...template, id: `input-route-${doc.tracks.length}`, name: `Input ${doc.tracks.length + 1}` },
+          ],
+        };
+      }
+      const services = mockServices(doc);
+      (services.engine as any).ensureContext = vi.fn();
+      (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+      const view = renderWithContext(<ArrangementPanel />, { services });
+      await screen.findByRole("option", { name: "Multichannel Interface" });
+      fireEvent.change(screen.getByLabelText("Audio input device"), { target: { value: "interface-multichannel" } });
+      fireEvent.change(screen.getByLabelText("Capture input channel count"), { target: { value: "4" } });
+      fireEvent.change(screen.getByLabelText("Arm track for recording"), { target: { value: doc.tracks[0].id } });
+      fireEvent.change(screen.getByLabelText("Captured channel 2 destination"), {
+        target: { value: doc.tracks[1].id },
+      });
+      fireEvent.click(screen.getByText("INPUT ROUTING · 4 CHANNELS"));
+      fireEvent.change(screen.getByLabelText("Captured channel 3 destination"), {
+        target: { value: doc.tracks[2].id },
+      });
+      fireEvent.change(screen.getByLabelText("Captured channel 4 destination"), {
+        target: { value: doc.tracks[3].id },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+      await screen.findByRole("button", { name: /STOP/ });
+
+      expect(requestedChannelCount).toBe(4);
+      expect(recorderMetadata?.channelDestinations).toEqual(
+        doc.tracks.slice(0, 4).map((track, channelIndex) => ({
+          channelIndex,
+          trackId: track.id,
+          trackName: track.name,
+        })),
+      );
+      view.unmount();
+    } finally {
       if (originalDevices) Object.defineProperty(navigator, "mediaDevices", originalDevices);
       else Reflect.deleteProperty(navigator, "mediaDevices");
       recorderMock.implementation = null;

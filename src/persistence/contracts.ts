@@ -114,6 +114,7 @@ export interface IFrozenBufferRepository {
 export interface IRecordingRecoveryRepository {
   begin(session: RecordingSession): Promise<void>;
   appendChunk(chunk: RecordingPcmChunk): Promise<void>;
+  markPunchOutReached(sessionId: string): Promise<void>;
   markRecoverable(sessionId: string): Promise<void>;
   get(sessionId: string): Promise<RecordingSession | undefined>;
   listRecoverable(now?: number, excludeOwnerId?: string): Promise<RecordingSession[]>;

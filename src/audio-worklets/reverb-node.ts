@@ -1,4 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
+
+import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
@@ -14,6 +16,9 @@ export function createReverbNode(ctx: BaseAudioContext, instance: { params: Reco
     channelCount: 2,
     channelInterpretation: "speakers",
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "reverb-processor");
 
   const input = ctx.createGain();
   const output = ctx.createGain();

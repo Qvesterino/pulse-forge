@@ -4,6 +4,7 @@ import { ArrangementPanel, warpPinTickFromClientX } from "../../src/ui/Arrangeme
 import { renderWithContext, mockServices } from "../helpers";
 import { createDefaultProject } from "../../src/project-model/schema";
 import { addAudioClip, updateAudioClip } from "../../src/commands/commands";
+import type { AudioClip } from "../../src/project-model/types";
 import type { Command } from "../../src/commands/types";
 
 /**
@@ -46,6 +47,70 @@ function appliedMarkerTick(services: ReturnType<typeof mockServices>, doc: Param
   const next = command.execute(doc);
   return next.arrangement.audioClips!.find((c) => c.id === doc.arrangement.audioClips![0].id)!.warpMarkers!;
 }
+
+function fakeBuffer() {
+  return {
+    duration: 4,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    getChannelData: () => new Float32Array(44100),
+  } as unknown as AudioBuffer;
+}
+
+describe("pin discoverability hint", () => {
+  function docWithBareClip(patch: Partial<AudioClip> = {}) {
+    const base = createDefaultProject();
+    const withClip = addAudioClip(base, base.tracks[0].id, "factory.loop", 0, 4).execute(base);
+    const clipId = withClip.arrangement.audioClips![0].id;
+    const doc = Object.keys(patch).length > 0 ? updateAudioClip(withClip, clipId, patch).execute(withClip) : withClip;
+    return { doc, clipId };
+  }
+
+  function selectClip() {
+    // The clip div selects on click (its own handler, not the handles).
+    const clip = document.querySelector(".arr-audio-clip");
+    expect(clip).not.toBeNull();
+    fireEvent.click(clip!);
+  }
+
+  it("shows the gesture hint on selected pin-less clips with a buffer", () => {
+    const { doc } = docWithBareClip();
+    const services = mockServices(doc);
+    services.bank.add("factory.loop", fakeBuffer());
+    renderWithContext(<ArrangementPanel />, { services });
+    expect(screen.queryByText(/2×click/)).toBeNull();
+    selectClip();
+    expect(screen.getByText(/2×click: \+pin · drag pins to bend/)).toBeInTheDocument();
+  });
+
+  it("hides the hint once pins exist", () => {
+    const { doc } = docWithPin();
+    const services = mockServices(doc);
+    services.bank.add("factory.loop", fakeBuffer());
+    renderWithContext(<ArrangementPanel />, { services });
+    selectClip();
+    expect(screen.queryByText(/2×click/)).toBeNull();
+    // …and the pin itself is right there to grab.
+    expect(screen.getByLabelText(/Warp pin 1/)).toBeInTheDocument();
+  });
+
+  it("hides the hint when pins are disabled (reverse / loop) or the buffer is missing", () => {
+    for (const patch of [{ reverse: true }, { loop: true }]) {
+      const { doc } = docWithBareClip(patch);
+      const services = mockServices(doc);
+      services.bank.add("factory.loop", fakeBuffer());
+      const { unmount } = renderWithContext(<ArrangementPanel />, { services });
+      selectClip();
+      expect(screen.queryByText(/2×click/)).toBeNull();
+      unmount();
+    }
+    const { doc } = docWithBareClip();
+    const services = mockServices(doc);
+    renderWithContext(<ArrangementPanel />, { services });
+    selectClip();
+    expect(screen.queryByText(/2×click/)).toBeNull();
+  });
+});
 
 describe("warpPinTickFromClientX (drag math)", () => {
   // 4 bars = 7680 ticks across 400 px.

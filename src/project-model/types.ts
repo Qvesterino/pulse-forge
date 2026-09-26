@@ -11,6 +11,10 @@ export const GRID_32ND = STEP_TICKS / 2; // 60 ticks = 1/32 note
 
 export type ID = string;
 
+/** High-level, serializable composition profiles applied to generated music. */
+export const PRODUCTION_PROFILES = ["spacey-melodic-rap", "dark-atmospheric-trap", "spacey-dark-trap"] as const;
+export type ProductionProfile = (typeof PRODUCTION_PROFILES)[number];
+
 export type EffectType =
   | "eq"
   | "compressor"
@@ -489,6 +493,8 @@ export interface PatternGeneration {
   seed: string;
   genre: string;
   style: string | null;
+  /** Optional composition-level profile (v6); absent on pre-v6 generations. */
+  productionProfile?: ProductionProfile;
   grooveId: string;
   stepCount: number;
   ghostWeight: number;
@@ -642,6 +648,12 @@ export interface AudioClip {
   bufferId: string;
   /** Optional zero-based source channel routed as mono; absent plays the full source layout. */
   sourceChannel?: number;
+  /** Take group identity for non-destructive loop/punch alternatives. */
+  takeGroupId?: ID;
+  /** Pass identity inside the referenced take group. */
+  takeId?: ID;
+  /** Source pass identity when this is a generated segment of a take comp. */
+  compSourceTakeId?: ID;
   startBar: number;
   lengthBars: number;
   offsetSec: number;
@@ -674,9 +686,20 @@ export interface AudioClip {
   warpMarkers?: Array<{ timeSec: number; tick: number }>;
 }
 
+/** Whole-pass or comp selection state shared by the AudioClips in one take lane. */
+export interface AudioTakeGroup {
+  id: ID;
+  trackId: ID;
+  /** Only clips belonging to this take are heard; alternatives stay editable. */
+  activeTakeId: ID;
+  /** Special pass identity for the non-destructive comp assembled from source takes. */
+  compTakeId?: ID;
+}
+
 export interface Arrangement {
   clips: ArrangementClip[];
   audioClips?: AudioClip[];
+  takeGroups?: AudioTakeGroup[];
   transitions?: ArrangementTransition[];
 }
 

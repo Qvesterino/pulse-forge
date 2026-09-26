@@ -4,6 +4,8 @@ import { currentRankerManifest } from "./ranker-client";
 import { rankCandidateBank, type CandidateBankEntry } from "../../intent/candidate-bank";
 import type { GenerationPlan } from "../../intent/types";
 import type { ProjectDocument } from "../../project-model/types";
+import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../../intent/preference-ledger";
+import { rerankWithPersonalPreferences } from "../../intent/personal-ranker";
 
 /**
  * Candidate-bank integration (goal doc Fáze 4): the heuristic ranking stays
@@ -36,24 +38,30 @@ export async function rankCandidatesWithModel(
 ): Promise<RankerRanking> {
   const heuristicOrder = rankCandidateBank(doc, candidates);
   const mode = rankerMode();
-  const modelScores: (number | null)[] = heuristicOrder.map(() => null);
+  const observations = isPreferenceLearningEnabled() ? readPreferenceLedger() : [];
+  const hasPairwiseSignal = observations.some((observation) => observation.choice === "a" || observation.choice === "b");
+  const needsModel = mode !== "off" && heuristicOrder.length > 1;
+  const needsPersonalFeatures = hasPairwiseSignal && heuristicOrder.length > 1;
+  const modelScoreByIndex = new Map<number, number>();
+  const baseScoreByIndex = new Map(heuristicOrder.map((entry) => [entry.candidateIndex, entry.score]));
+  let vectors: PatternFeatureVector[] = [];
 
-  if (mode === "off" || heuristicOrder.length < 2) {
+  if (!needsModel && !needsPersonalFeatures) {
     return {
       order: heuristicOrder,
       mode,
       source: mode === "off" ? "off" : "fallback",
-      modelScores,
+      modelScores: heuristicOrder.map(() => null),
       featureVersion: null,
       rankerVersion: null,
       modelHash: null,
     };
   }
 
-  // Feature extraction for every surviving candidate (batch-relative features
-  // see the whole batch — deterministic order).
+  // Both the ONNX and personal selector consume the same versioned,
+  // deterministic feature vectors. Batch-relative values see the same bank.
   const patterns = heuristicOrder.map((entry) => entry.pattern);
-  const vectors: PatternFeatureVector[] = patterns.map((pattern) =>
+  vectors = patterns.map((pattern) =>
     extractPatternFeatures({
       doc,
       pattern,
@@ -63,61 +71,78 @@ export async function rankCandidatesWithModel(
       batch: patterns,
     }),
   );
+  const featureByHash = new Map(heuristicOrder.map((entry, index) => [entry.contentHash, vectors[index].values]));
+  const featureVersion = vectors[0]?.version ?? null;
+
+  const finish = (
+    baseOrder: CandidateBankEntry[],
+    source: RankerRanking["source"],
+    rankerVersion: string | null,
+    modelHash: string | null,
+  ): RankerRanking => {
+    let order = baseOrder;
+    if (needsPersonalFeatures) {
+      order = rerankWithPersonalPreferences(
+        baseOrder,
+        baseOrder.map((entry) => baseScoreByIndex.get(entry.candidateIndex) ?? entry.score),
+        featureByHash,
+        observations,
+        preferenceContextForIntent(plan.intent),
+      );
+    }
+    return {
+      order,
+      mode,
+      source,
+      modelScores: order.map((entry) => modelScoreByIndex.get(entry.candidateIndex) ?? null),
+      featureVersion,
+      rankerVersion,
+      modelHash,
+    };
+  };
+
+  if (!needsModel) {
+    return finish(heuristicOrder, "off", null, null);
+  }
 
   const batch = new Float32Array(heuristicOrder.length * vectors[0].values.length);
   vectors.forEach((vector, index) => batch.set(vector.values, index * vector.values.length));
   const result = await scoreCandidateFeatures(batch, heuristicOrder.length);
 
   if (!result.ok || !result.scores) {
-    // Missing model / timeout / invalid output → heuristic ranking (goal doc).
-    return {
-      order: heuristicOrder,
-      mode,
-      source: "fallback",
-      modelScores,
-      featureVersion: vectors[0]?.version ?? null,
-      rankerVersion: null,
-      modelHash: null,
-    };
+    // A model failure leaves the global heuristic intact; explicit local
+    // preferences may still add their bounded, post-gate residual.
+    return finish(heuristicOrder, "fallback", null, null);
   }
 
   result.scores.forEach((score, index) => {
-    modelScores[index] = score;
+    const candidate = heuristicOrder[index];
+    if (candidate) modelScoreByIndex.set(candidate.candidateIndex, score);
   });
 
   if (mode === "shadow") {
-    // Shadow: record the ONNX order in diagnostics but DO NOT change the
-    // selected result.
-    return {
-      order: heuristicOrder,
-      mode,
-      source: "model",
-      modelScores,
-      featureVersion: vectors[0]?.version ?? null,
-      rankerVersion: currentRankerManifest()?.rankerVersion ?? null,
-      modelHash: currentRankerManifest()?.modelHash ?? null,
-    };
+    // Shadow: record ONNX scores without letting them reorder the bank.
+    return finish(heuristicOrder, "model", currentRankerManifest()?.rankerVersion ?? null, currentRankerManifest()?.modelHash ?? null);
   }
 
-  // Active: deterministic combination, stable sort (score desc, candidate
-  // index asc, content hash asc).
-  const withScores = heuristicOrder.map((entry, index) => ({
-    entry,
-    finalScore: HEURISTIC_WEIGHT * entry.score + MODEL_WEIGHT * (modelScores[index] ?? entry.score),
-  }));
+  // Active: global ranker remains the baseline; personal taste is a bounded
+  // residual applied after this ordering, never a hard-constraint bypass.
+  const withScores = heuristicOrder.map((entry) => {
+    const modelScore = modelScoreByIndex.get(entry.candidateIndex) ?? entry.score;
+    const finalScore = HEURISTIC_WEIGHT * entry.score + MODEL_WEIGHT * modelScore;
+    baseScoreByIndex.set(entry.candidateIndex, finalScore);
+    return { entry, finalScore };
+  });
   withScores.sort(
     (a, b) =>
       b.finalScore - a.finalScore ||
       a.entry.candidateIndex - b.entry.candidateIndex ||
       a.entry.contentHash.localeCompare(b.entry.contentHash),
   );
-  return {
-    order: withScores.map((withScore) => withScore.entry),
-    mode,
-    source: "model",
-    modelScores,
-    featureVersion: vectors[0]?.version ?? null,
-    rankerVersion: currentRankerManifest()?.rankerVersion ?? null,
-    modelHash: currentRankerManifest()?.modelHash ?? null,
-  };
+  return finish(
+    withScores.map((withScore) => withScore.entry),
+    "model",
+    currentRankerManifest()?.rankerVersion ?? null,
+    currentRankerManifest()?.modelHash ?? null,
+  );
 }

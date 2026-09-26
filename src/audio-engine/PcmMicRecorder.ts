@@ -3,6 +3,7 @@ import { materializePcmTake, type MaterializedPcmTake } from "./pcmRecording";
 import {
   RECORDING_OWNER_ID,
   RecordingRecoveryRepository,
+  RecordingStorageQuotaError,
   type RecordingPcmChunk,
   type RecordingChannelDestination,
   type RecordingSession,
@@ -16,6 +17,14 @@ export interface PcmRecordingMetadata {
   trackName: string;
   placeOnTimeline?: boolean;
   channelDestinations?: RecordingChannelDestination[];
+  /** Optional non-destructive take lane for sequential alternate passes. */
+  takeGroupId?: string;
+  /** Unique identity for this pass inside `takeGroupId`. */
+  takeId?: string;
+  /** Keep transport-loop passes as separately selectable takes. */
+  loopCapture?: boolean;
+  /** Punch locators in transport ticks; capture stops on the exact out frame. */
+  punchCapture?: { startTick: number; endTick: number };
   startBar: number;
   bpm: number;
   recordingInputOffsetMs?: number;
@@ -100,6 +109,8 @@ export interface PcmMicRecorderDependencies {
   recovery?: IRecordingRecoveryRepository;
   /** Empty string explicitly selects the system default; omitted uses the saved user preference. */
   inputDeviceId?: string;
+  /** Require this many independent capture channels; omitted leaves browser defaults untouched. */
+  requestedChannelCount?: number;
   getUserMedia?: MediaDevices["getUserMedia"];
   addWorkletModule?: (ctx: AudioContext) => Promise<void>;
   /** Pre-capture input trim in dB (-24..+12). Applied to monitor + capture. */
@@ -122,6 +133,7 @@ export function clampInputGainDb(value: number): number {
  */
 export class PcmMicRecorder {
   onError: ((message: string) => void) | null = null;
+  onPunchOut: (() => void) | null = null;
 
   private state_: PcmRecorderState = "idle";
   // `cancel()` can return while getUserMedia is still awaiting a permission
@@ -156,6 +168,7 @@ export class PcmMicRecorder {
   private readyResolve: ((value: { channels: number; sampleRate: number }) => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
   private stoppedResolve: (() => void) | null = null;
+  private workletStopped = false;
   private finishPromise: Promise<string | null> | null = null;
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -204,6 +217,72 @@ export class PcmMicRecorder {
     return this.captureInfo_;
   }
 
+  /** Queue a pass or punch-in seam in AudioWorklet time at its exact input frame. */
+  scheduleTakeBoundary(atTime: number): boolean {
+    const node = this.node;
+    if (
+      !node ||
+      this.state_ !== "recording" ||
+      (!this.session?.loopCapture && !this.session?.punchCapture) ||
+      !Number.isFinite(atTime)
+    ) {
+      return false;
+    }
+    try {
+      node.port.postMessage({ type: "take-boundary", atTime });
+      return true;
+    } catch {
+      this.reportError("Could not queue the audio boundary; the committed recording remains recoverable");
+      return false;
+    }
+  }
+
+  /** Retract a queued pass or punch-in seam after a seek/tempo/locator change. */
+  cancelTakeBoundary(atTime: number): boolean {
+    const node = this.node;
+    if (
+      !node ||
+      this.state_ !== "recording" ||
+      (!this.session?.loopCapture && !this.session?.punchCapture) ||
+      !Number.isFinite(atTime)
+    ) {
+      return false;
+    }
+    try {
+      node.port.postMessage({ type: "cancel-take-boundary", atTime });
+      return true;
+    } catch {
+      this.reportError("Could not update the loop-take boundary; the committed recording remains recoverable");
+      return false;
+    }
+  }
+
+  /** Stop PCM at an exact AudioWorklet frame while leaving transport playback running. */
+  schedulePunchOut(atTime: number): boolean {
+    const node = this.node;
+    if (!node || this.state_ !== "recording" || !this.session?.punchCapture || !Number.isFinite(atTime)) return false;
+    try {
+      node.port.postMessage({ type: "stop-at", atTime });
+      return true;
+    } catch {
+      this.reportError("Could not queue punch-out; the staged audio remains available for recovery");
+      return false;
+    }
+  }
+
+  /** Retract a punch-out when transport timing changes before its audio frame. */
+  cancelPunchOut(atTime: number): boolean {
+    const node = this.node;
+    if (!node || this.state_ !== "recording" || !this.session?.punchCapture || !Number.isFinite(atTime)) return false;
+    try {
+      node.port.postMessage({ type: "cancel-stop-at", atTime });
+      return true;
+    } catch {
+      this.reportError("Could not update punch-out; the staged audio remains available for recovery");
+      return false;
+    }
+  }
+
   /**
    * Latest input peak/RMS (0..1, post-trim) for the UI meter; 0 when no input
    * session is wired. Cheap — one getFloatTimeDomainData poll per call.
@@ -241,6 +320,13 @@ export class PcmMicRecorder {
     }
     if (activeCapture && activeCapture !== this) {
       throw new Error("The audio input is already in use by another recording — stop that recording first");
+    }
+    const requestedChannelCount = this.deps.requestedChannelCount;
+    if (
+      requestedChannelCount !== undefined &&
+      (!Number.isSafeInteger(requestedChannelCount) || requestedChannelCount < 1 || requestedChannelCount > 32)
+    ) {
+      throw new Error("Requested audio input channel count must be a whole number from 1 to 32");
     }
     activeCapture = this;
     this.startInFlight = true;
@@ -281,6 +367,7 @@ export class PcmMicRecorder {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          ...(requestedChannelCount !== undefined ? { channelCount: { exact: requestedChannelCount } } : {}),
         };
         if (this.inputDeviceId) audio.deviceId = { exact: this.inputDeviceId };
         this.stream = await getUserMedia({
@@ -288,6 +375,10 @@ export class PcmMicRecorder {
         });
       } catch (error) {
         const name = error instanceof Error ? error.name : "";
+        const failedConstraint =
+          error && typeof error === "object" && "constraint" in error
+            ? String((error as { constraint?: unknown }).constraint ?? "")
+            : "";
         if (name === "NotAllowedError" || name === "SecurityError") {
           throw new Error("Audio input permission denied — allow input access and try again");
         }
@@ -297,8 +388,22 @@ export class PcmMicRecorder {
           }
           throw new Error("No audio input is available");
         }
+        if (
+          name === "OverconstrainedError" &&
+          requestedChannelCount !== undefined &&
+          failedConstraint === "channelCount"
+        ) {
+          throw new Error(
+            `The selected input cannot provide exactly ${requestedChannelCount} capture channel${requestedChannelCount === 1 ? "" : "s"}; choose another channel count or input`,
+          );
+        }
         if (name === "OverconstrainedError" && this.inputDeviceId) {
           throw new Error("The selected audio input is unavailable — choose another input or System default");
+        }
+        if (name === "OverconstrainedError" && requestedChannelCount !== undefined) {
+          throw new Error(
+            `The selected input cannot provide exactly ${requestedChannelCount} capture channel${requestedChannelCount === 1 ? "" : "s"}; choose another channel count or input`,
+          );
         }
         throw new Error(`Could not start audio-input capture${error instanceof Error ? `: ${error.message}` : ""}`);
       }
@@ -314,6 +419,7 @@ export class PcmMicRecorder {
         processorOptions: { chunkFrames: Math.max(128, Math.round(ctx.sampleRate * CHUNK_SECONDS)) },
       });
       this.muteGain = ctx.createGain();
+      this.workletStopped = false;
       this.muteGain.gain.value = 0;
       this.monitorGain = ctx.createGain();
       this.monitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
@@ -342,6 +448,11 @@ export class PcmMicRecorder {
       }
       if (!Number.isInteger(ready.sampleRate) || ready.sampleRate < 8_000 || ready.sampleRate > 384_000) {
         throw new Error("The audio device reported an unsupported sample rate");
+      }
+      if (requestedChannelCount !== undefined && ready.channels !== requestedChannelCount) {
+        throw new Error(
+          `The input delivered ${ready.channels} capture channel${ready.channels === 1 ? "" : "s"} instead of the requested ${requestedChannelCount}; no take was started`,
+        );
       }
 
       let trackSettings: MediaTrackSettings = {};
@@ -405,7 +516,11 @@ export class PcmMicRecorder {
       }
       this.startedAt = ctx.currentTime;
       this.state_ = "recording";
-      this.node.port.postMessage({ type: "start" });
+      this.node.port.postMessage({
+        type: "start",
+        ...(session.loopCapture ? { loopCapture: true } : {}),
+        ...(session.punchCapture && (session.leadInSec ?? 0) === 0 ? { punchInNow: true } : {}),
+      });
     } catch (error) {
       const session = this.session;
       this.cleanupWiring();
@@ -481,6 +596,7 @@ export class PcmMicRecorder {
       sampleRate?: number;
       sequence?: number;
       frames?: number;
+      takeBoundaries?: number[];
       reason?: string;
     };
     if (data.type === "ready") {
@@ -502,7 +618,22 @@ export class PcmMicRecorder {
       this.reportError(data.reason || "Audio capture failed; completed blocks remain available for recovery");
       return;
     }
-    if (data.type === "stopped") this.stoppedResolve?.();
+    if (data.type === "stopped") {
+      this.workletStopped = true;
+      this.stoppedResolve?.();
+      if (data.reason === "punch-out") {
+        const sessionId = this.session?.id;
+        if (sessionId) {
+          this.writeTail = this.writeTail
+            .then(() => this.recovery.markPunchOutReached(sessionId))
+            .catch((error) => {
+              const detail = error instanceof Error ? error.message : String(error);
+              this.reportError(`Punch-out audio was captured, but its completion marker could not be saved: ${detail}`);
+            });
+        }
+        this.onPunchOut?.();
+      }
+    }
   }
 
   private acceptChunk(chunk: RecordingPcmChunk): void {
@@ -532,8 +663,10 @@ export class PcmMicRecorder {
         node.port.postMessage({ type: "ack", sequence: chunk.sequence });
       })
       .catch((error) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        this.persistenceError = `Audio storage stopped: ${detail}. Previously saved blocks are recoverable.`;
+        this.persistenceError =
+          error instanceof RecordingStorageQuotaError
+            ? "Recording stopped because browser storage is full. Previously committed audio is available for recovery; the final block may not have been saved. Free up space before the next take."
+            : `Audio storage stopped: ${error instanceof Error ? error.message : String(error)}. Previously saved blocks are recoverable.`;
         this.reportError(this.persistenceError);
       });
   }
@@ -560,7 +693,7 @@ export class PcmMicRecorder {
     this.finishPromise = (async () => {
       const sessionId = this.session?.id ?? null;
       const node = this.node;
-      if (node) {
+      if (node && !this.workletStopped) {
         let stopAcknowledged = false;
         let stopDispatchFailed = false;
         const stopped = new Promise<void>((resolve) => {

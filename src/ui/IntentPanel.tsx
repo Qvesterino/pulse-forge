@@ -72,6 +72,7 @@ import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ProjectDocument } from "../project-model/types";
+import { ProducerDnaCompare } from "./ProducerDnaCompare";
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
@@ -1872,6 +1873,15 @@ export function IntentPanel() {
             );
           })}
         </div>
+      )}
+      {bankResult && candidates && candidates.length > 1 && (
+        <ProducerDnaCompare
+          project={doc}
+          result={bankResult}
+          onAudition={(candidate) => {
+            void toggleAudition(candidate);
+          }}
+        />
       )}
       {candidates && candidates.length === 0 && bankResult?.proposal && (
         <button type="button" className="btn intent-generate-btn" onClick={() => useCandidate(null)}>

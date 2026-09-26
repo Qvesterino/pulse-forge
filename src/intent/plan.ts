@@ -16,6 +16,7 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
   const base: GenerateOptions = {
     genre: intent.genre,
     style: intent.style ?? undefined,
+    productionProfile: intent.productionProfile,
     seed: intent.seed,
     stepCount: intent.length,
     key: intent.key,

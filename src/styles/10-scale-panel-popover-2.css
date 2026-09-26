@@ -1,5 +1,3 @@
-
-
 .freesound-error {
   font-size: 11px;
   color: #ef4444;
@@ -362,6 +360,10 @@ html {
 .arr-audio-clip.current {
   border-color: rgba(245, 158, 11, 0.6);
 }
+.arr-audio-clip.comp {
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.24), rgba(20, 184, 166, 0.1));
+  border-color: rgba(45, 212, 191, 0.72);
+}
 .arr-audio-clip .audio-waveform {
   flex: 1;
   display: block;
@@ -513,7 +515,30 @@ html {
   filter: brightness(1.25);
   box-shadow:
     0 0 12px rgba(245, 158, 11, 1),
-    0 0 3px rgba(255, 255, 255, 0.8);
+    0 0 3px rgba(255, 255, 255, 0.9);
+}
+/* Invisible grab area — the diamond stays 12 px, the hitbox is 28 px so the
+   pin is easy to catch without covering the waveform. */
+.warp-pin-handle::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 28px;
+  height: 28px;
+}
+/* One-line gesture hint on selected pin-less clips (forward, unlooped). */
+.arr-audio-clip-hint {
+  position: absolute;
+  bottom: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0 4px;
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
 }
 .warp-pin.dragging .warp-pin-line {
   background: #fbbf24;

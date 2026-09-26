@@ -1,4 +1,5 @@
 import type { MelodicPatternData } from "../types";
+import type { ProductionProfile } from "../../project-model/types";
 
 /**
  * Melodic reference patterns per genre.
@@ -277,6 +278,170 @@ const TRAP_CHORD: MelodicPatternData = {
   ],
 };
 
+// Original, profile-level material: scale-degree sketches rather than copied
+// melodies. These favor long harmonic beds and short, singable motifs over
+// note-dense runs; the user's key still determines the actual pitches.
+const SPACEY_RAP_MELODICS: MelodicPatternData[] = [
+  {
+    role: "bass",
+    octaveOffset: -1,
+    sequences: [
+      [
+        { degree: 0, duration: 8, velocity: 0.82 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.68 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.78 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.66 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+    ],
+  },
+  {
+    role: "chord",
+    octaveOffset: 1,
+    sequences: [
+      [
+        { degree: 0, duration: 8, velocity: 0.44 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.38 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.42 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 2, duration: 4, velocity: 0.36 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+    ],
+  },
+  {
+    role: "lead",
+    octaveOffset: 2,
+    sequences: [
+      [
+        { degree: 4, duration: 4, velocity: 0.52 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 2, duration: 4, velocity: 0.47 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+      [
+        { degree: 0, duration: 8, velocity: 0.5 },
+        { degree: -1, duration: 8, velocity: 0 },
+      ],
+    ],
+  },
+];
+
+const DARK_ATMOSPHERIC_TRAP_MELODICS: MelodicPatternData[] = [
+  {
+    role: "bass",
+    octaveOffset: -1,
+    sequences: [
+      [
+        { degree: 0, duration: 4, velocity: 0.94 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 0, duration: 2, velocity: 0.74 },
+        { degree: -1, duration: 2, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.82 },
+      ],
+      [
+        { degree: 0, duration: 8, velocity: 0.9 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 3, duration: 4, velocity: 0.72 },
+      ],
+    ],
+  },
+  {
+    role: "chord",
+    octaveOffset: 1,
+    sequences: [
+      [
+        { degree: 0, duration: 8, velocity: 0.46 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 3, duration: 4, velocity: 0.4 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.48 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 8, velocity: 0.4 },
+      ],
+    ],
+  },
+  {
+    role: "lead",
+    octaveOffset: 2,
+    sequences: [
+      [
+        { degree: 0, duration: 2, velocity: 0.54 },
+        { degree: -1, duration: 6, velocity: 0 },
+        { degree: 3, duration: 2, velocity: 0.48 },
+        { degree: -1, duration: 6, velocity: 0 },
+      ],
+      [
+        { degree: 4, duration: 4, velocity: 0.52 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 0, duration: 4, velocity: 0.46 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+    ],
+  },
+];
+
+const SPACEY_DARK_TRAP_MELODICS: MelodicPatternData[] = [
+  {
+    role: "bass",
+    octaveOffset: -1,
+    sequences: [
+      [
+        { degree: 0, duration: 8, velocity: 0.92 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.76 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.9 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 3, duration: 4, velocity: 0.72 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+    ],
+  },
+  {
+    role: "chord",
+    octaveOffset: 1,
+    sequences: [
+      [
+        { degree: 0, duration: 8, velocity: 0.45 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 4, duration: 4, velocity: 0.39 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.46 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 3, duration: 8, velocity: 0.4 },
+      ],
+    ],
+  },
+  {
+    role: "lead",
+    octaveOffset: 2,
+    sequences: [
+      [
+        { degree: 4, duration: 4, velocity: 0.53 },
+        { degree: -1, duration: 8, velocity: 0 },
+        { degree: 2, duration: 4, velocity: 0.48 },
+      ],
+      [
+        { degree: 0, duration: 4, velocity: 0.52 },
+        { degree: -1, duration: 4, velocity: 0 },
+        { degree: 3, duration: 4, velocity: 0.47 },
+        { degree: -1, duration: 4, velocity: 0 },
+      ],
+    ],
+  },
+];
+
 // ── Ambient ────────────────────────────────────────────
 
 const AMBIENT_BASS: MelodicPatternData = {
@@ -351,4 +516,10 @@ export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
   techno: [TECHNO_BASS, TECHNO_CHORD, TECHNO_LEAD],
   trap: [TRAP_BASS, TRAP_CHORD, TRAP_LEAD],
   ambient: [AMBIENT_BASS, AMBIENT_CHORD, AMBIENT_LEAD],
+};
+
+export const MELODIC_BY_PROFILE: Record<ProductionProfile, MelodicPatternData[]> = {
+  "spacey-melodic-rap": SPACEY_RAP_MELODICS,
+  "dark-atmospheric-trap": DARK_ATMOSPHERIC_TRAP_MELODICS,
+  "spacey-dark-trap": SPACEY_DARK_TRAP_MELODICS,
 };

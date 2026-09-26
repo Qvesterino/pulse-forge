@@ -93,7 +93,7 @@ describe("Remix-DNA lineage (schema v3)", () => {
   });
 });
 
-describe("AudioClip source-channel schema v4", () => {
+describe("AudioClip routing and take-group schema", () => {
   it("migrates v3 projects without inventing a mono route", () => {
     const old = { ...testDoc(), schemaVersion: 3 };
     const migrated = migrateProject(old);
@@ -105,7 +105,7 @@ describe("AudioClip source-channel schema v4", () => {
     const doc = testDoc();
     const routed = addAudioClip(doc, doc.tracks[0].id, "recorded-stereo-take", 0, 1, { sourceChannel: 1 }).execute(doc);
     const migrated = migrateProject({ ...routed, schemaVersion: 3 });
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.arrangement.audioClips?.[0]?.sourceChannel).toBe(1);
   });
 });

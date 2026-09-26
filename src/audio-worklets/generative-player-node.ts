@@ -1,5 +1,6 @@
 import type { GenerativeAudioChunk } from "../generative/types";
 
+import { attachProcessorErrorGuard } from "./processor-errors";
 export interface GenerativePlayerStatus {
   type: "overrun" | "underrun" | "sequence-gap" | "recovered" | "sample-rate-mismatch";
   droppedFrames?: number;
@@ -36,6 +37,9 @@ export function createGenerativePlayerNode(
     outputChannelCount: [2],
     processorOptions: { channels, maxFrames },
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "generative-player");
   const listeners = new Set<(status: GenerativePlayerStatus) => void>();
   node.port.onmessage = (event: MessageEvent<GenerativePlayerStatus>) => {
     const status = event.data;

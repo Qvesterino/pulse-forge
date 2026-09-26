@@ -587,6 +587,86 @@ describe("scheduler", () => {
 });
 
 describe("scheduler realtime loop wrap", () => {
+  it("prequeues a musical punch boundary and retracts it when the tempo map changes", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    const boundaries: Array<{ tick: number; audioTime: number; cancelled?: true }> = [];
+    const punchOutTick = 96;
+    h.scheduler.subscribeTickBoundary(punchOutTick, (boundary) => boundaries.push(boundary));
+    h.transport.play(0);
+    h.scheduler.start();
+    const firstAudioTime = h.transport.timeAtTick(punchOutTick);
+
+    expect(boundaries).toEqual([{ tick: punchOutTick, audioTime: firstAudioTime }]);
+    h.transport.setBpm(123);
+    h.advance(0.025);
+    h.scheduler["tick"]();
+    const updatedAudioTime = h.transport.timeAtTick(punchOutTick);
+
+    expect(boundaries).toEqual([
+      { tick: punchOutTick, audioTime: firstAudioTime },
+      { tick: punchOutTick, audioTime: firstAudioTime, cancelled: true },
+      { tick: punchOutTick, audioTime: updatedAudioTime },
+    ]);
+    h.scheduler.stop();
+    expect(boundaries.at(-1)).toEqual({ tick: punchOutTick, audioTime: updatedAudioTime, cancelled: true });
+  });
+
+  it("pre-schedules one exact audio-clock boundary and replays it to a late subscriber", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    const boundaries: Array<{ loopStartTick: number; loopEndTick: number; audioTime: number }> = [];
+    h.scheduler.subscribeLoopBoundaries((boundary) => boundaries.push(boundary));
+    h.transport.setLoop(true, 0, BAR_TICKS);
+    h.transport.play(0);
+    h.scheduler.start();
+    h.advance(1.9);
+    h.scheduler["tick"]();
+    const firstBoundaryTime = h.transport.timeAtTick(BAR_TICKS);
+
+    expect(boundaries).toEqual([{ loopStartTick: 0, loopEndTick: BAR_TICKS, audioTime: firstBoundaryTime }]);
+    const lateSubscriber: typeof boundaries = [];
+    h.scheduler.subscribeLoopBoundaries((boundary) => lateSubscriber.push(boundary));
+    expect(lateSubscriber).toEqual(boundaries);
+
+    h.advance(0.2);
+    h.scheduler["tick"]();
+    expect(boundaries).toHaveLength(1);
+    expect(h.transport.position).toBeLessThan(BAR_TICKS);
+    h.scheduler.stop();
+  });
+
+  it("re-queues a sub-millisecond tempo change instead of keeping a stale sample boundary", () => {
+    const doc = createDefaultProject();
+    const h = makeHarness(doc, "pattern");
+    const boundaries: Array<{ loopStartTick: number; loopEndTick: number; audioTime: number; cancelled?: true }> = [];
+    h.scheduler.subscribeLoopBoundaries((boundary) => boundaries.push(boundary));
+    h.transport.setLoop(true, 0, BAR_TICKS);
+    h.transport.play(0);
+    h.scheduler.start();
+    h.advance(1.9);
+    h.scheduler["tick"]();
+    const firstBoundaryTime = h.transport.timeAtTick(BAR_TICKS);
+    h.transport.setBpm(123);
+    h.scheduler["tick"]();
+    const rescheduledBoundaryTime = h.transport.timeAtTick(BAR_TICKS);
+
+    expect(boundaries).toHaveLength(3);
+    expect(boundaries[0]).toEqual({ loopStartTick: 0, loopEndTick: BAR_TICKS, audioTime: firstBoundaryTime });
+    expect(boundaries[1]).toEqual({
+      loopStartTick: 0,
+      loopEndTick: BAR_TICKS,
+      audioTime: firstBoundaryTime,
+      cancelled: true,
+    });
+    expect(boundaries[2]).toEqual({
+      loopStartTick: 0,
+      loopEndTick: BAR_TICKS,
+      audioTime: rescheduledBoundaryTime,
+    });
+    h.scheduler.stop();
+  });
+
   it("pattern mode: scheduler rebases to loopStart when position reaches loopEnd", () => {
     // 16-step default pattern is 16 * STEP_TICKS = 1920 ticks. Loop over the
     // first 8 steps (0..960) so position wraps to 0 after a long advance.

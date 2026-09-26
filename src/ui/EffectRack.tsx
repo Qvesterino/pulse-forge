@@ -17,6 +17,7 @@ import {
   removeEffect,
   resetEffect,
   setEffectParam,
+  setEffectMacroParams,
   setEffectOutputTrimDb,
   setEffectSidechainSource,
   setEffectSteps,
@@ -51,6 +52,14 @@ const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) =>
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
+import {
+  SOURCE_PROFILE_IDS,
+  sourceChainOf,
+  sourceProfileForTrack,
+  sourceProfileOf,
+  type SourceMacro,
+  type SourceProfileId,
+} from "../effects/sourceProfiles";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { StepGridEditor } from "./StepGridEditor";
 import type { UltinaAbState } from "./UltinaPanel";
@@ -61,7 +70,9 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { effectEditorSpec } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
 import { EffectIntentAssistant } from "./EffectIntentAssistant";
+import { EffectQuickControls } from "./EffectQuickControls";
 import { Slider } from "./controls";
+import { SourceMacroDock } from "./SourceMacroDock";
 
 type EffectRackProps = {
   track: Track;
@@ -111,17 +122,53 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(
     () => track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null),
   );
+  const [sourceProfileId, setSourceProfileId] = useState<SourceProfileId>(() =>
+    sourceProfileForTrack(track, selectedPadId),
+  );
+  const [sourceEffectIds, setSourceEffectIds] = useState<readonly string[]>([]);
   const [draggedFxId, setDraggedFxId] = useState<string | null>(null);
   const [dropTargetFxId, setDropTargetFxId] = useState<string | null>(null);
   useEffect(() => {
     setSelectedDeviceId(null);
   }, [track.id]);
+  useEffect(() => {
+    setSourceProfileId(sourceProfileForTrack(track, selectedPadId));
+    setSourceEffectIds([]);
+  }, [track.id, selectedPadId]);
   const activeDeviceId =
     selectedDeviceId === "instrument" && hasInstrument
       ? "instrument"
       : selectedDeviceId && track.effects.some((fx) => fx.id === selectedDeviceId)
         ? selectedDeviceId
         : (track.effects.at(-1)?.id ?? (hasInstrument ? "instrument" : null));
+
+  const sourceProfile = sourceProfileOf(sourceProfileId);
+  const loadSourceProfile = () => {
+    const chain = sourceChainOf(sourceProfile, BEATMAKING_EFFECT_CHAINS);
+    if (!chain) return;
+    const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+    const insertionIndex =
+      selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+    const command = applyEffectChainPreset(services.store.getDoc(), track.id, chain, insertionIndex);
+    services.store.execute(command);
+    setSourceEffectIds(command.effectIds);
+    setSelectedDeviceId(command.firstEffectId);
+  };
+  const commitSourceMacro = (macro: SourceMacro, value: number) => {
+    const edits = macro.targets
+      .map((target) => {
+        const fxId = sourceEffectIds[target.slot];
+        if (!fxId) return null;
+        return {
+          fxId,
+          paramId: target.paramId,
+          value: target.from + (target.to - target.from) * Math.min(1, Math.max(0, value)),
+        };
+      })
+      .filter((edit): edit is { fxId: string; paramId: string; value: number } => edit !== null);
+    if (edits.length === 0) return;
+    services.store.execute(setEffectMacroParams(services.store.getDoc(), track.id, edits));
+  };
 
   // Observer-only poll: degraded fallbacks (worklet DSP unavailable) surface
   // as warning badges; limiters report gain reduction for a live GR meter.
@@ -323,6 +370,18 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
             renders this devices view for the selected track, the classic
             rack below for the mixer-focused flow. */}
         <FxIntentBar trackId={track.id} />
+        <SourceMacroDock
+          track={track}
+          profile={sourceProfile}
+          profileIds={SOURCE_PROFILE_IDS}
+          loadedEffectIds={sourceEffectIds}
+          onSelectProfile={(id) => {
+            setSourceProfileId(id);
+            setSourceEffectIds([]);
+          }}
+          onLoadProfile={loadSourceProfile}
+          onCommitMacro={commitSourceMacro}
+        />
         <div className="device-surface">
           {activeDeviceId === "instrument" && hasInstrument ? (
             <DockedPlugin trackId={track.id} selectedPadId={selectedPadId} />
@@ -478,10 +537,14 @@ function Device({
         ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(param.id)
       ),
   );
+  const quickParams = devicesMode
+    ? usableParams.filter((param) => ["mix", "global.mix", "global.dryWet", "feedback", "sync"].includes(param.id))
+    : [];
+  const detailParams = devicesMode ? usableParams.filter((param) => !quickParams.some((quick) => quick.id === param.id)) : usableParams;
   const primaryParams = (editorSpec.primaryParamIds ?? [])
-    .map((id) => usableParams.find((param) => param.id === id))
-    .filter((param): param is (typeof usableParams)[number] => !!param);
-  const remainingParams = usableParams.filter((param) => !primaryParams.some((primary) => primary.id === param.id));
+    .map((id) => detailParams.find((param) => param.id === id))
+    .filter((param): param is (typeof detailParams)[number] => !!param);
+  const remainingParams = detailParams.filter((param) => !primaryParams.some((primary) => primary.id === param.id));
   const pageSize = 4;
   const chunkParams = (params: typeof usableParams) =>
     Array.from({ length: Math.ceil(params.length / pageSize) }, (_, page) =>
@@ -663,6 +726,13 @@ function Device({
       {expanded && (
         <div id={contentId} className="fx-device-content">
           <EffectIntentAssistant trackId={track.id} effect={fx} fallbackReason={fallbackReason} />
+          {devicesMode && (
+            <EffectQuickControls
+              params={quickParams}
+              values={fx.params}
+              onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
+            />
+          )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
           {(fx.type === "limiter" || fx.type === "compressor" || fx.type === "drumBuss" || fx.type === "bassBuss") && (
             <div className="fx-gr" aria-label="Gain reduction">

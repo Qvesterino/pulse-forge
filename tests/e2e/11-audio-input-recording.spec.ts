@@ -2,46 +2,179 @@ import { test, expect } from "playwright/test";
 import type { Page } from "playwright/test";
 import { clickPanelAction, openHouseTemplate } from "./_helpers";
 
-async function installSyntheticStereoInput(page: Page): Promise<void> {
-  // Distinct tones let the test detect a mono fold-down or swapped/missing
-  // channel. This never accesses a physical microphone or audio interface.
-  await page.addInitScript(() => {
+async function ensureArrangementVisible(page: Page): Promise<void> {
+  const timeline = page.locator(".arr-timeline");
+  if (await timeline.isVisible().catch(() => false)) return;
+
+  // ArrangementPanel is lazy-loaded. After a project reload the timeline may
+  // not have mounted yet even though ARR is already the active dock panel; a
+  // blind toggle in that window closes it before the chunk can render.
+  const directToggle = page.locator('.topbar button[aria-label="Toggle arrangement and scenes"]').first();
+  if (await directToggle.isVisible().catch(() => false)) {
+    if ((await directToggle.getAttribute("aria-pressed")) !== "true") await directToggle.click();
+  } else {
+    await clickPanelAction(page, "ARR");
+  }
+  await expect(timeline).toBeVisible({ timeout: 15_000 });
+}
+
+async function installSyntheticInput(page: Page, channels = 2): Promise<void> {
+  // Distinct tones exercise the real AudioWorklet/PCM path without opening a
+  // physical microphone or audio interface. Chromium's MediaStreamDestination
+  // is stereo-only, so the test seam supplies its synthetic channels at the
+  // app's MediaStreamAudioSourceNode boundary.
+  await page.addInitScript((channelCount: number) => {
+    const syntheticStreams = new WeakSet<MediaStream>();
+    const syntheticTracks = new WeakSet<MediaStreamTrack>();
+    const nativeCreateMediaStreamSource = AudioContext.prototype.createMediaStreamSource;
+    const nativeGetSettings = MediaStreamTrack.prototype.getSettings;
+    AudioContext.prototype.createMediaStreamSource = function (stream: MediaStream): MediaStreamAudioSourceNode {
+      if (!syntheticStreams.has(stream)) return nativeCreateMediaStreamSource.call(this, stream);
+      const merger = this.createChannelMerger(channelCount);
+      const frequencies = [220, 330, 440, 550, 660, 770, 880, 990];
+      for (let channel = 0; channel < channelCount; channel++) {
+        const oscillator = this.createOscillator();
+        const gain = this.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequencies[channel] ?? 220 + channel * 110;
+        gain.gain.value = 0.2;
+        oscillator.connect(gain).connect(merger, 0, channel);
+        oscillator.start();
+      }
+      return merger as unknown as MediaStreamAudioSourceNode;
+    };
+    MediaStreamTrack.prototype.getSettings = function (): MediaTrackSettings {
+      const settings = nativeGetSettings.call(this);
+      return syntheticTracks.has(this) ? { ...settings, channelCount } : settings;
+    };
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
       configurable: true,
       value: async () => {
-        const context = new AudioContext({ sampleRate: 48_000 });
-        const destination = context.createMediaStreamDestination();
-        const merger = context.createChannelMerger(2);
-        const left = context.createOscillator();
-        const right = context.createOscillator();
-        const leftGain = context.createGain();
-        const rightGain = context.createGain();
-        left.type = "sine";
-        left.frequency.value = 220;
-        right.type = "sine";
-        right.frequency.value = 550;
-        leftGain.gain.value = 0.2;
-        rightGain.gain.value = 0.2;
-        left.connect(leftGain).connect(merger, 0, 0);
-        right.connect(rightGain).connect(merger, 0, 1);
-        merger.connect(destination);
-        left.start();
-        right.start();
-        await context.resume();
-        return destination.stream;
+        const streamContext = new AudioContext({ sampleRate: 48_000 });
+        const stream = streamContext.createMediaStreamDestination().stream;
+        syntheticStreams.add(stream);
+        for (const track of stream.getAudioTracks()) syntheticTracks.add(track);
+        return stream;
       },
     });
-  });
+  }, channels);
 }
 
 test.describe("11 — audio-input recording", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "WebKit on Windows has no Web Audio media stack");
 
+  test("renders selected source channels as isolated audio in the offline export", async ({ page }) => {
+    test.setTimeout(120_000);
+    await openHouseTemplate(page);
+    const report = await page.evaluate(async () => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const [templateModule, commandModule, sampleModule, rendererModule, engineModule, workletModule] =
+        await Promise.all([
+          load("/src/project-model/templates.ts"),
+          load("/src/commands/commands.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/rendering/renderer.ts"),
+          load("/src/audio-engine/AudioEngine.ts"),
+          load("/src/audio-worklets/loader.ts"),
+        ]);
+      const { createProjectFromTemplate } = templateModule;
+      const { addAudioClip } = commandModule;
+      const { SampleBank } = sampleModule;
+      const { renderProject } = rendererModule;
+      const { AudioEngine } = engineModule;
+      const { ensureWorkletsForDoc } = workletModule;
+      const sampleRate = 44_100;
+      const frames = sampleRate;
+      const source = new OfflineAudioContext(2, frames, sampleRate).createBuffer(2, frames, sampleRate);
+      for (let frame = 0; frame < frames; frame++) {
+        source.getChannelData(0)[frame] = 0.25 * Math.sin((2 * Math.PI * 220 * frame) / sampleRate);
+        source.getChannelData(1)[frame] = 0.25 * Math.sin((2 * Math.PI * 550 * frame) / sampleRate);
+      }
+      const assetId = `user.channel-routing-e2e-${crypto.randomUUID()}`;
+      const bank = new SampleBank();
+      bank.add(assetId, source);
+      const base = createProjectFromTemplate("empty");
+      const track = base.tracks.find((candidate: { kind: string }) => candidate.kind !== "group");
+      if (!track) throw new Error("empty-project audio track fixture missing");
+      const projectWithoutSceneClips = {
+        ...base,
+        arrangement: { ...base.arrangement, clips: [], audioClips: [] },
+      };
+      const leftClipProject = addAudioClip(projectWithoutSceneClips, track.id, assetId, 0, 1, {
+        sourceChannel: 0,
+        fadeIn: 0,
+        fadeOut: 0,
+      }).execute(projectWithoutSceneClips);
+      const routedProject = addAudioClip(leftClipProject, track.id, assetId, 1, 1, {
+        sourceChannel: 1,
+        fadeIn: 0,
+        fadeOut: 0,
+      }).execute(leftClipProject);
+      const rendered = await renderProject(routedProject, bank, {
+        mode: "song",
+        sampleRate,
+        tailSeconds: 0,
+      });
+      const liveContext = new OfflineAudioContext(2, rendered.length, sampleRate);
+      await ensureWorkletsForDoc(routedProject, liveContext);
+      const liveEngine = new AudioEngine();
+      liveEngine.attachBank(bank);
+      liveEngine.useContext(liveContext);
+      liveEngine.setProject(routedProject);
+      for (const clip of routedProject.arrangement.audioClips) {
+        liveEngine.triggerAudioClip(clip, clip.startBar * 2, 2);
+      }
+      const liveRendered = await liveContext.startRendering();
+      liveEngine.detachBank();
+      const amplitudeAt = (buffer: AudioBuffer, frequency: number, startSec: number): number => {
+        const start = Math.round(startSec * sampleRate);
+        const count = Math.round(sampleRate / 2);
+        let real = 0;
+        let imaginary = 0;
+        for (let index = 0; index < count; index++) {
+          const sample = buffer.getChannelData(0)[start + index] ?? 0;
+          const phase = (2 * Math.PI * frequency * index) / sampleRate;
+          real += sample * Math.cos(phase);
+          imaginary -= sample * Math.sin(phase);
+        }
+        return (2 * Math.hypot(real, imaginary)) / count;
+      };
+      const leftRoute = {
+        expected: amplitudeAt(rendered, 220, 0.2),
+        rejected: amplitudeAt(rendered, 550, 0.2),
+      };
+      const rightRoute = {
+        expected: amplitudeAt(rendered, 550, 2.2),
+        rejected: amplitudeAt(rendered, 220, 2.2),
+      };
+      const liveLeftRoute = {
+        expected: amplitudeAt(liveRendered, 220, 0.2),
+        rejected: amplitudeAt(liveRendered, 550, 0.2),
+      };
+      const liveRightRoute = {
+        expected: amplitudeAt(liveRendered, 550, 2.2),
+        rejected: amplitudeAt(liveRendered, 220, 2.2),
+      };
+      return { leftRoute, rightRoute, liveLeftRoute, liveRightRoute };
+    });
+
+    expect(report.leftRoute.expected).toBeGreaterThan(0.05);
+    expect(report.leftRoute.rejected).toBeLessThan(report.leftRoute.expected * 0.05);
+    expect(report.rightRoute.expected).toBeGreaterThan(0.05);
+    expect(report.rightRoute.rejected).toBeLessThan(report.rightRoute.expected * 0.05);
+    expect(report.liveLeftRoute.expected).toBeGreaterThan(0.05);
+    expect(report.liveLeftRoute.rejected).toBeLessThan(report.liveLeftRoute.expected * 0.05);
+    expect(report.liveRightRoute.expected).toBeGreaterThan(0.05);
+    expect(report.liveRightRoute.rejected).toBeLessThan(report.liveRightRoute.expected * 0.05);
+    expect(report.liveLeftRoute.expected).toBeCloseTo(report.leftRoute.expected, 2);
+    expect(report.liveRightRoute.expected).toBeCloseTo(report.rightRoute.expected, 2);
+  });
+
   test("captures distinct stereo PCM, splits it across tracks and restores both routes after reload", async ({
     page,
   }) => {
     test.setTimeout(120_000);
-    await installSyntheticStereoInput(page);
+    await installSyntheticInput(page);
     await openHouseTemplate(page);
     await clickPanelAction(page, "ARR");
     await expect(page.locator(".arr-timeline")).toBeVisible();
@@ -141,16 +274,168 @@ test.describe("11 — audio-input recording", () => {
     if ((await continueCard.count()) > 0) await continueCard.click();
     else await page.locator(".pb-row button:has-text(OPEN)").first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
-    if (
-      !(await page
-        .locator(".arr-timeline")
-        .isVisible()
-        .catch(() => false))
-    ) {
-      await clickPanelAction(page, "ARR");
-    }
-    await expect(page.locator(".arr-timeline")).toBeVisible();
+    await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+  });
+
+  test("captures four requested channels and routes each to a separate track", async ({ page }) => {
+    test.setTimeout(120_000);
+    await installSyntheticInput(page, 4);
+    await openHouseTemplate(page);
+    await clickPanelAction(page, "ARR");
+    await expect(page.locator(".arr-timeline")).toBeVisible();
+
+    await page.getByLabel("Add track").selectOption("sampler");
+    const armTrack = page.getByLabel("Arm track for recording");
+    const trackIds = await armTrack.locator("option").evaluateAll((options) =>
+      options
+        .map((option) => (option as HTMLOptionElement).value)
+        .filter(Boolean)
+        .slice(0, 4),
+    );
+    expect(trackIds).toHaveLength(4);
+    await armTrack.selectOption(trackIds[0]!);
+    await page.getByLabel("Capture input channel count").selectOption("4");
+    await page.getByLabel("Captured channel 2 destination").selectOption(trackIds[1]!);
+    await page.getByText("INPUT ROUTING · 4 CHANNELS").click();
+    await page.getByLabel("Captured channel 3 destination").selectOption(trackIds[2]!);
+    await page.getByLabel("Captured channel 4 destination").selectOption(trackIds[3]!);
+
+    await page.getByRole("button", { name: /REC$/ }).click();
+    await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("meter", { name: "Audio input level" })).toHaveAttribute(
+      "aria-valuenow",
+      /^(?!0(?:\.0+)?$)/,
+    );
+    await page.waitForTimeout(1_200);
+    await page.getByRole("button", { name: /STOP/ }).click();
+    await expect(page.getByRole("status", { name: "Observed audio input capture format" })).toContainText("4 ch");
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(4);
+
+    const capture = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("pulse-forge");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const entries = await new Promise<any[]>((resolve, reject) => {
+        const request = db.transaction("user-sample-audio", "readonly").objectStore("user-sample-audio").getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const reference = entries.find((entry) => entry.data?.kind === "pcm-f32-planar-v1")?.data;
+      if (!reference) throw new Error("No durable multichannel PCM recording was saved");
+      const chunks = await new Promise<any[]>((resolve, reject) => {
+        const request = db
+          .transaction("recording-chunks", "readonly")
+          .objectStore("recording-chunks")
+          .index("by-session")
+          .getAll(reference.recordingId);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      chunks.sort((left, right) => left.sequence - right.sequence);
+      const first = chunks[0];
+      if (!first || first.channels.length !== 4) throw new Error("Expected four independent PCM channels");
+      const channelPcm = first.channels.map((buffer: ArrayBuffer) => new Float32Array(buffer));
+      const rms = channelPcm.map((samples: Float32Array) => {
+        let energy = 0;
+        for (const sample of samples) energy += sample * sample;
+        return Math.sqrt(energy / Math.max(1, samples.length));
+      });
+      const adjacentDifferences = channelPcm.slice(1).map((samples: Float32Array, index: number) => {
+        const previous = channelPcm[index]!;
+        let difference = 0;
+        const count = Math.min(samples.length, previous.length);
+        for (let frame = 0; frame < count; frame++)
+          difference = Math.max(difference, Math.abs(samples[frame]! - previous[frame]!));
+        return difference;
+      });
+      return { channels: reference.channels, rms, adjacentDifferences };
+    });
+    expect(capture.channels).toBe(4);
+    expect(capture.rms).toHaveLength(4);
+    expect(capture.rms.every((level: number) => level > 0.02)).toBe(true);
+    expect(capture.adjacentDifferences.every((difference: number) => difference > 0.05)).toBe(true);
+  });
+
+  test("punches four captured channels into separate tracks at the same exact locator range", async ({ page }) => {
+    test.setTimeout(120_000);
+    await installSyntheticInput(page, 4);
+    await openHouseTemplate(page);
+    await clickPanelAction(page, "ARR");
+    await expect(page.locator(".arr-timeline")).toBeVisible();
+
+    // Set a one-bar punch range from beat 3 of bar 1 through beat 3 of bar 2.
+    // IN/OUT are transport ticks; LOOP must remain disabled for one-shot punch.
+    const loopButton = page.getByRole("button", { name: "Toggle loop region" });
+    await loopButton.click();
+    await page.getByRole("spinbutton", { name: "OUT", exact: true }).press("Enter");
+    await page.getByRole("textbox", { name: "OUT value" }).fill("2880");
+    await page.getByRole("textbox", { name: "OUT value" }).press("Enter");
+    await page.getByRole("spinbutton", { name: "IN", exact: true }).press("Enter");
+    await page.getByRole("textbox", { name: "IN value" }).fill("960");
+    await page.getByRole("textbox", { name: "IN value" }).press("Enter");
+    await loopButton.click();
+    await expect(loopButton).toHaveAttribute("aria-pressed", "false");
+
+    await page.getByLabel("Add track").selectOption("sampler");
+    const armTrack = page.getByLabel("Arm track for recording");
+    const trackIds = await armTrack.locator("option").evaluateAll((options) =>
+      options
+        .map((option) => (option as HTMLOptionElement).value)
+        .filter(Boolean)
+        .slice(0, 4),
+    );
+    expect(trackIds).toHaveLength(4);
+    await armTrack.selectOption(trackIds[0]!);
+    await page.getByLabel("Capture input channel count").selectOption("4");
+    await page.getByLabel("Captured channel 2 destination").selectOption(trackIds[1]!);
+    await page.getByText("INPUT ROUTING · 4 CHANNELS").click();
+    await page.getByLabel("Captured channel 3 destination").selectOption(trackIds[2]!);
+    await page.getByLabel("Captured channel 4 destination").selectOption(trackIds[3]!);
+    await page.getByRole("button", { name: "Arm punch-in and punch-out recording" }).click();
+    await page.getByRole("button", { name: /REC$/ }).click();
+    await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".arr-audio-clip")).toHaveCount(4, { timeout: 15_000 });
+
+    const clips = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("pulse-forge");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const projects = await new Promise<any[]>((resolve, reject) => {
+        const request = db.transaction("projects", "readonly").objectStore("projects").getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      const project = projects.find((candidate) =>
+        candidate?.arrangement?.audioClips?.some((clip: any) => clip.bufferId.startsWith("user.recording-")),
+      );
+      return project?.arrangement.audioClips
+        .filter((clip: any) => clip.bufferId.startsWith("user.recording-"))
+        .map((clip: any) => ({
+          trackId: clip.trackId,
+          sourceChannel: clip.sourceChannel,
+          bufferId: clip.bufferId,
+          startBar: clip.startBar,
+          lengthBars: clip.lengthBars,
+          offsetSec: clip.offsetSec,
+        }));
+    });
+
+    expect(clips).toHaveLength(4);
+    expect(clips?.map((clip: any) => clip.sourceChannel).sort()).toEqual([0, 1, 2, 3]);
+    expect(new Set(clips?.map((clip: any) => clip.trackId))).toEqual(new Set(trackIds));
+    expect(new Set(clips?.map((clip: any) => clip.bufferId)).size).toBe(1);
+    for (const clip of clips ?? []) {
+      expect(clip.startBar).toBeCloseTo(0.5, 2);
+      expect(clip.lengthBars).toBeCloseTo(1, 2);
+      expect(clip.offsetSec).toBeGreaterThanOrEqual(0);
+    }
   });
 
   test("restores a stale multichannel session to both saved channel destinations", async ({ page }) => {
@@ -234,13 +519,7 @@ test.describe("11 — audio-input recording", () => {
     if ((await continueCard.count()) > 0) await continueCard.click();
     else await page.locator(".pb-row button:has-text(OPEN)").first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
-    if (
-      !(await page
-        .locator(".arr-timeline")
-        .isVisible()
-        .catch(() => false))
-    )
-      await clickPanelAction(page, "ARR");
+    await ensureArrangementVisible(page);
     await expect(page.getByRole("region", { name: "Recoverable audio recordings" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/interrupted capture/i)).toBeVisible();
     await page.getByRole("button", { name: "RESTORE TO TIMELINE" }).click();

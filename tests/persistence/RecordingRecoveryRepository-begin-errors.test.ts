@@ -1,6 +1,6 @@
 /**
- * Regression tests for RecordingRecoveryRepository.begin() idempotency and
- * quota handling.
+ * Regression tests for recording session start/append idempotency and quota
+ * handling.
  *
  * Bug: store.add(session) used to throw ConstraintError (re-arm) or
  * QuotaExceededError back to the caller with no handling. The fix:
@@ -42,7 +42,7 @@ afterEach(async () => {
   await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => store.clear());
 });
 
-describe("RecordingRecoveryRepository.begin() error handling", () => {
+describe("RecordingRecoveryRepository recording-storage error handling", () => {
   it("overwrites an existing session id instead of throwing ConstraintError", async () => {
     const repo = new RecordingRecoveryRepository();
 
@@ -77,10 +77,9 @@ describe("RecordingRecoveryRepository.begin() error handling", () => {
           throw Object.assign(new Error("quota"), { name: "QuotaExceededError" });
         } catch (err) {
           if (err instanceof Error && err.name === "QuotaExceededError") {
-            throw new RecordingStorageQuotaError(
-              `IndexedDB quota exceeded while starting recording session x`,
-              { cause: err },
-            );
+            throw new RecordingStorageQuotaError(`IndexedDB quota exceeded while starting recording session x`, {
+              cause: err,
+            });
           }
           throw err;
         }
@@ -96,7 +95,7 @@ describe("RecordingRecoveryRepository.begin() error handling", () => {
     expect(caught).toBeInstanceOf(RecordingStorageQuotaError);
     expect((caught as Error).name).toBe("RecordingStorageQuotaError");
     expect((caught as Error & { cause?: unknown }).cause).toBeInstanceOf(Error);
-    expect(((caught as Error & { cause?: { name?: string } }).cause?.name) ?? "").toBe("QuotaExceededError");
+    expect((caught as Error & { cause?: { name?: string } }).cause?.name ?? "").toBe("QuotaExceededError");
   });
 
   it("translates QuotaExceededError on the overwrite fallback path too", async () => {
@@ -117,11 +116,15 @@ describe("RecordingRecoveryRepository.begin() error handling", () => {
             throw Object.assign(new Error("quota"), { name: "QuotaExceededError" });
           });
         } catch (err) {
-          if (err && typeof err === "object" && "name" in err && (err as { name?: string }).name === "QuotaExceededError") {
-            throw new RecordingStorageQuotaError(
-              `IndexedDB quota exceeded while re-arming recording session ${s.id}`,
-              { cause: err },
-            );
+          if (
+            err &&
+            typeof err === "object" &&
+            "name" in err &&
+            (err as { name?: string }).name === "QuotaExceededError"
+          ) {
+            throw new RecordingStorageQuotaError(`IndexedDB quota exceeded while re-arming recording session ${s.id}`, {
+              cause: err,
+            });
           }
           throw err;
         }
@@ -138,5 +141,53 @@ describe("RecordingRecoveryRepository.begin() error handling", () => {
       }
     }
     await expect(new Boom().begin(session("rec-boom"))).rejects.toThrow(/totally unrelated/);
+  });
+
+  it("translates quota failure while appending PCM and preserves the original cause", async () => {
+    const quota = new DOMException("storage full", "QuotaExceededError");
+    const repo = new RecordingRecoveryRepository(
+      async () =>
+        ({
+          transaction() {
+            throw quota;
+          },
+        }) as unknown as IDBDatabase,
+    );
+
+    const error = await repo
+      .appendChunk({
+        sessionId: "rec-quota-append",
+        sequence: 0,
+        frames: 1,
+        channels: [new ArrayBuffer(Float32Array.BYTES_PER_ELEMENT)],
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(RecordingStorageQuotaError);
+    expect(error).toMatchObject({
+      message: expect.stringContaining("Browser storage filled during recording"),
+      cause: quota,
+    });
+  });
+
+  it("does not relabel unrelated append failures as quota exhaustion", async () => {
+    const failure = new Error("database connection failed");
+    const repo = new RecordingRecoveryRepository(
+      async () =>
+        ({
+          transaction() {
+            throw failure;
+          },
+        }) as unknown as IDBDatabase,
+    );
+
+    await expect(
+      repo.appendChunk({
+        sessionId: "rec-db-failure",
+        sequence: 0,
+        frames: 1,
+        channels: [new ArrayBuffer(Float32Array.BYTES_PER_ELEMENT)],
+      }),
+    ).rejects.toBe(failure);
   });
 });

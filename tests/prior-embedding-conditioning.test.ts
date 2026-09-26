@@ -192,6 +192,9 @@ describe("provider embedding-conditioned path", () => {
     const doc = testDoc();
     const intent = normalizeIntent({
       genre: "house",
+      // Keep this provider contract test on a style present in the pinned
+      // prior vocabulary; the house template may choose newer untrained styles.
+      style: "deep",
       seed: "embedding-conditioned",
       candidateCount: 0,
       symbolicCandidates: 1,

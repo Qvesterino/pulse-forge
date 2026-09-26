@@ -2958,6 +2958,206 @@ export function addAudioClip(
   return snapshot("addAudioClip", `Add audio clip`, doc, next);
 }
 
+/** Add one clip segment to a whole-take lane; repeated takeId segments form a comp source. */
+export function addAudioTakeClip(
+  doc: ProjectDocument,
+  groupId: string,
+  takeId: string,
+  trackId: string,
+  bufferId: string,
+  startBar: number,
+  lengthBars = 4,
+  patch: Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">> = {},
+): Command {
+  if (!groupId || !takeId) throw new Error("Audio take group and take IDs are required");
+  const existingGroup = doc.arrangement.takeGroups?.find((group) => group.id === groupId);
+  if (existingGroup && existingGroup.trackId !== trackId) throw new Error("Audio take group cannot span tracks");
+  const added = addAudioClip(doc, trackId, bufferId, startBar, lengthBars, patch).execute(doc);
+  const addedClip = added.arrangement.audioClips?.find(
+    (clip) => !doc.arrangement.audioClips?.some((previous) => previous.id === clip.id),
+  );
+  if (!addedClip) throw new Error("Audio take clip was not added");
+  const audioClips = added.arrangement.audioClips!.map((clip) =>
+    clip.id === addedClip.id ? { ...clip, takeGroupId: groupId, takeId } : clip,
+  );
+  const takeGroups = existingGroup
+    ? [...(doc.arrangement.takeGroups ?? [])]
+    : [...(doc.arrangement.takeGroups ?? []), { id: groupId, trackId, activeTakeId: takeId }];
+  const next = normalizeProject({
+    ...added,
+    arrangement: { ...added.arrangement, audioClips, takeGroups },
+  });
+  return snapshot("addAudioTakeClip", "Add audio take", doc, next);
+}
+
+/** Switch the audible pass without deleting or rewriting alternate recorded takes. */
+export function setActiveAudioTake(doc: ProjectDocument, groupId: string, takeId: string): Command {
+  const group = doc.arrangement.takeGroups?.find((item) => item.id === groupId);
+  if (!group) throw new Error(`Audio take group ${groupId} not found`);
+  if (
+    !doc.arrangement.audioClips?.some(
+      (clip) => clip.takeGroupId === groupId && clip.takeId === takeId && clip.trackId === group.trackId,
+    )
+  ) {
+    throw new Error(`Audio take ${takeId} has no clips in group ${groupId}`);
+  }
+  const next = normalizeProject({
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      takeGroups: doc.arrangement.takeGroups!.map((item) =>
+        item.id === groupId ? { ...item, activeTakeId: takeId } : item,
+      ),
+    },
+  });
+  return snapshot("setActiveAudioTake", `Select audio take ${takeId}`, doc, next);
+}
+
+/**
+ * Replace an arrangement-tick range in a take comp with material from one
+ * linear source pass. Source takes remain untouched; comp fragments are
+ * ordinary AudioClips so the shared live/offline playback path stays exact.
+ */
+export function compAudioTakeRange(
+  doc: ProjectDocument,
+  groupId: string,
+  sourceTakeId: string,
+  startTick: number,
+  endTick: number,
+): Command {
+  const group = doc.arrangement.takeGroups?.find((item) => item.id === groupId);
+  if (!group) throw new Error(`Audio take group ${groupId} not found`);
+  if (!Number.isFinite(startTick) || !Number.isFinite(endTick) || startTick < 0 || endTick <= startTick) {
+    throw new Error("Comp range must have a positive, finite start and end");
+  }
+  if (!sourceTakeId || sourceTakeId === group.compTakeId) {
+    throw new Error("Choose a source take, not the comp itself");
+  }
+
+  const audioClips = doc.arrangement.audioClips ?? [];
+  const sourceClips = audioClips
+    .filter((clip) => clip.takeGroupId === groupId && clip.takeId === sourceTakeId && clip.trackId === group.trackId)
+    .sort((a, b) => a.startBar - b.startBar);
+  if (sourceClips.length === 0) throw new Error(`Audio take ${sourceTakeId} has no clips in group ${groupId}`);
+
+  const isLinear = (clip: AudioClip): boolean =>
+    !clip.reverse && !clip.loop && clip.stretchMode !== "stretch" && (clip.warpMarkers?.length ?? 0) === 0;
+
+  const epsilonTicks = 1e-6;
+  const sourceSegments: Array<{ clip: AudioClip; startTick: number; endTick: number }> = [];
+  let coveredUntil = startTick;
+  for (const clip of sourceClips) {
+    const clipStartTick = clip.startBar * BAR_TICKS;
+    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const segmentStart = Math.max(startTick, clipStartTick);
+    const segmentEnd = Math.min(endTick, clipEndTick);
+    if (segmentEnd <= segmentStart + epsilonTicks) continue;
+    if (segmentStart > coveredUntil + epsilonTicks) {
+      throw new Error("The selected source take does not cover the entire comp range");
+    }
+    if (segmentStart < coveredUntil - epsilonTicks) {
+      throw new Error("The selected source take has overlapping clips in the comp range");
+    }
+    sourceSegments.push({ clip, startTick: segmentStart, endTick: segmentEnd });
+    coveredUntil = segmentEnd;
+    if (coveredUntil >= endTick - epsilonTicks) break;
+  }
+  if (coveredUntil < endTick - epsilonTicks) {
+    throw new Error("The selected source take does not cover the entire comp range");
+  }
+  if (sourceSegments.some(({ clip }) => !isLinear(clip))) {
+    throw new Error("Comping currently requires linear, forward-playing source clips without warp or loop");
+  }
+
+  const tempoSpans = doc.arrangement.clips.flatMap((arrangementClip) => {
+    const scene = doc.scenes.find((item) => item.id === arrangementClip.sceneId);
+    if (!scene) return [];
+    return [
+      {
+        from: arrangementClip.startBar * BAR_TICKS,
+        to: (arrangementClip.startBar + arrangementClip.lengthBars) * BAR_TICKS,
+        bpm: scene.bpm ?? doc.bpm,
+      },
+    ];
+  });
+  const secondsBetweenTicks = (fromTick: number, toTick: number): number => {
+    let cursor = fromTick;
+    let seconds = 0;
+    while (cursor < toTick - epsilonTicks) {
+      const active = tempoSpans.find((span) => cursor >= span.from && cursor < span.to);
+      const nextBoundary = active
+        ? Math.min(toTick, active.to)
+        : Math.min(toTick, ...tempoSpans.filter((span) => span.from > cursor).map((span) => span.from));
+      seconds += (nextBoundary - cursor) * (60 / ((active?.bpm ?? doc.bpm) * PPQ));
+      cursor = nextBoundary;
+    }
+    return seconds;
+  };
+  const declickFadeSec = 0.003;
+  const sliceClip = (clip: AudioClip, fromTick: number, toTick: number, id: string): AudioClip | null => {
+    const clipStartTick = clip.startBar * BAR_TICKS;
+    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    const sliceStart = Math.max(fromTick, clipStartTick);
+    const sliceEnd = Math.min(toTick, clipEndTick);
+    if (sliceEnd <= sliceStart + epsilonTicks) return null;
+    const startsAtClipEdge = Math.abs(sliceStart - clipStartTick) <= epsilonTicks;
+    const endsAtClipEdge = Math.abs(sliceEnd - clipEndTick) <= epsilonTicks;
+    const elapsedSec = secondsBetweenTicks(clipStartTick, sliceStart);
+    return {
+      ...clip,
+      id,
+      startBar: sliceStart / BAR_TICKS,
+      lengthBars: (sliceEnd - sliceStart) / BAR_TICKS,
+      // offsetSec excludes trimStart; this matches splitAudioClipAtTick and
+      // keeps the source window continuous for non-unit resample rates.
+      offsetSec: Math.max(0, clip.offsetSec + elapsedSec * clip.stretchRate),
+      fadeIn: startsAtClipEdge ? clip.fadeIn : declickFadeSec,
+      fadeOut: endsAtClipEdge ? clip.fadeOut : declickFadeSec,
+    };
+  };
+
+  const compTakeId = group.compTakeId ?? uid("takeComp");
+  const retainedCompClips: AudioClip[] = [];
+  for (const clip of audioClips) {
+    if (clip.takeGroupId !== groupId || clip.takeId !== compTakeId) {
+      retainedCompClips.push(clip);
+      continue;
+    }
+    const clipStartTick = clip.startBar * BAR_TICKS;
+    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+    if (clipEndTick <= startTick + epsilonTicks || clipStartTick >= endTick - epsilonTicks) {
+      retainedCompClips.push(clip);
+      continue;
+    }
+    const left = sliceClip(clip, clipStartTick, startTick, uid("audioClip"));
+    const right = sliceClip(clip, endTick, clipEndTick, uid("audioClip"));
+    if (left) retainedCompClips.push(left);
+    if (right) retainedCompClips.push(right);
+  }
+
+  const newCompClips = sourceSegments.map(({ clip, startTick: segmentStart, endTick: segmentEnd }) => {
+    const sliced = sliceClip(clip, segmentStart, segmentEnd, uid("audioClip"));
+    if (!sliced) throw new Error("Unable to create a non-empty comp segment");
+    return {
+      ...sliced,
+      takeGroupId: groupId,
+      takeId: compTakeId,
+      compSourceTakeId: sourceTakeId,
+    };
+  });
+  const next = normalizeProject({
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: [...retainedCompClips, ...newCompClips].sort((a, b) => a.startBar - b.startBar),
+      takeGroups: doc.arrangement.takeGroups!.map((item) =>
+        item.id === groupId ? { ...item, compTakeId, activeTakeId: compTakeId } : item,
+      ),
+    },
+  });
+  return snapshot("compAudioTakeRange", `Comp ${sourceTakeId} over ticks ${startTick}–${endTick}`, doc, next);
+}
+
 export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
   const next: ProjectDocument = {
     ...doc,
@@ -3380,6 +3580,34 @@ export function updateAudioClip(
  * while keeping its pitch. Warp markers are left untouched — they describe
  * the source material, not the playback rate.
  */
+export interface FittedLoopPlacement {
+  /** Whole bars the loop spans at its detected tempo. */
+  lengthBars: number;
+  /** Pitch-preserving rate locking detected → project tempo (0.25–4 gate). */
+  rate: number;
+}
+
+/**
+ * "Fit to N bars" math for freshly imported loops: whole-bar length from the
+ * loop's own duration + detected tempo, plus the fitAudioClipTempo rate.
+ * Null when there is nothing musical to fit (no detection, bad numbers).
+ * Pure — shared by the DropZone offer and any future place-fitted flow.
+ */
+export function fittedLoopPlacement(
+  durationSec: number,
+  detectedBpm: number | undefined,
+  projectBpm: number,
+  beatsPerBar = 4,
+): FittedLoopPlacement | null {
+  if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
+  if (detectedBpm === undefined || !Number.isFinite(detectedBpm) || detectedBpm < 40 || detectedBpm > 240) return null;
+  if (!Number.isFinite(projectBpm) || projectBpm <= 0) return null;
+  if (!Number.isFinite(beatsPerBar) || beatsPerBar < 1) return null;
+  const lengthBars = Math.max(1, Math.round((durationSec * detectedBpm) / 60 / beatsPerBar));
+  const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / projectBpm)) * 100) / 100;
+  return { lengthBars, rate };
+}
+
 export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detectedBpm: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
@@ -3498,6 +3726,7 @@ export function bounceStemsToAudioClip(
 export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, splitTick: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
   const startTick = clip.startBar * BAR_TICKS;
   const endTick = startTick + clip.lengthBars * BAR_TICKS;
   if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
@@ -3505,32 +3734,34 @@ export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, split
   const rightBars = clip.lengthBars - leftBars;
   if (leftBars < 0.05 || rightBars < 0.05) throw new Error("Split too close to edge");
   const secondsPerTick = 60 / (doc.bpm * PPQ);
-  const leftSec = leftBars * BAR_TICKS * secondsPerTick;
+  const leftSec = (splitTick - startTick) * secondsPerTick;
   const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSec * (clip.stretchRate ?? 1);
   const leftId = uid("audioClip");
   const rightId = uid("audioClip");
-  // Audit §5/§8: store the left length ROUNDED, then derive the right clip
-  // from it so left.end === right.start exactly (rounding both halves
-  // independently could leave a ~1-tick overlap → double-triggered hits),
-  // and neutralise fades at the split point while keeping the outer fades.
-  const leftLength = Math.round(leftBars * 100) / 100;
-  const rightLength = Math.max(0.05, Math.round((clip.lengthBars - leftLength) * 100) / 100);
+  // Preserve the split's fractional-tick position. Rounding bars to 0.01
+  // moved the timeline edge and accumulated source-offset drift on repeated
+  // edits. Tiny fades suppress a discontinuity without changing the source
+  // window or the exact adjacent timeline boundary.
+  const rightStartBar = splitTick / BAR_TICKS;
+  const leftLength = rightStartBar - clip.startBar;
+  const rightLength = clip.startBar + clip.lengthBars - rightStartBar;
+  const splitDeclickFadeSec = 0.003;
   const copyWarps = () => (clip.warpMarkers ? { warpMarkers: clip.warpMarkers.map((m) => ({ ...m })) } : {});
   const leftClip: import("../project-model/types").AudioClip = {
     ...clip,
     ...copyWarps(),
     id: leftId,
     lengthBars: leftLength,
-    fadeOut: 0,
+    fadeOut: splitDeclickFadeSec,
   };
   const rightClip: import("../project-model/types").AudioClip = {
     ...clip,
     ...copyWarps(),
     id: rightId,
-    startBar: clip.startBar + leftLength,
+    startBar: rightStartBar,
     lengthBars: rightLength,
     offsetSec: clip.reverse ? clip.offsetSec : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
-    fadeIn: 0,
+    fadeIn: splitDeclickFadeSec,
     // For reverse, keep offset as is — approximate
   };
   // Fix reverse offset handling: keep original for now if reverse
@@ -5241,6 +5472,21 @@ export function setEffectParam(
   };
 }
 
+/** Apply several source-dock macro targets as one undoable gesture. */
+export function setEffectMacroParams(
+  doc: ProjectDocument,
+  trackId: string,
+  edits: readonly { fxId: string; paramId: string; value: number }[],
+): Command {
+  if (edits.length === 0) return snapshot("setEffectMacroParams", "Set source macro", doc, doc);
+  let next = doc;
+  for (const edit of edits) {
+    const command = setEffectParam(next, trackId, edit.fxId, edit.paramId, edit.value);
+    next = command.execute(next);
+  }
+  return snapshot("setEffectMacroParams", "Set source macro", doc, next);
+}
+
 /** User-adjustable engine-owned output trim, kept outside the DSP parameter map. */
 export function setEffectOutputTrimDb(doc: ProjectDocument, trackId: string, fxId: string, gainDb: number): Command {
   const target = trackEffectsOf(doc, trackId).find((effect) => effect.id === fxId);
@@ -5269,7 +5515,7 @@ export function applyEffectChainPreset(
   trackId: string,
   chain: BeatmakingEffectChain,
   insertAt = trackEffectsOf(doc, trackId).length,
-): Command & { readonly firstEffectId: string } {
+): Command & { readonly firstEffectId: string; readonly effectIds: readonly string[] } {
   if (!doc.tracks.some((track) => track.id === trackId)) throw new Error(`Track ${trackId} not found`);
   if (chain.effects.length === 0) throw new Error("Effect chain is empty");
   const factoryById = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
@@ -5304,6 +5550,7 @@ export function applyEffectChainPreset(
     type: "applyEffectChainPreset",
     label: `Insert ${chain.name} chain`,
     firstEffectId: instances[0].id,
+    effectIds: instances.map((instance) => instance.id),
     execute: (d) =>
       withTrackEffects(d, trackId, (effects) => {
         const next = [...effects];

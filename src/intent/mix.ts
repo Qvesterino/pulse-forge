@@ -1,4 +1,4 @@
-import type { EffectType, ProjectDocument } from "../project-model/types";
+import type { EffectType, ProjectDocument, SceneAutomation } from "../project-model/types";
 import {
   addEffectToTracks,
   removeEffectFromTracks,
@@ -296,6 +296,8 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
   let cursor = doc;
   let updates = 0;
   const labelParts: string[] = [];
+  // Pump instances touched by this application (for the per-section ride below).
+  const rides: Array<{ trackId: string; fxId: string; baseAmount: number }> = [];
 
   for (const decision of profile.decisions) {
     const trackIds = trackIdsForTarget(doc, decision.target);
@@ -324,6 +326,50 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
           updates += 1;
         }
       }
+      if (decision.effectType === "pump") {
+        // Read back from the cursor (not the stale fx ref): the param loop
+        // above may have just set the profile value on a fresh instance.
+        const applied = cursor.tracks
+          .find((track) => track.id === trackId)
+          ?.effects.find((effect) => effect.id === fx.id);
+        const baseAmount = clampEffectParam("pump", "amount", applied?.params.amount ?? decision.params.amount ?? 0.5);
+        if (!rides.some((ride) => ride.trackId === trackId && ride.fxId === fx.id)) {
+          rides.push({ trackId, fxId: fx.id, baseAmount });
+        }
+      }
+    }
+  }
+
+  // Per-section pump ride (QA-3): pump instances installed by THIS profile
+  // follow scene intensity — drops pump harder, breaks breathe. One lane per
+  // (track, pump, scene): value = profile amount × (0.7 + 0.6 × intensity),
+  // neutral (×1.0) at intensity 0.5. Lane ids are deterministic, so a second
+  // identical apply finds them equal and still throws "changed nothing".
+  if (rides.length > 0 && doc.scenes.length > 0) {
+    const touchedFx = new Set(rides.map((ride) => ride.fxId));
+    const expected: SceneAutomation[] = [];
+    for (const ride of rides) {
+      for (const scene of doc.scenes) {
+        const intensity = clamp01(typeof scene.intensity === "number" ? scene.intensity : 0.5);
+        const value =
+          Math.round(clampEffectParam("pump", "amount", ride.baseAmount * (0.7 + 0.6 * intensity)) * 1000) / 1000;
+        expected.push({
+          id: `sceneAuto-${ride.fxId}-amount-${scene.id}`,
+          sceneId: scene.id,
+          target: { kind: "fxParam", trackId: ride.trackId, fxId: ride.fxId, paramId: "amount" },
+          points: [{ tick: 0, value }],
+        });
+      }
+    }
+    const kept = cursor.sceneAutomation.filter(
+      (lane) =>
+        !(lane.target.kind === "fxParam" && lane.target.paramId === "amount" && touchedFx.has(lane.target.fxId ?? "")),
+    );
+    const merged = [...kept, ...expected];
+    if (JSON.stringify(merged) !== JSON.stringify(cursor.sceneAutomation)) {
+      cursor = { ...cursor, sceneAutomation: merged };
+      labelParts.push("scene pump ride");
+      updates += 1;
     }
   }
 

@@ -1,4 +1,10 @@
-import type { MusicalKey, Pattern, ProjectDocument, PatternGeneration } from "../project-model/types";
+import type {
+  MusicalKey,
+  Pattern,
+  ProductionProfile,
+  ProjectDocument,
+  PatternGeneration,
+} from "../project-model/types";
 import type { GenerateOptions, GrooveData } from "../ai/types";
 import type { CandidateBankEntry } from "./candidate-bank";
 import type { ProductionIntent } from "./production";
@@ -28,6 +34,8 @@ export interface IntentSpec {
   version: typeof INTENT_SCHEMA_VERSION;
   genre: IntentGenre;
   style: string | null;
+  /** Optional composition profile; absent on legacy intents to preserve their hashes. */
+  productionProfile?: ProductionProfile;
   mood: string | null;
   energy: number;
   density: number;
@@ -82,6 +90,7 @@ export type IntentInput = Partial<IntentSpec> & {
   version?: number;
   genre?: unknown;
   style?: unknown;
+  productionProfile?: unknown;
   mood?: unknown;
   energy?: unknown;
   density?: unknown;

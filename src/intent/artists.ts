@@ -1,10 +1,11 @@
+import type { ProductionProfile } from "../project-model/types";
 import type { IntentGenre } from "./types";
 
 /**
  * ARTIST "TYPE BEAT" ALIAS DICTIONARY (INTENT_ENGINE.md C1) — the beat-maker
  * language. "travis scott type beat" is how the world asks for a beat; this
  * registry maps well-known references to OUR canonical vocabulary
- * (genre + existing style + mood + sliders + BPM prior).
+ * (genre + existing groove style + composition profile + mood/sliders/BPM prior).
  *
  * Rules:
  * - presets map ONLY to existing engine vocabulary — no new capabilities,
@@ -24,6 +25,7 @@ export interface ArtistPreset {
   names: readonly string[];
   genre: IntentGenre;
   style?: string;
+  productionProfile?: ProductionProfile;
   mood?: "dark" | "aggressive" | "chill" | "energetic";
   energy?: number;
   density?: number;
@@ -38,11 +40,23 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["travis scott", "travis scott type beat"],
     genre: "trap",
     style: "rolling",
+    productionProfile: "dark-atmospheric-trap",
     mood: "dark",
     energy: 0.7,
     density: 0.55,
     bpmRange: [130, 140],
     label: "travis scott",
+  },
+  {
+    names: ["kid cudi", "cudi", "kid cudi type beat"],
+    genre: "trap",
+    style: "lux",
+    productionProfile: "spacey-melodic-rap",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [118, 128],
+    label: "kid cudi",
   },
   {
     names: ["metro boomin", "metroboomin"],
@@ -434,6 +448,18 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.6,
     bpmRange: [130, 136],
     label: "ukg",
+  },
+  {
+    names: ["duskus", "duskus type beat"],
+    // Duskus: future garage / melodic bass — atmospheric halftime, mellow
+    // but driving. Ambient carries it; the style phrase refines the drums.
+    genre: "ambient",
+    style: "future garage",
+    mood: "deep",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [130, 140],
+    label: "duskus (future garage)",
   },
   // ambient
   {
@@ -1046,6 +1072,23 @@ export interface ArtistMatch {
   matched: string;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function artistNamePattern(name: string): RegExp {
+  return new RegExp(`\\b${escapeRegExp(name)}\\b`);
+}
+
+function artistIdentity(preset: ArtistPreset): string {
+  // Parenthetical labels distinguish a production-era/style preset for one
+  // artist (e.g. "fred again (ukg)"), not a second artist in a blend.
+  return preset.label
+    .replace(/\s*\([^)]*\)$/, "")
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * Find the FIRST artist preset whose any name phrase occurs in the text.
  * List order = priority; pure — same text ⇒ same match (or none).
@@ -1053,7 +1096,7 @@ export interface ArtistMatch {
 export function matchArtistPreset(lowerText: string): ArtistMatch | null {
   for (const preset of ARTIST_PRESETS) {
     for (const name of preset.names) {
-      const pattern = new RegExp(`\\b${name.replace(/[-.]/g, "\\$&")}\\b`);
+      const pattern = artistNamePattern(name);
       if (pattern.test(lowerText)) {
         return { preset, matched: name };
       }
@@ -1065,16 +1108,15 @@ export function matchArtistPreset(lowerText: string): ArtistMatch | null {
 /**
  * MULTI-VIBE BLEND ("Travis stretne Burial", vibe-code wave): every DISTINCT
  * artist preset mentioned in the text, in match order. Two+ matches make a
- * blend — the intent patch merges (first artist is the base, the second
- * contributes its mood and averages the sliders), and the intent TEXT keeps
- * both names, so the MiniLM conditioning embeds the blend naturally.
+ * blend — generic pairs use the first artist as the base and blend sliders;
+ * named pairs may define a symmetric production profile. The intent TEXT
+ * keeps both names for embedding-conditioned providers.
  */
 export function matchAllArtistPresets(lowerText: string): ArtistMatch[] {
   const matches: Array<ArtistMatch & { position: number }> = [];
   for (const preset of ARTIST_PRESETS) {
     for (const name of preset.names) {
-      const escaped = name.replace(/[-.]/g, "\$&");
-      const pattern = new RegExp(`\b${escaped}\b`);
+      const pattern = artistNamePattern(name);
       const match = pattern.exec(lowerText);
       if (match) {
         matches.push({ preset, matched: name, position: match.index });
@@ -1082,7 +1124,15 @@ export function matchAllArtistPresets(lowerText: string): ArtistMatch[] {
       }
     }
   }
-  return matches.sort((a, b) => a.position - b.position);
+  const unique: ArtistMatch[] = [];
+  const seenArtists = new Set<string>();
+  for (const match of matches.sort((a, b) => a.position - b.position)) {
+    const identity = artistIdentity(match.preset);
+    if (seenArtists.has(identity)) continue;
+    seenArtists.add(identity);
+    unique.push({ preset: match.preset, matched: match.matched });
+  }
+  return unique;
 }
 
 export interface VibeBlend {
@@ -1092,6 +1142,7 @@ export interface VibeBlend {
   patch: {
     genre: ArtistPreset["genre"];
     style?: string;
+    productionProfile?: ProductionProfile;
     mood?: ArtistPreset["mood"];
     energy?: number;
     density?: number;
@@ -1101,10 +1152,9 @@ export interface VibeBlend {
 }
 
 /**
- * Blend two artist presets: the FIRST is the base (repo convention — first
- * hit wins), the second contributes its mood and averages the sliders.
- * Explicit words in the prompt still override the blend afterwards
- * (text-parser applies them on top, same as the single-artist path).
+ * Blend two artist presets. Generic pairs keep the first-hit base and blend
+ * available sliders; explicitly profiled pairs use their own stable merge.
+ * Explicit words in the prompt still override the blend afterwards.
  */
 export function parseVibeBlend(lowerText: string): VibeBlend | null {
   const all = matchAllArtistPresets(lowerText);
@@ -1117,27 +1167,39 @@ export function parseVibeBlend(lowerText: string): VibeBlend | null {
   const [a, b] = distinct;
   const avg = (x: number | undefined, y: number | undefined): number | undefined =>
     x !== undefined && y !== undefined ? Math.round(((x + y) / 2) * 100) / 100 : (x ?? y);
+  const isCudiTravisBlend =
+    new Set([a.label, b.label]).size === 2 &&
+    [a.label, b.label].includes("kid cudi") &&
+    [a.label, b.label].includes("travis scott");
+  const bpmBlend = (): [number, number] | undefined => {
+    if (isCudiTravisBlend) return [128, 140];
+    if (a.bpmRange && b.bpmRange) {
+      const low = Math.max(a.bpmRange[0], b.bpmRange[0]);
+      const high = Math.min(a.bpmRange[1], b.bpmRange[1]);
+      if (low <= high) return [low, high];
+      const centers = [(a.bpmRange[0] + a.bpmRange[1]) / 2, (b.bpmRange[0] + b.bpmRange[1]) / 2].sort((x, y) => x - y);
+      return [Math.round(centers[0]), Math.round(centers[1])];
+    }
+    return a.bpmRange ? [...a.bpmRange] : b.bpmRange ? [...b.bpmRange] : undefined;
+  };
+  const blendedBpmRange = bpmBlend();
   return {
     presetA: a,
     presetB: b,
     patch: {
       genre: a.genre,
-      ...(a.style || b.style ? { style: a.style ?? b.style } : {}),
-      ...(a.mood || b.mood ? { mood: a.mood ?? b.mood } : {}),
+      ...(isCudiTravisBlend
+        ? { style: "rolling", productionProfile: "spacey-dark-trap" as const, mood: "dark" as const }
+        : {
+            ...(a.style || b.style ? { style: a.style ?? b.style } : {}),
+            ...(a.productionProfile || b.productionProfile
+              ? { productionProfile: a.productionProfile ?? b.productionProfile }
+              : {}),
+            ...(a.mood || b.mood ? { mood: a.mood ?? b.mood } : {}),
+          }),
       ...(avg(a.energy, b.energy) !== undefined ? { energy: avg(a.energy, b.energy) } : {}),
       ...(avg(a.density, b.density) !== undefined ? { density: avg(a.density, b.density) } : {}),
-      ...(a.bpmRange && b.bpmRange
-        ? {
-            bpmRange: [Math.max(a.bpmRange[0], b.bpmRange[0]), Math.min(a.bpmRange[1], b.bpmRange[1])] as [
-              number,
-              number,
-            ],
-          }
-        : a.bpmRange
-          ? { bpmRange: [...a.bpmRange] as [number, number] }
-          : b.bpmRange
-            ? { bpmRange: [...b.bpmRange] as [number, number] }
-            : {}),
+      ...(blendedBpmRange ? { bpmRange: blendedBpmRange } : {}),
     },
     label: `${a.label} × ${b.label}`,
   };

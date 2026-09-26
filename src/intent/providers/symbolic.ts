@@ -1,6 +1,6 @@
 import { generatePattern, resolveGrooveForGeneration } from "../../ai/generator";
 import { degreeToPitch, expandChord } from "../../ai/melodic";
-import { MELODIC_BY_GENRE } from "../../ai/grooves/melodic-data";
+import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "../../ai/grooves/melodic-data";
 import { generateMultiVoice } from "../multi-voice";
 import { inferPadRole } from "../../ai/pad-roles";
 import { forkRandom } from "../../shared/rng";
@@ -131,7 +131,7 @@ export async function sampleMelodicParts(
   const effectiveKey = options.key ?? context.project.key;
   const parsed = effectiveKey ? parseKey(effectiveKey) : null;
   const root = parsed?.root ?? 0;
-  const intervals = SCALE_INTERVALS[parsed?.scaleType ?? "major"];
+  const intervals = SCALE_INTERVALS[parsed?.scaleType ?? (options.productionProfile ? "natural_minor" : "major")];
 
   const roleEnabled = (role: MelodicRole) =>
     !options.roles || options.roles.includes(role === "chord" ? "chords" : role);
@@ -139,7 +139,10 @@ export async function sampleMelodicParts(
   if (roles.length === 0) return { bass: [], chord: [], lead: [] };
 
   const octaveOffsetFor = (role: MelodicRole): number | null => {
-    const pattern = MELODIC_BY_GENRE[genre]?.find((entry) => entry.role === role);
+    const patterns =
+      (options.productionProfile ? MELODIC_BY_PROFILE[options.productionProfile] : undefined) ??
+      MELODIC_BY_GENRE[genre];
+    const pattern = patterns?.find((entry) => entry.role === role);
     return pattern ? pattern.octaveOffset : null;
   };
 
@@ -312,6 +315,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           plan.intent.controls.velocityVariation,
           plan.intent.density,
           plan.intent.complexity,
+          options.productionProfile,
         );
         let notes: Pattern["notes"] = {};
         let melodicSource: "mv" | "prior" | "template" = "template";

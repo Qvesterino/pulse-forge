@@ -1,4 +1,5 @@
 import { GENRES } from "../ai/types";
+import { PRODUCTION_PROFILES } from "../project-model/types";
 import { isMusicalKey } from "../project-model/types";
 import { INTENT_SCHEMA_VERSION, type IntentInput, type IntentSpec, type IntentRole } from "./types";
 
@@ -27,6 +28,14 @@ export function validateIntentSpec(value: unknown): string[] {
   if (value.version !== INTENT_SCHEMA_VERSION) errors.push("unsupported intent schema version");
   if (!GENRES.includes(value.genre as (typeof GENRES)[number])) errors.push("genre is invalid");
   if (value.style !== null && typeof value.style !== "string") errors.push("style must be string or null");
+  if (
+    value.productionProfile !== undefined &&
+    !PRODUCTION_PROFILES.includes(value.productionProfile as (typeof PRODUCTION_PROFILES)[number])
+  ) {
+    errors.push("productionProfile is invalid");
+  } else if (value.productionProfile !== undefined && value.genre !== "trap") {
+    errors.push("productionProfile currently requires the trap genre");
+  }
   if (value.mood !== null && typeof value.mood !== "string") errors.push("mood must be string or null");
   for (const field of ["energy", "density", "complexity", "variation"] as const) {
     if (!isUnit(value[field])) errors.push(`${field} must be between 0 and 1`);

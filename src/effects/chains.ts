@@ -33,6 +33,15 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     ],
   },
   {
+    id: "snare-snap",
+    name: "SNARE SNAP",
+    description: "Transient snap with a bright, restrained tape crack.",
+    effects: [
+      { type: "transient", presetId: "transient-punch" },
+      { type: "tapeSat", presetId: "tape-hot" },
+    ],
+  },
+  {
     id: "drum-glue",
     name: "DRUM GLUE",
     description: "A light Drum Buss texture followed by low-ratio bus compression.",

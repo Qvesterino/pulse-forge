@@ -191,6 +191,7 @@ export function createGenerationRecipe(
     seed: options.seed,
     genre: options.genre,
     style: options.style ?? null,
+    ...(options.productionProfile ? { productionProfile: options.productionProfile } : {}),
     grooveId,
     stepCount: options.stepCount,
     ghostWeight: stableNumber(options.ghostWeight),

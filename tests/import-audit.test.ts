@@ -46,13 +46,28 @@ describe("MIDI import — note flood cap (audit 10)", () => {
     const trackBytes = new Uint8Array(track);
 
     const file: number[] = [
-      0x4d, 0x54, 0x68, 0x64, // MThd
-      0, 0, 0, 6, // header length
-      0, 0, 0, 1, // format 0, 1 track
-      0, 1, // division 1... irrelevant for the cap
+      0x4d,
+      0x54,
+      0x68,
+      0x64, // MThd
+      0,
+      0,
+      0,
+      6, // header length
+      0,
+      0,
+      0,
+      1, // format 0, 1 track
+      0,
+      1, // division 1... irrelevant for the cap
     ];
     file.push(0x4d, 0x54, 0x72, 0x6b); // MTrk
-    file.push((trackBytes.length >>> 24) & 0xff, (trackBytes.length >>> 16) & 0xff, (trackBytes.length >>> 8) & 0xff, trackBytes.length & 0xff);
+    file.push(
+      (trackBytes.length >>> 24) & 0xff,
+      (trackBytes.length >>> 16) & 0xff,
+      (trackBytes.length >>> 8) & 0xff,
+      trackBytes.length & 0xff,
+    );
     // No spread: ~500k elements blow the call stack.
     const fileBytes = new Uint8Array(file.length + trackBytes.length);
     fileBytes.set(file, 0);
@@ -63,7 +78,10 @@ describe("MIDI import — note flood cap (audit 10)", () => {
   });
 
   it("a normal small file still parses (cap does not bite legitimate imports)", () => {
-    const bytes = writeMidiFile({ bpm: 120, tracks: [{ channel: 0, notes: [{ pitch: 60, startTick: 0, endTick: 240, velocity: 0.8 }] }] });
+    const bytes = writeMidiFile({
+      bpm: 120,
+      tracks: [{ channel: 0, notes: [{ pitch: 60, startTick: 0, endTick: 240, velocity: 0.8 }] }],
+    });
     const parsed = parseMidiFile(bytes);
     expect(parsed.bpm).toBeGreaterThan(0);
   });
@@ -76,10 +94,14 @@ describe("DropZone — batch skip + concurrency guards (audit 10)", () => {
 
   it("unsupported/oversized files SKIP (continue), not abort the batch", () => {
     const source = dropzone();
-    const loop = source.slice(source.indexOf("for (const file of fileArray)"), source.indexOf("} catch (err)"));
+    const loopStart = source.indexOf("for (const file of fileArray)");
+    const loopEnd = source.indexOf("if (skipped.length > 0)", loopStart);
+    const loop = source.slice(loopStart, loopEnd);
     expect(loop).toContain("skipped.push(file.name)");
     expect(loop).toContain("skipped.push(");
-    expect(loop.match(/setImporting\(false\);[\s\S]*?return;/g)?.filter((m) => m.includes("skipped")).length ?? 0).toBe(0);
+    expect(loop.match(/setImporting\(false\);[\s\S]*?return;/g)?.filter((m) => m.includes("skipped")).length ?? 0).toBe(
+      0,
+    );
   });
 
   it("a second drop during an in-flight batch is refused (importing guard)", () => {

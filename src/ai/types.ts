@@ -46,6 +46,8 @@ export interface GenerationConstraints {
 export interface GenerateOptions {
   genre: Genre;
   style?: string;
+  /** Intent-level arrangement/melodic profile; independent of the drum groove style. */
+  productionProfile?: import("../project-model/types").ProductionProfile;
   seed: string;
   stepCount: number;
   /** Explicit key binding. Null means use the project's key, if any. */

@@ -38,7 +38,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Soak heap gates call global.gc?.() — without exposed GC the numbers
+      # measure garbage, not leaks (47.9 MB vs 0.7 MB for identical code).
       - run: npm test
+        env:
+          NODE_OPTIONS: --expose-gc
       - run: npm run ai:performance
 
   build:

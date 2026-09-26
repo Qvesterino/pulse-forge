@@ -1,4 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
+
+import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 import { createLfoSyncController } from "../effects/tempo-sync";
 
@@ -23,6 +25,9 @@ export function createFreqShiftNode(
     channelCount: 2,
     channelInterpretation: "speakers",
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "freqshift-processor");
 
   const input = ctx.createGain();
   const output = ctx.createGain();

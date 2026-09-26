@@ -5,6 +5,13 @@ import { planGeneration } from "../src/intent/plan";
 import { rankCandidatesWithModel } from "../src/ai/ranking/rank-candidates";
 import { resetRankerClient, rankerMode } from "../src/ai/ranking/ranker-client";
 import type { CandidateBankEntry } from "../src/intent/candidate-bank";
+import { extractPatternFeatures } from "../src/ai/features/pattern-features";
+import { rankCandidateBank } from "../src/intent/candidate-bank";
+import {
+  createPreferenceObservation,
+  preferenceContextForIntent,
+  recordPreferenceObservation,
+} from "../src/intent/preference-ledger";
 
 /**
  * Fáze 4/5 gates without a real worker: the model path must FALL BACK
@@ -60,6 +67,8 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
 
   afterEach(() => {
     localStorage.removeItem("pf:intent-ranker");
+    localStorage.removeItem("pf:producer-dna-preferences");
+    localStorage.removeItem("pf:producer-dna-learning");
   });
 
   function planFor(doc: ReturnType<typeof createDefaultProject>) {
@@ -141,6 +150,43 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.order).toHaveLength(1);
     expect(ranking.order[0].candidateIndex).toBe(candidates[0].candidateIndex);
+  });
+
+  it("applies explicit local pairwise preferences after global ranking, even with ONNX off", async () => {
+    localStorage.setItem("pf:intent-ranker", "off");
+    const doc = createDefaultProject();
+    const plan = planFor(doc);
+    const candidates = buildCandidates(doc, 3);
+    const baseline = rankCandidateBank(doc, candidates);
+    const patterns = baseline.map((candidate) => candidate.pattern);
+    const vectors = baseline.map((candidate) =>
+      extractPatternFeatures({
+        doc,
+        pattern: candidate.pattern,
+        intent: plan.intent,
+        options: plan.options,
+        resolvedBpm: plan.resolvedBpm,
+        batch: patterns,
+      }),
+    );
+    const preferred = baseline[baseline.length - 1];
+    const preferredFeatures = vectors[baseline.length - 1];
+    for (let index = 0; index < baseline.length - 1; index++) {
+      const observation = createPreferenceObservation(
+        preferenceContextForIntent(plan.intent),
+        { contentHash: preferred.contentHash, features: preferredFeatures.values },
+        { contentHash: baseline[index].contentHash, features: vectors[index].values },
+        "a",
+        { createdAt: index + 1 },
+      );
+      expect(observation).not.toBeNull();
+      expect(recordPreferenceObservation(observation!)).toBe(true);
+    }
+
+    const personalized = await rankCandidatesWithModel(doc, candidates, plan);
+    expect(personalized.source).toBe("off");
+    expect(personalized.order[0].contentHash).toBe(preferred.contentHash);
+    expect(personalized.order).toHaveLength(baseline.length);
   });
 });
 

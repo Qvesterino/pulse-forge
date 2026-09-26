@@ -3,6 +3,8 @@ import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
+import { addAudioClip, fittedLoopPlacement, type FittedLoopPlacement } from "../commands/commands";
+import { BAR_TICKS } from "../project-model/types";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
@@ -43,7 +45,34 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
   const [dragOver, setDragOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Post-import fit offer: a single freshly imported loop with a steady
+  // detected tempo offers one-click fitted timeline placement.
+  const [fitOffer, setFitOffer] = useState<{ asset: UserSampleAsset; placement: FittedLoopPlacement } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Place the offered loop on the timeline, fitted — one undoable command. */
+  const placeOfferedLoop = useCallback(() => {
+    if (!fitOffer) return;
+    try {
+      const doc = services.store.doc;
+      const track = doc.tracks[0];
+      if (!track) {
+        setError("No track in project");
+        return;
+      }
+      const atBar = Math.max(0, Math.floor(services.transport.position / BAR_TICKS));
+      services.store.execute(
+        addAudioClip(doc, track.id, fitOffer.asset.id, atBar, fitOffer.placement.lengthBars, {
+          gain: 1,
+          stretchRate: fitOffer.placement.rate,
+          stretchMode: "stretch",
+        }),
+      );
+      setFitOffer(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not place loop");
+    }
+  }, [fitOffer, services]);
 
   const importFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -53,6 +82,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       if (importing) return;
       setImporting(true);
       setError(null);
+      setFitOffer(null);
       const fileArray = Array.from(files);
       const importedBatch: UserSampleAsset[] = [];
       const skipped: string[] = [];
@@ -139,6 +169,17 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       if (onBatchImport && importedBatch.length > 1) {
         onBatchImport(importedBatch);
       }
+      // Single-loop import with a steady tempo → offer fitted placement.
+      // Batches skip the offer (the browser rows keep their BPM badges).
+      if (importedBatch.length === 1) {
+        const [only] = importedBatch;
+        const doc = services.store.doc;
+        const placement =
+          only.bpm !== undefined
+            ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
+            : null;
+        if (placement) setFitOffer({ asset: only, placement });
+      }
       setImporting(false);
     },
     [services, onBatchImport, onImport, importing],
@@ -205,6 +246,32 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
         style={{ display: "none" }}
         onChange={handleFileChange}
       />
+      {fitOffer && !importing && (
+        <div
+          className="drop-zone-fit"
+          role="status"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <span className="drop-zone-text">
+            🥁 {fitOffer.asset.name} · {Math.round(fitOffer.asset.bpm ?? 0)} BPM → {fitOffer.placement.lengthBars}-bar
+            fitted clip (×{fitOffer.placement.rate.toFixed(2)})
+          </span>
+          <span className="drop-zone-fit-actions">
+            <button type="button" className="btn btn-small" onClick={placeOfferedLoop}>
+              Place on timeline
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Dismiss fit offer"
+              onClick={() => setFitOffer(null)}
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
       {importing ? (
         <span className="drop-zone-text">Decoding…</span>
       ) : error ? (

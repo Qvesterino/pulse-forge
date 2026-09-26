@@ -38,7 +38,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -530,7 +530,9 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     const startBar = Number(raw.startBar);
     if (!Number.isFinite(startBar) || startBar < 0) continue;
     const lengthBars = Number(raw.lengthBars);
-    if (!Number.isFinite(lengthBars) || lengthBars < 0.25) continue;
+    // Recorded comp fragments can be shorter than the normal UI clip-size
+    // floor. A positive duration is valid; zero/negative clips cannot schedule.
+    if (!Number.isFinite(lengthBars) || lengthBars <= 0) continue;
     const offsetSec = Math.max(0, Number.isFinite(Number(raw.offsetSec)) ? Number(raw.offsetSec) : 0);
     const trimStart = Math.max(0, Number.isFinite(Number(raw.trimStart)) ? Number(raw.trimStart) : 0);
     const trimEnd = Math.max(0, Number.isFinite(Number(raw.trimEnd)) ? Number(raw.trimEnd) : 0);
@@ -545,6 +547,10 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       Number.isSafeInteger(raw.sourceChannel) && Number(raw.sourceChannel) >= 0 && Number(raw.sourceChannel) < 32
         ? Number(raw.sourceChannel)
         : undefined;
+    const takeGroupId = typeof raw.takeGroupId === "string" && raw.takeGroupId !== "" ? raw.takeGroupId : undefined;
+    const takeId = typeof raw.takeId === "string" && raw.takeId !== "" ? raw.takeId : undefined;
+    const compSourceTakeId =
+      typeof raw.compSourceTakeId === "string" && raw.compSourceTakeId !== "" ? raw.compSourceTakeId : undefined;
     const stretchMode: "resample" | "stretch" | undefined = raw.stretchMode === "stretch" ? "stretch" : undefined;
     const warpMarkers: Array<{ timeSec: number; tick: number }> | undefined = (() => {
       if (!Array.isArray(raw.warpMarkers)) return undefined;
@@ -578,12 +584,54 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       stretchRate,
       reverse,
       ...(sourceChannel !== undefined ? { sourceChannel } : {}),
+      ...(takeGroupId && takeId ? { takeGroupId, takeId } : {}),
+      ...(takeGroupId && takeId && compSourceTakeId ? { compSourceTakeId } : {}),
       ...(loop ? { loop } : {}),
       ...(stretchMode ? { stretchMode } : {}),
       ...(warpMarkers ? { warpMarkers } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);
+  return out.length > 0 ? out : undefined;
+}
+
+/** Keep only take groups with at least one routable clip on their owning track. */
+export function sanitizeAudioTakeGroups(
+  input: unknown,
+  audioClips: readonly import("./types").AudioClip[] | undefined,
+  trackIds: Set<string>,
+): import("./types").AudioTakeGroup[] | undefined {
+  if (!Array.isArray(input) || !audioClips?.length) return undefined;
+  const out: import("./types").AudioTakeGroup[] = [];
+  const seen = new Set<string>();
+  for (const raw of input as Record<string, unknown>[]) {
+    if (!isObject(raw)) continue;
+    const id = typeof raw.id === "string" && raw.id !== "" ? raw.id : "";
+    const trackId = typeof raw.trackId === "string" ? raw.trackId : "";
+    if (!id || seen.has(id) || !trackIds.has(trackId)) continue;
+    const takes = audioClips.filter((clip) => clip.takeGroupId === id && clip.takeId && clip.trackId === trackId);
+    const requestedCompTakeId =
+      typeof raw.compTakeId === "string" && raw.compTakeId !== "" ? raw.compTakeId : undefined;
+    const allTakeIds = new Set(takes.map((clip) => clip.takeId).filter((takeId): takeId is string => Boolean(takeId)));
+    const sourceTakeIds = new Set([...allTakeIds].filter((takeId) => takeId !== requestedCompTakeId));
+    const hasComp = Boolean(
+      requestedCompTakeId &&
+      takes.some(
+        (clip) =>
+          clip.takeId === requestedCompTakeId &&
+          clip.compSourceTakeId !== undefined &&
+          sourceTakeIds.has(clip.compSourceTakeId),
+      ),
+    );
+    const compTakeId = hasComp ? requestedCompTakeId : undefined;
+    const firstTakeId = takes.find((clip) => clip.takeId && clip.takeId !== compTakeId)?.takeId ?? takes[0]?.takeId;
+    if (!firstTakeId) continue;
+    const validTakeIds = new Set([...sourceTakeIds, ...(compTakeId ? [compTakeId] : [])]);
+    const activeTakeId =
+      typeof raw.activeTakeId === "string" && validTakeIds.has(raw.activeTakeId) ? raw.activeTakeId : firstTakeId;
+    seen.add(id);
+    out.push({ id, trackId, activeTakeId, ...(compTakeId ? { compTakeId } : {}) });
+  }
   return out.length > 0 ? out : undefined;
 }
 
@@ -1447,16 +1495,53 @@ function normalizeArrangementDomain(s: NormalizeState): void {
     .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
     .sort((a, b) => a.startBar - b.startBar);
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
-  const audioClips = sanitizeAudioClips((arrangement as unknown as Record<string, unknown>).audioClips, trackIds);
+  const sanitizedAudioClips = sanitizeAudioClips(
+    (arrangement as unknown as Record<string, unknown>).audioClips,
+    trackIds,
+  );
+  const takeGroups = sanitizeAudioTakeGroups(
+    (arrangement as unknown as Record<string, unknown>).takeGroups,
+    sanitizedAudioClips,
+    trackIds,
+  );
+  const validTakeGroups = new Map((takeGroups ?? []).map((group) => [group.id, group]));
+  const audioClips = sanitizedAudioClips?.map((clip) => {
+    const group = clip.takeGroupId ? validTakeGroups.get(clip.takeGroupId) : undefined;
+    if (!group || group.trackId !== clip.trackId) {
+      const ordinaryClip = { ...clip };
+      delete ordinaryClip.takeGroupId;
+      delete ordinaryClip.takeId;
+      delete ordinaryClip.compSourceTakeId;
+      return ordinaryClip;
+    }
+    const compSourceTakeId =
+      clip.takeId === group.compTakeId &&
+      clip.compSourceTakeId &&
+      sanitizedAudioClips?.some(
+        (source) =>
+          source.takeGroupId === group.id &&
+          source.takeId === clip.compSourceTakeId &&
+          source.trackId === group.trackId,
+      )
+        ? clip.compSourceTakeId
+        : undefined;
+    if (compSourceTakeId === clip.compSourceTakeId) return clip;
+    const normalizedClip = { ...clip };
+    if (compSourceTakeId) normalizedClip.compSourceTakeId = compSourceTakeId;
+    else delete normalizedClip.compSourceTakeId;
+    return normalizedClip;
+  });
   const clipsChanged = sorted.length !== rawClips.length || sorted.some((clip, index) => clip !== rawClips[index]);
   const transitionsChanged = !jsonEqual(transitions, arrangement.transitions);
   const audioChanged = !jsonEqual(audioClips, (arrangement as unknown as Record<string, unknown>).audioClips);
-  if (clipsChanged || transitionsChanged || audioChanged) {
+  const takeGroupsChanged = !jsonEqual(takeGroups, (arrangement as unknown as Record<string, unknown>).takeGroups);
+  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged) {
     s.doc = {
       ...doc,
       arrangement: {
         clips: sorted,
         ...(audioClips ? { audioClips } : {}),
+        ...(takeGroups ? { takeGroups } : {}),
         ...(transitions !== undefined ? { transitions } : {}),
       },
     };
@@ -2206,8 +2291,10 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   let migrated = doc;
   if (migrated.schemaVersion === SCHEMA_VERSION) return normalizeProject(migrated);
   // v3 adds the optional `lineage` family link; v4 adds optional AudioClip
-  // source-channel routing. Both are backward-compatible and normalized
-  // without rewriting old project content.
+  // source-channel routing; v5 adds non-destructive AudioClip take groups;
+  // v6 adds an optional production profile to generated-pattern provenance;
+  // v7 adds take-comp provenance and permits short, positive AudioClip ranges.
+  // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
 }

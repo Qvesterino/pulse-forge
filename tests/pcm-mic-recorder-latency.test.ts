@@ -1,7 +1,10 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PcmMicRecorder } from "../src/audio-engine/PcmMicRecorder";
-import { RecordingRecoveryRepository } from "../src/persistence/RecordingRecoveryRepository";
+import {
+  RecordingRecoveryRepository,
+  RecordingStorageQuotaError,
+} from "../src/persistence/RecordingRecoveryRepository";
 import { openDb, STORE_RECORDING_CHUNKS, STORE_RECORDING_SESSIONS } from "../src/persistence/db";
 
 /**
@@ -89,7 +92,12 @@ function createSlowRecorder(delayMs: number) {
       }),
       disconnect: vi.fn(),
     })),
-    createAnalyser: vi.fn(() => ({ fftSize: 1024, getFloatTimeDomainData: vi.fn(), connect: vi.fn(), disconnect: vi.fn() })),
+    createAnalyser: vi.fn(() => ({
+      fftSize: 1024,
+      getFloatTimeDomainData: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    })),
     createBuffer: (channels: number, frames: number, sampleRate: number) => ({
       numberOfChannels: channels,
       length: frames,
@@ -131,7 +139,6 @@ async function wipe(): Promise<void> {
     t.onerror = () => reject(t.error);
   });
 }
-
 
 describe("PcmMicRecorder chunk-ack under IDB latency (GOAL 07)", () => {
   beforeEach(() => {
@@ -210,14 +217,18 @@ describe("PcmMicRecorder chunk-ack under IDB latency (GOAL 07)", () => {
     expect(visited).toBe(BLOCKS);
   });
 
-  it("a persistence FAILURE during latency still stops cleanly and keeps committed blocks", async () => {
+  it("quota exhaustion stops cleanly, explains recovery, and keeps committed blocks", async () => {
     // One shot repo: appendChunk throws after the first two blocks — the
     // recorder must flag persistenceError, stop, and keep blocks 0–1.
     class BrokenAfterTwo extends RecordingRecoveryRepository {
       private appends = 0;
       override async appendChunk(chunk: Parameters<RecordingRecoveryRepository["appendChunk"]>[0]): Promise<void> {
         this.appends++;
-        if (this.appends > 2) throw new Error("QuotaExceededError (simulated)");
+        if (this.appends > 2) {
+          throw new RecordingStorageQuotaError(
+            "Browser storage filled during recording; previously committed audio blocks remain recoverable",
+          );
+        }
         return super.appendChunk(chunk);
       }
     }
@@ -238,11 +249,17 @@ describe("PcmMicRecorder chunk-ack under IDB latency (GOAL 07)", () => {
       createGain: vi.fn(() => ({
         gain: { value: 1, cancelScheduledValues: vi.fn(), setTargetAtTime: vi.fn() },
         connect: vi.fn((node: unknown) => {
-          if (node === lastNode) queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
+          if (node === lastNode)
+            queueMicrotask(() => lastNode?.emit({ type: "ready", channels: 1, sampleRate: 48_000 }));
         }),
         disconnect: vi.fn(),
       })),
-      createAnalyser: vi.fn(() => ({ fftSize: 1024, getFloatTimeDomainData: vi.fn(), connect: vi.fn(), disconnect: vi.fn() })),
+      createAnalyser: vi.fn(() => ({
+        fftSize: 1024,
+        getFloatTimeDomainData: vi.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      })),
       resume: vi.fn(async () => {}),
     } as unknown as AudioContext;
     const errors: string[] = [];
@@ -265,7 +282,8 @@ describe("PcmMicRecorder chunk-ack under IDB latency (GOAL 07)", () => {
     for (let sequence = 0; sequence < 5; sequence++) lastNode!.emit(chunk(sequence));
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    expect(errors.join(" ")).toContain("Audio storage stopped");
+    expect(errors.join(" ")).toContain("browser storage is full");
+    expect(errors.join(" ")).toContain("final block may not have been saved");
     // Blocks 0–1 committed before the fault and remain recoverable.
     const sessions = await recovery.listRecoverable(Date.now());
     const mine = sessions.find((s) => s.trackName === "Lead Vocal");

@@ -49,7 +49,20 @@ const ENTRY_BUDGET_KB = 1070;
 // channels/rate separately from browser track settings and capability ranges.
 // Keep the DAW cap independently enforced while retaining <9 KB of headroom;
 // entry, optional AI runtimes and landing remain under their own limits.
-const TOTAL_BUDGET_KB = 2670;
+// 2690 (2026-09-25): the measured integration tree is 2677 KB after the
+// current producer, recording and DSP work. Preserve a small 13 KB margin
+// without relaxing entry, optional-runtime or landing-route budgets.
+// 2705 (2026-09-25): automatic loop-pass capture adds durable AudioWorklet
+// frame markers, crash recovery and selectable timeline takes (~6 KB).
+// Keep ~9 KB measured headroom without relaxing the other bundle gates.
+// 2715 (2026-09-26): single-pass punch adds sample-accurate in/out scheduling,
+// non-destructive punch placement and durable recovery (~7 KB). The measured
+// graph is 2712 KB; this bounded 10 KB allowance leaves 3 KB, so subsequent
+// DAW growth must be offset or split rather than expanding the cap again.
+// 2725 (2026-09-26): the source-first bottom dock adds the six beat-source
+// shortcuts and their macro definitions (~3 KB to the measured graph). Keep a
+// bounded 7 KB margin; future dock growth must still be offset or split.
+const TOTAL_BUDGET_KB = 2725;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

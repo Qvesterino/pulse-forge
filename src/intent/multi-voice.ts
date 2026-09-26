@@ -1,16 +1,10 @@
-import type { MusicalKey, NoteEvent, ProjectDocument } from "../project-model/types";
+import type { MusicalKey, NoteEvent, ProductionProfile, ProjectDocument } from "../project-model/types";
 import { STEP_TICKS } from "../project-model/types";
 import { parseKey, SCALE_INTERVALS, snapToScale } from "../project-model/scales";
 import { uid } from "../shared/ids";
 import { forkRandom } from "../shared/rng";
-import { MELODIC_BY_GENRE } from "../ai/grooves/melodic-data";
-import {
-  selectProgression,
-  expandProgression,
-  chordToneSemitones,
-  voiceLead,
-  type ChordEvent,
-} from "../ai/harmony";
+import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "../ai/grooves/melodic-data";
+import { selectProgression, expandProgression, chordToneSemitones, voiceLead, type ChordEvent } from "../ai/harmony";
 
 /**
  * MULTI-VOICE ORCHESTRATOR (INTENT_ENGINE.md #1+2) — the three melodic voices
@@ -79,8 +73,9 @@ function chordAtStep(slots: ChordSlot[], step: number): ChordSlot | null {
 }
 
 /** Get the octave offset for a role from the genre's melodic data. */
-function octaveOffsetFor(genre: string, role: string): number {
-  const pattern = MELODIC_BY_GENRE[genre]?.find((entry) => entry.role === role);
+function octaveOffsetFor(genre: string, role: string, profile?: ProductionProfile): number {
+  const patterns = (profile ? MELODIC_BY_PROFILE[profile] : undefined) ?? MELODIC_BY_GENRE[genre];
+  const pattern = patterns?.find((entry) => entry.role === role);
   return pattern ? pattern.octaveOffset : role === "bass" ? 0 : role === "chord" ? 1 : 2;
 }
 
@@ -98,15 +93,25 @@ export function generateMultiVoice(
   velocityVariation: number,
   density = 0.5,
   complexity = 0.5,
+  productionProfile?: ProductionProfile,
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
   const progression = selectProgression(genre, seed);
   const expanded = expandProgression(progression, stepCount);
   const slots = expandToSlots(expanded, stepCount);
+  const spaceyProfile = productionProfile === "spacey-melodic-rap" || productionProfile === "spacey-dark-trap";
+  const chordSlots = spaceyProfile
+    ? slots
+        .filter((_, index) => index % 2 === 0)
+        .map((slot, index, selected) => ({
+          ...slot,
+          endStep: selected[index + 1]?.startStep ?? stepCount,
+        }))
+    : slots;
 
   const parsedKey = key ? parseKey(key) : null;
   const root = parsedKey?.root ?? 0;
-  const intervals = SCALE_INTERVALS[parsedKey?.scaleType ?? "major"];
+  const intervals = SCALE_INTERVALS[parsedKey?.scaleType ?? (productionProfile ? "natural_minor" : "major")];
 
   const bars = stepCount / 16;
   const velocitySpread = 0.08 + velocityVariation * 0.1;
@@ -121,25 +126,18 @@ export function generateMultiVoice(
 
   // ── Voice 1: CHORDS (the harmonic foundation) ─────────────────────────
   const chordEvents: NoteEvent[] = [];
-  const chordOctave = octaveOffsetFor(genre, "chord");
+  const chordOctave = octaveOffsetFor(genre, "chord", productionProfile);
   let prevChordPitches: number[] = [];
 
-  for (const slot of slots) {
+  for (const slot of chordSlots) {
     const quality = slot.event.quality;
     const rootPitch = root + intervals[slot.event.degree % intervals.length];
     const basePitch = 3 * 12 + chordOctave * 12 + rootPitch;
 
     // Voice leading: minimise movement from the previous chord
-    const voicedPitches = voiceLead(
-      prevChordPitches,
-      basePitch,
-      quality,
-    );
+    const voicedPitches = voiceLead(prevChordPitches, basePitch, quality);
 
-    const velocity = Math.max(
-      0.15,
-      Math.min(1, (0.6 + (rand() - 0.5) * velocitySpread) * energyVelocityGain),
-    );
+    const velocity = Math.max(0.15, Math.min(1, (0.6 + (rand() - 0.5) * velocitySpread) * energyVelocityGain));
     const durationSteps = slot.endStep - slot.startStep;
 
     for (const pitch of voicedPitches) {
@@ -157,7 +155,8 @@ export function generateMultiVoice(
 
   // ── Voice 2: BASS (follows the chord roots) ──────────────────────────
   const bassEvents: NoteEvent[] = [];
-  const bassOctave = octaveOffsetFor(genre, "bass");
+  const bassOctave = octaveOffsetFor(genre, "bass", productionProfile);
+  const bassStride = productionProfile === "spacey-melodic-rap" ? 4 : 1;
 
   for (const [slotIndex, slot] of slots.entries()) {
     const rootPitch = root + intervals[slot.event.degree % intervals.length];
@@ -165,12 +164,15 @@ export function generateMultiVoice(
     // Next chord root for the P3 chromatic approach (null on the last slot).
     const nextSlot = slotIndex + 1 < slots.length ? slots[slotIndex + 1] : null;
     const nextBassPitch =
-      nextSlot !== null ? 3 * 12 + bassOctave * 12 + (root + intervals[nextSlot.event.degree % intervals.length]) : null;
+      nextSlot !== null
+        ? 3 * 12 + bassOctave * 12 + (root + intervals[nextSlot.event.degree % intervals.length])
+        : null;
 
     // Bass rhythm: 8th notes with accent on downbeat (P2: density above the
     // 0.5 default adds quiet 16th pickups between them). At the default no
     // extra rand() is consumed, so the 8th-note stream stays bit-identical.
     for (let step = slot.startStep; step < slot.endStep; step += 1) {
+      if (bassStride > 1 && step % bassStride !== slot.startStep % bassStride) continue;
       const isEighth = step % 2 === 0;
       const isTail = step === slot.endStep - 1;
       // P3 passing tone: the last 16th before a chord change walks
@@ -208,12 +210,18 @@ export function generateMultiVoice(
 
   // ── Voice 3: LEAD (chord tones + approach notes) ─────────────────────
   const leadEvents: NoteEvent[] = [];
-  const leadOctave = octaveOffsetFor(genre, "lead");
+  const leadOctave = octaveOffsetFor(genre, "lead", productionProfile);
 
   if (energy > 0.4) {
     // Lead exists only when energy is high enough (P2: the rhythm thins to a
     // sparse subset below 0.7 instead of vanishing — identity at/above 0.7).
-    const rhythmSteps = energy >= 0.7 ? RHYTHM_LEAD_FULL : RHYTHM_LEAD_SPARSE;
+    const rhythmSteps = spaceyProfile
+      ? energy >= 0.7
+        ? [0, 8, 12]
+        : [0, 8]
+      : energy >= 0.7
+        ? RHYTHM_LEAD_FULL
+        : RHYTHM_LEAD_SPARSE;
     // P3 motif carry: bar 0 is the motif — every 4th bar replays its rhythm
     // and tone choices transposed onto that bar's own chord (same idea, new
     // harmony — call-and-response across the phrase). Recorded, not
@@ -228,7 +236,7 @@ export function generateMultiVoice(
         const rhythmStep = steps[i];
         const step = barStart + rhythmStep;
         if (step >= stepCount) continue;
-        const slot = chordAtStep(slots, step);
+        const slot = chordAtStep(chordSlots, step);
         if (!slot) continue;
 
         // Chord tone selection: root, 3rd, or 5th of the current chord
@@ -252,15 +260,12 @@ export function generateMultiVoice(
         const pitch = 3 * 12 + leadOctave * 12 + chordRoot + toneOffset + approachDir;
         const snapped = key ? snapToScale(pitch, key) : pitch;
 
-        const velocity = Math.max(
-          0.2,
-          Math.min(1, (0.7 + (rand() - 0.5) * velocitySpread * 2) * energyVelocityGain),
-        );
+        const velocity = Math.max(0.2, Math.min(1, (0.7 + (rand() - 0.5) * velocitySpread * 2) * energyVelocityGain));
         leadEvents.push({
           id: uid("note"),
           pitch: Math.max(0, Math.min(127, snapped)),
           start: step * STEP_TICKS,
-          duration: 1 * STEP_TICKS, // 16th note lead
+          duration: (spaceyProfile ? 4 : 1) * STEP_TICKS,
           velocity,
         });
       }

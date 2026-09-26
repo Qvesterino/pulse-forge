@@ -1,4 +1,6 @@
 import { kWeightingCoefficients } from "../audio-engine/kweighting";
+
+import { attachProcessorErrorGuard } from "./processor-errors";
 import { MIN_DB } from "../audio-engine/metering";
 
 /**
@@ -41,6 +43,9 @@ export function createKwMeterNode(ctx: BaseAudioContext): KwMeterHandle {
       s2: [s2.b0, s2.b1, s2.b2, s2.a1, s2.a2],
     },
   });
+  // Runtime processor-error containment (GOAL 07/LONGEVITY §3): the
+  // browser silently kills a throwing processor — surface + count it.
+  attachProcessorErrorGuard(node, "kwmeter-processor");
 
   let last: KwLoudness = { ...SILENT };
   node.port.onmessage = (event: MessageEvent) => {

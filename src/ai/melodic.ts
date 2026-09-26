@@ -3,7 +3,7 @@ import type { GenerateOptions, GenerationRole, MelodicNote, MelodicPatternData }
 import { STEP_TICKS } from "../project-model/types";
 import { parseKey, snapToScale, SCALE_INTERVALS } from "../project-model/scales";
 import { uid } from "../shared/ids";
-import { MELODIC_BY_GENRE } from "./grooves/melodic-data";
+import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "./grooves/melodic-data";
 
 const DEGREE_MIN = -1; // rest
 const DEGREE_MAX = 6; // 7th
@@ -251,12 +251,14 @@ export function generateMelodicParts(
   kickRows?: number[][],
   roleRandoms?: Partial<Record<MelodicPatternData["role"], () => number>>,
 ): MelodicParts {
-  const patterns = MELODIC_BY_GENRE[options.genre];
+  const patterns =
+    (options.productionProfile ? MELODIC_BY_PROFILE[options.productionProfile] : undefined) ??
+    MELODIC_BY_GENRE[options.genre];
   if (!patterns || patterns.length === 0) return { bass: [], chord: [], lead: [] };
 
   // Parse the project key for scale snapping
   let root = 0;
-  let intervals: readonly number[] = SCALE_INTERVALS.major;
+  let intervals: readonly number[] = options.productionProfile ? SCALE_INTERVALS.natural_minor : SCALE_INTERVALS.major;
   if (key) {
     const parsed = parseKey(key);
     if (parsed) {

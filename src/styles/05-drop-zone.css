@@ -39,6 +39,23 @@
   color: var(--stop);
 }
 
+.drop-zone-fit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  max-width: 100%;
+}
+
+.drop-zone-fit-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
 .mod-section {
   display: flex;
   flex-direction: column;
@@ -1020,7 +1037,6 @@
   border-color: var(--accent);
   background: var(--accent-soft);
 }
-
 
 /* ---------- Mobile readiness (GOAL 10) ---------- */
 /* Automation point drags must not pan the page on touch. */

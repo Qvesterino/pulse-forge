@@ -37,10 +37,31 @@ export async function materializePcmTake(
     throw new Error(`This take is saved safely but is too large to open as an in-memory audio clip${detail}`);
   }
 
+  const takeBoundaries: number[] = [];
   await recovery.forEachChunk(sessionId, (chunk, frameOffset) => {
     copyChunkToBuffer(buffer, chunk, frameOffset);
+    const localBoundaries = chunk.takeBoundaries ?? [];
+    if (
+      !Array.isArray(localBoundaries) ||
+      localBoundaries.some(
+        (frame, index) =>
+          !Number.isSafeInteger(frame) ||
+          frame < 0 ||
+          frame >= chunk.frames ||
+          (index > 0 && frame <= localBoundaries[index - 1]!),
+      )
+    ) {
+      throw new Error("Saved loop-take boundary metadata is invalid");
+    }
+    for (const frame of localBoundaries) {
+      const absoluteFrame = frameOffset + frame;
+      if (absoluteFrame <= (takeBoundaries[takeBoundaries.length - 1] ?? -1)) {
+        throw new Error("Saved loop-take boundaries are out of order");
+      }
+      takeBoundaries.push(absoluteFrame);
+    }
   });
-  return { session, buffer };
+  return { session: { ...session, ...(takeBoundaries.length ? { takeBoundaries } : {}) }, buffer };
 }
 
 function copyChunkToBuffer(buffer: AudioBuffer, chunk: RecordingPcmChunk, frameOffset: number): void {

@@ -5,6 +5,7 @@ import { SelectionContext } from "../../src/ui/context";
 import { renderWithContext, mockServices } from "../helpers";
 import { SelectionStore } from "../../src/store/SelectionStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { addAudioClip } from "../../src/commands/commands";
 import type { ProjectDocument } from "../../src/project-model/types";
 
 const domRect = (left: number, top: number, width: number, height: number) =>
@@ -374,6 +375,27 @@ describe("ArrangementPanel — SCENE SECS (wall-clock authoring)", () => {
         (c) => c[0]?.type === "resizeArrangementClip",
       ),
     ).toBe(false);
+  });
+
+  it("audio clip menu offers AI FLIP as genre chips (no prompt)", () => {
+    const base = createProjectFromTemplate("house");
+    const withClip = addAudioClip(base, base.tracks[0].id, "factory.loop", 0, 4).execute(base);
+    const services = mockServices(withClip);
+    services.bank.add("factory.loop", {
+      duration: 4,
+      sampleRate: 44100,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(44100),
+    } as unknown as AudioBuffer);
+    renderWithContext(<ArrangementPanel />, { services });
+    const clip = document.querySelector(".arr-audio-clip");
+    expect(clip).not.toBeNull();
+    fireEvent.contextMenu(clip!, { clientX: 100, clientY: 100 });
+    const group = screen.getByRole("group", { name: "AI FLIP genre" });
+    expect(group).toBeInTheDocument();
+    for (const genre of ["House", "Techno", "Trap", "Ambient"]) {
+      expect(group.textContent).toContain(genre);
+    }
   });
 
   it("the seconds ruler accumulates at each scene's effective tempo", async () => {

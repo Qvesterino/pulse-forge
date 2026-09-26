@@ -94,6 +94,18 @@ describe("RecordingRecoveryRepository", () => {
     await expect(recovery.get(take.id)).resolves.toMatchObject({ totalFrames: 0, chunkCount: 0 });
   });
 
+  it("atomically records punch-out completion with the final PCM chunk", async () => {
+    const take = { ...session("recording-punch-out"), punchCapture: { startTick: 960, endTick: 1920 } };
+    await recovery.begin(take);
+    await recovery.appendChunk({ ...block(take.id, 0, [0.1, 0.2], [-0.1, -0.2]), punchOut: true });
+
+    await expect(recovery.get(take.id)).resolves.toMatchObject({
+      totalFrames: 2,
+      chunkCount: 1,
+      punchOutReached: true,
+    });
+  });
+
   it("hides the owner tab's own live take but still lists it once stopped", async () => {
     // Regression: a main-thread stall >5s while THIS tab recorded used to
     // surface the tab's own active take as recoverable; recovering it aborted

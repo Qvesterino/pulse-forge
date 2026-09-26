@@ -1,0 +1,164 @@
+/** Local-only adapter for explicit Producer DNA feedback. */
+import { FEATURE_CONTRACT } from "../ai/features/pattern-features";
+import type { IntentSpec } from "./types";
+import {
+  dedupeAndCapPreferences,
+  isValidPreferenceObservation,
+  PREFERENCE_LEDGER_CAP,
+  PREFERENCE_LEDGER_VERSION,
+  type PreferenceCandidateSnapshot,
+  type PreferenceChoice,
+  type PreferenceContext,
+  type PreferenceLedgerPackV1,
+  type PreferenceObservationV1,
+  type PreferenceReason,
+  type PreferenceTask,
+} from "./preference-ledger-core";
+
+export const PREFERENCE_LEDGER_KEY = "pf:producer-dna-preferences";
+export const PREFERENCE_LEARNING_KEY = "pf:producer-dna-learning";
+
+export {
+  dedupeAndCapPreferences,
+  isValidPreferenceObservation,
+  PREFERENCE_LEDGER_CAP,
+  PREFERENCE_LEDGER_VERSION,
+} from "./preference-ledger-core";
+export type {
+  PreferenceCandidateSnapshot,
+  PreferenceChoice,
+  PreferenceContext,
+  PreferenceLedgerPackV1,
+  PreferenceObservationV1,
+  PreferenceReason,
+  PreferenceTask,
+} from "./preference-ledger-core";
+
+function hashContext(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index++) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** Build a privacy-safe context; intentionally excludes prompt, seed and project ids. */
+export function preferenceContextForIntent(
+  intent: Pick<IntentSpec, "genre" | "productionProfile" | "roles" | "preserve">,
+  task: PreferenceTask = "pattern",
+): PreferenceContext {
+  const genre = String(intent.genre).trim().toLowerCase().slice(0, 40) || "unknown";
+  const productionProfile = intent.productionProfile ? String(intent.productionProfile).slice(0, 80) : null;
+  const preserved = new Set(intent.preserve ?? []);
+  const roleScope = [...new Set(intent.roles.filter((role) => !preserved.has(role)))].sort();
+  const canonical = JSON.stringify([genre, productionProfile, task, roleScope]);
+  return { genre, productionProfile, task, roleScope, key: hashContext(canonical) };
+}
+
+export interface PreferenceCandidateInput {
+  contentHash: string;
+  features: ArrayLike<number>;
+}
+
+function snapshot(candidate: PreferenceCandidateInput): PreferenceCandidateSnapshot {
+  return {
+    contentHash: candidate.contentHash,
+    featureVersion: FEATURE_CONTRACT.version,
+    features: Array.from(candidate.features),
+  };
+}
+
+/**
+ * Create a canonical pair record. Canonical ordering makes the same pair
+ * dedupe even when the UI swaps A and B on a later audition.
+ */
+export function createPreferenceObservation(
+  context: PreferenceContext,
+  candidateA: PreferenceCandidateInput,
+  candidateB: PreferenceCandidateInput,
+  choice: PreferenceChoice,
+  options: { reason?: PreferenceReason; createdAt?: number } = {},
+): PreferenceObservationV1 | null {
+  if (candidateA.contentHash === candidateB.contentHash) return null;
+  const shouldSwap = candidateA.contentHash.localeCompare(candidateB.contentHash) > 0;
+  const normalizedChoice = shouldSwap ? (choice === "a" ? "b" : choice === "b" ? "a" : choice) : choice;
+  const observation: PreferenceObservationV1 = {
+    version: PREFERENCE_LEDGER_VERSION,
+    context: { ...context, roleScope: [...context.roleScope] },
+    candidateA: snapshot(shouldSwap ? candidateB : candidateA),
+    candidateB: snapshot(shouldSwap ? candidateA : candidateB),
+    choice: normalizedChoice,
+    ...(options.reason ? { reason: options.reason } : {}),
+    createdAt: options.createdAt ?? Date.now(),
+  };
+  return isValidPreferenceObservation(observation) ? observation : null;
+}
+
+function safeRead(): PreferenceObservationV1[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(PREFERENCE_LEDGER_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isValidPreferenceObservation).slice(-PREFERENCE_LEDGER_CAP);
+  } catch {
+    return [];
+  }
+}
+
+function safeWrite(observations: readonly PreferenceObservationV1[]): boolean {
+  try {
+    if (typeof localStorage === "undefined") return false;
+    localStorage.setItem(PREFERENCE_LEDGER_KEY, JSON.stringify(observations));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Explicit comparisons are the only events that enter this ledger. */
+export function recordPreferenceObservation(observation: PreferenceObservationV1): boolean {
+  if (!isPreferenceLearningEnabled() || !isValidPreferenceObservation(observation)) return false;
+  return safeWrite(dedupeAndCapPreferences(safeRead(), observation));
+}
+
+export function readPreferenceLedger(): PreferenceObservationV1[] {
+  return safeRead();
+}
+
+/** Learning is local and pauseable. Feedback is never inferred from USE. */
+export function isPreferenceLearningEnabled(): boolean {
+  try {
+    return typeof localStorage === "undefined" || localStorage.getItem(PREFERENCE_LEARNING_KEY) !== "off";
+  } catch {
+    return false;
+  }
+}
+
+export function setPreferenceLearningEnabled(enabled: boolean): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(PREFERENCE_LEARNING_KEY, enabled ? "on" : "off");
+  } catch {
+    /* preference learning safely becomes unavailable when storage is blocked */
+  }
+}
+
+export function clearPreferenceLedger(): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(PREFERENCE_LEDGER_KEY);
+  } catch {
+    /* no-op; all ranking paths retain their global fallback */
+  }
+}
+
+export function buildPreferenceLedgerPack(exportedAt = Date.now()): PreferenceLedgerPackV1 {
+  return {
+    version: PREFERENCE_LEDGER_VERSION,
+    exportedAt,
+    featureVersion: FEATURE_CONTRACT.version,
+    observations: safeRead(),
+  };
+}

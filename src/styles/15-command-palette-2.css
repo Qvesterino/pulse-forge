@@ -1004,3 +1004,195 @@
     grid-template-columns: repeat(2, minmax(72px, 1fr));
   }
 }
+
+/* Source-first beatmaking strip: six fast starting points plus three macros. */
+.source-macro-dock {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 0 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.source-macro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-macro-head > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.source-macro-kicker,
+.source-macro-hint {
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.11em;
+}
+
+.source-macro-title {
+  color: var(--accent);
+  font: 800 10px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.source-macro-description {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 9px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-macro-load {
+  flex: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-soft));
+  color: var(--accent);
+}
+
+.source-profile-tabs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.source-profile-tab {
+  min-width: 0;
+  height: 23px;
+  overflow: hidden;
+  padding: 0 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: 800 8px var(--mono);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.source-profile-tab:hover,
+.source-profile-tab.is-active,
+.source-profile-tab:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border-soft));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.source-profile-tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.source-macro-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 10px;
+  min-width: 0;
+  padding: 3px 8px 2px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--bg-raise) 48%, transparent);
+}
+
+.source-macro-grid .slider {
+  min-width: 0;
+}
+
+.source-macro-hint {
+  padding-left: 8px;
+  font-size: 7px;
+}
+
+/* Shared preset touchpoints: every compatible device exposes the same
+   MIX → FEEDBACK → SYNC order before its detailed parameter pages. */
+.fx-preset-controls {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 8px 6px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 52%, transparent);
+  background: color-mix(in srgb, var(--bg-raise) 58%, transparent);
+}
+
+.fx-preset-controls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fx-preset-controls-title,
+.fx-preset-controls-hint {
+  color: var(--text-faint);
+  font: 700 8px var(--mono);
+  letter-spacing: 0.1em;
+}
+
+.fx-preset-controls-title {
+  color: var(--accent);
+}
+
+.fx-preset-controls-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-preset-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.fx-preset-controls-grid .slider,
+.fx-preset-controls-grid .fx-param-select {
+  min-width: 0;
+}
+
+@container (max-width: 560px) {
+  .source-profile-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .source-macro-description {
+    flex-basis: 100%;
+  }
+
+  .fx-preset-controls-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 380px) {
+  .source-macro-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-macro-load {
+    width: 100%;
+  }
+
+  .source-macro-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fx-preset-controls-grid {
+    grid-template-columns: 1fr;
+  }
+}

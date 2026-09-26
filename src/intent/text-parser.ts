@@ -55,6 +55,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbreakcore\b/, "dnb"],
   // sub-genre wave (world-roster follow-up) — specifics still BEFORE generics
   [/\bacid trap\b|\bacid rap\b/, "trap"],
+  [/\bfuture garage\b/, "ambient"],
   [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b/, "house"],
   [/\bbaile funk\b|\bfunk mandel\w*|\bbrazilian phonk\b|\bbr phonk\b/, "phonk"],
   [/\bneurofunk\b|\bneuro\b/, "dnb"],
@@ -112,6 +113,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bg[ -]?funk\b|\bgfunk\b|\blow ?rider\b/, "gfunk"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
+  [/\bfuture garage\b/, "future garage"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
   [/\bafro\b/, "afro"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
@@ -406,6 +408,7 @@ export function parseIntentText(text: string): ParsedIntent {
   if (blend) {
     input.genre = blend.patch.genre;
     if (blend.patch.style) input.style = blend.patch.style;
+    if (blend.patch.productionProfile) input.productionProfile = blend.patch.productionProfile;
     if (blend.patch.mood) input.mood = blend.patch.mood;
     if (blend.patch.energy !== undefined) input.energy = blend.patch.energy;
     if (blend.patch.density !== undefined) input.density = blend.patch.density;
@@ -417,6 +420,7 @@ export function parseIntentText(text: string): ParsedIntent {
       const preset = artist.preset;
       input.genre = preset.genre;
       if (preset.style) input.style = preset.style;
+      if (preset.productionProfile) input.productionProfile = preset.productionProfile;
       if (preset.mood) input.mood = preset.mood;
       if (preset.energy !== undefined) input.energy = preset.energy;
       if (preset.density !== undefined) input.density = preset.density;
@@ -431,6 +435,10 @@ export function parseIntentText(text: string): ParsedIntent {
   // an actual genre word, which then (intentionally) overrides the preset.
   const genre = firstPhrase(GENRE_PHRASES, lower);
   if (genre) {
+    if (input.genre !== undefined && input.genre !== genre) {
+      delete input.style;
+      delete input.productionProfile;
+    }
     input.genre = genre as IntentGenre;
     detected.push(genre);
   }
@@ -505,6 +513,41 @@ export function parseIntentText(text: string): ParsedIntent {
     }
   }
 
+  // Candidate count: "give me 5 variations" / "sprav mi päť variantov".
+  // The UI's candidate bank supports at most eight local candidates; clamp
+  // larger requests explicitly and expose that limit in the detected chips.
+  const variationRequest =
+    /\b([1-9]\d?|one|two|three|four|five|six|seven|eight|jeden|jedna|jedno|dva|dve|tri|styri|pat|sest|sedem|osem)\s+(?:(?:different|alternate|rozdielne|alternativne)\s+)?(?:variations?|variants?(?:y|ov|u)?|options?|versions?|alternatives?|verzi(?:a|e|i|u)|alternativ(?:y|ov|u|e))\b/.exec(
+      lower,
+    );
+  if (variationRequest) {
+    const countWords: Readonly<Record<string, number>> = {
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      jeden: 1,
+      jedna: 1,
+      jedno: 1,
+      dva: 2,
+      dve: 2,
+      tri: 3,
+      styri: 4,
+      pat: 5,
+      sest: 6,
+      sedem: 7,
+      osem: 8,
+    };
+    const requested = countWords[variationRequest[1]] ?? Number(variationRequest[1]);
+    const count = Math.max(1, Math.min(8, requested));
+    input.candidateCount = count;
+    detected.push(`${count} variations${requested > 8 ? " (max 8)" : ""}`);
+  }
+
   // Protected roles — scanned BEFORE the positive loop so "nechaj bass"
   // names existing content instead of adding bass to the generation set.
   const preserved = new Set<IntentRole>(preservedRolesOf(lower));
@@ -564,6 +607,11 @@ export function parseIntentText(text: string): ParsedIntent {
     input.preserve = [...preserved];
     for (const role of preserved) detected.push(`preserve ${role}`);
   }
+
+  // Current production profiles contain trap-family melodic arrangements;
+  // an explicit genre override should not accidentally carry one into a
+  // different genre.
+  if (input.genre !== undefined && input.genre !== "trap") delete input.productionProfile;
 
   return { input, detected };
 }
