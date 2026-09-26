@@ -36,7 +36,6 @@ beforeAll(async () => {
   await import("../src/audio-worklets/svfilter-processor.js");
   await import("../src/audio-worklets/chorus-processor.js");
   await import("../src/audio-worklets/ducking-delay-processor.js");
-  // @ts-expect-error raw worklet processor files
   await import("../src/audio-worklets/autowah-processor.js");
   // @ts-expect-error raw worklet processor files
   await import("../src/audio-worklets/ringmod-processor.js");

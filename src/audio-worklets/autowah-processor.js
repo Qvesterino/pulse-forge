@@ -13,10 +13,16 @@
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
+function newAwDriveState() {
+  return { sub: new Float32Array(8), sat: new Float32Array(8), w: 0, sw: 0, prev: 0 };
+}
+
 class AutowahProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.env = 0;
+    this.awDriveL = newAwDriveState();
+    this.awDriveR = newAwDriveState();
     this.lpL = 0;
     this.bpL = 0;
     this.lpR = 0;
@@ -38,6 +44,70 @@ class AutowahProcessor extends AudioWorkletProcessor {
       { name: "drive", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
+  }
+
+  // ── 2× oversampled drive (PARAM-VALUE-AUDIT-2026-09 Vlna 3) ───────────
+  // Same pattern as svfilter/freqshifter/kaskada: the tanh grit stage (up to
+  // ×10 into tanh — the hottest curve in the FX rack) runs at 2× the rate
+  // with a 9-tap windowed-sinc band-limit + anti-image FIR, so harmonics
+  // above Nyquist fold back an octave higher and ~30 dB weaker. The stage
+  // sits on the forward path into the SVF; the envelope follower reads the
+  // RAW signal, so wah tracking is untouched.
+  static get OS_TAPS() {
+    if (!this._taps) {
+      const N = 9;
+      const fc = 0.375; // relative to the 2× rate ≈ 0.75× original fs
+      const taps = new Array(N);
+      const M = N - 1;
+      for (let i = 0; i < N; i++) {
+        const m = i - (M >> 1);
+        const sinc = m === 0 ? 1 : Math.sin(Math.PI * fc * m) / (Math.PI * fc * m);
+        const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / M); // Hamming
+        taps[i] = sinc * w;
+      }
+      let sum = 0;
+      for (let i = 0; i < N; i++) sum += taps[i];
+      for (let i = 0; i < N; i++) taps[i] /= sum;
+      this._taps = taps;
+    }
+    return this._taps;
+  }
+
+  static osDrive(st, x, k, invNorm) {
+    const taps = AutowahProcessor.OS_TAPS;
+    const sub = st.sub;
+    const sat = st.sat;
+    const mid = (st.prev + x) * 0.5;
+    st.prev = x;
+    sub[st.w] = mid;
+    let i2 = st.w;
+    let acc = 0;
+    for (let i = 0; i < 9; i++) {
+      acc += taps[i] * sub[i2];
+      i2 = (i2 + 7) & 7;
+    }
+    st.w = (st.w + 1) & 7;
+    const satMid = Math.tanh(acc * k) * invNorm;
+    sub[st.w] = x;
+    i2 = st.w;
+    acc = 0;
+    for (let i = 0; i < 9; i++) {
+      acc += taps[i] * sub[i2];
+      i2 = (i2 + 7) & 7;
+    }
+    st.w = (st.w + 1) & 7;
+    const satEven = Math.tanh(acc * k) * invNorm;
+    sat[st.sw] = satMid;
+    st.sw = (st.sw + 1) & 7;
+    sat[st.sw] = satEven;
+    i2 = st.sw;
+    let out = 0;
+    for (let i = 0; i < 9; i++) {
+      out += taps[i] * sat[i2];
+      i2 = (i2 + 7) & 7;
+    }
+    st.sw = (st.sw + 1) & 7;
+    return out;
   }
 
   process(inputs, outputs, parameters) {
@@ -65,14 +135,16 @@ class AutowahProcessor extends AudioWorkletProcessor {
 
     const clampVal = 8;
     const driveK = 1 + drive * 9;
+    const driveInvNorm = drive > 0.001 ? 1 / Math.tanh(driveK) : 0;
 
     for (let i = 0; i < len; i++) {
       let l = inL ? inL[i] : 0;
       let r = inR ? inR[i] : l;
-      // Drive stage: tanh grit BEFORE the envelope + SVF.
+      // Drive stage: 2× oversampled tanh grit BEFORE the SVF (the envelope
+      // follower reads the RAW input below, so wah tracking is untouched).
       if (drive > 0.001) {
-        l = Math.tanh(l * driveK) / Math.tanh(driveK);
-        r = Math.tanh(r * driveK) / Math.tanh(driveK);
+        l = AutowahProcessor.osDrive(this.awDriveL, l, driveK, driveInvNorm);
+        r = AutowahProcessor.osDrive(this.awDriveR, r, driveK, driveInvNorm);
       }
 
       // ---- Envelope follower (on the RAW signal — drive would over-open it;

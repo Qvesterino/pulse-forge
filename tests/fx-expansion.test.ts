@@ -104,7 +104,13 @@ beforeAll(async () => {
   freqShiftFactory = ((options?: { processorOptions?: unknown }) =>
     fsMod.createFreqShiftProcessor(options)) as typeof freqShiftFactory;
   pitchShiftFactory = factoryOf("pitchshift-processor.js") as typeof pitchShiftFactory;
-  vinylFactory = factoryOf("vinyl-processor.js") as typeof vinylFactory;
+  // vinyl-processor.js now carries ESM exports — import it as a module
+  // instead of eval'ing the raw source via `new Function`.
+  const vinylMod = (await import("../src/audio-worklets/vinyl-processor.js")) as {
+    createVinylProcessor: (options?: { processorOptions?: unknown }) => unknown;
+  };
+  vinylFactory = ((options?: { processorOptions?: unknown }) =>
+    vinylMod.createVinylProcessor(options)) as typeof vinylFactory;
   beatManglerFactory = factoryOf("beatmangler-processor.js") as typeof beatManglerFactory;
 });
 

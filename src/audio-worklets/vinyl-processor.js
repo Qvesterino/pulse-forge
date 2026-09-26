@@ -58,6 +58,72 @@ function softSat(x) {
   return (x * (27 + x2)) / (27 + 9 * x2);
 }
 
+// ── 2× oversampled drive (PARAM-VALUE-AUDIT-2026-09 Vlna 3) ─────────────
+// Same pattern as svfilter/freqshifter/kaskada: the tube saturation of the
+// wet path (drive·4 into softSat) runs at 2× the rate — 9-tap windowed-sinc
+// band-limit, saturate, anti-image FIR, decimate — so harmonics above
+// Nyquist fold back an octave higher and ~30 dB weaker. Forward path only
+// (after the artefact sum, before the year contour), no loop phase concern.
+const VN_OS_TAPS = (() => {
+  const N = 9;
+  const fc = 0.375; // relative to the 2× rate ≈ 0.75× original fs
+  const taps = new Array(N);
+  const M = N - 1;
+  for (let i = 0; i < N; i++) {
+    const m = i - (M >> 1);
+    const sinc = m === 0 ? 1 : Math.sin(Math.PI * fc * m) / (Math.PI * fc * m);
+    const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / M); // Hamming
+    taps[i] = sinc * w;
+  }
+  let sum = 0;
+  for (let i = 0; i < N; i++) sum += taps[i];
+  for (let i = 0; i < N; i++) taps[i] /= sum;
+  return taps;
+})();
+
+/** Fresh per-channel drive history (exported for the aliasing test). */
+export function newVnDriveState() {
+  return { sub: new Float32Array(8), sat: new Float32Array(8), w: 0, sw: 0, prev: 0 };
+}
+
+/** One input sample through the oversampled saturator:
+ * out = decimate(FIR(softSat(FIR-interp(x) · driveK))) · driveComp. */
+export function vnOsDrive(st, x, driveK, driveComp) {
+  const sub = st.sub;
+  const sat = st.sat;
+  const mid = (st.prev + x) * 0.5;
+  st.prev = x;
+  sub[st.w] = mid;
+  let k = st.w;
+  let acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += VN_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satMid = softSat(acc * driveK) * driveComp;
+  sub[st.w] = x;
+  k = st.w;
+  acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += VN_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satEven = softSat(acc * driveK) * driveComp;
+  sat[st.sw] = satMid;
+  st.sw = (st.sw + 1) & 7;
+  sat[st.sw] = satEven;
+  k = st.sw;
+  let out = 0;
+  for (let i = 0; i < 9; i++) {
+    out += VN_OS_TAPS[i] * sat[k];
+    k = (k + 7) & 7;
+  }
+  st.sw = (st.sw + 1) & 7;
+  return out;
+}
+
 /** One-pole lowpass coefficient for a cutoff in Hz. */
 function lpCoef(hz, sr) {
   return 1 - Math.exp((-2 * Math.PI * hz) / sr);
@@ -68,6 +134,8 @@ class VinylProcessor extends AudioWorkletProcessor {
     super();
     const sr = globalThis.sampleRate || 44100;
     this.sr = sr;
+    this.vnDriveL = newVnDriveState();
+    this.vnDriveR = newVnDriveState();
     // `|| 1` collapsed a legitimate seed 0 into 1 (two instances then shared
     // one noise pattern, breaking the live/offline bit-identity contract for
     // that seed).
@@ -268,10 +336,10 @@ class VinylProcessor extends AudioWorkletProcessor {
       let sumL = wetL + this.crackleLpState[0] * popAmp + hissL * hissAmp + rumbleL * rumbleAmp;
       let sumR = wetR + this.crackleLpState[1] * popAmp + hissR * hissAmp + rumbleR * rumbleAmp;
 
-      // --- Drive: tube-ish saturation of the wet path ---
+      // --- Drive: 2× oversampled tube-ish saturation of the wet path ---
       if (drive > 0.001) {
-        sumL = softSat(sumL * driveK) * driveComp;
-        sumR = softSat(sumR * driveK) * driveComp;
+        sumL = vnOsDrive(this.vnDriveL, sumL, driveK, driveComp);
+        sumR = vnOsDrive(this.vnDriveR, sumR, driveK, driveComp);
       }
 
       // --- Year contour: old records are thin + band-limited (per channel) ---
@@ -314,6 +382,10 @@ class VinylProcessor extends AudioWorkletProcessor {
     }
     return true;
   }
+}
+
+export function createVinylProcessor(options) {
+  return new VinylProcessor(options);
 }
 
 registerProcessor("vinyl-processor", VinylProcessor);

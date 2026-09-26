@@ -7,8 +7,6 @@
  * deterministic because the noise RNG is seeded.
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 class FakePort {
   onmessage: ((e: unknown) => void) | null = null;
@@ -19,11 +17,7 @@ class FakeAudioWorkletProcessor {
 }
 
 interface VinylLike {
-  process: (
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    parameters: Record<string, Float32Array>,
-  ) => boolean;
+  process: (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) => boolean;
 }
 
 const SR = 44100;
@@ -75,17 +69,20 @@ function render(
   return [outL, outR];
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
   (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
   (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = () => {};
-  const source = readFileSync(resolve(import.meta.dirname ?? ".", "..", "src", "audio-worklets", "vinyl-processor.js"), "utf-8");
-  let captured: unknown = null;
-  const host = new Function("registerProcessor", "AudioWorkletProcessor", "globalThis", source);
-  host((_name: string, cls: unknown) => (captured = cls), FakeAudioWorkletProcessor, globalThis);
-  if (!captured) throw new Error("no processor registered in vinyl-processor.js");
+  // The module gained ESM exports (drive-oversampling test); import it as a
+  // module instead of eval'ing the raw source via `new Function`.
+  const mod = (await import("../src/audio-worklets/vinyl-processor.js")) as {
+    createVinylProcessor: (options?: { processorOptions?: unknown }) => VinylLike;
+  };
+  if (typeof mod.createVinylProcessor !== "function") {
+    throw new Error("vinyl-processor.js did not export createVinylProcessor");
+  }
   vinylFactory = ((options?: { processorOptions?: unknown }) =>
-    new (captured as new (o?: unknown) => VinylLike)(options)) as typeof vinylFactory;
+    mod.createVinylProcessor(options)) as typeof vinylFactory;
 });
 
 describe("Vinyl Suite processor", () => {
@@ -135,8 +132,14 @@ describe("Vinyl Suite processor", () => {
     // A steady tone through a modulated delay develops sidebands; the wobbled
     // render must diverge from the still one past the filter settle region.
     const tone = (i: number) => Math.sin((2 * Math.PI * 440 * i) / SR) * 0.5;
-    const still = render({ amount: 1, wow: 0, flutter: 0, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1 }, { fill: tone });
-    const wobble = render({ amount: 1, wow: 1, wowRate: 4, flutter: 1, flutterRate: 30, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1 }, { fill: tone });
+    const still = render(
+      { amount: 1, wow: 0, flutter: 0, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1 },
+      { fill: tone },
+    );
+    const wobble = render(
+      { amount: 1, wow: 1, wowRate: 4, flutter: 1, flutterRate: 30, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1 },
+      { fill: tone },
+    );
     let diff = 0;
     for (let i = 4096; i < still[0].length; i++) diff += Math.abs(wobble[0][i] - still[0][i]);
     expect(diff / still[0].length).toBeGreaterThan(0.01);
@@ -175,7 +178,11 @@ describe("Vinyl Suite processor", () => {
       }
       const worker = vinylFactory({ processorOptions: { seed: 5 } });
       const out: Float32Array[][] = [[new Float32Array(n), new Float32Array(n)]];
-      worker.process([[l, r]], out, param({ amount: 0, wow: 0, flutter: 0, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1, width }));
+      worker.process(
+        [[l, r]],
+        out,
+        param({ amount: 0, wow: 0, flutter: 0, crackle: 0, hiss: 0, rumble: 0, drive: 0, mix: 1, width }),
+      );
       let sum = 0;
       for (let i = 0; i < n; i++) sum += Math.abs(out[0][0][i] - out[0][1][i]);
       return sum / n;
@@ -199,7 +206,9 @@ describe("Vinyl Suite processor", () => {
     const fx = vinylFactory({ processorOptions: { seed: 3 } });
     const out: Float32Array[][] = [[new Float32Array(1024), new Float32Array(1024)]];
     const input = stereoBuffer(1024, (i) => Math.sin((2 * Math.PI * 220 * i) / SR) * 0.5);
-    expect(() => fx.process([input], out, param({ amount: 0.6, crackle: 0.4, wow: 0.3, year: 0.7, mix: 1 }))).not.toThrow();
+    expect(() =>
+      fx.process([input], out, param({ amount: 0.6, crackle: 0.4, wow: 0.3, year: 0.7, mix: 1 })),
+    ).not.toThrow();
     expect(Number.isFinite(peakOf(out[0]))).toBe(true);
     expect(peakOf(out[0])).toBeGreaterThan(0);
   });

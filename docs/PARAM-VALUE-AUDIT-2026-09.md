@@ -119,3 +119,15 @@ not a numbers wave.
    `tests/fx-expansion.test.ts` moved from the `new Function` raw-source eval to ESM import (the
    module now exports `createFreqShiftProcessor`); kaskada's own driven-loop suite exercises the
    new stage directly.
+   **Closure sweep (same day):** a final rack-wide scan found the last two un-oversampled tanh
+   drives — **autowah** (tanh at up to ×10, the hottest curve in the rack, grit before the SVF;
+   the envelope follower reads the RAW input so wah tracking is untouched) and **vinyl** (softSat
+   tube saturation of the wet path after the artefact sum). Both now run the same 2× pattern.
+   All four new stages are pinned in `tests/drive-oversampling.test.ts` (6/6: three curves ×
+   fold suppression + three full-processor smokes), and `freqshifter/vinyl/autowah-processor.d.ts`
+   type stubs follow the house pattern for raw-JS worklet modules. **Final OS inventory:** every
+   nonlinear drive stage in the FX rack now runs oversampled (native WaveShaper 4×; tapeSat 4×;
+   freqShifter/kaskada/autowah/vinyl/svFilter 2×; MORPH 2×) except the two documented by-design
+   cases (ringMod — no saturator, carrier fold is the aesthetic; bitcrusher — sample-hold
+   aliasing IS the effect). The only base-rate WaveShapers left in `registry.ts` are pump's
+   control-rate envelope shapers (`oversample = "none"` deliberately — not audio).
