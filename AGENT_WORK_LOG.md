@@ -4626,3 +4626,11 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** artists+parser+presets+loudness **140/140**, 6-súborová battery **204/204**, `tsc --noEmit` čistý na campaign súboroch (providers/IntentPanel/timeline-rec errory = ich in-flight).
 
 **Roster stav: 184 entry.** Hip-hop pokrytie teraz zahŕňa aj mainstreamové mená. Prirodzené ďalšie: R&B/pop roster (SZA, Frank Ocean, the Weeknd...), reggaeton groove, alebo počúvací harness doladenie.
+
+---
+
+## VLNA 7.5 — ROSTER EXPANSION ROADMAP (2026-09-26, user: „spiš to do samostatného markdown dokumentu")
+
+Kompletný rozširovací plán zapísaný do **docs/ROSTER-EXPANSION-ROADMAP.md** (NOVÝ súbor): pokrytie audit (čo je, čo NIE je + mená na ne-duplovanie), Wave 8 legendy + female rap (2Pac/Biggie/Wu-Tang/Jay-Z/Eminem/Wayne/Ross/DMX/Busta/Missy + Nicki/Cardi/Latto/GloRilla/Sexyy Red/Doechii/Simz/Rapsody), Wave 9 Three 6 + Griselda renesancia (9 entry na existujúcich grooveoch), Wave 10 posledné groovey (NOLA bounce / Miami bass / snap / afroswing / country rap tunes) + zvuky (plugg bell, eski lead, electrosnare, screwed FX reťaz), Wave 11 regional NOW (Chicago/Detroit depth/LA whisper/UK pop-drill/Latin), Wave 12 experimental edges. Plus ENGINE IDEA: **flow density** (16th vs triplet rap flow v generátore — mechanický rozdiel Detroit vs Atlanta) a 7 SESSION RULES z naučených lekcií (first-match shadowing, loudness disciplina, počty, regex-y iba Edit tool, style token kontrakt, genre table poradie, reconciliačná politika).
+
+**Dôležité súbory:** docs/ROSTER-EXPANSION-ROADMAP.md (NOVÝ).
