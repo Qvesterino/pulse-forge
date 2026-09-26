@@ -1,0 +1,379 @@
+/**
+ * Executor — the single point where a CommandBatch touches ProjectDocument.
+ *
+ * Responsibilities:
+ *   1. Run the mockProvider (or, in future, an LLM provider) to produce a
+ *      CommandBatch from the user's prompt.
+ *   2. Resolve every TrackMatcher to a concrete trackId, with consistent
+ *      tie-breaking (preferKind > first match by id).
+ *   3. Validate parameter ranges (frequencies in 20 Hz..20 kHz, gains within
+ *      sensible headroom, panning within [-1, +1]).
+ *   4. Apply commands in order; abort the batch on the first failure and
+ *      return a structured error.
+ *   5. Wrap the resulting doc in a single snapshot() Command so the user
+ *      gets exactly ONE undo entry per AI suggestion.
+ *
+ * The executor is the ONLY place that calls into commands.ts — recipes and
+ * the mockProvider are pure and never mutate state.
+ */
+
+import { snapshot } from "../../commands/commands";
+import type { Command } from "../../commands/types";
+import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
+import type { RecipeInput } from "./types";
+import { generateBatch } from "./mockProvider";
+import { withTrack } from "../../project-model/transform";
+import type { EffectInstance, Track, ID, ProjectDocument } from "../../project-model/types";
+import { uid } from "../../shared/ids";
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Take a user prompt, generate a CommandBatch via the provider, validate,
+ * apply, and wrap into a single undoable Command. Pure with respect to the
+ * caller — the doc only mutates via the returned Command.
+ */
+export function executeCommandBatch(prompt: string, input: RecipeInput): BridgeExecutionResult {
+  const generated = generateBatch(prompt, input);
+  if (!generated.ok || !generated.batch) {
+    return failureFromProviderReason(generated.reason ?? "no-recipe-match");
+  }
+  const batch = generated.batch;
+
+  // 1) Resolve + validate every command BEFORE mutating anything. If any
+  //    command is invalid, the whole batch is rejected with no side effects.
+  for (let i = 0; i < batch.commands.length; i++) {
+    const cmd = batch.commands[i];
+    const check = validateCommand(input.doc, cmd);
+    if (!check.ok) {
+      return {
+        ok: false,
+        error: {
+          code: check.code,
+          message: `Command ${i + 1}/${batch.commands.length} (${cmd.kind}) on "${cmd.label}": ${check.message}`,
+          hint: check.hint,
+        },
+      };
+    }
+  }
+
+  // 2) Apply in order; abort on the first apply-time failure (defence in
+  //    depth — validations should catch this earlier).
+  let cur: typeof input.doc = input.doc;
+  for (let i = 0; i < batch.commands.length; i++) {
+    const cmd = batch.commands[i];
+    try {
+      cur = applyCommand(cur, cmd);
+    } catch (e) {
+      return {
+        ok: false,
+        error: {
+          code: "invalid-command",
+          message: `Command ${i + 1}/${batch.commands.length} (${cmd.kind}) failed: ${(e as Error).message}`,
+        },
+      };
+    }
+  }
+
+  // 3) Wrap into a single snapshot Command — one undo entry per AI batch.
+  const command: Command = snapshot("aiBridgeBatch", `AI: ${batch.label}`, input.doc, cur);
+
+  return { ok: true, doc: cur, command };
+}
+
+// ─── Track resolution ───────────────────────────────────────────────────────
+
+/**
+ * Resolve a TrackMatcher to a concrete trackId. Pure.
+ *
+ * Tie-breaking:
+ *   1. `preferKind` matches override any other match (e.g. "snare" prefers
+ *      a drum bus over an instrument track named "Snare Lead").
+ *   2. Otherwise, first-match by track id order in the document.
+ *
+ * Returns null when nothing matches; the caller is responsible for turning
+ * that into a user-facing error.
+ */
+export function resolveTrackMatcher(doc: { tracks: readonly Track[] }, matcher: TrackMatcher): ID | null {
+  const re = matcher.regex ? new RegExp(matcher.namePattern, "i") : new RegExp(escapeRegExp(matcher.namePattern), "i");
+
+  const candidates = doc.tracks.filter((t) => re.test(t.name));
+  if (candidates.length === 0) return null;
+
+  if (matcher.preferKind && matcher.preferKind !== "any") {
+    const preferred = candidates.filter((t) => t.kind === matcher.preferKind);
+    if (preferred.length > 0) return preferred[0].id;
+  }
+  return candidates[0].id;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+interface ValidationOk {
+  ok: true;
+}
+interface ValidationFail {
+  ok: false;
+  code: BridgeExecutionError["code"];
+  message: string;
+  hint?: string;
+}
+
+const FREQ_MIN_HZ = 20;
+const FREQ_MAX_HZ = 20000;
+const Q_MIN = 0.1;
+const Q_MAX = 10;
+const GAIN_MIN_DB = -24;
+const GAIN_MAX_DB = 24;
+const PAN_MIN = -1;
+const PAN_MAX = 1;
+
+function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand): ValidationOk | ValidationFail {
+  switch (cmd.kind) {
+    case "sidechain-duck": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      const source = resolveTrackMatcher(doc, cmd.source);
+      if (!source) return trackMissing(cmd.source.namePattern);
+      if (target === source) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: "sidechain source and target resolve to the same track",
+          hint: "A track cannot sidechain itself — pick a different source.",
+        };
+      }
+      const p = cmd.params;
+      if (!Number.isFinite(p.amountDb) || p.amountDb < -24 || p.amountDb > 0) {
+        return paramRange("amountDb", p.amountDb, -24, 0);
+      }
+      if (!Number.isFinite(p.attackMs) || p.attackMs < 0 || p.attackMs > 200) {
+        return paramRange("attackMs", p.attackMs, 0, 200);
+      }
+      if (!Number.isFinite(p.releaseMs) || p.releaseMs < 1 || p.releaseMs > 2000) {
+        return paramRange("releaseMs", p.releaseMs, 1, 2000);
+      }
+      if (!Number.isFinite(p.bypassThreshold) || p.bypassThreshold < 0 || p.bypassThreshold > 1) {
+        return paramRange("bypassThreshold", p.bypassThreshold, 0, 1);
+      }
+      return { ok: true };
+    }
+    case "eq-carve":
+    case "eq-boost": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.freqHz) || cmd.freqHz < FREQ_MIN_HZ || cmd.freqHz > FREQ_MAX_HZ) {
+        return paramRange("freqHz", cmd.freqHz, FREQ_MIN_HZ, FREQ_MAX_HZ);
+      }
+      if (!Number.isFinite(cmd.gainDb) || cmd.gainDb < GAIN_MIN_DB || cmd.gainDb > GAIN_MAX_DB) {
+        return paramRange("gainDb", cmd.gainDb, GAIN_MIN_DB, GAIN_MAX_DB);
+      }
+      if (!Number.isFinite(cmd.q) || cmd.q < Q_MIN || cmd.q > Q_MAX) {
+        return paramRange("q", cmd.q, Q_MIN, Q_MAX);
+      }
+      return { ok: true };
+    }
+    case "set-volume": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.volumeDb) || cmd.volumeDb < -60 || cmd.volumeDb > 12) {
+        return paramRange("volumeDb", cmd.volumeDb, -60, 12);
+      }
+      return { ok: true };
+    }
+    case "set-track-pan": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.pan) || cmd.pan < PAN_MIN || cmd.pan > PAN_MAX) {
+        return paramRange("pan", cmd.pan, PAN_MIN, PAN_MAX);
+      }
+      return { ok: true };
+    }
+  }
+}
+
+function trackMissing(namePattern: string): ValidationFail {
+  return {
+    ok: false,
+    code: "no-track-match",
+    message: `no track matches "${namePattern}"`,
+    hint: "Check the track name in the mixer; the matcher is case-insensitive substring by default.",
+  };
+}
+
+function paramRange(name: string, value: number, min: number, max: number): ValidationFail {
+  return {
+    ok: false,
+    code: "validation-failed",
+    message: `parameter "${name}"=${value} out of range [${min}, ${max}]`,
+  };
+}
+
+// ─── Apply ───────────────────────────────────────────────────────────────────
+
+function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument {
+  switch (cmd.kind) {
+    case "sidechain-duck": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      const sourceId = resolveTrackMatcher(doc, cmd.source);
+      if (!targetId || !sourceId) {
+        throw new Error("internal: track resolution lost between validate and apply");
+      }
+      return insertSidechain(doc, targetId, sourceId, cmd.params);
+    }
+    case "eq-carve":
+    case "eq-boost": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return insertEqBand(doc, targetId, cmd.freqHz, cmd.gainDb, cmd.q);
+    }
+    case "set-volume": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return setTrackGain(dbToGain(cmd.volumeDb), doc, targetId);
+    }
+    case "set-track-pan": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return setTrackPan(cmd.pan, doc, targetId);
+    }
+  }
+}
+
+// ─── Mutations ───────────────────────────────────────────────────────────────
+
+/**
+ * Insert a sidechain compressor onto the target track, keyed from source.
+ * New EffectInstance is appended to the track's effects list (immutable).
+ */
+function insertSidechain(
+  doc: ProjectDocument,
+  targetId: ID,
+  sourceId: ID,
+  params: { amountDb: number; attackMs: number; releaseMs: number; bypassThreshold: number },
+): ProjectDocument {
+  const fx: EffectInstance = {
+    id: uid("fx"),
+    type: "sidechain",
+    bypassed: false,
+    params: {
+      amountDb: params.amountDb,
+      attackMs: params.attackMs,
+      releaseMs: params.releaseMs,
+      bypassThreshold: params.bypassThreshold,
+    },
+    sidechainTrackId: sourceId,
+  };
+  return withTrack(doc, targetId, (t) => ({
+    ...t,
+    effects: [...t.effects, fx],
+  }));
+}
+
+/**
+ * Insert a new EQ effect with one band onto the target. If an existing EQ
+ * effect is on the track, append a band there instead (preserves the user's
+ * other EQ moves). If multiple EQ effects exist, append to the last one.
+ */
+function insertEqBand(doc: ProjectDocument, targetId: ID, freqHz: number, gainDb: number, q: number): ProjectDocument {
+  return withTrack(doc, targetId, (t) => {
+    const existingEqIdx = findLastIndex(t.effects, (fx) => fx.type === "eq");
+    if (existingEqIdx >= 0) {
+      const existingEq = t.effects[existingEqIdx];
+      const bandIndex = nextFreeBandIndex(existingEq.params);
+      const updated: EffectInstance = {
+        ...existingEq,
+        params: {
+          ...existingEq.params,
+          [`band${bandIndex}_freq`]: freqHz,
+          [`band${bandIndex}_gain`]: gainDb,
+          [`band${bandIndex}_q`]: q,
+          [`band${bandIndex}_type`]: 0, // 0 = peak (parametric) — matches most DAW EQ defaults
+          [`band${bandIndex}_enabled`]: 1,
+        },
+      };
+      const nextEffects = t.effects.slice();
+      nextEffects[existingEqIdx] = updated;
+      return { ...t, effects: nextEffects };
+    }
+    // No existing EQ — create a new effect with a single band.
+    const fx: EffectInstance = {
+      id: uid("fx"),
+      type: "eq",
+      bypassed: false,
+      params: {
+        band0_freq: freqHz,
+        band0_gain: gainDb,
+        band0_q: q,
+        band0_type: 0,
+        band0_enabled: 1,
+      },
+    };
+    return { ...t, effects: [...t.effects, fx] };
+  });
+}
+
+/** Find the lowest band{N}_freq slot not present in params; fallback N = paramCount. */
+function nextFreeBandIndex(params: Record<string, number>): number {
+  let n = 0;
+  while (params[`band${n}_freq`] !== undefined) n++;
+  return n;
+}
+
+function findLastIndex<T>(arr: readonly T[], pred: (v: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (pred(arr[i]!)) return i;
+  }
+  return -1;
+}
+
+function setTrackGain(gainLinear: number, doc: ProjectDocument, trackId: ID): ProjectDocument {
+  const clamped = clamp(gainLinear, 0, 4);
+  return withTrack(doc, trackId, (t) => ({ ...t, gain: clamped }));
+}
+
+function setTrackPan(pan: number, doc: ProjectDocument, trackId: ID): ProjectDocument {
+  return withTrack(doc, trackId, (t) => ({ ...t, pan: clamp(pan, -1, 1) }));
+}
+
+function dbToGain(db: number): number {
+  return Math.pow(10, db / 20);
+}
+
+function clamp(v: number, min: number, max: number): number {
+  if (v < min) return min;
+  if (v > max) return max;
+  return v;
+}
+
+// ─── Error mapping ───────────────────────────────────────────────────────────
+
+function failureFromProviderReason(
+  reason: "empty-prompt" | "no-recipe-match" | "recipe-applied-no-commands",
+): BridgeExecutionResult {
+  switch (reason) {
+    case "empty-prompt":
+      return { ok: false, error: { code: "validation-failed", message: "empty prompt" } };
+    case "no-recipe-match":
+      return {
+        ok: false,
+        error: {
+          code: "no-recipe-match",
+          message: "I don't know how to do that yet — try rephrasing or pick a recipe from the suggestions.",
+        },
+      };
+    case "recipe-applied-no-commands":
+      return {
+        ok: false,
+        error: {
+          code: "no-track-match",
+          message: "recipe matched but the project has no tracks this suggestion applies to",
+          hint: "Check that the relevant tracks exist (e.g. a snare and a hi-hat for masking fixes).",
+        },
+      };
+  }
+}
