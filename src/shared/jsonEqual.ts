@@ -8,10 +8,16 @@
  *  - reference shortcut first (immutable docs make this the 95 % case);
  *  - key ORDER does not matter (stringify is order-sensitive, but canonical
  *    construction makes that distinction unobservable in practice);
- *  - NaN equals NaN (both stringify to "null"); -0 differs from 0;
+ *  - NaN equals NaN (both stringify to "null"); -0 equals 0 (the `a === b`
+ *    shortcut fires first, and stringify renders both as "0" anyway);
  *  - `undefined`-valued keys count as present (stringify drops them — an
  *    edge normalize outputs never emit, since sanitizers build with
  *    conditional spreads).
+ *
+ * Contract note: inputs must be ACYCLIC. Self-references terminate through
+ * the reference shortcut, but two distinct mutually-referencing objects
+ * recurse forever (JSON.stringify throws on cycles instead — both are
+ * programming errors, normalize outputs are acyclic by construction).
  *
  * Cost: O(changed subtree) with zero allocation, vs O(payload) with full
  * string materialization on both sides.

@@ -9,8 +9,9 @@ export interface ReferenceTempoCandidate {
 
 /**
  * Gaussian prior favouring musically common tempi. Centered at 120 BPM with
- * a spread of 55 BPM so the prior decays by ~e^-2 around 65 and 175 BPM
- * and is negligible past ±100 BPM. Deterministic — no RNG, no time.
+ * a spread of 55 BPM: 65 and 175 BPM sit exactly 1σ out (weight e^-0.5 ≈
+ * 0.61); the e^-2 floor (≈ 0.018) arrives at 10 / 230 BPM. Deterministic —
+ * no RNG, no time.
  */
 export function tempoPrior(bpm: number, center = 120, spread = 55): number {
   const z = (bpm - center) / spread;
