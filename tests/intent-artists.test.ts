@@ -1408,3 +1408,131 @@ describe("plugg / opium producers + amapiano / afro-house + phonk TikTok wave 2"
     }
   });
 });
+
+describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
+  it("Detroit legends: jeff mills / hawtin / may / atkins / saunderson / craig / hood", () => {
+    const mills = parseIntentText("jeff mills type beat");
+    expect(mills.input.genre).toBe("techno");
+    expect(mills.input.style).toBe("driving");
+    expect(mills.input.bpmRange).toEqual([135, 145]);
+    expect(parseIntentText("richie hawtin type beat").input.style).toBe("minimal");
+    expect(parseIntentText("plastikman type beat").input.mood).toBe("dark");
+    expect(parseIntentText("strings of life type beat").input.style).toBe("melodic");
+    expect(parseIntentText("juan atkins type beat").input.genre).toBe("techno");
+    expect(parseIntentText("model 500 type beat").input.genre).toBe("techno");
+    expect(parseIntentText("kevin saunderson type beat").input.genre).toBe("techno");
+    expect(parseIntentText("carl craig type beat").input.mood).toBe("chill");
+    expect(parseIntentText("robert hood type beat").input.style).toBe("minimal");
+    expect(parseIntentText("octave one type beat").input.style).toBe("melodic");
+    expect(parseIntentText("terrence dixon type beat").input.genre).toBe("techno");
+  });
+
+  it("Detroit soul axis: omar s / moodymann / theo parrish", () => {
+    expect(parseIntentText("omar s type beat").input.style).toBe("driving");
+    expect(parseIntentText("moodymann type beat").input.style).toBe("melodic");
+    expect(parseIntentText("theo parrish type beat").input.mood).toBe("chill");
+  });
+
+  it("90s/now hard lineage: clarke / sims / mulero / dvs1 / faki / temple", () => {
+    expect(parseIntentText("dave clarke type beat").input.style).toBe("hard");
+    expect(parseIntentText("ben sims type beat").input.bpmRange).toEqual([136, 145]);
+    expect(parseIntentText("oscar mulero type beat").input.mood).toBe("dark");
+    expect(parseIntentText("dvs1 type beat").input.style).toBe("driving");
+    expect(parseIntentText("dax j type beat").input.style).toBe("industrial");
+    expect(parseIntentText("len faki type beat").input.genre).toBe("techno");
+    expect(parseIntentText("speedy j type beat").input.style).toBe("industrial");
+    expect(parseIntentText("paula temple type beat").input.mood).toBe("aggressive");
+  });
+
+  it("acid lineage fills the empty techno.acid lane", () => {
+    expect(parseIntentText("dj pierre type beat").input.style).toBe("acid");
+    expect(parseIntentText("phuture type beat").input.style).toBe("acid");
+    expect(parseIntentText("hardfloor type beat").input.style).toBe("acid");
+    expect(parseIntentText("emmanuel top type beat").input.style).toBe("acid");
+    expect(parseIntentText("tin man type beat").input.style).toBe("acid");
+    expect(parseIntentText("999999999 type beat").input.style).toBe("acid");
+    expect(parseIntentText("nico moreno type beat").input.mood).toBe("aggressive");
+  });
+
+  it("dub techno sub-genre: basic channel / deepchord / monolake / yagya", () => {
+    const bc = parseIntentText("basic channel type beat");
+    expect(bc.input.genre).toBe("techno");
+    expect(bc.input.style).toBe("dub");
+    expect(bc.input.mood).toBe("chill");
+    expect(parseIntentText("rhythm & sound type beat").input.style).toBe("dub");
+    expect(parseIntentText("deepchord type beat").input.style).toBe("dub");
+    expect(parseIntentText("deadbeat type beat").input.style).toBe("dub");
+    expect(parseIntentText("monolake type beat").input.mood).toBe("dark");
+    expect(parseIntentText("yagya type beat").input.bpmRange).toEqual([112, 124]);
+  });
+
+  it("micro-house + electro: villalobos / perlon / drexciya / stingray / hauff", () => {
+    expect(parseIntentText("villalobos type beat").input.style).toBe("minimal");
+    expect(parseIntentText("sonja moonear type beat").input.style).toBe("minimal");
+    expect(parseIntentText("drexciya type beat").input.mood).toBe("dark");
+    expect(parseIntentText("dopplereffekt type beat").input.genre).toBe("techno");
+    expect(parseIntentText("dj stingray type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("helena hauff type beat").input.genre).toBe("techno");
+    expect(parseIntentText("aux 88 type beat").input.genre).toBe("techno");
+  });
+
+  it("guarded aliases never hijack unrelated prompts", () => {
+    // "reese bass" is the DnB technique, not the producer alias
+    expect(matchArtistPreset("reese bass")).toBeNull();
+    // "plug in" is an English phrase, not the Plug alias
+    expect(matchArtistPreset("plug in the cable")).toBeNull();
+    // "big beat" promo text is not Fatboy Slim
+    expect(matchArtistPreset("this is a big beat")).toBeNull();
+  });
+
+  it("every wave style resolves to a real groove id", () => {
+    for (const id of [
+      "techno.driving",
+      "techno.minimal",
+      "techno.acid",
+      "techno.dub",
+      "techno.hard",
+      "techno.industrial",
+      "techno.melodic",
+    ]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});
+
+describe("experimental + score wave", () => {
+  it("experimental hip-hop edges: brockhampton / clipping / flying lotus", () => {
+    expect(parseIntentText("brockhampton type beat").input.style).toBe("hyper");
+    expect(parseIntentText("kevin abstract type beat").input.genre).toBe("trap");
+    // clipping. keeps its earlier phonk/horror entry (industrial rap textures)
+    expect(parseIntentText("clipping type beat").input.mood).toBe("dark");
+    expect(parseIntentText("flying lotus type beat").input.style).toBe("glitch");
+    expect(parseIntentText("clouddead type beat").input.mood).toBe("dark");
+  });
+
+  it("neoclassical / modern score depth", () => {
+    const einaudi = parseIntentText("ludovico einaudi type beat");
+    expect(einaudi.input.genre).toBe("ambient");
+    expect(einaudi.input.style).toBe("organic");
+    expect(einaudi.input.mood).toBe("chill");
+    expect(parseIntentText("max richter type beat").input.mood).toBe("dark");
+    expect(parseIntentText("vangelis type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("steve roach type beat").input.style).toBe("drifting");
+    expect(parseIntentText("ryuichi sakamoto type beat").input.mood).toBe("chill");
+    expect(parseIntentText("biosphere type beat").input.style).toBe("drifting");
+  });
+
+  it("big beat + 90s rave lineage resolve", () => {
+    expect(parseIntentText("fatboy slim type beat").input.style).toBe("broken");
+    expect(parseIntentText("chemical brothers type beat").input.genre).toBe("house");
+    expect(parseIntentText("prodigy type beat").input.genre).toBe("techno");
+    expect(parseIntentText("orbital type beat").input.mood).toBe("aggressive");
+  });
+
+  it("2-step originators land on house/ukg", () => {
+    expect(parseIntentText("mj cole type beat").input.style).toBe("ukg");
+    expect(parseIntentText("artful dodger type beat").input.mood).toBe("chill");
+    expect(parseIntentText("zed bias type beat").input.mood).toBe("dark");
+    expect(parseIntentText("wookie type beat").input.genre).toBe("house");
+  });
+});

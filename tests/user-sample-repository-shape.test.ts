@@ -202,7 +202,7 @@ describe("persistence/UserSampleRepository.ts — user-sample contract (source-g
     it("restoreByBank remains private to the repository module", () => {
       const exported = findExport(lines, "const", "restoreByBank");
       expect(exported, "restoreByBank must not be exported").toBeNull();
-      expect(lines.some((line) => /^\\s*const\\s+restoreByBank\\b/.test(line))).toBe(true);
+      expect(lines.some((line) => /^\s*const\s+restoreByBank\b/.test(line))).toBe(true);
     });
   });
 

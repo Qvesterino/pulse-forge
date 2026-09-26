@@ -350,7 +350,6 @@ describe("Effect Intent Engine — curated descriptors and planner", () => {
   it("marks DSP-quantized rack controls as discrete and reports fractional persisted values", () => {
     const discrete: Array<[EffectType, string]> = [
       ["bitcrusher", "bits"],
-      ["bitcrusher", "downsample"],
       ["multiTapDelay", "taps"],
       ["beatMangler", "repeatFill"],
       ["vocoder", "bands"],
@@ -368,6 +367,18 @@ describe("Effect Intent Engine — curated descriptors and planner", () => {
         currentIsValid: true,
       });
     }
+
+    const downsample = EFFECT_DEFS.bitcrusher.params.find((candidate) => candidate.id === "downsample");
+    const downsampleDescriptor = effectParameterDescriptorCatalog(docWithEffect("bitcrusher").fx).find(
+      (candidate) => candidate.id === "downsample",
+    );
+    expect(downsample).toMatchObject({ kind: "discrete", options: expect.any(Array) });
+    expect(downsampleDescriptor).toMatchObject({
+      kind: "discrete",
+      current: 1,
+      currentIsValid: true,
+      options: [1, 2, 4, 8, 16, 32, 64].map((value) => ({ value, label: `${value}x` })),
+    });
 
     const malformed = docWithEffect("bitcrusher", { bits: 8.5 }).fx;
     expect(

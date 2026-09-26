@@ -75,7 +75,11 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bragga(?: jungle)?\b|\braggajungle\b|\bdancehall dnb\b/, "dnb"],
   [/\bhalftime (?:dnb|drum ?n ?bass|jungle)\b|\b(?:dnb|jungle) halftime\b/, "dnb"],
   [/\bminimal dnb\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
-  [/\bhard groove\b/, "techno"],
+  [/\bhard groove\b|\bhardgroove\b/, "techno"],
+  // Detroit's two faces: "detroit techno" / "detroit electro" must not fall
+  // into the hip-hop "detroit rap" entry further down.
+  [/\bdetroit (?:techno|electro|house)\b/, "techno"],
+  [/\btechno (?:detroit|electro)\b/, "techno"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
   [/\blo-?fi house\b/, "house"],

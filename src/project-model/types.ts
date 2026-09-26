@@ -74,6 +74,9 @@ export type InstrumentKind =
   | "granular"
   | "keys"
   | "organ"
+  | "strings"
+  | "bell"
+  | "reese"
   | "fm"
   | "pluck"
   | "flute"
@@ -158,8 +161,18 @@ export interface DrumPad {
   sliceFadeOut?: number;
   /** Play the slice backwards without changing its pitch offset. */
   sliceReverse?: boolean;
-  /** Optional synth voice — when set and assetId is null the pad synthesizes HH/perc without a sample. */
+  /**
+   * Optional synth voice — when set and assetId is null the pad synthesizes HH/perc without a sample.
+   */
   synth?: DrumSynthConfig | null;
+  /**
+   * Round-robin / velocity-layer variants for this pad. Disjoint windows act
+   * as velocity layers; overlapping windows round-robin within the shared
+   * zone (same contract as `InstrumentTrack.velocityLayers`). Absent or empty
+   * = the single `assetId` sample. Resolved deterministically from the hit
+   * plan, so live playback and offline export pick the same variant.
+   */
+  layers?: SampleLayer[];
   /**
    * MPC-style per-pad modulator: one voice-local LFO per hit, wired to this
    * pad's pitch / gain / filter. Absent or depth 0 = off.

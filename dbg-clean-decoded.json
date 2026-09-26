@@ -1,0 +1,824 @@
+{
+ "schemaVersion": 7,
+ "id": "project-test-0000",
+ "name": "House Beat",
+ "bpm": 124,
+ "timeSignature": {
+  "numerator": 4,
+  "denominator": 4
+ },
+ "tracks": [
+  {
+   "id": "track-test-000b",
+   "kind": "drum",
+   "name": "Drums",
+   "gain": 0.9,
+   "pan": 0,
+   "mute": false,
+   "solo": false,
+   "pads": [
+    {
+     "id": "track-test-000b-pad-01",
+     "name": "Kick Deep",
+     "assetId": "factory.kick.deep",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 1
+    },
+    {
+     "id": "track-test-000b-pad-02",
+     "name": "Kick Punch",
+     "assetId": "factory.kick.punch",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 1
+    },
+    {
+     "id": "track-test-000b-pad-03",
+     "name": "Kick Techno",
+     "assetId": "factory.kick.techno",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 1
+    },
+    {
+     "id": "track-test-000b-pad-04",
+     "name": "Rim",
+     "assetId": "factory.rim.chip",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-05",
+     "name": "Snare",
+     "assetId": "factory.snare.main",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-06",
+     "name": "Snare Tight",
+     "assetId": "factory.snare.tight",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-07",
+     "name": "Clap",
+     "assetId": "factory.clap.main",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-08",
+     "name": "Shaker",
+     "assetId": "factory.shaker.soft",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-09",
+     "name": "Hat Closed",
+     "assetId": "factory.hat.closed",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 2
+    },
+    {
+     "id": "track-test-000b-pad-10",
+     "name": "Hat Soft",
+     "assetId": "factory.hat.closed.soft",
+     "gain": 0.6,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 2
+    },
+    {
+     "id": "track-test-000b-pad-11",
+     "name": "Hat Open",
+     "assetId": "factory.hat.open",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": 2
+    },
+    {
+     "id": "track-test-000b-pad-12",
+     "name": "Ride",
+     "assetId": "factory.ride.ping",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-13",
+     "name": "Tom Low",
+     "assetId": "factory.tom.low",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-14",
+     "name": "Tom High",
+     "assetId": "factory.tom.high",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-15",
+     "name": "Tick",
+     "assetId": "factory.perc.tick",
+     "gain": 0.7,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    },
+    {
+     "id": "track-test-000b-pad-16",
+     "name": "Blip",
+     "assetId": "factory.perc.blip",
+     "gain": 1,
+     "pan": 0,
+     "pitch": 0,
+     "mute": false,
+     "solo": false,
+     "chokeGroup": null
+    }
+   ],
+   "effects": [],
+   "sends": {}
+  },
+  {
+   "id": "track-test-000c",
+   "kind": "instrument",
+   "instrument": "808",
+   "name": "808",
+   "gain": 0.85,
+   "pan": 0,
+   "mute": false,
+   "solo": false,
+   "sampleId": null,
+   "params": {
+    "decay": 0.9,
+    "pitchDrop": 0.4,
+    "click": 0.35,
+    "drive": 0.25,
+    "glide": 0.34,
+    "distType": 0,
+    "sub": 0.35,
+    "tone": 0.35,
+    "gain": 0.85,
+    "gate": 1,
+    "mono": 1,
+    "modASrc": 0,
+    "modADst": 0,
+    "modAAmt": 0,
+    "modBSrc": 0,
+    "modBDst": 1,
+    "modBAmt": 0,
+    "modLfoRate": 2
+   },
+   "effects": [],
+   "sends": {}
+  },
+  {
+   "id": "track-test-000d",
+   "kind": "instrument",
+   "instrument": "analog",
+   "name": "Chords",
+   "gain": 0.85,
+   "pan": 0,
+   "mute": false,
+   "solo": false,
+   "sampleId": null,
+   "params": {
+    "oscA": 2,
+    "oscB": 1,
+    "oscBDetune": 9,
+    "subLevel": 0.2,
+    "noiseLevel": 0.04,
+    "cutoff": 5200,
+    "resonance": 1.3,
+    "mode": 0,
+    "keytrack": 0.3,
+    "drive": 0,
+    "filterEnv": 0.4,
+    "unison": 1,
+    "spread": 0,
+    "lfoRate": 0,
+    "lfoSync": 0,
+    "lfoDepth": 0,
+    "attack": 0.004,
+    "decay": 0.24,
+    "sustain": 0.3,
+    "envDelay": 0,
+    "envHold": 0,
+    "aShape": 0,
+    "dShape": 0,
+    "rShape": 0,
+    "dLoop": 0,
+    "release": 0.2,
+    "level": -10,
+    "modASrc": 0,
+    "modADst": 0,
+    "modAAmt": 0,
+    "modBSrc": 0,
+    "modBDst": 1,
+    "modBAmt": 0,
+    "modLfoRate": 2
+   },
+   "effects": [],
+   "sends": {}
+  }
+ ],
+ "patterns": [
+  {
+   "id": "pattern-test-000e",
+   "name": "Pattern A",
+   "stepCount": 16,
+   "rows": {
+    "track-test-000b-pad-01": [
+     0.95,
+     0,
+     0,
+     0,
+     0.95,
+     0,
+     0,
+     0,
+     0.95,
+     0,
+     0,
+     0,
+     0.95,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-02": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-03": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-04": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-05": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-06": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-07": [
+     0,
+     0,
+     0,
+     0,
+     0.7,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0.75,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-08": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-09": [
+     0,
+     0,
+     0.5,
+     0,
+     0,
+     0,
+     0.5,
+     0,
+     0,
+     0,
+     0.5,
+     0,
+     0,
+     0,
+     0.55,
+     0
+    ],
+    "track-test-000b-pad-10": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-11": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0.4,
+     0
+    ],
+    "track-test-000b-pad-12": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-13": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-14": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-15": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "track-test-000b-pad-16": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "notes": {
+    "track-test-000c": [
+     {
+      "id": "note-test-000f",
+      "pitch": 28,
+      "start": 0,
+      "duration": 240,
+      "velocity": 0.9
+     },
+     {
+      "id": "note-test-000g",
+      "pitch": 28,
+      "start": 360,
+      "duration": 240,
+      "velocity": 0.7
+     },
+     {
+      "id": "note-test-000h",
+      "pitch": 31,
+      "start": 960,
+      "duration": 240,
+      "velocity": 0.9
+     },
+     {
+      "id": "note-test-000i",
+      "pitch": 28,
+      "start": 1440,
+      "duration": 240,
+      "velocity": 0.8
+     }
+    ],
+    "track-test-000d": [
+     {
+      "id": "note-test-000j",
+      "pitch": 60,
+      "start": 0,
+      "duration": 240,
+      "velocity": 0.5
+     },
+     {
+      "id": "note-test-000k",
+      "pitch": 63,
+      "start": 0,
+      "duration": 240,
+      "velocity": 0.42
+     },
+     {
+      "id": "note-test-000l",
+      "pitch": 67,
+      "start": 0,
+      "duration": 240,
+      "velocity": 0.4
+     },
+     {
+      "id": "note-test-000m",
+      "pitch": 60,
+      "start": 960,
+      "duration": 240,
+      "velocity": 0.5
+     },
+     {
+      "id": "note-test-000n",
+      "pitch": 63,
+      "start": 960,
+      "duration": 240,
+      "velocity": 0.42
+     },
+     {
+      "id": "note-test-000o",
+      "pitch": 67,
+      "start": 960,
+      "duration": 240,
+      "velocity": 0.4
+     }
+    ]
+   }
+  }
+ ],
+ "activePatternId": "pattern-test-000e",
+ "scenes": [
+  {
+   "id": "scene-test-000p",
+   "name": "Groove",
+   "patternId": "pattern-test-000e",
+   "intensity": 0.7
+  }
+ ],
+ "arrangement": {
+  "clips": []
+ },
+ "markers": [],
+ "sceneAutomation": [],
+ "automation": [],
+ "lfos": [],
+ "macros": [
+  {
+   "id": "macro-test-000r",
+   "name": "DRUMS",
+   "value": 0.5,
+   "mappings": [
+    {
+     "id": "map-test-000s",
+     "trackId": "track-test-000b",
+     "param": "gain",
+     "amount": 0.6
+    }
+   ]
+  },
+  {
+   "id": "macro-test-000t",
+   "name": "BASS",
+   "value": 0.5,
+   "mappings": [
+    {
+     "id": "map-test-000u",
+     "trackId": "track-test-000c",
+     "param": "gain",
+     "amount": 0.6
+    }
+   ]
+  },
+  {
+   "id": "macro-test-000v",
+   "name": "MUSIC",
+   "value": 0.5,
+   "mappings": [
+    {
+     "id": "map-test-000w",
+     "trackId": "track-test-000d",
+     "param": "gain",
+     "amount": 0.6
+    }
+   ]
+  },
+  {
+   "id": "macro-test-000x",
+   "name": "WIDTH",
+   "value": 0.5,
+   "mappings": [
+    {
+     "id": "map-test-000y",
+     "trackId": "track-test-000d",
+     "param": "pan",
+     "amount": 0.35
+    }
+   ]
+  }
+ ],
+ "returns": [
+  {
+   "id": "return-test-0008",
+   "kind": "return",
+   "name": "Reverb",
+   "gain": 0.9,
+   "effects": [
+    {
+     "id": "fx-test-0005",
+     "type": "reverb",
+     "bypassed": false,
+     "params": {
+      "decay": 2.2,
+      "predelay": 20,
+      "tone": 6000,
+      "damping": 6000,
+      "diffusion": 0.5,
+      "mod": 0.35,
+      "mix": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "return-test-0009",
+   "kind": "return",
+   "name": "Delay",
+   "gain": 0.85,
+   "effects": [
+    {
+     "id": "fx-test-0006",
+     "type": "delay",
+     "bypassed": false,
+     "params": {
+      "time": 375,
+      "sync": 0,
+      "pingPong": 0,
+      "feedback": 0.4,
+      "tone": 4000,
+      "mix": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "return-test-000a",
+   "kind": "return",
+   "name": "NY Comp",
+   "gain": 0.85,
+   "effects": [
+    {
+     "id": "fx-test-0007",
+     "type": "compressor",
+     "bypassed": false,
+     "params": {
+      "threshold": -24,
+      "ratio": 10,
+      "attack": 0.001,
+      "release": 0.12,
+      "knee": 6,
+      "detector": 0,
+      "scHpf": 20,
+      "autoRelease": 0,
+      "makeup": 0,
+      "mix": 1
+     }
+    }
+   ]
+  }
+ ],
+ "master": {
+  "masterGain": 1,
+  "ceilingDb": -1,
+  "limiterEnabled": true,
+  "clipperEnabled": false,
+  "tapeEnabled": false,
+  "tapeDrive": 0.35,
+  "msEnabled": false,
+  "msMidGain": 0,
+  "msSideGain": 0,
+  "lufsTarget": -14,
+  "bassMonoEnabled": false,
+  "bassMonoFreq": 120,
+  "glueEnabled": true,
+  "tiltDb": 0,
+  "loudnessTrimDb": 0
+ },
+ "midi": {
+  "enabled": false,
+  "deviceId": "",
+  "drumChannel": 0,
+  "instrumentChannel": 0,
+  "ccMappings": [],
+  "drumNoteMap": [],
+  "pitchBendRange": 2
+ },
+ "createdAt": "2026-09-26T17:17:33.216Z",
+ "updatedAt": "2026-09-26T17:17:33.216Z"
+}

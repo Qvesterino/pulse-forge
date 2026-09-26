@@ -6,23 +6,25 @@ import {
 } from "../effects/ultina-core/contracts/parameterSchema";
 import { DEFAULT_MODULE_ORDER } from "../effects/ultina-core/contracts/state";
 import { FACTORY_PRESETS } from "../effects/ultina-core/presets/factoryPresets";
-import {
-  ULTINA_PRESET_SCHEMA_VERSION,
-  type UltinaPresetEntry,
-} from "../persistence/UltinaPresetRepository";
+import { ULTINA_PRESET_SCHEMA_VERSION, type UltinaPresetEntry } from "../persistence/UltinaPresetRepository";
 import {
   ASSISTANT_CHARACTERS,
   ASSISTANT_INTENSITIES,
   INSTRUMENT_LABELS,
   type AssistantCharacter,
   type AssistantIntensity,
+  type UltinaProposal,
 } from "../effects/ultina-core/analysis/assistant";
+import type { ProjectDocument } from "../project-model/types";
+import { applyUltinaProposal } from "../commands/commands";
+import { matchAuditionLevels, playAuditionBuffer, stopAudition } from "../intent/audition";
 import { TARGET_LIBRARY, getTargetById } from "../effects/ultina-core/analysis/targetLibrary";
 import { getExplanationForLocale } from "../effects/ultina-core/analysis/explanation";
 import {
   UltinaAnalysisCancelledError,
   isUltinaAnalysisCancelledError,
   startUltinaAnalysis,
+  startUltinaLoudnessMeasurement,
   startUltinaTargetAnalysis,
   type UltinaAnalysisTask,
 } from "../analysis/ultinaAnalysisClient";
@@ -47,6 +49,20 @@ const MODULE_LABELS: Record<string, string> = {
 
 /** Params hidden from the panel — host/engine concerns, not mix decisions. */
 const HIDDEN = new Set(["eq.learnActive", "eq.maskingMeterEnabled"]);
+
+type UltinaReview = {
+  kind: "mix" | "match";
+  baseDoc: ProjectDocument;
+  before: AudioBuffer;
+  after: AudioBuffer;
+  beforeGain: number;
+  afterGain: number;
+  label: string;
+  goal: string;
+  lines: readonly string[];
+  toggles: { moduleType: string; enabled: boolean }[];
+  changes: { parameterId: string; value: number }[];
+};
 
 export type UltinaAbState = EffectAbState;
 
@@ -114,10 +130,6 @@ export function UltinaPanel({
   docked?: boolean;
 }) {
   const services = useServices();
-  // GOAL 04: doc is only consumed inside async event handlers (passed to
-  // renderTrack for freeze-bounce). A plain getter avoids the doc-wide
-  // subscription this component would otherwise carry.
-  const doc = services.store.getDoc();
   const [selectedModule, setSelectedModule] = useState<string>("comp");
   const [selectedEqBand, setSelectedEqBand] = useState(0);
   const [dockPage, setDockPage] = useState<"modules" | "assist" | "tools">("modules");
@@ -127,6 +139,8 @@ export function UltinaPanel({
   const [assistError, setAssistError] = useState<string | null>(null);
   const [presetError, setPresetError] = useState<string | null>(null);
   const [assistSummary, setAssistSummary] = useState<string[] | null>(null);
+  const [pendingReview, setPendingReview] = useState<UltinaReview | null>(null);
+  const [reviewPlaying, setReviewPlaying] = useState<"before" | "after" | null>(null);
   const [character, setCharacter] = useState<AssistantCharacter>("punchy");
   const [intensity, setIntensity] = useState<AssistantIntensity>("balanced");
 
@@ -159,18 +173,46 @@ export function UltinaPanel({
     cancelled: boolean;
     cancelWorker: (() => void) | null;
   } | null>(null);
+  const pendingReviewRef = useRef<UltinaReview | null>(null);
+  const reviewPlayingRef = useRef(false);
 
-  useEffect(
-    () => () => {
+  const updatePendingReview = (review: UltinaReview | null) => {
+    pendingReviewRef.current = review;
+    setPendingReview(review);
+  };
+
+  const stopReviewAudio = () => {
+    if (reviewPlayingRef.current) stopAudition();
+    reviewPlayingRef.current = false;
+    setReviewPlaying(null);
+  };
+
+  useEffect(() => {
+    const unsubscribe = services.store.subscribe(() => {
+      const review = pendingReviewRef.current;
+      if (!review || services.store.getDoc() === review.baseDoc) return;
+      if (reviewPlayingRef.current) stopAudition();
+      reviewPlayingRef.current = false;
+      pendingReviewRef.current = null;
+      setReviewPlaying(null);
+      setPendingReview(null);
+      const message = "Projekt sa počas audície zmenil. VLYX návrh je zastaraný — analyzuj ho znova.";
+      if (review.kind === "mix") setAssistError(message);
+      else setMatchError(message);
+    });
+    return () => {
+      unsubscribe();
       const run = analysisRunRef.current;
       if (run) {
         run.cancelled = true;
         run.cancelWorker?.();
       }
       analysisRunRef.current = null;
-    },
-    [],
-  );
+      if (reviewPlayingRef.current) stopAudition();
+      reviewPlayingRef.current = false;
+      pendingReviewRef.current = null;
+    };
+  }, [services.store]);
 
   useEffect(() => {
     void services.userSamples.list().then((all) => setRefSources(all.slice(0, 40)));
@@ -259,6 +301,184 @@ export function UltinaPanel({
     } finally {
       if (run.cancelWorker === task.cancel) run.cancelWorker = null;
     }
+  };
+
+  const measureIntegratedLufs = async (
+    buffer: AudioBuffer,
+    run: { cancelled: boolean; cancelWorker: (() => void) | null },
+  ): Promise<number | null> => {
+    const channels = Array.from({ length: Math.min(2, buffer.numberOfChannels) }, (_, index) =>
+      buffer.getChannelData(index),
+    );
+    if (channels.length === 0) return null;
+    const result = await awaitAnalysis(startUltinaLoudnessMeasurement(channels, buffer.sampleRate), run);
+    return result.integratedLufs;
+  };
+
+  const stageProposalReview = async (args: {
+    kind: UltinaReview["kind"];
+    run: { cancelled: boolean; cancelWorker: (() => void) | null };
+    baseDoc: ProjectDocument;
+    before: AudioBuffer;
+    proposal: UltinaProposal;
+    label: string;
+    goal: string;
+    changes: { parameterId: string; value: number }[];
+  }) => {
+    const sourceToggles = Array.isArray(args.proposal.moduleToggles) ? args.proposal.moduleToggles : [];
+    const toggles = sourceToggles.flatMap((toggle) => {
+      if (typeof toggle.moduleType !== "string" || typeof toggle.enabled !== "boolean") return [];
+      return tryGetParamDef(`${toggle.moduleType}.enabled`)
+        ? [{ moduleType: toggle.moduleType, enabled: toggle.enabled }]
+        : [];
+    });
+    const sourceChanges = Array.isArray(args.changes) ? args.changes : [];
+    const changes = sourceChanges
+      .filter(
+        (change) =>
+          typeof change.parameterId === "string" &&
+          Number.isFinite(change.value) &&
+          Boolean(tryGetParamDef(change.parameterId)),
+      )
+      .map((change) => ({
+        parameterId: change.parameterId,
+        value: clampUltinaParam(change.parameterId, change.value),
+      }));
+    if (toggles.length === 0 && changes.length === 0) {
+      const message = "VLYX nenašiel zmenu, ktorú by bolo treba navrhnúť.";
+      if (args.kind === "mix") setAssistSummary([message]);
+      else setMatchSummary([message]);
+      return;
+    }
+
+    const reviewBusy = args.kind === "mix" ? setAssistBusy : setMatchBusy;
+    reviewBusy("Rendering proposed A/B…");
+    const nextDoc = applyUltinaProposal(args.baseDoc, trackId, fxId, args.label, toggles, changes).execute(
+      args.baseDoc,
+    );
+    const after = await renderTrack(nextDoc, trackId, services.bank, {
+      mode: "song",
+      sampleRate: 44100,
+      tailSeconds: 0.5,
+    });
+    ensureAnalysisActive(args.run);
+    if (services.store.getDoc() !== args.baseDoc) throw new Error("Projekt sa počas analýzy zmenil; návrh sa zahodil.");
+    reviewBusy("Measuring loudness-matched A/B…");
+    const beforeLufs = await measureIntegratedLufs(args.before, args.run);
+    const afterLufs = await measureIntegratedLufs(after, args.run);
+    ensureAnalysisActive(args.run);
+    if (services.store.getDoc() !== args.baseDoc) throw new Error("Projekt sa počas merania zmenil; návrh sa zahodil.");
+    const levelMatch = matchAuditionLevels(beforeLufs, afterLufs);
+
+    const instrument = INSTRUMENT_LABELS[args.proposal.instrument] ?? args.proposal.instrument;
+    const confidence = Number.isFinite(args.proposal.classification.confidence)
+      ? `${Math.round(args.proposal.classification.confidence * 100)} %`
+      : "nezmeraná";
+    const features = args.proposal.features;
+    const metric = (value: number, unit: string) => (Number.isFinite(value) ? `${value.toFixed(1)} ${unit}` : "n/a");
+    const trackName = args.baseDoc.tracks.find((track) => track.id === trackId)?.name ?? trackId;
+    const lines = [
+      levelMatch
+        ? `A/B LEVEL — BS.1770 integrated ${beforeLufs?.toFixed(1)} → ${afterLufs?.toFixed(1)} LUFS; preview matched at ${levelMatch.targetLufs.toFixed(1)} LUFS (before ${levelMatch.beforeGainDb.toFixed(1)} dB, proposal ${levelMatch.afterGainDb.toFixed(1)} dB). Preview-only gain; no upward normalization.`
+        : "A/B LEVEL — one render was too quiet or too short to measure; preview uses original render levels.",
+      `EVIDENCE — ${instrument} (${confidence} confidence), ${args.proposal.analyzedDuration.toFixed(1)} s; VLYX feature estimates: ${metric(features.lufsIntegrated, "LUFS")}, crest ${metric(features.crestFactorDb, "dB")}, dynamic range ${metric(features.dynamicRangeDb, "dB")}.`,
+      `AFFECTED — track “${trackName}” · VLYX only.`,
+      "TRADE-OFF — this rule-based starting point can change tone and dynamics; compare both renders before applying. The project is still unchanged.",
+    ];
+    for (const toggle of sourceToggles) {
+      if (typeof toggle.moduleType !== "string" || typeof toggle.enabled !== "boolean") continue;
+      if (!toggles.some((valid) => valid.moduleType === toggle.moduleType)) continue;
+      lines.push(
+        `MODULE — ${MODULE_LABELS[toggle.moduleType] ?? toggle.moduleType} ${toggle.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(toggle.reasonCode, "en")}`,
+      );
+    }
+    for (const change of changes.slice(0, 8)) {
+      const original = args.proposal.changes.find((candidate) => candidate.parameterId === change.parameterId);
+      lines.push(
+        `CHANGE — ${change.parameterId} → ${formatUnit(change.value, tryGetParamDef(change.parameterId)?.unit ?? "generic")} — ${original ? getExplanationForLocale(original.reasonCode, "en") : "reference-curve correction"}`,
+      );
+    }
+    if (changes.length > 8) lines.push(`CHANGE — …and ${changes.length - 8} more parameter changes`);
+    if (toggles.length !== sourceToggles.length || changes.length !== sourceChanges.length) {
+      lines.push("SAFETY — unsupported parameter suggestions were filtered before audition and apply.");
+    }
+    updatePendingReview({
+      kind: args.kind,
+      baseDoc: args.baseDoc,
+      before: args.before,
+      after,
+      beforeGain: levelMatch?.beforeGain ?? 1,
+      afterGain: levelMatch?.afterGain ?? 1,
+      label: args.label,
+      goal: args.goal,
+      lines,
+      toggles,
+      changes,
+    });
+  };
+
+  const playReview = (part: "before" | "after") => {
+    const review = pendingReviewRef.current;
+    if (!review) return;
+    if (services.transport.playing) {
+      const message = "Zastav transport pred offline A/B posluchom, aby sa nemiešal s bežiacou skladbou.";
+      if (review.kind === "mix") setAssistError(message);
+      else setMatchError(message);
+      return;
+    }
+    if (services.store.getDoc() !== review.baseDoc) {
+      updatePendingReview(null);
+      stopReviewAudio();
+      const message = "Projekt sa zmenil. Vytvor nový návrh z aktuálneho stavu.";
+      if (review.kind === "mix") setAssistError(message);
+      else setMatchError(message);
+      return;
+    }
+    const buffer = part === "before" ? review.before : review.after;
+    reviewPlayingRef.current = true;
+    setReviewPlaying(part);
+    playAuditionBuffer(
+      buffer,
+      () => {
+        reviewPlayingRef.current = false;
+        setReviewPlaying(null);
+      },
+      part === "before" ? review.beforeGain : review.afterGain,
+    );
+  };
+
+  const applyPendingReview = () => {
+    const review = pendingReviewRef.current;
+    if (!review) return;
+    if (services.store.getDoc() !== review.baseDoc) {
+      stopReviewAudio();
+      updatePendingReview(null);
+      const message = "Projekt sa zmenil. Návrh je zastaraný a treba ho vytvoriť znova.";
+      if (review.kind === "mix") setAssistError(message);
+      else setMatchError(message);
+      return;
+    }
+    stopReviewAudio();
+    updatePendingReview(null);
+    try {
+      onApplyProposal(review.label, review.toggles, review.changes);
+      if (review.kind === "mix")
+        setAssistSummary([...review.lines, "APPLIED — one undoable gesture; Ctrl+Z restores the previous settings."]);
+      else setMatchSummary([...review.lines, "APPLIED — one undoable gesture; Ctrl+Z restores the previous settings."]);
+    } catch (error) {
+      updatePendingReview(review);
+      const message = error instanceof Error ? error.message : "VLYX proposal could not be applied.";
+      if (review.kind === "mix") setAssistError(message);
+      else setMatchError(message);
+    }
+  };
+
+  const discardPendingReview = () => {
+    const kind = pendingReviewRef.current?.kind;
+    stopReviewAudio();
+    updatePendingReview(null);
+    if (kind === "mix") setAssistSummary(["DISCARDED — the project was not changed."]);
+    else if (kind === "match") setMatchSummary(["DISCARDED — the project was not changed."]);
   };
 
   const cancelAnalysis = () => {
@@ -446,6 +666,10 @@ export function UltinaPanel({
     if (matchBusy || assistBusy) return;
     setMatchError(null);
     setMatchSummary(null);
+    setAssistSummary(null);
+    stopReviewAudio();
+    updatePendingReview(null);
+    const baseDoc = services.store.getDoc();
     const run = beginAnalysisRun();
     try {
       // 1. Target curve: reference sample's spectral profile, or library target.
@@ -476,8 +700,9 @@ export function UltinaPanel({
       }
 
       // 2. Render the user's track and match toward the target.
+      if (services.store.getDoc() !== baseDoc) throw new Error("Projekt sa počas analýzy zmenil; spusti ju znova.");
       setMatchBusy("Rendering your track…");
-      const buffer = await renderTrack(doc, trackId, services.bank, {
+      const buffer = await renderTrack(baseDoc, trackId, services.bank, {
         mode: "song",
         sampleRate: 44100,
         tailSeconds: 0.5,
@@ -509,23 +734,16 @@ export function UltinaPanel({
         setMatchSummary([`Tonal balance already within ±1.5 dB of ${targetName} — no EQ moves needed.`]);
         return;
       }
-      onApplyProposal(
-        `Reference match (${targetName})`,
-        proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
-        eqChanges.map((c) => ({ parameterId: c.parameterId, value: c.value })),
-      );
-      const lines: string[] = [
-        `Target: ${targetName} · ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument}`,
-      ];
-      for (const c of eqChanges.slice(0, 6)) {
-        const bandMatch = /eq\.band(\d+)\./.exec(c.parameterId);
-        const bandNo = bandMatch ? Number(bandMatch[1]) + 1 : 0;
-        lines.push(
-          `EQ B${bandNo} ${c.value > 0 ? "+" : ""}${c.value.toFixed(1)} dB — ${getExplanationForLocale(c.reasonCode, "en")}`,
-        );
-      }
-      if (eqChanges.length > 6) lines.push(`…and ${eqChanges.length - 6} more EQ changes`);
-      setMatchSummary(lines);
+      await stageProposalReview({
+        kind: "match",
+        run,
+        baseDoc,
+        before: buffer,
+        proposal,
+        label: `Reference match (${targetName})`,
+        goal: `move this track toward the “${targetName}” tonal target`,
+        changes: eqChanges.map((change) => ({ parameterId: change.parameterId, value: change.value })),
+      });
     } catch (err) {
       if (isUltinaAnalysisCancelledError(err)) return;
       setMatchError(`Reference match failed: ${String(err instanceof Error ? err.message : err)}`);
@@ -539,10 +757,14 @@ export function UltinaPanel({
     if (assistBusy || matchBusy) return;
     setAssistError(null);
     setAssistSummary(null);
+    setMatchSummary(null);
+    stopReviewAudio();
+    updatePendingReview(null);
+    const baseDoc = services.store.getDoc();
     const run = beginAnalysisRun();
     try {
       setAssistBusy("Rendering track…");
-      const buffer = await renderTrack(doc, trackId, services.bank, {
+      const buffer = await renderTrack(baseDoc, trackId, services.bank, {
         mode: "song",
         sampleRate: 44100,
         tailSeconds: 0.5,
@@ -568,28 +790,16 @@ export function UltinaPanel({
         return;
       }
       const proposal = result.proposal;
-      onApplyProposal(
-        `Mix assist (${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument})`,
-        proposal.moduleToggles.map((t) => ({ moduleType: t.moduleType, enabled: t.enabled })),
-        proposal.changes.map((c) => ({ parameterId: c.parameterId, value: c.value })),
-      );
-      // Human-readable summary (the vendored plugin ships en + sk; the studio
-      // UI is English, so explanations resolve in en).
-      const lines: string[] = [
-        `Instrument: ${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument} · ${proposal.analyzedDuration.toFixed(1)}s`,
-      ];
-      for (const t of proposal.moduleToggles) {
-        lines.push(
-          `${MODULE_LABELS[t.moduleType] ?? t.moduleType} ${t.enabled ? "ON" : "OFF"} — ${getExplanationForLocale(t.reasonCode, "en")}`,
-        );
-      }
-      for (const c of proposal.changes.slice(0, 6)) {
-        lines.push(
-          `${c.parameterId} → ${formatUnit(c.value, tryGetParamDef(c.parameterId)?.unit ?? "generic")} — ${getExplanationForLocale(c.reasonCode, "en")}`,
-        );
-      }
-      if (proposal.changes.length > 6) lines.push(`…and ${proposal.changes.length - 6} more changes`);
-      setAssistSummary(lines);
+      await stageProposalReview({
+        kind: "mix",
+        run,
+        baseDoc,
+        before: buffer,
+        proposal,
+        label: `Mix assist (${INSTRUMENT_LABELS[proposal.instrument] ?? proposal.instrument})`,
+        goal: `${character} character · ${intensity} intensity`,
+        changes: proposal.changes.map((change) => ({ parameterId: change.parameterId, value: change.value })),
+      });
     } catch (err) {
       if (isUltinaAnalysisCancelledError(err)) return;
       setAssistError(`Mix assist failed: ${String(err instanceof Error ? err.message : err)}`);
@@ -618,6 +828,43 @@ export function UltinaPanel({
   }, [params]);
 
   const eqSelected = selectedModule === "eq";
+
+  const renderProposalReview = (kind: UltinaReview["kind"], title: string) => {
+    if (pendingReview?.kind !== kind) return null;
+    return (
+      <section className="ultina-assist-summary" aria-label={`${title} proposal`}>
+        <strong>{pendingReview.goal}</strong>
+        {pendingReview.lines.map((line, index) => (
+          <div key={index} className="ultina-assist-line">
+            {line}
+          </div>
+        ))}
+        <div className="ultina-assist-note" role="status" aria-live="polite">
+          Offline A/B track renders. Nothing changes in the project until you apply. Measurable renders are loudness
+          matched with preview-only attenuation; neither version is boosted.
+        </div>
+        <div className="ultina-assist-actions">
+          <button type="button" className="btn btn-small" onClick={() => playReview("before")}>
+            ▶ PLAY BEFORE
+          </button>
+          <button type="button" className="btn btn-small" onClick={() => playReview("after")}>
+            ▶ PLAY PROPOSAL
+          </button>
+          {reviewPlaying && (
+            <button type="button" className="btn btn-small" onClick={stopReviewAudio}>
+              ■ STOP PREVIEW
+            </button>
+          )}
+          <button type="button" className="btn btn-export" onClick={applyPendingReview}>
+            ✓ APPLY PROPOSAL
+          </button>
+          <button type="button" className="btn btn-small" onClick={discardPendingReview}>
+            DISCARD
+          </button>
+        </div>
+      </section>
+    );
+  };
 
   return (
     <div
@@ -751,9 +998,14 @@ export function UltinaPanel({
                   {line}
                 </div>
               ))}
-              <div className="ultina-assist-note">EQ changes applied as one gesture — Ctrl+Z reverts everything.</div>
+              <div className="ultina-assist-note">
+                {matchSummary.some((line) => line.startsWith("APPLIED —"))
+                  ? "One undoable gesture — Ctrl+Z restores the previous settings."
+                  : "No project changes were made."}
+              </div>
             </div>
           )}
+          {renderProposalReview("match", "Reference match")}
         </div>
       )}
 
@@ -899,9 +1151,14 @@ export function UltinaPanel({
                   {line}
                 </div>
               ))}
-              <div className="ultina-assist-note">Applied as one gesture — Ctrl+Z reverts everything.</div>
+              <div className="ultina-assist-note">
+                {assistSummary.some((line) => line.startsWith("APPLIED —"))
+                  ? "One undoable gesture — Ctrl+Z restores the previous settings."
+                  : "No project changes were made."}
+              </div>
             </div>
           )}
+          {renderProposalReview("mix", "Mix assist")}
         </div>
       )}
 

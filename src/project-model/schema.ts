@@ -38,7 +38,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -146,6 +146,9 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   granular: "Granular",
   keys: "Keys",
   organ: "Organ",
+  strings: "Strings",
+  bell: "Bell",
+  reese: "Reese",
   fm: "FM",
   pluck: "Pluck",
   flute: "Flute",
@@ -905,8 +908,39 @@ const PAD_MOD_WAVES = new Set(["sine", "triangle", "square", "sawtooth"]);
 const PAD_MOD_DEPTH_MAX: Record<string, number> = { pitch: 24, gain: 1, filter: 12000 };
 
 /** Clamp a per-pad mod to a legal voice-local LFO; null = disabled. */
-function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod | null {
-  if (typeof raw !== "object" || raw === null) return null;
+/**
+ * Canonical SampleLayer sanitizer (velocity / round-robin zones). Shared by
+ * `InstrumentTrack.velocityLayers` and `DrumPad.layers` — one contract, one
+ * clamp. Returns undefined when nothing valid remains (field dropped).
+ */
+export function sanitizeSampleLayers(raw: unknown): import("./types").SampleLayer[] | undefined {
+  const rawLayers = Array.isArray(raw) ? raw : [];
+  const cleanLayers: import("./types").SampleLayer[] = [];
+  for (const rawLayer of rawLayers) {
+    const l = (rawLayer ?? {}) as Partial<import("./types").SampleLayer> & Record<string, unknown>;
+    const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
+    const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
+    const minPitch =
+      typeof l.minPitch === "number" && Number.isFinite(l.minPitch)
+        ? Math.round(Math.max(0, Math.min(127, l.minPitch)))
+        : undefined;
+    const maxPitch =
+      typeof l.maxPitch === "number" && Number.isFinite(l.maxPitch)
+        ? Math.round(Math.max(0, Math.min(127, l.maxPitch)))
+        : undefined;
+    cleanLayers.push({
+      id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
+      sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
+      min,
+      max,
+      ...(minPitch !== undefined && maxPitch !== undefined ? { minPitch, maxPitch } : {}),
+    });
+  }
+  return cleanLayers.length > 0 ? cleanLayers : undefined;
+}
+
+function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod | null {  if (typeof raw !== "object" || raw === null) return null;
   const m = raw as Record<string, unknown>;
   const target = typeof m.target === "string" && PAD_MOD_TARGETS.has(m.target) ? m.target : null;
   if (!target) return null;
@@ -1100,6 +1134,11 @@ function normalizeTracksDomain(s: NormalizeState): void {
 
           const padColor = sanitizeColor((pad as unknown as Record<string, unknown>).color);
           const padColorChanged = padColor !== (pad as unknown as Record<string, unknown>).color;
+          // Round-robin / velocity layers (drum-pad variant sets). Sanitized
+          // through the shared sample-layer contract; empty → field dropped.
+          const rawPadLayers: unknown = (pad as unknown as Record<string, unknown>).layers;
+          const sanePadLayers = rawPadLayers !== undefined ? sanitizeSampleLayers(rawPadLayers) : undefined;
+          const padLayersChanged = rawPadLayers !== undefined && !jsonEqual(sanePadLayers, rawPadLayers);
           // Per-pad mod (voice-local LFO) sanitization — null = disabled/off
           const rawMod: unknown = (pad as unknown as Record<string, unknown>).mod;
           const saneMod = rawMod !== undefined ? sanitizePadMod(rawMod) : undefined;
@@ -1127,7 +1166,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
               sliceLoop !== (pad as unknown as { sliceLoop?: unknown }).sliceLoop ||
               sliceLoopStart !== (pad as unknown as { sliceLoopStart?: unknown }).sliceLoopStart ||
               sliceLoopEnd !== (pad as unknown as { sliceLoopEnd?: unknown }).sliceLoopEnd;
-            if (!padColorChanged && !earlyLoopChanged && !modChanged) return pad;
+            if (!padColorChanged && !earlyLoopChanged && !modChanged && !padLayersChanged) return pad;
             return {
               ...pad,
               color: padColor,
@@ -1135,6 +1174,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
               sliceLoopStart: sliceLoopStart ?? undefined,
               sliceLoopEnd: sliceLoopEnd ?? undefined,
               ...(modChanged ? { mod: saneMod } : {}),
+              ...(padLayersChanged ? { layers: sanePadLayers } : {}),
             };
           }
           if (hasSliceConfig) {
@@ -1221,6 +1261,10 @@ function normalizeTracksDomain(s: NormalizeState): void {
           // Per-pad mod sanitization (already computed above for the early-return path)
           if (modChanged) {
             nextPad = { ...nextPad, mod: saneMod } as any;
+            padChanged = true;
+          }
+          if (padLayersChanged) {
+            nextPad = { ...nextPad, layers: sanePadLayers } as any;
             padChanged = true;
           }
           return padChanged ? nextPad : pad;
@@ -1392,30 +1436,7 @@ function normalizeTracksDomain(s: NormalizeState): void {
       // Velocity/round-robin layers: keep well-formed zones only; drop the
       // field entirely when nothing valid remains (classic single-sample mode)
       if (t.velocityLayers !== undefined) {
-        const rawLayers = Array.isArray(t.velocityLayers) ? (t.velocityLayers as unknown[]) : [];
-        const cleanLayers: import("./types").SampleLayer[] = [];
-        for (const rawLayer of rawLayers) {
-          const l = (rawLayer ?? {}) as Partial<import("./types").SampleLayer> & Record<string, unknown>;
-          const min = typeof l.min === "number" && Number.isFinite(l.min) ? Math.min(1, Math.max(0, l.min)) : NaN;
-          const max = typeof l.max === "number" && Number.isFinite(l.max) ? Math.min(1, Math.max(0, l.max)) : NaN;
-          if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) continue;
-          const minPitch =
-            typeof l.minPitch === "number" && Number.isFinite(l.minPitch)
-              ? Math.round(Math.max(0, Math.min(127, l.minPitch)))
-              : undefined;
-          const maxPitch =
-            typeof l.maxPitch === "number" && Number.isFinite(l.maxPitch)
-              ? Math.round(Math.max(0, Math.min(127, l.maxPitch)))
-              : undefined;
-          cleanLayers.push({
-            id: typeof l.id === "string" && l.id ? l.id : uid("layer"),
-            sampleId: typeof l.sampleId === "string" ? l.sampleId : null,
-            min,
-            max,
-            ...(minPitch !== undefined && maxPitch !== undefined ? { minPitch, maxPitch } : {}),
-          });
-        }
-        const canonical = cleanLayers.length > 0 ? cleanLayers : undefined;
+        const canonical = sanitizeSampleLayers(t.velocityLayers);
         if (!jsonEqual(canonical, t.velocityLayers)) {
           t = canonical ? { ...t, velocityLayers: canonical } : t;
           if (!canonical) {
@@ -2294,7 +2315,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v3 adds the optional `lineage` family link; v4 adds optional AudioClip
   // source-channel routing; v5 adds non-destructive AudioClip take groups;
   // v6 adds an optional production profile to generated-pattern provenance;
-  // v7 adds take-comp provenance and permits short, positive AudioClip ranges.
+  // v7 adds take-comp provenance and permits short, positive AudioClip ranges;
+  // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { analyzeLoudnessBuffer, KWeightingFilter, kWeightingCoefficients } from "../src/audio-engine/kweighting";
+import {
+  analyzeLoudnessBuffer,
+  integratedLufsStreaming,
+  KWeightingFilter,
+  kWeightingCoefficients,
+} from "../src/audio-engine/kweighting";
 import { truePeakOversampled } from "../src/audio-engine/metering";
 
 /** Mono sine at a given dBFS amplitude into L/R channels. */
@@ -76,6 +81,25 @@ describe("K-weighting (ITU-R BS.1770-4)", () => {
     expect(reading.measured).toBe(false);
     expect(reading.integrated).toBe(-120); // MIN_DB
   });
+
+  it("streaming integrated measurement matches the reference analyzer without a full filtered copy", () => {
+    for (const sampleRate of [44100, 48000]) {
+      const channels = sineStereo(-21, 997, 2.7, sampleRate);
+      expect(integratedLufsStreaming(channels, sampleRate)).toBeCloseTo(
+        analyzeLoudnessBuffer(channels, sampleRate).integrated,
+        5,
+      );
+    }
+  });
+
+  it("streaming measurement preserves gating and returns null for unmeasurable audio", () => {
+    const channels = sineStereo(-23, 1000, 13.5, 48000);
+    for (const channel of channels) channel.fill(0, 0, 12 * 48000);
+    const reading = analyzeLoudnessBuffer(channels, 48000);
+    expect(integratedLufsStreaming(channels, 48000)).toBeCloseTo(reading.integrated, 5);
+    expect(integratedLufsStreaming([new Float32Array(48000), new Float32Array(48000)], 48000)).toBeNull();
+    expect(integratedLufsStreaming([new Float32Array(100)], 0)).toBeNull();
+  });
 });
 
 describe("true peak — 4× polyphase oversampling", () => {
@@ -146,7 +170,10 @@ describe("analyzeLoudnessBuffer — malformed inputs", () => {
   it("returns measured=false for sampleRate = NaN (no crash, no garbage)", () => {
     const channels = sineStereo(-23, 1000, 2, 48000);
     let reading: ReturnType<typeof analyzeLoudnessBuffer> = {
-      integrated: 0, momentaryMax: 0, shortTermMax: 0, measured: false,
+      integrated: 0,
+      momentaryMax: 0,
+      shortTermMax: 0,
+      measured: false,
     };
     expect(() => {
       reading = analyzeLoudnessBuffer(channels, NaN);

@@ -112,6 +112,30 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     // vocabulary-wave entries (expanded genre/sub-genre + artist coverage)
     { text: "hard techno warehouse peak time banger", patch: { genre: "techno", style: "driving", energy: 0.95 } },
     { text: "dark hypnotic berlin techno groove", patch: { genre: "techno", mood: "dark", energy: 0.7 } },
+    { text: "detroit techno machine funk", patch: { genre: "techno", style: "driving", energy: 0.85 } },
+    { text: "dub techno chords and tape delay", patch: { genre: "techno", style: "dub", mood: "chill", energy: 0.45 } },
+    { text: "acid 303 line squelch", patch: { genre: "techno", style: "acid", energy: 0.85 } },
+    { text: "hardgroove percussion techno", patch: { genre: "techno", style: "driving", energy: 0.9 } },
+    { text: "minimal micro house clicks", patch: { genre: "techno", style: "minimal", energy: 0.6 } },
+    { text: "detroit electro machine funk", patch: { genre: "techno", style: "driving", mood: "dark", energy: 0.8 } },
+    {
+      text: "neoclassical piano and strings score",
+      patch: { genre: "ambient", style: "organic", mood: "chill", energy: 0.35 },
+    },
+    {
+      text: "deep drone isolationist ambient",
+      patch: { genre: "ambient", style: "drifting", mood: "chill", energy: 0.3 },
+    },
+    {
+      text: "experimental abstract hip hop noise",
+      patch: { genre: "ambient", style: "glitch", mood: "dark", energy: 0.5 },
+    },
+    { text: "big beat breaks and samples", patch: { genre: "house", style: "broken", energy: 0.9 } },
+    {
+      text: "detroitský techno a dubové akordy",
+      patch: { genre: "techno", style: "dub", mood: "chill", energy: 0.45 },
+    },
+    { text: "acidová 303 linka", patch: { genre: "techno", style: "acid", energy: 0.85 } },
     { text: "trance euphoric breakdown with supersaw", patch: { genre: "techno", mood: "energetic", energy: 0.85 } },
     { text: "synthwave outrun night drive", patch: { genre: "techno", mood: "energetic", energy: 0.7 } },
     {

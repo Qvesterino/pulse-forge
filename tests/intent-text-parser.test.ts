@@ -320,6 +320,16 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parseIntentText("two step swing").input.style).toBe("ukg");
   });
 
+  it("techno depth phrases: detroit techno / electro / hardgroove", () => {
+    expect(parseIntentText("detroit techno").input.genre).toBe("techno");
+    expect(parseIntentText("detroit electro").input.genre).toBe("techno");
+    expect(parseIntentText("techno detroit").input.genre).toBe("techno");
+    expect(parseIntentText("hardgroove techno").input.genre).toBe("techno");
+    expect(parseIntentText("hard groove techno").input.style).toBe("driving");
+    // detroit RAP still routes to the rap family
+    expect(parseIntentText("detroit rap beat").input.style).toBe("detroit");
+  });
+
   it("new dnb styles resolve to real groove ids", () => {
     for (const id of ["dnb.twostep", "dnb.liquid", "dnb.jumpup", "dnb.neuro", "dnb.dancefloor"]) {
       const groove = getGrooveById(id);

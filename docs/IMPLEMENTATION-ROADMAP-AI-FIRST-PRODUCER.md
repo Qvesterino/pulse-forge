@@ -303,9 +303,14 @@ NEISTÉ: tónina nebola zadaná
   `applyPreviewLoudness` zostáva ako testovaná referencia, panel ju už nepoužíva.
 - Testy: `tests/loudness-recommendation.test.ts` (8) + clipping (3); regresia loudness/review/
   song rodina 123/123.
-- **Otvorené:** true-peak (4× oversampling podľa BS.1770) namiesto sample-peak proxy;
-  rozšírenie reportu na sekčné revízie (spojenie s per-sekčnými metrami z Fázy 5); VLYX Mix
-  Assist návrhy v tom istom report formáte.
+- **VLYX Mix Assist + Reference Match:** oba nástroje najprv vyrenderujú pôvodný track aj presný
+  návrh offline a zobrazia dôkaz, cieľ, dotknutý track, zmenu a trade-off. Streamové BS.1770 LUFS
+  meranie beží vo workeri; A/B prehratie iba stíši hlasnejšiu verziu a nemení projektový gain.
+  Zastaraný návrh po zmene projektu sa zahodí; Apply použije presne auditionovaný proposal cez jeden
+  undoable command, Discard nemení projekt. Regresie pokrývajú oba panely, worker meranie, gain a stale
+  invalidation.
+- **Otvorené:** true-peak (4× oversampling podľa BS.1770) namiesto sample-peak proxy pre exportné odporúčania;
+  rozšírenie reportu na sekčné revízie (spojenie s per-sekčnými metrami z Fázy 5).
 
 ### Fáza 7 — MRT2 ako voliteľný hráč a sampling nástroj
 

@@ -107,16 +107,6 @@ export function preserveSourceContent(
     protectedTrackIds.add(track.id);
   }
 
-  for (const [role, rolePlan] of Object.entries(plan.rolePlans)) {
-    if (!rolePlan.enabled || roles.includes(role as IntentRole)) continue;
-    if (rolePlan.targetTrackIds.some((trackId) => protectedTrackIds.has(trackId))) {
-      violations.push({
-        id: "preserve-track-conflict",
-        detail: `generated ${role} and protected content resolve to the same instrument track`,
-      });
-    }
-  }
-
   for (const trackId of protectedTrackIds) {
     const sourceNotes = source.notes[trackId] ?? [];
     if (sourceNotes.some((note) => noteEndsAfter(note, targetEndTick))) {
@@ -127,9 +117,12 @@ export function preserveSourceContent(
       continue;
     }
 
+    const sourceIds = new Set(sourceNotes.map((note) => note.id));
+    const generatedNotes = (notes[trackId] ?? []).filter((note) => !sourceIds.has(note.id));
     const restoredNotes = sourceNotes.map((note) => ({ ...note, id: options.freshNoteIds ? uid("note") : note.id }));
-    if (restoredNotes.length > 0) {
-      notes[trackId] = restoredNotes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+    const mergedNotes = [...generatedNotes, ...restoredNotes];
+    if (mergedNotes.length > 0) {
+      notes[trackId] = mergedNotes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
     } else {
       delete notes[trackId];
     }

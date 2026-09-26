@@ -10,6 +10,7 @@ import type {
 } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
+export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { hashString } from "../shared/rng";
 import { defaultMasterConfig } from "../project-model/schema";
 import { PPQ, BAR_TICKS } from "../project-model/types";
@@ -4852,11 +4853,15 @@ export class AudioEngine {
     const peak = Math.max(0, pad.gain);
     const when = ctx.currentTime + 0.005;
     const endWhen = when + slice.duration;
+    // Same de-click guarantee as the trigger path: auditioning a slice must
+    // not click either, including when a p-locked length cut it short.
+    const fadeOut = declickFadeOut(slice.fadeOut, slice.duration);
     gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
     if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
-    if (!loop && slice.fadeOut > 0) {
-      gain.gain.setValueAtTime(peak, Math.max(when + slice.fadeIn, endWhen - slice.fadeOut));
-      gain.gain.linearRampToValueAtTime(0, endWhen);
+    if (!loop && fadeOut > 0) {
+      const fadeOutAt = Math.max(when + slice.fadeIn, endWhen - fadeOut);
+      gain.gain.setValueAtTime(peak, fadeOutAt);
+      gain.gain.linearRampToValueAtTime(0, fadeOutAt + fadeOut);
     }
     source.connect(gain).connect(this.master);
     const voice: PreviewVoice = { source, gain };
@@ -4874,7 +4879,12 @@ export class AudioEngine {
     for (const voice of [...this.instrumentPreviewVoices]) this.disposeInstrumentPreviewVoice(voice);
     for (const voice of this.previewVoices) {
       try {
-        voice.source.stop(ctx ? ctx.currentTime + 0.005 : 0);
+        // De-click the stop: a 5 ms gap between "cut" and "silent" is long
+        // enough to read as a click on a sustained preview slice.
+        const stopAt = ctx ? ctx.currentTime + 0.005 : 0;
+        voice.gain.gain.cancelScheduledValues(stopAt);
+        voice.gain.gain.setTargetAtTime(0, stopAt, DECLICK_TAIL_SEC);
+        voice.source.stop(stopAt + DECLICK_TAIL_SEC * 4);
       } catch {
         // Already stopped.
       }
@@ -5823,60 +5833,6 @@ export function buildWarpSegments(opts: {
  * Returns null when the tick is outside the clip or geometry is degenerate.
  * Pure — shared by the waveform pin editor and the tests.
  */
-export function warpBufferTimeAtTick(opts: {
-  markers: ReadonlyArray<{ timeSec: number; tick: number }>;
-  clipStartTick: number;
-  clipTicks: number;
-  /** Arrangement tick to query (absolute). */
-  tick: number;
-  /** Wall seconds per tick. */
-  spt: number;
-  /** Trimmed content window (secs, original-sample timeline). */
-  contentStartSec: number;
-  contentDurSec: number;
-  stretchRate?: number;
-  stretchMode?: "resample" | "stretch";
-}): number | null {
-  const { markers, clipStartTick, clipTicks, tick, spt, contentStartSec, contentDurSec } = opts;
-  if (!Number.isFinite(clipTicks) || clipTicks <= 0) return null;
-  if (!Number.isFinite(spt) || spt <= 0) return null;
-  if (!Number.isFinite(contentStartSec) || !Number.isFinite(contentDurSec) || contentDurSec <= 0) return null;
-  const rel = tick - clipStartTick;
-  if (!(rel >= 0) || !(rel <= clipTicks)) return null;
-  const contentEnd = contentStartSec + contentDurSec;
-  const clampBuf = (v: number): number => Math.min(contentEnd, Math.max(contentStartSec, v));
-  const pins: { rel: number; buf: number }[] = [{ rel: 0, buf: contentStartSec }];
-  let inRange = 0;
-  for (const m of markers) {
-    if (!Number.isFinite(m.timeSec) || !Number.isFinite(m.tick)) continue;
-    const r = m.tick - clipStartTick;
-    if (r < 0 || r > clipTicks) continue;
-    inRange++;
-    pins.push({ rel: r, buf: clampBuf(m.timeSec) });
-  }
-  pins.push({ rel: clipTicks, buf: contentEnd });
-  pins.sort((a, b) => a.rel - b.rel);
-  if (inRange === 0) {
-    const rate = Math.min(4, Math.max(0.25, opts.stretchRate ?? 1));
-    const straight =
-      opts.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01
-        ? contentStartSec + (rel * spt) / rate
-        : contentStartSec + rel * spt * rate;
-    return clampBuf(straight);
-  }
-  for (let i = 0; i + 1 < pins.length; i++) {
-    const a = pins[i];
-    const b = pins[i + 1];
-    if (rel >= a.rel && rel <= b.rel) {
-      const span = b.rel - a.rel;
-      if (span <= 1e-9) return clampBuf(a.buf);
-      const t = (rel - a.rel) / span;
-      return clampBuf(a.buf + (b.buf - a.buf) * t);
-    }
-  }
-  return clampBuf(contentEnd);
-}
-
 /** Default micro-crossfade at repitch-warp segment joints (de-click only). */
 export const WARP_MICRO_FADE_SEC = 0.003;
 

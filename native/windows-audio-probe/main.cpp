@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <avrt.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <propkeydef.h>
@@ -198,6 +199,20 @@ struct ScopedEvent {
   HANDLE value = nullptr;
   ~ScopedEvent() {
     if (value) CloseHandle(value);
+  }
+};
+
+struct ScopedMmcssTask {
+  HANDLE value = nullptr;
+
+  bool registerTask(const wchar_t* taskName) {
+    DWORD taskIndex = 0;
+    value = AvSetMmThreadCharacteristicsW(taskName, &taskIndex);
+    return value != nullptr;
+  }
+
+  ~ScopedMmcssTask() {
+    if (value) AvRevertMmThreadCharacteristics(value);
   }
 };
 
@@ -636,6 +651,15 @@ bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAR
   std::wcout << L"    requested period=" << periodFrames << L" frames / " << std::fixed << std::setprecision(3)
             << periodMs << L" ms; allocated endpoint buffer=" << bufferFrames << L" frames / "
             << framesToMs(bufferFrames, sampleRate) << L" ms\n";
+  const wchar_t* mmcssTaskName = periodMs < 10.0 ? L"Pro Audio" : L"Audio";
+  ScopedMmcssTask mmcssTask;
+  if (!mmcssTask.registerTask(mmcssTaskName)) {
+    std::wcerr << L"AvSetMmThreadCharacteristics failed for MMCSS task '" << mmcssTaskName << L"' (Win32 "
+               << GetLastError() << L")\n";
+    CoTaskMemFree(mixFormat);
+    return false;
+  }
+  std::wcout << L"    MMCSS service-thread task: " << mmcssTaskName << L"\n";
   const bool ok = flow == eCapture
                       ? runCaptureStream(client.Get(), event.value, mode, seconds, bufferFrames, sampleRate)
                       : runSilentRenderStream(client.Get(), event.value, seconds, bufferFrames, sampleRate);

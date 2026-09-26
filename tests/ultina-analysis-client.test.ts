@@ -5,6 +5,7 @@ import {
   UltinaAnalysisCancelledError,
   isUltinaAnalysisCancelledError,
   startUltinaAnalysis,
+  startUltinaLoudnessMeasurement,
   startUltinaTargetAnalysis,
 } from "../src/analysis/ultinaAnalysisClient";
 
@@ -77,6 +78,21 @@ describe("VLYX analysis worker client", () => {
       result: { targetCurve: [0, -1, -2] },
     });
     await expect(task.promise).resolves.toEqual({ targetCurve: [0, -1, -2] });
+  });
+
+  it("measures audition loudness on copied channels in a worker", async () => {
+    const source = new Float32Array([0.1, -0.2, 0.3]);
+    const task = startUltinaLoudnessMeasurement([source, source], 44100);
+    const worker = FakeWorker.instances[0];
+    expect(worker.request?.kind).toBe("loudness");
+    if (worker.request?.kind !== "loudness") throw new Error("missing loudness request");
+    expect(worker.request.channels[0]).not.toBe(source);
+    expect(source.length).toBe(3);
+    expect(source[0]).toBeCloseTo(0.1, 6);
+    expect(worker.transfer).toHaveLength(2);
+    worker.respond({ id: 1, ok: true, kind: "loudness", result: { integratedLufs: -18.5 } });
+    await expect(task.promise).resolves.toEqual({ integratedLufs: -18.5 });
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
   it("cancels and terminates the worker without surfacing a user error", async () => {

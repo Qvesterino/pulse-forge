@@ -48,6 +48,7 @@ import {
 import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/transform";
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
+import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import {
   clampUnit,
   createDrumTrackModel,
@@ -364,6 +365,11 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
     }
   }
   const prev = { ...current } as PadParams;
+  // `layers` is ALWAYS present in the undo baseline (possibly undefined), so
+  // the "an explicitly-undefined key clears the field" rule below can undo an
+  // add: Object.entries drops undefined values, so a baseline that simply
+  // lacks the key would leave the added set in place forever.
+  prev.layers = current?.layers;
   const apply = (d: ProjectDocument, values: PadParams): ProjectDocument =>
     withPad(d, padId, (pad) => {
       const next = { ...pad, ...values };
@@ -376,6 +382,9 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
         delete next.sliceFadeOut;
         delete next.sliceReverse;
       }
+      // An explicit `layers: undefined` clears the set (spread would leave the
+      // stale value in place — the undo of "add layers" needs a real delete).
+      if (values.layers === undefined && "layers" in values) delete next.layers;
       return next;
     });
   return {
@@ -395,6 +404,12 @@ export function setPadParams(doc: ProjectDocument, padId: string, params: PadPar
             const sourceChanged = params.assetId !== undefined && params.assetId !== target.get("assetId");
             for (const [k, v] of Object.entries(params)) {
               if (v !== undefined) target.set(k, v);
+            }
+            // `layers` is authoritative per apply (see the note on `prev`):
+            // Object.entries cannot express "delete", so handle it explicitly.
+            if ("layers" in params) {
+              if (params.layers !== undefined) target.set("layers", params.layers);
+              else target.delete("layers");
             }
             if (sourceChanged) {
               for (const key of ["sliceStart", "sliceEnd", "sliceFadeIn", "sliceFadeOut", "sliceReverse"])
@@ -3855,7 +3870,12 @@ export function bounceStemsToAudioClip(
   return addAudioClip(doc, trackId, bufferId, startBar, lengthBars, { gain: 1, stretchRate: 1 });
 }
 
-export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, splitTick: number): Command {
+export function splitAudioClipAtTick(
+  doc: ProjectDocument,
+  clipId: string,
+  splitTick: number,
+  sourceDurationSec?: number,
+): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
@@ -3868,6 +3888,41 @@ export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, split
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const leftSec = (splitTick - startTick) * secondsPerTick;
   const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSec * (clip.stretchRate ?? 1);
+  const sourceStartSec = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
+  const sourceEndSec =
+    Number.isFinite(sourceDurationSec) && sourceDurationSec! > 0 ? sourceDurationSec! - (clip.trimEnd ?? 0) : NaN;
+  const hasInRangeWarpMarker =
+    clip.reverse !== true &&
+    clip.loop !== true &&
+    (clip.warpMarkers ?? []).some(
+      (marker) =>
+        Number.isFinite(marker.timeSec) &&
+        Number.isFinite(marker.tick) &&
+        marker.tick >= startTick &&
+        marker.tick <= endTick,
+    );
+  const warpSplitTimeSec =
+    hasInRangeWarpMarker &&
+    Number.isFinite(sourceStartSec) &&
+    Number.isFinite(sourceEndSec) &&
+    sourceEndSec > sourceStartSec
+      ? warpBufferTimeAtTick({
+          markers: clip.warpMarkers ?? [],
+          clipStartTick: startTick,
+          clipTicks: endTick - startTick,
+          tick: splitTick,
+          spt: secondsPerTick,
+          contentStartSec: sourceStartSec,
+          contentDurSec: sourceEndSec - sourceStartSec,
+          stretchRate: clip.stretchRate,
+          stretchMode: clip.stretchMode,
+        })
+      : null;
+  const preserveWarpAcrossSplit =
+    warpSplitTimeSec !== null &&
+    Number.isFinite(warpSplitTimeSec) &&
+    warpSplitTimeSec >= sourceStartSec &&
+    warpSplitTimeSec <= sourceEndSec;
   const leftId = uid("audioClip");
   const rightId = uid("audioClip");
   // Preserve the split's fractional-tick position. Rounding bars to 0.01
@@ -3879,20 +3934,40 @@ export function splitAudioClipAtTick(doc: ProjectDocument, clipId: string, split
   const rightLength = clip.startBar + clip.lengthBars - rightStartBar;
   const splitDeclickFadeSec = 0.003;
   const copyWarps = () => (clip.warpMarkers ? { warpMarkers: clip.warpMarkers.map((m) => ({ ...m })) } : {});
+  const splitWarpMarkers = (fromTick: number, toTick: number): AudioClip["warpMarkers"] => {
+    if (!preserveWarpAcrossSplit || warpSplitTimeSec === null) return undefined;
+    return [
+      ...(clip.warpMarkers ?? [])
+        .filter((marker) => Number.isFinite(marker.timeSec) && Number.isFinite(marker.tick))
+        .filter((marker) => marker.tick >= fromTick && marker.tick <= toTick && marker.tick !== splitTick)
+        .map((marker) => ({ ...marker })),
+      { timeSec: warpSplitTimeSec, tick: splitTick },
+    ].sort((a, b) => a.tick - b.tick);
+  };
+  const leftWarpMarkers = splitWarpMarkers(startTick, splitTick);
+  const rightWarpMarkers = splitWarpMarkers(splitTick, endTick);
   const leftClip: import("../project-model/types").AudioClip = {
     ...clip,
-    ...copyWarps(),
+    ...(leftWarpMarkers ? { warpMarkers: leftWarpMarkers } : copyWarps()),
     id: leftId,
     lengthBars: leftLength,
+    ...(preserveWarpAcrossSplit && sourceDurationSec !== undefined && warpSplitTimeSec !== null
+      ? { trimEnd: sourceDurationSec - warpSplitTimeSec }
+      : {}),
     fadeOut: splitDeclickFadeSec,
   };
   const rightClip: import("../project-model/types").AudioClip = {
     ...clip,
-    ...copyWarps(),
+    ...(rightWarpMarkers ? { warpMarkers: rightWarpMarkers } : copyWarps()),
     id: rightId,
     startBar: rightStartBar,
     lengthBars: rightLength,
-    offsetSec: clip.reverse ? clip.offsetSec : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
+    offsetSec: preserveWarpAcrossSplit
+      ? warpSplitTimeSec!
+      : clip.reverse
+        ? clip.offsetSec
+        : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
+    ...(preserveWarpAcrossSplit ? { trimStart: 0 } : {}),
     fadeIn: splitDeclickFadeSec,
     // For reverse, keep offset as is — approximate
   };

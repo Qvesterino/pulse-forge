@@ -116,19 +116,18 @@ function noteKey(note: NoteEvent): string {
 }
 
 function sourceNotesRemain(source: readonly NoteEvent[], output: readonly NoteEvent[]): boolean {
-  if (source.length !== output.length) return false;
   const counts = new Map<string, number>();
-  for (const note of source) {
+  for (const note of output) {
     const key = noteKey(note);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  for (const note of output) {
+  for (const note of source) {
     const key = noteKey(note);
     const count = counts.get(key) ?? 0;
     if (count === 0) return false;
     counts.set(key, count - 1);
   }
-  return [...counts.values()].every((count) => count === 0);
+  return true;
 }
 
 function preservedContentSatisfied(result: GenerationResult, doc: ProjectDocument): boolean {

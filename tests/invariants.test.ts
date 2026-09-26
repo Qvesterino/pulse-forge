@@ -169,13 +169,13 @@ describe("AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useC
     }
   });
 
-  it("src/intent/audition.ts has a single known AudioNode site (playAuditionBuffer via playbackContext)", () => {
+  it("src/intent/audition.ts owns its source and preview gain AudioNodes via playbackContext", () => {
     // AI audition pipeline owns its own private context for candidate
     // preview; the standard pattern is for it to live behind a dedicated
     // playbackContext() helper (which already wraps engine.ensureContext
-    // semantics). One site is the current contract.
+    // semantics). The audition source and preview-only gain are the current contract.
     const hits = audioNodeHits("src/intent");
-    const knownSites = new Set(["src/intent/audition.ts:104"]);
+    const knownSites = new Set(["src/intent/audition.ts:140", "src/intent/audition.ts:141"]);
     const known: string[] = [];
     const novel: Hit[] = [];
     for (const h of hits) {
@@ -183,7 +183,7 @@ describe("AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useC
       if (knownSites.has(tag)) known.push(tag);
       else novel.push(h);
     }
-    expect(known.length, "expected one known site in audition.ts").toBe(1);
+    expect(known.length, "expected the source and preview-gain sites in audition.ts").toBe(2);
     expect(novel, "new AudioNode creation in src/intent outside the audition pipeline").toEqual([]);
   });
 
@@ -226,7 +226,12 @@ describe("AGENTS.md invariant #9 — no Rust / WASM DSP path in the realtime lay
   // (LAME mp3 encode lives under src/export/, not in audio-engine/ or
   // audio-worklets/). Pin the carve-out so a regression that imports a
   // WASM DSP kernel into the realtime layer is caught immediately.
-  const WASM_FACTORIES = ["WebAssembly.compile", "WebAssembly.instantiate", "WebAssembly.compileStreaming", "WebAssembly.instantiateStreaming"];
+  const WASM_FACTORIES = [
+    "WebAssembly.compile",
+    "WebAssembly.instantiate",
+    "WebAssembly.compileStreaming",
+    "WebAssembly.instantiateStreaming",
+  ];
   const WASM_DSP_IMPORT_RE = /import\s+(?:type\s+)?\w+\s+from\s+["'][^"']*\.wasm["']/;
   const REALTIME_DIRS = ["src/audio-engine", "src/audio-worklets"];
 

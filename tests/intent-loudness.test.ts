@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parseLoudnessIntent, applyLoudnessIntent, applyPreviewLoudness } from "../src/intent/loudness";
 import { analyzeLoudnessBuffer } from "../src/audio-engine/kweighting";
 import { testDoc } from "./fixtures/doc";
 import { routeIntentText } from "../src/intent/route";
+import { matchAuditionLevels, playAuditionBuffer, stopAudition } from "../src/intent/audition";
 import type { SampleBank } from "../src/sample-library/factory";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -65,6 +66,81 @@ describe("LUFS measurement (BS.1770 math)", () => {
   it("silence is not measurable", () => {
     const silence = analyzeLoudnessBuffer([new Float32Array(44100 * 3)], 44100);
     expect(silence.measured).toBe(false);
+  });
+});
+
+describe("audition A/B loudness matching", () => {
+  it("attenuates only the louder preview to match the quieter render", () => {
+    const match = matchAuditionLevels(-16, -12);
+    expect(match).not.toBeNull();
+    expect(match?.targetLufs).toBe(-16);
+    expect(match?.beforeGain).toBe(1);
+    expect(match?.beforeGainDb).toBe(0);
+    expect(match?.afterGainDb).toBe(-4);
+    expect(match?.afterGain).toBeCloseTo(Math.pow(10, -4 / 20), 8);
+  });
+
+  it("does not invent a match for silent, too-quiet, or invalid measurements", () => {
+    expect(matchAuditionLevels(null, -16)).toBeNull();
+    expect(matchAuditionLevels(-120, -16)).toBeNull();
+    expect(matchAuditionLevels(Number.NaN, -16)).toBeNull();
+  });
+
+  it("routes preview gain privately and ignores ended callbacks from a replaced take", () => {
+    const sources: AudioBufferSourceNode[] = [];
+    const gains: GainNode[] = [];
+    const context = {
+      state: "running",
+      destination: {},
+      createBufferSource: () => {
+        const source = {
+          buffer: null,
+          onended: null,
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          start: vi.fn(),
+          stop: vi.fn(),
+        } as unknown as AudioBufferSourceNode;
+        sources.push(source);
+        return source;
+      },
+      createGain: () => {
+        const gain = {
+          gain: { value: 1 },
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        } as unknown as GainNode;
+        gains.push(gain);
+        return gain;
+      },
+      resume: vi.fn(),
+    };
+    vi.stubGlobal("AudioContext", function FakeAudioContext() {
+      return context;
+    });
+    const firstEnded = vi.fn();
+    const secondEnded = vi.fn();
+    try {
+      playAuditionBuffer({} as AudioBuffer, firstEnded, 0.5);
+      const staleHandler = sources[0]?.onended;
+      expect(gains[0]?.gain.value).toBe(0.5);
+      expect(sources[0]?.connect).toHaveBeenCalledWith(gains[0]);
+      expect(gains[0]?.connect).toHaveBeenCalledWith(context.destination);
+
+      playAuditionBuffer({} as AudioBuffer, secondEnded, 0.25);
+      expect(sources[0]?.stop).toHaveBeenCalledOnce();
+      expect(gains[0]?.disconnect).toHaveBeenCalledOnce();
+      expect(gains[1]?.gain.value).toBe(0.25);
+      staleHandler?.call(sources[0]!, new Event("ended"));
+      expect(firstEnded).not.toHaveBeenCalled();
+
+      sources[1]?.onended?.call(sources[1]!, new Event("ended"));
+      expect(secondEnded).toHaveBeenCalledOnce();
+      expect(gains[1]?.disconnect).toHaveBeenCalledOnce();
+    } finally {
+      stopAudition();
+      vi.unstubAllGlobals();
+    }
   });
 });
 

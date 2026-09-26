@@ -11,6 +11,14 @@ Tento dokument dopĺňa, nenahrádza:
 - [`IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`](IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md) — širší end-to-end plán producentovského workflowu a runtime;
 - [`IMPLEMENTATION-ROADMAP-MRT2-GENERATIVE-TRACKS.md`](IMPLEMENTATION-ROADMAP-MRT2-GENERATIVE-TRACKS.md) — samostatný plán MRT2 generatívnych stôp.
 
+## Zhrnutie rozhodnutia
+
+KYX sa nemá pokúšať poraziť Suno tým, že hneď pridá väčší generatívny model. Má vyhrať **kontrolou producenta nad celým cyklom**: správne pochopiť brief, ponúknuť hudobne odlišné a platné možnosti, nechať používateľa počuť presný návrh, bezpečne zmeniť iba určené časti a zapamätať si vkus len po výslovnom súhlase.
+
+Najbližšia konkrétna brána je ľudsky vypočuť pripravený anonymný test `evolving-hook`. Jeho technická pripravenosť nie je dôkazom, že variácia znie lepšie alebo že ju producenti preferujú. Podľa výsledku treba buď opraviť/skryť túto rodinu, alebo rozšíriť tvorbu o ďalšiu merateľnú hudobnú voľbu. Nový ONNX model ani osobný tréning sa nezačína, kým kandidáti a párový feedback nevytvárajú dôveryhodný evaluačný základ.
+
+Odporúčaná cesta je: **posluchový baseline → opraviteľný brief → skutočne odlišné candidate families → presná targeted revízia a audition/Apply → explicitné lokálne Producer DNA → selektívne referencie a song-level práca → voliteľný MRT2 performer**. Detailné výstupy, súbory a exit gates sú v sekcii 11; sekcia 10 oddeľuje aktuálny kódový stav od zatiaľ chýbajúceho ľudského dôkazu.
+
 ## 1. Produktový posun
 
 Bežný prompt-to-music workflow optimalizuje otázku: **„Čo vie model vygenerovať z tohto textu?“** KYX má optimalizovať otázku: **„Aký bezpečný, počuteľný a upraviteľný krok najviac priblíži tento projekt tomu, čo producent chce?“**
@@ -398,6 +406,34 @@ ONNX má zmysel až po oddelenom zmeraní, kde vzniká chyba. Všetky nasledujú
 
 Syntetické fixtures a teacher labels sú užitočné na regresie, deterministickosť a plumbing. V scorecarde však musia zostať označené ako syntetické; nesmú sa zlúčiť s používateľským blind posluchom.
 
+#### Konkrétna úloha ONNX rerankera v KYX
+
+V KYX už ONNX reranker existuje; ďalší krok preto nie je „pridať AI ranker“, ale presne oddeliť globálnu kvalitu od osobného vkusu a zistiť, na ktorej vrstve vzniká chyba.
+
+| Vrstva dnes                  | Implementácia                                                                                                                                                                                    | Čo z toho možno a nemožno vyvodiť                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Globálne skóre kandidáta     | `src/ai/features/pattern-features.ts` vyrába deterministických 54 hodnôt `features.v1`; `ranker-worker.ts` načíta lokálny ONNX/WASM model a `rank-candidates.ts` skóruje už platných kandidátov. | Model vidí symbolické vlastnosti patternu a zámer; nečíta priamo prompt ani waveform a negeneruje hudbu. Hard gate musí kandidáta odmietnuť ešte pred scoringom.          |
+| Kombinácia modelu a baseline | Aktívna globálna cesta mieša heuristické skóre a ONNX v pomere 0,6 / 0,4. Worker sa načítava len pri použití, kontroluje SHA-256 modelu a pri chybe/timeout-e sa výsledok vracia na heuristiku.  | Je to všeobecný selector, nie osobný producent. Vyšší modelový score neznamená splnený hard brief ani umeleckú kvalitu.                                                   |
+| Osobné preferencie           | `src/intent/personal-ranker.ts` učí malý lokálny párový model z explicitných A/B hlasov a aplikuje iba ohraničený reziduálny posun po globálnom rankingu.                                        | Toto je osobná vrstva; vkus sa nesmie odvodzovať z globálneho ONNX skóre, samotného Apply, undo ani syntetických labelov.                                                 |
+| Dôkaz o modeli               | Manifest `intent-ranker-v1` uvádza 54 features, 2 478 train párov, 624 validačných párov a golden holdout 48 párov v 8 skupinách / 4 žánroch. Uvádza `favoriteGroups: 0`.                        | Report podporuje technickú globálnu ranking cestu, nie personalizáciu na konkrétneho producenta. Ľudský blind posluch a held-out používateľské voľby sú samostatné brány. |
+
+**Odporúčaná architektúra výberu:**
+
+```text
+brief contract
+  → hard constraints + preserve gate (vyradí neplatné návrhy)
+  → globálny selector: heuristika + existujúci ONNX
+  → kontextový osobný residual: iba explicitné lokálne voľby
+  → family-aware diverzita: SAFE / PERSONAL / EXPERIMENTAL
+  → audition, vysvetlený rozdiel, explicitný Apply / feedback
+```
+
+Tieto skóre majú zostať diagnosticky oddelené: „spĺňa zadanie“, „globálne vyzerá sľubne“ a „podľa doterajších relevantných volieb sedí tvojmu vkusu“ nie sú tá istá otázka. Ak je osobných dát málo, výsledok musí byť `cold-start`, nie falošne presvedčivý PERSONAL winner. „Ani jeden“ má spustiť úpravu briefu alebo search family, nie záporný hlas proti jednému z dvoch zlých kandidátov.
+
+**Čo je rozumné trénovať ďalej:** najprv rozširovať kontrolované, počuteľné candidate families a zbierať výslovné A/B voľby; zároveň zlepšovať feature kontrakt iba vtedy, keď eval ukáže konkrétnu slepú škvrnu (napr. bass/harmónia dnes nemajú porovnateľné rozmery ako drums/melody). Až keď existujúca lokálna párová vrstva na chronologicky odložených voľbách nestačí, otestovať malý personal adapter. Tréningové a testovacie páry oddeľovať podľa generácie/session, nie náhodným rozdelením susedných kandidátov z toho istého batchu.
+
+**Brána pred zmenou modelu:** zachovať súčasný model ako baseline; porovnať ho s heuristikou aj s osobnou vrstvou na rovnakých kandidátskych bankách; reportovať brief-fit a „ktorý by si nechal?“ oddelene, spolu s počtom párov a neistotou. Nový model sa aktivuje len pri reprodukovateľnom held-out zlepšení bez poklesu hard compliance, diverzity alebo použiteľnosti pri timeout-e/offline režime. Ak sa nezlepší výsledok, opraviť parser, generator family alebo features — nie iba zväčšiť ONNX model.
+
 ### 9.6 Rozdelenie na implementačné rezy
 
 Každý rez má byť samostatne reviewovateľný a nesmie naraz meniť parser, generátor, ONNX model, project schema aj UI.
@@ -606,11 +642,11 @@ MRT2 sa pripája až na stabilný kandidátsky a audition/apply cyklus. KYX prip
 
 ### 11.9 Čo zaradiť do najbližšieho pracovného cyklu
 
-1. **Najprv uzavrieť pilot:** ľudský posluch packu v sekcii 10; kým nie je verdikt, nemeniť preference model podľa domnienky.
-2. **Potom auditovať a doplniť Brief Debugger:** fixtures, opraviteľné statementy a invalidácia zastaraného auditionu — malý vertikálny rez bez project-schema migrácie.
-3. **Následne doručiť jednu počuteľnú rodinu:** rozšíriť creative search iba tam, kde máme merateľný hudobný transform a blind test.
-4. **Až potom spevniť end-to-end surgical follow-up:** konkrétny parent → target/preserve diff → audition → exact Apply/Undo.
-5. **Po nazbieraní explicitných párov** rozhodnúť, či personal ranker skutočne pomáha; až potom investovať do ONNX architektúry alebo väčšieho modelu.
+1. **Uzavrieť posluchový pilot:** anonymný hook pack v sekcii 10 potrebuje ľudský verdikt; technicky úspešný render nestačí na rozhodnutie o hudobnej kvalite ani preferencii.
+2. **Dokončiť audit Brief Debuggera, nie ho stavať odznova:** opraviteľné role/preserve a konfliktové blokovanie už majú kódový základ. Zamerať ďalšie fixtures na `unknown`, sekčný scope, audio referencie, stale audition a formulácie mimo podporovaných SK/EN aliasov.
+3. **Vybrať iba jednu ďalšiu candidate family podľa dôkazu:** najprv zistiť, či existujúci groove/hook variant je zrozumiteľný a počuteľný. Ak nie, opraviť alebo skryť ho; ak áno, ďalšia rodina musí mať merateľnú feature delta, rovnaké gates a samostatný blind compare.
+4. **Vyhodnotiť globálny a osobný selector oddelene:** ONNX manifest dokladá technický globálny model, kým osobný `personal-ranker.ts` potrebuje explicitné, chronologicky held-out voľby. Nezamieňať syntetický/golden holdout s dôkazom Producer DNA.
+5. **Až podľa chyby investovať do ďalšieho modelu:** ak zlyháva interpretácia, oprav parser; ak chýba počuteľný rozdiel, oprav generatívnu rodinu; ak kandidáti existujú, ale poradie je slabé, zlepši features/reranking. Väčší ONNX model nie je automatický ďalší krok.
 
 ### 11.10 Konkrétny vertikálny rez: hard zákazy rolí
 

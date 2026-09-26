@@ -69,6 +69,19 @@ describe("semantic corpus (T1 krok 2)", () => {
     expect(neuro.patch.style).toBe("neuro");
   });
 
+  it("techno depth vocabulary present (detroit / dub / acid / electro)", () => {
+    const corpus = buildSemanticCorpus();
+    for (const text of ["detroit techno", "dub techno chords", "acid 303", "detroit electro", "neoclassical"]) {
+      expect(
+        corpus.some((entry) => entry.text.includes(text)),
+        text,
+      ).toBe(true);
+    }
+    const dub = corpus.find((entry) => entry.text.includes("dub techno chords"))!;
+    expect(dub.patch.genre).toBe("techno");
+    expect(dub.patch.style).toBe("dub");
+  });
+
   it("patches only use canonical vocabulary", () => {
     for (const entry of buildSemanticCorpus()) {
       if (entry.patch.genre) expect(GENRES).toContain(entry.patch.genre);

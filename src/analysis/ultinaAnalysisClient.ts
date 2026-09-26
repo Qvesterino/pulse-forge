@@ -100,6 +100,14 @@ function readTargetResponse(response: UltinaAnalysisWorkerResponse): UltinaTarge
   return response.result;
 }
 
+function readLoudnessResponse(response: UltinaAnalysisWorkerResponse): { integratedLufs: number | null } {
+  if (!response.ok) throw new Error(response.error);
+  if (response.kind !== "loudness") throw new Error("Unexpected VLYX loudness response.");
+  const value = response.result.integratedLufs;
+  if (value !== null && !Number.isFinite(value)) throw new Error("VLYX loudness response was not finite.");
+  return { integratedLufs: value };
+}
+
 export function startUltinaAnalysis(
   request: AnalysisRequest,
   targetCurve?: number[],
@@ -123,5 +131,18 @@ export function startUltinaTargetAnalysis(
     { id: 1, kind: "target-curve", channels: copied.channels, sampleRate },
     copied.transfer,
     readTargetResponse,
+  );
+}
+
+/** Measure audition loudness off the UI thread without retaining full filtered copies. */
+export function startUltinaLoudnessMeasurement(
+  channels: Float32Array[],
+  sampleRate: number,
+): UltinaAnalysisTask<{ integratedLufs: number | null }> {
+  const copied = copyChannels(channels);
+  return startWorkerTask(
+    { id: 1, kind: "loudness", channels: copied.channels, sampleRate },
+    copied.transfer,
+    readLoudnessResponse,
   );
 }

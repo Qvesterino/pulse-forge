@@ -18,7 +18,9 @@ Capture packet servicing is mode-specific: shared mode drains available packets
 with `GetNextPacketSize`; exclusive event mode reads one endpoint buffer per
 event and must not call that shared-mode-only method. The diagnostic reports
 first-packet separately from later discontinuity flags, plus timestamp errors
-and device-position gaps.
+and device-position gaps. It registers the service thread with MMCSS: `Audio`
+for 10 ms-or-longer periods and `Pro Audio` for shorter periods, and fails
+before starting the stream if MMCSS registration fails.
 
 The default metadata-only mode does **not** initialize or start a stream, read
 microphone samples, record audio, change Windows device settings, or measure

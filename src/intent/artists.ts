@@ -4570,18 +4570,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [120, 150],
     label: "brockhampton",
   },
-  {
-    names: ["clipping type beat", "clipping."],
-    // Industrial hip-hop with noise textures (the roster entry already exists
-    // in phonk/horror — this one keeps the experimental-horror lane).
-    genre: "ambient",
-    style: "glitch",
-    mood: "aggressive",
-    energy: 0.6,
-    density: 0.5,
-    bpmRange: [100, 130],
-    label: "clipping.",
-  },
+  // (clipping. already has its phonk/horror entry above — not re-added)
   {
     names: ["dalek", "dälek type beat", "clouddead", "cLOUDDEAD type beat"],
     genre: "ambient",
@@ -4684,28 +4673,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [60, 90],
     label: "isolationism",
   },
-  // Footwork / juke — the house.footwork groove had no artist consumer.
-  {
-    names: ["dj rashad", "dj spinn", "traxman", "rp boo", "teklife"],
-    // Chicago/Detroit footwork: frantic chopped vocals + 160 BPM rolls.
-    genre: "house",
-    style: "footwork",
-    mood: "energetic",
-    energy: 0.9,
-    density: 0.75,
-    bpmRange: [155, 165],
-    label: "footwork",
-  },
-  {
-    names: ["dj nate", "dj earl", "ghetto house type beat", "juke type beat"],
-    genre: "house",
-    style: "footwork",
-    mood: "aggressive",
-    energy: 0.9,
-    density: 0.75,
-    bpmRange: [150, 162],
-    label: "juke",
-  },
+  // (footwork / juke already has a roster entry above — not re-added)
   // 2-step garage lineage (UKG had the revival wave but not the originators).
   {
     names: ["mj cole", "artful dodger", "craig david type beat"],
@@ -4730,7 +4698,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // Big-beat / breaks lineage (house family, the breaks floor).
   {
-    names: ["fatboy slim", "chemical brothers", "crystal method", "big beat"],
+    // No bare "big beat" — generic English that would hijack any promo text.
+    names: ["fatboy slim", "chemical brothers", "crystal method"],
     genre: "house",
     style: "broken",
     mood: "energetic",

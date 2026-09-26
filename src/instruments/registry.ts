@@ -23,6 +23,9 @@ import {
   pluckParams,
   fluteParams,
   organParams,
+  stringsParams,
+  bellParams,
+  reeseParams,
   logdrumParams,
   spectralParams,
   vocalchopParams,
@@ -3599,8 +3602,10 @@ const flute: InstrumentDefinition = {
 const ORGAN_WARM = [1, 0.18, 0.06, 0.02, 0, 0, 0, 0];
 const ORGAN_BRIGHT = [1, 0.85, 1.0, 0.55, 0.45, 0.3, 0.22, 0.18];
 
-function organDrawbarWeights(bright: number): Float32Array {
-  const b = Math.max(0, Math.min(1, bright));
+export function organDrawbarWeights(bright: number): Float32Array {
+  // NaN/garbage tilt would poison every table entry (Math.min/max propagate
+  // it) and the voice would render NaN — degrade to the param default.
+  const b = Number.isFinite(bright) ? Math.max(0, Math.min(1, bright)) : 0.5;
   const weights = new Float32Array(9); // index 0 = DC slot, unused
   let energy = 0;
   for (let n = 0; n < 8; n++) {
@@ -3623,7 +3628,7 @@ const organ: InstrumentDefinition = {
     output.gain.value = 1;
     const p = { ...track.params };
     const { voices, register, cleanup, findByPitch } = makeVoiceManager(10);
-    const clickSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x0r96);
+    const clickSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x0696);
     // PeriodicWave per quantized tilt — at most ~101 coefficient tables per
     // track instance, shared across voices and re-built only when the knob
     // moves to a new 2 % step. disableNormalization: our own L2 norm keeps
@@ -3777,7 +3782,8 @@ const organ: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.01);
-            for (const node of [main, sub, clickSrc, ...lfos]) {
+            for (const node of [main, sub, ...lfos, clickSrc]) {
+              if (!node) continue;
               try {
                 node.stop(t + 0.05);
               } catch {
@@ -3788,7 +3794,8 @@ const organ: InstrumentDefinition = {
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.008);
-            for (const node of [main, sub, clickSrc, ...lfos]) {
+            for (const node of [main, sub, ...lfos, clickSrc]) {
+              if (!node) continue;
               try {
                 node.stop(now + 0.02);
               } catch {
@@ -3818,6 +3825,458 @@ const organ: InstrumentDefinition = {
             clickBP?.disconnect();
             clickGain?.disconnect();
             amp.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Strings (ensemble/bowed) ---------------- */
+// Bowed ensemble: 3 saw voices detuned ±7/±12 cents (ENSEMBLE) through a
+// slow-bow SVF (BOW lifts the low-mid, velocity widens the cutoff), delayed
+// vibrato like a real string section breathing together. Deterministic.
+
+const strings: InstrumentDefinition = {
+  kind: "strings",
+  name: "Strings",
+  params: stringsParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.01, p.attack ?? 0.18);
+        const release = Math.max(0.05, p.release ?? 0.7);
+        const hold = Math.max(durationSec, attack + 0.05);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.4;
+        const level = velocity * dbToLin(p.level ?? -9);
+        const ensemble = Math.max(0, Math.min(1, p.ensemble ?? 0.5));
+        const bow = Math.max(0, Math.min(1, p.bow ?? 0.45));
+        // Section amp: slow bow attack, full sustain, long release.
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level * 0.4, 0.0002), when + attack * 0.5);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // Bow character: gentle low-mid lift (the rosin) + SVF brightness.
+        const bowShelf = ctx.createBiquadFilter();
+        bowShelf.type = "lowshelf";
+        bowShelf.frequency.value = 320;
+        bowShelf.gain.value = bow * 4;
+        const svf = createVoiceFilter(
+          ctx,
+          Math.max(200, Math.min(12000, (p.cutoff ?? 4200) * (0.8 + velocity * 0.4))),
+          Math.max(0.1, Math.min(8, p.resonance ?? 0.9)),
+          0,
+        );
+        bowShelf.connect(svf.input);
+        svf.output.connect(amp);
+        amp.connect(output);
+
+        // Three detuned saws — the section. Deterministic detune offsets.
+        const offsets = [0, 7, -12];
+        const sectionOscillators: OscillatorNode[] = [];
+        const sectionGains: GainNode[] = [];
+        for (let v = 0; v < 3; v++) {
+          const osc = ctx.createOscillator();
+          osc.type = "sawtooth";
+          const spread = v === 0 ? 0 : offsets[v]! * (0.4 + ensemble * 0.6);
+          osc.frequency.setValueAtTime(freq, when);
+          osc.detune.setValueAtTime(spread, when);
+          const vg = ctx.createGain();
+          vg.gain.value = v === 0 ? 1 : 0.7;
+          osc.connect(vg).connect(bowShelf);
+          osc.start(when);
+          osc.stop(stopTime);
+          sectionOscillators.push(osc);
+          sectionGains.push(vg);
+        }
+
+        // Delayed vibrato (the section breathes together after the attack).
+        const vibDepth = Math.max(0, Math.min(1, p.vibrato ?? 0.35));
+        const vibRate = Math.max(0.1, Math.min(8, p.vibRate ?? 4.5));
+        const vibDelay = Math.max(0.05, Math.min(1.5, p.vibDelay ?? 0.45));
+        let lfo: OscillatorNode | null = null;
+        let lfoGain: GainNode | null = null;
+        if (vibDepth > 0.001) {
+          lfo = ctx.createOscillator();
+          lfo.type = "sine";
+          lfo.frequency.value = vibRate;
+          lfoGain = ctx.createGain();
+          lfoGain.gain.setValueAtTime(0.0001, when);
+          lfoGain.gain.linearRampToValueAtTime(vibDepth * 22, Math.min(when + vibDelay + 0.3, off));
+          lfo.connect(lfoGain).connect(svf.frequency);
+          lfo.start(when);
+          lfo.stop(stopTime);
+        }
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.03);
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.02);
+          },
+        );
+        // A silent clock releases the per-note graph after every scheduled
+        // source has ended, including the shared vibrato modulation nodes.
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            for (const osc of sectionOscillators) osc.disconnect();
+            for (const gain of sectionGains) gain.disconnect();
+            lfo?.disconnect();
+            lfoGain?.disconnect();
+            bowShelf.disconnect();
+            svf.disconnect();
+            amp.disconnect();
+            clock.disconnect();
+            clockGain.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Bell (inharmonic FM) ---------------- */
+// Trap/drill bell lead: 2-op FM with an INHARMONIC ratio (default 3.46 —
+// the glockenspiel/bell partial that 4-op keys cannot reach), a SHIMMER
+// partial (~5.4×) that decays slower than the strike, and a STRIKE noise
+// transient. Deterministic (seeded strike noise per track).
+
+const bell: InstrumentDefinition = {
+  kind: "bell",
+  name: "Bell",
+  params: bellParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(10);
+    const strikeSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x6e11);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, _durationSec) {
+        const freq = midiToFreq(pitch);
+        const decay = Math.max(0.15, p.decay ?? 2.2);
+        const stopTime = when + decay * 1.4 + 0.3;
+        const level = velocity * dbToLin(p.level ?? -10);
+        const ratio = Math.max(1.5, Math.min(7.5, p.ratio ?? 3.46));
+        const shimmer = Math.max(0, Math.min(1, p.shimmer ?? 0.35));
+        const strike = Math.max(0, Math.min(1, p.strike ?? 0.4));
+        const tone = Math.max(400, Math.min(12000, p.tone ?? 6500));
+        const attack = Math.max(0.001, p.attack ?? 0.002);
+
+        const amp = ctx.createGain();
+        // Bell body: instant strike, exponential ring, never fully zero while
+        // the partials decay.
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.exponentialRampToValueAtTime(0.0002, when + decay * 0.85);
+        amp.gain.setTargetAtTime(0.0001, when + decay * 0.85, decay / 6);
+
+        // Strike transient: filtered noise thump at the contact.
+        let strikeSrc: AudioBufferSourceNode | null = null;
+        let strikeBP: BiquadFilterNode | null = null;
+        let strikeGain: GainNode | null = null;
+        if (strike > 0.001) {
+          strikeSrc = ctx.createBufferSource();
+          strikeSrc.buffer = strikeSeed;
+          strikeBP = ctx.createBiquadFilter();
+          strikeBP.type = "bandpass";
+          strikeBP.frequency.value = Math.max(800, freq * 2.5);
+          strikeBP.Q.value = 0.9;
+          strikeGain = ctx.createGain();
+          strikeGain.gain.setValueAtTime(Math.max(level * strike * 0.7, 0.0002), when);
+          strikeGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+          strikeSrc.connect(strikeBP).connect(strikeGain).connect(amp);
+          strikeSrc.start(when, (hashString(track.id) % 991) / 1000);
+          strikeSrc.stop(when + 0.08);
+        }
+
+        // Body: inharmonic 2-op FM. Modulator ratio > integer = the metallic
+        // inharmonic partial; index scales with velocity for the strike bite.
+        const carrier = ctx.createOscillator();
+        carrier.type = "sine";
+        carrier.frequency.value = freq;
+        const modulator = ctx.createOscillator();
+        modulator.type = "sine";
+        modulator.frequency.value = freq * ratio;
+        const modGain = ctx.createGain();
+        const index = freq * (1.2 + velocity * 1.6);
+        modGain.gain.setValueAtTime(index, when);
+        modGain.gain.setTargetAtTime(index * 0.12, when + 0.05, decay / 4);
+        modulator.connect(modGain).connect(carrier.frequency);
+
+        // Shimmer: the high partial that outlives the strike (the "gleam").
+        const shimmerOsc = ctx.createOscillator();
+        shimmerOsc.type = "sine";
+        shimmerOsc.frequency.value = freq * 5.4;
+        const shimmerGain = ctx.createGain();
+        shimmerGain.gain.setValueAtTime(0.0001, when);
+        shimmerGain.gain.exponentialRampToValueAtTime(Math.max(level * shimmer * 0.5, 0.0002), when + attack + 0.01);
+        shimmerGain.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+
+        // Tone trim (LP) — bells stay glassy but never fizzy.
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = tone;
+        lp.Q.value = 0.5;
+
+        modulator.connect(modGain);
+        carrier.connect(lp);
+        shimmerOsc.connect(lp);
+        lp.connect(amp);
+        amp.connect(output);
+
+        carrier.start(when);
+        carrier.stop(stopTime);
+        modulator.start(when);
+        modulator.stop(stopTime);
+        shimmerOsc.start(when);
+        shimmerOsc.stop(stopTime);
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.01);
+          },
+        );
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            carrier.disconnect();
+            modulator.disconnect();
+            modGain.disconnect();
+            shimmerOsc.disconnect();
+            lp.disconnect();
+            amp.disconnect();
+            strikeSrc?.disconnect();
+            strikeBP?.disconnect();
+            strikeGain?.disconnect();
+            shimmerGain.disconnect();
+            clock.disconnect();
+            clockGain.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Reese (detuned bass) ---------------- */
+// The dnb bass: two saws beating ±DETUNE cents against each other, a sine
+// sub underneath, the LP filter swept by a slow MOVEMENT LFO (the classic
+// notch-walk), drive for the growl. LEGATO by default (GLIDE 0.6) — the
+// Reese lives on slides. Deterministic.
+
+const reese: InstrumentDefinition = {
+  kind: "reese",
+  name: "Reese",
+  params: reeseParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(4);
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const release = Math.max(0.02, p.release ?? 0.25);
+        const hold = Math.max(durationSec, 0.06);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.2;
+        const level = velocity * dbToLin(p.level ?? -7);
+        const detune = Math.max(0, Math.min(1, p.detune ?? 0.7));
+        const movement = Math.max(0, Math.min(1, p.movement ?? 0.45));
+        const moveRate = Math.max(0.05, Math.min(4, p.moveRate ?? 0.35));
+
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.015);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        const svf = createVoiceFilter(
+          ctx,
+          Math.max(150, Math.min(8000, p.cutoff ?? 1600)),
+          Math.max(0.1, Math.min(8, p.resonance ?? 1.6)),
+          0,
+          Math.max(0, Math.min(1, p.drive ?? 0.3)),
+        );
+        svf.output.connect(amp);
+        amp.connect(output);
+
+        // Filter MOVEMENT: the slow LFO walk that makes the Reese morph.
+        let moveLfo: OscillatorNode | null = null;
+        let moveMod: GainNode | null = null;
+        if (movement > 0.001) {
+          moveLfo = ctx.createOscillator();
+          moveLfo.type = "sine";
+          moveLfo.frequency.value = moveRate;
+          moveMod = ctx.createGain();
+          moveMod.gain.value = movement * (p.cutoff ?? 1600) * 0.55;
+          moveLfo.connect(moveMod).connect(svf.frequency);
+          moveLfo.start(when);
+          moveLfo.stop(stopTime);
+        }
+
+        // Two detuned saws — the beating IS the sound. ±detune up to ~35 cents.
+        const pair: OscillatorNode[] = [];
+        for (const sign of [-1, 1]) {
+          const osc = ctx.createOscillator();
+          osc.type = "sawtooth";
+          const glideAmt = Math.max(0, Math.min(1, p.glide ?? 0.6));
+          const fromFreq = slideFrom ? midiToFreq(slideFrom.pitch) : runtime.lastFreq;
+          if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
+            const glideSec = Math.max(0.02, glideAmt * 0.4);
+            osc.frequency.setValueAtTime(fromFreq * Math.pow(2, (sign * detune * 35) / 1200), when);
+            osc.frequency.exponentialRampToValueAtTime(
+              freq * Math.pow(2, (sign * detune * 35) / 1200),
+              Math.min(when + glideSec, off),
+            );
+          } else {
+            osc.frequency.setValueAtTime(freq * Math.pow(2, (sign * detune * 35) / 1200), when);
+          }
+          const vg = ctx.createGain();
+          vg.gain.value = 0.55;
+          osc.connect(vg).connect(svf.input);
+          osc.start(when);
+          osc.stop(stopTime);
+          pair.push(osc);
+        }
+
+        // Sub sine — the anchor the beating orbits around.
+        const sub = ctx.createOscillator();
+        sub.type = "sine";
+        sub.frequency.setValueAtTime(freq, when);
+        const subGain = ctx.createGain();
+        subGain.gain.value = Math.max(0, Math.min(1, p.sub ?? 0.5)) * 0.9;
+        sub.connect(subGain).connect(svf.input);
+        sub.start(when);
+        sub.stop(stopTime);
+        runtime.lastFreq = freq;
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.012);
+          },
+        );
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            for (const osc of pair) osc.disconnect();
+            sub.disconnect();
+            subGain.disconnect();
+            svf.disconnect();
+            amp.disconnect();
+            moveLfo?.disconnect();
+            moveMod?.disconnect();
+            clock.disconnect();
+            clockGain.disconnect();
           } catch {
             /* already */
           }
@@ -5107,6 +5566,10 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   wavetable,
   granular,
   keys,
+  organ,
+  strings,
+  bell,
+  reese,
   fm,
   pluck,
   flute,

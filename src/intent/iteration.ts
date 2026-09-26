@@ -192,9 +192,22 @@ export function compileIteration(
 
   // Make the referenced in-memory candidate available to the normal source-
   // pattern seed/provenance path even when it has not been applied yet.
+  // A length change pre-resizes the source candidate to the new length:
+  // the generator derives content FROM the source, so a 32-step source on a
+  // 16-step request would carry protected hits past the requested length and
+  // the preserve-length gate would (correctly) reject the candidate.
+  const sourcePattern =
+    fullRegen && (preserve.includes("drums") || melodicPreserved)
+      ? {
+          ...candidate.pattern,
+          stepCount: regenIntent.length,
+          ...(preserve.includes("drums") ? { rows: resizeRows(candidate.pattern.rows, regenIntent.length) } : {}),
+          ...(melodicPreserved ? { notes: resizeNotes(candidate.pattern.notes, regenIntent.length) } : {}),
+        }
+      : candidate.pattern;
   const sourceDoc: ProjectDocument = {
     ...doc,
-    patterns: [...doc.patterns.filter((pattern) => pattern.id !== candidate.pattern.id), candidate.pattern],
+    patterns: [...doc.patterns.filter((pattern) => pattern.id !== candidate.pattern.id), sourcePattern],
   };
   const generated = generateLocalResult(sourceDoc, regenIntent, "preview");
   const scope = `iterácia #${reference.index + 1}`;

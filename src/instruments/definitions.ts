@@ -590,6 +590,60 @@ export const organParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
 ];
 
+export const stringsParams: ParamDef[] = [
+  { id: "ensemble", label: "ENSEMBLE", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "vibrato", label: "VIB", min: 0, max: 1, default: 0.35, format: formatPct },
+  {
+    id: "vibRate",
+    label: "V-RATE",
+    min: 0.1,
+    max: 8,
+    default: 4.5,
+    unit: "Hz",
+    format: (v) => `${v.toFixed(2)} Hz`,
+    taper: "log",
+  },
+  { id: "vibDelay", label: "V-DELAY", min: 0.05, max: 1.5, default: 0.45, unit: "s", format: formatMs },
+  { id: "bow", label: "BOW", min: 0, max: 1, default: 0.45, format: formatPct },
+  { id: "cutoff", label: "CUTOFF", min: 200, max: 12000, default: 4200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 0.9, format: (v) => v.toFixed(1) },
+  { id: "attack", label: "ATTACK", min: 0.01, max: 3, default: 0.18, unit: "s", format: formatMs },
+  { id: "release", label: "RELEASE", min: 0.05, max: 5, default: 0.7, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -9, unit: "dB", format: formatDb },
+];
+
+export const bellParams: ParamDef[] = [
+  { id: "ratio", label: "RATIO", min: 1.5, max: 7.5, default: 3.46, format: (v) => v.toFixed(2) },
+  { id: "decay", label: "DECAY", min: 0.15, max: 6, default: 2.2, unit: "s", format: formatSec },
+  { id: "shimmer", label: "SHIMMER", min: 0, max: 1, default: 0.35, format: formatPct },
+  { id: "strike", label: "STRIKE", min: 0, max: 1, default: 0.4, format: formatPct },
+  { id: "tone", label: "TONE", min: 400, max: 12000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 0.5, default: 0.002, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -10, unit: "dB", format: formatDb },
+];
+
+export const reeseParams: ParamDef[] = [
+  { id: "detune", label: "DETUNE", min: 0, max: 1, default: 0.7, format: formatPct },
+  { id: "movement", label: "MOVE", min: 0, max: 1, default: 0.45, format: formatPct },
+  {
+    id: "moveRate",
+    label: "M-RATE",
+    min: 0.05,
+    max: 4,
+    default: 0.35,
+    unit: "Hz",
+    format: (v) => `${v.toFixed(2)} Hz`,
+    taper: "log",
+  },
+  { id: "sub", label: "SUB", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.3, format: formatPct },
+  { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.6, format: formatPct },
+  { id: "cutoff", label: "CUTOFF", min: 150, max: 8000, default: 1600, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 1.6, format: (v) => v.toFixed(1) },
+  { id: "release", label: "RELEASE", min: 0.02, max: 3, default: 0.25, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -7, unit: "dB", format: formatDb },
+];
+
 export const logdrumParams: ParamDef[] = [
   { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
   { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
@@ -706,6 +760,9 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   fm: { kind: "fm", name: "FM", params: fmParams },
   keys: { kind: "keys", name: "Keys", params: keysParams },
   organ: { kind: "organ", name: "Organ", params: organParams },
+  strings: { kind: "strings", name: "Strings", params: stringsParams },
+  bell: { kind: "bell", name: "Bell", params: bellParams },
+  reese: { kind: "reese", name: "Reese", params: reeseParams },
   pluck: { kind: "pluck", name: "Pluck Synth", params: pluckParams },
   flute: { kind: "flute", name: "Flute", params: fluteParams },
   logdrum: { kind: "logdrum", name: "Log Drum", params: logdrumParams },
@@ -724,6 +781,9 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "granular",
   "keys",
   "organ",
+  "strings",
+  "bell",
+  "reese",
   "fm",
   "pluck",
   "flute",

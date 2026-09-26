@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { normalizeProject, sanitizeSampleLayers } from "../src/project-model/schema";
+import { normalizeProject, sanitizeSampleLayers, migrateProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { drumHitsInWindow, resolveHitSampleId, MAX_RATCHET } from "../src/project-model/groove";
 import { declickFadeOut, DECLICK_TAIL_SEC, resolveSlicePlayback } from "../src/audio-engine/AudioEngine";
 import { FACTORY_SNARE_RR, roundRobinLayers } from "../src/sample-library/velocity-layers";
@@ -202,6 +202,28 @@ describe("pad layer sanitization", () => {
     const layers = roundRobinLayers(["a", "b"]);
     expect(layers.map((l) => l.min)).toEqual([0, 0]);
     expect(layers.map((l) => l.max)).toEqual([1, 1]);
+  });
+
+  it("migrates an older project without pad layers and preserves them when present", () => {
+    const doc = emptyDoc();
+    const drum = firstDrum(doc);
+    const padId = drum.pads[4].id;
+    const legacy = { ...doc, schemaVersion: SCHEMA_VERSION - 1 } as ProjectDocument;
+    const migrated = migrateProject(legacy);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    // A pre-v8 project has no layer field anywhere and stays playable.
+    expect(padById(migrated, padId).layers).toBeUndefined();
+
+    const withLayers: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.kind === "drum" && t.id === drum.id
+          ? { ...t, pads: t.pads.map((p) => (p.id === padId ? { ...p, layers: FACTORY_SNARE_RR } : p)) }
+          : t,
+      ),
+    };
+    const migratedLayered = migrateProject(JSON.parse(JSON.stringify(withLayers)) as ProjectDocument);
+    expect(padById(migratedLayered, padId).layers).toEqual(FACTORY_SNARE_RR);
   });
 });
 

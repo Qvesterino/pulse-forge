@@ -11,7 +11,7 @@ add_executable(kyx-windows-audio-probe main.cpp)
 target_compile_features(kyx-windows-audio-probe PRIVATE cxx_std_17)
 target_compile_definitions(kyx-windows-audio-probe PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_compile_options(kyx-windows-audio-probe PRIVATE /W4 /permissive-)
-target_link_libraries(kyx-windows-audio-probe PRIVATE ole32 propsys uuid)
+target_link_libraries(kyx-windows-audio-probe PRIVATE avrt ole32 propsys uuid)
 
 if(BUILD_TESTING)
   add_executable(kyx-windows-audio-probe-period-tests shared-period-selection-test.cpp)

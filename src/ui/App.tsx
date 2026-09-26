@@ -889,7 +889,7 @@ export function App({
         if (clip) {
           event.preventDefault();
           try {
-            services.store.execute(splitAudioClipAtTick(doc, clip.id, pos));
+            services.store.execute(splitAudioClipAtTick(doc, clip.id, pos, services.bank.get(clip.bufferId)?.duration));
           } catch {}
           return;
         }

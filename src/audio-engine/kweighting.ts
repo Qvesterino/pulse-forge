@@ -186,3 +186,65 @@ export function analyzeLoudnessBuffer(channels: readonly Float32Array[], sampleR
     measured,
   };
 }
+
+/**
+ * Measure only integrated loudness without retaining a full filtered copy of
+ * the audio. This is intended for long, offline A/B renders: a few 100 ms
+ * block powers are kept instead of one Float64 sample per channel.
+ */
+export function integratedLufsStreaming(channels: readonly Float32Array[], sampleRate: number): number | null {
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || channels.length === 0) return null;
+  const length = channels[0]?.length ?? 0;
+  if (length < Math.ceil(0.4 * sampleRate) || channels.some((channel) => channel.length !== length)) return null;
+
+  const filters = channels.map(() => new KWeightingFilter(kWeightingCoefficients(sampleRate)));
+  const subblock = Math.max(1, Math.round(SUBBLOCK_SECONDS * sampleRate));
+  const subPowers: number[] = [];
+  let subPower = 0;
+  let samplesInSubblock = 0;
+
+  for (let frame = 0; frame < length; frame++) {
+    let framePower = 0;
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+      const sample = channels[channelIndex]?.[frame] ?? 0;
+      const filtered = filters[channelIndex]?.processSample(Number.isFinite(sample) ? sample : 0) ?? 0;
+      framePower += filtered * filtered;
+    }
+    subPower += framePower;
+    samplesInSubblock += 1;
+    if (samplesInSubblock === subblock) {
+      subPowers.push(subPower / subblock);
+      subPower = 0;
+      samplesInSubblock = 0;
+    }
+  }
+
+  const blockPowers: number[] = [];
+  for (let start = 0; start + 4 <= subPowers.length; start++) {
+    const power =
+      ((subPowers[start] ?? 0) +
+        (subPowers[start + 1] ?? 0) +
+        (subPowers[start + 2] ?? 0) +
+        (subPowers[start + 3] ?? 0)) /
+      4;
+    const lufs = power > 1e-12 ? -0.691 + 10 * Math.log10(power) : -180;
+    if (lufs > -70) blockPowers.push(power);
+  }
+  if (blockPowers.length === 0) return null;
+
+  const absoluteMean = blockPowers.reduce((sum, power) => sum + power, 0) / blockPowers.length;
+  const relativeGate = -0.691 + 10 * Math.log10(absoluteMean) - 10;
+  const gateFloor = Math.max(-70, relativeGate);
+  let gatedPower = 0;
+  let gatedCount = 0;
+  for (const power of blockPowers) {
+    const lufs = power > 1e-12 ? -0.691 + 10 * Math.log10(power) : -180;
+    if (lufs >= gateFloor) {
+      gatedPower += power;
+      gatedCount += 1;
+    }
+  }
+  if (gatedCount === 0) return null;
+  const meanPower = gatedPower / gatedCount;
+  return meanPower > 1e-12 ? -0.691 + 10 * Math.log10(meanPower) : null;
+}

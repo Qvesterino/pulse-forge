@@ -4132,7 +4132,7 @@ export function ArrangementPanel() {
                   return;
                 }
                 try {
-                  execute(splitAudioClipAtTick(services.store.doc, c.id, pos));
+                  execute(splitAudioClipAtTick(services.store.doc, c.id, pos, services.bank.get(c.bufferId)?.duration));
                 } catch (err) {
                   setActionError(String(err));
                 }

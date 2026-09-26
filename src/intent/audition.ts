@@ -43,6 +43,39 @@ export function auditionDoc(doc: ProjectDocument, pattern: Pattern, fx?: Product
 
 let sharedContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
+let currentGainNode: GainNode | null = null;
+
+export interface AuditionLevelMatch {
+  beforeGain: number;
+  afterGain: number;
+  targetLufs: number;
+  beforeGainDb: number;
+  afterGainDb: number;
+}
+
+/** Match two measured audition renders by attenuating only the louder take. */
+export function matchAuditionLevels(beforeLufs: number | null, afterLufs: number | null): AuditionLevelMatch | null {
+  if (
+    beforeLufs === null ||
+    afterLufs === null ||
+    !Number.isFinite(beforeLufs) ||
+    !Number.isFinite(afterLufs) ||
+    beforeLufs <= -70 ||
+    afterLufs <= -70
+  ) {
+    return null;
+  }
+  const targetLufs = Math.min(beforeLufs, afterLufs);
+  const beforeGainDb = targetLufs - beforeLufs;
+  const afterGainDb = targetLufs - afterLufs;
+  return {
+    beforeGain: Math.pow(10, beforeGainDb / 20),
+    afterGain: Math.pow(10, afterGainDb / 20),
+    targetLufs,
+    beforeGainDb,
+    afterGainDb,
+  };
+}
 
 function playbackContext(): AudioContext {
   // A closed context never recovers (OS audio-device swap, system suspend,
@@ -65,7 +98,9 @@ function playbackContext(): AudioContext {
 /** Stop whatever is currently auditioning (safe to call anytime). */
 export function stopAudition(): void {
   const source = currentSource;
+  const gain = currentGainNode;
   currentSource = null;
+  currentGainNode = null;
   if (source) {
     try {
       source.stop();
@@ -74,6 +109,7 @@ export function stopAudition(): void {
     }
     source.disconnect();
   }
+  gain?.disconnect();
 }
 
 /**
@@ -97,18 +133,26 @@ export async function renderAuditionBuffer(
   });
 }
 
-/** Play a rendered candidate buffer, stopping any previous audition. */
-export function playAuditionBuffer(buffer: AudioBuffer, onEnded?: () => void): void {
+/** Play a rendered candidate buffer, stopping any previous audition. Gain is preview-only. */
+export function playAuditionBuffer(buffer: AudioBuffer, onEnded?: () => void, playbackGain = 1): void {
   stopAudition();
   const ctx = playbackContext();
   const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
   source.buffer = buffer;
+  gain.gain.value = Number.isFinite(playbackGain) ? Math.max(0, Math.min(1, playbackGain)) : 1;
   source.onended = () => {
-    if (currentSource === source) currentSource = null;
+    if (currentSource !== source) return;
+    currentSource = null;
+    currentGainNode = null;
+    source.disconnect();
+    gain.disconnect();
     onEnded?.();
   };
-  source.connect(ctx.destination);
+  source.connect(gain);
+  gain.connect(ctx.destination);
   currentSource = source;
+  currentGainNode = gain;
   void source.start();
 }
 

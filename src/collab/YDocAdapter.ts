@@ -181,6 +181,9 @@ function yMapToPad(m: unknown): DrumPad {
     sliceFadeOut: map.has("sliceFadeOut") ? (map.get("sliceFadeOut") as number) : undefined,
     sliceReverse: map.has("sliceReverse") ? (map.get("sliceReverse") as boolean) : undefined,
     ...(map.has("mod") ? { mod: (plainValue(map.get("mod")) as unknown as DrumPad["mod"]) ?? null } : {}),
+    // Round-robin / velocity sets ride as plain JSON like `mod` — same
+    // serialization contract, so collab peers hear the same variants.
+    ...(map.has("layers") ? { layers: plainValue(map.get("layers")) as unknown as DrumPad["layers"] } : {}),
   } as DrumPad;
   if (synth) (base as unknown as { synth: DrumPad["synth"] }).synth = synth;
   return base;
@@ -1012,6 +1015,7 @@ function padToYMap(pad: DrumPad): Y.Map<unknown> {
   if (pad.sliceFadeOut !== undefined) m.set("sliceFadeOut", pad.sliceFadeOut);
   if (pad.sliceReverse !== undefined) m.set("sliceReverse", pad.sliceReverse);
   if (pad.mod) m.set("mod", plainValue(pad.mod));
+  if (pad.layers) m.set("layers", plainValue(pad.layers));
   if (pad.synth) {
     const synthMap = new Y.Map<unknown>();
     synthMap.set("type", pad.synth.type);
