@@ -102,3 +102,20 @@ not a numbers wave.
    (14/14: descriptor coverage now also chorus + bitcrusher, headline pins, snap table, and a
    6-voice/+20 ms render smoke — finite, audible, bounded).
 3. **Vlna 3 — DSP:** oversampling on the drive family (2×/4× polyphase pre/post), pattern per `morphDynamicsNode`.
+   **DELIVERED 2026-09-26 — with an honest scope correction.** The audit's inventory was partially
+   stale: verification found the native WaveShaper drives ALREADY run 4× oversampled (saturation,
+   clipper + ceiling guard, distortion, drumBuss, bassBuss, shimmer), tapeSat ships 4× polyphase
+   in-worklet, svFilter 2×, MORPH 2× — and bitcrusher's aliasing is the EFFECT (sample-hold), so no
+   OS by design. ringMod has no saturator at all (carrier-sum fold is the aesthetic; documented).
+   The genuinely missing two were **freqShifter** and **kaskada (RYFT)** — both tanh drives at base
+   rate. Both now run the svfilter 2× pattern (9-tap Hamming-sinc band-limit → saturate → anti-image
+   → decimate). The stage sits on the path into the SSB (freqShifter) / inside the feedback loop
+   (kaskada): the ~¾-sample extra phase is negligible against ≥1-sample (freqShifter fb) and
+   30–2000 ms (RYFT) loop delays, and kaskada's unity-small-signal law is preserved, so the loop
+   gain ceiling ≤ fb still holds. Guarded by `tests/drive-oversampling.test.ts`: on a hot 5.8 kHz
+   sine at DRIVE 1 the fold products (5th → 19 kHz, 7th → 7.4 kHz) sit ≥18 dB / ≥12 dB below the
+   base-rate saturator's while fundamental parity and the in-band 3rd harmonic survive, plus a
+   full-processor DRIVE-1 smoke. `tests/freq-shifter.test.ts` + the freqShifter slice of
+   `tests/fx-expansion.test.ts` moved from the `new Function` raw-source eval to ESM import (the
+   module now exports `createFreqShiftProcessor`); kaskada's own driven-loop suite exercises the
+   new stage directly.

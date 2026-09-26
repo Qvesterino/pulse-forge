@@ -7,8 +7,6 @@
  * to 440±shift with no harmonic series, which no pitch shifter reproduces.
  */
 import { describe, expect, it, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 class FakePort {
   onmessage: ((e: unknown) => void) | null = null;
