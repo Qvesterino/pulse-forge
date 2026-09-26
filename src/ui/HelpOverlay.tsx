@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EDITOR_SHORTCUTS, groupShortcuts, shortcutDisplayBindings } from "./shortcuts";
 import { gestureMatches, gesturesByArea } from "./helpContent";
+import { ModelPacksSection } from "./ModelPackCard";
 
 interface HelpOverlayProps {
   open: boolean;
@@ -191,6 +192,8 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
             ))}
           </div>
         )}
+
+        {!query && <ModelPacksSection />}
 
         <footer className="help-footer">
           <span>

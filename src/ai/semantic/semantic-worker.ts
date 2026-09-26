@@ -22,12 +22,37 @@ type Transformers = typeof import("@huggingface/transformers");
 type Extractor = Awaited<ReturnType<Transformers["pipeline"]>>;
 
 const LOCAL_MODEL_PATH = "/models/semantic/";
-const SUPPORTED_MODELS = new Set([
-  "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
-  "Xenova/all-MiniLM-L6-v2",
-]);
+const SUPPORTED_MODELS = new Set(["Xenova/paraphrase-multilingual-MiniLM-L12-v2", "Xenova/all-MiniLM-L6-v2"]);
 
 let extractorPromise: Promise<Extractor> | null = null;
+
+// ── Pack cache bridge (ROADMAP-FULL-DAW Phase 5) ─────────────────────────
+// transformers.js loads model bytes through plain `fetch` against
+// env.localModelPath — it has no cache hook of its own. When the semantic
+// pack was installed through the model pack manager (src/ai/packs/), the
+// files live in the Cache API instead of the origin (deployments don't ship
+// the dev-only public/ folder), so we intercept fetch in THIS worker's
+// scope: pack URLs are answered from the cache, everything else passes
+// through untouched. The original fetch stays the fallback — dev machines
+// keep serving the static files exactly as before.
+const originalFetch = self.fetch.bind(self);
+self.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  try {
+    const [{ MODEL_PACKS }, { installedPackResponseForUrl }] = await Promise.all([
+      import("../packs/registry"),
+      import("../packs/modelPackManager"),
+    ]);
+    const absolute = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+      self.location.href,
+    ).href;
+    const cached = await installedPackResponseForUrl(absolute, MODEL_PACKS);
+    if (cached) return cached;
+  } catch {
+    // Cache lookup must never break model loading — fall through to network.
+  }
+  return originalFetch(input as RequestInfo, init);
+};
 
 async function ensureExtractor(): Promise<Extractor> {
   if (!extractorPromise) {
@@ -62,7 +87,11 @@ async function ensureExtractor(): Promise<Extractor> {
 }
 
 /** Mean-pool the token embeddings over the attention mask, then L2-normalize. */
-function poolAndNormalize(lastHiddenState: Float32Array, dims: { batch: number; seq: number; dim: number }, mask: Array<number[]>): Float32Array[] {
+function poolAndNormalize(
+  lastHiddenState: Float32Array,
+  dims: { batch: number; seq: number; dim: number },
+  mask: Array<number[]>,
+): Float32Array[] {
   const vectors: Float32Array[] = [];
   for (let row = 0; row < dims.batch; row++) {
     const vector = new Float32Array(dims.dim);

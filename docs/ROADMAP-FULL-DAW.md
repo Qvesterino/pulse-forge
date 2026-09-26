@@ -185,10 +185,11 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       synthetic test is not evidence for real recorded material.
 - [x] Add a Chromium integration fixture that records two distinct synthetic
       PCM passes through AudioWorklet capture, reloads them from IndexedDB,
-      comps the passes through the take-lane UI, adds a warp pin from the comp
-      waveform context menu, exercises Undo/Redo for both edits, and proves
-      identical 32-bit float WAV output after project reopen. It also verifies
-      the marker and original PCM survive reload. This certifies the software
+      splits one restored pass at a PCM-frame-near arrangement tick and checks
+      contiguous boundaries plus exact source-window offset, comps through the
+      take-lane UI, and adds a warp pin from the comp waveform context menu.
+      Undo/Redo, PCM/marker persistence and identical 32-bit float WAV output
+      after project reopen are also verified. This certifies the software
       capture/edit/persistence/export path, not physical input routing or the
       musical quality of real performances.
 - [x] Add runtime live take-lane audition as a non-destructive playback
@@ -256,8 +257,20 @@ and offline/frozen output has a documented parity guarantee.
       audition the change, then commit through one reversible command.
 - [ ] Build a human blind-listening benchmark against the current baseline;
       keep heuristic-teacher agreement distinct from actual musical preference.
-- [ ] Download larger ONNX model packs only on explicit request with size,
+- [x] Download larger ONNX model packs only on explicit request with size,
       license, hash, progress, cancellation, cache and offline fallback.
+      Delivered 2026-09-26: `src/ai/packs/` (registry + download manager —
+      SHA-256-verified streamed downloads from the pinned upstream release
+      into the dedicated `pf:model-packs` Cache Storage bucket; a cancelled,
+      failed or tampered download evicts itself, never half-installs) +
+      `ModelPacksSection` UI card (HelpOverlay) with live progress and cancel +
+      semantic client/worker load cache-first so an installed pack works
+      offline in deployments that don't ship the dev-only `public/models/
+      semantic/` folder. Registry hashes are pinned to the fetch script's
+      manifest by `tests/model-packs.test.ts` (10/10). Companion ORT diet:
+      the three unused wasm variants (asyncify/jsep/jspi, ~69.5 MB) left the
+      repo — `sync-ort-assets.mjs` now copies only the variant the workers
+      fetch.
 - [ ] Keep MRT2 optional and platform-tiered; never upload a user's live input
       or project audio by default.
 
@@ -312,11 +325,12 @@ recovery and project interchange proven.
 1. **Certify editing in software:** exercise repeated comp edits, musical
    crossfades, sample-accurate boundaries, warp UI, undo/redo and final export
    over save/reopen. Synthetic tests cover crossfade implementation and
-   live/offline parity; a captured-PCM Chromium fixture covers take-lane comp,
-   context-menu warp-pin creation, Undo/Redo, PCM/marker persistence and exact
-   WAV parity across reopen. Sample-accurate edit boundaries, waveform-drag
-   warp on recorded material and physical hardware takes remain open. The fixed
-   3 ms warp-segment de-click is separate from musical crossfades.
+   live/offline parity; a captured-PCM Chromium fixture covers one PCM-frame-
+   near UI split and source-window mapping, take-lane comp, context-menu warp-
+   pin creation, Undo/Redo, PCM/marker persistence and exact WAV parity across
+   reopen. Broader sample-accurate edit coverage, waveform-drag warp on
+   recorded material and physical hardware takes remain open. The fixed 3 ms
+   warp-segment de-click is separate from musical crossfades.
 2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
    interface, driver mode and exact device-use window before opening a physical
    endpoint. Until then, do metadata-only/software work; do not claim measured

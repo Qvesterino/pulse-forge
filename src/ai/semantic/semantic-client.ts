@@ -113,13 +113,19 @@ function request(
 }
 
 /**
- * Cheap probe: the model is present only when `npm run semantic:fetch`
- * populated /models/semantic/manifest.json. Result is remembered for the
- * session — one 404 instead of repeated probes.
+ * Cheap probe: the model is present when EITHER the pack manager installed
+ * the semantic pack (Cache API — the deployed path, see src/ai/packs/) OR
+ * `npm run semantic:fetch` populated /models/semantic/manifest.json on the
+ * origin (the dev path). Result is remembered for the session — one 404
+ * instead of repeated probes.
  */
 export async function semanticAvailable(): Promise<boolean> {
   if (semanticMode() === "off" || unavailable || workerDisabled) return false;
   try {
+    const { SEMANTIC_PACK, PACK_MANIFEST_PATH } = await import("../packs/registry");
+    const { packFileResponse } = await import("../packs/modelPackManager");
+    const cached = await packFileResponse(SEMANTIC_PACK, PACK_MANIFEST_PATH);
+    if (cached) return true;
     const response = await fetch(assetUrl("/models/semantic/manifest.json"));
     if (!response.ok) {
       unavailable = true;

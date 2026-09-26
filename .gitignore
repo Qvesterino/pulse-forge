@@ -64,3 +64,9 @@ _aet*.log
 _test_run.log
 public/models/audio/pca-projection.json
 groove-listening/
+
+# ORT diet (Phase 5 pack wave): only the plain simd-threaded variant is fetched
+# at runtime (ranker/prior workers); the asyncify/jsep/jspi variants stay local-only.
+public/models/ort/ort-wasm-simd-threaded.asyncify.*
+public/models/ort/ort-wasm-simd-threaded.jsep.*
+public/models/ort/ort-wasm-simd-threaded.jspi.*

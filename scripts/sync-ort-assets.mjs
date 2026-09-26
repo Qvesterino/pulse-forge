@@ -15,7 +15,11 @@ const dest = path.join(ROOT, "public", "models", "ort");
 mkdirSync(dest, { recursive: true });
 let copied = 0;
 for (const file of readdirSync(src)) {
-  if (/^ort-wasm.*\.(wasm|mjs)$/.test(file)) {
+  // ORT diet (Phase 5 pack wave): only the plain simd-threaded variant is
+  // fetched at runtime (ranker/prior workers use ort-wasm-simd-threaded.wasm
+  // + the matching .mjs). The asyncify/jsep/jspi variants (~69.5 MB) are
+  // gitignored — copying them would resurrect dead deploy weight.
+  if (/^ort-wasm-simd-threaded\.(wasm|mjs)$/.test(file)) {
     copyFileSync(path.join(src, file), path.join(dest, file));
     copied += 1;
   }
