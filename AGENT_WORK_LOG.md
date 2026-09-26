@@ -4599,3 +4599,30 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validation:** 39/39 targeted (presets/kick-bank/velocity-layers/fx-expansion) + browser QA 369/369 PASS. tsc 0 errors. Factory presets 375 total.
 
 **Remaining backlog:** A9 partially (dB/threshold verdicts documented), D-consistency notes — decisions/documentation only.
+
+---
+
+## VLNA 7 — MAINSTREAM HEAVYWEIGHTS (2026-09-26, user: „drake, kanye west, kodak black, atď.")
+
+**Scope poznámka:** kanye už existuje (boom bap/classic entry z C1) — táto vlna dopĺňa CHÝBAJÚCICH mainstreamov. Pop smoke (drill.uk) a ice spice (jersey) tiež existovali — preskočené.
+
+**15 interpretov (roster 169 → 184), všetko na EXISTUJÚCE groovey (žiadne nové, čistý roster wave):**
+- **Drake** (+ovo/6ix) — trap/sparse dark 128–142 (Toronto atmospheric)
+- **Kodak Black** — trap/sparse chill 125–140 (Florida lazy)
+- **Lil Durk** (+OTF) a **Polo G** (+Capalot) — drill/dark 135–150 (melodic drill)
+- **NBA Youngboy** (+4KT) — trap/rolling aggressive 130–150
+- **Rod Wave** — trap/sparse chill 128–140 (sung-trap)
+- **Juice WRLD** (+999) — trap/rolling dark 135–155 (emo)
+- **XXXTentacion** (+members only) — trap/hyper aggressive 140–160
+- **Tyler, the Creator** (+igor/flower boy) — trap/classic chill **75–105** (neo-soul boom bap, najpomalší boom bap roster entry)
+- **Mac Miller** (+circles) — trap/classic chill 80–100 (jazz)
+- **Denzel Curry** — trap/hyper aggressive 140–160
+- **JPEGMAFIA** (+peggy/devon hendryx) — trap/hyper aggressive 135–160
+- **Megan Thee Stallion** (+hot girl) — trap/rolling energetic 125–140 (Houston dedičstvo)
+- **Lil Peep** (+GBC) a **A Boogie** — trap/sparse chill (emo guitar / NY melodic)
+
+**Dôležité súbory:** src/intent/artists.ts, tests/intent-artists.test.ts. (Loudness regen NIE — artisti nešídu v FACTORY_PRESETS; 369 ostáva.)
+
+**Validácia:** artists+parser+presets+loudness **140/140**, 6-súborová battery **204/204**, `tsc --noEmit` čistý na campaign súboroch (providers/IntentPanel/timeline-rec errory = ich in-flight).
+
+**Roster stav: 184 entry.** Hip-hop pokrytie teraz zahŕňa aj mainstreamové mená. Prirodzené ďalšie: R&B/pop roster (SZA, Frank Ocean, the Weeknd...), reggaeton groove, alebo počúvací harness doladenie.
