@@ -1117,6 +1117,322 @@ const ANYMA: ArtistProfile = {
   lastUpdated: "2026-09-26",
 };
 
+const FLUME: ArtistProfile = {
+  slug: "flume",
+  name: "Flume",
+  // TODO: "future-bass" enum slot — using "house" as the closest
+  // electronic umbrella. Future bass sits at 140-160 BPM half-time
+  // with chopped pitched vocals + supersaw chords; sonically closer
+  // to melodic dubstep than house, but the engine doesn't have a
+  // dedicated future-bass slot.
+  genres: ["house"],
+  signature: {
+    sound: [
+      "chopped pitched vocals (the Flume signature — pitched up, time-stretched, granular)",
+      "supersaw chords (lush, layered, detuned for width)",
+      "lush pluck synths (FM-bell character, present in mid-high range)",
+      "future house kick patterns (often half-time with snare on 2 and 4)",
+      "atmospheric drops with reverb-drenched pads",
+      "rapid hat patterns with vocal chops layered as textural elements",
+    ],
+    samples: [
+      "vocal one-shots from featured artists (often pitched +5 to +12)",
+      "synth chord stabs (often sampled from classic synth-pop)",
+      "field recordings (water, glass, metallic hits)",
+    ],
+    bpm: { typical: [140, 160], halfTime: [70, 80] },
+    keys: ["F minor", "G minor", "C minor", "E♭ minor"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "vocal chops dry-wet parallel with reverb (heavy sends)",
+      "supersaw stacked 3-5 layers across the stereo field (Haas on duplicates)",
+      "future house kick layered with sub-bass (kick = 808-style, sub = separate lane)",
+      "sidechain pumping on master bus (4-on-the-floor duck)",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "bright, emotional mids, present sub, soaring highs",
+    dynamicRange: "moderate — modern future-bass loud-master target",
+  },
+  gear: [
+    "Ableton Live",
+    "Serum",
+    "Native Instruments Massive",
+    "Sylenth1",
+    "FabFilter Pro-Q 3",
+    "Soundtoys Decapitator (parallel on master)",
+    "RC-20 Retro Color (on vocal bus)",
+    "Valhalla VintageVerb",
+    "Valhalla Supermassive",
+    "Granulator II (Max4Live — for the granular vocal chops)",
+    "Pitchproof (pitch-correction for the pitched vocal chops)",
+  ],
+  vibe: ["euphoric", "melodic", "atmospheric", "dreamy", "modern", "lush"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Flume_(musician)",
+    "https://www.soundonsound.com/techniques/flume-production",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const APHEX_TWIN: ArtistProfile = {
+  slug: "aphex-twin",
+  name: "Aphex Twin",
+  // TODO: "IDM" enum slot — using "ambient" as the closest umbrella
+  // since the Selected Ambient Works era is the most iconic surface.
+  // Aphex Twin's catalog spans ambient (SAW 85-92), IDM (Selected
+  // Ambient Works 85-92 + drukQs), breakcore / drill'n'bass (Windowlicker
+  // era), and techno (Computer Controlled Acoustic Instruments).
+  // "ambient" alone flattens the breadth.
+  genres: ["ambient"],
+  signature: {
+    sound: [
+      "complex polyrhythmic percussion (drukQs / Windowlicker era — odd time signatures, layered breaks)",
+      "ambient pads (SAW era — long sustained, evolving, often pitch-modulated)",
+      "manipulated vocal samples (often pitched, time-stretched beyond recognition)",
+      "acid basslines (TB-303 style — squelchy, resonant)",
+      "lush textures (reverb-drenched, layered, often 20+ stacked layers)",
+      "tape saturation and analog character (warm, slightly distorted)",
+    ],
+    samples: [
+      "manipulated vocal samples (often his own voice processed beyond recognition)",
+      "found sound / field recordings",
+      "TB-303 squelches (often self-recorded)",
+      "Akai S1000 / S3000 sample library textures",
+    ],
+    bpm: { typical: [90, 170] }, // wide range — ambient 90, drill'n'bass 170
+    keys: ["variable — often modal or atonal"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "complex stereo manipulation — panning automation, mid/side processing",
+      "reverb tails often 5-10 seconds for ambient pads",
+      "drum layers individually processed then summed for polyrhythmic feel",
+      "tape emulation on master bus (Studer A800 / ATR-102 character)",
+    ],
+  },
+  master: {
+    targetLufs: -11,
+    tonalBalance: "warm, complex stereo image, full-frequency but not harsh",
+    dynamicRange: "wide — character over loudness (intentional anti-loud-master)",
+  },
+  gear: [
+    "Custom hardware (often self-built or modified — including a custom mixer / sequencer)",
+    "Akai S1000 / S3000 (sampling)",
+    "Roland TB-303 (acid bassline source)",
+    "Roland TR-808 / TR-909 (drum machines)",
+    "Yamaha DX7 (FM synthesis)",
+    "Korg MS-20 (semi-modular analog)",
+    "various outboard compressors and EQs",
+    "Mac (custom Max / software patches)",
+    "Studer A800 (tape machine — used on his masters)",
+  ],
+  vibe: ["experimental", "complex", "atmospheric", "pioneering", "intense", "beautiful", "haunting"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Aphex_Twin",
+    "https://www.soundonsound.com/techniques/aphex-twin-selected-ambient-works",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const BOARDS_OF_CANADA: ArtistProfile = {
+  slug: "boards-of-canada",
+  name: "Boards of Canada",
+  // ✓ close match — BoC's signature sound is sample-based ambient
+  // electronica with tape saturation and faded-memory aesthetic.
+  // Sits squarely in the engine's "ambient" bucket.
+  genres: ["ambient"],
+  signature: {
+    sound: [
+      "warm analog synths (often Roland Juno / SH-101 / Korg MS-20)",
+      "sample-based (often 1970s educational film loops — the BoC signature aesthetic)",
+      "tape saturation (heavy — 4-track cassette warmth)",
+      "vinyl crackle / surface noise baked into the master",
+      "slow tempo with simple drum patterns (often 808 + acoustic samples)",
+      "melancholic pads (warm, evolving, often minor-key)",
+      "childhood memory aesthetic — hypnagogic, faded, nostalgic",
+    ],
+    samples: [
+      "1970s / 80s educational film audio (the BoC trademark — found in libraries)",
+      "analog synth recordings (Juno-106, SH-101, MS-20)",
+      "found sound (TV, radio, distant dialogue)",
+      "field recordings (often processed with tape)",
+    ],
+    bpm: { typical: [80, 110] },
+    keys: ["D minor", "F minor", "A minor", "E♭ minor"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "light",
+    stereoWidth: "normal",
+    subEmphasis: "subtle",
+    notes: [
+      "tape saturation baked into the mix bus (4-track cassette character)",
+      "vinyl crackle + tape hiss committed to the master (NOT a plugin — character)",
+      "drum hits short and dry (often 808 + acoustic samples)",
+      "pads sit deep in the mix (-6 to -10 dB below lead elements)",
+    ],
+  },
+  master: {
+    targetLufs: -11,
+    tonalBalance: "warm, low-mid forward, rolled-off highs (tape tilt)",
+    dynamicRange: "wide — NOT loud-mastered, character over loudness",
+  },
+  gear: [
+    "Roland Juno-106 (primary pad source)",
+    "Roland SH-101 (bass / lead)",
+    "Korg MS-20 (filter character)",
+    "Akai MPC (sample sequencing)",
+    "Akai S1000 / S3000 (sampling)",
+    "4-track cassette recorder (mix bus character)",
+    "Roland TR-808",
+    "custom Max / MSP patches",
+    "film archive libraries (educational footage — public domain)",
+  ],
+  vibe: ["nostalgic", "melancholic", "lo-fi", "faded", "childhood memory", "hypnagogic", "warm", "familiar"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Boards_of_Canada",
+    "https://www.residentadvisor.net/features/179",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const LIL_UZI_VERT: ArtistProfile = {
+  slug: "lil-uzi-vert",
+  name: "Lil Uzi Vert",
+  // ✓ exact match — vocal trap / emo-rap fits squarely in the trap
+  // family. The signature pitched-up vocal style is a trap sub-genre
+  // marker (Uzi, Juice WRLD, Lil Peep — all in this lineage).
+  genres: ["trap"],
+  signature: {
+    sound: [
+      "pitched-up emo vocals (the Uzi signature — often +5 to +12 semitones, layered with original)",
+      "trap 808s with long decay (often sustained, with heavy pitch slides)",
+      "rock-influenced melodies (synths that sound like electric guitar riffs)",
+      "ethereal pads and choir textures (gives the 'emo' aesthetic)",
+      "fast trap hi-hats with rapid triplet rolls",
+      "bright synth leads (often arpeggiated, mid-high range)",
+    ],
+    samples: [
+      "rock / metal one-shots (often processed into trap context)",
+      "vocal chops from features (often pitched + processed)",
+      "ethereal vocal textures (choir-like, atmospheric)",
+    ],
+    bpm: { typical: [140, 160], halfTime: [70, 80] },
+    keys: ["F minor", "G minor", "C minor", "B♭ minor"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "vocal layered with pitch-shifted duplicate at +7 or +12 semitones for the emo shimmer",
+      "808 with long decay (often 1.5-2.5 seconds) — sits under the vocal",
+      "rock-influenced synth leads pushed forward in the mix (mid-high range)",
+      "ethereal pads panned wide for the dreamy aesthetic",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "bright, present mids, sub-prominent, airy highs",
+    dynamicRange: "moderate — modern trap loud-master target",
+  },
+  gear: [
+    "FL Studio (longtime primary DAW)",
+    "Pro Tools (mixing)",
+    "Antares Auto-Tune Pro (heavy on vocals — the signature effect)",
+    "Omnisphere",
+    "Kontakt",
+    "FabFilter Pro-Q 3",
+    "Soundtoys Decapitator (parallel on vocal bus)",
+    "Valhalla VintageVerb (vocal reverb tails)",
+    "RC-20 Retro Color",
+  ],
+  vibe: ["emo", "ethereal", "melodic", "rebellious", "youthful", "dreamy", "punk-influenced"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Lil_Uzi_Vert",
+    "https://www.soundonsound.com/techniques/lil-uzi-vert-production",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const KAYTRANADA: ArtistProfile = {
+  slug: "kaytranada",
+  name: "Kaytranada",
+  // ✓ close match — lo-fi house / future R&B fits the engine's "house"
+  // bucket. Kaytranada's sound sits at the house / R&B / hip-hop
+  // intersection (often tagged "future R&B" or "lo-fi house" in
+  // critical reception).
+  genres: ["house"],
+  signature: {
+    sound: [
+      "chopped pitched vocals (often pitched +5 to +8 semitones, soulful)",
+      "lo-fi house drum patterns with shuffled hats (the Kaytra signature swing)",
+      "synth stabs (often short, punchy, R&B-flavored chord hits)",
+      "R&B-flavored chord progressions (smooth, soulful, often minor keys)",
+      "sample-based workflow (heavily uses samples — soul, funk, R&B)",
+      "808 sub bass with smooth character (not aggressive trap-style)",
+    ],
+    samples: [
+      "soul / funk samples (often pitched and chopped)",
+      "vocal chops from featured artists (often processed)",
+      "classic house / disco sample loops",
+    ],
+    bpm: { typical: [110, 122] },
+    keys: ["F minor", "D minor", "G minor", "A minor"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "medium",
+    stereoWidth: "normal",
+    subEmphasis: "moderate",
+    notes: [
+      "drums panned tight in the center (no wide stereo on the kit)",
+      "synth stabs sit in the 400-800 Hz range with simple tone",
+      "808 sub sits at 50-70 Hz with smooth release (no slides)",
+      "vocal chops dry-wet parallel with light reverb",
+    ],
+  },
+  master: {
+    targetLufs: -8,
+    tonalBalance: "punchy mids, present sub, smooth highs, R&B-friendly",
+    dynamicRange: "moderate — modern lo-fi house master target",
+  },
+  gear: [
+    "Ableton Live (primary DAW)",
+    "Akai MPC Renaissance (sample-based workflow)",
+    "Serum",
+    "Native Instruments Massive",
+    "Sylenth1",
+    "FabFilter Pro-Q 3",
+    "RC-20 Retro Color (on master bus for lo-fi character)",
+    "Soundtoys Decapitator (parallel on master)",
+    "Valhalla VintageVerb",
+  ],
+  vibe: ["lo-fi", "soulful", "smooth", "future R&B", "danceable", "warm", "swinging"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Kaytranada",
+    "https://www.residentadvisor.net/features/2481",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
 /* -----------------------------------------------------------------------
  * Registry (ordered by slug for deterministic JSON-equivalent output).
  * Add new profiles here as `{slug}-style` keys; keep the lookup table
@@ -1126,16 +1442,21 @@ const ANYMA: ArtistProfile = {
 
 export const ARTIST_PROFILES: Readonly<Record<string, ArtistProfile>> = Object.freeze({
   "ag-cook": AG_COOK,
+  "aphex-twin": APHEX_TWIN,
   anyma: ANYMA,
   "axl-beats": AXL_BEATS,
+  "boards-of-canada": BOARDS_OF_CANADA,
   burial: BURIAL,
   "dj-mustard": DJ_MUSTARD,
   "dj-tameil": DJ_TAMEIL,
   "dr-dre": DR_DRE,
   dvrst: DVRST,
   excision: EXCISION,
+  flume: FLUME,
   "fred-again": FRED_AGAIN,
   "j-dilla": J_DILLA,
+  kaytranada: KAYTRANADA,
+  "lil-uzi-vert": LIL_UZI_VERT,
   "metro-boomin": METRO_BOOMIN,
   "seven-lions": SEVEN_LIONS,
   skepta: SKEPTA,
