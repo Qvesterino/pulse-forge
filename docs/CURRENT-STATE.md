@@ -25,7 +25,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets                  |     463 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
 | **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **559** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                  |
+| **Vitest spec files**                  | **560** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                  |
 
 ## Flagship plugin implementations
 
@@ -141,6 +141,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 
 - **ADR 0012 — MRT2 generative tracks** records the Mac Apple-Silicon-only generative-tracks helper path; the helper builds in `native/mrt2-host/`, packaging lives in `electron-builder.yml` and `desktop:build:mac:mrt2`. `.github/workflows/ci.yml` gates its downloadable QA artifact on the shared test suite and packaged-app smoke verification.
 - **ADR 0013 — Windows generative companion tiers** records the separate Windows manager/transport, capture-first capability tiers, benchmark gate and fixed optional companion/model paths. The checked-in JAX capture host, opt-in WSL2/CUDA near-realtime launcher, SHA-256 package manifest verifier and guarded model-data uninstall script live under `companion/mrt2-windows/`, `desktop/` and `scripts/`; the macOS helper remains Apple Silicon-only. The 2026-09-25 RTX 3060 Laptop 600 s WSL2 stream failed promotion (35.98 ms p95, 9 overruns), so Windows live playback is still experimental and is not advertised as promoted realtime.
+- **Ableton Link over WS bridge** — `npm run link` starts a loopback bridge (`server/link-bridge.mjs`) owning a Link-style session clock (tempo-integrated absolute beat, continuity-preserving tempo rebases, 10 Hz JSON frames); the statusbar LINK chip joins/leaves and the client phase-locks the transport via `setBpmAnchored` (`src/collab/linkSync.ts`), writing adopted session tempo into the doc so the onDocChanged re-apply agrees. Bridge URLs pass the same `isAllowedServerUrl` gate as the collab relay; start/stop stays manual (Link phase is eternal, play snaps into phase). With the optional `abletonlink` package the bridge attaches to the real Link LAN session (experimental, best-effort); without it, all connected KYX peers stay in phase with each other. Spec-pinned by `tests/link-sync.test.ts`.
 
 ## Prior test-gate baseline — not verified on the current revision
 
