@@ -49,6 +49,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\buk drill\b|\bsample drill\b/, "drill"],
   [/\bgrime\b/, "drill"],
   [/\bdrift phonk\b/, "phonk"],
+  // Deep dubstep BEFORE the generic dubstep entry — the 140 Croydon sound is
+  // its own lane (halftime, sub-heavy), not the brostep/riddim side.
+  [/\bdeep dubstep\b|\buk dubstep\b|\b140 dubstep\b|\bdeep dub\b/, "trap"],
   [/\bdubstep\b|\briddim\b|\bhybrid trap\b/, "trap"],
   // hip-hop sub-genre sweep — grime is a 140 UK floor (house family)
   [/\bgrime\b|\beski\b/, "house"],
@@ -83,6 +86,16 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // into the hip-hop "detroit rap" entry further down.
   [/\bdetroit (?:techno|electro|house)\b/, "techno"],
   [/\btechno (?:detroit|electro)\b/, "techno"],
+  // Electronic sub-genre wave — progressive house, classic electro, big beat,
+  // moombahton (house × dembow), slap house. Specific guards BEFORE the bare
+  // "electro" entry, and "electro pop/swing" must not be stolen by it.
+  [/\bprogressive house\b|\bprog house\b/, "house"],
+  [/\belectro pop\b|\belectro swing\b/, "house"],
+  [/\belectro house\b/, "house"],
+  [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b|\bclassic electro\b/, "techno"],
+  [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "house"],
+  [/\bmoombahton\b|\bmoombah(?:core|ton)?\b/, "house"],
+  [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "house"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
   [/\blo-?fi house\b/, "house"],
@@ -152,6 +165,19 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Disco BEFORE the g-funk/funky entries — "disco funk" must resolve to the
   // disco groove, not be stolen by \bfunk\b.
   [/\bnu[- ]?disco\b|\bdisco\b|\bdisko\b/, "disco"],
+  // Electronic depth wave — these MUST sit above the generic \bfunk\b /
+  // \bdeep\b word matches ("electro funk", "deep dubstep"): psytrance above
+  // trance (more specific groove), trance above progressive (so "progressive
+  // trance" rides the trance groove), and "electro swing / house / pop /
+  // hip hop" keep their own lanes before bare "electro" (Detroit machine
+  // funk, NOT electro house).
+  [/\bpsytrance\b|\bpsy\b/, "psytrance"],
+  [/\buplifting trance\b|\bvocal trance\b|\btrance\b/, "trance"],
+  [/\bprogressive\b|\bprog\b/, "progressive"],
+  [/\belectro swing\b/, "funky"],
+  [/\belectro house\b/, "dancefloor"],
+  [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b/, "electro"],
+  [/\bdeep dubstep\b|\buk dubstep\b|\b140 dubstep\b|\bdeep dub\b/, "deepdubstep"],
   // West Coast / G-funk (MUST sit above the generic "funk" entry — \bfunk\b
   // matches inside "g-funk" because '-' is a non-word char). SK stems
   // deaccented.
@@ -175,6 +201,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Country pop — the train-beat lane (house.countrypop); "country rap /
   // trap / tune" keep their trap.countrytune routing below.
   [/\bcountry pop\b|\bpop country\b|\bcountrypop\b|\bnashville pop\b/, "countrypop"],
+  // Big beat / moombahton / slap house — unique words, no generic collisions.
+  [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "bigbeat"],
+  [/\bmoombahton\b/, "moombahton"],
+  [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "slaphouse"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
   [/\bdub\b/, "dub"],
   [/\bacid\b/, "acid"],
@@ -231,6 +261,14 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bhead ?nod\b|\bheadnod\b/, "headnod"],
   // Fred-style emotional UKG (house.heartbeat groove + FRED_FORM)
   [/\bheartbeat\b|\bsrdcov(?:y|ý) tep\b/, "heartbeat"],
+];
+
+/** Rap flow grid phrases → IntentSpec.flow (multi-voice lead reshaper).
+ *  Separate from STYLE_PHRASES — a flow ask rides on top of any genre. */
+const FLOW_PHRASES: ReadonlyArray<readonly [RegExp, "triplet" | "offbeat" | "straight"]> = [
+  [/\btriplet(?:y|ový|ovy)? flow\b|\btriplety\b/, "triplet"],
+  [/\boff(?:-)?beat flow\b|\boffbeatový flow\b|\boffbeatovy flow\b/, "offbeat"],
+  [/\bstraight flow\b/, "straight"],
 ];
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */
@@ -517,6 +555,14 @@ function firstPhrase(phrases: ReadonlyArray<readonly [RegExp, string]>, text: st
   return null;
 }
 
+/** Typed variant for phrase tables with a narrow value union (FLOW_PHRASES). */
+function firstFlowPhrase(text: string): "triplet" | "offbeat" | "straight" | null {
+  for (const [re, value] of FLOW_PHRASES) {
+    if (re.test(text)) return value;
+  }
+  return null;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -667,6 +713,14 @@ export function parseIntentText(text: string): ParsedIntent {
   if (style) {
     input.style = style;
     detected.push(style);
+  }
+  // Rap flow grid (flowDensity): "triplet flow" / "offbeat flow" reshapes
+  // the lead/hook rhythm in multi-voice generation. Separate from style —
+  // a flow ask rides on top of any genre.
+  const flow = firstFlowPhrase(masked);
+  if (flow) {
+    input.flow = flow;
+    detected.push(`${flow} flow`);
   }
 
   // Mood — canonical value consumed by mapIntentToOptions tweaks.

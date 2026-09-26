@@ -902,8 +902,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["trance", "tiesto", "armin van buuren", "psytrance"],
+    // psytrance in this lane rides its own style below; the trance lane
+    // itself now has a dedicated groove (offbeat open hat, 136-142).
     genre: "techno",
-    style: "driving",
+    style: "trance",
     mood: "energetic",
     energy: 0.85,
     density: 0.65,
@@ -1984,6 +1986,153 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [90, 104],
     label: "rauw alejandro",
+  },
+  // ── electronic depth wave — progressive house / trance / electro /
+  // moombahton / slap house / deep dubstep (BPM researched: Prydz 124-128
+  // (Opus 126, bae 125), deadmau5 122-130 (Strobe 128 area), Sasha &
+  // Digweed 124-130; Above & Beyond 132-138 (Sun & Moon 132), van Dyk
+  // 134-142 (For an Angel 138); Egyptian Lover 120-132 (Egypt, Egypt ~127);
+  // Dillon Francis/Major Lazer moombahton 100-112; Alok/Imanbek/Meduza
+  // slap 118-126 (In My Mind 120); Skream/Benga/Mystikz 138-142) ──
+  {
+    names: ["eric prydz", "prydz", "eric prydz type beat"],
+    genre: "house",
+    style: "progressive",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [124, 128],
+    label: "eric prydz",
+  },
+  {
+    names: ["deadmau5", "deadmau5 type beat"],
+    genre: "house",
+    style: "progressive",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [122, 130],
+    label: "deadmau5",
+  },
+  {
+    names: ["sasha", "john digweed", "sasha and john digweed"],
+    genre: "house",
+    style: "progressive",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.45,
+    bpmRange: [124, 130],
+    label: "sasha and digweed",
+  },
+  {
+    names: ["above and beyond", "above & beyond", "anjunabeats", "anjunadeep"],
+    genre: "techno",
+    style: "trance",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [132, 138],
+    label: "above and beyond",
+  },
+  {
+    names: ["paul van dyk", "pvd", "paul van dyk type beat"],
+    genre: "techno",
+    style: "trance",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [134, 142],
+    label: "paul van dyk",
+  },
+  {
+    names: ["egyptian lover", "egypt egypt"],
+    genre: "techno",
+    style: "electro",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [120, 132],
+    label: "egyptian lover",
+  },
+  {
+    names: ["dillon francis", "dillon francis type beat"],
+    genre: "house",
+    style: "moombahton",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [105, 112],
+    label: "dillon francis",
+  },
+  {
+    names: ["major lazer", "diplo", "major lazer type beat"],
+    genre: "house",
+    style: "moombahton",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [100, 112],
+    label: "major lazer",
+  },
+  {
+    names: ["alok", "alok type beat"],
+    genre: "house",
+    style: "slaphouse",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [118, 126],
+    label: "alok",
+  },
+  {
+    names: ["imanbek", "imanbek type beat"],
+    genre: "house",
+    style: "slaphouse",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [118, 124],
+    label: "imanbek",
+  },
+  {
+    names: ["meduza", "meduza type beat"],
+    genre: "house",
+    style: "slaphouse",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [120, 126],
+    label: "meduza",
+  },
+  {
+    names: ["skream", "skream type beat"],
+    genre: "trap",
+    style: "deepdubstep",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.45,
+    bpmRange: [138, 142],
+    label: "skream",
+  },
+  {
+    names: ["benga", "benga type beat"],
+    genre: "trap",
+    style: "deepdubstep",
+    mood: "dark",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [138, 142],
+    label: "benga",
+  },
+  {
+    names: ["digital mystikz", "mala dmz", "digital mystikz type beat"],
+    genre: "trap",
+    style: "deepdubstep",
+    mood: "dark",
+    energy: 0.55,
+    density: 0.4,
+    bpmRange: [140, 142],
+    label: "digital mystikz",
   },
   {
     names: ["sabrina carpenter", "sabrina", "sabrina carpenter type beat"],
@@ -4235,9 +4384,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["juan atkins", "model 500", "cybotron"],
-    // Electro-techno originator: machine funk, 808 backbone.
+    // Electro-techno originator: machine funk, 808 backbone — now rides the
+    // dedicated techno.electro groove instead of driving techno.
     genre: "techno",
-    style: "driving",
+    style: "electro",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -4597,11 +4747,11 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [122, 130],
     label: "perlon",
   },
-  // Electro — Detroit's other half; no entries existed.
+  // Electro — Detroit's other half; rides the dedicated techno.electro groove.
   {
     names: ["drexciya", "dopplereffekt", "japanese telecom"],
     genre: "techno",
-    style: "driving",
+    style: "electro",
     mood: "dark",
     energy: 0.75,
     density: 0.6,
@@ -4791,7 +4941,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // No bare "big beat" — generic English that would hijack any promo text.
     names: ["fatboy slim", "chemical brothers", "crystal method"],
     genre: "house",
-    style: "broken",
+    style: "bigbeat",
     mood: "energetic",
     energy: 0.9,
     density: 0.7,
@@ -5184,8 +5334,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "ny loft",
   },
   {
-    names: ["kavinsky", "gesaffelstein", "justice type beat", "sebastian ed banger"],
-    // The dark French electro lineage — NOT "justice" alone (generic word).
+    // kavinsky already lives in the synthwave entry above — this block owns
+    // the darker French-electro lineage only. "justice" stays qualified (a
+    // generic word alone would shadow unrelated prompts).
+    names: ["gesaffelstein", "justice type beat", "sebastian ed banger"],
     genre: "techno",
     style: "driving",
     mood: "dark",
@@ -5219,7 +5371,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "french touch 2000s",
   },
   {
-    names: ["nora en pure", "lane 8", "yotto", "tinlicker", "marsh house"],
+    // tinlicker / lane 8 / yotto / nora en pure already live in the melodic
+    // house entry above — this block owns Marsh only (the qualified spelling
+    // keeps the habitat word safe).
+    names: ["marsh house"],
     // Modern melodic/deep-progressive school.
     genre: "house",
     style: "deep",
