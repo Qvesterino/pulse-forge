@@ -512,6 +512,7 @@ export function parseIntentText(text: string): ParsedIntent {
     input.genre = blend.patch.genre;
     if (blend.patch.style) input.style = blend.patch.style;
     if (blend.patch.productionProfile) input.productionProfile = blend.patch.productionProfile;
+    if (blend.patch.artist) input.artist = blend.patch.artist;
     if (blend.patch.mood) input.mood = blend.patch.mood;
     if (blend.patch.energy !== undefined) input.energy = blend.patch.energy;
     if (blend.patch.density !== undefined) input.density = blend.patch.density;

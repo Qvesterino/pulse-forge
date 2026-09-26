@@ -3797,15 +3797,18 @@ audit doc.
 ## GOAL 33 — REFERENCE TEMPO/KEY + RANKING V3 + v1v3 LISTENING PACK (2026-09-22)
 
 **B — tempo/tón z referencie (`src/ai/audio-tempo-key.ts`):**
+
 - `estimateTempo`: detectTransients (log-flux onsets, zdieľané s nahrávaním) → 20 ms impulzný envelope → autokorelácia nad 70–180 BPM lagmi → fold half/double. Click-track testy 128/90 BPM ±4.
 - `estimateKey`: Goertzel 12 tried × 4 oktávy (C2–B5) → chroma → Krumhansl korelácia (24 rotácií) → "C Major"/"C Natural Minor" formát. Čistá C4 sin → root C ✓.
 - Wire do `analyzeAudioReference`: patch.bpmRange (±2) + patch.key + result.tempo/key + summary. Panel status ukazuje "🎧 reference: techno — 128 BPM, C Natural Minor — Techno 82%...".
 
 **A — ranking v3 (`src/intent/ranking-v3.ts`, `rerankTopBySound`):**
+
 - Dvojštupňový výber: 1. pass ranker → top-3 finalistov RENDERUJÚ (renderAuditionBuffer + downmix) → `scoreCandidatesBySound` vs `audioTargetFor(genre)` → combined = 0.7·(score/maxScore) + 0.3·audioFit. `score/maxScore` škála: ranker dominuje pri veľkých rozdieloch, blízke preteky rozhoduje zvuk. Render-fail = neutrálne 0.5/pôvodné poradie; finalists pod rezom bez zmeny.
 - Pipeline: `GenerateAsyncOptions.sound` → po banke rerank + proposal.pattern = nový winner (bank[0]). Panel GENERATE posiela `sound: { bank: services.bank }`; winner marker = bank[0].candidateIndex.
 
 **Počúvanie (`npm run listening:v1v3`, `scripts/render-v1v3-listening.mjs`):**
+
 - vite server + playwright (golden-pack vzor): 6 promptov × v1/v3 override → REAL engine render → `v1v3-listening/N-slug.{v1,v3}.wav` + LISTENING.md. 12 renderov ✓.
 - ⚠️ zombie vite servery držia porty po crashi — netstat + taskkill.
 
@@ -4557,6 +4560,7 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Dodané — 7 grooveov + 17 interpretov, najväčšia žánrová vlna kampane:**
 
 **Groovey (6 v trap.ts + 1 v drill.ts):**
+
 - `trap.screwed` (66–78! swing 0.24 — Houston chopped-and-screwed: najpomalší rap groove v knižnici, groove JE spomalenie)
 - `trap.plugg` (140–160 — ľahké springy bubny pod bell melódie)
 - `trap.detroit` (135–148 swing 0.14 — Michigan loop rap, kick chodí medzi snare)
@@ -4607,6 +4611,7 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Scope poznámka:** kanye už existuje (boom bap/classic entry z C1) — táto vlna dopĺňa CHÝBAJÚCICH mainstreamov. Pop smoke (drill.uk) a ice spice (jersey) tiež existovali — preskočené.
 
 **15 interpretov (roster 169 → 184), všetko na EXISTUJÚCE groovey (žiadne nové, čistý roster wave):**
+
 - **Drake** (+ovo/6ix) — trap/sparse dark 128–142 (Toronto atmospheric)
 - **Kodak Black** — trap/sparse chill 125–140 (Florida lazy)
 - **Lil Durk** (+OTF) a **Polo G** (+Capalot) — drill/dark 135–150 (melodic drill)
@@ -4634,3 +4639,26 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 Kompletný rozširovací plán zapísaný do **docs/ROSTER-EXPANSION-ROADMAP.md** (NOVÝ súbor): pokrytie audit (čo je, čo NIE je + mená na ne-duplovanie), Wave 8 legendy + female rap (2Pac/Biggie/Wu-Tang/Jay-Z/Eminem/Wayne/Ross/DMX/Busta/Missy + Nicki/Cardi/Latto/GloRilla/Sexyy Red/Doechii/Simz/Rapsody), Wave 9 Three 6 + Griselda renesancia (9 entry na existujúcich grooveoch), Wave 10 posledné groovey (NOLA bounce / Miami bass / snap / afroswing / country rap tunes) + zvuky (plugg bell, eski lead, electrosnare, screwed FX reťaz), Wave 11 regional NOW (Chicago/Detroit depth/LA whisper/UK pop-drill/Latin), Wave 12 experimental edges. Plus ENGINE IDEA: **flow density** (16th vs triplet rap flow v generátore — mechanický rozdiel Detroit vs Atlanta) a 7 SESSION RULES z naučených lekcií (first-match shadowing, loudness disciplina, počty, regex-y iba Edit tool, style token kontrakt, genre table poradie, reconciliačná politika).
 
 **Dôležité súbory:** docs/ROSTER-EXPANSION-ROADMAP.md (NOVÝ).
+
+---
+
+## VLNA 8 — ARTIST MIX SIGNATURES + PLUGINY CEZ INTENT (2026-09-26, user: „intent engine čo najlepší — mix/master podľa interpretov + pluginy cez intent")
+
+**Architektonické zistenie:** ich `productionProfile` (culture wave) tvaruje GENEROVANIE (multi-voice stupnice/oktávy), ale mix/master vrstvu nerieši. Táto vlna ju dopĺňa — generácia + mix teraz nesú ROVNAKÝ artist podpis.
+
+**Dodané:**
+
+1. **`IntentSpec.artist`** (types.ts + normalize.ts passthrough — hash-kompatibilné: omitted keď absentuje, rovnaký vzor ako preserve/productionProfile). Parser ho nastaví na `preset.label` pri single aj blend matche (blend = PRIMARY label; VibeBlend.patch má nové `artist?` pole).
+2. **`src/intent/artist-mix.ts` (NOVÝ):** `ARTIST_MIX_PROFILES` — 25 mix podpisov kľúčovaných stabilným roster labelom: tone (dark/bright/warm/cold), punch, reverb (less/more/huge), pump. Krytie: drake (dark+space), kendrick/dre (warm+punch), travis (dark+huge), rage (dry+punch), yung lean (cold+huge), burial (dark+huge), fred (bright+pump), sophie (bright+dry+punch), anyma, seven lions, excision (pump:false!), black coffee, pinkpantheress, skepta (cold+dry), babytron, lil jon, mf doom (warm+dry), juice wrld, lil peep, a$ap rocky, dj screw (warm+huge), ty dolla, warren g. Predcedence: user slová > mood tone > ARTIST > žáner default („drake type beat" znie ako Drake, „drake brighter" znie bright).
+3. **mix.ts integrácia:** planMixProfile merge (tone/punch/reverbMore/reverbLess/pumpWanted) + NOVÝ export `masterTiltForIntent(intent)` — song builder master tilt: artist tone > žáner default. song.ts volanie swapped.
+4. **Pluginy cez intent (production.ts):** 3 nové koncepty — `telephone` (svFilter band-pass + distortion — DVA device ops v jednom koncepte, telephone preset recipe), `tape` (ťažšia tapeSat než „warmer"), `stutter` (division 5 pri vysokej amount). SK frázy s \uXXXX escapes (konvencia súboru). Počet konceptov 12 → 15.
+
+**Testy:** tests/artist-mix.test.ts (NOVÝ, 5): label↔signature konzistencia (dead-label guard), drake dark+lush vs trap dry default, explicit override vyhráva nad artist podpisom, fred pump pod energy 0.75, song master tilt podľa signatúry (−1.5 bright pin). intent-production +3 (telephone BP+dist, tape drive ≥0.45, stutter division by amount).
+
+**⚠ VLASTNÉ chyby chytené počas vývoja:** (1) môj test volal `normalizeIntent(parseIntentText(text))` namiesto `.input` — normalize dostal zlý objekt (defaulty namiesto preset polí); produkčný kód bol v poriadku (panel používa `.input` všade). (2) test predpokladal GENRE_TONE_DEFAULT["house"]=bright — house žiadny default nemá; pin na −1.5 priamo.
+
+**Validácia:** artist-mix 5/5, 11-súborová intent battery **329/329** (prvý beh mal 1 timeout pod strojovou záťažou — izolovane aj repeat zelené); `tsc --noEmit` EXIT 0. Loudness mapa sa nemení.
+
+**Známe limity:** podpisy kľúčujú label — premenovanie labelu v rosteri zlomí ticho (dead-label guard test padne a upozorní). FX hinty v presetoch (sophie→distortion, burial→vinyl) sú zatiaľ v production konceptoch ručne; `IntentSpec.fx` pre artist-automatické reťazce je follow-up.
+
+**Intent engine stav:** interpret → groove + BPM + productionProfile (generácia) + **mix/master podpis (NOVÉ)** + 15 production konceptov (FX cez intent) + 8-vrstvová routing pipeline + brief kontrakt + iterácie + reference audio. Kompletný produkčný reťazec od vety po master.

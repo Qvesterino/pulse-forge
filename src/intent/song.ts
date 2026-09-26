@@ -17,7 +17,7 @@ import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreKitToDoc } from "./genre-kit";
-import { genreMasterTiltDb } from "./mix";
+import { masterTiltForIntent } from "./mix";
 import { GENRE_REFERENCE, SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Command } from "../commands/types";
@@ -1746,7 +1746,7 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   // EQ shelves toward their tone (drill dark, phonk warm, jersey bright);
   // legacy genres leave the document's tilt untouched. Re-generating with a
   // different character genre re-targets the tilt.
-  const masterTilt = genreMasterTiltDb(build.baseIntent.genre);
+  const masterTilt = masterTiltForIntent(build.baseIntent);
   if (masterTilt !== undefined) {
     next = { ...next, master: { ...next.master, tiltDb: masterTilt } };
   }

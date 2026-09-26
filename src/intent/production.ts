@@ -21,6 +21,9 @@ export type ProductionConcept =
   | "brighter"
   | "wider"
   | "grittier"
+  | "telephone"
+  | "tape"
+  | "stutter"
   | "glue"
   | "lofi"
   | "wobbly"
@@ -174,6 +177,23 @@ export const CONCEPTS: readonly ConceptDef[] = [
     defaultTarget: "drums",
     patterns: [/\bmetallic/i, /\bkovov/i, /\bmetalov/i],
   },
+  // Named-plugin asks (Vlna 8: pluginy cez intent) — the concept names the
+  // DEVICE, not just a tone direction.
+  {
+    concept: "telephone",
+    defaultTarget: "lead",
+    patterns: [/\btele?phone\b/, /\btelef\u00f3n/i, /\bhandset\b/, /\bhouka\u010dk/i],
+  },
+  {
+    concept: "tape",
+    defaultTarget: "drums",
+    patterns: [/\btape\b/, /\bp\u00e1ska\b/, /\bp\u00e1skov\u00fd zvuk\b/],
+  },
+  {
+    concept: "stutter",
+    defaultTarget: "drums",
+    patterns: [/\bstutter\b/, /\bst\u00e1kanie\b/, /\bsekaj\u00fac/i],
+  },
 ];
 
 const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
@@ -284,7 +304,11 @@ export function resolveProductionTargets(doc: ProjectDocument, targets: Producti
 export function planProductionActions(
   doc: ProjectDocument,
   intent: ProductionIntent,
-): { actions: ProductionAction[]; padAdjustments?: Array<{ family: "kicks" | "snares" | "hats"; factor: number }>; plan: ProductionPlan } {
+): {
+  actions: ProductionAction[];
+  padAdjustments?: Array<{ family: "kicks" | "snares" | "hats"; factor: number }>;
+  plan: ProductionPlan;
+} {
   const trackIds = resolveProductionTargets(doc, intent.targets);
   if (trackIds.length === 0) {
     throw new Error(
@@ -383,6 +407,44 @@ export function planProductionActions(
             trackId,
             type: "freqShifter",
             params: { shift: Math.round(300 + goal.amount * 500), mix: 0.9 },
+          });
+          break;
+        case "telephone":
+          // The handset chain: narrow band-pass + the crackle drive —
+          // two devices, one concept (the telephone preset recipe).
+          actions.push({
+            trackId,
+            type: "svFilter",
+            params: { cutoff: Math.round(1000 + goal.amount * 700), mode: 1, mix: 1 },
+          });
+          actions.push({
+            trackId,
+            type: "distortion",
+            params: { drive: Math.min(1, 0.25 + goal.amount * 0.3), tone: 5200, mix: 1 },
+          });
+          break;
+        case "tape":
+          // Heavier than "warmer" — full tape saturation, tone pulled down.
+          actions.push({
+            trackId,
+            type: "tapeSat",
+            params: {
+              drive: Math.min(1, 0.45 + goal.amount * 0.4),
+              tone: Math.round(5200 - goal.amount * 1500),
+              mix: 1,
+            },
+          });
+          break;
+        case "stutter":
+          // Tighter divisions with more intent amount; feedback stays dry.
+          actions.push({
+            trackId,
+            type: "stutter",
+            params: {
+              division: goal.amount >= 0.75 ? 5 : 4,
+              mix: Math.min(1, 0.6 + goal.amount * 0.3),
+              feedback: 0,
+            },
           });
           break;
       }

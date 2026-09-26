@@ -3710,6 +3710,8 @@ export interface VibeBlend {
     genre: ArtistPreset["genre"];
     style?: string;
     productionProfile?: ProductionProfile;
+    /** Primary artist label — keys the artist mix-signature table. */
+    artist?: string;
     mood?: ArtistPreset["mood"];
     energy?: number;
     density?: number;

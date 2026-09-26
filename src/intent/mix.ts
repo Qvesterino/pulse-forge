@@ -8,6 +8,7 @@ import {
 } from "../commands/commands";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
+import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
 import { parsePercent } from "./percent";
 import type { IntentSpec } from "./types";
@@ -107,6 +108,16 @@ export function genreMasterTiltDb(genre: IntentSpec["genre"]): number | undefine
 }
 
 /**
+ * Master tilt for a SONG built from this intent: the ARTIST signature's
+ * tone wins over the genre default (drake songs tilt dark even on a
+ * bright-leaning genre); no signature → the genre tilt as before.
+ */
+export function masterTiltForIntent(intent: IntentSpec): number | undefined {
+  const tone = artistMixProfileOf(intent)?.tone ?? GENRE_TONE_DEFAULT[intent.genre];
+  return tone === undefined ? undefined : TONE_MASTER_TILT_DB[tone];
+}
+
+/**
  * Deterministic intent → mix profile. Only decisions the intent actually
  * calls for: tone (mood/override), punch (energy/punch override), space
  * (genre/mood/reverb override), pump (house/techno energy or override),
@@ -128,23 +139,37 @@ export function planMixProfile(
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
-  const tone = overrides.tone ?? moodTone(intent) ?? GENRE_TONE_DEFAULT[genre] ?? (popSong ? "bright" : null);
+  // Artist mix signature (Vlna 8): sits ABOVE the genre default but BELOW
+  // explicit user words and mood tones — "drake type beat" sounds like
+  // Drake, "drake type beat brighter" sounds brighter.
+  const artistMix = artistMixProfileOf(intent);
+  const tone =
+    overrides.tone ?? moodTone(intent) ?? artistMix?.tone ?? GENRE_TONE_DEFAULT[genre] ?? (popSong ? "bright" : null);
   const punch: MixOverrides["punch"] | null =
-    overrides.punch ?? (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : null);
+    overrides.punch ??
+    (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : (artistMix?.punch ?? null));
   const lushGenre = genre === "ambient";
   const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk";
 
   const reverbMore =
     overrides.reverb === "more" ||
     overrides.reverb === "huge" ||
-    (!overrides.reverb && (lushGenre || intent.mood === "chill"));
-  const reverbLess = overrides.reverb === "less" || (!overrides.reverb && (dryGenre || intent.mood === "aggressive"));
+    (!overrides.reverb &&
+      (lushGenre || artistMix?.reverb === "more" || artistMix?.reverb === "huge" || intent.mood === "chill"));
+  const reverbLess =
+    overrides.reverb === "less" ||
+    (!overrides.reverb &&
+      artistMix?.reverb !== "more" &&
+      artistMix?.reverb !== "huge" &&
+      (dryGenre || intent.mood === "aggressive"));
   const pumpWanted =
     overrides.pump === "off"
       ? false
       : overrides.pump === "on"
         ? true
-        : (genre === "house" || genre === "techno" || genre === "jersey") && intent.energy >= 0.55;
+        : artistMix?.pump !== undefined
+          ? artistMix.pump
+          : (genre === "house" || genre === "techno" || genre === "jersey") && intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];
   const summary: string[] = [];

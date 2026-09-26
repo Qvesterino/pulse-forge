@@ -209,3 +209,32 @@ describe("applyProductionIntentCommand", () => {
     expect(drums && "effects" in drums ? drums.effects.some((f) => f.type === "freqShifter") : false).toBe(true);
   });
 });
+
+describe("named-plugin concepts (Vlna 8 — pluginy cez intent)", () => {
+  it("telephone → band-pass svFilter + crackle distortion on the named track", () => {
+    const intent = parseProductionIntent("telephone vocal");
+    expect(intent!.goals[0]).toEqual({ concept: "telephone", amount: 0.7 });
+    const { actions } = planProductionActions(doc(), intent!);
+    const types = actions.map((a) => a.type);
+    expect(types).toContain("svFilter");
+    expect(types).toContain("distortion");
+    const bp = actions.find((a) => a.type === "svFilter")!;
+    expect(bp.params.mode).toBe(1); // band-pass
+    expect(bp.params.cutoff).toBeGreaterThan(900);
+  });
+
+  it("tape → heavier tapeSat than 'warmer'", () => {
+    const { actions } = planProductionActions(doc(), parseProductionIntent("tape drums")!);
+    const tape = actions.find((a) => a.type === "tapeSat")!;
+    expect(tape).toBeDefined();
+    expect(tape.params.drive).toBeGreaterThanOrEqual(0.45);
+  });
+
+  it("stutter → tighter division at high intent amount", () => {
+    const hard = planProductionActions(doc(), parseProductionIntent("much stutter drums")!);
+    const hardStutter = hard.actions.find((a) => a.type === "stutter")!;
+    expect(hardStutter.params.division).toBe(5);
+    const soft = planProductionActions(doc(), parseProductionIntent("stutter drums")!);
+    expect(soft.actions.find((a) => a.type === "stutter")!.params.division).toBe(4);
+  });
+});
