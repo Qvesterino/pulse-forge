@@ -145,6 +145,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   wavetable: "Wavetable",
   granular: "Granular",
   keys: "Keys",
+  organ: "Organ",
   fm: "FM",
   pluck: "Pluck",
   flute: "Flute",

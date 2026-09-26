@@ -259,9 +259,17 @@ NEISTÉ: tónina nebola zadaná
 - Záruka rozsahu testovaná: revízia zmení IBA deklarovanú sekciu — všetky ostatné patterny sú
   content-hash identické a scene bindingy prežijú; nepotvrdený návrh nechá projekt bitovo rovnaký
   (`tests/section-iteration.test.ts`).
-- **Otvorené ďalej:** celoskladbové A/B (nová sekcia v kontexte celého song audition buffera),
-  dôvodové návrhy z `reviewSongAudio()` meraní (napr. „drop takmer tichý → navrhnúť energy +")
+- **Otvorené ďalej:** celoskladbové A/B (nová sekcia v kontexte celého song audition buffera)
   a širšia zmenová slovná zásoba (mood/rola) nad rámec energy/density.
+
+**Doplnok 2 (2026-09-26): dôvodové návrhy z meraní.**
+
+- `analyzeSongSections(buffer, sections, bpm)` segmentuje song audition buffer podľa hraníc
+  formy → per-sekčné RMS/peak metre; `suggestSectionRevivals` navrhne energy oživenie pre
+  loud-carrying sekciu ≥8 dB pod vlastným mediánom skladby. Break/intro/outro majú dýchať —
+  tichota tam nenavrhuje nič; vyvážený song taktiež nie.
+- SUNO preview feedne metre → suggestion čipy; klik vedie do audition-first sekčného návrhu
+  (▶ náhľad → ✓/✗). Nikdy sa neaplikuje automaticky — dôkaz, návrh a rozhodnutie sú oddelené.
 
 ### Fáza 6 — KYX ako zvukár: meranie, odporúčanie, potvrdenie
 

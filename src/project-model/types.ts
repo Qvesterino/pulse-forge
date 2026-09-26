@@ -73,6 +73,7 @@ export type InstrumentKind =
   | "wavetable"
   | "granular"
   | "keys"
+  | "organ"
   | "fm"
   | "pluck"
   | "flute"

@@ -1551,6 +1551,10 @@ export function normalizeArtistSlug(label: string): string {
  *                                            tilt, character-forward mix")
  *    - mix.compression "heavy" → punch: "more"
  *    - mix.compression "light" → punch: "less"
+ *    - mix.stereoWidth "wide"  → width: "wide"   (Phase 2 slice 2)
+ *    - mix.stereoWidth "narrow"→ width: "narrow" (Phase 2 slice 2)
+ *    - mix.subEmphasis "prominent" → sub: "prominent" (Phase 2 slice 2)
+ *    - mix.subEmphasis "subtle" → sub: "subtle" (Phase 2 slice 2)
  *    - signature.sound / vibe mention "sidechain" / "pump" / "pumping" → pump: true
  *    - vibe contains "huge" / "spacious" / "ethereal" / "atmospheric" / "cinematic"
  *                              → reverb: "huge"
@@ -1574,6 +1578,21 @@ export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile
     profile.mix.compression === "light" ? "less" :
     undefined;
   if (punch) derived.punch = punch;
+
+  // width — direct passthrough (only "wide"/"narrow" are producer-decisions;
+  // "normal" leaves the genre default in place)
+  const width: ArtistMixProfile["width"] | undefined =
+    profile.mix.stereoWidth === "wide" ? "wide" :
+    profile.mix.stereoWidth === "narrow" ? "narrow" :
+    undefined;
+  if (width) derived.width = width;
+
+  // sub — direct passthrough (only "prominent"/"subtle" are producer-decisions)
+  const sub: ArtistMixProfile["sub"] | undefined =
+    profile.mix.subEmphasis === "prominent" ? "prominent" :
+    profile.mix.subEmphasis === "subtle" ? "subtle" :
+    undefined;
+  if (sub) derived.sub = sub;
 
   // pump — keyword scan across signature sound + vibe
   const pumpSignal = [...profile.signature.sound, ...profile.vibe]

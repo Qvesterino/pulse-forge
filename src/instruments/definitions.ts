@@ -558,6 +558,38 @@ export const fluteParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
 ];
 
+/**
+ * ORGAN (kind #16) — drawbar additive synthesis. `bright` blends the
+ * harmonic table between a fundamental-dominant warm mix and a brassy
+ * full-drawbar mix; the PeriodicWave carries the partials (one band-limited
+ * oscillator per voice instead of nine), the 16' sub drawbar runs on its own
+ * sine at half frequency, `click` is the key-contact transient, and the
+ * rotary section (tremolo + pitch vibrato + pan, phase-locked to the note)
+ * is the Leslie. SVF + drive cover the dark phonk/memphis variants.
+ */
+export const organParams: ParamDef[] = [
+  { id: "bright", label: "BRIGHT", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "sub", label: "SUB 16'", min: 0, max: 1, default: 0.4, format: formatPct },
+  { id: "click", label: "CLICK", min: 0, max: 1, default: 0.35, format: formatPct },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.15, format: formatPct },
+  { id: "rotary", label: "ROTARY", min: 0, max: 1, default: 0.35, format: formatPct },
+  {
+    id: "rotaryRate",
+    label: "R-RATE",
+    min: 0,
+    max: 8,
+    default: 1.2,
+    unit: "Hz",
+    format: (v) => (v < 0.005 ? "OFF" : `${v.toFixed(2)} Hz`),
+  },
+  { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "cutoff", label: "CUTOFF", min: 120, max: 14000, default: 6500, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "resonance", label: "RESO", min: 0.1, max: 8, default: 0.8, format: (v) => v.toFixed(1) },
+  { id: "attack", label: "ATTACK", min: 0.001, max: 2, default: 0.003, unit: "s", format: formatMs },
+  { id: "release", label: "RELEASE", min: 0.01, max: 4, default: 0.08, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+];
+
 export const logdrumParams: ParamDef[] = [
   { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
   { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
@@ -673,6 +705,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   granular: { kind: "granular", name: "Granular Synth", params: granularParams },
   fm: { kind: "fm", name: "FM", params: fmParams },
   keys: { kind: "keys", name: "Keys", params: keysParams },
+  organ: { kind: "organ", name: "Organ", params: organParams },
   pluck: { kind: "pluck", name: "Pluck Synth", params: pluckParams },
   flute: { kind: "flute", name: "Flute", params: fluteParams },
   logdrum: { kind: "logdrum", name: "Log Drum", params: logdrumParams },
@@ -690,6 +723,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "wavetable",
   "granular",
   "keys",
+  "organ",
   "fm",
   "pluck",
   "flute",

@@ -1,0 +1,23 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+src/instruments/definitions.ts(698,14): error TS2741: Property 'organ' is missing in type '{ analog: { kind: "analog"; name: string; params: ParamDef[]; }; bass: { kind: "bass"; name: string; params: ParamDef[]; }; 808: { kind: "808"; name: string; params: ParamDef[]; }; ... 11 more ...; drumsynth: { ...; }; }' but required in type 'Record<InstrumentKind, InstrumentDefinitionMeta>'.
+src/instruments/registry.ts(4842,14): error TS2741: Property 'organ' is missing in type '{ sampler: InstrumentDefinition; analog: InstrumentDefinition; bass: InstrumentDefinition; "808": InstrumentDefinition; ... 10 more ...; drumsynth: InstrumentDefinition; }' but required in type 'Record<InstrumentKind, InstrumentDefinition>'.
+src/intent/artist-profiles/index.ts(1584,33): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+src/intent/artist-profiles/index.ts(1588,22): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+src/intent/artist-profiles/index.ts(1591,31): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+src/intent/artist-profiles/index.ts(1595,20): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+src/intent/mix.ts(263,34): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+src/intent/mix.ts(275,32): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+src/ui/TrackTabs.tsx(12,7): error TS2741: Property 'organ' is missing in type '{ drum: string; group: string; sampler: string; analog: string; bass: string; "808": string; texture: string; wavetable: string; granular: string; keys: string; fm: string; pluck: string; flute: string; logdrum: string; spectral: string; vocalchop: string; drumsynth: string; }' but required in type 'Record<InstrumentKind | "drum" | "group", string>'.
+tests/intent-artist-mix-wiring.test.ts(308,10): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(315,10): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(322,10): error TS2339: Property 'width' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(331,10): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(338,10): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(345,10): error TS2339: Property 'sub' does not exist on type 'ArtistMixProfile'.
+tests/intent-artist-mix-wiring.test.ts(352,11): error TS6133: 'intent' is declared but its value is never read.
+tests/latency-probe-shape.test.ts(80,7): error TS6133: 'MODULE_STATE' is declared but its value is never read.
+tests/snapshot-repository-shape.test.ts(50,10): error TS6133: 'findAny' is declared but its value is never read.
+tests/snapshot-repository-shape.test.ts(130,7): error TS6133: 'ALLOWED_PURE_TOKENS' is declared but its value is never read.

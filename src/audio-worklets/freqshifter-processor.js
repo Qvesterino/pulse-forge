@@ -54,6 +54,81 @@ function fsSoftSat(x) {
   return (x * (27 + x2)) / (27 + 9 * x2);
 }
 
+// ── 2× oversampled drive (PARAM-VALUE-AUDIT-2026-09 Vlna 3) ─────────────
+// Same pattern as svfilter-processor: only the nonlinear stage runs at 2×
+// the rate — sub-samples are band-limited with a short 9-tap windowed-sinc
+// FIR, saturated, band-limited again and decimated, so tanh harmonics above
+// Nyquist fold back an octave higher and ~30 dB weaker instead of smearing
+// into the audible band at high DRIVE. The stage sits on the path into the
+// SSB (feedback reads pre-drive); the added ~¾-sample phase inside the
+// feedback loop is negligible against ≥1-sample loop delays at fb ≤ 0.9.
+const FS_OS_TAPS = (() => {
+  const N = 9;
+  const fc = 0.375; // relative to the 2× rate ≈ 0.75× original fs
+  const taps = new Array(N);
+  const M = N - 1;
+  for (let i = 0; i < N; i++) {
+    const m = i - (M >> 1);
+    const sinc = m === 0 ? 1 : Math.sin(Math.PI * fc * m) / (Math.PI * fc * m);
+    const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / M); // Hamming
+    taps[i] = sinc * w;
+  }
+  let sum = 0;
+  for (let i = 0; i < N; i++) sum += taps[i];
+  for (let i = 0; i < N; i++) taps[i] /= sum;
+  return taps;
+})();
+
+/** Fresh per-channel drive history (exported for the aliasing test). */
+export function newOsDriveState() {
+  return { sub: new Float32Array(8), sat: new Float32Array(8), w: 0, sw: 0, prev: 0 };
+}
+
+/**
+ * One input sample through the oversampled saturator.
+ * out = decimate(FIR(fsSoftSat(FIR-interp(x) · inGain))) · outNorm —
+ * freqshifter's curve is inGain = 1 + drive·4 with outNorm = 1/(1 + drive·0.6).
+ */
+export function osDriveSat(st, x, inGain, outNorm) {
+  const sub = st.sub;
+  const sat = st.sat;
+  // 1) 2× upsample: midpoint (odd sub-sample) then the sample itself
+  const mid = (st.prev + x) * 0.5;
+  st.prev = x;
+  // 2) band-limit the midpoint, saturate
+  sub[st.w] = mid;
+  let k = st.w;
+  let acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += FS_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satMid = fsSoftSat(acc * inGain) * outNorm;
+  // 3) band-limit the real sample, saturate
+  sub[st.w] = x;
+  k = st.w;
+  acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += FS_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satEven = fsSoftSat(acc * inGain) * outNorm;
+  // 4) anti-image FIR on the saturated stream, decimate to the even slot
+  sat[st.sw] = satMid;
+  st.sw = (st.sw + 1) & 7;
+  sat[st.sw] = satEven;
+  k = st.sw;
+  let out = 0;
+  for (let i = 0; i < 9; i++) {
+    out += FS_OS_TAPS[i] * sat[k];
+    k = (k + 7) & 7;
+  }
+  st.sw = (st.sw + 1) & 7;
+  return out;
+}
+
 class FreqShiftProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
@@ -76,6 +151,8 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     this.stateAR = new Float64Array(FS_STAGES * 2);
     this.stateBL = new Float64Array(FS_STAGES * 2);
     this.stateBR = new Float64Array(FS_STAGES * 2);
+    this.osDriveL = newOsDriveState();
+    this.osDriveR = newOsDriveState();
     this.phaseL = 0;
     this.phaseR = 0;
     this.lfoPhase = 0;
@@ -156,6 +233,7 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     }
 
     const driveK = 1 + drive * 4;
+    const driveMakeup = 1 / (1 + drive * 0.6);
     const toneCoef = 1 - Math.exp((-2 * Math.PI * toneHz) / sr);
     const delaySamples = Math.max(1, Math.min(this.fbLen - 1, ((delayMs / 1000) * sr) | 0));
     const lfoStep = (2 * Math.PI * lfoRate) / sr;
@@ -186,8 +264,8 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
       // directions when spread is up.
       const feedL = l + fbL * feedback;
       const feedR = r + fbR * feedback;
-      const drivenL = drive > 0.001 ? fsSoftSat(feedL * driveK) / (1 + drive * 0.6) : feedL;
-      const drivenR = drive > 0.001 ? fsSoftSat(feedR * driveK) / (1 + drive * 0.6) : feedR;
+      const drivenL = drive > 0.001 ? osDriveSat(this.osDriveL, feedL, driveK, driveMakeup) : feedL;
+      const drivenR = drive > 0.001 ? osDriveSat(this.osDriveR, feedR, driveK, driveMakeup) : feedR;
 
       const xaL = this.allpassBranch(this.stateAL, this.coeffsA, drivenL);
       const xbL = this.allpassBranch(this.stateBL, this.coeffsB, drivenL);
@@ -241,6 +319,10 @@ class FreqShiftProcessor extends AudioWorkletProcessor {
     }
     return true;
   }
+}
+
+export function createFreqShiftProcessor(options) {
+  return new FreqShiftProcessor(options);
 }
 
 registerProcessor("freqshift-processor", FreqShiftProcessor);

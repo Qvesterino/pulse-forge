@@ -96,7 +96,13 @@ beforeAll(async () => {
     };
   ringModFactory = factoryOf("ringmod-processor.js") as typeof ringModFactory;
   tapeStopFactory = factoryOf("tapestop-processor.js") as typeof tapeStopFactory;
-  freqShiftFactory = factoryOf("freqshifter-processor.js") as typeof freqShiftFactory;
+  // freqshifter-processor.js now carries ESM exports — import it as a module
+  // instead of eval'ing the raw source via `new Function`.
+  const fsMod = (await import("../src/audio-worklets/freqshifter-processor.js")) as {
+    createFreqShiftProcessor: (options?: { processorOptions?: unknown }) => unknown;
+  };
+  freqShiftFactory = ((options?: { processorOptions?: unknown }) =>
+    fsMod.createFreqShiftProcessor(options)) as typeof freqShiftFactory;
   pitchShiftFactory = factoryOf("pitchshift-processor.js") as typeof pitchShiftFactory;
   vinylFactory = factoryOf("vinyl-processor.js") as typeof vinylFactory;
   beatManglerFactory = factoryOf("beatmangler-processor.js") as typeof beatManglerFactory;

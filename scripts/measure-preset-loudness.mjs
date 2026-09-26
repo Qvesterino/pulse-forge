@@ -28,7 +28,9 @@ const GAIN_DB_LIMIT = 18;
 const server = await createServer({
   root,
   logLevel: "error",
-  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  // HMR off: a concurrent session saving a file mid-measure pushes a full
+  // reload that destroys the page.evaluate context and kills the whole run.
+  server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false },
 });
 await server.listen();
 
@@ -179,7 +181,8 @@ const medianOf = (values) => {
 };
 const familyTargets = {};
 for (const useCase of new Set(measured.map((m) => m.useCase))) {
-  familyTargets[useCase] = Math.round(medianOf(measured.filter((m) => m.useCase === useCase).map((m) => m.integrated)) * 10) / 10;
+  familyTargets[useCase] =
+    Math.round(medianOf(measured.filter((m) => m.useCase === useCase).map((m) => m.integrated)) * 10) / 10;
 }
 
 // Reference-mastering map (sound-quality pass): per family the measured
@@ -259,7 +262,10 @@ ${lines.join("\n")}
 export const FAMILY_REFERENCE: Record<string, { integrated: number; punchPlrDb: number; tiltDb: number }> = {
 ${Object.entries(familyReference)
   .sort(([a], [b]) => a.localeCompare(b))
-  .map(([useCase, ref]) => `  ${useCase}: { integrated: ${ref.integrated.toFixed(1)}, punchPlrDb: ${ref.punchPlrDb.toFixed(1)}, tiltDb: ${ref.tiltDb.toFixed(1)} },`)
+  .map(
+    ([useCase, ref]) =>
+      `  ${useCase}: { integrated: ${ref.integrated.toFixed(1)}, punchPlrDb: ${ref.punchPlrDb.toFixed(1)}, tiltDb: ${ref.tiltDb.toFixed(1)} },`,
+  )
   .join("\n")}
 };
 `;

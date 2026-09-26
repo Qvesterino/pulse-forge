@@ -7,6 +7,7 @@ import {
 } from "../src/intent/artist-profiles";
 import type { ArtistProfile } from "../src/intent/artist-profiles";
 import { INTENT_SCHEMA_VERSION, type IntentSpec } from "../src/intent/types";
+import { planMixProfile } from "../src/intent/mix";
 
 function baseIntent(artist: string | undefined): IntentSpec {
   return {
@@ -36,6 +37,23 @@ function baseIntent(artist: string | undefined): IntentSpec {
     replaceMode: "replace",
     applyGrooveSettings: true,
     fx: null,
+  };
+}
+
+function profileFixture(overrides: Partial<ArtistProfile>): ArtistProfile {
+  return {
+    slug: "fixture",
+    name: "Fixture",
+    genres: ["trap"],
+    signature: { sound: [], samples: [], bpm: { typical: [120, 130] }, keys: [] },
+    mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+    master: { targetLufs: -8, tonalBalance: "balanced" },
+    gear: [],
+    vibe: [],
+    sources: [],
+    verificationStatus: "ai-inferred",
+    lastUpdated: "2026-09-26",
+    ...overrides,
   };
 }
 
@@ -276,5 +294,149 @@ describe("artistMixProfileOf — round-trip with intent.artist", () => {
     expect(getArtistProfile("kaytranada")?.mix.eqTilt).toBe("neutral");
     expect(getArtistProfile("axl-beats")?.mix.compression).toBe("heavy");
     expect(getArtistProfile("burial")?.mix.eqTilt).toBe("dark");
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Phase 2 slice 2 — width + sub mapping + planMixProfile decisions.
+ * ------------------------------------------------------------------------- */
+
+describe("deepProfileToArtistMix — stereoWidth → width mapping", () => {
+  it("wide stereoWidth → width: wide", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "wide", subEmphasis: "moderate" } }))
+        .width,
+    ).toBe("wide");
+  });
+
+  it("narrow stereoWidth → width: narrow", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "narrow", subEmphasis: "moderate" } }))
+        .width,
+    ).toBe("narrow");
+  });
+
+  it("normal stereoWidth → width: undefined (genre default wins)", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } }))
+        .width,
+    ).toBeUndefined();
+  });
+});
+
+describe("deepProfileToArtistMix — subEmphasis → sub mapping", () => {
+  it("prominent subEmphasis → sub: prominent", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "prominent" } }))
+        .sub,
+    ).toBe("prominent");
+  });
+
+  it("subtle subEmphasis → sub: subtle", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "subtle" } }))
+        .sub,
+    ).toBe("subtle");
+  });
+
+  it("moderate subEmphasis → sub: undefined", () => {
+    expect(
+      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } }))
+        .sub,
+    ).toBeUndefined();
+  });
+});
+
+describe("planMixProfile — width wiring (Phase 2 slice 2)", () => {
+  it("wide width pushes haasWidener decisions on chords + lead with width=0.85", () => {
+    const intent = baseIntent(undefined);
+    // Synthesize a deep profile with wide stereoWidth by routing through
+    // artistMixProfileOf. Travis Scott has dark tone + reverb=huge (curated
+    // wins), so we can't easily inject width via curated. Instead, test the
+    // decision tree directly: an artist that has width="wide" via deep
+    // fallback. Fred Again has stereoWidth="wide" in its deep profile.
+    const intentWithArtist = baseIntent("fred-again");
+    const profile = planMixProfile(intentWithArtist, {}, {});
+    const haasDecisions = profile.decisions.filter((d) => d.effectType === "haasWidener");
+    expect(haasDecisions.length).toBeGreaterThan(0);
+    expect(haasDecisions.every((d) => d.params.width === 0.85)).toBe(true);
+    expect(profile.summary.some((line) => line.startsWith("width: wide"))).toBe(true);
+  });
+
+  it("narrow width pushes haasWidener decisions with width=0.35", () => {
+    // Drill (axl-beats) has stereoWidth="normal" in its deep profile so it
+    // does NOT emit haasWidener. Use a profileFixture-like scenario via a
+    // direct ArtistMixProfile call by simulating a narrow profile.
+    // Since artistMixProfileOf already returns the deep-derived profile for
+    // axl-beats, we need a fixture approach. Use Burial (narrowWidth — but
+    // burial is "dark" tone, NOT narrow width). Use DJ Tameil — he has
+    // "narrow" stereoWidth in his deep profile (punchy kick, tight stereo).
+    const intentWithArtist = baseIntent("dj-tameil");
+    const profile = planMixProfile(intentWithArtist, {}, {});
+    const haasDecisions = profile.decisions.filter((d) => d.effectType === "haasWidener");
+    expect(haasDecisions.length).toBeGreaterThan(0);
+    expect(haasDecisions.every((d) => d.params.width === 0.35)).toBe(true);
+    expect(profile.summary.some((line) => line.startsWith("width: narrow"))).toBe(true);
+  });
+
+  it("no width signal — no haasWidener decisions emitted", () => {
+    const intent = baseIntent(undefined); // no artist, no width signal
+    const profile = planMixProfile(intent, {}, {});
+    const haasDecisions = profile.decisions.filter((d) => d.effectType === "haasWidener");
+    expect(haasDecisions.length).toBe(0);
+  });
+});
+
+describe("planMixProfile — sub wiring (Phase 2 slice 2)", () => {
+  it("prominent sub pushes bass eq with lowShelfGain=+3.5", () => {
+    // AXL Beats has subEmphasis="prominent" in deep profile (drill 808).
+    const intentWithArtist = baseIntent("axl-beats");
+    const profile = planMixProfile(intentWithArtist, {}, {});
+    const subDecisions = profile.decisions.filter(
+      (d) => d.target === "bass" && d.effectType === "eq" && d.params.lowShelfGain === 3.5,
+    );
+    expect(subDecisions.length).toBeGreaterThan(0);
+    expect(profile.summary.some((line) => line.startsWith("sub: prominent"))).toBe(true);
+  });
+
+  it("subtle sub pushes bass eq with lowShelfGain=-1.5", () => {
+    // Burial has subEmphasis="subtle" in deep profile.
+    const intentWithArtist = baseIntent("burial");
+    const profile = planMixProfile(intentWithArtist, {}, {});
+    const subDecisions = profile.decisions.filter(
+      (d) => d.target === "bass" && d.effectType === "eq" && d.params.lowShelfGain === -1.5,
+    );
+    expect(subDecisions.length).toBeGreaterThan(0);
+    expect(profile.summary.some((line) => line.startsWith("sub: subtle"))).toBe(true);
+  });
+
+  it("no sub signal — no sub eq decision emitted", () => {
+    const intent = baseIntent(undefined);
+    const profile = planMixProfile(intent, {}, {});
+    const subDecisions = profile.decisions.filter(
+      (d) => d.target === "bass" && d.effectType === "eq" && d.params.lowShelfGain === 3.5,
+    );
+    expect(subDecisions.length).toBe(0);
+  });
+});
+
+describe("planMixProfile — fixture pin (Phase 2 slice 2 deep profiles)", () => {
+  // Pin the canonical deep profiles so a future edit to a profile's
+  // mix traits surfaces in this test failure (the haasWidener / sub
+  // wiring tests depend on these signals).
+  it("AXL Beats has wide subEmphasis", () => {
+    expect(getArtistProfile("axl-beats")?.mix.subEmphasis).toBe("prominent");
+  });
+
+  it("Burial has subtle subEmphasis", () => {
+    expect(getArtistProfile("burial")?.mix.subEmphasis).toBe("subtle");
+  });
+
+  it("Fred Again has wide stereoWidth", () => {
+    expect(getArtistProfile("fred-again")?.mix.stereoWidth).toBe("wide");
+  });
+
+  it("DJ Tameil has narrow stereoWidth", () => {
+    expect(getArtistProfile("dj-tameil")?.mix.stereoWidth).toBe("narrow");
   });
 });

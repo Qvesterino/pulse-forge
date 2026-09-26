@@ -103,20 +103,20 @@ function render(
   return [outL, outR];
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   (globalThis as unknown as { sampleRate: number }).sampleRate = SR;
   (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = FakeAudioWorkletProcessor;
   (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = () => {};
-  const source = readFileSync(
-    resolve(import.meta.dirname ?? ".", "..", "src", "audio-worklets", "freqshifter-processor.js"),
-    "utf-8",
-  );
-  let captured: unknown = null;
-  const host = new Function("registerProcessor", "AudioWorkletProcessor", "globalThis", source);
-  host((_name: string, cls: unknown) => (captured = cls), FakeAudioWorkletProcessor, globalThis);
-  if (!captured) throw new Error("no processor registered in freqshifter-processor.js");
+  // The module gained ESM exports (drive-oversampling test); import it as a
+  // module instead of eval'ing the raw source via `new Function`.
+  const mod = (await import("../src/audio-worklets/freqshifter-processor.js")) as {
+    createFreqShiftProcessor: (options?: { processorOptions?: unknown }) => FreqShiftLike;
+  };
+  if (typeof mod.createFreqShiftProcessor !== "function") {
+    throw new Error("freqshifter-processor.js did not export createFreqShiftProcessor");
+  }
   freqShiftFactory = ((options?: { processorOptions?: unknown }) =>
-    new (captured as new (o?: unknown) => FreqShiftLike)(options)) as typeof freqShiftFactory;
+    mod.createFreqShiftProcessor(options)) as typeof freqShiftFactory;
 });
 
 describe("FreqShift processor", () => {

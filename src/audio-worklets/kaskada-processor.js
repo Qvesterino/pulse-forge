@@ -20,6 +20,82 @@ const MAX_DELAY_MS = 2000;
 const SYNC_RATIO = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6]; // off, 1/4, 1/8, 1/8T, 1/16, 1/16T
 const TWO_PI = Math.PI * 2;
 
+// ── 2× oversampled drive (PARAM-VALUE-AUDIT-2026-09 Vlna 3) ─────────────
+// Same pattern as svfilter-processor: only the tanh stage runs at 2× the
+// rate (9-tap windowed-sinc band-limit → saturate → anti-image → decimate),
+// so harmonics above Nyquist fold back an octave higher and ~30 dB weaker
+// at high DRIVE. Drive sits inside the feedback loop after the loop EQ —
+// the added ~¾-sample phase is negligible against 30–2000 ms loop delays,
+// and unity small-signal gain is preserved (loop gain stays ≤ fb).
+const KS_OS_TAPS = (() => {
+  const N = 9;
+  const fc = 0.375; // relative to the 2× rate ≈ 0.75× original fs
+  const taps = new Array(N);
+  const M = N - 1;
+  for (let i = 0; i < N; i++) {
+    const m = i - (M >> 1);
+    const sinc = m === 0 ? 1 : Math.sin(Math.PI * fc * m) / (Math.PI * fc * m);
+    const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / M); // Hamming
+    taps[i] = sinc * w;
+  }
+  let sum = 0;
+  for (let i = 0; i < N; i++) sum += taps[i];
+  for (let i = 0; i < N; i++) taps[i] /= sum;
+  return taps;
+})();
+
+/** Rational tanh (Padé 3/2) — matches the legacy Math.tanh curve to ~1%,
+ * ~5× cheaper on this hot path. */
+function ksTanh(x) {
+  if (x > 3) return 1;
+  if (x < -3) return -1;
+  const x2 = x * x;
+  return (x * (27 + x2)) / (27 + 9 * x2);
+}
+
+function newKsDriveState() {
+  return { sub: new Float32Array(8), sat: new Float32Array(8), w: 0, sw: 0, prev: 0 };
+}
+
+/** One input sample through the oversampled unity-small-signal saturator:
+ * out ≈ ksTanh(band(x) · g) / g decimated. */
+function ksOsDrive(st, x, g) {
+  const sub = st.sub;
+  const sat = st.sat;
+  const invG = 1 / g;
+  const mid = (st.prev + x) * 0.5;
+  st.prev = x;
+  sub[st.w] = mid;
+  let k = st.w;
+  let acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += KS_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satMid = ksTanh(acc * g) * invG;
+  sub[st.w] = x;
+  k = st.w;
+  acc = 0;
+  for (let i = 0; i < 9; i++) {
+    acc += KS_OS_TAPS[i] * sub[k];
+    k = (k + 7) & 7;
+  }
+  st.w = (st.w + 1) & 7;
+  const satEven = ksTanh(acc * g) * invG;
+  sat[st.sw] = satMid;
+  st.sw = (st.sw + 1) & 7;
+  sat[st.sw] = satEven;
+  k = st.sw;
+  let out = 0;
+  for (let i = 0; i < 9; i++) {
+    out += KS_OS_TAPS[i] * sat[k];
+    k = (k + 7) & 7;
+  }
+  st.sw = (st.sw + 1) & 7;
+  return out;
+}
+
 /* ── Dual-spectrum metering (Inspector panel) ──
  * Analysis runs ONLY while a consumer is attached (node posts setMeters).
  * Taps: dry = mono input, wet = the delay bus after loop EQ/drive/spread,
@@ -138,6 +214,8 @@ class KaskadaProcessor extends AudioWorkletProcessor {
     this.spread = 0.8;
     this.modDepthMs = 0;
     this.character = 1;
+    this.ksDriveL = newKsDriveState();
+    this.ksDriveR = newKsDriveState();
 
     // Loop EQ biquads (2× LP cascade + 2× HP cascade = 24 dB/oct per side)
     this.lp1L = this.makeBiquad();
@@ -922,11 +1000,12 @@ class KaskadaProcessor extends AudioWorkletProcessor {
       wetR = this.applyBiquad(this.hp1R, this.hpR1c, wetR);
       wetR = this.applyBiquad(this.hp2R, this.hpR1c, wetR);
 
-      // Drive in feedback (tanh saturation, unity small-signal gain —
-      // loop gain stays ≤ FEEDBK at every amplitude, no self-oscillation)
+      // Drive in feedback (2× oversampled tanh saturation, unity
+      // small-signal gain — loop gain stays ≤ FEEDBK at every amplitude,
+      // no self-oscillation)
       if (drive > 0) {
-        wetL = Math.tanh(wetL * driveGain) / driveGain;
-        wetR = Math.tanh(wetR * driveGain) / driveGain;
+        wetL = ksOsDrive(this.ksDriveL, wetL, driveGain);
+        wetR = ksOsDrive(this.ksDriveR, wetR, driveGain);
       }
 
       // Ping-pong crossfeed

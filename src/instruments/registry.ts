@@ -22,6 +22,7 @@ import {
   keysParams,
   pluckParams,
   fluteParams,
+  organParams,
   logdrumParams,
   spectralParams,
   vocalchopParams,
@@ -3559,6 +3560,264 @@ const flute: InstrumentDefinition = {
             amp.disconnect();
             formant.disconnect();
             tail.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Organ (drawbar) ---------------- */
+// Additive drawbar synthesis: the harmonic mix (BRIGHT blends warm ↔ brassy
+// tables) is baked into ONE band-limited PeriodicWave per voice instead of
+// nine oscillators — a real-manuals organ without the chipmunk of sample
+// pitching. The 16' drawbar runs as a half-frequency sine of its own, CLICK
+// is the key-contact transient (seeded noise burst), and ROTARY is the
+// Leslie: tremolo + pitch vibrato on the oscillators + a 90°-offset pan
+// wander, all phase-locked to the note (live==offline). SVF + drive cover
+// the dark phonk/memphis variants; GLIDE gives drill the sliding organ
+// bass. Deterministic: coefficient tables, seeded noise, LFOs started at
+// the note's `when`.
+
+// Harmonic amplitude tables (partials 1..8) the BRIGHT knob blends between.
+const ORGAN_WARM = [1, 0.18, 0.06, 0.02, 0, 0, 0, 0];
+const ORGAN_BRIGHT = [1, 0.85, 1.0, 0.55, 0.45, 0.3, 0.22, 0.18];
+
+function organDrawbarWeights(bright: number): Float32Array {
+  const b = Math.max(0, Math.min(1, bright));
+  const weights = new Float32Array(9); // index 0 = DC slot, unused
+  let energy = 0;
+  for (let n = 0; n < 8; n++) {
+    const w = ORGAN_WARM[n]! * (1 - b) + ORGAN_BRIGHT[n]! * b;
+    weights[n + 1] = w;
+    energy += w * w;
+  }
+  // Unit L2 energy — the perceived level stays put as the tilt changes.
+  const norm = Math.sqrt(energy) || 1;
+  for (let n = 1; n < 9; n++) weights[n] = weights[n]! / norm;
+  return weights;
+}
+
+const organ: InstrumentDefinition = {
+  kind: "organ",
+  name: "Organ",
+  params: organParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(10);
+    const clickSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x0r96);
+    // PeriodicWave per quantized tilt — at most ~101 coefficient tables per
+    // track instance, shared across voices and re-built only when the knob
+    // moves to a new 2 % step. disableNormalization: our own L2 norm keeps
+    // levels deterministic instead of the browser's peak norm.
+    const waveCache = new Map<string, PeriodicWave>();
+    const waveFor = (bright: number): PeriodicWave => {
+      const key = bright.toFixed(2);
+      let wave = waveCache.get(key);
+      if (!wave) {
+        const weights = organDrawbarWeights(bright);
+        const real = new Float32Array(9);
+        const imag = new Float32Array(9);
+        imag.set(weights);
+        wave = ctx.createPeriodicWave(real, imag, { disableNormalization: true });
+        waveCache.set(key, wave);
+      }
+      return wave;
+    };
+
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.001, p.attack ?? 0.003);
+        const release = Math.max(0.01, p.release ?? 0.08);
+        const hold = Math.max(durationSec, attack + 0.02);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.35;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const bright = Math.max(0, Math.min(1, p.bright ?? 0.5));
+        const subAmt = Math.max(0, Math.min(1, p.sub ?? 0.4));
+        const clickAmt = Math.max(0, Math.min(1, p.click ?? 0.35));
+        const drive = Math.max(0, Math.min(1, p.drive ?? 0.15));
+        const rotDepth = Math.max(0, Math.min(1, p.rotary ?? 0.35));
+        const rotRate = Math.max(0, Math.min(8, p.rotaryRate ?? 1.2));
+
+        // Manual amplitude — instant on, full hold, release at noteOff.
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // Drawbar tilt filter + grit (SVF drive), then the Leslie section.
+        const svf = createVoiceFilter(
+          ctx,
+          Math.max(120, Math.min(14000, p.cutoff ?? 6500)),
+          Math.max(0.1, Math.min(8, p.resonance ?? 0.8)),
+          0,
+          drive,
+        );
+        const trem = ctx.createGain();
+        const panner = ctx.createStereoPanner();
+        svf.output.connect(trem);
+        trem.connect(panner);
+        panner.connect(amp);
+        amp.connect(output);
+
+        const lfos: OscillatorNode[] = [];
+        if (rotDepth > 0.001 && rotRate > 0.005) {
+          // Amplitude tremolo (base ± depth·0.35 around 1 − 0.35·depth).
+          trem.gain.value = 1 - rotDepth * 0.35;
+          const tremLfo = ctx.createOscillator();
+          tremLfo.type = "sine";
+          tremLfo.frequency.value = rotRate;
+          const tremMod = ctx.createGain();
+          tremMod.gain.value = rotDepth * 0.35;
+          tremLfo.connect(tremMod).connect(trem.gain);
+          tremLfo.start(when);
+          tremLfo.stop(stopTime);
+          lfos.push(tremLfo);
+        } else {
+          trem.gain.value = 1;
+        }
+
+        // Drawbar carrier (one band-limited table voice) + 16' sub sine.
+        const main = ctx.createOscillator();
+        main.setPeriodicWave(waveFor(bright));
+        const sub = ctx.createOscillator();
+        sub.type = "sine";
+        // Portamento: engine slideFrom (pattern glides) OR the GLIDE knob
+        // pulling from the track's last sounding pitch (legato leads).
+        const glideAmt = Math.max(0, Math.min(1, p.glide ?? 0));
+        const fromFreq = slideFrom ? midiToFreq(slideFrom.pitch) : glideAmt > 0.001 ? runtime.lastFreq : null;
+        if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
+          const glideSec = Math.max(0.01, glideAmt * 0.5);
+          const glideEnd = Math.min(when + glideSec, off);
+          main.frequency.setValueAtTime(fromFreq, when);
+          main.frequency.exponentialRampToValueAtTime(freq, glideEnd);
+          sub.frequency.setValueAtTime(fromFreq / 2, when);
+          sub.frequency.exponentialRampToValueAtTime(freq / 2, glideEnd);
+        } else {
+          main.frequency.setValueAtTime(freq, when);
+          sub.frequency.setValueAtTime(freq / 2, when);
+        }
+        if (rotDepth > 0.001 && rotRate > 0.005) {
+          // Pitch vibrato taps the SAME tremolo LFO (phase-locked) — the
+          // Leslie's horn Doppler reads as one motion, not two.
+          const vibMod = ctx.createGain();
+          vibMod.gain.value = rotDepth * 14; // cents
+          lfos[0]!.connect(vibMod);
+          vibMod.connect(main.detune);
+          vibMod.connect(sub.detune);
+          // Pan wander, 90° behind the tremolo (start offset = quarter turn).
+          const panLfo = ctx.createOscillator();
+          panLfo.type = "sine";
+          panLfo.frequency.value = rotRate;
+          const panMod = ctx.createGain();
+          panMod.gain.value = rotDepth * 0.6;
+          panLfo.connect(panMod).connect(panner.pan);
+          panLfo.start(when + 0.25 / rotRate);
+          panLfo.stop(stopTime);
+          lfos.push(panLfo);
+        }
+        main.connect(svf.input);
+        const subGain = ctx.createGain();
+        subGain.gain.value = subAmt * 0.9;
+        sub.connect(subGain).connect(svf.input);
+        main.start(when);
+        sub.start(when);
+        main.stop(stopTime);
+        sub.stop(stopTime);
+
+        // Key click — the mechanical contact of the manual (post-filter so
+        // it stays bright even on dark phonk voicings).
+        let clickSrc: AudioBufferSourceNode | null = null;
+        let clickBP: BiquadFilterNode | null = null;
+        let clickGain: GainNode | null = null;
+        if (clickAmt > 0.001) {
+          clickSrc = ctx.createBufferSource();
+          clickSrc.buffer = clickSeed;
+          clickBP = ctx.createBiquadFilter();
+          clickBP.type = "bandpass";
+          clickBP.frequency.value = 2800;
+          clickBP.Q.value = 1.2;
+          clickGain = ctx.createGain();
+          clickGain.gain.setValueAtTime(Math.max(level * clickAmt * 0.6, 0.0002), when);
+          clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.012);
+          clickSrc.connect(clickBP).connect(clickGain).connect(trem);
+          clickSrc.start(when, (hashString(track.id) % 997) / 1000);
+          clickSrc.stop(when + 0.04);
+        }
+
+        // Legato memory: the next GLIDE note pulls from this pitch.
+        runtime.lastFreq = freq;
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            for (const node of [main, sub, clickSrc, ...lfos]) {
+              try {
+                node.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            for (const node of [main, sub, clickSrc, ...lfos]) {
+              try {
+                node.stop(now + 0.02);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+        );
+        // Clock oscillator for deterministic cleanup (live + offline).
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            main.disconnect();
+            sub.disconnect();
+            subGain.disconnect();
+            svf.disconnect();
+            trem.disconnect();
+            panner.disconnect();
+            clickBP?.disconnect();
+            clickGain?.disconnect();
+            amp.disconnect();
           } catch {
             /* already */
           }

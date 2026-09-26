@@ -21,8 +21,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                        |
 | **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                          |
 | └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only) |
-| **Factory presets**                    | **404** | `src/presets/factory.ts`                                                                                                      |
-| └─ instrument presets                  |     398 | `FACTORY_PRESETS`                                                                                                             |
+| **Factory presets**                    | **411** | `src/presets/factory.ts`                                                                                                      |
+| └─ instrument presets                  |     405 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
 | **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
 | **Vitest spec files**                  | **532** | `tests/` files matching `*.test.ts` (427) and `*.test.tsx` (105)                                                              |
@@ -89,6 +89,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - 808 presets 232 → 242 — 10 genre-anchored 808 voices with `GLIDE` front and center for drill / phonk slide ladder. _(feat `2ba6a9d`)_
 - Browser factory preset audio QA currently green at 252/252 (after Flute preset addition).
 - Pop preset pack — 24 vocal-first presets (bright keys/plucks, lush/bedroom/air pads, marimba/celesta/nylon/rhodes/wurli/sad-piano carriers, round basses, tuned 808s, soft leads, FM bells), all measured into the loudness map.
+- Pop preset delta — 7 fill-in voices: intimate upright piano, kalimba + music box (consuming the two orphaned mallet assets), funky moving bass, dance-pop saw lead, FM DX-style piano, vocal-chop pop adlib; tonal/mallet factory assets now all have a preset consumer. _(feat pop preset delta)_
 
 ### Intent and AI
 

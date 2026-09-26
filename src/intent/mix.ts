@@ -256,6 +256,29 @@ export function planMixProfile(
     summary.push(`pump: sidechain ${Math.round(amount * 100)}%`);
   }
 
+  // ── Width: haasWidener on chords + lead (Phase 2 slice 2) ──────────────
+  // Wide → Haas decorrelation pushed to 0.85 (immersive atmospheric trap /
+  // emo-rap / future-bass). Narrow → 0.35 (mono-focused jersey club / drill).
+  // Normal = genre default (no decision pushed).
+  const widthSignal = artistMix?.width;
+  if (widthSignal === "wide" || widthSignal === "narrow") {
+    const haasWidth = widthSignal === "wide" ? 0.85 : 0.35;
+    decisions.push({ target: "chords", effectType: "haasWidener", params: { width: haasWidth } });
+    decisions.push({ target: "lead", effectType: "haasWidener", params: { width: haasWidth } });
+    summary.push(`width: ${widthSignal} (haas ${haasWidth})`);
+  }
+
+  // ── Sub: lowShelfGain on bass (Phase 2 slice 2) ─────────────────────────
+  // Prominent → 808 / kick sub becomes dominant (drill / phonk / trap).
+  // Subtle → rolled-off, lo-fi character (lo-fi hip-hop / Jersey club kick
+  // forward). Moderate = genre default (no decision pushed).
+  const subSignal = artistMix?.sub;
+  if (subSignal === "prominent" || subSignal === "subtle") {
+    const subGain = subSignal === "prominent" ? 3.5 : -1.5;
+    decisions.push({ target: "bass", effectType: "eq", params: { lowShelfGain: subGain } });
+    summary.push(`sub: ${subSignal} (lowShelf ${subGain > 0 ? "+" : ""}${subGain} dB)`);
+  }
+
   // ── Pop production (Wave 4): vocal-friendly glue + controlled low-end ───
   // Gentle music-bus compression so vocals sit on top without fighting, and
   // a high-pass on the music (not the bass) so the sub stays clean. Merges
