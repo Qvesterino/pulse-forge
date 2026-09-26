@@ -552,18 +552,18 @@ export const msEqParams: ParamDef[] = [
     format: formatHz,
     taper: "log",
   },
-  { id: "midLowGain", label: "M LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  { id: "midLowGain", label: "M LOW", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
   {
     id: "midHighFreq",
     label: "M HIGH FREQ",
     min: 1500,
-    max: 12000,
+    max: 16000,
     default: 6000,
     unit: "Hz",
     format: formatHz,
     taper: "log",
   },
-  { id: "midHighGain", label: "M HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  { id: "midHighGain", label: "M HIGH", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
   {
     id: "sideLowFreq",
     label: "S LOW FREQ",
@@ -574,18 +574,18 @@ export const msEqParams: ParamDef[] = [
     format: formatHz,
     taper: "log",
   },
-  { id: "sideLowGain", label: "S LOW", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  { id: "sideLowGain", label: "S LOW", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
   {
     id: "sideHighFreq",
     label: "S HIGH FREQ",
     min: 1500,
-    max: 12000,
+    max: 16000,
     default: 6000,
     unit: "Hz",
     format: formatHz,
     taper: "log",
   },
-  { id: "sideHighGain", label: "S HIGH", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+  { id: "sideHighGain", label: "S HIGH", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
 ];
 
 export const haasWidenerParams: ParamDef[] = [
@@ -717,14 +717,14 @@ export const clipperParams: ParamDef[] = [
 ];
 
 export const reverbParams: ParamDef[] = [
-  { id: "decay", label: "DECAY", min: 0.1, max: 6, default: 1.8, unit: "s", format: formatSec },
-  { id: "predelay", label: "PRE-DLY", min: 0, max: 120, default: 20, unit: "ms", format: formatMs },
-  { id: "tone", label: "TONE", min: 500, max: 12000, default: 9000, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "decay", label: "DECAY", min: 0.1, max: 20, default: 1.8, unit: "s", format: formatSec },
+  { id: "predelay", label: "PRE-DLY", min: 0, max: 250, default: 20, unit: "ms", format: formatMs },
+  { id: "tone", label: "TONE", min: 200, max: 18000, default: 9000, unit: "Hz", format: formatHz, taper: "log" },
   {
     id: "damping",
     label: "DAMPING",
-    min: 500,
-    max: 12000,
+    min: 200,
+    max: 18000,
     default: 6000,
     unit: "Hz",
     format: formatHz,
@@ -736,7 +736,7 @@ export const reverbParams: ParamDef[] = [
 ];
 
 export const delayParams: ParamDef[] = [
-  { id: "time", label: "TIME", min: 30, max: 1000, default: 375, unit: "ms", format: formatMs },
+  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
   {
     id: "sync",
     label: "SYNC",
@@ -1269,9 +1269,9 @@ export const utilityParams: ParamDef[] = [
 ];
 
 export const limiterParams: ParamDef[] = [
-  { id: "ceiling", label: "CEILING", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
+  { id: "ceiling", label: "CEILING", min: -24, max: 0, default: -1, unit: "dB", format: formatDb },
   { id: "threshold", label: "THRESHOLD", min: -24, max: 0, default: -6, unit: "dB", format: formatDb },
-  { id: "release", label: "RELEASE", min: 0.01, max: 1, default: 0.12, unit: "s", format: formatSecMs },
+  { id: "release", label: "RELEASE", min: 0.01, max: 2, default: 0.12, unit: "s", format: formatSecMs },
   { id: "lookaheadMs", label: "LOOKAHEAD", min: 1, max: 20, default: 5, unit: "ms", format: formatMs },
   { id: "link", label: "LINK", min: 0, max: 1, default: 1, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
@@ -1430,7 +1430,7 @@ export const vowelParams: ParamDef[] = [
 ];
 
 export const duckDelayParams: ParamDef[] = [
-  { id: "time", label: "TIME", min: 30, max: 1000, default: 375, unit: "ms", format: formatMs },
+  { id: "time", label: "TIME", min: 30, max: 2000, default: 375, unit: "ms", format: formatMs },
   { id: "feedback", label: "FEEDBK", min: 0, max: 0.9, default: 0.35, format: formatPct },
   { id: "tone", label: "TONE", min: 500, max: 8000, default: 4000, unit: "Hz", format: formatHz, taper: "log" },
   { id: "duckAmount", label: "DUCK", min: 0, max: 1, default: 0.7, format: formatPct },
@@ -1642,8 +1642,8 @@ export const pitchShiftParams: ParamDef[] = [
   {
     id: "fine",
     label: "FINE",
-    min: -50,
-    max: 50,
+    min: -100,
+    max: 100,
     default: 0,
     unit: "ct",
     format: (v) => `${v > 0 ? "+" : ""}${Math.round(v)}`,

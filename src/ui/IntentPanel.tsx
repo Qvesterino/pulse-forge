@@ -27,6 +27,7 @@ import {
   type SongBuildSection,
 } from "../intent/song";
 import type { SearchLane } from "../intent/candidate-search";
+import { fxWordsForArtist } from "../intent/artists";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
@@ -435,6 +436,11 @@ export function IntentPanel() {
     // generation ("wobbly drill"): candidates carry them, USE applies
     // pattern + FX as one step.
     const globalFx = genreSignal ? parseProductionIntent(remainingFxText) : null;
+    // Artist FX hints (Vlna 8 polish): the matched preset's own devices
+    // ride along ONLY when the user typed no FX of their own — user words
+    // always win over the artist signature.
+    const artistFx = globalFx ? null : parseProductionIntent(fxWordsForArtist(intentInput.artist).join(" "));
+    const effectiveFx = globalFx ?? artistFx;
     // T1 krok 2 semantic layer: when the keyword parse is WEAK (no genre
     // word, no artist preset), ask the embedding model for the nearest
     // curated reference. Confident keyword parses skip it — zero latency
@@ -453,7 +459,7 @@ export function IntentPanel() {
     } else {
       setSemanticChip(null);
     }
-    if (globalFx) finalInput = { ...finalInput, fx: globalFx };
+    if (effectiveFx) finalInput = { ...finalInput, fx: effectiveFx };
     await runGeneration(finalInput, controller);
   };
 

@@ -116,10 +116,10 @@ class EqProcessor extends AudioWorkletProcessor {
       { name: "lowShelfGain", defaultValue: 0, minValue: -15, maxValue: 15, automationRate: "k-rate" },
       { name: "lowMidFreq", defaultValue: 400, minValue: 80, maxValue: 2000, automationRate: "k-rate" },
       { name: "lowMidGain", defaultValue: 0, minValue: -15, maxValue: 15, automationRate: "k-rate" },
-      { name: "lowMidQ", defaultValue: 1, minValue: 0.3, maxValue: 8, automationRate: "k-rate" },
+      { name: "lowMidQ", defaultValue: 1, minValue: 0.2, maxValue: 16, automationRate: "k-rate" },
       { name: "highMidFreq", defaultValue: 2500, minValue: 500, maxValue: 8000, automationRate: "k-rate" },
       { name: "highMidGain", defaultValue: 0, minValue: -15, maxValue: 15, automationRate: "k-rate" },
-      { name: "highMidQ", defaultValue: 1, minValue: 0.3, maxValue: 8, automationRate: "k-rate" },
+      { name: "highMidQ", defaultValue: 1, minValue: 0.2, maxValue: 16, automationRate: "k-rate" },
       { name: "highShelfFreq", defaultValue: 6000, minValue: 1500, maxValue: 16000, automationRate: "k-rate" },
       { name: "highShelfGain", defaultValue: 0, minValue: -15, maxValue: 15, automationRate: "k-rate" },
     ];

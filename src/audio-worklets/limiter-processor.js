@@ -125,8 +125,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: "threshold", defaultValue: -6, minValue: -24, maxValue: 0, automationRate: "k-rate" },
-      { name: "ceiling", defaultValue: -1, minValue: -12, maxValue: 0, automationRate: "k-rate" },
-      { name: "release", defaultValue: 0.12, minValue: 0.01, maxValue: 1, automationRate: "k-rate" },
+      { name: "ceiling", defaultValue: -1, minValue: -24, maxValue: 0, automationRate: "k-rate" },
+      { name: "release", defaultValue: 0.12, minValue: 0.01, maxValue: 2, automationRate: "k-rate" },
       { name: "lookahead", defaultValue: 0.005, minValue: 0.001, maxValue: 0.02, automationRate: "k-rate" },
       { name: "link", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },

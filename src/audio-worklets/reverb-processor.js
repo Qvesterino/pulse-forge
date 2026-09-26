@@ -52,10 +52,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: "decay", defaultValue: 1.8, minValue: 0.1, maxValue: 6, automationRate: "k-rate" },
-      { name: "damping", defaultValue: 6000, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
+      { name: "decay", defaultValue: 1.8, minValue: 0.1, maxValue: 20, automationRate: "k-rate" },
+      { name: "damping", defaultValue: 6000, minValue: 200, maxValue: 18000, automationRate: "k-rate" },
       { name: "diffusion", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
-      { name: "tone", defaultValue: 6000, minValue: 500, maxValue: 12000, automationRate: "k-rate" },
+      { name: "tone", defaultValue: 6000, minValue: 200, maxValue: 18000, automationRate: "k-rate" },
       // Comb delay-length modulation depth (0..1): a slow per-comb sine
       // drift on the read positions — detunes the early resonance modes so
       // long decays stop ringing metallically.
@@ -80,13 +80,13 @@ class ReverbProcessor extends AudioWorkletProcessor {
     }
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
-    const decay = Math.max(0.1, Math.min(6, parameters.decay[0]));
+    const decay = Math.max(0.1, Math.min(20, parameters.decay[0]));
     // DAMPING shapes the feedback loop (how fast the TAIL loses highs);
     // TONE is the output brightness — two distinct filters now, they used
     // to collapse into one (min of both) which wasted a knob.
-    const dampingFreq = Math.max(500, Math.min(12000, parameters.damping ? parameters.damping[0] : 6000));
+    const dampingFreq = Math.max(200, Math.min(18000, parameters.damping ? parameters.damping[0] : 6000));
     const diffusion = Math.max(0, Math.min(1, parameters.diffusion ? parameters.diffusion[0] : 0.5));
-    const toneFreq = Math.max(500, Math.min(12000, parameters.tone ? parameters.tone[0] : 9000));
+    const toneFreq = Math.max(200, Math.min(18000, parameters.tone ? parameters.tone[0] : 9000));
     const dampAlpha = 1 - Math.exp((-2 * Math.PI * dampingFreq) / sr);
     const toneAlpha = 1 - Math.exp((-2 * Math.PI * toneFreq) / sr);
 
@@ -97,7 +97,10 @@ class ReverbProcessor extends AudioWorkletProcessor {
       this.combFeedback = REVERB_COMB_DELAYS.map((d) => {
         const ms = ((d * sr) / 48000 / sr) * 1000; // delay in ms at current sr (d scaled)
         const g = Math.pow(10, (-3 * ms) / (decay * 1000));
-        return Math.min(0.98, g);
+        // 0.995 ceiling: at 20 s decay the longest comb (≈33.7 ms) wants
+        // g ≈ 0.988 — the old 0.98 cap silently shortened the tail to ~11 s
+        // and let the combs diverge. 0.995 still bounds runaway to t60 ≈ 46 s.
+        return Math.min(0.995, g);
       });
       this.combFeedbackCacheDecay = decay;
       this.combFeedbackCacheSr = sr;

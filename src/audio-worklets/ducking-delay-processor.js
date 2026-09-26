@@ -20,12 +20,12 @@ const DUCK_BUF_SIZE = 131072;
 class DuckingDelayProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Ring sized from the runtime sample rate: the 1000 ms max delay must
-    // fit with interpolation headroom (131072 ≈ 2.9 s @44.1k but only
-    // 0.68 s @192k — keep the pow2 size for mask indexing).
+    // Ring sized from the runtime sample rate: the 2000 ms max delay must
+    // fit with interpolation headroom (262144 ≈ 5.9 s @44.1k but only
+    // 1.37 s @192k — keep the pow2 size for mask indexing).
     const sr = globalThis.sampleRate || 44100;
     this.bufSize = DUCK_BUF_SIZE;
-    while (this.bufSize < Math.ceil(sr * 1.05)) this.bufSize *= 2;
+    while (this.bufSize < Math.ceil(sr * 2.05)) this.bufSize *= 2;
     this.bufMask = this.bufSize - 1;
     this.bufL = new Float32Array(this.bufSize);
     this.bufR = new Float32Array(this.bufSize);
@@ -39,7 +39,7 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: "time", defaultValue: 375, minValue: 30, maxValue: 1000, automationRate: "k-rate" },
+      { name: "time", defaultValue: 375, minValue: 30, maxValue: 2000, automationRate: "k-rate" },
       { name: "feedback", defaultValue: 0.35, minValue: 0, maxValue: 0.9, automationRate: "k-rate" },
       { name: "tone", defaultValue: 4000, minValue: 500, maxValue: 8000, automationRate: "k-rate" },
       { name: "duckAmount", defaultValue: 0.7, minValue: 0, maxValue: 1, automationRate: "k-rate" },
@@ -66,7 +66,7 @@ class DuckingDelayProcessor extends AudioWorkletProcessor {
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
 
-    const delayMs = Math.max(30, Math.min(1000, parameters.time[0]));
+    const delayMs = Math.max(30, Math.min(2000, parameters.time[0]));
     const feedback = Math.max(0, Math.min(0.9, parameters.feedback[0]));
     const tone = Math.max(500, Math.min(8000, parameters.tone[0]));
     const duckAmt = Math.max(0, Math.min(1, parameters.duckAmount[0]));

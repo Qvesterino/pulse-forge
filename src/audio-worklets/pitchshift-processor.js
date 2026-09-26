@@ -28,7 +28,7 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: "semitones", defaultValue: 0, minValue: -12, maxValue: 12, automationRate: "k-rate" },
-      { name: "fine", defaultValue: 0, minValue: -50, maxValue: 50, automationRate: "k-rate" },
+      { name: "fine", defaultValue: 0, minValue: -100, maxValue: 100, automationRate: "k-rate" },
       { name: "grainMs", defaultValue: 55, minValue: 20, maxValue: 120, automationRate: "k-rate" },
       { name: "width", defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },

@@ -22,7 +22,7 @@ export function createDuckingDelayNode(
     const idx = lfoSyncIndex(syncOverride ?? instance.params.sync);
     const mult = LFO_SYNC_DIVISIONS[idx]?.mult ?? 0;
     if (mult <= 0) return instance.params.time ?? 375;
-    return Math.max(30, Math.min(1000, ((60 / bpmVal) * 1000) / mult));
+    return Math.max(30, Math.min(2000, ((60 / bpmVal) * 1000) / mult));
   };
   const node = new AudioWorkletNode(ctx, "ducking-delay-processor", {
     numberOfInputs: 1,
@@ -80,7 +80,7 @@ export function createDuckingDelayNode(
       const nextMs = Math.max(
         30,
         Math.min(
-          1000,
+          2000,
           ((60 / next) * 1000) / Math.max(1, LFO_SYNC_DIVISIONS[lfoSyncIndex(instance.params.sync)]?.mult ?? 1),
         ),
       );

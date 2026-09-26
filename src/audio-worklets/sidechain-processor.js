@@ -50,8 +50,8 @@ class SidechainProcessor extends AudioWorkletProcessor {
     return [
       { name: "threshold", defaultValue: -18, minValue: -60, maxValue: 0, automationRate: "k-rate" },
       { name: "ratio", defaultValue: 4, minValue: 1, maxValue: 20, automationRate: "k-rate" },
-      { name: "attack", defaultValue: 0.005, minValue: 0.001, maxValue: 0.5, automationRate: "k-rate" },
-      { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 1, automationRate: "k-rate" },
+      { name: "attack", defaultValue: 0.005, minValue: 0.0002, maxValue: 0.5, automationRate: "k-rate" },
+      { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 2, automationRate: "k-rate" },
       { name: "amount", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "splitFreq", defaultValue: 0, minValue: 0, maxValue: 500, automationRate: "k-rate" },
     ];
@@ -136,7 +136,7 @@ class SidechainProcessor extends AudioWorkletProcessor {
       const amt = amount.length > 1 ? amount[i] : amount[0];
 
       // Asymmetric envelope follower (per-sample).
-      const attCoef = Math.exp(-1 / (sr * Math.max(0.001, att)));
+      const attCoef = Math.exp(-1 / (sr * Math.max(0.0002, att)));
       const relCoef = Math.exp(-1 / (sr * Math.max(0.001, rel)));
       this.env =
         sidePeak > this.env

@@ -41,8 +41,8 @@ class CompressorProcessor extends AudioWorkletProcessor {
     return [
       { name: "threshold", defaultValue: -18, minValue: -60, maxValue: 0, automationRate: "k-rate" },
       { name: "ratio", defaultValue: 3, minValue: 1, maxValue: 20, automationRate: "k-rate" },
-      { name: "attack", defaultValue: 0.01, minValue: 0.001, maxValue: 0.5, automationRate: "k-rate" },
-      { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 1, automationRate: "k-rate" },
+      { name: "attack", defaultValue: 0.01, minValue: 0.0002, maxValue: 0.5, automationRate: "k-rate" },
+      { name: "release", defaultValue: 0.2, minValue: 0.02, maxValue: 2, automationRate: "k-rate" },
       { name: "knee", defaultValue: 6, minValue: 0, maxValue: 40, automationRate: "k-rate" },
       { name: "makeup", defaultValue: 1, minValue: 0, maxValue: 16, automationRate: "k-rate" }, // linear (wrapper converts dB)
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
@@ -75,7 +75,7 @@ class CompressorProcessor extends AudioWorkletProcessor {
     const ratio = Math.max(1, parameters.ratio[0]);
     const slope = 1 - 1 / ratio;
     const knee = Math.max(0, parameters.knee[0]);
-    const attackBlend = 1 - Math.exp(-1 / (sr * Math.max(0.001, parameters.attack[0])));
+    const attackBlend = 1 - Math.exp(-1 / (sr * Math.max(0.0002, parameters.attack[0])));
     const releaseBlend = 1 - Math.exp(-1 / (sr * Math.max(0.02, parameters.release[0])));
     const makeupLin = Math.max(0, parameters.makeup[0]);
     const mix = parameters.mix[0];

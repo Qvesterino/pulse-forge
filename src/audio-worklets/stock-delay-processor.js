@@ -17,7 +17,7 @@
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
-const STOCK_DELAY_RING = 192000; // 1 s @192 kHz — matches the 1000 ms TIME max
+const STOCK_DELAY_RING = 384000; // 2 s @192 kHz — matches the 2000 ms TIME max
 
 const STOCK_DELAY_DIVISIONS = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6]; // beats per division index
 
@@ -35,7 +35,7 @@ class StockDelayProcessor extends AudioWorkletProcessor {
 
   static get parameterDescriptors() {
     return [
-      { name: "time", defaultValue: 375, minValue: 30, maxValue: 1000, automationRate: "k-rate" }, // ms
+      { name: "time", defaultValue: 375, minValue: 30, maxValue: 2000, automationRate: "k-rate" }, // ms
       { name: "sync", defaultValue: 0, minValue: 0, maxValue: 5, automationRate: "k-rate" },
       { name: "bpm", defaultValue: 120, minValue: 20, maxValue: 300, automationRate: "k-rate" },
       { name: "pingPong", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
@@ -58,9 +58,9 @@ class StockDelayProcessor extends AudioWorkletProcessor {
 
     const syncIdx = Math.max(0, Math.min(5, Math.round(parameters.sync[0])));
     const bpm = Math.max(20, Math.min(300, parameters.bpm[0]));
-    let targetMs = Math.max(30, Math.min(1000, parameters.time[0]));
+    let targetMs = Math.max(30, Math.min(2000, parameters.time[0]));
     if (syncIdx !== 0) {
-      targetMs = Math.max(30, Math.min(1000, STOCK_DELAY_DIVISIONS[syncIdx] * (60000 / bpm)));
+      targetMs = Math.max(30, Math.min(2000, STOCK_DELAY_DIVISIONS[syncIdx] * (60000 / bpm)));
     }
     const pingPong = parameters.pingPong[0] > 0.5;
     const feedback = Math.max(0, Math.min(0.9, parameters.feedback[0]));
