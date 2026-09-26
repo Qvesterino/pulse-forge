@@ -21,11 +21,11 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
 | **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
 | └─ curated WAV overrides               |      78 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
-| **Factory presets**                    | **347** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     341 | `FACTORY_PRESETS`                                                                                                        |
+| **Factory presets**                    | **350** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     344 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
 | **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
-| **Vitest spec files**                  | **505** | `tests/` files matching `*.test.ts` (402) and `*.test.tsx` (103)                                                         |
+| **Vitest spec files**                  | **512** | `tests/` files matching `*.test.ts` (409) and `*.test.tsx` (103)                                                         |
 
 ## Flagship plugin implementations
 

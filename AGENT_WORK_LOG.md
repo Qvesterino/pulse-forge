@@ -4467,3 +4467,20 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** parser+artists **78/78** (vrátane nových blokov), 10-súborová battery **191/191** po glide fixe (presets range gate, loudness audit+clamp pin, brief/conversation/producer/iteration, fx-catalog, param-sanity); `tsc --noEmit` EXIT 0. Ich session bola počas vlny extrémne aktívna (intent types/schema/plan refactor v letu + audioReview) — všetky zdieľané súbory verifikované na 100 % moje hunky pred stagingom.
 
 **Zostáva z vízie:** Vlna 2 — Fred depth (vocalchop.ukg.* presety, ukg.heartbeat groove, Fred-style song forma). Vlna 3 — hero feature „urob hook z môjho hlasu" (VocalProfile → vocalchop/granular rewire, one command). Analog glide param pre portamento slide.
+
+---
+
+## VLNA 2 — FRED DEPTH (2026-09-26, pokračovanie vision: West Coast + Fred Again)
+
+**Dodané:**
+
+1. **`house.heartbeat` groove** (house.ts): 126–134 BPM, swing 0.14 — Fred-style „lub-dub" kick (silný krok 1, mäkký odklon, variácia s dvojitým tepom do dropu), swung offbeat shaker nesúci puls, úmyselne prázdny — ticho je emocionálny nosič. Pads house kitu (0 kick, 4 clap, 8 hat, 10 open, 6 perc).
+2. **3 vocalchop UKG presety** (FACTORY_PRESETS 341 → 344, total 350): `house.ukgchop` — Fred/Todd Edwards stutter (SHIFT 1.25 pitched-up, SHARP 0.85, krátky release 0.09, carrier tonal.stab); `house.divastab` — klasický garage answer stab (SHIFT 1.15, vib 0.25); `house.memovox` — „voice memo" chop: úmyselne lo-fi (tone 6500, color 0.65, reverse 0.25, dlhší tail) — Fredove zdroje sú raw, toto číta „found audio". ⚠ PresetMood nemá „energetic" (to je artist union) — prvé vyplnenie bolo `as never`, opravené na ["bright","clean"] skôr než gate bežal.
+3. **FRED_FORM** (song.ts): style-aware song forma pre emotional UKG — house + (ukg | heartbeat) → Actual Life tvar: **„Voice Memo" intro (len lead — intímny moment)** → Build A → Drop A → **„Voice Note" break (lead+chords — návrat intímneho)** → Build B → Drop B → Outro (lead+drums). Ostatné štýly zostávajú na štandardnej genre forme (`songFormFor` helper, žiadna zmena existujúcich foriem).
+4. **STYLE_PHRASES**: „heartbeat" / SK „srdcový tep" (deaccent) → **heartbeat** štýl.
+
+**Dôležité súbory:** src/ai/grooves/house.ts, src/intent/{song,text-parser}.ts, src/presets/{factory,preset-loudness.generated}.ts, tests/{intent-text-parser,intent-song}.test.ts, docs/CURRENT-STATE.md.
+
+**Validácia:** parser + song testy **69/69** (vrátane nových: heartbeat EN+SK, groove 16-step + kick-on-0 signature pin, FRED form selection + štandardná forma untouched); 10-súborová battery **163/163**; loudness regen **350 meraných**; `tsc --noEmit` EXIT 0. text-parser staging selektívny (ich productionProfile práca v tom istom súbore zostáva working-tree). CURRENT-STATE počty (350/344) zhodné s vite-node countom.
+
+**Zostáva z vízie:** Vlna 3 — hero feature „urob hook z môjho hlasu" (VocalProfile → vocalchop/granular rewire, one command). Analog glide param. Ďalej: plná kampaň re-run 4 môže pokračovať GOAL 08+ alebo skočiť na GOAL 12 gate.

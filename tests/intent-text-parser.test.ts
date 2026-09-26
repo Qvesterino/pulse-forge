@@ -478,3 +478,25 @@ describe("west coast / g-funk sprint", () => {
     }
   });
 });
+
+describe("fred depth — heartbeat / emotional UKG", () => {
+  it("heartbeat resolves as a style (EN + SK)", () => {
+    expect(parseIntentText("heartbeat type beat").input.style).toBe("heartbeat");
+    expect(parseIntentText("srdcovy tep beat").input.style).toBe("heartbeat");
+    // uk garage still resolves to the ukg style (must not be stolen)
+    expect(parseIntentText("uk garage at 132").input.style).toBe("ukg");
+  });
+
+  it("the heartbeat groove exists with valid 16-step shapes in the pocket", () => {
+    const groove = getGrooveById("house.heartbeat");
+    expect(groove).toBeDefined();
+    expect(groove!.bpm[0]).toBeGreaterThanOrEqual(126);
+    for (const pattern of groove!.patterns) {
+      for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+    }
+    // The heartbeat signature: a strong kick on step 0 in every variation.
+    for (const pattern of groove!.patterns) {
+      expect((pattern[0] ?? [])[0]).toBeGreaterThan(0.9);
+    }
+  });
+});

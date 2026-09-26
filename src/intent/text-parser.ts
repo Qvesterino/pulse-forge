@@ -141,6 +141,8 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bmotorik\b/, "industrial"],
   [/\bwest ?coast\b|\bzapadn\w* pobre[zz]i\w*/, "headnod"],
   [/\bhead ?nod\b|\bheadnod\b/, "headnod"],
+  // Fred-style emotional UKG (house.heartbeat groove + FRED_FORM)
+  [/\bheartbeat\b|\bsrdcov(?:y|ý) tep\b/, "heartbeat"],
 ];
 
 /** Character phrase → canonical mood (mapping.ts applies mood tweaks). */

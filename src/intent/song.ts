@@ -882,6 +882,106 @@ const SECTION_FX_RECIPES: Partial<Record<SceneRole, SectionFxRecipe[]>> = {
   ],
 };
 
+/**
+ * FRED FORM (Vlna 2 — the Actual Life shape): the track STARTS from the
+ * intimate vocal moment (lead only — the "voice memo" intro), builds once,
+ * drops, RETURNS to the intimate break, then the final drop. Standard
+ * house/UKG stays on the genre form; this shape is selected by style
+ * (heartbeat / ukg) below.
+ */
+const FRED_FORM: SongSectionSpec[] = [
+  {
+    role: "intro",
+    label: "Voice Memo",
+    bars: 8,
+    intensity: 0.3,
+    transitionIn: null,
+    energyDelta: -0.35,
+    densityDelta: -0.25,
+    complexityDelta: -0.1,
+    instrumentation: ["lead"],
+  },
+  {
+    role: "build",
+    label: "Build A",
+    bars: 4,
+    intensity: 0.55,
+    marker: { type: "buildup", name: "BUILD A" },
+    transitionIn: null,
+    energyDelta: 0,
+    densityDelta: 0,
+    complexityDelta: 0,
+    instrumentation: ["drums", "bass"],
+  },
+  {
+    role: "drop",
+    label: "Drop A",
+    bars: 8,
+    intensity: 0.85,
+    marker: { type: "drop", name: "DROP A" },
+    transitionIn: "riser",
+    energyDelta: 0.3,
+    densityDelta: 0.25,
+    complexityDelta: 0.1,
+    instrumentation: ["drums", "bass", "chords", "lead"],
+  },
+  {
+    role: "break",
+    label: "Voice Note",
+    bars: 4,
+    intensity: 0.3,
+    marker: { type: "cue", name: "VOICE NOTE" },
+    transitionIn: "break",
+    energyDelta: -0.4,
+    densityDelta: -0.3,
+    complexityDelta: 0,
+    instrumentation: ["lead", "chords"],
+  },
+  {
+    role: "build",
+    label: "Build B",
+    bars: 4,
+    intensity: 0.6,
+    marker: { type: "buildup", name: "BUILD B" },
+    transitionIn: "fill",
+    energyDelta: 0.05,
+    densityDelta: 0.05,
+    complexityDelta: 0.05,
+    instrumentation: ["drums", "bass", "chords"],
+  },
+  {
+    role: "drop",
+    label: "Drop B",
+    bars: 8,
+    intensity: 0.95,
+    marker: { type: "drop", name: "DROP B" },
+    transitionIn: "riser",
+    energyDelta: 0.35,
+    densityDelta: 0.35,
+    complexityDelta: 0.1,
+    instrumentation: ["drums", "bass", "chords", "lead"],
+  },
+  {
+    role: "outro",
+    label: "Outro",
+    bars: 8,
+    intensity: 0.4,
+    transitionIn: "break",
+    energyDelta: -0.25,
+    densityDelta: -0.15,
+    complexityDelta: 0,
+    instrumentation: ["lead", "drums"],
+  },
+];
+
+/** The emotional-UKG styles that get the FRED_FORM shape. */
+const FRED_FORM_STYLES = new Set(["ukg", "heartbeat"]);
+
+function songFormFor(intent: IntentSpec): SongSectionSpec[] {
+  if (intent.genre === "house" && intent.style && FRED_FORM_STYLES.has(intent.style)) return FRED_FORM;
+  return SONG_FORMS[intent.genre];
+}
+
 export function planSongForm(
   intent: IntentSpec,
   overrides?: SectionParse,
@@ -891,7 +991,7 @@ export function planSongForm(
   sections: SongSectionSpec[];
   totalBars: number;
 } {
-  const planned = SONG_FORMS[intent.genre].map((section) => ({
+  const planned = songFormFor(intent).map((section) => ({
     ...section,
     energyDelta: clamp01(intent.energy + section.energyDelta),
     densityDelta: clamp01(intent.density + section.densityDelta),

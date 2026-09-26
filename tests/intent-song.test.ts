@@ -333,3 +333,21 @@ describe("targeted section revise (C3)", () => {
 function withDocBpm(doc: Parameters<typeof applySongCommand>[0], build: { resolvedBpm: number | null }) {
   return build.resolvedBpm != null ? { ...doc, bpm: build.resolvedBpm } : doc;
 }
+
+describe("FRED form (Vlna 2 — emotional UKG shape)", () => {
+  it("house + heartbeat/ukg selects the intimate-to-drop form", () => {
+    const fred = planSongForm({ genre: "house", style: "heartbeat" } as never);
+    expect(fred.sections[0]!.label).toBe("Voice Memo");
+    expect(fred.sections[0]!.instrumentation).toEqual(["lead"]);
+    const labels = fred.sections.map((s) => s.label);
+    expect(labels).toContain("Voice Note");
+    expect(labels).toContain("Drop B");
+  });
+
+  it("house + deep (and other styles) keep the standard genre form", () => {
+    const standard = planSongForm({ genre: "house", style: "deep" } as never);
+    expect(standard.sections[0]!.label).toBe("Intro");
+    const plain = planSongForm({ genre: "house" } as never);
+    expect(plain.sections[0]!.label).toBe("Intro");
+  });
+});

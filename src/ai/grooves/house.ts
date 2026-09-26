@@ -387,4 +387,39 @@ export const HOUSE_GROOVES: GrooveData[] = [
       },
     ],
   },
+
+  // ── Heartbeat (Fred-style emotional UKG) ──────────────
+  // 126-134: the sparse "lub-dub" kick pulse (beat 1 strong, beat 3 soft)
+  // with swung offbeat shaker keeping the pulse — room for a pitched-up
+  // vocal chop to BE the melody. Deliberately empty; the silence is the
+  // emotional carrier.
+  {
+    id: "house.heartbeat",
+    genre: "house",
+    name: "Heartbeat",
+    bpm: [126, 134],
+    swing: 0.14,
+    activePads: [0, 4, 8, 10, 6],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4],
+        6: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0],
+      },
+      {
+        0: [0.95, 0, 0, 0, 0, 0.75, 0, 0, 0.8, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0],
+        8: [0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4, 0, 0.5, 0, 0.4],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0],
+        6: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0],
+      },
+      // The double-time heartbeat (lub-dub-dub) into the drop
+      {
+        0: [0.95, 0, 0, 0, 0, 0.7, 0, 0.55, 0, 0, 0.75, 0, 0, 0, 0, 0],
+        8: [0, 0.55, 0, 0.4, 0, 0.55, 0, 0.4, 0, 0.55, 0, 0.4, 0, 0.55, 0, 0.4],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.6, 0],
+        6: [0, 0, 0.35, 0, 0, 0, 0, 0, 0, 0, 0.35, 0, 0, 0.4, 0, 0],
+      },
+    ],
+  },
 ];
