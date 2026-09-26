@@ -114,6 +114,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   [/\bfuture garage\b/, "future garage"],
+  // Overmono school (house.broken groove) — before generic matches that
+  // would steal the word
+  [/\bbroken(?: beat)?\b/, "broken"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
   [/\bafro\b/, "afro"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
@@ -123,7 +126,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\brolling\b|\broll\b|\broluj/, "rolling"],
   [/\bsparse\b/, "sparse"],
   [/\bsample drill\b|\bsample\b/, "sample"],
-  [/\bhyper (?:drill|beat)\b|\bhyper\b/, "hyper"],
+  [/\bhyper ?pop\b|\bhyper (?:drill|beat)\b|\bhyper\b/, "hyper"],
   [/\bmelodic drill\b/, "melodic"],
   [/\bmelodic(?:ke|a)?\b/, "melodic"],
   [/\blux\b|\blush\b/, "lux"],

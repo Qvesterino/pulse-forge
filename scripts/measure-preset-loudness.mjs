@@ -34,7 +34,9 @@ await server.listen();
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+// Generous nav timeout: under a loaded machine (parallel suites) the
+// default 30 s aborts before the dev server's first compile finishes.
+await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180000 });
 
 const measurements = await page.evaluate(async () => {
   const registry = await import("/src/instruments/registry.ts");

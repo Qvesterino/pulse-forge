@@ -500,3 +500,33 @@ describe("fred depth — heartbeat / emotional UKG", () => {
     }
   });
 });
+
+describe("electronic wave — future garage / broken / hyperpop", () => {
+  it("future garage resolves (and is not stolen by generic garage)", () => {
+    const parsed = parseIntentText("future garage beat at 135");
+    // The culture wave routed future garage to AMBIENT (duskus school)
+    expect(parsed.input.genre).toBe("ambient");
+    expect(parsed.input.style).toBe("future garage");
+  });
+
+  it("broken beat resolves to the broken style", () => {
+    expect(parseIntentText("broken beat at 132").input.style).toBe("broken");
+    expect(parseIntentText("broken house").input.style).toBe("broken");
+  });
+
+  it("hyperpop resolves to the hyper style", () => {
+    const parsed = parseIntentText("hyperpop at 150");
+    expect(parsed.input.style).toBe("hyper");
+    expect(parseIntentText("hyper pop beat").input.style).toBe("hyper");
+  });
+
+  it("the new grooves exist with valid 16-step shapes", () => {
+    for (const id of ["ambient.futuregarage", "house.broken"]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+  });
+});

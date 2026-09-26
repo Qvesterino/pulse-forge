@@ -5010,6 +5010,58 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       gain: 0.85,
     },
   },
+  {
+    // Burial ghost vocal: the reversed, pitched-down swell floating over
+    // future garage — more atmosphere than melody, deliberately dark.
+    id: "factory.vocalchop.house.burialghost",
+    name: "Burial Ghost",
+    instrument: "vocalchop",
+    sampleId: "factory.tonal.keys",
+    genre: "house",
+    mood: ["dark", "atmosphere"],
+    tags: ["burial", "future garage", "reversed", "ghost"],
+    params: {
+      root: 57,
+      vowel: 0,
+      color: 0.6,
+      shift: 0.95,
+      sharp: 0.3,
+      vib: 0.2,
+      cons: 0.15,
+      morph: 0.45,
+      tone: 7500,
+      reverse: 0.6,
+      attack: 0.02,
+      release: 0.45,
+      gain: 0.75,
+    },
+  },
+  {
+    // Hyperpop chipmunk: the extreme — max pitch shift, razor stutter,
+    // brightened to the ceiling. SOPHIE / PC Music energy.
+    id: "factory.vocalchop.trap.hyperpop",
+    name: "Hyperpop Vox",
+    instrument: "vocalchop",
+    sampleId: "factory.tonal.bell",
+    genre: "trap",
+    mood: ["bright", "aggressive"],
+    tags: ["hyperpop", "chipmunk", "extreme", "stutter"],
+    params: {
+      root: 64,
+      vowel: 2,
+      color: 0.95,
+      shift: 1.5,
+      sharp: 0.9,
+      vib: 0,
+      cons: 0.5,
+      morph: 0.2,
+      tone: 15000,
+      reverse: 0,
+      attack: 0.002,
+      release: 0.07,
+      gain: 0.85,
+    },
+  },
 
   /* ================= Drum Synth ================= */
   {

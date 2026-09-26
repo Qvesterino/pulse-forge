@@ -293,3 +293,28 @@ describe("west coast / g-funk roster (researched 92-96 pocket)", () => {
     expect(getGrooveById("trap.gfunk")).toBeDefined();
   });
 });
+
+describe("electronic wave roster (sophie / burial / hyperpop)", () => {
+  // overmono/flume/duskus already live in the culture-wave roster — the
+  // campaign's additions are the ones the culture wave lacked.
+  it("sophie → hyper groove at the hyperpop floor; generic hyperpop too", () => {
+    expect(parseIntentText("sophie type beat").input.style).toBe("hyper");
+    expect(parseIntentText("sophie type beat").input.bpmRange).toEqual([140, 160]);
+    expect(parseIntentText("hyperpop beat").input.style).toBe("hyper");
+    expect(parseIntentText("hyperpop beat").input.bpmRange).toEqual([145, 160]);
+  });
+
+  it("burial → ambient future garage (the culture wave's genre home)", () => {
+    const burial = parseIntentText("burial type beat");
+    expect(burial.input.genre).toBe("ambient");
+    expect(burial.input.style).toBe("future garage");
+    expect(burial.input.mood).toBe("dark");
+    expect(parseIntentText("future garage beat").input.style).toBe("future garage");
+  });
+
+  it("the wave's grooves resolve (broken generic + ambient future garage)", () => {
+    expect(getGrooveById("house.broken")).toBeDefined();
+    expect(getGrooveById("ambient.futuregarage")).toBeDefined();
+    expect(getGrooveById("trap.hyper")).toBeDefined();
+  });
+});

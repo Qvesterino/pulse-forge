@@ -4507,3 +4507,23 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Známe limity (dokumentované):** hook zostáva tichý po reload, ak nie je take re-staged (runtime bank sample — rovnaká trieda ako frozen-buffer restore; plná perzistencia takeov do IDB je future work cez RecordingRecovery materialize). Pitch fit k project key je fixed 1.25 (Fred aesthetic), key-aware shift je follow-up.
 
 **Vision ledger (user cieľ: West Coast + Fred Again DAW):** Vlna 1 G-funk ✓ · Vlna 2 Fred depth ✓ · **Vlna 3 hero ✓**. Ďalej: kampaň re-run 4 môže pokračovať GOAL 08+ alebo skočiť na GOAL 12 gate (build + full battery + readiness report refresh).
+
+---
+
+## VLNA 4 — ELEKTRONICKÁ VLNA (2026-09-26, user špecifikácia: Duskus×Fred×house, SOPHIE×Flume×hyperpop, Overmono×Flume×UKG, future garage×Burial)
+
+**Zistenie kľúčové pre scope:** ich culture wave (7a1fdf6) už časť rosteru postavila — overmono (house/ukg 130–136, s joy orbison), flume (trap/lux), duskus (ambient/future garage 130–140) + STYLE_PHRASE „future garage". MOJA prvotná vlna by ich tieňovala (first-match) — ich testy padli, RECONCILIÁCIA: moje duskus/flume/overmono duplikáty VYMAZANÉ, ich canonical routing rešpektovaný.
+
+**Dodané (nové, čo chýbalo):**
+
+1. **2 groovey:** `house.broken` (128–138, swing 0.1 — Overmono škola: syncopated broken-beat kick, nikdy 4-on-floor, click perc offbeaty, tight snare answers; 3 variácie vrátane rolling kick-walk) a **`ambient.futuregarage`** (130–140, swing 0.22 — Burial škola: 2-step kick s pushom na „and", skitteré ghost-haty na šepotových velocity, priestor pre reverse-vocal atmosféru). Future garage ide do AMBIENT žánru — ich culture wave ho takto canonicalizovala (duskus). Prvý pokus bol house.futuregarage — presunuté po reconciliation.
+2. **3 roster presety (roster 97 → 100):** sophie (trap/hyper 140–160 energetic — Ponyboy je 108, ale hyperpop floor sedí 140+), burial / future garage (ambient/future garage 130–140 dark), hyperpop generic (trap/hyper 145–160, energy 0.9).
+3. **2 zvuky:** `vocalchop.house.burialghost` — reverse 0.6, shift 0.95 (dole), tone 7500, dlhý release — Burial reversed-vocal swell; `vocalchop.trap.hyperpop` — shift 1.5 MAX, sharp 0.9, tone 15000 — PC Music chipmunk extrém.
+4. **STYLE_PHRASES:** „broken (beat)" → broken (pred ukg/garage generic); „hyperpop/hyper pop" → hyper (rozšírenie existujúceho).
+5. **Infra:** measure-preset-loudness goto timeout 30 s → 180 s (pod parallel-suite záťažou stroja padal navigačný timeout — GOAL-scale resilienčná oprava).
+
+**Dôležité súbory:** src/ai/grooves/{house,ambient}.ts, src/intent/{artists,text-parser}.ts, src/presets/{factory,preset-loudness.generated}.ts, scripts/measure-preset-loudness.mjs, tests/{intent-text-parser,intent-artists}.test.ts, docs/CURRENT-STATE.md.
+
+**Validácia:** parser+artists **87/87**, 8-súborová battery **120/120**, `tsc --noEmit` EXIT 0, loudness **352 meraných**, počty CURRENT-STATE 352 (346+6). Konflikt s ich session resolve-ovaný v ich prospech (duplikáty von) — žiadne tiene v rosteri.
+
+**Vision ledger:** Vlna 1 G-funk ✓ · Vlna 2 Fred ✓ · Vlna 3 hero hook ✓ · Vlna 4 elektronika ✓. Roster 100 presetov.ďalšie podľa usera: kampaň GOAL 08–12 (alebo skok na 12 gate), ďalšie žánrové vlny, alebo doladenie po ušiach.

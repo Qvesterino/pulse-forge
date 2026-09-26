@@ -223,6 +223,45 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [128, 136],
     label: "fred again",
   },
+  // ── electronic wave additions: sophie / burial / hyperpop ─────────────
+  // (overmono/flume/duskus already live in the culture-wave roster below —
+  // first-match order means duplicates here would shadow them)
+  {
+    names: ["sophie", "sophie xeon", "pc music"],
+    // PC Music metallic hyperpop — SOPHIE's own tracks vary widely
+    // (Ponyboy 108), the hyperpop floor sits 140+; hyper groove carries it.
+    genre: "trap",
+    style: "hyper",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [140, 160],
+    label: "sophie",
+  },
+  {
+    names: ["burial", "burial type beat"],
+    // The future garage school: heavy shuffle, skittery ghost hats,
+    // atmosphere over pressure — ambient.futuregarage groove (the genre
+    // home the culture wave gave future garage).
+    genre: "ambient",
+    style: "future garage",
+    mood: "dark",
+    energy: 0.45,
+    density: 0.45,
+    bpmRange: [130, 140],
+    label: "burial / future garage",
+  },
+  {
+    names: ["hyperpop", "hyper pop", "hyperpop type beat"],
+    // The generic hyperpop ask — extreme BPM and energy on the hyper groove.
+    genre: "trap",
+    style: "hyper",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.75,
+    bpmRange: [145, 160],
+    label: "hyperpop",
+  },
   {
     names: ["suicideboys", "suicide boys", "$uicideboy$", "g59", "grey 59"],
     // NOLA horrorcore: dark sparse trap with memphis phonk DNA — the darkest
