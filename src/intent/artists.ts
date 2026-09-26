@@ -2566,6 +2566,158 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [120, 130],
     label: "bones",
   },
+  // ── Southern specialties (new grooves: bounce / miamibass / snap) ────
+  // ── + afroswing + countrytune ─────────────────────────────────────────
+  {
+    names: ["big freedia", "dj jubilee", "juvenile", "back that azz", "bounce type beat"],
+    genre: "trap",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [98, 104],
+    label: "nola bounce",
+  },
+  {
+    names: ["2 live crew", "uncle luke", "luther campbell", "luke type beat"],
+    genre: "trap",
+    style: "miamibass",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [115, 125],
+    label: "2 live crew",
+  },
+  {
+    names: ["soulja boy", "crank dat", "soulja boy type beat"],
+    genre: "trap",
+    style: "snap",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.4,
+    bpmRange: [80, 95],
+    label: "soulja boy",
+  },
+  {
+    names: ["dem franchize", "d4l", "laffy taffy", "snap type beat"],
+    genre: "trap",
+    style: "snap",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.4,
+    bpmRange: [80, 95],
+    label: "snap era",
+  },
+  {
+    names: ["j hus", "jhus", "mostack", "mo stack", "nsg", "afroswing type beat"],
+    genre: "house",
+    style: "afroswing",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [100, 108],
+    label: "afroswing",
+  },
+  {
+    // "lil nas x" always blends with the nas preset ("nas" matches inside) —
+    // energy/density sit nas-adjacent so the blend stays in the pocket and
+    // the BPM intersection ([88,92]) lands inside the countrytune window.
+    names: ["lil nas x", "old town road", "lil nas x type beat"],
+    genre: "trap",
+    style: "countrytune",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [78, 92],
+    label: "lil nas x",
+  },
+  // ── Bass house — heavy tech-house with rolling sub-bass + groovy drops ───
+  // The post-Fisher / ACRAZE wave (2018+). Tech-house groove + prominent
+  // sub-bass stabs; mid-tempo pocket 124-130. Routes to groove 'house.driving'
+  // (the closest existing groove — the bass-house micro-genre isn't yet
+  // first-class in src/ai/grooves/house.ts, so we map onto driving four-on-
+  // the-floor with high energy + density).
+  {
+    names: ["chris lake", "acraze", "sidepiece"],
+    genre: "house",
+    style: "driving",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [124, 130],
+    label: "bass house",
+  },
+  // ── G-house — French house / R&B vocal-chop tech-house ──────────────────
+  // Don Diablo's "g-house" coinage (2014+): deep groove + pitched R&B
+  // acapellas. 120-126 floor, the chill-deep side of the house spectrum.
+  // Routes to groove 'house.deep'.
+  {
+    names: ["don diablo", "tchami", "malaa"],
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [120, 126],
+    label: "g-house",
+  },
+  // ── Future bass — melodic half-time pop-EDM, chopped vocal leads ──────────
+  // The bright side of post-2014 pop-future-bass (Marshmello / Said The Sky).
+  // Flume's existing entry covers the 'lux' trap-flavour; this entry adds
+  // the brighter pop-future-bass side via 'broken' (closest existing groove
+  // to choppy future bass).
+  {
+    names: ["marshmello", "said the sky"],
+    genre: "house",
+    style: "broken",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [140, 150],
+    label: "future bass",
+  },
+  // ── Riddim dubstep — aggressive riddim / neuro, mid-tempo heavy drops ────
+  // Existing entries (Skrillex, Subtronics, Seven Lions) cover mainline +
+  // melodic dubstep. This one fills the riddim / heavy-mid lane (Virtual
+  // Riot / Borgore). Routes to groove 'trap.dubstep' (140-150).
+  {
+    names: ["virtual riot", "borgore", "riddim"],
+    genre: "trap",
+    style: "dubstep",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [140, 150],
+    label: "riddim dubstep",
+  },
+  // ── Hardstyle — euphoric reverse-bass kicks + supersaw leads ─────────────
+  // Hardstyle sits adjacent to techno (no dedicated genre in the engine);
+  // the 'hard' style is the closest fit (driving four-on-the-floor + hard
+  // kick + supersaw energy). 150-155 is the post-2015 euphoric pocket.
+  {
+    names: ["headhunterz", "sound rush", "ran-d"],
+    genre: "techno",
+    style: "hard",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.7,
+    bpmRange: [150, 155],
+    label: "hardstyle",
+  },
+  // ── Psytrance — acid-driven 140 with rolling TB-303 lines + psy leads ─────
+  // The harder psy side of trance. Existing trance entry (Tiesto/Armin)
+  // covers melodic trance at 136-142 via 'driving'; this entry covers the
+  // psy side via 'acid' (closest groove for TB-303 rolls). 138-145 pocket.
+  {
+    names: ["astrix", "vini vici", "infected mushroom"],
+    genre: "techno",
+    style: "acid",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [138, 145],
+    label: "psytrance",
+  },
 ];
 
 export interface ArtistMatch {

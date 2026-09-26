@@ -518,6 +518,94 @@ describe("hip-hop sub-genre roster sweep", () => {
   });
 });
 
+describe("southern specialties + afroswing + countrytune (bounce wave)", () => {
+  it("bounce routes by genre: trap/phonk/drill/jersey each carry .bounce", () => {
+    const nola = parseIntentText("new orleans bounce beat");
+    expect(nola.input.genre).toBe("trap");
+    expect(nola.input.style).toBe("bounce");
+    expect(parseIntentText("nola bounce").input.style).toBe("bounce");
+    expect(parseIntentText("triggerman beat").input.style).toBe("bounce");
+    expect(parseIntentText("bounce beat").input.style).toBe("bounce");
+    expect(parseIntentText("bounce beat").input.genre).toBe("trap");
+    // "bouncy" keeps the rage-era reading
+    expect(parseIntentText("bouncy rage beat").input.style).toBe("bouncy");
+    for (const id of ["trap.bounce", "phonk.bounce", "drill.bounce", "jersey.bounce"]) {
+      expect(getGrooveById(id)).toBeDefined();
+    }
+  });
+
+  it("bounce artists: freedia / jubilee / juvenile → trap/bounce 98-104", () => {
+    const freedia = parseIntentText("big freedia bounce beat");
+    expect(freedia.input.genre).toBe("trap");
+    expect(freedia.input.style).toBe("bounce");
+    expect(freedia.input.bpmRange).toEqual([98, 104]);
+    expect(parseIntentText("dj jubilee type beat").input.style).toBe("bounce");
+    expect(parseIntentText("juvenile type beat").input.bpmRange).toEqual([98, 104]);
+  });
+
+  it("miami bass: 2 live crew → trap/miamibass 115-125 on a real groove", () => {
+    const luke = parseIntentText("2 live crew type beat");
+    expect(luke.input.genre).toBe("trap");
+    expect(luke.input.style).toBe("miamibass");
+    expect(luke.input.bpmRange).toEqual([115, 125]);
+    expect(parseIntentText("miami bass beat").input.style).toBe("miamibass");
+    expect(parseIntentText("booty bass beat").input.genre).toBe("trap");
+    expect(getGrooveById("trap.miamibass")).toBeDefined();
+  });
+
+  it("snap era: soulja boy + D4L lane → trap/snap 80-95, minimal", () => {
+    const soulja = parseIntentText("soulja boy type beat");
+    expect(soulja.input.genre).toBe("trap");
+    expect(soulja.input.style).toBe("snap");
+    expect(soulja.input.bpmRange).toEqual([80, 95]);
+    expect(soulja.input.density).toBe(0.4);
+    expect(parseIntentText("d4l type beat").input.style).toBe("snap");
+    expect(parseIntentText("laffy taffy beat").detected).toContain("♪ snap era");
+    expect(parseIntentText("ringtone rap beat").input.style).toBe("snap");
+    // DAW grid-snap talk must not hijack the groove
+    expect(parseIntentText("snap to grid").input.style).toBeUndefined();
+    expect(getGrooveById("trap.snap")).toBeDefined();
+  });
+
+  it("afroswing: j hus lane → house/afroswing ~104 on a real groove", () => {
+    const hus = parseIntentText("j hus type beat");
+    expect(hus.input.genre).toBe("house");
+    expect(hus.input.style).toBe("afroswing");
+    expect(hus.input.bpmRange).toEqual([100, 108]);
+    expect(parseIntentText("afro swing beat").input.style).toBe("afroswing");
+    expect(parseIntentText("afroswing type beat").input.genre).toBe("house");
+    expect(getGrooveById("house.afroswing")).toBeDefined();
+  });
+
+  it("countrytune: lil nas x → trap/countrytune (nas-blend stays in pocket)", () => {
+    const nas = parseIntentText("lil nas x type beat");
+    expect(nas.input.genre).toBe("trap");
+    expect(nas.input.style).toBe("countrytune");
+    expect(nas.input.bpmRange).toEqual([88, 92]);
+    const road = parseIntentText("old town road beat");
+    expect(road.input.style).toBe("countrytune");
+    expect(road.input.bpmRange).toEqual([78, 92]);
+    expect(parseIntentText("country rap beat").input.style).toBe("countrytune");
+    expect(getGrooveById("trap.countrytune")).toBeDefined();
+  });
+
+  it("every new groove generates a pattern end-to-end", async () => {
+    const doc = testDoc();
+    for (const style of ["bounce", "miamibass", "snap", "countrytune"]) {
+      const result = await generateAsyncResult(doc, normalizeIntent({ genre: "trap", style, seed: "bounce-wave" }), {
+        mode: "apply",
+      });
+      expect(result.proposal?.pattern.generation?.grooveId ?? result.plan.groove.id).toBe(`trap.${style}`);
+    }
+    const afro = await generateAsyncResult(
+      doc,
+      normalizeIntent({ genre: "house", style: "afroswing", seed: "bounce-wave" }),
+      { mode: "apply" },
+    );
+    expect(afro.proposal?.pattern.generation?.grooveId ?? afro.plan.groove.id).toBe("house.afroswing");
+  });
+});
+
 describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () => {
   it("90s NY: 2pac / biggie / wu-tang (+raekwon) / jay-z / mobb deep → classic dark 84-96", () => {
     const pac = parseIntentText("2pac type beat");
@@ -540,7 +628,7 @@ describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () =>
     expect(parseIntentText("t.i. type beat").input.style).toBe("classic");
     expect(parseIntentText("jeezy type beat").input.style).toBe("rolling");
     expect(parseIntentText("gucci mane type beat").input.style).toBe("sparse");
-    expect(parseIntentText("mannie fresh type beat").input.style).toBe("bouncy");
+    expect(parseIntentText("mannie fresh type beat").input.style).toBe("bounce");
   });
 
   it("2000s mainstream: eminem / 50 / wayne / ross / dmx / busta / missy-timbaland", () => {
@@ -724,5 +812,68 @@ describe("jersey / drill / phonk depth wave (researched pockets)", () => {
     const dark = parseIntentText("uniiqu3 type beat dark");
     expect(dark.input.mood).toBe("dark");
     expect(dark.input.genre).toBe("jersey");
+  });
+});
+
+describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psytrance (electronic depth)", () => {
+  // Each block covers one of the six new electronic-lane presets, asserting
+  // genre + style + BPM + mood against the researched values.
+  it("chris lake / acraze / sidepiece → bass house at the tech-house tempo", () => {
+    const chris = parseIntentText("chris lake type beat");
+    expect(chris.input.genre).toBe("house");
+    expect(chris.input.style).toBe("driving");
+    expect(chris.input.bpmRange).toEqual([124, 130]);
+    expect(chris.input.energy).toBe(0.85);
+  });
+
+  it("don diablo / tchami / malaa → g-house (deep, chill, French vocal-chop floor)", () => {
+    const don = parseIntentText("don diablo type beat");
+    expect(don.input.genre).toBe("house");
+    expect(don.input.style).toBe("deep");
+    expect(don.input.bpmRange).toEqual([120, 126]);
+    expect(don.input.mood).toBe("chill");
+  });
+
+  it("marshmello / said the sky → future bass (broken / 140-150)", () => {
+    const mello = parseIntentText("marshmello type beat");
+    expect(mello.input.genre).toBe("house");
+    expect(mello.input.style).toBe("broken");
+    expect(mello.input.bpmRange).toEqual([140, 150]);
+    expect(mello.input.energy).toBe(0.85);
+  });
+
+  it("virtual riot / borgore → riddim dubstep (aggressive, 140-150)", () => {
+    const vrit = parseIntentText("virtual riot type beat");
+    expect(vrit.input.genre).toBe("trap");
+    expect(vrit.input.style).toBe("dubstep");
+    expect(vrit.input.bpmRange).toEqual([140, 150]);
+    expect(vrit.input.mood).toBe("aggressive");
+  });
+
+  it("headhunterz / sound rush / ran-d → hardstyle (techno hard, 150-155)", () => {
+    const head = parseIntentText("headhunterz type beat");
+    expect(head.input.genre).toBe("techno");
+    expect(head.input.style).toBe("hard");
+    expect(head.input.bpmRange).toEqual([150, 155]);
+    expect(head.input.energy).toBe(0.95);
+  });
+
+  it("astrix / vini vici / infected mushroom → psytrance (techno acid, 138-145)", () => {
+    const astrix = parseIntentText("astrix type beat");
+    expect(astrix.input.genre).toBe("techno");
+    expect(astrix.input.style).toBe("acid");
+    expect(astrix.input.bpmRange).toEqual([138, 145]);
+    expect(astrix.input.energy).toBe(0.9);
+  });
+
+  it("the electronic-depth lanes resolve to real groove ids (resolveGroove contract)", () => {
+    // Engine integration smoke — each preset's style must resolve to a real
+    // `genre.style` grooveId via getGrooveById.
+    expect(getGrooveById("house.driving")).toBeDefined();
+    expect(getGrooveById("house.deep")).toBeDefined();
+    expect(getGrooveById("house.broken")).toBeDefined();
+    expect(getGrooveById("trap.dubstep")).toBeDefined();
+    expect(getGrooveById("techno.hard")).toBeDefined();
+    expect(getGrooveById("techno.acid")).toBeDefined();
   });
 });
