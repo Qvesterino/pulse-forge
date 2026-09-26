@@ -55,6 +55,7 @@
     "release:deployed-smoke": "node scripts/release-deployed-smoke.mjs",
     "preview": "vite preview",
     "collab": "node server/collab-server.mjs",
+    "link": "node server/link-bridge.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:build": "node scripts/desktop-package.mjs",
     "desktop:build:mac:mrt2": "node scripts/desktop-package-mrt2-mac.mjs",

@@ -1043,3 +1043,30 @@
 .auto-canvas {
   touch-action: none;
 }
+
+/* Ableton Link session chip — same readout family as perf-readout; green
+   while in session, amber while connecting, red when the bridge is down. */
+.statusbar .link-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.statusbar .link-chip[data-state="on"] {
+  color: #4ade80;
+  border-color: #4ade8055;
+}
+
+.statusbar .link-chip[data-state="connecting"] {
+  color: #fbbf24;
+}
+
+.statusbar .link-chip[data-state="error"] {
+  color: #f87171;
+}

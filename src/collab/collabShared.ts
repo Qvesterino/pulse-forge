@@ -68,7 +68,8 @@ function isIpLiteral(host: string): boolean {
   return false;
 }
 
-function isAllowedServerUrl(raw: string): boolean {
+/** Exported so every outbound WS override (collab relay, Link bridge) shares one security gate. */
+export function isAllowedServerUrl(raw: string): boolean {
   let url: URL;
   try {
     url = new URL(raw);

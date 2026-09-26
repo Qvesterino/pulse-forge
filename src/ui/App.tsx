@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
+import type { LinkStatus } from "../collab/linkSync";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { SelectionStore } from "../store/SelectionStore";
@@ -132,6 +133,35 @@ function PerformanceReadout({ engine, scheduler }: { engine: Services["engine"];
         </span>
       </span>
     </span>
+  );
+}
+
+/**
+ * Ableton Link session chip — status bar toggle for the local WS bridge
+ * (`npm run link`). Green = in session (peers count), red = unreachable,
+ * gray = off. Phase-lock itself lives in services.linkSync.
+ */
+function LinkChip({ services }: { services: Services }) {
+  const [status, setStatus] = useState<LinkStatus>(services.linkSync.status);
+  useEffect(() => services.linkSync.subscribe(setStatus), [services]);
+  const title =
+    status.kind === "on"
+      ? `Ableton Link bridge — session ${status.tempo.toFixed(1)} BPM, ${status.peers} peer(s). Click to leave.`
+      : status.kind === "error"
+        ? `Ableton Link bridge — ${status.message}. Click to retry.`
+        : status.kind === "connecting"
+          ? "Ableton Link bridge — connecting…"
+          : "Ableton Link bridge (npm run link) — click to join the session";
+  return (
+    <button
+      type="button"
+      className="link-chip"
+      data-state={status.kind}
+      title={title}
+      onClick={() => (services.linkSync.enabled ? services.linkSync.disconnect() : services.linkSync.connect())}
+    >
+      LINK{status.kind === "on" ? ` ${status.peers}` : ""}
+    </button>
   );
 }
 
@@ -1397,6 +1427,7 @@ export function App({
                   {tool.toUpperCase()} (S/C/B/E/M)
                   {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                 </span>
+                <LinkChip services={services} />
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
               <CommandToast />

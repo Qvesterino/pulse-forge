@@ -29,7 +29,7 @@ import { generateFactoryBank } from "./sample-library/factory";
 import type { SampleBank } from "./sample-library/factory";
 import type { PlayMode, ProjectDocument, Scene } from "./project-model/types";
 import { BAR_TICKS, PPQ } from "./project-model/types";
-import { setActivePattern, unfreezeTrack } from "./commands/commands";
+import { setActivePattern, setBpm, unfreezeTrack } from "./commands/commands";
 import { MidiInput } from "./midi/MidiInput";
 import { PatternRecorder } from "./midi/patternRecorder";
 import { recordPlayActivity } from "./ui/playActivity";
@@ -43,6 +43,7 @@ import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";
 import type { CollabSession } from "./collab/CollabSession";
 import { collabParamsFromSearch } from "./collab/collabShared";
+import { LinkSync } from "./collab/linkSync";
 import type { BandmateControls } from "./collab/bandmate";
 import { createBandmate } from "./collab/bandmate";
 import { createUnavailableGenerativeProvider, GenerativeProviderRegistry } from "./generative/registry";
@@ -128,6 +129,8 @@ export interface Services {
   };
   midiOutput: MidiOutput;
   midiClock: MidiClock;
+  /** Ableton Link session client (statusbar chip) — inert until connected. */
+  linkSync: LinkSync;
   userSamples: IUserSampleRepository;
   recordingRecovery: IRecordingRecoveryRepository;
   frozenAudio: IFrozenBufferRepository;
@@ -487,6 +490,12 @@ export async function openProject(
   const modeRef: { mode: PlayMode } = { mode: "pattern" };
   const midiOutput = new MidiOutput();
   const midiClock = new MidiClock();
+  const linkSync = new LinkSync({ now: () => engine.currentTime }, (bpm) => {
+    // An adopted session tempo lands in the doc, so the onDocChanged tempo
+    // re-apply agrees with Link instead of fighting the correction loop.
+    store.execute(setBpm(store.doc, bpm));
+  });
+  linkSync.attachTransport(transport);
   const capture = new ArrangementCaptureController(
     () => store.doc,
     (command) => store.execute(command),
@@ -1042,6 +1051,7 @@ export async function openProject(
     }
     midi.stop();
     midiClock.dispose();
+    linkSync.dispose();
     midiOutput.dispose();
     document.removeEventListener("visibilitychange", onVisibility);
     uninstallUnloadGuards();
@@ -1095,6 +1105,7 @@ export async function openProject(
     midi,
     midiOutput,
     midiClock,
+    linkSync,
     userSamples,
     recordingRecovery,
     frozenAudio,
