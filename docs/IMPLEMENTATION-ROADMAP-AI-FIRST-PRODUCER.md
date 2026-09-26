@@ -364,6 +364,21 @@ Pred označením workflow za hotové musí prejsť:
 - **Záver brány:** workflow samotný prešiel kódovými bránami; release blokujú (a) bundle budgety,
   (b) e2e landing lokátory, (c) ľudské blind hodnotenie — všetky tri zvýraznené, neskrývané.
 
+**Doplnok k bráne (2026-09-26, neskoro): triáž blokerov.**
+
+- **(b) e2e landing:** forge funguje (generateLandingBeat overené v viteste — 2 patterny);
+  lokátor v špecu je už správny („Open in studio →" existuje v LandingPrompt). Zlyhania sú
+  forge/boot hangy v headless na ich novo-redesignnutej landing surface (nová navigácia
+  „Open the studio", KX logo) — reconciliácia patrí redesign session.
+- **(a) bundle budgety — meraný rozpad:** najväčšie chunky: transformers.web 572 KB (LAZY AI
+  runtime, 640/650 v rámci vlastného budgetu ✓), App 452 KB, commands 368 KB, curated 292 KB,
+  index 244 KB. Prírastok +271 KB nad cap 2750 neschádza na mojich prídavkoch (~15 KB za celé
+  fázy 1-6) ale na paralelných feature vlnách (organ inštrument, vocal/*, country/afro/latin
+  pop, bottom dock, take-lane). Skript sám dokumentuje 2705→2750 inkrementy s poznámkou
+  „ďalší rast musí byť offset alebo split" — **rozhodnutie (split commands chunk vs. merané
+  zvýšenie capu) patrí ownerovi**, rozpad je tu zapísaný ako podklad.
+- **(c) blind listening:** nezmenené — owed, tooling stojí (`npm run listening:serve`).
+
 ## 4. Prvý konkrétny míľnik
 
 Prvý shipping slice nemusí čakať na MRT2 ani na celý song composer. Mal by vedieť:
