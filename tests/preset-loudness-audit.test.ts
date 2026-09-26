@@ -67,7 +67,6 @@ describe("preset gain sanity", () => {
       "factory.drumsynth.ambient.softclap",
       "factory.drumsynth.drill.tickhat",
       "factory.drumsynth.jersey.hat",
-      "factory.fm.score.fxhorizon",
       "factory.granular.ambient.cloudpad",
       "factory.granular.ambient.dust",
       "factory.granular.ambient.timestretch",
@@ -118,7 +117,6 @@ describe("preset gain sanity", () => {
       "factory.sampler.techno.padwarmdark",
       "factory.vocalchop.ambient.ghostvox",
       "factory.vocalchop.score.lonelyvox",
-      "factory.wavetable.techno.scanlead",
     ];
     const actual = Object.entries(FACTORY_PRESET_GAIN_DB)
       .filter(([, gain]) => Math.abs(gain) >= PRESET_GAIN_DB_LIMIT)

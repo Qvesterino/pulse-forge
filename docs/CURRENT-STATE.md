@@ -87,6 +87,9 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - Snare bank 4 → 9 — drill crack, phonk / jersey / dnb backbeats, lofi dust.
 - Hat bank 5 → 10 — drill tick, phonk dusty, jersey / dnb metallic pings, open cup; hat.pedal synth pulled apart from closed.soft (0.993 duplicate pair). _(feat `38b8fd0`, `378ab36`)_
 - Pop wave — kick.pop, clap.pop stack, crash.pop, tom.floor, rim.pop, shaker.pop + kalimba/musicbox mallets (86 → 94 assets, all with curated WAVs; orphan backfill: cello/nylon/orchestrahit/pizzicato/violin seeds).
+- **Pad round-robin + velocity dynamics** — `DrumPad.layers` (schema v8) with per-pad variant sets resolved in the shared groove plan (live == offline): stock kit gets snare/closed-hat DYNAMIC sets (ghost → body pool → accent bands), drill/phonk/jersey/dnb kits carry their own RR pools (snare.drill/phonk/jersey/dnb, kick.drill/dnb/jersey/phonk, hat.drill/phonk/jersey/dnb); `factory.kick.sub` typo fixed to `sub808`. Factory bank re-derives variants after the curated layer overrides a base (same drum, micro-variation — not two alternating sounds).
+- **Genre feel (humanize defaults)** — generated songs apply a per-genre humanize pocket (`applyGenreFeelToDoc`: trap 0.06/0.12, drill 0.05/0.10, phonk 0.12/0.16, jersey 0.05/0.10, house 0.08/0.12, techno 0.04/0.08, dnb 0.06/0.14, ambient 0.15/0.10; timing/velocity) in the same undo step as the kit swap; swing is never written (owned by the generation path) and a user-set non-zero humanize always wins.
+- **De-click guarantee** — every one-shot gets a 2 ms tail (`DECLICK_TAIL_SEC`) on the trigger, sliced-preview and preview-stop paths; looped pads fade on the 30 s safety stop instead of the slice end.
 
 ### Preset expansion
 

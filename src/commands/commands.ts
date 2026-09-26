@@ -3874,6 +3874,7 @@ export function splitAudioClipAtTick(
   doc: ProjectDocument,
   clipId: string,
   splitTick: number,
+  /** Decoded source duration enables exact split-window preservation for warped clips. */
   sourceDurationSec?: number,
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);

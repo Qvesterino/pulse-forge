@@ -1500,6 +1500,75 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
   });
 });
 
+describe("house depth wave (Chicago / Detroit / garage / French / disco)", () => {
+  it("Chicago founders: knuckles / heard / jefferson / hardy / trax era", () => {
+    const knuckles = parseIntentText("frankie knuckles type beat");
+    expect(knuckles.input.genre).toBe("house");
+    expect(knuckles.input.style).toBe("soulful");
+    expect(knuckles.input.bpmRange).toEqual([118, 126]);
+    expect(parseIntentText("larry heard type beat").input.style).toBe("deep");
+    expect(parseIntentText("mr fingers type beat").input.mood).toBe("chill");
+    expect(parseIntentText("marshall jefferson type beat").input.genre).toBe("house");
+    expect(parseIntentText("ron hardy type beat").input.style).toBe("funky");
+    expect(parseIntentText("steve hurley type beat").input.genre).toBe("house");
+    expect(parseIntentText("chip e type beat").input.genre).toBe("house");
+  });
+
+  it("Detroit house + NJ/NY garage axis", () => {
+    expect(parseIntentText("blake baxter type beat").input.style).toBe("deep");
+    expect(parseIntentText("eddie fowlkes type beat").input.genre).toBe("house");
+    expect(parseIntentText("kerri chandler type beat").input.style).toBe("deep");
+    expect(parseIntentText("masters at work type beat").input.style).toBe("soulful");
+    expect(parseIntentText("little louie vega type beat").input.genre).toBe("house");
+    expect(parseIntentText("todd terry type beat").input.style).toBe("funky");
+    expect(parseIntentText("larry levan type beat").input.style).toBe("soulful");
+    expect(parseIntentText("paradise garage type beat").input.genre).toBe("house");
+  });
+
+  it("French filter house + disco origin", () => {
+    expect(parseIntentText("cassius type beat").input.style).toBe("disco");
+    expect(parseIntentText("stardust type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("alan braxe type beat").input.genre).toBe("house");
+    expect(parseIntentText("bob sinclar type beat").input.style).toBe("disco");
+    expect(parseIntentText("giorgio moroder type beat").input.genre).toBe("house");
+    expect(parseIntentText("nile rodgers type beat").input.style).toBe("disco");
+    expect(parseIntentText("arthur russell type beat").input.mood).toBe("energetic");
+  });
+
+  it("modern deep/melodic school + amapiano second line", () => {
+    expect(parseIntentText("nora en pure type beat").input.style).toBe("deep");
+    expect(parseIntentText("lane 8 type beat").input.mood).toBe("chill");
+    expect(parseIntentText("harrison bdp type beat").input.genre).toBe("house");
+    expect(parseIntentText("jody wisternoff type beat").input.style).toBe("minimal");
+    expect(parseIntentText("musa keys type beat").input.style).toBe("afro");
+    expect(parseIntentText("young stunna type beat").input.genre).toBe("house");
+  });
+
+  it("guarded aliases never hijack generic words", () => {
+    // "justice" alone is a common word — only the qualified form matches
+    expect(matchArtistPreset("justice for the people")).toBeNull();
+    // "chic" alone is generic — the qualified form matches
+    expect(matchArtistPreset("chic type beat")).not.toBeNull();
+    // "marsh" alone is a habitat, not the producer
+    expect(matchArtistPreset("marsh land ambience")).toBeNull();
+  });
+
+  it("house history phrases route correctly", () => {
+    expect(parseIntentText("chicago house").input.genre).toBe("house");
+    expect(parseIntentText("garage house").input.genre).toBe("house");
+    expect(parseIntentText("filter house").input.genre).toBe("house");
+    expect(parseIntentText("soulful house").input.genre).toBe("house");
+    // Chicago RAP/drill stays out of the house route
+    expect(parseIntentText("chicago drill").input.genre).toBe("drill");
+  });
+
+  it("every house wave style resolves to a real groove id", () => {
+    for (const id of ["house.soulful", "house.deep", "house.funky", "house.disco", "house.driving", "house.minimal"]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});
+
 describe("experimental + score wave", () => {
   it("experimental hip-hop edges: brockhampton / clipping / flying lotus", () => {
     expect(parseIntentText("brockhampton type beat").input.style).toBe("hyper");

@@ -17,11 +17,14 @@ function samplerTrack(doc: ProjectDocument): InstrumentTrack {
 
 describe("velocity layers data", () => {
   it("factory kick kit has four ordered, touching zones", () => {
+    // Every zone must point at a REAL bank id (factory.kick.sub used to be a
+    // typo for sub808 — the zone silently vanished and the loudest kick band
+    // fell back to another sample).
     expect(FACTORY_KICK_LAYERS.map((l) => l.sampleId)).toEqual([
       "factory.kick.soft",
       "factory.kick.punch",
       "factory.kick.deep",
-      "factory.kick.sub",
+      "factory.kick.sub808",
     ]);
     expect(FACTORY_KICK_LAYERS[0].min).toBe(0);
     expect(FACTORY_KICK_LAYERS[FACTORY_KICK_LAYERS.length - 1].max).toBe(1);
@@ -267,16 +270,74 @@ describe("round-robin sample content", () => {
     }
   });
 
-  it("beat RR kits are full-window overlapping sets", async () => {
-    const { FACTORY_BEAT_RR_KITS } = await import("../src/sample-library/velocity-layers");
-    for (const layers of Object.values(FACTORY_BEAT_RR_KITS)) {
-      expect(layers.length).toBeGreaterThanOrEqual(2);
-      for (const l of layers) {
-        expect(l.min).toBe(0);
-        expect(l.max).toBe(1);
-        expect(l.sampleId).toBeTruthy();
-      }
+  it("beat kits separate velocity DYNAMICS from pure round robin", async () => {
+    const { FACTORY_BEAT_RR_KITS, FACTORY_SNARE_DYNAMIC, FACTORY_HAT_DYNAMIC, FACTORY_HAT_OPEN_RR } = await import(
+      "../src/sample-library/velocity-layers"
+    );
+    // Snare + closed hat are DYNAMIC (disjoint bands: ghost / body / accent)…
+    for (const layers of [FACTORY_SNARE_DYNAMIC, FACTORY_HAT_DYNAMIC]) {
+      expect(layers.length).toBeGreaterThanOrEqual(3);
       expect(new Set(layers.map((l) => l.sampleId)).size).toBe(layers.length);
+      for (const l of layers) expect(l.sampleId).toBeTruthy();
+      // Distinct BANDS must partition 0..1 (layers inside one band may share
+      // a window — that pool is the round robin).
+      const byBand = new Map<string, { min: number; max: number }>();
+      for (const l of layers) byBand.set(`${l.min}-${l.max}`, { min: l.min, max: l.max });
+      const bands = [...byBand.values()].sort((a, b) => a.min - b.min || a.max - b.max);
+      expect(bands[0].min).toBe(0);
+      expect(bands[bands.length - 1].max).toBe(1);
+      for (let i = 1; i < bands.length; i++) {
+        expect(bands[i].min).toBe(bands[i - 1].max);
+      }
+    }
+    // …and the snare's BODY band is a multi-sample RR pool inside one window
+    // (ghost below it, accent above it — the exact bounds are the design).
+    const body = FACTORY_SNARE_DYNAMIC.filter((l) => l.min > 0 && l.max < 1);
+    expect(body.length).toBeGreaterThanOrEqual(2);
+    expect(body[0].min).toBe(FACTORY_SNARE_DYNAMIC[0].max); // ghost → body
+    expect(new Set(body.map((l) => l.max)).size).toBe(1);
+    // The ghost band is the soft timbre, the accent band the hard one.
+    expect(FACTORY_SNARE_DYNAMIC[0].sampleId).toBe("factory.snare.tight");
+    expect(FACTORY_SNARE_DYNAMIC[FACTORY_SNARE_DYNAMIC.length - 1].sampleId).toBe("factory.snare.punch");
+    expect(FACTORY_SNARE_DYNAMIC[FACTORY_SNARE_DYNAMIC.length - 1].min).toBe(body[0].max);
+    // Open hats stay a plain full-window RR set (no ghost/accent samples).
+    for (const l of FACTORY_HAT_OPEN_RR) {
+      expect(l.min).toBe(0);
+      expect(l.max).toBe(1);
+    }
+    expect(FACTORY_BEAT_RR_KITS.snare).toBe(FACTORY_SNARE_DYNAMIC);
+    expect(FACTORY_BEAT_RR_KITS.hatClosed).toBe(FACTORY_HAT_DYNAMIC);
+  });
+
+  it("every layer id resolves in the factory bank contract (no silent zone)", async () => {
+    const { RR_VARIATIONS } = await import("../src/sample-library/factory");
+    const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
+    const {
+      FACTORY_BEAT_RR_KITS,
+      FACTORY_KICK_LAYERS,
+      FACTORY_SNARE_RR,
+      FACTORY_HAT_CLOSED_RR,
+      FACTORY_HAT_OPEN_RR,
+      FACTORY_KICK_PUNCH_RR,
+    } = await import("../src/sample-library/velocity-layers");
+    const manifestIds = new Set(FACTORY_ASSETS.map((a) => a.id));
+    // A bank id is either a manifest asset or a derived RR variant.
+    const exists = (id: string | null): boolean => {
+      if (!id) return false;
+      if (manifestIds.has(id)) return true;
+      const base = id.replace(/\.rr\d+$/, "");
+      return base !== id && RR_VARIATIONS[base] !== undefined;
+    };
+    const all = [
+      ...FACTORY_KICK_LAYERS,
+      ...FACTORY_SNARE_RR,
+      ...FACTORY_HAT_CLOSED_RR,
+      ...FACTORY_HAT_OPEN_RR,
+      ...FACTORY_KICK_PUNCH_RR,
+    ];
+    for (const kit of Object.values(FACTORY_BEAT_RR_KITS)) all.push(...kit);
+    for (const layer of all) {
+      expect(exists(layer.sampleId), `${layer.id} → ${layer.sampleId}`).toBe(true);
     }
   });
 });

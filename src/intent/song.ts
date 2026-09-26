@@ -16,7 +16,7 @@ import type { RenderCandidateFn } from "./audio-feedback";
 import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
-import { applyGenreKitToDoc } from "./genre-kit";
+import { applyGenreFeelToDoc, applyGenreKitToDoc } from "./genre-kit";
 import { masterTiltForIntent } from "./mix";
 import { GENRE_REFERENCE, SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
@@ -1534,6 +1534,11 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   if (build.sections.length === 0) throw new Error("Song build has no sections");
 
   let next = applyGenreKitToDoc(doc, build.baseIntent.genre);
+  // Genre feel (humanize defaults): a generated beat inherits a flat groove
+  // unless the user asked for something — the biggest "programmed" tell. The
+  // kit swap above adds VARIATION (sample layers), this adds the timing and
+  // dynamics breath. User-set non-zero humanize always wins (see the helper).
+  next = applyGenreFeelToDoc(next, build.baseIntent.genre);
   const clips: ProjectDocument["arrangement"]["clips"] = [];
   const markers: Marker[] = [];
   const transitions: NonNullable<ProjectDocument["arrangement"]["transitions"]> = [];

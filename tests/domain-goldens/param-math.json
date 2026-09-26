@@ -260,6 +260,48 @@
           }
         },
         {
+          "kind": "strings",
+          "defaults": {
+            "ensemble": 0.5,
+            "vibrato": 0.35,
+            "vibRate": 4.5,
+            "vibDelay": 0.45,
+            "bow": 0.45,
+            "cutoff": 4200,
+            "resonance": 0.9,
+            "attack": 0.18,
+            "release": 0.7,
+            "level": -9
+          }
+        },
+        {
+          "kind": "bell",
+          "defaults": {
+            "ratio": 3.46,
+            "decay": 2.2,
+            "shimmer": 0.35,
+            "strike": 0.4,
+            "tone": 6500,
+            "attack": 0.002,
+            "level": -10
+          }
+        },
+        {
+          "kind": "reese",
+          "defaults": {
+            "detune": 0.7,
+            "movement": 0.45,
+            "moveRate": 0.35,
+            "sub": 0.5,
+            "drive": 0.3,
+            "glide": 0.6,
+            "cutoff": 1600,
+            "resonance": 1.6,
+            "release": 0.25,
+            "level": -7
+          }
+        },
+        {
           "kind": "fm",
           "defaults": {
             "ratio": 2,
@@ -1207,6 +1249,72 @@
       "input": {
         "kind": "organ",
         "paramId": "bright",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam strings:ensemble",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "strings",
+        "paramId": "ensemble",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam bell:ratio",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "bell",
+        "paramId": "ratio",
+        "probes": [
+          -98.5,
+          1.5,
+          4.5,
+          7.5,
+          107.5
+        ]
+      },
+      "expected": [
+        1.5,
+        1.5,
+        4.5,
+        7.5,
+        7.5
+      ]
+    },
+    {
+      "name": "clampInstrumentParam reese:detune",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "reese",
+        "paramId": "detune",
         "probes": [
           -100,
           0,

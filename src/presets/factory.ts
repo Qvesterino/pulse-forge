@@ -2515,7 +2515,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       resonance: 1.1,
       attack: 0.002,
       release: 0.3,
-      level: -8,
+      level: -4,
     },
   },
   {
@@ -2620,7 +2620,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       resonance: 1.2,
       attack: 0.002,
       release: 0.32,
-      level: -7,
+      level: -3,
     },
   },
   {
@@ -2662,7 +2662,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       resonance: 1.3,
       attack: 0.004,
       release: 0.42,
-      level: -8,
+      level: -4,
     },
   },
   {
@@ -7822,7 +7822,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       resonance: 1.0,
       attack: 0.002,
       release: 0.28,
-      level: -8,
+      level: -4,
     },
   },
   {

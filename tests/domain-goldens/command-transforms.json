@@ -547,7 +547,8 @@
             },
             "tick": 240,
             "velocity": 0.8,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -564,7 +565,8 @@
             },
             "tick": 240,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -581,7 +583,8 @@
             },
             "tick": 480,
             "velocity": 0.7,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.clap.main"
           },
           {
             "trackId": "track-test-000b",
@@ -598,7 +601,8 @@
             },
             "tick": 720,
             "velocity": 0.8,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -615,7 +619,8 @@
             },
             "tick": 720,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -632,7 +637,8 @@
             },
             "tick": 960,
             "velocity": 0.95,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -649,7 +655,8 @@
             },
             "tick": 1200,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -666,7 +673,8 @@
             },
             "tick": 1440,
             "velocity": 0.95,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -683,7 +691,8 @@
             },
             "tick": 1440,
             "velocity": 0.75,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.clap.main"
           },
           {
             "trackId": "track-test-000b",
@@ -700,7 +709,8 @@
             },
             "tick": 1680,
             "velocity": 0.55,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -717,7 +727,8 @@
             },
             "tick": 1680,
             "velocity": 0.4,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.open"
           },
           {
             "trackId": "track-test-000b",
@@ -734,7 +745,8 @@
             },
             "tick": 2160,
             "velocity": 0.8,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -751,7 +763,8 @@
             },
             "tick": 2160,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -768,7 +781,8 @@
             },
             "tick": 2400,
             "velocity": 0.7,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.clap.main"
           },
           {
             "trackId": "track-test-000b",
@@ -785,7 +799,8 @@
             },
             "tick": 2640,
             "velocity": 0.8,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -802,7 +817,8 @@
             },
             "tick": 2640,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -819,7 +835,8 @@
             },
             "tick": 2880,
             "velocity": 0.95,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -836,7 +853,8 @@
             },
             "tick": 3120,
             "velocity": 0.5,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -853,7 +871,8 @@
             },
             "tick": 3360,
             "velocity": 0.95,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.kick.deep"
           },
           {
             "trackId": "track-test-000b",
@@ -870,7 +889,8 @@
             },
             "tick": 3360,
             "velocity": 0.75,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.clap.main"
           },
           {
             "trackId": "track-test-000b",
@@ -887,7 +907,8 @@
             },
             "tick": 3600,
             "velocity": 0.55,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.closed"
           },
           {
             "trackId": "track-test-000b",
@@ -904,7 +925,8 @@
             },
             "tick": 3600,
             "velocity": 0.4,
-            "ratchetIndex": 0
+            "ratchetIndex": 0,
+            "sampleId": "factory.hat.open"
           }
         ]
       }

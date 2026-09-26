@@ -2344,6 +2344,29 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
     { rate: 1.013, gain: 1.04 },
     { rate: 0.99, gain: 0.95 },
   ],
+  // Genre character drums (wave: pad round-robin) — each genre kit's own
+  // snare/hat/kick gets a variation pool so the swapped kit varies like the
+  // stock one instead of reverting to a machine-gun single sample.
+  "factory.snare.phonk": [
+    { rate: 1.011, gain: 1.04 },
+    { rate: 0.99, gain: 0.95 },
+  ],
+  "factory.hat.phonk": [
+    { rate: 1.02, gain: 1.04 },
+    { rate: 0.982, gain: 0.95 },
+  ],
+  "factory.snare.jersey": [
+    { rate: 1.013, gain: 1.04 },
+    { rate: 0.989, gain: 0.95 },
+  ],
+  "factory.hat.drill": [
+    { rate: 1.021, gain: 1.04 },
+    { rate: 0.981, gain: 0.95 },
+  ],
+  "factory.kick.phonk": [
+    { rate: 1.01, gain: 1.03 },
+    { rate: 0.991, gain: 0.96 },
+  ],
 };
 
 /** Derive one variation: linear-resample (pitch + length together) and scale. */
