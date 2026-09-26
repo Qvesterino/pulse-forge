@@ -538,17 +538,30 @@ export function IntentPanel() {
     sectionBuffersRef.current = new Map();
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
     const fx = picked.plan.intent.fx ?? null;
+    // Artist mix signature (Vlna 8): when the generation intent carries a
+    // signed artist, the mix decisions land WITH the pattern — both inside
+    // ONE undo frame, so Ctrl+Z removes pattern + mix together.
+    const artistSigned = artistMixProfileOf(normalizeIntent({ ...picked.plan.intent }));
+    const mixProfile = artistSigned ? planMixProfile(normalizeIntent({ ...picked.plan.intent })) : null;
+    const mixWanted = (mixProfile?.decisions.length ?? 0) > 0;
+    services.store.beginUndoFrame("Generate + artist mix");
     services.store.execute(
       fx
         ? applyGenerationResultWithFxCommand(doc, picked, picked.plan.intent.genre || undefined)
         : applyGenerationResultCommand(doc, picked, picked.plan.intent.genre || undefined),
     );
+    if (mixWanted) {
+      services.store.execute(applyMixIntent(services.store.getDoc(), mixProfile!));
+    }
+    services.store.endUndoFrame();
     setBankResult(null);
     buffersRef.current = new Map();
     setStatus(
       candidate
-        ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})${fx ? " + FX" : ""}`
-        : `✓ pattern applied${fx ? " + FX" : ""}`,
+        ? `✓ applied candidate #${candidate.candidateIndex + 1} (${candidate.source})${fx ? " + FX" : ""}${
+            mixWanted ? " + artist mix" : ""
+          }`
+        : `✓ pattern applied${fx ? " + FX" : ""}${mixWanted ? " + artist mix" : ""}`,
     );
     // Ghost versions: remember the applied content (read back post-execute
     // for exactness — the command may rename) for A/B + morph later.
