@@ -340,6 +340,30 @@ Pred označením workflow za hotové musí prejsť:
 - **Audio:** live/offline parity a finálny export sa kontrolujú rovnakým `AudioEngine`; generované PCM je bounded a finite.
 - **Release quality:** `npm run typecheck`, relevantné Vitest suite, `npm run test:e2e:smoke`, `npm run test:browser` podľa zmenených plôch, `npm run build` a bundle budget. Všetky nesúvisiace zlyhania sa uvádzajú, nie započítavajú ako PASS.
 
+**Stav (2026-09-26): executable gate suite dodaná; prvé plné prepnutie brány vykonané.**
+
+- `tests/release-gate-ai-producer.test.ts` (11 testov): kód-overiteľné brány bežia nad reálnymi
+  modulmi — brief fidelity (4 kurátorované briefy: návrh čistý + banka bez porušení → modelové
+  skóre nemôžu prekryť tvrdé fakty), presnosť zmien (chránený obsah hash identický, odmietnutie
+  bez mutácie), determinizmus (hash + rows), vypočutý kandidát sa aplikuje as-is jedným
+  undoable commandom, modelová odolnosť (ranker off / bogus mode → validný fallback výsledok),
+  generované PCM bounded + finite.
+- **Výsledky prvého plného prepnutia** (2026-09-26):
+  - Vitest celý suite: 5909 testov — jediná perzistentná chyba bola v iteration length+preserve
+    splice (source pattern sa do generátora doručoval nereziznutý → preserve-length gate ju
+    korektne odmietol; fixed pri koreni), ostatné prechodné počas paralelných vlnie, na re-run
+    všetky zelené.
+  - Typecheck: 2 chyby zostávajúce v paralelnej organ vlne (ich in-flight, reportované, nie
+    skórované ako PASS).
+  - Build: kompiluje; **bundle budgety FAIL** — DAW JS 3021/2750 KB, landing 727/600 KB (rast
+    +416 KB od auditu 15 = paralelné feature vlny). **Skutočný release bloker na povrchu.**
+  - E2e smoke: 3/6 — štúdiové scenáre idú; landing specy majú zastarané lokátory voči novej
+    landing copy („open in studio" → „Open the studio") — paralelný redesign, treba update
+    lokátorov.
+  - Blind listening vs baseline: **OWED** — čaká na ľudské posedenie, nezapočítané.
+- **Záver brány:** workflow samotný prešiel kódovými bránami; release blokujú (a) bundle budgety,
+  (b) e2e landing lokátory, (c) ľudské blind hodnotenie — všetky tri zvýraznené, neskrývané.
+
 ## 4. Prvý konkrétny míľnik
 
 Prvý shipping slice nemusí čakať na MRT2 ani na celý song composer. Mal by vedieť:

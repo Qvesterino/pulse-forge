@@ -4740,3 +4740,11 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 - **`measurePreviewLoudness`** — measure-only: vstupný doc NIKDY nemutuje (testom pinované). Panel prestal volať `applyPreviewLoudness` (auto-trim do preview = porušenie pravidla); funkcia ostáva ako testovaná referenčná implementácia.
 - **UI**: SUNO preview prehráva NETRIMNUTÝ render; report riadok (dôkaz + cieľ + trade-off) s `✓ PRIJAŤ TRIM` — setMasterConfig na preview doc + re-render audition (preview == USE ostáva pravda, measuredAfter z nového buffera) alebo `✗`/ticho = USE nainštaluje netrimnuté. USE gate cez loudnessApplied nezmenený.
 - **Testy**: loudness-recommendation 8/8 (clamp, ±1 within-target, bez merania = žiadnaRecommendácia, determinizmus, doc-unchanged pin), clipping 3/3; regresia loudness/review/song rodina **123/123**; panel SUNO lane test migrovaný na nový mock.
+
+---
+
+## FÁZA 8 — RELEASE GATE PRE AI-FIRST PRODUCER WORKFLOW (2026-09-26)
+
+- **Executable gate suite** `tests/release-gate-ai-producer.test.ts` (11): kódové brány nad reálnymi modulmi — brief fidelity, presnosť zmien, determinizmus, no-regen apply, modelová odolnosť, PCM bounded/finite.
+- **Prvé plné prepnutie**: Vitest 5909 (1 reálna chyba = iteration length+preserve splice — fix pri koreni: source pattern sa predáva generátoru prereziznutý); typecheck 2 chyby = ich organ vlna; build kompiluje ale **budgety FAIL** (DAW JS 3021/2750, landing 727/600 — +416 KB ich vlny od auditu 15); e2e smoke 3/6 (štúdio ✓, landing lokátory zastarané voči ich redesignu); blind listening OWED.
+- **Záver**: workflow prešiel kódovými bránami; release blokery zvýraznené, neskrývané: (a) budgety, (b) e2e lokátory, (c) ľudské hodnotenie.
