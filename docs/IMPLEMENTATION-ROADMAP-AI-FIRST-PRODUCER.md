@@ -250,6 +250,19 @@ NEISTÉ: tónina nebola zadaná
 - Po vytvorení finálneho song audition bufferu `reviewSongAudio()` použije ten istý buffer na technickú kontrolu peak/RMS/crest/bass proxy a neplatných vzoriek. UI upozorní na near-full-scale peak, takmer ticho alebo non-finite PCM; nemení projekt a neopakuje render.
 - **Otvorené:** toto je technická spätná väzba, nie umelecký kritik ani automatická oprava. Ďalej treba pridať cieľené návrhy zmien na základe dôkazu, ich A/B audition na úrovni celej skladby/sekcie a kontrolovaný apply/undo.
 
+**Doplnok (2026-09-26): audition-first sekčné návrhy.**
+
+- C3 cielená revízia („drop energeticejší") už nepíše ticho: outcome z `reviseSection` sa stane
+  preview návrhom — auto-audition, `✓ POTVRDIŤ` aplikuje ten istý one-undo in-place swap
+  (`replacePatternInPlaceCommand`, id/seed zachované → scény aj klipy ostanú naviazané),
+  `✗` nezanechá nič. Stale guard medzi náhľadom a potvrdením.
+- Záruka rozsahu testovaná: revízia zmení IBA deklarovanú sekciu — všetky ostatné patterny sú
+  content-hash identické a scene bindingy prežijú; nepotvrdený návrh nechá projekt bitovo rovnaký
+  (`tests/section-iteration.test.ts`).
+- **Otvorené ďalej:** celoskladbové A/B (nová sekcia v kontexte celého song audition buffera),
+  dôvodové návrhy z `reviewSongAudio()` meraní (napr. „drop takmer tichý → navrhnúť energy +")
+  a širšia zmenová slovná zásoba (mood/rola) nad rámec energy/density.
+
 ### Fáza 6 — KYX ako zvukár: meranie, odporúčanie, potvrdenie
 
 **Cieľ:** produkčná pomoc je počuteľná aj technicky vysvetliteľná; nič sa automaticky „nemasteruje“ bez kontroly.

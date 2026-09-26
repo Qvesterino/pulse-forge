@@ -4693,3 +4693,14 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 **Validácia:** artist-mix+production+artists **151/151**; 11-súborová battery **369/369**; `tsc --noEmit` čistý na campaign súboroch. Ich in-flight `tests/intent-artist-mix-wiring.test.ts` (untracked) testuje MOJ artist field — nechávam im ho (jeden type error null-vs-undefined je ich strana; wiring smer je správny — stavajú na tom).
 
 **Intent engine finálny stav:** interpret → groove + BPM + productionProfile (generácia) + mix/master podpis (tone/punch/reverb/pump, aplikuje sa pri USE aj SONG) + FX hinty (aplikujú sa pri generácii) + 15 production konceptov + brief kontrakt + iterácie + reference audio + konverzačné intenty.
+
+---
+
+## FÁZA 5 — CELÝ ARANŽMÁN: AUDITION-FIRST SEKČNÉ ZMENY (2026-09-26)
+
+**Roadmap:** IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md Fáza 5 („používateľ počuje aranžmán ešte pred commitom, môže meniť konkrétnu sekciu bez zmeny chránenej časti"). Stav po ich vertical slice (SUNO 3-alternatívy + reviewSongAudio): otvorené boli cieľované návrhy zmien s A/B audition a kontrolovaným apply/undo.
+
+- **C3 targeted revise už nepíše ticho**: „drop energeticejší" → `reviseSection` outcome sa stane PREVIEW návrhom — auto-audition (renderAuditionBuffer cez token guard), `✓ POTVRDIŤ` aplikuje ten istý one-undo in-place swap (`replacePatternInPlaceCommand`, id/seed zachované → scény aj arrangement klipy ostanú naviazané), `✗` nezanechá nič.
+- **Stale guard** (sémantika Fázy 2): akýkoľvek command medzi náhľadom a potvrdením invaliduje návrh s jasnou chybou.
+- **Testy** `tests/section-iteration.test.ts` 3/3: revíza zmení IBA deklarovanú sekciu (všetky ostatné patterny content-hash identické, scene bindingy prežijú), nepotvrdený návrh nechá projekt bitovo rovnaký, in-place identita (id+seed, nový obsah) = to čo počuješ je presne to čo sa aplikuje.
+- Regresia song/iteration/candidate rodina 86/86 (intent-song, suno-mode, song-auto-produce, iteration, brief-gate, session-context, candidate-audition); tsc čistý na mojich súboroch.
