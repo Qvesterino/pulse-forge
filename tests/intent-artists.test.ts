@@ -998,18 +998,18 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
   // genre + style + BPM + mood against the researched values. The bare
   // 'afrobeat' / 'amapiano' / 'k-pop' names live in earlier entries; we
   // exercise these lanes via unique artist names where possible.
-  it("wizkid / burna boy / davido → afrobeats (house afro, 110-118)", () => {
+  it("wizkid / burna boy / davido → afrobeats (house afropop, 100-112)", () => {
     const wiz = parseIntentText("wizkid type beat");
     expect(wiz.input.genre).toBe("house");
-    expect(wiz.input.style).toBe("afro");
-    expect(wiz.input.bpmRange).toEqual([110, 118]);
+    expect(wiz.input.style).toBe("afropop");
+    expect(wiz.input.bpmRange).toEqual([100, 112]);
     expect(wiz.input.mood).toBe("chill");
   });
 
-  it("j balvin / ozuna / rosalia → latin urban (house dancefloor, 88-100)", () => {
+  it("j balvin / ozuna / rosalia → latin urban (house dembow, 88-100)", () => {
     const jb = parseIntentText("j balvin type beat");
     expect(jb.input.genre).toBe("house");
-    expect(jb.input.style).toBe("dancefloor");
+    expect(jb.input.style).toBe("dembow");
     expect(jb.input.bpmRange).toEqual([88, 100]);
     expect(jb.input.energy).toBe(0.75);
   });
@@ -1534,5 +1534,105 @@ describe("experimental + score wave", () => {
     expect(parseIntentText("artful dodger type beat").input.mood).toBe("chill");
     expect(parseIntentText("zed bias type beat").input.mood).toBe("dark");
     expect(parseIntentText("wookie type beat").input.genre).toBe("house");
+  });
+});
+
+describe("jersey/baltimore/UKG producers + hyperpop-sigilkore underworld (crate-digger wave)", () => {
+  it("jersey second wave: lilman / drizz / dellirious / problem / delish / tim dolla", () => {
+    const lilman = parseIntentText("dj lilman type beat");
+    expect(lilman.input.genre).toBe("jersey");
+    expect(lilman.input.style).toBe("club");
+    expect(lilman.input.bpmRange).toEqual([134, 142]);
+    expect(parseIntentText("kayy drizz type beat").input.style).toBe("bounce");
+    expect(parseIntentText("so dellirious type beat").input.style).toBe("bounce");
+    expect(parseIntentText("dj problem type beat").input.style).toBe("flip");
+    expect(parseIntentText("dj delish type beat").input.style).toBe("flip");
+    expect(parseIntentText("dj tim dolla type beat").input.bpmRange).toEqual([128, 136]);
+  });
+
+  it("baltimore club lineage: the parent genre at the slower pocket", () => {
+    const bmore = parseIntentText("baltimore club beat");
+    expect(bmore.input.genre).toBe("jersey");
+    expect(bmore.input.bpmRange).toEqual([125, 135]);
+    expect(parseIntentText("dj k-swift type beat").input.genre).toBe("jersey");
+    expect(parseIntentText("scottie b type beat").input.genre).toBe("jersey");
+    expect(parseIntentText("kw griff type beat").input.style).toBe("bounce");
+    expect(parseIntentText("rod lee type beat").input.style).toBe("bounce");
+    expect(parseIntentText("blaqstarr type beat").input.mood).toBe("aggressive");
+  });
+
+  it("UKG producers: salute / barry can't swim / bassline niche school", () => {
+    const salute = parseIntentText("salute type beat");
+    expect(salute.input.genre).toBe("house");
+    expect(salute.input.style).toBe("ukg");
+    expect(salute.input.bpmRange).toEqual([132, 140]);
+    expect(parseIntentText("barry can't swim type beat").input.mood).toBe("chill");
+    const niche = parseIntentText("dj q type beat");
+    expect(niche.input.style).toBe("ukg");
+    expect(niche.input.mood).toBe("energetic");
+    expect(parseIntentText("t2 type beat").input.style).toBe("ukg");
+    expect(parseIntentText("burgaboy type beat").input.style).toBe("ukg");
+    expect(parseIntentText("trc type beat").input.style).toBe("ukg");
+  });
+
+  it("pc music room + deconstructed club: umru / felicita / shygirl / jockstrap", () => {
+    const umru = parseIntentText("umru type beat");
+    expect(umru.input.genre).toBe("trap");
+    expect(umru.input.style).toBe("hyper");
+    expect(umru.input.bpmRange).toEqual([150, 170]);
+    expect(parseIntentText("felicita type beat").input.style).toBe("hyper");
+    expect(parseIntentText("easyfun type beat").input.style).toBe("hyper");
+    expect(parseIntentText("shygirl type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("jockstrap type beat").input.style).toBe("hyper");
+  });
+
+  it("hardcore revival: machine girl / sewerslvt / goreshit amen", () => {
+    const mg = parseIntentText("machine girl type beat");
+    expect(mg.input.genre).toBe("dnb");
+    expect(mg.input.style).toBe("amen");
+    expect(mg.input.mood).toBe("aggressive");
+    expect(parseIntentText("alice gas type beat").input.style).toBe("amen");
+    expect(parseIntentText("sewerslvt type beat").input.style).toBe("amen");
+    expect(parseIntentText("goreshit type beat").input.mood).toBe("dark");
+  });
+
+  it("sigilkore + haunted mound: the occult trap underworld", () => {
+    const luci = parseIntentText("luci4 type beat");
+    expect(luci.input.genre).toBe("trap");
+    expect(luci.input.style).toBe("hyper");
+    expect(luci.input.mood).toBe("dark");
+    expect(luci.input.bpmRange).toEqual([135, 155]);
+    expect(parseIntentText("sellasouls type beat").input.style).toBe("hyper");
+    expect(parseIntentText("nosgov type beat").input.style).toBe("hyper");
+    expect(parseIntentText("sematary type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("ghost mountain type beat").input.style).toBe("hyper");
+  });
+
+  it("witch house + dark electronic: salem / crim3s / crystal castles / ic3peak", () => {
+    const salem = parseIntentText("salem type beat");
+    expect(salem.input.genre).toBe("ambient");
+    expect(salem.input.style).toBe("drifting");
+    expect(salem.input.mood).toBe("dark");
+    expect(parseIntentText("crim3s type beat").input.style).toBe("drifting");
+    expect(parseIntentText("white ring type beat").input.style).toBe("drifting");
+    const cc = parseIntentText("crystal castles type beat");
+    expect(cc.input.genre).toBe("ambient");
+    expect(cc.input.style).toBe("glitch");
+    expect(parseIntentText("ic3peak type beat").input.style).toBe("glitch");
+  });
+
+  it("crate-digger wave styles resolve to real groove ids", () => {
+    for (const id of [
+      "jersey.club",
+      "jersey.bounce",
+      "jersey.flip",
+      "house.ukg",
+      "trap.hyper",
+      "dnb.amen",
+      "ambient.drifting",
+      "ambient.glitch",
+    ]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
   });
 });

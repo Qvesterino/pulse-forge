@@ -1895,6 +1895,96 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [108, 124],
     label: "jessie ware",
   },
+  // ── country pop wave (house.countrypop train beat; BPM researched:
+  // Shania 96-122 (Man! I Feel 108, I'm Gonna Getcha Good ~120),
+  // Kacey 88-118 (High Horse 118, Golden Hour ballads ~90),
+  // The Chicks 100-130 (Cowboy Take Me Away, Sin Wagon pushes 130),
+  // Carrie Underwood 92-120 (Before He Cheats 92, Blown Away ~120)) ──
+  {
+    names: ["shania twain", "shania", "shania twain type beat"],
+    genre: "house",
+    style: "countrypop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [96, 122],
+    label: "shania twain",
+  },
+  {
+    names: ["kacey musgraves", "kacey", "kacey musgraves type beat"],
+    genre: "house",
+    style: "countrypop",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.45,
+    bpmRange: [88, 118],
+    label: "kacey musgraves",
+  },
+  {
+    names: ["the chicks", "dixie chicks", "the chicks type beat"],
+    genre: "house",
+    style: "countrypop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [100, 130],
+    label: "the chicks",
+  },
+  {
+    names: ["carrie underwood", "carrie underwood type beat"],
+    genre: "house",
+    style: "countrypop",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [92, 120],
+    label: "carrie underwood",
+  },
+  // ── latin pop wave (house.dembow chop; Bad Bunny / J Balvin / Rosalía
+  // lanes already exist above; BPM researched: Shakira 92-105 (Hips Don't
+  // Lie 99, Whenever 93), Karol G 88-102 (Provenza/TQG pocket ~95),
+  // Luis Fonsi 92-100 (Despacito 96), Rauw Alejandro 90-102 (Todo de Ti
+  // is the disco-latin edge ~104)) ──
+  {
+    names: ["shakira", "shakira type beat"],
+    genre: "house",
+    style: "dembow",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [92, 105],
+    label: "shakira",
+  },
+  {
+    names: ["karol g", "karol g type beat"],
+    genre: "house",
+    style: "dembow",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [88, 102],
+    label: "karol g",
+  },
+  {
+    names: ["luis fonsi", "fonsi", "despacito", "luis fonsi type beat"],
+    genre: "house",
+    style: "dembow",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [92, 100],
+    label: "luis fonsi",
+  },
+  {
+    names: ["rauw alejandro", "rauw", "rauw alejandro type beat"],
+    genre: "house",
+    style: "dembow",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [90, 104],
+    label: "rauw alejandro",
+  },
   {
     names: ["sabrina carpenter", "sabrina", "sabrina carpenter type beat"],
     genre: "house",
@@ -3459,28 +3549,28 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Afrobeats / Afropop (modern) — Wizkid / Burna Boy / Davido / Tems ────
   // Modern West-African pop (Wizkid 'Essence' / Burna Boy 'Last Last' /
-  // Davido 'Fall'). Routes to house.afro (the existing groove for amapiano /
-  // Rema / Tyla) — closest fit since afrobeats shares the percussion-led
-  // pocket. BPM 110-118.
+  // Davido 'Fall'). Routes to house.afropop — the dedicated afrobeats pop
+  // groove (3+3+2 kick, rim melody); amapiano / Rema / Tyla stay on
+  // house.afro. BPM 100-112.
   {
     names: ["wizkid", "burna boy", "davido", "tems", "asake", "victony", "ayra starr"],
     genre: "house",
-    style: "afro",
+    style: "afropop",
     mood: "chill",
     energy: 0.7,
     density: 0.55,
-    bpmRange: [110, 118],
+    bpmRange: [100, 112],
     label: "afrobeats",
   },
   // ── Latin urban / Reggaeton pop — J Balvin / Ozuna / Farruko / Rosalía ───
   // Modern reggaeton-pop (J Balvin 'Mi Gente' / Ozuna / Farruko / Rosalía
   // 'MALAMENTE'). Bad Bunny's existing entry covers the harder perreo side;
   // this covers the brighter dancefloor-pop reggaeton. Routes to
-  // house.dancefloor. BPM 88-100.
+  // house.dembow (the chop). BPM 88-100.
   {
     names: ["j balvin", "ozuna", "farruko", "rosalia", "anuel aa", "anuel"],
     genre: "house",
-    style: "dancefloor",
+    style: "dembow",
     mood: "energetic",
     energy: 0.75,
     density: 0.6,
@@ -4717,6 +4807,501 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.65,
     bpmRange: [128, 145],
     label: "90s rave",
+  },
+  // ── Jersey / Baltimore / UKG producer depth (the crate-digger lane) ────
+  // Jersey club: 134-142 (jersey.club groove); Baltimore club runs the same
+  // breakbeat at a touch slower (125-135); bassline/speed garage 130-140
+  // (house.ukg groove).
+  {
+    names: ["dj lilman", "lilman"],
+    // The 2010s jersey-club second wave (festival circuit, club-anthem).
+    genre: "jersey",
+    style: "club",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [134, 142],
+    label: "dj lilman",
+  },
+  {
+    names: ["kayy drizz"],
+    // The dance-challenge vocal queen of the new wave.
+    genre: "jersey",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [134, 142],
+    label: "kayy drizz",
+  },
+  {
+    names: ["so dellirious", "dellirious"],
+    // Brick Bandits-adjacent — original-era bounce feel.
+    genre: "jersey",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 138],
+    label: "so dellirious",
+  },
+  {
+    names: ["dj problem"],
+    // Newark drill-era club flips — hard 140 landing.
+    genre: "jersey",
+    style: "flip",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [136, 144],
+    label: "dj problem",
+  },
+  {
+    names: ["dj delish"],
+    genre: "jersey",
+    style: "flip",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [134, 142],
+    label: "dj delish",
+  },
+  {
+    names: ["dj tim dolla"],
+    // Original Brick Bandits crew — the foundation tempo.
+    genre: "jersey",
+    style: "club",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [128, 136],
+    label: "dj tim dolla",
+  },
+  // Baltimore club — the parent genre (slower, breakbeat + "Think" chops).
+  {
+    names: ["baltimore club", "dj k-swift", "k-swift", "scottie b", "debonair samir"],
+    // Scottie B / K-Swift / Debonair Samir — the Unruly Records school.
+    genre: "jersey",
+    style: "club",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [125, 135],
+    label: "baltimore club",
+  },
+  {
+    names: ["kw griff", "dj technics", "miss tonya", "rod lee"],
+    // The deeper Baltimore lineage (Rod Lee / Technics / KW Griff).
+    genre: "jersey",
+    style: "bounce",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [125, 135],
+    label: "baltimore lineage",
+  },
+  {
+    names: ["blaqstarr"],
+    // Baltimore-to-global (Diplo co-signs) — chant-forward breaks.
+    genre: "jersey",
+    style: "bounce",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [126, 136],
+    label: "blaqstarr",
+  },
+  // UKG / bassline / speed garage producers.
+  {
+    names: ["salute"],
+    // The 2020s UKG-via-electronic-pop lane — bright, emotional, club-ready.
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [132, 140],
+    label: "salute",
+  },
+  {
+    names: ["barry can't swim", "barry cant swim"],
+    // The UKG-adjacent indie-dance crossover (emotional, vocal-led).
+    genre: "house",
+    style: "ukg",
+    mood: "chill",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [128, 136],
+    label: "barry can't swim",
+  },
+  {
+    names: ["dj q", "t2", "burgaboy", "jamie duggan", "trc"],
+    // Bassline / Niche Sheffield school — speed-garage bass pressure.
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [132, 140],
+    label: "bassline / niche",
+  },
+  // ── Hyperpop deconstruction + sigilkore/hexd underworld ────────────────
+  // hyper lane, 140-170 (trap.hyper groove); the sigilkore/hexd world keeps
+  // the same lane but slower and murkier (130-155).
+  {
+    names: ["umru", "felicita", "easyfun", "life sim", "hdmird"],
+    // The PC Music production room outside A.G. Cook — deconstructed club
+    // maximalism (umru, felicita, easyFun).
+    genre: "trap",
+    style: "hyper",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.8,
+    bpmRange: [150, 170],
+    label: "pc music room",
+  },
+  {
+    names: ["shygirl", "jockstrap", "black dresses"],
+    // The art-pop / deconstructed-club edge (Shygirl, Jockstrap, Black
+    // Dresses) — vocals against broken club pressure.
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.75,
+    bpmRange: [140, 165],
+    label: "deconstructed club",
+  },
+  {
+    names: ["machine girl", "alice gas"],
+    // Digital hardcore / breakcore revival — punk speed + electronic rage.
+    genre: "dnb",
+    style: "amen",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.75,
+    bpmRange: [170, 180],
+    label: "digital hardcore",
+  },
+  {
+    names: ["food house", "gupi", "fraxiom", "that kid"],
+    // The 2020 hyperpop scene's DIY heart (food house = gupi + fraxiom).
+    genre: "trap",
+    style: "hyper",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.8,
+    bpmRange: [150, 170],
+    label: "hyperpop DIY",
+  },
+  {
+    names: ["sewerslvt", "goreshit"],
+    // Breakcore / jungle's internet revival — amen choppage + melancholy.
+    genre: "dnb",
+    style: "amen",
+    mood: "dark",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [170, 180],
+    label: "breakcore revival",
+  },
+  {
+    names: ["luci4", "sellasouls", "nosgov", "axxturel"],
+    // Sigilkore — the occult-coded plugg/hexd underworld (Luci4 / Sellasouls).
+    genre: "trap",
+    style: "hyper",
+    mood: "dark",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [135, 155],
+    label: "sigilkore",
+  },
+  {
+    names: ["sematary", "ghost mountain", "buckshot", "turnabout", "hackle"],
+    // Haunted Mound — the trap-rave/goth-country fusion (Sematary crew).
+    genre: "trap",
+    style: "hyper",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [140, 165],
+    label: "haunted mound",
+  },
+  {
+    names: ["salem", "crim3s", "ooooo", "white ring"],
+    // Witch house — the 2010 originators (slowed, chopped, occult).
+    genre: "ambient",
+    style: "drifting",
+    mood: "dark",
+    energy: 0.35,
+    density: 0.45,
+    bpmRange: [70, 90],
+    label: "witch house",
+  },
+  {
+    names: ["crystal castles", "ic3peak", "zheani", "kumo 99"],
+    // The dark-electronic / witch-adjacent vocal lane.
+    genre: "ambient",
+    style: "glitch",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.65,
+    bpmRange: [80, 120],
+    label: "dark electronic",
+  },
+  // ── house depth wave — the genre's FOUNDING history was missing entirely ──
+  // Chicago (1984-88), Detroit house, the NJ/NY garage axis, French filter
+  // and the modern deep/melodic school. All styles resolve to existing
+  // house.* grooves (soulful / deep / funky / driving / disco / minimal).
+  {
+    names: ["frankie knuckles", "the godfather of house", "knuckles"],
+    // Chicago house's founding DJ — the Warehouse/Paradise sound.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [118, 126],
+    label: "frankie knuckles",
+  },
+  {
+    names: ["larry heard", "mr fingers", "fingers inc", "fingers inc."],
+    // The other Chicago pillar — deep, melancholy, string-led.
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [116, 124],
+    label: "larry heard",
+  },
+  {
+    names: ["marshall jefferson", "move your body house"],
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [118, 126],
+    label: "marshall jefferson",
+  },
+  {
+    names: ["ron hardy", "music box chicago"],
+    // The wilder Chicago counterpoint — raw, jacking, tape edits.
+    genre: "house",
+    style: "funky",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [120, 128],
+    label: "ron hardy",
+  },
+  {
+    names: ["steve hurley", "farley jackmaster funk", "jesse saunders", "chip e", "adonis house"],
+    // The Chicago production/compilation era (Trax / DJ International).
+    genre: "house",
+    style: "funky",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [118, 128],
+    label: "chicago trax",
+  },
+  {
+    names: ["ten city", "byron stingily", "inner city house"],
+    // Chicago's vocal-house wing.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [114, 124],
+    label: "chicago vocal",
+  },
+  {
+    names: ["blake baxter", "eddie fowlkes", "kelli hand", "terrence parker", "dream 2 science"],
+    // Detroit house — techno's soulful sibling (the house side of the axis).
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [118, 128],
+    label: "detroit house",
+  },
+  {
+    names: ["kerri chandler", "kaidi tatham", "apollo era"],
+    // The NJ deep-house master — warm, spiritual, endless grooves.
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [118, 126],
+    label: "kerri chandler",
+  },
+  {
+    names: ["tony humphries", "basement boys", "jovonn", "dj spen"],
+    // The Jersey/Baltimore garage-house axis.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [120, 128],
+    label: "jersey house",
+  },
+  {
+    names: ["masters at work", "little louie vega", "louie vega", "kenny dope", "maw house"],
+    // The NYC production duo that defined 90s garage house.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [120, 128],
+    label: "masters at work",
+  },
+  {
+    names: ["todd terry", "strictly rhythm type beat", "mark kinchen"],
+    genre: "house",
+    style: "funky",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [120, 128],
+    label: "todd terry",
+  },
+  {
+    names: ["larry levan", "paradise garage", "david morales", "danny tenaglia", "francois k", "joe claussell"],
+    // The NY loft/garage DJ lineage — long, ecstatic, vocal-driven sets.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [118, 128],
+    label: "ny loft",
+  },
+  {
+    names: ["kavinsky", "gesaffelstein", "justice type beat", "sebastian ed banger"],
+    // The dark French electro lineage — NOT "justice" alone (generic word).
+    genre: "techno",
+    style: "driving",
+    mood: "dark",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [120, 132],
+    label: "darksynth (fr)",
+  },
+  {
+    names: ["french house", "daft punk type beat", "cassius", "stardust", "alan braxe", "breakbot"],
+    // The filter-house school — Daft Punk's family. (Bare "daft punk" is
+    // deliberately NOT an alias: the robot-duo name alone is a genre word and
+    // would shadow every "daft punk" prompt the pop roster may want.)
+    genre: "house",
+    style: "disco",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [118, 126],
+    label: "french filter house",
+  },
+  {
+    names: ["bob sinclar", "martin solveig", "modjo"],
+    // The 2000s French touch revival.
+    genre: "house",
+    style: "disco",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [118, 126],
+    label: "french touch 2000s",
+  },
+  {
+    names: ["nora en pure", "lane 8", "yotto", "tinlicker", "marsh house"],
+    // Modern melodic/deep-progressive school.
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [118, 124],
+    label: "melodic deep",
+  },
+  {
+    names: ["harrison bdp", "fouk", "braxton", "djt"],
+    genre: "house",
+    style: "deep",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [120, 128],
+    label: "uk deep house",
+  },
+  {
+    names: ["jody wisternoff", "anja schneider", "maya jane coles"],
+    genre: "house",
+    style: "minimal",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [120, 126],
+    label: "minimal deep",
+  },
+  {
+    names: ["robert owens", "adeva", "barbara tucker"],
+    // The classic vocal-house voices.
+    genre: "house",
+    style: "soulful",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.5,
+    bpmRange: [118, 126],
+    label: "vocal house",
+  },
+  {
+    names: ["atjazz", "osunlade", "quintus"],
+    genre: "house",
+    style: "soulful",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [116, 126],
+    label: "afro-soul house",
+  },
+  {
+    names: ["musa keys", "young stunna", "de mthuda", "sir trill"],
+    // Amapiano second line (the school's next generation).
+    genre: "house",
+    style: "afro",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.6,
+    bpmRange: [110, 116],
+    label: "amapiano wave 2",
+  },
+  {
+    names: ["giorgio moroder", "cerrone", "disco generic", "eurodisco"],
+    // The pre-house disco/eurodisco foundation.
+    genre: "house",
+    style: "disco",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [110, 124],
+    label: "eurodisco",
+  },
+  {
+    names: ["nile rodgers", "chic type beat", "sister sledge", "kool and the gang", "arthur russell"],
+    // The 70s disco/boogie wellspring house music grew from.
+    genre: "house",
+    style: "disco",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [104, 120],
+    label: "disco origin",
   },
 ];
 

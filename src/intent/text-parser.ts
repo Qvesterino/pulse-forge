@@ -69,6 +69,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bsnap (?:beat|rap|music)\b|\bfinger snap\b|\bring ?tone\b/, "trap"],
   [/\bafro ?swing\b/, "house"],
   [/\bcountry (?:rap|trap|tune)\b|\bcountrytune\b/, "trap"],
+  // Country POP (Shania / Kacey train beat) — bare "country" keeps its
+  // legacy no-mapping reading; only the explicit pop compounds route here.
+  [/\bcountry pop\b|\bpop country\b|\bcountrypop\b|\bnashville pop\b/, "house"],
   // DnB sub-genre sweep — all roads into dnb (own grooves + kit + song form)
   [/\bjump ?up\b|\bjumpup\b/, "dnb"],
   [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
@@ -107,13 +110,21 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],
   [/\bfrench house\b/, "house"],
+  // House history phrases MUST precede the generic "house" / "garage" entries:
+  // "chicago house" and "garage house" would otherwise resolve to the base
+  // floor with no era character. (Bare "chicago" stays OUT — it belongs to
+  // Chicago rap/drill.)
+  [/\bchicago house\b|\bchicago trax\b|\bchitown house\b/, "house"],
+  [/\bgarage house\b|\bnew jersey house\b|\bny house\b|\bnew york house\b/, "house"],
+  [/\bsoulful house\b|\bvocal house\b/, "house"],
+  [/\bfilter house\b|\bfrench touch\b|\bfrench filter\b/, "house"],
   [/\bbig room\b/, "house"],
   [/\bhouse\b/, "house"],
   [/\bdeep\b/, "house"],
   [/\bgarage\b|\bukg\b|\buk garage\b/, "house"],
   [/\bjersey\b/, "jersey"], // first-class since the sound-quality pass (own grooves + kit)
-  [/\bafro\b|\bafrobeat\b/, "house"],
-  [/\breggaeton\b/, "house"],
+  [/\bafro\b|\bafrobeats?\b|\bafropop\b/, "house"],
+  [/\breggaeton\b|\bdembow\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "house"],
   [/\btechno\b/, "techno"],
   [/\btech\b/, "techno"],
   [/\bacid\b/, "techno"],
@@ -150,12 +161,20 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Afroswing BEFORE the generic afro entry — "afro swing" contains the
   // word "afro" and would otherwise be stolen by it.
   [/\bafro ?swing\b/, "afroswing"],
+  // Afropop BEFORE the generic afro entry — "afro pop" / "afrobeats" ride the
+  // Wizkid/Burna pop pocket (house.afropop), not the afro-house groove.
+  [/\bafro ?pop\b|\bafropop\b|\bafrobeats?\b/, "afropop"],
   [/\bfuture garage\b/, "future garage"],
   // Overmono school (house.broken groove) — before generic matches that
   // would steal the word
   [/\bbroken(?: beat)?\b/, "broken"],
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
   [/\bafro\b/, "afro"],
+  // Dembow / latin pop — the reggaeton chop (house.dembow). SK "latinský".
+  [/\bdembow\b|\breggaeton\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "dembow"],
+  // Country pop — the train-beat lane (house.countrypop); "country rap /
+  // trap / tune" keep their trap.countrytune routing below.
+  [/\bcountry pop\b|\bpop country\b|\bcountrypop\b|\bnashville pop\b/, "countrypop"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
   [/\bdub\b/, "dub"],
   [/\bacid\b/, "acid"],
