@@ -84,7 +84,11 @@ describe("GATE precision of changes — protected content, stale proposals", () 
     const generation: SessionGeneration = {
       text: "gate",
       intent: result.plan.intent,
-      candidates: (result.bank ?? []).map((entry, index) => ({ index, pattern: entry.pattern, intent: result.plan.intent })),
+      candidates: (result.bank ?? []).map((entry, index) => ({
+        index,
+        pattern: entry.pattern,
+        intent: result.plan.intent,
+      })),
       appliedIndex: null,
       docId: doc.id,
       at: 0,
@@ -180,7 +184,11 @@ describe("GATE audio — generated content is bounded and finite", () => {
   it("every generated row velocity is finite within 0..1; pitches within MIDI range", () => {
     const doc = testDoc();
     for (const text of GATE_BRIEFS.map((brief) => brief.text)) {
-      const result = generateLocalResult(doc, normalizeIntent({ ...parseIntentText(text).input, seed: "gate-pcm" }), "apply");
+      const result = generateLocalResult(
+        doc,
+        normalizeIntent({ ...parseIntentText(text).input, seed: "gate-pcm" }),
+        "apply",
+      );
       const pattern = result.proposal!.pattern;
       for (const row of Object.values(pattern.rows ?? {})) {
         for (const value of row) {

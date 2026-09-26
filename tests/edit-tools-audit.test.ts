@@ -176,57 +176,61 @@ describe("I4 copies own their mutable state", () => {
     expect(left!.warpMarkers).not.toBe(right!.warpMarkers);
   });
 
-  it("warped split keeps the source-time map continuous on both fragments", () => {
-    const sourceDurationSec = 10;
-    const { doc, clipId } = docWithClip({
-      offsetSec: 1.1,
-      trimStart: 0.2,
-      trimEnd: 0.7,
-      warpMarkers: [
-        { timeSec: 2.4, tick: 4 * BAR + 800 },
-        { timeSec: 6.9, tick: 4 * BAR + 5600 },
-        { timeSec: 8.8, tick: 4 * BAR + 7180 },
-      ],
-    });
-    const source = clipsOf(doc).find((clip) => clip.id === clipId)!;
-    const splitTick = source.startBar * BAR + 3500;
-    const ticksPerClip = source.lengthBars * BAR;
-    const secondsPerTick = 60 / (doc.bpm * PPQ);
-    const originalContentStart = source.offsetSec + source.trimStart;
-    const originalContentDur = sourceDurationSec - originalContentStart - source.trimEnd;
-    const sourceAt = (clip: AudioClip, tick: number): number | null => {
-      const contentStart = clip.offsetSec + clip.trimStart;
-      const contentDur = sourceDurationSec - contentStart - clip.trimEnd;
-      return warpBufferTimeAtTick({
-        markers: clip.warpMarkers ?? [],
-        clipStartTick: clip.startBar * BAR,
-        clipTicks: clip.lengthBars * BAR,
-        tick,
-        spt: secondsPerTick,
-        contentStartSec: contentStart,
-        contentDurSec: contentDur,
-        stretchRate: clip.stretchRate,
-        stretchMode: clip.stretchMode,
+  it.each(["resample", "stretch"] as const)(
+    "warped %s split keeps the source-time map continuous on both fragments",
+    (stretchMode) => {
+      const sourceDurationSec = 10;
+      const { doc, clipId } = docWithClip({
+        offsetSec: 1.1,
+        trimStart: 0.2,
+        trimEnd: 0.7,
+        stretchRate: 1.7,
+        stretchMode,
+        warpMarkers: [
+          { timeSec: 2.4, tick: 4 * BAR + 800 },
+          { timeSec: 6.9, tick: 4 * BAR + 5600 },
+          { timeSec: 8.8, tick: 4 * BAR + 7180 },
+        ],
       });
-    };
-    const before = [0, 800, 1800, 3499, 3500, 4300, 5600, 7180, ticksPerClip].map(
-      (relativeTick) =>
-        [source.startBar * BAR + relativeTick, sourceAt(source, source.startBar * BAR + relativeTick)] as const,
-    );
-    const command = splitAudioClipAtTick(doc, clipId, splitTick, sourceDurationSec);
-    const next = command.execute(doc);
-    const [left, right] = clipsOf(next).sort((a, b) => a.startBar - b.startBar);
+      const source = clipsOf(doc).find((clip) => clip.id === clipId)!;
+      const splitTick = source.startBar * BAR + 3500;
+      const ticksPerClip = source.lengthBars * BAR;
+      const secondsPerTick = 60 / (doc.bpm * PPQ);
+      const sourceAt = (clip: AudioClip, tick: number): number | null => {
+        const contentStart = clip.offsetSec + clip.trimStart;
+        const contentDur = sourceDurationSec - contentStart - clip.trimEnd;
+        return warpBufferTimeAtTick({
+          markers: clip.warpMarkers ?? [],
+          clipStartTick: clip.startBar * BAR,
+          clipTicks: clip.lengthBars * BAR,
+          tick,
+          spt: secondsPerTick,
+          contentStartSec: contentStart,
+          contentDurSec: contentDur,
+          stretchRate: clip.stretchRate,
+          stretchMode: clip.stretchMode,
+        });
+      };
+      const before = [0, 800, 1800, 3499, 3500, 4300, 5600, 7180, ticksPerClip].map(
+        (relativeTick) =>
+          [source.startBar * BAR + relativeTick, sourceAt(source, source.startBar * BAR + relativeTick)] as const,
+      );
+      const command = splitAudioClipAtTick(doc, clipId, splitTick, sourceDurationSec);
+      const next = command.execute(doc);
+      const [left, right] = clipsOf(next).sort((a, b) => a.startBar - b.startBar);
 
-    expect(left!.trimEnd).toBeCloseTo(sourceDurationSec - before[4]![1]!, 12);
-    expect(right!.offsetSec + right!.trimStart).toBeCloseTo(before[4]![1]!, 12);
-    expect(left!.warpMarkers!.every((marker) => marker.tick <= splitTick)).toBe(true);
-    expect(right!.warpMarkers!.every((marker) => marker.tick >= splitTick)).toBe(true);
-    for (const [tick, expected] of before) {
-      const fragment = tick <= splitTick ? left! : right!;
-      expect(sourceAt(fragment, tick)).toBeCloseTo(expected!, 10);
-    }
-    expect(command.undo(next)).toEqual(doc);
-  });
+      expect(left!.trimEnd).toBeCloseTo(sourceDurationSec - before[4]![1]!, 12);
+      expect(right!.offsetSec + right!.trimStart).toBeCloseTo(before[4]![1]!, 12);
+      expect(left!.warpMarkers!.every((marker) => marker.tick <= splitTick)).toBe(true);
+      expect(right!.warpMarkers!.every((marker) => marker.tick >= splitTick)).toBe(true);
+      for (const [tick, expected] of before) {
+        const fragment = tick <= splitTick ? left! : right!;
+        expect(sourceAt(fragment, tick)).toBeCloseTo(expected!, 10);
+      }
+      expect(command.undo(next)).toEqual(doc);
+      expect(command.execute(doc)).toEqual(next);
+    },
+  );
 });
 
 describe("I5 duplicate placement + overlap contract", () => {
