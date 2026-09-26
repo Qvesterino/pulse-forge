@@ -286,6 +286,27 @@ NEISTÉ: tónina nebola zadaná
 
 **Hotovo, keď:** odporúčanie je reprodukovateľné, vysvetliteľné a voliteľné; live a exportovaný render ostanú zhodné; clipping/loudness claims sú podložené skutočným meraním.
 
+**Stav (2026-09-26): jadro Fázy 6 dodané.**
+
+- Audit meraní: proxy metriky (RMS/crest/ZCR/lowBandRatio, `song-audio-review.ts`) boli už
+  oddelené od štandardizovaného loudness merania (BS.1770-4 K-weighting, `kweighting.ts`).
+  Doplnené **clipping-runs** (≥3 po sebe idúce full-scale samples, per-kanálovo) ako samostatný
+  dôkaz — „near-full-scale“ (jedna vzorka, môže byť transcient) ≠ „clipping“ (deštrukcia).
+- Štruktúrovaný report: `recommendLoudnessTrim()` — cieľ, dôkaz z renderu (ten istý offline
+  renderer ako export), navrhnutý zásah (trim na `master.loudnessTrimDb`, clampnutý ±6, nikdy
+  user tracky), poctivý trade-off oboch smerov, `withinTarget` ±1 LU = žiadny zásah. Pure →
+  reprodukovateľné a vysvetliteľné.
+- **Nič sa automaticky nemasteruje:** SUNO preview teraz meria cez `measurePreviewLoudness`
+  (vstupný doc je testom pinovaný ako nemutovaný) a trim ponúka ako návrh — ▶ počuješ
+  netrimnutý render, `✓` aplikuje trim cez `setMasterConfig` na preview doc + pre-renderuje
+  náhľad (preview == USE ostáva pravda), `✗`/ticho inštaluje nič. Auto-aplikujúca
+  `applyPreviewLoudness` zostáva ako testovaná referencia, panel ju už nepoužíva.
+- Testy: `tests/loudness-recommendation.test.ts` (8) + clipping (3); regresia loudness/review/
+  song rodina 123/123.
+- **Otvorené:** true-peak (4× oversampling podľa BS.1770) namiesto sample-peak proxy;
+  rozšírenie reportu na sekčné revízie (spojenie s per-sekčnými metrami z Fázy 5); VLYX Mix
+  Assist návrhy v tom istom report formáte.
+
 ### Fáza 7 — MRT2 ako voliteľný hráč a sampling nástroj
 
 **Cieľ:** MRT2 dopĺňa KYX beat, ale nenahrádza jeho patterny, projektový model ani lokálny fallback.
