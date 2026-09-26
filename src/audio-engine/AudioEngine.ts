@@ -730,6 +730,21 @@ export class AudioEngine {
     return [...this.missedAssets];
   }
 
+  /**
+   * Route offline-rendered track output around the fixed master chain.
+   * Disabled user master processors are still not a transparent identity:
+   * the always-on DC blocker alters phase, so a rendered clip would be
+   * filtered once while consolidating and again when played in the project.
+   */
+  bypassMasterChainForOfflineRender(): void {
+    if (!this.ctx || isLiveAudioContext(this.ctx)) {
+      throw new Error("The master chain can only be bypassed for an offline render");
+    }
+    if (!this.master || !this.masterAnalyser) throw new Error("The offline master graph is not initialized");
+    this.master.disconnect();
+    this.master.connect(this.masterAnalyser);
+  }
+
   useContext(ctx: BaseAudioContext): void {
     this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
     const previousContext = this.ctx;

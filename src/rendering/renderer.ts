@@ -305,6 +305,7 @@ export function buildTempoMap(
   }
   const totalSeconds = cursorTime;
   const timeAt = (tick: number): number => {
+    if (segments.length === 0) return tick * docSpt;
     const segmentEndTime = (segment: TempoSegment): number =>
       segment.startTime + (segment.to - segment.from) * (60 / (segment.bpm * PPQ));
     for (let index = 0; index < segments.length; index++) {
@@ -427,6 +428,7 @@ export async function renderProject(
         tiltDb: 0,
       },
     });
+    engine.bypassMasterChainForOfflineRender();
   } else {
     engine.setProject(renderDoc);
   }

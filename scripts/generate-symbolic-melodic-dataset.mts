@@ -26,7 +26,7 @@ import {
   type MelodicRole,
 } from "../src/ai/symbolic/melodic-features";
 
-const DATASET_VERSION = "symbolic-melodic-ds.v1";
+const DATASET_VERSION = "symbolic-melodic-ds.v2";
 
 interface DatasetSample {
   x: number[];

@@ -356,6 +356,10 @@ A — pôvodný brief
 
 **Hotovo, keď:** top song kandidát vyhrá blind porovnanie nad súčasným baseline pre rovnaký brief; ľubovoľná cielená revízia nemení chránené sekcie a preview zodpovedá commitnutému výsledku.
 
+**Implementovaný prvý koherentný song-search slice (2026-09-26):** pri multi-candidate compose sa z candidate banku zostaví alternatíva len vtedy, keď rovnaký search lane prešiel všetkými sekciami. Každá úplná alternatíva dostane tie isté transition treatments; obsahovo duplicitné alebo neúplné celé skladby sa skryjú. `composeFullTrack()` prenesie hummovaný hook do predvoleného songu aj do všetkých lane alternatív a po tom znovu odstráni alternatívy, ktoré sa tým stali identické. `IntentPanel` dovolí vybrať `SAFE` / `PERSONAL` / `EXPERIMENTAL` celú formu alebo predvolený výber po sekciách, vyrenderuje zvolenú formu cez song audition a pre zvolený lane drží `USE SONG` vypnuté až do úspešného renderu. `useSongDraft()` aplikuje presne ten `SongBuild`, ktorý sa previewoval. Targeted song/voice/UI testy pokrývajú úplnosť lane, zachovanie hum hooku, render gate a identitu preview→apply.
+
+**Čo tento slice ešte netvrdí:** default stále vyberá najlepšie sekcie nezávisle; full-song lane nie je song-level ONNX/DNA ranking. Nie je dokázané, že používateľ subjektívne preferuje PERSONAL alebo EXPERIMENTAL, ani že tieto smery vyhrávajú blind porovnanie celej skladby. Song-level features, celoskladbové pairwise učenie a blind user evaluation ostávajú otvorené.
+
 ### End-to-end vertical slice — „sprav mi beat, ale počúvaj ma“
 
 Toto je prvý ucelený release cieľ. Nesmie vyžadovať, aby sa používateľ učil rozdiel medzi embeddingom, ONNX score a generation seedmi.

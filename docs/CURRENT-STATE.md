@@ -99,7 +99,8 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - **Embedding-conditioned prior v2** — Phases D–F of the conditioning chain. _(feat `c7df20b`)_
 - **Hybrid v3 prior (active)** — retrained with label smoothing + variant embeddings, logit-saturation fix; activation commit flips the runtime to the new model. _(feat `64e2b61`, `8bd904c`)_
 - **Vocabulary wave** — 38 artists, sub-genres, mood / trait expansion. _(feat `33d05a2`)_
-- **World roster + genre depth** — 97 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
+- **World roster + genre depth** — 235 artist presets total (researched BPM ranges; west coast / g-funk roster: snoop / dre / warren g & nate dogg / ty dolla on the trap.headnod + trap.gfunk grooves), roller/amen/horrorcore grooves, producer session dialogue. _(feat `a1e1a1b`..)_
+- **Club depth wave** — jersey (uniiqu3 / tameil / sliink / 2rare + jersey-club entry), sexy drill (cash cobain + chow lee on drill.bounce), NY/UK/Chicago drill corners (fivio / sheff g + sleepy / headie / digga / 808melo / axl / ghosty / herbo / m1) and phonk depth (kaito shoma / pharmacist drift; xavier wulf / night lovell / bones memphis-lofi) — all styles resolve to real groove ids.
 - **Augmented datasets into all four prior training chains.** _(feat `0c6b105`)_
 - **Pop wave** — pop routing (dance-pop/synth-pop/pop-rap/hyperpop → house/trap), 12 pop artist presets, 4 pop grooves (house.pop/synthpop, trap.pop, ambient.pop), POP_FORM (verse/pre-chorus/chorus, hook before ~45 s), pop mix (bright + vocal glue + low-end control) and −9 LUFS pop loudness target.
 

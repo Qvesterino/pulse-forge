@@ -57,6 +57,11 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   dancefloor: ["dancefloor", "festival dnb", "mainstage energy", "party anthem"],
   twostep: ["two-step", "two step", "steppy stepper", "swing stepper"],
   jungle: ["jungle", "ragga jungle", "rudeboy pressure", "dancehall jungle"],
+  bounce: ["bounce", "nola bounce", "triggerman bounce", "call-and-response bounce"],
+  miamibass: ["miami bass", "booty bass", "bass-heavy miami", "808 booty bounce"],
+  snap: ["snap", "snap music", "ringtone snap", "finger-snap minimal"],
+  afroswing: ["afroswing", "afro swing", "uk afroswing", "mellow afro bounce"],
+  countrytune: ["country tune", "country rap", "country trap", "bluesy country rap"],
 };
 
 const MOOD_WORDS: Record<string, { en: string[]; sk: string[] }> = {

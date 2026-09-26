@@ -19,7 +19,14 @@ import {
   setMasterConfig,
 } from "../commands/commands";
 import { applyArrangeOps } from "../intent/arrangeWords";
-import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type SongBuildSection } from "../intent/song";
+import {
+  reviseSection,
+  replacePatternInPlaceCommand,
+  applySongCommand,
+  type SongBuild,
+  type SongBuildSection,
+} from "../intent/song";
+import type { SearchLane } from "../intent/candidate-search";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
@@ -144,8 +151,15 @@ export function IntentPanel() {
   useEffect(() => {
     abortRef.current?.abort();
     stopAudition();
+    songTokenRef.current++;
+    sectionTokenRef.current++;
+    setSongRendering(false);
+    songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
     setBankResult(null);
     setPlayingIndex(null);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
     setSongDraft(null);
     setJustApplied(false);
     // GOAL 03 (re-run 4): the vocal-take card is the same race class as the
@@ -296,6 +310,10 @@ export function IntentPanel() {
     setPlayingIndex(null);
     setJustApplied(false);
     stopAudition();
+    setSongDraft(null);
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
     buffersRef.current = new Map();
     // A pending SONG draft is superseded by a fresh DO IT — without this
     // bump its awaited continuations would install a stale draft from the
@@ -303,6 +321,10 @@ export function IntentPanel() {
     // the token's own design comment lists superseding actions, DO IT was
     // the missing one).
     songTokenRef.current++;
+    sectionTokenRef.current++;
+    setSongRendering(false);
+    songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
     // SESSION REFERENCE (vibe-code wave 2): "that second one, darker" —
     // apply the referenced candidate from the last generation, then run the
     // residual words through the normal pipeline (production/verbs/song).
@@ -468,10 +490,18 @@ export function IntentPanel() {
     }
     stopAudition();
     setPlayingIndex(null);
+    setSongDraft(null);
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
     // USE supersedes a pending SONG draft (same token contract as DROP and
     // DO IT — GOAL 07, re-run 4): the draft's awaited continuations must
     // not install after the user already applied a candidate.
     songTokenRef.current++;
+    sectionTokenRef.current++;
+    setSongRendering(false);
+    songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
     const fx = picked.plan.intent.fx ?? null;
     services.store.execute(
@@ -700,6 +730,12 @@ export function IntentPanel() {
   // previous flow measured loudness but never executed its trim command.
   interface SongDraft {
     result: ComposeResult;
+    /** Exact whole-song candidate currently auditioned and eligible for USE. */
+    activeBuild: SongBuild;
+    /** null means the legacy best-per-section composition. */
+    activeLane: SearchLane | null;
+    /** A selected coherent lane cannot be applied until its full-song render succeeds. */
+    previewReady: boolean;
     /** Doc the draft was composed against — USE reuses the auditioned mix
         only while the doc is untouched (reference-equal); after interim
         edits the mix re-plans against the current doc (rebase). */
@@ -1089,6 +1125,7 @@ export function IntentPanel() {
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
     sectionTokenRef.current++;
+    setSongRendering(false);
     // Guard token: a superseding build, DROP or USE during the awaits below
     // bumps songTokenRef and this run must not install a stale draft.
     const buildToken = ++songTokenRef.current;
@@ -1134,6 +1171,9 @@ export function IntentPanel() {
         : "";
       setSongDraft({
         result,
+        activeBuild: result.build,
+        activeLane: null,
+        previewReady: false,
         baseDoc,
         previewDoc: preview,
         mixNote,
@@ -1159,7 +1199,7 @@ export function IntentPanel() {
         if (songTokenRef.current !== token) return;
         songBufferRef.current = buffer;
         const audioReview = reviewSongAudio(buffer);
-        setSongDraft((prev) => (prev && prev.result === result ? { ...prev, audioReview } : prev));
+        setSongDraft((prev) => (prev && prev.result === result ? { ...prev, audioReview, previewReady: true } : prev));
         // Free verify: measure what the preview actually plays.
         try {
           const channels: Float32Array[] = [];
@@ -1181,6 +1221,97 @@ export function IntentPanel() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const selectSongLane = async (lane: SearchLane | null) => {
+    const draft = songDraft;
+    if (!draft || songBusy || songRendering || (draft.activeLane === lane && draft.previewReady)) return;
+    const alternative = lane ? draft.result.build.alternatives.find((candidate) => candidate.lane === lane) : null;
+    if (lane !== null && !alternative) return;
+    const activeBuild: SongBuild = alternative
+      ? { ...draft.result.build, sections: alternative.sections }
+      : draft.result.build;
+
+    setError(null);
+    songTokenRef.current++;
+    const token = songTokenRef.current;
+    sectionTokenRef.current++;
+    stopAudition();
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    setRenderingSectionId(null);
+    songBufferRef.current = null;
+    sectionBuffersRef.current = new Map();
+    setSongRendering(true);
+    setSongDraft((current) =>
+      current?.result === draft.result
+        ? { ...current, activeBuild, activeLane: lane, previewReady: false, measuredAfter: null, audioReview: null }
+        : current,
+    );
+
+    try {
+      // Re-compose the selected complete lane from the same immutable base.
+      // The preview and later USE both execute this exact build plus mix.
+      let preview = applySongCommand(draft.baseDoc, activeBuild).execute(draft.baseDoc);
+      if (draft.result.commands.mix) {
+        try {
+          preview = draft.result.commands.mix.execute(preview);
+        } catch {
+          /* mix is optional garnish; the selected song remains auditionable */
+        }
+      }
+      const loud = await applyPreviewLoudness(preview, services.bank, songTextRef.current || text);
+      if (songTokenRef.current !== token) return;
+      preview = loud.doc;
+      setSongDraft((current) =>
+        current?.result === draft.result
+          ? {
+              ...current,
+              activeBuild,
+              activeLane: lane,
+              previewDoc: preview,
+              trimDb: loud.trim,
+              loudnessTarget: loud.target,
+              measuredBefore: loud.measuredBefore,
+              measuredAfter: null,
+              loudnessApplied: loud.applied,
+              audioReview: null,
+            }
+          : current,
+      );
+      setStatus(
+        `⚡ SUNO MODE — rendering ${lane ? `${lane.toUpperCase()} full-song direction` : "best-per-section song"}…`,
+      );
+      const buffer = await renderSongAuditionBuffer(services.bank, preview);
+      if (songTokenRef.current !== token) return;
+      songBufferRef.current = buffer;
+      const audioReview = reviewSongAudio(buffer);
+      let measuredAfter: number | null = null;
+      try {
+        const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
+          buffer.getChannelData(channel),
+        );
+        const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
+        if (reading.measured) measuredAfter = Math.round(reading.integrated * 10) / 10;
+      } catch {
+        /* display-only — the rendered buffer remains valid for audition */
+      }
+      setSongDraft((current) =>
+        current?.result === draft.result && current.activeBuild === activeBuild
+          ? { ...current, audioReview, measuredAfter, previewReady: true }
+          : current,
+      );
+      setStatus(
+        `✓ ${lane ? lane.toUpperCase() : "BEST-PER-SECTION"} full-song preview ready — ${activeBuild.sections.length} sections, ${activeBuild.totalBars} bars. USE installs this exact arrangement.`,
+      );
+    } catch (err) {
+      if (songTokenRef.current === token) {
+        setError(
+          `song direction preview failed: ${err instanceof Error ? err.message : String(err)} — retry this preview or select another direction`,
+        );
+      }
+    } finally {
+      if (songTokenRef.current === token) setSongRendering(false);
     }
   };
   const runSongBuild = async (sections?: SectionParse) => {
@@ -1219,6 +1350,9 @@ export function IntentPanel() {
         prompt: text.trim() || null,
       });
       stopAudition();
+      songTokenRef.current++;
+      sectionTokenRef.current++;
+      setSongRendering(false);
       setPlayingIndex(null);
       setBankResult(null);
       setSongDraft(null);
@@ -1246,7 +1380,7 @@ export function IntentPanel() {
     setPlayingSectionId(null);
     playAuditionBuffer(buffer, () => setSongPlaying(false));
     setSongPlaying(true);
-    setStatus(`▶ auditioning full song — ${songDraft?.result.build.sections.length ?? 0} sections`);
+    setStatus(`▶ auditioning full song — ${songDraft?.activeBuild.sections.length ?? 0} sections`);
   };
   const toggleSectionAudition = async (section: SongBuildSection) => {
     if (!songDraft) return;
@@ -1267,7 +1401,7 @@ export function IntentPanel() {
           songDraft.baseDoc,
           services.bank,
           section.pattern,
-          section.fx ?? songDraft.result.build.baseIntent.fx ?? null,
+          section.fx ?? songDraft.activeBuild.baseIntent.fx ?? null,
         );
         sectionBuffersRef.current.set(id, buffer);
       }
@@ -1287,6 +1421,7 @@ export function IntentPanel() {
     songTokenRef.current++;
     sectionTokenRef.current++;
     stopAudition();
+    setSongRendering(false);
     setSongPlaying(false);
     setPlayingSectionId(null);
     songBufferRef.current = null;
@@ -1295,7 +1430,7 @@ export function IntentPanel() {
     setStatus("Song draft discarded — nothing applied.");
   };
   const useSongDraft = async () => {
-    if (!songDraft || songBusy) return;
+    if (!songDraft || songBusy || songRendering || (songDraft.activeLane !== null && !songDraft.previewReady)) return;
     songTokenRef.current++;
     sectionTokenRef.current++;
     stopAudition();
@@ -1306,7 +1441,7 @@ export function IntentPanel() {
       // Fresh commands against the CURRENT doc — a draft may sit open while
       // the user keeps editing; rebasing keeps undo correct.
       const current = services.store.getDoc();
-      const songCmd = applySongCommand(current, songDraft.result.build);
+      const songCmd = applySongCommand(current, songDraft.activeBuild);
       services.store.execute(songCmd);
       let afterSong = services.store.getDoc();
       // P4 preview==USE: the audition rendered the COMPOSED mix, so install
@@ -1320,7 +1455,7 @@ export function IntentPanel() {
         if (composedMix) {
           services.store.execute(composedMix);
         } else {
-          const profile = planMixProfile(songDraft.result.build.baseIntent);
+          const profile = planMixProfile(songDraft.activeBuild.baseIntent);
           const mixCmd = applyMixIntent(afterSong, profile);
           services.store.execute(mixCmd);
         }
@@ -1345,13 +1480,13 @@ export function IntentPanel() {
         }
       }
       const fxNote =
-        songDraft.result.build.baseIntent.fx || songDraft.result.build.sections.some((s) => s.fx) ? " + FX" : "";
+        songDraft.activeBuild.baseIntent.fx || songDraft.activeBuild.sections.some((s) => s.fx) ? " + FX" : "";
       songBufferRef.current = null;
       sectionBuffersRef.current = new Map();
       setSongDraft(null);
       setJustApplied(true);
       setStatus(
-        `✓ SUNO MODE — ${songDraft.result.build.name} — ${songDraft.result.build.sections.length} sections, ${songDraft.result.build.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${rebased ? " · mix re-planned after edits" : ""}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
+        `✓ SUNO MODE — ${songDraft.activeBuild.name} — ${songDraft.activeBuild.sections.length} sections, ${songDraft.activeBuild.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${rebased ? " · mix re-planned after edits" : ""}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1364,7 +1499,7 @@ export function IntentPanel() {
   // a fresh draft build so the user can still audition before USE.
   const reviseSongDraft = async (attribute: "energy" | "density", delta: number) => {
     if (!songDraft || songBusy) return;
-    const base = songDraft.result.build.baseIntent;
+    const base = songDraft.activeBuild.baseIntent;
     const fallback = attribute === "energy" ? 0.7 : 0.5;
     const current = typeof base[attribute] === "number" ? (base[attribute] as number) : fallback;
     const next = Math.max(0, Math.min(1, current + delta));
@@ -2062,11 +2197,14 @@ export function IntentPanel() {
               {songRendering ? "…" : songPlaying ? "■" : "▶"}
             </button>
             <span className="intent-candidate-meta">
-              <span className="intent-candidate-index">{songDraft.result.build.name}</span>
+              <span className="intent-candidate-index">{songDraft.activeBuild.name}</span>
               <span className="intent-candidate-score">
-                {songDraft.result.build.sections.length} sections · {songDraft.result.build.totalBars} bars
-                {songDraft.lengthNote} · {Math.round(songDraft.result.build.resolvedBpm ?? 120)} BPM ·{" "}
-                {songDraft.result.build.candidateCount} candidates/section
+                {songDraft.activeBuild.sections.length} sections · {songDraft.activeBuild.totalBars} bars
+                {songDraft.lengthNote} · {Math.round(songDraft.activeBuild.resolvedBpm ?? 120)} BPM ·{" "}
+                {songDraft.activeBuild.candidateCount} candidates/section
+                {songDraft.activeLane
+                  ? ` · ${songDraft.activeLane.toUpperCase()} full-song lane`
+                  : " · best per section"}
                 {songDraft.loudnessApplied &&
                   (songDraft.measuredAfter != null
                     ? ` · plays ≈${songDraft.measuredAfter} LUFS`
@@ -2076,7 +2214,7 @@ export function IntentPanel() {
             <button
               type="button"
               className="btn btn-small intent-use-btn"
-              disabled={songBusy}
+              disabled={songBusy || songRendering}
               onClick={() => void useSongDraft()}
               title="Apply this song to the project (song + mix + loudness, undoable)"
             >
@@ -2092,6 +2230,54 @@ export function IntentPanel() {
               DROP
             </button>
           </div>
+          {songDraft.result.build.candidateCount > 1 && (
+            <div className="intent-share-actions" aria-label="Full-song directions">
+              <button
+                type="button"
+                className={`btn btn-small${songDraft.activeLane === null ? " intent-use-btn" : ""}`}
+                aria-pressed={songDraft.activeLane === null}
+                disabled={songBusy || songRendering}
+                onClick={() => void selectSongLane(null)}
+                title="Use the current best-ranked choice independently selected for each section"
+              >
+                BEST PER SECTION
+              </button>
+              {songDraft.result.build.alternatives.map((alternative) => {
+                const modeNote =
+                  alternative.mode === "cold-start"
+                    ? " · cold start"
+                    : alternative.mode === "personalized"
+                      ? " · learned taste"
+                      : alternative.mode === "mixed"
+                        ? " · mixed context"
+                        : "";
+                const label = `${alternative.lane.toUpperCase()}${modeNote}`;
+                return (
+                  <button
+                    key={alternative.lane}
+                    type="button"
+                    className={`btn btn-small${songDraft.activeLane === alternative.lane ? " intent-use-btn" : ""}`}
+                    aria-label={`Use ${label} full-song direction`}
+                    aria-pressed={songDraft.activeLane === alternative.lane}
+                    disabled={songBusy || songRendering}
+                    onClick={() => void selectSongLane(alternative.lane)}
+                    title={`Audition the complete ${alternative.lane} direction, with the same lane carried through every section`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <small>
+                Only complete, musically distinct alternatives are shown. USE stays disabled until a selected lane
+                renders.
+              </small>
+            </div>
+          )}
+          {songDraft.result.build.candidateCount > 1 && songDraft.result.build.alternatives.length === 0 && (
+            <div className="intent-detected" role="status">
+              No complete alternate lane survived every section; this song uses the best-ranked candidate per section.
+            </div>
+          )}
           {songDraft.audioReview && (
             <div className="intent-song-audio-review" aria-label="Technical audio review">
               <div className="intent-song-audio-metrics">
@@ -2118,7 +2304,7 @@ export function IntentPanel() {
             </div>
           )}
           <div className="intent-song-sections" aria-label="Song sections">
-            {songDraft.result.build.sections.map((section) => {
+            {songDraft.activeBuild.sections.map((section) => {
               const id = section.pattern.id;
               const isPlaying = playingSectionId === id;
               const isRendering = renderingSectionId === id;
@@ -2127,7 +2313,7 @@ export function IntentPanel() {
                   <button
                     type="button"
                     className="btn btn-small intent-audition-btn"
-                    disabled={songBusy || isRendering}
+                    disabled={songBusy || songRendering || isRendering}
                     onClick={() => void toggleSectionAudition(section)}
                     title={isPlaying ? `Stop ${section.label} preview` : `Audition ${section.label} alone`}
                   >

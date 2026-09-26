@@ -17,6 +17,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
+import { DNB_GROOVES } from "../src/ai/grooves/dnb";
 import { PAD_NAMES } from "../src/ai/types";
 import { inferPadRole } from "../src/ai/pad-roles";
 import {
@@ -27,22 +28,27 @@ import {
   padRoleForIndex,
 } from "../src/ai/symbolic/prior-features";
 
-const DATASET_VERSION = "symbolic-prior-ds.v1";
+const DATASET_VERSION = "symbolic-prior-ds.v2";
 // 16 + 32-step frames teach both the bar grid and the longer-frame position
 // features; 64+ only duplicates the 16-frame labels without new information.
 const FRAME_LENGTHS = [16, 32] as const;
 
 // Contract guard: the dataset covers ONLY styles the fixed runtime vocabulary
 // can address (44-dim one-hot layout). Grooves outside the vocab (drill,
-// phonk, jersey, dnb, …) stay on the template path until a matching model is
+// phonk, jersey, …) stay on the template path until a matching model is
 // trained — filtering here keeps the check a no-op for library growth.
+// DnB grooves additionally train through the semantic pack (v2/v3 embedding
+// trainers resolve them via style-embeddings.json, not the one-hot vocab).
 const vocabSet = new Set<string>(PRIOR_STYLE_VOCAB);
+const DNB_IDS = new Set<string>(DNB_GROOVES.map((groove) => groove.id));
 const libraryIds = GROOVE_LIBRARY.map((groove) => groove.id).sort();
 const outOfVocab = libraryIds.filter((id) => !vocabSet.has(id));
-if (outOfVocab.length > 0) {
+const dnbExcluded = outOfVocab.filter((id) => DNB_IDS.has(id));
+const templateOnly = outOfVocab.filter((id) => !DNB_IDS.has(id));
+if (templateOnly.length > 0 || dnbExcluded.length > 0) {
   console.warn(
-    `[dataset] ${outOfVocab.length} library groove(s) outside PRIOR_STYLE_VOCAB — excluded ` +
-      `(template path only): ${outOfVocab.slice(0, 6).join(", ")}${outOfVocab.length > 6 ? " …" : ""}`,
+    `[dataset] ${templateOnly.length} groove(s) outside vocab — template path only: ${templateOnly.slice(0, 6).join(", ")}` +
+      (dnbExcluded.length > 0 ? ` | ${dnbExcluded.length} dnb groove(s) train via the semantic pack: ${dnbExcluded.join(", ")}` : ""),
   );
 }
 const vocabOnlyIds = libraryIds.filter((id) => vocabSet.has(id));
@@ -65,7 +71,7 @@ const samples: DatasetSample[] = [];
 let hitCount = 0;
 
 for (const groove of GROOVE_LIBRARY) {
-  if (!vocabSet.has(groove.id)) continue; // out-of-vocab grooves: template path only
+  if (!vocabSet.has(groove.id) && !DNB_IDS.has(groove.id)) continue; // out-of-vocab grooves: template path only
   for (const [patternIndex, pattern] of groove.patterns.entries()) {
     for (const frameLength of FRAME_LENGTHS) {
       for (let padIndex = 0; padIndex < 16; padIndex++) {

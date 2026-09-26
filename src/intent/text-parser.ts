@@ -1,6 +1,6 @@
 import type { IntentInput, IntentRole } from "./types";
 import type { IntentGenre } from "./types";
-import { matchArtistPreset, parseVibeBlend } from "./artists";
+import { matchAllArtistPresets, matchArtistPreset, parseVibeBlend } from "./artists";
 
 /**
  * Natural language → IntentInput parser (goal: "dark rolling techno at 140
@@ -61,6 +61,14 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b/, "house"],
   [/\bbaile funk\b|\bfunk mandel\w*|\bbrazilian phonk\b|\bbr phonk\b/, "phonk"],
   [/\bneurofunk\b|\bneuro\b/, "dnb"],
+  // Southern specialties (bounce / miami / snap) + afroswing + countrytune.
+  // "bounce" routes by genre (trap/phonk/drill/jersey each carry .bounce);
+  // bare "country" keeps its legacy reading (no mapping).
+  [/\bnew orleans\b|\bnola\b|\btriggerman\b|\bbounce rap\b|\bbounce\b/, "trap"],
+  [/\bmiami\b|\bbooty bass\b/, "trap"],
+  [/\bsnap (?:beat|rap|music)\b|\bfinger snap\b|\bring ?tone\b/, "trap"],
+  [/\bafro ?swing\b/, "house"],
+  [/\bcountry (?:rap|trap|tune)\b|\bcountrytune\b/, "trap"],
   // DnB sub-genre sweep — all roads into dnb (own grooves + kit + song form)
   [/\bjump ?up\b|\bjumpup\b/, "dnb"],
   [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
@@ -129,6 +137,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bg[ -]?funk\b|\bgfunk\b|\blow ?rider\b/, "gfunk"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
+  // Afroswing BEFORE the generic afro entry — "afro swing" contains the
+  // word "afro" and would otherwise be stolen by it.
+  [/\bafro ?swing\b/, "afroswing"],
   [/\bfuture garage\b/, "future garage"],
   // Overmono school (house.broken groove) — before generic matches that
   // would steal the word
@@ -154,12 +165,19 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bgrime\b|\beski beat\b/, "grime"],
   [/\bhyphy\b|\bthizz\b/, "hyphy"],
   [/\bcrunk\b/, "crunk"],
+  // NOLA bounce BEFORE the generic bouncy entry — "bounce" is now the
+  // regional bounce family (genre-dispatched: trap/phonk/drill/jersey all
+  // carry a .bounce groove); "bouncy" keeps the rage-era trap bounce.
+  [/\bnew orleans\b|\bnola\b|\btriggerman\b|\bbounce rap\b|\bbounce\b/, "bounce"],
+  [/\bmiami( bass)?\b|\bbooty bass\b/, "miamibass"],
+  [/\bsnap (?:beat|rap|music)\b|\bfinger snap\b|\bring ?tone\b/, "snap"],
+  [/\bcountry (?:rap|trap|tune)\b|\bcountrytune\b/, "countrytune"],
   [/\bold school rap\b|\b80s rap\b|\belectro hip hop\b/, "oldschool"],
   [/\bcloud rap\b/, "sparse"],
   [/\bmelodic drill\b/, "melodic"],
   [/\bmelodic(?:ke|a)?\b/, "melodic"],
   [/\blux\b|\blush\b/, "lux"],
-  [/\bbouncy\b|\bbounce\b/, "bouncy"],
+  [/\bbouncy\b/, "bouncy"],
   [/\bdrifting\b|\bdrift\b|\bplavu?j/, "drifting"],
   [/\bliquid\b|\blikvid\b/, "liquid"],
   // DnB two-step MUST precede the generic UKG 2-step below — "two step dnb"
@@ -395,6 +413,49 @@ function firstPhrase(phrases: ReadonlyArray<readonly [RegExp, string]>, text: st
   return null;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Blank out artist-name occurrences so the NAME itself never doubles as an
+ * explicit descriptor ("mobb deep" is not the "deep" style, "dark man x" is
+ * not the "dark" mood, "big poppa" is not "pop"). Explicit words OUTSIDE the
+ * name still override the preset as before.
+ */
+function maskArtistNames(text: string, names: readonly string[]): string {
+  let out = text;
+  for (const name of names) {
+    // A name that IS itself the descriptor ("neurofunk", "grime", "crunk",
+    // "boom bap", "hyperpop") keeps the legacy reading — the descriptor
+    // contract (explicit words win, pinned by tests) outranks the masking.
+    // Only a PARTIAL overlap ("deep" in "mobb deep", "dark" in "dark man x",
+    // "dirty" in "ridin dirty") is blanked.
+    if (isDescriptorName(name)) continue;
+    out = out.replace(new RegExp(`\\b${escapeRegExp(name)}\\b`, "g"), " ");
+  }
+  return out;
+}
+
+/** True when a genre/style/mood/trait phrase matches the WHOLE name. */
+function isDescriptorName(name: string): boolean {
+  const probe = ` ${name.trim()} `;
+  const expected = name.trim().length;
+  if (expected === 0) return false;
+  const tables: ReadonlyArray<ReadonlyArray<readonly [RegExp, unknown]>> = [
+    GENRE_PHRASES,
+    STYLE_PHRASES,
+    MOOD_PHRASES,
+    TRAIT_PHRASES,
+  ];
+  return tables.some((phrases) =>
+    phrases.some(([re]) => {
+      const match = re.exec(probe);
+      return match !== null && match[0].length === expected;
+    }),
+  );
+}
+
 /** Key-root matchers: EN ("in f# minor", "g major") and SK ("v f# mol", "g dur"). */
 const KEY_IN_EN = /\bin ([a-g](?:#|b)?)\s*([a-z ]+?)?\b(?=(?:\bwith\b|\bat\b|\bplus\b|\band\b|\b\d)|$)/;
 const KEY_IN_SK = /\bv ([a-g](?:#|b)?)\s*([a-z ]+?)?\b(?=(?:\bs\b|\bplus\b|\ba\b|\b\d)|$)/;
@@ -444,6 +505,9 @@ export function parseIntentText(text: string): ParsedIntent {
   // override it. The text keeps both names, so the MiniLM conditioning
   // embeds the blend naturally.
   const blend = parseVibeBlend(lower);
+  // Names blanked from genre/style/mood/trait detection (declared up front —
+  // both branches below push their matched phrase).
+  const maskNames: string[] = [];
   if (blend) {
     input.genre = blend.patch.genre;
     if (blend.patch.style) input.style = blend.patch.style;
@@ -453,10 +517,11 @@ export function parseIntentText(text: string): ParsedIntent {
     if (blend.patch.density !== undefined) input.density = blend.patch.density;
     if (blend.patch.bpmRange) input.bpmRange = [...blend.patch.bpmRange] as IntentInput["bpmRange"];
     detected.push(`♪ ${blend.label}`);
+    for (const m of matchAllArtistPresets(lower).slice(0, 2)) maskNames.push(m.matched);
   } else {
-    const artist = matchArtistPreset(lower);
-    if (artist) {
-      const preset = artist.preset;
+    const single = matchArtistPreset(lower);
+    if (single) {
+      const preset = single.preset;
       input.genre = preset.genre;
       if (preset.style) input.style = preset.style;
       if (preset.productionProfile) input.productionProfile = preset.productionProfile;
@@ -465,14 +530,20 @@ export function parseIntentText(text: string): ParsedIntent {
       if (preset.density !== undefined) input.density = preset.density;
       if (preset.bpmRange) input.bpmRange = [...preset.bpmRange] as IntentInput["bpmRange"];
       detected.push(`♪ ${preset.label}`);
+      maskNames.push(single.matched);
     }
   }
+
+  // Genre/style/mood/trait detection runs on the MASKED text: the matched
+  // artist name(s) are blanked so they never double as explicit descriptors.
+  // Structural parsing below (BPM/key/length/roles) keeps the full text.
+  const masked = maskNames.length > 0 ? maskArtistNames(lower, maskNames) : lower;
 
   // Genre detection (list order = specificity; first hit wins).
   // Skipped when an artist preset already set the genre AND the text carries
   // no genre word of its own is handled naturally: firstPhrase only fires on
   // an actual genre word, which then (intentionally) overrides the preset.
-  const genre = firstPhrase(GENRE_PHRASES, lower);
+  const genre = firstPhrase(GENRE_PHRASES, masked);
   if (genre) {
     if (input.genre !== undefined && input.genre !== genre) {
       delete input.style;
@@ -484,24 +555,25 @@ export function parseIntentText(text: string): ParsedIntent {
 
   // Style detection — v1 rule preserved: an explicit style phrase wins, even
   // if the same word fed genre detection (e.g. "acid techno" → techno + acid).
-  const style = firstPhrase(STYLE_PHRASES, lower);
+  const style = firstPhrase(STYLE_PHRASES, masked);
   if (style) {
     input.style = style;
     detected.push(style);
   }
 
   // Mood — canonical value consumed by mapIntentToOptions tweaks.
-  const mood = firstPhrase(MOOD_PHRASES, lower);
+  const mood = firstPhrase(MOOD_PHRASES, masked);
   if (mood) {
     input.mood = mood;
     detected.push(mood);
   }
 
   // Character traits — later matches overwrite earlier ones, list order is
-  // therefore part of the contract.
+  // therefore part of the contract. Masked like genre/style/mood: "ol dirty"
+  // (the Outlaw) must not fire the "dirty" trait.
   const trait: CharacterTrait = {};
   for (const [re, t] of TRAIT_PHRASES) {
-    if (re.test(lower)) {
+    if (re.test(masked)) {
       if (t.energy !== undefined) trait.energy = t.energy;
       if (t.density !== undefined) trait.density = t.density;
       if (t.complexity !== undefined) trait.complexity = t.complexity;

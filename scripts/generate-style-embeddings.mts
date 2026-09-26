@@ -11,6 +11,7 @@
 import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PRIOR_STYLE_VOCAB } from "../src/ai/symbolic/prior-features";
+import { DNB_GROOVES } from "../src/ai/grooves/dnb";
 import { generateDescriptions } from "../src/intent/descriptions";
 
 const ROOT = process.cwd();
@@ -52,8 +53,12 @@ const styleEmbeddings: Record<string, number[]> = {};
 const styleEmbeddingVariants: Record<string, number[][]> = {};
 const genreFor: Record<string, string> = {};
 
-for (const styleId of PRIOR_STYLE_VOCAB) {
-  const genre = styleId.split(".")[0] as "house" | "techno" | "trap" | "ambient";
+// DnB training rows (vocabulary wave): the fixed one-hot vocab stays frozen
+// for the shipped v1 models, but the semantic pack gains the dnb.* groove
+// ids so embedding-conditioned trainers (v2/v3) learn true dnb regions.
+const DNB_STYLE_IDS = DNB_GROOVES.map((groove) => groove.id);
+for (const styleId of [...PRIOR_STYLE_VOCAB, ...DNB_STYLE_IDS]) {
+  const genre = styleId.split(".")[0] as "house" | "techno" | "trap" | "ambient" | "dnb";
   const styleKey = styleId.split(".")[1] ?? styleId;
   genreFor[styleId] = genre;
 

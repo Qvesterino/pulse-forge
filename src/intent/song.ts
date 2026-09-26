@@ -19,10 +19,12 @@ import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type Tr
 import { applyGenreKitToDoc } from "./genre-kit";
 import { genreMasterTiltDb } from "./mix";
 import { GENRE_REFERENCE, SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
+import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Command } from "../commands/types";
 import { addEffect, setBeatManglerSteps, setEffectParam, snapshot, trackEffectsOf } from "../commands/commands";
 import { createInstrumentTrackModel, sceneRoleOf } from "../project-model/schema";
 import type { IntentInput, IntentRole, IntentSpec } from "./types";
+import type { CandidateSearchInfo, SearchLane } from "./candidate-search";
 import {
   planProductionActions,
   resolveProductionTargets,
@@ -1283,6 +1285,14 @@ export interface SongBuildSection extends SongSectionSpec {
   roles: IntentRole[];
 }
 
+/** One complete song assembled from the same search lane in every section. */
+export interface SongBuildAlternative {
+  lane: SearchLane;
+  /** A lane may be personalized in some section contexts and cold-start in others. */
+  mode: CandidateSearchInfo["mode"] | "mixed";
+  sections: SongBuildSection[];
+}
+
 /** The complete, installable song (patterns generated, nothing applied yet). */
 export interface SongBuild {
   name: string;
@@ -1290,6 +1300,11 @@ export interface SongBuild {
   resolvedBpm: number | null;
   key: MusicalKey | null;
   sections: SongBuildSection[];
+  /**
+   * Complete, internally coherent full-song choices. These are transient
+   * audition alternatives and are never installed unless the user selects one.
+   */
+  alternatives: SongBuildAlternative[];
   totalBars: number;
   /** Number of deterministic alternatives considered for each section. */
   candidateCount: number;
@@ -1327,6 +1342,41 @@ export interface BuildSongOptions {
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+const SONG_SEARCH_LANES: readonly SearchLane[] = ["safe", "personal", "experimental"];
+
+function applySongTransitions(doc: ProjectDocument, sections: readonly SongBuildSection[]): SongBuildSection[] {
+  const transitioned = [...sections];
+  for (let index = 1; index < transitioned.length; index++) {
+    const section = transitioned[index];
+    const outgoing = transitioned[index - 1];
+    if (!section?.transitionIn || !outgoing) continue;
+    transitioned[index - 1] = {
+      ...outgoing,
+      pattern: applyTransitionToPattern(doc, outgoing.pattern, section.transitionIn, {
+        allowDrums: outgoing.roles.includes("drums"),
+      }),
+    };
+  }
+  return transitioned;
+}
+
+function songContentSignature(doc: ProjectDocument, sections: readonly SongBuildSection[]): string {
+  return sections.map((section) => contentHash(canonicalizePattern(doc, section.pattern))).join("|");
+}
+
+/** Drop unavailable and content-identical lanes so the UI never sells a fake choice. */
+export function dedupeSongBuildAlternatives(doc: ProjectDocument, build: SongBuild): SongBuild {
+  const seen = new Set([songContentSignature(doc, build.sections)]);
+  const alternatives = build.alternatives.filter((alternative) => {
+    if (alternative.sections.length !== build.sections.length) return false;
+    const signature = songContentSignature(doc, alternative.sections);
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  });
+  return alternatives.length === build.alternatives.length ? build : { ...build, alternatives };
+}
+
 /**
  * Generate the whole song from one intent. The default remains the sync,
  * deterministic single-candidate path. Producer surfaces can request a small
@@ -1346,6 +1396,8 @@ export async function buildSong(
     ? Math.max(1, Math.min(5, Math.floor(requestedCandidates)))
     : 1;
   const sections: SongBuildSection[] = [];
+  const laneSections = new Map<SearchLane, Array<SongBuildSection | null>>();
+  const laneModes = new Map<SearchLane, Set<CandidateSearchInfo["mode"]>>();
   let resolvedBpm: number | null = null;
   let key: MusicalKey | null = baseIntent.key ?? doc.key ?? null;
 
@@ -1408,41 +1460,66 @@ export async function buildSong(
       stepCount: section.bars * 16,
       roles: sectionRoles,
     });
+    for (const candidate of result.bank ?? []) {
+      const lane = candidate.search?.lane;
+      if (!lane) continue;
+      let laneBuild = laneSections.get(lane);
+      if (!laneBuild) {
+        laneBuild = Array.from({ length: form.sections.length }, () => null);
+        laneSections.set(lane, laneBuild);
+      }
+      // The bank is best-first; for candidateCount > 3 retain the highest-ranked
+      // candidate in each lane for this section, consistently across the song.
+      if (laneBuild[index] === null) {
+        laneBuild[index] = {
+          ...section,
+          pattern: candidate.pattern,
+          stepCount: section.bars * 16,
+          roles: sectionRoles,
+        };
+        const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
+        modes.add(candidate.search?.mode ?? "baseline");
+        laneModes.set(lane, modes);
+      }
+    }
     options.onProgress?.(index + 1, section.label, form.sections.length);
     if (options.yieldBetweenSections !== false && index < form.sections.length - 1) {
       await yieldToUi();
     }
   }
 
-  // T3 real transition sounds: every transition bakes its sound into the
-  // OUTGOING section — fill/riser roll into the launch, break drops the last
-  // bar silent. Baked at build time (deterministic) so the song stays ONE
-  // undo step with reproducible hashes.
-  for (let index = 1; index < sections.length; index++) {
-    const transitionIn = sections[index].transitionIn;
-    if (!transitionIn) continue;
-    const outgoing = sections[index - 1];
-    sections[index - 1] = {
-      ...outgoing,
-      pattern: applyTransitionToPattern(doc, outgoing.pattern, transitionIn, {
-        // drum-based fills respect the section's instrumentation AND the
-        // user's role request — a bridge or a "no drums" intent stays clean
-        allowDrums: outgoing.roles.includes("drums"),
-      }),
-    };
+  // Bake the same deterministic transitions into the mixed default and every
+  // lane alternative. A lane is therefore a complete arrangement, not a set of
+  // unrelated section previews.
+  const transitionedSections = applySongTransitions(doc, sections);
+  const alternatives: SongBuildAlternative[] = [];
+  for (const lane of SONG_SEARCH_LANES) {
+    const laneBuild = laneSections.get(lane);
+    if (!laneBuild || laneBuild.some((section) => section === null)) continue;
+    const completeSections = applySongTransitions(
+      doc,
+      laneBuild.filter((section): section is SongBuildSection => section !== null),
+    );
+    const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
+    alternatives.push({
+      lane,
+      mode: modes.size === 1 ? ([...modes][0] ?? "baseline") : "mixed",
+      sections: completeSections,
+    });
   }
 
   const nameParts: string[] = [baseIntent.genre];
   if (baseIntent.style) nameParts.push(baseIntent.style);
-  return {
+  return dedupeSongBuildAlternatives(doc, {
     name: `${nameParts.join(" ")} — song`,
     baseIntent,
     resolvedBpm,
     key,
-    sections,
+    sections: transitionedSections,
+    alternatives,
     totalBars: form.totalBars,
     candidateCount,
-  };
+  });
 }
 
 /**

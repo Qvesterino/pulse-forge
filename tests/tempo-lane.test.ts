@@ -57,6 +57,13 @@ describe("setSceneBpm", () => {
 });
 
 describe("buildTempoMap", () => {
+  it("uses project tempo for audio-only projects without scene windows", () => {
+    const { doc } = songWithTwoScenes(undefined, 120);
+    const map = buildTempoMap(doc, []);
+    expect(map.totalSeconds).toBe(0);
+    expect(map.timeAt(4 * BAR_TICKS)).toBeCloseTo(4 * BAR_TICKS * (60 / (doc.bpm * PPQ)), 4);
+  });
+
   it("integrates per-window BPM and keeps project tempo in gaps", () => {
     const { doc } = songWithTwoScenes(120, 60); // 4 bars at 120, then 4 bars at 60
     const windows = [

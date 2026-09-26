@@ -13,6 +13,7 @@ import { normalizeIntent } from "../src/intent/normalize";
 import { getActivePattern } from "../src/project-model/types";
 import type { Pattern, Scene } from "../src/project-model/types";
 import { SampleBank } from "../src/sample-library/factory";
+import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
 
 const INTENT = normalizeIntent({ genre: "house", seed: "song-test", bpmRange: [140, 140] });
 
@@ -117,10 +118,11 @@ describe("song builder", () => {
     );
   }, 60_000);
 
-  it("ranks multiple candidates per section and sound-checks the top finalists when a bank is provided", async () => {
+  it("builds complete coherent song lanes and sound-checks section finalists", async () => {
     const rendered: string[] = [];
-    const build = await buildSong(testDoc(), normalizeIntent({ genre: "ambient", seed: "song-ranked" }), {
-      candidateCount: 2,
+    const doc = testDoc();
+    const build = await buildSong(doc, normalizeIntent({ genre: "ambient", seed: "song-ranked" }), {
+      candidateCount: 3,
       bank: new SampleBank(),
       renderCandidate: async (_doc, _bank, pattern) => {
         rendered.push(pattern.id);
@@ -132,12 +134,40 @@ describe("song builder", () => {
     expect(build.sections).toHaveLength(5);
     expect(rendered).toHaveLength(build.sections.length * 2);
     expect(build.sections.every((section) => section.pattern.generation?.outputContentHash)).toBe(true);
+    expect(build.alternatives.length).toBeGreaterThan(0);
+
+    const signatures = new Set([
+      build.sections.map((section) => contentHash(canonicalizePattern(doc, section.pattern))).join("|"),
+    ]);
+    for (const alternative of build.alternatives) {
+      expect(alternative.sections).toHaveLength(build.sections.length);
+      expect(alternative.sections.every((section) => section.pattern.generation?.outputContentHash)).toBe(true);
+      if (alternative.lane !== "safe") {
+        expect(
+          alternative.sections.every((section) =>
+            section.pattern.generation?.seed.includes(`search:v1:${alternative.lane}:`),
+          ),
+        ).toBe(true);
+      }
+      const signature = alternative.sections
+        .map((section) => contentHash(canonicalizePattern(doc, section.pattern)))
+        .join("|");
+      expect(signatures.has(signature)).toBe(false);
+      signatures.add(signature);
+    }
+
+    const selected = build.alternatives[0]!;
+    const installed = applySongCommand(doc, { ...build, sections: selected.sections }).execute(doc);
+    for (const section of selected.sections) {
+      expect(installed.patterns.some((pattern) => pattern.id === section.pattern.id)).toBe(true);
+    }
   }, 60_000);
 
   it("bounds an invalid candidate count to the deterministic fast path", async () => {
     const build = await buildSong(testDoc(), INTENT, { candidateCount: Number.NaN, yieldBetweenSections: false });
 
     expect(build.candidateCount).toBe(1);
+    expect(build.alternatives).toEqual([]);
   }, 60_000);
 });
 

@@ -17,7 +17,14 @@
 import { parseIntentText } from "./text-parser";
 import type { IntentInput } from "./types";
 import { parseSectionRequests, type SectionParse } from "./sections";
-import { buildSong, applySongCommand, parseSongLength, type SongBuild, type SongLengthHint } from "./song";
+import {
+  buildSong,
+  applySongCommand,
+  dedupeSongBuildAlternatives,
+  parseSongLength,
+  type SongBuild,
+  type SongLengthHint,
+} from "./song";
 import { parseKey, snapToScale } from "../project-model/scales";
 import {
   STEP_TICKS,
@@ -224,7 +231,7 @@ export async function composeFullTrack(
   // anything unmeasured (or absent) builds the legacy song.
   const vocalProfile = options.vocalProfile?.measured ? options.vocalProfile : null;
   options.onProgress?.(`composing song — ${length?.label ?? "standard form"}`);
-  const build = await buildSong(
+  let build = await buildSong(
     doc,
     {
       ...parsed.input,
@@ -257,16 +264,28 @@ export async function composeFullTrack(
       if (transposed.length === 0) {
         skipped.push("hum: transposition emptied the melody");
       } else {
-        build.sections = build.sections.map((section) => {
-          if (!section.roles.includes("lead")) return section;
-          const sectionTicks = section.stepCount * STEP_TICKS;
-          const tiled = tileNotesAtLoopPeriod(transposed, hum.loopTicks, sectionTicks);
-          if (tiled.length === 0) return section;
-          return refreshHummedPattern(doc, section, leadId, tiled, songKey);
-        });
+        const injectHum = (sections: SongBuild["sections"]): SongBuild["sections"] =>
+          sections.map((section) => {
+            if (!section.roles.includes("lead")) return section;
+            const sectionTicks = section.stepCount * STEP_TICKS;
+            const tiled = tileNotesAtLoopPeriod(transposed, hum.loopTicks, sectionTicks);
+            if (tiled.length === 0) return section;
+            return refreshHummedPattern(doc, section, leadId, tiled, songKey);
+          });
+        build = {
+          ...build,
+          sections: injectHum(build.sections),
+          alternatives: build.alternatives.map((alternative) => ({
+            ...alternative,
+            sections: injectHum(alternative.sections),
+          })),
+        };
       }
     }
   }
+  // A hummed hook can make formerly different melodic lanes identical. Keep
+  // only alternatives that remain musically distinct after final conditioning.
+  build = dedupeSongBuildAlternatives(doc, build);
 
   // 3 — mix profile: mood/genre-driven targeted FX, one undoable snapshot.
   // A measured vocal take opens the pocket (high-mid dip on the music).

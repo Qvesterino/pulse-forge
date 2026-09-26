@@ -1,0 +1,25 @@
+node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts(13,5): error TS2717: Subsequent property declarations must have the same type.  Property 'data' must be of type 'BufferSource', but here has type 'AllowSharedBufferSource'.
+node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts(355,5): error TS2374: Duplicate index signature for type 'number'.
+node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts(505,6): error TS2300: Duplicate identifier 'ImageBufferSource'.
+node_modules/typescript/lib/lib.dom.d.ts(18876,5): error TS2374: Duplicate index signature for type 'number'.
+node_modules/typescript/lib/lib.dom.d.ts(39206,6): error TS2300: Duplicate identifier 'ImageBufferSource'.
+src/ai/features/pattern-features.ts(213,30): error TS2802: Type 'ArrayIterator<[number, DrumPad]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/features/pattern-features.ts(313,24): error TS2802: Type 'MapIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/features/pattern-features.ts(465,31): error TS2802: Type 'ArrayIterator<[number, PadRole]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/features/pattern-features.ts(472,14): error TS2802: Type 'MapIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/features/pattern-features.ts(476,31): error TS2802: Type 'ArrayIterator<[number, PadRole]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/generator.ts(192,37): error TS2802: Type 'Map<number, Map<number, StepMeta>>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/invariants.ts(82,33): error TS2802: Type 'ArrayIterator<[number, NoteEvent]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/invariants.ts(136,30): error TS2802: Type 'ArrayIterator<[number, PatternPhraseBar]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/quality.ts(165,26): error TS2802: Type 'MapIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/ai/quality.ts(166,30): error TS2802: Type 'MapIterator<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/candidate-bank.ts(63,14): error TS2802: Type 'MapIterator<CandidateBankEntry>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/normalize.ts(38,14): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/normalize.ts(46,33): error TS2802: Type 'Set<IntentRole>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/personal-ranker.ts(137,29): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/personal-ranker.ts(137,47): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/personal-ranker.ts(139,32): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/production.ts(274,14): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/production.ts(436,23): error TS2802: Type 'Set<ProductionTarget>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/quality.ts(196,18): error TS2802: Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/intent/quality.ts(255,35): error TS2802: Type 'undefined[] | ArrayIterator<[number, DrumPad]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.

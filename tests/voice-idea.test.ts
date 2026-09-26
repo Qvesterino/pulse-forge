@@ -67,6 +67,7 @@ describe("SUNO MODE with a hummed hook", () => {
     const doc = testDoc();
     const result = await composeFullTrack(doc, "house at 124", {
       loudness: false,
+      candidateCount: 3,
       hum: {
         notes: [
           { id: "hum-c", pitch: 72, start: 0, duration: 240, velocity: 0.8 },
@@ -99,6 +100,22 @@ describe("SUNO MODE with a hummed hook", () => {
         "C Major",
       );
       expect(section.pattern.generation?.quality?.melodicMotifRepetition).toBe(measured.motifRepetition);
+    }
+    for (const alternative of result.build.alternatives) {
+      const alternativeLeadSections = alternative.sections.filter((section) => section.roles.includes("lead"));
+      expect(alternativeLeadSections.length).toBeGreaterThan(0);
+      expect(
+        alternativeLeadSections.some((section) =>
+          Object.values(section.pattern.notes ?? {})
+            .flat()
+            .some((note) => note.id.startsWith("hum-c")),
+        ),
+      ).toBe(true);
+      for (const section of alternativeLeadSections) {
+        expect(section.pattern.generation?.outputContentHash).toBe(
+          contentHash(canonicalizePattern(doc, section.pattern)),
+        );
+      }
     }
   });
 

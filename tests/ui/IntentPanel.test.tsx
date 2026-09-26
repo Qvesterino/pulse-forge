@@ -4,7 +4,40 @@ import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
 import { normalizeIntent } from "../../src/intent/normalize";
 import { rememberGeneration } from "../../src/intent/session-context";
+import type { SongBuild } from "../../src/intent/song";
 import type { ProjectDocument } from "../../src/project-model/types";
+
+const songDraftMocks = vi.hoisted(() => ({
+  renderSong: vi.fn(),
+  previewLoudness: vi.fn(),
+  appliedBuilds: [] as unknown[],
+}));
+
+vi.mock("../../src/intent/audition", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/intent/audition")>();
+  return { ...actual, renderSongAuditionBuffer: songDraftMocks.renderSong };
+});
+
+vi.mock("../../src/intent/loudness", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/intent/loudness")>();
+  return { ...actual, applyPreviewLoudness: songDraftMocks.previewLoudness };
+});
+
+vi.mock("../../src/intent/ranking-v3", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/intent/ranking-v3")>();
+  return { ...actual, rerankTopBySound: vi.fn(async (_doc, bank) => [...bank]) };
+});
+
+vi.mock("../../src/intent/song", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/intent/song")>();
+  return {
+    ...actual,
+    applySongCommand: (doc: ProjectDocument, build: SongBuild) => {
+      songDraftMocks.appliedBuilds.push(build);
+      return actual.applySongCommand(doc, build);
+    },
+  };
+});
 
 describe("IntentPanel", () => {
   it("renders the textarea and disabled GENERATE button initially", () => {
@@ -136,5 +169,75 @@ describe("IntentPanel — A3 share moment", () => {
     await waitFor(() => expect(screen.getByText(/Share link shown/i)).toBeInTheDocument());
     expect(screen.queryByText(/link copied/i)).toBeNull();
     expect(promptSpy).toHaveBeenCalled();
+  }, 40000);
+});
+
+describe("IntentPanel — coherent song directions", () => {
+  it("keeps USE bound to the exact full-song lane that finished audition rendering", async () => {
+    const samples = new Float32Array(8192).fill(0.025);
+    const makeBuffer = () =>
+      ({
+        numberOfChannels: 2,
+        length: samples.length,
+        sampleRate: 44100,
+        getChannelData: () => samples,
+      }) as unknown as AudioBuffer;
+    let finishSelectedRender: (buffer: AudioBuffer) => void = () => {
+      throw new Error("selected song render was not requested");
+    };
+
+    songDraftMocks.appliedBuilds.length = 0;
+    songDraftMocks.renderSong.mockReset();
+    songDraftMocks.renderSong
+      .mockImplementationOnce(async () => makeBuffer())
+      .mockImplementationOnce(
+        () =>
+          new Promise<AudioBuffer>((resolve) => {
+            finishSelectedRender = resolve;
+          }),
+      );
+    songDraftMocks.previewLoudness.mockReset();
+    songDraftMocks.previewLoudness.mockImplementation(async (doc: ProjectDocument) => ({
+      doc,
+      trim: 0,
+      target: -14,
+      measuredBefore: null,
+      applied: false,
+    }));
+
+    const rendered = renderWithContext(<IntentPanel />);
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "ambient 100 BPM" } });
+    fireEvent.click(screen.getByRole("button", { name: /^♪ SONG$/ }));
+
+    const directions = await screen.findByLabelText("Full-song directions", {}, { timeout: 20000 });
+    const laneButton = within(directions)
+      .getAllByRole("button")
+      .find((button) => /^Use (SAFE|PERSONAL|EXPERIMENTAL)/i.test(button.getAttribute("aria-label") ?? ""));
+    expect(laneButton).toBeDefined();
+    if (!laneButton) return;
+    await waitFor(() => expect(laneButton).toBeEnabled());
+    fireEvent.click(laneButton);
+
+    await waitFor(() => expect(songDraftMocks.renderSong).toHaveBeenCalledTimes(2));
+    const useButton = screen.getByRole("button", { name: "USE SONG" });
+    expect(useButton).toBeDisabled();
+    finishSelectedRender(makeBuffer());
+    await waitFor(() => expect(useButton).toBeEnabled());
+
+    const lane = laneButton
+      .getAttribute("aria-label")
+      ?.match(/^Use (SAFE|PERSONAL|EXPERIMENTAL)/i)?.[1]
+      ?.toLowerCase();
+    expect(lane).toBeDefined();
+    const auditionedBuild = songDraftMocks.appliedBuilds.at(-1) as SongBuild | undefined;
+    const selectedAlternative = auditionedBuild?.alternatives.find((alternative) => alternative.lane === lane);
+    expect(auditionedBuild?.sections.map((section) => section.pattern.id)).toEqual(
+      selectedAlternative?.sections.map((section) => section.pattern.id),
+    );
+
+    fireEvent.click(useButton);
+    await waitFor(() => expect(screen.queryByLabelText("Song draft preview")).toBeNull());
+    expect(songDraftMocks.appliedBuilds.at(-1)).toBe(auditionedBuild);
+    expect(rendered.services.store.execute).toHaveBeenCalled();
   }, 40000);
 });

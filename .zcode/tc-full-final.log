@@ -1,0 +1,8 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+tests/e2e/13-audio-consolidation.spec.ts(125,41): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+tests/e2e/13-audio-consolidation.spec.ts(125,66): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+tests/intent-artists.test.ts(67,12): error TS2532: Object is possibly 'undefined'.
+tests/intent-artists.test.ts(72,12): error TS2532: Object is possibly 'undefined'.

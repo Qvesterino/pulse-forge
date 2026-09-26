@@ -509,6 +509,93 @@ const AMBIENT_CHORD: MelodicPatternData = {
   ],
 };
 
+// ── Drum & bass ──────────────────────────────────────────
+// Reese pressure under chopped-break energy: long root sustains with octave
+// motion (bass), airy liquid pads + minimal stabs (chords), rolling motifs
+// with space to breathe (lead). Degrees are scale-relative (minor home).
+
+const DNB_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    // Reese roller
+    [
+      { degree: 0, duration: 4, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    // Octave stepper
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 4, duration: 2, velocity: 0.8 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: 5, duration: 2, velocity: 0.75 },
+      { degree: 4, duration: 2, velocity: 0.6 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+      { degree: 2, duration: 2, velocity: 0.65 },
+    ],
+  ],
+};
+
+const DNB_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Liquid pads
+    [
+      { degree: 0, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.45 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    // Minimal stabs
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 1, velocity: 0.55 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const DNB_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Roller motif
+    [
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: 5, duration: 1, velocity: 0.55 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: 6, duration: 1, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.55 },
+      { degree: 4, duration: 1, velocity: 0.5 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    // Sparse call
+    [
+      { degree: 6, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.5 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
 // ── Registry ───────────────────────────────────────────
 
 export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
@@ -516,6 +603,7 @@ export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
   techno: [TECHNO_BASS, TECHNO_CHORD, TECHNO_LEAD],
   trap: [TRAP_BASS, TRAP_CHORD, TRAP_LEAD],
   ambient: [AMBIENT_BASS, AMBIENT_CHORD, AMBIENT_LEAD],
+  dnb: [DNB_BASS, DNB_CHORD, DNB_LEAD],
 };
 
 export const MELODIC_BY_PROFILE: Record<ProductionProfile, MelodicPatternData[]> = {
