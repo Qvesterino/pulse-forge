@@ -989,6 +989,70 @@ describe("vaporwave / synthwave / lofi / downtempo / plugg-newer / trap-soul (ch
   });
 });
 
+describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (global-pop wave)", () => {
+  // Each block covers one of the six new global-pop presets, asserting
+  // genre + style + BPM + mood against the researched values. The bare
+  // 'afrobeat' / 'amapiano' / 'k-pop' names live in earlier entries; we
+  // exercise these lanes via unique artist names where possible.
+  it("wizkid / burna boy / davido → afrobeats (house afro, 110-118)", () => {
+    const wiz = parseIntentText("wizkid type beat");
+    expect(wiz.input.genre).toBe("house");
+    expect(wiz.input.style).toBe("afro");
+    expect(wiz.input.bpmRange).toEqual([110, 118]);
+    expect(wiz.input.mood).toBe("chill");
+  });
+
+  it("j balvin / ozuna / rosalia → latin urban (house dancefloor, 88-100)", () => {
+    const jb = parseIntentText("j balvin type beat");
+    expect(jb.input.genre).toBe("house");
+    expect(jb.input.style).toBe("dancefloor");
+    expect(jb.input.bpmRange).toEqual([88, 100]);
+    expect(jb.input.energy).toBe(0.75);
+  });
+
+  it("bts / newjeans / blackpink → k-pop (house pop, 100-120)", () => {
+    const bts = parseIntentText("bts type beat");
+    expect(bts.input.genre).toBe("house");
+    expect(bts.input.style).toBe("pop");
+    expect(bts.input.bpmRange).toEqual([100, 120]);
+    expect(bts.input.energy).toBe(0.85);
+  });
+
+  it("sean paul / vybz kartel / popcaan → dancehall (trap bounce, 88-105)", () => {
+    const sp = parseIntentText("sean paul type beat");
+    expect(sp.input.genre).toBe("trap");
+    expect(sp.input.style).toBe("bounce");
+    expect(sp.input.bpmRange).toEqual([88, 105]);
+  });
+
+  it("anri / tatsuro yamashita / mariya takeuchi → city pop (ambient organic, 100-125)", () => {
+    const anri = parseIntentText("anri type beat");
+    expect(anri.input.genre).toBe("ambient");
+    expect(anri.input.style).toBe("organic");
+    expect(anri.input.bpmRange).toEqual([100, 125]);
+    expect(anri.input.mood).toBe("chill");
+  });
+
+  it("joji / rich brian / niki → 88rising (trap lux, 80-110)", () => {
+    const joji = parseIntentText("joji type beat");
+    expect(joji.input.genre).toBe("trap");
+    expect(joji.input.style).toBe("lux");
+    expect(joji.input.bpmRange).toEqual([80, 110]);
+    expect(joji.input.mood).toBe("chill");
+  });
+
+  it("the global-pop lanes resolve to real groove ids (resolveGroove contract)", () => {
+    // Engine integration smoke — each preset's style must resolve to a real
+    // `genre.style` grooveId via getGrooveById.
+    expect(getGrooveById("house.afro")).toBeDefined();
+    expect(getGrooveById("house.dancefloor")).toBeDefined();
+    expect(getGrooveById("house.pop")).toBeDefined();
+    expect(getGrooveById("trap.bounce")).toBeDefined();
+    expect(getGrooveById("ambient.organic")).toBeDefined();
+    expect(getGrooveById("trap.lux")).toBeDefined();
+  });
+});
+
 describe("regional now + female / latin / scloud / experimental (now wave)", () => {
   it("chicago: king von drill + conscious classic (SK-safe names)", () => {
     const von = parseIntentText("king von type beat");

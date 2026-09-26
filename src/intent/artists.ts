@@ -3219,6 +3219,322 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [78, 95],
     label: "trap soul",
   },
+  // ── Afrobeats / Afropop (modern) — Wizkid / Burna Boy / Davido / Tems ────
+  // Modern West-African pop (Wizkid 'Essence' / Burna Boy 'Last Last' /
+  // Davido 'Fall'). Routes to house.afro (the existing groove for amapiano /
+  // Rema / Tyla) — closest fit since afrobeats shares the percussion-led
+  // pocket. BPM 110-118.
+  {
+    names: ["wizkid", "burna boy", "davido", "tems", "asake", "victony", "ayra starr"],
+    genre: "house",
+    style: "afro",
+    mood: "chill",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [110, 118],
+    label: "afrobeats",
+  },
+  // ── Latin urban / Reggaeton pop — J Balvin / Ozuna / Farruko / Rosalía ───
+  // Modern reggaeton-pop (J Balvin 'Mi Gente' / Ozuna / Farruko / Rosalía
+  // 'MALAMENTE'). Bad Bunny's existing entry covers the harder perreo side;
+  // this covers the brighter dancefloor-pop reggaeton. Routes to
+  // house.dancefloor. BPM 88-100.
+  {
+    names: ["j balvin", "ozuna", "farruko", "rosalia", "anuel aa", "anuel"],
+    genre: "house",
+    style: "dancefloor",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [88, 100],
+    label: "latin urban",
+  },
+  // ── K-pop / Korean R&B — BTS / NewJeans / IU / Stray Kids / BLACKPINK ────
+  // Korean pop production (BTS 'Dynamite' / NewJeans 'OMG' / IU). High-energy
+  // pop at 100-120, closest groove is house.pop (the pop-dancefloor side).
+  {
+    names: ["kpop", "k-pop", "bts", "newjeans", "iu", "stray kids", "blackpink"],
+    genre: "house",
+    style: "pop",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [100, 120],
+    label: "k-pop",
+  },
+  // ── Dancehall / Reggae-pop — Sean Paul / Damian Marley / Popcaan / Vybz ───
+  // Caribbean dancehall (Sean Paul 'Temperature' / Popcaan / Vybz Kartel).
+  // The trap.bounce groove (98-104 BPM) is the closest fit — driving
+  // half-time riddim with room for the toasting vocal lead. BPM 88-105.
+  {
+    names: ["dancehall", "sean paul", "damian marley", "popcaan", "vybz kartel", "shaggy"],
+    genre: "trap",
+    style: "bounce",
+    mood: "chill",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [88, 105],
+    label: "dancehall",
+  },
+  // ── City pop (Japanese 80s) — Anri / Tatsuro / Mariya Takeuchi ──────────
+  // The 1980s Japanese studio-pop movement (Anri 'Last Summer Whisper' /
+  // Tatsuro Yamashita / Mariya Takeuchi 'Plastic Love'). Lush AOR production,
+  // 100-125, organic-instrument heavy. Routes to ambient.organic.
+  {
+    names: ["city pop", "anri", "tatsuro", "tatsuro yamashita", "mariya takeuchi"],
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [100, 125],
+    label: "city pop",
+  },
+  // ── 88rising / Asian-American pop — Joji / Rich Brian / NIKI ────────────
+  // The 88rising wave (Joji 'Sanctuary' / Rich Brian 'Dat $tick'). Lush
+  // bedroom-R&B / indie-pop at slower tempos. Routes to trap.lux (closest
+  // trap groove for the lo-fi-indie-pop side of the trap spectrum).
+  {
+    names: ["88rising", "joji", "rich brian", "niki", "atarashii gakko"],
+    genre: "trap",
+    style: "lux",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [80, 110],
+    label: "88rising",
+  },
+  // ── Trap producers (the "type beat" search language) ───────────────────
+  // Anchors: Drip Too Hard 113 (SongBPM), Black Beatles 146, HUMBLE. 150,
+  // Life Is Good 142 — trap counts half-time, ranges follow the 130-150
+  // production pocket.
+  {
+    names: ["wheezy"],
+    // 808 Mafia melodic corner — airy plucks over sparse knock (Drip Too
+    // Hard, Bad and Boujee).
+    genre: "trap",
+    style: "lux",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [130, 146],
+    label: "wheezy",
+  },
+  {
+    names: ["southside", "808 mafia"],
+    // 808 Mafia aggressive corner — dark, hard, relentless.
+    genre: "trap",
+    style: "dark",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [130, 145],
+    label: "southside",
+  },
+  {
+    names: ["tm88"],
+    // Black Beatles (146) bounce — melodic and playful.
+    genre: "trap",
+    style: "bouncy",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [138, 150],
+    label: "tm88",
+  },
+  {
+    names: ["murda beatz", "murda", "murda on the beat"],
+    genre: "trap",
+    style: "bouncy",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 145],
+    label: "murda beatz",
+  },
+  {
+    names: ["mike will", "mike will made it", "mike will made-it", "mike will madeit"],
+    // HUMBLE. (150) — the hard-hitting dark-keys corner.
+    genre: "trap",
+    style: "dark",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [138, 150],
+    label: "mike will made-it",
+  },
+  {
+    names: ["hit-boy", "hit boy"],
+    // Versatile A-list: rolling pockets, wide tempo window.
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [130, 150],
+    label: "hit-boy",
+  },
+  {
+    names: ["london on da track", "london on the track"],
+    genre: "trap",
+    style: "bouncy",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [130, 145],
+    label: "london on da track",
+  },
+  {
+    names: ["wondagurl", "wonda"],
+    // Cinematic dark trap (Take Care-era, Travis placements).
+    genre: "trap",
+    style: "dark",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [140, 150],
+    label: "wondagurl",
+  },
+  {
+    names: ["sonny digital"],
+    genre: "trap",
+    style: "rolling",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [130, 145],
+    label: "sonny digital",
+  },
+  // ── Memphis OG producers (the original phonk source tapes) ─────────────
+  {
+    names: ["dj squeeky"],
+    // The lo-fi tape origin — hiss, cowbell, half-time menace.
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [120, 140],
+    label: "dj squeeky",
+  },
+  {
+    names: ["dj spanish fly"],
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [120, 140],
+    label: "dj spanish fly",
+  },
+  {
+    names: ["kingpin skinny pimp", "skinny pimp"],
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [125, 142],
+    label: "kingpin skinny pimp",
+  },
+  {
+    names: ["playa fly"],
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [122, 140],
+    label: "playa fly",
+  },
+  {
+    names: ["tommy wright", "tommy wright iii"],
+    // Still Pimpin (the tape Beyoncé opened RENAISSANCE with).
+    genre: "phonk",
+    style: "memphis",
+    mood: "dark",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [125, 142],
+    label: "tommy wright iii",
+  },
+  // ── UKG new wave (post-2020 revival) ───────────────────────────────────
+  {
+    names: ["conducta"],
+    // Kiwi Rekords — warm, vocal-forward 2-step revival.
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [130, 140],
+    label: "conducta",
+  },
+  {
+    names: ["interplanetary criminal"],
+    // The 2022 revival anthem corner (B.O.T.A. energy).
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [132, 142],
+    label: "interplanetary criminal",
+  },
+  {
+    names: ["sammy virji", "virji"],
+    // Bass-forward speed-garage bounce.
+    genre: "house",
+    style: "ukg",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [130, 140],
+    label: "sammy virji",
+  },
+  {
+    names: ["piri"],
+    // piri & tommy — the pop-facing, melodic UKG lane.
+    genre: "house",
+    style: "ukg",
+    mood: "chill",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [132, 140],
+    label: "piri",
+  },
+  // ── UK drill second line ────────────────────────────────────────────────
+  {
+    names: ["ofb", "bandokay"],
+    // Broadwater Farm / OFB — dark, sparse, slide-heavy.
+    genre: "drill",
+    style: "uk",
+    mood: "dark",
+    energy: 0.8,
+    density: 0.55,
+    bpmRange: [138, 144],
+    label: "ofb",
+  },
+  {
+    names: ["loski", "harlem spartans"],
+    genre: "drill",
+    style: "uk",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [138, 145],
+    label: "loski",
+  },
+  {
+    names: ["digdat"],
+    genre: "drill",
+    style: "uk",
+    mood: "dark",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [138, 144],
+    label: "digdat",
+  },
 ];
 
 export interface ArtistMatch {
