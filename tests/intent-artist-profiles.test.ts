@@ -8,16 +8,57 @@ import {
 } from "../src/intent/artist-profiles";
 
 describe("artist-profiles registry", () => {
-  it("ships the seven profiles (drill / phonk / jersey / trap / trap / lofi / house)", () => {
+  it("ships the twelve profiles across 9 engine-genre umbrellas", () => {
     expect(Object.keys(ARTIST_PROFILES).sort()).toEqual([
+      "ag-cook",
       "axl-beats",
+      "burial",
       "dj-tameil",
+      "dr-dre",
       "dvrst",
       "fred-again",
       "j-dilla",
       "metro-boomin",
+      "seven-lions",
+      "skepta",
       "travis-scott",
     ]);
+  });
+
+  it("every profile has at least one genre tag", () => {
+    // The ArtistProfileGenre type is INTENTIONALLY BROADER than the engine
+    // Genre enum (see src/intent/artist-profiles/index.ts: ArtistProfileGenre
+    // definition). This test pins the non-empty invariant without forcing
+    // every genre into the 8-value engine enum — the broader-than-engine
+    // property is asserted separately below.
+    for (const profile of Object.values(ARTIST_PROFILES)) {
+      expect(profile.genres.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("the profile taxonomy is genuinely broader than the engine Genre enum", () => {
+    // Design contract: the artist-profile layer captures more nuance than
+    // the generator needs today. When the engine broadens its Genre enum
+    // (src/ai/types.ts: house | techno | trap | ambient | drill | phonk |
+    // jersey | dnb), the profile layer is already populated.
+    const engineGenre = new Set([
+      "house",
+      "techno",
+      "trap",
+      "ambient",
+      "drill",
+      "phonk",
+      "jersey",
+      "dnb",
+    ]);
+    const allGenres = new Set<string>();
+    for (const profile of Object.values(ARTIST_PROFILES)) {
+      for (const genre of profile.genres) allGenres.add(genre);
+    }
+    const outsideEngine = [...allGenres].filter((g) => !engineGenre.has(g));
+    // The profile layer must use at least one value the engine does not —
+    // otherwise the "broader" claim is empty.
+    expect(outsideEngine.length).toBeGreaterThan(0);
   });
 
   it("every profile carries the required shape fields", () => {

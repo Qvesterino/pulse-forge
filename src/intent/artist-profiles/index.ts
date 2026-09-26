@@ -49,7 +49,30 @@ export type SubEmphasis = "subtle" | "moderate" | "prominent";
 export type VerificationStatus = "ai-inferred" | "mixed" | "verified";
 
 /** Descriptive artist tags may be richer than the currently supported generator genres. */
-export type ArtistProfileGenre = IntentGenre | "hiphop";
+/**
+ * The artist-profile genre tag is INTENTIONALLY BROADER than the engine's
+ * Genre enum (src/ai/types.ts: house | techno | trap | ambient | drill |
+ * phonk | jersey | dnb). The data layer captures more nuance than the
+ * generator needs today, and once the engine broadens its enum the
+ * profile layer is already populated. `genres` here is descriptive of
+ * the artist's catalog, not a generator contract.
+ *
+ * Values outside the engine Genre enum (e.g. "hiphop", "hyperpop",
+ * "grime", "g-funk", "west-coast", "boom-bap", "lofi", "uk-garage",
+ * "melodic-techno") are valid here. The TODO comments in each profile
+ * note which engine slot the closest umbrella is.
+ */
+export type ArtistProfileGenre =
+  | IntentGenre
+  | "hiphop"
+  | "hyperpop"
+  | "grime"
+  | "g-funk"
+  | "west-coast"
+  | "boom-bap"
+  | "lofi"
+  | "uk-garage"
+  | "melodic-techno";
 
 export interface ArtistSignature {
   /** Short descriptive labels of the signature sound
@@ -491,6 +514,318 @@ const FRED_AGAIN: ArtistProfile = {
 };
 
 /* -----------------------------------------------------------------------
+ * Slice 3 — five profiles in long-documented genres that the engine
+ * Genre enum (src/ai/types.ts: `house | techno | trap | ambient | drill |
+ * phonk | jersey | dnb`) does NOT yet have first-class slots for:
+ *
+ *   - ag-cook       → "house"        (TODO: hyperpop enum slot)
+ *   - dr-dre        → "trap"         (TODO: g-funk / west-coast enum slot)
+ *   - skepta        → "techno"       (TODO: grime enum slot)
+ *   - seven-lions   → "dnb"          ✓ exact match (Ophelia Records sound)
+ *   - burial        → "ambient"      ✓ exact match (Untrue-era spectral)
+ *
+ * The closest existing slot is used so the type stays compile-clean;
+ * each profile's `genres` array carries a TODO comment explaining the
+ * future enum expansion. This is a recorded architectural finding that
+ * the deep-profile layer exposes — Phase 2 wiring will likely need the
+ * engine genre enum broadened (see AGENT_WORK_LOG.md follow-up).
+ * --------------------------------------------------------------------- */
+
+const AG_COOK: ArtistProfile = {
+  slug: "ag-cook",
+  name: "A.G. Cook",
+  // TODO: "hyperpop" enum slot — using "house" as the closest electronic-
+  // pop umbrella until the engine broadens its Genre union.
+  genres: ["house"],
+  signature: {
+    sound: [
+      "maximalist layered synths (often 6-10 stacked layers)",
+      "pitched-up vocal chops (often +12 semitones, layered in octaves)",
+      "crystalline bright pads (PC Music trademark sound)",
+      "glitched stuttered vocals (mid-word cuts and restarts)",
+      "metallic / plastic textures (artificial, hyperreal)",
+      "sidechain-pumping synth bass",
+    ],
+    samples: ["pop acapella chops (pitched + processed)", "PC Music custom-synth one-shots", "synthesized percussion hits"],
+    bpm: { typical: [130, 150] },
+    keys: ["F major", "C major", "G major", "D minor"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "subtle",
+    notes: [
+      "vocal layers stacked in octaves +5 / +12 / +19 semitones for shimmer",
+      "sidechain pumping on master bus (4-on-the-floor duck)",
+      "high-frequency saturation on the master (Decapitator + tape)",
+      "everything pitched into major / bright keyspace — hyperpop rejects minor keys",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "bright, present mids, controlled sub, hyped top-end",
+    dynamicRange: "moderate — modern loud-master with headroom for saturation",
+  },
+  gear: [
+    "Ableton Live",
+    "Serum",
+    "Native Instruments Massive",
+    "Soundtoys Decapitator",
+    "RC-20 Retro Color",
+    "FabFilter Pro-Q 3",
+    "Valhalla VintageVerb",
+    "Antares Auto-Tune (heavy on vocals)",
+    "custom / bespoke Max4Live devices for PC Music workflow",
+  ],
+  vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
+  sources: [
+    "https://en.wikipedia.org/wiki/A._G._Cook",
+    "https://www.residentadvisor.net/features/2942",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const DR_DRE: ArtistProfile = {
+  slug: "dr-dre",
+  name: "Dr. Dre",
+  // TODO: "g-funk" / "west-coast" enum slots — using "trap" as the closest
+  // hip-hop umbrella until the engine broadens. G-funk has distinct sonic
+  // identity (Parliament samples, talkbox, smooth sub) that gets flattened
+  // when collapsed into "trap".
+  genres: ["trap"],
+  signature: {
+    sound: [
+      "G-funk synths (often Parliament / Funkadelic samples)",
+      "deep sub bass (smooth, sustained — not the punchy 808 of trap)",
+      "funk bass lines (often slap-style, mid-range presence)",
+      "talkbox vocal textures (the G-funk signature flourish)",
+      "lush string / pad layers (orchestral samples)",
+      "soulful melodic samples layered under the beat",
+    ],
+    samples: [
+      "George Clinton / Parliament / Funkadelic",
+      "Isaac Hayes, Curtis Mayfield, classic soul",
+      "Mellotron textures",
+      "orchestral stab samples",
+    ],
+    bpm: { typical: [88, 96] },
+    keys: ["G minor", "A minor", "F minor", "D minor", "B♭ minor"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "medium",
+    stereoWidth: "normal",
+    subEmphasis: "prominent",
+    notes: [
+      "G-funk synth sits in the 200-400 Hz range with chorus / phaser",
+      "kick and 808 sub separated — sub sits at 40-50 Hz, kick at 60-80 Hz",
+      "vocal always forward, often subtly chorused",
+      "smooth low-mids — no harshness, no aggressive peaks",
+    ],
+  },
+  master: {
+    targetLufs: -10,
+    tonalBalance: "warm, smooth low-mids, deep sub, controlled highs",
+    dynamicRange: "wide — pre-loud-master era (2001 / Chronic), character over loudness",
+  },
+  gear: [
+    "Akai MPC 60",
+    "E-mu SP-1200",
+    "Mellotron samples",
+    "Roland Juno-106",
+    "Yamaha DX7",
+    "Roland TR-808",
+    "talkbox hardware (often a vintage model)",
+    "Outboard compressors (Teletronix LA-2A, dbx 160)",
+  ],
+  vibe: ["smooth", "funky", "deep", "west coast", "classic", "soulful", "iconic"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Dr._Dre_production_discography",
+    "https://www.soundonsound.com/techniques/dr-dre-2001",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const SKEPTA: ArtistProfile = {
+  slug: "skepta",
+  name: "Skepta",
+  // TODO: "grime" enum slot — using "techno" as the closest electronic-urban
+  // umbrella. Grime is its own scene (140 BPM, square wave leads, raw MC
+  // vocals) and the engine should grow a first-class slot.
+  genres: ["techno"],
+  signature: {
+    sound: [
+      "square wave lead synths (the grime signature — often portamento slides)",
+      "rolling 808 patterns at 140 BPM (half-time feel from MC perspective)",
+      "aggressive MC vocals (raw, unpolished, London accent)",
+      "sparse beat with heavy bass weight",
+      "talkbox / vocal-grit ad-libs",
+      "horn stab samples (often from reggae / dancehall)",
+    ],
+    samples: ["classic grime synth stabs", "horn stabs (reggae / dancehall)", "minimal break samples"],
+    bpm: { typical: [140, 142] },
+    keys: ["D minor", "F minor", "G minor"],
+  },
+  mix: {
+    eqTilt: "dark",
+    compression: "heavy",
+    stereoWidth: "normal",
+    subEmphasis: "prominent",
+    notes: [
+      "square wave lead sits in 200-800 Hz with portamento slides between notes",
+      "bass weight at 60-80 Hz with hard sidechain to kick",
+      "MC vocals sit forward, raw texture preserved (no over-compression)",
+      "horn stabs punched in tight (short attack, hard release)",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "dark, sub-prominent, mid-forward for vocals, controlled highs",
+    dynamicRange: "moderate — modern grime master target (louder than classic era)",
+  },
+  gear: [
+    "Logic Pro",
+    "Native Instruments Massive",
+    "Sylenth1",
+    "Rob Papen Predator",
+    "FabFilter Pro-Q 3",
+    "Soundtoys Decapitator",
+    "Valhalla VintageVerb",
+  ],
+  vibe: ["aggressive", "dark", "British", "raw", "street", "no-nonsense", "authentic"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Skepta",
+    "https://www.complex.com/music/best-songs-skepta-produced",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const SEVEN_LIONS: ArtistProfile = {
+  slug: "seven-lions",
+  name: "Seven Lions",
+  // ✓ exact match — Seven Lions sits in the dnb / melodic-dubstep family
+  // (Ophelia Records). The 140-150 BPM half-time feel of dnb aligns with
+  // his production tempo.
+  genres: ["dnb"],
+  signature: {
+    sound: [
+      "ethereal female vocal chops (the Ophelia signature — pitched, layered)",
+      "supersaw leads (wide, 3-4 layers stacked across the stereo field)",
+      "emotional minor-key chord progressions",
+      "half-time drums with massive snares on the 2 and 4",
+      "soaring melodic arpeggios",
+      "cinematic string hits layered under the build",
+    ],
+    samples: [
+      "vocal one-shots from featured artists",
+      "orchestral stab samples",
+      "cinematic string hits",
+      "ethereal vocal textures (often synthesized + processed)",
+    ],
+    bpm: { typical: [140, 150], halfTime: [70, 75] },
+    keys: ["F minor", "G minor", "C minor", "D minor", "E♭ minor"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "medium",
+    stereoWidth: "wide",
+    subEmphasis: "prominent",
+    notes: [
+      "vocal chops dry-wet parallel with reverb and delay (sends heavy)",
+      "supersaw stacked 3-4 layers across the stereo field (Haas on duplicates)",
+      "half-time snare duck the pad for emotional impact",
+      "builds use filtered white noise + reverb tail rises",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "bright, emotional mids, deep sub, soaring highs",
+    dynamicRange: "moderate — modern melodic-dubstep target",
+  },
+  gear: [
+    "Ableton Live",
+    "Serum",
+    "Native Instruments Massive",
+    "Kontakt",
+    "RC-20 Retro Color",
+    "FabFilter Pro-Q 3",
+    "Valhalla VintageVerb",
+    "Valhalla Supermassive",
+    "LFO Tool (sidechain + rhythmic gating)",
+  ],
+  vibe: ["emotional", "ethereal", "euphoric", "cinematic", "melodic", "transcendent"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Seven_Lions",
+    "https://www.opheliarecords.com/",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const BURIAL: ArtistProfile = {
+  slug: "burial",
+  name: "Burial",
+  // ✓ exact match — Burial's Untrue / Burial-era sound sits squarely in
+  // the engine's "ambient" bucket. The 2-step garage rhythm + ambient
+  // pad + vinyl crackle character is the genre's defining surface.
+  genres: ["ambient"],
+  signature: {
+    sound: [
+      "pitch-shifted vocal chops (often +5 to +8 semitones, sped up)",
+      "vinyl crackle + tape hiss baked into the master",
+      "UK garage 2-step rhythm patterns (shuffled hats, syncopated kicks)",
+      "melancholic pads (often filtered Rhodes or synth chords)",
+      "ghostly vocal samples chopped and slowed",
+      "rainy-night London atmosphere — sparse, melancholic, urban",
+    ],
+    samples: [
+      "vocal samples from old jungle / UK garage records",
+      "classic 2-step garage breaks",
+      "ambient pad samples",
+      "TV / radio dialogue snippets (distant, hard to make out)",
+    ],
+    bpm: { typical: [130, 138] },
+    keys: ["D minor", "A minor", "F minor", "E minor"],
+  },
+  mix: {
+    eqTilt: "dark",
+    compression: "heavy",
+    stereoWidth: "normal",
+    subEmphasis: "subtle",
+    notes: [
+      "vinyl crackle + tape hiss baked into the master bus (NOT a plugin — committed)",
+      "heavy low-pass filter on the entire mix (often 6-8 kHz ceiling)",
+      "vocal chops sit at -10 dB below beat, ghostly presence",
+      "pads filtered with slow LFO modulation — breathing character",
+    ],
+  },
+  master: {
+    targetLufs: -12,
+    tonalBalance: "rolled-off highs (vinyl tilt), warm low-mids, dark sub presence",
+    dynamicRange: "wide — NOT loud-mastered, character over loudness (anti-loudness stance)",
+  },
+  gear: [
+    "Reason (early work)",
+    "Soundforge",
+    "classic jungle / garage sample packs",
+    "vinyl sampling workflow",
+    "DAW with heavy audio manipulation (time-stretch, pitch-shift)",
+    "outboard processors for analog warmth (varies)",
+  ],
+  vibe: ["melancholic", "dark", "nostalgic", "ghostly", "rainy", "London-night", "lonely", "haunted"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Burial_(musician)",
+    "https://www.theguardian.com/music/2007/jun/10/popandrock.electronicanddance",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+/* -----------------------------------------------------------------------
  * Registry (ordered by slug for deterministic JSON-equivalent output).
  * Add new profiles here as `{slug}-style` keys; keep the lookup table
  * `Record<string, ArtistProfile>` so missing-slug lookups return
@@ -498,12 +833,17 @@ const FRED_AGAIN: ArtistProfile = {
  * --------------------------------------------------------------------- */
 
 export const ARTIST_PROFILES: Readonly<Record<string, ArtistProfile>> = Object.freeze({
+  "ag-cook": AG_COOK,
   "axl-beats": AXL_BEATS,
+  burial: BURIAL,
   "dj-tameil": DJ_TAMEIL,
+  "dr-dre": DR_DRE,
   dvrst: DVRST,
   "fred-again": FRED_AGAIN,
   "j-dilla": J_DILLA,
   "metro-boomin": METRO_BOOMIN,
+  "seven-lions": SEVEN_LIONS,
+  skepta: SKEPTA,
   "travis-scott": TRAVIS_SCOTT,
 });
 
