@@ -132,6 +132,41 @@ describe("AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useC
     }
     expect(known.length, "expected three known sites still present").toBe(3);
     expect(novel, "new AudioNode creation in src/ui outside AudioEngine.useContext").toEqual([]);
+
+    // Window-pinning companion: each whitelisted site is preceded by a
+    // fetch of the engine context via `getLiveAudioContext` (or a sibling
+    // helper). `AudioEngine.useContext(ctx)` is a context-swap method (it
+    // sets engine.currentCtx), NOT an AudioNode factory — so the SPIRIT
+    // of invariant #7 ("no node created against a foreign context") is
+    // met by explicitly fetching the engine's context first. A future
+    // contributor who adds a bare `ctx.createX()` without that fetch would
+    // surface immediately: the line above (and five lines back) must
+    // mention the engine context helper.
+    const WINDOW = [
+      { file: "src/ui/SpectralEditPanel.tsx", line: 197 },
+      { file: "src/ui/SpectralEditPanel.tsx", line: 230 },
+      { file: "src/ui/SpectralEditPanel.tsx", line: 267 },
+    ];
+    for (const { file, line } of WINDOW) {
+      const ls = lines(file);
+      // Backward scan — finds `getLiveAudioContext()` / `ensureContext()`
+      // / `engine.useContext()` anywhere within the same helper scope
+      // above each site, capped at 30 lines. A bare `ctx.createX()`
+      // outside any helper that fetched the engine context would be a
+      // leak — this catches that. The cap keeps the scan cheap and
+      // prevents accidental matches in unrelated code (a stale helper
+      // from a previous closure 100 lines up should NOT satisfy this).
+      const CTX_FETCH = /getLiveAudioContext|ensureContext|engine\.useContext/;
+      let ctxLine = -1;
+      for (let i = Math.max(0, line - 31); i < line - 1; i++) {
+        if (CTX_FETCH.test(ls[i])) ctxLine = i + 1;
+      }
+      expect(
+        ctxLine,
+        `${file}:${line} must be preceded by an engine-context fetch (getLiveAudioContext / ensureContext / useContext) within the same scope. ` +
+          `A bare ctx.createX() against a foreign context would leak the node into the wrong AudioContext.`,
+      ).toBeGreaterThan(0);
+    }
   });
 
   it("src/intent/audition.ts has a single known AudioNode site (playAuditionBuffer via playbackContext)", () => {
