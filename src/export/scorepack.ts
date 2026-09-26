@@ -6,7 +6,7 @@ import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { renderProject, type ExportQuality } from "../rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "../rendering/stems";
-import { encodeWav } from "../rendering/wav";
+import { createBextMetadata, encodeWav } from "../rendering/wav";
 import { buildZip } from "./zip";
 import { markerAssetFor } from "../project-model/markers";
 
@@ -50,6 +50,10 @@ export async function buildScorepack(
   const baseName = doc.name.replace(/[^a-zA-Z0-9 _.-]/g, "_").replace(/ +/g, "-");
   const sampleRate = 48000;
   const tailSeconds = 2;
+  // BWF `bext` (EBU Tech 3285) — scorepack masters/stems are interchange
+  // deliverables, so they carry originator + timestamp metadata. Cues stay
+  // bare: they are utility one-shots, not session interchange.
+  const bext = (label: string) => createBextMetadata({ description: `${baseName} — ${label} (KYX scorepack)` });
 
   const entries: { name: string; data: Uint8Array }[] = [];
 
@@ -70,7 +74,10 @@ export async function buildScorepack(
     ...qualityOpts,
   });
   throwIfAborted(signal);
-  entries.push({ name: "audio/" + baseName + "-master.wav", data: new Uint8Array(encodeWav(masterBuffer, 24)) });
+  entries.push({
+    name: "audio/" + baseName + "-master.wav",
+    data: new Uint8Array(encodeWav(masterBuffer, 24, { bext: bext("master") })),
+  });
 
   throwIfAborted(signal);
   onProgress({ phase: "Rendering stems", pct: 0.3 });
@@ -90,7 +97,7 @@ export async function buildScorepack(
     throwIfAborted(signal);
     entries.push({
       name: "audio/stems/" + baseName + "-" + group.id + ".wav",
-      data: new Uint8Array(encodeWav(stemBuffer, 24)),
+      data: new Uint8Array(encodeWav(stemBuffer, 24, { bext: bext(group.label + " stem") })),
     });
   }
 

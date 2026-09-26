@@ -25,7 +25,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets                  |     398 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
 | **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **531** | `tests/` files matching `*.test.ts` (426) and `*.test.tsx` (105)                                                              |
+| **Vitest spec files**                  | **532** | `tests/` files matching `*.test.ts` (427) and `*.test.tsx` (105)                                                              |
 
 ## Flagship plugin implementations
 
@@ -112,6 +112,10 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - Arrangement-as-a-tool — variant swap, ripple edit, paint wiring. _(feat `2a7aa23`)_
 - Finish the tool wave — drop-swap, multi-ripple, ghost preview. _(feat `49f678c`)_
 - Determinism: velocityFx seedable, determinism verdicts recorded. _(feat `98e2e3b`)_
+
+### Export and interchange
+
+- **BWF Broadcast Wave metadata** — deliverable WAV exports (master, grouped stems, per-track stems, scorepack master/stems, ZYVO transfer) carry an EBU Tech 3285 `bext` chunk: originator, timestamp, sample-accurate time reference and — wherever a render summary exists — the measured loudness in the spec's v2 fixed-point fields (LUFS-I, LRA, true peak, momentary/short-term), which Pro Tools / Nuendo / film workflows read on import. Opt-in at the encoder level (`createBextMetadata` in `src/rendering/wav.ts`), so internal round-trip WAVs (freeze, bounce persistence, consolidation, Qvester handoff) stay byte-compatible. Spec-pinned by `tests/wav-bwf.test.ts`.
 
 ### Architecture
 

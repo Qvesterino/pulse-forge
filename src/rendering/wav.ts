@@ -3,20 +3,133 @@ import { downloadBlob } from "../export/download";
 
 export type WavBitDepth = 16 | 24 | 32;
 
+/**
+ * BWF `bext` loudness fields (EBU Tech 3285 v2). Plain dB/LUFS values — the
+ * serializer applies the spec's fixed-point scales (0.1 LU / 0.01 dBTP) and
+ * clamps to int16. Unknown fields stay 0 per the spec.
+ */
+export interface WavBextLoudness {
+  integratedLufs: number;
+  /** Loudness range, LU. */
+  rangeLu?: number;
+  truePeakDbtp: number;
+  momentaryLufs?: number;
+  shortTermLufs?: number;
+}
+
+/**
+ * BWF `bext` chunk payload (EBU Tech 3285) — the Broadcast Wave metadata that
+ * Pro Tools / Nuendo / film workflows read on import. Field strings are
+ * printable ASCII (everything else is replaced with "?", matching what DAWs
+ * do with non-ASCII project names); fixed fields are null-padded and
+ * truncated to their spec widths.
+ */
+export interface WavBextMetadata {
+  description: string;
+  originator: string;
+  originatorReference: string;
+  /** "yyyy:mm:dd" — the colons are the EBU spec, not a typo. */
+  originationDate: string;
+  originationTime: string;
+  /** First-frame sample offset relative to the session origin (0 for full exports). */
+  timeReference?: number;
+  /** When present, the chunk is written as version 2 with the loudness fields. */
+  loudness?: WavBextLoudness;
+  /** Free-form ASCII history; \n is normalized to the spec's \r\n at write time. */
+  codingHistory?: string;
+}
+
+/** Base bext body per EBU Tech 3285 v2 (everything before codingHistory). */
+const BEXT_BASE_BYTES = 602;
+
+const asciiText = (text: string): string => text.replace(/[^\x20-\x7e]/g, "?");
+/** Coding history keeps line structure (spec: CRLF-terminated lines). */
+const asciiHistory = (text: string): string => text.replace(/\r?\n/g, "\r\n").replace(/[^\x20-\x7e\r\n]/g, "?");
+
+const clampInt16 = (value: number): number => {
+  if (!Number.isFinite(value)) return 0;
+  const rounded = Math.round(value);
+  return rounded < -32768 ? -32768 : rounded > 32767 ? 32767 : rounded;
+};
+
+/**
+ * Build a {@link WavBextMetadata} with KYX defaults: the current wall clock
+ * (like every DAW bounce) and the product as originator. Pass `date` for
+ * deterministic output in tests.
+ */
+export function createBextMetadata(input: {
+  description: string;
+  originator?: string;
+  originatorReference?: string;
+  date?: Date;
+  timeReference?: number;
+  loudness?: WavBextLoudness;
+  codingHistory?: string;
+}): WavBextMetadata {
+  const d = input.date ?? new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return {
+    description: input.description,
+    originator: input.originator ?? "KYX (Pulse Forge)",
+    originatorReference: input.originatorReference ?? globalThis.location?.hostname ?? "KYX",
+    originationDate: `${d.getFullYear()}:${p2(d.getMonth() + 1)}:${p2(d.getDate())}`,
+    originationTime: `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`,
+    timeReference: input.timeReference ?? 0,
+    ...(input.loudness ? { loudness: input.loudness } : {}),
+    ...(input.codingHistory ? { codingHistory: input.codingHistory } : {}),
+  };
+}
+
+/** Write the bext chunk body (id + size handled by the caller). Returns body bytes. */
+function writeBextBody(view: DataView, offset: number, meta: WavBextMetadata, history: string): number {
+  const writeFixed = (pos: number, text: string, width: number) => {
+    const clean = asciiText(text).slice(0, width);
+    for (let i = 0; i < width; i++) view.setUint8(pos + i, i < clean.length ? clean.charCodeAt(i) : 0);
+  };
+  writeFixed(offset, meta.description, 256);
+  writeFixed(offset + 256, meta.originator, 32);
+  writeFixed(offset + 288, meta.originatorReference, 32);
+  writeFixed(offset + 320, meta.originationDate, 10);
+  writeFixed(offset + 330, meta.originationTime, 8);
+  const time = Math.max(0, Math.floor(meta.timeReference ?? 0));
+  view.setUint32(offset + 338, time % 0x100000000, true);
+  view.setUint32(offset + 342, Math.floor(time / 0x100000000), true);
+  view.setUint16(offset + 346, meta.loudness ? 2 : 1, true);
+  // UMID (348..412) stays zero = unallocated, per spec.
+  const loudness = meta.loudness;
+  const i16 = (pos: number, value: number | undefined, scale: number) =>
+    view.setInt16(pos, clampInt16(value === undefined ? 0 : value * scale), true);
+  i16(offset + 412, loudness?.integratedLufs, 10);
+  i16(offset + 414, loudness?.rangeLu, 10);
+  i16(offset + 416, loudness?.truePeakDbtp, 100);
+  i16(offset + 418, loudness?.momentaryLufs, 10);
+  i16(offset + 420, loudness?.shortTermLufs, 10);
+  // 180 reserved bytes (422..602) stay zero.
+  // History arrives pre-normalized (asciiHistory) — writing it raw keeps the
+  // spec's CRLF line endings; running it through asciiText would eat them.
+  for (let i = 0; i < history.length; i++) view.setUint8(offset + 602 + i, history.charCodeAt(i));
+  return BEXT_BASE_BYTES + history.length;
+}
+
 /** Internal: RIFF header + container sizing shared by sync/async encoders. */
 function createWavContainer(
   numChannels: number,
   sampleRate: number,
   frames: number,
   bitDepth: WavBitDepth,
-): { arrayBuffer: ArrayBuffer; view: DataView; dataSize: number } {
+  bext?: WavBextMetadata,
+): { arrayBuffer: ArrayBuffer; view: DataView; dataSize: number; dataStart: number } {
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const dataSize = frames * blockAlign;
+  // Coding history is normalized once so sizing and writing agree.
+  const history = bext ? asciiHistory(bext.codingHistory ?? "") : "";
+  const bextBody = bext ? BEXT_BASE_BYTES + history.length : 0;
+  const bextChunk = bext ? 8 + bextBody + (bextBody % 2) : 0;
   // RIFF chunk fields are unsigned 32-bit. Past ~4 GB they wrap and the file
   // is silently corrupt — an explicit failure beats wasting a 20-minute
   // render on a WAV no player will read.
-  if (dataSize > 0xffffffff - 44) {
+  if (dataSize > 0xffffffff - (44 + bextChunk)) {
     throw new Error(
       `Render too large for WAV export (${(dataSize / 1024 ** 3).toFixed(1)} GB data). Export in segments or lower the sample rate/bit depth.`,
     );
@@ -25,7 +138,7 @@ function createWavContainer(
   // currently unreachable (all sources are stereo), but encodeWav is public
   // API and a future mono/odd-frame call would emit a spec-violating file.
   const padByte = dataSize % 2 === 1 ? 1 : 0;
-  const arrayBuffer = new ArrayBuffer(44 + dataSize + padByte);
+  const arrayBuffer = new ArrayBuffer(44 + bextChunk + dataSize + padByte);
   const view = new DataView(arrayBuffer);
 
   const writeString = (offset: number, text: string) => {
@@ -35,7 +148,7 @@ function createWavContainer(
   writeString(0, "RIFF");
   // RIFF sizes count the data chunk WITH its pad byte (spec: chunks are
   // word-aligned); the declared `dataSize` stays the raw sample bytes.
-  view.setUint32(4, 36 + dataSize + padByte, true);
+  view.setUint32(4, 36 + bextChunk + dataSize + padByte, true);
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
@@ -45,9 +158,19 @@ function createWavContainer(
   view.setUint32(28, sampleRate * blockAlign, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitDepth, true);
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-  return { arrayBuffer, view, dataSize };
+  let cursor = 36;
+  if (bext) {
+    // BWF: `bext` sits between `fmt ` and `data` so streaming readers meet
+    // the metadata before the audio.
+    writeString(cursor, "bext");
+    view.setUint32(cursor + 4, bextBody, true);
+    writeBextBody(view, cursor + 8, bext, history);
+    cursor += 8 + bextBody;
+    if (bextBody % 2 === 1) cursor += 1; // pad byte stays zero
+  }
+  writeString(cursor, "data");
+  view.setUint32(cursor + 4, dataSize, true);
+  return { arrayBuffer, view, dataSize, dataStart: cursor + 8 };
 }
 
 /** Internal: one sample write, shared by sync/async encoders. */
@@ -82,16 +205,21 @@ function writeSample(
   return offset + 4;
 }
 
-export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuffer {
+export interface EncodeWavOptions {
+  /** Optional BWF `bext` chunk (EBU Tech 3285) — pro-interchange metadata. */
+  bext?: WavBextMetadata;
+}
+
+export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: EncodeWavOptions = {}): ArrayBuffer {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
-  const { arrayBuffer, view } = createWavContainer(numChannels, sampleRate, frames, bitDepth);
+  const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
 
   const channels: Float32Array[] = [];
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
 
-  let offset = 44;
+  let offset = dataStart;
   // TPDF dither PRNG for the 16-bit path (seeded → byte-reproducible exports)
   const ditherRand = mulberry32(0x57415631);
   for (let i = 0; i < frames; i++) {
@@ -102,7 +230,7 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth): ArrayBuff
   return arrayBuffer;
 }
 
-export interface EncodeWavAsyncOptions {
+export interface EncodeWavAsyncOptions extends EncodeWavOptions {
   /** Progress fraction 0..1 — fired once per processed block. */
   onProgress?: (fraction: number) => void;
   /** Aborts between blocks. */
@@ -128,12 +256,12 @@ export async function encodeWavAsync(
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
-  const { arrayBuffer, view } = createWavContainer(numChannels, sampleRate, frames, bitDepth);
+  const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
 
   const channels: Float32Array[] = [];
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
 
-  let offset = 44;
+  let offset = dataStart;
   const ditherRand = mulberry32(0x57415631); // same seed → identical bytes
   for (let start = 0; start < frames; start += ENCODE_BLOCK_FRAMES) {
     const end = Math.min(frames, start + ENCODE_BLOCK_FRAMES);

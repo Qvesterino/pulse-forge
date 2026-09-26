@@ -10,7 +10,7 @@ import type { ProjectDocument, Track } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { buildStemProject } from "../rendering/stems";
 import { buildTempoMap, renderProject, type ClipWindow, type ExportQuality } from "../rendering/renderer";
-import { encodeWav, sanitizeFilename } from "../rendering/wav";
+import { createBextMetadata, encodeWav, sanitizeFilename } from "../rendering/wav";
 import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
 import type { SampleBank } from "../sample-library/factory";
 import { buildZip } from "./zip";
@@ -129,14 +129,16 @@ export async function buildZyvoTransfer(
   const quality = options.quality ?? "studio";
   const sourceTracks = doc.tracks.filter((track) => track.kind !== "group");
   const tracksToRender = includeTrackStems ? sourceTracks : [];
-  if (tracksToRender.length > 2000) throw new Error("KYX transfer supports up to 2,000 track stems. Disable stems to transfer the full master mix.");
+  if (tracksToRender.length > 2000)
+    throw new Error("KYX transfer supports up to 2,000 track stems. Disable stems to transfer the full master mix.");
   if (doc.markers.length > 10_000 || doc.arrangement.clips.length > 10_000) {
     throw new Error("KYX transfer supports up to 10,000 arrangement sections and markers.");
   }
   const baseName = sanitizeFilename(doc.name);
   const transferProjectName = doc.name.trim().slice(0, 180) || "KYX Session";
   const sourceProject = encodeUtf8(JSON.stringify(doc, null, 2));
-  if (sourceProject.byteLength > 64 * 1024 * 1024) throw new Error("The embedded KYX project JSON exceeds the 64 MiB transfer limit.");
+  if (sourceProject.byteLength > 64 * 1024 * 1024)
+    throw new Error("The embedded KYX project JSON exceeds the 64 MiB transfer limit.");
 
   onProgress({ phase: "Rendering exact KYX master", pct: 0.04 });
   const masterBuffer = await renderProject(doc, bank, {
@@ -162,8 +164,11 @@ export async function buildZyvoTransfer(
     );
   }
 
+  // BWF `bext` (EBU Tech 3285) — the transfer WAVs open in VocalForge and
+  // desktop DAWs alike; measured loudness stays in the JSON manifest.
+  const bext = (label: string) => createBextMetadata({ description: `${doc.name} — ${label} (KYX → ZYVO)` });
   const entries: { name: string; data: Uint8Array }[] = [
-    { name: "audio/master.wav", data: new Uint8Array(encodeWav(masterBuffer, 32)) },
+    { name: "audio/master.wav", data: new Uint8Array(encodeWav(masterBuffer, 32, { bext: bext("master") })) },
     { name: "source/kyx-project.json", data: sourceProject },
   ];
 
@@ -203,7 +208,10 @@ export async function buildZyvoTransfer(
     // Float32 stems retain pre-master headroom and avoid a second lossy or
     // nonlinear conversion; the 1 GiB transfer cap remains the hard guard.
     const audioPath = `audio/tracks/${String(index + 1).padStart(3, "0")}-${slug(sourceTrack.name)}-${slug(sourceTrack.id)}.wav`;
-    entries.push({ name: audioPath, data: new Uint8Array(encodeWav(buffer, 32)) });
+    entries.push({
+      name: audioPath,
+      data: new Uint8Array(encodeWav(buffer, 32, { bext: bext(`${sourceTrack.name} stem`) })),
+    });
     stemMetadata.push({
       sourceTrackId: sourceTrack.id,
       name: sourceTrack.name,
@@ -345,17 +353,19 @@ function buildSections(doc: ProjectDocument, timeAt: (tick: number) => number): 
       if (!scene) return [];
       const startTick = clip.startBar * BAR_TICKS;
       const endTick = (clip.startBar + clip.lengthBars) * BAR_TICKS;
-      return [{
-        id: `section_${index + 1}`,
-        name: scene.name,
-        ...(scene.role ? { role: scene.role } : {}),
-        sceneId: scene.id,
-        startBar: clip.startBar,
-        lengthBars: clip.lengthBars,
-        startSeconds: Math.max(0, timeAt(startTick)),
-        endSeconds: Math.max(0, timeAt(endTick)),
-        bpm: scene.bpm ?? doc.bpm,
-      }];
+      return [
+        {
+          id: `section_${index + 1}`,
+          name: scene.name,
+          ...(scene.role ? { role: scene.role } : {}),
+          sceneId: scene.id,
+          startBar: clip.startBar,
+          lengthBars: clip.lengthBars,
+          startSeconds: Math.max(0, timeAt(startTick)),
+          endSeconds: Math.max(0, timeAt(endTick)),
+          bpm: scene.bpm ?? doc.bpm,
+        },
+      ];
     });
 }
 
@@ -375,12 +385,14 @@ function formatBytes(value: number): string {
 }
 
 function slug(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[^\w-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48) || "track";
+  return (
+    value
+      .normalize("NFKD")
+      .replace(/[^\w-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || "track"
+  );
 }
 
 export function encodeUtf8(value: string): Uint8Array {

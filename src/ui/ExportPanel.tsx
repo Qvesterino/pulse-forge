@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useActivePatternId, useMarkers, useMaster, usePatterns, useServices, useTracks } from "./context";
 import { renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
-import { downloadWav, encodeWavAsync, sanitizeFilename } from "../rendering/wav";
+import {
+  createBextMetadata,
+  downloadWav,
+  encodeWavAsync,
+  sanitizeFilename,
+  type WavBextMetadata,
+} from "../rendering/wav";
 import { buildScorepack } from "../export/scorepack";
 import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
@@ -52,6 +58,34 @@ const EMPTY_EXPORT_SUMMARY: BufferSummary = {
 
 type RecSourceKind = "master" | "track" | "mic";
 type RecState = "idle" | "starting" | "recording" | "saving";
+
+/**
+ * BWF `bext` metadata (EBU Tech 3285) for every deliverable WAV this panel
+ * writes — project identity, timestamp and, when a render summary exists,
+ * the measured loudness in the spec's v2 fields. Pro Tools / Nuendo / film
+ * workflows read these on import.
+ */
+function bextFor(
+  description: string,
+  summary: BufferSummary | null,
+  sampleRate: number,
+  depth: WavBitDepth,
+): WavBextMetadata {
+  return createBextMetadata({
+    description,
+    ...(summary
+      ? {
+          loudness: {
+            integratedLufs: summary.lufsIntegrated,
+            truePeakDbtp: summary.truePeakDb,
+            momentaryLufs: summary.lufsMomentary,
+            shortTermLufs: summary.lufsShortTerm,
+          },
+        }
+      : {}),
+    codingHistory: `A=PCM,F=${sampleRate},W=${depth},M=stereo,T=KYX offline render`,
+  });
+}
 
 export function ExportPanel({
   selectedTrackId,
@@ -172,6 +206,7 @@ export function ExportPanel({
       // yields per 64k-frame block, keeps the UI alive, reports progress
       // and honors Cancel. Byte-identical to the sync encoder.
       const wavBytes = await encodeWavAsync(buffer, bitDepth, {
+        bext: bextFor(`${doc.name} — KYX master`, summary, sampleRate, bitDepth),
         onProgress: (f) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
       });
@@ -233,6 +268,7 @@ export function ExportPanel({
         lastSummary = summarizeBuffer(buffer);
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
+            bext: bextFor(`${doc.name} — ${group.label} stem`, lastSummary, sampleRate, bitDepth),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding stem WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
@@ -270,6 +306,7 @@ export function ExportPanel({
         lastSummary = summarizeBuffer(buffer);
         downloadWav(
           await encodeWavAsync(buffer, bitDepth, {
+            bext: bextFor(`${doc.name} — ${track.name} track stem`, lastSummary, sampleRate, bitDepth),
             onProgress: (f) => setStatus({ kind: "busy", label: `Encoding track WAV… ${Math.round(f * 100)}%` }),
             signal,
           }),
