@@ -1,5 +1,3 @@
-
-
 /* ---------- Arrangement ---------- */
 
 .arr-panel {
@@ -176,6 +174,150 @@
   overflow-x: auto;
   overflow-y: hidden;
   contain: layout style;
+}
+
+.arr-audio-take-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 0 8px;
+  border-top: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.arr-audio-take-lanes-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 6px 3px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.arr-audio-take-lanes-track-name {
+  margin-left: auto;
+}
+
+.arr-audio-take-lane {
+  display: flex;
+  flex-direction: column;
+  min-height: 50px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.arr-audio-take-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.arr-audio-take-lane-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  min-height: 20px;
+  padding: 2px 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.arr-audio-take-lane-audition {
+  flex: 0 0 auto;
+  min-height: 20px;
+  margin-right: 3px;
+  padding: 1px 6px;
+  font-size: 8px;
+}
+
+.arr-audio-take-lane-select:hover,
+.arr-audio-take-lane.active .arr-audio-take-lane-select {
+  color: var(--text);
+}
+
+.arr-audio-take-lane-name {
+  min-width: 60px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.arr-audio-take-lane-status,
+.arr-audio-take-lane-count {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.arr-audio-take-lane-status {
+  color: var(--muted);
+}
+
+.arr-audio-take-lane.active .arr-audio-take-lane-status {
+  color: var(--accent);
+}
+
+.arr-audio-take-lane-count {
+  margin-left: auto;
+  color: var(--text-faint);
+}
+
+.arr-audio-take-lane-track {
+  position: relative;
+  height: 30px;
+  touch-action: none;
+  user-select: none;
+  background-color: rgba(255, 255, 255, 0.018);
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+}
+
+.arr-audio-take-lane-segment {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  overflow: hidden;
+  padding: 0;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(129, 140, 248, 0.42);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.arr-audio-take-lane-segment:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: var(--accent);
+}
+
+.arr-audio-take-lane-segment.comp {
+  background: rgba(20, 184, 166, 0.1);
+  border-color: rgba(45, 212, 191, 0.62);
+}
+
+.arr-audio-take-lane-segment .audio-waveform {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.arr-audio-take-lane-range {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  bottom: 1px;
+  min-width: 2px;
+  background: rgba(250, 204, 21, 0.28);
+  border: 1px solid rgba(250, 204, 21, 0.9);
+  border-radius: 3px;
+  pointer-events: none;
 }
 
 /* Scene-intensity lane (VISION §11): a 0..1 editable curve strip under the

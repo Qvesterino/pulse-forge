@@ -37,6 +37,9 @@ import {
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
+import { applyCandidateSearchFamily, candidateSearchVariant } from "../candidate-search";
+import { inferPersonalSearchBias } from "../personal-ranker";
+import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
 import { candidatePlan, evaluateCandidate } from "./candidate";
 import type { GenerationContext, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
 import type { GenerateOptions } from "../../ai/types";
@@ -247,6 +250,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
     plan: GenerationPlan,
     context: GenerationContext,
     startIndex: number,
+    searchLanes = false,
   ): Promise<{ entries: CandidateBankEntry[]; failures: string[] }> {
     const entries: CandidateBankEntry[] = [];
     const failures: string[] = [];
@@ -269,17 +273,12 @@ export class SymbolicPriorProvider implements GenerationProvider {
     }
     const pads = targetDrumTrack?.kind === "drum" ? targetDrumTrack.pads : [];
     const padRoles = pads.map((pad, index) => inferPadRole(pad.name, index));
-    const styleId = resolveGrooveForGeneration(doc, options).id;
-    // These models have a fixed, versioned vocabulary. New groove-library
-    // genres must stay on the template path until matching models are trained;
-    // mapping (for example) drill onto the house one-hot silently biases it.
-    const supportsDrumPrior =
-      (PRIOR_GENRES as readonly string[]).includes(options.genre) &&
-      (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
     // Same policy for the melodic prior: only genres the model was trained on.
     const supportsMelodicPrior = (MELODIC_GENRES as readonly string[]).includes(options.genre);
-    const densityGain = 0.55 + plan.intent.density * 0.9;
-    const velocityJitter = plan.intent.controls.velocityVariation * 0.24;
+    const personalBias =
+      searchLanes && isPreferenceLearningEnabled()
+        ? inferPersonalSearchBias(readPreferenceLedger(), preferenceContextForIntent(plan.intent))
+        : null;
     // Embedding conditioning (roadmap Fáza F) — ONE projection per call; the
     // v2 prior consumes it instead of the v1 genre+style one-hots when the
     // flag is on AND the semantic model answers. Null ⇒ pure v1 path.
@@ -288,17 +287,31 @@ export class SymbolicPriorProvider implements GenerationProvider {
     let v3Unavailable = false;
 
     for (const [offset, symbolicSeed] of plan.symbolicSeeds.entries()) {
+      const candidateIndex = startIndex + offset;
+      const searchVariant = searchLanes
+        ? candidateSearchVariant(plan, symbolicSeed, candidateIndex, personalBias)
+        : null;
+      const generationPlan = searchVariant?.generationPlan ?? candidatePlan(plan, symbolicSeed);
+      const generationOptions = generationPlan.options;
+      const styleId = resolveGrooveForGeneration(doc, generationOptions).id;
+      // These models have a fixed, versioned vocabulary. New groove-library
+      // styles stay on the template path until matching models are trained;
+      // mapping an unseen style onto a known one-hot silently biases it.
+      const supportsDrumPrior =
+        (PRIOR_GENRES as readonly string[]).includes(generationOptions.genre) &&
+        (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
+      const densityGain = 0.55 + generationPlan.intent.density * 0.9;
+      const velocityJitter = generationPlan.intent.controls.velocityVariation * 0.24;
       try {
         // Template base (structure + template melodic parts). Melodic roles
         // are generated WITHOUT drums so they adapt rather than follow
         // template kick rows; when the melodic prior answers below, the
         // template melody is REPLACED by prior-sampled notes.
         const melodicOnly = generatePattern(doc, {
-          ...options,
-          seed: symbolicSeed,
+          ...generationOptions,
           roles: supportsDrumPrior
-            ? (options.roles ?? ["drums", "bass", "chords", "lead"]).filter((role) => role !== "drums")
-            : options.roles,
+            ? (generationOptions.roles ?? ["drums", "bass", "chords", "lead"]).filter((role) => role !== "drums")
+            : generationOptions.roles,
         });
 
         // Melodic generation priority (INTENT_ENGINE.md #1+#2):
@@ -307,21 +320,21 @@ export class SymbolicPriorProvider implements GenerationProvider {
         // 3. template melody (Markov fallback)
         const multiVoice = generateMultiVoice(
           doc,
-          options.genre,
+          generationOptions.genre,
           parseInt(symbolicSeed.slice(-8), 36) || 42,
           stepCount,
-          options.key ?? doc.key ?? null,
-          plan.intent.energy,
-          plan.intent.controls.velocityVariation,
-          plan.intent.density,
-          plan.intent.complexity,
-          options.productionProfile,
+          generationOptions.key ?? doc.key ?? null,
+          generationPlan.intent.energy,
+          generationPlan.intent.controls.velocityVariation,
+          generationPlan.intent.density,
+          generationPlan.intent.complexity,
+          generationOptions.productionProfile,
         );
         let notes: Pattern["notes"] = {};
         let melodicSource: "mv" | "prior" | "template" = "template";
         const melodicRoleTrack = (role: "bass" | "chord" | "lead") =>
-          !options.roles || options.roles.includes(role === "chord" ? "chords" : role)
-            ? melodicTrackForRole(doc, options, role)
+          !generationOptions.roles || generationOptions.roles.includes(role === "chord" ? "chords" : role)
+            ? melodicTrackForRole(doc, generationOptions, role)
             : null;
         for (const role of ["bass", "chord", "lead"] as const) {
           const track = melodicRoleTrack(role);
@@ -332,13 +345,13 @@ export class SymbolicPriorProvider implements GenerationProvider {
         if (Object.keys(notes).length > 0) {
           melodicSource = "mv";
         } else if (supportsMelodicPrior) {
-          const melodyRand = forkRandom(`${symbolicSeed}|melody.neural`, "stream");
+          const melodyRand = forkRandom(`${generationOptions.seed}|melody.neural`, "stream");
           // Preferred: embedding-conditioned v2 melodic prior; falls back to
           // the v1 genre one-hot when the v2 model doesn't answer.
           const priorMelody = semantic
-            ? ((await sampleMelodicParts(plan, context, melodyRand, semantic)) ??
-              (await sampleMelodicParts(plan, context, melodyRand)))
-            : await sampleMelodicParts(plan, context, melodyRand);
+            ? ((await sampleMelodicParts(generationPlan, context, melodyRand, semantic)) ??
+              (await sampleMelodicParts(generationPlan, context, melodyRand)))
+            : await sampleMelodicParts(generationPlan, context, melodyRand);
           if (priorMelody) {
             for (const role of ["bass", "chord", "lead"] as const) {
               const track = melodicRoleTrack(role);
@@ -362,7 +375,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           if (semantic && supportsDrumPrior && !v3Unavailable) {
             const featureRows = buildPriorV3GridRows({
               semantic,
-              genre: priorGenreOf(options.genre),
+              genre: priorGenreOf(generationOptions.genre),
               styleId,
               padRoles,
               stepCount,
@@ -391,7 +404,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           }
           if (!run?.ok) {
             const featureRows = buildPriorGridRows({
-              genre: priorGenreOf(options.genre),
+              genre: priorGenreOf(generationOptions.genre),
               styleId,
               stepCount,
               padRoles,
@@ -407,7 +420,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
 
           // Seeded sampling around the learned probabilities: identical plan +
           // model ⇒ identical grid.
-          const rand = forkRandom(`${symbolicSeed}|drums.neural`, "stream");
+          const rand = forkRandom(`${generationOptions.seed}|drums.neural`, "stream");
           for (const [padIndex, pad] of pads.entries()) {
             const row = new Array<number>(stepCount).fill(0);
             for (let step = 0; step < stepCount; step++) {
@@ -420,45 +433,53 @@ export class SymbolicPriorProvider implements GenerationProvider {
             rowsById[pad.id] = row;
           }
           // Anchor floor: the downbeat kick exists even where the prior is shy.
-          if (plan.intent.constraints.preserveAnchors) {
+          if (generationPlan.intent.constraints.preserveAnchors) {
             const kickIndex = padRoles.findIndex((role) => role === "kick");
             if (kickIndex >= 0 && rowsById[pads[kickIndex].id][0] === 0) rowsById[pads[kickIndex].id][0] = 0.9;
           }
         }
 
         const candidate: Pattern = {
-            ...melodicOnly,
-            name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${
-              melodicSource === "mv" ? "+mv" : melodicSource === "prior" ? "+melody" : ""
-            }${semanticUsed ? "+sem" : ""})`,
-            rows: { ...melodicOnly.rows, ...rowsById },
-            ...(notes ? { notes } : {}),
-            generation: {
-              ...(melodicOnly.generation ?? plan.recipe),
-              engineId: this.id,
-              engineVersion: this.version,
-              intentHash: plan.intentHash,
-            },
-          };
+          ...melodicOnly,
+          name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${
+            melodicSource === "mv" ? "+mv" : melodicSource === "prior" ? "+melody" : ""
+          }${semanticUsed ? "+sem" : ""})`,
+          rows: { ...melodicOnly.rows, ...rowsById },
+          ...(notes ? { notes } : {}),
+          generation: {
+            ...(melodicOnly.generation ?? plan.recipe),
+            engineId: this.id,
+            engineVersion: this.version,
+            intentHash: plan.intentHash,
+          },
+        };
 
-        const evaluated = evaluateCandidate(candidate, searchVariant?.validationPlan ?? candidatePlan(plan, symbolicSeed), context);
+        const searched = searchVariant
+          ? applyCandidateSearchFamily(candidate, doc, generationPlan, searchVariant.search)
+          : { pattern: candidate, search: undefined };
+        const evaluated = evaluateCandidate(
+          searched.pattern,
+          searchVariant?.validationPlan ?? candidatePlan(plan, symbolicSeed),
+          context,
+        );
         if (!evaluated) {
-          failures.push(`candidate-${startIndex + offset}:invariant-gate`);
+          failures.push(`candidate-${candidateIndex}:invariant-gate`);
           continue;
         }
         entries.push({
-          candidateIndex: startIndex + offset,
-          seed: symbolicSeed,
+          candidateIndex,
+          seed: generationOptions.seed,
           pattern: evaluated.pattern,
           status: evaluated.status,
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
           source: Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
+          ...(searched.search ? { search: searched.search } : {}),
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        failures.push(`candidate-${startIndex + offset}:prior-error:${reason}`);
+        failures.push(`candidate-${candidateIndex}:prior-error:${reason}`);
       }
     }
     return { entries, failures };

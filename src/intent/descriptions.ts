@@ -29,6 +29,7 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   techno: ["techno", "techno beat", "warehouse", "peak-time"],
   trap: ["trap", "trap beat", "hip-hop", "808 beat"],
   ambient: ["ambient", "atmospheric", "soundscape", "textures"],
+  dnb: ["drum and bass", "dnb", "jungle", "neurofunk", "liquid dnb"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -48,6 +49,14 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   drifting: ["drifting", "floating", "weightless", "slow drift"],
   glitch: ["glitchy", "glitch textures", "stuttering", "micro-edits"],
   organic: ["organic", "natural textures", "earthy", "living sound"],
+  liquid: ["liquid", "liquid grooves", "silky rollers", "smooth summer liquid"],
+  jumpup: ["jump up", "jump-up", "filthy jump up", "wobbly party jump up"],
+  neuro: ["neuro", "neurofunk", "reese-driven", "tearout neuro bass"],
+  roller: ["rollers", "roller groove", "steppy rollers", "deep minimal rollers"],
+  amen: ["amen", "amen breaks", "chopped breaks", "jungle breaks"],
+  dancefloor: ["dancefloor", "festival dnb", "mainstage energy", "party anthem"],
+  twostep: ["two-step", "two step", "steppy stepper", "swing stepper"],
+  jungle: ["jungle", "ragga jungle", "rudeboy pressure", "dancehall jungle"],
 };
 
 const MOOD_WORDS: Record<string, { en: string[]; sk: string[] }> = {
@@ -62,6 +71,7 @@ const TEMPO_WORDS: Record<string, string[]> = {
   techno: ["at 138", "at 145", "at 140", "driving tempo"],
   trap: ["at 140", "at 145", "at 150", "half-time feel"],
   ambient: ["slow", "at 80", "at 90", "spacious tempo"],
+  dnb: ["at 174", "at 176", "at 172", "breakneck tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

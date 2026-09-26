@@ -29,6 +29,68 @@ SAFE smer ─ PERSONAL smer ─ EXPERIMENTAL smer
         ↓ explicitná voľba používateľa zlepší Producer DNA
 ```
 
+### 1.1 Produktové inovácie, ktoré z KYX spravia osobného producenta
+
+Najväčšia príležitosť nie je pridať ďalšie tlačidlo „Generate“, ale spojiť interpretáciu, vyhľadávanie, počúvanie a učenie do jedného producentovho pracovného cyklu. Nasledujúce schopnosti sú produktové návrhy; pri každej odlišujem existujúci základ od práce, ktorú ešte treba urobiť.
+
+#### A. Intent compiler: prompt sa zmení na opraviteľný produkčný kontrakt
+
+Voľný brief sa pred generovaním rozloží na **POVINNÉ**, **PREFERENCIE**, **ZÁKAZY**, **ZACHOVAŤ** a **NEISTÉ**. Používateľ môže opraviť jednotlivý bod bez prepisovania promptu. KYX sa opýta iba vtedy, ak nejednoznačnosť môže zmeniť cieľ alebo ohroziť chránený obsah; inak pokračuje s viditeľným, vratným predpokladom.
+
+**Základ v kóde:** `brief-contract.ts`, `brief-gate.ts`, `text-parser.ts` a `IntentPanel.tsx` už poskytujú kostru. Ďalej treba zlepšiť confidence, konflikty a slovenskú/anglickú golden brief sadu. Parser ani ONNX model nesmú potichu povýšiť odhad na tvrdý fakt.
+
+**Akceptácia:** na verziovanej brief sade meriame zvlášť správnosť extrakcie, pravdivé zobrazenie neistoty a nulové porušenia hard constraints; používateľ vie interpretáciu opraviť pred generation.
+
+#### B. Riadené kreatívne hľadanie namiesto „seed ruletky“
+
+Pri jednom brief-e KYX hľadá niekoľko skutočne odlišných riešení, nie tri takmer rovnaké náhody. **SAFE** drží brief a projekt, **PERSONAL** používa dostatočný explicitný DNA signál (inak prizná cold-start) a **EXPERIMENTAL** skúša kontrolovaný kontrast. Rozdiel musí vzniknúť pri generovaní — napríklad alternatívnym groove alebo melodickou rodinou — nie iba premenovaním kandidáta po rankingu.
+
+Všetky smery používajú rovnaký kontrakt, invariant repair a brief gate. Ak platnú alternatívu nemožno vytvoriť, KYX vysvetlí dôvod namiesto toho, aby kozmetickú zmenu vydával za nový smer.
+
+**Základ v kóde:** `candidate-search.ts`, `candidate-bank.ts`, `providers/local.ts` a `providers/symbolic.ts` už spájajú lane policy s generation/audition cestou. Aktuálny experimental slice zahŕňa alternate-groove a pri vhodnom generovanom lead-e opakovaný hook. Ďalej: personalizovať groove/motif rodiny a pridať kontrolované aranžérske kontrasty.
+
+**Akceptácia:** rozdiel kandidátov je počuteľný aj blind poslucháčom; každý kandidát prejde rovnakými hard gates; seed a verzia policy reprodukujú rovnaký obsah; novota neznižuje brief compliance.
+
+#### C. Producer DNA ako kontextový vkus, nie globálny embedding
+
+Pamäť má zachytiť napríklad „v tomto žánri chcem pri leade viac priestoru“, nie vytvoriť nerozlíšené „mám rád temné beaty“. Dôležitý je žáner/produkčný profil, úloha (pattern, sekcia, song) aj rola. Zhoda s briefom a osobná obľuba sú samostatné signály: používateľ môže vybrať prakticky správny návrh, hoci zvukovo preferuje iný.
+
+Rozšírením je **aktívne zisťovanie vkusu**: keď to neohrozuje brief, systém ponúkne informatívny A/B kontrast na osi, o ktorej si nie je istý (napr. redší vs. hustejší lead). Jedno rozhodnutie tak môže byť užitočnejšie než porovnanie dvoch takmer rovnakých variantov. KYX sa však nepýta po každom kliknutí; ponuka má zmysel iba pri relevantnej neistote.
+
+**Základ v kóde:** `preference-ledger-core.ts`, `preference-ledger.ts`, `personal-ranker.ts` a `rank-candidates.ts` už ukladajú explicitné A/B voľby a počítajú ohraničený kontextový residual. Ďalej treba held-out dôkaz, lepšiu granularitu kontextu/roly a generatívne rodiny, ktoré dokážu preferenciu aj realizovať. „Ani jeden“ diagnostikuje neúspešný brief alebo rodinu; neurčuje víťaza A/B.
+
+**Akceptácia:** na nových kandidátoch model predikuje voľbu používateľa lepšie než globálny selector; pri nedostatku dôkazov sa PERSONAL správa ako cold-start a UI to prizná.
+
+#### D. Cielená revízia ako bezpečný hudobný patch
+
+Pokyn „hook väčší, ale nechaj bicie a 808“ nesmie pregenerovať celý beat. KYX vytvorí potomka vybraného návrhu, ukáže **čo sa zmení** a **čo ostane rovnaké**, dovolí A/B a až potom aplikuje presne vypočutý obsah. Každý návrh nesie rodičovský/content hash, rozsah stôp či sekcií a hash chráneného obsahu. Vetvenie zachová A, aj keď vzniknú B a C.
+
+**Základ v kóde:** candidate audition, `resultForCandidate`, `applyGenerationResultCommand` a stale-project guard už chránia presný výber. `session-context.ts` a `iteration.ts` poskytujú nadväzovanie; plný session graph a všeobecné role/section patch-y sú ďalšia fáza.
+
+**Akceptácia:** before/after diff je pravdivý; chránený obsah má rovnaký UUID-free hash; zmena sa aplikuje jedným undoable commandom; zastaraný návrh sa odmietne a vyžiada nové preview.
+
+#### E. Audio referencia ako sada donorov, nie „skopíruj tento zvuk“
+
+Používateľ si vyberie, čo si má KYX z referencie požičať: groove, energiu, timbre/textúru, harmóniu alebo formu. Každá podporovaná os nesie confidence a pôvod; vypnutá os sa do conditioning nedostane. Textový brief a `ZACHOVAŤ` majú prednosť. Praktický pokyn môže znieť: „vezmi bounce, ale nechaj moju harmóniu aj štruktúru“.
+
+**Základ v kóde:** `audio-reference.ts`, `reference-embedding.ts` a `semantic-conditioning.ts` už tvoria conditioning cestu. Používateľské masky donor osí a test nulového vplyvu vypnutej osi sú plánované; surové referenčné audio sa do DNA ledgeru neukladá.
+
+**Akceptácia:** test pre každú os potvrdí, že zapnutá ovplyvní a vypnutá neovplyvní generation; chýbajúci model ponechá funkčný textový/offline fallback.
+
+#### F. Celoskladbový producent s dôkazmi, nie neurčitým „AI score“
+
+Pri prechode od loopu k skladbe KYX hodnotí vývoj energie, kontrast sekcií, návrat motívu, hustotu a prechody v čase. Namiesto „skladba má 82/100“ povie napríklad: „hook má rovnakú hustotu ako sloha; môžem navrhnúť väčší lift iba pre hook?“ Návrh ostane počuteľný, cielený a potvrdený používateľom.
+
+**Základ v kóde:** `compose.ts`, `song.ts`, `song-audio-review.ts` a spoločný offline renderer tvoria východiskový song flow. Chýba oddelené pattern/section/song feedback učenie, song-level features a blind hodnotenie celých výsledkov.
+
+**Akceptácia:** návrhy zlepšujú blind preferenciu nad baseline; sekčná revízia nemení ostatné sekcie a auditionovaný offline mix zodpovedá aplikovanému obsahu.
+
+#### G. Malý lokálny základ; modely sú voliteľné a mimo audio callbacku
+
+Užitočný beatmaker nemá vyžadovať nový mnohogigabajtový model ani cloud účet. Deterministický parser, generátory, gates a lokálna DNA pamäť tvoria základ. ONNX/sémantické modely sú voliteľná lazy pomoc v Worker-i s timeoutom a fallbackom. MRT2 je samostatný performer; jeho výstup možno zachytiť a zmeniť na bežný editovateľný KYX audio klip. Žiadny model nebeží v audio callbacku ani priamo nemení projekt.
+
+**Akceptácia:** čistá inštalácia bez voliteľných modelov zvládne hlavný workflow offline; veľkosť a latencia modelov sú zmerané; zlyhanie modelu neporuší constraints, deterministický fallback ani audio thread.
+
 ## 2. Čo už kód poskytuje
 
 Tento plán nadväzuje na existujúce moduly; nezačína druhý generátor ani ďalší paralelný UI flow.
@@ -58,16 +120,16 @@ Tento plán nadväzuje na existujúce moduly; nezačína druhý generátor ani �
 
 ### Stav roadmapy podľa kódu
 
-| Oblasť                              | Stav dnes                                    | Čo ešte treba dokázať alebo dorobiť                                                           |
-| ----------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Brief contract a hard gates         | Základ implementovaný                        | Robustnejšie confidence, konflikty a oprava toho, čo parser pochopil.                         |
-| Explicitné lokálne párové voľby     | V1 implementovaná                            | Overiť kvalitu a reprezentatívnosť feedbacku na held-out voľbách.                             |
-| Personal re-ranking                 | V1 + reason-scoped adapters implementované   | Held-out blind dôkaz prínosu oproti globálnemu rankeru; lepšia kontextová/rolová granularita. |
-| Top-3 diverzita                     | Prvý MMR krok implementovaný                 | Kandidátske rodiny musia byť rozdielne už pri generovaní.                                     |
-| SAFE / PERSONAL / EXPERIMENTAL      | Zatiaľ nie ako skutočné generatívne lane-y   | Verzovaná policy a odlišné kandidátske rodiny cez existujúce generátory.                      |
-| Audio referencia s voľbou donor osí | Analýza/conditioning implementované          | Vypínateľné osi a test, že vypnutá os do conditioning vôbec nevstúpi.                         |
-| Referenčný session graph            | Posledný generation/follow-up implementovaný | Vetvenie, návrat na ľubovoľný návrh a bezpečný, vysvetliteľný apply.                          |
-| Song generation a audition          | Základ implementovaný                        | Sekčné/song-level párové hodnotenie a DNA kontext, nie iba patternové voľby.                  |
+| Oblasť                              | Stav dnes                                                                         | Čo ešte treba dokázať alebo dorobiť                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Brief contract a hard gates         | Základ implementovaný                                                             | Robustnejšie confidence, konflikty a oprava toho, čo parser pochopil.                         |
+| Explicitné lokálne párové voľby     | V1 implementovaná                                                                 | Overiť kvalitu a reprezentatívnosť feedbacku na held-out voľbách.                             |
+| Personal re-ranking                 | V1 + reason-scoped adapters implementované                                        | Held-out blind dôkaz prínosu oproti globálnemu rankeru; lepšia kontextová/rolová granularita. |
+| Top-3 diverzita                     | Prvý MMR krok implementovaný                                                      | Kandidátske rodiny musia byť rozdielne už pri generovaní.                                     |
+| SAFE / PERSONAL / EXPERIMENTAL      | Soft-axis + experimental groove/hook; PERSONAL hook pri explicitnom motif signále | Personal groove preference, ďalšie motif/aranžérske rodiny a blind-test prínosu.              |
+| Audio referencia s voľbou donor osí | Analýza/conditioning implementované                                               | Vypínateľné osi a test, že vypnutá os do conditioning vôbec nevstúpi.                         |
+| Referenčný session graph            | Posledný generation/follow-up implementovaný                                      | Vetvenie, návrat na ľubovoľný návrh a bezpečný, vysvetliteľný apply.                          |
+| Song generation a audition          | Základ implementovaný                                                             | Sekčné/song-level párové hodnotenie a DNA kontext, nie iba patternové voľby.                  |
 
 Pred zmenou rankera treba zosúladiť živé validátory, modelový manifest a staršie stavové tvrdenia v `INTENT_ENGINE.md` a `docs/intent-engine-ai-ranker-goal.md`. Žiadny model nedostane označenie „personalizovaný“ len preto, že načíta ONNX súbor alebo dosiahne zhodu s heuristikou.
 
@@ -186,8 +248,8 @@ interface PreferenceObservationV1 {
 
 **Implementácia:**
 
-1. Pridať verzovaný `searchMode`/search policy do generation plánu a provenance. Nepersistovať ho do projektovej schémy, ak ho netreba na obnovenie výsledku.
-2. Vytvárať smermi kontrolované kandidátske rodiny: napr. melodický contour, hustota, syncopation budget, role density a phrase contrast — nie iba iný random seed.
+1. Pridať deterministickú search policy do async audition candidate banku; zapísať lane/policy verziu do kandidátskych metadát a verziu + soft hodnoty do seed-u. Nevytvárať projektovú schema migráciu.
+2. Začať s malým, bezpečným soft-axis slice-om, potom rozšíriť na kontrolované rytmické, melodické a aranžérske kandidátske rodiny — nie iba iný random seed.
 3. Kandidát najprv prejde invariant repair a `brief-gate`; až potom sa hodnotí.
 4. Výber vykonať v poradí: hard constraints → zhoda s briefom → osobný ranker → minimálna rozmanitosť top výsledkov. Diverzitu počítať z normalizovaných hudobných features/content, nie UUID.
 5. Zaviesť diversity-aware výber (napr. MMR alebo prah vzdialenosti), ale nikdy neobetovať brief compliance len kvôli novosti.
@@ -197,9 +259,11 @@ interface PreferenceObservationV1 {
 
 **Hotovo, keď:** top návrhy sa hudobne odlišujú, každý spĺňa hard brief, ranking zostáva deterministický a používateľ dokáže jedným klikom vypočuť/apply presne zvolený kandidát.
 
-**Stav implementácie (2026-09-26):** prvý diversity-aware krok je zapojený do async candidate banku: prvý návrh ostáva víťazom predchádzajúceho rankingu, ďalšie miesta v top 3 vyberá MMR nad štrukturálnymi drum/melodic feature-mi; prompt-fit a batch-relative rozmery sa za novotu nevydávajú. Kandidáti sa neodstraňujú a chýbajúce/neplatné feature vektory vrátia pôvodné deterministické poradie. UI už nezobrazuje interné heuristic/ONNX percentá ako používateľskú známku.
+**Stav implementácie (2026-09-26):** audition candidate bank má prvú end-to-end lane policy. Index 0 ostáva nedotknutý SAFE baseline; ďalšie indexy sa deterministicky striedajú SAFE / PERSONAL / EXPERIMENTAL. PERSONAL premieňa iba explicitné, kontextovo relevantné A/B učenie na malé, ohraničené nudges energie, hustoty, komplexity a variácie; samostatný motif-repetition signál môže pri dostatočnej sile vybrať repeating-hook rodinu pre generovaný lead. Bez použiteľného osobného signálu je lane jasne označený cold-start. EXPERIMENTAL používa malú pevnú sadu seedovaných nudges a — ak používateľ neurčil konkrétny groove a bicie sa generujú — vyberie inú pomenovanú groove rodinu z toho istého žánru; na vhodnom lead-e môže použiť repeating-hook. Používateľ vidí lane a `GROOVE`/`HOOK` označenie; MMR zachová prvého rankovaného víťaza a pred opakovaním lane-u sa pokúsi zastúpiť dostupné smery.
 
-Toto **ešte nie sú tri generatívne lane-y**. SAFE/PERSONAL/EXPERIMENTAL zatiaľ nemajú oddelené candidate families ani explicitné ovládanie v používateľskom flow; MMR iba zvyšuje kontrast medzi platnými návrhmi, ktoré dnešný generátor vytvoril. Ďalším krokom je lane policy s kontrolovaným experimental variation budgetom a rovnakou brief/preserve bránou.
+Každý lane používa nezmenený brief/role/key/length/constraint plan na hard gates a provenance. Soft plan slúži iba generátorovi; candidate seed nesie `search:v1` a konkrétne osové hodnoty pre deterministický replay. Jednoklikový non-audition flow si zatiaľ ponecháva legacy generáciu; policy sa aktivuje pri explicitnom async audition banku. Kandidáti ostávajú v jednej shared banke a nededuplikujú sa podľa lane — identický hudobný obsah nie je umelo udržiavaný ako „odlišná“ voľba.
+
+Toto je **prvý generatívny search slice, nie hotový Producer/SUNO engine**. EXPERIMENTAL vie vytvoriť odlišnú rytmickú rodinu cez iný groove rovnakého žánru a pri generovanom lead-e zreťaziť prvotaktový motív naprieč ďalšími taktmi. PERSONAL teraz dokáže túto hook rodinu vybrať iba pri explicitnom, dostatočne silnom signále preferencie opakovania; pri signále pre novosť ju nevnúti. Ešte sa neučí preferovaný groove a nemá samostatné rodiny pre meniaci sa motif, melodický contour, harmóniu ani aranžérske/section kontrasty. Štyri všeobecné soft osi ostávajú coarse proxy a MMR môže zastúpiť iba kandidátov, ktorých generátory skutočne vytvorili a hard gates prepustili. Ďalší krok: blind listening, osobné groove rodiny a kontrolované section kontrasty.
 
 **Kontrakt lane policy (návrh, nie existujúci typ):**
 

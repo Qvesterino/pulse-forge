@@ -5,7 +5,8 @@
  * unsupported-capability path; recorder persistence is tested separately.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { renderProject } from "../../src/rendering/renderer";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import {
   addRecordedAudioClip,
@@ -23,9 +24,14 @@ import {
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
-import { addAudioTakeClip, createDrumTrack } from "../../src/commands/commands";
+import { addAudioTakeClip, compAudioTakeRange, createDrumTrack } from "../../src/commands/commands";
 import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
+
+vi.mock("../../src/rendering/renderer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/rendering/renderer")>();
+  return { ...actual, renderProject: vi.fn() };
+});
 import { renderWithContext, mockServices } from "../helpers";
 
 const recorderMock = vi.hoisted(() => ({
@@ -378,6 +384,156 @@ describe("arrangement REC wiring", () => {
     const selected = command.execute(withTwoPasses);
     expect(selected.arrangement.takeGroups?.[0]?.activeTakeId).toBe("pass-ui-2");
     expect(audioClipsForPlayback(selected.arrangement).map((clip) => clip.bufferId)).toEqual(["audio.pass-2"]);
+  });
+
+  it("shows source and comp takes as aligned lanes with undoable active-pass controls", () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(base, "lane-ui-group", "lane-ui-pass-1", trackId, "audio.lane-1", 1, 2).execute(
+      base,
+    );
+    const second = addAudioTakeClip(first, "lane-ui-group", "lane-ui-pass-2", trackId, "audio.lane-2", 1, 2).execute(
+      first,
+    );
+    const comp = compAudioTakeRange(second, "lane-ui-group", "lane-ui-pass-2", BAR_TICKS, BAR_TICKS * 2).execute(
+      second,
+    );
+    const services = mockServices(comp);
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
+
+    const lanes = screen.getByRole("region", { name: "Audio take lanes" });
+    const laneQueries = within(lanes);
+    const mainLane = container.querySelector(".arr-lane") as HTMLElement;
+    expect(lanes.querySelectorAll(".arr-audio-take-lane")).toHaveLength(3);
+    expect(lanes.style.width).toBe(mainLane.style.width);
+    expect(laneQueries.getByRole("button", { name: "Activate TAKE 1" })).toHaveAttribute("aria-pressed", "false");
+    expect(laneQueries.getByRole("button", { name: "Activate TAKE 2" })).toHaveAttribute("aria-pressed", "false");
+    expect(laneQueries.getByRole("button", { name: "Activate COMP" })).toHaveAttribute("aria-pressed", "true");
+    expect(lanes.querySelectorAll(".arr-audio-take-lane-segment")).toHaveLength(3);
+    expect(lanes.querySelector(".arr-audio-take-lane-segment")?.getAttribute("style")).toContain(
+      `left: ${container.querySelector<HTMLElement>(".arr-audio-clip")?.style.left}`,
+    );
+
+    fireEvent.click(laneQueries.getByRole("button", { name: "Activate TAKE 2" }));
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("setActiveAudioTake");
+    const selected = command.execute(comp);
+    expect(selected.arrangement.audioClips).toHaveLength(3);
+    expect(audioClipsForPlayback(selected.arrangement).map((clip) => clip.bufferId)).toEqual(["audio.lane-2"]);
+  });
+
+  it("auditions one isolated take lane through offline render and exposes a stop control", async () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(
+      base,
+      "audition-ui-group",
+      "audition-ui-1",
+      trackId,
+      "audio.audition-1",
+      0,
+      1,
+    ).execute(base);
+    const withTwoTakes = addAudioTakeClip(
+      first,
+      "audition-ui-group",
+      "audition-ui-2",
+      trackId,
+      "audio.audition-2",
+      0,
+      1,
+    ).execute(first);
+    const services = mockServices(withTwoTakes);
+    const previewBuffer = vi.fn();
+    Object.assign(services.engine, { previewBuffer });
+    vi.mocked(renderProject).mockResolvedValue({} as AudioBuffer);
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Audition TAKE 1" }));
+
+    await waitFor(() => expect(previewBuffer).toHaveBeenCalledOnce());
+    const renderCall = vi.mocked(renderProject).mock.calls.at(-1)!;
+    const auditionDoc = renderCall[0];
+    const options = renderCall[2];
+    expect(auditionDoc.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.audition-1"]);
+    expect(auditionDoc.arrangement.clips).toEqual([]);
+    expect(auditionDoc.tracks.find((track) => track.id === trackId)?.mute).toBe(false);
+    expect(options).toMatchObject({ mode: "song", sampleRate: 48_000 });
+    expect(screen.getByRole("button", { name: "Stop audition TAKE 1" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop audition TAKE 1" }));
+    expect(services.engine.stopPreview).toHaveBeenCalled();
+  });
+
+  it("selects a take-lane region by dragging and comps it with one undoable edit", () => {
+    const base = createDocWithTracks();
+    const trackId = base.tracks[0].id;
+    const first = addAudioTakeClip(
+      base,
+      "lane-comp-group",
+      "lane-comp-pass-1",
+      trackId,
+      "audio.comp-source-1",
+      0,
+      1,
+    ).execute(base);
+    const withTwoTakes = addAudioTakeClip(
+      first,
+      "lane-comp-group",
+      "lane-comp-pass-2",
+      trackId,
+      "audio.comp-source-2",
+      0,
+      1,
+    ).execute(first);
+    const services = mockServices(withTwoTakes);
+    const { container } = renderWithContext(<ArrangementPanel />, { services });
+
+    fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
+
+    const sourceLane = screen.getByLabelText("TAKE 2 timeline segments");
+    const barWidth = Number.parseFloat(sourceLane.style.backgroundSize);
+    const left = 100;
+    Object.defineProperty(sourceLane, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        x: left,
+        y: 0,
+        left,
+        top: 0,
+        right: left + Number.parseFloat(sourceLane.style.width),
+        bottom: 30,
+        width: Number.parseFloat(sourceLane.style.width),
+        height: 30,
+        toJSON: () => ({}),
+      }),
+    });
+    fireEvent.pointerDown(sourceLane, { button: 0, pointerId: 31, clientX: left + barWidth * 0.75 });
+    fireEvent.pointerMove(sourceLane, { pointerId: 31, clientX: left + barWidth * 0.25 });
+    fireEvent.pointerUp(sourceLane, { pointerId: 31, clientX: left + barWidth * 0.25 });
+
+    const range = within(sourceLane).getByLabelText("Selected comp range from TAKE 2");
+    expect(Number.parseFloat((range as HTMLElement).style.left)).toBeCloseTo(barWidth * 0.25, 5);
+    expect(Number.parseFloat((range as HTMLElement).style.width)).toBeCloseTo(barWidth * 0.5, 5);
+    fireEvent.click(screen.getByRole("button", { name: "Comp selected take-lane range" }));
+
+    const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
+    expect(command?.type).toBe("compAudioTakeRange");
+    const comped = command.execute(withTwoTakes) as typeof withTwoTakes;
+    const group = comped.arrangement.takeGroups?.[0];
+    expect(group?.activeTakeId).toBe(group?.compTakeId);
+    expect(comped.arrangement.audioClips).toHaveLength(3);
+    expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "lane-comp-pass-1")).toHaveLength(1);
+    expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "lane-comp-pass-2")).toHaveLength(1);
+    expect(
+      audioClipsForPlayback(comped.arrangement).map((clip) => [clip.compSourceTakeId, clip.startBar, clip.lengthBars]),
+    ).toEqual([["lane-comp-pass-2", 0.25, 0.5]]);
   });
 
   it("exposes an undoable comp-range action using the transport locators", () => {

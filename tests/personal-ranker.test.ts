@@ -3,6 +3,7 @@ import { FEATURE_COUNT, FEATURE_NAMES } from "../src/ai/features/pattern-feature
 import { createPreferenceObservation } from "../src/intent/preference-ledger";
 import {
   fitPersonalPreferenceModel,
+  inferPersonalSearchBias,
   isPreferenceReasonRankable,
   preferenceFeatureIndicesForReason,
   rerankWithPersonalPreferences,
@@ -42,6 +43,69 @@ function pair(
 }
 
 describe("personal pairwise selector", () => {
+  it("translates explicit density preferences into a bounded deterministic search bias", () => {
+    const densityIndex = FEATURE_NAMES.indexOf("drums.density");
+    const preferred = vector(0.5);
+    const rejected = vector(0.5);
+    preferred[densityIndex] = 0.9;
+    rejected[densityIndex] = 0.1;
+    const observations = [
+      pair("dense-a", preferred, "sparse-a", rejected, "a", 1),
+      pair("dense-b", preferred, "sparse-b", rejected, "a", 2),
+    ];
+
+    const bias = inferPersonalSearchBias(observations, context);
+    expect(bias).not.toBeNull();
+    expect(bias?.density).toBeGreaterThan(0);
+    expect(bias?.density).toBeLessThanOrEqual(0.12);
+    expect(inferPersonalSearchBias(observations, context)).toEqual(bias);
+  });
+
+  it("learns a bounded melodic repetition preference separately from general variation", () => {
+    const repetitionIndex = FEATURE_NAMES.indexOf("melodic.motifRepetition");
+    const noveltyIndex = FEATURE_NAMES.indexOf("melodic.motifNovelty");
+    const preferred = vector(0.5);
+    const rejected = vector(0.5);
+    preferred[repetitionIndex] = 0.9;
+    rejected[repetitionIndex] = 0.1;
+    preferred[noveltyIndex] = 0.1;
+    rejected[noveltyIndex] = 0.9;
+
+    const repetitionObservations = [
+      pair("repetition-a", preferred, "variation-a", rejected, "a", 1, "melody"),
+      pair("repetition-b", preferred, "variation-b", rejected, "a", 2, "melody"),
+    ];
+    const repetitionBias = inferPersonalSearchBias(repetitionObservations, context);
+    expect(repetitionBias?.motifRepetition).toBeGreaterThan(0.025);
+    expect(repetitionBias?.motifRepetition).toBeLessThanOrEqual(0.12);
+
+    const noveltyObservations = [
+      pair("novelty-a", rejected, "repetition-a", preferred, "a", 1, "melody"),
+      pair("novelty-b", rejected, "repetition-b", preferred, "a", 2, "melody"),
+    ];
+    const noveltyBias = inferPersonalSearchBias(noveltyObservations, context);
+    expect(noveltyBias?.motifRepetition).toBeLessThan(0);
+  });
+
+  it("translates explicit groove preference into a bounded syncopation direction", () => {
+    const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
+    const offbeatIndex = FEATURE_NAMES.indexOf("drums.offbeatRatio");
+    const preferred = vector(0.5);
+    const rejected = vector(0.5);
+    preferred[syncopationIndex] = 0.9;
+    rejected[syncopationIndex] = 0.1;
+    preferred[offbeatIndex] = 0.9;
+    rejected[offbeatIndex] = 0.1;
+    const observations = [
+      pair("sync-a", preferred, "straight-a", rejected, "a", 1, "groove"),
+      pair("sync-b", preferred, "straight-b", rejected, "a", 2, "groove"),
+    ];
+
+    const bias = inferPersonalSearchBias(observations, context);
+    expect(bias?.grooveSyncopation).toBeGreaterThan(0.025);
+    expect(bias?.grooveSyncopation).toBeLessThanOrEqual(0.12);
+  });
+
   it("uses global ordering until it has at least two explicit, relevant comparisons", () => {
     const high = vector(0.9);
     const low = vector(0.1);

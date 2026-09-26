@@ -441,6 +441,67 @@ describe("gallery flywheel: plays + remix chain", () => {
   });
 });
 
+describe("gallery Remix-DNA lineage", () => {
+  it("extracts doc lineage into items and annotates children counts", async () => {
+    const { mutateBeat } = await import("../src/gallery/lineage");
+    const { base } = await boot();
+    const parent = createProjectFromTemplate("house");
+    const child = mutateBeat(parent, { prompt: "dark trap 140" }).doc;
+    const grandchild = mutateBeat(child, { sibling: 1 }).doc;
+
+    const publish = (title: string, doc: unknown) =>
+      fetch(`${base}/api/gallery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, code: compressToEncodedURIComponent(JSON.stringify(doc)) }),
+      });
+    expect((await publish("Child Beat", child)).status).toBe(201);
+    expect((await publish("Grandchild Beat", grandchild)).status).toBe(201);
+
+    const feed = (await (await fetch(`${base}/api/gallery`)).json()) as {
+      items: {
+        id: string;
+        title: string;
+        docId: string | null;
+        parentDocId: string | null;
+        rootDocId: string | null;
+        depth: number;
+        childrenCount: number;
+      }[];
+    };
+    const childItem = feed.items.find((i) => i.title === "Child Beat")!;
+    const grandItem = feed.items.find((i) => i.title === "Grandchild Beat")!;
+    expect(childItem.docId).toBe(child.id);
+    expect(childItem.parentDocId).toBe(parent.id);
+    expect(childItem.rootDocId).toBe(parent.id);
+    expect(childItem.depth).toBe(1);
+    expect(childItem.childrenCount).toBe(1);
+    expect(grandItem.parentDocId).toBe(child.id);
+    expect(grandItem.depth).toBe(2);
+    expect(grandItem.childrenCount).toBe(0);
+  });
+
+  it("legacy beats without lineage list clean nulls, and unknown parents are accepted", async () => {
+    const { base } = await boot();
+    const plain = await fetch(`${base}/api/gallery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Plain Beat", code: shareCode() }),
+    });
+    expect(plain.status).toBe(201);
+    const { item } = (await plain.json()) as {
+      item: { id: string; docId: string | null; parentDocId: string | null };
+    };
+    expect(item.parentDocId).toBeNull();
+    expect(typeof item.docId).toBe("string");
+    // Counts are feed annotations, not POST echoes.
+    const feed = (await (await fetch(`${base}/api/gallery`)).json()) as {
+      items: { id: string; childrenCount: number }[];
+    };
+    expect(feed.items.find((i) => i.id === item.id)?.childrenCount).toBe(0);
+  });
+});
+
 describe("gallery intent carry (Fáza B)", () => {
   it("extracts genre + regenerable from the engine writer's provenance shape (generation.intent)", async () => {
     // Regression for the reader/writer seam: attachProvenance stamps

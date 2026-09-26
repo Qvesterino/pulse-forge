@@ -204,7 +204,12 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
     : entry.pattern;
   const quality = generation?.quality;
   const warnings = ["selection:user-audition", `candidate-bank-selected:${entry.candidateIndex}:${entry.source}`];
-  if (entry.search) warnings.push(`search-lane:${entry.search.lane}:${entry.search.mode}`);
+  if (entry.search) {
+    warnings.push(`search-lane:${entry.search.lane}:${entry.search.mode}`);
+    warnings.push(`search-family:${entry.search.family}`);
+    if (entry.search.melodyFamily) warnings.push(`search-melody:${entry.search.melodyFamily}`);
+    if (entry.search.grooveId) warnings.push(`search-groove:${entry.search.grooveId}`);
+  }
   if (quality && !quality.styleAccepted) warnings.push("style-distance-gate-warning");
   const diagnostics = {
     warnings,

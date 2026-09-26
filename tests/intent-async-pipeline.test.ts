@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
-import { generateAsyncResult, generateLocalResult } from "../src/intent/pipeline";
+import { generateAsyncResult, generateLocalResult, resultForCandidate } from "../src/intent/pipeline";
 import { applyGenerationResultCommand } from "../src/commands/commands";
 import { resetRankerClient } from "../src/ai/ranking/ranker-client";
 import type { GenerationResult } from "../src/intent/types";
@@ -50,6 +50,32 @@ describe("generateAsyncResult — canonical pipeline", () => {
     expect(a.plan.intentHash).toBe(b.plan.intentHash);
     expect(hashOf(doc, a)).toBe(hashOf(doc, b));
     expect(a.proposal!.pattern.generation?.outputContentHash).toBe(b.proposal!.pattern.generation?.outputContentHash);
+  });
+
+  it("creates labeled search lanes only for the explicit audition bank and applies the heard candidate", async () => {
+    const doc = createDefaultProject();
+    const bankResult = await generateAsyncResult(doc, INTENT, { includeBank: true });
+    const bank = bankResult.bank ?? [];
+    const lanes = new Set(bank.map((candidate) => candidate.search?.lane));
+
+    expect(lanes).toEqual(new Set(["safe", "personal", "experimental"]));
+    expect(bank.find((candidate) => candidate.search?.lane === "safe")?.seed).toBe(INTENT.seed);
+    expect(bank.find((candidate) => candidate.search?.lane === "personal")?.seed).toContain("search:v1:personal");
+    expect(bank.find((candidate) => candidate.search?.lane === "experimental")?.seed).toContain(
+      "search:v1:experimental",
+    );
+
+    const chosen = bank.find((candidate) => candidate.search?.lane === "experimental");
+    expect(chosen).toBeDefined();
+    const applied = resultForCandidate(bankResult, chosen!.candidateIndex);
+    expect(contentHash(canonicalizePattern(doc, applied.proposal!.pattern))).toBe(
+      contentHash(canonicalizePattern(doc, chosen!.pattern)),
+    );
+    expect(applied.diagnostics.warnings).toContain("search-lane:experimental:experimental");
+    expect(chosen!.search!.family).toBe("soft-axis");
+    expect(chosen!.search!.grooveId).toBeUndefined();
+    expect(applied.diagnostics.warnings).toContain("search-family:soft-axis");
+    expect(applied.diagnostics.warnings.some((warning) => warning.startsWith("search-groove:"))).toBe(false);
   });
 
   it("single-candidate async generation matches the sync fallback path exactly", async () => {

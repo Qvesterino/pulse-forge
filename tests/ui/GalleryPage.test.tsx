@@ -323,3 +323,65 @@ describe("gallery flywheel", () => {
     localStorage.clear();
   });
 });
+
+describe("GalleryPage — Remix-DNA family", () => {
+  function familyFeed() {
+    const root = {
+      id: "g-root",
+      title: "Root Beat",
+      author: "qveen",
+      tags: [],
+      code: code(),
+      bpm: 124,
+      projectName: "house",
+      createdAt: "2026-09-01T10:00:00.000Z",
+      docId: "doc-root",
+      depth: 0,
+      childrenCount: 1,
+    };
+    const child = {
+      id: "g-child",
+      title: "Child Beat",
+      author: "matej",
+      tags: [],
+      code: code(),
+      bpm: 124,
+      projectName: "house",
+      createdAt: "2026-09-01T11:00:00.000Z",
+      docId: "doc-child",
+      parentDocId: "doc-root",
+      rootDocId: "doc-root",
+      depth: 1,
+      childrenCount: 0,
+    };
+    return jsonResponse({ items: [child, root] });
+  }
+
+  it("badges children counts and expands the ancestor/child tree", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(familyFeed()));
+    render(<GalleryPage />);
+    expect(await screen.findByText("Root Beat")).toBeTruthy();
+    // 🧬 badge with the server count on the parent card.
+    expect(screen.getByTitle("1 published children of this beat")).toBeTruthy();
+    // Family toggle lists the ancestor above and the child below (feed
+    // order: child card first, root card second).
+    const toggles = screen.getAllByRole("button", { name: /FAMILY/ });
+    expect(toggles).toHaveLength(2);
+    fireEvent.click(toggles[0]); // child card → ancestor
+    expect(screen.getByRole("group", { name: "Ancestors" })).toHaveTextContent("Root Beat");
+    fireEvent.click(toggles[1]); // root card → children
+    expect(screen.getByRole("group", { name: "Children" })).toHaveTextContent("Child Beat");
+    // Family links open beats in the studio.
+    const ancestorLink = screen.getByRole("group", { name: "Ancestors" }).querySelector("a")!;
+    expect(ancestorLink.getAttribute("href")).toContain("?import=");
+    expect(ancestorLink.getAttribute("target")).toBe("_blank");
+  });
+
+  it("stays quiet on beats without lineage", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(feedResponse()));
+    render(<GalleryPage />);
+    expect(await screen.findByText("Midnight 808")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /FAMILY/ })).toBeNull();
+    expect(screen.queryByText(/🧬/)).toBeNull();
+  });
+});

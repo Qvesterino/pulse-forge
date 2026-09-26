@@ -37,6 +37,10 @@ export interface PersonalSearchBias {
   density: number;
   complexity: number;
   variation: number;
+  /** Positive values favor recurring melodic motifs; negative values favor novelty. */
+  motifRepetition: number;
+  /** Positive values favor syncopated grooves; negative values favor straighter grooves. */
+  grooveSyncopation: number;
   evidenceCount: number;
 }
 
@@ -104,6 +108,14 @@ const SEARCH_AXES = {
     ["drums.barRepetition", -1],
     ["melodic.motifRepetition", -1],
     ["melodic.motifNovelty", 1],
+  ],
+  motifRepetition: [
+    ["melodic.motifRepetition", 1],
+    ["melodic.motifNovelty", -1],
+  ],
+  grooveSyncopation: [
+    ["drums.syncopation", 1],
+    ["drums.offbeatRatio", 1],
   ],
 } as const;
 
@@ -248,9 +260,18 @@ export function inferPersonalSearchBias(
     density: nudge("density"),
     complexity: nudge("complexity"),
     variation: nudge("variation"),
+    motifRepetition: nudge("motifRepetition"),
+    grooveSyncopation: nudge("grooveSyncopation"),
     evidenceCount: Math.max(...models.map((model) => model.comparisonCount)),
   };
-  return [bias.energy, bias.density, bias.complexity, bias.variation].some((value) => Math.abs(value) > 1e-8)
+  return [
+    bias.energy,
+    bias.density,
+    bias.complexity,
+    bias.variation,
+    bias.motifRepetition,
+    bias.grooveSyncopation,
+  ].some((value) => Math.abs(value) > 1e-8)
     ? bias
     : null;
 }

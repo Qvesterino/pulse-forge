@@ -61,6 +61,12 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b/, "house"],
   [/\bbaile funk\b|\bfunk mandel\w*|\bbrazilian phonk\b|\bbr phonk\b/, "phonk"],
   [/\bneurofunk\b|\bneuro\b/, "dnb"],
+  // DnB sub-genre sweep — all roads into dnb (own grooves + kit + song form)
+  [/\bjump ?up\b|\bjumpup\b/, "dnb"],
+  [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
+  [/\bragga(?: jungle)?\b|\braggajungle\b|\bdancehall dnb\b/, "dnb"],
+  [/\bhalftime (?:dnb|drum ?n ?bass|jungle)\b|\b(?:dnb|jungle) halftime\b/, "dnb"],
+  [/\bminimal dnb\b|\bdeep dnb\b|\bdeep drum ?n ?bass\b/, "dnb"],
   [/\bhard groove\b/, "techno"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
@@ -156,6 +162,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bbouncy\b|\bbounce\b/, "bouncy"],
   [/\bdrifting\b|\bdrift\b|\bplavu?j/, "drifting"],
   [/\bliquid\b|\blikvid\b/, "liquid"],
+  // DnB two-step MUST precede the generic UKG 2-step below — "two step dnb"
+  // is dnb.twostep, plain "two step" stays UK garage.
+  [/\b(?:two step|2.?step|dvojkrok|dvojtakt)(?: dnb| drum ?n ?bass| jungle)\b|\b(?:dnb|jungle) (?:two step|2.?step)\b/, "twostep"],
+  [/\bjump ?up\b|\bjumpup\b/, "jumpup"],
   [/\b2.?step\b|\btwo step\b|\bdvoj(?:krok|taktn)/, "ukg"],
   [/\bhard groove\b/, "driving"],
   [/\bneurofunk\b|\bneuro\b/, "neuro"],

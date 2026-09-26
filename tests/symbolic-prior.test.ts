@@ -11,6 +11,7 @@ import { planGeneration } from "../src/intent/plan";
 import { normalizeIntent } from "../src/intent/normalize";
 import { symbolicPriorProvider, symbolicWanted } from "../src/intent/providers/symbolic";
 import { rankCandidateBank } from "../src/intent/candidate-bank";
+import { STEP_TICKS } from "../src/project-model/types";
 
 // The prior worker is an ORT/Web-Worker runtime — unit tests stub the client
 // with deterministic probabilities. The REAL model artifact is validated by
@@ -170,6 +171,64 @@ describe("symbolic prior provider", () => {
       // melodic engine output preserved
       expect(Object.keys(entry.pattern.notes ?? {}).length).toBeGreaterThan(0);
     }
+  });
+
+  it("applies the shared search-lane policy while retaining the original intent provenance", async () => {
+    const plan = planGeneration(intent, doc);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      3,
+      true,
+    );
+
+    expect(failures).toEqual([]);
+    expect(entries.map((entry) => entry.search?.lane)).toEqual(["safe", "personal"]);
+    expect(entries[0].candidateIndex).toBe(3);
+    expect(entries[0].seed).toBe(plan.symbolicSeeds[0]);
+    expect(entries[1].seed).toContain("search:v1:personal");
+    for (const entry of entries) {
+      expect(entry.pattern.generation?.intent).toEqual(plan.intent);
+      expect(entry.status === "accepted" || entry.status === "repaired").toBe(true);
+    }
+  });
+
+  it("uses the selected alternate groove for symbolic candidates without changing validation provenance", async () => {
+    const plan = planGeneration(normalizeIntent({ ...intent, length: 32 }), doc);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      2,
+      true,
+    );
+
+    expect(failures).toEqual([]);
+    expect(entries).toHaveLength(2);
+    const experimental = entries.find((entry) => entry.search?.lane === "experimental");
+    expect(experimental?.search?.family).toBe("alternate-groove");
+    expect(experimental?.search?.melodyFamily).toBe("repeating-hook");
+    expect(experimental?.search?.grooveId).not.toBe(plan.groove.id);
+    expect(experimental?.pattern.generation?.grooveId).toBe(experimental?.search?.grooveId);
+    expect(experimental?.pattern.generation?.intent).toEqual(plan.intent);
+    expect(experimental?.status === "accepted" || experimental?.status === "repaired").toBe(true);
+
+    const leadTrackIds = new Set(plan.rolePlans.lead.targetTrackIds);
+    const targetInstrumentTracks = doc.tracks.filter(
+      (track) => track.kind === "instrument" && leadTrackIds.has(track.id),
+    );
+    expect(targetInstrumentTracks.length).toBeGreaterThan(0);
+    const leadTrack =
+      targetInstrumentTracks.find((track) => track.name.toLowerCase().includes("lead")) ??
+      targetInstrumentTracks[2 % targetInstrumentTracks.length];
+    expect(leadTrack).toBeDefined();
+    const leadNotes = experimental?.pattern.notes?.[leadTrack!.id] ?? [];
+    const barTicks = 16 * STEP_TICKS;
+    const motifInBar = (bar: number) =>
+      leadNotes
+        .filter((note) => note.start >= bar * barTicks && note.start < (bar + 1) * barTicks)
+        .map(({ start, pitch, duration, velocity }) => ({ start: start - bar * barTicks, pitch, duration, velocity }));
+    expect(motifInBar(0).length).toBeGreaterThan(0);
+    expect(motifInBar(1)).toEqual(motifInBar(0));
   });
 
   it("is deterministic for the same plan and stubbed prior", async () => {

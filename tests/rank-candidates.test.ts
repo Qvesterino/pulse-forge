@@ -230,6 +230,24 @@ describe("candidate-bank creative diversity", () => {
     expect(new Set(diverse)).toEqual(new Set(ranked));
   });
 
+  it("represents SAFE, PERSONAL and EXPERIMENTAL before repeating a lane", () => {
+    const laneRanked = [
+      { candidateIndex: 0, contentHash: "best", search: { lane: "safe" } },
+      { candidateIndex: 1, contentHash: "safe-again", search: { lane: "safe" } },
+      { candidateIndex: 2, contentHash: "personal", search: { lane: "personal" } },
+      { candidateIndex: 3, contentHash: "experimental", search: { lane: "experimental" } },
+    ];
+    const laneFeatures = new Map(features);
+    laneFeatures.set("safe-again", vector(0.48));
+    laneFeatures.set("personal", vector(0.1));
+    laneFeatures.set("experimental", vector(0.9));
+    const diverse = diversifyCandidateOrder(laneRanked, laneFeatures);
+    expect(diverse[0].candidateIndex).toBe(0);
+    expect(new Set(diverse.slice(0, 3).map((candidate) => candidate.search.lane))).toEqual(
+      new Set(["safe", "personal", "experimental"]),
+    );
+  });
+
   it("measures structural distance without letting prompt-fit dimensions fake novelty", () => {
     const baseline = vector(0.5, 0.2);
     const intentOnlyChange = vector(0.5, 0.95);

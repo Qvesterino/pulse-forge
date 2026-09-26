@@ -23,6 +23,7 @@ import { reviseSection, replacePatternInPlaceCommand, applySongCommand, type Son
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
+import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
@@ -1195,6 +1196,44 @@ export function IntentPanel() {
       setSongBusy(false);
     }
   };
+  // Remix-DNA MUTATE — one click forks the CURRENT beat into a child project
+  // (same seed family, small deterministic variation) and opens it. The
+  // sibling counter keeps same-session children distinct; replaceDoc starts
+  // a fresh undo history for the newborn (autosave persists it as its own
+  // project). Stale previews reference the old doc, so they are dropped.
+  const [mutateBusy, setMutateBusy] = useState(false);
+  const mutateSiblingRef = useRef(0);
+  const mutate = () => {
+    if (busy || songBusy || mutateBusy) return;
+    setMutateBusy(true);
+    setError(null);
+    try {
+      const current = services.store.getDoc();
+      const {
+        doc: child,
+        variedPatterns,
+        lineage,
+      } = mutateBeat(current, {
+        amount: 0.1,
+        sibling: mutateSiblingRef.current++,
+        prompt: text.trim() || null,
+      });
+      stopAudition();
+      setPlayingIndex(null);
+      setBankResult(null);
+      setSongDraft(null);
+      songBufferRef.current = null;
+      services.store.replaceDoc(child);
+      setStatus(
+        `🧬 Mutate #${lineage.depth} — child of "${current.name}" · ${variedPatterns} patterns varied · same seed family. Tweak + GENERATE, or publish it.`,
+      );
+      setJustApplied(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMutateBusy(false);
+    }
+  };
   const toggleSongAudition = () => {
     if (songPlaying) {
       stopAudition();
@@ -1604,6 +1643,15 @@ export function IntentPanel() {
         >
           {songBusy ? "BUILDING…" : "♪ SONG"}
         </button>
+        <button
+          type="button"
+          className="btn intent-mutate-btn"
+          disabled={busy || songBusy || mutateBusy}
+          onClick={() => mutate()}
+          title="Remix-DNA mutate: fork the current beat into a child project — same seed family, small variation, fresh undo history"
+        >
+          {mutateBusy ? "MUTATING…" : "🧬 MUTATE"}
+        </button>
         <label
           className="intent-monitor-toggle"
           title="Hear yourself through the app — HEADPHONES ONLY (speakers feed back into the mic)"
@@ -1833,6 +1881,11 @@ export function IntentPanel() {
           ))}
         </div>
       )}
+      {candidates && candidates.length > 1 && (
+        <div className="intent-detected" aria-label="Candidate ranking explanation">
+          Poradie zohľadňuje plnenie briefu aj mieru hudobnej odlišnosti; nejde o objektívnu známku.
+        </div>
+      )}
       {candidates && candidates.length > 0 && (
         <div className="intent-candidates" aria-label="Candidate bank">
           {candidates.map((candidate) => {
@@ -1857,17 +1910,17 @@ export function IntentPanel() {
                   {candidate.search && (
                     <span
                       className={`intent-candidate-lane ${candidate.search.lane}`}
-                      title={`Search policy: ${candidate.search.mode}`}
+                      title={`Search policy: ${candidate.search.mode}; family: ${candidate.search.family}${
+                        candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
+                      }${candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""}`}
                     >
                       {candidate.search.lane.toUpperCase()}
+                      {candidate.search.grooveId && " · GROOVE"}
+                      {candidate.search.melodyFamily === "repeating-hook" && " · HOOK"}
                     </span>
                   )}
                   {isWinner && <span className="intent-candidate-win">★ best</span>}
                   {candidate.status === "repaired" && <span className="intent-candidate-fixed">fixed</span>}
-                  <span className="intent-candidate-score" title="heuristic / ONNX score">
-                    {Math.round(candidate.score * 100)}%
-                    {candidate.modelScore != null ? ` · ${Math.round(candidate.modelScore * 100)}%` : ""}
-                  </span>
                 </span>
                 <button
                   type="button"

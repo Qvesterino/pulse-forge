@@ -25,6 +25,16 @@ export interface GalleryItem {
   remixCount?: number;
   /** Present when this beat was published as a remix of another beat. */
   parentId?: string | null;
+  /** Project doc id extracted server-side from the share code. */
+  docId?: string | null;
+  /** Doc id of the direct Remix-DNA parent (may be unpublished). */
+  parentDocId?: string | null;
+  /** Doc id of the family tree root. */
+  rootDocId?: string | null;
+  /** Generations below the root (root = 0). */
+  depth?: number;
+  /** How many published beats carry this one's doc id as their parent. */
+  childrenCount?: number;
   /** Intent genre extracted server-side from the pattern provenance (B3). */
   genre?: string | null;
   /** True when the beat carries an intent snapshot a studio can regenerate from (B1). */

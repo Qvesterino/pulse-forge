@@ -21,6 +21,7 @@ import {
   type RemixParent,
 } from "./galleryApi";
 import { buildRemix, remixTagsOf } from "./remix";
+import { buildFamily } from "./family";
 import { funnelEvent } from "../services/funnel";
 import { randomRoomId } from "../collab/collabShared";
 import { appUrl } from "../shared/mountBase";
@@ -190,6 +191,7 @@ export function GalleryPage() {
           <ErrorBoundary key={item.id} panel="gallery-card">
             <GalleryCard
               item={item}
+              items={feed.kind === "ready" ? feed.items : []}
               playing={playingId === item.id}
               onTogglePlay={() => setPlayingId(playingId === item.id ? null : item.id)}
               onTagClick={(tag) => setFilter(filter === tag ? null : tag)}
@@ -209,18 +211,22 @@ export function GalleryPage() {
 
 function GalleryCard({
   item,
+  items,
   playing,
   onTogglePlay,
   onTagClick,
   onFork,
 }: {
   item: GalleryItem;
+  /** Full feed — family links resolve even through filtered-out relatives. */
+  items: GalleryItem[];
   playing: boolean;
   onTogglePlay: () => void;
   onTagClick: (tag: string) => void;
   onFork: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [familyOpen, setFamilyOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("spam or misleading content");
   const [reportStatus, setReportStatus] = useState<string | null>(null);
@@ -233,6 +239,9 @@ function GalleryCard({
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const myHandle = creatorHandle();
   const isMine = myHandle !== "" && item.author.toLowerCase() === myHandle.toLowerCase();
+  // Remix-DNA family (built from doc lineage inside each share code).
+  const family = useMemo(() => buildFamily(items, item), [items, item]);
+  const familySize = family.ancestors.length + family.children.length;
 
   const copyLink = async () => {
     try {
@@ -346,8 +355,8 @@ function GalleryCard({
           </span>
         </div>
       </div>
-      {(plays > 0 || (item.remixCount ?? 0) > 0) && (
-        <div className="gallery-card-stats" aria-label="Play and remix counts">
+      {(plays > 0 || (item.remixCount ?? 0) > 0 || (item.childrenCount ?? 0) > 0) && (
+        <div className="gallery-card-stats" aria-label="Play, remix and family counts">
           {plays > 0 && (
             <span className="gallery-stat" title={`${plays} plays`}>
               ▶ {formatCount(plays)}
@@ -356,6 +365,11 @@ function GalleryCard({
           {(item.remixCount ?? 0) > 0 && (
             <span className="gallery-stat" title={`${item.remixCount} remixes of this beat`}>
               🎸 {formatCount(item.remixCount ?? 0)} remix{(item.remixCount ?? 0) === 1 ? "" : "es"}
+            </span>
+          )}
+          {(item.childrenCount ?? 0) > 0 && (
+            <span className="gallery-stat" title={`${item.childrenCount} published children of this beat`}>
+              🧬 {formatCount(item.childrenCount ?? 0)}
             </span>
           )}
         </div>
@@ -413,6 +427,17 @@ function GalleryCard({
         >
           FORK 🎸
         </button>
+        {familySize > 0 && (
+          <button
+            type="button"
+            className="gallery-fork"
+            aria-expanded={familyOpen}
+            title="Remix-DNA family: ancestors above, published children below"
+            onClick={() => setFamilyOpen((open) => !open)}
+          >
+            🧬 FAMILY{(item.childrenCount ?? 0) > 0 ? ` ${item.childrenCount}` : ""}
+          </button>
+        )}
         <button type="button" className="gallery-copylink" onClick={() => void copyLink()}>
           {copied ? "LINK COPIED ✓" : "COPY LINK"}
         </button>
@@ -428,6 +453,46 @@ function GalleryCard({
           REPORT
         </button>
       </div>
+      {familyOpen && familySize > 0 && (
+        <div className="gallery-family" role="group" aria-label={`Family of ${item.title}`}>
+          {family.ancestors.length > 0 && (
+            <div className="gallery-family-row" role="group" aria-label="Ancestors">
+              <span className="gallery-family-kicker">↑ ancestors</span>
+              {family.ancestors.map((relative) => (
+                <a
+                  key={relative.id}
+                  className="gallery-copylink"
+                  href={shareAppUrl(relative.code, location.origin)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${relative.title} by ${relative.author} in the studio`}
+                >
+                  {relative.title}
+                </a>
+              ))}
+            </div>
+          )}
+          {family.children.length > 0 && (
+            <div className="gallery-family-row" role="group" aria-label="Children">
+              <span className="gallery-family-kicker">
+                ↓ {family.children.length} child{family.children.length === 1 ? "" : "ren"}
+              </span>
+              {family.children.map((relative) => (
+                <a
+                  key={relative.id}
+                  className="gallery-copylink"
+                  href={shareAppUrl(relative.code, location.origin)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${relative.title} by ${relative.author} in the studio`}
+                >
+                  {relative.title}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {reportOpen && (
         <div className="gallery-report" role="group" aria-label={`Report ${item.title}`}>
           <label>

@@ -832,7 +832,31 @@
   text-overflow: ellipsis;
 }
 
-/* ---------- Gallery flywheel: stats, fork, remix chip ---------- */
+/* ---------- Gallery flywheel: stats, fork, remix chip, DNA family ---------- */
+
+.gallery-family {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raise);
+}
+
+.gallery-family-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.gallery-family-kicker {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
 
 .gallery-card-stats {
   display: flex;

@@ -180,11 +180,33 @@ export function decodeShareCodeMeta(code) {
         }
       }
     }
+    // Remix-DNA family link (schema v3 `lineage`): sanitized doc ids so the
+    // feed can render a family tree without decoding the code again. A child
+    // may be published while its parent never is — parentDocId is stored
+    // as-is, never required to resolve.
+    let lineage = null;
+    const raw = parsed.lineage;
+    if (raw && typeof raw === "object") {
+      const idOk = (v) => typeof v === "string" && v.length > 0 && v.length <= 128;
+      if (idOk(raw.rootId)) {
+        lineage = {
+          parentDocId:
+            raw.parentId === null || raw.parentId === undefined ? null : idOk(raw.parentId) ? raw.parentId : null,
+          rootDocId: raw.rootId,
+          depth:
+            typeof raw.depth === "number" && Number.isInteger(raw.depth) && raw.depth >= 0 && raw.depth <= 1000
+              ? raw.depth
+              : 0,
+        };
+      }
+    }
     return {
       bpm: typeof parsed.bpm === "number" && parsed.bpm >= 20 && parsed.bpm <= 300 ? Math.round(parsed.bpm) : null,
       projectName: typeof parsed.name === "string" ? cleanText(parsed.name, 64) : "",
       genre,
       regenerable,
+      docId: typeof parsed.id === "string" && parsed.id.length > 0 && parsed.id.length <= 128 ? parsed.id : null,
+      lineage,
     };
   } catch {
     return null;
@@ -222,7 +244,19 @@ class GalleryStore {
         remixCounts.set(item.parentId, (remixCounts.get(item.parentId) ?? 0) + 1);
       }
     }
-    return [...this.items].reverse().map((item) => ({ ...item, remixCount: remixCounts.get(item.id) ?? 0 }));
+    // Remix-DNA family counts (children per parent DOC id) — same trick for
+    // the 🧬 badge. Old items without lineage simply count zero.
+    const childrenCounts = new Map();
+    for (const item of this.items) {
+      if (typeof item.parentDocId === "string") {
+        childrenCounts.set(item.parentDocId, (childrenCounts.get(item.parentDocId) ?? 0) + 1);
+      }
+    }
+    return [...this.items].reverse().map((item) => ({
+      ...item,
+      remixCount: remixCounts.get(item.id) ?? 0,
+      childrenCount: typeof item.docId === "string" ? (childrenCounts.get(item.docId) ?? 0) : 0,
+    }));
   }
 
   find(id) {
@@ -256,6 +290,12 @@ class GalleryStore {
       genre: meta.genre,
       regenerable: meta.regenerable === true,
       parentId,
+      // Remix-DNA family link, extracted from the code (schema v3 lineage).
+      // parentDocId is stored as-is: the parent beat may never be published.
+      docId: meta.docId,
+      parentDocId: meta.lineage ? meta.lineage.parentDocId : null,
+      rootDocId: meta.lineage ? meta.lineage.rootDocId : null,
+      depth: meta.lineage ? meta.lineage.depth : 0,
       plays: 0,
       createdAt: new Date().toISOString(),
     };

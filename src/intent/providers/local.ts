@@ -8,7 +8,7 @@ import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
 import { rankerMode } from "../../ai/ranking/ranker-client";
 import { symbolicPriorProvider, symbolicWanted } from "./symbolic";
 import { createFallbackPattern } from "../quality";
-import { candidateSearchVariant } from "../candidate-search";
+import { applyCandidateSearchFamily, candidateSearchVariant } from "../candidate-search";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
 import { inferPersonalSearchBias } from "../personal-ranker";
 import type {
@@ -76,12 +76,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
       const generationPlan = variant?.generationPlan ?? currentPlan;
       const reasons: string[] = [];
       try {
-        const evaluated = evaluateCandidate(
-          this.generator(context.project, generationPlan.options),
-          currentPlan,
-          context,
-          reasons,
-        );
+        const generated = this.generator(context.project, generationPlan.options);
+        const prepared = variant
+          ? applyCandidateSearchFamily(generated, context.project, generationPlan, variant.search)
+          : { pattern: generated, search: undefined };
+        const evaluated = evaluateCandidate(prepared.pattern, currentPlan, context, reasons);
         if (!evaluated) {
           failures.push(`candidate-${candidateIndex}:${reasons.length > 0 ? reasons.join("+") : "invariant-gate"}`);
           continue;
@@ -94,7 +93,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
-          ...(variant ? { search: variant.search } : {}),
+          ...(prepared.search ? { search: prepared.search } : {}),
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
@@ -167,6 +166,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
     plan: GenerationPlan,
     context: GenerationContext,
     signal?: AbortSignal,
+    searchLanes = true,
   ): Promise<GenerationRanked> {
     if (signal?.aborted) throw new DOMException("Generation aborted", "AbortError");
     // Genuinely single-candidate plans have no bank to rank — take the sync
@@ -189,14 +189,23 @@ export class LocalDeterministicProvider implements GenerationProvider {
       };
     }
     const effectiveKey = plan.options.key ?? context.project.key;
-    const { candidates: templateCandidates, failures, candidateSeeds } = this.collectCandidates(plan, context, true);
+    const {
+      candidates: templateCandidates,
+      failures,
+      candidateSeeds,
+    } = this.collectCandidates(plan, context, searchLanes);
     // Symbolic-prior candidates (T2): sampled from the ONNX drum prior, they
     // enter the SAME bank and cross the SAME invariant/repair/ranking gates.
     // Every failure path only SHRINKS the bank — generation never blocks on
     // the prior.
     let candidates = templateCandidates;
     if (symbolic) {
-      const collected = await symbolicPriorProvider.collectCandidates(plan, context, candidateSeeds.length, true);
+      const collected = await symbolicPriorProvider.collectCandidates(
+        plan,
+        context,
+        candidateSeeds.length,
+        searchLanes,
+      );
       if (collected.entries.length > 0) {
         candidates = [...templateCandidates, ...collected.entries];
       }
@@ -329,7 +338,9 @@ export class LocalDeterministicProvider implements GenerationProvider {
   }
 
   async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
-    const { proposal } = await this.generateRanked(plan, context, signal);
+    // The compact non-audition path preserves legacy one-click behavior. The
+    // SAFE/PERSONAL/EXPERIMENTAL search is reserved for the explicit bank UI.
+    const { proposal } = await this.generateRanked(plan, context, signal, false);
     return proposal;
   }
 }

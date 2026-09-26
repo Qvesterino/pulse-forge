@@ -4,6 +4,7 @@ import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
 import { normalizeIntent } from "../../src/intent/normalize";
 import { rememberGeneration } from "../../src/intent/session-context";
+import type { ProjectDocument } from "../../src/project-model/types";
 
 describe("IntentPanel", () => {
   it("renders the textarea and disabled GENERATE button initially", () => {
@@ -60,6 +61,39 @@ describe("IntentPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/patrí inému projektu/i);
     expect(rendered.services.store.execute).not.toHaveBeenCalled();
     rememberGeneration({ text: "", intent, candidates: [], appliedIndex: null, docId: doc.id, at: 0 });
+  });
+});
+
+describe("IntentPanel — Remix-DNA MUTATE", () => {
+  it("forks the current beat into a stamped child project", () => {
+    const rendered = renderWithContext(<IntentPanel />);
+    const before = rendered.services.store.getDoc();
+    fireEvent.click(screen.getByRole("button", { name: /MUTATE/i }));
+    const replaceDoc = rendered.services.store.replaceDoc as ReturnType<typeof vi.fn>;
+    expect(replaceDoc).toHaveBeenCalledTimes(1);
+    const child = replaceDoc.mock.calls[0][0] as ProjectDocument;
+    expect(child.id).not.toBe(before.id);
+    expect(child.lineage?.parentId).toBe(before.id);
+    expect(child.lineage?.rootId).toBe(before.id);
+    expect(child.lineage?.depth).toBe(1);
+    expect(screen.getByRole("status")).toHaveTextContent(/Mutate #1/);
+  });
+
+  it("second mutate in the session makes a distinct sibling", () => {
+    const rendered = renderWithContext(<IntentPanel />);
+    const before = rendered.services.store.getDoc();
+    const replaceDoc = rendered.services.store.replaceDoc as ReturnType<typeof vi.fn>;
+    fireEvent.click(screen.getByRole("button", { name: /MUTATE/i }));
+    fireEvent.click(screen.getByRole("button", { name: /MUTATE/i }));
+    expect(replaceDoc).toHaveBeenCalledTimes(2);
+    const first = replaceDoc.mock.calls[0][0] as ProjectDocument;
+    const second = replaceDoc.mock.calls[1][0] as ProjectDocument;
+    // Same parent both times (mock store never swaps), different takes: the
+    // vary seeds carry the sibling index, so the rolls cannot coincide.
+    expect(first.lineage?.parentId).toBe(before.id);
+    expect(second.lineage?.parentId).toBe(before.id);
+    const seedsOf = (d: ProjectDocument) => d.patterns.map((p) => p.assist?.seed ?? null);
+    expect(seedsOf(first)).not.toEqual(seedsOf(second));
   });
 });
 

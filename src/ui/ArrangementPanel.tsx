@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   useArrangement,
   useArrangementCapture,
@@ -98,6 +99,7 @@ import {
 } from "../audio-engine/PcmMicRecorder";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
+import { createAudioTakeAuditionDoc } from "../rendering/take-audition";
 import { encodeWav } from "../rendering/wav";
 import {
   addRecordedAudioClips,
@@ -249,6 +251,30 @@ interface TransitionDraft {
   cueAssetId: string;
 }
 
+interface AudioTakeLaneRange {
+  groupId: string;
+  sourceTakeId: string;
+  startTick: number;
+  endTick: number;
+}
+
+interface AudioTakeLaneDrag extends AudioTakeLaneRange {
+  pointerId: number;
+  currentTick: number;
+  anchorClientX: number;
+  moved: boolean;
+}
+
+interface AudioTakeAudition {
+  groupId: string;
+  takeId: string;
+  state: "rendering" | "playing";
+}
+
+interface AudioTakeAuditionRequest extends AudioTakeAudition {
+  controller: AbortController;
+}
+
 export function ArrangementPanel() {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ArrangementPanel reads scenes, the
@@ -307,6 +333,12 @@ export function ArrangementPanel() {
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
   const runtime = useSceneRuntimeState();
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
+  const [showAudioTakeLanes, setShowAudioTakeLanes] = useState(false);
+  const [audioTakeLaneRange, setAudioTakeLaneRange] = useState<AudioTakeLaneRange | null>(null);
+  const audioTakeLaneDragRef = useRef<AudioTakeLaneDrag | null>(null);
+  const suppressTakeLaneClickRef = useRef(false);
+  const [audioTakeAudition, setAudioTakeAudition] = useState<AudioTakeAudition | null>(null);
+  const audioTakeAuditionRef = useRef<AudioTakeAuditionRequest | null>(null);
   const selectedAudioClip = (arrangement.audioClips ?? []).find((clip) => clip.id === selectedAudioClipId) ?? null;
   const selectedAudioTakeGroup = selectedAudioClip?.takeGroupId
     ? arrangement.takeGroups?.find((group) => group.id === selectedAudioClip.takeGroupId)
@@ -325,6 +357,11 @@ export function ArrangementPanel() {
         ),
       )
     : [];
+  useEffect(() => {
+    setAudioTakeLaneRange(null);
+    audioTakeLaneDragRef.current = null;
+    suppressTakeLaneClickRef.current = false;
+  }, [selectedAudioTakeGroup?.id, showAudioTakeLanes]);
   // ── Timeline recording: arm a track, REC an audio input straight into the song ──
   const [armedTrackId, setArmedTrackId] = useState<string>("");
   const [armedSecondTrackId, setArmedSecondTrackId] = useState<string>("");
@@ -1260,6 +1297,162 @@ export function ArrangementPanel() {
       return false;
     }
   };
+
+  const compAudioRange = (groupId: string, sourceTakeId: string, startTick: number, endTick: number): void => {
+    try {
+      if (execute(compAudioTakeRange(services.store.doc, groupId, sourceTakeId, startTick, endTick))) {
+        setAudioTakeLaneRange(null);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Comp range failed");
+    }
+  };
+
+  const takeLaneTickAtPointer = (event: ReactPointerEvent<HTMLDivElement>): number => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = rect.width || totalBars * barWidth;
+    const left = rect.width ? rect.left : 0;
+    const x = Math.max(0, Math.min(width, event.clientX - left));
+    return (x / Math.max(1, barWidth)) * BAR_TICKS;
+  };
+
+  const startTakeLaneRangeDrag = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    groupId: string,
+    sourceTakeId: string,
+  ): void => {
+    if (event.button !== 0 || sourceTakeId === selectedAudioTakeGroup?.compTakeId) return;
+    event.preventDefault();
+    const startTick = takeLaneTickAtPointer(event);
+    audioTakeLaneDragRef.current = {
+      groupId,
+      sourceTakeId,
+      startTick,
+      endTick: startTick,
+      currentTick: startTick,
+      pointerId: event.pointerId,
+      anchorClientX: event.clientX,
+      moved: false,
+    };
+    setAudioTakeLaneRange({ groupId, sourceTakeId, startTick, endTick: startTick });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const updateTakeLaneRangeDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = audioTakeLaneDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const currentTick = takeLaneTickAtPointer(event);
+    const moved = drag.moved || Math.abs(event.clientX - drag.anchorClientX) > 2;
+    audioTakeLaneDragRef.current = { ...drag, currentTick, moved };
+    if (moved) {
+      setAudioTakeLaneRange({
+        groupId: drag.groupId,
+        sourceTakeId: drag.sourceTakeId,
+        startTick: Math.min(drag.startTick, currentTick),
+        endTick: Math.max(drag.startTick, currentTick),
+      });
+    }
+  };
+
+  const finishTakeLaneRangeDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = audioTakeLaneDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    audioTakeLaneDragRef.current = null;
+    const endTick = takeLaneTickAtPointer(event);
+    if (drag.moved && Math.abs(endTick - drag.startTick) >= 1) {
+      suppressTakeLaneClickRef.current = true;
+      window.setTimeout(() => {
+        suppressTakeLaneClickRef.current = false;
+      }, 0);
+      setAudioTakeLaneRange({
+        groupId: drag.groupId,
+        sourceTakeId: drag.sourceTakeId,
+        startTick: Math.min(drag.startTick, endTick),
+        endTick: Math.max(drag.startTick, endTick),
+      });
+    } else {
+      setAudioTakeLaneRange(null);
+    }
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const stopAudioTakeAudition = (): void => {
+    const request = audioTakeAuditionRef.current;
+    if (!request) return;
+    audioTakeAuditionRef.current = null;
+    request.controller.abort();
+    services.engine.stopPreview();
+    setAudioTakeAudition(null);
+  };
+
+  const auditionAudioTake = async (groupId: string, takeId: string): Promise<void> => {
+    const current = audioTakeAuditionRef.current;
+    if (current?.groupId === groupId && current.takeId === takeId) {
+      stopAudioTakeAudition();
+      return;
+    }
+    if (services.transport.playing) {
+      setActionError("Stop transport before auditioning a take lane");
+      return;
+    }
+    stopAudioTakeAudition();
+    const request: AudioTakeAuditionRequest = {
+      groupId,
+      takeId,
+      state: "rendering",
+      controller: new AbortController(),
+    };
+    audioTakeAuditionRef.current = request;
+    setAudioTakeAudition(request);
+    try {
+      services.engine.ensureContext();
+      const auditionDoc = createAudioTakeAuditionDoc(services.store.getDoc(), groupId, takeId);
+      const buffer = await renderProject(auditionDoc, services.bank, {
+        mode: "song",
+        sampleRate: 48_000,
+        signal: request.controller.signal,
+      });
+      if (audioTakeAuditionRef.current !== request) return;
+      if (services.transport.playing) {
+        audioTakeAuditionRef.current = null;
+        setAudioTakeAudition(null);
+        return;
+      }
+      request.state = "playing";
+      setAudioTakeAudition(request);
+      services.engine.previewBuffer(buffer, 0.9, () => {
+        if (audioTakeAuditionRef.current !== request) return;
+        audioTakeAuditionRef.current = null;
+        setAudioTakeAudition(null);
+      });
+    } catch (error) {
+      if (!request.controller.signal.aborted) {
+        setActionError(error instanceof Error ? error.message : "Take audition failed");
+      }
+      if (audioTakeAuditionRef.current === request) {
+        audioTakeAuditionRef.current = null;
+        setAudioTakeAudition(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!showAudioTakeLanes || audioTakeAuditionRef.current?.groupId !== selectedAudioTakeGroup?.id) {
+      stopAudioTakeAudition();
+    }
+  }, [selectedAudioTakeGroup?.id, showAudioTakeLanes]);
+
+  useEffect(
+    () => () => {
+      const request = audioTakeAuditionRef.current;
+      audioTakeAuditionRef.current = null;
+      if (request) {
+        request.controller.abort();
+        services.engine.stopPreview();
+      }
+    },
+    [services.engine],
+  );
 
   /** AI FLIP for one genre chip — analyse the loop, generate the pattern, bake the groove. */
   const runAiFlip = (clipId: string, genre: "house" | "techno" | "trap" | "ambient"): void => {
@@ -2444,6 +2637,17 @@ export function ArrangementPanel() {
                 </select>
               </label>
             )}
+            {selectedAudioTakeGroup && (selectedAudioTakeIds.length > 0 || selectedAudioTakeGroup.compTakeId) && (
+              <button
+                type="button"
+                className={`btn btn-small${showAudioTakeLanes ? " active-solo" : ""}`}
+                aria-label={showAudioTakeLanes ? "Hide audio take lanes" : "Show audio take lanes"}
+                aria-expanded={showAudioTakeLanes}
+                onClick={() => setShowAudioTakeLanes((visible) => !visible)}
+              >
+                TAKE LANES {showAudioTakeLanes ? "ON" : "OFF"}
+              </button>
+            )}
             {selectedAudioTakeGroup &&
               selectedAudioTakeGroup.activeTakeId !== selectedAudioTakeGroup.compTakeId &&
               selectedAudioTakeIds.includes(selectedAudioTakeGroup.activeTakeId) && (
@@ -2452,35 +2656,14 @@ export function ArrangementPanel() {
                   className="btn btn-small"
                   aria-label="Comp selected transport range from active take"
                   title="Replace the current comp inside the transport start/end locators with the active source take. Source takes remain unchanged; the edit is undoable."
-                  onClick={() => {
-                    const startTick = services.transport.loopStart;
-                    const endTick = services.transport.loopEnd;
-                    try {
-                      const command = compAudioTakeRange(
-                        services.store.doc,
-                        selectedAudioTakeGroup.id,
-                        selectedAudioTakeGroup.activeTakeId,
-                        startTick,
-                        endTick,
-                      );
-                      const nextDoc = command.execute(services.store.doc);
-                      if (execute(command)) {
-                        const compClip = nextDoc.arrangement.audioClips?.find(
-                          (clip) =>
-                            clip.takeGroupId === selectedAudioTakeGroup.id &&
-                            clip.takeId ===
-                              nextDoc.arrangement.takeGroups?.find((group) => group.id === selectedAudioTakeGroup.id)
-                                ?.compTakeId &&
-                            clip.compSourceTakeId === selectedAudioTakeGroup.activeTakeId &&
-                            clip.startBar * BAR_TICKS < endTick &&
-                            (clip.startBar + clip.lengthBars) * BAR_TICKS > startTick,
-                        );
-                        setSelectedAudioClipId(compClip?.id ?? null);
-                      }
-                    } catch (error) {
-                      setActionError(error instanceof Error ? error.message : "Comp range failed");
-                    }
-                  }}
+                  onClick={() =>
+                    compAudioRange(
+                      selectedAudioTakeGroup.id,
+                      selectedAudioTakeGroup.activeTakeId,
+                      services.transport.loopStart,
+                      services.transport.loopEnd,
+                    )
+                  }
                 >
                   COMP RANGE
                 </button>
@@ -3249,6 +3432,152 @@ export function ArrangementPanel() {
               />
             )}
           </div>
+          {showAudioTakeLanes && selectedAudioTakeGroup && (
+            <section
+              id="arr-audio-take-lanes"
+              className="arr-audio-take-lanes"
+              aria-label="Audio take lanes"
+              style={{ width: totalBars * barWidth }}
+            >
+              <div className="arr-audio-take-lanes-heading">
+                <span>TAKE LANES</span>
+                {audioTakeLaneRange?.groupId === selectedAudioTakeGroup.id &&
+                  selectedAudioTakeIds.includes(audioTakeLaneRange.sourceTakeId) && (
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      aria-label="Comp selected take-lane range"
+                      title="Replace this exact arrangement range with the selected source take. The source pass stays unchanged; undo restores the previous comp."
+                      onClick={() =>
+                        compAudioRange(
+                          audioTakeLaneRange.groupId,
+                          audioTakeLaneRange.sourceTakeId,
+                          audioTakeLaneRange.startTick,
+                          audioTakeLaneRange.endTick,
+                        )
+                      }
+                    >
+                      COMP SELECTED RANGE
+                    </button>
+                  )}
+                <span className="arr-audio-take-lanes-track-name">
+                  {tracks.find((track) => track.id === selectedAudioTakeGroup.trackId)?.name ?? "AUDIO"}
+                </span>
+              </div>
+              {[
+                ...selectedAudioTakeIds,
+                ...(selectedAudioTakeGroup.compTakeId ? [selectedAudioTakeGroup.compTakeId] : []),
+              ].map((takeId, laneIndex) => {
+                const isCompTake = takeId === selectedAudioTakeGroup.compTakeId;
+                const laneLabel = isCompTake ? "COMP" : `TAKE ${laneIndex + 1}`;
+                const laneClips = (arrangement.audioClips ?? []).filter(
+                  (clip) => clip.takeGroupId === selectedAudioTakeGroup.id && clip.takeId === takeId,
+                );
+                if (laneClips.length === 0) return null;
+                const isActive = selectedAudioTakeGroup.activeTakeId === takeId;
+                const isAuditioning =
+                  audioTakeAudition?.groupId === selectedAudioTakeGroup.id && audioTakeAudition.takeId === takeId;
+                const activateTake = () => {
+                  if (!isActive) execute(setActiveAudioTake(services.store.doc, selectedAudioTakeGroup.id, takeId));
+                  setSelectedAudioClipId(laneClips[0]!.id);
+                };
+                return (
+                  <div className={`arr-audio-take-lane${isActive ? " active" : ""}`} key={takeId}>
+                    <div className="arr-audio-take-lane-header">
+                      <button
+                        type="button"
+                        className="arr-audio-take-lane-select"
+                        aria-label={`Activate ${laneLabel}`}
+                        aria-pressed={isActive}
+                        title="Make this pass the audible take. Other takes remain intact and can be restored with undo."
+                        onClick={activateTake}
+                      >
+                        <span className="arr-audio-take-lane-name">{laneLabel}</span>
+                        <span className="arr-audio-take-lane-status">{isActive ? "ACTIVE" : "ACTIVATE"}</span>
+                        <span className="arr-audio-take-lane-count">
+                          {laneClips.length} CLIP{laneClips.length === 1 ? "" : "S"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-small arr-audio-take-lane-audition"
+                        aria-label={isAuditioning ? `Stop audition ${laneLabel}` : `Audition ${laneLabel}`}
+                        aria-pressed={isAuditioning}
+                        disabled={services.transport.playing && !isAuditioning}
+                        title={
+                          services.transport.playing
+                            ? "Stop transport to audition this lane in isolation"
+                            : "Render and audition this take lane alone through its track and master effects"
+                        }
+                        onClick={() => void auditionAudioTake(selectedAudioTakeGroup.id, takeId)}
+                      >
+                        {isAuditioning ? (audioTakeAudition?.state === "rendering" ? "CANCEL" : "STOP") : "AUDITION"}
+                      </button>
+                    </div>
+                    <div
+                      className="arr-audio-take-lane-track"
+                      aria-label={`${laneLabel} timeline segments`}
+                      title={
+                        isCompTake
+                          ? `${laneLabel} · click to activate the comp`
+                          : `${laneLabel} · drag to select a comp range`
+                      }
+                      style={{ width: totalBars * barWidth, backgroundSize: `${barWidth}px 100%` }}
+                      onPointerDown={(event) => startTakeLaneRangeDrag(event, selectedAudioTakeGroup.id, takeId)}
+                      onPointerMove={updateTakeLaneRangeDrag}
+                      onPointerUp={finishTakeLaneRangeDrag}
+                      onPointerCancel={() => {
+                        audioTakeLaneDragRef.current = null;
+                        setAudioTakeLaneRange(null);
+                      }}
+                      onClickCapture={(event) => {
+                        if (!suppressTakeLaneClickRef.current) return;
+                        suppressTakeLaneClickRef.current = false;
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      {audioTakeLaneRange?.groupId === selectedAudioTakeGroup.id &&
+                        audioTakeLaneRange.sourceTakeId === takeId &&
+                        audioTakeLaneRange.endTick > audioTakeLaneRange.startTick && (
+                          <div
+                            className="arr-audio-take-lane-range"
+                            aria-label={`Selected comp range from ${laneLabel}`}
+                            style={{
+                              left: (audioTakeLaneRange.startTick / BAR_TICKS) * barWidth,
+                              width:
+                                ((audioTakeLaneRange.endTick - audioTakeLaneRange.startTick) / BAR_TICKS) * barWidth,
+                            }}
+                          />
+                        )}
+                      {laneClips.map((clip) => (
+                        <button
+                          type="button"
+                          className={`arr-audio-take-lane-segment${isCompTake ? " comp" : ""}`}
+                          key={clip.id}
+                          aria-label={`Select ${laneLabel} segment at bar ${Math.floor(clip.startBar) + 1}`}
+                          title={`${laneLabel} · bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`}
+                          style={{
+                            left: clip.startBar * barWidth,
+                            width: Math.max(12, clip.lengthBars * barWidth - 3),
+                          }}
+                          onClick={activateTake}
+                        >
+                          <AudioClipWaveform
+                            buffer={services.bank.get(clip.bufferId) ?? null}
+                            bufferId={clip.bufferId}
+                            sourceChannel={clip.sourceChannel}
+                            reverse={clip.reverse}
+                            showOnsets={false}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
         </div>
 
         {deleteToast && (

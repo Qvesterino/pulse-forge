@@ -138,8 +138,14 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       A synthetic Chromium E2E routes four punch channels to four tracks and
       verifies exact saved locator placement. This is software-path evidence
       only; native multi-stream capture and physical input routing remain open.
-- [ ] Add take lanes, audition, non-destructive comp selection/crossfades,
-      consolidate and undo/redo.
+- [x] Show each source pass and the comp as waveform lanes aligned to the
+      arrangement ruler; activate a pass with one undoable command while
+      keeping all source clips. Drag a source lane to select an exact
+      arrangement-tick region and apply it to the comp with one undoable
+      command; source takes remain untouched.
+- [x] Add isolated, cancelable offline audition for source and comp lanes.
+- [ ] Add adjustable musical crossfades and consolidation; verify every edit
+      remains non-destructive and undoable.
 - [ ] Close the pro-editing gap: verify sample-accurate clip boundaries and
       moves, non-destructive fades/crossfades, clip gain, undo/redo and the
       existing warp workflow on real recorded material. Do not duplicate
@@ -153,16 +159,22 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       interval, and route comp AudioClips through shared live/offline playback.
       Current comp source mapping is limited to forward linear clips without
       warp/loop/pitch-preserving stretch; seams receive a 3 ms de-click fade.
-- [ ] Add dedicated take lanes, comp audition/solo, musical crossfades and
-      consolidation; certify repeated comp edits and boundaries on real takes
+- [x] Add direct take-lane region selection and one-command comping; validate
+      the selected tick range and preservation of all source takes.
+- [x] Add cancelable offline audition for each source/comp lane using an
+      ephemeral project that isolates the take while preserving its track,
+      group, send and master processing; audition never mutates the project.
+- [ ] Extend comp editing with adjustable musical crossfades and
+      consolidation; certify repeated edits and boundaries on real takes
       through save/reopen and final export.
 - [x] Translate IndexedDB quota failure during PCM append into a clear stop
       warning; stop capture and preserve all earlier committed blocks for
       recovery. This is not long-session certification.
 - [x] Add schema-backed whole-take groups, undoable pass selection, and shared
       live/offline playback filtering. Automatic loop capture now feeds this
-      foundation; dedicated take lanes, audition and musical crossfades remain
-      open.
+      foundation; the aligned lane overview and direct region comping are
+      present, as is cancelable offline audition; adjustable musical
+      crossfades and consolidation remain open.
 - [x] Expose single-track alternate audio passes in the arrangement: record a
       new group or align a later pass to the active pass start, keep recovery
       metadata, and switch the active whole pass through an undoable command.
