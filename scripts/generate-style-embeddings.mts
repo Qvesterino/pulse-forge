@@ -81,17 +81,25 @@ for (const styleId of [...PRIOR_STYLE_VOCAB, ...DNB_STYLE_IDS]) {
   const projected = project(avg);
   styleEmbeddings[styleId] = projected;
   styleEmbeddingVariants[styleId] = projectedVariants;
-  console.log(`[style-embed] ${styleId}: ${descriptions.length} descriptions → centroid + ${projectedVariants.length} variants`);
+  console.log(
+    `[style-embed] ${styleId}: ${descriptions.length} descriptions → centroid + ${projectedVariants.length} variants`,
+  );
 }
 
 writeFileSync(
   path.join(OUT_DIR, "style-embeddings.json"),
-  JSON.stringify({
-    version: "style-embeddings-v2",
-    pcaVersion: "pca-embedding-v1",
-    dims: 16,
-    styles: styleEmbeddings,
-    variants: styleEmbeddingVariants,
-  }, null, 2) + "\n"
+  JSON.stringify(
+    {
+      version: "style-embeddings-v2",
+      pcaVersion: "pca-embedding-v1",
+      dims: 16,
+      styles: styleEmbeddings,
+      variants: styleEmbeddingVariants,
+    },
+    null,
+    2,
+  ) + "\n",
 );
-console.log(`[style-embed] ${Object.keys(styleEmbeddings).length} style embeddings → scripts/data/style-embeddings.json`);
+console.log(
+  `[style-embed] ${Object.keys(styleEmbeddings).length} style embeddings → scripts/data/style-embeddings.json`,
+);

@@ -84,6 +84,11 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     PRODUCTION_PROFILES.includes(source.productionProfile as (typeof PRODUCTION_PROFILES)[number])
       ? { productionProfile: source.productionProfile as (typeof PRODUCTION_PROFILES)[number] }
       : {}),
+    // Artist-preset label — key into the artist mix-signature table. Omitted
+    // when absent so legacy canonical hashes are unchanged.
+    ...(typeof source.artist === "string" && source.artist.trim().length > 0
+      ? { artist: source.artist.trim().slice(0, 64) }
+      : {}),
     mood: text(source.mood),
     energy: unit(source.energy, 0.7),
     density: unit(source.density, 0.5),

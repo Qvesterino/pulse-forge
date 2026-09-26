@@ -48,7 +48,9 @@ const templateOnly = outOfVocab.filter((id) => !DNB_IDS.has(id));
 if (templateOnly.length > 0 || dnbExcluded.length > 0) {
   console.warn(
     `[dataset] ${templateOnly.length} groove(s) outside vocab — template path only: ${templateOnly.slice(0, 6).join(", ")}` +
-      (dnbExcluded.length > 0 ? ` | ${dnbExcluded.length} dnb groove(s) train via the semantic pack: ${dnbExcluded.join(", ")}` : ""),
+      (dnbExcluded.length > 0
+        ? ` | ${dnbExcluded.length} dnb groove(s) train via the semantic pack: ${dnbExcluded.join(", ")}`
+        : ""),
   );
 }
 const vocabOnlyIds = libraryIds.filter((id) => vocabSet.has(id));

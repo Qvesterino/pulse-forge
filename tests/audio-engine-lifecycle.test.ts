@@ -301,8 +301,6 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // across renders. Pin the spread-copy here.
     const body = sliceFunction(readEngine(), /get\s+missingAssets\s*\(\)/);
     expect(body, "missingAssets getter not found in AudioEngine.ts").not.toBe("");
-    expect(body, "missingAssets must return a fresh array (no Set leakage)").toMatch(
-      /\[\.\.\.this\.missedAssets\]/,
-    );
+    expect(body, "missingAssets must return a fresh array (no Set leakage)").toMatch(/\[\.\.\.this\.missedAssets\]/);
   });
 });

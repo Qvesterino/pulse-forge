@@ -3767,6 +3767,8 @@ export function parseVibeBlend(lowerText: string): VibeBlend | null {
       ...(avg(a.energy, b.energy) !== undefined ? { energy: avg(a.energy, b.energy) } : {}),
       ...(avg(a.density, b.density) !== undefined ? { density: avg(a.density, b.density) } : {}),
       ...(blendedBpmRange ? { bpmRange: blendedBpmRange } : {}),
+      // The PRIMARY artist keys the mix-signature table in blends.
+      artist: a.label,
     },
     label: `${a.label} × ${b.label}`,
   };

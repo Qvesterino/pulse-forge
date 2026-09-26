@@ -12,8 +12,8 @@ export type SearchLane = "safe" | "personal" | "experimental";
 export interface CandidateSearchInfo {
   version: 1;
   lane: SearchLane;
-  family: "baseline" | "soft-axis" | "alternate-groove" | "personal-groove";
-  melodyFamily?: "repeating-hook";
+  family: "baseline" | "soft-axis" | "alternate-groove" | "personal-groove" | "evolving-hook";
+  melodyFamily?: "repeating-hook" | "evolving-hook";
   /** Exact in-library groove selected for a controlled rhythmic alternative. */
   grooveId?: string;
   /** Measured syncopation change in the generated pattern vs SAFE; only set after direction is verified. */
@@ -190,7 +190,7 @@ function experimentalMelodyFamily(plan: GenerationPlan): CandidateSearchInfo["me
   if (!plan.rolePlans.lead.enabled || plan.rolePlans.lead.targetTrackIds.length === 0 || plan.options.stepCount < 32) {
     return undefined;
   }
-  return "repeating-hook";
+  return "evolving-hook";
 }
 
 function personalMelodyFamily(
@@ -198,7 +198,7 @@ function personalMelodyFamily(
   personalBias: PersonalSearchBias | null,
 ): CandidateSearchInfo["melodyFamily"] {
   if (!personalBias || personalBias.motifRepetition < PERSONAL_HOOK_BIAS_THRESHOLD) return undefined;
-  return experimentalMelodyFamily(plan);
+  return experimentalMelodyFamily(plan) ? "repeating-hook" : undefined;
 }
 
 function leadTrackForPlan(doc: ProjectDocument, plan: GenerationPlan): InstrumentTrack | null {
@@ -212,6 +212,83 @@ function leadTrackForPlan(doc: ProjectDocument, plan: GenerationPlan): Instrumen
   );
 }
 
+function applyEvolvingHook(
+  pattern: Pattern,
+  doc: ProjectDocument,
+  generationPlan: GenerationPlan,
+  searchInfo: CandidateSearchInfo,
+): { pattern: Pattern; search: CandidateSearchInfo } {
+  const leadTrack = leadTrackForPlan(doc, generationPlan);
+  const leadNotes = leadTrack ? (pattern.notes?.[leadTrack.id] ?? []) : [];
+  const barTicks = 16 * STEP_TICKS;
+  const firstBar = leadNotes
+    .filter(
+      (note) =>
+        Number.isFinite(note.start) &&
+        note.start >= 0 &&
+        note.start < barTicks &&
+        Number.isFinite(note.duration) &&
+        note.duration > 0 &&
+        Number.isFinite(note.pitch),
+    )
+    .sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+
+  if (!leadTrack || firstBar.length === 0) {
+    const search = { ...searchInfo };
+    delete search.melodyFamily;
+    if (search.family === "evolving-hook") search.family = "soft-axis";
+    return { pattern, search };
+  }
+
+  const totalTicks = pattern.stepCount * STEP_TICKS;
+  const bars = Math.ceil(totalTicks / barTicks);
+  const evolved: NonNullable<Pattern["notes"]>[string] = [];
+  let changedEndings = 0;
+  for (let bar = 0; bar < bars; bar++) {
+    const offset = bar * barTicks;
+    const barNotes = firstBar.flatMap((note) => {
+      const start = note.start + offset;
+      if (start >= totalTicks) return [];
+      const duration = Math.min(note.duration, totalTicks - start, barTicks - note.start);
+      if (!Number.isFinite(duration) || duration <= 0) return [];
+      return [{ ...note, id: bar === 0 ? note.id : uid("note"), start, duration }];
+    });
+
+    if (bar > 0 && bar % 2 === 1 && barNotes.length > 0) {
+      const ending = barNotes.length - 1;
+      const original = barNotes[ending];
+      if (original && original.duration > STEP_TICKS) {
+        // Shorten by one grid step: keep the motif and scale intact, but let
+        // every other bar breathe before the next phrase begins.
+        barNotes[ending] = { ...original, duration: original.duration - STEP_TICKS };
+        changedEndings++;
+      } else if (original && barNotes.length > 1) {
+        // A one-step ending cannot be shortened without leaving the musical
+        // grid; omit that cadence note instead, but never erase the whole hook.
+        barNotes.pop();
+        changedEndings++;
+      }
+    }
+    evolved.push(...barNotes);
+  }
+
+  if (changedEndings === 0) {
+    const search = { ...searchInfo };
+    delete search.melodyFamily;
+    if (search.family === "evolving-hook") search.family = "soft-axis";
+    return { pattern, search };
+  }
+
+  const transformed = {
+    ...pattern,
+    notes: { ...pattern.notes, [leadTrack.id]: evolved.sort((a, b) => a.start - b.start || a.pitch - b.pitch) },
+  };
+  return {
+    pattern: refreshPatternQuality(doc, transformed, generationPlan.options),
+    search: searchInfo,
+  };
+}
+
 /** Apply the requested motif family after any template/ONNX/multivoice path. */
 export function applyCandidateSearchFamily(
   pattern: Pattern,
@@ -219,6 +296,9 @@ export function applyCandidateSearchFamily(
   generationPlan: GenerationPlan,
   searchInfo: CandidateSearchInfo,
 ): { pattern: Pattern; search: CandidateSearchInfo } {
+  if (searchInfo.melodyFamily === "evolving-hook") {
+    return applyEvolvingHook(pattern, doc, generationPlan, searchInfo);
+  }
   if (searchInfo.melodyFamily !== "repeating-hook") return { pattern, search: searchInfo };
 
   const leadTrack = leadTrackForPlan(doc, generationPlan);
@@ -304,7 +384,13 @@ export function candidateSearchVariant(
     lane === "experimental" ? experimentalGroove(plan, variant) : personalGroove(plan, personalBias, variant);
   const melodyFamily =
     lane === "experimental" ? experimentalMelodyFamily(plan) : personalMelodyFamily(plan, personalBias);
-  const family = grooveOverride ? (lane === "personal" ? "personal-groove" : "alternate-groove") : "soft-axis";
+  const family = grooveOverride
+    ? lane === "personal"
+      ? "personal-groove"
+      : "alternate-groove"
+    : melodyFamily === "evolving-hook"
+      ? "evolving-hook"
+      : "soft-axis";
   const searchSeed = `${seed}|search:v1:${lane}:e${intent.energy.toFixed(2)}:d${intent.density.toFixed(2)}:c${intent.complexity.toFixed(2)}:v${intent.variation.toFixed(2)}${grooveOverride ? `:groove:${grooveOverride.id}` : ""}${melodyFamily ? `:melody:${melodyFamily}` : ""}`;
   return {
     generationPlan: withSearchSeed(validationPlan, intent, searchSeed, grooveOverride ?? undefined),

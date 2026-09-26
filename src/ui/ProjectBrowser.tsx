@@ -240,7 +240,7 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           <input
             ref={fileInputRef}
             type="file"
-            accept=".kz,.json,.kyx.json,.pulseforge.json"
+            accept=".kyx,.json,.kyx.json,.pulseforge.json"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];

@@ -2782,18 +2782,42 @@ export class AudioEngine {
     source.playbackRate.value = playbackRate;
 
     const gain = ctx.createGain();
-    gain.gain.value = Math.min(2, Math.max(0, clip.gain ?? 1));
-    // Fade in/out using linear ramps — scheduled at `when`
-    const fadeIn = Math.max(0, clip.fadeIn ?? 0);
-    const fadeOut = Math.max(0, clip.fadeOut ?? 0);
-    if (fadeIn > 0.001) {
-      gain.gain.setValueAtTime(0, when);
-      gain.gain.linearRampToValueAtTime(gain.gain.value, when + Math.min(fadeIn, clipDurSec / 2));
+    const clipGain = Math.min(2, Math.max(0, clip.gain ?? 1));
+    gain.gain.value = clipGain;
+    // Musical comp overlaps use deterministic equal-power curves. Ordinary
+    // clip fades keep their existing linear behavior.
+    const isCompClip = clip.compSourceTakeId !== undefined;
+    let fadeIn = Math.max(0, clip.fadeIn ?? 0);
+    let fadeOut = Math.max(0, clip.fadeOut ?? 0);
+    if (isCompClip && fadeIn + fadeOut > clipDurSec) {
+      const scale = clipDurSec / Math.max(0.001, fadeIn + fadeOut);
+      fadeIn *= scale;
+      fadeOut *= scale;
     }
-    if (fadeOut > 0.001 && clipDurSec > 0.01) {
-      const outStart = when + Math.max(0, clipDurSec - fadeOut);
-      gain.gain.setValueAtTime(gain.gain.value, outStart);
-      gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
+    if (isCompClip) {
+      const scheduleCurve = (startAt: number, duration: number, rising: boolean): void => {
+        const pointCount = 64;
+        const values = new Float32Array(pointCount + 1);
+        for (let index = 0; index <= pointCount; index++) {
+          const angle = ((index / pointCount) * Math.PI) / 2;
+          values[index] = clipGain * (rising ? Math.sin(angle) : Math.cos(angle));
+        }
+        gain.gain.setValueCurveAtTime(values, startAt, duration);
+      };
+      if (fadeIn > 0.001) scheduleCurve(when, Math.min(fadeIn, clipDurSec), true);
+      if (fadeOut > 0.001 && clipDurSec > 0.01) {
+        scheduleCurve(when + Math.max(0, clipDurSec - fadeOut), fadeOut, false);
+      }
+    } else {
+      if (fadeIn > 0.001) {
+        gain.gain.setValueAtTime(0, when);
+        gain.gain.linearRampToValueAtTime(clipGain, when + Math.min(fadeIn, clipDurSec / 2));
+      }
+      if (fadeOut > 0.001 && clipDurSec > 0.01) {
+        const outStart = when + Math.max(0, clipDurSec - fadeOut);
+        gain.gain.setValueAtTime(clipGain, outStart);
+        gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
+      }
     }
     const sourceSplitter = connectAudioClipSourceChannel(ctx, source, gain, clip.sourceChannel);
     gain.connect(nodes.input);

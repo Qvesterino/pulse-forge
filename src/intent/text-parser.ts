@@ -525,6 +525,9 @@ export function parseIntentText(text: string): ParsedIntent {
       input.genre = preset.genre;
       if (preset.style) input.style = preset.style;
       if (preset.productionProfile) input.productionProfile = preset.productionProfile;
+      // The label keys the artist mix-signature table (artist-mix.ts) —
+      // "drake type beat" carries the drake mix/master character.
+      input.artist = preset.label;
       if (preset.mood) input.mood = preset.mood;
       if (preset.energy !== undefined) input.energy = preset.energy;
       if (preset.density !== undefined) input.density = preset.density;

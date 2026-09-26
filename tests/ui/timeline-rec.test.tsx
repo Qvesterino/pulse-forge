@@ -24,7 +24,13 @@ import {
 } from "../../src/ui/timelineRec";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { createDefaultProject } from "../../src/project-model/schema";
-import { addAudioClip, addAudioTakeClip, compAudioTakeRange, createDrumTrack } from "../../src/commands/commands";
+import {
+  addAudioClip,
+  addAudioTakeClip,
+  compAudioTakeRange,
+  createDrumTrack,
+  setActiveAudioTake,
+} from "../../src/commands/commands";
 import { audioClipsForPlayback } from "../../src/project-model/audio-takes";
 import { loadRecordingInputDeviceId, saveRecordingInputDeviceId } from "../../src/audio-engine/recordingInput";
 
@@ -529,7 +535,14 @@ describe("arrangement REC wiring", () => {
       0,
       1,
     ).execute(first);
-    const services = mockServices(withTwoTakes);
+    const initialComp = compAudioTakeRange(
+      withTwoTakes,
+      "lane-comp-group",
+      "lane-comp-pass-1",
+      0,
+      BAR_TICKS,
+    ).execute(withTwoTakes);
+    const services = mockServices(initialComp);
     const { container } = renderWithContext(<ArrangementPanel />, { services });
 
     fireEvent.click(container.querySelector(".arr-audio-clip")!);
@@ -559,19 +572,27 @@ describe("arrangement REC wiring", () => {
     const range = within(sourceLane).getByLabelText("Selected comp range from TAKE 2");
     expect(Number.parseFloat((range as HTMLElement).style.left)).toBeCloseTo(barWidth * 0.25, 5);
     expect(Number.parseFloat((range as HTMLElement).style.width)).toBeCloseTo(barWidth * 0.5, 5);
+    const crossfade = screen.getByLabelText("Comp crossfade duration") as HTMLSelectElement;
+    expect(crossfade.value).toBe("120");
+    fireEvent.change(crossfade, { target: { value: "60" } });
     fireEvent.click(screen.getByRole("button", { name: "Comp selected take-lane range" }));
 
     const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
     expect(command?.type).toBe("compAudioTakeRange");
-    const comped = command.execute(withTwoTakes) as typeof withTwoTakes;
+    const comped = command.execute(initialComp) as typeof initialComp;
     const group = comped.arrangement.takeGroups?.[0];
     expect(group?.activeTakeId).toBe(group?.compTakeId);
-    expect(comped.arrangement.audioClips).toHaveLength(3);
+    expect(comped.arrangement.audioClips).toHaveLength(7);
     expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "lane-comp-pass-1")).toHaveLength(1);
     expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "lane-comp-pass-2")).toHaveLength(1);
+    const audibleComp = audioClipsForPlayback(comped.arrangement);
+    expect(audibleComp).toHaveLength(5);
+    expect(audibleComp.some((clip) => clip.compSourceTakeId === "lane-comp-pass-1" && clip.fadeOut > 0.05)).toBe(true);
     expect(
-      audioClipsForPlayback(comped.arrangement).map((clip) => [clip.compSourceTakeId, clip.startBar, clip.lengthBars]),
-    ).toEqual([["lane-comp-pass-2", 0.25, 0.5]]);
+      audibleComp.some(
+        (clip) => clip.compSourceTakeId === "lane-comp-pass-2" && clip.fadeIn > 0.05 && clip.fadeOut > 0.05,
+      ),
+    ).toBe(true);
   });
 
   it("exposes an undoable comp-range action using the transport locators", () => {
@@ -587,20 +608,31 @@ describe("arrangement REC wiring", () => {
       0,
       1,
     ).execute(first);
-    const services = mockServices(withTwoPasses);
+    const existingComp = compAudioTakeRange(withTwoPasses, "comp-ui-group", "comp-source-1", 0, BAR_TICKS).execute(
+      withTwoPasses,
+    );
+    const activeSecondPass = setActiveAudioTake(existingComp, "comp-ui-group", "comp-source-2").execute(existingComp);
+    const services = mockServices(activeSecondPass);
     Object.assign(services.transport, { loopStart: BAR_TICKS / 4, loopEnd: (BAR_TICKS * 3) / 4 });
     const { container } = renderWithContext(<ArrangementPanel />, { services });
 
     fireEvent.click(container.querySelector(".arr-audio-clip")!);
+    fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
+    fireEvent.change(screen.getByLabelText("Comp crossfade duration"), { target: { value: "240" } });
     fireEvent.click(screen.getByRole("button", { name: "Comp selected transport range from active take" }));
 
     const command = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0];
     expect(command?.type).toBe("compAudioTakeRange");
-    const comped = command.execute(withTwoPasses);
+    const comped = command.execute(activeSecondPass);
     expect(comped.arrangement.takeGroups?.[0]?.activeTakeId).toBe(comped.arrangement.takeGroups?.[0]?.compTakeId);
-    expect(
-      audioClipsForPlayback(comped.arrangement).map((clip) => [clip.compSourceTakeId, clip.startBar, clip.lengthBars]),
-    ).toEqual([["comp-source-1", 0.25, 0.5]]);
+    const audible = audioClipsForPlayback(comped.arrangement).filter(
+      (clip) => clip.takeId === comped.arrangement.takeGroups?.[0]?.compTakeId,
+    );
+    const newPassClip = audible.find((clip) => clip.compSourceTakeId === "comp-source-2");
+    expect(audible).toHaveLength(5);
+    expect(newPassClip).toMatchObject({ startBar: 0.1875, lengthBars: 0.625 });
+    expect(newPassClip?.fadeIn).toBeGreaterThan(0.003);
+    expect(newPassClip?.fadeOut).toBe(newPassClip?.fadeIn);
   });
 
   it("aligns an alternate recording to the take-group start and persists its pass identity", async () => {

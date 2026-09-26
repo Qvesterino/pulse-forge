@@ -3015,8 +3015,8 @@ export function setActiveAudioTake(doc: ProjectDocument, groupId: string, takeId
 
 /**
  * Replace an arrangement-tick range in a take comp with material from one
- * linear source pass. Source takes remain untouched; comp fragments are
- * ordinary AudioClips so the shared live/offline playback path stays exact.
+ * linear source pass. Optional crossfades are stored as overlapping comp
+ * AudioClips with musical fade durations. Source passes remain immutable.
  */
 export function compAudioTakeRange(
   doc: ProjectDocument,
@@ -3024,6 +3024,7 @@ export function compAudioTakeRange(
   sourceTakeId: string,
   startTick: number,
   endTick: number,
+  crossfadeTicks = 0,
 ): Command {
   const group = doc.arrangement.takeGroups?.find((item) => item.id === groupId);
   if (!group) throw new Error(`Audio take group ${groupId} not found`);
@@ -3033,42 +3034,22 @@ export function compAudioTakeRange(
   if (!sourceTakeId || sourceTakeId === group.compTakeId) {
     throw new Error("Choose a source take, not the comp itself");
   }
+  if (!Number.isSafeInteger(crossfadeTicks) || crossfadeTicks < 0 || crossfadeTicks > PPQ * 2) {
+    throw new Error("Comp crossfade must be an integer between 0 and 960 ticks");
+  }
+  if (crossfadeTicks > endTick - startTick) {
+    throw new Error("Comp crossfade cannot be longer than the selected range");
+  }
 
   const audioClips = doc.arrangement.audioClips ?? [];
-  const sourceClips = audioClips
-    .filter((clip) => clip.takeGroupId === groupId && clip.takeId === sourceTakeId && clip.trackId === group.trackId)
-    .sort((a, b) => a.startBar - b.startBar);
-  if (sourceClips.length === 0) throw new Error(`Audio take ${sourceTakeId} has no clips in group ${groupId}`);
-
+  const compTakeId = group.compTakeId ?? uid("takeComp");
+  const epsilonTicks = 1e-6;
   const isLinear = (clip: AudioClip): boolean =>
     !clip.reverse && !clip.loop && clip.stretchMode !== "stretch" && (clip.warpMarkers?.length ?? 0) === 0;
-
-  const epsilonTicks = 1e-6;
-  const sourceSegments: Array<{ clip: AudioClip; startTick: number; endTick: number }> = [];
-  let coveredUntil = startTick;
-  for (const clip of sourceClips) {
-    const clipStartTick = clip.startBar * BAR_TICKS;
-    const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
-    const segmentStart = Math.max(startTick, clipStartTick);
-    const segmentEnd = Math.min(endTick, clipEndTick);
-    if (segmentEnd <= segmentStart + epsilonTicks) continue;
-    if (segmentStart > coveredUntil + epsilonTicks) {
-      throw new Error("The selected source take does not cover the entire comp range");
-    }
-    if (segmentStart < coveredUntil - epsilonTicks) {
-      throw new Error("The selected source take has overlapping clips in the comp range");
-    }
-    sourceSegments.push({ clip, startTick: segmentStart, endTick: segmentEnd });
-    coveredUntil = segmentEnd;
-    if (coveredUntil >= endTick - epsilonTicks) break;
-  }
-  if (coveredUntil < endTick - epsilonTicks) {
-    throw new Error("The selected source take does not cover the entire comp range");
-  }
-  if (sourceSegments.some(({ clip }) => !isLinear(clip))) {
-    throw new Error("Comping currently requires linear, forward-playing source clips without warp or loop");
-  }
-
+  const clipsForTake = (takeId: string): AudioClip[] =>
+    audioClips
+      .filter((clip) => clip.takeGroupId === groupId && clip.takeId === takeId && clip.trackId === group.trackId)
+      .sort((a, b) => a.startBar - b.startBar);
   const tempoSpans = doc.arrangement.clips.flatMap((arrangementClip) => {
     const scene = doc.scenes.find((item) => item.id === arrangementClip.sceneId);
     if (!scene) return [];
@@ -3115,47 +3096,169 @@ export function compAudioTakeRange(
       fadeOut: endsAtClipEdge ? clip.fadeOut : declickFadeSec,
     };
   };
+  const segmentsForTake = (takeId: string, fromTick: number, toTick: number): Array<{
+    clip: AudioClip;
+    startTick: number;
+    endTick: number;
+  }> => {
+    const sourceClips = clipsForTake(takeId);
+    if (sourceClips.length === 0) throw new Error(`Audio take ${takeId} has no clips in group ${groupId}`);
+    const segments: Array<{ clip: AudioClip; startTick: number; endTick: number }> = [];
+    let coveredUntil = fromTick;
+    for (const clip of sourceClips) {
+      const clipStartTick = clip.startBar * BAR_TICKS;
+      const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
+      const segmentStart = Math.max(fromTick, clipStartTick);
+      const segmentEnd = Math.min(toTick, clipEndTick);
+      if (segmentEnd <= segmentStart + epsilonTicks) continue;
+      if (segmentStart > coveredUntil + epsilonTicks) {
+        throw new Error(`Audio take ${takeId} does not cover the entire comp range`);
+      }
+      if (segmentStart < coveredUntil - epsilonTicks) {
+        throw new Error(`Audio take ${takeId} has overlapping clips in the comp range`);
+      }
+      if (!isLinear(clip)) {
+        throw new Error("Comping currently requires linear, forward-playing source clips without warp or loop");
+      }
+      segments.push({ clip, startTick: segmentStart, endTick: segmentEnd });
+      coveredUntil = segmentEnd;
+      if (coveredUntil >= toTick - epsilonTicks) break;
+    }
+    if (coveredUntil < toTick - epsilonTicks) {
+      throw new Error(`Audio take ${takeId} does not cover the entire comp range`);
+    }
+    return segments;
+  };
 
-  const compTakeId = group.compTakeId ?? uid("takeComp");
+  const compClips = clipsForTake(compTakeId);
+  const leftCandidates = compClips
+    .filter((clip) => clip.startBar * BAR_TICKS < startTick - epsilonTicks && clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= startTick - epsilonTicks)
+    .sort((a, b) => b.startBar - a.startBar);
+  const rightCandidates = compClips
+    .filter((clip) => clip.startBar * BAR_TICKS <= endTick + epsilonTicks && clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > endTick + epsilonTicks)
+    .sort((a, b) => a.startBar + a.lengthBars - (b.startBar + b.lengthBars));
+  const leftNeighbor = leftCandidates[0];
+  const rightNeighbor = rightCandidates[0];
+  const requestedHalfTicks = crossfadeTicks / 2;
+  const leftHalfTicks =
+    crossfadeTicks > 0 && leftNeighbor?.compSourceTakeId && leftNeighbor.compSourceTakeId !== sourceTakeId
+      ? Math.min(requestedHalfTicks, startTick)
+      : 0;
+  const rightHalfTicks =
+    crossfadeTicks > 0 && rightNeighbor?.compSourceTakeId && rightNeighbor.compSourceTakeId !== sourceTakeId
+      ? requestedHalfTicks
+      : 0;
+  const sourceRangeStartTick = startTick - leftHalfTicks;
+  const sourceRangeEndTick = endTick + rightHalfTicks;
+
+  const ensureNoExistingCrossfadeInWindow = (fromTick: number, toTick: number): void => {
+    const sources = new Set(
+      compClips
+        .filter((clip) => {
+          const clipStart = clip.startBar * BAR_TICKS;
+          const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
+          return clipStart < toTick - epsilonTicks && clipEnd > fromTick + epsilonTicks;
+        })
+        .map((clip) => clip.compSourceTakeId ?? `unknown:${clip.id}`),
+    );
+    if (sources.size > 1) {
+      throw new Error("This comp range touches an existing crossfade; include the full old seam in the selected range");
+    }
+  };
+  if (leftHalfTicks > 0) ensureNoExistingCrossfadeInWindow(startTick - leftHalfTicks, startTick + leftHalfTicks);
+  if (rightHalfTicks > 0) ensureNoExistingCrossfadeInWindow(endTick - rightHalfTicks, endTick + rightHalfTicks);
+
+  const sourceSegments = segmentsForTake(sourceTakeId, sourceRangeStartTick, sourceRangeEndTick);
+  const leftNeighborSegments = leftHalfTicks > 0 ? segmentsForTake(leftNeighbor!.compSourceTakeId!, startTick - leftHalfTicks, startTick + leftHalfTicks) : [];
+  const rightNeighborSegments = rightHalfTicks > 0 ? segmentsForTake(rightNeighbor!.compSourceTakeId!, endTick - rightHalfTicks, endTick + rightHalfTicks) : [];
+  const leftFadeSec = leftHalfTicks > 0 ? secondsBetweenTicks(startTick - leftHalfTicks, startTick + leftHalfTicks) : 0;
+  const rightFadeSec = rightHalfTicks > 0 ? secondsBetweenTicks(endTick - rightHalfTicks, endTick + rightHalfTicks) : 0;
+
+  const cutStartTick = sourceRangeStartTick;
+  const cutEndTick = sourceRangeEndTick;
+  const continuesLeftOfCrossfade =
+    leftHalfTicks > 0 &&
+    compClips.some(
+      (clip) =>
+        clip.compSourceTakeId === leftNeighbor?.compSourceTakeId &&
+        clip.startBar * BAR_TICKS < cutStartTick - epsilonTicks &&
+        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS >= cutStartTick - epsilonTicks,
+    );
+  const continuesRightOfCrossfade =
+    rightHalfTicks > 0 &&
+    compClips.some(
+      (clip) =>
+        clip.compSourceTakeId === rightNeighbor?.compSourceTakeId &&
+        clip.startBar * BAR_TICKS <= cutEndTick + epsilonTicks &&
+        clip.startBar * BAR_TICKS + clip.lengthBars * BAR_TICKS > cutEndTick + epsilonTicks,
+    );
   const retainedCompClips: AudioClip[] = [];
   for (const clip of audioClips) {
-    if (clip.takeGroupId !== groupId || clip.takeId !== compTakeId) {
+    if (clip.takeGroupId !== groupId || clip.takeId !== compTakeId || clip.trackId !== group.trackId) {
       retainedCompClips.push(clip);
       continue;
     }
     const clipStartTick = clip.startBar * BAR_TICKS;
     const clipEndTick = clipStartTick + clip.lengthBars * BAR_TICKS;
-    if (clipEndTick <= startTick + epsilonTicks || clipStartTick >= endTick - epsilonTicks) {
+    if (clipEndTick <= cutStartTick + epsilonTicks || clipStartTick >= cutEndTick - epsilonTicks) {
       retainedCompClips.push(clip);
       continue;
     }
-    const left = sliceClip(clip, clipStartTick, startTick, uid("audioClip"));
-    const right = sliceClip(clip, endTick, clipEndTick, uid("audioClip"));
-    if (left) retainedCompClips.push(left);
-    if (right) retainedCompClips.push(right);
+    const left = sliceClip(clip, clipStartTick, cutStartTick, uid("audioClip"));
+    const right = sliceClip(clip, cutEndTick, clipEndTick, uid("audioClip"));
+    if (left) {
+      if (continuesLeftOfCrossfade && clip.compSourceTakeId === leftNeighbor?.compSourceTakeId) left.fadeOut = 0;
+      retainedCompClips.push(left);
+    }
+    if (right) {
+      if (continuesRightOfCrossfade && clip.compSourceTakeId === rightNeighbor?.compSourceTakeId) right.fadeIn = 0;
+      retainedCompClips.push(right);
+    }
   }
 
-  const newCompClips = sourceSegments.map(({ clip, startTick: segmentStart, endTick: segmentEnd }) => {
-    const sliced = sliceClip(clip, segmentStart, segmentEnd, uid("audioClip"));
-    if (!sliced) throw new Error("Unable to create a non-empty comp segment");
-    return {
-      ...sliced,
-      takeGroupId: groupId,
-      takeId: compTakeId,
-      compSourceTakeId: sourceTakeId,
-    };
-  });
+  const buildCompSegments = (
+    segments: typeof sourceSegments,
+    provenanceTakeId: string,
+    fadeInSec = 0,
+    fadeOutSec = 0,
+  ): AudioClip[] =>
+    segments.map(({ clip, startTick: segmentStart, endTick: segmentEnd }, index) => {
+      const sliced = sliceClip(clip, segmentStart, segmentEnd, uid("audioClip"));
+      if (!sliced) throw new Error("Unable to create a non-empty comp segment");
+      return {
+        ...sliced,
+        ...(index === 0 && fadeInSec > 0 ? { fadeIn: fadeInSec } : {}),
+        ...(index === segments.length - 1 && fadeOutSec > 0 ? { fadeOut: fadeOutSec } : {}),
+        takeGroupId: groupId,
+        takeId: compTakeId,
+        compSourceTakeId: provenanceTakeId,
+      };
+    });
+  const leftCrossfadeClips = buildCompSegments(leftNeighborSegments, leftNeighbor?.compSourceTakeId ?? "", 0, leftFadeSec);
+  const selectedCompClips = buildCompSegments(sourceSegments, sourceTakeId, leftFadeSec, rightFadeSec);
+  const rightCrossfadeClips = buildCompSegments(rightNeighborSegments, rightNeighbor?.compSourceTakeId ?? "", rightFadeSec, 0);
+  if (continuesLeftOfCrossfade && leftCrossfadeClips[0]) leftCrossfadeClips[0].fadeIn = 0;
+  if (continuesRightOfCrossfade && rightCrossfadeClips.length > 0) {
+    rightCrossfadeClips[rightCrossfadeClips.length - 1]!.fadeOut = 0;
+  }
   const next = normalizeProject({
     ...doc,
     arrangement: {
       ...doc.arrangement,
-      audioClips: [...retainedCompClips, ...newCompClips].sort((a, b) => a.startBar - b.startBar),
+      audioClips: [...retainedCompClips, ...leftCrossfadeClips, ...selectedCompClips, ...rightCrossfadeClips].sort(
+        (a, b) => a.startBar - b.startBar,
+      ),
       takeGroups: doc.arrangement.takeGroups!.map((item) =>
         item.id === groupId ? { ...item, compTakeId, activeTakeId: compTakeId } : item,
       ),
     },
   });
-  return snapshot("compAudioTakeRange", `Comp ${sourceTakeId} over ticks ${startTick}–${endTick}`, doc, next);
+  return snapshot(
+    "compAudioTakeRange",
+    `Comp ${sourceTakeId} over ticks ${startTick}–${endTick}${crossfadeTicks > 0 ? ` (${crossfadeTicks}-tick crossfade)` : ""}`,
+    doc,
+    next,
+  );
 }
 
 export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {

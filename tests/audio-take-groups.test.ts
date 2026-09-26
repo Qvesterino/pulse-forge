@@ -106,6 +106,122 @@ describe("non-destructive audio take groups", () => {
     expect(secondHalfCommand.undo(comped)).toEqual(firstHalf);
   });
 
+  it("adds tempo-aware equal-power overlaps while preserving the source passes", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    if (!track) throw new Error("empty project track fixture missing");
+    const first = addAudioTakeClip(doc, "crossfade-group", "take-1", track.id, "audio.take-1", 0, 1).execute(doc);
+    const both = addAudioTakeClip(first, "crossfade-group", "take-2", track.id, "audio.take-2", 0, 1).execute(first);
+    const compedFirst = compAudioTakeRange(both, "crossfade-group", "take-1", 0, BAR_TICKS).execute(both);
+    const command = compAudioTakeRange(
+      compedFirst,
+      "crossfade-group",
+      "take-2",
+      BAR_TICKS / 4,
+      (BAR_TICKS * 3) / 4,
+      240,
+    );
+    const comped = command.execute(compedFirst);
+    const compTakeId = comped.arrangement.takeGroups?.[0]?.compTakeId;
+    const audible = audioClipsForPlayback(comped.arrangement);
+    const compClips = audible.filter((clip) => clip.takeId === compTakeId);
+    const oldPassClips = compClips.filter((clip) => clip.compSourceTakeId === "take-1");
+    const newPassClips = compClips.filter((clip) => clip.compSourceTakeId === "take-2");
+
+    expect(compClips).toHaveLength(5);
+    expect(oldPassClips.map((clip) => [clip.startBar, clip.lengthBars])).toEqual([
+      [0, 0.1875],
+      [0.1875, 0.125],
+      [0.6875, 0.125],
+      [0.8125, 0.1875],
+    ]);
+    expect(newPassClips).toHaveLength(1);
+    expect(newPassClips[0]?.startBar).toBe(0.1875);
+    expect(newPassClips[0]?.lengthBars).toBe(0.625);
+    expect(newPassClips[0]?.fadeIn).toBeGreaterThan(0);
+    expect(newPassClips[0]?.fadeOut).toBe(newPassClips[0]?.fadeIn);
+    expect(oldPassClips[1]?.fadeOut).toBe(newPassClips[0]?.fadeIn);
+    expect(oldPassClips[2]?.fadeIn).toBe(newPassClips[0]?.fadeOut);
+    expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "take-1")).toEqual(
+      both.arrangement.audioClips?.filter((clip) => clip.takeId === "take-1"),
+    );
+    expect(comped.arrangement.audioClips?.filter((clip) => clip.takeId === "take-2")).toEqual(
+      both.arrangement.audioClips?.filter((clip) => clip.takeId === "take-2"),
+    );
+    expect(command.undo(comped)).toEqual(compedFirst);
+  });
+
+  it("rejects invalid musical crossfade durations before changing the project", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    if (!track) throw new Error("empty project track fixture missing");
+    const source = addAudioTakeClip(doc, "invalid-crossfade", "take-1", track.id, "audio.take-1", 0, 1).execute(doc);
+
+    expect(() => compAudioTakeRange(source, "invalid-crossfade", "take-1", 0, BAR_TICKS, -1)).toThrow(
+      /integer between 0 and 960 ticks/u,
+    );
+    expect(() => compAudioTakeRange(source, "invalid-crossfade", "take-1", 0, 120, 121)).toThrow(
+      /cannot be longer than the selected range/u,
+    );
+  });
+
+  it("adds tempo-aware overlapping crossfades without changing source takes", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    const scene = doc.scenes[0];
+    if (!track || !scene) throw new Error("empty project fixture missing track or scene");
+    const base = { ...doc, arrangement: { ...doc.arrangement, clips: [], audioClips: [] } };
+    const atSceneTempo = setSceneBpm(base, scene.id, 60).execute(base);
+    const arranged = addArrangementClip(atSceneTempo, scene.id, 0, 1).execute(atSceneTempo);
+    const first = addAudioTakeClip(arranged, "crossfade-group", "take-1", track.id, "audio.take-1", 0, 1).execute(
+      arranged,
+    );
+    const both = addAudioTakeClip(first, "crossfade-group", "take-2", track.id, "audio.take-2", 0, 1).execute(first);
+    const wholeComp = compAudioTakeRange(both, "crossfade-group", "take-1", 0, BAR_TICKS).execute(both);
+    const command = compAudioTakeRange(wholeComp, "crossfade-group", "take-2", BAR_TICKS / 4, (BAR_TICKS * 3) / 4, 120);
+    const crossfaded = command.execute(wholeComp);
+    const audible = audioClipsForPlayback(crossfaded.arrangement);
+    const sample = (takeId: string) => audible.filter((clip) => clip.compSourceTakeId === takeId);
+    const leftOutgoing = sample("take-1").find((clip) => Math.abs(clip.startBar - 420 / BAR_TICKS) < 1e-8);
+    const selected = sample("take-2").find((clip) => Math.abs(clip.startBar - 420 / BAR_TICKS) < 1e-8);
+    const rightOutgoing = sample("take-1").find((clip) => Math.abs(clip.startBar - 1380 / BAR_TICKS) < 1e-8);
+
+    expect(audible).toHaveLength(5);
+    expect(leftOutgoing).toMatchObject({ lengthBars: 120 / BAR_TICKS, fadeIn: 0, fadeOut: 0.25 });
+    expect(selected).toMatchObject({ lengthBars: 1080 / BAR_TICKS, fadeIn: 0.25, fadeOut: 0.25 });
+    expect(rightOutgoing).toMatchObject({ lengthBars: 120 / BAR_TICKS, fadeIn: 0.25, fadeOut: 0 });
+    expect(leftOutgoing?.offsetSec).toBeCloseTo(0.875, 8);
+    expect(rightOutgoing?.offsetSec).toBeCloseTo(2.875, 8);
+    expect(crossfaded.arrangement.audioClips?.filter((clip) => clip.takeId === "take-1")).toHaveLength(1);
+    expect(crossfaded.arrangement.audioClips?.filter((clip) => clip.takeId === "take-2")).toHaveLength(1);
+    expect(command.undo(crossfaded)).toEqual(wholeComp);
+  });
+
+  it("rejects a new crossfade that cuts through an existing comp seam", () => {
+    const doc = createProjectFromTemplate("empty");
+    const track = doc.tracks[0];
+    if (!track) throw new Error("empty project fixture missing track");
+    const first = addAudioTakeClip(doc, "repeated-crossfade-group", "take-1", track.id, "audio.take-1", 0, 1).execute(
+      doc,
+    );
+    const both = addAudioTakeClip(first, "repeated-crossfade-group", "take-2", track.id, "audio.take-2", 0, 1).execute(
+      first,
+    );
+    const wholeComp = compAudioTakeRange(both, "repeated-crossfade-group", "take-1", 0, BAR_TICKS).execute(both);
+    const firstEdit = compAudioTakeRange(
+      wholeComp,
+      "repeated-crossfade-group",
+      "take-2",
+      BAR_TICKS / 4,
+      (BAR_TICKS * 3) / 4,
+      120,
+    ).execute(wholeComp);
+
+    expect(() => compAudioTakeRange(firstEdit, "repeated-crossfade-group", "take-2", 500, 560, 60)).toThrow(
+      /include the full old seam/u,
+    );
+  });
+
   it("replaces only the chosen comp interval and retains both outside regions", () => {
     const doc = createProjectFromTemplate("empty");
     const track = doc.tracks[0];

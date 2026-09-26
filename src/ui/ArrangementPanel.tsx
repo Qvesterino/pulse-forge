@@ -334,6 +334,7 @@ export function ArrangementPanel() {
   const runtime = useSceneRuntimeState();
   const [selectedAudioClipId, setSelectedAudioClipId] = useState<string | null>(null);
   const [showAudioTakeLanes, setShowAudioTakeLanes] = useState(false);
+  const [compCrossfadeTicks, setCompCrossfadeTicks] = useState(120);
   const [audioTakeLaneRange, setAudioTakeLaneRange] = useState<AudioTakeLaneRange | null>(null);
   const audioTakeLaneDragRef = useRef<AudioTakeLaneDrag | null>(null);
   const suppressTakeLaneClickRef = useRef(false);
@@ -1301,7 +1302,11 @@ export function ArrangementPanel() {
 
   const compAudioRange = (groupId: string, sourceTakeId: string, startTick: number, endTick: number): void => {
     try {
-      if (execute(compAudioTakeRange(services.store.doc, groupId, sourceTakeId, startTick, endTick))) {
+      if (
+        execute(
+          compAudioTakeRange(services.store.doc, groupId, sourceTakeId, startTick, endTick, compCrossfadeTicks),
+        )
+      ) {
         setAudioTakeLaneRange(null);
       }
     } catch (error) {
@@ -3517,6 +3522,22 @@ export function ArrangementPanel() {
             >
               <div className="arr-audio-take-lanes-heading">
                 <span>TAKE LANES</span>
+                <label className="arr-arm-gain">
+                  <span>CROSSFADE</span>
+                  <select
+                    className="arr-arm-select"
+                    aria-label="Comp crossfade duration"
+                    title="Equal-power overlap at changed comp boundaries; undo restores the previous comp."
+                    value={compCrossfadeTicks}
+                    onChange={(event) => setCompCrossfadeTicks(Number(event.target.value))}
+                  >
+                    <option value={0}>OFF</option>
+                    <option value={30}>1/64</option>
+                    <option value={60}>1/32</option>
+                    <option value={120}>1/16</option>
+                    <option value={240}>1/8</option>
+                  </select>
+                </label>
                 {audioTakeLaneRange?.groupId === selectedAudioTakeGroup.id &&
                   selectedAudioTakeIds.includes(audioTakeLaneRange.sourceTakeId) && (
                     <button

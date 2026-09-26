@@ -37,6 +37,12 @@ export interface IntentSpec {
   style: string | null;
   /** Optional composition profile; absent on legacy intents to preserve their hashes. */
   productionProfile?: ProductionProfile;
+  /**
+   * Matched artist-preset label (e.g. "drake", "kendrick lamar") — the key
+   * into the artist mix-signature table (artist-mix.ts). Absent when no
+   * preset matched; omitted from legacy hashes.
+   */
+  artist?: string;
   mood: string | null;
   energy: number;
   density: number;
@@ -92,6 +98,7 @@ export type IntentInput = Partial<IntentSpec> & {
   genre?: unknown;
   style?: unknown;
   productionProfile?: unknown;
+  artist?: unknown;
   mood?: unknown;
   energy?: unknown;
   density?: unknown;

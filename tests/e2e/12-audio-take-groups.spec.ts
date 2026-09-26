@@ -69,11 +69,19 @@ test.describe("12 — audio take groups", () => {
       const comped = compAudioTakeRange(firstCompHalf, "take.e2e.group", "take.e2e.pass-2", 960, 1920).execute(
         firstCompHalf,
       );
-      const projects = [both, selectedSecond, comped];
-      const amplitudeAt = (buffer: AudioBuffer, frequency: number, startSec: number): number => {
+      const crossfaded = compAudioTakeRange(
+        firstCompHalf,
+        "take.e2e.group",
+        "take.e2e.pass-2",
+        960,
+        1920,
+        120,
+      ).execute(firstCompHalf);
+      const projects = [both, selectedSecond, comped, crossfaded];
+      const amplitudeAt = (buffer: AudioBuffer, frequency: number, startSec: number, windowSec = 0.35): number => {
         const samples = buffer.getChannelData(0);
         const start = Math.round(sampleRate * startSec);
-        const count = Math.round(sampleRate * 0.35);
+        const count = Math.round(sampleRate * windowSec);
         let real = 0;
         let imaginary = 0;
         for (let index = 0; index < count; index++) {
@@ -112,12 +120,19 @@ test.describe("12 — audio take groups", () => {
           liveSecond: amplitudeAt(live, 550, 0.2),
           liveFirstLate: amplitudeAt(live, 220, 1.2),
           liveSecondLate: amplitudeAt(live, 550, 1.2),
+          crossfade220Offline: amplitudeAt(offline, 220, 0.99, 0.02),
+          crossfade550Offline: amplitudeAt(offline, 550, 0.99, 0.02),
+          crossfade220Live: amplitudeAt(live, 220, 0.99, 0.02),
+          crossfade550Live: amplitudeAt(live, 550, 0.99, 0.02),
+          compFades: audioClipsForPlayback(project.arrangement)
+            .filter((clip: { compSourceTakeId?: string; fadeIn: number; fadeOut: number }) => clip.compSourceTakeId)
+            .map((clip: { fadeIn: number; fadeOut: number }) => [clip.fadeIn, clip.fadeOut]),
         });
       }
       return results;
     });
 
-    expect(report).toHaveLength(3);
+    expect(report).toHaveLength(4);
     expect(report[0]).toMatchObject({ selectedBufferId: "take.e2e.first" });
     expect(report[0]!.offlineFirst).toBeGreaterThan(0.05);
     expect(report[0]!.offlineSecond).toBeLessThan(0.005);
@@ -137,5 +152,14 @@ test.describe("12 — audio take groups", () => {
     expect(report[2]!.liveSecond).toBeLessThan(0.005);
     expect(report[2]!.liveSecondLate).toBeGreaterThan(0.05);
     expect(report[2]!.liveFirstLate).toBeLessThan(0.005);
+    expect(report[3]!.compSources).toEqual(["take.e2e.pass-1", "take.e2e.pass-1", "take.e2e.pass-2"]);
+    expect(report[3]!.compFades).toContainEqual([0, 0.125]);
+    expect(report[3]!.compFades).toContainEqual([0.125, 0]);
+    expect(report[3]!.crossfade220Offline).toBeGreaterThan(0.05);
+    expect(report[3]!.crossfade550Offline).toBeGreaterThan(0.05);
+    expect(report[3]!.crossfade220Live).toBeGreaterThan(0.05);
+    expect(report[3]!.crossfade550Live).toBeGreaterThan(0.05);
+    expect(report[3]!.crossfade220Live).toBeCloseTo(report[3]!.crossfade220Offline, 2);
+    expect(report[3]!.crossfade550Live).toBeCloseTo(report[3]!.crossfade550Offline, 2);
   });
 });

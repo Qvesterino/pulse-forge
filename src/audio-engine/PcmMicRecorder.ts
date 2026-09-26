@@ -451,6 +451,10 @@ export class PcmMicRecorder {
       this.inputAnalyser = ctx.createAnalyser();
       this.inputAnalyser.fftSize = 1024;
       const readyPromise = this.waitUntilReady();
+      // Graph setup below may fail before we reach `await readyPromise`.
+      // Attach a rejection observer now so cleanup can reject the pending
+      // handshake without creating an unhandled-rejection window.
+      void readyPromise.catch(() => {});
       this.node.port.onmessage = (event: MessageEvent) => this.handleWorkletMessage(event.data);
       this.node.onprocessorerror = () =>
         this.reportError("Audio capture stopped unexpectedly; saved audio is available for recovery");

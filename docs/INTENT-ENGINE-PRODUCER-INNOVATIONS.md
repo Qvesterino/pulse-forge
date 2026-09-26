@@ -281,3 +281,149 @@ KYX si môže hovoriť osobný AI producent až vtedy, keď v opakovaných, repr
 7. nechá používateľovi projektové dáta, editovateľnosť, undo a finálne rozhodnutie.
 
 Najväčšia konkurenčná výhoda preto nemusí byť „vlastný Suno model“. Môže ňou byť **hudobne schopný, lokálny a vysvetliteľný workflow**, v ktorom generovanie, výber, revízia, učenie vkusu a DAW editácia tvoria jeden bezpečný cyklus.
+
+## 9. Implementačná špecifikácia: prvý producentovský workflow
+
+Táto časť prekladá produktové nápady do konkrétnych hraníc v dnešnom kóde. Ukážkové dátové typy nižšie sú **návrhové kontrakty**, nie tvrdenie, že už existujú pod týmito názvami. Najprv treba rozšíriť aktuálne čisté funkcie a až potom rozhodnúť, či nový typ naozaj zjednoduší implementáciu.
+
+### 9.1 Tok dát a zodpovednosti
+
+```text
+Prompt + explicitné opravy používateľa + povolený kontext projektu
+  │
+  ├─ parse / normalize ──> IntentInput / IntentSpec
+  ├─ compile ────────────> BriefContract (čo vieme, čo nevieme, čo chrániť)
+  ├─ plan ───────────────> GenerationPlan + seed + provenance
+  ├─ generate ───────────> lokálni provideri / generatívne rodiny
+  ├─ repair + gates ─────> iba platní kandidáti
+  ├─ rank + diversify ───> shortlist s vysvetleným lane
+  ├─ audition ───────────> presné audio/hash návrhu
+  └─ explicitný Apply ──> jeden KYX command + undo
+```
+
+Pravidlá vlastníctva:
+
+- `text-parser.ts`, `normalize.ts` a `brief-contract.ts` prekladajú používateľov zámer. Ranker nesmie spätne „opraviť“ interpretáciu promptu.
+- `plan.ts` a candidate plans nesú reprodukovateľný seed a provenance. Variant plánu určený na tvorbu nesmie nahradiť pôvodný plán používaný na kontrolu hard briefu.
+- Provider smie navrhnúť obsah, nie meniť `ProjectDocument` ani obchádzať command systém.
+- `brief-gate.ts` a invarianty odmietnu neplatný obsah **pred** rankingom. Skóre, ONNX ani osobná preferencia nemôžu zmeniť zamietnutie na prijatie.
+- Audition pracuje s dočasným/ghost obsahom. Až potvrdený návrh sa aplikuje cez existujúci command systém.
+- Preference ledger prijíma iba explicitný feedback. Parser, generátor, ranker a automatická oprava projektu ho nesmú zapisovať.
+
+### 9.2 Návrhový kontrakt návrhu a bezpečný Apply
+
+Dnešný `BriefContract` už nesie `section`, `origin`, `confidence`, voliteľný `patch` a chránenú rolu; `IterationProposal` už rozlišuje `targets`, `preserve`, `before` a generovaný `result`. Ďalším zmysluplným krokom nie je nový všeobecný „AI response“ objekt, ale doplniť kontrolovateľnú identitu vstupu a výstupu tam, kde sa návrh auditionuje a aplikuje.
+
+Konceptuálne minimum:
+
+```ts
+// Návrhový pseudotyp — nenahrádza dnešné GenerationResult / IterationProposal.
+interface ProposalReceipt {
+  parentContentHash: string | null;
+  baseProjectContentHash: string;
+  targetScope: Array<{ sectionId?: string; role: IntentRole }>;
+  preserve: Array<{ scope: string; contentHash: string }>;
+  resultContentHash: string;
+  brief: Array<{ statementId: string; status: "passed" | "failed" | "unknown" }>;
+  provenance: {
+    provider: string;
+    seed: string;
+    lane: "safe" | "personal" | "experimental";
+    ranker: "global" | "personal" | "fallback";
+  };
+}
+```
+
+Nie všetky polia treba serializovať ani vystaviť v UI. Ich účelom je, aby aplikácia vedela zodpovedať: „Z čoho návrh vznikol?“, „Čo presne mení?“, „Čo sa musí zachovať?“ a „Je to stále ten istý návrh, ktorý som počul?“
+
+**Navrhovaný priebeh:**
+
+1. Pri vytvorení návrhu odfotiť content hash parent kandidáta, relevantnej projektovej oblasti a každej chránenej oblasti.
+2. Po renderi priradiť auditionovanému výsledku hash obsahu (nie iba poradové číslo kandidáta).
+3. Pred Apply znovu vypočítať base/parent/preserve hash-e. Ak sa projekt medzitým zmenil, označiť návrh za zastaraný a vyžiadať nové audition; nikdy ho potichu neregenerovať.
+4. Apply vloží presný auditionovaný výsledok do jedného undoable commandu. `Undo` vráti presný stav pred Apply.
+5. Pri targeted iteration hash-e všetkých nedotknutých rolí/sekcií musia zostať identické. Ak reprezentácia projektu neumožňuje bezpečne oddeliť požadovanú rolu, návrh sa odmietne alebo sa rozsah otvorene rozšíri ešte pred audition.
+
+**Testovacie príklady:** stale parent; zmenený chránený track; zrušené audition; kliknutie Apply počas renderu; dve rýchle Apply akcie; zmena dokumentu medzi audition a Apply; generátor vráti rovnaký pattern s novými UUID; undo/redo; offline renderer zlyhá. Každý scenár musí buď bezpečne odmietnuť, alebo aplikovať presne vypočutý obsah — nie vytvoriť tichú tretiu verziu.
+
+### 9.3 Kontrakt pre Producer DNA a Taste Probe
+
+Aktuálny `preference-ledger-core.ts` už definuje verzovaný explicitný párový záznam (`pattern` / `section` / `song`, voľby A/B/ani jeden/obidva, kontext, feature snapshots) a validuje ho pred použitím. Prvá inovácia preto nie je ďalší model: je ňou správne rozhodnúť **kedy** sa pýtať, **ktoré** voľby patria do rovnakého kontextu a **ako** overiť, že učenie pomáha na dosiaľ nevidených pároch.
+
+```text
+Nie je istota v jednej relevantnej osi
+  → vytvor kontrolovaný A/B pár, ak oba návrhy prejdú rovnakým briefom
+  → pomenuj jediný zamýšľaný rozdiel (napr. opakujúci sa vs. meniaci sa hook)
+  → používateľ vyberie A / B / ani jeden / obidva / preskočiť
+  → iba explicitná voľba zapíše observation
+  → ďalšie nepoužité páry zmerajú, či personal ranker predikuje výber lepšie
+```
+
+**Výber otázky (v1, deterministická policy):**
+
+1. Vylúčiť osi, ktoré prompt zamkol, ktoré nemajú implementovanú generatívnu rodinu alebo ktorých rozdiel nemožno zmerať.
+2. Vylúčiť každý pár, v ktorom jedna strana neprešla rovnakým brief gate.
+3. Uprednostniť os s najväčšou neistotou v relevantnom kontexte, ale rešpektovať limit frekvencie; používateľ ju môže vždy preskočiť.
+4. Označenie „kontrolovaný A/B“ použiť iba ak sa zamýšľaná os merateľne líši a ostatné deklarované osi ostali v tolerancii. Inak je to obyčajný kreatívny compare.
+5. „Ani jeden“ uzavrie pár bez hlasu pre A/B; môže spustiť zmenu briefu alebo generatívnej rodiny. „Obidva“ zaznamená prijateľnosť, nie preferenciu poradia.
+
+**Vyhodnotenie:** rozdeliť dáta chronologicky alebo podľa session na train/held-out. Reportovať počet ľudí/používateľov, počet párov, kontexty, win-rate aj interval neistoty proti globálnemu rankeru a jednoduchému baseline. Rovnaké páry, ktoré vytvorili osobný adapter, nesmú slúžiť ako dôkaz jeho generalizácie. Ak je vzorka malá, výsledok je „nedostatok dôkazov“, nie „personalizácia funguje“.
+
+### 9.4 Generatívne rodiny: od promptovej osi k počuteľnej zmene
+
+Každá nová kreatívna voľba potrebuje tri vrstvy; samotný slider alebo štítok lane nič negarantuje:
+
+| Vrstva               | Príklad hook variantu                                                     | Povinný dôkaz                                                                 |
+| -------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Zámer**            | `repeating-hook` alebo `evolving-hook`                                    | Parser/brief ho rozlíši a vie označiť konflikt či neistotu.                   |
+| **Kandidát**         | Seedovaná rodina vytvorí iný contour/rytmus hooku                         | Deterministický test, feature delta a obsahový hash; zachované roly ostávajú. |
+| **Výber a audition** | Kandidát prejde hard gates, zobrazí sa s poctivým popisom a dá sa vypočuť | Blind ľudská evaluácia potvrdí, že rozdiel je počuteľný a relevantný.         |
+
+Poradie odporúčaných rodín: (1) groove s merateľnou syncopation/placement zmenou, (2) opakovanie vs. vývoj existujúceho motívu, (3) call-and-response a melodický contour, (4) kontrast sekcií a vstupy/odchody rolí, (5) selektívne harmonické voicing. Každú rodinu treba pridať za samostatný feature flag alebo lane policy, aby bolo možné odlíšiť zlyhanie generátora od zlyhania rankera. Ak rodina nevytvorí platný a zmysluplne odlišný výsledok, lane sa skryje — nesmie sa preznačiť seedový variant.
+
+### 9.5 Evaluačný balík pred ONNX rozšírením
+
+ONNX má zmysel až po oddelenom zmeraní, kde vzniká chyba. Všetky nasledujúce reporty nech sú samostatné:
+
+| Vrstva              | Test / metrika                                                                                    | Zlyhanie znamená                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Interpretácia       | Golden briefy SK/EN: extrahované hard facts, preferencie, preserve, zákazy, unknown/conflict      | Vylepšiť parser/kontrakt; ranker to nevyrieši.                           |
+| Compliance          | Candidate gate + invariant suite na všetkých generovaných kandidátoch                             | Opraviť planner/generátor/gate; kandidát sa nesmie dostať do rankingu.   |
+| Hudobná validita    | Žánrovo a rolovo stratifikované checks; manuálne audity falošne pozitívnych/negatívnych výsledkov | Spresniť hudobné features/rodiny, nie zvyšovať váhu jedného proxy skóre. |
+| Počuteľná diverzita | Feature distance + zaslepená otázka „počujem zmysluplný rozdiel?“                                 | Zmeniť generatívnu rodinu alebo shortlist; viac seedov nestačí.          |
+| Brief fit vs. vkus  | Dve oddelené blind otázky                                                                         | Oddeliť compliance/ranking od preference learningu.                      |
+| Personalizácia      | Held-out voľby proti globálnemu a náhodnému baseline                                              | Ak niet prínosu, ranker vypnúť alebo rozšíriť dáta.                      |
+| Bezpečné editovanie | Preserve/base/result hash-e, stale proposal, undo/redo, race/cancel                               | Zastaviť Apply; neobetovať integritu kvôli plynulosti UI.                |
+| Náklady             | Cold/warm latency, render čas, pamäť, model download a fallback                                   | Zúžiť kandidátov/lazy-load; browser bez modelu ostáva použiteľný.        |
+
+Syntetické fixtures a teacher labels sú užitočné na regresie, deterministickosť a plumbing. V scorecarde však musia zostať označené ako syntetické; nesmú sa zlúčiť s používateľským blind posluchom.
+
+### 9.6 Rozdelenie na implementačné rezy
+
+Každý rez má byť samostatne reviewovateľný a nesmie naraz meniť parser, generátor, ONNX model, project schema aj UI.
+
+| Rez                                 | Konkrétny výsledok                                                                               | Pravdepodobné miesto                                                                 | Exit gate                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| **A — Baseline**                    | Verziované brief fixtures + anonymný pattern/song compare a pravdivý report o lane availability  | `tests/intent/`, `scripts/`, `listening/`                                            | Reprodukovateľný baseline; ľudské hlasy oddelené od synthetic tests.         |
+| **B — Brief Debugger**              | Používateľ opraví konkrétny statement pred generovaním; konflikt/unknown nie je vydávaný za fakt | `brief-contract.ts`, `text-parser.ts`, `IntentPanel.tsx`                             | Golden SK/EN testy; 100 % hard fixtures správne alebo explicitne unresolved. |
+| **C — Candidate families**          | Každý SAFE/PERSONAL/EXPERIMENTAL výsledok má pravú policy, hudobnú rodinu a truthful fallback    | `candidate-search.ts`, `providers/local.ts`, melody/groove generátory                | Všetci kandidáti gate-valid; rodiny reproducible; blind počuteľný rozdiel.   |
+| **D — Receipt + surgical revision** | Rozdiel, parent, preserve hash-e a presný auditioned výstup; bezpečný stale odmiet               | `iteration.ts`, `audition.ts`, `IntentPanel.tsx`, `commands/`                        | Protected content 100 % identický; audition hash = Apply hash; jeden Undo.   |
+| **E — DNA questions**               | Kontextový Taste Probe a explicitné A/B/ani jeden/obidva                                         | `preference-ledger-core.ts`, `personal-ranker.ts`, `candidate-search.ts`, compare UI | Held-out predikcia; export/pause/clear; žiadne implicitné zápisy.            |
+| **F — Project/donor masks**         | Používateľ zapína jednotlivé project/audio osi a vidí ich zdroj                                  | `audio-reference.ts`, `reference-embedding.ts`, `semantic-conditioning.ts`           | Donor OFF = nulový conditioning vplyv; žiadne surové audio v ledgeri.        |
+| **G — Song producer**               | Celoskladbový compare, section-only revision a samostatný song preference context                | `compose.ts`, `song.ts`, `song-audio-review.ts`, `IntentPanel.tsx`                   | Whole-song blind evidence; ostatné sekcie sa pri lokálnej revízii nemenia.   |
+| **H — MRT2 performer**              | Voliteľný audition/freeze performer po stabilizácii kontraktu a song flow                        | `src/generative/`, capture, desktop host                                             | Runtime optional; podpora a resource budget otestované; výstup editovateľný. |
+
+**Rozhodnutie o poradí:** rezy A–D prinášajú kontrolu a dôveryhodné dáta; rez E je užitočný až keď D vytvára kvalitné páry a C vie preferovanú vlastnosť realizovať. Donori, song-level DNA a MRT2 sú naviazané na rovnaký receipt/audition/apply cyklus, preto ich nepripájať cez paralelný workflow.
+
+### 9.7 Produktové akceptačné scenáre
+
+1. **Jednoduché zadanie:** „Sprav 92 BPM West Coast beat.“ Používateľ dostane krátky kontrakt, validné kandidáty a počuje ich pred Apply.
+2. **Zachovanie:** „Pridaj lead, bicie a 808 nechaj.“ Výstup nemení chránený drum/bass content; hash test to dokazuje.
+3. **Oprava interpretácie:** „Myslel som bounce ako swing, nie viac kickov.“ Opravený contract ide do nového plánu; starý návrh sa omylom nepoužije.
+4. **Pokračovanie:** „Druhý, ale hook priestrannejší.“ Základom je kandidát dva; UI vypíše target/preserve rozsah; po audition Apply použije práve vypočutý výsledok.
+5. **Nedobrý pár:** používateľ zvolí „ani jeden“. Žiadna strana nedostane preferenčný hlas; brief/rodina sa upraví a hľadá sa nový pár.
+6. **Cold start:** personalizácia nemá dosť relevantných volieb. UI hovorí cold-start a ponúkne SAFE/EXPERIMENTAL; nevymýšľa si osobný vkus.
+7. **Zmena projektu počas audition:** projektový hash už nesedí. Apply sa zablokuje s možnosťou znovu auditionovať.
+8. **Bez modelu alebo offline:** lokálny deterministický workflow zostáva funkčný; UI pravdivo označí použitý fallback.
+
+Toto je „hotové“ iba keď produktový scenár, čisté unit testy, browser/audio testy a aspoň jedno ľudské blind hodnotenie potvrdia príslušnú vrstvu. Zelený typecheck ani úspešný ONNX `session.run()` sám osebe nie je akceptačný dôkaz.

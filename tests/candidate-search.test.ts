@@ -151,7 +151,7 @@ describe("Producer DNA candidate search lanes", () => {
     const experimental = candidateSearchVariant(plan, "experimental-groove-seed", 2, bias);
 
     expect(experimental.search.family).toBe("alternate-groove");
-    expect(experimental.search.melodyFamily).toBe("repeating-hook");
+    expect(experimental.search.melodyFamily).toBe("evolving-hook");
     expect(experimental.search.grooveId).toBeTruthy();
     expect(experimental.search.grooveId).not.toBe(plan.groove.id);
     expect(experimental.generationPlan.intent.genre).toBe(plan.intent.genre);
@@ -168,7 +168,7 @@ describe("Producer DNA candidate search lanes", () => {
     );
     expect(experimentalPattern.generation?.grooveId).toBe(experimental.search.grooveId);
     expect(experimentalPattern.rows).not.toEqual(safePattern.rows);
-    expect(prepared.search.melodyFamily).toBe("repeating-hook");
+    expect(prepared.search.melodyFamily).toBe("evolving-hook");
     expect(experimental.validationPlan.groove).toEqual(plan.groove);
     expect(experimental.validationPlan.intent.constraints).toEqual(plan.intent.constraints);
 
@@ -186,22 +186,30 @@ describe("Producer DNA candidate search lanes", () => {
         .filter((note) => note.start >= bar * barTicks && note.start < (bar + 1) * barTicks)
         .map(({ start, pitch, duration, velocity }) => ({ start: start - bar * barTicks, pitch, duration, velocity }));
     expect(motifInBar(0).length).toBeGreaterThan(0);
-    for (let bar = 1; bar < Math.ceil(prepared.pattern.stepCount / 16); bar++) {
-      expect(motifInBar(bar)).toEqual(motifInBar(0));
-    }
+    const firstMotif = motifInBar(0);
+    const secondMotif = motifInBar(1);
+    expect(secondMotif.length).toBeGreaterThan(0);
+    expect(secondMotif.length).toBeGreaterThanOrEqual(firstMotif.length - 1);
+    expect(secondMotif.slice(0, -1)).toEqual(firstMotif.slice(0, secondMotif.length - 1));
+    const firstEnding = firstMotif.at(-1)!;
+    const secondEnding = secondMotif.at(-1)!;
+    expect(secondMotif.length < firstMotif.length || secondEnding.duration < firstEnding.duration).toBe(true);
+    expect(motifInBar(2)).toEqual(firstMotif);
     expect(prepared.pattern.generation?.quality?.melodicMotifRepetition).toBeDefined();
   });
 
   it("does not replace an explicit style or vary the groove when drums are protected", () => {
     const explicitStylePlan = planGeneration(normalizeIntent({ ...plan.intent, style: plan.groove.name }), doc);
     const explicitStyle = candidateSearchVariant(explicitStylePlan, "explicit-style", 2, bias);
-    expect(explicitStyle.search.family).toBe("soft-axis");
+    expect(explicitStyle.search.family).toBe("evolving-hook");
+    expect(explicitStyle.search.melodyFamily).toBe("evolving-hook");
     expect(explicitStyle.search.grooveId).toBeUndefined();
     expect(explicitStyle.generationPlan.options.style).toBe(plan.groove.name);
 
     const protectedDrumsPlan = planGeneration(normalizeIntent({ ...plan.intent, preserve: ["drums"] }), doc);
     const protectedDrums = candidateSearchVariant(protectedDrumsPlan, "protected-drums", 2, bias);
-    expect(protectedDrums.search.family).toBe("soft-axis");
+    expect(protectedDrums.search.family).toBe("evolving-hook");
+    expect(protectedDrums.search.melodyFamily).toBe("evolving-hook");
     expect(protectedDrums.search.grooveId).toBeUndefined();
   });
 
