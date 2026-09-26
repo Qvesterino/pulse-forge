@@ -50,6 +50,8 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bgrime\b/, "drill"],
   [/\bdrift phonk\b/, "phonk"],
   [/\bdubstep\b|\briddim\b|\bhybrid trap\b/, "trap"],
+  // hip-hop sub-genre sweep — grime is a 140 UK floor (house family)
+  [/\bgrime\b|\beski\b/, "house"],
   [/\bchillhop\b|\bstudy beats\b|\blofi hip hop\b/, "ambient"],
   [/\bdrone\b|\bdark ambient\b|\bnew age\b|\bmeditation\b/, "ambient"],
   [/\bbreakcore\b/, "dnb"],
@@ -72,6 +74,14 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bvaporwave\b/, "ambient"],
   [/\bberlin school\b/, "techno"],
   [/\bkrautrock\b/, "techno"],
+  // pop wave — specifics BEFORE the generic "pop" entry; all ride existing
+  // genres (dance-pop base = house, pop-rap = trap). "bedroom pop" above stays
+  // first (more specific). SK "pop" is indeclinable, "popovú" stem covered.
+  [/\bpop rap\b|\bpop-rap\b/, "trap"],
+  [/\bhyperpop\b/, "trap"],
+  [/\bdance pop\b|\bdance-pop\b|\bpop dance\b/, "house"],
+  [/\bsynth pop\b|\bsynth-pop\b|\bsynthpop\b|\belectropop\b|\belectro pop\b/, "house"],
+  [/\bpop beat\b|\bpop song\b|\bpop music\b|\bpop\b|\bpopov\w*/, "house"],
   // canonical / generic
   [/\bdeep house\b/, "house"],
   [/\btech house\b/, "house"],
@@ -127,7 +137,19 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bsparse\b/, "sparse"],
   [/\bsample drill\b|\bsample\b/, "sample"],
   [/\bhyper ?pop\b|\bhyper (?:drill|beat)\b|\bhyper\b/, "hyper"],
+  // Pop style (Wave 2 adds the house.pop groove; until more pop grooves land,
+  // unmatched styles fall back deterministically inside the genre).
+  [/\bpop\b|\bpopov\w*/, "pop"],
   [/\bdubstep\b|\briddim\b/, "dubstep"],
+  // hip-hop sub-genre sweep
+  [/\bchopped and screwed\b|\bscrewed\b|\bslowed(?: and throwed)?\b/, "screwed"],
+  [/\bplugg(?:nb)?\b/, "plugg"],
+  [/\bdetroit rap\b|\bmichigan (?:rap|beat)\b|\bbabytron\b/, "detroit"],
+  [/\bgrime\b|\beski beat\b/, "grime"],
+  [/\bhyphy\b|\bthizz\b/, "hyphy"],
+  [/\bcrunk\b/, "crunk"],
+  [/\bold school rap\b|\b80s rap\b|\belectro hip hop\b/, "oldschool"],
+  [/\bcloud rap\b/, "sparse"],
   [/\bmelodic drill\b/, "melodic"],
   [/\bmelodic(?:ke|a)?\b/, "melodic"],
   [/\blux\b|\blush\b/, "lux"],

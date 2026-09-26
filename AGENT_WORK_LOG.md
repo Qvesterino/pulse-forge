@@ -4549,3 +4549,30 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** parser+artists+presets **101/101**, 9-súborová battery **168/168**; `tsc --noEmit` čistý na campaign súboroch (zostávajú 2 errory v providers/local+symbolic — ich in-flight evaluateCandidate rozšírenie o 4. argument, sedia si na moju GOAL 02 extrakciu; nesahal som). Loudness **354 meraných**.
 
 **Roster stav:** 111 entry (vrátane ich paralelných prírastkov). Nasýtené témy: west coast, g-funk, Fred/UKG, future garage, broken, hyperpop, dubstep, melodic techno, afro, amapiano, trance, drill, phonk, jersey, dnb. Nasledujúce prirodzené diery (pre budúce vlny): reggaeton/dembow groove, technique/future beats, K-pop/afrobeats — alebo pauza na GOAL 12 gate.
+
+---
+
+## VLNA 6 — HIP-HOP SUBŽÁNROVÝ SWEEP (2026-09-26, user: „všetky variácie hip hop rap, newschool, boom bap, trap")
+
+**Dodané — 7 grooveov + 17 interpretov, najväčšia žánrová vlna kampane:**
+
+**Groovey (6 v trap.ts + 1 v drill.ts):**
+- `trap.screwed` (66–78! swing 0.24 — Houston chopped-and-screwed: najpomalší rap groove v knižnici, groove JE spomalenie)
+- `trap.plugg` (140–160 — ľahké springy bubny pod bell melódie)
+- `trap.detroit` (135–148 swing 0.14 — Michigan loop rap, kick chodí medzi snare)
+- `trap.hyphy` (96–106 swing 0.18 — Bay Area bounce)
+- `trap.crunk` (98–108 — chant corner, jednoduchšie a HLASNEJŠIE)
+- `trap.oldschool` (98–110 — TR-808 era: tenký electro snare, rovné haty)
+- `drill.grime` (138–144, swing 0.02 — 140 eski, takmer priamo)
+
+**17 interpretov:** cloud corner (a$ap rocky, yung lean/drain gang, clams casino), Houston (dj screw — „chopped and screwed"/„slowed"), plugg, Detroit (babytron, veeze), grime (skepta, wiley/jme — routing reconcilovaný do DRILL rodiny, lebo ich culture wave mapovala grime→drill), hyphy (e-40, mac dre/thizz), crunk (lil jon), conscious/new-school (kendrick +GNX slová, j cole, nas +illmatic, mf doom), old school/electro generic.
+
+**RECONCILIÁCIE (2):** (1) grime — ich fráza grime→drill (riadok 50) vyhráva nad mojou house mapping; groove presunutý do drill.ts ako drill.grime, skepta/wiley retargetovaní na drill. (2) ich string portfolio vlna (+15 presetov) dorazila po mojom loudness regene → druhý regen na 369.
+
+**⚠ GOTCHA (zapísaná):** heredoc BS korupcia potretí v tejto vlne — `\b` → backspace bajt v STYLE_PHRASES (chytil to môj test: style undefined). Všetky regexy teraz VÝHRADNE Edit tool. Navyše multiline node replace netrafia — test id fixy cez Edit.
+
+**Dôležité súbory:** src/ai/grooves/{trap,house,drill}.ts, src/intent/{artists,text-parser}.ts, src/presets/{factory,preset-loudness.generated}.ts, tests/{intent-text-parser,intent-artists}.test.ts, docs/CURRENT-STATE.md (369 = 363+6, ich string vlna).
+
+**Validácia:** parser+artists **100/100**; 11-súborová battery po ich live syntaks-fixu + druhom loudness regene všetko zelené (198 testov v 8 prebehnutých súboroch + 26 loudness trio); `tsc --noEmit` EXIT 0.
+
+**Hip-hop pokrytie po tejto vlne:** old school/electro, boom bap, conscious (kendrick/j cole/nas/doom), trap (classic/hyper/lux/rolling/sparse/bouncy), cloud, screwed, plugg, detroit/michigan, hyphy, crunk, drill (uk/dark/bounce/sample/hyper/melodic/grime), grime, phonk (memphis/drift/horror), jersey, rage/opium, west coast/g-funk, newschool (kanye/metro/zaytoven/tay keith/lex luger/pi'erre/future/gunna/21/thug/uzi/trippie/don toliver/kid cudi). Žánrová mapa hip-hopu je KOMPLETNÁ.

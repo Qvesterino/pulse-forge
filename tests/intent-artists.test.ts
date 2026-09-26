@@ -348,3 +348,77 @@ describe("melo-club & bass music roster", () => {
     expect(pink.input.bpmRange).toEqual([132, 140]);
   });
 });
+
+describe("hip-hop sub-genre roster sweep", () => {
+  it("cloud corner: asap rocky / yung lean / clams casino", () => {
+    expect(parseIntentText("asap rocky type beat").input.style).toBe("sparse");
+    expect(parseIntentText("yung lean type beat").input.mood).toBe("chill");
+    expect(parseIntentText("cloud rap beat").input.style).toBe("sparse");
+    expect(parseIntentText("clams casino type beat").input.bpmRange).toEqual([125, 140]);
+  });
+
+  it("regional corners: dj screw slowed / babytron detroit / e-40 hyphy / lil jon crunk", () => {
+    expect(parseIntentText("dj screw type beat").input.style).toBe("screwed");
+    expect(parseIntentText("dj screw type beat").input.bpmRange).toEqual([66, 78]);
+    expect(parseIntentText("babytron type beat").input.style).toBe("detroit");
+    expect(parseIntentText("veeze type beat").input.style).toBe("detroit");
+    expect(parseIntentText("e-40 type beat").input.style).toBe("hyphy");
+    expect(parseIntentText("mac dre type beat").input.style).toBe("hyphy");
+    expect(parseIntentText("lil jon type beat").input.style).toBe("crunk");
+    expect(parseIntentText("crunk beat").input.bpmRange).toEqual([98, 108]);
+  });
+
+  it("grime corner: skepta / wiley on the 140 floor", () => {
+    expect(parseIntentText("skepta type beat").input.genre).toBe("drill");
+    expect(parseIntentText("skepta type beat").input.style).toBe("grime");
+    expect(parseIntentText("wiley type beat").input.style).toBe("grime");
+  });
+
+  it("conscious boom bap corner: kendrick / j cole / nas / mf doom", () => {
+    const kdot = parseIntentText("kendrick type beat");
+    expect(kdot.input.style).toBe("headnod");
+    expect(kdot.input.bpmRange).toEqual([92, 110]);
+    expect(parseIntentText("j cole type beat").input.style).toBe("classic");
+    expect(parseIntentText("nas type beat").input.style).toBe("classic");
+    expect(parseIntentText("mf doom type beat").input.mood).toBe("chill");
+    expect(parseIntentText("old school rap beat").input.style).toBe("oldschool");
+  });
+
+  it("pop routing: dance-pop/synth-pop/pop-rap/hyperpop land on existing genres", () => {
+    expect(parseIntentText("pop beat").input.genre).toBe("house");
+    expect(parseIntentText("pop beat").input.style).toBe("pop");
+    expect(parseIntentText("dance pop beat at 120").input.genre).toBe("house");
+    expect(parseIntentText("synthpop track").input.genre).toBe("house");
+    expect(parseIntentText("pop-rap beat").input.genre).toBe("trap");
+    expect(parseIntentText("hyperpop banger").input.genre).toBe("trap");
+    expect(parseIntentText("hyperpop banger").input.style).toBe("hyper");
+  });
+
+  it("pop artists: dua/weeknd/billie/ariana/bruno/olivia/charli/taylor/lorde/tate/gaga/rihanna", () => {
+    const dua = parseIntentText("dua lipa type beat");
+    expect(dua.input.genre).toBe("house");
+    expect(dua.input.style).toBe("pop");
+    expect(dua.input.bpmRange).toEqual([103, 125]);
+    expect(parseIntentText("the weeknd type beat").input.bpmRange).toEqual([90, 130]);
+    const billie = parseIntentText("billie eilish type beat");
+    expect(billie.input.genre).toBe("ambient");
+    expect(billie.input.mood).toBe("dark");
+    expect(billie.input.bpmRange).toEqual([70, 100]);
+    expect(parseIntentText("ariana grande song").input.genre).toBe("house");
+    expect(parseIntentText("bruno mars funk").input.style).toBe("funky");
+    expect(parseIntentText("charli xcx hyperpop").input.style).toBe("hyper");
+    expect(parseIntentText("charli xcx type beat").input.bpmRange).toEqual([130, 160]);
+    expect(parseIntentText("taylor swift song").input.mood).toBe("chill");
+    expect(parseIntentText("lorde type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("tate mcrae dance").input.genre).toBe("house");
+    expect(parseIntentText("lady gaga dance pop").input.style).toBe("pop");
+    expect(parseIntentText("rihanna type beat").input.bpmRange).toEqual([95, 120]);
+    expect(dua.detected).toContain("♪ dua lipa");
+  });
+
+  it("pop preset is a base: explicit words still win", () => {
+    const parsed = parseIntentText("billie eilish type beat bright");
+    expect(parsed.input.mood).toBe("energetic");
+    expect(parsed.input.genre).toBe("ambient");
+  });
+});

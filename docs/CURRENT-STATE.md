@@ -21,8 +21,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Project templates**                  |  **12** | `TemplateId` union in `src/project-model/templates.ts`                                                                   |
 | **Factory assets** (drum / tonal / FX) |  **81** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                     |
 | └─ curated WAV overrides               |      78 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; the 3 mallet assets are synthesis-only) |
-| **Factory presets**                    | **354** | `src/presets/factory.ts`                                                                                                 |
-| └─ instrument presets                  |     348 | `FACTORY_PRESETS`                                                                                                        |
+| **Factory presets**                    | **369** | `src/presets/factory.ts`                                                                                                 |
+| └─ instrument presets                  |     363 | `FACTORY_PRESETS`                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                   |
 | **Architecture decision records**      |  **16** | `docs/adr/0001` … `0014`, plus 0006/0007 each have two companion files                                                   |
 | **Vitest spec files**                  | **519** | `tests/` files matching `*.test.ts` (415) and `*.test.tsx` (104)                                                         |

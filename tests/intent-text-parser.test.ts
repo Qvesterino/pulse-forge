@@ -556,3 +556,43 @@ describe("melo-club & bass music wave", () => {
     }
   });
 });
+
+describe("hip-hop sub-genre sweep", () => {
+  it("every new sub-genre phrase resolves its style", () => {
+    expect(parseIntentText("chopped and screwed beat").input.style).toBe("screwed");
+    expect(parseIntentText("plugg type beat").input.style).toBe("plugg");
+    expect(parseIntentText("pluggnb at 150").input.style).toBe("plugg");
+    expect(parseIntentText("detroit rap type beat").input.style).toBe("detroit");
+    expect(parseIntentText("hyphy beat").input.style).toBe("hyphy");
+    expect(parseIntentText("crunk beat").input.style).toBe("crunk");
+    expect(parseIntentText("old school rap beat").input.style).toBe("oldschool");
+    expect(parseIntentText("cloud rap beat").input.style).toBe("sparse");
+  });
+
+  it("grime routes to house genre + grime style (140 UK floor)", () => {
+    const parsed = parseIntentText("grime beat at 140");
+    expect(parsed.input.genre).toBe("drill"); // the culture wave put grime in the drill family
+    expect(parsed.input.style).toBe("grime");
+    expect(parseIntentText("eski beat").input.style).toBe("grime");
+  });
+
+  it("all new grooves exist with valid 16-step shapes", () => {
+    for (const id of [
+      "trap.screwed",
+      "trap.plugg",
+      "trap.detroit",
+      "trap.hyphy",
+      "trap.crunk",
+      "trap.oldschool",
+      "drill.grime",
+    ]) {
+      const groove = getGrooveById(id);
+      expect(groove).toBeDefined();
+      for (const pattern of groove!.patterns) {
+        for (const row of Object.values(pattern)) expect(row).toHaveLength(16);
+      }
+    }
+    // Screwed IS the slowness — the slowest rap groove in the library.
+    expect(getGrooveById("trap.screwed")!.bpm[0]).toBeLessThan(80);
+  });
+});
