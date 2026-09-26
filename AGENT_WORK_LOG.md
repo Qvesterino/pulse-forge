@@ -4728,3 +4728,15 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 - **`suggestSectionRevivals(meters)`**: loud-carrying sekcia (drop/chorus/verse) ≥8 dB pod mediánom vlastných loud-carrying sekcií → návrh energy +0.15. Break/intro/outro/build majú dýchať — tichota tam nikdy nenavrhuje; vyvážený song nenavrhuje nič. Žiadna automatická aplikácia.
 - **UI**: SUNO preview render feedne metre → suggestion čipy; klik kompiluje do audition-first sekčného návrhu (▶ náhľad → ✓/✗) zo Fázy 5 jadra; čipy sa resetujú so song draftom.
 - Testy +5 v intent-song-audio-review (segmentácia pri BPM, tichý chorus evidence, breathing-section imunita, single-section no-reference, nepoužiteľné clock/form → []).
+
+---
+
+## FÁZA 6 — KYX AKO ZVUKÁR: MERANIE → ODPORÚČANIE → POTVRDENIE (2026-09-26)
+
+**Roadmap:** IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md Fáza 6 — produkčná pomoc počuteľná a vysvetliteľná; nič sa automaticky „nemasteruje" bez kontroly.
+
+- **Audit meraní**: proxy (RMS/crest/ZCR/lowBandRatio — song-audio-review) vs štandardizované (BS.1770-4 K-weighting LUFS — kweighting) už boli oddelené moduly. Doplnené: **clipping-runs** finding (≥3 po sebe idúce full-scale samples, per-kanálové počítanie — zdieľaný counter by premostil kanály do falošného runu); „near-full-scale" (jedna vzorka) ≠ „clipping" (deštrukcia waveformy) — oddelené dôvody, oddelené fixy.
+- **`recommendLoudnessTrim(measured, target, currentTrim)`** — štruktúrovaný report: cieľ (LUFS), dôkaz (merané na tom istom offline renderi ako export), navrhnutý zásah (trim clampnutý na ±6, iba master — nikdy user tracky), **poctivý trade-off** (zosilnenie = limiter žerie headroom; ztíšenie = menej husté voči referenciám), withinTarget ±1 LU = nič. Pure → reprodukovateľné.
+- **`measurePreviewLoudness`** — measure-only: vstupný doc NIKDY nemutuje (testom pinované). Panel prestal volať `applyPreviewLoudness` (auto-trim do preview = porušenie pravidla); funkcia ostáva ako testovaná referenčná implementácia.
+- **UI**: SUNO preview prehráva NETRIMNUTÝ render; report riadok (dôkaz + cieľ + trade-off) s `✓ PRIJAŤ TRIM` — setMasterConfig na preview doc + re-render audition (preview == USE ostáva pravda, measuredAfter z nového buffera) alebo `✗`/ticho = USE nainštaluje netrimnuté. USE gate cez loudnessApplied nezmenený.
+- **Testy**: loudness-recommendation 8/8 (clamp, ±1 within-target, bez merania = žiadnaRecommendácia, determinizmus, doc-unchanged pin), clipping 3/3; regresia loudness/review/song rodina **123/123**; panel SUNO lane test migrovaný na nový mock.
