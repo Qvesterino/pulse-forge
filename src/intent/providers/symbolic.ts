@@ -318,6 +318,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           generationPlan.intent.density,
           generationPlan.intent.complexity,
           generationOptions.productionProfile,
+          generationPlan.intent.flow,
         );
         let notes: Pattern["notes"] = {};
         let melodicSource: "mv" | "prior" | "template" = "template";

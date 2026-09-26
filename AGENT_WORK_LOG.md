@@ -4748,3 +4748,19 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 - **Executable gate suite** `tests/release-gate-ai-producer.test.ts` (11): kódové brány nad reálnymi modulmi — brief fidelity, presnosť zmien, determinizmus, no-regen apply, modelová odolnosť, PCM bounded/finite.
 - **Prvé plné prepnutie**: Vitest 5909 (1 reálna chyba = iteration length+preserve splice — fix pri koreni: source pattern sa predáva generátoru prereziznutý); typecheck 2 chyby = ich organ vlna; build kompiluje ale **budgety FAIL** (DAW JS 3021/2750, landing 727/600 — +416 KB ich vlny od auditu 15); e2e smoke 3/6 (štúdio ✓, landing lokátory zastarané voči ich redesignu); blind listening OWED.
 - **Záver**: workflow prešiel kódovými bránami; release blokery zvýraznené, neskrývané: (a) budgety, (b) e2e lokátory, (c) ľudské hodnotenie.
+
+---
+
+## VLNA 9.5 — FLOW DENSITY (2026-09-26, roadmap engine idea realizovaný)
+
+**Čo to je:** rap flow = rytmická mriežka lead/hook linky. „Detroit flow" vs „Atlanta flow" sa doteraz líšili len bubnami — teraz `IntentSpec.flow` pretvára aj MELODICKÚ linku: `triplet` (triplet-16th mriežka, 80-tick — trap/Detroit bounce), `offbeat` (push o pol 16th — laid-back/offbeat rap), `straight` (no-op pin). Basa a akordy OSTÁVAJÚ na priamočiarej mriežke — groove kotví, flow sa vnáša.
+
+**Dodané:** `flow?` do IntentSpec/IntentInput + normalizeIntent whitelist (hash-kompatibilné omitted-absent) + FLOW_PHRASES tabuľka + firstFlowPhrase typed parser („triplet flow", SK „tripletový flow", „offbeat flow", „straight flow") + multi-voice `generateMultiVoice` nový flow param s lead post-transformom (bass/chords imunné) + symbolic provider thread (generationPlan.intent.flow).
+
+**Dôležité súbory:** src/intent/{types,normalize,text-parser,multi-voice}.ts, src/intent/providers/symbolic.ts, tests/flow-density.test.ts (NOVÝ, 4).
+
+**Validácia:** flow-density **4/4** (triplet mriežka + actual-movement assert, offbeat push, parser EN/SK, bass imunita); 9-súborová battery — jediný padnutý test = „deeper" TIMEOUT pod strojovou záťažou (izolovane PASS 771ms → 3/3 pri -t filtri; flaky-by-load, nie kód). `tsc` — všetkých 15 chýb = ich in-flight (plugin-functional-audit 6, acid-brass 4, + ďalšie ich súbory); moje súbory čisté.
+
+**Poznámky:** dataset/prior retrain (aby ONNX prior generoval priamo v flow mriežke) ostáva budúca práca — táto verzia je deterministický post-transform nad generovanými notami. Width/sub consumer v planMixProfile už spravila ich session (mix.ts:259-283) — nič netreba.
+
+**Intent engine stav po Vlne 9.5:** interpret → groove+BPM+productionProfile+**flow mriežka** → mix/master podpis (305 curated + deep chain) → FX hinty + 15 konceptov → brief → iterácie → reference audio → konverzačné intenty.

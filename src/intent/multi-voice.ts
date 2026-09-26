@@ -94,6 +94,7 @@ export function generateMultiVoice(
   density = 0.5,
   complexity = 0.5,
   productionProfile?: ProductionProfile,
+  flow?: "straight" | "triplet" | "offbeat",
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
   const progression = selectProgression(genre, seed);
@@ -272,10 +273,25 @@ export function generateMultiVoice(
     }
   }
 
+  // Flow density (roadmap: the rap-flow grid) — reshapes the LEAD line's
+  // rhythm without touching pitch choices: triplet 16ths (the 80-tick
+  // trap/detroit bounce grid) or the offbeat push (+half a 16th). Bass and
+  // chords keep the straight grid — the groove anchors while the flow rides.
+  const flowedLead =
+    flow === "triplet"
+      ? leadEvents.map((note) => ({
+          ...note,
+          start: Math.round(note.start / (STEP_TICKS * (2 / 3))) * (STEP_TICKS * (2 / 3)),
+          duration: Math.max(STEP_TICKS * (2 / 3), note.duration),
+        }))
+      : flow === "offbeat"
+        ? leadEvents.map((note) => ({ ...note, start: note.start + STEP_TICKS / 2 }))
+        : leadEvents;
+
   return {
     bass: bassEvents,
     chord: chordEvents,
-    lead: leadEvents,
+    lead: flowedLead,
     progressionName: progression.name,
     progressionDegree: progression.events[0]?.degree ?? 0,
   };

@@ -89,6 +89,9 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     ...(typeof source.artist === "string" && source.artist.trim().length > 0
       ? { artist: source.artist.trim().slice(0, 64) }
       : {}),
+    ...(source.flow === "straight" || source.flow === "triplet" || source.flow === "offbeat"
+      ? { flow: source.flow }
+      : {}),
     mood: text(source.mood),
     energy: unit(source.energy, 0.7),
     density: unit(source.density, 0.5),

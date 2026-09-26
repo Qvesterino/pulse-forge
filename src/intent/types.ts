@@ -43,6 +43,11 @@ export interface IntentSpec {
    * preset matched; omitted from legacy hashes.
    */
   artist?: string;
+  /**
+   * Rap flow grid for the lead/hook line: straight 16ths, triplet 16ths
+   * (the trap/detroit bounce) or offbeat push. Absent = generator default.
+   */
+  flow?: "straight" | "triplet" | "offbeat";
   mood: string | null;
   energy: number;
   density: number;
@@ -98,6 +103,7 @@ export type IntentInput = Partial<IntentSpec> & {
   genre?: unknown;
   style?: unknown;
   productionProfile?: unknown;
+  flow?: unknown;
   artist?: unknown;
   mood?: unknown;
   energy?: unknown;

@@ -104,7 +104,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bfuture bass\b/, "trap"],
   [/\bdrone\b/, "ambient"],
   [/\bidm\b/, "ambient"],
-  [/\bdeconstructed (?:club|music)\b/, "trap"],
+  [/\bdeconstructed (?:club|music)\b/, "hyperpop"],
   [/\bvaporwave\b/, "ambient"],
   [/\bberlin school\b/, "techno"],
   [/\bkrautrock\b/, "techno"],
@@ -112,7 +112,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // genres (dance-pop base = house, pop-rap = trap). "bedroom pop" above stays
   // first (more specific). SK "pop" is indeclinable, "popovú" stem covered.
   [/\bpop rap\b|\bpop-rap\b/, "trap"],
-  [/\bhyperpop\b/, "trap"],
+  // Hyperpop — first-class genre since the hyperpop promotion: the hyper
+  // grooves + drop-first song form + maximalist mix live under "hyperpop".
+  // Bare "hyper" stays a style word (hyper drill / hyper beat keep drill/trap).
+  [/\bhyper ?pop\b/, "hyperpop"],
   // disco pop wave — before the generic pop entries ("disco pop" contains
   // both words); rides house.disco. SK "disko" deaccented-safe.
   [/\bnu[- ]?disco\b|\bdisco pop\b|\bpop disco\b|\bdisco funk\b|\bitalo disco\b|\bdisco\b|\bdisko\b/, "house"],
