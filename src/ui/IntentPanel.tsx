@@ -28,7 +28,7 @@ import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { resolveVocalTake } from "../vocal/resolve";
 import { analyzeVocalTake } from "../vocal/analyzer-client";
-import { applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
+import { applyVocalHookCommand, applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
 import { summarizeVocalProfile } from "../vocal/notes";
 import type { VocalProfile } from "../vocal/types";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
@@ -151,6 +151,7 @@ export function IntentPanel() {
     // never survive a project switch (apply buttons read the CURRENT doc).
     takeTokenRef.current += 1;
     setTakeProfile(null);
+    setTakeRef(null);
   }, [services]);
 
   // Landing handoff (viral growth plan A2): the prompt that forged the beat
@@ -758,6 +759,9 @@ export function IntentPanel() {
   // Bumped on project switch (effect above): an in-flight take analysis must
   // not install a stale profile after the switch cleared the card.
   const takeTokenRef = useRef(0);
+  // The staged take's bank pointer (resolveVocalTake) — the ⭐ HOOK command
+  // needs it to point the vocalchop track at the USER'S OWN take audio.
+  const [takeRef, setTakeRef] = useState<{ bufferId: string } | null>(null);
   const [refGroove, setRefGroove] = useState<GrooveExtraction | null>(null);
   // Voice idea (Fázy 1+2): the artist hums/sings — patch carries their tempo
   // + key, humNotes become the LEAD of the SUNO MODE song.
@@ -1027,6 +1031,7 @@ export function IntentPanel() {
       }
       if (takeToken !== takeTokenRef.current) return; // project switched mid-analysis
       setTakeProfile(outcome.profile);
+      setTakeRef({ bufferId: resolved.take.bufferId });
       setStatus(`🎤 take heard — ${summarizeVocalProfile(outcome.profile).join(" · ")}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1043,6 +1048,19 @@ export function IntentPanel() {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+  const applyTakeHook = () => {
+    if (!takeProfile || !takeRef) return;
+    try {
+      const cmd = applyVocalHookCommand(services.store.getDoc(), {
+        bufferId: takeRef.bufferId,
+        profile: takeProfile,
+      });
+      services.store.execute(cmd);
+      setStatus(`⭐ ${cmd.label} — chopped from YOUR voice (one undo step)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
   const applyTakeTempo = (useAlt = false) => {
     if (!takeProfile?.tempoMeasured) return;
     try {
@@ -1055,6 +1073,7 @@ export function IntentPanel() {
   };
   const clearTake = () => {
     setTakeProfile(null);
+    setTakeRef(null);
     setStatus("🎤 take cleared");
   };
   const buildSongDraft = async (sections?: SectionParse, reviseInput?: IntentInput) => {
@@ -1767,6 +1786,15 @@ export function IntentPanel() {
               title="Build a SONG bent to this take — sections follow the phrasing, mix opens the vocal pocket (needs a text prompt)"
             >
               ♪ SONG
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!takeProfile || !takeRef || busy}
+              onClick={applyTakeHook}
+              title="⭐ Make a HOOK from this take — a pitched-up vocalchop track playing YOUR voice, notes follow the measured phrases (one undo step)"
+            >
+              ⭐ HOOK
             </button>
             <button
               type="button"

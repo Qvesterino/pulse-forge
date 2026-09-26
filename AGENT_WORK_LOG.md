@@ -4484,3 +4484,26 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** parser + song testy **69/69** (vrátane nových: heartbeat EN+SK, groove 16-step + kick-on-0 signature pin, FRED form selection + štandardná forma untouched); 10-súborová battery **163/163**; loudness regen **350 meraných**; `tsc --noEmit` EXIT 0. text-parser staging selektívny (ich productionProfile práca v tom istom súbore zostáva working-tree). CURRENT-STATE počty (350/344) zhodné s vite-node countom.
 
 **Zostáva z vízie:** Vlna 3 — hero feature „urob hook z môjho hlasu" (VocalProfile → vocalchop/granular rewire, one command). Analog glide param. Ďalej: plná kampaň re-run 4 môže pokračovať GOAL 08+ alebo skočiť na GOAL 12 gate.
+
+---
+
+## VLNA 3 — HERO: „UROB HOOK Z MÔJHO HLASU" (2026-09-26)
+
+**The feature that no other web DAW has:** one click turns the user's own recorded take into a pitched-up vocal hook — Fred Again's core move, fully wired.
+
+**Why it was 80 % built already (the session's core discovery):** vocalchop runtime reads `track.sampleId` from the bank at play time (`registry.ts:4069`); `InstrumentTrack` carries `sampleId` natively; takes are staged into the bank by key (`bufferId`, ArrangementPanel); VocalProfile already measures phrases + energy; GOAL 03's resolveVocalTake returns the `bufferId`. The missing piece was ONE command + one button.
+
+**Dodané:**
+
+1. **`applyVocalHookCommand(doc, {bufferId, profile, patternId?})`** (src/vocal/adapt.ts): vytvorí (alebo REUSES — idempotent re-apply) vocalchop inštrumentový track „Hook — voice" s `sampleId` ukazujúcim na USEROV take, UKG-chop voicingom (SHIFT 1.25, SHARP 0.7), a zasadí frázové noty do AKTÍVNEHO patternu: každá merná fráza → nota (proporcionálny mapping analýznej mrie na dĺžku patternu, velocity z peakEnergy, pitch 62). Phrase-less profil → jedna fallback nota. JEDEN undo krok; re-apply nahradí noty (žiadne duplikáty). Vocalchop runtime pokojne zostane tichý ak buffer nie je staged (rovnaká degradácia ako každý bank sample) — nikdy nehádže pri play.
+2. **UI:** ⭐ HOOK tlačidlo v 🎤 take karte (medzi ♪ SONG a ×) + `takeRef` state (bufferId z resolveVocalTake pri analyzeTake; čistené v clearTake aj v project-switch effecte — GOAL 03 guard kryje aj pointer).
+
+**Chytené vlastné chyby (obidva pred commitom):** (a) pri vkladaní applyTakeHook som vypustil `applyTakeKey` z bloku — tsc TS6133/TS2304 to chytil, funkcia vrátená; (b) test predicate `t.sampleId` na Track union — TS narrows až po predikáte, `(t as InstrumentTrack)` read.
+
+**Dôležité súbory:** src/vocal/adapt.ts (+95), src/ui/IntentPanel.tsx (take card + state), tests/vocal-hook.test.ts (NOVÝ, 6).
+
+**Validácia:** vocal-hook + vocal-adapt + IntentPanel **23/23**; `tsc --noEmit` EXIT 0. (Loudness mapa sa nemení — command nepridáva FACTORY preset, track params sú doc-state.)
+
+**Známe limity (dokumentované):** hook zostáva tichý po reload, ak nie je take re-staged (runtime bank sample — rovnaká trieda ako frozen-buffer restore; plná perzistencia takeov do IDB je future work cez RecordingRecovery materialize). Pitch fit k project key je fixed 1.25 (Fred aesthetic), key-aware shift je follow-up.
+
+**Vision ledger (user cieľ: West Coast + Fred Again DAW):** Vlna 1 G-funk ✓ · Vlna 2 Fred depth ✓ · **Vlna 3 hero ✓**. Ďalej: kampaň re-run 4 môže pokračovať GOAL 08+ alebo skočiť na GOAL 12 gate (build + full battery + readiness report refresh).
