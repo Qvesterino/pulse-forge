@@ -825,6 +825,298 @@ const BURIAL: ArtistProfile = {
   lastUpdated: "2026-09-26",
 };
 
+const SOPHIE: ArtistProfile = {
+  slug: "sophie",
+  name: "SOPHIE",
+  // TODO: "hyperpop" enum slot — using "house" as the closest electronic-
+  // pop umbrella, same as ag-cook. SOPHIE's catalog leans more
+  // toward synthetic / abstract hyperpop than ag-cook's maximalist pop,
+  // but both share the hyperpop umbrella.
+  genres: ["house"],
+  signature: {
+    sound: [
+      "metallic / plastic textures (the SOPHIE signature — chrome, latex, polished surfaces)",
+      "synthetic pitched-down vocals (often lower-register than the source)",
+      "abstract synthetic percussion (custom one-shots, no acoustic source)",
+      "distorted sub-bass (heavily saturated, mid-forward)",
+      "heavy reverb on top-end synths (alien, vast space)",
+      "wide stereo detuned leads (supersaw-adjacent)",
+    ],
+    samples: ["custom synthesized one-shots", "abstract vocal textures (often pitch-shifted beyond recognition)", "transgressive pop acapella chops"],
+    bpm: { typical: [120, 140] },
+    keys: ["F minor", "D minor", "G minor", "keyless / synthetic atonal moments"],
+  },
+  mix: {
+    eqTilt: "bright",
+    compression: "heavy",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "metallic top-end sits in 8-12 kHz with controlled harshness (decoy + DECapitator)",
+      "sub-bass pushed into the mid-range via saturation (heavy distortion on the 808 lane)",
+      "vocal chops often -8 to -12 dB below beat — present but not loud, alien character",
+      "sidechain pumping on master bus for hypnotic effect",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "bright metallic, distorted mids, controlled sub, hyped top-end",
+    dynamicRange: "moderate — modern loud-master with saturation character",
+  },
+  gear: [
+    "Ableton Live",
+    "custom software synths (often self-built Max4Live devices)",
+    "Moog Subsequent 25 / Mother-32 (hardware bass)",
+    "Soundtoys Decapitator",
+    "FabFilter Pro-Q 3",
+    "Valhalla VintageVerb",
+    "Valhalla Supermassive",
+    "Pitchproof (pitch-correction for the alien vocal texture)",
+  ],
+  vibe: ["ethereal", "futuristic", "synthetic", "metallic", "transcendent", "otherworldly", "pioneering"],
+  sources: [
+    "https://en.wikipedia.org/wiki/SOPHIE_(musician)",
+    "https://www.pitchfork.com/features/profile/sophie/",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const DJ_MUSTARD: ArtistProfile = {
+  slug: "dj-mustard",
+  name: "DJ Mustard",
+  // TODO: "west-coast-revival" / "ratchet" enum slots — using "trap" as
+  // the closest hip-hop umbrella. Mustard's "ratchet" / "r&b-trap" sound
+  // has distinct minimal-bounce character that gets flattened when
+  // collapsed into "trap".
+  genres: ["trap"],
+  signature: {
+    sound: [
+      "the 'Mustard beat' (iconic clap-snare pattern with simple synth melody)",
+      "minimal bounce (clap on 2 and 4, hat on upbeats, single synth stab melody)",
+      "low 808 (sustained, smooth, no slide tricks)",
+      "R&B-flavored chord progressions (often simple 4-chord loops)",
+      "vocals sit forward (often featuring YG, Tyga, 2 Chainz in early work)",
+      "sparse arrangement — every element earns its place (opposite of maximalist trap)",
+    ],
+    samples: ["classic West Coast R&B loops", "simple synth stab one-shots", "vocal chants from featured artists"],
+    bpm: { typical: [95, 105] },
+    keys: ["G minor", "F minor", "D minor", "A minor"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "medium",
+    stereoWidth: "narrow",
+    subEmphasis: "moderate",
+    notes: [
+      "clap and snare pushed hard in the front of the mix (loud, present)",
+      "synth stab melody sits in the 400-800 Hz range with simple tone",
+      "808 sub sits at 50-70 Hz with smooth release",
+      "arrangement deliberately sparse — leaves space for the featured vocalist",
+    ],
+  },
+  master: {
+    targetLufs: -7,
+    tonalBalance: "punchy mids, present sub, controlled highs, R&B-friendly",
+    dynamicRange: "moderate — modern West Coast club master",
+  },
+  gear: [
+    "FL Studio (transitioned from earlier DAW)",
+    "Nexus (early work)",
+    "Sylenth1",
+    "FabFilter Pro-Q 3",
+    "RC-20 Retro Color (on clap bus)",
+    "Soundtoys Decapitator (parallel on master)",
+    "LFO Tool (subtle sidechain)",
+  ],
+  vibe: ["bouncy", "minimal", "R&B-influenced", "club", "west coast revival", "iconic", "catchy"],
+  sources: [
+    "https://en.wikipedia.org/wiki/DJ_Mustard",
+    "https://www.complex.com/music/best-songs-produced-by-dj-mustard",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const WILEY: ArtistProfile = {
+  slug: "wiley",
+  name: "Wiley",
+  // TODO: "grime" enum slot — using "techno" as the closest electronic-
+  // urban umbrella, same as skepta. Wiley literally invented the grime
+  // scene (Eskibeat / Treddin' on Angel Is / Ice Rink era) — Skepta
+  // came later. Both share the grime umbrella.
+  genres: ["techno"],
+  signature: {
+    sound: [
+      "square wave lead synths (the original grime sound Wiley pioneered)",
+      "raw MC vocals (London accent, aggressive delivery, often ad-lib heavy)",
+      "pirate radio aesthetic (lo-fi, slightly distorted, broadcast character)",
+      "minimal break-beat influence (UK garage lineage)",
+      "sparse beat with heavy bass weight",
+      "early-era tracks often feature 8-bar loops with minimal arrangement variation",
+    ],
+    samples: ["classic grime synth stabs", "garage-era break samples", "horn stabs (reggae/dancehall influence)"],
+    bpm: { typical: [140, 142] },
+    keys: ["D minor", "F minor", "G minor"],
+  },
+  mix: {
+    eqTilt: "dark",
+    compression: "heavy",
+    stereoWidth: "narrow",
+    subEmphasis: "prominent",
+    notes: [
+      "early-era mixes are deliberately raw / lo-fi (pirate radio aesthetic)",
+      "square wave leads saturated with light distortion",
+      "bass weight at 60-80 Hz with hard sidechain to kick",
+      "MC vocals sit forward, raw texture preserved (NO polish, NO autotune)",
+    ],
+  },
+  master: {
+    targetLufs: -9,
+    tonalBalance: "dark, raw, sub-prominent, mid-forward for vocals",
+    dynamicRange: "moderate — less polished than modern Skepta-era grime masters",
+  },
+  gear: [
+    "various DAWs (early era used limited tools — FL Studio, Reason)",
+    "Native Instruments Massive",
+    "hardware synths (Roland, Korg — square wave generators)",
+    "Roland TR-808 samples",
+    "minimal processing — character comes from raw sound sources",
+  ],
+  vibe: ["raw", "pioneering", "pirate-radio", "aggressive", "authentic", "foundational", "London"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Wiley_(musician)",
+    "https://www.theguardian.com/music/wiley",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const EXCISION: ArtistProfile = {
+  slug: "excision",
+  name: "Excision",
+  // TODO: "dubstep" enum slot (specifically "heavy dubstep" or
+  // "brostep" subset) — using "dnb" as the closest 140-150 BPM half-time
+  // family umbrella. Excision sits at 150 BPM half-time (75 BPM
+  // perceived), DnB is 174 BPM. Different scenes but both live in
+  // the drum-and-bass family.
+  genres: ["dnb"],
+  signature: {
+    sound: [
+      "robotic / aggro growls (the Excision signature — heavily FM-modulated bass synths)",
+      "heavy reese basses (multi-oscillator detuned saws, often 4-7 layers)",
+      "massive snares on the 2 and 4 (often layered with white-noise hits)",
+      "mechanical hi-hats (precisely quantized, often rapid rolls)",
+      "mechanical / industrial texture (metal, robotic, alien sound design)",
+      "builds use reversed crash cymbals + filtered white noise rises",
+    ],
+    samples: [
+      "robotic vocal one-shots",
+      "industrial / mechanical sound effects",
+      "white noise sweeps",
+      "cinematic trailer impacts",
+    ],
+    bpm: { typical: [148, 152], halfTime: [74, 76] },
+    keys: ["F minor", "G minor", "A minor", "atonal / keyless passages common"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "heavy",
+    stereoWidth: "wide",
+    subEmphasis: "prominent",
+    notes: [
+      "reese bass layered 4-7 oscillators with FM modulation for growl character",
+      "snares stacked: acoustic snare sample + electronic hit + reverb tail",
+      "mechanical hi-hats precisely quantized to 1/16 grid (no swing)",
+      "builds use filtered white noise + crash cymbal reverses for tension",
+    ],
+  },
+  master: {
+    targetLufs: -6,
+    tonalBalance: "huge sub, aggressive mid-range, wide stereo FX, controlled highs",
+    dynamicRange: "low — modern loud-master target for heavy dubstep (brostep era)",
+  },
+  gear: [
+    "Ableton Live",
+    "Serum (primary growls / reese bass design)",
+    "Native Instruments Massive",
+    "Sylenth1",
+    "FabFilter Pro-Q 3",
+    "Soundtoys Decapitator (parallel on growl bus)",
+    "RC-20 Retro Color",
+    "Valhalla VintageVerb (snare reverb tails)",
+  ],
+  vibe: ["aggressive", "mechanical", "heavy", "brutal", "industrial", "alien", "relentless"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Excision_(DJs)",
+    "https://www.dubstepforum.com/wiki/excision",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
+const ANYMA: ArtistProfile = {
+  slug: "anyma",
+  name: "Anyma",
+  // ✓ close match — Anyma's "Afterlife" melodic techno sits at the
+  // ambient/techno boundary. Using "ambient" as the engine slot since
+  // the atmospheric character is the defining surface; melodic techno
+  // could be a future first-class slot if the engine grows one.
+  genres: ["ambient"],
+  signature: {
+    sound: [
+      "ethereal synth pads (lush, evolving, slow attack)",
+      "reverb-heavy atmospheres (massive send spaces)",
+      "slow-build progressions (8-16 bar phrase development)",
+      "hypnotic arpeggios (plucked synths in tight 1/16 patterns)",
+      "cinematic vocal textures (wordless, atmospheric — not melodic hooks)",
+      "low-end as sub-bass (sustained, smooth, sits under the pads)",
+    ],
+    samples: [
+      "atmospheric vocal textures (often licensed from ambient vocalists)",
+      "synth pad recordings (Prophet, Prophet-style hardware)",
+      "field recordings (rain, distant city, white noise washes)",
+    ],
+    bpm: { typical: [122, 126] },
+    keys: ["D minor", "F minor", "A minor", "C minor — often modal (Dorian, Aeolian)"],
+  },
+  mix: {
+    eqTilt: "neutral",
+    compression: "light",
+    stereoWidth: "wide",
+    subEmphasis: "moderate",
+    notes: [
+      "pads panned wide with subtle LFO modulation on filter cutoff",
+      "arpeggios sit in the 1-4 kHz range — present but never harsh",
+      "sidechain pumping light — kick + sub duck the pads ~3 dB (atmospheric, not aggressive)",
+      "vocal textures dry-wet parallel — sits deep in the mix, atmospheric bed",
+    ],
+  },
+  master: {
+    targetLufs: -9,
+    tonalBalance: "wide stereo, atmospheric mids, smooth sub, controlled highs",
+    dynamicRange: "wide — atmospheric techno target (less compression than peak-time techno)",
+  },
+  gear: [
+    "Ableton Live",
+    "Serum",
+    "Pigments (Arturia)",
+    "Massive X",
+    "Prophet Rev2 (hardware pad source — often sampled)",
+    "FabFilter Pro-Q 3",
+    "Valhalla VintageVerb",
+    "Valhalla Supermassive",
+    "RC-20 Retro Color (on pad bus)",
+  ],
+  vibe: ["hypnotic", "ethereal", "atmospheric", "transcendent", "euphoric", "cinematic", "afterhours"],
+  sources: [
+    "https://en.wikipedia.org/wiki/Anyma",
+    "https://www.residentadvisor.net/features/3782",
+  ],
+  verificationStatus: "ai-inferred",
+  lastUpdated: "2026-09-26",
+};
+
 /* -----------------------------------------------------------------------
  * Registry (ordered by slug for deterministic JSON-equivalent output).
  * Add new profiles here as `{slug}-style` keys; keep the lookup table
@@ -834,17 +1126,22 @@ const BURIAL: ArtistProfile = {
 
 export const ARTIST_PROFILES: Readonly<Record<string, ArtistProfile>> = Object.freeze({
   "ag-cook": AG_COOK,
+  anyma: ANYMA,
   "axl-beats": AXL_BEATS,
   burial: BURIAL,
+  "dj-mustard": DJ_MUSTARD,
   "dj-tameil": DJ_TAMEIL,
   "dr-dre": DR_DRE,
   dvrst: DVRST,
+  excision: EXCISION,
   "fred-again": FRED_AGAIN,
   "j-dilla": J_DILLA,
   "metro-boomin": METRO_BOOMIN,
   "seven-lions": SEVEN_LIONS,
   skepta: SKEPTA,
+  sophie: SOPHIE,
   "travis-scott": TRAVIS_SCOTT,
+  wiley: WILEY,
 });
 
 /** Lookup helper — undefined when the slug is unknown. */

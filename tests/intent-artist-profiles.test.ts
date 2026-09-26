@@ -8,20 +8,25 @@ import {
 } from "../src/intent/artist-profiles";
 
 describe("artist-profiles registry", () => {
-  it("ships the twelve profiles across 9 engine-genre umbrellas", () => {
+  it("ships the seventeen profiles across the documented genres", () => {
     expect(Object.keys(ARTIST_PROFILES).sort()).toEqual([
       "ag-cook",
+      "anyma",
       "axl-beats",
       "burial",
+      "dj-mustard",
       "dj-tameil",
       "dr-dre",
       "dvrst",
+      "excision",
       "fred-again",
       "j-dilla",
       "metro-boomin",
       "seven-lions",
       "skepta",
+      "sophie",
       "travis-scott",
+      "wiley",
     ]);
   });
 
