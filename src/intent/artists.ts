@@ -227,18 +227,6 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // (overmono/flume/duskus already live in the culture-wave roster below —
   // first-match order means duplicates here would shadow them)
   {
-    names: ["sophie", "sophie xeon", "pc music"],
-    // PC Music metallic hyperpop — SOPHIE's own tracks vary widely
-    // (Ponyboy 108), the hyperpop floor sits 140+; hyper groove carries it.
-    genre: "trap",
-    style: "hyper",
-    mood: "energetic",
-    energy: 0.85,
-    density: 0.7,
-    bpmRange: [140, 160],
-    label: "sophie",
-  },
-  {
     names: ["burial", "burial type beat"],
     // The future garage school: heavy shuffle, skittery ghost hats,
     // atmosphere over pressure — ambient.futuregarage groove (the genre

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
 import { normalizeIntent } from "../../src/intent/normalize";
@@ -71,6 +71,9 @@ describe("IntentPanel — A3 share moment", () => {
     fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
     // Generation is real (deterministic local provider) — wait for candidates.
     const useButtons = await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+    const candidateBank = screen.getByLabelText("Candidate bank");
+    expect(screen.getByLabelText("Candidate ranking explanation")).toHaveTextContent(/hudobnej odlišnosti/i);
+    expect(within(candidateBank).queryByText(/^\d+%$/)).not.toBeInTheDocument();
     fireEvent.click(useButtons[0]);
     await waitFor(() => expect(screen.getByText(/Yours\. Share it:/i)).toBeInTheDocument());
   }

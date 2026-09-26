@@ -37,7 +37,7 @@ import {
   type MelodicRole,
 } from "../../ai/symbolic/melodic-features";
 import { rankCandidateBank, type CandidateBankEntry } from "../candidate-bank";
-import { attachProvenance, candidatePlan, evaluateCandidate } from "./candidate";
+import { candidatePlan, evaluateCandidate } from "./candidate";
 import type { GenerationContext, GenerationPlan, GenerationProposal, GenerationProvider } from "../types";
 import type { GenerateOptions } from "../../ai/types";
 
@@ -426,8 +426,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
           }
         }
 
-        const candidate: Pattern = attachProvenance(
-          {
+        const candidate: Pattern = {
             ...melodicOnly,
             name: `${melodicOnly.name} (${Object.keys(rowsById).length > 0 ? "prior" : "template"}${
               melodicSource === "mv" ? "+mv" : melodicSource === "prior" ? "+melody" : ""
@@ -440,12 +439,9 @@ export class SymbolicPriorProvider implements GenerationProvider {
               engineVersion: this.version,
               intentHash: plan.intentHash,
             },
-          },
-          plan,
-          doc,
-        );
+          };
 
-        const evaluated = evaluateCandidate(candidate, candidatePlan(plan, symbolicSeed), context);
+        const evaluated = evaluateCandidate(candidate, searchVariant?.validationPlan ?? candidatePlan(plan, symbolicSeed), context);
         if (!evaluated) {
           failures.push(`candidate-${startIndex + offset}:invariant-gate`);
           continue;

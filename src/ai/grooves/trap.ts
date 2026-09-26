@@ -274,4 +274,37 @@ export const TRAP_GROOVES: GrooveData[] = [
       },
     ],
   },
+
+  // ── Dubstep (headbang halftime) ───────────────────────
+  // 140-152: halftime weight — kick on 1, big snare on the 3rd beat,
+  // sparse hats leaving room for the wobble bass to BE the rhythm.
+  {
+    id: 'trap.dubstep',
+    genre: 'trap',
+    name: 'Dubstep',
+    bpm: [140, 152],
+    swing: 0.04,
+    activePads: [0, 5, 8, 10],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.5, 0, 0.3, 0, 0, 0, 0.3, 0, 0.5, 0, 0.3, 0, 0, 0, 0.3, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0],
+      },
+      // The one-tap version (kick + snare only — pure wobble space)
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.4, 0, 0, 0.25, 0, 0, 0, 0, 0.4, 0, 0, 0.25, 0, 0, 0, 0],
+      },
+      // Sampi-style kick movement into the second half
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0.6, 0, 0, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0.4, 0],
+        8: [0.5, 0, 0.3, 0, 0, 0.3, 0, 0, 0.5, 0, 0.3, 0, 0, 0.3, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0],
+      },
+    ],
+  },
 ];

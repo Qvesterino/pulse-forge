@@ -167,7 +167,9 @@ describe("rankCandidatesWithModel — adversarial inputs", () => {
     expect(ranking.mode).toBe("shadow");
     expect(ranking.source).toBe("model");
     expect(ranking.order.map((c) => c.candidateIndex)).toEqual(heuristicOrder.map((c) => c.candidateIndex));
-    expect(ranking.modelScores.length).toBe(10);
+    // The shared bank removes UUID-free duplicate patterns before scoring.
+    // Scores are aligned to surviving bank entries, not raw generated attempts.
+    expect(ranking.modelScores.length).toBe(ranking.order.length);
     for (const s of ranking.modelScores) {
       if (s !== null) {
         expect(s).toBeGreaterThanOrEqual(0);

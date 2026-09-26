@@ -67,7 +67,33 @@ describe("ProducerDnaCompare", () => {
     expect(JSON.parse(stored!)).toHaveLength(1);
     expect(stored).not.toContain("test-private-seed");
     expect(stored).not.toContain("private prompt");
-    expect(screen.getByRole("status")).toHaveTextContent(/väčšiu váhu/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/všeobecná preferencia.*aspoň 2 porovnania/i);
+  });
+
+  it("does not advertise unsupported preference reasons as learnable", () => {
+    const { project, result } = buildFixture();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
+
+    expect(screen.getByRole("option", { name: /basa \(ranker zatiaľ nemeria\)/i })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /harmónia \(ranker zatiaľ nemeria\)/i })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /priestor frázy/i })).toBeEnabled();
+  });
+
+  it("records the chosen reason and explains the minimum signal before it affects ranking", () => {
+    const { project, result } = buildFixture();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
+    fireEvent.change(screen.getByRole("combobox", { name: /optional reason/i }), { target: { value: "groove" } });
+    fireEvent.click(screen.getByRole("button", { name: "B sedí viac" }));
+
+    const stored = JSON.parse(localStorage.getItem(PREFERENCE_LEDGER_KEY) ?? "[]");
+    expect(stored[0].reason).toBe("groove");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /voľba B uložená pre „groove“.*aspoň 2 relevantných porovnaniach/i,
+    );
   });
 
   it("does not collect votes while learning is paused", () => {

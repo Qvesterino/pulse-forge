@@ -400,6 +400,9 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator(".arr-audio-clip")).toHaveCount(4, { timeout: 15_000 });
 
+    // The in-memory project updates before the debounced IndexedDB row; wait
+    // for that durable snapshot before checking the placed locator window.
+    await page.waitForTimeout(1_500);
     const clips = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open("pulse-forge");
@@ -540,5 +543,141 @@ test.describe("11 — audio-input recording", () => {
       return assets.find((asset) => asset.name.startsWith("RECOVERED ")) ?? null;
     });
     expect(restoredAsset).toMatchObject({ channels: 2, sampleRate: 48_000, duration: 1 });
+  });
+
+  test("recovers committed PCM after the Chromium renderer crashes during capture", async ({ page }) => {
+    test.setTimeout(120_000);
+    await installSyntheticInput(page);
+    await openHouseTemplate(page);
+    await clickPanelAction(page, "ARR");
+    await expect(page.locator(".arr-timeline")).toBeVisible();
+    await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
+    await page.getByLabel("Captured channel 2 destination").selectOption({ index: 1 });
+    await page.getByRole("button", { name: /REC$/ }).click();
+    await expect(page.getByRole("button", { name: /STOP/ })).toBeVisible({ timeout: 15_000 });
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(async () => {
+            const db = await new Promise<IDBDatabase>((resolve, reject) => {
+              const request = indexedDB.open("pulse-forge");
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+            const sessions = await new Promise<any[]>((resolve, reject) => {
+              const request = db
+                .transaction("recording-sessions", "readonly")
+                .objectStore("recording-sessions")
+                .getAll();
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+            db.close();
+            return Math.max(
+              0,
+              ...sessions.filter((session) => session.status === "recording").map((session) => session.chunkCount),
+            );
+          }),
+        { timeout: 20_000, intervals: [250, 500, 1_000] },
+      )
+      .toBeGreaterThanOrEqual(2);
+
+    const durableTake = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("pulse-forge");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const sessions = await new Promise<any[]>((resolve, reject) => {
+        const request = db.transaction("recording-sessions", "readonly").objectStore("recording-sessions").getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const session = sessions
+        .filter((candidate) => candidate.status === "recording" && candidate.chunkCount >= 2)
+        .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+      if (!session) throw new Error("No active take with multiple committed PCM blocks was found");
+      const chunks = await new Promise<any[]>((resolve, reject) => {
+        const request = db
+          .transaction("recording-chunks", "readonly")
+          .objectStore("recording-chunks")
+          .index("by-session")
+          .getAll(session.id);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      const firstChannel = chunks[0]?.channels[0];
+      if (!(firstChannel instanceof ArrayBuffer)) throw new Error("The first committed PCM channel was missing");
+      const samples = new Float32Array(firstChannel);
+      const peak = samples.reduce((value, sample) => Math.max(value, Math.abs(sample)), 0);
+      return {
+        id: session.id,
+        ownerId: session.ownerId,
+        trackName: session.trackName,
+        sampleRate: session.sampleRate,
+        channels: session.channels,
+        totalFrames: session.totalFrames,
+        chunkCount: session.chunkCount,
+        storedChunkCount: chunks.length,
+        peak,
+      };
+    });
+    expect(durableTake).toMatchObject({ sampleRate: 48_000, channels: 2 });
+    expect(durableTake.storedChunkCount).toBe(durableTake.chunkCount);
+    expect(durableTake.totalFrames).toBeGreaterThan(0);
+    expect(durableTake.peak).toBeGreaterThan(0.01);
+
+    const cdp = await page.context().newCDPSession(page);
+    const rendererCrash = page.waitForEvent("crash", { timeout: 15_000 });
+    // Page.crash drops the renderer's CDP target before the command response
+    // can be delivered, so observe the page event instead of awaiting send().
+    void cdp.send("Page.crash").catch(() => undefined);
+    await rendererCrash;
+
+    const recoveredPage = await page.context().newPage();
+    await recoveredPage.goto("/");
+    await expect(recoveredPage.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
+    const continueCard = recoveredPage.locator(".pb-continue-card").first();
+    if ((await continueCard.count()) > 0) await continueCard.click();
+    else await recoveredPage.locator(".pb-row button:has-text(OPEN)").first().click();
+    await expect(recoveredPage.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
+    await ensureArrangementVisible(recoveredPage);
+    const recoveryRegion = recoveredPage.getByRole("region", { name: "Recoverable audio recordings" });
+    await expect(recoveryRegion).toBeVisible({ timeout: 20_000 });
+    await expect(recoveryRegion.getByText(/interrupted capture/i)).toBeVisible({ timeout: 20_000 });
+    await recoveryRegion.getByRole("button", { name: "RESTORE TO TIMELINE" }).click();
+    await expect(recoveredPage.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
+
+    const restoredTake = await recoveredPage.evaluate(
+      async ({ sessionId, trackName }: { sessionId: string; trackName: string }) => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("pulse-forge");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const assets = await new Promise<any[]>((resolve, reject) => {
+          const request = db.transaction("user-samples", "readonly").objectStore("user-samples").getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const sessions = await new Promise<any[]>((resolve, reject) => {
+          const request = db.transaction("recording-sessions", "readonly").objectStore("recording-sessions").getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        db.close();
+        const asset = assets.find((candidate) => candidate.name === `RECOVERED ${trackName}`);
+        return {
+          asset: asset ? { channels: asset.channels, sampleRate: asset.sampleRate, duration: asset.duration } : null,
+          stagingSessionRetained: sessions.some((session) => session.id === sessionId),
+        };
+      },
+      { sessionId: durableTake.id, trackName: durableTake.trackName },
+    );
+    expect(restoredTake.asset).toMatchObject({ channels: 2, sampleRate: 48_000 });
+    expect(restoredTake.asset?.duration).toBeGreaterThan(0);
+    expect(restoredTake.stagingSessionRetained).toBe(false);
   });
 });

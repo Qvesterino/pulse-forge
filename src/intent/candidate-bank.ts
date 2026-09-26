@@ -1,5 +1,6 @@
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import type { Pattern, ProjectDocument } from "../project-model/types";
+import type { CandidateSearchInfo } from "./candidate-search";
 
 export type CandidateSource = "template" | "symbolic-prior";
 
@@ -13,6 +14,8 @@ export interface CandidateBankEntry {
   contentHash: string;
   /** Which engine produced this candidate — template generator or ONNX prior. */
   source?: CandidateSource;
+  /** In-memory generation lane; persisted seed includes the policy/version for replay. */
+  search?: CandidateSearchInfo;
 }
 
 function unit(value: number | undefined, fallback: number): number {

@@ -1854,6 +1854,14 @@ export function IntentPanel() {
                   <span className={`intent-candidate-source ${candidate.source}`}>
                     {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
                   </span>
+                  {candidate.search && (
+                    <span
+                      className={`intent-candidate-lane ${candidate.search.lane}`}
+                      title={`Search policy: ${candidate.search.mode}`}
+                    >
+                      {candidate.search.lane.toUpperCase()}
+                    </span>
+                  )}
                   {isWinner && <span className="intent-candidate-win">★ best</span>}
                   {candidate.status === "repaired" && <span className="intent-candidate-fixed">fixed</span>}
                   <span className="intent-candidate-score" title="heuristic / ONNX score">

@@ -6,7 +6,9 @@ import { rankCandidatesWithModel } from "../src/ai/ranking/rank-candidates";
 import { resetRankerClient, rankerMode } from "../src/ai/ranking/ranker-client";
 import type { CandidateBankEntry } from "../src/intent/candidate-bank";
 import { extractPatternFeatures } from "../src/ai/features/pattern-features";
+import { FEATURE_COUNT, FEATURE_NAMES } from "../src/ai/features/pattern-features";
 import { rankCandidateBank } from "../src/intent/candidate-bank";
+import { candidateFeatureDistance, diversifyCandidateOrder } from "../src/intent/candidate-diversity";
 import {
   createPreferenceObservation,
   preferenceContextForIntent,
@@ -89,9 +91,8 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.source).toBe("off");
     expect(scoreMock).not.toHaveBeenCalled();
-    expect(ranking.order.map((c) => c.candidateIndex)).toEqual(
-      [...ranking.order.map((c) => c.candidateIndex)].sort((a, b) => a - b),
-    );
+    expect(ranking.order[0].candidateIndex).toBe(0);
+    expect(new Set(ranking.order.map((c) => c.candidateIndex))).toEqual(new Set([0, 1, 2]));
   });
 
   it("model unavailable: heuristic fallback order is the baseline", async () => {
@@ -101,7 +102,10 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     const heuristicOrder = (await import("../src/intent/candidate-bank")).rankCandidateBank(doc, candidates);
     const ranking = await rankCandidatesWithModel(doc, candidates, plan);
     expect(ranking.source).toBe("fallback");
-    expect(ranking.order.map((c) => c.candidateIndex)).toEqual(heuristicOrder.map((c) => c.candidateIndex));
+    expect(ranking.order[0].candidateIndex).toBe(heuristicOrder[0].candidateIndex);
+    expect(new Set(ranking.order.map((c) => c.candidateIndex))).toEqual(
+      new Set(heuristicOrder.map((candidate) => candidate.candidateIndex)),
+    );
   });
 
   it("shadow mode: model scores recorded but the heuristic winner is unchanged", async () => {
@@ -169,9 +173,11 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
         batch: patterns,
       }),
     );
-    const preferred = baseline[baseline.length - 1];
-    const preferredFeatures = vectors[baseline.length - 1];
-    for (let index = 0; index < baseline.length - 1; index++) {
+    const preferredIndex = 1;
+    const preferred = baseline[preferredIndex];
+    const preferredFeatures = vectors[preferredIndex];
+    for (let index = 0; index < baseline.length; index++) {
+      if (index === preferredIndex) continue;
       const observation = createPreferenceObservation(
         preferenceContextForIntent(plan.intent),
         { contentHash: preferred.contentHash, features: preferredFeatures.values },
@@ -187,6 +193,54 @@ describe("rankCandidatesWithModel — fallback + shadow contracts", () => {
     expect(personalized.source).toBe("off");
     expect(personalized.order[0].contentHash).toBe(preferred.contentHash);
     expect(personalized.order).toHaveLength(baseline.length);
+  });
+});
+
+describe("candidate-bank creative diversity", () => {
+  function vector(structuralValue: number, intentValue = 0.5): Float32Array {
+    const values = new Float32Array(FEATURE_COUNT).fill(0.5);
+    FEATURE_NAMES.forEach((name, index) => {
+      if (name.startsWith("drums.") || name.startsWith("melodic.")) values[index] = structuralValue;
+      if (name === "intent.energyFit") values[index] = intentValue;
+    });
+    return values;
+  }
+
+  const ranked = [
+    { candidateIndex: 0, contentHash: "best" },
+    { candidateIndex: 1, contentHash: "near-duplicate" },
+    { candidateIndex: 2, contentHash: "distinct" },
+    { candidateIndex: 3, contentHash: "tail" },
+  ];
+  const features = new Map([
+    ["best", vector(0.5)],
+    ["near-duplicate", vector(0.5)],
+    ["distinct", vector(0.05)],
+    ["tail", vector(0.9)],
+  ]);
+
+  it("keeps the global winner first and moves a distinct valid option ahead of a near-duplicate", () => {
+    const diverse = diversifyCandidateOrder(ranked, features);
+    expect(diverse.slice(0, 3).map((candidate) => candidate.contentHash)).toEqual([
+      "best",
+      "distinct",
+      "near-duplicate",
+    ]);
+    expect(diverse).toHaveLength(ranked.length);
+    expect(new Set(diverse)).toEqual(new Set(ranked));
+  });
+
+  it("measures structural distance without letting prompt-fit dimensions fake novelty", () => {
+    const baseline = vector(0.5, 0.2);
+    const intentOnlyChange = vector(0.5, 0.95);
+    expect(candidateFeatureDistance(baseline, intentOnlyChange)).toBe(0);
+    expect(candidateFeatureDistance(baseline, vector(0.1))).toBeGreaterThan(0.3);
+  });
+
+  it("falls back to the deterministic input order if feature vectors are missing", () => {
+    expect(diversifyCandidateOrder(ranked, new Map()).map((candidate) => candidate.contentHash)).toEqual(
+      ranked.map((candidate) => candidate.contentHash),
+    );
   });
 });
 

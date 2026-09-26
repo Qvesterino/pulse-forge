@@ -23,7 +23,8 @@ describe("exportProject", () => {
 
     exportProject(doc);
 
-    expect(mockAnchor.download).toContain(".kyx.json");
+    expect(mockAnchor.download).toContain(".kz");
+    expect(mockAnchor.download).not.toContain(".kyx.json");
     expect(click).toHaveBeenCalled();
     expect(createObjectURL).toHaveBeenCalled();
   });

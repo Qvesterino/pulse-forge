@@ -135,8 +135,9 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       non-destructively; punch-out flushes at the exact input frame while
       transport playback continues for post-roll. The punch-in marker is
       committed with PCM and punch-out completion is durable for recovery.
-      This is software-path evidence only, not physical interface certification;
-      simultaneous multi-track punch remains open.
+      A synthetic Chromium E2E routes four punch channels to four tracks and
+      verifies exact saved locator placement. This is software-path evidence
+      only; native multi-stream capture and physical input routing remain open.
 - [ ] Add take lanes, audition, non-destructive comp selection/crossfades,
       consolidate and undo/redo.
 - [ ] Close the pro-editing gap: verify sample-accurate clip boundaries and
@@ -157,7 +158,7 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       through save/reopen and final export.
 - [x] Translate IndexedDB quota failure during PCM append into a clear stop
       warning; stop capture and preserve all earlier committed blocks for
-      recovery. This is not a quota preflight or long-session certification.
+      recovery. This is not long-session certification.
 - [x] Add schema-backed whole-take groups, undoable pass selection, and shared
       live/offline playback filtering. Automatic loop capture now feeds this
       foundation; dedicated take lanes, audition and musical crossfades remain
@@ -167,7 +168,16 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       metadata, and switch the active whole pass through an undoable command.
       This remains useful for independent sequential passes; punch-in/out and
       full comp UX/crossfade workflows remain open.
-- [ ] Add quota preflight, session recovery and multi-hour/forced-crash tests.
+- [x] Before the first PCM block, compare the browser's estimated free storage
+      with a 30-minute target for the actual capture format and warn when
+      headroom is low. This is approximate, advisory only; runtime writes still
+      enforce quota and preserve committed blocks.
+- [x] Add a Chromium E2E that captures synthetic stereo PCM, commits multiple
+      IndexedDB blocks, crashes the renderer through CDP, reopens the same
+      browser profile, restores both timeline routes, and confirms the staging
+      session is removed. This is evidence for the Chromium renderer path; it
+      does not replace renderer-process recovery checks on every supported OS.
+- [ ] Add multi-hour capture soak tests.
 
 **Exit:** record at least eight independently routed mono channels (or four
 stereo pairs) simultaneously for 30 minutes at 48 kHz on the reference host;

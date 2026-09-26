@@ -10,6 +10,11 @@ import {
 } from "../persistence/RecordingRecoveryRepository";
 import type { IRecordingRecoveryRepository } from "../persistence/contracts";
 import { loadRecordingInputDeviceId } from "./recordingInput";
+import {
+  estimateRecordingStoragePreflight,
+  recordingStorageWarning,
+  type BrowserStorageEstimate,
+} from "./recordingStorageBudget";
 
 export interface PcmRecordingMetadata {
   projectId: string;
@@ -66,6 +71,15 @@ function readSupportedChannelCount(track: MediaStreamTrack): PcmCaptureInfo["sup
   }
 }
 
+function getBrowserStorageEstimate(): (() => Promise<BrowserStorageEstimate>) | null {
+  try {
+    if (typeof navigator === "undefined" || typeof navigator.storage?.estimate !== "function") return null;
+    return navigator.storage.estimate.bind(navigator.storage);
+  } catch {
+    return null;
+  }
+}
+
 const PROCESSOR_NAME = "pulse-forge-pcm-capture";
 // Short durable blocks reduce the amount of a take that can be lost if the
 // browser or device disappears before the next IndexedDB commit.
@@ -76,6 +90,7 @@ const READY_TIMEOUT_MS = 8_000;
 // dead audio device after sleep); start() must still settle so the UI leaves
 // its "starting" state and the input claim below is eventually released.
 const RESUME_TIMEOUT_MS = 10_000;
+const STORAGE_ESTIMATE_TIMEOUT_MS = 1_500;
 const moduleLoads = new WeakMap<BaseAudioContext, Promise<void>>();
 
 // One live audio-input capture per tab. ArrangementPanel takes and ExportPanel
@@ -113,6 +128,8 @@ export interface PcmMicRecorderDependencies {
   requestedChannelCount?: number;
   getUserMedia?: MediaDevices["getUserMedia"];
   addWorkletModule?: (ctx: AudioContext) => Promise<void>;
+  /** Optional injectable storage estimate; failure never blocks input recording. */
+  estimateStorage?: () => Promise<BrowserStorageEstimate>;
   /** Pre-capture input trim in dB (-24..+12). Applied to monitor + capture. */
   inputGainDb?: number;
 }
@@ -134,6 +151,7 @@ export function clampInputGainDb(value: number): number {
 export class PcmMicRecorder {
   onError: ((message: string) => void) | null = null;
   onPunchOut: (() => void) | null = null;
+  onStorageWarning: ((message: string) => void) | null = null;
 
   private state_: PcmRecorderState = "idle";
   // `cancel()` can return while getUserMedia is still awaiting a permission
@@ -468,6 +486,27 @@ export class PcmMicRecorder {
         inputTrackSampleRate: positiveIntegerOrNull(trackSettings.sampleRate),
         supportedChannelCount: readSupportedChannelCount(this.track),
       };
+
+      // Storage estimates are advisory and happen before the first PCM block
+      // is requested. Never let a missing, rejected or slow estimate wedge REC.
+      const estimateStorage = this.deps.estimateStorage ?? getBrowserStorageEstimate();
+      if (estimateStorage) {
+        try {
+          const estimate = await withTimeout(
+            estimateStorage(),
+            STORAGE_ESTIMATE_TIMEOUT_MS,
+            "Browser storage estimate timed out",
+          );
+          this.assertStartIsCurrent(token);
+          const warning = recordingStorageWarning(
+            estimateRecordingStoragePreflight(estimate, ready.sampleRate, ready.channels),
+          );
+          if (warning) this.onStorageWarning?.(warning);
+        } catch {
+          // Estimates are browser-specific and can be denied. Durable block
+          // writes still enforce quota and preserve all earlier committed PCM.
+        }
+      }
 
       const metadata = getMetadata();
       if (!metadata) throw new Error("The armed track no longer exists");

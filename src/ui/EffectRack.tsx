@@ -70,7 +70,7 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { effectEditorSpec } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
 import { EffectIntentAssistant } from "./EffectIntentAssistant";
-import { EffectQuickControls } from "./EffectQuickControls";
+import { EffectQuickControls, isEffectQuickControlParam } from "./EffectQuickControls";
 import { Slider } from "./controls";
 import { SourceMacroDock } from "./SourceMacroDock";
 
@@ -537,10 +537,10 @@ function Device({
         ["lowGain", "lowFreq", "midGain", "midFreq", "midQ", "highGain", "highFreq"].includes(param.id)
       ),
   );
-  const quickParams = devicesMode
-    ? usableParams.filter((param) => ["mix", "global.mix", "global.dryWet", "feedback", "sync"].includes(param.id))
-    : [];
-  const detailParams = devicesMode ? usableParams.filter((param) => !quickParams.some((quick) => quick.id === param.id)) : usableParams;
+  const quickParams = devicesMode ? usableParams.filter(isEffectQuickControlParam) : [];
+  const detailParams = devicesMode
+    ? usableParams.filter((param) => !quickParams.some((quick) => quick.id === param.id))
+    : usableParams;
   const primaryParams = (editorSpec.primaryParamIds ?? [])
     .map((id) => detailParams.find((param) => param.id === id))
     .filter((param): param is (typeof detailParams)[number] => !!param);
@@ -730,7 +730,13 @@ function Device({
             <EffectQuickControls
               params={quickParams}
               values={fx.params}
-              onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
+              onChange={(paramId, value) =>
+                services.store.execute(
+                  fx.type === "morphdynamics"
+                    ? setMorphDynamicsParam(doc, track.id, fx.id, paramId, value)
+                    : setEffectParam(doc, track.id, fx.id, paramId, value),
+                )
+              }
             />
           )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}

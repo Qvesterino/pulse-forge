@@ -7,6 +7,7 @@ import type {
 } from "../project-model/types";
 import type { GenerateOptions, GrooveData } from "../ai/types";
 import type { CandidateBankEntry } from "./candidate-bank";
+import type { CandidateSearchInfo } from "./candidate-search";
 import type { ProductionIntent } from "./production";
 
 export const INTENT_SCHEMA_VERSION = 1 as const;
@@ -224,6 +225,7 @@ export interface RankedCandidate {
   modelScore: number | null;
   contentHash: string;
   pattern: Pattern;
+  search?: CandidateSearchInfo;
 }
 
 export interface GenerationProvider {

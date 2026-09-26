@@ -8,9 +8,10 @@ import { downloadBlob } from "./download";
 export function exportProject(doc: ProjectDocument): void {
   const json = JSON.stringify(doc, null, 2);
   const blob = new Blob([json], { type: "application/json" });
-  // New files use the public brand. The importer still accepts the legacy
-  // .pulseforge.json suffix so existing sessions remain portable.
-  downloadBlob(blob, `${sanitizeFilename(doc.name)}.kyx.json`);
+  // New files use the short public brand ".kz". The importer is shape-based
+  // (never checks the filename), so legacy ".kyx.json" and ".pulseforge.json"
+  // sessions remain fully portable.
+  downloadBlob(blob, `${sanitizeFilename(doc.name)}.kz`);
 }
 
 // Import size ceiling (release roadmap 1.4): a project file becomes a JS

@@ -126,6 +126,7 @@ export async function generateAsyncResult(
     modelScore: ranked.modelScores[index] ?? null,
     contentHash: entry.contentHash,
     pattern: entry.pattern,
+    ...(entry.search ? { search: entry.search } : {}),
   }));
   let finalBank = bank;
   if (options.sound) {
@@ -203,6 +204,7 @@ export function resultForCandidate(result: GenerationResult, candidateIndex: num
     : entry.pattern;
   const quality = generation?.quality;
   const warnings = ["selection:user-audition", `candidate-bank-selected:${entry.candidateIndex}:${entry.source}`];
+  if (entry.search) warnings.push(`search-lane:${entry.search.lane}:${entry.search.mode}`);
   if (quality && !quality.styleAccepted) warnings.push("style-distance-gate-warning");
   const diagnostics = {
     warnings,

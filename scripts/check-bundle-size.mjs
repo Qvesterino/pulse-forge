@@ -62,7 +62,10 @@ const ENTRY_BUDGET_KB = 1070;
 // 2725 (2026-09-26): the source-first bottom dock adds the six beat-source
 // shortcuts and their macro definitions (~3 KB to the measured graph). Keep a
 // bounded 7 KB margin; future dock growth must still be offset or split.
-const TOTAL_BUDGET_KB = 2725;
+// 2740 (2026-09-26): shared preset quick controls add the MIX/FEEDBACK/SYNC
+// workflow to the bottom dock; the measured graph is now 2738 KB. Keep a
+// bounded 2 KB margin; future dock growth must still be offset or split.
+const TOTAL_BUDGET_KB = 2740;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

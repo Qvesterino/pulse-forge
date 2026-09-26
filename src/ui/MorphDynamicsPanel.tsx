@@ -21,7 +21,6 @@ import {
   DYN_THRESHOLD_DB_ID,
   GLOBAL_DELTA_ID,
   GLOBAL_INPUT_GAIN_DB_ID,
-  GLOBAL_MIX_ID,
   GLOBAL_OUTPUT_GAIN_DB_ID,
   HARM_BODY_AMOUNT_ID,
   HARM_BLOOM_ID,
@@ -72,10 +71,7 @@ import {
   type MorphSceneSlot,
   type MorphScenesState,
 } from "../effects/morph-dynamics-core/contracts/state";
-import {
-  MORPH_PRESET_SCHEMA_VERSION,
-  type MorphPresetEntry,
-} from "../persistence/MorphPresetRepository";
+import { MORPH_PRESET_SCHEMA_VERSION, type MorphPresetEntry } from "../persistence/MorphPresetRepository";
 import { useServices } from "./context";
 import { Slider } from "./controls";
 
@@ -610,7 +606,6 @@ export function MorphDynamicsPanel({
         <div className="morph-io">
           {engineSlider(GLOBAL_INPUT_GAIN_DB_ID, "IN", -24, 24, dbFmt, "linear", 0)}
           {engineSlider(GLOBAL_OUTPUT_GAIN_DB_ID, "OUT", -24, 24, dbFmt, "linear", 0)}
-          {engineSlider(GLOBAL_MIX_ID, "MIX", 0, 100, pctFmt, "linear", 100)}
           <button
             type="button"
             className={`morph-stage-toggle ${valueOf(GLOBAL_DELTA_ID) >= 0.5 ? "on" : ""}`}

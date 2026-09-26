@@ -4,8 +4,13 @@ import { currentRankerManifest } from "./ranker-client";
 import { rankCandidateBank, type CandidateBankEntry } from "../../intent/candidate-bank";
 import type { GenerationPlan } from "../../intent/types";
 import type { ProjectDocument } from "../../project-model/types";
-import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../../intent/preference-ledger";
+import {
+  isPreferenceLearningEnabled,
+  preferenceContextForIntent,
+  readPreferenceLedger,
+} from "../../intent/preference-ledger";
 import { rerankWithPersonalPreferences } from "../../intent/personal-ranker";
+import { diversifyCandidateOrder } from "../../intent/candidate-diversity";
 
 /**
  * Candidate-bank integration (goal doc Fáze 4): the heuristic ranking stays
@@ -39,14 +44,17 @@ export async function rankCandidatesWithModel(
   const heuristicOrder = rankCandidateBank(doc, candidates);
   const mode = rankerMode();
   const observations = isPreferenceLearningEnabled() ? readPreferenceLedger() : [];
-  const hasPairwiseSignal = observations.some((observation) => observation.choice === "a" || observation.choice === "b");
+  const hasPairwiseSignal = observations.some(
+    (observation) => observation.choice === "a" || observation.choice === "b",
+  );
   const needsModel = mode !== "off" && heuristicOrder.length > 1;
   const needsPersonalFeatures = hasPairwiseSignal && heuristicOrder.length > 1;
+  const needsDiversity = heuristicOrder.length > 2;
   const modelScoreByIndex = new Map<number, number>();
   const baseScoreByIndex = new Map(heuristicOrder.map((entry) => [entry.candidateIndex, entry.score]));
   let vectors: PatternFeatureVector[] = [];
 
-  if (!needsModel && !needsPersonalFeatures) {
+  if (!needsModel && !needsPersonalFeatures && !needsDiversity) {
     return {
       order: heuristicOrder,
       mode,
@@ -90,6 +98,7 @@ export async function rankCandidatesWithModel(
         preferenceContextForIntent(plan.intent),
       );
     }
+    if (needsDiversity) order = diversifyCandidateOrder(order, featureByHash);
     return {
       order,
       mode,
@@ -122,7 +131,12 @@ export async function rankCandidatesWithModel(
 
   if (mode === "shadow") {
     // Shadow: record ONNX scores without letting them reorder the bank.
-    return finish(heuristicOrder, "model", currentRankerManifest()?.rankerVersion ?? null, currentRankerManifest()?.modelHash ?? null);
+    return finish(
+      heuristicOrder,
+      "model",
+      currentRankerManifest()?.rankerVersion ?? null,
+      currentRankerManifest()?.modelHash ?? null,
+    );
   }
 
   // Active: global ranker remains the baseline; personal taste is a bounded

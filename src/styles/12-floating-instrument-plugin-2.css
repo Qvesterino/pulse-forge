@@ -1,5 +1,3 @@
-
-
 .landing-card-icon {
   display: inline-grid;
   place-items: center;
@@ -965,7 +963,8 @@
 }
 
 .arr-rec-saving,
-.arr-rec-error {
+.arr-rec-error,
+.arr-rec-warning {
   font-size: 11px;
   font-family: var(--mono);
 }
@@ -980,6 +979,13 @@
 
 .arr-rec-saving {
   color: var(--text-dim);
+}
+
+.arr-rec-warning {
+  display: inline-block;
+  color: var(--warning, #d69a3a);
+  max-width: 360px;
+  white-space: normal;
 }
 
 .arr-rec-input-report {

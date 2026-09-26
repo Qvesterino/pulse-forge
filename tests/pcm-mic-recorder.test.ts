@@ -46,6 +46,7 @@ function createRecorder(
     takeId?: string;
     loopCapture?: boolean;
     punchCapture?: { startTick: number; endTick: number };
+    estimateStorage?: () => Promise<{ quota?: number; usage?: number }>;
   } = {},
 ) {
   const recovery = new RecordingRecoveryRepository();
@@ -134,6 +135,7 @@ function createRecorder(
     requestedChannelCount: options.requestedChannelCount,
     addWorkletModule: vi.fn(async () => {}),
     getUserMedia,
+    estimateStorage: options.estimateStorage,
   });
   const metadata = () => ({
     projectId: "project-1",
@@ -263,6 +265,35 @@ describe("PcmMicRecorder", () => {
       },
     });
     expect(recorder.captureInfo).toMatchObject({ capturedChannels: 4, inputTrackChannels: 4 });
+    await recorder.cancel();
+  });
+
+  it("warns before the first PCM block when quota is below the 30-minute capture target, but allows a shorter take", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const estimateStorage = vi.fn(async () => ({ quota: 600_000_000, usage: 200_000_000 }));
+    const { recorder, metadata } = createRecorder({ estimateStorage });
+    const warning = vi.fn();
+    recorder.onStorageWarning = warning;
+
+    await recorder.start(metadata);
+
+    expect(estimateStorage).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning.mock.calls[0]?.[0]).toContain("30-minute take may need");
+    expect(recorder.state).toBe("recording");
+    await recorder.cancel();
+  });
+
+  it("keeps recording when the storage estimate is unavailable", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata } = createRecorder({ estimateStorage: async () => Promise.reject(new Error("denied")) });
+    const warning = vi.fn();
+    recorder.onStorageWarning = warning;
+
+    await recorder.start(metadata);
+
+    expect(warning).not.toHaveBeenCalled();
+    expect(recorder.state).toBe("recording");
     await recorder.cancel();
   });
 

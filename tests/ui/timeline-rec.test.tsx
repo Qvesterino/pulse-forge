@@ -323,6 +323,40 @@ describe("arrangement REC wiring", () => {
     }
   });
 
+  it("shows a storage-headroom warning without stopping an otherwise valid recording", async () => {
+    const warning = "Browser storage estimates 0.4 GiB free; a 30-minute take may need more.";
+    recorderMock.implementation = class {
+      onError: ((message: string) => void) | null = null;
+      onPunchOut: (() => void) | null = null;
+      onStorageWarning: ((message: string) => void) | null = null;
+      captureInfo = null;
+      constructor(_options: unknown) {}
+      setMonitoring() {}
+      async start() {
+        await Promise.resolve();
+        this.onStorageWarning?.(warning);
+      }
+      async cancel() {}
+      async stop() {
+        return null;
+      }
+    };
+
+    const doc = createDocWithTracks();
+    const services = mockServices(doc);
+    (services.engine as any).ensureContext = vi.fn();
+    (services.engine as any).getLiveAudioContext = vi.fn(() => ({ currentTime: 0 }));
+    renderWithContext(<ArrangementPanel />, { services });
+    fireEvent.change(screen.getByLabelText("Arm track for recording"), { target: { value: doc.tracks[0].id } });
+    fireEvent.click(screen.getByRole("button", { name: "● REC" }));
+
+    await screen.findByRole("button", { name: /STOP/ });
+    const status = await screen.findByText(warning);
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("button", { name: /STOP/ })).toBeTruthy();
+  });
+
   it("switches audible passes from the selected audio take group", () => {
     const base = createDocWithTracks();
     const trackId = base.tracks[0].id;

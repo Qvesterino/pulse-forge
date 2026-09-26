@@ -28,7 +28,7 @@ test.describe("04 — persistence roundtrip", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.locator('.export-panel button:has-text("EXPORT JSON")').click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename().endsWith(".kyx.json")).toBe(true);
+    expect(download.suggestedFilename().endsWith(".kz")).toBe(true);
 
     // Allow autosave to settle before reloading the page.
     await page.waitForTimeout(1500);

@@ -354,6 +354,7 @@ export function ArrangementPanel() {
   const micClippedRef = useRef(false);
   const [micClipped, setMicClipped] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
+  const [recStorageWarning, setRecStorageWarning] = useState<string | null>(null);
   const recRef = useRef<import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null>(null);
   const recStartPendingRef = useRef(false);
   const recStartAttemptRef = useRef(0);
@@ -563,6 +564,7 @@ export function ArrangementPanel() {
     const attempt = ++recStartAttemptRef.current;
     setRecState("starting");
     setRecError(null);
+    setRecStorageWarning(null);
     setLastCaptureInfo(null);
     let recorder: import("../audio-engine/PcmMicRecorder").PcmMicRecorder | null = null;
     try {
@@ -749,6 +751,7 @@ export function ArrangementPanel() {
         void stopRec();
       };
       recorder.onPunchOut = () => void stopRec();
+      recorder.onStorageWarning = setRecStorageWarning;
       await startPromise;
       // An error during the "starting" phase already routed this take through
       // stopRec, which cleared the recorder slot. If start() resolved anyway
@@ -2284,6 +2287,11 @@ export function ArrangementPanel() {
             {recError && (
               <span className="arr-rec-error" role="alert">
                 {recError}
+              </span>
+            )}
+            {recStorageWarning && (
+              <span className="arr-rec-warning" role="status" aria-live="polite">
+                {recStorageWarning}
               </span>
             )}
             <button

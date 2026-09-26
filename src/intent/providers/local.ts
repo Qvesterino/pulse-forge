@@ -8,6 +8,9 @@ import { rankCandidatesWithModel } from "../../ai/ranking/rank-candidates";
 import { rankerMode } from "../../ai/ranking/ranker-client";
 import { symbolicPriorProvider, symbolicWanted } from "./symbolic";
 import { createFallbackPattern } from "../quality";
+import { candidateSearchVariant } from "../candidate-search";
+import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "../preference-ledger";
+import { inferPersonalSearchBias } from "../personal-ranker";
 import type {
   GenerationContext,
   GenerationDiagnostics,
@@ -57,17 +60,24 @@ export class LocalDeterministicProvider implements GenerationProvider {
   private collectCandidates(
     plan: GenerationPlan,
     context: GenerationContext,
+    searchLanes = false,
   ): { candidates: CandidateBankEntry[]; failures: string[]; candidateSeeds: readonly string[] } {
     const candidates: CandidateBankEntry[] = [];
     const failures: string[] = [];
     const candidateSeeds = plan.candidateSeeds.length > 0 ? plan.candidateSeeds : [plan.options.seed];
+    const personalBias =
+      searchLanes && isPreferenceLearningEnabled()
+        ? inferPersonalSearchBias(readPreferenceLedger(), preferenceContextForIntent(plan.intent))
+        : null;
 
     for (const [candidateIndex, seed] of candidateSeeds.entries()) {
-      const currentPlan = candidatePlan(plan, seed);
+      const variant = searchLanes ? candidateSearchVariant(plan, seed, candidateIndex, personalBias) : null;
+      const currentPlan = variant?.validationPlan ?? candidatePlan(plan, seed);
+      const generationPlan = variant?.generationPlan ?? currentPlan;
       const reasons: string[] = [];
       try {
         const evaluated = evaluateCandidate(
-          this.generator(context.project, currentPlan.options),
+          this.generator(context.project, generationPlan.options),
           currentPlan,
           context,
           reasons,
@@ -78,12 +88,13 @@ export class LocalDeterministicProvider implements GenerationProvider {
         }
         candidates.push({
           candidateIndex,
-          seed,
+          seed: generationPlan.options.seed,
           pattern: evaluated.pattern,
           status: evaluated.status,
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
+          ...(variant ? { search: variant.search } : {}),
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
@@ -178,14 +189,14 @@ export class LocalDeterministicProvider implements GenerationProvider {
       };
     }
     const effectiveKey = plan.options.key ?? context.project.key;
-    const { candidates: templateCandidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
+    const { candidates: templateCandidates, failures, candidateSeeds } = this.collectCandidates(plan, context, true);
     // Symbolic-prior candidates (T2): sampled from the ONNX drum prior, they
     // enter the SAME bank and cross the SAME invariant/repair/ranking gates.
     // Every failure path only SHRINKS the bank — generation never blocks on
     // the prior.
     let candidates = templateCandidates;
     if (symbolic) {
-      const collected = await symbolicPriorProvider.collectCandidates(plan, context, templateCandidates.length);
+      const collected = await symbolicPriorProvider.collectCandidates(plan, context, candidateSeeds.length, true);
       if (collected.entries.length > 0) {
         candidates = [...templateCandidates, ...collected.entries];
       }

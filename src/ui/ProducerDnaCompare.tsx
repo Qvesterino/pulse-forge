@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { extractPatternFeatures } from "../ai/features/pattern-features";
 import type { ProjectDocument } from "../project-model/types";
+import { isPreferenceReasonRankable } from "../intent/personal-ranker";
 import {
   buildPreferenceLedgerPack,
   clearPreferenceLedger,
@@ -24,12 +25,12 @@ interface ProducerDnaCompareProps {
 const REASONS: readonly { value: PreferenceReason; label: string }[] = [
   { value: "groove", label: "groove" },
   { value: "drums", label: "bicie" },
-  { value: "bass", label: "basa" },
-  { value: "harmony", label: "harmónia" },
+  { value: "bass", label: "basa (ranker zatiaľ nemeria)" },
+  { value: "harmony", label: "harmónia (ranker zatiaľ nemeria)" },
   { value: "melody", label: "melódia" },
-  { value: "space", label: "priestor" },
-  { value: "energy", label: "energia" },
-  { value: "novelty", label: "originalita" },
+  { value: "space", label: "priestor frázy" },
+  { value: "energy", label: "energia aranžmánu" },
+  { value: "novelty", label: "originalita motívu" },
 ];
 
 function downloadPack(): void {
@@ -97,13 +98,20 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       setMessage("Voľbu sa nepodarilo uložiť lokálne.");
       return;
     }
-    const labels: Record<PreferenceChoice, string> = {
-      a: "A bude mať väčšiu váhu v ďalšom výbere.",
-      b: "B bude mať väčšiu váhu v ďalšom výbere.",
-      neither: "Uložené ako ‘ani jeden’ — bez učenia smeru.",
-      both: "Uložené ako ‘oba dobré’ — bez učenia smeru.",
-    };
-    setMessage(labels[choice]);
+    const preferred = choice === "a" ? "A" : "B";
+    if (choice === "neither") {
+      setMessage("Uložené ako ‘ani jeden’ — bez učenia smeru.");
+    } else if (choice === "both") {
+      setMessage("Uložené ako ‘oba dobré’ — bez učenia smeru.");
+    } else if (reason && !isPreferenceReasonRankable(reason)) {
+      setMessage(`Voľba ${preferred} je uložená, ale tento ranker zatiaľ nemá feature osi pre „${reason}“.`);
+    } else if (reason) {
+      setMessage(
+        `Voľba ${preferred} uložená pre „${reason}“; táto os sa použije po aspoň 2 relevantných porovnaniach.`,
+      );
+    } else {
+      setMessage(`Voľba ${preferred} uložená ako všeobecná preferencia; učenie sa aktivuje po aspoň 2 porovnaniach.`);
+    }
     setComparisonCount(readPreferenceLedger().length);
     setAIndex(null);
     setBIndex(null);
@@ -171,7 +179,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           >
             <option value="">Prečo? (voliteľné)</option>
             {REASONS.map((item) => (
-              <option key={item.value} value={item.value}>
+              <option key={item.value} value={item.value} disabled={!isPreferenceReasonRankable(item.value)}>
                 {item.label}
               </option>
             ))}
@@ -203,7 +211,11 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           Vymazať DNA
         </button>
       </div>
-      {message && <div role="status" className="intent-detected">{message}</div>}
+      {message && (
+        <div role="status" className="intent-detected">
+          {message}
+        </div>
+      )}
     </section>
   );
 }

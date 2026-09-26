@@ -11,15 +11,7 @@ export const PREFERENCE_LEDGER_CAP = 128;
 
 export type PreferenceTask = "pattern" | "section" | "song";
 export type PreferenceChoice = "a" | "b" | "neither" | "both";
-export type PreferenceReason =
-  | "groove"
-  | "drums"
-  | "bass"
-  | "harmony"
-  | "melody"
-  | "space"
-  | "energy"
-  | "novelty";
+export type PreferenceReason = "groove" | "drums" | "bass" | "harmony" | "melody" | "space" | "energy" | "novelty";
 
 export interface PreferenceContext {
   /** Coarse, non-identifying context. Never store the original prompt. */
@@ -121,7 +113,8 @@ export function isValidPreferenceObservation(value: unknown): value is Preferenc
     value.candidateA.contentHash !== value.candidateB.contentHash &&
     typeof value.choice === "string" &&
     CHOICES.has(value.choice as PreferenceChoice) &&
-    (value.reason === undefined || (typeof value.reason === "string" && REASONS.has(value.reason as PreferenceReason))) &&
+    (value.reason === undefined ||
+      (typeof value.reason === "string" && REASONS.has(value.reason as PreferenceReason))) &&
     typeof value.createdAt === "number" &&
     Number.isFinite(value.createdAt) &&
     value.createdAt >= 0

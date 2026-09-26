@@ -12,6 +12,13 @@ const QUICK_PARAM_IDS: ReadonlyArray<{ label: QuickControl["label"]; ids: readon
   { label: "SYNC", ids: ["sync"] },
 ];
 
+/** Keep the dock filter and the rendered control list on the same contract. */
+export function isEffectQuickControlParam(param: ParamDef): boolean {
+  return (
+    ["mix", "global.mix", "global.dryWet", "feedback"].includes(param.id) || (param.id === "sync" && !!param.options)
+  );
+}
+
 function quickControlsOf(params: readonly ParamDef[]): QuickControl[] {
   return QUICK_PARAM_IDS.flatMap(({ label, ids }) => {
     const param = ids.map((id) => params.find((candidate) => candidate.id === id)).find((candidate) => !!candidate);
@@ -36,10 +43,13 @@ export function EffectQuickControls({
   if (controls.length === 0) return null;
 
   return (
-    <section className="fx-preset-controls" aria-label="Preset quick controls">
+    <section
+      className="fx-preset-controls"
+      aria-label={`Preset quick controls: ${controls.map(({ label }) => label).join(", ")}`}
+    >
       <div className="fx-preset-controls-head">
         <span className="fx-preset-controls-title">PRESET CONTROLS</span>
-        <span className="fx-preset-controls-hint">MIX · FEEDBACK · SYNC</span>
+        <span className="fx-preset-controls-hint">{controls.map(({ label }) => label).join(" · ")}</span>
       </div>
       <div className="fx-preset-controls-grid">
         {controls.map(({ param, label }) => {
