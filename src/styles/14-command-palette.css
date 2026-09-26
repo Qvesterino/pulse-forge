@@ -664,6 +664,22 @@ button.brief-chip:hover {
 .song-suggestion-chip:hover {
   border-color: #7aa2f7;
 }
+/* Fáza 6 — loudness recommendation report (measure → recommend → confirm). */
+.loudness-recommendation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  width: 100%;
+  font-size: 10px;
+  color: #7aa2f7;
+  border-top: 1px dashed #333;
+  padding-top: 5px;
+  margin-top: 3px;
+}
+.loudness-recommendation-text b {
+  color: var(--accent);
+}
 .intent-error {
   font-size: 11px;
   color: #f87171;

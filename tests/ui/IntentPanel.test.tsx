@@ -20,7 +20,7 @@ vi.mock("../../src/intent/audition", async (importOriginal) => {
 
 vi.mock("../../src/intent/loudness", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/intent/loudness")>();
-  return { ...actual, applyPreviewLoudness: songDraftMocks.previewLoudness };
+  return { ...actual, measurePreviewLoudness: songDraftMocks.previewLoudness };
 });
 
 vi.mock("../../src/intent/ranking-v3", async (importOriginal) => {
@@ -332,12 +332,19 @@ describe("IntentPanel — coherent song directions", () => {
           }),
       );
     songDraftMocks.previewLoudness.mockReset();
-    songDraftMocks.previewLoudness.mockImplementation(async (doc: ProjectDocument) => ({
-      doc,
-      trim: 0,
+    songDraftMocks.previewLoudness.mockImplementation(async () => ({
+      measured: null,
       target: -14,
-      measuredBefore: null,
-      applied: false,
+      currentTrim: 0,
+      recommendedTrim: null,
+      recommendation: {
+        goal: "-14 LUFS",
+        evidence: "meranie sa nepodarilo",
+        trimDb: null,
+        affected: ["master (loudnessTrimDb)"],
+        tradeOff: "",
+        withinTarget: false,
+      },
     }));
 
     const rendered = renderWithContext(<IntentPanel />);

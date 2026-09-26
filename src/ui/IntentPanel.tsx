@@ -61,7 +61,7 @@ import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
-import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
+import { applyLoudnessIntent, measurePreviewLoudness, type LoudnessRecommendation } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
   reviewSongAudio,
@@ -851,14 +851,17 @@ export function IntentPanel() {
     mixNote: string;
     lengthNote: string;
     seconds: number;
-    /** Preview loudness trim (master.loudnessTrimDb) — the audition plays
-        the trimmed doc, USE installs this exact trim with no re-render. */
+    /** Preview loudness trim (master.loudnessTrimDb) — FÁZA 6: this is the
+        RECOMMENDED trim until the user confirms; USE installs it only when
+        loudnessApplied is true (confirm re-renders the audition trimmed). */
     trimDb: number;
     loudnessTarget: number;
     measuredBefore: number | null;
     /** Gated LUFS measured on the audition buffer itself (the free verify). */
     measuredAfter: number | null;
     loudnessApplied: boolean;
+    /** Structured report (goal/evidence/trade-off) behind the recommendation. */
+    loudnessRecommendation: LoudnessRecommendation | null;
     audioReview: SongAudioReview | null;
   }
   const [songDraft, setSongDraft] = useState<SongDraft | null>(null);
@@ -1345,20 +1348,22 @@ export function IntentPanel() {
         }
       }
       if (songTokenRef.current !== buildToken) return;
-      // Loudness-in-preview: one background measure → trim, then the
-      // AUDITION renders the trimmed doc — what you hear is what USE
-      // installs (the audition buffer itself is the verify measurement).
+      // FÁZA 6 loudness-in-preview: MEASURE ONLY — the trim becomes a
+      // structured recommendation the user accepts explicitly (▶ hear it,
+      // ✓ apply + re-render). Nothing auto-masters: the audition plays the
+      // UNtrimmed preview and USE installs a trim only after confirmation.
       setStatus("⚡ SUNO MODE — loudness measure…");
-      const loud = await applyPreviewLoudness(preview, services.bank, songTextRef.current || text);
+      const loud = await measurePreviewLoudness(preview, services.bank, songTextRef.current || text);
       if (songTokenRef.current !== buildToken) return;
-      preview = loud.doc;
       const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
       const lengthNote = ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
       const mixNote = result.mixSummary ? ` · mix: ${result.mixSummary}` : "";
-      const trimSign = loud.trim >= 0 ? "+" : "";
-      const loudNote = loud.applied
-        ? ` · 🔊 ${loud.measuredBefore ?? "?"} → ${loud.target} LUFS (trim ${trimSign}${loud.trim} dB)`
-        : "";
+      const loudNote =
+        loud.recommendedTrim !== null
+          ? ` · 🔊 ${loud.measured ?? "?"} → cieľ ${loud.target} LUFS (návrh trim ${loud.recommendedTrim} dB — potvrď)`
+          : loud.measured !== null
+            ? ` · 🔊 ${loud.measured} LUFS (v cieli)`
+            : "";
       setSongDraft({
         result,
         activeBuild: result.build,
@@ -1369,11 +1374,12 @@ export function IntentPanel() {
         mixNote,
         lengthNote,
         seconds,
-        trimDb: loud.trim,
+        trimDb: loud.recommendedTrim ?? 0,
         loudnessTarget: loud.target,
-        measuredBefore: loud.measuredBefore,
+        measuredBefore: loud.measured,
         measuredAfter: null,
-        loudnessApplied: loud.applied,
+        loudnessApplied: false,
+        loudnessRecommendation: loud.recommendation,
         audioReview: null,
       });
       const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
@@ -1457,9 +1463,8 @@ export function IntentPanel() {
           /* mix is optional garnish; the selected song remains auditionable */
         }
       }
-      const loud = await applyPreviewLoudness(preview, services.bank, songTextRef.current || text);
+      const loud = await measurePreviewLoudness(preview, services.bank, songTextRef.current || text);
       if (songTokenRef.current !== token) return;
-      preview = loud.doc;
       setSongDraft((current) =>
         current?.result === draft.result
           ? {
@@ -1467,11 +1472,12 @@ export function IntentPanel() {
               activeBuild,
               activeLane: lane,
               previewDoc: preview,
-              trimDb: loud.trim,
+              trimDb: loud.recommendedTrim ?? 0,
               loudnessTarget: loud.target,
-              measuredBefore: loud.measuredBefore,
+              measuredBefore: loud.measured,
               measuredAfter: null,
-              loudnessApplied: loud.applied,
+              loudnessApplied: false,
+              loudnessRecommendation: loud.recommendation,
               audioReview: null,
             }
           : current,
@@ -1615,6 +1621,49 @@ export function IntentPanel() {
     } finally {
       if (sectionTokenRef.current === token) setRenderingSectionId(null);
     }
+  };
+  // FÁZA 6 — the loudness trim is a RECOMMENDATION: ▶ you heard the
+  // untrimmed preview; ✓ applies the trim to the preview doc and re-renders
+  // the audition so preview == USE stays true; ✗ (or no answer) installs
+  // nothing. setMasterConfig is a real command — USE carries it as one undo.
+  const acceptLoudnessTrim = async () => {
+    const draft = songDraft;
+    if (!draft || draft.loudnessApplied || !draft.trimDb) return;
+    const trimmed = setMasterConfig(draft.previewDoc, { loudnessTrimDb: draft.trimDb }).execute(draft.previewDoc);
+    setSongDraft((current) =>
+      current?.result === draft.result ? { ...current, previewDoc: trimmed, loudnessApplied: true } : current,
+    );
+    const token = ++songTokenRef.current;
+    setSongRendering(true);
+    try {
+      const buffer = await renderSongAuditionBuffer(services.bank, trimmed);
+      if (songTokenRef.current !== token) return;
+      songBufferRef.current = buffer;
+      const audioReview = reviewSongAudio(buffer);
+      let measuredAfter: number | null = null;
+      try {
+        const channels: Float32Array[] = [];
+        for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+        const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
+        if (reading.measured) measuredAfter = Math.round(reading.integrated * 10) / 10;
+      } catch {
+        /* display-only — the trimmed buffer still plays */
+      }
+      setSongDraft((current) =>
+        current?.result === draft.result ? { ...current, audioReview, measuredAfter, previewReady: true } : current,
+      );
+      setStatus(`🔊 trim ${draft.trimDb} dB prijatý — náhľad prehráva trimnutú verziu, USE ju nainštaluje`);
+    } catch (err) {
+      if (songTokenRef.current === token) {
+        setError(`trimnutý náhľad zlyhal: ${err instanceof Error ? err.message : String(err)} — trim ostáva prijatý`);
+      }
+    } finally {
+      if (songTokenRef.current === token) setSongRendering(false);
+    }
+  };
+  const declineLoudnessTrim = () => {
+    setSongDraft((current) => (current ? { ...current, loudnessApplied: false, trimDb: 0 } : current));
+    setStatus("Trim neprijatý — USE nainštaluje netrimnutú verziu.");
   };
   const discardSongDraft = () => {
     songTokenRef.current++;
@@ -2479,6 +2528,31 @@ export function IntentPanel() {
                     : " · loudness trim set")}
               </span>
             </span>
+            {!songDraft.loudnessApplied && songDraft.trimDb !== 0 && songDraft.loudnessRecommendation && (
+              <span className="loudness-recommendation" aria-label="Loudness recommendation">
+                <span className="loudness-recommendation-text">
+                  🔊 {songDraft.loudnessRecommendation.evidence} · cieľ {songDraft.loudnessRecommendation.goal} —{" "}
+                  <b>navrhovaný trim {songDraft.trimDb} dB</b> ({songDraft.loudnessRecommendation.tradeOff})
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-small section-proposal-apply"
+                  disabled={songRendering}
+                  onClick={() => void acceptLoudnessTrim()}
+                >
+                  ✓ PRIJAŤ TRIM
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={songRendering}
+                  onClick={declineLoudnessTrim}
+                  title="USE nainštaluje netrimnutú verziu"
+                >
+                  ✗
+                </button>
+              </span>
+            )}
             <button
               type="button"
               className="btn btn-small intent-use-btn"

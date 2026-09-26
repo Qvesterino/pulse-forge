@@ -1,7 +1,7 @@
 import { extractAudioFeatures } from "../ai/audio-features";
 
 export interface SongAudioFinding {
-  code: "non-finite-samples" | "near-full-scale" | "near-silence";
+  code: "non-finite-samples" | "near-full-scale" | "near-silence" | "clipping";
   severity: "warning";
   message: string;
   evidence: string;
@@ -32,13 +32,17 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
   let sumSquares = 0;
   let finiteSamples = 0;
   let nonFiniteSamples = 0;
+  let clippedRuns = 0;
+  const clippedRunLengths = new Array<number>(Math.max(0, channelCount)).fill(0);
+  const CLIP_RUN = 3;
+  const CLIP_LEVEL = 0.999;
 
   const channels = Array.from({ length: channelCount }, (_, channel) => buffer.getChannelData(channel));
   for (let frame = 0; frame < frameCount; frame++) {
     let mixed = 0;
     let mixedChannels = 0;
-    for (const channel of channels) {
-      const sample = channel[frame];
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+      const sample = channels[channelIndex][frame];
       if (sample === undefined || !Number.isFinite(sample)) {
         nonFiniteSamples++;
         continue;
@@ -49,6 +53,14 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
       finiteSamples++;
       mixed += sample;
       mixedChannels++;
+      // Clipping runs are counted on the PER-CHANNEL signal (a flat-top is
+      // per-channel destruction; a shared counter would bridge channels).
+      if (magnitude >= CLIP_LEVEL) {
+        clippedRunLengths[channelIndex] += 1;
+        if (clippedRunLengths[channelIndex] === CLIP_RUN) clippedRuns += 1;
+      } else {
+        clippedRunLengths[channelIndex] = 0;
+      }
     }
     mono[frame] = mixedChannels > 0 ? mixed / mixedChannels : 0;
   }
@@ -74,6 +86,18 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
       severity: "warning",
       message: "The render reaches near full scale; check transient headroom and the master limiter.",
       evidence: `Sample peak ${peakDbfs.toFixed(1)} dBFS.`,
+    });
+  }
+  // Clipping ≠ touching full scale: a single full-scale transient can be
+  // intentional, but SUSTAINED flat-tops (≥3 consecutive samples at the rail)
+  // are measurable waveform destruction — reported separately so the fix
+  // (reduce level before the limiter) has honest evidence.
+  if (clippedRuns > 0) {
+    findings.push({
+      code: "clipping",
+      severity: "warning",
+      message: "The render contains flat-top clipping runs; reduce level before the master limiter.",
+      evidence: `${clippedRuns} run(s) of ≥3 consecutive samples at full scale.`,
     });
   }
   if (rms < 0.001 && peak < 0.01) {

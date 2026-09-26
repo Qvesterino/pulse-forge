@@ -88,6 +88,12 @@ export interface PreviewLoudness {
  * as the verify measurement, so preview == USE at minimum background cost.
  * Never throws — any failure resolves `applied: false` with the input doc,
  * and the draft stays auditionable untrimmed.
+ *
+ * FÁZA 6: the panel no longer calls this — auto-applying a master trim
+ * without the user's confirmation violates "nič sa automaticky
+ * nemasteruje". The panel measures with {@link measurePreviewLoudness} and
+ * offers the trim as a recommendation the user accepts explicitly. Kept
+ * (tested) as the reference preview-trim implementation.
  */
 export async function applyPreviewLoudness(
   doc: ProjectDocument,
@@ -137,6 +143,118 @@ export async function measureLoudness(
   }
   const reading = analyzeLoudnessBuffer(channels, buffer.sampleRate);
   return { integrated: reading.integrated, measured: reading.measured };
+}
+
+// ── FÁZA 6 — measure → recommend → confirm (nothing auto-masters) ─────────
+
+/** Structured loudness report: goal, evidence, intervention, trade-off. */
+export interface LoudnessRecommendation {
+  /** The goal in LUFS, e.g. "−14 LUFS (streaming)". */
+  goal: string;
+  /** Render-backed evidence line (standardized BS.1770-4 measurement). */
+  evidence: string;
+  /** The proposed `master.loudnessTrimDb` value; null = no intervention. */
+  trimDb: number | null;
+  /** What the intervention touches — always the master, never user tracks. */
+  affected: readonly string[];
+  /** The expected trade-off, stated honestly. */
+  tradeOff: string;
+  /** True when the measurement already sits within ±1 LU of the goal. */
+  withinTarget: boolean;
+}
+
+/**
+ * Pure recommendation builder — reproducible and explainable by
+ * construction. Within ±1 LU of the goal there is nothing to recommend;
+ * beyond that the trim is clamped to the existing ±6 dB field and the
+ * trade-off says what the change costs.
+ */
+export function recommendLoudnessTrim(
+  measured: number | null,
+  target: number,
+  currentTrim: number,
+): LoudnessRecommendation {
+  const goal = `${target} LUFS`;
+  const affected = ["master (loudnessTrimDb)"] as const;
+  if (measured === null || !Number.isFinite(measured)) {
+    return {
+      goal,
+      evidence: "meranie sa nepodarilo — render bol príliš tichý alebo prázdny",
+      trimDb: null,
+      affected,
+      tradeOff: "bez merania sa trim neodporúča — odporúčanie bez dôkazu je len kreatívny tip",
+      withinTarget: false,
+    };
+  }
+  const evidence = `merané ${Math.round(measured * 10) / 10} LUFS (BS.1770-4, dvojitá brána) na tom istom offline renderi ako export`;
+  if (Math.abs(measured - target) <= 1) {
+    return {
+      goal,
+      evidence,
+      trimDb: null,
+      affected,
+      tradeOff: "v cieli — žiadny zásah netreba",
+      withinTarget: true,
+    };
+  }
+  const trim = Math.round(Math.max(TRIM_MIN, Math.min(TRIM_MAX, currentTrim + (target - measured))) * 10) / 10;
+  // target < measured → the mix is TOO LOUD → the trim quiets it down.
+  const quieting = target < measured;
+  return {
+    goal,
+    evidence,
+    trimDb: trim,
+    affected,
+    tradeOff: quieting
+      ? "ztíšenie vráti headroom a master limiter pracuje menej — voči hlasnejším referenciám bude mix pôsobiť menej husto"
+      : "zosilnenie privedie mix k streaming normalizácii, ale zje headroom — limiter pracuje viac a transiency strácajú priestor",
+    withinTarget: false,
+  };
+}
+
+export interface LoudnessMeasure {
+  /** Gated integrated LUFS of the CURRENT doc (null when unmeasurable). */
+  measured: number | null;
+  target: number;
+  currentTrim: number;
+  /** The recommended trim (already clamped); null = nothing to recommend. */
+  recommendedTrim: number | null;
+  recommendation: LoudnessRecommendation;
+}
+
+/**
+ * Measure-only preview loudness (FÁZA 6): renders once, reports the
+ * standardized measurement plus a structured recommendation — and applies
+ * NOTHING. The input doc is never mutated; the panel turns the
+ * recommendation into an explicit user decision.
+ */
+export async function measurePreviewLoudness(
+  doc: ProjectDocument,
+  bank: SampleBank,
+  text: string,
+  options: { render?: LoudnessRenderFn } = {},
+): Promise<LoudnessMeasure> {
+  const fallback = { direction: "louder" as const, targetDb: LOUDNESS_TARGET_LUFS, detected: [] };
+  const parse = parseLoudnessIntent(text) ?? fallback;
+  const target = parse.targetDb ?? LOUDNESS_TARGET_LUFS;
+  const currentTrim = doc.master?.loudnessTrimDb ?? 0;
+  const render: LoudnessRenderFn =
+    options.render ??
+    (async (d, b) =>
+      (await import("../rendering/renderer")).renderProject(d, b, {
+        mode: "song",
+        sampleRate: 44100,
+        tailSeconds: 0.4,
+      }));
+  let measured: number | null = null;
+  try {
+    const reading = await measureWithRender(doc, bank, render);
+    if (reading.measured) measured = Math.round(reading.integrated * 10) / 10;
+  } catch {
+    measured = null;
+  }
+  const recommendation = recommendLoudnessTrim(measured, target, currentTrim);
+  return { measured, target, currentTrim, recommendedTrim: recommendation.trimDb, recommendation };
 }
 
 function neededTrim(currentTrim: number, measured: number, target: number): number {

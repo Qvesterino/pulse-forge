@@ -116,3 +116,27 @@ describe("evidence-based revival suggestions", () => {
     expect(suggestSectionRevivals(meters)).toEqual([]);
   });
 });
+
+describe("clipping runs (distinct from near-full-scale)", () => {
+  it("flags sustained flat-tops as clipping", () => {
+    const data = new Float32Array([0.5, 1, 1, 1, 1, 0.5]);
+    const review = reviewSongAudio(fakeBuffer([data]));
+    expect(review.findings.map((finding) => finding.code)).toContain("clipping");
+    expect(review.findings.map((finding) => finding.code)).toContain("near-full-scale");
+  });
+
+  it("a single full-scale transient is near-full-scale, NOT clipping", () => {
+    const data = new Float32Array([0.5, 1, 0.5, 0.5, 0.5]);
+    const review = reviewSongAudio(fakeBuffer([data]));
+    expect(review.findings.map((finding) => finding.code)).toEqual(["near-full-scale"]);
+  });
+
+  it("does not bridge channels into a false run", () => {
+    // channel A ends on the rail, channel B STARTS on the rail — a shared
+    // counter would report a 4-sample run; per-channel counting sees 2+2.
+    const a = new Float32Array([1, 1, 0.5]);
+    const b = new Float32Array([1, 1, 0.5]);
+    const review = reviewSongAudio(fakeBuffer([a, b]));
+    expect(review.findings.map((finding) => finding.code)).toEqual(["near-full-scale"]);
+  });
+});
