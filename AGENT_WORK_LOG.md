@@ -4721,3 +4721,10 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 **Validácia:** artist-mix **7/7** (vrátane deep-chain testu: deep-only slug odpovedá, unknown → null, curated vyhráva); 8-súborová battery **302/302**; `tsc --noEmit` — campaign súbory čisté (zvyšok = ich in-flight organ inštrument + wiring test).
 
 **Intent engine konečný stav (Vlny 1–9):** interpret → groove+BPM+productionProfile → **mix/master podpis (305 curated + deep fallback = celý roster)** → FX hinty + 15 production konceptov → brief → iterácie → reference audio → konverzačné intenty.
+
+## FÁZA 5 doplnok — DÔVODOVÉ NÁVRHY Z MERANÍ (2026-09-26)
+
+- **`analyzeSongSections(buffer, sections, bpm)`**: segmentácia song audition bufferu podľa hraníc formy (bars × 60/bpm × 4) → per-sekčné RMS/peak metre (pure, single-pass).
+- **`suggestSectionRevivals(meters)`**: loud-carrying sekcia (drop/chorus/verse) ≥8 dB pod mediánom vlastných loud-carrying sekcií → návrh energy +0.15. Break/intro/outro/build majú dýchať — tichota tam nikdy nenavrhuje; vyvážený song nenavrhuje nič. Žiadna automatická aplikácia.
+- **UI**: SUNO preview render feedne metre → suggestion čipy; klik kompiluje do audition-first sekčného návrhu (▶ náhľad → ✓/✗) zo Fázy 5 jadra; čipy sa resetujú so song draftom.
+- Testy +5 v intent-song-audio-review (segmentácia pri BPM, tichý chorus evidence, breathing-section imunita, single-section no-reference, nepoužiteľné clock/form → []).
