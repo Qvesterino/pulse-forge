@@ -63,7 +63,13 @@ import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent, applyPreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
-import { reviewSongAudio, type SongAudioReview } from "../intent/song-audio-review";
+import {
+  reviewSongAudio,
+  analyzeSongSections,
+  suggestSectionRevivals,
+  type SongAudioReview,
+  type SongSectionSuggestion,
+} from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -218,6 +224,7 @@ export function IntentPanel() {
     setPlayingSectionId(null);
     setRenderingSectionId(null);
     setSongDraft(null);
+    setSongSuggestions([]);
     setJustApplied(false);
     // GOAL 03 (re-run 4): the vocal-take card is the same race class as the
     // candidate bank — a profile analyzed from the OLD project's take must
@@ -379,6 +386,7 @@ export function IntentPanel() {
     setJustApplied(false);
     stopAudition();
     setSongDraft(null);
+    setSongSuggestions([]);
     setSongPlaying(false);
     setPlayingSectionId(null);
     setRenderingSectionId(null);
@@ -576,6 +584,7 @@ export function IntentPanel() {
     stopAudition();
     setPlayingIndex(null);
     setSongDraft(null);
+    setSongSuggestions([]);
     setSongPlaying(false);
     setPlayingSectionId(null);
     setRenderingSectionId(null);
@@ -863,6 +872,22 @@ export function IntentPanel() {
   // section's own scoped FX folded in), buffers cached per pattern id.
   const [playingSectionId, setPlayingSectionId] = useState<string | null>(null);
   const [renderingSectionId, setRenderingSectionId] = useState<string | null>(null);
+  // Fáza 5 — evidence-based section revival suggestions from the song
+  // preview's per-section meters; a chip compiles into the audition-first
+  // section proposal flow (never applied automatically).
+  const [songSuggestions, setSongSuggestions] = useState<SongSectionSuggestion[]>([]);
+
+  const applySongSuggestion = (suggestion: SongSectionSuggestion) => {
+    const outcome = reviseSection(doc, suggestion.role as never, suggestion.attribute, suggestion.delta);
+    if (!outcome.ok) {
+      setStatus(`⟡ ${outcome.error}`);
+      return;
+    }
+    stopAudition();
+    setSectionProposal({ outcome, docRef: doc });
+    void auditionSectionProposal(outcome.pattern);
+    setStatus(`⟡ ${suggestion.reason} → ${outcome.label} — ▶ náhľad, ✓ potvrdiť alebo ✗ ponechať`);
+  };
   const sectionBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sectionTokenRef = useRef(0);
   useEffect(() => {
@@ -878,6 +903,7 @@ export function IntentPanel() {
     setRenderingIndex(null);
     buffersRef.current.clear();
     setSongDraft(null);
+    setSongSuggestions([]);
     setSongPlaying(false);
     setSongRendering(false);
     setPlayingSectionId(null);
@@ -902,6 +928,7 @@ export function IntentPanel() {
     setRenderingIndex(null);
     buffersRef.current.clear();
     setSongDraft(null);
+    setSongSuggestions([]);
     setSongPlaying(false);
     setSongRendering(false);
     setPlayingSectionId(null);
@@ -1363,6 +1390,13 @@ export function IntentPanel() {
         songBufferRef.current = buffer;
         const audioReview = reviewSongAudio(buffer);
         setSongDraft((prev) => (prev && prev.result === result ? { ...prev, audioReview, previewReady: true } : prev));
+        // Fáza 5 — per-section meters → evidence-based revival suggestions.
+        const sectionMeters = analyzeSongSections(
+          buffer,
+          result.build.sections.map((section) => ({ role: section.role, bars: section.bars })),
+          result.build.resolvedBpm ?? doc.bpm,
+        );
+        setSongSuggestions(suggestSectionRevivals(sectionMeters));
         // Free verify: measure what the preview actually plays.
         try {
           const channels: Float32Array[] = [];
@@ -1520,6 +1554,7 @@ export function IntentPanel() {
       setPlayingIndex(null);
       setBankResult(null);
       setSongDraft(null);
+      setSongSuggestions([]);
       songBufferRef.current = null;
       services.store.replaceDoc(child);
       setStatus(
@@ -1591,6 +1626,7 @@ export function IntentPanel() {
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
     setSongDraft(null);
+    setSongSuggestions([]);
     setStatus("Song draft discarded — nothing applied.");
   };
   const useSongDraft = async () => {
@@ -1648,6 +1684,7 @@ export function IntentPanel() {
       songBufferRef.current = null;
       sectionBuffersRef.current = new Map();
       setSongDraft(null);
+      setSongSuggestions([]);
       setJustApplied(true);
       setStatus(
         `✓ SUNO MODE — ${songDraft.activeBuild.name} — ${songDraft.activeBuild.sections.length} sections, ${songDraft.activeBuild.totalBars} bars${songDraft.lengthNote}${fxNote}${songDraft.mixNote}${rebased ? " · mix re-planned after edits" : ""}${loudnessNote} — Tip: "make bridge more energetic" + ⚡ DO IT revises one section.`,
@@ -2225,6 +2262,21 @@ export function IntentPanel() {
               ✗
             </button>
           </span>
+        </div>
+      )}
+      {songSuggestions.length > 0 && !sectionProposal && (
+        <div className="song-suggestions" aria-label="Evidence-based section suggestions">
+          {songSuggestions.map((suggestion) => (
+            <button
+              key={`${suggestion.role}:${suggestion.attribute}`}
+              type="button"
+              className="song-suggestion-chip"
+              title={`${suggestion.reason} — spusti náhľad úpravy`}
+              onClick={() => applySongSuggestion(suggestion)}
+            >
+              ⟡ {suggestion.reason} — navrhnúť {suggestion.attribute} +{suggestion.delta}
+            </button>
+          ))}
         </div>
       )}
       {candidates && candidates.length > 1 && (

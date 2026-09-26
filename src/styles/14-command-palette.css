@@ -644,6 +644,26 @@ button.brief-chip:hover {
   color: #4ade80;
   border-color: color-mix(in srgb, #4ade80 45%, transparent);
 }
+/* Fáza 5 — evidence-based section revival suggestion chips. */
+.song-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.song-suggestion-chip {
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+  color: #7aa2f7;
+  background: color-mix(in srgb, #7aa2f7 7%, transparent);
+  border: 1px dashed color-mix(in srgb, #7aa2f7 40%, transparent);
+  border-radius: 5px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.song-suggestion-chip:hover {
+  border-color: #7aa2f7;
+}
 .intent-error {
   font-size: 11px;
   color: #f87171;

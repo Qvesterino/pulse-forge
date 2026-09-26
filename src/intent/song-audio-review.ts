@@ -97,3 +97,118 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
     findings,
   };
 }
+
+// ── Per-section meters + evidence-based revival suggestions ───────────────
+//
+// Whole-song metrics cannot honestly point at a section. Segmenting the SAME
+// audition buffer by the song form's bar boundaries can: a loud-carrying
+// section sitting far below the song's own reference level is measurable
+// evidence, and the suggestion it produces is a targeted, audition-first
+// revise — never an automatic fix. Breaks/intros/outros/builds are SUPPOSED
+// to breathe, so quietness there suggests nothing.
+
+export interface SongSectionMeter {
+  role: string;
+  startSecond: number;
+  seconds: number;
+  rmsDbfs: number;
+  peakDbfs: number;
+}
+
+export interface SongSectionSuggestion {
+  role: string;
+  attribute: "energy";
+  delta: number;
+  /** Evidence line shown with the suggestion chip. */
+  reason: string;
+}
+
+const LOUD_CARRYING_ROLES = new Set(["drop", "chorus", "verse"]);
+/** How far below the song's reference level a section must sit to suggest. */
+const QUIET_GAP_DB = 8;
+/** A section essentially without signal is a build problem, not a balance one. */
+const MIN_SIGNAL_DBFS = -60;
+
+const median = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/** Per-section RMS/peak meters from the song audition buffer (pure). */
+export function analyzeSongSections(
+  buffer: AudioBuffer,
+  sections: ReadonlyArray<{ role: string; bars: number }>,
+  bpm: number,
+): SongSectionMeter[] {
+  const channelCount = Math.max(0, Math.floor(buffer.numberOfChannels));
+  const frameCount = Math.max(0, Math.floor(buffer.length));
+  const sampleRate = Number.isFinite(buffer.sampleRate) && buffer.sampleRate > 0 ? buffer.sampleRate : 0;
+  if (channelCount === 0 || frameCount === 0 || sampleRate === 0 || !Number.isFinite(bpm) || bpm <= 0) return [];
+  const secondsPerBar = (60 / bpm) * 4;
+
+  const bounds: Array<{ role: string; start: number; end: number }> = [];
+  let cursor = 0;
+  for (const section of sections) {
+    if (!Number.isFinite(section.bars) || section.bars <= 0) continue;
+    const start = Math.min(cursor * secondsPerBar * sampleRate, frameCount);
+    cursor += section.bars;
+    const end = Math.min(Math.round(cursor * secondsPerBar * sampleRate), frameCount);
+    if (end <= start) continue;
+    bounds.push({ role: section.role, start, end });
+  }
+  if (bounds.length === 0) return [];
+
+  const channels = Array.from({ length: channelCount }, (_, channel) => buffer.getChannelData(channel));
+  const sums = bounds.map(() => ({ sumSquares: 0, count: 0, peak: 0 }));
+  for (const channel of channels) {
+    for (let index = 0; index < bounds.length; index++) {
+      const { start, end } = bounds[index];
+      const bucket = sums[index];
+      for (let frame = Math.floor(start); frame < end; frame++) {
+        const sample = channel[frame];
+        if (sample === undefined || !Number.isFinite(sample)) continue;
+        bucket.sumSquares += sample * sample;
+        bucket.count += 1;
+        bucket.peak = Math.max(bucket.peak, Math.abs(sample));
+      }
+    }
+  }
+
+  return bounds.map((bound, index) => {
+    const bucket = sums[index];
+    const rms = bucket.count > 0 ? Math.sqrt(bucket.sumSquares / bucket.count) : 0;
+    return {
+      role: bound.role,
+      startSecond: Math.round((bound.start / sampleRate) * 10) / 10,
+      seconds: Math.round(((bound.end - bound.start) / sampleRate) * 10) / 10,
+      rmsDbfs: toDbfs(rms),
+      peakDbfs: toDbfs(bucket.peak),
+    };
+  });
+}
+
+/**
+ * Evidence-based revival suggestions: loud-carrying sections sitting
+ * ≥ QUIET_GAP_DB below the song's own median loud-carrying level. Pure and
+ * deterministic; an empty result is the normal healthy case.
+ */
+export function suggestSectionRevivals(meters: ReadonlyArray<SongSectionMeter>): SongSectionSuggestion[] {
+  const carrying = meters.filter((meter) => LOUD_CARRYING_ROLES.has(meter.role));
+  if (carrying.length < 2) return [];
+  const reference = median(carrying.map((meter) => meter.rmsDbfs));
+  const suggestions: SongSectionSuggestion[] = [];
+  for (const meter of carrying) {
+    const gap = reference - meter.rmsDbfs;
+    if (gap >= QUIET_GAP_DB && meter.rmsDbfs > MIN_SIGNAL_DBFS) {
+      suggestions.push({
+        role: meter.role,
+        attribute: "energy",
+        delta: 0.15,
+        reason: `${meter.role} pôsobí ticho — ${Math.round(gap)} dB pod úrovňou zvyšku skladby (${meter.rmsDbfs.toFixed(0)} dBFS RMS)`,
+      });
+    }
+  }
+  return suggestions;
+}
