@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
 import {
+  addAudioClip,
   addArrangementClip,
   addAutomationLane,
   addAutomationPoint,
@@ -10,6 +11,7 @@ import {
   addEffect,
   addNote,
   clearPattern,
+  consolidateAudioClips,
   chopSampleToPads,
   createDrumTrack,
   sliceToPads,
@@ -63,6 +65,23 @@ import { FACTORY_PRESETS } from "../src/effects/ultina-core/presets/factoryPrese
 import { getDrumTrack } from "../src/project-model/types";
 
 describe("commands", () => {
+  it("refuses metadata-only audio consolidation instead of discarding clip sources", () => {
+    const doc = createDefaultProject();
+    const track = doc.tracks.find((candidate) => candidate.kind !== "group");
+    if (!track) throw new Error("default project has no audio-capable track");
+    const first = addAudioClip(doc, track.id, "audio.first", 0, 1).execute(doc);
+    const second = addAudioClip(first, track.id, "audio.second", 1, 1).execute(first);
+    const clips = second.arrangement.audioClips ?? [];
+
+    expect(() =>
+      consolidateAudioClips(
+        second,
+        clips.map((clip) => clip.id),
+      ),
+    ).toThrow("Rendered audio consolidation is not available yet");
+    expect(second.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["audio.first", "audio.second"]);
+  });
+
   it("toggleStep adds and removes a step, with undo", () => {
     const doc = createDefaultProject();
     const store = new ProjectStore(doc);

@@ -3825,24 +3825,13 @@ export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[]): 
   if (clips.length < 2) throw new Error("Select at least 2 audio clips to consolidate");
   const trackIds = new Set(clips.map((c) => c.trackId));
   if (trackIds.size > 1) throw new Error("Consolidate requires clips on same track");
-  const sorted = [...clips].sort((a, b) => a.startBar - b.startBar);
-  const minStart = Math.min(...sorted.map((c) => c.startBar));
-  const maxEnd = Math.max(...sorted.map((c) => c.startBar + c.lengthBars));
-  const totalBars = maxEnd - minStart;
-  // Guardrail: build stem for the track's group
-  const stemDoc = buildStemProject(doc, (t) => t.id === sorted[0].trackId);
-  void stemDoc;
-  const first = sorted[0];
-  const consolidated: import("../project-model/types").AudioClip = {
-    ...first,
-    id: uid("audioClip"),
-    startBar: minStart,
-    lengthBars: Math.round(totalBars * 100) / 100,
-  };
-  const remaining = (doc.arrangement.audioClips ?? []).filter((c) => !clipIds.includes(c.id));
-  const nextClips = [...remaining, consolidated].sort((a, b) => a.startBar - b.startBar);
-  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, audioClips: nextClips } };
-  return snapshot("consolidateAudioClips", `Consolidate ${clips.length} clips`, doc, next);
+  // A metadata-only implementation used to replace every selected clip with
+  // the first clip's source stretched across the combined timeline span. That
+  // silently changed the audible content, so refuse the operation until the
+  // UI can provide a persisted offline-rendered buffer to this command.
+  throw new Error(
+    "Rendered audio consolidation is not available yet. Use Bounce (Ctrl+B) to render without replacing sources.",
+  );
 }
 
 /**

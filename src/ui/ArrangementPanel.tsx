@@ -18,7 +18,6 @@ import {
   addArrangementTransition,
   addAudioClip,
   addMarker,
-  consolidateAudioClips,
   compAudioTakeRange,
   autoArrangeSong,
   generatePatternCommand,
@@ -4072,53 +4071,14 @@ export function ArrangementPanel() {
               type="button"
               role="menuitem"
               onClick={() => {
-                const sel = selection.timeRange;
-                if (sel) {
-                  const from = sel.fromTick,
-                    to = sel.toTick;
-                  const ids = (arrangement.audioClips ?? [])
-                    .filter((ac) => {
-                      const s = ac.startBar * BAR_TICKS,
-                        e = s + ac.lengthBars * BAR_TICKS;
-                      return s >= from && e <= to;
-                    })
-                    .map((ac) => ac.id);
-                  if (ids.length < 2) {
-                    setActionError("Select timeRange with ≥2 clips to consolidate");
-                    setAudioMenu(null);
-                    return;
-                  }
-                  try {
-                    execute(consolidateAudioClips(services.store.doc, ids));
-                  } catch (err) {
-                    setActionError(String(err));
-                  }
-                } else {
-                  const c = audioClips.find((x) => x.id === audioMenu.clipId);
-                  if (!c) {
-                    setAudioMenu(null);
-                    return;
-                  }
-                  const sameTrack = (arrangement.audioClips ?? [])
-                    .filter((ac) => ac.trackId === c.trackId)
-                    .sort((a, b) => a.startBar - b.startBar);
-                  const idx = sameTrack.findIndex((ac) => ac.id === c.id);
-                  const nxt = sameTrack[idx + 1];
-                  if (!nxt || Math.abs(nxt.startBar - (c.startBar + c.lengthBars)) > 0.5) {
-                    setActionError("Need adjacent clip on same track");
-                    setAudioMenu(null);
-                    return;
-                  }
-                  try {
-                    execute(consolidateAudioClips(services.store.doc, [c.id, nxt.id]));
-                  } catch (err) {
-                    setActionError(String(err));
-                  }
-                }
+                setActionError(
+                  "Rendered consolidation is not available yet. Select a time range and use Bounce (Ctrl+B); it renders a new clip without replacing the source audio.",
+                );
                 setAudioMenu(null);
               }}
+              title="Rendered consolidation is not implemented yet. Use Bounce (Ctrl+B) for a non-destructive render."
             >
-              Consolidate (Shift+Tab+B)
+              Consolidate (render required)
             </button>
             <button
               type="button"
