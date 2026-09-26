@@ -1693,6 +1693,223 @@ function choirPad(): Builder {
   };
 }
 
+/**
+ * String section expansion (string portfolio wave): cello/violin/pizzicato/
+ * nylon/orchestra hit — the bowed and plucked orchestra the bank lacked.
+ *
+ * Cello — dark bowed low register: detuned saw pair through two body
+ * resonances (250/400 Hz, the cello corpus), slow bow attack, sustained.
+ * C2 anchor. */
+function cello(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 65.41; // C2
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.9, t0 + 0.06);
+    vca.gain.setValueAtTime(0.9, t0 + 2.0);
+    vca.gain.linearRampToValueAtTime(0, t0 + 2.4);
+    for (const [formant, q, level] of [
+      [250, 3, 0.55],
+      [400, 2.4, 0.4],
+    ] as [number, number, number][]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = formant;
+      bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      vca.connect(bp).connect(g).connect(dest);
+    }
+    for (const detune of [0, 5]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 2.5);
+    }
+  };
+}
+
+/** Violin — the singing bowed lead: saw pair with violin corpus formants
+ * (300/450/2800 Hz), delayed vibrato (the bow settles before the hand
+ * rocks), bright top. A4 anchor. */
+function violin(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 440; // A4
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.8, t0 + 0.05);
+    vca.gain.setValueAtTime(0.8, t0 + 1.7);
+    vca.gain.linearRampToValueAtTime(0, t0 + 2.0);
+    for (const [formant, q, level] of [
+      [300, 2.5, 0.4],
+      [450, 2, 0.35],
+      [2800, 1.5, 0.18],
+    ] as [number, number, number][]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = formant;
+      bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      vca.connect(bp).connect(g).connect(dest);
+    }
+    const vibrato = ctx.createOscillator();
+    vibrato.type = "sine";
+    vibrato.frequency.value = 5.8;
+    const vibGain = ctx.createGain();
+    vibGain.gain.setValueAtTime(0, t0);
+    vibGain.gain.linearRampToValueAtTime(8, t0 + 0.25);
+    vibrato.connect(vibGain);
+    vibrato.start(t0);
+    vibrato.stop(t0 + 2.1);
+    for (const detune of [0, 6]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      vibGain.connect(osc.detune);
+      osc.connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 2.1);
+    }
+  };
+}
+
+/** Pizzicato — the staccato string pluck: triangle partials with a fast
+ * exponential decay, soft finger click, diffuse second voice for the
+ * section feel. C4 anchor. */
+function pizzicato(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 261.63; // C4
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 3600;
+    lpf.connect(dest);
+    for (const [ratio, level, decay] of [
+      [1, 0.5, 0.22],
+      [2, 0.2, 0.14],
+      [3, 0.08, 0.09],
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = f * ratio;
+      osc.connect(env(ctx, t0, level, decay)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 0.4);
+    }
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = f * 1.003;
+    osc.connect(env(ctx, t0 + 0.012, 0.22, 0.18)).connect(lpf);
+    osc.start(t0 + 0.012);
+    osc.stop(t0 + 0.4);
+    const click = noiseSource(ctx, 9, 0.012, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = f * 3;
+    click
+      .connect(bp)
+      .connect(env(ctx, t0, 0.12, 0.008))
+      .connect(dest);
+  };
+}
+
+/** Nylon guitar — the round classical voice: soft triangle partials (no
+ * steel brightness), gentle thumb attack, warm top. Rounder than the steel
+ * acousticGuitar. A2 anchor (nylon lives mid). */
+function nylonGuitar(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 110; // A2
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.012);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.08, 0.5);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 2000;
+    vca.connect(lpf).connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.55],
+      [2, 0.18],
+      [3, 0.06],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 2.2);
+    }
+    const click = noiseSource(ctx, 14, 0.02, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1400;
+    click
+      .connect(bp)
+      .connect(env(ctx, t0, 0.08, 0.015))
+      .connect(dest);
+  };
+}
+
+/** Orchestra hit — the classic stab: wide detuned saw stack (brass-ish
+ * formant + string sheen) over a timpani thump. Short, punchy. C4. */
+function orchestraHit(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 261.63; // C4
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(1, t0);
+    vca.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.55);
+    const brass = ctx.createBiquadFilter();
+    brass.type = "bandpass";
+    brass.frequency.value = 1100;
+    brass.Q.value = 0.8;
+    const brassG = ctx.createGain();
+    brassG.gain.value = 0.5;
+    vca.connect(brass).connect(brassG).connect(dest);
+    const sheen = ctx.createBiquadFilter();
+    sheen.type = "highpass";
+    sheen.frequency.value = 2800;
+    const sheenG = ctx.createGain();
+    sheenG.gain.value = 0.2;
+    vca.connect(sheen).connect(sheenG).connect(dest);
+    for (const detune of [-12, -5, 0, 6, 12]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 0.6);
+      const sub = ctx.createOscillator();
+      sub.type = "sawtooth";
+      sub.frequency.value = f / 2;
+      sub.detune.value = detune;
+      const sg = ctx.createGain();
+      sg.gain.value = 0.4;
+      sub.connect(sg).connect(vca);
+      sub.start(t0);
+      sub.stop(t0 + 0.6);
+    }
+    const thump = ctx.createOscillator();
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(140, t0);
+    thump.frequency.exponentialRampToValueAtTime(55, t0 + 0.2);
+    thump.connect(env(ctx, t0, 0.45, 0.25)).connect(dest);
+    thump.start(t0);
+    thump.stop(t0 + 0.4);
+  };
+}
+
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
   "factory.kick.deep": kick(150, 46, 0.42, 0.25),
@@ -1875,6 +2092,11 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.organ": organ(),
   "factory.tonal.acousticguitar": acousticGuitar(),
   "factory.tonal.choirpad": choirPad(),
+  "factory.tonal.cello": cello(),
+  "factory.tonal.violin": violin(),
+  "factory.tonal.pizzicato": pizzicato(),
+  "factory.tonal.nylonguitar": nylonGuitar(),
+  "factory.tonal.orchestrahit": orchestraHit(),
 
   // Tonal bank expansion (2026-09): the "real instrument" voices beatmaking
   // actually reaches for — memphis guitar, drill strings, rhodes, mariachi
@@ -1965,6 +2187,11 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.organ": 2.1,
   "factory.tonal.acousticguitar": 2.4,
   "factory.tonal.choirpad": 3.1,
+  "factory.tonal.cello": 2.6,
+  "factory.tonal.violin": 2.2,
+  "factory.tonal.pizzicato": 0.45,
+  "factory.tonal.nylonguitar": 2.3,
+  "factory.tonal.orchestrahit": 0.7,
   "factory.tonal.memphisguitar": 1.4,
   "factory.tonal.darkstrings": 2.2,
   "factory.tonal.rhodes": 1.8,

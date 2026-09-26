@@ -4576,3 +4576,26 @@ Všetky mapované LEN na existujúce groove štýly. Testy +4 bloky (24/24 v art
 **Validácia:** parser+artists **100/100**; 11-súborová battery po ich live syntaks-fixu + druhom loudness regene všetko zelené (198 testov v 8 prebehnutých súboroch + 26 loudness trio); `tsc --noEmit` EXIT 0.
 
 **Hip-hop pokrytie po tejto vlne:** old school/electro, boom bap, conscious (kendrick/j cole/nas/doom), trap (classic/hyper/lux/rolling/sparse/bouncy), cloud, screwed, plugg, detroit/michigan, hyphy, crunk, drill (uk/dark/bounce/sample/hyper/melodic/grime), grime, phonk (memphis/drift/horror), jersey, rage/opium, west coast/g-funk, newschool (kanye/metro/zaytoven/tay keith/lex luger/pi'erre/future/gunna/21/thug/uzi/trippie/don toliver/kid cudi). Žánrová mapa hip-hopu je KOMPLETNÁ.
+
+---
+
+## String portfolio wave (post-campaign quality) — cello/violin/pizzicato/nylon/orchestra hit (2026-09-26)
+
+**Scope:** the user's string-portfolio idea — the bowed and plucked orchestra the bank lacked (cello/violin/pizzicato/orchestra hit = 0 hits; nylon existed only as a preset NAME, no sample).
+
+**Delivered:**
+
+1. **5 builders** (factory.ts): `cello` (C2, detuned saw pair through corpus resonances 250/400 Hz, sustained 2.4 s), `violin` (A4, corpus formants 300/450/2800 + delayed vibrato), `pizzicato` (C4, triangle partials + fast decay + finger click + diffuse second voice), `nylonGuitar` (A2, round soft partials, gentle thumb attack — deliberately rounder/darker than the steel acousticGuitar), `orchestraHit` (C4, 5-voice detuned saw stack + octave subs through brass-formant + sheen parallel, timpani thump).
+2. **5 manifest entries + 5 registrations + 5 durations.**
+3. **15 sampler presets** — cello ×4 (drill/trap/score/dnb), violin ×3 (phonk memphis, score emotional, drill dark), pizzicato ×3 (house/jersey/dnb bounce), nylon ×3 (ambient/score/phonk brazilian), orchestra hit ×2 (trap, score climax).
+4. **presets.test sample contract** extended to all five ids.
+
+**Bug caught by the browser audibility gate (the gate working as designed):** both orchestra-hit presets clipped (peak 1.07–1.10, 0.02% clipped) — the wide 5-voice stack + timpani summed hot. Fixed by preset gain (0.8/0.78 → 0.6/0.58); second gate finding: loudness map drift after the gain change → `npm run presets:loudness` regenerated → **369/369 PASS**.
+
+**Scripting lesson (repeated):** inserting presets by matching `"  },\n"` corrupts the file — the 4-space `    },\n` params-close CONTAINS the 2-space pattern as a substring, so split/join replaces the WRONG close and breaks the object. Fixed by hand (two Edit-tool repairs) after stash-checkout restored the file; the working insertion anchors on a UNIQUE sampleId line and slices after its exact close.
+
+**Important files changed:** src/sample-library/{factory,manifest}.ts, src/presets/factory.ts (15 presets), tests/presets.test.ts, src/presets/preset-loudness.generated.ts (regenerated).
+
+**Validation:** 39/39 targeted (presets/kick-bank/velocity-layers/fx-expansion) + browser QA 369/369 PASS. tsc 0 errors. Factory presets 375 total.
+
+**Remaining backlog:** A9 partially (dB/threshold verdicts documented), D-consistency notes — decisions/documentation only.
