@@ -89,15 +89,122 @@ Rules the catalog enforces:
 | ----------------- | ------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------- | ---------------- |
 | `house.baltimore` | 125–135 | researched: 125–135 club canon (Rod Lee, K-Swift, Debonair Samir) | "Think"/"Sing Sing" break stomp, hard 2/4 snare, chopped-vocal blips | RBMA, melodigging | L1 ✅ L2 ✅ L3 ◐ |
 
-## Legacy lanes (pre-catalog; anchors to be backfilled opportunistically)
+## Legacy lanes (backfilled from the groove source — anchors accumulate)
 
-`house.driving / minimal / funky / deep / ukg / dancefloor / soulful /
-heartbeat / broken / pop / synthpop / afroswing / basshouse / ghouse /
-footwork / disco-era lanes`, `techno.driving / minimal / industrial / dub /
-acid / hard / melodic / hardstyle / psytrance`, `trap.*`, `drill.*`,
-`phonk.*`, `jersey.club / bounce / flip`, `dnb.twostep / liquid / jumpup /
-roller / amen / dancefloor / neuro`, `ambient.*`, `hybrid.*`.
-These predate the research pass — when touching one, add its anchors here.
+BPMs below are read **directly from `src/ai/grooves/*.ts`** (what the engine
+actually plays). Track anchors marked `~` are common community values not
+verified against a specific source this session; `—` = anchor backlog. All
+legacy rows are L1 ◐ / L2 ✅ / L3 ○–◐ until individually upgraded.
+
+### House family
+
+| Groove             | BPM     | Track anchors                                               | Signature                                       |
+| ------------------ | ------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| `house.driving`    | 122–128 | (Losing It) FISHER ~125                                     | the mainroom four-floor engine                  |
+| `house.minimal`    | 120–126 | —                                                           | sparse four-floor, click percussion             |
+| `house.funky`      | 118–124 | —                                                           | disco-house bounce, filtered loops              |
+| `house.deep`       | 118–124 | (Deep Inside) Hardrive ~122 — approx                        | shuffled deep pocket                            |
+| `house.ukg`        | 126–132 | (Flowers) Sweet Female Attitude ~127 — approx               | 2-step shuffle, swung hats                      |
+| `house.dancefloor` | 124–128 | (Losing It) FISHER ~125, John Summit era                    | peak-time four-floor + bass stab                |
+| `house.soulful`    | 120–126 | Defected school                                             | soulful chords over four-floor                  |
+| `house.heartbeat`  | 126–134 | Fred again.. school (FRED_FORM)                             | emotional UKG crossover                         |
+| `house.broken`     | 128–138 | Overmono school                                             | broken beat, off-grid kick                      |
+| `house.pop`        | 118–124 | dance-pop canon                                             | four-floor + pop clap, hats leave room to sing  |
+| `house.synthpop`   | 100–118 | 80s synth-pop era                                           | gated snare, driving 16th hats                  |
+| `house.afroswing`  | 100–108 | (J Hus era) ~104 — approx                                   | swung shaker 16ths, late snare answers          |
+| `house.basshouse`  | 124–130 | bass house era                                              | wobble stab over four-floor                     |
+| `house.ghouse`     | 120–126 | g-house era                                                 | gangster vocal stabs, 808-ish slide             |
+| `house.footwork`   | 155–165 | researched: juke/footwork canon 155–165, RP Boo / DJ Rashad | polyrhythmic battle breaks, dead-grid precision |
+| `house.pianohouse` | 122–130 | piano house revival                                         | piano riff hook over four-floor                 |
+| `house.midtempo`   | 90–110  | midtempo era                                                | half-time-leaning club groove                   |
+| `house.melodic`    | 120–128 | melodic house school                                        | emotive pads over soft four-floor               |
+| `house.baile`      | 130–150 | researched: baile funk canon                                | tamborzão-style syncopation                     |
+
+### Techno / trance / ukg families
+
+| Groove               | BPM                 | Track anchors                       | Signature                           |
+| -------------------- | ------------------- | ----------------------------------- | ----------------------------------- |
+| `techno.driving`     | 130–138             | warehouse canon                     | relentless four-floor, ride sparkle |
+| `techno.minimal`     | 126–132             | —                                   | sparse click minimal                |
+| `techno.industrial`  | 132–140             | industrial era                      | hammered kicks, rim/perc menace     |
+| `techno.dub`         | 124–130, swung 0.10 | dub techno canon                    | deep chords, swung shuffle          |
+| `techno.acid`        | 130–138             | (Acid Tracks) Phuture ~128 — approx | 303 squelch over four-floor         |
+| `techno.hard`        | 145–155             | researched wave: fast warehouse     | hard kicked four-floor              |
+| `techno.melodic`     | 122–132             | researched wave: melodic school     | emotive arcs over soft floor        |
+| `techno.psytrance`   | 138–145             | researched wave: psy 138–148        | rolling 16th bass, offbeat stabs    |
+| `techno.hardstyle`   | 150–155             | researched wave: hardstyle ~150     | gated reverse-bass kick             |
+| `techno.ebm`         | 130–140             | EBM canon (Nitzer Ebb school)       | punchy sequenced bass, four-floor   |
+| `trance.uplifting`   | 136–142             | uplifting canon (~137–138)          | supersaw arps, offbeat open hat     |
+| `trance.progressive` | 126–134             | progressive trance                  | long builds, softer floor           |
+| `trance.psy`         | 138–148             | psytrance full-on                   | rolling 16th bassline               |
+| `trance.tech`        | 134–142             | tech trance                         | techno floor + trance hats          |
+| `trance.acid`        | 132–142             | acid trance                         | 303 lines over trance floor         |
+| `trance.dream`       | 128–136             | dream trance                        | airy pads, softer pulse             |
+| `ukg.ukg`            | 130–138             | UKG revival (Conducta school)       | 2-step shuffle, sub bass            |
+| `ukg.bassline`       | 132–140             | bassline/Niche school               | 4x4-ish bassline wobble             |
+| `ukg.deep`           | 130–136             | deep UKG                            | muted 2-step, deep chords           |
+
+### Trap / drill / phonk / jersey families
+
+| Groove                                           | BPM     | Track anchors                                    | Signature                                                              |
+| ------------------------------------------------ | ------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `trap.classic`                                   | 135–145 | trap canon (16th hats at tempo)                  | rolling 808 + hat rolls                                                |
+| `trap.rolling`                                   | 138–148 | rolling hi-hat era                               | walking 808, triplet hats                                              |
+| `trap.sparse`                                    | 130–140 | sparse trap                                      | wide space, sub patience                                               |
+| `trap.bouncy`                                    | 140–150 | rage era                                         | bouncy distort-808                                                     |
+| `trap.lux`                                       | 118–128 | researched wave: Don Toliver school              | slow lux pocket, warm 808                                              |
+| `trap.hyper`                                     | 140–160 | hyper trap                                       | fastest 808 ladder                                                     |
+| `trap.dubstep`                                   | 140–152 | brostep/riddim                                   | half-time wobble floor                                                 |
+| `trap.screwed`                                   | 66–78   | chopped-and-screwed canon (June 27 ~68 — approx) | slowed + throwed swing                                                 |
+| `trap.plugg`                                     | 140–160 | plugg school                                     | plugg bell, airy 808                                                   |
+| `trap.detroit`                                   | 135–148 | Detroit trap                                     | off-grid boom, sparse menace                                           |
+| `trap.hyphy`                                     | 96–106  | hyphy era                                        | bouncy Bay shuffle                                                     |
+| `trap.crunk`                                     | 98–108  | crunk era                                        | chant four-floor stomp                                                 |
+| `trap.oldschool`                                 | 98–110  | 80s electro-rap                                  | 808 electro grid                                                       |
+| `trap.bounce`                                    | 98–104  | NOLA triggerman (researched wave)                | triggerman call pattern                                                |
+| `trap.miamibass`                                 | 115–125 | Miami bass canon                                 | torqued 808 stomp                                                      |
+| `trap.snap`                                      | 80–95   | snap era                                         | finger snaps, minimal                                                  |
+| `trap.countrytune`                               | 75–90   | researched wave: country rap                     | country triplet bounce                                                 |
+| `trap.headnod`                                   | 90–96   | 90s boom-bap canon (~93)                         | head-nod swing backbeat                                                |
+| `trap.corridos`                                  | 90–130  | corridos tumbados era                            | requinto-feel over trap floor                                          |
+| `trap.bedroom`                                   | 80–110  | bedroom-R&B school                               | lo-fi soft pocket                                                      |
+| `trap.trapsoul`                                  | 78–95   | trap-soul school                                 | molten half-time soul                                                  |
+| `trap.dancehall`                                 | 88–105  | dancehall riddim                                 | one-drop-ish shuffle                                                   |
+| `drill.uk`                                       | 140–148 | researched: UK drill canon                       | sliding 808, half-time snare 3                                         |
+| `drill.dark / bounce / sample / hyper / melodic` | 138–162 | drill sub-lanes                                  | dark sparse / bounce hats / sample flips / hyper speed / melodic slide |
+| `drill.grime`                                    | 138–144 | grime 140 canon (Skepta/Wiley ~140)              | eski stabs, 140 floor                                                  |
+| `phonk.memphis`                                  | 130–140 | modern memphis phonk convention                  | cowbell hook, tape chops                                               |
+| `phonk.drift`                                    | 132–142 | drift phonk era                                  | distorted slide cowbell                                                |
+| `phonk.horror`                                   | 132–150 | horrorcore phonk                                 | half-time snare 8, eerie                                               |
+| `jersey.club`                                    | 134–142 | researched: triple-kick club canon               | kick 1 / and-of-2 / and-of-3                                           |
+| `jersey.bounce / flip`                           | 134–144 | jersey variants                                  | bounce shuffle / edit flip                                             |
+
+### Ambient / hybrid / dnb / boombap / hyperpop / amapiano families
+
+| Groove                                                           | BPM     | Track anchors                     | Signature                                                                                                    |
+| ---------------------------------------------------------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ambient.drifting`                                               | 70–85   | drone/ambient canon               | long swells, no pulse                                                                                        |
+| `ambient.futuregarage`                                           | 130–140 | (Archangel) Burial ~134 — approx  | detuned 2-step, vinyl crackle                                                                                |
+| `ambient.glitch`                                                 | 80–95   | IDM glitch                        | cut noise, micro-edit                                                                                        |
+| `ambient.citypop`                                                | 100–125 | city pop era                      | smooth funk changes                                                                                          |
+| `ambient.synthwave`                                              | 95–115  | synthwave canon                   | gated drum machine, arp drive                                                                                |
+| `hybrid.techhouse`                                               | 124–130 | tech house canon                  | wobbly bass four-floor                                                                                       |
+| `hybrid.ambienttechno`                                           | 118–126 | ambient techno                    | pulse under pads                                                                                             |
+| `hybrid.lofimap`                                                 | 80–95   | lo-fi trap map                    | dusty half-time                                                                                              |
+| `dnb.twostep`                                                    | 172–178 | two-step dnb canon                | snap 2-step break                                                                                            |
+| `dnb.liquid`                                                     | 170–176 | (Netsky school) ~172 — approx     | rolling soft break, warm bass                                                                                |
+| `dnb.jumpup`                                                     | 174–180 | jump-up canon                     | wobble bass, bouncy break                                                                                    |
+| `dnb.roller`                                                     | 172–178 | roller canon                      | smooth rolling break                                                                                         |
+| `dnb.amen`                                                       | 170–178 | amen chop canon                   | chopped amen                                                                                                 |
+| `dnb.neuro`                                                      | 172–178 | neuro canon (Noisia school)       | reese bass, edited break                                                                                     |
+| `boombap.golden`                                                 | 86–96   | golden-era boom bap (~93)         | dusty swing backbeat                                                                                         |
+| `boombap.jazz`                                                   | 88–98   | jazz-rap school                   | swung jazz loop pocket                                                                                       |
+| `boombap.lofi`                                                   | 78–92   | lo-fi rap                         | soft swung dust                                                                                              |
+| `boombap.drumless`                                               | 80–92   | drumless style                    | sparse accent-only bed                                                                                       |
+| `boombap.trapbap`                                                | 120–145 | trap-bap fusion                   | boom bap swing at trap tempo                                                                                 |
+| `boombap.modern`                                                 | 82–94   | modern boom bap (Griselda school) | dark lo-fi swing                                                                                             |
+| `hyperpop.hyper / glitch / rage / decon`                         | 140–170 | hyperpop school                   | chipmunk shifts, glitch fills, rage dist, deconstructed cuts                                                 |
+| `amapiano.yanos / soulful / sgija / bacardi / quantum / popiano` | 108–120 | amapiano sub-schools              | log drum dialects (yanos core, soulful mellow, sgija raw, bacardi log bounce, quantum dark, popiano melodic) |
 
 ---
 
