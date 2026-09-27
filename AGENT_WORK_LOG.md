@@ -4785,3 +4785,40 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 **Dokumentovaný limit:** drum triplet-haty (Migos rolls) vyžadujú sub-16 rozlíšenie, ktoré 16-step rows nemajú — pattern model extension (budúca práca, oficiálne zdokumentovaná). Lead noty sú tick-based, preto flow funguje tam.
 
 **Dôležité súbory:** src/intent/multi-voice.ts (lead na flow mriežke + gating + overlap gate), src/intent/{artists,text-parser}.ts (flow presets), tests/flow-density.test.ts (7).
+
+---
+
+## Phase 2 slice 5 - commit split across a parallel session (2026-09-27)
+
+Slice 5 (master.tonalBalance scoop + signature.bpm/keys planning hints) was
+authored across TWO commits because a parallel session committed part of the
+working tree between the edits and the commit:
+
+  e5bdd123 "ok" (Qvesterino, 12:52) - took the UNCOMMITTED scoop edits to
+      src/intent/artist-mix.ts (ArtistMixProfile.scoop) and
+      src/intent/artist-profiles/index.ts (tonalBalance -> derived.scoop).
+
+  febd8bb (this session, 13:23) - the planning-hint half:
+      src/intent/artist-signature.ts (artistBpmHint / artistHalfTimeHint /
+      artistKeyHint / artistKeyCandidates), src/intent/plan.ts
+      (resolveBpmRequest + artistProfileFor), src/intent/types.ts
+      (GenerationPlan.artistBpmRange), src/intent/mix.ts (the scoop
+      DECISION), tests/intent-artist-plan-hints.test.ts (20 tests).
+
+So the slice reads as: `scoop` is DECLARED in e5bdd123 and CONSUMED in
+febd8bb. Neither commit alone is self-contained; together they are one
+coherent change. Verified with 119/119 across the five Phase 2 suites.
+
+febd8bb also swept in 11 deletions of scripts/zz-*.mts. Those are NOT
+this session's work: they were created by the parallel session (bddba506)
+and were already STAGED as deletions when `git add` ran, so the commit
+absorbed them. Harmless (debug scratch scripts, and the parallel session
+was deleting them anyway) but the commit message does not describe them.
+
+**Deliberately NOT rewritten.** `main` has an active parallel session whose
+work sits on top of febd8bb; a history rewrite here risks orphaning it.
+The split is recorded here instead.
+
+**Apply when:** Reading the Phase 2 slice 5 history. If you bisect between
+e5bdd123 and febd8bb expecting the scoop feature to be atomic, it is not -
+the declaration and the consumer are one commit apart.
