@@ -32,4 +32,6 @@ run(["cmake", "--build", BUILD, "--config", "Release"]);
 const exe = join(BUILD, "Release", "clap-probe.exe");
 if (!existsSync(exe)) throw new Error(`build claimed success but ${exe} is missing`);
 console.log(`[clap-probe] OK — ${exe}`);
-console.log(`[clap-probe] fixtures: ${join(BUILD, "Release", "clap-fixture.clap")}, ${join(BUILD, "Release", "clap-fixture-empty.clap")}`);
+console.log(
+  `[clap-probe] fixtures: ${join(BUILD, "Release", "clap-fixture.clap")}, ${join(BUILD, "Release", "clap-fixture-empty.clap")}`,
+);

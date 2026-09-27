@@ -7,18 +7,15 @@ import { PassThrough } from "node:stream";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const {
-  ClapProbeManager,
-  defaultProbePath,
-  validatePluginDescriptor,
-} = require("../desktop/clap-host-manager.cjs") as {
-  ClapProbeManager: new (options?: Record<string, unknown>) => {
-    probeFile: (filePath: string) => Promise<Record<string, unknown>>;
-    scanPaths: (paths: string[]) => Promise<Record<string, unknown>>;
+const { ClapProbeManager, defaultProbePath, validatePluginDescriptor } =
+  require("../desktop/clap-host-manager.cjs") as {
+    ClapProbeManager: new (options?: Record<string, unknown>) => {
+      probeFile: (filePath: string) => Promise<Record<string, unknown>>;
+      scanPaths: (paths: string[]) => Promise<Record<string, unknown>>;
+    };
+    defaultProbePath: (resourcesPath?: string) => string;
+    validatePluginDescriptor: (value: unknown) => Record<string, unknown> | null;
   };
-  defaultProbePath: (resourcesPath?: string) => string;
-  validatePluginDescriptor: (value: unknown) => Record<string, unknown> | null;
-};
 
 /**
  * CLAP hosting Wave 1 (ADR 0016): out-of-process plugin scanning.

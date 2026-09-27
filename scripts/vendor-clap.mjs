@@ -96,7 +96,10 @@ execFileSync("cp", ["-r", `${sourceInclude}/.`, DEST]);
 const licenseDest = join(DEST, "..", "CLAP-LICENSE");
 execFileSync("cp", [join(sourceTree, "LICENSE"), licenseDest]);
 
-const files = listHeaders(DEST).map((path) => ({ path: path.replaceAll("\\", "/").slice(DEST.length + 1), sha256: sha256File(path) }));
+const files = listHeaders(DEST).map((path) => ({
+  path: path.replaceAll("\\", "/").slice(DEST.length + 1),
+  sha256: sha256File(path),
+}));
 const manifest = {
   source: REPO,
   tag: TAG,
