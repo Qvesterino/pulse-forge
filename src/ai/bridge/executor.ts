@@ -22,14 +22,16 @@ import type { Command } from "../../commands/types";
 import { defaultParamsOf } from "../../effects/definitions";
 import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
 import type { SidechainDuckCommand, CompressorCommand, InsertTransientCommand } from "./types";
+import type { ReverbCommand, DelayCommand } from "./types";
 import type { RecipeInput } from "./types";
 import { EQ_BANDS, clampToSlot, type EqBandSlot } from "./eqSlots";
 import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "./sidechainSlots";
 import { COMPRESSOR_CHARACTERS, COMPRESSOR_RANGES, tuneCharacter } from "./compressorSlots";
 import { TRANSIENT_RANGES } from "./transientSlots";
+import { REVERB_RANGES, DELAY_RANGES, reverbSpec, delaySpec } from "./spaceSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
-import type { EffectInstance, ProjectDocument, Track, ID } from "../../project-model/types";
+import type { EffectInstance, EffectType, ProjectDocument, Track, ID } from "../../project-model/types";
 import { uid } from "../../shared/ids";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -226,6 +228,72 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
       }
       return { ok: true };
     }
+    case "reverb": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      // An unknown space yields null — rejected here rather than silently
+      // served a default, so an invented "infinite-cave" is an error the UI
+      // can explain instead of an unnoticed fallback.
+      const probe = reverbSpec(cmd.space, cmd.intensity);
+      if (!probe) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown reverb space "${cmd.space}"`,
+          hint: "Valid spaces: room, hall, plate, spring, cathedral.",
+        };
+      }
+      const checks: Array<[keyof typeof REVERB_RANGES, number]> = [
+        ["decay", probe.decaySec],
+        ["predelay", probe.predelayMs],
+        ["tone", probe.toneHz],
+        ["damping", probe.dampingHz],
+        ["diffusion", probe.diffusion],
+        ["mod", probe.mod],
+        ["mix", probe.mix],
+      ];
+      for (const [id, value] of checks) {
+        const range = REVERB_RANGES[id];
+        if (!Number.isFinite(value) || value < range.min || value > range.max) {
+          return paramRange(`reverb.${id}`, value, range.min, range.max);
+        }
+      }
+      return { ok: true };
+    }
+    case "delay": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      const probe = delaySpec(cmd.space, cmd.intensity);
+      if (!probe) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown delay space "${cmd.space}"`,
+          hint: "Valid spaces: slap, pingpong, eighth, sixteenth.",
+        };
+      }
+      const checks: Array<[keyof typeof DELAY_RANGES, number]> = [
+        ["time", probe.timeMs],
+        ["sync", probe.sync],
+        ["pingPong", probe.pingPong],
+        ["feedback", probe.feedback],
+        ["tone", probe.toneHz],
+        ["mix", probe.mix],
+      ];
+      for (const [id, value] of checks) {
+        const range = DELAY_RANGES[id];
+        if (!Number.isFinite(value) || value < range.min || value > range.max) {
+          return paramRange(`delay.${id}`, value, range.min, range.max);
+        }
+      }
+      return { ok: true };
+    }
     case "eq-corner": {
       const target = resolveTrackMatcher(doc, cmd.target);
       if (!target) return trackMissing(cmd.target.namePattern);
@@ -359,6 +427,16 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
       }
       return insertSidechain(doc, targetId, sourceId, cmd);
     }
+    case "reverb": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applySpace(doc, targetId, cmd);
+    }
+    case "delay": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applySpace(doc, targetId, cmd);
+    }
     case "eq-corner": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
       if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
@@ -449,6 +527,66 @@ function insertSidechain(doc: ProjectDocument, targetId: ID, sourceId: ID, cmd: 
       params: applySpec(base),
       sidechainTrackId: sourceId,
     };
+    return { ...t, effects: [...t.effects, fx] };
+  });
+}
+
+/**
+ * Insert or retune a space effect (reverb / delay) on the target track.
+ *
+ * Writes only the canonical ids for the effect type, seeded from the registry
+ * defaults. Retunes the last instance of the SAME type rather than stacking
+ * a second one — two reverbs in series on a bass is almost never what a user
+ * asked for, and it doubles the wet signal unpredictably.
+ *
+ * The unit split is preserved exactly (see ./spaceSlots.ts): reverb `decay`
+ * goes in as SECONDS and `predelay` as MILLISECONDS, delay `time` in
+ * MILLISECONDS. A synced delay also gets a legal `time` written even though
+ * the worklet overrides it from BPM — normalizeEffects needs the key.
+ */
+function applySpace(doc: ProjectDocument, targetId: ID, cmd: ReverbCommand | DelayCommand): ProjectDocument {
+  const type: EffectType = cmd.kind === "reverb" ? "reverb" : "delay";
+  const params: Record<string, number> =
+    cmd.kind === "reverb"
+      ? (() => {
+          // Validation already proved this exists; the assert keeps the
+          // non-null type without a redundant table check.
+          const s = reverbSpec(cmd.space, cmd.intensity);
+          if (!s) throw new Error(`applySpace: unknown reverb space "${cmd.space}"`);
+          return {
+            ...defaultParamsOf("reverb"),
+            // decaySec → `decay` (SECONDS), predelayMs → `predelay` (MILLISECONDS)
+            decay: s.decaySec,
+            predelay: s.predelayMs,
+            tone: s.toneHz,
+            damping: s.dampingHz,
+            diffusion: s.diffusion,
+            mod: s.mod,
+            mix: s.mix,
+          };
+        })()
+      : (() => {
+          const s = delaySpec(cmd.space, cmd.intensity);
+          if (!s) throw new Error(`applySpace: unknown delay space "${cmd.space}"`);
+          return {
+            ...defaultParamsOf("delay"),
+            time: s.timeMs,
+            sync: s.sync,
+            pingPong: s.pingPong,
+            feedback: s.feedback,
+            tone: s.toneHz,
+            mix: s.mix,
+          };
+        })();
+
+  return withTrack(doc, targetId, (t) => {
+    const existing = findLastIndex(t.effects, (f) => f.type === type);
+    if (existing >= 0) {
+      const nextEffects = t.effects.slice();
+      nextEffects[existing] = { ...t.effects[existing], params, bypassed: false };
+      return { ...t, effects: nextEffects };
+    }
+    const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params };
     return { ...t, effects: [...t.effects, fx] };
   });
 }

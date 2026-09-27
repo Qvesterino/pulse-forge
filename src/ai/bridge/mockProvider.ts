@@ -103,6 +103,16 @@ function estimateImpact(commands: readonly BridgeCommand[]): EstimatedImpact {
         rmsDeltaDb += cmd.intensity * 2;
         peakDeltaDb += cmd.intensity * 1.5;
         break;
+      case "reverb":
+        // A wet insert raises the perceived level of the track, which is the
+        // thing most likely to push a master into the limiter.
+        rmsDeltaDb += cmd.intensity * 3;
+        peakDeltaDb += cmd.intensity * 1.5;
+        break;
+      case "delay":
+        rmsDeltaDb += cmd.intensity * 2.5;
+        peakDeltaDb += cmd.intensity * 1;
+        break;
       case "eq-corner":
         // A high-pass only removes energy, and only below the corner — it can
         // never raise a level, so the loudness delta is effectively zero. It

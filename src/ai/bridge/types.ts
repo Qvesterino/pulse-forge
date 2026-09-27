@@ -21,6 +21,7 @@
 import type { ProjectDocument } from "../../project-model/types";
 import type { EqBandSlot } from "./eqSlots";
 import type { CompressorCharacter } from "./compressorSlots";
+import type { DelaySpace, ReverbSpace } from "./spaceSlots";
 
 /**
  * All bridge command kinds the MVP knows how to execute. Adding a kind here
@@ -32,6 +33,8 @@ export type BridgeCommandKind =
   | "sidechain-duck"
   | "compressor"
   | "insert-transient"
+  | "reverb"
+  | "delay"
   | "eq-corner"
   | "eq-carve"
   | "eq-boost"
@@ -177,6 +180,37 @@ export interface InsertTransientCommand extends BridgeCommandBase {
 }
 
 /**
+ * Insert or retune a Reverb on `target`. The bridge owns the space →
+ * parameter translation (see ./spaceSlots.ts), so a recipe states a musical
+ * space and an intensity rather than raw tail times.
+ *
+ * Unit warning: `decay` is SECONDS and `predelay` is MILLISECONDS on the
+ * canonical contract. The command keeps the same split in its field names so
+ * a value can never be silently written into the wrong param.
+ */
+export interface ReverbCommand extends BridgeCommandBase {
+  readonly kind: "reverb";
+  readonly target: TrackMatcher;
+  readonly space: ReverbSpace;
+  /** 0 = as authored, 1 = longest tail and wettest. */
+  readonly intensity: number;
+}
+
+/**
+ * Insert or retune a Delay on `target`.
+ *
+ * Two caveats the executor passes through to the rationale: a delay with
+ * `sync` > 0 recomputes its time from the project BPM and IGNORES the stored
+ * millisecond value, and `pingPong` only sounds on the worklet path.
+ */
+export interface DelayCommand extends BridgeCommandBase {
+  readonly kind: "delay";
+  readonly target: TrackMatcher;
+  readonly space: DelaySpace;
+  readonly intensity: number;
+}
+
+/**
  * Set a track's output volume in dBFS.
  */
 export interface SetVolumeCommand extends BridgeCommandBase {
@@ -186,7 +220,8 @@ export interface SetVolumeCommand extends BridgeCommandBase {
 }
 
 /**
- * Set a track's stereo pan in [-1, +1] (-1 = full left, +1 = full right).
+ * Offset a track's stereo pan. `pan` is the ABSOLUTE target in −1…+1
+ * (−1 = full left, +1 = full right).
  */
 export interface SetTrackPanCommand extends BridgeCommandBase {
   readonly kind: "set-track-pan";
@@ -199,6 +234,8 @@ export type BridgeCommand =
   | CompressorCommand
   | EqCornerCommand
   | InsertTransientCommand
+  | ReverbCommand
+  | DelayCommand
   | EqCarveCommand
   | EqBoostCommand
   | SetVolumeCommand

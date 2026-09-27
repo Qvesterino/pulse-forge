@@ -12,8 +12,9 @@
 import type { Recipe } from "../types";
 import { snaresVsHatesRecipe } from "./snaresVsHates";
 import { punchierDrumsRecipe } from "./punchierDrums";
+import { spaciousBassRecipe } from "./spaciousBass";
 
-export const RECIPES: readonly Recipe[] = [snaresVsHatesRecipe, punchierDrumsRecipe];
+export const RECIPES: readonly Recipe[] = [snaresVsHatesRecipe, punchierDrumsRecipe, spaciousBassRecipe];
 
 /**
  * Match a (normalised, lowercased) user prompt against the recipe set.
