@@ -142,9 +142,16 @@ describe("strings — ensemble wiring", () => {
     runtime.noteOn(60, 0.9, 0, 1);
     const saws = record.oscs.filter((o) => o.type === "sawtooth");
     expect(saws).toHaveLength(3);
-    // Detune offsets: 0, +7, -12 cents at full ENSEMBLE.
-    const detunes = saws.map((o) => vi.mocked(o.detune.setValueAtTime).mock.calls[0]![0]);
-    expect(detunes).toEqual([0, 7, -12]);
+    // Detune offsets: 0, +7, -12 cents at full ENSEMBLE — carried as the
+    // detune BASE value (±3 ct drift wander is summed on top by the
+    // per-player drift LFO, see synth-drift.test.ts).
+    const detunes = saws.map((o) => o.detune.value);
+    expect(detunes[0]).toBeGreaterThanOrEqual(-3.01);
+    expect(detunes[0]).toBeLessThanOrEqual(3.01);
+    expect(detunes[1]).toBeGreaterThanOrEqual(6.99 - 0.01);
+    expect(detunes[1]).toBeLessThanOrEqual(7 + 3.01);
+    expect(detunes[2]).toBeGreaterThanOrEqual(-12 - 3.01);
+    expect(detunes[2]).toBeLessThanOrEqual(-12 + 3.01);
     runtime.dispose();
   });
 

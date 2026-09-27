@@ -131,9 +131,9 @@ function clavTrack(overrides: Record<string, number> = {}): InstrumentTrack {
 }
 
 describe("clav — registry + params", () => {
-  it("is registered in DEFS with 8 params", () => {
-    expect(INSTRUMENT_DEFS.clav.kind).toBe("clav");
-    expect(INSTRUMENT_DEFS.clav.params.length).toBe(8);
+  it("is registered in DEFS with 9 params (incl. pickupType C/D/E/F)", () => {
+    expect(INSTRUMENT_DEFS.clav.name).toBe("Clavinet");
+    expect(INSTRUMENT_DEFS.clav.params.length).toBe(9);
     expect(defaultInstrumentParams("clav")["pick"]).toBe(0.5);
   });
 

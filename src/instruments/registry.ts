@@ -470,24 +470,26 @@ const analog: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const osc of oscs) {
               try {
-                osc.stop(t + 0.05);
+                osc.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
             }
             for (const lfo of lfoNodes) {
               try {
-                lfo.stop(t + 0.05);
+                lfo.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
             }
             for (const d of driftNodes) {
               try {
-                d.stop(t + 0.05);
+                d.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -812,10 +814,12 @@ const bass: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const osc of oscs) {
               try {
-                osc.stop(t + 0.05);
+                osc.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -1487,9 +1491,11 @@ const sampler: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              src.stop(t + 0.05);
+              src.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
@@ -2324,17 +2330,19 @@ const wavetable: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const src of sources) {
               try {
-                src.stop(t + 0.05);
+                src.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
             }
             if (morphLfo) {
               try {
-                morphLfo.stop(t + 0.05);
+                morphLfo.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -2621,10 +2629,12 @@ const granular: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const src of sources) {
               try {
-                src.stop(t + 0.05);
+                src.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -2837,14 +2847,16 @@ const fm: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              modulator.stop(t + 0.05);
+              modulator.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
             try {
-              carrier.stop(t + 0.05);
+              carrier.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
@@ -3094,9 +3106,9 @@ const keys: InstrumentDefinition = {
           mod.stop(stopTime);
           car.start(when);
           car.stop(stopTime);
-          return { mod, car, modEnv, carEnv, modGain, panner };
           driftLfo.start(when);
           driftLfo.stop(stopTime);
+          return { mod, car, modEnv, carEnv, modGain, panner };
         };
 
         // Velocity drives FM brightness — soft hits are rounder (Rhodes response)
@@ -3114,8 +3126,26 @@ const keys: InstrumentDefinition = {
         const unison = Math.max(1, Math.min(3, Math.round(p.unison ?? 1)));
         const spread = p.spread ?? 7;
         const pairs = [
-          makePair(1, 1, (28 + tine * 720) * velIndex, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35, 0, slideFrom),
-          makePair(bellRatio, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28, 0, slideFrom),
+          makePair(
+            1,
+            1,
+            (28 + tine * 720) * velIndex,
+            0.42 + body * 0.38,
+            -width * 0.6,
+            0.22 + damp * 0.35,
+            0,
+            slideFrom,
+          ),
+          makePair(
+            bellRatio,
+            1,
+            (18 + bell * 1100) * velIndex,
+            bell * 0.55,
+            width * 0.6,
+            0.18 + damp * 0.28,
+            0,
+            slideFrom,
+          ),
         ];
         if (unison > 1) {
           pairs.push(
@@ -3167,22 +3197,24 @@ const keys: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const lfo of lfoNodes) {
               try {
-                lfo.stop(t + 0.05);
+                lfo.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
             }
             for (const { mod, car } of [pairA, pairB]) {
               try {
-                mod.stop(t + 0.05);
+                mod.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
               try {
-                car.stop(t + 0.05);
+                car.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -3432,9 +3464,11 @@ const pluck: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              src.stop(t + 0.02);
+              src.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
@@ -3696,21 +3730,23 @@ const flute: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              osc.stop(t + 0.05);
+              osc.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
             for (const ob of obOscs) {
               try {
-                ob.stop(t + 0.05);
+                ob.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
             }
             try {
-              breathSrc?.stop(t + 0.05);
+              breathSrc?.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
@@ -3970,11 +4006,13 @@ const organ: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             for (const node of [main, sub, ...lfos, clickSrc]) {
               if (!node) continue;
               try {
-                node.stop(t + 0.05);
+                node.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }
@@ -4091,6 +4129,7 @@ const strings: InstrumentDefinition = {
 
         // Three detuned saws — the section. Deterministic detune offsets.
         const offsets = [0, 7, -12];
+        const sectionSeed = hashString(track.id);
         const sectionOscillators: OscillatorNode[] = [];
         const sectionGains: GainNode[] = [];
         for (let v = 0; v < 3; v++) {
@@ -4107,12 +4146,16 @@ const strings: InstrumentDefinition = {
           } else {
             osc.frequency.setValueAtTime(target, when);
           }
-          osc.detune.setValueAtTime(spread, when);
+          osc.detune.value = spread;
           const vg = ctx.createGain();
           vg.gain.value = v === 0 ? 1 : 0.7;
           osc.connect(vg).connect(bowShelf);
           osc.start(when);
           osc.stop(stopTime);
+          // Section drift: each player wanders independently — a bowed
+          // section never locks pitch, and that slow interference is the
+          // difference between a pad and a real ensemble of players.
+          addOscDrift(ctx, osc, sectionSeed + v * 31, v, when, stopTime, 3);
           sectionOscillators.push(osc);
           sectionGains.push(vg);
         }
@@ -4141,7 +4184,8 @@ const strings: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.03);
+            const releaseTau = Math.max(0.005, release / 4);
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -4218,6 +4262,8 @@ const bell: InstrumentDefinition = {
         const stopTime = when + decay * 1.4 + 0.3;
         const level = velocity * dbToLin(p.level ?? -10);
         const ratio = Math.max(1.5, Math.min(7.5, p.ratio ?? 3.46));
+        // Velocity → effective ratio (audit-13 wave: harder strikes excite
+        // slightly different modes — subtle, deterministic).
         const shimmer = Math.max(0, Math.min(1, p.shimmer ?? 0.35));
         const strike = Math.max(0, Math.min(1, p.strike ?? 0.4));
         const tone = Math.max(400, Math.min(12000, p.tone ?? 6500));
@@ -4298,7 +4344,6 @@ const bell: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.02);
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -4410,7 +4455,9 @@ const reese: InstrumentDefinition = {
         }
 
         // Two detuned saws — the beating IS the sound. ±detune up to ~35 cents.
+        const reeseSeed = hashString(track.id);
         const pair: OscillatorNode[] = [];
+        let reeseSlot = 0;
         for (const sign of [-1, 1]) {
           const osc = ctx.createOscillator();
           osc.type = "sawtooth";
@@ -4431,6 +4478,10 @@ const reese: InstrumentDefinition = {
           osc.connect(vg).connect(svf.input);
           osc.start(when);
           osc.stop(stopTime);
+          // Slow drift on top of the static beat — the classic Reese walk
+          // where the growl subtly re-centres instead of sitting still.
+          addOscDrift(ctx, osc, reeseSeed + reeseSlot * 83, reeseSlot, when, stopTime, 3);
+          reeseSlot++;
           pair.push(osc);
         }
 
@@ -4451,7 +4502,8 @@ const reese: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+            const releaseTau = Math.max(0.005, release / 4);
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -4571,6 +4623,9 @@ const acid: InstrumentDefinition = {
         osc.connect(svf.input);
         osc.start(when);
         osc.stop(stopTime);
+        // 303 drift — the original's VCO never holds tune either; 1.8 ct of
+        // slow wander keeps sustained squelches from sounding like a screenshot.
+        addOscDrift(ctx, osc, hashString(track.id), 0, when, stopTime, 1.8);
 
         runtime.lastFreq = freq;
 
@@ -4580,9 +4635,11 @@ const acid: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              osc.stop(t + 0.05);
+              osc.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
@@ -4692,6 +4749,7 @@ const brass: InstrumentDefinition = {
 
         // Three detuned saws — a tight section, thinner spread than Strings.
         const offsets = [0, 6, -9];
+        const sectionSeed = hashString(track.id);
         for (let v = 0; v < 3; v++) {
           const osc = ctx.createOscillator();
           osc.type = "sawtooth";
@@ -4708,6 +4766,9 @@ const brass: InstrumentDefinition = {
           osc.connect(vg).connect(svf.input);
           osc.start(when);
           osc.stop(stopTime);
+          // Section drift — horn players drift even when "locked" (2.5 ct,
+          // tighter than strings: brass sections blend, they don't shimmer).
+          addOscDrift(ctx, osc, sectionSeed + v * 47, v, when, stopTime, 2.5);
         }
 
         runtime.lastFreq = freq;
@@ -4718,7 +4779,8 @@ const brass: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+            const releaseTau = Math.max(0.005, release / 4);
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -4801,14 +4863,36 @@ const clav: InstrumentDefinition = {
         amp.gain.setTargetAtTime(Math.max(level * 0.5, 0.0002), when + 0.008, damp / 3);
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
 
-        // Pickup bandpass — PICK walks the pickup point along the string
-        // (0 = deep/warm near the bridge, 1 = bright near the tangent).
+        // Pickup network v3 — PICKUP type C/D/E/F (the real Clavinet rocker
+        // switches): C = bright bridge bite, D = classic middle, E = deep/warm
+        // neck, F = the out-of-phase funk scoop (two peaks, pulled mid).
+        // PICK still walks the position inside each type.
+        const pickupType = Math.max(0, Math.min(3, Math.round(p.pickupType ?? 1)));
         const pickup = ctx.createBiquadFilter();
         pickup.type = "bandpass";
-        pickup.frequency.value = freq * (1.1 + pick * 2.4);
-        pickup.Q.value = 0.8;
-        pickup.connect(amp);
-        amp.connect(output);
+        pickup.Q.value = 0.9;
+        let pickupTail: AudioNode = pickup;
+        if (pickupType === 0) {
+          pickup.frequency.value = freq * (1.6 + pick * 3.2);
+        } else if (pickupType === 1) {
+          pickup.frequency.value = freq * (1.1 + pick * 2.4);
+        } else if (pickupType === 2) {
+          pickup.frequency.value = freq * (0.65 + pick * 1.2);
+          pickup.Q.value = 0.7;
+        } else {
+          // F: keep the middle peak, add a scooped mid (peaking, −7 dB at
+          // freq×2.2) — the nasal funk "quack" both pickups out-of-phase give.
+          pickup.frequency.value = freq * (1.1 + pick * 2.4);
+          pickup.Q.value = 1.4;
+          const scoop = ctx.createBiquadFilter();
+          scoop.type = "peaking";
+          scoop.frequency.value = freq * 2.2;
+          scoop.Q.value = 0.9;
+          scoop.gain.value = -7;
+          pickup.connect(scoop);
+          pickupTail = scoop;
+        }
+        pickupTail.connect(amp);
 
         // Voice v2: tangent-string body = square (bite) + saw (body warmth),
         // slightly detuned and panned for stereo; plus a TINE partial (freq×2
@@ -5652,15 +5736,17 @@ const vocalchop: InstrumentDefinition = {
           (whenStop) => {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
-            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            const releaseTau = Math.max(0.005, release / 4);
+            const releaseTailSec = release * 3 + 0.1;
+            amp.gain.setTargetAtTime(0.0001, t, releaseTau);
             try {
-              src.stop(t + 0.05);
+              src.stop(t + releaseTailSec);
             } catch {
               /* already stopped */
             }
             if (vibOsc) {
               try {
-                vibOsc.stop(t + 0.05);
+                vibOsc.stop(t + releaseTailSec);
               } catch {
                 /* already stopped */
               }

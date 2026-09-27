@@ -306,6 +306,7 @@
           "kind": "clav",
           "defaults": {
             "pick": 0.5,
+            "pickupType": 1,
             "damp": 0.55,
             "click": 0.4,
             "growl": 0.25,
