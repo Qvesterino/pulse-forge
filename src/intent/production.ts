@@ -197,7 +197,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
 ];
 
 const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
-  [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák|((?:^|[^a-z0-9])808(?:[^a-z0-9]|$))/i, "kick"],
+  [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák/i, "kick"],
   [/((?:^|[^a-z0-9])snares?(?:[^a-z0-9]|$))|claps?|ženír/i, "snare"],
   [/hi-?hats?|((?:^|[^a-z0-9])hats?(?:[^a-z0-9]|$))|činel/i, "hats"],
   [/\bdrums?\b|\bbic\u00edc|\bbubny\b/i, "drums"],
@@ -217,13 +217,97 @@ export function namesProductionTarget(text: string): boolean {
   return TARGET_PATTERNS.some(([re]) => re.test(text));
 }
 
-/** Default amounts — modifiers ("much", "slightly") scale around these. */
+/** Default amount when the text carries no degree word at all. */
 const DEFAULT_AMOUNT = 0.7;
 
-function detectAmount(lower: string): number {
-  if (/\b(much|a lot|way|harder|ve\u013emi|dos\u0165|poriadne)\b/.test(lower)) return 0.9;
-  if (/\b(slightly|a bit|a little|trochu|mierne|jemne)\b/.test(lower)) return 0.45;
-  return DEFAULT_AMOUNT;
+/**
+ * Degree ladder - ENGLISH FIRST, Slovak secondary. The old two-step
+ * (slightly=0.45 / much=0.9 / else=0.7) made "make it a touch deeper" and
+ * "make it deeper" resolve to the SAME number, so the engine could not tell
+ * a polite ask from a hard one. The ladder gives each adverb its own step.
+ *
+ * Order matters: scanned top to bottom, FIRST match wins, strongest first.
+ * "a bit too much" therefore reads as "a bit" rather than "much" - the
+ * attenuator nearer the verb wins, which matches how people actually speak
+ * ("make it slightly too punchy").
+ */
+const DEGREE_LADDER: readonly (readonly [RegExp, number])[] = [
+  // --- strongest ---
+  [/\b(?:max(?:imal|imum)?|fully|totally|completely|maximálne|naplno|úplne)\b/, 0.95],
+  [/\b(?:much|way|a lot|lots|heavily|hard|strongly|ve\u013emi|mocno|poriadne|silne|dos\u0165)\b/, 0.85],
+  // --- strong-ish ---
+  [/\b(?:quite|pretty|notably|substantially|significantly|noticeably|značne|vyrazne)\b/, 0.7],
+  // --- the default band ---
+  [/\b(?:somewhat|fairly|moderately|reasonably|rather|stredne|primerane|pomerne)\b/, 0.55],
+  // --- attenuated ---
+  [/\b(?:slightly|a bit|a little|a touch|a tad|trochu|mierne|jemne|napútok)\b/, 0.35],
+  [/\b(?:barely|hardly|scarcely|minimally|takmer|minimálne)\b/, 0.2],
+];
+
+/**
+ * Numeric degree - "by one", "by two", "by half". A count is a far more
+ * precise ask than an adverb, so it is checked FIRST and wins:
+ *
+ *   1 -> 0.4 / 2 -> 0.5 / 3 -> 0.62 / 4+ or half -> 0.7
+ *
+ * so "by one" lands BELOW the untouched 0.7 default and "by four" reaches
+ * it. That keeps the raw phrase and the ladder in agreement instead of
+ * having a numeric ask read as "no degree at all".
+ */
+const NUMERIC_DEGREE: readonly (readonly [RegExp, number])[] = [
+  [/\bby\s+(?:four|4)\b|\b(?:four|4)\s+notches?\b|\bo\s+(?:styri|4)\b|\bby\s+half\b/i, 0.7],
+  [/\bby\s+(?:three|3)\b|\b(?:three|3)\s+notches?\b|\bo\s+(?:tri|3)\b/i, 0.62],
+  [/\bby\s+(?:two|2)\b|\b(?:two|2)\s+notches?\b|\bo\s+(?:dve|dva|2)\b/i, 0.5],
+  [/\bby\s+(?:one|1|a\s+single)\b|\b(?:one|1)\s+notch\b|\bo\s+(?:jednu|jedna|jedno|1)\b/i, 0.4],
+];
+
+/**
+ * Resolve the 0..1 amount for ONE goal.
+ *
+ * Scoped to a window AROUND the matched concept so a degree word in a
+ * neighbouring clause does not scale a concept it was never near ("make the
+ * drums punchy and the bass slightly deeper" - the "slightly" belongs to
+ * the bass, not to the drums). Without this, every goal in a multi-concept
+ * request inherited the same single global amount, which is what made
+ * "slightly deeper bass, much punchier drums" impossible to express.
+ */
+function detectAmount(text: string, conceptIndex: number, conceptLength: number): number {
+  const start = Math.max(0, conceptIndex - 48);
+  const end = Math.min(text.length, conceptIndex + conceptLength + 48);
+  const window = text.slice(start, end);
+  // Treat a softener before "too much" as one phrase, not as two competing
+  // degree tokens; otherwise the nearer "much" masks the user's attenuation.
+  if (/\b(?:slightly|a bit|a little|a touch|a tad|trochu|mierne|jemne|napútok)\s+too\s+much\b/.test(window)) {
+    return 0.35;
+  }
+
+  // NEAREST match wins, not strongest. Scanning the ladder strongest-first
+  // meant "make it a bit too much deeper" resolved to 0.85 because "much"
+  // outranked "a bit" even though "a bit" sat closer to the ask. People
+  // write the qualifier nearest the verb, so the window is scanned for
+  // every degree word and the one with the smallest distance to the concept
+  // decides. Ties break toward the STRONGER word, so "deeper, much" and
+  // "much, deeper" agree.
+  const best: { current: { amount: number; distance: number } | null } = { current: null };
+  const conceptStart = conceptIndex - start;
+  const conceptEnd = conceptStart + conceptLength;
+  const consider = (re: RegExp, amount: number) => {
+    const hit = re.exec(window);
+    if (!hit) return;
+    const hitEnd = hit.index + hit[0].length;
+    const distance =
+      hitEnd < conceptStart ? conceptStart - hitEnd : hit.index > conceptEnd ? hit.index - conceptEnd : 0;
+    const current = best.current;
+    if (!current || distance < current.distance || (distance === current.distance && amount > current.amount)) {
+      best.current = { amount, distance };
+    }
+  };
+  // Numeric first only as a TIE-break preference, not a hard override: a
+  // bare "by one" sitting far from the concept should still lose to a
+  // "slightly" pressed right against it.
+  for (const [re, amount] of DEGREE_LADDER) consider(re, amount);
+  for (const [re, amount] of NUMERIC_DEGREE) consider(re, amount);
+  return best.current ? best.current.amount : DEFAULT_AMOUNT;
 }
 
 /**
@@ -231,26 +315,88 @@ function detectAmount(lower: string): number {
  * generation intent (no comparative/imperative production phrase matched) —
  * the caller then falls back to the pattern-generation pipeline.
  */
+/**
+ * Clause boundaries. A comma, semicolon, "and", or sentence break separates
+ * two independent asks, so "punchier drums, deeper bass" can name a
+ * different target (and a different degree) on each side. English markers
+ * first, Slovak equivalents alongside.
+ */
+const CLAUSE_BREAK =
+  /[;,.!?]|\b(?:and|then|also|while|but|plus)\b|\b(?:taky|ale|tiež|tom|alebo)\b|\ba\b(?!\s+(?:bit|lot|little|touch|tad|single)\b)/gi;
+
+/** Targets named inside one clause, in order of first appearance. */
+function targetsInClause(clause: string): ProductionTarget[] {
+  const out: ProductionTarget[] = [];
+  for (const [re, target] of TARGET_PATTERNS) {
+    if (re.test(clause) && !out.includes(target)) out.push(target);
+  }
+  return out;
+}
+
+/**
+ * Which target serves THIS concept. Preference order:
+ *
+ *   1. A target named in the SAME clause as the concept match. This is the
+ *      "level 2" behaviour: "add a filter to the bass", "punchier drums,
+ *      deeper bass" each land on the track they actually named instead of
+ *      every concept piling onto whichever track happened to be detected
+ *      first in the whole string.
+ *   2. The concept's own natural home (ConceptDef.defaultTarget) when the
+ *      clause named nothing.
+ *   3. A target named anywhere in the request, as a last resort for a
+ *      clause-scoped miss.
+ *
+ * Step 1 is what makes per-clause targeting real: without it the parser
+ * collected targets globally, so a two-clause request applied BOTH concepts
+ * to the SAME track and the second ask silently overwrote the first.
+ */
+function targetForConcept(
+  clause: string,
+  def: ConceptDef,
+  globalTargets: readonly ProductionTarget[],
+): ProductionTarget | undefined {
+  const local = targetsInClause(clause);
+  if (local.length) return local[0];
+  if (globalTargets.length) return globalTargets[0];
+  return def.defaultTarget;
+}
+
 export function parseProductionIntent(text: string): ProductionIntent | null {
   const lower = text.toLowerCase();
   const goals: ProductionGoal[] = [];
+  // Per-clause target index: the clause each concept was matched in, so a
+  // two-clause request can aim its halves at two different tracks.
+  const clauseOfConcept: string[] = [];
+
+  // Split ONCE and reuse: splitting per concept would disagree about
+  // boundaries and could put the same match in two different clauses.
+  const clauses = lower.split(CLAUSE_BREAK).filter((part) => part.trim().length > 0);
+  const searchClauses = clauses.length ? clauses : [lower];
+
   for (const def of CONCEPTS) {
-    if (def.patterns.some((re) => re.test(lower))) {
-      goals.push({ concept: def.concept, amount: detectAmount(lower) });
+    let matched = false;
+    for (const clause of searchClauses) {
+      for (const re of def.patterns) {
+        const hit = re.exec(clause);
+        if (!hit) continue;
+        goals.push({ concept: def.concept, amount: detectAmount(clause, hit.index, hit[0].length) });
+        clauseOfConcept.push(clause);
+        matched = true;
+        break;
+      }
+      if (matched) break;
     }
   }
   if (goals.length === 0) return null;
 
+  // Every target named anywhere, for the last-resort branch above.
+  const globalTargets: ProductionTarget[] = targetsInClause(lower);
+
   const targets: ProductionTarget[] = [];
-  for (const [re, target] of TARGET_PATTERNS) {
-    if (re.test(lower) && !targets.includes(target)) targets.push(target);
-  }
-  if (targets.length === 0) {
-    // No target named — each concept falls back to its natural home.
-    for (const goal of goals) {
-      const def = CONCEPTS.find((c) => c.concept === goal.concept)!;
-      if (!targets.includes(def.defaultTarget)) targets.push(def.defaultTarget);
-    }
+  for (const [index, goal] of goals.entries()) {
+    const def = CONCEPTS.find((c) => c.concept === goal.concept)!;
+    const target = targetForConcept(clauseOfConcept[index], def, globalTargets);
+    if (target && !targets.includes(target)) targets.push(target);
   }
 
   // ELEMENT-LEVEL targets: pad families ride along separately so the
