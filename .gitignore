@@ -77,3 +77,6 @@ native/clap-probe/build/
 # ASIO SDK headers are NOT redistributable (Steinberg license) — fetched per machine
 native/asio-host/asio-sdk/
 native/asio-host/build/
+
+# PCM host native build artifacts (ADR 0018)
+native/pcm-host/build/
