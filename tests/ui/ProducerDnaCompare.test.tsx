@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createDefaultProject } from "../../src/project-model/schema";
 import { normalizeIntent } from "../../src/intent/normalize";
 import { planGeneration } from "../../src/intent/plan";
+import * as featureExtractor from "../../src/ai/features/pattern-features";
+import { FEATURE_COUNT, FEATURE_NAMES, type PatternFeatureVector } from "../../src/ai/features/pattern-features";
 import { ProducerDnaCompare } from "../../src/ui/ProducerDnaCompare";
 import type { GenerationResult, RankedCandidate } from "../../src/intent/types";
 import type { Pattern } from "../../src/project-model/types";
@@ -56,6 +58,10 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("ProducerDnaCompare", () => {
   it("refuses a confounded suggestion without recording a vote", () => {
     const { project, result } = buildFixture();
@@ -68,6 +74,72 @@ describe("ProducerDnaCompare", () => {
       screen.getAllByRole("button", { name: "A" }).some((button) => button.getAttribute("aria-pressed") === "true"),
     ).toBe(false);
     expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
+  });
+
+  it("randomizes suggested A/B sides, hides rank/source, and records the displayed side", () => {
+    const { project, result } = buildFixture();
+    const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
+    vi.spyOn(featureExtractor, "extractPatternFeatures").mockImplementation(({ pattern }) => {
+      const values = new Float32Array(FEATURE_COUNT).fill(0.5);
+      values[syncopationIndex] = pattern.id === "dna-pattern-0" ? 0.1 : pattern.id === "dna-pattern-1" ? 0.9 : 0.5;
+      return {
+        version: "features.v1",
+        values,
+        names: FEATURE_NAMES,
+        finite: true,
+        clippedCount: 0,
+        featureHash: "taste-probe-test",
+      } satisfies PatternFeatureVector;
+    });
+    vi.spyOn(window.crypto, "getRandomValues").mockReturnValue(new Uint8Array([1]) as never);
+    const onAudition = vi.fn();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={onAudition} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent(/strany a\/b sú náhodne priradené/i);
+    expect(screen.queryByText(/TPL|PRIOR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/A #\d|B #\d/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "▶ A" }));
+    expect(onAudition).toHaveBeenCalledWith(result.bank?.[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Nechal by som A" }));
+    const stored = JSON.parse(localStorage.getItem(PREFERENCE_LEDGER_KEY) ?? "[]");
+    expect(stored[0].candidateA.contentHash).toBe("candidate-hash-0");
+    expect(stored[0].choice).toBe("b");
+    expect(screen.getByText(/#1 · TPL/)).toBeInTheDocument();
+  });
+
+  it("lets the producer skip a suggested pair and proposes a different one next", () => {
+    const { project, result } = buildFixture();
+    const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
+    vi.spyOn(featureExtractor, "extractPatternFeatures").mockImplementation(({ pattern }) => {
+      const values = new Float32Array(FEATURE_COUNT).fill(0.5);
+      values[syncopationIndex] = pattern.id === "dna-pattern-0" ? 0.1 : pattern.id === "dna-pattern-1" ? 0.9 : 0.5;
+      return {
+        version: "features.v1",
+        values,
+        names: FEATURE_NAMES,
+        finite: true,
+        clippedCount: 0,
+        featureHash: "taste-probe-test",
+      } satisfies PatternFeatureVector;
+    });
+    vi.spyOn(window.crypto, "getRandomValues").mockReturnValue(new Uint8Array([0]) as never);
+    const onAudition = vi.fn();
+    render(<ProducerDnaCompare project={project} result={result} onAudition={onAudition} />);
+    fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zrušiť slepé porovnanie" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent(/slepé porovnanie zrušené/i);
+    expect(screen.getByText(/#1 · TPL/)).toBeInTheDocument();
+    expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
+    fireEvent.click(screen.getByRole("button", { name: "▶ A" }));
+    fireEvent.click(screen.getByRole("button", { name: "▶ B" }));
+    const nextPair = new Set(onAudition.mock.calls.slice(-2).map(([candidate]) => candidate.pattern.id));
+    expect(nextPair).not.toEqual(new Set(["dna-pattern-0", "dna-pattern-1"]));
   });
 
   it("records only the explicit A/B vote and keeps prompt/seed out of the ledger", () => {

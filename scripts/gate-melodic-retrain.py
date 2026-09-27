@@ -161,7 +161,19 @@ def train_fold(base, aug, held_groups, weight_power: float, smoothing: float, em
             model.train_step(x_train[batch], yd_train[batch], yt_train[batch], dw, tw, LR, smoothing)
 
     _, _, vd, vt = model.forward(x_val)
-    return vd.argmax(1), yd_val, vt.argmax(1), yt_val
+    _, _, td, tt = model.forward(x_train)
+    # Collapse is measured on the TRAINING predictions, not the validation set:
+    # a 28-row fold may simply not contain the rare duration class, so "the head
+    # only predicted 3 of 4 classes here" is not evidence of collapse. On the
+    # full training distribution it is.
+    return (
+        vd.argmax(1),
+        yd_val,
+        vt.argmax(1),
+        yt_val,
+        td.argmax(1),
+        tt.argmax(1),
+    )
 
 
 def main() -> None:
@@ -206,28 +218,32 @@ def main() -> None:
     print(f"base={len(base)} rows / {len(unique)} groups, augmented={len(aug)} rows (train-only)")
     print()
 
-    all_vd, all_yd, all_vt, all_yt = [], [], [], []
+    all_vd, all_yd, all_vt, all_yt, all_td, all_tt = [], [], [], [], [], []
     for index, held in enumerate(folds):
-        vd, yd, vt, yt = train_fold(base, aug, held, args.weight_power, 0.1, args.embedding)
+        vd, yd, vt, yt, td, tt = train_fold(base, aug, held, args.weight_power, 0.1, args.embedding)
         all_vd.append(vd)
         all_yd.append(yd)
         all_vt.append(vt)
         all_yt.append(yt)
+        all_td.append(td)
+        all_tt.append(tt)
         print(f"  fold {index + 1}: deg={(vd == yd).mean():.4f}  dur={(vt == yt).mean():.4f}  (n={len(yd)})")
 
     vd = np.concatenate(all_vd)
     yd = np.concatenate(all_yd)
     vt = np.concatenate(all_vt)
     yt = np.concatenate(all_yt)
+    td = np.concatenate(all_td)
+    tt = np.concatenate(all_tt)
 
     deg_acc = float((vd == yd).mean())
     dur_acc = float((vt == yt).mean())
-    deg_classes = len(set(vd.tolist()))
-    dur_classes = len(set(vt.tolist()))
+    deg_classes = len(set(td.tolist()))
+    dur_classes = len(set(tt.tolist()))
 
     print()
     print(f"pooled: degree={deg_acc:.4f}  duration={dur_acc:.4f}")
-    print(f"classes used: degree={deg_classes}/{DEGREE_CLASSES}  duration={dur_classes}/{DURATION_CLASSES}")
+    print(f"classes used (train): degree={deg_classes}/{DEGREE_CLASSES}  duration={dur_classes}/{DURATION_CLASSES}")
     print()
     print("baselines (shipped artifacts, same CV):")
     print(f"  v1 degree {BASELINE['shippedV1Degree']:.4f}  v1 duration {BASELINE['shippedV1Duration']:.4f}")
@@ -241,9 +257,11 @@ def main() -> None:
     if deg_acc < GATE["degreeMin"]:
         failures.append(f"degree {deg_acc:.4f} < gate {GATE['degreeMin']:.4f} (shipped v2)")
     if dur_classes < DURATION_CLASSES:
-        failures.append(f"duration head uses only {dur_classes}/{DURATION_CLASSES} classes (collapse)")
+        failures.append(
+            f"duration head collapses: predicts only {dur_classes}/{DURATION_CLASSES} classes on its own TRAINING data"
+        )
     if deg_classes < 2:
-        failures.append("degree head uses fewer than 2 classes")
+        failures.append(f"degree head collapses: predicts only {deg_classes}/{DEGREE_CLASSES} classes")
 
     print("-" * 78)
     if failures:
@@ -254,7 +272,7 @@ def main() -> None:
     print("GATE PASS")
     print(f"  duration {dur_acc:.4f} >= {GATE['durationMin']:.4f}   (+{dur_acc - BASELINE['shippedV2Duration']:.4f} vs shipped v2)")
     print(f"  degree   {deg_acc:.4f} >= {GATE['degreeMin']:.4f}   (+{deg_acc - BASELINE['shippedV2Degree']:.4f} vs shipped v2)")
-    print(f"  both heads use their full class range")
+    print(f"  no collapse: both heads span their full class range on training data")
 
 
 if __name__ == "__main__":

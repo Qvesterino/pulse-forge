@@ -1103,3 +1103,123 @@ describe("E2E preset intents", () => {
     expect(instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain).toBe(leadBefore);
   });
 });
+
+// ─── 15. ABSOLUTE FADER SET — percent lands as an absolute gain ─────────────
+
+describe("E2E absolute fader set", () => {
+  it("set the bass to 50% lands 0.75 (50% of the 1.5 range); undo restores", () => {
+    const store = new ProjectStore(testDoc());
+    const before = bassTrackOf(store.doc).gain;
+    const route = routeIntentText("set the bass to 50%", store.doc);
+    expect(route.kind).toBe("fader");
+    if (route.kind === "fader") {
+      expect(route.intent.direction).toBe("set");
+      expect(route.intent.percent).toBe(50);
+    }
+    executeRouted(store.doc, "set the bass to 50%", store);
+    expect(bassTrackOf(store.doc).gain).toBeCloseTo(0.75, 5);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(bassTrackOf(store.doc).gain).toBe(before);
+  });
+
+  it("nastav master na 80 % lands 1.2 on the master fader", () => {
+    const doc = testDoc();
+    const next = executeRouted(doc, "nastav master na 80 %");
+    expect(next.master.masterGain).toBeCloseTo(1.2, 5);
+  });
+
+  it("set the kick to 100% lands the pads at full range", () => {
+    const doc = testDoc();
+    const route = routeIntentText("set the kick to 100%", doc);
+    expect(route.kind).toBe("fader");
+    const next = executeRouted(doc, "set the kick to 100%");
+    const drum = drumTrackOf(next);
+    const kickIds = new Set(classifyPads(drum.pads).kicks.map((pad) => pad.id));
+    for (const pad of drum.pads) {
+      if (kickIds.has(pad.id)) expect(pad.gain).toBeCloseTo(1.5, 5);
+      else expect(pad.gain).toBeLessThan(1.5);
+    }
+  });
+
+  it("set to 0% mutes the fader (bounded at the floor)", () => {
+    const doc = testDoc();
+    const next = executeRouted(doc, "set the bass to 0%");
+    expect(bassTrackOf(next).gain).toBe(0);
+  });
+
+  it("effect-noun set asks stay with the effectIntent set-mode, never the fader", () => {
+    const doc = testDoc();
+    const route = routeIntentText("set reverb mix to 25% on the lead", doc);
+    expect(route.kind).toBe("effectIntent");
+    expect(bassTrackOf(doc).gain).toBe(bassTrackOf(doc).gain);
+  });
+
+  it("fader set rides compounds: 'set the bass to 50% and zníž lead'", () => {
+    const store = new ProjectStore(withLead());
+    const leadBefore = instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain;
+    const route = routeIntentText("set the bass to 50% and zníž lead", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind !== "compound") throw new Error("expected compound route");
+    expect(route.parts[0]).toMatchObject({ kind: "fader", intent: { direction: "set", percent: 50 } });
+    executeRouted(store.doc, "set the bass to 50% and zníž lead", store);
+    expect(bassTrackOf(store.doc).gain).toBeCloseTo(0.75, 5);
+    expect(instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain).toBeLessThan(leadBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain).toBe(leadBefore);
+  });
+});
+
+// ─── 16. SAVE / EXPORT / RECORD — bare-word app commands (route level) ──────
+
+describe("E2E save/export/record routing", () => {
+  it("save variants route to the save command; tails stay prompts", () => {
+    const doc = testDoc();
+    for (const text of ["save", "save the project", "ulož", "ulož projekt", "ulozit to"]) {
+      expect(routeIntentText(text, doc).kind).toBe("save");
+    }
+    expect(routeIntentText("save the whales", doc).kind).not.toBe("save");
+  });
+
+  it("export routes with the format; bare export defaults to wav", () => {
+    const doc = testDoc();
+    const cases = [
+      ["export wav", "wav"],
+      ["exportuj mp3", "mp3"],
+      ["export", "wav"],
+      ["export the project as mp3", "mp3"],
+      ["exportuj", "wav"],
+    ] as const;
+    for (const [text, format] of cases) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind).toBe("export");
+      if (route.kind === "export") expect(route.format).toBe(format);
+    }
+    expect(routeIntentText("export the stems", doc).kind).not.toBe("export");
+  });
+
+  it("record arms, stop recording disarms, prompts stay prompts", () => {
+    const doc = testDoc();
+    for (const text of ["record", "record pattern", "nahrávaj", "start recording"]) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind).toBe("record");
+      if (route.kind === "record") expect(route.arm).toBe(true);
+    }
+    const disarm = routeIntentText("stop recording", doc);
+    expect(disarm.kind).toBe("record");
+    if (disarm.kind === "record") expect(disarm.arm).toBe(false);
+    expect(routeIntentText("record scratch", doc).kind).not.toBe("record");
+    expect(routeIntentText("stop the recording session", doc).kind).not.toBe("record");
+  });
+
+  it("save/export/record routing never mutates the document", () => {
+    const doc = testDoc();
+    const store = new ProjectStore(doc);
+    for (const text of ["save", "export wav", "record"]) {
+      expect(routeIntentText(text, store.doc).kind).toBeDefined();
+    }
+    expect(store.undoStackLength).toBe(0);
+    expect(store.doc).toBe(doc);
+  });
+});

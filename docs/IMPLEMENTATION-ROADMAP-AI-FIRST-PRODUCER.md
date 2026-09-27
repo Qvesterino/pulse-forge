@@ -398,17 +398,22 @@ Pred označením workflow za hotové musí prejsť:
 ### Rozhodnutie ownera — bundle budget, 2026-09-27
 
 Owner zvolil zachovať aktuálne funkcie a nastaviť meraný limit DAW JS na **3 170 KB**.
-Produkčný build po zmene nameral **3 158 KB raw / približne 929 KB gzip**, oproti
-2 747 KB z 2026-09-26. Nárast zodpovedá aktuálnej producer vlne: rozšíreným žánrovým a
-groove dátam, artist-signature conditioning, bridge receptom pre kompresor/transient a
-renderer playback. Zmena teda nie je všeobecné povolenie na ďalší rast: build ponecháva iba
-približne 12 KB rezervu a ďalší rast sa musí najprv kompenzovať alebo rozdeliť do lazy chunkov.
+Čerstvý produkčný build (2026-09-27) prešiel s týmto rozdelením raw JS:
 
-Landing beat/song composer sa zároveň presunul za dynamický import. Jeho on-demand graf je
-**157/600 KB**; pôvodné meranie pred splitom bolo 727/815 KB. Samostatné limity entry
-(1070 KB), optional AI runtime (650 KB), landing route (600 KB) a core worklets (150 KB)
-zostávajú nezmenené. Zmena limitu v `scripts/check-bundle-size.mjs` je zdokumentovaná
-meraním; úspešný `npm run build` je stále potrebný dôkaz, že aktuálny pracovný strom prejde.
+- DAW JS graf: **3 006/3 170 KB**;
+- voliteľné AI runtime chunky: **640/650 KB**;
+- on-demand MP3 codec: **166/170 KB**;
+- spolu fyzicky shipped JS: **3 812 KB** — tento súčet zahŕňa aj dva voliteľné okruhy vyššie.
+
+Rozdelenie je zámerné: DAW cap meria aplikačný graf bez AI runtime a MP3 codec; tieto
+voliteľné chunky majú vlastné, nezávislé stropy, takže ich veľkosť sa nestráca ani
+neskrýva v jednom súhrnnom čísle. Výsledok zachováva aktuálne funkcie a dáva DAW grafu
+164 KB rezervu, ale AI runtime a codec majú iba 10 KB a 4 KB rezervy. Ďalší rast ktorejkoľvek
+skupiny preto treba kompenzovať alebo rozdeliť skôr, než sa uvoľní ďalší limit.
+
+Landing beat/song composer má on-demand graf **157/600 KB**. Entry je **245/1 070 KB**
+a core worklets **125/150 KB**. Všetky tieto brány prešli v tom istom `npm run build`;
+výsledok je reprodukovateľný na aktuálnom pracovnom strome, nie iba historické meranie.
 
 ## 4. Prvý konkrétny míľnik
 

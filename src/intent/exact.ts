@@ -347,3 +347,57 @@ export function parseSelectIntent(text: string): ExactTarget | null {
   if (!target || target === "mix") return null;
   return target;
 }
+
+// ── SAVE / EXPORT / RECORD — bare-word app commands ─────────────────────────
+
+export type ExportFormat = "wav" | "mp3";
+
+/**
+ * "save" / "ulož projekt" → flush the autosave lifecycle (persistence
+ * side-effect, not document state). Anchored to the whole text so
+ * "save the whales" stays a prompt.
+ */
+export function parseSaveIntent(text: string): boolean {
+  return (
+    /^\s*(?:please\s+)?save(?:\s+(?:the\s+)?(?:project|it))?\s*[.!]?\s*$/i.test(text) ||
+    /^\s*(?:please\s+)?ulo[zž](?:i[ťt])?(?:\s+(?:to|it|projekt))?\s*[.!]?\s*$/i.test(text)
+  );
+}
+
+/**
+ * "export wav" / "exportuj mp3" / "export the project as mp3" / bare
+ * "export" → the master-bounce format. Bare "export" defaults to WAV (the
+ * master delivery format — a bounded, documented default). Execution is the
+ * async render+encode+download pipeline the export panel drives; parsing
+ * stays pure.
+ */
+export function parseExportIntent(text: string): ExportFormat | null {
+  const m =
+    /^\s*(?:please\s+)?export(?:uj)?\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i.exec(
+      text,
+    );
+  if (!m) return null;
+  return (m[1]?.toLowerCase() as ExportFormat) ?? "wav";
+}
+
+/**
+ * "record" / "record pattern" / "nahrávaj" → arm the pattern recorder;
+ * "stop recording" → disarm (the transport stop path ends the take either
+ * way). Recording is runtime service state (`patternRecorder.setArmed`) —
+ * the arming is the whole operation; takes land through the recorder's own
+ * ONE-undo-frame lifecycle.
+ */
+export function parseRecordIntent(text: string): { arm: boolean } | null {
+  const lower = text.toLowerCase();
+  if (
+    /^\s*(?:please\s+)?record(?:\s+(?:the\s+)?(?:pattern|take))?\s*[.!]?\s*$|^\s*(?:please\s+)?start\s+recording\s*[.!]?\s*$|^\s*nahr[áa]vaj\s*[.!]?\s*$/i.test(
+      lower,
+    )
+  ) {
+    return { arm: true };
+  }
+  if (/^\s*stop\s+recording\s*[.!]?\s*$|^\s*(?:prestav|zrus)\s+nahr[áa]vanie\s*[.!]?\s*$/i.test(lower)) {
+    return { arm: false };
+  }
+  return null;
+}

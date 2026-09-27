@@ -22,11 +22,15 @@ const FRACTIONS: ReadonlyArray<readonly [RegExp, number]> = [
 /** Explicit digits: "10 %", "+10 %", "o 10 percent", "10 percent". */
 const DIGITS = /([+-]?\d{1,3})\s*(?:%|percent\w*|procent\w*|pct\b)/;
 
-export function parsePercent(text: string): number | null {
-  const lower = ` ${text
+function normalized(text: string): string {
+  return ` ${text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
+}
+
+export function parsePercent(text: string): number | null {
+  const lower = normalized(text);
   for (const [pattern, value] of FRACTIONS) {
     if (pattern.test(lower)) return value;
   }
@@ -34,5 +38,18 @@ export function parsePercent(text: string): number | null {
   if (!match) return null;
   const value = Math.abs(Number(match[1]));
   if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.min(100, Math.round(value));
+}
+
+/**
+ * Like {@link parsePercent} but 0% is a valid answer — ABSOLUTE-set asks
+ * ("set the bass to 0%") mute at zero, where a relative ask with 0% change
+ * is meaningless and stays null.
+ */
+export function parsePercentAllowingZero(text: string): number | null {
+  const match = DIGITS.exec(normalized(text));
+  if (!match) return null;
+  const value = Math.abs(Number(match[1]));
+  if (!Number.isFinite(value)) return null;
   return Math.min(100, Math.round(value));
 }

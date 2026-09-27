@@ -103,6 +103,20 @@ function estimateImpact(commands: readonly BridgeCommand[]): EstimatedImpact {
         rmsDeltaDb += cmd.intensity * 2;
         peakDeltaDb += cmd.intensity * 1.5;
         break;
+      case "haas-widener":
+      case "ms-eq":
+        // Mid/side and Haas both reshape level distribution; Haas can raise
+        // peaks because the two channels sum differently than the dry source.
+        peakDeltaDb += cmd.intensity * 1.5;
+        rmsDeltaDb += cmd.intensity * 1;
+        break;
+      case "distortion":
+        // A hard clipper without its makeup trim is a level change disguised
+        // as a tone change — the spec's output trim is what makes the
+        // estimate flat, so this stays small.
+        peakDeltaDb += cmd.intensity * 1.5;
+        rmsDeltaDb += cmd.intensity * 2;
+        break;
       case "reverb":
         // A wet insert raises the perceived level of the track, which is the
         // thing most likely to push a master into the limiter.

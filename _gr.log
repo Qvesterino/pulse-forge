@@ -1,0 +1,10 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/golden-render.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 71[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m15 passed[39m[22m[90m (15)[39m
+[2m   Start at [22m 15:51:36
+[2m   Duration [22m 4.30s[2m (transform 595ms, setup 422ms, collect 1.11s, tests 71ms, environment 1.71s, prepare 260ms)[22m
+

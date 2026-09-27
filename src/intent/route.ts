@@ -8,10 +8,14 @@ import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 import {
   parseExactIntent,
+  parseExportIntent,
+  parseRecordIntent,
+  parseSaveIntent,
   parseSelectIntent,
   parseTransportIntent,
   type ExactIntentPlan,
   type ExactTarget,
+  type ExportFormat,
   type TransportAction,
 } from "./exact";
 import { declinedFaderClarification } from "./conversation";
@@ -200,6 +204,9 @@ export type RoutedIntent =
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "compound"; parts: CompoundPart[] }
   | { kind: "transport"; action: TransportAction }
+  | { kind: "save" }
+  | { kind: "export"; format: ExportFormat }
+  | { kind: "record"; arm: boolean }
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
@@ -261,6 +268,21 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const transportAction = parseTransportIntent(text);
   if (transportAction) {
     return { kind: "transport", action: transportAction };
+  }
+  // SAVE / EXPORT / RECORD — bare-word app commands ("save", "export wav",
+  // "record", "stop recording"). Save flushes the autosave lifecycle,
+  // export drives the async render+encode+download pipeline, record arms
+  // the pattern recorder — runtime/persistence state, never document state.
+  if (parseSaveIntent(text)) {
+    return { kind: "save" };
+  }
+  const exportFormat = parseExportIntent(text);
+  if (exportFormat) {
+    return { kind: "export", format: exportFormat };
+  }
+  const recordIntent = parseRecordIntent(text);
+  if (recordIntent) {
+    return { kind: "record", arm: recordIntent.arm };
   }
   if (doc.scenes.length > 0) {
     // CLIP-LEVEL ops first ("copy the intro clip to bar 5", "trim the clip

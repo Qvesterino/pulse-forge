@@ -154,12 +154,18 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       saved through the user-sample store; preserve source takes and replace
       selected clips with one undoable command. A Chromium synthetic-tone E2E
       verifies IndexedDB sample/project save-reopen and pre/post-export
-      sample-level parity. This does not certify recorded takes or repeated
-      comp edits.
-- [ ] Verify repeated comp edits, sample-accurate boundaries and musical
-      crossfade behavior on recorded material through save/reopen, undo/redo
-      and final export. The existing 3 ms warp-segment seam fade is a separate
-      de-click and does not meet this gate.
+      sample-level parity. Captured-take consolidation and physical hardware
+      remain unverified.
+- [x] Verify repeated comp edits on captured PCM: a Chromium synthetic-input
+      recording E2E creates a 120-tick musical crossfade, replaces an already
+      comped region, checks source provenance through Undo/Redo and IndexedDB
+      reopen, then proves the final 32-bit float WAV hash is unchanged after
+      reload. This is durable software-path evidence, not a physical-device
+      performance certification.
+- [ ] Measure comp boundaries and musical crossfade continuity against
+      sample-accurate captured input on supported hardware. The existing 3 ms
+      warp-segment seam fade is a separate de-click and does not meet this
+      gate.
 - [ ] Close the pro-editing gap: verify sample-accurate clip boundaries and
       moves, non-destructive fades/crossfades, clip gain, undo/redo and the
       existing warp workflow on real recorded material. Do not duplicate
@@ -276,7 +282,7 @@ and offline/frozen output has a documented parity guarantee.
       `ModelPacksSection` UI card (HelpOverlay) with live progress and cancel +
       semantic client/worker load cache-first so an installed pack works
       offline in deployments that don't ship the dev-only `public/models/
-      semantic/` folder. Registry hashes are pinned to the fetch script's
+    semantic/` folder. Registry hashes are pinned to the fetch script's
       manifest by `tests/model-packs.test.ts` (10/10). Companion ORT diet:
       the three unused wasm variants (asyncify/jsep/jspi, ~69.5 MB) left the
       repo — `sync-ort-assets.mjs` now copies only the variant the workers
@@ -332,19 +338,20 @@ recovery and project interchange proven.
 
 ## Immediate next engineering tasks
 
-1. **Certify editing in software:** exercise repeated comp edits, musical
-   crossfades, sample-accurate boundaries, warp UI, undo/redo and final export
+1. **Certify remaining editing semantics in software:** verify sample-accurate
+   boundaries, non-destructive fades/gain, warp UI, undo/redo and final export
    over save/reopen. Synthetic tests cover crossfade implementation and
-   live/offline parity; a captured-PCM Chromium fixture covers one PCM-frame-
-   near UI split and source-window mapping, take-lane comp, context-menu warp-
-   pin creation and drag on the captured-PCM comp, then loop-splits another
-   restored PCM fragment through the project commands. Undo/Redo, PCM/marker
-   persistence, advanced loop phase and exact active-comp plus loop-only WAV
-   parity across reopen are covered. Forward warped split source mapping is
-   covered at command level, and a ProjectRepository round-trip preserves
-   trimmed loop bounds and phase; other sample-accurate boundaries, repeated
-   comp/edit sequences and physical hardware takes remain open. The fixed 3 ms
-   warp-segment de-click is separate from musical crossfades.
+   live/offline parity; a captured-PCM Chromium fixture covers a PCM-frame-near
+   UI split and source-window mapping, a crossfaded comp plus repeated region
+   replacement with provenance-preserving undo/redo, context-menu warp-pin
+   creation and drag, then loop-splits another restored PCM fragment through
+   the project commands. PCM/marker persistence, the repeated edit after
+   reopen, advanced loop phase and exact active-comp plus loop-only WAV parity
+   across reopen are covered. Forward warped split mapping is covered at
+   command level, and a ProjectRepository round-trip preserves trimmed loop
+   bounds and phase; other sample-accurate editing and physical hardware takes
+   remain open. The fixed 3 ms warp-segment de-click is separate from musical
+   crossfades.
 2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
    interface, driver mode and exact device-use window before opening a physical
    endpoint. Until then, do metadata-only/software work; do not claim measured

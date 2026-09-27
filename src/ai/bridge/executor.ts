@@ -18,20 +18,37 @@
  */
 
 import { snapshot } from "../../commands/commands";
+import { createInstrumentTrackModel } from "../../project-model/schema";
 import type { Command } from "../../commands/types";
 import { defaultParamsOf } from "../../effects/definitions";
 import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
 import type { SidechainDuckCommand, CompressorCommand, InsertTransientCommand } from "./types";
-import type { ReverbCommand, DelayCommand } from "./types";
+import type {
+  ReverbCommand,
+  DelayCommand,
+  HaasWidenerCommand,
+  MidSideEqCommand,
+  DistortionCommand,
+  CreateInstrumentTrackCommand,
+} from "./types";
 import type { RecipeInput } from "./types";
 import { EQ_BANDS, clampToSlot, type EqBandSlot } from "./eqSlots";
 import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "./sidechainSlots";
 import { COMPRESSOR_CHARACTERS, COMPRESSOR_RANGES, tuneCharacter } from "./compressorSlots";
 import { TRANSIENT_RANGES } from "./transientSlots";
 import { REVERB_RANGES, DELAY_RANGES, reverbSpec, delaySpec } from "./spaceSlots";
+import { haasSpec, midSideSpec } from "./stereoSlots";
+import { distortionSpec } from "./distortionSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
-import type { EffectInstance, EffectType, ProjectDocument, Track, ID } from "../../project-model/types";
+import type {
+  EffectInstance,
+  EffectType,
+  InstrumentTrack,
+  ProjectDocument,
+  Track,
+  ID,
+} from "../../project-model/types";
 import { uid } from "../../shared/ids";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -48,11 +65,23 @@ export function executeCommandBatch(prompt: string, input: RecipeInput): BridgeE
   }
   const batch = generated.batch;
 
-  // 1) Resolve + validate every command BEFORE mutating anything. If any
-  //    command is invalid, the whole batch is rejected with no side effects.
+  // Validate AND apply in one pass over a WORKING copy.
+  //
+  // These used to be two passes — validate everything against the original
+  // document, then apply. That breaks as soon as a batch can create a track:
+  // `create-instrument-track` runs first, and the `distortion` command later
+  // in the same batch targets that new guitar by name, so validating against
+  // the pre-batch document reports `no-track-match` for a track the batch is
+  // about to create.
+  //
+  // One pass keeps the all-or-nothing guarantee for free: `cur` is a local
+  // variable, so an early return discards every intermediate mutation and the
+  // caller's document is never touched. The snapshot below is the ONLY thing
+  // that becomes visible, and it is built from (input.doc → cur) on success.
+  let cur: ProjectDocument = input.doc;
   for (let i = 0; i < batch.commands.length; i++) {
     const cmd = batch.commands[i];
-    const check = validateCommand(input.doc, cmd);
+    const check = validateCommand(cur, cmd);
     if (!check.ok) {
       return {
         ok: false,
@@ -63,13 +92,6 @@ export function executeCommandBatch(prompt: string, input: RecipeInput): BridgeE
         },
       };
     }
-  }
-
-  // 2) Apply in order; abort on the first apply-time failure (defence in
-  //    depth — validations should catch this earlier).
-  let cur: typeof input.doc = input.doc;
-  for (let i = 0; i < batch.commands.length; i++) {
-    const cmd = batch.commands[i];
     try {
       cur = applyCommand(cur, cmd);
     } catch (e) {
@@ -83,7 +105,7 @@ export function executeCommandBatch(prompt: string, input: RecipeInput): BridgeE
     }
   }
 
-  // 3) Wrap into a single snapshot Command — one undo entry per AI batch.
+  // Wrap into a single snapshot Command — one undo entry per AI batch.
   const command: Command = snapshot("aiBridgeBatch", `AI: ${batch.label}`, input.doc, cur);
 
   return { ok: true, doc: cur, command };
@@ -294,6 +316,95 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
       }
       return { ok: true };
     }
+    case "create-instrument-track": {
+      // The track does not exist yet, so resolveTrackMatcher cannot be used
+      // here. What matters is that the id is free and the follow-up commands
+      // in this batch will be able to address the new track by name.
+      if (!cmd.track.id || !cmd.track.name) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: "create-instrument-track needs a non-empty id and name",
+        };
+      }
+      if (doc.tracks.some((t) => t.id === cmd.track.id)) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `track id "${cmd.track.id}" already exists in this project`,
+        };
+      }
+      return { ok: true };
+    }
+    case "haas-widener": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      const probe = haasSpec(cmd.width, cmd.intensity);
+      if (!probe) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown stereo width "${cmd.width}"`,
+          hint: "Valid widths: subtle, wide, huge.",
+        };
+      }
+      return { ok: true };
+    }
+    case "ms-eq": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      const probe = midSideSpec(cmd.shape, cmd.intensity);
+      if (!probe) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown mid/side shape "${cmd.shape}"`,
+          hint: "Valid shapes: scooped, vocal-focus, bright, balanced.",
+        };
+      }
+      // A zero-width mid band is a degenerate splitter — reject rather than
+      // write a value the crossover cannot render.
+      if (probe.highFreqHz <= probe.lowFreqHz) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `crossover pair collapsed: low ${probe.lowFreqHz} Hz >= high ${probe.highFreqHz} Hz`,
+        };
+      }
+      return { ok: true };
+    }
+    case "distortion": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      const probe = distortionSpec(cmd.voice, cmd.intensity);
+      if (!probe) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown guitar voice "${cmd.voice}"`,
+          hint: "Valid voices: clean-push, palm-muted, high-gain, crunch, lead.",
+        };
+      }
+      // `character` is a discrete mode index, not a knob — the curve engine
+      // switches on the integer, so a fractional write would not interpolate.
+      if (!Number.isInteger(probe.character)) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `character index ${probe.character} is not an integer`,
+        };
+      }
+      return { ok: true };
+    }
     case "eq-corner": {
       const target = resolveTrackMatcher(doc, cmd.target);
       if (!target) return trackMissing(cmd.target.namePattern);
@@ -419,6 +530,8 @@ function signMismatch(kind: "eq-carve" | "eq-boost", gainDb: number): Validation
 
 function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument {
   switch (cmd.kind) {
+    case "create-instrument-track":
+      return createInstrumentTrack(doc, cmd);
     case "sidechain-duck": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
       const sourceId = resolveTrackMatcher(doc, cmd.source);
@@ -436,6 +549,21 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
       const targetId = resolveTrackMatcher(doc, cmd.target);
       if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
       return applySpace(doc, targetId, cmd);
+    }
+    case "haas-widener": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applyStereoWidth(doc, targetId, cmd);
+    }
+    case "ms-eq": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applyMidSideEq(doc, targetId, cmd);
+    }
+    case "distortion": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applyDistortion(doc, targetId, cmd);
     }
     case "eq-corner": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
@@ -589,6 +717,117 @@ function applySpace(doc: ProjectDocument, targetId: ID, cmd: ReverbCommand | Del
     const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params };
     return { ...t, effects: [...t.effects, fx] };
   });
+}
+
+/**
+ * Append a new instrument track.
+ *
+ * The model comes from `createInstrumentTrackModel` (src/project-model/schema.ts)
+ * rather than a hand-written literal, so the new track carries the same
+ * defaults, a registered sample id and a normalised `params` block as every
+ * track the templates create. The recipe's id and name are then applied on
+ * top — the id is the undo-stable anchor the follow-up commands in this batch
+ * address by name.
+ */
+function createInstrumentTrack(doc: ProjectDocument, cmd: CreateInstrumentTrackCommand): ProjectDocument {
+  if (doc.tracks.some((t) => t.id === cmd.track.id)) {
+    throw new Error(`createInstrumentTrack: id "${cmd.track.id}" already exists`);
+  }
+  const model = createInstrumentTrackModel(cmd.track.instrument ?? "sampler", 1);
+  const track: InstrumentTrack = { ...model, id: cmd.track.id, name: cmd.track.name };
+  return { ...doc, tracks: [...doc.tracks, track] };
+}
+
+/**
+ * Insert or retune a Haas widener.
+ *
+ * `invert` is written as 0 unconditionally — the command type has no field
+ * for it. Haas width depends on the delay being a doubling cue, and flipping
+ * the channel order moves the pre-echo to the wrong ear. See stereoSlots.ts.
+ */
+function applyStereoWidth(
+  doc: ProjectDocument,
+  targetId: ID,
+  cmd: HaasWidenerCommand,
+): ProjectDocument {
+  const s = haasSpec(cmd.width, cmd.intensity);
+  if (!s) throw new Error(`applyStereoWidth: unknown width "${cmd.width}"`);
+  const params: Record<string, number> = {
+    ...defaultParamsOf("haasWidener"),
+    delayMs: s.delayMs,
+    width: s.width,
+    crossfeed: s.crossfeed,
+    invert: 0,
+    feedback: s.feedback,
+  };
+  return withTrack(doc, targetId, (t) => upsertEffect(t, "haasWidener", params));
+}
+
+/**
+ * Insert or retune a Mid/Side EQ. All three solos are written as 0
+ * unconditionally — see stereoSlots.ts for why a solo is never inferred.
+ */
+function applyMidSideEq(doc: ProjectDocument, targetId: ID, cmd: MidSideEqCommand): ProjectDocument {
+  const s = midSideSpec(cmd.shape, cmd.intensity);
+  if (!s) throw new Error(`applyMidSideEq: unknown shape "${cmd.shape}"`);
+  const params: Record<string, number> = {
+    ...defaultParamsOf("msEq"),
+    lowFreq: s.lowFreqHz,
+    highFreq: s.highFreqHz,
+    lowGain: s.lowGainDb,
+    midGain: s.midGainDb,
+    highGain: s.highGainDb,
+    comp: s.comp,
+    soloLow: 0,
+    soloMid: 0,
+    soloHigh: 0,
+    mix: s.mix,
+  };
+  return withTrack(doc, targetId, (t) => upsertEffect(t, "msEq", params));
+}
+
+/**
+ * Insert or retune a Distortion, writing the snapped character enum.
+ * `character` is a discrete mode index — characterCurve switches on the
+ * integer, so a fractional value would fall through rather than interpolate.
+ */
+function applyDistortion(doc: ProjectDocument, targetId: ID, cmd: DistortionCommand): ProjectDocument {
+  const s = distortionSpec(cmd.voice, cmd.intensity);
+  if (!s) throw new Error(`applyDistortion: unknown voice "${cmd.voice}"`);
+  const params: Record<string, number> = {
+    ...defaultParamsOf("distortion"),
+    drive: s.drive,
+    character: s.character,
+    bias: s.bias,
+    tone: s.toneHz,
+    preHpfHz: s.preHpfHz,
+    mix: s.mix,
+    output: s.outputDb,
+  };
+  return withTrack(doc, targetId, (t) => upsertEffect(t, "distortion", params));
+}
+
+/**
+ * Retune the LAST effect of `type` on a track, or append a fresh one.
+ *
+ * Every "insert or retune" path in the executor shares this so the reuse rule
+ * is stated once: stacking a second effect of the same type compounds in ways
+ * the user did not ask for (two reverbs double the wet level, two distorters
+ * turn a tone into a brick).
+ */
+function upsertEffect(
+  track: Track,
+  type: EffectType,
+  params: Record<string, number>,
+): Track {
+  const existing = findLastIndex(track.effects, (f) => f.type === type);
+  if (existing >= 0) {
+    const effects = track.effects.slice();
+    effects[existing] = { ...track.effects[existing], params, bypassed: false };
+    return { ...track, effects };
+  }
+  const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params };
+  return { ...track, effects: [...track.effects, fx] };
 }
 
 /**

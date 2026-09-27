@@ -19,7 +19,7 @@
  */
 import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setTrackParams, snapshot } from "../commands/commands";
-import { parsePercent } from "./percent";
+import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import type { ProductionIntent, ProductionTarget } from "./production";
@@ -38,12 +38,17 @@ export interface FaderIntent {
   targets: FaderTarget[];
   /** Per-PAD families ("kick ťažší") — empty when the intent is track-level. */
   pads?: FaderPadFamily[];
-  direction: "down" | "up";
-  /** Fader step size. Default "normal" (×0.82 down / ×1.22 up). */
+  /**
+   * "down"/"up" move the fader RELATIVE; "set" is ABSOLUTE — percent IS the
+   * gain as a fraction of the fader's own range (0..1.5, so 50% = 0.75).
+   */
+  direction: "down" | "up" | "set";
+  /** Fader step size. Default "normal" (×0.82 down / ×1.22 up). Unused for "set". */
   amount?: FaderAmount;
   /**
    * Explicit percent ("o 10 %") — relative gain change in the parsed
-   * direction (up ×1.10 / down ×0.90). Wins over vibe `amount` when present.
+   * direction (up ×1.10 / down ×0.90). For direction "set" it is the
+   * absolute target level. Wins over vibe `amount` when present.
    */
   percent?: number;
 }
@@ -82,11 +87,31 @@ const AMOUNT_FULL = /\bupl\w*|\bplne\b|\bmaximal\w*|\bcomplete(?:ly)?\b|\bfully\
 const AMOUNT_BIG = /\bo dos\w*|\bdost\b|\bhodn\w*|\bvelm\w*|\ba lot\b|\bmuch\b/;
 const AMOUNT_SUBTLE = /\btrochu\b|\bkusok\b|\bjemn\w*|\bslight(?:ly)?\b|\ba bit\b|\ba little\b/;
 
+/** Effect nouns — an absolute-set ask naming one belongs to the effectIntent
+ * set-mode ("set reverb mix to 25%" is a KNOB ask, not a fader ask). */
+const EFFECT_NOUN = /\b(?:reverb|dozvuk|delay|chorus|compress|saturat|filtr|\beq\b|pump|drive)\b/;
+
 export function parseFaderIntent(text: string): FaderIntent | null {
   const lower = ` ${text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
+  // ABSOLUTE SET ("set the bass to 50%", "nastav master na 80 %"): set-verb +
+  // explicit percent + a fader target. The percent is the gain as a fraction
+  // of the fader range (0..1.5). Effect nouns decline — knob asks belong to
+  // the effectIntent set-mode; pan declines (pan direction is its own axis).
+  if (/\bset\b|\bnastav\b/.test(lower) && !/\bpan\b/.test(lower) && !EFFECT_NOUN.test(lower)) {
+    const setPercent = parsePercentAllowingZero(text);
+    if (setPercent != null) {
+      const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(lower)).map(([, target]) => target);
+      const pads = FADER_PADS.filter(([pattern]) => pattern.test(lower)).map(([, family]) => family);
+      if (targets.length > 0 || pads.length > 0) {
+        return { targets, pads, direction: "set", percent: setPercent };
+      }
+    }
+    // "set X to N%" without a fader family → not a fader ask (tempo/effects
+    // own their own set-modes); fall through below for the relative stems.
+  }
   const down = FADER_DOWN.test(lower);
   const up = !down && FADER_UP.test(lower);
   if (!down && !up) return null;
@@ -290,10 +315,15 @@ interface FaderFold {
  * nets out instead of double-applying against a stale baseline).
  */
 function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFold {
-  // Percent = relative gain change in the parsed direction (10 % → ×1.10 up
-  // / ×0.90 down); vibe amounts are the fallback when no number is named.
-  const factor =
-    intent.percent != null
+  const isSet = intent.direction === "set";
+  // SET: percent IS the gain — an absolute fraction of the fader range
+  // (0..1.5, so 50% = 0.75). Relative modes: percent = relative gain change
+  // in the parsed direction (10 % → ×1.10 up / ×0.90 down); vibe amounts are
+  // the fallback when no number is named.
+  const absoluteGain = isSet ? clampGain(((intent.percent ?? 0) / 100) * GAIN_MAX) : null;
+  const factor = isSet
+    ? 1
+    : intent.percent != null
       ? intent.direction === "down"
         ? Math.max(0, 1 - intent.percent / 100)
         : 1 + intent.percent / 100
@@ -301,6 +331,7 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
           const factors = FADER_FACTORS[intent.amount ?? "normal"];
           return intent.direction === "down" ? factors.down : factors.up;
         })();
+  const targetGain = (current: number): number => (isSet ? (absoluteGain as number) : clampGain(current * factor));
   let next = cursor;
   let faders = 0;
 
@@ -310,7 +341,7 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
       for (const [padIndex, pad] of drumTrack.pads.entries()) {
         const role = inferPadRole(pad.name, padIndex);
         if (!(intent.pads ?? []).some((family) => PAD_FAMILY_MATCH[family](role))) continue;
-        const gain = clampGain(pad.gain * factor);
+        const gain = targetGain(pad.gain);
         if (gain === pad.gain) continue;
         next = setPadParams(next, pad.id, { gain }).execute(next);
         faders += 1;
@@ -321,16 +352,17 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
   for (const target of intent.targets) {
     if (target === "master") {
       const masterGain = cursor.master?.masterGain ?? 1;
-      next = setMasterConfig(next, {
-        masterGain: Math.max(GAIN_MIN, Math.min(GAIN_MAX, masterGain * factor)),
-      }).execute(next);
-      faders += 1;
+      const gain = Math.max(GAIN_MIN, Math.min(GAIN_MAX, targetGain(masterGain)));
+      if (gain !== masterGain) {
+        next = setMasterConfig(next, { masterGain: gain }).execute(next);
+        faders += 1;
+      }
       continue;
     }
     for (const trackId of trackIdsForTarget(cursor, target)) {
       const track = next.tracks.find((track) => track.id === trackId);
       if (!track) continue;
-      const gain = clampGain(track.gain * factor);
+      const gain = targetGain(track.gain);
       if (gain === track.gain) continue;
       next = setTrackParams(next, trackId, { gain }).execute(next);
       faders += 1;
@@ -338,14 +370,15 @@ function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFol
   }
 
   const label = [...intent.targets, ...(intent.pads ?? [])].join(" + ");
-  const sizeNote =
-    intent.percent != null
+  const sizeNote = isSet
+    ? `=${intent.percent ?? 0}%`
+    : intent.percent != null
       ? `${intent.direction === "down" ? "−" : "+"}${intent.percent}%`
       : (intent.amount ?? "normal");
   return {
     next,
     faders,
-    label: `${intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label}`,
+    label: `${isSet ? "→" : intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label}`,
   };
 }
 

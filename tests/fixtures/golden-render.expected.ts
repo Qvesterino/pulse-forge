@@ -12,5 +12,6 @@ export const EXPECTED_GOLDEN_HASHES: Record<string, string> = {
   "lofi-house": "c6af9db21c0882e4",
   reggaeton: "4c59384474ec135c",
   dnb: "0d78fbd266c1858b",
+  boombap: "1f2b429a9f3705a0",
   empty: "a75c20ed0948af6f",
 };

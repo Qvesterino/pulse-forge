@@ -28,6 +28,19 @@ export interface TasteProbePair<T> {
   globalScoreGap: number;
 }
 
+/** Stable key so a pair is recognized independently of its displayed A/B sides. */
+export function tasteProbePairKey(contentHashA: string, contentHashB: string): string {
+  return JSON.stringify([contentHashA, contentHashB].sort());
+}
+
+/** Keep the probe's display-side assignment independent from candidate rank. */
+export function orderTasteProbeSides<T>(
+  pair: TasteProbePair<T>,
+  swapSides: boolean,
+): readonly [TasteProbeCandidate<T>, TasteProbeCandidate<T>] {
+  return swapSides ? [pair.candidateB, pair.candidateA] : [pair.candidateA, pair.candidateB];
+}
+
 function isUsable(candidate: TasteProbeCandidate<unknown>): boolean {
   return (
     candidate.contentHash.length > 0 &&
@@ -64,7 +77,10 @@ function rmsDistance(
  *
  * This selects a useful question, not a winner; no observation is written.
  */
-export function suggestTasteProbePair<T>(candidates: readonly TasteProbeCandidate<T>[]): TasteProbePair<T> | null {
+export function suggestTasteProbePair<T>(
+  candidates: readonly TasteProbeCandidate<T>[],
+  excludedPairKeys: ReadonlySet<string> = new Set(),
+): TasteProbePair<T> | null {
   const usable = candidates
     .filter(isUsable)
     .slice()
@@ -79,6 +95,7 @@ export function suggestTasteProbePair<T>(candidates: readonly TasteProbeCandidat
       const candidateA = usable[left];
       const candidateB = usable[right];
       if (!candidateA || !candidateB || candidateA.contentHash === candidateB.contentHash) continue;
+      if (excludedPairKeys.has(tasteProbePairKey(candidateA.contentHash, candidateB.contentHash))) continue;
       if (candidateA.globalScoreVersion !== candidateB.globalScoreVersion) continue;
 
       const globalScoreGap = Math.abs(candidateA.globalScore! - candidateB.globalScore!);

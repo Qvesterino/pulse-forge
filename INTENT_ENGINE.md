@@ -358,8 +358,18 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
      Retrain v2 na shipnutom splite: degree **0.4828 → 0.5517**, duration
      **0.3793 → 0.5517**; obe hlavy používajú plný rozsah tried; manifest nesie
      `weightPower` pre provenance.
-  7. **Dátové diery ostávajú**: `d1` a `d5` majú **nula** čestných príkladov,
-     duration-8 len 12 v knižnici — ďalší lever je rast knižnice, nie váženie.
+  7. **One-hot v1 recept NEVIE reprezentovať dnb**: `melodicGenreOf()` mapuje
+     všetko mimo `[house, techno, trap, ambient]` na **house**, takže všetkých
+     49 dnb riadkov nesie house one-hot blok — a runtime mapuje rovnako
+     (`audit-melodic-dnb-onehot.py`). v1 teda nemá mechanizmus rozlíšiť dnb od
+     house; jediný recept, ktorý to vie, je embedding v2 (dnb centroid existuje
+     v `style-embeddings.json`). „v1 vyhráva na degree" platí len kým sa dnb
+     mieša do house bucketu.
+  8. **Dátové diery ostávajú**: `d1` a `d5` majú **nula** čestných príkladov,
+     duration-8 len 12 v knižnici, a **dnb má 0 augmentovaných riadkov**
+     (augmentačný generátor pokrýva len house/techno/trap/ambient). Ďalší lever
+     je rast knižnice + rozšírenie augmentácie na dnb, nie váženie.
+
 
 
 

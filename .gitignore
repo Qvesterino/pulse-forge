@@ -80,3 +80,6 @@ native/asio-host/build/
 
 # PCM host native build artifacts (ADR 0018)
 native/pcm-host/build/
+
+# CLAP audio hosting build artifacts
+native/clap-host/build/

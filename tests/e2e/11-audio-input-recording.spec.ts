@@ -1,5 +1,5 @@
 import { test, expect } from "playwright/test";
-import type { Page } from "playwright/test";
+import type { Locator, Page } from "playwright/test";
 import { clickPanelAction, openHouseTemplate } from "./_helpers";
 
 async function ensureArrangementVisible(page: Page): Promise<void> {
@@ -488,6 +488,77 @@ test.describe("11 — audio-input recording", () => {
     await page.locator('button[aria-label="Redo"]').click();
     await expect(compLane.locator(".arr-audio-take-lane-segment")).toHaveCount(secondCompSegmentCount);
 
+    // Replace an already-comped region on captured PCM. Read the persisted
+    // comp provenance around the selected range so Undo/Redo proves the
+    // actual source assignment changes, not just the number of UI segments.
+    const replacementStartX = takeOneLaneBox.x + ((seamTick + 360) / 1_920) * takeOneBarWidth;
+    if (replacementStartX >= compEndX) throw new Error("The captured take is too short for a repeated comp edit");
+    await page.getByLabel("Comp crossfade duration").selectOption("0");
+    await dragRange(takeOneLane, replacementStartX, compEndX);
+    const replacementRange = page.getByLabel("Selected comp range from TAKE 1");
+    await expect(replacementRange).toBeVisible();
+    const replacementCenterTick = await replacementRange.evaluate((element) => {
+      const lane = element.parentElement;
+      if (!lane) throw new Error("The selected comp range has no take-lane parent");
+      const barWidth = Number.parseFloat(getComputedStyle(lane).backgroundSize);
+      const left = Number.parseFloat((element as HTMLElement).style.left);
+      const width = Number.parseFloat((element as HTMLElement).style.width);
+      if (!(barWidth > 0) || !Number.isFinite(left) || !Number.isFinite(width)) {
+        throw new Error("The selected comp range has invalid timeline geometry");
+      }
+      return ((left + width / 2) / barWidth) * 1_920;
+    });
+    const readCompSourceAtTick = async (): Promise<string | null> =>
+      page.evaluate(
+        async ({ expectedGroupId, tick }: { expectedGroupId: string; tick: number }) => {
+          const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+          const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+          const project = await new ProjectRepository().loadMostRecent();
+          const group = project?.arrangement.takeGroups?.find(
+            (candidate: { id: string }) => candidate.id === expectedGroupId,
+          );
+          const clip = (project?.arrangement.audioClips ?? []).find(
+            (candidate: {
+              takeGroupId?: string;
+              takeId?: string;
+              compSourceTakeId?: string;
+              startBar: number;
+              lengthBars: number;
+            }) =>
+              candidate.takeGroupId === expectedGroupId &&
+              candidate.takeId === group?.compTakeId &&
+              tick >= candidate.startBar * 1_920 &&
+              tick < (candidate.startBar + candidate.lengthBars) * 1_920,
+          );
+          return clip?.compSourceTakeId ?? null;
+        },
+        { expectedGroupId: groupId, tick: replacementCenterTick },
+      );
+    const takeIds = await page.evaluate(async (expectedGroupId: string): Promise<string[]> => {
+      const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+      const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+      const project = await new ProjectRepository().loadMostRecent();
+      const group = project?.arrangement.takeGroups?.find(
+        (candidate: { id: string }) => candidate.id === expectedGroupId,
+      );
+      return Array.from(
+        new Set(
+          (project?.arrangement.audioClips ?? [])
+            .filter((clip: { takeGroupId?: string; takeId?: string }) => clip.takeGroupId === expectedGroupId)
+            .map((clip: { takeId?: string }) => clip.takeId)
+            .filter((takeId: string | undefined) => takeId && takeId !== group?.compTakeId),
+        ),
+      ) as string[];
+    }, groupId);
+    expect(takeIds).toHaveLength(2);
+    await expect.poll(readCompSourceAtTick, { timeout: 20_000, intervals: [250, 500, 1_000] }).toBe(takeIds[1]);
+    await page.getByRole("button", { name: "Comp selected take-lane range" }).click();
+    await expect.poll(readCompSourceAtTick, { timeout: 20_000, intervals: [250, 500, 1_000] }).toBe(takeIds[0]);
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect.poll(readCompSourceAtTick, { timeout: 20_000, intervals: [250, 500, 1_000] }).toBe(takeIds[1]);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect.poll(readCompSourceAtTick, { timeout: 20_000, intervals: [250, 500, 1_000] }).toBe(takeIds[0]);
+
     // Exercise the actual waveform gesture on captured PCM, then prove the
     // warp edit participates in the same project Undo/Redo history as comping.
     const warpedCompClip = page.locator(".arr-audio-clip.comp").first();
@@ -545,6 +616,135 @@ test.describe("11 — audio-input recording", () => {
     await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toEqual([originalWarp]);
     await page.locator('button[aria-label="Redo"]').click();
     await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toEqual([draggedWarp]);
+
+    const warpedCompClipId = await page.evaluate(
+      async ({ expectedGroupId, marker }: { expectedGroupId: string; marker: { timeSec: number; tick: number } }) => {
+        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+        const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+        const project = await new ProjectRepository().loadMostRecent();
+        const group = project?.arrangement.takeGroups?.find(
+          (candidate: { id: string }) => candidate.id === expectedGroupId,
+        );
+        return (project?.arrangement.audioClips ?? []).find(
+          (clip: {
+            id: string;
+            takeGroupId?: string;
+            takeId?: string;
+            warpMarkers?: Array<{ timeSec: number; tick: number }>;
+          }) =>
+            clip.takeGroupId === expectedGroupId &&
+            clip.takeId === group?.compTakeId &&
+            clip.warpMarkers?.some(
+              (candidate) => candidate.timeSec === marker.timeSec && candidate.tick === marker.tick,
+            ),
+        )?.id;
+      },
+      { expectedGroupId: groupId, marker: draggedWarp },
+    );
+    if (!warpedCompClipId) throw new Error("Could not identify the captured-PCM comp clip after warping");
+    const readCompClipEdit = async (): Promise<{
+      fadeIn: number;
+      fadeOut: number;
+      gain: number;
+      startBar: number;
+      lengthBars: number;
+      offsetSec: number;
+      trimStart: number;
+      trimEnd: number;
+    }> =>
+      page.evaluate(
+        async ({ expectedGroupId, clipId }: { expectedGroupId: string; clipId: string }) => {
+          const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+          const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+          const project = await new ProjectRepository().loadMostRecent();
+          const group = project?.arrangement.takeGroups?.find(
+            (candidate: { id: string }) => candidate.id === expectedGroupId,
+          );
+          const clip = (project?.arrangement.audioClips ?? []).find(
+            (candidate: { id: string; takeGroupId?: string; takeId?: string }) =>
+              candidate.id === clipId &&
+              candidate.takeGroupId === expectedGroupId &&
+              candidate.takeId === group?.compTakeId,
+          );
+          if (!clip) throw new Error("The edited captured-PCM comp clip was not saved");
+          return {
+            fadeIn: clip.fadeIn ?? 0,
+            fadeOut: clip.fadeOut ?? 0,
+            gain: clip.gain ?? 1,
+            startBar: clip.startBar,
+            lengthBars: clip.lengthBars,
+            offsetSec: clip.offsetSec ?? 0,
+            trimStart: clip.trimStart ?? 0,
+            trimEnd: clip.trimEnd ?? 0,
+          };
+        },
+        { expectedGroupId: groupId, clipId: warpedCompClipId },
+      );
+    const dragClipHandle = async (
+      handle: Locator,
+      deltaX: number,
+      deltaY: number,
+      grabAtBottom = false,
+    ): Promise<void> => {
+      const box = await handle.boundingBox();
+      if (!box) throw new Error("A captured-PCM clip edit handle is not visible");
+      const x = box.x + box.width / 2;
+      // Fade corners overlap the centered gain tab on short captured takes;
+      // grab their lower pixel so the pointerdown targets the intended handle.
+      const y = box.y + (grabAtBottom ? box.height - 1 : box.height / 2);
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + deltaX, y + deltaY, { steps: 4 });
+      await page.mouse.up();
+    };
+
+    // Exercise the arrangement's visible non-destructive fade and clip-gain
+    // handles on the recorded comp. Every gesture is one project command and
+    // must survive Undo/Redo and the later export/reopen comparison.
+    const fadeInBaseline = await readCompClipEdit();
+    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-fade.left"), 16, 0, true);
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeIn, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBeGreaterThan(fadeInBaseline.fadeIn + 0.05);
+    const fadeInEdit = await readCompClipEdit();
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeIn, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(fadeInBaseline.fadeIn);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeIn, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(fadeInEdit.fadeIn);
+
+    const fadeOutBaseline = await readCompClipEdit();
+    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-fade.right"), -16, 0, true);
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeOut, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBeGreaterThan(fadeOutBaseline.fadeOut + 0.05);
+    const fadeOutEdit = await readCompClipEdit();
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeOut, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(fadeOutBaseline.fadeOut);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).fadeOut, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(fadeOutEdit.fadeOut);
+
+    const gainBaseline = await readCompClipEdit();
+    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-gain"), 0, -20);
+    await expect
+      .poll(async () => (await readCompClipEdit()).gain, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBeGreaterThan(gainBaseline.gain + 0.1);
+    const gainEdit = await readCompClipEdit();
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).gain, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(gainBaseline.gain);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect
+      .poll(async () => (await readCompClipEdit()).gain, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toBe(gainEdit.gain);
 
     // Loop splitting is tested after comping because comp source mapping is
     // intentionally limited to forward, unlooped source clips. Apply the same
@@ -642,6 +842,7 @@ test.describe("11 — audio-input recording", () => {
       activeTakeId: string;
       sourceTakeIds: string[];
       compSourceTakeIds: string[];
+      repeatedEditSourceTakeId: string;
       warpMarkers: Array<{ timeSec: number; tick: number }>;
       sourceClipWindows: Array<{
         takeId?: string;
@@ -664,7 +865,15 @@ test.describe("11 — audio-input recording", () => {
       wavSha256: string;
     }> => {
       return page.evaluate(
-        async ({ expectedGroupId, expectedLoopTakeId }: { expectedGroupId: string; expectedLoopTakeId: string }) => {
+        async ({
+          expectedGroupId,
+          expectedLoopTakeId,
+          expectedReplacementCenterTick,
+        }: {
+          expectedGroupId: string;
+          expectedLoopTakeId: string;
+          expectedReplacementCenterTick: number;
+        }) => {
           const load = (specifier: string) => import(/* @vite-ignore */ specifier);
           const [projectRepoModule, sampleModule, userRepoModule, rendererModule, wavModule] = await Promise.all([
             load("/src/persistence/ProjectRepository.ts"),
@@ -697,6 +906,14 @@ test.describe("11 — audio-input recording", () => {
             ),
           ) as string[];
           const compClips = groupClips.filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId);
+          const replacementClip = compClips.find(
+            (clip: { startBar: number; lengthBars: number }) =>
+              expectedReplacementCenterTick >= clip.startBar * 1_920 &&
+              expectedReplacementCenterTick < (clip.startBar + clip.lengthBars) * 1_920,
+          );
+          if (!replacementClip?.compSourceTakeId) {
+            throw new Error("The repeated comp edit did not survive project save/reopen");
+          }
           const warpMarkers = compClips.flatMap(
             (clip: { warpMarkers?: Array<{ timeSec: number; tick: number }> }) => clip.warpMarkers ?? [],
           );
@@ -832,6 +1049,7 @@ test.describe("11 — audio-input recording", () => {
             activeTakeId: group.activeTakeId,
             sourceTakeIds,
             compSourceTakeIds,
+            repeatedEditSourceTakeId: replacementClip.compSourceTakeId,
             warpMarkers,
             sourceClipWindows,
             loopWavSha256,
@@ -845,7 +1063,11 @@ test.describe("11 — audio-input recording", () => {
             wavSha256,
           };
         },
-        { expectedGroupId: groupId, expectedLoopTakeId: splitPlan.takeId },
+        {
+          expectedGroupId: groupId,
+          expectedLoopTakeId: splitPlan.takeId,
+          expectedReplacementCenterTick: replacementCenterTick,
+        },
       );
     };
 
@@ -890,8 +1112,15 @@ test.describe("11 — audio-input recording", () => {
       )
       .toBe(true);
     const beforeReloadExport = await renderSavedTakeExport();
+    const beforeReloadCompEdit = await readCompClipEdit();
+    expect(beforeReloadCompEdit).toMatchObject({
+      fadeIn: fadeInEdit.fadeIn,
+      fadeOut: fadeOutEdit.fadeOut,
+      gain: gainEdit.gain,
+    });
     expect(beforeReloadExport.sourceTakeIds).toHaveLength(2);
     expect(beforeReloadExport.compSourceTakeIds).toEqual(expect.arrayContaining(beforeReloadExport.sourceTakeIds));
+    expect(beforeReloadExport.repeatedEditSourceTakeId).toBe(beforeReloadExport.sourceTakeIds[0]);
     expect(beforeReloadExport.warpMarkers).toHaveLength(1);
     expect(beforeReloadExport.sourceClipWindows).toHaveLength(4);
     const splitTakeWindows = beforeReloadExport.sourceClipWindows
@@ -940,6 +1169,9 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip.comp").first()).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(readCompClipEdit, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .toEqual(beforeReloadCompEdit);
     const afterReloadExport = await renderSavedTakeExport();
     expect(afterReloadExport).toMatchObject({
       groupId: beforeReloadExport.groupId,
@@ -947,6 +1179,7 @@ test.describe("11 — audio-input recording", () => {
       activeTakeId: beforeReloadExport.activeTakeId,
       sourceTakeIds: beforeReloadExport.sourceTakeIds,
       compSourceTakeIds: beforeReloadExport.compSourceTakeIds,
+      repeatedEditSourceTakeId: beforeReloadExport.repeatedEditSourceTakeId,
       warpMarkers: beforeReloadExport.warpMarkers,
       sourceClipWindows: beforeReloadExport.sourceClipWindows,
       loopWavSha256: beforeReloadExport.loopWavSha256,

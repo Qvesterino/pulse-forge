@@ -14,7 +14,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 const SOURCE = "native/clap-probe";
+const HOST_SOURCE = "native/clap-host";
 const BUILD = join(SOURCE, "build");
+const HOST_BUILD = join(HOST_SOURCE, "build");
 
 function run(args) {
   console.log(`[clap-probe] ${args.join(" ")}`);
@@ -32,6 +34,19 @@ run(["cmake", "--build", BUILD, "--config", "Release"]);
 const exe = join(BUILD, "Release", "clap-probe.exe");
 if (!existsSync(exe)) throw new Error(`build claimed success but ${exe} is missing`);
 console.log(`[clap-probe] OK — ${exe}`);
+
+// Wave: CLAP audio hosting — tone fixture + player host (same SDK include).
+try {
+  run(["cmake", "-S", HOST_SOURCE, "-B", HOST_BUILD]);
+  run(["cmake", "--build", HOST_BUILD, "--config", "Release"]);
+  const player = join(HOST_BUILD, "Release", "clap-player.exe");
+  if (!existsSync(player)) throw new Error(`${player} missing`);
+  console.log(`[clap-probe] OK — ${player}`);
+  console.log(`[clap-probe] tone fixture: ${join(HOST_BUILD, "Release", "clap-tone.clap")}`);
+} catch (err) {
+  console.error(`[clap-probe] clap-host build failed: ${err?.message ?? err}`);
+  process.exitCode = 1;
+}
 console.log(
   `[clap-probe] fixtures: ${join(BUILD, "Release", "clap-fixture.clap")}, ${join(BUILD, "Release", "clap-fixture-empty.clap")}`,
 );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { extractPatternFeatures } from "../ai/features/pattern-features";
 import type { ProjectDocument } from "../project-model/types";
-import { suggestTasteProbePair } from "../intent/taste-probe";
+import { orderTasteProbeSides, suggestTasteProbePair, tasteProbePairKey } from "../intent/taste-probe";
 import { isPreferenceReasonRankable } from "../intent/personal-ranker";
 import {
   buildPreferenceLedgerPack,
@@ -50,6 +50,8 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   const [aIndex, setAIndex] = useState<number | null>(null);
   const [bIndex, setBIndex] = useState<number | null>(null);
   const [reason, setReason] = useState<PreferenceReason | "">("");
+  const [blindProbeActive, setBlindProbeActive] = useState(false);
+  const [skippedProbePairs, setSkippedProbePairs] = useState<ReadonlySet<string>>(() => new Set());
   const [learningEnabled, setLearningEnabled] = useState(isPreferenceLearningEnabled);
   const [comparisonCount, setComparisonCount] = useState(() => readPreferenceLedger().length);
   const [message, setMessage] = useState("");
@@ -90,16 +92,22 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     setAIndex(null);
     setBIndex(null);
     setReason("");
+    setBlindProbeActive(false);
+    setSkippedProbePairs(new Set());
     setMessage("");
   }, [result]);
 
   const selectA = (index: number) => {
+    setBlindProbeActive(false);
     setAIndex(index);
+    setReason("");
     if (bIndex === index) setBIndex(null);
     setMessage("");
   };
   const selectB = (index: number) => {
+    setBlindProbeActive(false);
     setBIndex(index);
+    setReason("");
     if (aIndex === index) setAIndex(null);
     setMessage("");
   };
@@ -146,10 +154,15 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     setAIndex(null);
     setBIndex(null);
     setReason("");
+    setBlindProbeActive(false);
   };
 
   const suggestProbe = () => {
     const features = candidateFeatures(candidates);
+    const previouslyCompared = readPreferenceLedger()
+      .filter((observation) => observation.context.key === context.key)
+      .map((observation) => tasteProbePairKey(observation.candidateA.contentHash, observation.candidateB.contentHash));
+    const excludedPairKeys = new Set([...skippedProbePairs, ...previouslyCompared]);
     const probe = suggestTasteProbePair(
       candidates.map((candidate) => ({
         candidate,
@@ -159,19 +172,36 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
         globalScore: candidate.globalScore,
         globalScoreVersion: candidate.globalScoreVersion,
       })),
+      excludedPairKeys,
     );
     if (!probe) {
+      setBlindProbeActive(false);
+      setAIndex(null);
+      setBIndex(null);
+      setReason("");
       setMessage(
-        "V tomto banku niet páru s porovnateľným globálnym skóre a jasným rozdielom v jednej meranej osi; môžeš vybrať A/B ručne.",
+        "V tomto banku niet nového páru s porovnateľným globálnym skóre a jasným rozdielom v jednej meranej osi; môžeš vybrať A/B ručne.",
       );
       return;
     }
-    setAIndex(probe.candidateA.candidateIndex);
-    setBIndex(probe.candidateB.candidateIndex);
+    let randomByte: number | undefined;
+    try {
+      randomByte = window.crypto.getRandomValues(new Uint8Array(1))[0];
+    } catch {
+      // Crypto can be unavailable in restricted contexts; keep a stable,
+      // content-derived fallback rather than reverting to rank-based sides.
+      const hash = `${probe.candidateA.contentHash}:${probe.candidateB.contentHash}`;
+      randomByte =
+        Array.from(hash).reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0) & 0xff;
+    }
+    const [sideA, sideB] = orderTasteProbeSides(probe, (randomByte ?? 0) % 2 === 1);
+    setAIndex(sideA.candidateIndex);
+    setBIndex(sideB.candidateIndex);
     setReason(probe.reason);
+    setBlindProbeActive(true);
     const reasonLabel = REASONS.find((item) => item.value === probe.reason)?.label ?? probe.reason;
     setMessage(
-      `Navrhnutý pár sa najviac líši v osi „${reasonLabel}“; globálny výber sa líši o ${Math.round(probe.globalScoreGap * 100)} p. b. Vypočuj obe strany — nič sa neuloží, kým nepotvrdíš voľbu.`,
+      `Strany A/B sú náhodne priradené; poradie a zdroj take-ov sú skryté. Pár sa najviac líši v meranej osi „${reasonLabel}“; globálny výber sa líši o ${Math.round(probe.globalScoreGap * 100)} p. b. Vypočuj obe strany — nič sa neuloží, kým nepotvrdíš voľbu.`,
     );
   };
 
@@ -200,36 +230,38 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           NAVRHNÚŤ TASTE PROBE
         </button>
       </div>
-      <div className="intent-candidates" aria-label="Choose candidates to compare">
-        {candidates.map((candidate, position) => (
-          <div className="intent-candidate-row" key={candidate.candidateIndex}>
-            <span className="intent-candidate-index">
-              #{position + 1} · {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
-            </span>
-            <button
-              type="button"
-              className={`btn btn-small${aIndex === candidate.candidateIndex ? " intent-use-btn" : ""}`}
-              aria-pressed={aIndex === candidate.candidateIndex}
-              onClick={() => selectA(candidate.candidateIndex)}
-            >
-              A
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${bIndex === candidate.candidateIndex ? " intent-use-btn" : ""}`}
-              aria-pressed={bIndex === candidate.candidateIndex}
-              onClick={() => selectB(candidate.candidateIndex)}
-            >
-              B
-            </button>
-          </div>
-        ))}
-      </div>
+      {!blindProbeActive && (
+        <div className="intent-candidates" aria-label="Choose candidates to compare">
+          {candidates.map((candidate, position) => (
+            <div className="intent-candidate-row" key={candidate.candidateIndex}>
+              <span className="intent-candidate-index">
+                #{position + 1} · {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
+              </span>
+              <button
+                type="button"
+                className={`btn btn-small${aIndex === candidate.candidateIndex ? " intent-use-btn" : ""}`}
+                aria-pressed={aIndex === candidate.candidateIndex}
+                onClick={() => selectA(candidate.candidateIndex)}
+              >
+                A
+              </button>
+              <button
+                type="button"
+                className={`btn btn-small${bIndex === candidate.candidateIndex ? " intent-use-btn" : ""}`}
+                aria-pressed={bIndex === candidate.candidateIndex}
+                onClick={() => selectB(candidate.candidateIndex)}
+              >
+                B
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {candidateA && candidateB && (
         <div className="intent-candidate-row" aria-label="Vote on A/B comparison">
           <strong>Ktorý take by si nechal?</strong>
-          <span>A #{candidateA.candidateIndex + 1}</span>
+          <span>{blindProbeActive ? "A" : `A #${candidateA.candidateIndex + 1}`}</span>
           <button type="button" className="btn btn-small" onClick={() => onAudition(candidateA)}>
             ▶ A
           </button>
@@ -237,7 +269,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           <button type="button" className="btn btn-small" onClick={() => onAudition(candidateB)}>
             ▶ B
           </button>
-          <span>B #{candidateB.candidateIndex + 1}</span>
+          <span>{blindProbeActive ? "B" : `B #${candidateB.candidateIndex + 1}`}</span>
           <select
             aria-label="Optional reason for preference"
             value={reason}
@@ -262,6 +294,25 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           <button type="button" className="btn btn-small" onClick={() => vote("both")} disabled={!learningEnabled}>
             Oba dobré
           </button>
+          {blindProbeActive && (
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                if (candidateA && candidateB) {
+                  const pairKey = tasteProbePairKey(candidateA.contentHash, candidateB.contentHash);
+                  setSkippedProbePairs((previous) => new Set([...previous, pairKey]));
+                }
+                setBlindProbeActive(false);
+                setAIndex(null);
+                setBIndex(null);
+                setReason("");
+                setMessage("Slepé porovnanie zrušené; teraz môžeš zvoliť ľubovoľnú dvojicu.");
+              }}
+            >
+              Zrušiť slepé porovnanie
+            </button>
+          )}
         </div>
       )}
 
