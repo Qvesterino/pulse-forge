@@ -8,6 +8,7 @@
  * (C2099), so the features list is a named static array, and every aggregate
  * uses designated initializers so field order can never drift from the SDK.
  */
+#include <stdio.h>
 #include <string.h>
 
 #include "clap/clap.h"
@@ -50,10 +51,11 @@ static const clap_plugin_descriptor_t *CLAP_ABI fixture_descriptor(const struct 
   return index == 0 ? &FIXTURE_DESCRIPTOR : NULL;
 }
 
-static const void *CLAP_ABI fixture_get_factory(const struct clap_plugin_entry *entry, const char *factory_id) {
-  (void)entry;
+// clap_plugin_entry_t::get_factory takes ONLY the factory id — the entry
+// struct is dereferenced by the host, so there is no implicit first argument.
+static const void *CLAP_ABI fixture_get_factory(const char *factory_id) {
   if (strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID) == 0) {
-    static const clap_plugin_factory FACTORY = {
+    static const clap_plugin_factory_t FACTORY = {
         .get_plugin_count = fixture_count,
         .get_plugin_descriptor = fixture_descriptor,
         .create_plugin = NULL, // probe never instantiates
@@ -63,7 +65,7 @@ static const void *CLAP_ABI fixture_get_factory(const struct clap_plugin_entry *
   return NULL;
 }
 
-__declspec(dllexport) const clap_plugin_entry clap_entry = {
+__declspec(dllexport) const clap_plugin_entry_t clap_entry = {
     .clap_version = CLAP_VERSION_INIT,
     .init = fixture_entry_init,
     .deinit = fixture_entry_noop,

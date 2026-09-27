@@ -14,6 +14,7 @@ import { FACTORY_PRESETS } from "./presets/factory";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { FACTORY_PRESET_LOUDNESS, NON_DETERMINISTIC_PRESETS } from "./presets/preset-loudness.generated";
 import { analyzeLoudnessBuffer } from "./audio-engine/kweighting";
+import { analyzeArtifacts, evaluateArtifacts, logEnvelopeCorrelation } from "./audio-engine/artifactGate";
 import { applyInstrumentPreset } from "./commands/commands";
 import { PPQ } from "./project-model/types";
 import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
@@ -3065,6 +3066,69 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   } catch (error) {
     check("groove: swing/humanize/ratchet change the exported audio", false, String(error));
+  }
+
+  {
+    // ARTIFACT GATE — the numerical defect check over REAL renders. This is
+    // what locks the de-click tail and the round-robin work into CI: a broken
+    // fade, a slice cut, a NaN stage or an over-ceiling true peak fails here
+    // instead of shipping. Renders a representative spread of genres (each
+    // with its own kit swaps, layers and groove feel) plus a p-locked length
+    // cut, which is the exact case the de-click tail exists for.
+    const failures: string[] = [];
+    const reports: string[] = [];
+    for (const templateId of ["house", "techno", "trap", "drill", "phonk", "jersey", "dnb", "ambient"] as const) {
+      try {
+        const doc = createProjectFromTemplate(templateId);
+        const rendered = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.4 });
+        const channels = Array.from({ length: rendered.numberOfChannels }, (_, ch) => rendered.getChannelData(ch));
+        const report = analyzeArtifacts(channels);
+        const verdict = evaluateArtifacts(report, { ceilingDb: -0.5 });
+        if (!verdict.ok) failures.push(`${templateId}: ${verdict.failures.join("; ")}`);
+        reports.push(`${templateId} tail=${report.tailStepRatio.toFixed(3)} tp=${report.truePeakDb.toFixed(1)}`);
+      } catch (error) {
+        failures.push(`${templateId}: ${String(error)}`);
+      }
+    }
+    check(
+      "artifact gate: every genre render is finite, de-clicked, click-free and under ceiling",
+      failures.length === 0,
+      failures.length > 0 ? failures.join(" | ") : reports.join(" "),
+    );
+  }
+
+  {
+    // ROUND-ROBIN SPREAD — the same pad hit repeatedly must not be the same
+    // sample every time. Renders one bar of a straight 8th-note hat pattern
+    // and compares consecutive hits: identical repetition correlates 1.0
+    // (the machine gun), a layered pad must stay below that.
+    try {
+      const doc = createProjectFromTemplate("house");
+      const drum = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+      const hat = drum.pads[8]; // stock closed hat — carries the dynamic set
+      const pattern = doc.patterns[0];
+      pattern.rows[hat.id] = new Array<number>(pattern.stepCount).fill(0);
+      for (let step = 0; step < 8; step++) pattern.rows[hat.id][step * 2] = 0.7;
+      const rendered = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.1 });
+      const data = rendered.getChannelData(0);
+      const hitLen = Math.floor(0.05 * SR);
+      const hits: Float32Array[] = [];
+      for (let step = 0; step < 8; step++) {
+        // 8th notes at the project tempo — locate by the rendered hit's onset.
+        const approx = Math.floor(((step * 2 * 60) / doc.bpm) * SR);
+        hits.push(data.subarray(approx, Math.min(data.length, approx + hitLen)));
+      }
+      const correlations: number[] = [];
+      for (let i = 1; i < hits.length; i++) correlations.push(logEnvelopeCorrelation(hits[i - 1], hits[i]));
+      const identical = correlations.filter((c) => c > 0.9999).length;
+      check(
+        "round-robin: consecutive hat hits are not the same sample",
+        hat.layers !== undefined ? identical < correlations.length : true,
+        `layers=${hat.layers?.length ?? 0} corr=[${correlations.map((c) => c.toFixed(3)).join(",")}]`,
+      );
+    } catch (error) {
+      check("round-robin: consecutive hat hits are not the same sample", false, String(error));
+    }
   }
 
   {

@@ -708,7 +708,8 @@ export async function runPluginAudit(
   progress(`base render peak=${basePeak.toFixed(3)}`);
 
   const effects: EffectAudit[] = [];
-  for (const type of only && only.length > 0 ? only : EFFECT_ORDER) {
+  const types = (only && only.length > 0 ? only : EFFECT_ORDER).filter((t) => EFFECT_ORDER.includes(t));
+  for (const type of types) {
     progress(`sweep ${type}`);
     let sweep: SweepResult;
     try {

@@ -1,10 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { GenerateOptions } from "../ai/types";
-import {
-  FACTORY_HAT_DYNAMIC,
-  FACTORY_SNARE_DYNAMIC,
-  roundRobinLayers,
-} from "../sample-library/velocity-layers";
+import { FACTORY_HAT_DYNAMIC, FACTORY_SNARE_DYNAMIC, roundRobinLayers } from "../sample-library/velocity-layers";
 /**
  * Genre kit colouring (sound-quality pass): a genre's identity lives in its
  * kick/snare CHARACTER, not only its groove. Pad ids (and therefore patterns,
@@ -38,74 +34,90 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 1, assetId: "factory.kick.trap" },
     { index: 2, assetId: "factory.kick.soft", name: "Kick Soft" },
     // Darker, shorter backbeat — the dedicated drill crack.
-    { index: 4, assetId: "factory.snare.drill", layers: roundRobinLayers([
-      "factory.snare.drill",
-      "factory.snare.drill.rr2",
-      "factory.snare.drill.rr3",
-    ]) },
+    {
+      index: 4,
+      assetId: "factory.snare.drill",
+      layers: roundRobinLayers(["factory.snare.drill", "factory.snare.drill.rr2", "factory.snare.drill.rr3"]),
+    },
     // The drill tick hat (pad 8 keeps its closed-hat role) gets its own pool —
     // drill's fast 16th ticks are its signature and its repetition read.
-    { index: 8, assetId: "factory.hat.drill", layers: roundRobinLayers([
-      "factory.hat.drill",
-      "factory.hat.drill.rr2",
-      "factory.hat.drill.rr3",
-    ]) },
+    {
+      index: 8,
+      assetId: "factory.hat.drill",
+      layers: roundRobinLayers(["factory.hat.drill", "factory.hat.drill.rr2", "factory.hat.drill.rr3"]),
+    },
   ],
   phonk: [
     // Memphis dirt: the crunchy vintage thump up front, the distorted 808
     // as the alt slot.
-    { index: 0, assetId: "factory.kick.phonk", layers: roundRobinLayers([
-      "factory.kick.phonk",
-      "factory.kick.phonk.rr2",
-      "factory.kick.phonk.rr3",
-    ]) },
+    {
+      index: 0,
+      assetId: "factory.kick.phonk",
+      layers: roundRobinLayers(["factory.kick.phonk", "factory.kick.phonk.rr2", "factory.kick.phonk.rr3"]),
+    },
     { index: 2, assetId: "factory.kick.808drive", name: "Kick 808 Drive" },
     // Dusty memphis backbeat joins the genre kit colouring (with its pool).
-    { index: 4, assetId: "factory.snare.phonk", layers: roundRobinLayers([
-      "factory.snare.phonk",
-      "factory.snare.phonk.rr2",
-      "factory.snare.phonk.rr3",
-    ]) },
+    {
+      index: 4,
+      assetId: "factory.snare.phonk",
+      layers: roundRobinLayers(["factory.snare.phonk", "factory.snare.phonk.rr2", "factory.snare.phonk.rr3"]),
+    },
     // THE phonk voice: the fx-role blip slot becomes a cowbell (pad 15 falls
     // back to role "fx" by index either way — generation is unaffected).
     { index: 15, assetId: "factory.perc.cowbell", name: "Cowbell" },
     // The dusty memphis hat keeps its 16th dust varied.
-    { index: 8, assetId: "factory.hat.phonk", layers: roundRobinLayers([
-      "factory.hat.phonk",
-      "factory.hat.phonk.rr2",
-      "factory.hat.phonk.rr3",
-    ]) },
+    {
+      index: 8,
+      assetId: "factory.hat.phonk",
+      layers: roundRobinLayers(["factory.hat.phonk", "factory.hat.phonk.rr2", "factory.hat.phonk.rr3"]),
+    },
   ],
   jersey: [
     // Club bounce: the clicky jersey kick up front, hard alt, cracking
     // backbeat. Kicks and the backbeat rotate through their variant sets —
     // jersey's 8th-note kick churn is where the machine-gun read is loudest.
-    { index: 0, assetId: "factory.kick.jersey", layers: roundRobinLayers([
-      "factory.kick.jersey",
-      "factory.kick.jersey.rr2",
-      "factory.kick.jersey.rr3",
-    ]) },
+    {
+      index: 0,
+      assetId: "factory.kick.jersey",
+      layers: roundRobinLayers(["factory.kick.jersey", "factory.kick.jersey.rr2", "factory.kick.jersey.rr3"]),
+    },
     { index: 2, assetId: "factory.kick.techno" },
-    { index: 4, assetId: "factory.snare.jersey", layers: roundRobinLayers([
-      "factory.snare.jersey",
-      "factory.snare.jersey.rr2",
-      "factory.snare.jersey.rr3",
-    ]) },
+    {
+      index: 4,
+      assetId: "factory.snare.jersey",
+      layers: roundRobinLayers(["factory.snare.jersey", "factory.snare.jersey.rr2", "factory.snare.jersey.rr3"]),
+    },
   ],
   dnb: [
     // Two-step character: the rolling dnb punch, cracking snare, 16th pedal
     // hat. The breakbeat is the definition of repetition — RR is mandatory.
-    { index: 0, assetId: "factory.kick.dnb", layers: roundRobinLayers([
-      "factory.kick.dnb",
-      "factory.kick.dnb.rr2",
-      "factory.kick.dnb.rr3",
-    ]) },
-    { index: 4, assetId: "factory.snare.dnb", layers: roundRobinLayers([
-      "factory.snare.dnb",
-      "factory.snare.dnb.rr2",
-      "factory.snare.dnb.rr3",
-    ]) },
+    {
+      index: 0,
+      assetId: "factory.kick.dnb",
+      layers: roundRobinLayers(["factory.kick.dnb", "factory.kick.dnb.rr2", "factory.kick.dnb.rr3"]),
+    },
+    {
+      index: 4,
+      assetId: "factory.snare.dnb",
+      layers: roundRobinLayers(["factory.snare.dnb", "factory.snare.dnb.rr2", "factory.snare.dnb.rr3"]),
+    },
     { index: 9, assetId: "factory.hat.pedal" },
+  ],
+  hyperpop: [
+    // Maximalist: the trap kick up front with the tight backbeat and the
+    // chip rim as the stutter voice (pad 3 is inactive in the stock kit, so
+    // the rim lands as a signature hyperpop tick rather than a stock sound).
+    { index: 0, assetId: "factory.kick.trap" },
+    { index: 4, assetId: "factory.snare.tight" },
+    { index: 3, assetId: "factory.rim.chip" },
+  ],
+  ukg: [
+    // The garage pocket: the deep sub kick, main snare backbeat, and the soft
+    // closed hat for the swung 8ths (the shuffle reads on hat dynamics).
+    { index: 0, assetId: "factory.kick.deep" },
+    { index: 1, assetId: "factory.kick.sub808" },
+    { index: 4, assetId: "factory.snare.main" },
+    { index: 8, assetId: "factory.hat.closed.soft" },
   ],
 };
 
@@ -117,11 +129,12 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
  * pad's sound — it only adds variation + dynamics to a hit that already played
  * that sample.
  */
-export const DEFAULT_BEAT_RR: ReadonlyArray<{ index: number; layers: import("../project-model/types").SampleLayer[] }> = [
-  // Stock kit pad 4 = factory.snare.main; pad 8 = factory.hat.closed.
-  { index: 4, layers: FACTORY_SNARE_DYNAMIC },
-  { index: 8, layers: FACTORY_HAT_DYNAMIC },
-];
+export const DEFAULT_BEAT_RR: ReadonlyArray<{ index: number; layers: import("../project-model/types").SampleLayer[] }> =
+  [
+    // Stock kit pad 4 = factory.snare.main; pad 8 = factory.hat.closed.
+    { index: 4, layers: FACTORY_SNARE_DYNAMIC },
+    { index: 8, layers: FACTORY_HAT_DYNAMIC },
+  ];
 
 /**
  * Per-genre feel (humanize defaults). A generated beat previously inherited
@@ -137,24 +150,25 @@ export const DEFAULT_BEAT_RR: ReadonlyArray<{ index: number; layers: import("../
  *   to the project), so setting it here too would double the swing. The value
  *   is owned by whichever path generated the notes.
  */
-export const GENRE_FEEL: Partial<Record<GenerateOptions["genre"], { humanizeTiming: number; humanizeVelocity: number }>> =
-  {
-    trap: { humanizeTiming: 0.06, humanizeVelocity: 0.12 },
-    drill: { humanizeTiming: 0.05, humanizeVelocity: 0.1 },
-    phonk: { humanizeTiming: 0.12, humanizeVelocity: 0.16 },
-    jersey: { humanizeTiming: 0.05, humanizeVelocity: 0.1 },
-    house: { humanizeTiming: 0.08, humanizeVelocity: 0.12 },
-    techno: { humanizeTiming: 0.04, humanizeVelocity: 0.08 },
-    dnb: { humanizeTiming: 0.06, humanizeVelocity: 0.14 },
-    // Ambient is deliberately almost flat — drift comes from the pads, not
-    // from jittered onsets.
-    ambient: { humanizeTiming: 0.15, humanizeVelocity: 0.1 },
-    // Hyperpop is deliberately rigid (grid-locked, machine energy); UKG swings
-    // hard — the shuffle IS the genre, so timing humanize stays low and the
-    // groove's swing carries it.
-    hyperpop: { humanizeTiming: 0.02, humanizeVelocity: 0.08 },
-    ukg: { humanizeTiming: 0.07, humanizeVelocity: 0.14 },
-  };
+export const GENRE_FEEL: Partial<
+  Record<GenerateOptions["genre"], { humanizeTiming: number; humanizeVelocity: number }>
+> = {
+  trap: { humanizeTiming: 0.06, humanizeVelocity: 0.12 },
+  drill: { humanizeTiming: 0.05, humanizeVelocity: 0.1 },
+  phonk: { humanizeTiming: 0.12, humanizeVelocity: 0.16 },
+  jersey: { humanizeTiming: 0.05, humanizeVelocity: 0.1 },
+  house: { humanizeTiming: 0.08, humanizeVelocity: 0.12 },
+  techno: { humanizeTiming: 0.04, humanizeVelocity: 0.08 },
+  dnb: { humanizeTiming: 0.06, humanizeVelocity: 0.14 },
+  // Ambient is deliberately almost flat — drift comes from the pads, not
+  // from jittered onsets.
+  ambient: { humanizeTiming: 0.15, humanizeVelocity: 0.1 },
+  // Hyperpop is deliberately rigid (grid-locked, machine energy); UKG swings
+  // hard — the shuffle IS the genre, so timing humanize stays low and the
+  // groove's swing carries it.
+  hyperpop: { humanizeTiming: 0.02, humanizeVelocity: 0.08 },
+  ukg: { humanizeTiming: 0.07, humanizeVelocity: 0.14 },
+};
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:
  * a non-zero humanize the user (or an earlier generation) already set wins,
@@ -164,8 +178,10 @@ export function applyGenreFeelToDoc(doc: ProjectDocument, genre: GenerateOptions
   const feel = GENRE_FEEL[genre];
   if (!feel) return doc;
   const current = doc.groove;
-  const humanizeTiming = current?.humanizeTiming && current.humanizeTiming > 0 ? current.humanizeTiming : feel.humanizeTiming;
-  const humanizeVelocity = current?.humanizeVelocity && current.humanizeVelocity > 0 ? current.humanizeVelocity : feel.humanizeVelocity;
+  const humanizeTiming =
+    current?.humanizeTiming && current.humanizeTiming > 0 ? current.humanizeTiming : feel.humanizeTiming;
+  const humanizeVelocity =
+    current?.humanizeVelocity && current.humanizeVelocity > 0 ? current.humanizeVelocity : feel.humanizeVelocity;
   if (current?.humanizeTiming === humanizeTiming && current?.humanizeVelocity === humanizeVelocity) return doc;
   return {
     ...doc,

@@ -50,11 +50,13 @@ try {
   let report = null;
   for (let attempt = 1; attempt <= 3 && !report; attempt++) {
     try {
-      const onlyArg = JSON.stringify(only);
+      // Playwright serializes the argument itself — passing JSON.stringify'd
+      // text would deliver a STRING in the page, and iterating it yields
+      // characters instead of effect types.
       report = await page.evaluate(async (onlyTypes) => {
         const mod = await import("/src/plugin-audit-checks.ts");
         return mod.runPluginAudit((msg) => console.log(`[audit] ${msg}`), onlyTypes);
-      }, onlyArg);
+      }, only);
     } catch (error) {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
       console.log("[retry] page reload race — retrying evaluate");

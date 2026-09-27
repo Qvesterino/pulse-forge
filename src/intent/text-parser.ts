@@ -101,6 +101,12 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "house"],
   [/\bmoombahton\b|\bmoombah(?:core|ton)?\b/, "house"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "house"],
+  // Gqom — the Durban broken-kick mutation (NO four-on-the-floor)
+  [/\bgqom\b/, "house"],
+  // Dembow dominicano BEFORE the generic dembow genre word — the rawer,
+  // 16th-filled Santo Domingo lane (house.dembowdom).
+  [/\bdembow dominicano\b|\bdominican dembow\b|\bdembow 2\.0\b/, "house"],
+  [/\bneoperreo\b|\bneo[- ]?perreo\b/, "house"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
   [/\blo-?fi house\b/, "house"],

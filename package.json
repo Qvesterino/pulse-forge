@@ -62,6 +62,7 @@
     "desktop:build:windows:mrt2": "node scripts/desktop-package-mrt2-windows.mjs",
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
     "build:mrt2-native-host": "node scripts/build-mrt2-native-host.mjs",
+    "build:clap-probe": "node scripts/build-clap-probe.mjs",
     "build:mrt2-windows-host": "node scripts/build-mrt2-windows-host.mjs",
     "benchmark:mrt2:windows": "node scripts/benchmark-mrt2-windows.mjs",
     "create:mrt2:windows:manifest": "node scripts/create-mrt2-windows-manifest.mjs",

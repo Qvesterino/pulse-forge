@@ -149,13 +149,25 @@ describe("router wiring", () => {
     const routed = routeIntentText("zvýš hlasitosť 808s o 10%", doc);
     expect(routed.kind).toBe("fader");
     if (routed.kind === "fader") {
-      expect(routed.intent.targets).toContain("bass");
-      expect(routed.intent.direction).toBe("up");
-      expect(routed.intent.percent).toBe(10);
+      expect(routed.intents).toHaveLength(1);
+      expect(routed.intents[0].targets).toContain("bass");
+      expect(routed.intents[0].direction).toBe("up");
+      expect(routed.intents[0].percent).toBe(10);
     }
     // untargeted shouts still belong to loudness
     expect(routeIntentText("make it louder", doc).kind).toBe("loudness");
     expect(routeIntentText("hlasitosť hore", doc).kind).toBe("loudness");
+  });
+
+  it("multi-action ask compounds into ONE fader route with both intents", () => {
+    const doc = testDoc();
+    const routed = routeIntentText("zníž basu a zvýš lead", doc);
+    expect(routed.kind).toBe("fader");
+    if (routed.kind === "fader") {
+      expect(routed.intents).toHaveLength(2);
+      expect(routed.intents[0]).toMatchObject({ targets: ["bass"], direction: "down" });
+      expect(routed.intents[1]).toMatchObject({ targets: ["lead"], direction: "up" });
+    }
   });
 });
 

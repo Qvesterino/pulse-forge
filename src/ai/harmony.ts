@@ -504,10 +504,7 @@ export function selectProgression(genre: string, seed: number): ChordProgression
  * Extend a progression to fill `targetBars` bars by looping it.
  * Each event covers `duration` steps (typically 4 = one bar at 4/4).
  */
-export function expandProgression(
-  progression: ChordProgression,
-  targetSteps: number,
-): ChordEvent[] {
+export function expandProgression(progression: ChordProgression, targetSteps: number): ChordEvent[] {
   const result: ChordEvent[] = [];
   let totalSteps = 0;
   let loop = 0;
@@ -537,11 +534,7 @@ export function chordToneSemitones(quality: ChordQuality): number[] {
  * previous voicing. Returns chord tones as semitone offsets from the root,
  * rotated to be closest to the previous voicing's intervals.
  */
-export function voiceLead(
-  previousPitches: number[],
-  rootPitch: number,
-  quality: ChordQuality,
-): number[] {
+export function voiceLead(previousPitches: number[], rootPitch: number, quality: ChordQuality): number[] {
   const intervals = CHORD_INTERVALS[quality];
   if (previousPitches.length === 0) return intervals.map((i) => rootPitch + i);
 

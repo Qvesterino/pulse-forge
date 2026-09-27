@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  const clap_plugin_entry *entry = (const clap_plugin_entry *)(void *)GetProcAddress(module, "clap_entry");
+  const clap_plugin_entry_t *entry = (const clap_plugin_entry_t *)(void *)GetProcAddress(module, "clap_entry");
   if (!entry) {
     fprintf(stderr, "probe: no clap_entry export\n");
     FreeLibrary(module);
@@ -119,8 +119,8 @@ int main(int argc, char **argv) {
     return 3;
   }
 
-  const clap_plugin_factory *factory =
-      (const clap_plugin_factory *)entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
+  const clap_plugin_factory_t *factory =
+      (const clap_plugin_factory_t *)entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
   if (factory) {
     const uint32_t count = factory->get_plugin_count(factory);
     for (uint32_t i = 0; i < count; i++) {

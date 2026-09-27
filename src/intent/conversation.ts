@@ -112,7 +112,23 @@ export function parseFaderIntent(text: string): FaderIntent | null {
 
 // ── CLARIFICATION: nearest interpretation for DECLINED fader asks ───────────
 
-const CLAUSE_SPLIT = /\s+(?:a|alebo|and|but|potom)\s+|,\s*|\s*;\s*/;
+const CLAUSE_SPLIT = /\s+(?:a|alebo|and|but|potom)\s+|,\s*|\s*;\s*/i;
+
+/**
+ * Per-clause parse for MULTI-ACTION fader asks ("zníž basu a zvýš lead").
+ * Splits on clause boundaries and parses each clause independently. Only
+ * clauses that fully resolve (direction + target) come back — the caller
+ * auto-executes ONLY when every clause resolved, otherwise a half-understood
+ * ask would silently drop the part it did not parse.
+ */
+export function parseFaderIntentClauses(text: string): FaderIntent[] {
+  return text
+    .split(CLAUSE_SPLIT)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0)
+    .map((clause) => parseFaderIntent(clause))
+    .filter((intent): intent is FaderIntent => intent !== null);
+}
 
 /**
  * Probe for fader asks the parser had to decline. Two shapes:
@@ -269,17 +285,19 @@ function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] 
   return byKind.map((track) => track.id);
 }
 
+interface FaderFold {
+  next: ProjectDocument;
+  faders: number;
+  /** Per-intent label fragment, e.g. "↓ [normal]: bass". */
+  label: string;
+}
+
 /**
- * Apply a fader intent → ONE undoable command. PER-PAD families ("kick ťažší",
- * "haty tichšie") drive setPadParams on the matching drum pads; track targets
- * drive setTrackParams / setMasterConfig. Pads first, then tracks — every
- * change folds into a single snapshot so one Ctrl+Z undoes the whole ask
- * (the panel's "(one undo step)" promise must be literally true).
- *
- * Returns null when NO pad/track resolved — the caller surfaces an explicit
- * "no matching track" error instead of mutating a guessed substitute.
+ * Fold ONE fader intent over the cursor. All gain reads come from the
+ * cursor, so stacked intents compose ("down the drums then up the drums"
+ * nets out instead of double-applying against a stale baseline).
  */
-export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Command | null {
+function foldFaderIntent(cursor: ProjectDocument, intent: FaderIntent): FaderFold {
   // Percent = relative gain change in the parsed direction (10 % → ×1.10 up
   // / ×0.90 down); vibe amounts are the fallback when no number is named.
   const factor =
@@ -291,11 +309,11 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
           const factors = FADER_FACTORS[intent.amount ?? "normal"];
           return intent.direction === "down" ? factors.down : factors.up;
         })();
-  let next = doc;
+  let next = cursor;
   let faders = 0;
 
   if ((intent.pads?.length ?? 0) > 0) {
-    const drumTrack = doc.tracks.find((track): track is DrumTrack => track.kind === "drum");
+    const drumTrack = cursor.tracks.find((track): track is DrumTrack => track.kind === "drum");
     if (drumTrack) {
       for (const [padIndex, pad] of drumTrack.pads.entries()) {
         const role = inferPadRole(pad.name, padIndex);
@@ -310,14 +328,14 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
 
   for (const target of intent.targets) {
     if (target === "master") {
-      const masterGain = doc.master?.masterGain ?? 1;
+      const masterGain = cursor.master?.masterGain ?? 1;
       next = setMasterConfig(next, {
         masterGain: Math.max(GAIN_MIN, Math.min(GAIN_MAX, masterGain * factor)),
       }).execute(next);
       faders += 1;
       continue;
     }
-    for (const trackId of trackIdsForTarget(doc, target)) {
+    for (const trackId of trackIdsForTarget(cursor, target)) {
       const track = next.tracks.find((track) => track.id === trackId);
       if (!track) continue;
       const gain = clampGain(track.gain * factor);
@@ -327,18 +345,51 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
     }
   }
 
-  if (faders === 0) return null;
   const label = [...intent.targets, ...(intent.pads ?? [])].join(" + ");
   const sizeNote =
     intent.percent != null
       ? `${intent.direction === "down" ? "−" : "+"}${intent.percent}%`
       : (intent.amount ?? "normal");
+  return {
+    next,
+    faders,
+    label: `${intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label}`,
+  };
+}
+
+/**
+ * Apply fader intents → ONE undoable command. PER-PAD families ("kick ťažší",
+ * "haty tichšie") drive setPadParams on the matching drum pads; track targets
+ * drive setTrackParams / setMasterConfig. Pads first, then tracks, then the
+ * next intent — every change folds into a single snapshot so one Ctrl+Z
+ * undoes the whole ask (the panel's "(one undo step)" promise must be
+ * literally true), including compound asks ("zníž basu a zvýš lead").
+ *
+ * Returns null when NO pad/track resolved — the caller surfaces an explicit
+ * "no matching track" error instead of mutating a guessed substitute.
+ */
+export function applyFaderIntents(doc: ProjectDocument, intents: FaderIntent[]): Command | null {
+  let next = doc;
+  let faders = 0;
+  const labels: string[] = [];
+  for (const intent of intents) {
+    const fold = foldFaderIntent(next, intent);
+    next = fold.next;
+    faders += fold.faders;
+    if (fold.faders > 0) labels.push(fold.label);
+  }
+  if (faders === 0) return null;
   return snapshot(
     "applyFaderIntent",
-    `Fader ${intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label} — ${faders} fader(s)`,
+    `Fader ${labels.join(" · ")} — ${faders} fader(s)`,
     doc,
     next,
   );
+}
+
+/** Single-intent convenience wrapper over {@link applyFaderIntents}. */
+export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Command | null {
+  return applyFaderIntents(doc, [intent]);
 }
 
 const TEMPO_STEP_BPM = 6;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
 import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudness";
-import { applyEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
+import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
 import { applyFaderIntent } from "../src/intent/conversation";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
@@ -15,6 +15,7 @@ import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc, drumTrackOf } from "./fixtures/doc";
 import { createInstrumentTrackModel } from "../src/project-model/schema";
 import { clampEffectParam, EFFECT_META } from "../src/effects/definitions";
+import { classifyPads } from "../src/assist/patternOps";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -110,14 +111,45 @@ describe("E2E fader: route → state → undo", () => {
     expect(applyFaderIntent(drumsOnly, { targets: ["lead"], direction: "up" })).toBeNull();
   });
 
-  it("conflicting directions decline instead of moving both targets down", () => {
+  it("conflicting directions clarify with per-clause executable suggestions", () => {
     const doc = testDoc();
     const route = routeIntentText("zníž basu a zvýš lead", doc);
-    expect(route.kind).not.toBe("fader");
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") {
+      expect(route.suggestions).toEqual(["zníž basu", "zvýš lead"]);
+      for (const suggestion of route.suggestions) {
+        expect(routeIntentText(suggestion, doc).kind).toBe("fader");
+      }
+    }
     // "zníž hlasitosť basu" is ONE direction — hlasitosť is the volume NOUN
     const single = routeIntentText("zníž hlasitosť basu", doc);
     expect(single.kind).toBe("fader");
     if (single.kind === "fader") expect(single.intent.direction).toBe("down");
+  });
+
+  it("direction without a target asks which fader, in the text's language", () => {
+    const doc = testDoc();
+    const sk = routeIntentText("zníž", doc);
+    expect(sk.kind).toBe("clarify");
+    if (sk.kind === "clarify") {
+      expect(sk.suggestions).toContain("zníž basu");
+      for (const suggestion of sk.suggestions) {
+        expect(routeIntentText(suggestion, doc).kind).toBe("fader");
+      }
+    }
+    const skUp = routeIntentText("hlasnejšie", doc);
+    expect(skUp.kind).toBe("clarify");
+    if (skUp.kind === "clarify") {
+      expect(skUp.suggestions.some((suggestion) => suggestion.includes("bicie"))).toBe(true);
+    }
+    const en = routeIntentText("turn down", doc);
+    expect(en.kind).toBe("clarify");
+    if (en.kind === "clarify") {
+      expect(en.suggestions).toContain("turn down the drums");
+      for (const suggestion of en.suggestions) {
+        expect(routeIntentText(suggestion, doc).kind).toBe("fader");
+      }
+    }
   });
 
   it("percent stays bounded (o 300 % clamps to 100 %)", () => {
@@ -296,15 +328,27 @@ describe("E2E mix route: detected vocabulary vs unintended defaults", () => {
     expect(instrumentTracks(store.doc).every((track) => !track.effects.some((fx) => fx.type === "reverb"))).toBe(true);
   });
 
-  it("REGRESSION: unresolvable effect asks fall to generation, not the default profile", () => {
+  it("REGRESSION: unresolvable effect asks clarify, never the default profile", () => {
     const doc = testDoc();
     const store = new ProjectStore(doc);
-    // "trumpets" names a target the engine cannot resolve — the old behavior
-    // applied the house-default mix profile (a sidechain pump on bass+chords)
-    // the user never asked for.
-    for (const text of ["more delay on the trumpets", "more compression", "some eq please"]) {
-      expect(routeIntentText(text, store.doc).kind).toBe("pattern");
+    // "trumpets" names a target the engine cannot resolve — the ORIGINAL
+    // behavior applied the house-default mix profile (a sidechain pump on
+    // bass+chords) the user never asked for; the fix first fell to pattern,
+    // now it clarifies with executable suggestions.
+    for (const text of ["more delay on the trumpets", "more compression"]) {
+      const route = routeIntentText(text, store.doc);
+      expect(route.kind).toBe("clarify");
+      if (route.kind === "clarify") {
+        expect(route.suggestions.length).toBeGreaterThan(0);
+        for (const suggestion of route.suggestions) {
+          expect(["fader", "exact", "effectIntent", "production", "mix"]).toContain(
+            routeIntentText(suggestion, store.doc).kind,
+          );
+        }
+      }
     }
+    // no direction word → not a declined effect ask → still a prompt
+    expect(routeIntentText("some eq please", store.doc).kind).toBe("pattern");
     // routing alone never mutated anything
     expect(store.undoStackLength).toBe(0);
   });
@@ -388,9 +432,11 @@ describe("E2E transactional contract", () => {
   it("generation-route texts never mutate the document by themselves", () => {
     const doc = testDoc();
     const store = new ProjectStore(doc);
-    for (const text of ["dark rolling techno at 140", "more delay on the trumpets", "tempo na 500"]) {
+    for (const text of ["dark rolling techno at 140", "tempo na 500", "beat with a dark drop"]) {
       expect(routeIntentText(text, store.doc).kind).toBe("pattern");
     }
+    // clarify declines too — it only TALKS
+    expect(routeIntentText("more delay on the trumpets", store.doc).kind).toBe("clarify");
     expect(store.undoStackLength).toBe(0);
     expect(store.doc).toBe(doc);
   });
@@ -408,5 +454,126 @@ describe("E2E parameter correctness", () => {
     // out-of-domain values clamp to the effect's own def, never pass through
     const maxMix = EFFECT_META.delay.params.find((param) => param.id === "mix")!.max;
     expect(clampEffectParam("delay", "mix", 99)).toBe(maxMix);
+  });
+});
+
+// ─── 9. EXACT pad families — per-pad pan/mute on the drum track ─────────────
+
+describe("E2E exact pad-family ops", () => {
+  it("pan the hats 40% right pans only the hat pads", () => {
+    const doc = testDoc();
+    const route = routeIntentText("pan the hats 40% right", doc);
+    expect(route.kind).toBe("exact");
+    if (route.kind === "exact") {
+      expect(route.plan.ops).toEqual([{ kind: "pan", target: "hats", value: 0.4 }]);
+    }
+    const next = executeRouted(doc, "pan the hats 40% right");
+    const drum = drumTrackOf(next);
+    const hatIds = new Set(classifyPads(drum.pads).hats.map((pad) => pad.id));
+    expect(hatIds.size).toBeGreaterThan(0);
+    const pansBefore = new Map(drumTrackOf(doc).pads.map((pad) => [pad.id, pad.pan]));
+    for (const pad of drum.pads) {
+      if (hatIds.has(pad.id)) expect(pad.pan).toBe(0.4);
+      else expect(pad.pan).toBe(pansBefore.get(pad.id));
+    }
+  });
+
+  it("mute the kick mutes only kick pads — the drum track stays live", () => {
+    const store = new ProjectStore(testDoc());
+    expect(routeIntentText("mute the kick", store.doc).kind).toBe("exact");
+    executeRouted(store.doc, "mute the kick", store);
+    const drum = drumTrackOf(store.doc);
+    const kickIds = new Set(classifyPads(drum.pads).kicks.map((pad) => pad.id));
+    expect(kickIds.size).toBeGreaterThan(0);
+    for (const pad of drum.pads) expect(pad.mute).toBe(kickIds.has(pad.id));
+    expect(drum.mute).toBe(false);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(drumTrackOf(store.doc).pads.every((pad) => !pad.mute)).toBe(true);
+  });
+
+  it("hyphenated hi-hats resolve as the hats family", () => {
+    const route = routeIntentText("mute the hi-hats", testDoc());
+    expect(route.kind).toBe("exact");
+    if (route.kind === "exact") {
+      expect(route.plan.ops).toEqual([{ kind: "mute", target: "hats", value: true }]);
+    }
+  });
+
+  it("pad families stay OUT of gain/transpose ops (no silent widening to the track)", () => {
+    const doc = testDoc();
+    // gainDb has no per-pad op — a family ask must not boost the whole drum
+    // track; the text simply is not an exact intent.
+    const route = routeIntentText("boost the hats by 2 db", doc);
+    expect(route.kind).not.toBe("exact");
+  });
+});
+
+// ─── 10. ABSOLUTE SET — "set X to N%" lands the knob exactly ────────────────
+
+describe("E2E absolute-set effect asks", () => {
+  it("set the lead reverb mix to 25% lands the knob at 25% of its range", () => {
+    const store = new ProjectStore(withLead());
+    const route = routeIntentText("set the lead reverb mix to 25%", store.doc);
+    expect(route.kind).toBe("effectIntent");
+    if (route.kind === "effectIntent") {
+      expect(route.intent.direction).toBe("set");
+      expect(route.intent.percent).toBe(25);
+    }
+    executeRouted(store.doc, "set the lead reverb mix to 25%", store);
+    const lead = store.doc.tracks.find(
+      (track): track is InstrumentTrack =>
+        track.kind === "instrument" && track.effects.some((fx) => fx.type === "reverb"),
+    );
+    expect(lead).toBeDefined();
+    const reverb = lead!.effects.find((fx) => fx.type === "reverb")!;
+    const mixDef = EFFECT_META.reverb.params.find((param) => param.id === "mix")!;
+    expect(reverb.params.mix).toBeCloseTo(mixDef.min + 0.25 * (mixDef.max - mixDef.min), 6);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(instrumentTracks(store.doc).every((track) => !track.effects.some((fx) => fx.type === "reverb"))).toBe(true);
+  });
+
+  it("SK: nastav delay na leade na 30 % sets the delay mix absolutely", () => {
+    const doc = withLead();
+    const route = routeIntentText("nastav delay na leade na 30 %", doc);
+    expect(route.kind).toBe("effectIntent");
+    if (route.kind === "effectIntent") {
+      expect(route.intent.direction).toBe("set");
+      expect(route.intent.percent).toBe(30);
+    }
+    const next = executeRouted(doc, "nastav delay na leade na 30 %");
+    const lead = instrumentTracks(next).find((track) => track.effects.some((fx) => fx.type === "delay"))!;
+    const delay = lead.effects.find((fx) => fx.type === "delay")!;
+    const mixDef = EFFECT_META.delay.params.find((param) => param.id === "mix")!;
+    expect(delay.params.mix).toBeCloseTo(mixDef.min + 0.3 * (mixDef.max - mixDef.min), 6);
+  });
+
+  it("a foreign knob ask declines — the engine never retunes a different param", () => {
+    const doc = withLead();
+    // "time" is a real delay param, but NOT the intent knob — the old shape
+    // of this text would have slammed the mix knob to full.
+    expect(parseEffectIntent("set the delay time to 375%")).toBeNull();
+    const route = routeIntentText("set the delay time to 375%", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") {
+      expect(route.suggestions[0]).toContain("set delay mix");
+    }
+  });
+
+  it("set clamps out-of-range percentages (250% → knob max)", () => {
+    const doc = withLead();
+    const next = executeRouted(doc, "set the lead reverb mix to 250%");
+    const lead = instrumentTracks(next).find((track) => track.effects.some((fx) => fx.type === "reverb"))!;
+    const reverb = lead.effects.find((fx) => fx.type === "reverb")!;
+    expect(reverb.params.mix).toBe(EFFECT_META.reverb.params.find((param) => param.id === "mix")!.max);
+  });
+
+  it("the vocal target parses (audit example) and fails explicitly without takes", () => {
+    const doc = testDoc();
+    const intent = parseEffectIntent("set the vocal reverb mix to 25%");
+    expect(intent).toMatchObject({ effectType: "reverb", direction: "set", targets: ["vocal"] });
+    // no arrangement audio in the fixture → explicit failure, never silence
+    expect(() => applyEffectIntent(doc, intent!)).toThrow(/no tracks match/);
   });
 });

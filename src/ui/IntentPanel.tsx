@@ -34,7 +34,7 @@ import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { mutateBeat } from "../gallery/lineage";
-import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
+import { applyFaderIntents, applyTempoIntent } from "../intent/conversation";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { resolveVocalTake } from "../vocal/resolve";
@@ -1833,7 +1833,8 @@ export function IntentPanel() {
       } else if (route.kind === "fader") {
         // GOAL 38/40: "zníž basu" / "kick ťažší" / "hlasnejšie bicie" — real
         // pad + track gain changes with amount modifiers, ONE undo step.
-        const command = applyFaderIntent(doc, route.intent);
+        // Compound asks ("zníž basu a zvýš lead") ride the same snapshot.
+        const command = applyFaderIntents(doc, route.intents);
         if (!command) {
           setError("no matching track or pad for the fader intent");
           return;
@@ -1927,6 +1928,12 @@ export function IntentPanel() {
           await runGeneration(intentInput, controller);
           setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
         }
+      } else if (route.kind === "clarify") {
+        // Declined intent (conflict / no target / unaddressable param) —
+        // offer the nearest executable interpretations, mutate nothing.
+        stopAudition();
+        setClarify({ reason: route.reason, suggestions: route.suggestions });
+        setStatus(route.reason);
       } else {
         await generate();
       }
@@ -1997,6 +2004,25 @@ export function IntentPanel() {
       {error && (
         <div className="intent-error" role="alert">
           {error}
+        </div>
+      )}
+      {clarify && clarify.suggestions.length > 0 && (
+        <div className="intent-history" aria-label="Nearest interpretations">
+          <span className="intent-history-label">INTENT?</span>
+          {clarify.suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              className="intent-history-chip"
+              title="Použiť túto interpretáciu"
+              onClick={() => {
+                replacePrompt(suggestion, true);
+                void routeAndExecute(suggestion);
+              }}
+            >
+              {suggestion.length > 42 ? suggestion.slice(0, 40) + "…" : suggestion}
+            </button>
+          ))}
         </div>
       )}
       {status && (

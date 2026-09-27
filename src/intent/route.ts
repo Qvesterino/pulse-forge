@@ -3,7 +3,7 @@ import { parseArrangeIntent, type ArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
-import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
+import { parseFaderIntent, parseFaderIntentClauses, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 import { parseExactIntent, type ExactIntentPlan } from "./exact";
@@ -158,7 +158,7 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
   | { kind: "exact"; plan: ExactIntentPlan }
-  | { kind: "fader"; intent: FaderIntent }
+  | { kind: "fader"; intents: FaderIntent[] }
   | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
@@ -183,7 +183,9 @@ export type RoutedIntent =
  *      the drums", "pan the bass left 30", "transpose the lead up one
  *      octave", "set tempo to 142").
  *   3. FADER — a NAMED track fader ask ("zníž basu", "hlasitosť 808s o 10 %"):
- *      targeted beats global, so it wins over the loudness loop below.
+ *      targeted beats global, so it wins over the loudness loop below. When
+ *      the whole text declines but EVERY clause parses ("zníž basu a zvýš
+ *      lead"), the clauses execute together in one undo step.
  *   4. LOUDNESS — untargeted louder/quieter shouts ("make it louder") and
  *      explicit targets ("loudness na −9") — the master measure→trim loop.
  *   5. TEMPO / POP VIBE — "tempo na 128", "popovejšie".
@@ -232,7 +234,17 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   }
   const fader = parseFaderIntent(text);
   if (fader) {
-    return { kind: "fader", intent: fader };
+    return { kind: "fader", intents: [fader] };
+  }
+  // MULTI-ACTION fader asks ("zníž basu a zvýš lead"): the whole-text parse
+  // declines above (a single FaderIntent cannot carry two directions), but
+  // when EVERY clause resolves on its own, execute them all in ONE undoable
+  // command instead of asking the user to split the sentence. Partially
+  // parseable asks still fall to the clarification probe below — a compound
+  // must never silently drop the clause it did not understand.
+  const clauseIntents = parseFaderIntentClauses(text);
+  if (clauseIntents.length >= 2) {
+    return { kind: "fader", intents: clauseIntents };
   }
   const loudness = parseLoudnessIntent(text);
   if (loudness) {

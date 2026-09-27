@@ -149,7 +149,8 @@ export function planMixProfile(
     overrides.punch ??
     (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : (artistMix?.punch ?? null));
   const lushGenre = genre === "ambient";
-  const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk" || genre === "hyperpop";
+  const dryGenre =
+    genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk" || genre === "hyperpop";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -742,11 +743,7 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
   if (updates === 0) throw new Error("effect intent changed nothing — the mix already matches");
 
   const scaleNote =
-    intent.direction === "set"
-      ? `= ${intent.percent}%`
-      : intent.percent != null
-        ? `±${intent.percent}%`
-        : `×${scale}`;
+    intent.direction === "set" ? `= ${intent.percent}%` : intent.percent != null ? `±${intent.percent}%` : `×${scale}`;
   return snapshot(
     "applyEffectIntent",
     `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ${scaleNote}`].join(", ")}`,
