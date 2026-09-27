@@ -1,0 +1,20 @@
+{
+  "source": "https://download.steinberg.net/sdk_downloads/asiosdk_2.3.3_2019-06-14.zip",
+  "zipSha256": "bc425d9b98701af74b43639798566c48bc005af7328a2251cff722c1885076b2",
+  "license": "Steinberg ASIO SDK license — free to use, NOT redistributable; this directory is gitignored",
+  "vendoredAt": "2026-09-27T01:38:46.953Z",
+  "files": [
+    {
+      "path": "common/asio.h",
+      "sha256": "a06b5262abab652d74faf5c743b38c71469ac281352351bf93d910e9afd7dd0d"
+    },
+    {
+      "path": "common/asiosys.h",
+      "sha256": "00f406f6733b1f1c144c140e9915f3ceaea76598adb7c2b1f2378c343ab00228"
+    },
+    {
+      "path": "common/iasiodrv.h",
+      "sha256": "861f110bc7cf0756ee10e0ea4d57e2964f8d8359cd6c9483d8b47785bcc9e79c"
+    }
+  ]
+}

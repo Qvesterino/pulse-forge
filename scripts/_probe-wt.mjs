@@ -13,12 +13,15 @@ const out = await page.evaluate(async () => {
   const loader = await import("/src/audio-worklets/loader.ts");
   const mk = (kind, id) => ({ id, kind: "instrument", instrument: kind, name: kind, gain: 1, pan: 0, mute: false, solo: false, sampleId: null, params: reg.defaultInstrumentParams(kind), effects: [], sends: {} });
   const peakOf = (buf) => { let v = 0; for (const ch of [0,1]) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) v = Math.max(v, Math.abs(d[i])); } return v; };
+  const bank = (await import("/src/sample-library/factory.ts")).generateFactoryBank();
   const run = async (kind, loadWorklets, live) => {
     let ctx;
     if (live) { ctx = new AudioContext(); if (ctx.state === "suspended") await ctx.resume(); }
     else ctx = new OfflineAudioContext(2, 44100, 44100);
     if (loadWorklets) await loader.loadAllWorklets(ctx);
-    const rt = reg.INSTRUMENT_DEFS[kind].factory(ctx, mk(kind, "p"), { bpm: 124, getSample: () => undefined });
+    const track = mk(kind, "p");
+    if (kind === "granular") { track.sampleId = "factory.tonal.keys"; track.params = { ...track.params, release: 0.01, rate: 30 }; }
+    const rt = reg.INSTRUMENT_DEFS[kind].factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
     rt.output.connect(ctx.destination);
     if (live) {
       rt.noteOn(60, 0.9, ctx.currentTime + 0.05, 0.5);

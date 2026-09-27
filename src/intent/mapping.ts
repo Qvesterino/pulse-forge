@@ -22,6 +22,11 @@ function clamp(lo: number, hi: number, v: number): number {
  * The `_dice*` hints are read by generateDrumPattern AND by the melodic
  * consumers (generateMelodicParts, generateMultiVoice) — P2 closed the
  * "energy is a drums-only slider" gap.
+ *
+ * NOTE the metric-accent hint is NOT derived here: the default intent takes
+ * the fast path below (returns `base` untouched), and a plain "drill" request
+ * is exactly a default intent. `generateOptionsFromIntent` seeds it in `base`
+ * so every intent — default or explicit — carries it.
  */
 export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): GenerateOptions {
   // Fast path: default intent (0.7/0.5/0.5) → no mapping (preserve golden-render)
@@ -33,7 +38,6 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
   if (isDefaultEnergy && isDefaultDensity && isDefaultComplexity && isDefaultVariation && isDefaultMood) {
     return base;
   }
-
   let ghostWeight = base.ghostWeight;
   let microWeight = base.microWeight;
   let velocityVariation = base.velocityVariation;
@@ -54,12 +58,6 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
 
   // Variation → temperature + bar variation
   temperature = clamp(0.2, 2, temperature * (0.8 + intent.variation * 0.5));
-
-  // Metric accent — derived AFTER the velocity variation is final, so the
-  // metrical shape scales with the dynamics the intent actually asked for.
-  // 0 = legacy random-only velocity; ≈0.5 = a clear bar hierarchy. Never
-  // reaches 1: the written groove must still be recognisable underneath.
-  const metricAccent = clamp01((velocityVariation - 0.15) * 1.1) * 0.75;
 
   // Mood tweaks
   const mood = intent.mood?.toLowerCase() ?? null;
@@ -85,12 +83,9 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
     microWeight,
     velocityVariation,
     temperature,
-    // Metric accent: shape hit velocity by metrical position so the pad's
-    // velocity LAYERS pick the ghost / accent timbres musically (a 16th reads
-    // soft, a downbeat hard) instead of by chance. Scaled by the intent's
-    // velocity variation — a flat "no dynamics" ask keeps the legacy random
-    // velocity untouched, an expressive ask gets the metrical shape.
-    ...(metricAccent > 0 ? { _metricAccent: metricAccent } : {}),
+    // Metric accent follows the FINAL velocity variation (energy + mood
+    // included), so an energetic ask gets a stronger metrical shape.
+    _metricAccent: metricAccentFromVelocityVariation(velocityVariation),
     // Pass hints for drums post-processing (cast to extended type)
     // These are read by generateDrumPattern if present.
     ...(intent.density !== 0.5 ? { _diceDensity: intent.density } : {}),
@@ -100,8 +95,21 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
     _diceDensity?: number;
     _diceComplexity?: number;
     _diceEnergy?: number;
-    _metricAccent?: number;
   };
+}
+
+/**
+ * Metric-accent strength from a FINAL velocity variation: a flat "no
+ * dynamics" ask keeps the legacy random-only velocity, an expressive ask gets
+ * the metrical shape. Capped at 0.75 so the written groove stays recognisable.
+ *
+ * Single source of truth for the curve — used by `mapIntentToOptions` (which
+ * has the energy/mood-adjusted value) and by `plan.ts` (which seeds the
+ * default-intent fast path).
+ */
+export function metricAccentFromVelocityVariation(velocityVariation: number): number {
+  const v = Math.max(0, Math.min(1, Number.isFinite(velocityVariation) ? velocityVariation : 0));
+  return Math.max(0, Math.min(1, (v - 0.15) * 1.1)) * 0.75;
 }
 
 /** Extract dice hints from options (if mapped). */

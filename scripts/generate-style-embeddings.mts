@@ -54,11 +54,14 @@ const styleEmbeddings: Record<string, number[]> = {};
 const styleEmbeddingVariants: Record<string, number[][]> = {};
 const genreFor: Record<string, string> = {};
 
-// DnB training rows (vocabulary wave): the fixed one-hot vocab stays frozen
-// for the shipped v1 models, but the semantic pack gains the dnb.* groove
-// ids so embedding-conditioned trainers (v2/v3) learn true dnb regions.
-const DNB_STYLE_IDS = DNB_GROOVES.map((groove) => groove.id);
-for (const styleId of [...PRIOR_STYLE_VOCAB, ...DNB_STYLE_IDS]) {
+// Training coverage (vocabulary wave 2): the fixed one-hot vocab stays frozen
+// for the shipped v1 models, but the semantic pack now carries EVERY groove in
+// the library — ukg / drill / phonk / jersey / hyperpop groves included — so
+// embedding-conditioned trainers (v2/v3) learn true regions per sub-genre.
+// (DnB was the first such wave; this generalises it to the whole library.)
+const LIBRARY_STYLE_IDS = GROOVE_LIBRARY.map((groove) => groove.id);
+const ALL_STYLE_IDS = [...new Set([...PRIOR_STYLE_VOCAB, ...DNB_GROOVES.map((g) => g.id), ...LIBRARY_STYLE_IDS])];
+for (const styleId of ALL_STYLE_IDS) {
   const genre = styleId.split(".")[0] as "house" | "techno" | "trap" | "ambient" | "dnb";
   const styleKey = styleId.split(".")[1] ?? styleId;
   genreFor[styleId] = genre;

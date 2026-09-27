@@ -19,6 +19,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                           |
 | └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                              |
 | **Project templates**                  |  **13** | `TemplateId` union in `src/project-model/templates.ts`                                                                        |
+| **First-class genres**                 |  **10** | `GENRES` in `src/ai/types.ts` (house/techno/trap/ambient/drill/phonk/jersey/dnb + hyperpop/ukg promoted)                       |
+| **Groove library entries**             |  **98** | `GROOVE_LIBRARY` in `src/ai/grooves/index.ts`                                                                                 |
 | **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                          |
 | └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only) |
 | **Factory presets**                    | **469** | `src/presets/factory.ts`                                                                                                      |

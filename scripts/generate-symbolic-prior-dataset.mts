@@ -17,7 +17,6 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
-import { DNB_GROOVES } from "../src/ai/grooves/dnb";
 import { PAD_NAMES } from "../src/ai/types";
 import { inferPadRole } from "../src/ai/pad-roles";
 import {
@@ -28,29 +27,23 @@ import {
   padRoleForIndex,
 } from "../src/ai/symbolic/prior-features";
 
-const DATASET_VERSION = "symbolic-prior-ds.v2";
+const DATASET_VERSION = "symbolic-prior-ds.v3";
 // 16 + 32-step frames teach both the bar grid and the longer-frame position
 // features; 64+ only duplicates the 16-frame labels without new information.
 const FRAME_LENGTHS = [16, 32] as const;
 
-// Contract guard: the dataset covers ONLY styles the fixed runtime vocabulary
-// can address (44-dim one-hot layout). Grooves outside the vocab (drill,
-// phonk, jersey, …) stay on the template path until a matching model is
-// trained — filtering here keeps the check a no-op for library growth.
-// DnB grooves additionally train through the semantic pack (v2/v3 embedding
-// trainers resolve them via style-embeddings.json, not the one-hot vocab).
+// Contract guard: the fixed one-hot vocab is frozen for the shipped v1/v3
+// models, but embedding-conditioned trainers (v2) resolve styles through
+// style-embeddings.json. Every groove in the LIBRARY therefore trains: rows
+// outside the one-hot vocab keep their (all-zero) one-hot block and are
+// picked up by the semantic channel instead. The generator no longer filters.
 const vocabSet = new Set<string>(PRIOR_STYLE_VOCAB);
-const DNB_IDS = new Set<string>(DNB_GROOVES.map((groove) => groove.id));
 const libraryIds = GROOVE_LIBRARY.map((groove) => groove.id).sort();
 const outOfVocab = libraryIds.filter((id) => !vocabSet.has(id));
-const dnbExcluded = outOfVocab.filter((id) => DNB_IDS.has(id));
-const templateOnly = outOfVocab.filter((id) => !DNB_IDS.has(id));
-if (templateOnly.length > 0 || dnbExcluded.length > 0) {
+if (outOfVocab.length > 0) {
   console.warn(
-    `[dataset] ${templateOnly.length} groove(s) outside vocab — template path only: ${templateOnly.slice(0, 6).join(", ")}` +
-      (dnbExcluded.length > 0
-        ? ` | ${dnbExcluded.length} dnb groove(s) train via the semantic pack: ${dnbExcluded.join(", ")}`
-        : ""),
+    `[dataset] ${outOfVocab.length} groove(s) train via the semantic pack only ` +
+      `(outside the frozen one-hot vocab): ${outOfVocab.slice(0, 6).join(", ")}${outOfVocab.length > 6 ? " …" : ""}`,
   );
 }
 const vocabOnlyIds = libraryIds.filter((id) => vocabSet.has(id));
@@ -73,7 +66,9 @@ const samples: DatasetSample[] = [];
 let hitCount = 0;
 
 for (const groove of GROOVE_LIBRARY) {
-  if (!vocabSet.has(groove.id) && !DNB_IDS.has(groove.id)) continue; // out-of-vocab grooves: template path only
+  // Every library groove trains. One-hot rows outside the frozen vocab are
+  // all-zero in that block — the semantic channel (style-embeddings.json)
+  // carries the style for those, so v2/v3 learn real sub-genre regions.
   for (const [patternIndex, pattern] of groove.patterns.entries()) {
     for (const frameLength of FRAME_LENGTHS) {
       for (let padIndex = 0; padIndex < 16; padIndex++) {

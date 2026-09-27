@@ -35,8 +35,24 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
       intent.targetTracks.instrumentTrackIds.length > 0 ? [...intent.targetTracks.instrumentTrackIds] : undefined,
     sourcePatternId: intent.sourcePatternId ?? undefined,
     applyGrooveSettings: intent.applyGrooveSettings,
+    // Metric accent rides in `base` (derived from the intent's velocity
+    // variation) because mapIntentToOptions' default-intent fast path returns
+    // `base` untouched — and a plain "drill" request IS a default intent. Set
+    // here, every intent path carries the metrical velocity shape.
+    _metricAccent: metricAccentFor(intent),
   };
   return mapIntentToOptions(intent, base);
+}
+
+/**
+ * Metric-accent strength from the intent's velocity variation: a flat
+ * "no dynamics" ask (variation ≈ 0.15) keeps the legacy random-only velocity,
+ * an expressive ask gets the metrical shape. Capped at 0.75 so the written
+ * groove stays recognisable underneath.
+ */
+export function metricAccentFor(intent: IntentSpec): number {
+  const variation = Math.max(0, Math.min(1, intent.controls.velocityVariation));
+  return Math.max(0, Math.min(1, (variation - 0.15) * 1.1)) * 0.75;
 }
 
 function resolveBpm(bpm: [number, number], requested: [number, number] | null): number | null {

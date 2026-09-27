@@ -88,6 +88,7 @@
           "kind": "bass",
           "defaults": {
             "sub": 0.6,
+            "subMode": 0,
             "body": 0.7,
             "punch": 0.5,
             "grit": 0.25,
@@ -299,6 +300,19 @@
             "resonance": 1.6,
             "release": 0.25,
             "level": -7
+          }
+        },
+        {
+          "kind": "clav",
+          "defaults": {
+            "pick": 0.5,
+            "damp": 0.55,
+            "click": 0.4,
+            "growl": 0.25,
+            "cutoff": 5200,
+            "resonance": 1.1,
+            "release": 0.12,
+            "level": -8
           }
         },
         {
@@ -1343,6 +1357,28 @@
       "input": {
         "kind": "reese",
         "paramId": "detune",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam clav:pick",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "clav",
+        "paramId": "pick",
         "probes": [
           -100,
           0,

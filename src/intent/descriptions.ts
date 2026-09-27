@@ -32,6 +32,9 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   dnb: ["drum and bass", "dnb", "jungle", "neurofunk", "liquid dnb"],
   hyperpop: ["hyperpop", "hyper pop", "maximalist pop", "deconstructed club"],
   ukg: ["UK garage", "ukg", "2-step", "speed garage"],
+  drill: ["drill", "drill beat", "sliding 808", "dark drill"],
+  phonk: ["phonk", "memphis phonk", "drift phonk", "cowbell phonk"],
+  jersey: ["jersey club", "brick city club", "bounce club", "jersey bounce"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -81,6 +84,11 @@ const TEMPO_WORDS: Record<string, string[]> = {
   trap: ["at 140", "at 145", "at 150", "half-time feel"],
   ambient: ["slow", "at 80", "at 90", "spacious tempo"],
   dnb: ["at 174", "at 176", "at 172", "breakneck tempo"],
+  drill: ["at 142", "at 145", "at 140", "sliding tempo"],
+  phonk: ["at 145", "at 150", "at 130", "drift tempo"],
+  jersey: ["at 140", "at 138", "at 135", "bounce tempo"],
+  ukg: ["at 132", "at 134", "at 130", "shuffle tempo"],
+  hyperpop: ["at 150", "at 160", "at 140", "glitch tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

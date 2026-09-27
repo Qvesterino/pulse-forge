@@ -866,6 +866,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "strings",
   "bell",
   "reese",
+  "clav",
   "acid",
   "brass",
   "fm",

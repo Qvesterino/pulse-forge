@@ -43,6 +43,18 @@ function clampBpm(bpm: number): number {
   return Math.max(20, Math.min(300, bpm || 120));
 }
 
+/**
+ * True for offline render contexts. Event-queue worklets (wtVoice/grainVoice)
+ * take their notes via port messages, and Chromium does not pump processor
+ * message queues during an OfflineAudioContext render — queued notes surface
+ * only after the buffer is already rendered. Factories gate those worklet
+ * paths on !offlineRenderContext(ctx) so exports render through the native
+ * voice graphs (which schedule every envelope up front) instead of silence.
+ */
+function offlineRenderContext(ctx: BaseAudioContext): boolean {
+  return typeof OfflineAudioContext !== "undefined" && ctx instanceof OfflineAudioContext;
+}
+
 function noiseBuffer(ctx: BaseAudioContext, seed: number): AudioBuffer {
   const length = Math.floor(ctx.sampleRate);
   const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
@@ -1882,7 +1894,13 @@ const wavetable: InstrumentDefinition = {
     // remains the honest fallback.
     const output = ctx.createGain();
     output.gain.value = 1;
-    if (isWorkletReady("wtVoice", ctx)) {
+    // The wtvoice worklet receives NOTES via port messages, and Chromium
+    // does not pump processor message queues during an OfflineAudioContext
+    // render — queued notes surface only after the buffer is done, so the
+    // worklet path exported SILENCE for every wavetable track (live was
+    // fine). Offline renders use the native voice graph, which schedules
+    // all envelopes up front and renders deterministically.
+    if (!offlineRenderContext(ctx) && isWorkletReady("wtVoice", ctx)) {
       const node = new AudioWorkletNode(ctx, "wtvoice-processor", {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -2417,7 +2435,11 @@ const granular: InstrumentDefinition = {
     // loaded, grains are scheduled per-sample inside the processor and the
     // playhead (POSITION/SCAN/JITTER/RATE/SIZE) is live during held notes.
     // Otherwise the deterministic upfront-scheduled cloud below stays.
-    if (isWorkletReady("grainVoice", ctx)) {
+    // The grainVoice worklet receives notes via port messages, which
+    // Chromium does not deliver during an OfflineAudioContext render —
+    // offline exports went silent, so offline uses the upfront-scheduled
+    // native cloud (see the wavetable note above).
+    if (!offlineRenderContext(ctx) && isWorkletReady("grainVoice", ctx)) {
       const node = new AudioWorkletNode(ctx, "granular-voice-processor", {
         numberOfInputs: 0,
         numberOfOutputs: 1,

@@ -73,3 +73,7 @@ public/models/ort/ort-wasm-simd-threaded.jspi.*
 
 # CLAP probe native build artifacts (ADR 0016)
 native/clap-probe/build/
+
+# ASIO SDK headers are NOT redistributable (Steinberg license) — fetched per machine
+native/asio-host/asio-sdk/
+native/asio-host/build/

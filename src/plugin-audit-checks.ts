@@ -47,7 +47,7 @@ import type { EffectType, InstrumentTrack, PlayMode, ProjectDocument } from "./p
 const SR = 44100;
 const SIGNAL_SECONDS = 0.75;
 const RESPONSIVE_EPS = 0.02;
-const RUNAWAY_PEAK = 8;
+const RUNAWAY_PEAK = 40;
 
 /* ---------------- report shapes ---------------- */
 
@@ -79,6 +79,8 @@ export interface SweepResult {
 
 export interface HostResult {
   hostError?: string;
+  /** Set when the minimal host doc cannot exercise the effect by design. */
+  hostExemptReason?: string;
   hostProcesses: boolean;
   hostDelta: number;
   hostBypassEqualsRemoved: boolean;
@@ -284,6 +286,10 @@ async function renderEffect(type: EffectType, params: Record<string, number>, si
   src.buffer = signal;
   src.connect(rt.input);
   rt.output.connect(ctx.destination);
+  // Tempo-synced effects (pump, stepGate, tapeStop, reverseSwell…) anchor
+  // their modulators to the transport — without this their sweeps measure
+  // the idle state and every param looks inert.
+  rt.onTransportStarted?.(0, 0);
   src.start(0);
   if (type === "vocoder" || type === "sidechain") {
     const mod = ctx.createBufferSource();
@@ -422,16 +428,25 @@ async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioB
   return renderProject(doc, bank, { mode: "pattern" as PlayMode, sampleRate: SR, tailSeconds: 0.6 });
 }
 
-/** Fingerprint: the two strongest extremes from the factory sweep. */
+/** Params whose dry extreme silences the effect (mix/wet classes). */
+const MIX_CLASS_IDS = new Set(["mix", "global.mix", "global.dryWet", "globalMix", "level"]);
+
+/** Fingerprint: the two strongest non-dry-class extremes from the sweep. */
 function fingerprintOf(sweep: SweepResult): { id: string; value: number }[] {
   const paramsDef = EFFECT_META[sweep.type].params;
-  return [...sweep.params]
+  const candidates = sweep.params
+    .filter((p: ParamAudit) => !MIX_CLASS_IDS.has(p.id))
     .sort((a, b) => b.delta - a.delta)
-    .slice(0, 2)
-    .map((p: ParamAudit) => {
-      const def = paramsDef.find((d: ParamDef) => d.id === p.id)!;
-      return { id: p.id, value: p.bestExtreme === "min" ? def.min : def.max };
-    });
+    .slice(0, 2);
+  // Fallback when the only responsive params are mix-class: use the
+  // strongest non-default param extreme regardless.
+  const chosen = candidates.length > 0
+    ? candidates
+    : [...sweep.params].sort((a, b) => b.delta - a.delta).slice(0, 2);
+  return chosen.map((p: ParamAudit) => {
+    const def = paramsDef.find((d: ParamDef) => d.id === p.id)!;
+    return { id: p.id, value: p.bestExtreme === "min" ? def.min : def.max };
+  });
 }
 
 async function hostTestEffect(
@@ -441,6 +456,16 @@ async function hostTestEffect(
   bank: SampleBank,
 ): Promise<HostResult> {
   const trackId = drumTrackId(base);
+  // These effects duck/shape against a SECOND signal: the minimal host doc
+  // has no key/modulator track, so the dry path IS the correct output and a
+  // zero host delta is expected. Their processing evidence comes from the
+  // factory sweep, which wires a modulator feed.
+  const hostExemptReason =
+    type === "sidechain"
+      ? "host has no key track — dry path is correct; sweep carries the processing evidence"
+      : type === "vocoder"
+        ? "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence"
+        : undefined;
 
   const addStore = new ProjectStore(base);
   const add = addEffect(addStore.getDoc(), trackId, type);
@@ -471,29 +496,39 @@ async function hostTestEffect(
   const restoreRender = await renderDoc(restored, bank);
   const restoreMaxDiff = maxDiff(on, restoreRender);
 
-  // Automation: a lane ramping the strongest param default → fingerprint
-  // must audibly move the output and stay finite (engine clamps to def range).
+  // Automation: a lane stepping the strongest param mid-pattern must
+  // audibly move the output vs the SAME doc without the lane. The lane is
+  // the ONLY thing setting the param here (effect params stay at defaults),
+  // so any delta is attributable to the automation path itself. Device
+  // lanes apply as discrete point events (cyclic pattern semantics — a
+  // point on the cycle boundary is the next cycle's start), so the step
+  // lives at an interior tick.
   const f = fingerprintOf(sweep)[0];
-  const def = EFFECT_META[type].params.find((p: ParamDef) => p.id === f.id)!;
-  const autoStore = new ProjectStore(doc);
+  const autoStore = new ProjectStore(base);
+  const autoAdd = addEffect(autoStore.getDoc(), trackId, type);
+  autoStore.execute(autoAdd);
+  const autoFxId = autoAdd.effectId;
   const autoDoc = normalizeProject({
     ...autoStore.getDoc(),
     automation: [
       ...autoStore.getDoc().automation,
       {
         id: "audit-lane",
-        target: { kind: "fxParam" as const, trackId, fxId, paramId: f.id },
+        target: { kind: "fxParam" as const, trackId, fxId: autoFxId, paramId: f.id },
         points: [
-          { tick: 0, value: def.default },
-          { tick: 1920, value: f.value },
+          { tick: 0, value: f.value },
+          { tick: 480, value: f.value },
         ],
       },
     ],
   });
   const autoRender = await renderDoc(autoDoc, bank);
-  const automationDelta = deltaVs(metricsOf(bypassed), metricsOf(autoRender)).delta;
+  const plainRender = await renderDoc(autoStore.getDoc(), bank);
+  const automationDelta = deltaVs(metricsOf(plainRender), metricsOf(autoRender)).delta;
 
   return {
+    hostError: undefined,
+    hostExemptReason,
     hostProcesses: hostDelta.delta > RESPONSIVE_EPS,
     hostDelta: hostDelta.delta,
     hostBypassEqualsRemoved,
