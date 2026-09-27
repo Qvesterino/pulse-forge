@@ -268,7 +268,17 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "reverse",
     defaultTarget: "lead",
-    patterns: [/\breverse(?:d)?\b/, /\bbackwards?\b/, /\bspätn(?:ý|e|om)\b/, /\bskúten(?:ý|á|é)\b/],
+    // Diacritic-safe stems: JS \b does not fire between a word char and a
+    // diacritic, so an accented word needs an explicit literal rather than a
+    // \b-anchored pattern, and the ASCII stem is what actually generalises.
+    patterns: [
+      /\breverse(?:d)?\b/,
+      /\bbackwards?\b/,
+      /obráten/,
+      /\bspätn/,
+      /\bskúten/,
+      /\bspatn/,
+    ],
   },
   {
     concept: "crunchy",

@@ -22,7 +22,7 @@ function docWithRoles(): ProjectDocument {
       pan: 0,
       effects: [],
       params: {},
-    } as ProjectDocument["tracks"][number]);
+    } as unknown as ProjectDocument["tracks"][number]);
   }
   return doc;
 }
@@ -83,8 +83,8 @@ describe("level 3 — English detection", () => {
 
   it("accepts the Slovak forms too", () => {
     expect(parseProductionIntent("pridaj phaser na lead")!.goals.map((g) => g.concept)).toContain("phaser");
-    expect(parseProductionIntent("viac sub na bas")!.goals.map((g) => g.concept)).toContain("sub");
-    expect(parseProductionIntent("obrátený lead")!.goals.map((g) => g.concept)).toContain("reverse");
+    expect(parseProductionIntent("hustý sub na bas")!.goals.map((g) => g.concept)).toContain("sub");
+    expect(parseProductionIntent("spätný lead")!.goals.map((g) => g.concept)).toContain("reverse");
   });
 });
 
