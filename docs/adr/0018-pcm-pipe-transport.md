@@ -59,11 +59,14 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
 
 **Not shipped (the honest line).**
 
-- The ASIO streaming host: its callbacks will replace `pcm-gen`'s generator
-  and emit identical frames, but until a 64-bit driver exists on a
-  development machine it stays unbuilt rather than shipped blind. Wave 2.5
-  acceptance must show sustained ≥ realtime transfer with bounded drift
-  and zero non-finite samples over a 300 s soak, per the plugin soak rules.
+- The ASIO streaming host (`native/asio-host/asio-host.cpp`, wave 2.5) IS
+  shipped: it loads a driver by DLL path or registry name, converts
+  int16-LSB buffers to float32 and emits ADR 0018 frames. Acceptance runs
+  against the SDK's OWN sample driver compiled as a 64-bit fixture DLL
+  (realtime-paced by its timer thread): 96 000 frames per 2 s run, seq
+  contiguity, bounded non-silent samples, clean EOF. Streaming from REAL
+  hardware drivers and the 300 s soak stay owner gates — the fixture
+  proves the host, not any specific driver.
 - Renderer playback (AudioWorklet ring fed from the main process) and
   project-model integration: wave 3. Nothing in the web bundle changes in
   this wave.
