@@ -23,6 +23,13 @@ import { embeddingConditionedMode } from "../ai/symbolic/prior-client";
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import { readFavoriteLedger } from "./favorites";
 import { blendSemantic, computeStyleVector, styleVectorSignature } from "./style-vector";
+import {
+  ARTIST_SIGNATURE_PULL,
+  artistSignatureSignature,
+  artistSignatureText,
+  hasArtistSignature,
+} from "./artist-signature";
+import type { ArtistProfile } from "./artist-profiles";
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
 
@@ -79,36 +86,77 @@ export function setSemanticEmbedOverride(fn: EmbedFn | null): void {
 export async function semanticConditioning(
   text: string | null | undefined,
   embedFn?: EmbedFn,
+  /**
+   * Optional artist profile (Phase 2 slice 4). When present and it carries a
+   * signature, the profile's sound description seeds the conditioning vector
+   * as the BASE and the typed words pull it by ARTIST_SIGNATURE_PULL — the
+   * same relationship an installed audio reference has to the text. Omit it
+   * (the common case: no artist matched) and the chain is byte-identical to
+   * the pre-slice behaviour.
+   */
+  artist?: ArtistProfile | null,
 ): Promise<readonly number[] | null> {
   try {
     // Lazy: keep the semantic client out of the landing-route static closure
     // (see style-vector.ts).
     const embed = embedFn ?? embedOverride ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     const trimmed = (text ?? "").trim().slice(0, MAX_TEXT_LENGTH);
-    // An empty prompt with a reference installed is legitimate ("🎧 REF +
-    // generate") — the reference alone drives the conditioning. Without a
-    // reference there is nothing to say, so empty text stays null.
-    if (!trimmed && !audioReferenceOverride) return null;
+    const seedingProfile = hasArtistSignature(artist) ? artist : null;
+    const signatureText = seedingProfile ? artistSignatureText(seedingProfile) : "";
+    // An empty prompt with a reference OR an artist signature installed is
+    // legitimate ("🎧 REF + generate", "travis scott type beat" where the
+    // user only typed the name) — the base alone drives the conditioning.
+    // Without either there is nothing to say, so empty text stays null.
+    if (!trimmed && !audioReferenceOverride && !seedingProfile) return null;
     if (embeddingConditionedMode() !== "on") return null;
 
     const ledger = readFavoriteLedger();
-    const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}`;
+    const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}|${
+      seedingProfile ? artistSignatureSignature(seedingProfile) : "no-artist"
+    }`;
     if (projectionCache.has(cacheKey)) return projectionCache.get(cacheKey) ?? null;
 
+    // Embed the typed text and the artist signature in ONE batched call so the
+    // seeding costs no extra worker round-trip. The encoder sees two
+    // sentences; each is projected independently below.
+    const embedInputs: string[] = [];
+    if (trimmed) embedInputs.push(trimmed);
+    if (signatureText) embedInputs.push(signatureText);
+    const vectors = embedInputs.length ? await embed(embedInputs) : null;
+
     let projectedValid: readonly number[] | null = null;
-    if (trimmed) {
-      const vectors = await embed([trimmed]);
-      const projected = vectors && vectors.length === 1 ? projectEmbedding(vectors[0]) : null;
+    if (trimmed && vectors) {
+      const textVec = vectors[0];
+      const projected = textVec ? projectEmbedding(textVec) : null;
       projectedValid =
         projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null;
     }
+
+    // Artist signature as the BASE, the typed words pulling it (Phase 2
+    // slice 4). When there is no typed text the signature IS the vector.
+    let artistBased: readonly number[] | null = null;
+    if (seedingProfile && vectors) {
+      const signatureVec = vectors[trimmed ? 1 : 0];
+      const projected = signatureVec ? projectEmbedding(signatureVec) : null;
+      const validSignature =
+        projected && projected.length > 0 && projected.every((value) => Number.isFinite(value)) ? projected : null;
+      if (validSignature) {
+        artistBased = projectedValid
+          ? mixWithReference(validSignature, projectedValid, ARTIST_SIGNATURE_PULL)
+          : validSignature;
+      }
+    }
+
     // An installed audio reference is the BASE ("sprav to ako tento WAV");
     // the prompt pulls it by AUDIO_REF_TEXT_PULL instead of being replaced.
+    // A reference outranks the artist signature — it is the more specific
+    // statement of what the user wants, so it replaces the signature base and
+    // the signature stops contributing rather than fighting the WAV.
     const pure = audioReferenceOverride
       ? projectedValid
         ? mixWithReference(audioReferenceOverride, projectedValid, AUDIO_REF_TEXT_PULL)
         : audioReferenceOverride
-      : projectedValid;
+      : (artistBased ?? projectedValid);
 
     let result: readonly number[] | null = null;
     if (pure) {
