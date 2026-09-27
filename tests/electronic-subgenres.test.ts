@@ -88,8 +88,10 @@ describe("electronic parser phrases", () => {
   });
 
   it("big beat / moombahton / slap house / deep dubstep route", () => {
-    expect(parseIntentText("big beat").input).toMatchObject({ genre: "house", style: "bigbeat" });
-    expect(parseIntentText("breakbeat").input).toMatchObject({ genre: "house", style: "bigbeat" });
+    // "big beat" merged into the parallel session's breakbeat lane (its
+    // dedicated groove superseded house.bigbeat) — pinned as deliberate
+    expect(parseIntentText("big beat").input).toMatchObject({ genre: "house", style: "breakbeat" });
+    expect(parseIntentText("breakbeat").input).toMatchObject({ genre: "house", style: "breakbeat" });
     expect(parseIntentText("moombahton").input).toMatchObject({ genre: "house", style: "moombahton" });
     expect(parseIntentText("slap house").input).toMatchObject({ genre: "house", style: "slaphouse" });
     expect(parseIntentText("brazilian bass").input).toMatchObject({ genre: "house", style: "slaphouse" });

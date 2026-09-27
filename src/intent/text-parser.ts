@@ -46,7 +46,15 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbass house\b|\bfuture house\b/, "house"],
   [/\bg[- ]house\b|\bghetto ?tech\b/, "house"],
   [/\bafro house\b/, "house"],
-  // Amapiano — the log drum genre (house.amapiano); "private school piano"
+  // Piano house - the 90s/2020s piano-led floor (house.pianohouse). Before
+  // the generic "house" entry below.
+  [/\bpiano house\b|\bpianohouse\b|\bpiano (?:club|groove)\b/, "house"],
+  // Breakbeat / big beat - the breaks floor (house.breakbeat). "breaks" and
+  // "breakbeat" both land here; "broken beat" stays its own house.broken.
+  [/\bbreakbeat\b|\bbig ?beat\b|\bbreaks?\b(?!\s*(?:beat|core))/, "house"],
+  // Midtempo - the half-time bass-music floor (house.midtempo).
+  [/\bmidtempo\b|\bmid[- ]?tempo\b/, "house"],
+  // Amapiano - the log drum genre (house.amapiano); "private school piano"
   // is the jazzier refined sub-style, same groove.
   [/\bamapiano\b|\bprivate school piano\b/, "house"],
   // Rock lanes — grunge / alt rock / rapcore / synth punk ride dedicated
@@ -56,6 +64,18 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\balt(?:ernative)? ?rock\b|\baltrock\b/, "house"],
   [/\brapcore\b|\bnu ?metal\b|\brap ?metal\b/, "house"],
   [/\bsynth[- ]?punk\b/, "house"],
+  // Metal depth — MUST sit below the rapcore entry so "nu metal" keeps
+  // resolving to rapcore, and \bmetal\b never touches "metalcore" (no word
+  // boundary inside the compound).
+  [/\bmetalcore\b/, "house"],
+  [/\bthrash\b/, "house"],
+  [/\bdoom(?: metal)?\b/, "house"],
+  [/\bheavy metal\b|\bmetal\b/, "house"],
+  // Punk specifics — bare "hardcore" reads as punk hardcore (no gabber lane
+  // exists); pop punk sits above the generic pop style via the style table.
+  [/\bhardcore(?: punk)?\b/, "house"],
+  [/\bpop[- ]?punk\b/, "house"],
+  [/\bindie(?: rock)?\b/, "house"],
   // Organic house — the Anjunadeep / Keinemusik hand-drum wave. Bare
   // "organic" stays unmapped ("organic ambient" must keep reaching ambient).
   [/\borganic house\b|\bafro organic\b/, "house"],
@@ -205,6 +225,11 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   ],
   [/\bambient\b/, "ambient"],
   [/\blofi\b|\blo-?fi\b/, "ambient"],
+  // Sad chill / dirty ambient are ambient-family asks with their own style
+  // tokens — the genre word must be present or the style has nothing to
+  // resolve against (same rule as amapiano / piano house above).
+  [/\bsad ?chill\b|\bsadchill\b/, "ambient"],
+  [/\bdirty ?ambient\b|\bdirtyambient\b/, "ambient"],
   [/\bscore\b|\bscene\b|\bsoundscape\b|\bcinematic\b/, "ambient"],
   [/\bdnb\b|\bdrum ?n ?bass\b|\bdrum and bass\b|\bjungle\b|\bliquid dnb\b/, "dnb"],
 ];
@@ -217,6 +242,15 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdriving\b|\bdrive\b/, "driving"],
   [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
   [/\bbaile\b|\bmandel\w*\b/, "bounce"],
+  // Piano house MUST sit before the generic "piano" handling — the style
+  // token is what resolveGroove looks up ("house.pianohouse").
+  [/\bpiano house\b|\bpianohouse\b/, "pianohouse"],
+  // Breakbeat / big beat before \bbreaks\b-adjacent entries.
+  [/\bbreakbeat\b|\bbig ?beat\b/, "breakbeat"],
+  [/\bmidtempo\b|\bmid[- ]?tempo\b/, "midtempo"],
+  // Sad chill / dirty ambient — the ambient-family style tokens.
+  [/\bsad ?chill\b|\bsadchill\b|\bemotional chill\b/, "sadchill"],
+  [/\bdirty ?ambient\b|\bdirtyambient\b|\bcorroded ambient\b/, "dirtyambient"],
   // Disco BEFORE the g-funk/funky entries — "disco funk" must resolve to the
   // disco groove, not be stolen by \bfunk\b.
   [/\bnu[- ]?disco\b|\bdisco\b|\bdisko\b/, "disco"],
@@ -291,6 +325,16 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\balt(?:ernative)? ?rock\b|\baltrock\b/, "altrock"],
   [/\brapcore\b|\bnu ?metal\b|\brap ?metal\b/, "rapcore"],
   [/\bsynth[- ]?punk\b/, "synthpunk"],
+  // Metal + punk + indie depth — metalcore/thrash/doom before the generic
+  // \bmetal\b match (the compound words have no boundary so plain \bmetal\b
+  // never splits them; order keeps it that way deliberately).
+  [/\bmetalcore\b/, "metalcore"],
+  [/\bthrash\b/, "thrash"],
+  [/\bdoom(?: metal)?\b/, "doom"],
+  [/\bheavy metal\b|\bmetal\b/, "metal"],
+  [/\bhardcore(?: punk)?\b/, "hardcorepunk"],
+  [/\bpop[- ]?punk\b/, "poppunk"],
+  [/\bindie(?: rock)?\b/, "indie"],
   // Ghettotech — Detroit's banging 808 bounce (house.ghettotech); the genre
   // word already routes to house via the g-house entry above.
   [/\bghetto ?tech\b|\bghettotech\b/, "ghettotech"],

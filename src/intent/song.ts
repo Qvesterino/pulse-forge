@@ -1327,7 +1327,19 @@ const POP_FORM_STYLES = new Set(["pop"]);
  * bridge IS the rock-radio form. Without this, rock lanes falling in the
  * house family would get the club intro/build/drop shape.
  */
-const ROCK_FORM_STYLES = new Set(["grunge", "altrock", "rapcore", "synthpunk"]);
+const ROCK_FORM_STYLES = new Set([
+  "grunge",
+  "altrock",
+  "rapcore",
+  "synthpunk",
+  "metal",
+  "thrash",
+  "metalcore",
+  "doom",
+  "hardcorepunk",
+  "poppunk",
+  "indie",
+]);
 
 /** The emotional-UKG styles that get the FRED_FORM shape. */
 const FRED_FORM_STYLES = new Set(["ukg", "heartbeat"]);
