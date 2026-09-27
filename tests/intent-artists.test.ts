@@ -1454,15 +1454,15 @@ describe("plugg / opium producers + amapiano / afro-house + phonk TikTok wave 2"
 describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
   it("Detroit legends: jeff mills / hawtin / may / atkins / saunderson / craig / hood", () => {
     const mills = parseIntentText("jeff mills type beat");
-    expect(mills.input.genre).toBe("techno");
-    expect(mills.input.style).toBe("driving");
+    expect(mills.input.genre).toBe("detroit");
+    expect(mills.input.style).toBe("secondwave");
     expect(mills.input.bpmRange).toEqual([135, 145]);
     expect(parseIntentText("richie hawtin type beat").input.style).toBe("minimal");
     expect(parseIntentText("plastikman type beat").input.mood).toBe("dark");
     expect(parseIntentText("strings of life type beat").input.style).toBe("melodic");
-    expect(parseIntentText("juan atkins type beat").input.genre).toBe("techno");
-    expect(parseIntentText("model 500 type beat").input.genre).toBe("techno");
-    expect(parseIntentText("kevin saunderson type beat").input.genre).toBe("techno");
+    expect(parseIntentText("juan atkins type beat").input.genre).toBe("detroit");
+    expect(parseIntentText("model 500 type beat").input.genre).toBe("detroit");
+    expect(parseIntentText("kevin saunderson type beat").input.genre).toBe("detroit");
     expect(parseIntentText("carl craig type beat").input.mood).toBe("chill");
     expect(parseIntentText("robert hood type beat").input.style).toBe("minimal");
     expect(parseIntentText("octave one type beat").input.style).toBe("melodic");
@@ -1470,7 +1470,7 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
   });
 
   it("Detroit soul axis: omar s / moodymann / theo parrish", () => {
-    expect(parseIntentText("omar s type beat").input.style).toBe("driving");
+    expect(parseIntentText("omar s type beat").input.style).toBe("secondwave");
     expect(parseIntentText("moodymann type beat").input.style).toBe("melodic");
     expect(parseIntentText("theo parrish type beat").input.mood).toBe("chill");
   });
@@ -1512,10 +1512,10 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
     expect(parseIntentText("villalobos type beat").input.style).toBe("minimal");
     expect(parseIntentText("sonja moonear type beat").input.style).toBe("minimal");
     expect(parseIntentText("drexciya type beat").input.mood).toBe("dark");
-    expect(parseIntentText("dopplereffekt type beat").input.genre).toBe("techno");
+    expect(parseIntentText("dopplereffekt type beat").input.genre).toBe("detroit");
     expect(parseIntentText("dj stingray type beat").input.mood).toBe("aggressive");
     expect(parseIntentText("helena hauff type beat").input.genre).toBe("techno");
-    expect(parseIntentText("aux 88 type beat").input.genre).toBe("techno");
+    expect(parseIntentText("aux 88 type beat").input.genre).toBe("detroit");
   });
 
   it("guarded aliases never hijack unrelated prompts", () => {

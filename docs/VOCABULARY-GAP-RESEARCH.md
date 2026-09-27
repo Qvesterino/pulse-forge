@@ -180,17 +180,25 @@ dataset (`symbolic-prior-ds.v3`) trains over the whole library automatically.
 
 ## 6. Recommended wave order
 
-| Wave | Scope                                                                 | Gate                                                                 |
-| ---- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **0** | §1a fixes (9 presets) + §1b phrase fixes (synthwave/hardstyle/breakcore/trip-hop/nu-jazz/boogie/chillhop/reggae/ska) | `npx vitest run tests/intent-artists.test.ts tests/intent-text-parser.test.ts` + new probe test asserting **zero dangling presets** |
-| **1** | P1a top 6 lanes (gabber, trip-hop, dubstep-bass, shoegaze, breakcore, reggae) — new grooves + parser + descriptions + semantic + artists | full intent suite + style embeddings regeneration + prior smoke |
-| **2** | P1b depth lanes (trance/psytrance/nu-jazz/funk-boogie/balearic artists + phrases) | intent suite + embedding regen |
-| **3** | §5 mechanical backlog (orphan phrases + embeddings)                    | embedding count == groove count; audit == 0 orphans                  |
-| **4** | P1c only after a genre promotion ADR/decision                          | —                                                                    |
+| Wave | Scope                                                                 | Status |
+| ---- | --------------------------------------------------------------------- | ------ |
+| **0** | §1a fixes (9 presets) + §1b phrase fixes (synthwave/hardstyle/breakcore/trip-hop/nu-jazz/boogie/chillhop/reggae/ska) | **Shipped.** All 9 presets remapped (`trap/dark → sparse`, `drill/sparse → uk`, `jersey/bouncy → club`, `ambient/sparse → sadchill`); every §1b phrase now resolves to a real groove. Gate: "no artist preset may dangle" block in `tests/intent-artists.test.ts`. |
+| **1** | P1a top 6 lanes — new grooves (+ parser + descriptions + semantic + artists) | **Shipped (wave 6).** Five grooves landed: `techno.gabber`, `ambient.triphop`, `house.reggae`, `trap.bassdubstep`, `house.shoegaze`. Breakcore rides `dnb.amen` (the honest pocket); dubstep-bass got `trap.bassdubstep`. Locked by `tests/grooves-wave-6.test.ts` (8 tests incl. lane signatures). |
+| **2** | P1b depth lanes (trance/psytrance/nu-jazz/funk-boogie/balearic artists + phrases) | **Shipped.** Nu jazz → `broken`, boogie → `funky`, balearic → `organic`; trance artist depth landed via the parallel first-class trance promotion. |
+| **3** | §5 mechanical backlog (orphan phrases + embeddings)                    | **Shipped.** Style embeddings regenerated to full library coverage (`164 / 164`), zero orphans. |
+| **4** | P1c only after a genre promotion ADR/decision                          | Open — see P1c list. |
 
-**Hard rule carried from `GENRE-RESEARCH.md`:** batch the research, land the
-anchors in the same commit as the data, and never describe a lane as shipped
-before its probe passes.
+**Hard rule carried from `GENRE-RESEARCH.md`:** batch the research, land the anchors in the same commit as the data, and never describe a lane as shipped before its probe passes.
+
+> **Post-wave-6 additions (same session, after this map was written):** the
+> parallel waves promoted `trance` and `detroit` to first-class genres and
+> added a DnB depth tree (`dnb.techstep / ragga / sambass / halftime /
+> crossbreed / minimal`). This document's P1b trance rows are therefore
+> historical — the genre now carries its own `trance.uplifting / progressive /
+> psy / tech / acid / dream` school. Remaining P1c candidates: k-pop depth,
+> baile depth, city-pop depth, afrobeats artist depth, uptempo/gabber artist
+> depth (the groove exists now, add Angerfist / Miss K8 / Sefa / Dr. Peacock
+> artist presets on it).
 
 ---
 

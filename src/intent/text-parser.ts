@@ -342,8 +342,18 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bpopiano\b/, "popiano"],
   [/\bamapiano\b|\byanos\b|\bafropiano\b/, "yanos"],
   // Jungle BEFORE the generic "jungle → dnb style" entry — the chopped-breaks
-  // groove, not a random dnb pocket. "ragga" bare rides along.
-  [/\bjungle\b|\bragga(?: jungle)?\b|\braggajungle\b/, "jungle"],
+  // groove, not a random dnb pocket. Bare "ragga" (no "jungle" word) routes to
+  // dnb.ragga below, so the two lanes stay distinct.
+  [/\bjungle\b|\bragga jungle\b|\braggajungle\b/, "jungle"],
+  // DnB depth wave (2026-09-27): the sub-genres the genre sweep only routed
+  // to "dnb" now have their own grooves. Specifics BEFORE the generic family
+  // entries below (neurofunk/jumpup/dancefloor/roller/amen/twostep).
+  [/\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b|\bmetalheadz\b|\bno u-?turn\b/, "techstep"],
+  [/\bragga\b|\bdancehall (?:dnb|drum ?n ?bass)\b|\bjunglist\b|\bsoundsystem\b/, "ragga"],
+  [/\bsambass\b|\bsamba (?:dnb|bass)\b|\bbrazilian dnb\b/, "sambass"],
+  [/\bhalf[- ]time\b/, "halftime"],
+  [/\bcrossbreed\b|\bdarkcore\b|\bdark core\b|\bhardcore dnb\b/, "crossbreed"],
+  [/\bminimal dnb\b|\bautonomic\b|\bdeep dnb\b|\bliquid roller\b/, "minimal"],
   // Baltimore — the "Think"-break stomp (jersey.baltimore), above the club
   // family's generic readings.
   [/\bbaltimore(?: club)?\b|\bbmore(?: club)?\b/, "baltimore"],

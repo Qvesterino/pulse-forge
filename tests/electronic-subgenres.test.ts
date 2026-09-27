@@ -79,8 +79,8 @@ describe("electronic parser phrases", () => {
   });
 
   it("the electro family: bare = detroit, compounds keep their lanes", () => {
-    expect(parseIntentText("electro").input).toMatchObject({ genre: "techno", style: "electro" });
-    expect(parseIntentText("electro funk").input).toMatchObject({ genre: "techno", style: "electro" });
+    expect(parseIntentText("electro").input).toMatchObject({ genre: "detroit", style: "electro" });
+    expect(parseIntentText("electro funk").input).toMatchObject({ genre: "detroit", style: "electro" });
     expect(parseIntentText("electro house").input).toMatchObject({ genre: "house", style: "dancefloor" });
     expect(parseIntentText("electro pop").input).toMatchObject({ genre: "house", style: "pop" });
     expect(parseIntentText("electro swing").input).toMatchObject({ genre: "house", style: "funky" });

@@ -665,6 +665,19 @@ export const reeseParams: ParamDef[] = [
  */
 export const clavParams: ParamDef[] = [
   { id: "pick", label: "PICK", min: 0, max: 1, default: 0.5, format: formatPct },
+  {
+    id: "pickupType",
+    label: "PICKUP",
+    min: 0,
+    max: 3,
+    default: 1,
+    options: [
+      { value: 0, label: "C" },
+      { value: 1, label: "D" },
+      { value: 2, label: "E" },
+      { value: 3, label: "F" },
+    ],
+  },
   { id: "damp", label: "DAMP", min: 0.05, max: 2, default: 0.55, unit: "s", format: formatSec },
   { id: "click", label: "CLICK", min: 0, max: 1, default: 0.4, format: formatPct },
   { id: "growl", label: "GROWL", min: 0, max: 1, default: 0.25, format: formatPct },

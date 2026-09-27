@@ -259,7 +259,14 @@ const DEGREE_VOICINGS: Record<string, number[]> = {
 
 function generateProgressionSynth(): MelodicSample[] {
   const samples: MelodicSample[] = [];
-  const genres = ["house", "techno", "trap", "ambient"];
+  // Derived from the harmonic vocabulary, NOT a hardcoded list: the old
+  // ["house","techno","trap","ambient"] constant silently excluded dnb (and
+  // every later genre) from progression augmentation — the audit found dnb at
+  // 0 augmented rows for exactly this reason. Anything with progressions and
+  // melodic references gets synth coverage automatically now.
+  const genres = Object.keys(PROGRESSIONS_BY_GENRE).filter(
+    (genre) => (MELODIC_BY_GENRE[genre]?.length ?? 0) > 0,
+  );
   const roles = ["bass", "chord", "lead"];
   for (const genre of genres) {
     const progressions = PROGRESSIONS_BY_GENRE[genre] ?? [];

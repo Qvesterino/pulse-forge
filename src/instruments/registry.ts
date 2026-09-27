@@ -3114,8 +3114,8 @@ const keys: InstrumentDefinition = {
         const unison = Math.max(1, Math.min(3, Math.round(p.unison ?? 1)));
         const spread = p.spread ?? 7;
         const pairs = [
-          makePair(1, 1, (28 + tine * 720) * velIndex, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35),
-          makePair(bellRatio, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28),
+          makePair(1, 1, (28 + tine * 720) * velIndex, 0.42 + body * 0.38, -width * 0.6, 0.22 + damp * 0.35, 0, slideFrom),
+          makePair(bellRatio, 1, (18 + bell * 1100) * velIndex, bell * 0.55, width * 0.6, 0.18 + damp * 0.28, 0, slideFrom),
         ];
         if (unison > 1) {
           pairs.push(

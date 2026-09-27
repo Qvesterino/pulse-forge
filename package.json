@@ -104,6 +104,7 @@
     "prompts:build": "node scripts/prompts-sync.mjs --build"
   },
   "dependencies": {
+    "@audiotool/nexus": "0.0.19",
     "@breezystack/lamejs": "^1.2.7",
     "@huggingface/transformers": "^4.3.0",
     "electron-updater": "^6.8.9",

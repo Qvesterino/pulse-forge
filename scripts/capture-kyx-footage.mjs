@@ -18,7 +18,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = resolve(HERE, "../../remotion/audiotool-demo/assets/captures");
+const OUT = resolve(HERE, "../remotion/audiotool-demo/assets/captures");
 const URL_ARG = process.argv.indexOf("--url");
 const BASE = URL_ARG !== -1 ? process.argv[URL_ARG + 1] : "http://localhost:4173";
 

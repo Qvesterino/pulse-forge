@@ -19,6 +19,14 @@ export interface ParamDef {
    * bunching everything at the left end. Falls back to linear when min ≤ 0.
    */
   taper?: "linear" | "log";
+  /**
+   * Legacy compatibility id: accepted on old documents (the command layer
+   * remaps it to `aliasOf`), but excluded from automation target lists and
+   * UI pickers — new code must always use the canonical id.
+   */
+  deprecated?: boolean;
+  /** Canonical id this deprecated alias maps to. */
+  aliasOf?: string;
 }
 
 export interface EffectRuntime {

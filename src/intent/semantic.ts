@@ -184,7 +184,10 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     },
     { text: "shoegaze wall of guitars reverb", patch: { genre: "house", style: "shoegaze", mood: "chill" } },
     { text: "dream pop hazy vocals", patch: { genre: "house", style: "shoegaze", mood: "chill" } },
-    { text: "brostep tearout bass drop", patch: { genre: "trap", style: "bassdubstep", mood: "aggressive", energy: 0.95 } },
+    {
+      text: "brostep tearout bass drop",
+      patch: { genre: "trap", style: "bassdubstep", mood: "aggressive", energy: 0.95 },
+    },
     { text: "nu jazz broken beat west london", patch: { genre: "house", style: "broken", mood: "energetic" } },
     { text: "boogie funk synth bass", patch: { genre: "house", style: "funky", mood: "energetic" } },
     { text: "balearic sunset chillout", patch: { genre: "house", style: "organic", mood: "chill" } },
