@@ -105,7 +105,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bgqom\b/, "house"],
   // Dembow dominicano BEFORE the generic dembow genre word — the rawer,
   // 16th-filled Santo Domingo lane (house.dembowdom).
-  [/\bdembow dominicano\b|\bdominican dembow\b|\bdembow 2\.0\b/, "house"],
+  [/\bdembow dominicano\b|\bdominican dembow\b/, "house"],
   [/\bneoperreo\b|\bneo[- ]?perreo\b/, "house"],
   [/\bdarkwave\b|\bwitch house\b|\bwave music\b/, "ambient"],
   [/\bbedroom pop\b/, "ambient"],
@@ -223,6 +223,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bukg\b|\buk garage\b|\bgarage\b/, "ukg"],
   [/\bafro\b/, "afro"],
   // Dembow / latin pop — the reggaeton chop (house.dembow). SK "latinský".
+  // Dembow dominicano / neoperreo sit ABOVE it: the rawer 16th-filled Santo
+  // Domingo lane, and the DIY deconstructed alias (same chop, harder attitude).
+  [/\bdembow dominicano\b|\bdominican dembow\b/, "dembowdom"],
+  [/\bneoperreo\b|\bneo[- ]?perreo\b/, "dembow"],
   [/\bdembow\b|\breggaeton\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "dembow"],
   // Country pop — the train-beat lane (house.countrypop); "country rap /
   // trap / tune" keep their trap.countrytune routing below.
@@ -230,6 +234,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Big beat / moombahton / slap house — unique words, no generic collisions.
   [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "bigbeat"],
   [/\bmoombahton\b/, "moombahton"],
+  [/\bgqom\b/, "gqom"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "slaphouse"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
   [/\bdub\b/, "dub"],
