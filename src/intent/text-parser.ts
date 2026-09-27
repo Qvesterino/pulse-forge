@@ -52,6 +52,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Organic house — the Anjunadeep / Keinemusik hand-drum wave. Bare
   // "organic" stays unmapped ("organic ambient" must keep reaching ambient).
   [/\borganic house\b|\bafro organic\b/, "house"],
+  // Alté — the Lagos alternative lane (deaccented; "alternative" is safe —
+  // \balte\b needs a word boundary the long word never provides).
+  [/\balte\b/, "house"],
   [/\buk drill\b|\bsample drill\b/, "drill"],
   [/\bgrime\b/, "drill"],
   [/\bdrift phonk\b/, "phonk"],
@@ -224,6 +227,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Afropop BEFORE the generic afro entry — "afro pop" / "afrobeats" ride the
   // Wizkid/Burna pop pocket (house.afropop), not the afro-house groove.
   [/\bafro ?pop\b|\bafropop\b|\bafrobeats?\b/, "afropop"],
+  // Afro tech BEFORE the generic afro entry — the harder club end of the
+  // modern afro house range, riding the organic groove.
+  [/\bafro ?tech\b|\bafrotech\b/, "organic"],
+  // G-house — the groove existed (house.ghouse) but the style phrase never
+  // did; bare "g-house" used to fall into a random house pocket.
+  [/\bg[- ]house\b|\bghouse\b|\bghetto house\b/, "ghouse"],
   [/\bfuture garage\b/, "future garage"],
   // Overmono school (house.broken groove) — before generic matches that
   // would steal the word
@@ -244,6 +253,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bmoombahton\b/, "moombahton"],
   [/\bgqom\b/, "gqom"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "slaphouse"],
+  // Ghettotech — Detroit's banging 808 bounce (house.ghettotech); the genre
+  // word already routes to house via the g-house entry above.
+  [/\bghetto ?tech\b|\bghettotech\b/, "ghettotech"],
+  // Alté — the Lagos alternative lane (R&B/soul-tinged afrobeats) on the
+  // afropop pocket.
+  [/\balte\b/, "afropop"],
   [/\bindustrial(?:ny)?\b|\bpriemysel/, "industrial"],
   [/\bdub\b/, "dub"],
   [/\bacid\b/, "acid"],
