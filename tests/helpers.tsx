@@ -349,6 +349,22 @@ export function mockServices(doc?: ProjectDocument): Services {
     } as any,
     midiOutput: {} as any,
     midiClock: {} as any,
+    // MIDI Timecode receiver — MtcChip subscribes on mount and reads a
+    // snapshot each render, so an inert stub must implement all three.
+    mtc: {
+      subscribe: vi.fn(() => () => {}),
+      getSnapshot: vi.fn(() => null),
+      isFresh: vi.fn(() => false),
+    } as any,
+    // Ableton Link client — LinkChip seeds its useState from `.status` and
+    // subscribes for changes, so the stub needs both plus the click handlers.
+    linkSync: {
+      status: { kind: "off" },
+      enabled: false,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      subscribe: vi.fn(() => () => {}),
+    } as any,
     collab: null,
     flushSave: vi.fn(),
     closeProject: vi.fn(),

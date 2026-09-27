@@ -44,6 +44,9 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Amapiano: the log-drum pocket — sparse four-floor under a busy semiquaver
   // shaker bed, so density spreads wide while the kick stays steady.
   amapiano: { densityRange: [0.12, 0.84], syncopationRange: [0.14, 0.86], maxDistance: 1.15 },
+  // Trance: four-on-the-floor under arpeggio layers — steady kick, wide
+  // density (intros/breakdowns thin out), melodic syncopation tolerance.
+  trance: { densityRange: [0.1, 0.84], syncopationRange: [0.1, 0.78], maxDistance: 1.1 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

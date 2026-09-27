@@ -28,7 +28,8 @@ export type Genre =
   | "hyperpop"
   | "ukg"
   | "boombap"
-  | "amapiano";
+  | "amapiano"
+  | "trance";
 
 export interface GrooveData {
   id: string;
@@ -123,6 +124,7 @@ export const GENRES = [
   "ukg",
   "boombap",
   "amapiano",
+  "trance",
 ] as const;
 
 /** Pad index → name mapping (matches makeKit in schema.ts) */

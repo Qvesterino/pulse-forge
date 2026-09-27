@@ -101,8 +101,14 @@ class TwoHeadMLP:
         )
 
         d_degree = (degree_probs - target_degree) * (wd / n)[:, None]
+        # Duration gradient: weighted ONCE, matching the loss above. The
+        # original line multiplied by (wt / n) a second time here, so the head
+        # optimised wt^2 and never descended the printed loss (audit
+        # 2026-09-27, scripts/audit-melodic-double-weight-proof.py: the
+        # analytic gradient 0.0224 disagreed with the true 0.1463). The
+        # relative pull toward rare classes was inflated by up to 10.2x,
+        # collapsing the duration head onto duration-8.
         d_duration = (duration_probs - target_duration) * (wt / n)[:, None]
-        d_duration *= (wt / n)[:, None]
 
         # backprop: heads → trunk (ReLU masks) → input
         delta1 = d_degree @ self.wd.T + d_duration @ self.wt.T  # into h1 (pre-ReLU)
@@ -133,9 +139,24 @@ class TwoHeadMLP:
         return loss
 
 
-def class_weights(y: np.ndarray, class_count: int) -> np.ndarray:
+def class_weights(y: np.ndarray, class_count: int, power: float = 1.0) -> np.ndarray:
+    """Inverse-frequency class weights with a tempering exponent.
+
+    power = 1.0 is linear inverse frequency (the historical recipe). On the
+    melodic library that gives duration-8 (12 samples) a 10.2x weight over
+    duration-2 (122 samples) — enough pull to collapse the duration head onto
+    the rare class once the gradient bug (below) is fixed. power = 0.5 is
+    square-root tempering: the ratio drops to 3.2x, keeping the rare class
+    visible without letting it dominate.
+
+    Audit 2026-09-27: the shipped collapse had ONE proven cause (the doubled
+    gradient weight), so tempering is not assumed to be an improvement — it is
+    exposed as `--weight-power` and chosen by measurement against the k-fold
+    gate, never by taste.
+    """
     counts = np.bincount(y, minlength=class_count).astype(np.float64)
-    weights = np.where(counts > 0, counts.sum() / np.maximum(1, counts), 1.0)
+    raw = np.where(counts > 0, counts.sum() / np.maximum(1, counts), 1.0)
+    weights = np.power(raw, power)
     return weights / weights.max()
 
 
@@ -164,6 +185,20 @@ def main() -> None:
         "stays library-only, and variants of held-out sequences are dropped",
     )
     parser.add_argument("--favorite-oversample", type=int, default=3)
+    parser.add_argument(
+        "--weight-power",
+        type=float,
+        default=0.5,
+        help="class-weight tempering exponent: 1.0 = linear inverse frequency "
+        "(historical), 0.5 = square-root (default after the 2026-09-27 audit — "
+        "keeps the rare duration class visible without dominating the loss)",
+    )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="train and print metrics WITHOUT writing the ONNX artifact/manifest "
+        "(used by the k-fold gate to compare recipes before shipping)",
+    )
     args = parser.parse_args()
 
     rng = np.random.default_rng(SEED)
@@ -321,8 +356,8 @@ def main() -> None:
             yt_train = np.concatenate([yt_train, np.array(favorite_yt, dtype=np.int64)])
             print(f"[train] favorites merged: {len(favorite_x)} weighted next-note samples")
 
-    dw = class_weights(yd_train, DEGREE_CLASSES)
-    tw = class_weights(yt_train, DURATION_CLASSES)
+    dw = class_weights(yd_train, DEGREE_CLASSES, args.weight_power)
+    tw = class_weights(yt_train, DURATION_CLASSES, args.weight_power)
     print(
         f"[train] samples={len(x_all)} train={len(x_train)} val={len(x_val)} "
         f"degreeBaseline={max(np.bincount(yd_train, minlength=DEGREE_CLASSES)) / max(1, len(yd_train)):.3f} "
@@ -361,7 +396,19 @@ def main() -> None:
         "trainDegreeAcc": round(accuracy(td, yd_train), 4),
         "valDurationAcc": round(accuracy(vt, yt_val), 4),
         "trainDurationAcc": round(accuracy(tt, yt_train), 4),
+        # Provenance: which weighting recipe produced this artifact.
+        "weightPower": args.weight_power,
     }
+
+    if args.report_only:
+        # Gate mode: measure without touching public/models. Lets the k-fold
+        # comparison run on recipes before any artifact is shipped.
+        print(
+            f"[train] REPORT-ONLY weightPower={args.weight_power} "
+            f"valDegreeAcc={report['valDegreeAcc']} valDurationAcc={report['valDurationAcc']} "
+            f"trainDegreeAcc={report['trainDegreeAcc']} trainDurationAcc={report['trainDurationAcc']}"
+        )
+        return
 
     # ONNX export: shared trunk, two heads. transB=1 expects [out, in] weights.
     initializers = [

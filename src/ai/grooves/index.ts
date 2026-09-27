@@ -13,6 +13,7 @@ import { HYPERPOP_GROOVES } from "./hyperpop";
 import { UKG_GROOVES } from "./ukg";
 import { BOOMBAP_GROOVES } from "./boombap";
 import { AMAPIANO_GROOVES } from "./amapiano";
+import { TRANCE_GROOVES } from "./trance";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -29,6 +30,7 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...UKG_GROOVES,
   ...BOOMBAP_GROOVES,
   ...AMAPIANO_GROOVES,
+  ...TRANCE_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

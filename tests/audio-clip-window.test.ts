@@ -136,7 +136,7 @@ describe("buildWarpSegments", () => {
     ).toBeNull();
   });
 
-  it("drops degenerate pins and caps segments for realtime safety", () => {
+  it("caps warp segments for realtime safety and keeps source-time queries aligned", () => {
     const markers = Array.from({ length: 70 }, (_, i) => ({ timeSec: (i + 1) * 0.1, tick: (i + 1) * 100 }));
     const segs = buildWarpSegments({ ...base, markers })!;
     expect(segs.length).toBeLessThanOrEqual(64);
@@ -145,6 +145,23 @@ describe("buildWarpSegments", () => {
       expect(Number.isFinite(s.rate)).toBe(true);
       expect(s.rate).toBeGreaterThan(0);
     }
+    for (const tick of [0, 100, 6300, 6400, 7680]) {
+      const segment = segs.find((candidate) => tick >= candidate.startTick && tick <= candidate.endTick)!;
+      const progress = (tick - segment.startTick) / (segment.endTick - segment.startTick);
+      const expected = segment.bufStartSec + progress * (segment.bufEndSec - segment.bufStartSec);
+      expect(warpBufferTimeAtTick({ ...base, markers, tick })).toBeCloseTo(expected, 10);
+    }
+  });
+
+  it("uses the last pin for duplicate ticks, matching the renderer", () => {
+    const markers = [
+      { timeSec: 3, tick: 1920 },
+      { timeSec: 5, tick: 1920 },
+    ];
+    const segs = buildWarpSegments({ ...base, markers })!;
+    expect(segs).toHaveLength(2);
+    expect(warpBufferTimeAtTick({ ...base, markers, tick: 1920 })).toBeCloseTo(5, 12);
+    expect(warpBufferTimeAtTick({ ...base, markers, tick: 4800 })).toBeCloseTo(6.5, 12);
   });
 
   it("returns null on degenerate geometry", () => {

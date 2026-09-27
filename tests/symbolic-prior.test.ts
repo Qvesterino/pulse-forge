@@ -334,7 +334,11 @@ describe("symbolic prior provider", () => {
     expect((PRIOR_STYLE_VOCAB as readonly string[]).includes("house.afropop")).toBe(false);
 
     const plan = planGeneration(afropopIntent, doc);
-    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
     expect(failures).toEqual([]);
     // The prior client is never consulted for a style it was not trained on.
     expect(runPriorGridMock).not.toHaveBeenCalled();

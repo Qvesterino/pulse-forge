@@ -109,6 +109,35 @@ describe("song builder", () => {
     expect(build.resolvedBpm).toBe(140);
   }, 60_000);
 
+  it("carries the full producer brief into every generated song section", async () => {
+    const intent = normalizeIntent({
+      genre: "trap",
+      style: "rolling",
+      productionProfile: "spacey-dark-trap",
+      artist: "travis scott",
+      flow: "triplet",
+      mood: "dark",
+      text: "travis scott type beat, triplet flow, dark cinematic synths",
+      seed: "song-keeps-brief",
+      bpmRange: [130, 140],
+    });
+    const build = await buildSong(testDoc(), intent, { candidateCount: 3, yieldBetweenSections: false });
+
+    expect(build.sections.length).toBeGreaterThan(0);
+    for (const section of build.sections) {
+      expect(section.pattern.generation?.intent).toMatchObject({
+        artist: "travis scott",
+        flow: "triplet",
+        mood: "dark",
+        productionProfile: "spacey-dark-trap",
+        text: "travis scott type beat, triplet flow, dark cinematic synths",
+        genre: "trap",
+        style: "rolling",
+        length: section.stepCount,
+      });
+    }
+  }, 60_000);
+
   it("is deterministic for the same intent", async () => {
     const doc = testDoc();
     const first = await buildSong(doc, INTENT, { yieldBetweenSections: false });

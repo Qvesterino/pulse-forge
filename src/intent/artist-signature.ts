@@ -79,3 +79,76 @@ export function hasArtistSignature(profile: ArtistProfile | null | undefined): p
   if (!profile) return false;
   return profile.signature.sound.length > 0 || profile.vibe.length > 0;
 }
+
+/**
+ * The artist's tempo window, or null when the profile declares no usable
+ * range. This is a CONSTRAINT for the existing groove-BPM resolution, not a
+ * value: `resolveBpm(groove.bpm, requested)` still picks the number, the
+ * artist range only decides whether that number is allowed to land there.
+ */
+export function artistBpmHint(profile: ArtistProfile | null | undefined): [number, number] | null {
+  const range = profile?.signature.bpm.typical;
+  if (!range) return null;
+  const [lo, hi] = range;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  if (lo <= 0 || hi < lo) return null;
+  return [lo, hi];
+}
+
+/**
+ * The half-time reading of the artist's tempo, when the profile declares one.
+ * Purely informational — surfaced on the plan for a UI tempo readout, never
+ * used to derive the actual BPM (the half-time feel comes from the groove).
+ */
+export function artistHalfTimeHint(profile: ArtistProfile | null | undefined): [number, number] | null {
+  const range = profile?.signature.bpm.halfTime;
+  if (!range) return null;
+  const [lo, hi] = range;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi < lo) return null;
+  return [lo, hi];
+}
+
+/**
+ * Keys the artist habitually works in. Deliberately NOT auto-applied: the
+ * profile's `keys` is descriptive prose in several entries ("varies — A minor,
+ * F minor, D minor, A♭ major all common", "keyless / synthetic atonal
+ * moments") and a plan-level hint that cannot be parsed into a MusicalKey is
+ * better surfaced to the caller than guessed at. A caller with a real key
+ * vocabulary can use this to prefer a matching one; the song builder
+ * consumes it for exactly that.
+ */
+export function artistKeyHint(profile: ArtistProfile | null | undefined): readonly string[] {
+  return profile?.signature.keys ?? [];
+}
+
+/**
+ * Parse the profile's `keys` prose into musical-root candidates the song
+ * builder can choose from. Returns [] for the entries that name no concrete
+ * root ("keyless / synthetic atonal moments", "varies — …") so a caller can
+ * distinguish "no preference" from "this specific key".
+ *
+ * Matches a leading note name, optionally followed by minor/major. Roots are
+ * normalized to the pitch-class spelling the engine uses (A B C D E F G plus
+ * the accidentals the profiles actually name: ♭ and # are folded onto their
+ * nearest common spelling rather than being invented).
+ */
+const ROOT_PATTERN = /\b(A|B|C|D|E|F|G)([#b]?)\s*(minor|min|major|maj|majr|minr)?/gi;
+
+export function artistKeyCandidates(profile: ArtistProfile | null | undefined): readonly string[] {
+  const keys = artistKeyHint(profile);
+  if (!keys.length) return [];
+  const found = new Set<string>();
+  for (const entry of keys) {
+    ROOT_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = ROOT_PATTERN.exec(entry)) !== null) {
+      const [, root, accidental, qualityRaw] = match;
+      // Only the FIRST root in an entry is a real preference; "G minor" is a
+      // key, but "and 6-10 kHz air" would otherwise match stray letters.
+      if (found.size > 0 && keys.indexOf(entry) > 0) break;
+      const quality = /min/i.test(qualityRaw ?? "") ? "minor" : "major";
+      found.add(`${root}${accidental ?? ""} ${quality}`);
+    }
+  }
+  return [...found];
+}

@@ -1608,6 +1608,12 @@ export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile
   if (/^(low|limited)\b/.test(dynamicRange)) derived.glue = true;
   else if (/^wide\b/.test(dynamicRange)) derived.glue = false;
 
+  // scoop (Phase 2 slice 5) — low-mid notch from the tonalBalance
+  // descriptor. Every existing mix knob is a shelf, a lowpass, or the 2.8 kHz
+  // vocal pocket; a 200-500 Hz scoop needs its own peaking cut, so it is the
+  // one genuinely uncovered move in the tonalBalance text.
+  if (/\bscoop(?:ed|ing)?\b/i.test(profile.master.tonalBalance)) derived.scoop = true;
+
   // pump — keyword scan across signature sound + vibe
   const pumpSignal = [...profile.signature.sound, ...profile.vibe]
     .some((text) => /\bsidechain|\bpump(?:ing|s|ed)?\b/i.test(text));

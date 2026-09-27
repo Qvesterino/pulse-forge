@@ -40,7 +40,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bhypnotic techno\b/, "techno"],
   [/\bpeak time\b|\bafter ?hours\b/, "techno"],
   [/\bwarehouse\b/, "techno"],
-  [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b/, "techno"],
+  // Synthwave / outrun / darksynth ride ambient.synthwave (Wave 5 groove).
+  // Was routed to techno before the groove existed, which left style
+  // "synthwave" with no techno.synthwave id → silent random techno fallback.
+  [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b/, "ambient"],
   [/\btrance\b|\bpsytrance\b|\bpsy\b/, "techno"],
   [/\bacid house\b/, "house"],
   [/\bbass house\b|\bfuture house\b/, "house"],
@@ -79,6 +82,13 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bheavy metal\b|\bmetal\b/, "house"],
   // Punk specifics — bare "hardcore" reads as punk hardcore (no gabber lane
   // exists); pop punk sits above the generic pop style via the style table.
+  // Hardstyle / hardcore-techno / uptempo MUST sit above the punk-hardcore
+  // reading — bare "hardcore" stays punk (house.hardcorepunk), but the
+  // explicit electronic compounds are the 150-190 hard-dance family.
+  // Closest existing pockets: techno.hardstyle / techno.hard; the dedicated
+  // gabber lane is a researched P1 addition (docs/VOCABULARY-GAP-RESEARCH.md).
+  [/\bhardstyle\b|\bhard style\b/, "techno"],
+  [/\bhardcore techno\b|\bhappy hardcore\b|\bfrenchcore\b|\bterrorcore\b|\bspeedcore\b|\buptempo hardcore\b/, "techno"],
   [/\bhardcore(?: punk)?\b/, "house"],
   [/\bpop[- ]?punk\b/, "house"],
   [/\bindie(?: rock)?\b/, "house"],
@@ -158,7 +168,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbedroom pop\b/, "ambient"],
   [/\blo-?fi house\b/, "house"],
   [/\bpost-?punk\b/, "techno"],
-  [/\btrip hop\b|\btriphop\b/, "ambient"],
+  [/\btrip hop\b|\btriphop\b|\bdowntempo\b|\bdown[- ]?tempo\b/, "ambient"],
   [/\bfuture bass\b/, "trap"],
   [/\bdrone\b/, "ambient"],
   [/\bidm\b/, "ambient"],
@@ -166,6 +176,19 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bvaporwave\b/, "ambient"],
   [/\bberlin school\b/, "techno"],
   [/\bkrautrock\b/, "techno"],
+  // Shoegaze / dream pop / noise pop — the wall-of-guitars family rides the
+  // rock lanes (house.altrock); a dedicated lane is researched in P1a.
+  // MUST sit above the generic \bpop\b genre entry — "dream pop" contains it.
+  [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "house"],
+  // Reggae / ska / roots — the one-drop family (trap.dancehall carries the
+  // snare-on-3 one-drop and the 88-105 pocket; dedicated reggae lane is P1a).
+  [/\breggae\b|\bska\b|\broots reggae\b/, "trap"],
+  // Nu jazz / broken beat / boogie / balearic / post-rock — depth lanes that
+  // ride existing house-family grooves (broken / funky / organic / altrock).
+  [/\bnu ?jazz\b|\bnu[- ]?jazz\b|\bnew jazz\b|\buk jazz\b|\bjazz fusion\b|\bacid jazz\b/, "house"],
+  [/\bboogie\b|\bboogie funk\b|\bsynth funk\b/, "house"],
+  [/\bbalearic\b|\bchillout\b|\bchill out\b/, "house"],
+  [/\bpost[- ]?rock\b/, "house"],
   // pop wave — specifics BEFORE the generic "pop" entry; all ride existing
   // genres (dance-pop base = house, pop-rap = trap). "bedroom pop" above stays
   // first (more specific). SK "pop" is indeclinable, "popovú" stem covered.
@@ -245,6 +268,25 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
  * SK stems share the entry with EN where the meaning is identical.
  */
 const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
+  // ── Depth-lane guards: most-specific-first, before every generic entry ──
+  // Synthwave family — BEFORE "driving" ("synthwave night drive" would
+  // otherwise be stolen by \bdrive\b). ambient.synthwave is the real pocket.
+  [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b|\bnight drive\b/, "synthwave"],
+  // Shoegaze / dream pop — BEFORE \bpop\b ("dream pop" contains "pop").
+  [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "altrock"],
+  // Post-rock — the crescendo-guitar lane (house.altrock today).
+  [/\bpost[- ]?rock\b/, "altrock"],
+  // Reggae / ska / one-drop — BEFORE the generic \bdub\b entry. trap.dancehall
+  // carries the snare-on-3 one-drop and the 88-105 BPM pocket.
+  [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b|\breggae dub\b/, "dancehall"],
+  // Nu jazz / broken beat — the West London school (house.broken groove).
+  [/\bnu ?jazz\b|\bnu[- ]?jazz\b|\bnew jazz\b|\buk jazz\b|\bjazz fusion\b|\bacid jazz\b/, "broken"],
+  // Balearic / chillout — the sunset lane (house.organic groove).
+  [/\bbalearic\b|\bchillout\b|\bchill out\b/, "organic"],
+  // Chillhop / study beats — BEFORE the boom-bap lo-fi entry ("chillhop" and
+  // "study beats" ride the ambient drifting pocket, matching the Nujabes
+  // artist lane). "lofi hip hop" keeps its boombap.lofi reading below.
+  [/\bchill ?hop\b|\bstudy beats?\b/, "drifting"],
   [/\bdriving\b|\bdrive\b/, "driving"],
   [/\bminimal(?:ny)?\b|\bminimalistick/, "minimal"],
   [/\bbaile\b|\bmandel\w*\b/, "bounce"],
@@ -294,6 +336,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // matches inside "g-funk" because '-' is a non-word char). SK stems
   // deaccented.
   [/\bg[ -]?funk\b|\bgfunk\b|\blow ?rider\b/, "gfunk"],
+  // Boogie funk BEFORE the generic \bfunk\b — the early-80s synth-funk lane
+  // rides house.funky; "funk" bare stays the funky-house reading.
+  [/\bboogie\b|\bboogie funk\b|\bsynth funk\b/, "funky"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   // Afroswing BEFORE the generic afro entry — "afro swing" contains the
@@ -344,6 +389,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bthrash\b/, "thrash"],
   [/\bdoom(?: metal)?\b/, "doom"],
   [/\bheavy metal\b|\bmetal\b/, "metal"],
+  // Hard-dance family BEFORE the punk-hardcore entry — "hardcore techno"
+  // contains "hardcore" and would otherwise be stolen by hardcorepunk.
+  // Bare "hardcore" keeps the punk reading (deliberate; see genre table).
+  [/\bhardstyle\b|\bhard style\b/, "hardstyle"],
+  [/\bhardcore techno\b|\bhappy hardcore\b|\bfrenchcore\b|\bterrorcore\b|\bspeedcore\b|\bhardcore rave\b/, "hard"],
+  [/\bgabber\b|\buptempo\b/, "hard"],
   [/\bhardcore(?: punk)?\b/, "hardcorepunk"],
   [/\bpop[- ]?punk\b/, "poppunk"],
   [/\bindie(?: rock)?\b/, "indie"],
@@ -417,6 +468,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bhead ?nod\b|\bheadnod\b/, "headnod"],
   // Fred-style emotional UKG (house.heartbeat groove + FRED_FORM)
   [/\bheartbeat\b|\bsrdcov(?:y|ý) tep\b/, "heartbeat"],
+  // ── Depth lanes without a dedicated groove yet (closest honest pocket) ──
+  // Trip-hop / downtempo: the organic-instrument half-time pocket
+  // (ambient.organic — the Bonobo lane; a dedicated groove is P1a research).
+  [/\btrip[- ]?hop\b|\bdowntempo\b|\bdown[- ]?tempo\b/, "organic"],
+  // Breakcore: chopped amens at DnB tempo (dnb.amen is the real pocket).
+  [/\bbreakcore\b|\bbreak ?core\b|\bglitch ?core\b|\bdigital hardcore\b/, "amen"],
 ];
 
 /** Rap flow grid phrases → IntentSpec.flow (multi-voice lead reshaper).

@@ -848,9 +848,7 @@ export function Inspector({
                 // indexing a table that may not have the key.
                 const type = asDrumSynthType(e.target.value);
                 if (!type) return;
-                services.store.execute(
-                  setPadSynth(doc, pad.id, { type, ...DRUM_SYNTH_DEFAULTS[type] }),
-                );
+                services.store.execute(setPadSynth(doc, pad.id, { type, ...DRUM_SYNTH_DEFAULTS[type] }));
               }}
             >
               {DRUM_SYNTH_TYPE_ORDER.map((type) => (

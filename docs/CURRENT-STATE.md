@@ -27,7 +27,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets                  |     477 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
 | **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **600** | `tests/` files matching `*.test.ts` (493) and `*.test.tsx` (107), excluding `tests/e2e/`                                      |
+| **Vitest spec files**                  | **601** | `tests/` files matching `*.test.ts` (494) and `*.test.tsx` (107), excluding `tests/e2e/`                                      |
 
 ## Flagship plugin implementations
 

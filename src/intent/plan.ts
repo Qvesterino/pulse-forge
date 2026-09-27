@@ -78,6 +78,28 @@ function resolveBpm(bpm: [number, number], requested: [number, number] | null): 
   return Math.round(clamped * 10) / 10;
 }
 
+/**
+ * The BPM window the groove is resolved inside. An explicit request always
+ * wins; otherwise, when the intent matched an artist, the artist's own tempo
+ * window (deep-profile `signature.bpm.typical`) becomes the request. That is
+ * the point of the layer: "travis scott type beat" should not be able to land
+ * at 90 BPM just because the resolved groove's midpoint happens to sit there.
+ *
+ * Additive by construction — with no artist, or with an artist that declares
+ * no range, this is exactly the old `intent.bpmRange` and the old resolved
+ * value comes out.
+ */
+function resolveBpmRequest(intent: IntentSpec, artistProfile: ArtistProfile | null): [number, number] | null {
+  if (intent.bpmRange) return intent.bpmRange;
+  return artistBpmHint(artistProfile);
+}
+
+/** The artist profile behind an intent, when one matched and it has a plan hint. */
+function artistProfileFor(intent: IntentSpec): ArtistProfile | null {
+  if (!intent.artist) return null;
+  return getArtistProfile(normalizeArtistSlug(intent.artist)) ?? null;
+}
+
 function generationSeed(intent: IntentSpec, effectiveSeed: string, grooveId: string): string {
   return `${intent.genre}|${effectiveSeed}|${grooveId}`;
 }

@@ -166,8 +166,11 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       existing trim/stretch features without first testing their limits.
 - [x] Preserve fractional-tick audio split boundaries and advance the linear
       source window without bar rounding; add a 3 ms de-click fade at the seam.
-      This does not yet certify reverse/warped split source mapping or real-
-      material edit parity.
+      Forward warped splits now also map and crop the source window at the
+      resolved warp boundary for both resample and stretch modes; the editor
+      and renderer share stable duplicate-pin handling and the 64-segment cap.
+      Unit coverage checks source mapping on both sides and execute/undo/redo.
+      Reverse/loop split mapping and real-material edit parity remain open.
 - [x] Add an undoable, tick-range comp edit from transport locators. Keep source
       passes immutable, persist comp provenance, replace only the selected
       interval, and route comp AudioClips through shared live/offline playback.
@@ -328,8 +331,9 @@ recovery and project interchange proven.
    live/offline parity; a captured-PCM Chromium fixture covers one PCM-frame-
    near UI split and source-window mapping, take-lane comp, context-menu warp-
    pin creation, Undo/Redo, PCM/marker persistence and exact WAV parity across
-   reopen. Broader sample-accurate edit coverage, waveform-drag warp on
-   recorded material and physical hardware takes remain open. The fixed 3 ms
+   reopen. Forward warped split source mapping is now covered at the command
+   level; broader sample-accurate edit coverage, waveform-drag warp on recorded
+   material and physical hardware takes remain open. The fixed 3 ms
    warp-segment de-click is separate from musical crossfades.
 2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
    interface, driver mode and exact device-use window before opening a physical

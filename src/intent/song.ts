@@ -35,6 +35,7 @@ import { applySectionRequests, type SectionParse } from "./sections";
 import { vocalSectionAdjust } from "../vocal/form";
 import type { VocalProfile } from "../vocal/types";
 import { EFFECT_META } from "../effects/definitions";
+import { createSongSectionIntent } from "./song-section-intent";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -1006,6 +1007,103 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       instrumentation: ["drums", "chords"],
     },
   ],
+  trance: [
+    // TRANCE dialect: the genre IS the breakdown-build-anthem template. The
+    // breakdown STRIPS the drums (the melody stands alone), the build
+    // restores them via the riser, and the anthem lands on the impact pair.
+    {
+      role: "intro",
+      label: "Intro",
+      bars: 16,
+      intensity: 0.5,
+      transitionIn: null,
+      energyDelta: -0.15,
+      densityDelta: -0.2,
+      complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "verse",
+      label: "Groove",
+      bars: 16,
+      intensity: 0.75,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "bridge",
+      label: "Breakdown",
+      bars: 16,
+      intensity: 0.35,
+      marker: { type: "cue", name: "BREAKDOWN" },
+      transitionIn: "break",
+      energyDelta: -0.35,
+      densityDelta: -0.4,
+      complexityDelta: -0.15,
+      instrumentation: ["chords", "lead"],
+    },
+    {
+      role: "build",
+      label: "Build",
+      bars: 8,
+      intensity: 0.7,
+      marker: { type: "buildup", name: "BUILD" },
+      transitionIn: "riser",
+      energyDelta: 0.25,
+      densityDelta: 0.2,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "chorus",
+      label: "Drop",
+      bars: 16,
+      intensity: 1,
+      marker: { type: "impact", name: "DROP" },
+      transitionIn: "impact",
+      energyDelta: 0.3,
+      densityDelta: 0.15,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "verse",
+      label: "Second Groove",
+      bars: 16,
+      intensity: 0.8,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "chorus",
+      label: "Final Anthem",
+      bars: 16,
+      intensity: 1,
+      marker: { type: "impact", name: "FINAL ANTHEM" },
+      transitionIn: "riser",
+      energyDelta: 0.2,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "outro",
+      label: "Outro",
+      bars: 16,
+      intensity: 0.45,
+      transitionIn: "break",
+      energyDelta: -0.3,
+      densityDelta: -0.25,
+      complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
+    },
+  ],
   dnb: [
     // DnB dialect: intro → build → DROP. The second drop lands on the
     // reverse-suck + boom pair; the breakdown breathes before the last one.
@@ -1491,6 +1589,7 @@ const GENRE_DEFAULT_BPM: Record<IntentSpec["genre"], number> = {
   ukg: 134,
   boombap: 90,
   amapiano: 112,
+  trance: 138,
 };
 
 function formBpm(intent: IntentSpec): number {
@@ -1756,22 +1855,15 @@ export async function buildSong(
     const sectionRoles: IntentRole[] = wanted.length > 0 ? [...wanted] : [...userRoles];
     const vocalAdjust = vocalSectionAdjust(options.vocalProfile, vocalBar, section.bars);
     vocalBar += section.bars;
-    const sectionIntent = normalizeIntent({
-      genre: baseIntent.genre,
-      style: baseIntent.style ?? undefined,
-      seed: `${baseIntent.seed}|song:${index}:${section.role}`,
-      key: baseIntent.key,
-      bpmRange: baseIntent.bpmRange,
-      // pattern = the full section length (multi-bar phrase plans, fills)
-      length: Math.min(256, section.bars * 16),
+    const sectionIntent = createSongSectionIntent(baseIntent, {
+      index,
+      role: section.role,
+      bars: section.bars,
       energy: section.energyDelta + vocalAdjust.energy,
       density: section.densityDelta + vocalAdjust.density,
       complexity: section.complexityDelta,
-      variation: baseIntent.variation,
       candidateCount,
       roles: sectionRoles,
-      constraints: baseIntent.constraints,
-      controls: baseIntent.controls,
     });
     const result =
       candidateCount > 1

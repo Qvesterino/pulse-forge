@@ -9,6 +9,7 @@ import { getArtistProfile } from "../src/intent/artist-profiles";
 import {
   resetSemanticConditioning,
   semanticConditioning,
+  semanticConditioningForIntent,
   setAudioReferenceConditioning,
   setSemanticEmbedOverride,
 } from "../src/intent/semantic-conditioning";
@@ -129,6 +130,22 @@ describe("semanticConditioning — artist signature as the base", () => {
     await semanticConditioning("travis scott type beat", undefined, TRAVIS);
     expect(calls.length).toBe(1);
     expect(calls[0]).toHaveLength(2);
+  });
+
+  it("resolves the parsed artist label when conditioning a complete intent", async () => {
+    const calls: string[][] = [];
+    setSemanticEmbedOverride(async (texts) => {
+      calls.push(texts);
+      return fakeEmbed()(texts);
+    });
+    const result = await semanticConditioningForIntent({
+      artist: "travis scott",
+      text: "travis scott type beat, but brighter",
+    });
+
+    expect(result).not.toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual(["travis scott type beat, but brighter", artistSignatureText(TRAVIS)]);
   });
 
   it("embeds only the signature when the user typed nothing usable", async () => {

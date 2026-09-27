@@ -37,13 +37,29 @@ const server = await createServer({
 });
 await server.listen();
 
-const report = {
+// Resume support: an existing report's healthy rows are kept and skipped —
+// only missing rows and rows carrying runner/sweep errors are re-rendered.
+let report = {
   effects: [],
   instruments: [],
   interactions: null,
   startedAt: new Date().toISOString(),
   finishedAt: null,
 };
+if (fs.existsSync(outPath)) {
+  try {
+    const prior = JSON.parse(fs.readFileSync(outPath, "utf8"));
+    report.startedAt = prior.startedAt ?? report.startedAt;
+    report.effects = (prior.effects ?? []).filter((e) => !e.sweepError && !e.hostError && e.hostFinite);
+    report.instruments = (prior.instruments ?? []).filter(
+      (i) => i.defaultAudible && !(i.unstableParams ?? []).some((u) => String(u).startsWith("runner:")),
+    );
+    report.interactions = prior.interactions ?? null;
+    console.log(`[resume] keeping ${report.effects.length} effect rows, ${report.instruments.length} instrument rows`);
+  } catch {
+    console.log("[resume] existing report unreadable — starting fresh");
+  }
+}
 const errors = [];
 
 function saveReport() {
@@ -99,7 +115,10 @@ try {
     const reg = await import("/src/effects/registry.ts");
     return reg.EFFECT_ORDER;
   });
-  const wantedEffects = only.length > 0 ? effectTypes.filter((t) => only.includes(t)) : effectTypes;
+  const wantedEffects =
+    only.length > 0
+      ? effectTypes.filter((t) => only.includes(t))
+      : effectTypes.filter((t) => !report.effects.some((e) => e.type === t));
   for (const type of wantedEffects) {
     console.log(`[audit] effect ${type}`);
     try {
@@ -149,7 +168,8 @@ try {
     const reg = await import("/src/instruments/registry.ts");
     return reg.INSTRUMENT_ORDER;
   });
-  const wantedInstruments = only.length > 0 ? [] : instrumentKinds;
+  const wantedInstruments =
+    only.length > 0 ? [] : instrumentKinds.filter((k) => !report.instruments.some((i) => i.kind === k));
   for (const kind of wantedInstruments) {
     console.log(`[audit] instrument ${kind}`);
     try {
@@ -182,7 +202,7 @@ try {
   }
 
   // Phase 3: interactions.
-  if (only.length === 0) {
+  if (only.length === 0 && !report.interactions) {
     console.log("[audit] interactions");
     try {
       report.interactions = await evaluateResilient(page, async () => {

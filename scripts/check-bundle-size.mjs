@@ -65,7 +65,7 @@ const ENTRY_BUDGET_KB = 1070;
 // 2740 (2026-09-26): shared preset quick controls add the MIX/FEEDBACK/SYNC
 // workflow to the bottom dock; the measured graph is now 2738 KB. Keep a
 // bounded 2 KB margin; future dock growth must still be offset or split.
-// 3170 (2026-09-27): the production graph measured 3158 KB raw (~930 KB gzip),
+// 3170 (2026-09-27): the production graph measured 3158 KB raw (~929 KB gzip),
 // up 411 KB from the 2747 KB graph measured on 2026-09-26. The increase is the
 // intentional producer wave: deeper genre/groove data, artist-signature
 // conditioning, canonical compressor/transient bridge recipes, and renderer

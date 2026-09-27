@@ -141,10 +141,14 @@ function PerformanceReadout({ engine, scheduler }: { engine: Services["engine"];
  * Ableton Link session chip — status bar toggle for the local WS bridge
  * (`npm run link`). Green = in session (peers count), red = unreachable,
  * gray = off. Phase-lock itself lives in services.linkSync.
+ *
+ * Like MtcChip, defensive: a missing/partial `services.linkSync` renders an
+ * inert disabled chip rather than crashing the whole App.
  */
 function LinkChip({ services }: { services: Services }) {
-  const [status, setStatus] = useState<LinkStatus>(services.linkSync.status);
-  useEffect(() => services.linkSync.subscribe(setStatus), [services]);
+  const link = services.linkSync;
+  const [status, setStatus] = useState<LinkStatus>(link?.status ?? { kind: "off" });
+  useEffect(() => link?.subscribe(setStatus), [link]);
   const title =
     status.kind === "on"
       ? `Ableton Link bridge — session ${status.tempo.toFixed(1)} BPM, ${status.peers} peer(s). Click to leave.`
@@ -159,7 +163,8 @@ function LinkChip({ services }: { services: Services }) {
       className="link-chip"
       data-state={status.kind}
       title={title}
-      onClick={() => (services.linkSync.enabled ? services.linkSync.disconnect() : services.linkSync.connect())}
+      disabled={!link}
+      onClick={() => (link && link.enabled ? link.disconnect() : link?.connect())}
     >
       LINK{status.kind === "on" ? ` ${status.peers}` : ""}
     </button>
@@ -169,19 +174,26 @@ function LinkChip({ services }: { services: Services }) {
 /**
  * MIDI Timecode (SMPTE) readout — appears only while quarter-frames are
  * actually arriving (stale > 1 s hides it), so it costs nothing when unused.
+ *
+ * Defensive on purpose: this is a purely cosmetic status-bar chip, and a
+ * missing/partial `services.mtc` must never be able to take down the whole
+ * App render. Returns null when the receiver is absent or stale.
  */
 function MtcChip({ services }: { services: Services }) {
+  const mtc = services.mtc;
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const unsubscribe = services.mtc.subscribe(() => setTick((n) => n + 1));
+    if (!mtc) return;
+    const unsubscribe = mtc.subscribe(() => setTick((n) => n + 1));
     const timer = setInterval(() => setTick((n) => n + 1), 300); // re-hide on stale
     return () => {
       unsubscribe();
       clearInterval(timer);
     };
-  }, [services]);
-  const snapshot = services.mtc.getSnapshot();
-  if (!snapshot || !services.mtc.isFresh()) return null;
+  }, [mtc]);
+  if (!mtc) return null;
+  const snapshot = mtc.getSnapshot();
+  if (!snapshot || !mtc.isFresh()) return null;
   void tick;
   return (
     <span className="perf-readout-item" title="MIDI Timecode incoming (SMPTE)">

@@ -29,7 +29,8 @@ import {
   artistSignatureText,
   hasArtistSignature,
 } from "./artist-signature";
-import type { ArtistProfile } from "./artist-profiles";
+import { getArtistProfile, normalizeArtistSlug, type ArtistProfile } from "./artist-profiles";
+import type { IntentSpec } from "./types";
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
 
@@ -170,4 +171,15 @@ export async function semanticConditioning(
   } catch {
     return null;
   }
+}
+
+/** Resolve the parsed artist preset and pass its curated signature to the
+ * embedding conditioner. Keeping this at the intent boundary means every
+ * provider gets the same artist + user-text blend instead of silently
+ * dropping artist identity before the semantic prior. */
+export function semanticConditioningForIntent(
+  intent: Pick<IntentSpec, "artist" | "text">,
+): Promise<readonly number[] | null> {
+  const artist = intent.artist ? (getArtistProfile(normalizeArtistSlug(intent.artist)) ?? null) : null;
+  return semanticConditioning(intent.text, undefined, artist);
 }

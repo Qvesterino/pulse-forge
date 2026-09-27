@@ -271,6 +271,22 @@ NEISTÉ: tónina nebola zadaná
 - SUNO preview feedne metre → suggestion čipy; klik vedie do audition-first sekčného návrhu
   (▶ náhľad → ✓/✗). Nikdy sa neaplikuje automaticky — dôkaz, návrh a rozhodnutie sú oddelené.
 
+**Doplnok 3 (2026-09-27): zachovanie conditioning naprieč song sekciami.**
+
+- `buildSong()` predtým skladal intent každej sekcie z ručne vybraných polí, takže sa z briefu
+  vytratil artist, mood, flow, pôvodný text a ďalšie provider/protection polia. Nový čistý
+  `createSongSectionIntent()` dedí celý normalizovaný brief a prepisuje iba seed, dĺžku,
+  section energy/density/complexity, kandidátsky počet a role scope. Chránené roly a track
+  targets tak prežijú aj async song candidate path.
+- `semanticConditioningForIntent()` preloží `IntentSpec.artist` na dostupný deep artist profile
+  a odovzdá jeho signature spolu s používateľovým textom do existujúceho semantic prior blendu;
+  neznámy/neprofilovaný artist bezpečne zostáva na pôvodnej textovej/heuristickej ceste.
+- Overené: song integrácia + artist conditioning **40/40**, samostatný strict TS check nového
+  mappera/conditionera/testov PASS. Celý `npm run typecheck` je v aktuálnom zdieľanom strome
+  stále červený: `TS6133` v súbežne menenom `AudioEngine.ts` a `TS2741`, pretože paralelné
+  rozšírenie `Genre` o `trance` ešte nemá zodpovedajúci `SONG_FORMS` entry. Vite produkčný build
+  a bundle gates PASS; tieto typové chyby však bránia zelenému `npm run build`.
+
 ### Fáza 6 — KYX ako zvukár: meranie, odporúčanie, potvrdenie
 
 **Cieľ:** produkčná pomoc je počuteľná aj technicky vysvetliteľná; nič sa automaticky „nemasteruje“ bez kontroly.
@@ -382,11 +398,11 @@ Pred označením workflow za hotové musí prejsť:
 ### Rozhodnutie ownera — bundle budget, 2026-09-27
 
 Owner zvolil zachovať aktuálne funkcie a nastaviť meraný limit DAW JS na **3 170 KB**.
-Pred zmenou limitu produkčný build nameral **3 158 KB raw / približne 930 KB gzip**, oproti
+Produkčný build po zmene nameral **3 158 KB raw / približne 929 KB gzip**, oproti
 2 747 KB z 2026-09-26. Nárast zodpovedá aktuálnej producer vlne: rozšíreným žánrovým a
 groove dátam, artist-signature conditioning, bridge receptom pre kompresor/transient a
-renderer playback. Zmena teda nie je všeobecné povolenie na ďalší rast: strop ponecháva iba
-12 KB rezervu a ďalší rast sa musí najprv kompenzovať alebo rozdeliť do lazy chunkov.
+renderer playback. Zmena teda nie je všeobecné povolenie na ďalší rast: build ponecháva iba
+približne 12 KB rezervu a ďalší rast sa musí najprv kompenzovať alebo rozdeliť do lazy chunkov.
 
 Landing beat/song composer sa zároveň presunul za dynamický import. Jeho on-demand graf je
 **157/600 KB**; pôvodné meranie pred splitom bolo 727/815 KB. Samostatné limity entry

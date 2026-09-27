@@ -10,6 +10,7 @@ import type {
 } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
 import { valueAt } from "../project-model/automation";
+import { MAX_AUDIO_CLIP_WARP_SEGMENTS, resolveWarpPinPoints } from "../project-model/audio-clip-warp";
 export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { hashString } from "../shared/rng";
 import { defaultMasterConfig } from "../project-model/schema";
@@ -5786,7 +5787,7 @@ export interface WarpSegment {
 }
 
 /** Realtime-safety cap: one trigger schedules at most this many sources. */
-export const MAX_WARP_SEGMENTS = 64;
+export const MAX_WARP_SEGMENTS = MAX_AUDIO_CLIP_WARP_SEGMENTS;
 
 /**
  * Build a piecewise-constant-rate warp map from AudioClip warp markers.
@@ -5809,68 +5810,35 @@ export function buildWarpSegments(opts: {
   contentStartSec: number;
   contentDurSec: number;
 }): WarpSegment[] | null {
-  const { markers, clipStartTick, clipTicks, spt, contentStartSec, contentDurSec } = opts;
-  if (!Number.isFinite(clipTicks) || clipTicks <= 0) return null;
+  const { clipStartTick, clipTicks, spt, contentStartSec, contentDurSec } = opts;
+  if (!Number.isFinite(clipStartTick) || !Number.isFinite(clipTicks) || clipTicks <= 0) return null;
   if (!Number.isFinite(spt) || spt <= 0) return null;
   if (!Number.isFinite(contentStartSec) || !Number.isFinite(contentDurSec) || contentDurSec <= 0) return null;
-  const contentEnd = contentStartSec + contentDurSec;
-  // Keep only finite markers inside the clip; buffer times clamp into content.
-  const pins: { rel: number; buf: number }[] = [{ rel: 0, buf: contentStartSec }];
-  let inRange = 0;
-  for (const m of markers) {
-    if (!Number.isFinite(m.timeSec) || !Number.isFinite(m.tick)) continue;
-    const rel = m.tick - clipStartTick;
-    if (rel < 0 || rel > clipTicks) continue;
-    inRange++;
-    pins.push({ rel, buf: Math.min(contentEnd, Math.max(contentStartSec, m.timeSec)) });
-  }
-  // No usable marker — legacy straight playback (which may cap/silence the
-  // tail instead of re-fitting the content; that stays opt-in via warp).
-  if (inRange === 0) return null;
-  pins.push({ rel: clipTicks, buf: contentEnd });
-  // Stable sort by tick; duplicate ticks keep the LAST pin (explicit edit wins).
-  const order = pins.map((_, i) => i);
-  order.sort((a, b) => pins[a].rel - pins[b].rel);
-  const deduped: typeof pins = [];
-  for (const i of order) {
-    const last = deduped[deduped.length - 1];
-    if (last && Math.abs(last.rel - pins[i].rel) < 1e-9) deduped[deduped.length - 1] = pins[i];
-    else deduped.push(pins[i]);
-  }
-  // Defensive truncation (sanitize allows 256 markers): first N pins + end.
-  let pts = deduped;
-  if (pts.length > MAX_WARP_SEGMENTS + 1) {
-    pts = [...pts.slice(0, MAX_WARP_SEGMENTS), pts[pts.length - 1]];
-  }
+  const resolved = resolveWarpPinPoints(opts);
+  if (!resolved || resolved.inRangeMarkerCount === 0) return null;
+  // The shared resolver has already rejected maps with no in-range markers.
   const segs: WarpSegment[] = [];
-  for (let i = 0; i + 1 < pts.length && segs.length < MAX_WARP_SEGMENTS; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const dTick = b.rel - a.rel;
-    const dBuf = b.buf - a.buf;
+  for (let i = 0; i + 1 < resolved.points.length && segs.length < MAX_WARP_SEGMENTS; i++) {
+    const a = resolved.points[i]!;
+    const b = resolved.points[i + 1]!;
+    const dTick = b.relTick - a.relTick;
+    const dBuf = b.bufferTimeSec - a.bufferTimeSec;
     // Degenerate: zero time span or frozen/reversed buffer direction —
     // BufferSource cannot hold or play backwards in a forward warp.
     if (dTick <= 1e-9 || dBuf <= 0.0005) continue;
     const rate = dBuf / (dTick * spt);
     if (!Number.isFinite(rate) || rate <= 0) continue;
-    segs.push({ startTick: a.rel, endTick: b.rel, bufStartSec: a.buf, bufEndSec: b.buf, rate });
+    segs.push({
+      startTick: a.relTick,
+      endTick: b.relTick,
+      bufStartSec: a.bufferTimeSec,
+      bufEndSec: b.bufferTimeSec,
+      rate,
+    });
   }
   return segs.length > 0 ? segs : null;
 }
 
-/**
- * Buffer time (sec, original-sample timeline) playing at an arrangement tick
- * under the current warp map — the neutral value for a NEW pin at that tick
- * (inserting it leaves the sound unchanged; dragging it bends time).
- *
- * With no usable markers it falls back to the straight-playback position,
- * which is mode-aware: resample consumes the source at `rate` per wall
- * second, stretch-mode straight plays a pre-stretched buffer, i.e. the
- * original advances at 1/`rate` per wall second.
- *
- * Returns null when the tick is outside the clip or geometry is degenerate.
- * Pure — shared by the waveform pin editor and the tests.
- */
 /** Default micro-crossfade at repitch-warp segment joints (de-click only). */
 export const WARP_MICRO_FADE_SEC = 0.003;
 

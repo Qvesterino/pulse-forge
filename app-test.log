@@ -1,0 +1,180 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+stderr | tests/ui/App.test.tsx > App (top-level shell) > renders the .app root without crashing
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+The above error occurred in the <LinkChip> component:
+
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:21)
+    at footer
+    at div
+    at DiceProvider (D:\pulse-forge\src\ui\DiceContext.tsx:49:3)
+    at App (D:\pulse-forge\src\ui\App.tsx:201:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | tests/ui/App.test.tsx > App (top-level shell) > the AudioUnlock global pointer-down listener registers once at mount
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+The above error occurred in the <LinkChip> component:
+
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:21)
+    at footer
+    at div
+    at DiceProvider (D:\pulse-forge\src\ui\DiceContext.tsx:49:3)
+    at App (D:\pulse-forge\src\ui\App.tsx:201:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | tests/ui/App.test.tsx > App (top-level shell) > the OnboardingTour appears after the boot delay (or is suppressed by the localStorage flag)
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+The above error occurred in the <LinkChip> component:
+
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:21)
+    at footer
+    at div
+    at DiceProvider (D:\pulse-forge\src\ui\DiceContext.tsx:49:3)
+    at App (D:\pulse-forge\src\ui\App.tsx:201:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+stderr | tests/ui/App.test.tsx > App (top-level shell) > if the tour has been completed (flag set), the OnboardingTour does NOT appear
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+TypeError: Cannot read properties of undefined (reading 'kind')
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:12)
+    at renderWithHooks (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:20103:13)
+    at beginWork (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (D:\pulse-forge\node_modules\jsdom\lib\generated\idl\EventListener.js:26:30)
+    at innerInvokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:360:16)
+    at invokeEventListeners (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (D:\pulse-forge\node_modules\jsdom\lib\jsdom\living\events\EventTarget-impl.js:114:17)
+The above error occurred in the <LinkChip> component:
+
+    at LinkChip (D:\pulse-forge\src\ui\App.tsx:149:21)
+    at footer
+    at div
+    at DiceProvider (D:\pulse-forge\src\ui\DiceContext.tsx:49:3)
+    at App (D:\pulse-forge\src\ui\App.tsx:201:3)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31mÔŁ»[39m tests/ui/App.test.tsx [2m([22m[2m4 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 1886[2mms[22m[39m
+[31m   [31m├Ś[31m App (top-level shell)[2m > [22mrenders the .app root without crashing[33m 719[2mms[22m[31m[39m
+[31m     Ôćĺ Cannot read properties of undefined (reading 'kind')[39m
+[31m   [31m├Ś[31m App (top-level shell)[2m > [22mthe AudioUnlock global pointer-down listener registers once at mount[33m 452[2mms[22m[31m[39m
+[31m     Ôćĺ Cannot read properties of undefined (reading 'kind')[39m
+[31m   [31m├Ś[31m App (top-level shell)[2m > [22mthe OnboardingTour appears after the boot delay (or is suppressed by the localStorage flag)[33m 381[2mms[22m[31m[39m
+[31m     Ôćĺ Cannot read properties of undefined (reading 'kind')[39m
+[31m   [31m├Ś[31m App (top-level shell)[2m > [22mif the tour has been completed (flag set), the OnboardingTour does NOT appear[33m 332[2mms[22m[31m[39m
+[31m     Ôćĺ Cannot read properties of undefined (reading 'kind')[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 4 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/ui/App.test.tsx > App (top-level shell) > renders the .app root without crashing
+ FAIL  tests/ui/App.test.tsx > App (top-level shell) > the AudioUnlock global pointer-down listener registers once at mount
+ FAIL  tests/ui/App.test.tsx > App (top-level shell) > the OnboardingTour appears after the boot delay (or is suppressed by the localStorage flag)
+ FAIL  tests/ui/App.test.tsx > App (top-level shell) > if the tour has been completed (flag set), the OnboardingTour does NOT appear
+TypeError: Cannot read properties of undefined (reading 'kind')
+ ÔŁ» LinkChip src/ui/App.tsx:149:12
+    147|   useEffect(() => services.linkSync.subscribe(setStatus), [services]);
+    148|   const title =
+    149|     status.kind === "on"
+       |            ^
+    150|       ? `Ableton Link bridge ÔÇö session ${status.tempo.toFixed(1)} BPM,ÔÇŽ
+    151|       : status.kind === "error"
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[90m (4)[39m
+[2m   Start at [22m 12:40:07
+[2m   Duration [22m 20.58s[2m (transform 7.92s, setup 1.17s, collect 11.00s, tests 1.89s, environment 4.67s, prepare 470ms)[22m
+
+ ÔŁ» renderWithHooks node_modules/react-dom/cjs/react-dom.development.js:15486:18
+ ÔŁ» mountIndeterminateComponent node_modules/react-dom/cjs/react-dom.development.js:20103:13
+ ÔŁ» beginWork node_modules/react-dom/cjs/react-dom.development.js:21626:16
+ ÔŁ» beginWork$1 node_modules/react-dom/cjs/react-dom.development.js:27465:14
+ ÔŁ» performUnitOfWork node_modules/react-dom/cjs/react-dom.development.js:26599:12
+ ÔŁ» workLoopSync node_modules/react-dom/cjs/react-dom.development.js:26505:5
+ ÔŁ» renderRootSync node_modules/react-dom/cjs/react-dom.development.js:26473:7
+ ÔŁ» recoverFromConcurrentError node_modules/react-dom/cjs/react-dom.development.js:25889:20
+ ÔŁ» performConcurrentWorkOnRoot node_modules/react-dom/cjs/react-dom.development.js:25789:22
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/4]ÔÄ»
+

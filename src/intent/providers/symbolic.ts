@@ -28,7 +28,7 @@ import {
   runPriorGridV3,
   type PriorRunResult,
 } from "../../ai/symbolic/prior-client";
-import { semanticConditioning } from "../semantic-conditioning";
+import { semanticConditioningForIntent } from "../semantic-conditioning";
 import {
   buildMelodicFeatureRow,
   melodicGenreOf,
@@ -271,7 +271,7 @@ export class SymbolicPriorProvider implements GenerationProvider {
     // Embedding conditioning (roadmap Fáza F) — ONE projection per call; the
     // v2 prior consumes it instead of the v1 genre+style one-hots when the
     // flag is on AND the semantic model answers. Null ⇒ pure v1 path.
-    const semantic = await semanticConditioning(plan.intent.text);
+    const semantic = await semanticConditioningForIntent(plan.intent);
     let v2Unavailable = false;
     let v3Unavailable = false;
 

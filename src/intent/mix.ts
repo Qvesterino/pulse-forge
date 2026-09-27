@@ -316,6 +316,20 @@ export function planMixProfile(
     summary.push(`sub: ${subSignal} (lowShelf ${subGain > 0 ? "+" : ""}${subGain} dB)`);
   }
 
+  // ── Scoop: low-mid notch (Phase 2 slice 5) ──────────────────────────────
+  // A "sub-heavy, scooped low-mids" master needs a 200-500 Hz dip. Nothing
+  // else in the mix chain can express it — tone is a shelf pair + lowpass,
+  // sub is a lowShelf, and the vocal pocket lives at 2.8 kHz — so the scoop
+  // gets its own peaking cut on the tracks that would otherwise fight the
+  // 808. Bass is excluded: the notch is on the LOW-mids, the kick/808 own
+  // that space.
+  if (artistMix?.scoop) {
+    const scoop = { lowMidFreq: 320, lowMidGain: -1.5, lowMidQ: 0.9 };
+    decisions.push({ target: "chords", effectType: "eq", params: { ...scoop } });
+    decisions.push({ target: "lead", effectType: "eq", params: { ...scoop } });
+    summary.push("scoop: -1.5 dB @ 320 Hz (low-mid notch)");
+  }
+
   // ── Pop production (Wave 4): vocal-friendly glue + controlled low-end ───
   // Gentle music-bus compression so vocals sit on top without fighting, and
   // a high-pass on the music (not the bass) so the sub stays clean. Merges

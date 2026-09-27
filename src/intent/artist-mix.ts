@@ -49,6 +49,16 @@ export interface ArtistMixProfile {
    * "moderate" -> absent.
    */
   glue?: boolean;
+  /**
+   * Low-mid scoop producer-decision (Phase 2 slice 5). true pushes a peaking
+   * EQ in the 200–500 Hz band with negative gain — the one spectral move no
+   * existing knob covers: `tone` is a pair of shelves plus a lowpass, `sub`
+   * is a lowShelf, and the vocal pocket sits at 2.8 kHz, so nothing in the
+   * mix chain could pull a 320 Hz notch out of a "sub-heavy, scooped
+   * low-mids" master. Maps from deep profile master.tonalBalance when the
+   * descriptor says "scooped"; absent = no opinion.
+   */
+  scoop?: boolean;
 }
 
 export const ARTIST_MIX_PROFILES: Readonly<Record<string, ArtistMixProfile>> = {
