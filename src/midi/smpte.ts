@@ -64,9 +64,10 @@ export function isSmpTeTimecode(value: unknown): value is SmpTeTimecode {
 export function smpteToSeconds(tc: SmpTeTimecode): number {
   if (!isSmpTeTimecode(tc)) return Number.NaN;
   if (tc.rate !== 2997) {
-    return (tc.hours * 3600 + tc.minutes * 60 + tc.seconds) + tc.frames / nominalFps(tc.rate);
+    return tc.hours * 3600 + tc.minutes * 60 + tc.seconds + tc.frames / nominalFps(tc.rate);
   }
-  const frameNumber = tc.hours * 107892 + tc.minutes * 1798 + Math.floor(tc.minutes / 10) * 2 + tc.seconds * 30 + tc.frames;
+  const frameNumber =
+    tc.hours * 107892 + tc.minutes * 1798 + Math.floor(tc.minutes / 10) * 2 + tc.seconds * 30 + tc.frames;
   return frameNumber / 29.97;
 }
 
@@ -77,7 +78,13 @@ export function secondsToSmpTe(seconds: number, rate: SmpTeRate): SmpTeTimecode 
     const fps = nominalFps(rate);
     const whole = Math.floor(seconds);
     const frames = Math.min(fps - 1, Math.floor((seconds - whole) * fps));
-    return { hours: Math.floor(whole / 3600) % 24, minutes: Math.floor(whole / 60) % 60, seconds: whole % 60, frames, rate };
+    return {
+      hours: Math.floor(whole / 3600) % 24,
+      minutes: Math.floor(whole / 60) % 60,
+      seconds: whole % 60,
+      frames,
+      rate,
+    };
   }
   let frameNumber = Math.floor(seconds * 29.97);
   const hours = Math.min(23, Math.floor(frameNumber / 107892));
@@ -206,7 +213,8 @@ export class MtcDecoder {
    */
   static parseFullFrame(bytes: ArrayLike<number>): SmpTeTimecode | null {
     if (!bytes || bytes.length < 9) return null;
-    if (bytes[0] !== 0xf0 || bytes[1] !== 0x7f || bytes[2] !== 0x7f || bytes[3] !== 0x01 || bytes[4] !== 0x01) return null;
+    if (bytes[0] !== 0xf0 || bytes[1] !== 0x7f || bytes[2] !== 0x7f || bytes[3] !== 0x01 || bytes[4] !== 0x01)
+      return null;
     const rate = mtcRateCodeToRate((bytes[5] >> 5) & 0x03);
     const tc: SmpTeTimecode = {
       hours: bytes[5] & 0x1f,

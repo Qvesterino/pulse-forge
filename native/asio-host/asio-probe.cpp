@@ -83,6 +83,7 @@ static int probeDriver(IASIO *iasio, const char *name) {
 
   if (!iasio) {
     fputs(",\"status\":\"unavailable\",\"detail\":\"CoCreateInstance failed (32-bit-only driver in a 64-bit process, or the DLL is broken)\"}\n", stdout);
+    fflush(stdout);
     return 0;
   }
 
@@ -96,6 +97,7 @@ static int probeDriver(IASIO *iasio, const char *name) {
     print_field("status", "unavailable");
     print_field("detail", errorMessage);
     fputs("}\n", stdout);
+    fflush(stdout);
     iasio->Release();
     return 0;
   }
@@ -121,6 +123,9 @@ static int probeDriver(IASIO *iasio, const char *name) {
   }
   if (okRate) printf(",\"sampleRate\":%.0f", (double)sampleRate);
   fputs("}\n", stdout);
+  // Pipe stdout is block-buffered: flush per line so drivers reported before
+  // a later blocking driver survive the manager's kill-on-timeout.
+  fflush(stdout);
   iasio->Release();
   return 1;
 }
