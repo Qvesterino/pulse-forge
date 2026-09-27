@@ -367,18 +367,20 @@ export function planMixProfile(
   // SONG_LOUDNESS_TRIM_LIMIT_DB (6) — so the artist signal is applied as a
   // BOUNDED OFFSET from that target rather than as a raw replacement:
   //
-  //   lift = clamp(streamingTarget - artistLufs, 0, TRIM_LIMIT)
+  //   lift = clamp(artistLufs - streamingTarget, 0, TRIM_LIMIT)
   //   target = streamingTarget + lift
   //
-  // A loud artist (Travis Scott -7) therefore lands at -8, never at -7: the
-  // cap keeps exports inside the streaming band the product already
-  // guarantees, while still giving real per-artist differentiation. An artist
-  // at or below the streaming target (J Dilla -13, Burial -12) contributes
-  // lift 0 and leaves the project default untouched.
+  // A loud artist (Travis Scott -7) is 7 dB above the streaming target, so
+  // the lift clamps to the 6 dB the song builder already allows and the
+  // master lands at -8, never at -7: the cap keeps exports inside the
+  // streaming band the product already guarantees, while still giving real
+  // per-artist differentiation. An artist AT or BELOW the streaming target
+  // (J Dilla -13 and quieter) contributes no lift and leaves the project
+  // default untouched.
   let masterLufsTarget: number | undefined;
   const artistLufs = artistMix?.lufs;
   if (artistLufs !== undefined && Number.isFinite(artistLufs)) {
-    const lift = Math.max(0, Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, SONG_LOUDNESS_TARGET_LUFS - artistLufs));
+    const lift = Math.max(0, Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, artistLufs - SONG_LOUDNESS_TARGET_LUFS));
     if (lift > 0) {
       masterLufsTarget = Math.round((SONG_LOUDNESS_TARGET_LUFS + lift) * 10) / 10;
       summary.push(`master loudness ${masterLufsTarget} LUFS (artist ${artistLufs})`);

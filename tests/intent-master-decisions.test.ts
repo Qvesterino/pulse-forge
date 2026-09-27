@@ -94,10 +94,18 @@ describe("planMixProfile — master loudness bound (Phase 2 slice 3)", () => {
     expect(profile.masterLufsTarget!).toBeGreaterThanOrEqual(SONG_LOUDNESS_TARGET_LUFS);
   });
 
-  it("an artist at the streaming target contributes no lift", () => {
-    // J Dilla: targetLufs -13 (quieter than -14) -> no lift, target untouched.
+  it("the loudest artist still respects the cap (Excision -6 would need 8 dB)", () => {
+    // Excision's -6 is 8 dB above the streaming target; the 6 dB trim limit
+    // holds it at -8 rather than letting a dubstep profile push the export
+    // out of the streaming band the product guarantees.
+    const profile = planMixProfile(baseIntent("excision"), {}, {});
+    expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIMIT_DB);
+  });
+
+  it("an artist just above the streaming target lifts by exactly the delta", () => {
+    // J Dilla: targetLufs -13 is 1 dB louder than -14 -> a 1 dB lift, no cap hit.
     const profile = planMixProfile(baseIntent("j-dilla"), {}, {});
-    expect(profile.masterLufsTarget).toBeUndefined();
+    expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + 1);
   });
 
   it("no artist signal leaves the master target untouched", () => {
