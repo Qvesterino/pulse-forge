@@ -15,7 +15,13 @@ import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { FACTORY_PRESET_LOUDNESS, NON_DETERMINISTIC_PRESETS } from "./presets/preset-loudness.generated";
 import { analyzeLoudnessBuffer } from "./audio-engine/kweighting";
 import { analyzeArtifacts, evaluateArtifacts, logEnvelopeCorrelation } from "./audio-engine/artifactGate";
-import { addEffect, applyInstrumentPreset, setEffectParam } from "./commands/commands";
+import {
+  addAutomationLane,
+  addAutomationPoint,
+  addEffect,
+  applyInstrumentPreset,
+  setEffectParam,
+} from "./commands/commands";
 import { ProjectStore } from "./store/ProjectStore";
 import { PPQ } from "./project-model/types";
 import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
@@ -927,6 +933,69 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   } catch (error) {
     check("sampler STRETCH renders a +12st note (single buffer assignment)", false, String(error));
+  }
+
+  // Automation lane ramp regression (Phase 2 of the plugin-audit follow-up):
+  // device lanes used to render as discrete point events — a sparse two-point
+  // ramp held its start value and stepped at the end. The engine now expands
+  // continuous lanes onto a 16th-note grid, so a 0→15 dB EQ lane must land
+  // between its endpoint renders and near the midpoint-static render.
+  try {
+    const automationRampCase = async (laneValue: number | null) => {
+      const doc = createProjectFromTemplate("house");
+      const inst = doc.tracks.find((t) => t.kind === "instrument") as { id: string; effects: unknown[] };
+      inst.effects = [];
+      const st = new ProjectStore(doc);
+      const add = addEffect(st.getDoc(), inst.id, "eq");
+      st.execute(add);
+      st.execute(setEffectParam(st.getDoc(), inst.id, add.effectId, "lowMidGain", laneValue ?? 0));
+      if (laneValue !== null) {
+        st.execute(
+          addAutomationLane(st.getDoc(), {
+            kind: "fxParam",
+            trackId: inst.id,
+            fxId: add.effectId,
+            paramId: "lowMidGain",
+          }),
+        );
+        const laneId = (
+          st
+            .getDoc()
+            .automation.find(
+              (l) => l.target.kind === "fxParam" && l.target.fxId === add.effectId && l.target.paramId === "lowMidGain",
+            ) as { id: string }
+        ).id;
+        st.execute(addAutomationPoint(st.getDoc(), laneId, 0, 0));
+        st.execute(addAutomationPoint(st.getDoc(), laneId, 960, laneValue));
+      }
+      const out = await renderProject(st.getDoc(), bank, {
+        mode: "pattern",
+        sampleRate: SR,
+        tailSeconds: 0.3,
+        masterProcessing: false,
+      });
+      const d = out.getChannelData(0);
+      let s = 0;
+      for (let i = Math.floor(d.length / 8); i < d.length; i++) s += d[i] * d[i];
+      return Math.sqrt(s / (d.length - Math.floor(d.length / 8)));
+    };
+    const ramp = await automationRampCase(15);
+    const atZero = await automationRampCase(0);
+    const atFifteen = await automationRampCase(15);
+    const atMid = await automationRampCase(7.5);
+    // Discriminates the retired step semantics: the old expansion held the
+    // start value for the whole lane span (render ≈ atZero). The interpolated
+    // ramp rides the curve — measurably away from the zero endpoint and near
+    // the midpoint-static render.
+    const leavesZero = Math.abs(ramp - atZero) > 0.02 * atZero;
+    const nearMid = Math.abs(ramp - atMid) <= 0.1 * Math.max(atMid, 1e-6);
+    check(
+      "automation lane renders as a ramp (16th-grid interpolation)",
+      leavesZero && nearMid,
+      `ramp=${ramp.toFixed(4)} zero=${atZero.toFixed(4)} mid=${atMid.toFixed(4)} full=${atFifteen.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("automation lane renders as a ramp (16th-grid interpolation)", false, String(error));
   }
 
   // Phaser regression: connectStages() used to blanket-disconnect the

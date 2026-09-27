@@ -16,6 +16,8 @@ export interface TargetParamDef {
   default: number;
   unit?: string;
   format?: (value: number) => string;
+  /** Value semantics for automation: discrete kinds step, the rest ramp. */
+  kind?: ParamDef["kind"];
 }
 
 function fromRackDef(def: ParamDef): TargetParamDef {
@@ -27,6 +29,7 @@ function fromRackDef(def: ParamDef): TargetParamDef {
     default: def.default,
     unit: def.unit,
     format: def.format,
+    kind: def.kind,
   };
 }
 
@@ -38,6 +41,7 @@ function fromUltinaDef(def: (typeof ALL_PARAMS)[number]): TargetParamDef {
     max: def.maxValue,
     default: def.defaultValue,
     unit: def.unit,
+    kind: def.unit === "boolean" ? "toggle" : undefined,
   };
 }
 
@@ -70,6 +74,7 @@ function collectOzvenaTargetDefs(value: unknown, prefix = "", out: TargetParamDe
       min: range.min,
       max: range.max,
       default: typeof value === "boolean" ? (value ? 1 : 0) : value,
+      kind: typeof value === "boolean" ? "toggle" : undefined,
     });
     return out;
   }

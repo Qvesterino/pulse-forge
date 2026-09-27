@@ -298,9 +298,10 @@ const analog: InstrumentDefinition = {
       for (const [f, pitch] of liveFilters) fn(f, pitch);
     };
 
-    const runtime: InstrumentRuntime = {
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.002, p.attack ?? 0.01);
         const decay = Math.max(0.02, p.decay ?? 0.25);
@@ -379,17 +380,33 @@ const analog: InstrumentDefinition = {
           // Band-limited spectrum (saw/square/triangle via PeriodicWave);
           // sine stays native. Timing/phase semantics unchanged.
           shapeOscillator(ctx, osc, wave, oscFreq);
-          osc.frequency.value = oscFreq;
           osc.detune.value = detune;
           const g = ctx.createGain();
           g.gain.value = level;
           osc.connect(g).connect(filter.input);
-          osc.start(when);
+          // Analog glide: pattern slideFrom or the track's last pitch —
+          // the G-funk/lead portamento. Deterministic ramp length.
+          const analogGlide = Math.max(0, Math.min(1, p.glide ?? 0.2));
+          const fromFreq = slideFrom
+            ? midiToFreq(slideFrom.pitch) * Math.pow(2, transpose / 12)
+            : analogGlide > 0.001
+              ? runtime.lastFreq
+              : null;
+          if (fromFreq && fromFreq > 20 && fromFreq !== oscFreq) {
+            const glideSec = Math.max(0.01, analogGlide * 0.35);
+            osc.frequency.setValueAtTime(fromFreq, when);
+            osc.frequency.exponentialRampToValueAtTime(oscFreq, Math.min(when + glideSec, stopTime));
+            osc.start(when);
+          } else {
+            osc.frequency.value = oscFreq;
+            osc.start(when);
+          }
           osc.stop(stopTime);
           oscs.push(osc);
           // Analog drift: the Serum "alive" pitch wander (sine sub keeps
           // rock-solid pitch — subs should never wobble).
-          if (wave !== "sine") driftNodes.push(addOscDrift(ctx, osc, seedBase + oscs.length, oscs.length, when, stopTime));
+          if (wave !== "sine")
+            driftNodes.push(addOscDrift(ctx, osc, seedBase + oscs.length, oscs.length, when, stopTime));
         };
         mkOsc(p.oscA ?? 2, 0, 0.5);
         mkOsc(p.oscB ?? 2, p.oscBDetune ?? 8, 0.5 * 0.9);
@@ -443,6 +460,9 @@ const analog: InstrumentDefinition = {
           src.start(when);
           src.stop(stopTime);
         }
+
+        // Legato memory: next GLIDE note pulls from this pitch.
+        runtime.lastFreq = freq;
 
         const voice = register(
           pitch,
@@ -2937,7 +2957,7 @@ const keys: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.001, p.attack ?? 0.005);
         const release = Math.max(0.01, p.release ?? 0.35);
@@ -3020,6 +3040,7 @@ const keys: InstrumentDefinition = {
           pan: number,
           fmDecay: number,
           detuneCents = 0,
+          slideFrom?: { pitch: number; when: number },
         ) => {
           const detuneMul = Math.pow(2, detuneCents / 1200);
           const car = ctx.createOscillator();
@@ -3028,6 +3049,15 @@ const keys: InstrumentDefinition = {
           const mod = ctx.createOscillator();
           mod.type = "sine";
           mod.frequency.value = freq * modRatio * detuneMul;
+          // FM slide: both oscillators glide from the previous pitch (FM
+          // Rhodes slide — 60 ms, keeps the bell tone while gliding).
+          if (slideFrom && slideFrom.when !== undefined) {
+            const fromMul = Math.pow(2, (slideFrom.pitch - pitch) / 12);
+            car.frequency.setValueAtTime((freq * carRatio * detuneMul) / fromMul, when);
+            car.frequency.exponentialRampToValueAtTime(freq * carRatio * detuneMul, when + 0.06);
+            mod.frequency.setValueAtTime((freq * modRatio * detuneMul) / fromMul, when);
+            mod.frequency.exponentialRampToValueAtTime(freq * modRatio * detuneMul, when + 0.06);
+          }
           // Analog drift: subtle detune wander on the carrier (audit-15
           // quality kit — the static sine read as MIDI, not as a Rhodes).
           const driftLfo = ctx.createOscillator();
@@ -4024,7 +4054,7 @@ const strings: InstrumentDefinition = {
 
     const runtime: InstrumentRuntime = {
       output,
-      noteOn(pitch, velocity, when, durationSec) {
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
         const freq = midiToFreq(pitch);
         const attack = Math.max(0.01, p.attack ?? 0.18);
         const release = Math.max(0.05, p.release ?? 0.7);
@@ -4034,6 +4064,9 @@ const strings: InstrumentDefinition = {
         const level = velocity * dbToLin(p.level ?? -9);
         const ensemble = Math.max(0, Math.min(1, p.ensemble ?? 0.5));
         const bow = Math.max(0, Math.min(1, p.bow ?? 0.45));
+        // Bowed glissando: with slideFrom, each section voice glides from
+        // the previous pitch (slow string-section slide — 60 % of attack).
+        const glissFrom = slideFrom ? midiToFreq(slideFrom.pitch) : null;
         // Section amp: slow bow attack, full sustain, long release.
         const amp = ctx.createGain();
         amp.gain.setValueAtTime(0.0001, when);
@@ -4064,7 +4097,16 @@ const strings: InstrumentDefinition = {
           const osc = ctx.createOscillator();
           osc.type = "sawtooth";
           const spread = v === 0 ? 0 : offsets[v]! * (0.4 + ensemble * 0.6);
-          osc.frequency.setValueAtTime(freq, when);
+          // Bowed glissando: section voices slide from the previous pitch
+          // (60 % of the attack — slow enough to read as a string portamento).
+          const target = freq * Math.pow(2, spread / 1200);
+          if (glissFrom && glissFrom !== freq) {
+            const fromStr = glissFrom * Math.pow(2, spread / 1200);
+            osc.frequency.setValueAtTime(fromStr, when);
+            osc.frequency.exponentialRampToValueAtTime(target, when + attack * 0.6);
+          } else {
+            osc.frequency.setValueAtTime(target, when);
+          }
           osc.detune.setValueAtTime(spread, when);
           const vg = ctx.createGain();
           vg.gain.value = v === 0 ? 1 : 0.7;

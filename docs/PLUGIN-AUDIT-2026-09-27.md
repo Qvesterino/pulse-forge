@@ -148,5 +148,5 @@ Per-plugin notes are listed in the matrix above; root causes and repairs are rec
 
 ## Known issues (documented, not repaired in this pass)
 
-- **Automation lanes render as discrete point events** (cyclic pattern semantics: a lane point on the pattern boundary is the next cycle's start). Sparse two-point ramps therefore render as a step at the target point, not a continuous ramp — consistent live vs offline, but the lane editor draws straight lines between points. Dense points render as intended.
+- **Automation lanes interpolate on a 16th-note grid** (Phase 2 fix): continuous device/track lanes expand to the editor's straight lines before the engine writes them (capped at 256 events per lane, stride doubles adaptively on long spans); toggles/enums/stepped selectors keep raw point events. Sparse two-point ramps therefore render as ramps, matching the lane editor.
 - **Phaser residual render jitter**: the phaser's native allpass feedback loops (fbL/fbR) still break nondeterministically across offline contexts, but the measured variance is the ±0.008% RMS class (vs the ~8% the multi-tap had before its worklet port) — under the 1e-4 restore tolerance. A phaser worklet port is the remaining Phase 1b item.

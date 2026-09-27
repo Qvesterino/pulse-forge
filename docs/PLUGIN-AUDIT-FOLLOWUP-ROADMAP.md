@@ -128,7 +128,7 @@ Multi-Tap was ported (loop inside one processor).
 
 ---
 
-## Phase 2 — automation lanes: draw ramps, play ramps
+## Phase 2 — automation lanes: draw ramps, play ramps — ✅ DONE 2026-09-27
 
 **Problem.** Device automation lanes apply as discrete point events
 (`AudioEngine.scheduleDeviceAutomation`, `src/audio-engine/AudioEngine.ts`
@@ -152,16 +152,21 @@ Two options:
 - B: keep step semantics, change the lane editor to draw steps. Cheaper,
   but every other DAW ramps lanes — this would feel like a regression.
 
-**Implementation.**
-
-1. Implement A in `scheduleDeviceAutomation` (engine) — the offline renderer
-   (`scheduleAutomation`, `src/rendering/renderer.ts` ~721) and the live
-   scheduler path (`applyAutomation`) both feed it, so parity is automatic.
-2. Extend `tests/automation-audit.test.ts`: a two-point lane on
-   `eq.lowMidGain` must now render measurably between the endpoints at the
-   midpoint tick (render twice: lane vs static midpoint — RMS within 10 %).
-3. Update the audit harness note (drop the "discrete point events" known
-   issue from `scripts/plugin-audit-matrix.mjs` once measured).
+**Resolution.** Implemented exactly as recommended:
+`interpolateAutomationPoints` (`src/project-model/automation.ts`) expands
+continuous lanes onto a 16th-note grid (120 ticks) with an adaptive stride
+capped at 256 events; constant lanes short-circuit.
+`scheduleDeviceAutomation` applies it to continuous params (resolved
+`TargetParamDef.kind`) and keeps raw point events for toggle/enum/discrete;
+`scheduleTrackAutomation` ramps gain/pan the same way. The live scheduler
+already wrote per-window interpolated endpoint values, so live == offline
+through the shared writer. Verified: the browser-check "automation lane
+renders as a ramp (16th-grid interpolation)" discriminates the retired step
+semantics (the ramp leaves the zero endpoint and lands within 10 % of the
+midpoint-static render); unit tests `tests/automation-interpolate.test.ts`
+(7). Note: render-level checks live in `src/browser-checks.ts` — jsdom
+cannot run OfflineAudioContext, so `tests/automation-audit.test.ts` stays
+model-level.
 
 **Size / risk.** S–M · low risk (additive scheduling; capped).
 

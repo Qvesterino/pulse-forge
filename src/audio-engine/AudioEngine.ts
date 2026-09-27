@@ -9,7 +9,7 @@ import type {
   SceneAutomation,
 } from "../project-model/types";
 import type { AutomationPoint, Lfo } from "../project-model/types";
-import { valueAt } from "../project-model/automation";
+import { interpolateAutomationPoints, valueAt } from "../project-model/automation";
 import { MAX_AUDIO_CLIP_WARP_SEGMENTS, resolveWarpPinPoints } from "../project-model/audio-clip-warp";
 export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { hashString } from "../shared/rng";
@@ -4095,7 +4095,10 @@ export class AudioEngine {
     if (points.length === 0) return;
     const target: AutomationTarget = { kind: param === "gain" ? "trackGain" : "trackPan", trackId };
     this.writeAutomationTargetAt(target, valueAt(points, 0, param === "gain" ? 1 : 0), 0);
-    for (const point of points) this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
+    // Gain/pan are continuous: sparse lanes render as the ramps the lane
+    // editor draws (16th-note grid), not as a single step at the last point.
+    const expanded = interpolateAutomationPoints(points);
+    for (const point of expanded) this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
   }
 
   scheduleDeviceAutomation(
@@ -4109,7 +4112,14 @@ export class AudioEngine {
     if (!paramId) return;
     const target: AutomationTarget =
       kind === "fx" ? { kind: "fxParam", trackId, fxId: deviceId, paramId } : { kind: "instParam", trackId, paramId };
-    for (const point of points) {
+    // Continuous params ramp on a 16th-note grid so a sparse lane renders as
+    // the straight lines the lane editor draws. Discrete params (toggles,
+    // enums, stepped selectors) keep raw point events — interpolating between
+    // enum positions would write undefined intermediate states.
+    const def = this.doc ? targetParamDef(this.doc, target) : null;
+    const discrete = def?.kind === "toggle" || def?.kind === "enum" || def?.kind === "discrete";
+    const events = discrete ? points : interpolateAutomationPoints(points);
+    for (const point of events) {
       this.writeAutomationTargetAt(target, point.value, Math.max(0, timeAt(point.tick)));
     }
   }

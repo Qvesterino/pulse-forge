@@ -359,9 +359,11 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
   });
 
   it("techno depth phrases: detroit techno / electro / hardgroove", () => {
-    expect(parseIntentText("detroit techno").input.genre).toBe("techno");
-    expect(parseIntentText("detroit electro").input.genre).toBe("techno");
-    expect(parseIntentText("techno detroit").input.genre).toBe("techno");
+    // Detroit promoted to its own machine-funk genre (belleville / secondwave /
+    // electro / technobass / ghettotech / minimal schools).
+    expect(parseIntentText("detroit techno").input.genre).toBe("detroit");
+    expect(parseIntentText("detroit electro").input.genre).toBe("detroit");
+    expect(parseIntentText("techno detroit").input.genre).toBe("detroit");
     expect(parseIntentText("hardgroove techno").input.genre).toBe("techno");
     expect(parseIntentText("hard groove techno").input.style).toBe("driving");
     // detroit RAP still routes to the rap family
@@ -709,24 +711,26 @@ describe("vocabulary-gap depth lanes — every phrase resolves to a real groove"
     { text: "synthwave night drive", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
     { text: "outrun", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
     { text: "darksynth", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
-    { text: "trip hop", genre: "ambient", style: "organic", groove: "ambient.organic" },
-    { text: "downtempo", genre: "ambient", style: "organic", groove: "ambient.organic" },
+    { text: "trip hop", genre: "ambient", style: "triphop", groove: "ambient.triphop" },
+    { text: "downtempo", genre: "ambient", style: "triphop", groove: "ambient.triphop" },
     { text: "chillhop", genre: "ambient", style: "drifting", groove: "ambient.drifting" },
     { text: "study beats", genre: "ambient", style: "drifting", groove: "ambient.drifting" },
-    { text: "reggae", genre: "trap", style: "dancehall", groove: "trap.dancehall" },
-    { text: "ska", genre: "trap", style: "dancehall", groove: "trap.dancehall" },
+    { text: "reggae", genre: "house", style: "reggae", groove: "house.reggae" },
+    { text: "ska", genre: "house", style: "reggae", groove: "house.reggae" },
     { text: "boogie", genre: "house", style: "funky", groove: "house.funky" },
     { text: "balearic", genre: "house", style: "organic", groove: "house.organic" },
-    { text: "shoegaze", genre: "house", style: "altrock", groove: "house.altrock" },
-    { text: "dream pop", genre: "house", style: "altrock", groove: "house.altrock" },
+    { text: "shoegaze", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
+    { text: "dream pop", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
     { text: "nu jazz", genre: "house", style: "broken", groove: "house.broken" },
-    { text: "post rock", genre: "house", style: "altrock", groove: "house.altrock" },
+    { text: "post rock", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
     { text: "breakcore", genre: "dnb", style: "amen", groove: "dnb.amen" },
-    { text: "gabber", genre: "techno", style: "hard", groove: "techno.hard" },
-    { text: "hardcore techno", genre: "techno", style: "hard", groove: "techno.hard" },
-    { text: "happy hardcore", genre: "techno", style: "hard", groove: "techno.hard" },
-    { text: "uptempo hardcore", genre: "techno", style: "hard", groove: "techno.hard" },
+    { text: "gabber", genre: "techno", style: "gabber", groove: "techno.gabber" },
+    { text: "hardcore techno", genre: "techno", style: "gabber", groove: "techno.gabber" },
+    { text: "happy hardcore", genre: "techno", style: "gabber", groove: "techno.gabber" },
+    { text: "uptempo hardcore", genre: "techno", style: "gabber", groove: "techno.gabber" },
     { text: "hardstyle", genre: "techno", style: "hardstyle", groove: "techno.hardstyle" },
+    { text: "brostep", genre: "trap", style: "bassdubstep", groove: "trap.bassdubstep" },
+    { text: "bass dubstep", genre: "trap", style: "bassdubstep", groove: "trap.bassdubstep" },
   ];
 
   it.each(cases)("$text → $groove", ({ text, genre, style, groove }) => {
