@@ -14,7 +14,11 @@ import {
 
 const require = createRequire(import.meta.url);
 const { PcmRingNodeWriter, PcmPipeToSabBridge, createLinearResampler } = require("../desktop/pcm-ring-layout.cjs") as {
-  createLinearResampler: (channels: number, srcRate: number, dstRate: number) => (samples: Float32Array) => Float32Array;
+  createLinearResampler: (
+    channels: number,
+    srcRate: number,
+    dstRate: number,
+  ) => (samples: Float32Array) => Float32Array;
   PcmRingNodeWriter: new (sab: SharedArrayBuffer) => {
     format: { channels: number; capacityFrames: number; sampleRate: number };
     writeBlock: (interleaved: Float32Array) => { written: number; dropped: number };
@@ -191,13 +195,12 @@ describe("Node producer ↔ TS consumer interop (same SAB)", () => {
     expect(reader.readInto(out, 480)).toBe(480);
     for (let n = 0; n < 480; n++) expect(out[n * 2]).toBeCloseTo(sineSample(n), 5);
 
-    // A rate mismatch stops the bridge and reports through onError; later
-    // blocks must be ignored, not half-written into the ring.
+    // A rate mismatch now RESAMPLES (wave 3.5): the bridge keeps writing —
+    // the 44100-labelled block is converted toward the ring's 48000 rate.
     fakeSource.emit("format", { rate: 44100, channels: 2, blockFrames: 480 });
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("resampling");
+    expect(errors).toHaveLength(0);
     fakeSource.emit("pcm", { seq: 1, samples: block, frames: 480, channels: 2 });
-    expect(reader.readInto(out, 480)).toBe(0);
+    expect(reader.readInto(out, 480)).toBe(480);
   });
 });
 
@@ -342,7 +345,9 @@ describe("linear resampler (wave 3.5)", () => {
         produced++;
       }
     }
-    expect(produced).toBeGreaterThan(38000); // ≈ 0.8 s worth
+    // 40 blocks × 441 source frames at 44100 → ≈ 19200 output frames at 48000.
+    expect(produced).toBeGreaterThan(18800);
+    expect(produced).toBeLessThan(19600);
     expect(worst).toBeLessThan(0.005); // linear-interp error bound
   });
 });

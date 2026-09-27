@@ -63,23 +63,70 @@ class PcmRingNodeWriter {
  * reports through onError — the caller decides whether to retry the source
  * at the context rate.
  */
+/**
+ * Linear-interpolation resampler (wave 3.5): converts a source stream at
+ * srcRate into dstRate frames, stateful across blocks (carries the last
+ * input frame + fractional position). A 440 Hz tone resampled 44100->48000
+ * reads back as the same 440 Hz tone at the new rate (within the linear
+ * interpolation error, ~0.002 amplitude) — the acceptance contract.
+ */
+function createLinearResampler(channels, srcRate, dstRate) {
+  const ratio = srcRate / dstRate;
+  const state = { nextOut: 0, consumedIn: 0, prev: null };
+  return function resample(interleaved) {
+    const inFrames = interleaved.length / channels;
+    const srcFrame = (k, c) =>
+      k === state.consumedIn - 1 && state.prev ? state.prev[c] : interleaved[(k - state.consumedIn) * channels + c];
+    const outFrames = [];
+    for (;;) {
+      const s = state.nextOut * ratio;
+      const k = Math.floor(s);
+      const frac = s - k;
+      if (k >= state.consumedIn + inFrames) break;
+      if (frac > 0 && k + 1 > state.consumedIn + inFrames - 1) break;
+      const frame = new Float32Array(channels);
+      for (let c = 0; c < channels; c++) {
+        const a = srcFrame(k, c);
+        const b = frac > 0 ? srcFrame(k + 1, c) : a;
+        frame[c] = a + (b - a) * frac;
+      }
+      outFrames.push(frame);
+      state.nextOut++;
+    }
+    if (inFrames > 0) {
+      state.prev = new Float32Array(channels);
+      for (let c = 0; c < channels; c++) state.prev[c] = interleaved[(inFrames - 1) * channels + c];
+      state.consumedIn += inFrames;
+    }
+    const out = new Float32Array(outFrames.length * channels);
+    for (let j = 0; j < outFrames.length; j++) {
+      for (let c = 0; c < channels; c++) out[j * channels + c] = outFrames[j][c];
+    }
+    return out;
+  };
+}
+
 class PcmPipeToSabBridge {
   constructor({ source, sab, onError } = {}) {
     if (!source || !sab) throw new Error("bridge needs a PcmPipeSource and a SharedArrayBuffer");
     this.writer = new PcmRingNodeWriter(sab);
     this.stopped = false;
+    this.resampler = null;
     this.unsubscribers = [
       source.on("format", (format) => {
         if (format.rate !== this.writer.format.sampleRate) {
-          this.stop();
-          onError?.(
-            `source rate ${format.rate} != context rate ${this.writer.format.sampleRate} — resampling is wave 3.5`,
+          // Wave 3.5: linear resampling — reference-grade conversion is a
+          // future refinement.
+          this.resampler = createLinearResampler(
+            this.writer.format.channels,
+            format.rate,
+            this.writer.format.sampleRate,
           );
         }
       }),
       source.on("pcm", (block) => {
         if (this.stopped) return;
-        this.writer.writeBlock(block.samples);
+        this.writer.writeBlock(this.resampler ? this.resampler(block.samples) : block.samples);
       }),
     ];
   }
