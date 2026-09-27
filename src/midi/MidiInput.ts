@@ -39,6 +39,9 @@ export class MidiInput {
   private clockStartCb: (() => void) | null = null;
   private clockContinueCb: (() => void) | null = null;
   private clockStopCb: (() => void) | null = null;
+  /** MIDI Timecode (SMPTE) — quarter-frame stream and full-frame jumps. */
+  private mtcQuarterCb: ((pieceIndex: number, data: number) => void) | null = null;
+  private mtcFullFrameCb: ((bytes: Uint8Array) => void) | null = null;
 
   private engine: AudioEngine | null = null;
   private store: MidiStoreSurface | null = null;
@@ -237,6 +240,9 @@ export class MidiInput {
       case 0xf8: // MIDI Clock
         this.handleClock(config);
         return;
+      case 0xf1: // MTC quarter frame — SMPTE timecode, not a clock pulse
+        this.handleMtcQuarter(data);
+        return;
       case 0xfa: // Start
         this.handleClockStart(config);
         return;
@@ -272,6 +278,15 @@ export class MidiInput {
       this.runningStatus = payload[0];
     } else if (payload[0] >= 0xf0 && payload[0] < 0xf8) {
       this.runningStatus = null;
+    }
+
+    if (payload[0] === 0xf0) {
+      // MTC full-frame jumps ride universal-realtime SysEx (F0 7F 7F 01 01…);
+      // every other SysEx was already ignored on this path before MTC existed.
+      if (payload.length >= 9 && payload[3] === 0x01 && payload[4] === 0x01) {
+        this.mtcFullFrameCb?.(payload);
+      }
+      return;
     }
 
     switch (status) {
@@ -551,6 +566,21 @@ export class MidiInput {
     this.clockStartCb = cbs.start ?? null;
     this.clockContinueCb = cbs.continue ?? null;
     this.clockStopCb = cbs.stop ?? null;
+  }
+
+  /** Register MIDI Timecode (SMPTE) callbacks (called by the MtcDecoder host). */
+  onMtc(cbs: { quarter?: (pieceIndex: number, data: number) => void; fullFrame?: (bytes: Uint8Array) => void }): void {
+    this.mtcQuarterCb = cbs.quarter ?? null;
+    this.mtcFullFrameCb = cbs.fullFrame ?? null;
+  }
+
+  private handleMtcQuarter(data: Uint8Array): void {
+    // System Common clears running status, per spec.
+    this.runningStatus = null;
+    if (!this.mtcQuarterCb || data.length < 2) return;
+    const pieceIndex = data[1] >> 4;
+    if (pieceIndex > 7) return;
+    this.mtcQuarterCb(pieceIndex, data[1]);
   }
 
   // Lightweight command builders (avoids circular import from commands.ts)

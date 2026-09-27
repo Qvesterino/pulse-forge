@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense } from "react";
 import type { Services } from "../services";
 import type { LinkStatus } from "../collab/linkSync";
+import { formatSmpTe } from "../midi/smpte";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { SelectionStore } from "../store/SelectionStore";
@@ -162,6 +163,30 @@ function LinkChip({ services }: { services: Services }) {
     >
       LINK{status.kind === "on" ? ` ${status.peers}` : ""}
     </button>
+  );
+}
+
+/**
+ * MIDI Timecode (SMPTE) readout — appears only while quarter-frames are
+ * actually arriving (stale > 1 s hides it), so it costs nothing when unused.
+ */
+function MtcChip({ services }: { services: Services }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const unsubscribe = services.mtc.subscribe(() => setTick((n) => n + 1));
+    const timer = setInterval(() => setTick((n) => n + 1), 300); // re-hide on stale
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [services]);
+  const snapshot = services.mtc.getSnapshot();
+  if (!snapshot || !services.mtc.isFresh()) return null;
+  void tick;
+  return (
+    <span className="perf-readout-item" title="MIDI Timecode incoming (SMPTE)">
+      MTC {formatSmpTe(snapshot.timecode)}
+    </span>
   );
 }
 
@@ -1427,6 +1452,7 @@ export function App({
                   {tool.toUpperCase()} (S/C/B/E/M)
                   {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                 </span>
+                <MtcChip services={services} />
                 <LinkChip services={services} />
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
