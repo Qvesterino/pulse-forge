@@ -7,6 +7,12 @@ import type { GenerateOptions } from "../ai/types";
 import { intentHash } from "./hash";
 import { normalizeIntent } from "./normalize";
 import { mapIntentToOptions, metricAccentFromVelocityVariation } from "./mapping";
+// artistBpmHint lives in artist-signature; normalizeArtistSlug + the profile
+// lookup live in artist-profiles. Importing the slug helper from
+// artist-signature does not resolve.
+import { artistBpmHint } from "./artist-signature";
+import { getArtistProfile, normalizeArtistSlug } from "./artist-profiles";
+import type { ArtistProfile } from "./artist-profiles";
 import type { GenerationPlan, IntentInput, IntentRole, IntentSpec } from "./types";
 
 export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
@@ -118,7 +124,9 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
   const inputContentHash = sourcePatternContentHash(doc, options.sourcePatternId);
   const seed = generationSeed(intent, effectiveSeed, groove.id);
   const recipe = createGenerationRecipe(options, groove.id, inputContentHash);
-  const resolvedBpm = resolveBpm(groove.bpm, intent.bpmRange);
+  const artistProfile = artistProfileFor(intent);
+  const bpmRequest = resolveBpmRequest(intent, artistProfile);
+  const resolvedBpm = resolveBpm(groove.bpm, bpmRequest);
   const candidateSeeds = Array.from({ length: intent.candidateCount ?? 1 }, (_, index) =>
     index === 0 ? intent.seed : `${intent.seed}|candidate:${index}`,
   );
@@ -177,6 +185,10 @@ export function planGeneration(input: IntentInput | IntentSpec, doc: ProjectDocu
     rolePlans,
     constraints: intent.constraints,
     resolvedBpm,
+    // Artist tempo window that produced resolvedBpm (null when no artist, or
+    // when the intent carried its own bpmRange). Surfaces the layer's
+    // contribution without changing the serializable intent.
+    ...(artistProfile && !intent.bpmRange && bpmRequest ? { artistBpmRange: bpmRequest } : {}),
     candidateSeeds,
     symbolicSeeds,
     subSeeds: {

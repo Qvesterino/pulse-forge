@@ -123,16 +123,18 @@ export function artistKeyHint(profile: ArtistProfile | null | undefined): readon
 
 /**
  * Parse the profile's `keys` prose into musical-root candidates the song
- * builder can choose from. Returns [] for the entries that name no concrete
- * root ("keyless / synthetic atonal moments", "varies — …") so a caller can
- * distinguish "no preference" from "this specific key".
+ * builder can choose from. Returns [] for entries that name no concrete root
+ * ("variable — often modal or atonal") so a caller can distinguish "no
+ * preference" from "this specific key".
  *
- * Matches a leading note name, optionally followed by minor/major. Roots are
- * normalized to the pitch-class spelling the engine uses (A B C D E F G plus
- * the accidentals the profiles actually name: ♭ and # are folded onto their
- * nearest common spelling rather than being invented).
+ * The quality word is REQUIRED, which is what makes the match safe: a
+ * `\b[A-G]\b` pattern alone would happily read the "a" at the start of
+ * "atonal" as an A-major root, because the start of a string is a word
+ * boundary. Requiring "minor"/"major" after the letter rejects every
+ * false positive in the descriptors while matching every real entry — all
+ * of them are written as "<ROOT> minor" / "<ROOT> major".
  */
-const ROOT_PATTERN = /\b(A|B|C|D|E|F|G)([#b]?)\s*(minor|min|major|maj|majr|minr)?/gi;
+const ROOT_PATTERN = /\b([A-G])([#b]?)\s*(minor|major)\b/gi;
 
 export function artistKeyCandidates(profile: ArtistProfile | null | undefined): readonly string[] {
   const keys = artistKeyHint(profile);
@@ -143,10 +145,7 @@ export function artistKeyCandidates(profile: ArtistProfile | null | undefined): 
     let match: RegExpExecArray | null;
     while ((match = ROOT_PATTERN.exec(entry)) !== null) {
       const [, root, accidental, qualityRaw] = match;
-      // Only the FIRST root in an entry is a real preference; "G minor" is a
-      // key, but "and 6-10 kHz air" would otherwise match stray letters.
-      if (found.size > 0 && keys.indexOf(entry) > 0) break;
-      const quality = /min/i.test(qualityRaw ?? "") ? "minor" : "major";
+      const quality = /min/i.test(qualityRaw) ? "minor" : "major";
       found.add(`${root}${accidental ?? ""} ${quality}`);
     }
   }

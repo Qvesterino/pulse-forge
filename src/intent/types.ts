@@ -144,6 +144,13 @@ export interface GenerationPlan {
   constraints: IntentConstraints;
   /** Optional BPM chosen from the resolved groove/request range. */
   resolvedBpm: number | null;
+  /**
+   * The artist tempo window that constrained `resolvedBpm` (Phase 2 slice 5).
+   * Present only when the intent matched an artist AND carried no explicit
+   * `bpmRange` — i.e. exactly when the deep profile supplied the constraint.
+   * Absent means the request came from the intent (or from nothing).
+   */
+  artistBpmRange?: [number, number];
   /** Stable seed for each local candidate in the bank. */
   candidateSeeds: readonly string[];
   /** Stable seeds for the optional symbolic-prior candidates (T2). */

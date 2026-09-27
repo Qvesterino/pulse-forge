@@ -115,6 +115,8 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   boombap: "warm",
   // Amapiano is the log-drum warmth — deep and round, never bright.
   amapiano: "warm",
+  // Trance is the euphoric-lift genre — the bright end (supersaw air).
+  trance: "bright",
 };
 
 /**
@@ -161,7 +163,8 @@ export function planMixProfile(
     genre === "jersey" ||
     genre === "dnb" ||
     genre === "boombap" ||
-    genre === "amapiano";
+    genre === "amapiano" ||
+    genre === "trance";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
@@ -181,7 +184,8 @@ export function planMixProfile(
     genre === "drill" ||
     genre === "phonk" ||
     genre === "hyperpop" ||
-    genre === "boombap";
+    genre === "boombap" ||
+    genre === "trance";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -205,7 +209,8 @@ export function planMixProfile(
               genre === "techno" ||
               genre === "jersey" ||
               genre === "ukg" ||
-              genre === "amapiano") &&
+              genre === "amapiano" ||
+              genre === "trance") &&
             intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];
