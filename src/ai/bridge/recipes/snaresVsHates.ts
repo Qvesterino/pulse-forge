@@ -89,6 +89,10 @@ export const snaresVsHatesRecipe: Recipe = {
 
     // EQ carve — only when there's something to carve. If the user is at the
     // pure-sidechain end (sidechainTilt >= 0.95) we skip the carve entirely.
+    //
+    // Slot choice: the hi-hat tick lives at 6 kHz, squarely inside the
+    // highMid BELL window (500–8000 Hz) — a bell only touches the mask band
+    // instead of tilting the whole top end the way highShelf would.
     if (sidechainTilt < 0.95) {
       commands.push({
         kind: "eq-carve",
@@ -96,16 +100,20 @@ export const snaresVsHatesRecipe: Recipe = {
         rationale:
           "Reduce hi-hat energy in the 4-8 kHz band where snare attack dominates — keeps both elements audible.",
         target: { namePattern: "hi[-_ ]?hats?|\\bhates\\b", regex: true, preferKind: "any" },
+        band: "highMid",
         freqHz: 6000,
         gainDb: carveGainDbRounded,
         q: 1.5,
       });
+      // Snare crack sits at 4 kHz — also highMid, but on the SNARE track, so
+      // the two moves never collide on the same EffectInstance.
       commands.push({
         kind: "eq-boost",
         label: `Boost ${boostGainDb.toFixed(1)} dB @ 4 kHz on snare`,
         rationale:
           "After carving the hi-hat, give the snare crack a small boost so it stays the focal point of the back-beat.",
         target: { namePattern: "\\bsnare\\b", regex: true, preferKind: "any" },
+        band: "highMid",
         freqHz: 4000,
         gainDb: boostGainDb,
         q: 1.0,

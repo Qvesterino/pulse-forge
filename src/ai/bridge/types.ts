@@ -19,6 +19,7 @@
  */
 
 import type { ProjectDocument } from "../../project-model/types";
+import type { EqBandSlot } from "./eqSlots";
 
 /**
  * All bridge command kinds the MVP knows how to execute. Adding a kind here
@@ -62,25 +63,34 @@ export interface SidechainDuckCommand extends BridgeCommandBase {
 }
 
 /**
- * Narrow a frequency band on `target`. Negative `gainDb` = carve (cut).
- * `q` is the standard audio Q factor (higher = narrower).
+ * Narrow (cut) a KYX EQ band on `target`. `gainDb` is negative.
+ *
+ * KYX's `eq` effect is a fixed 6-slot parametric — a recipe picks which slot
+ * to move, it cannot invent a new band. See ./eqSlots.ts for the slot table
+ * and the canonical param ids. `freqHz` is snapped into the slot's window by
+ * the executor (clampToSlot), so recipes can state musical intent ("6 kHz")
+ * without knowing each slot's legal range.
  */
 export interface EqCarveCommand extends BridgeCommandBase {
   readonly kind: "eq-carve";
   readonly target: TrackMatcher;
+  readonly band: EqBandSlot;
   readonly freqHz: number;
   readonly gainDb: number;
+  /** Only meaningful for bell slots (lowMid / highMid); ignored on shelves. */
   readonly q: number;
 }
 
 /**
- * Boost a frequency band on `target` (positive `gainDb`).
+ * Boost a KYX EQ band on `target`. `gainDb` is positive.
  */
 export interface EqBoostCommand extends BridgeCommandBase {
   readonly kind: "eq-boost";
   readonly target: TrackMatcher;
+  readonly band: EqBandSlot;
   readonly freqHz: number;
   readonly gainDb: number;
+  /** Only meaningful for bell slots (lowMid / highMid); ignored on shelves. */
   readonly q: number;
 }
 

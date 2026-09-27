@@ -19,11 +19,13 @@
 
 import { snapshot } from "../../commands/commands";
 import type { Command } from "../../commands/types";
+import { defaultParamsOf } from "../../effects/definitions";
 import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
 import type { RecipeInput } from "./types";
+import { EQ_BANDS, clampToSlot, type EqBandSlot } from "./eqSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
-import type { EffectInstance, Track, ID, ProjectDocument } from "../../project-model/types";
+import type { EffectInstance, ProjectDocument, Track, ID } from "../../project-model/types";
 import { uid } from "../../shared/ids";
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -127,8 +129,6 @@ const FREQ_MIN_HZ = 20;
 const FREQ_MAX_HZ = 20000;
 const Q_MIN = 0.1;
 const Q_MAX = 10;
-const GAIN_MIN_DB = -24;
-const GAIN_MAX_DB = 24;
 const PAN_MIN = -1;
 const PAN_MAX = 1;
 
@@ -166,13 +166,39 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
     case "eq-boost": {
       const target = resolveTrackMatcher(doc, cmd.target);
       if (!target) return trackMissing(cmd.target.namePattern);
+      const spec = EQ_BANDS[cmd.band];
+      if (!spec) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown EQ band slot "${cmd.band}"`,
+          hint: `Valid slots: ${Object.keys(EQ_BANDS).join(", ")}.`,
+        };
+      }
       if (!Number.isFinite(cmd.freqHz) || cmd.freqHz < FREQ_MIN_HZ || cmd.freqHz > FREQ_MAX_HZ) {
         return paramRange("freqHz", cmd.freqHz, FREQ_MIN_HZ, FREQ_MAX_HZ);
       }
-      if (!Number.isFinite(cmd.gainDb) || cmd.gainDb < GAIN_MIN_DB || cmd.gainDb > GAIN_MAX_DB) {
-        return paramRange("gainDb", cmd.gainDb, GAIN_MIN_DB, GAIN_MAX_DB);
+      // Sign discipline: a carve must cut, a boost must lift. Guarding here
+      // keeps a mis-signed recipe from silently boosting a snare it meant to
+      // carve — a wrong-signed EQ move is worse than a rejected batch.
+      if (spec.gainId === null) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `band "${cmd.band}" is a corner filter (${spec.label}) and has no gain param`,
+          hint: "Use lowShelf / lowMid / highMid / highShelf for gain moves.",
+        };
       }
-      if (!Number.isFinite(cmd.q) || cmd.q < Q_MIN || cmd.q > Q_MAX) {
+      if (cmd.kind === "eq-carve" && cmd.gainDb > 0) {
+        return signMismatch("eq-carve", cmd.gainDb);
+      }
+      if (cmd.kind === "eq-boost" && cmd.gainDb < 0) {
+        return signMismatch("eq-boost", cmd.gainDb);
+      }
+      if (!Number.isFinite(cmd.gainDb) || cmd.gainDb < spec.minGainDb || cmd.gainDb > spec.maxGainDb) {
+        return paramRange("gainDb", cmd.gainDb, spec.minGainDb, spec.maxGainDb);
+      }
+      if (spec.qId !== null && (!Number.isFinite(cmd.q) || cmd.q < Q_MIN || cmd.q > Q_MAX)) {
         return paramRange("q", cmd.q, Q_MIN, Q_MAX);
       }
       return { ok: true };
@@ -213,6 +239,15 @@ function paramRange(name: string, value: number, min: number, max: number): Vali
   };
 }
 
+function signMismatch(kind: "eq-carve" | "eq-boost", gainDb: number): ValidationFail {
+  return {
+    ok: false,
+    code: "validation-failed",
+    message: `${kind} requires a ${kind === "eq-carve" ? "negative" : "positive"} gainDb, got ${gainDb}`,
+    hint: "A carve cuts (negative dB), a boost lifts (positive dB).",
+  };
+}
+
 // ─── Apply ───────────────────────────────────────────────────────────────────
 
 function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument {
@@ -229,7 +264,7 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
     case "eq-boost": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
       if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
-      return insertEqBand(doc, targetId, cmd.freqHz, cmd.gainDb, cmd.q);
+      return applyEqMove(doc, targetId, cmd.band, cmd.freqHz, cmd.gainDb, cmd.q);
     }
     case "set-volume": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
@@ -275,53 +310,51 @@ function insertSidechain(
 }
 
 /**
- * Insert a new EQ effect with one band onto the target. If an existing EQ
- * effect is on the track, append a band there instead (preserves the user's
- * other EQ moves). If multiple EQ effects exist, append to the last one.
+ * Move one band of the target track's `eq` effect.
+ *
+ * Real integration, not a model-only write: the params written here are the
+ * canonical ids the audio engine actually reads (`highMidFreq` /
+ * `highMidGain` / `highMidQ`, …) so the change survives `normalizeEffects`
+ * and reaches both the live graph and the offline renderer.
+ *
+ * Rules:
+ *   - Reuse the LAST `eq` instance on the track if one exists (preserves the
+ *     user's other band moves; a second EQ would be a redundant insert).
+ *   - Otherwise insert a fresh `eq` seeded with the registry defaults, so no
+ *     band is left undefined.
+ *   - Frequency is snapped into the slot's legal window; a shelf/hp/lp slot
+ *     ignores `q` entirely rather than writing a key it has no reader for.
  */
-function insertEqBand(doc: ProjectDocument, targetId: ID, freqHz: number, gainDb: number, q: number): ProjectDocument {
+function applyEqMove(
+  doc: ProjectDocument,
+  targetId: ID,
+  band: EqBandSlot,
+  freqHz: number,
+  gainDb: number,
+  q: number,
+): ProjectDocument {
+  const spec = EQ_BANDS[band];
+  const gainId = spec.gainId;
+  if (!gainId) throw new Error(`applyEqMove: band "${band}" has no gain param`);
+  const { freqHz: snapped } = clampToSlot(spec, freqHz);
+
   return withTrack(doc, targetId, (t) => {
     const existingEqIdx = findLastIndex(t.effects, (fx) => fx.type === "eq");
+    const next: Record<string, number> = {
+      ...(existingEqIdx >= 0 ? t.effects[existingEqIdx].params : defaultParamsOf("eq")),
+      [spec.freqId]: snapped,
+      [gainId]: gainDb,
+    };
+    if (spec.qId !== null) next[spec.qId] = q;
+
     if (existingEqIdx >= 0) {
-      const existingEq = t.effects[existingEqIdx];
-      const bandIndex = nextFreeBandIndex(existingEq.params);
-      const updated: EffectInstance = {
-        ...existingEq,
-        params: {
-          ...existingEq.params,
-          [`band${bandIndex}_freq`]: freqHz,
-          [`band${bandIndex}_gain`]: gainDb,
-          [`band${bandIndex}_q`]: q,
-          [`band${bandIndex}_type`]: 0, // 0 = peak (parametric) — matches most DAW EQ defaults
-          [`band${bandIndex}_enabled`]: 1,
-        },
-      };
       const nextEffects = t.effects.slice();
-      nextEffects[existingEqIdx] = updated;
+      nextEffects[existingEqIdx] = { ...t.effects[existingEqIdx], params: next };
       return { ...t, effects: nextEffects };
     }
-    // No existing EQ — create a new effect with a single band.
-    const fx: EffectInstance = {
-      id: uid("fx"),
-      type: "eq",
-      bypassed: false,
-      params: {
-        band0_freq: freqHz,
-        band0_gain: gainDb,
-        band0_q: q,
-        band0_type: 0,
-        band0_enabled: 1,
-      },
-    };
+    const fx: EffectInstance = { id: uid("fx"), type: "eq", bypassed: false, params: next };
     return { ...t, effects: [...t.effects, fx] };
   });
-}
-
-/** Find the lowest band{N}_freq slot not present in params; fallback N = paramCount. */
-function nextFreeBandIndex(params: Record<string, number>): number {
-  let n = 0;
-  while (params[`band${n}_freq`] !== undefined) n++;
-  return n;
 }
 
 function findLastIndex<T>(arr: readonly T[], pred: (v: T) => boolean): number {
@@ -351,6 +384,19 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 // ─── Error mapping ───────────────────────────────────────────────────────────
+
+/**
+ * TEST-ONLY: expose the per-command validator so the bridge specs can assert
+ * rejection rules (sign discipline, corner filters, ranges) without smuggling
+ * an invalid command through a recipe. Mirrors the
+ * `__snapshotVerificationFallbacks` test-hook convention in commands.ts.
+ */
+export function __validateBridgeCommandForTest(
+  doc: ProjectDocument,
+  cmd: BridgeCommand,
+): { ok: true } | { ok: false; code: BridgeExecutionError["code"]; message: string; hint?: string } {
+  return validateCommand(doc, cmd);
+}
 
 function failureFromProviderReason(
   reason: "empty-prompt" | "no-recipe-match" | "recipe-applied-no-commands",

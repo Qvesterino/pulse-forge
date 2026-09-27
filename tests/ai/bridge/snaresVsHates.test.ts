@@ -21,9 +21,11 @@
 import { describe, expect, it } from "vitest";
 import { testDoc } from "../../fixtures/doc";
 import type { ProjectDocument } from "../../../src/project-model/types";
+import { normalizeProject } from "../../../src/project-model/schema";
 import type { UserPreferencesSnapshot } from "../../../src/ai/bridge/types";
 import { EMPTY_PREFERENCES } from "../../../src/ai/bridge/types";
-import { executeCommandBatch } from "../../../src/ai/bridge/executor";
+import { executeCommandBatch, __validateBridgeCommandForTest } from "../../../src/ai/bridge/executor";
+import { EQ_BANDS, clampToSlot } from "../../../src/ai/bridge/eqSlots";
 
 // ─── Fixture ────────────────────────────────────────────────────────────────
 
@@ -94,10 +96,69 @@ describe("AI bridge — snares vs hates", () => {
     // effects on the snare (eq) and hihat (eq + sidechain).
     const updatedSnare = result.doc.tracks[0];
     if (!updatedSnare) throw new Error("fixture: snare vanished");
-    const snareEqs = updatedSnare.effects.filter((fx) => fx.type === "eq");
-    const hihatEqs = updatedHihat.effects.filter((fx) => fx.type === "eq");
-    expect(snareEqs.length).toBeGreaterThan(0); // boost on snare
-    expect(hihatEqs.length).toBeGreaterThan(0); // carve on hihat
+    const snareEq = updatedSnare.effects.find((fx) => fx.type === "eq");
+    const hihatEq = updatedHihat.effects.find((fx) => fx.type === "eq");
+    expect(snareEq).toBeDefined(); // boost on snare
+    expect(hihatEq).toBeDefined(); // carve on hihat
+
+    // THE regression guard: the params must be CANONICAL eq ids the audio
+    // engine actually reads, not invented `band{N}_*` keys. normalizeEffects
+    // rebuilds params from the registry whitelist, so a non-canonical key
+    // would be silently dropped the next time the document normalizes and
+    // the move would never reach the graph.
+    expect(snareEq?.params.highMidFreq).toBe(4000);
+    expect(snareEq?.params.highMidGain).toBe(2);
+    expect(snareEq?.params.highMidQ).toBe(1);
+    expect(hihatEq?.params.highMidFreq).toBe(6000);
+    expect(hihatEq?.params.highMidGain).toBeCloseTo(-2.1, 5);
+    expect(hihatEq?.params.highMidQ).toBe(1.5);
+    for (const fx of [snareEq, hihatEq]) {
+      if (!fx) continue;
+      for (const key of Object.keys(fx.params)) {
+        expect(key).not.toMatch(/^band\d+_/);
+      }
+    }
+  });
+
+  it("eq moves survive normalizeProject (whitelist round-trip)", () => {
+    const doc = bridgeDoc();
+    const result = executeCommandBatch("uprav snares aby sa nebili s hates", {
+      doc,
+      userPreferences: EMPTY_PREFERENCES,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Simulate a save/load or a store normalize: the bridge-written params
+    // must be byte-identical afterwards, otherwise the audio engine would
+    // receive a band that silently reverted to its default.
+    const normalized = normalizeProject(result.doc);
+    const eq = normalized.tracks[1]?.effects.find((fx) => fx.type === "eq");
+    expect(eq).toBeDefined();
+    expect(eq?.params.highMidFreq).toBe(6000);
+    expect(eq?.params.highMidGain).toBeCloseTo(-2.1, 5);
+    expect(eq?.params.highMidQ).toBe(1.5);
+
+    // Untouched bands keep their registry defaults rather than becoming NaN.
+    expect(Number.isFinite(eq?.params.lowShelfFreq ?? NaN)).toBe(true);
+    expect(Number.isFinite(eq?.params.lpFreq ?? NaN)).toBe(true);
+  });
+
+  it("clampToSlot snaps an out-of-window frequency instead of rejecting it", () => {
+    const highMid = EQ_BANDS.highMid;
+    const inside = clampToSlot(highMid, 6000);
+    expect(inside.freqHz).toBe(6000);
+    expect(inside.notice).toBeNull();
+
+    // 15 kHz is unreachable for a highMid bell — it snaps to the top edge
+    // and reports the move so the UI never claims a 15 kHz carve happened.
+    const outside = clampToSlot(highMid, 15000);
+    expect(outside.freqHz).toBe(8000);
+    expect(outside.notice).toContain("8000");
+
+    // The low end snaps up into the bell window rather than into the shelf.
+    const lowSide = clampToSlot(highMid, 120);
+    expect(lowSide.freqHz).toBe(500);
   });
 
   it("snapshot command: undo restores the original document exactly", () => {
@@ -134,7 +195,80 @@ describe("AI bridge — snares vs hates", () => {
     const hihatAfter = result.doc.tracks[1];
     if (!hihatAfter) throw new Error("fixture: hihat vanished");
     const eqAfter = hihatAfter.effects.filter((fx) => fx.type === "eq").length;
-    expect(eqAfter).toBeGreaterThan(eqBefore);
+    expect(eqAfter).toBe(eqBefore + 1);
+
+    // Strong EQ preference (0.9 vs 0.1 → tilt 0.1) keeps the carve near full
+    // depth: -3 dB × (1 − 0.6×0.1) = -2.82 → -2.8 after rounding.
+    const eq = hihatAfter.effects.find((fx) => fx.type === "eq");
+    expect(eq?.params.highMidGain).toBeCloseTo(-2.8, 5);
+  });
+
+  it("reuses an existing EQ instance instead of stacking a second one", () => {
+    const base = bridgeDoc();
+    const hihat = base.tracks[1];
+    if (!hihat) throw new Error("fixture: missing hihat");
+    // Seed the hi-hat with a pre-existing EQ carrying the user's own move.
+    const seeded = { id: "fx-user-eq", type: "eq" as const, bypassed: false, params: { lowShelfGain: -4 } };
+    const doc: ProjectDocument = {
+      ...base,
+      tracks: base.tracks.map((t, i) => (i === 1 ? { ...t, effects: [...t.effects, seeded] } : t)),
+    };
+
+    const result = executeCommandBatch("uprav snares aby sa nebili s hates", {
+      doc,
+      userPreferences: EMPTY_PREFERENCES,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const hihatAfter = result.doc.tracks[1];
+    if (!hihatAfter) throw new Error("fixture: hihat vanished");
+    const eqs = hihatAfter.effects.filter((fx) => fx.type === "eq");
+    expect(eqs.length).toBe(1);
+    // The user's own band survives, the bridge band was added alongside it.
+    expect(eqs[0]?.id).toBe("fx-user-eq");
+    expect(eqs[0]?.params.lowShelfGain).toBe(-4);
+    expect(eqs[0]?.params.highMidFreq).toBe(6000);
+    expect(eqs[0]?.params.highMidGain).toBeCloseTo(-2.1, 5);
+  });
+
+  it("rejects a carve with positive gain (sign discipline)", () => {
+    // Guards the class of bug where a mis-signed recipe silently BOOSTS the
+    // element it meant to carve. Exercised through a recipe-free path: a
+    // direct validate call on a hand-built command.
+    const doc = bridgeDoc();
+    const validateCommandForTest = __validateBridgeCommandForTest;
+    const check = validateCommandForTest(doc, {
+      kind: "eq-carve",
+      label: "bogus positive carve",
+      rationale: "test",
+      target: { namePattern: "hi[-_ ]?hats?|\\bhates\\b", regex: true, preferKind: "any" },
+      band: "highMid",
+      freqHz: 6000,
+      gainDb: 3,
+      q: 1.5,
+    });
+    expect(check.ok).toBe(false);
+    if (check.ok) return;
+    expect(check.message).toContain("negative");
+  });
+
+  it("rejects a gain move on a corner filter (hp/lp have no gain param)", () => {
+    const doc = bridgeDoc();
+    const validateCommandForTest = __validateBridgeCommandForTest;
+    const check = validateCommandForTest(doc, {
+      kind: "eq-carve",
+      label: "bogus hp carve",
+      rationale: "test",
+      target: { namePattern: "hi[-_ ]?hats?|\\bhates\\b", regex: true, preferKind: "any" },
+      band: "hp",
+      freqHz: 80,
+      gainDb: -3,
+      q: 1,
+    });
+    expect(check.ok).toBe(false);
+    if (check.ok) return;
+    expect(check.message).toContain("no gain param");
   });
 
   it("sidechain-loving prefs: tilt past 0.95 drops the EQ carve entirely", () => {
