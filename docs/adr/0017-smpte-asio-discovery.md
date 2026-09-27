@@ -86,7 +86,8 @@ clean JSON or a partial timeout, never a hang.
 | Timecode math (DF/NDF, seconds, samples, BWF bridge) | Shipped                    |
 | Transport chase to external timecode                 | Not shipped (wave 2)       |
 | ASIO driver discovery (registry + COM probe)         | Shipped (Windows, desktop) |
-| ASIO streaming audio in the graph                    | Not shipped (wave 2)       |
+| ASIO streaming (fixture driver -> PCM frames over the ADR 0018 pipe) | Shipped (wave 2.5): acceptance-tested against the SDK sample driver built as a 64-bit fixture DLL; streaming from REAL hardware drivers and the 300 s soak remain owner gates |
+| Transport chase to external timecode                 | Shipped (wave 2): full frames jump immediately, playing drift re-syncs throttled (0.5 s / 2 s), stopped frames move the pause position; armed from the statusbar MTC chip. TC 00:00:00:00 = tick 0, an offset knob is future work |
 | LTC decode/emission, MTC emission                    | Not shipped                |
 
 ## Consequences
