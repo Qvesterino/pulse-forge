@@ -5674,6 +5674,22 @@ export class AudioEngine {
     return this.masterSpectrogramAnalyser;
   }
 
+  /** Read-only live context state for UI indicators (no side effects, no
+   *  resume attempt — UI chips must be able to observe "suspended" without
+   *  perturbing it). Null while no realtime context exists. */
+  getLiveAudioState(): "suspended" | "running" | "interrupted" | "closed" | null {
+    return (this.ctx?.state as "suspended" | "running" | "interrupted" | "closed") ?? null;
+  }
+
+  /** Default media-device change subscription for UI monitoring. Returns an
+   *  unsubscribe fn; no-op on hosts without mediaDevices (insecure context). */
+  onDeviceChange(listener: () => void): () => void {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) return () => {};
+    const handler = () => listener();
+    navigator.mediaDevices.addEventListener("devicechange", handler);
+    return () => navigator.mediaDevices?.removeEventListener("devicechange", handler);
+  }
+
   /**
    * Multi-resolution spectrogram taps (low 8192 / mid 4096 / high 1024) off
    * the same post-limiter sink point. Null until the master graph exists.

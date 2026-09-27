@@ -1,4 +1,5 @@
 import { ErrorBoundary } from "./ErrorBoundary";
+import { AudioStatusChips } from "./AudioStatusChips";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 import {
@@ -862,6 +863,7 @@ export function TopBar({
         />
 
         <div className="topbar-right">
+          <AudioStatusChips />
           <span
             className={`save-status save-${saveStatus}`}
             title={
