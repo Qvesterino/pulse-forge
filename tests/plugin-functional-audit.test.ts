@@ -477,14 +477,12 @@ describe("F. automation targets cover every parameter", () => {
       for (const p of EFFECT_META[type].params) {
         const target = { kind: "fxParam" as const, trackId, fxId, paramId: p.id };
         expect(isAutomationTargetValid(doc, target), `${type}.${p.id}: valid target`).toBe(true);
-        expect(
-          clampTargetValue(doc, target, p.min - 100),
-          `${type}.${p.id}: lane clamp mirrors param clamp`,
-        ).toBe(clampEffectParam(type, p.id, p.min - 100));
-        expect(
-          clampTargetValue(doc, target, p.max + 100),
-          `${type}.${p.id}: lane clamp mirrors param clamp`,
-        ).toBe(clampEffectParam(type, p.id, p.max + 100));
+        expect(clampTargetValue(doc, target, p.min - 100), `${type}.${p.id}: lane clamp mirrors param clamp`).toBe(
+          clampEffectParam(type, p.id, p.min - 100),
+        );
+        expect(clampTargetValue(doc, target, p.max + 100), `${type}.${p.id}: lane clamp mirrors param clamp`).toBe(
+          clampEffectParam(type, p.id, p.max + 100),
+        );
         expect(clampTargetValue(doc, target, Number.NaN), `${type}.${p.id}: NaN lane → default`).toBe(p.default);
       }
     });

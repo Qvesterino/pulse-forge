@@ -28,6 +28,27 @@ export interface ArtistMixProfile {
   width?: "wide" | "narrow";
   /** Sub emphasis producer-decision (deep-profile layer; consumer follow-up). */
   sub?: "prominent" | "subtle";
+  /**
+   * Artist's mastered integrated loudness in LUFS (Phase 2 slice 3) — e.g. -7
+   * for a modern loud-master, -13 for a character-over-loudness release.
+   * Emitted as a SIGNAL, not a direct target: planMixProfile derives the
+   * actual master.lufsTarget as a bounded offset from
+   * SONG_LOUDNESS_TARGET_LUFS, so an artist can lift loudness by at most
+   * SONG_LOUDNESS_TRIM_LIMIT_DB — the same guard the song builder already
+   * honors (song.ts). An artist quieter than the streaming target therefore
+   * leaves the project default alone. Maps from deep profile
+   * master.targetLufs.
+   */
+  lufs?: number;
+  /**
+   * Master buss-glue producer-decision (Phase 2 slice 3). true engages the
+   * SSL-style 2:1 glue (loud-master / heavily-limited artists), false
+   * bypasses it (character-over-loudness artists), absent leaves the
+   * project's own glueEnabled setting untouched. Maps from deep profile
+   * master.dynamicRange: "low" / "limited" -> true, "wide" -> false,
+   * "moderate" -> absent.
+   */
+  glue?: boolean;
 }
 
 export const ARTIST_MIX_PROFILES: Readonly<Record<string, ArtistMixProfile>> = {
@@ -339,10 +360,26 @@ export const ARTIST_MIX_PROFILES: Readonly<Record<string, ArtistMixProfile>> = {
 };
 
 /** Artist signature lookup; unknown/absent labels yield the genre default path.
- *  Lookup chain: the curated table first, then the deep-profile derive layer
- *  (artist-profiles — its back edge to this module is `import type` only, so
- *  the runtime graph stays acyclic). */
+ *  Lookup chain: the deep-profile derive layer (artist-profiles) supplies the
+ *  baseline, then the curated ARTIST_MIX_PROFILES table OVERLAYS it
+ *  field-by-field. Per-field merge (not "curated or deep") so an artist in
+ *  both layers keeps its hand-curated tone/punch/reverb while still picking up
+ *  the deep layer's lufs/glue signals — the curated table predates those
+ *  fields and would otherwise mask them entirely. Curited wins on any field it
+ *  declares; the deep layer fills the rest.
+ *
+ *  The back edge from artist-profiles to this module is `import type` only, so
+ *  the runtime graph stays acyclic. */
 export function artistMixProfileOf(intent: IntentSpec): ArtistMixProfile | null {
   if (!intent.artist) return null;
-  return ARTIST_MIX_PROFILES[intent.artist] ?? artistMixProfileFromDeep(intent.artist);
+  const deep = artistMixProfileFromDeep(intent.artist);
+  const curated = ARTIST_MIX_PROFILES[intent.artist];
+  if (!deep) return curated ?? null;
+  if (!curated) return deep;
+  // Curated fields win; deep fills the gaps (lufs / glue / width / sub).
+  const merged: ArtistMixProfile = { ...deep };
+  for (const [key, value] of Object.entries(curated)) {
+    if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+  }
+  return merged;
 }

@@ -1,0 +1,76 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/intent-artist-mix-wiring.test.ts [2m([22m[2m45 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-master-decisions.test.ts [2m([22m[2m18 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[90m 18[2mms[22m[39m
+[31m   [31m├Ś[31m planMixProfile ÔÇö master loudness bound (Phase 2 slice 3)[2m > [22ma loud artist lifts the target but never past the trim limit[90m 9[2mms[22m[31m[39m
+[31m     Ôćĺ expected undefined to be -8 // Object.is equality[39m
+[31m   [31m├Ś[31m planMixProfile ÔÇö master loudness bound (Phase 2 slice 3)[2m > [22ma mid artist lands between the streaming target and the cap[90m 1[2mms[22m[31m[39m
+[31m     Ôćĺ expected undefined to be -9 // Object.is equality[39m
+[31m   [31m├Ś[31m planMixProfile ÔÇö master decisions are deterministic + reported[2m > [22mthe loudness decision is surfaced in the human-readable summary[90m 2[2mms[22m[31m[39m
+[31m     Ôćĺ expected false to be true // Object.is equality[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 3 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-master-decisions.test.ts > planMixProfile ÔÇö master loudness bound (Phase 2 slice 3) > a loud artist lifts the target but never past the trim limit
+AssertionError: expected undefined to be -8 // Object.is equality
+
+- Expected: 
+-8
+
++ Received: 
+undefined
+
+ ÔŁ» tests/intent-master-decisions.test.ts:93:38
+     91|     const profile = planMixProfile(baseIntent("travis-scott"), {}, {});
+     92|     const expected = SONG_LOUDNESS_TARGET_LUFS + SONG_LOUDNESS_TRIM_LIÔÇŽ
+     93|     expect(profile.masterLufsTarget).toBe(expected);
+       |                                      ^
+     94|     expect(profile.masterLufsTarget!).toBeGreaterThanOrEqual(SONG_LOUDÔÇŽ
+     95|   });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/3]ÔÄ»
+
+ FAIL  tests/intent-master-decisions.test.ts > planMixProfile ÔÇö master loudness bound (Phase 2 slice 3) > a mid artist lands between the streaming target and the cap
+AssertionError: expected undefined to be -9 // Object.is equality
+
+- Expected: 
+-9
+
++ Received: 
+undefined
+
+ ÔŁ» tests/intent-master-decisions.test.ts:111:38
+    109|     // Anyma: targetLufs -9 -> a 5 dB lift, inside the 6 dB cap.
+    110|     const profile = planMixProfile(baseIntent("anyma"), {}, {});
+    111|     expect(profile.masterLufsTarget).toBe(SONG_LOUDNESS_TARGET_LUFS + ÔÇŽ
+       |                                      ^
+    112|   });
+    113| });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/3]ÔÄ»
+
+ FAIL  tests/intent-master-decisions.test.ts > planMixProfile ÔÇö master decisions are deterministic + reported > the loudness decision is surfaced in the human-readable summary
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ÔŁ» tests/intent-master-decisions.test.ts:150:67
+    148|   it("the loudness decision is surfaced in the human-readable summary"ÔÇŽ
+    149|     const profile = planMixProfile(baseIntent("travis-scott"), {}, {});
+    150|     expect(profile.summary.some((line) => line.includes("LUFS"))).toBeÔÇŽ
+       |                                                                   ^
+    151|   });
+    152| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[3/3]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m60 passed[39m[22m[90m (63)[39m
+[2m   Start at [22m 09:48:37
+[2m   Duration [22m 4.18s[2m (transform 1.14s, setup 674ms, collect 3.27s, tests 34ms, environment 2.84s, prepare 462ms)[22m
+

@@ -62,6 +62,11 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   drifting: ["drifting", "floating", "weightless", "slow drift"],
   glitch: ["glitchy", "glitch textures", "stuttering", "micro-edits"],
   organic: ["organic", "natural textures", "earthy", "living sound"],
+  pianohouse: ["piano house", "piano-led", "piano stabs", "bright piano groove"],
+  midtempo: ["midtempo", "half-time bass", "slow bass drop", "half-time stomp"],
+  breakbeat: ["breakbeat", "big beat", "breaks", "chopped break"],
+  sadchill: ["sad chill", "emotional lo-fi", "melancholic beat", "late-night sad"],
+  dirtyambient: ["dirty ambient", "corroded textures", "decaying room", "tape-degraded"],
   liquid: ["liquid", "liquid grooves", "silky rollers", "smooth summer liquid"],
   jumpup: ["jump up", "jump-up", "filthy jump up", "wobbly party jump up"],
   neuro: ["neuro", "neurofunk", "reese-driven", "tearout neuro bass"],
@@ -95,6 +100,11 @@ const TEMPO_WORDS: Record<string, string[]> = {
   jersey: ["at 140", "at 138", "at 135", "bounce tempo"],
   ukg: ["at 132", "at 134", "at 130", "shuffle tempo"],
   hyperpop: ["at 150", "at 160", "at 140", "glitch tempo"],
+  pianohouse: ["at 126", "at 124", "at 128", "piano tempo"],
+  midtempo: ["at 100", "at 95", "at 105", "half-time tempo"],
+  breakbeat: ["at 132", "at 136", "at 128", "breaks tempo"],
+  sadchill: ["at 80", "at 75", "at 85", "sad tempo"],
+  dirtyambient: ["at 70", "at 65", "at 80", "degraded tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

@@ -16,10 +16,11 @@ function drumPadIds(doc: ProjectDocument): Set<string> {
 }
 
 describe("templates", () => {
-  it("ships the thirteen promised templates", () => {
+  it("ships the fourteen promised templates", () => {
     expect(TEMPLATE_IDS.sort()).toEqual(
       [
         "ambient",
+        "boombap",
         "drill",
         "dnb",
         "empty",
@@ -34,6 +35,18 @@ describe("templates", () => {
         "ukg",
       ].sort(),
     );
+  });
+
+  it("boombap template is a 90 BPM golden-era breakbeat", () => {
+    const doc = createProjectFromTemplate("boombap");
+    expect(doc.bpm).toBe(90);
+    expect(doc.tracks.some((t) => t.kind === "drum")).toBe(true);
+    expect(doc.tracks.some((t) => t.kind === "instrument")).toBe(true);
+    // The genre kit swap (applied at generation) carries the boom-bap kick;
+    // the template itself starts from the stock kit like the other starters.
+    const drums = doc.tracks.find((t) => t.kind === "drum")!;
+    expect(drums.pads.length).toBe(16);
+    expect(doc.groove?.swing).toBeGreaterThan(0);
   });
 
   it("dnb template is a 174 BPM two-step roller with a reese sub", () => {

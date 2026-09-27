@@ -45,21 +45,36 @@ export interface BridgeCommandBase {
 }
 
 /**
- * Insert a sidechain compressor on `target` whose key input is `source`.
- * Used for the canonical "snares duck hi-hats" recipe.
+ * Insert a sidechain compressor on `target`, keyed from `source`. Used for
+ * the canonical "snare ducks hi-hat" recipe.
+ *
+ * `duckDb` is MUSICAL INTENT, not a param value: KYX's sidechain has no
+ * "depth in dB" param (its `amount` is a 0…1 blend and depth comes from
+ * `ratio`). The executor translates `duckDb` into a canonical
+ * (threshold, ratio, attack, release, amount, splitFreq) set — see
+ * ./sidechainSlots.ts for the mapping and its assumptions.
  */
 export interface SidechainDuckCommand extends BridgeCommandBase {
   readonly kind: "sidechain-duck";
   readonly target: TrackMatcher;
   readonly source: TrackMatcher;
-  readonly params: {
-    /** Depth in dB; negative = duck (target is pulled down when source plays). */
-    readonly amountDb: number;
-    readonly attackMs: number;
-    readonly releaseMs: number;
-    /** Below this linear level on the source, ducking is bypassed. */
-    readonly bypassThreshold: number;
-  };
+  /** Desired worst-case duck depth in dB (0…24). Musical intent, not a param. */
+  readonly duckDb: number;
+  /** Envelope follower attack in SECONDS (canonical `attack` is seconds). */
+  readonly attackSec: number;
+  /** Envelope follower release in SECONDS. */
+  readonly releaseSec: number;
+  /**
+   * dBFS level the key signal must exceed to trigger. Lower = triggers more
+   * often. Canonical `threshold`; defaults to the registry default when
+   * omitted.
+   */
+  readonly thresholdDb?: number;
+  /**
+   * Optional split point in Hz: only the LOW band of the target gets ducked
+   * (classic bass pump). ≤10 means "off" / full-band.
+   */
+  readonly splitFreqHz?: number;
 }
 
 /**

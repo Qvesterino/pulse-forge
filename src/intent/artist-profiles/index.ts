@@ -1594,6 +1594,20 @@ export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile
     undefined;
   if (sub) derived.sub = sub;
 
+  // lufs (Phase 2 slice 3) — the artist's mastered integrated loudness.
+  // Carried as a SIGNAL; planMixProfile bounds it against the project's
+  // streaming target + trim limit before it reaches master.lufsTarget.
+  const targetLufs = profile.master.targetLufs;
+  if (Number.isFinite(targetLufs)) derived.lufs = targetLufs;
+
+  // glue (Phase 2 slice 3) — master buss-glue decision from the profile's
+  // dynamicRange descriptor. The field is free text whose first token is the
+  // qualifier ("low - ...", "wide - ...", "moderate - ..."), so match on the
+  // leading word rather than an exact-equality union.
+  const dynamicRange = (profile.master.dynamicRange ?? "").trim().toLowerCase();
+  if (/^(low|limited)\b/.test(dynamicRange)) derived.glue = true;
+  else if (/^wide\b/.test(dynamicRange)) derived.glue = false;
+
   // pump — keyword scan across signature sound + vibe
   const pumpSignal = [...profile.signature.sound, ...profile.vibe]
     .some((text) => /\bsidechain|\bpump(?:ing|s|ed)?\b/i.test(text));

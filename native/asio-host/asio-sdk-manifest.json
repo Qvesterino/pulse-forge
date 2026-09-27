@@ -2,7 +2,7 @@
   "source": "https://download.steinberg.net/sdk_downloads/asiosdk_2.3.3_2019-06-14.zip",
   "zipSha256": "bc425d9b98701af74b43639798566c48bc005af7328a2251cff722c1885076b2",
   "license": "Steinberg ASIO SDK license — free to use, NOT redistributable; this directory is gitignored",
-  "vendoredAt": "2026-09-27T01:38:46.953Z",
+  "vendoredAt": "2026-09-27T07:40:10.598Z",
   "files": [
     {
       "path": "common/asio.h",
@@ -15,6 +15,54 @@
     {
       "path": "common/iasiodrv.h",
       "sha256": "861f110bc7cf0756ee10e0ea4d57e2964f8d8359cd6c9483d8b47785bcc9e79c"
+    },
+    {
+      "path": "common/asiodrvr.cpp",
+      "sha256": "afa9fa2620c19a92eba368ba8f0514bfac1815c1b40d428fc4619c55437d3248"
+    },
+    {
+      "path": "common/asiodrvr.h",
+      "sha256": "86ef34c1fcf300692d9b389b86f0066fce7deb1987d00939ae9bdfe0a0a5f989"
+    },
+    {
+      "path": "common/combase.cpp",
+      "sha256": "1f8ef8b79de26c0435ff6544352af36327643421491c353b059d86e0e344cd23"
+    },
+    {
+      "path": "common/combase.h",
+      "sha256": "29d1ccf49c332fdcdc7abddb32f5adf9d475198eb0283b2ca19c450f35222b21"
+    },
+    {
+      "path": "common/dllentry.cpp",
+      "sha256": "f7b813e0d6191f0c973409780c3305e6ba1e72e3e6e5cf8f5125e7decdf589a2"
+    },
+    {
+      "path": "common/register.cpp",
+      "sha256": "1bb35293d4d63b955187db47ce5e98e43a0e05c7926be710ad45a800e99ae6cb"
+    },
+    {
+      "path": "common/debugmessage.cpp",
+      "sha256": "6ccbbda9168ea108236f90dd02e722b4e05d8cce64d514cfeffbe5cae603fc4a"
+    },
+    {
+      "path": "common/wxdebug.h",
+      "sha256": "b4c7293a3c7b8cdf6dd19ce7ae5766674d7f581522bd508dc6e6d6b0384785da"
+    },
+    {
+      "path": "driver/asiosample/asiosmpl.cpp",
+      "sha256": "5b1befad099639ee07c5bd961b404e60d72aef877236d4a508044aedf4f08091"
+    },
+    {
+      "path": "driver/asiosample/asiosmpl.h",
+      "sha256": "276763375e56f20123c2e61dfd3352b100a525bbcfbbb6985101bdf429e8d387"
+    },
+    {
+      "path": "driver/asiosample/wintimer.cpp",
+      "sha256": "f2f8b0dae84365ef4110b26869c4508e659f533ed5d9dd598e956170fa784663"
+    },
+    {
+      "path": "driver/asiosample/asiosample.def",
+      "sha256": "0face612c1df9baef86b52c073aaa7be7060b728a9a499ef7186507a03bff1c3"
     }
   ]
 }

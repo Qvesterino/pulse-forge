@@ -124,8 +124,12 @@ class VowelProcessor extends AudioWorkletProcessor {
       }
     }
     // Coefficient glide (block-rate is enough — targets only move k-rate).
+    // The blend is applied ONCE per block, so g must cover the whole block:
+    // 1 - exp(-blockLen/(tc*sr)) keeps the intended ~4 ms morph constant
+    // (a per-sample g applied per block stretched it to ~0.5 s, which made
+    // the formant filters measure as inert over short windows).
     {
-      const g = 1 - Math.exp(-1 / (0.004 * sr));
+      const g = 1 - Math.exp(-outL.length / (0.004 * sr));
       for (let f = 0; f < 3; f++) {
         this.b0[f] += (this.tB0[f] - this.b0[f]) * g;
         this.b1[f] += (this.tB1[f] - this.b1[f]) * g;

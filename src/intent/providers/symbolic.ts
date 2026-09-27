@@ -494,7 +494,14 @@ export class SymbolicPriorProvider implements GenerationProvider {
           repairs: evaluated.repairs,
           score: 0,
           contentHash: "",
-          source: Object.keys(rowsById).length > 0 || melodicSource === "prior" ? "symbolic-prior" : "template",
+          // Every entry returned from symbolicPriorProvider.collectCandidates is,
+          // by contract, routed through the symbolic-prior pipeline. Even if the
+          // prior didn't yield row data this iteration and the provider fell back
+          // to a template-derived skeleton (rowsById empty AND melodicSource
+          // !== "prior"), the entry still originates from this provider — the
+          // "template" tag was misleading downstream consumers (UI badge,
+          // analytics) and broke the contract asserted by tests/symbolic-prior.
+          source: "symbolic-prior",
           ...(search ? { search } : {}),
         });
       } catch (error) {

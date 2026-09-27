@@ -180,8 +180,11 @@ class SvFilterProcessor extends AudioWorkletProcessor {
     // follows the same smoothed cutoff; the stability clamp re-runs on the
     // smoothed pair every block, so the glide can never leave the stable
     // region (fast jumps are limited exactly like instant ones).
+    // The blend is applied ONCE per block here, so g must cover the whole
+    // block: 1 - exp(-blockLen/(tc*sr)) keeps the time constant at the
+    // intended ~5 ms (a per-sample g applied per block stretched it to ~0.6 s).
     if (this.cutoffSmoothed === undefined) this.cutoffSmoothed = cutoff;
-    this.cutoffSmoothed += (cutoff - this.cutoffSmoothed) * (1 - Math.exp(-1 / (0.005 * sr)));
+    this.cutoffSmoothed += (cutoff - this.cutoffSmoothed) * (1 - Math.exp(-outL.length / (0.005 * sr)));
     if (cutoff !== this.lastCutoff || res !== this.lastRes) {
       this.lastCutoff = cutoff;
       this.lastRes = res;

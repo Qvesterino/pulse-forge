@@ -390,6 +390,65 @@ export function buildDrumBass(): ProjectDocument {
   return finish(doc);
 }
 
+/* ---------------- Boom Bap — 90 BPM dusty breakbeat ---------------- */
+
+export function buildBoomBap(): ProjectDocument {
+  const doc = baseDocument("Boom Bap", 90);
+  const drums = createDrumTrack();
+  const bass = createBass();
+  const keys = createKeys();
+  keys.name = "Sample Chops";
+
+  let pattern = emptyPattern("Golden", [drums]);
+  // The golden-era pocket: kick on 1 and the "and of 3".
+  pattern = setSteps(pattern, drums.pads, 0, [
+    [0, 0.95],
+    [6, 0.75],
+    [8, 0.9],
+    [14, 0.7],
+  ]);
+  // Hard snare on 2 and 4 with a ghost answer.
+  pattern = setSteps(pattern, drums.pads, 4, [
+    [4, 0.9],
+    [12, 0.9],
+  ]);
+  pattern = setSteps(pattern, drums.pads, 5, [[14, 0.4]]);
+  // Swung 8th hats.
+  pattern = setSteps(pattern, drums.pads, 8, [
+    [0, 0.42],
+    [2, 0.6],
+    [4, 0.42],
+    [6, 0.6],
+    [8, 0.42],
+    [10, 0.6],
+    [12, 0.42],
+    [14, 0.6],
+  ]);
+  // Upright-style bass walk in F minor: root, fifth, passing walk-up.
+  pattern = withNotes(pattern, bass.id, [
+    note(29, 0, PPQ * 1.5, 0.85),
+    note(36, PPQ * 1.5, PPQ / 2, 0.6),
+    note(29, 2 * PPQ, PPQ, 0.8),
+    note(27, 3 * PPQ + PPQ / 2, PPQ / 2, 0.7),
+  ]);
+  // Dusty keys stabs (the "sample" layer).
+  pattern = withNotes(pattern, keys.id, [
+    note(65, 0, PPQ * 1.5, 0.5),
+    note(68, 0, PPQ * 1.5, 0.42),
+    note(72, 0, PPQ * 1.5, 0.4),
+    note(63, 2 * PPQ, PPQ, 0.5),
+    note(67, 2 * PPQ, PPQ, 0.42),
+  ]);
+
+  doc.tracks = [drums, bass, keys];
+  doc.patterns = [pattern];
+  doc.scenes = [scene("Golden", pattern.id)];
+  doc.arrangement = { clips: [clip(doc.scenes[0].id, 0, 4)] };
+  doc.groove = { swing: 0.14, humanizeTiming: 0.14, humanizeVelocity: 0.2 };
+  doc.macros = performanceMacros(drums.id, bass.id, keys.id);
+  return finish(doc);
+}
+
 /* ---------------- local factories ---------------- */
 
 function createDrumTrack() {

@@ -19,13 +19,32 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 
 const SDK_URL = "https://download.steinberg.net/sdk_downloads/asiosdk_2.3.3_2019-06-14.zip";
 const SDK_ZIP_SHA256 = "bc425d9b98701af74b43639798566c48bc005af7328a2251cff722c1885076b2";
 const SDK_ROOT = "asiosdk_2.3.3_2019-06-14";
-const HEADERS = ["common/asio.h", "common/asiosys.h", "common/iasiodrv.h"];
+/** Headers for the probe + sources for the wave-2.5 fixture driver. */
+const FILES = [
+  // probe headers
+  "common/asio.h",
+  "common/asiosys.h",
+  "common/iasiodrv.h",
+  // asio-fixture driver (SDK sample driver, built as a 64-bit DLL)
+  "common/asiodrvr.cpp",
+  "common/asiodrvr.h",
+  "common/combase.cpp",
+  "common/combase.h",
+  "common/dllentry.cpp",
+  "common/register.cpp",
+  "common/debugmessage.cpp",
+  "common/wxdebug.h",
+  "driver/asiosample/asiosmpl.cpp",
+  "driver/asiosample/asiosmpl.h",
+  "driver/asiosample/wintimer.cpp",
+  "driver/asiosample/asiosample.def",
+];
 const DEST = "native/asio-host/asio-sdk";
 
 function sha256File(path) {
@@ -60,20 +79,32 @@ execFileSync("unzip", ["-o", "-q", zipPath, "-d", "asio-sdk-extract"], {
   stdio: "ignore",
 });
 
-const sourceCommon = join(extractRoot, SDK_ROOT, "common");
-for (const header of HEADERS) {
-  if (!existsSync(join(sourceCommon, header.split("/")[1]))) {
-    throw new Error(`upstream zip is missing ${header} — layout changed? re-pin deliberately`);
+const sourceCommon = join(extractRoot, SDK_ROOT);
+for (const rel of FILES) {
+  if (!existsSync(join(sourceCommon, rel.replace(/\//g, "\\"))) && !existsSync(join(sourceCommon, rel))) {
+    throw new Error(`upstream zip is missing ${rel} — layout changed? re-pin deliberately`);
   }
 }
 
 rmSync(DEST, { recursive: true, force: true });
-mkdirSync(join(DEST, "common"), { recursive: true });
 const files = [];
-for (const header of HEADERS) {
-  const base = header.split("/")[1];
-  execFileSync("cp", [join(sourceCommon, base), join(DEST, "common", base)]);
-  files.push({ path: `common/${base}`, sha256: sha256File(join(DEST, "common", base)) });
+for (const rel of FILES) {
+  const destAbs = join(DEST, rel);
+  mkdirSync(dirname(destAbs), { recursive: true });
+  execFileSync("cp", [join(sourceCommon, rel.replace(/\//g, "\\")), destAbs]);
+  // KYX vendor patch (recorded here, applied on every sync): the 1996-era
+  // sample driver blind-casts `this` (CUnknown*) in NonDelegatingQueryInterface,
+  // which under MSVC multiple-inheritance layout hands back the WRONG
+  // subobject pointer. Cast to IASIO* explicitly and also answer IID_IASIO.
+  if (rel === "driver/asiosample/asiosmpl.cpp") {
+    let text = readFileSync(destAbs, "utf8");
+    const broken = "return GetInterface (this, ppv);";
+    const patched = "return GetInterface ((IASIO *)this, ppv); /* KYX vendor patch: base adjustment */";
+    if (!text.includes(broken)) throw new Error("asiosmpl.cpp drifted — re-review the KYX vendor patch");
+    text = text.replace(broken, patched);
+    writeFileSync(destAbs, text);
+  }
+  files.push({ path: rel, sha256: sha256File(destAbs) });
 }
 
 const manifest = {

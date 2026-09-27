@@ -48,7 +48,7 @@ const SR = 44100;
 const SIGNAL_SECONDS = 0.75;
 const RESPONSIVE_EPS = 0.02;
 /** Host delta below this still counts as processing (jitter floor ~1e-7). */
-const HOST_EPS = 0.01;
+const HOST_EPS = 0.005;
 
 const RUNAWAY_PEAK = 40;
 
@@ -308,7 +308,11 @@ function buildModulatorBuffer(ctx: BaseAudioContext): AudioBuffer {
   return buffer;
 }
 
-async function renderEffect(type: EffectType, params: Record<string, number>, signal: AudioBuffer): Promise<AudioBuffer> {
+async function renderEffect(
+  type: EffectType,
+  params: Record<string, number>,
+  signal: AudioBuffer,
+): Promise<AudioBuffer> {
   const ctx = new OfflineAudioContext(2, signal.length, SR);
   await loadAllWorklets(ctx);
   const rt = EFFECT_DEFS[type].factory(ctx, { id: "audit-fx", type, bypassed: false, params }, { bpm: 124 });
@@ -480,6 +484,14 @@ const FINGERPRINT_OVERRIDES: Partial<Record<EffectType, { id: string; value: num
     { id: "feedback", value: 0.85 },
     { id: "duckAmount", value: 1 },
   ],
+  stepGate: [
+    { id: "division", value: 3 },
+    { id: "depth", value: 1 },
+  ],
+  tremolo: [
+    { id: "mode", value: 1 },
+    { id: "rate", value: 20 },
+  ],
 };
 
 /** Fingerprint: the two strongest non-dry-class extremes from the sweep. */
@@ -493,9 +505,7 @@ function fingerprintOf(sweep: SweepResult): { id: string; value: number }[] {
     .slice(0, 2);
   // Fallback when the only responsive params are mix-class: use the
   // strongest non-default param extreme regardless.
-  const chosen = candidates.length > 0
-    ? candidates
-    : [...sweep.params].sort((a, b) => b.delta - a.delta).slice(0, 2);
+  const chosen = candidates.length > 0 ? candidates : [...sweep.params].sort((a, b) => b.delta - a.delta).slice(0, 2);
   return chosen.map((p: ParamAudit) => {
     const def = paramsDef.find((d: ParamDef) => d.id === p.id)!;
     return { id: p.id, value: p.bestExtreme === "min" ? def.min : def.max };
@@ -723,7 +733,8 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
     const singleRender = await renderDoc(singleDoc, bank);
     result.duplicateDelta = deltaVs(metricsOf(singleRender), metricsOf(doubleRender)).delta;
     result.duplicateFinite = finiteEverywhere(doubleRender);
-    if (result.duplicateDelta <= RESPONSIVE_EPS) notes.push("second delay instance changed nothing (instance ignored?)");
+    if (result.duplicateDelta <= RESPONSIVE_EPS)
+      notes.push("second delay instance changed nothing (instance ignored?)");
   } catch (error) {
     notes.push(`duplicate-instance test threw: ${String(error)}`);
   }
@@ -759,9 +770,7 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
     const syncStore = new ProjectStore(withFx);
     for (let i = 0; i < 24; i++) {
       syncStore.execute(setEffectParam(syncStore.getDoc(), trackId, fxAdd.effectId, "mix", i % 2 === 0 ? 0.02 : 0.9));
-      syncStore.execute(
-        setEffectParam(syncStore.getDoc(), trackId, fxAdd.effectId, "feedback", i % 2 === 0 ? 0 : 0.9),
-      );
+      syncStore.execute(setEffectParam(syncStore.getDoc(), trackId, fxAdd.effectId, "feedback", i % 2 === 0 ? 0 : 0.9));
       engine.setProject(syncStore.getDoc());
       await new Promise((r) => setTimeout(r, 10));
     }

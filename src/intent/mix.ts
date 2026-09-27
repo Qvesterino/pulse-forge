@@ -8,6 +8,7 @@ import {
 } from "../commands/commands";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
+import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
 import { parsePercent } from "./percent";
@@ -49,6 +50,21 @@ export interface MixProfile {
    * their exact sound.
    */
   masterTiltDb?: number;
+  /**
+   * Master integrated-loudness target in LUFS (Phase 2 slice 3). Derived from
+   * an artist signature's `lufs` signal as a bounded offset from
+   * SONG_LOUDNESS_TARGET_LUFS, so an artist can lift the mix by at most
+   * SONG_LOUDNESS_TRIM_LIMIT_DB — the same guard the song builder honors.
+   * undefined = leave the document's master target untouched (no artist
+   * signal, or the artist is quieter than the streaming target).
+   */
+  masterLufsTarget?: number;
+  /**
+   * Master buss-glue state (Phase 2 slice 3). Derived from an artist
+   * signature's `glue` signal; undefined = leave the document's
+   * master.glueEnabled untouched.
+   */
+  masterGlueEnabled?: boolean;
 }
 
 export interface MixOverrides {
@@ -343,7 +359,41 @@ export function planMixProfile(
     summary.push(`master tilt ${masterTiltDb > 0 ? "+" : ""}${masterTiltDb} dB`);
   }
 
-  return { decisions, summary, masterTiltDb };
+  // ── Master loudness + glue (Phase 2 slice 3) ────────────────────────────
+  // The artist signature carries the artist's MASTERED integrated loudness
+  // (e.g. -7 for a modern loud-master, -13 for character-over-loudness).
+  // The project ships every generated song at SONG_LOUDNESS_TARGET_LUFS
+  // (-14, streaming) and the song builder refuses to trim more than
+  // SONG_LOUDNESS_TRIM_LIMIT_DB (6) — so the artist signal is applied as a
+  // BOUNDED OFFSET from that target rather than as a raw replacement:
+  //
+  //   lift = clamp(streamingTarget - artistLufs, 0, TRIM_LIMIT)
+  //   target = streamingTarget + lift
+  //
+  // A loud artist (Travis Scott -7) therefore lands at -8, never at -7: the
+  // cap keeps exports inside the streaming band the product already
+  // guarantees, while still giving real per-artist differentiation. An artist
+  // at or below the streaming target (J Dilla -13, Burial -12) contributes
+  // lift 0 and leaves the project default untouched.
+  let masterLufsTarget: number | undefined;
+  const artistLufs = artistMix?.lufs;
+  if (artistLufs !== undefined && Number.isFinite(artistLufs)) {
+    const lift = Math.max(0, Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, SONG_LOUDNESS_TARGET_LUFS - artistLufs));
+    if (lift > 0) {
+      masterLufsTarget = Math.round((SONG_LOUDNESS_TARGET_LUFS + lift) * 10) / 10;
+      summary.push(`master loudness ${masterLufsTarget} LUFS (artist ${artistLufs})`);
+    }
+  }
+
+  // Master buss glue: loud-master / heavily-limited artists engage the
+  // SSL-style 2:1, character-over-loudness artists bypass it. undefined
+  // leaves the project's own setting alone.
+  const masterGlueEnabled = artistMix?.glue;
+  if (masterGlueEnabled !== undefined) {
+    summary.push(`master glue ${masterGlueEnabled ? "engaged" : "bypassed"}`);
+  }
+
+  return { decisions, summary, masterTiltDb, masterLufsTarget, masterGlueEnabled };
 }
 
 /** Resolve a mix target to concrete track ids in THIS document. */
@@ -457,7 +507,12 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
     }
   }
 
-  if (updates === 0 && profile.masterTiltDb === undefined)
+  if (
+    updates === 0 &&
+    profile.masterTiltDb === undefined &&
+    profile.masterLufsTarget === undefined &&
+    profile.masterGlueEnabled === undefined
+  )
     throw new Error("Mix profile changed nothing — the mix already matches");
 
   // Master tilt rides the same undoable snapshot as the track effects.
@@ -467,6 +522,28 @@ export function applyMixIntent(doc: ProjectDocument, profile: MixProfile): Retur
       master: { ...cursor.master, tiltDb: profile.masterTiltDb },
     };
     labelParts.push("master tilt");
+  }
+
+  // Master loudness target (Phase 2 slice 3) — the artist's bounded LUFS
+  // lift, applied to master.lufsTarget. The offline render and the master
+  // meter both read this field, so the artist signal is visible end to end.
+  if (profile.masterLufsTarget !== undefined && cursor.master.lufsTarget !== profile.masterLufsTarget) {
+    cursor = {
+      ...cursor,
+      master: { ...cursor.master, lufsTarget: profile.masterLufsTarget },
+    };
+    labelParts.push("master loudness");
+  }
+
+  // Master buss glue (Phase 2 slice 3) — the artist signature's glue
+  // decision. Written last so a signature carrying both signals still
+  // records both in one undo step.
+  if (profile.masterGlueEnabled !== undefined && cursor.master.glueEnabled !== profile.masterGlueEnabled) {
+    cursor = {
+      ...cursor,
+      master: { ...cursor.master, glueEnabled: profile.masterGlueEnabled },
+    };
+    labelParts.push("master glue");
   }
 
   return snapshot("applyMixIntent", `Mix: ${labelParts.join(", ") || `${updates} updates`}`, doc, cursor);

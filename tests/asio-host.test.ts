@@ -6,6 +6,13 @@ import { PassThrough } from "node:stream";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
+const { PcmPipeSource } = require("../desktop/pcm-pipe.cjs") as {
+  PcmPipeSource: new (options?: Record<string, unknown>) => {
+    start: () => unknown;
+    on: (event: string, listener: (payload: unknown) => void) => () => void;
+    stop: () => void;
+  };
+};
 const { AsioProbeManager, defaultProbePath, enumerateRegistry, validateAsioDriverRecord, parseDriverLines } =
   require("../desktop/asio-host-manager.cjs") as {
     AsioProbeManager: new (options?: Record<string, unknown>) => {
@@ -33,9 +40,11 @@ const { AsioProbeManager, defaultProbePath, enumerateRegistry, validateAsioDrive
 
 const REPO = path.resolve(__dirname, "..");
 const PROBE_EXE = defaultProbePath();
+const ASIO_HOST_EXE = path.join(REPO, "native", "asio-host", "build", "Release", "asio-host.exe");
+const ASIO_FIXTURE_DLL = path.join(REPO, "native", "asio-host", "build", "Release", "asio-fixture.dll");
 const SDK_MANIFEST = path.join(REPO, "native", "asio-host", "asio-sdk-manifest.json");
 
-let nativeReady = existsSync(PROBE_EXE);
+let nativeReady = existsSync(PROBE_EXE) && existsSync(ASIO_HOST_EXE) && existsSync(ASIO_FIXTURE_DLL);
 
 beforeAll(async () => {
   if (nativeReady) return;
@@ -59,11 +68,8 @@ describe("ASIO SDK vendor gate (scripts/vendor-asio.mjs)", () => {
     const manifest = JSON.parse(readFileSync(SDK_MANIFEST, "utf8"));
     expect(manifest.zipSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.license).toContain("NOT redistributable");
-    expect(manifest.files.map((f: { path: string }) => f.path)).toEqual([
-      "common/asio.h",
-      "common/asiosys.h",
-      "common/iasiodrv.h",
-    ]);
+    expect(manifest.files.map((f: { path: string }) => f.path)).toContain("common/asio.h");
+    expect(manifest.files.map((f: { path: string }) => f.path)).toContain("driver/asiosample/asiosmpl.cpp");
     // The gitignored directory must never appear in git's index.
     for (const file of manifest.files) {
       expect(existsSync(path.join(REPO, "native", "asio-host", "asio-sdk", file.path))).toBe(nativeReady || true);
@@ -231,4 +237,76 @@ describe.skipIf(!nativeReady)("native asio-probe end-to-end (ADR 0017 wave 1)", 
       expect(registry.names).toContain(driver.name);
     }
   }, 30_000);
+});
+
+describe.skipIf(!nativeReady)("ASIO streaming host end-to-end (ADR 0017 wave 2.5)", () => {
+  it(
+    "streams the fixture driver in realtime: bounded samples, contiguous seq, clean EOF",
+    async () => {
+      const SECONDS = 2;
+      const source = new PcmPipeSource({
+        hostPath: ASIO_HOST_EXE,
+        args: ["--dll", ASIO_FIXTURE_DLL, "--seconds", String(SECONDS)],
+      });
+      const format = (await new Promise<Record<string, unknown>>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no format frame in 10 s")), 10_000);
+        source.on("format", (f) => {
+          clearTimeout(timer);
+          resolve(f as Record<string, number>);
+        });
+        source.on("protocol-error", (e) => reject(new Error(String(e))));
+        source.start();
+      })) as { rate: number; channels: number; blockFrames: number };
+      expect(format.rate).toBe(48000);
+      expect(format.channels).toBe(2);
+
+      let rmsSum = 0;
+      let sampleCount = 0;
+      let outOfRange = 0;
+      const firstBlock = await new Promise<{ seq: number; samples: Float32Array }>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no PCM in 10 s")), 10_000);
+        source.on("pcm", (raw) => {
+          clearTimeout(timer);
+          const block = raw as { seq: number; samples: Float32Array };
+          for (let i = 0; i < block.samples.length; i++) {
+            const s = block.samples[i];
+            if (!Number.isFinite(s) || s < -1 || s > 1) outOfRange++;
+            rmsSum += s * s;
+            sampleCount++;
+          }
+          resolve(block);
+        });
+      });
+      expect(firstBlock.seq).toBe(0);
+      expect(outOfRange).toBe(0);
+      expect(sampleCount).toBeGreaterThan(0);
+      expect(rmsSum / sampleCount).toBeGreaterThan(1e-6); // a tone, not silence
+
+      const done = await new Promise<{ stats: Record<string, unknown>; endStats: Record<string, unknown> }>(
+        (resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("stream did not finish in 20 s")), 20_000);
+          let endStats: Record<string, unknown> = {};
+          source.on("end", (payload) => {
+            endStats = payload as Record<string, unknown>;
+          });
+          source.on("close", (payload) => {
+            clearTimeout(timer);
+            resolve({ stats: (payload as { stats: Record<string, unknown> }).stats, endStats });
+          });
+        },
+      );
+
+      const stats = done.stats as { pcmFramesReceived: number; seqGaps: number; elapsedMs: number };
+      const expected = SECONDS * format.rate;
+      // The sample driver paces its thread in realtime: allow generous
+      // scheduling slack (±25%) but nothing that would starve a listener.
+      expect(stats.pcmFramesReceived).toBeGreaterThan(expected * 0.75);
+      expect(stats.pcmFramesReceived).toBeLessThan(expected * 1.25);
+      expect(stats.seqGaps).toBe(0);
+      expect(stats.elapsedMs).toBeGreaterThan(SECONDS * 1000 * 0.75);
+      expect(stats.elapsedMs).toBeLessThan(SECONDS * 1000 * 2);
+      expect(done.endStats).toEqual({}); // EOF frame arrived
+    },
+    60_000,
+  );
 });

@@ -147,18 +147,28 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
           hint: "A track cannot sidechain itself — pick a different source.",
         };
       }
-      const p = cmd.params;
-      if (!Number.isFinite(p.amountDb) || p.amountDb < -24 || p.amountDb > 0) {
-        return paramRange("amountDb", p.amountDb, -24, 0);
+      if (!Number.isFinite(cmd.duckDb) || cmd.duckDb < 0 || cmd.duckDb > MAX_SENSIBLE_DUCK_DB) {
+        return paramRange("duckDb", cmd.duckDb, 0, MAX_SENSIBLE_DUCK_DB);
       }
-      if (!Number.isFinite(p.attackMs) || p.attackMs < 0 || p.attackMs > 200) {
-        return paramRange("attackMs", p.attackMs, 0, 200);
+      // attack/release are SECONDS in the canonical contract — a recipe that
+      // writes milliseconds here would produce a multi-second time constant.
+      const attack = SIDECHAIN_RANGES.attack;
+      if (!Number.isFinite(cmd.attackSec) || cmd.attackSec < attack.min || cmd.attackSec > attack.max) {
+        return paramRange("attackSec", cmd.attackSec, attack.min, attack.max);
       }
-      if (!Number.isFinite(p.releaseMs) || p.releaseMs < 1 || p.releaseMs > 2000) {
-        return paramRange("releaseMs", p.releaseMs, 1, 2000);
+      const release = SIDECHAIN_RANGES.release;
+      if (!Number.isFinite(cmd.releaseSec) || cmd.releaseSec < release.min || cmd.releaseSec > release.max) {
+        return paramRange("releaseSec", cmd.releaseSec, release.min, release.max);
       }
-      if (!Number.isFinite(p.bypassThreshold) || p.bypassThreshold < 0 || p.bypassThreshold > 1) {
-        return paramRange("bypassThreshold", p.bypassThreshold, 0, 1);
+      const threshold = SIDECHAIN_RANGES.threshold;
+      const thrDb = cmd.thresholdDb ?? threshold.default;
+      if (!Number.isFinite(thrDb) || thrDb < threshold.min || thrDb > threshold.max) {
+        return paramRange("thresholdDb", thrDb, threshold.min, threshold.max);
+      }
+      const split = SIDECHAIN_RANGES.splitFreq;
+      const splitHz = cmd.splitFreqHz ?? split.default;
+      if (!Number.isFinite(splitHz) || splitHz < split.min || splitHz > split.max) {
+        return paramRange("splitFreqHz", splitHz, split.min, split.max);
       }
       return { ok: true };
     }

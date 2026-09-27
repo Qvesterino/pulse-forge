@@ -47,6 +47,9 @@ const TEMPLATE_HINTS: ReadonlyArray<{ words: readonly string[]; template: Templa
     template: "dnb",
   },
   { words: ["garage", "ukg", "2-step", "2step"], template: "ukg" },
+  // Boom bap must sit ABOVE the ambient hint: "lofi hip hop" / "boom bap"
+  // are hip-hop asks, while bare "lofi" stays the ambient lane.
+  { words: ["boom bap", "boombap", "hip hop", "hip-hop", "golden era", "jazz rap"], template: "boombap" },
   { words: ["ambient", "lofi", "lo-fi", "chill", "atmospheric"], template: "ambient" },
   { words: ["house", "deep", "disco"], template: "house" },
 ];

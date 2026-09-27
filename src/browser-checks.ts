@@ -885,6 +885,43 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("sampler STRETCH renders a +12st note (single buffer assignment)", false, String(error));
   }
 
+  // Phaser regression: connectStages() used to blanket-disconnect the
+  // allpass chains (including the inter-stage links), leaving the wet path
+  // silent — the plugin only attenuated dry and no parameter was audible.
+  // The rate knob must measurably change the rendered signal.
+  try {
+    const renderPhaser = async (rate: number) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      const rt = EFFECT_DEFS.phaser.factory(
+        ctx,
+        { id: "check-phaser", type: "phaser", bypassed: false, params: { ...defaultParamsOf("phaser"), rate } },
+        { bpm: 124 },
+      );
+      const src = ctx.createBufferSource();
+      const buf = ctx.createBuffer(2, SR, SR);
+      for (let i = 0; i < buf.length; i++) {
+        const t = i / SR;
+        buf.getChannelData(0)[i] = 0.4 * Math.sin(2 * Math.PI * 220 * t);
+        buf.getChannelData(1)[i] = 0.4 * Math.sin(2 * Math.PI * 330 * t);
+      }
+      src.buffer = buf;
+      src.connect(rt.input);
+      rt.output.connect(ctx.destination);
+      src.start(0);
+      const rendered = await ctx.startRendering();
+      rt.dispose();
+      return rendered.getChannelData(0).slice(Math.floor(SR / 4));
+    };
+    const slow = await renderPhaser(0.4);
+    const fast = await renderPhaser(8);
+    let diff = 0;
+    for (let i = 0; i < slow.length; i++) diff = Math.max(diff, Math.abs(slow[i] - fast[i]));
+    check("phaser rate changes the rendered signal (wet chain alive)", diff > 0.01, `maxDiff=${diff.toFixed(4)}`);
+  } catch (error) {
+    check("phaser rate changes the rendered signal (wet chain alive)", false, String(error));
+  }
+
   // Intent ranker worker (goal doc Fáze 3/4): the ONNX model must load from
   // local assets in the worker and score a real batch — or fall back in a
   // controlled way (offline installs without the model artifact).
