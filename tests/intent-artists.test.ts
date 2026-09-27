@@ -227,7 +227,8 @@ describe("expanded artist roster (vocabulary wave)", () => {
     expect(eno.input.genre).toBe("ambient");
     expect(eno.input.bpmRange).toEqual([60, 80]);
     expect(parseIntentText("aphex twin type beat").input.style).toBe("glitch");
-    expect(parseIntentText("keinemusik type beat").input.style).toBe("afro");
+    // keinemusik upgraded onto the organic-house groove (the modern wave)
+    expect(parseIntentText("keinemusik type beat").input.style).toBe("organic");
     expect(parseIntentText("dom dolla type beat").input.bpmRange).toEqual([124, 127]);
     expect(parseIntentText("trance type beat").input.genre).toBe("techno");
   });
@@ -1495,6 +1496,65 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
       "techno.industrial",
       "techno.melodic",
     ]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});
+
+describe("UKG depth wave (originators / bassline / dark / funky / revival)", () => {
+  it("UKG originators: so solid / oxide neutrino / groove chronicles / tuff jam", () => {
+    const soSolid = parseIntentText("so solid crew type beat");
+    expect(soSolid.input.genre).toBe("ukg");
+    expect(soSolid.input.style).toBe("ukg");
+    expect(soSolid.input.bpmRange).toEqual([128, 136]);
+    expect(parseIntentText("oxide neutrino type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("groove chronicles type beat").input.style).toBe("ukg");
+    expect(parseIntentText("dem 2 type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("tuff jam type beat").input.mood).toBe("energetic");
+  });
+
+  it("speed garage: todd edwards / armand van helden / 187 lockdown / double 99", () => {
+    const todd = parseIntentText("todd edwards type beat");
+    expect(todd.input.genre).toBe("ukg");
+    expect(todd.input.bpmRange).toEqual([130, 138]);
+    expect(parseIntentText("armand van helden type beat").input.style).toBe("ukg");
+    expect(parseIntentText("187 lockdown type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("double 99 type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("ripperman type beat").input.genre).toBe("ukg");
+  });
+
+  it("bassline / niche north: ts7 / booda / paleface / witney", () => {
+    const ts7 = parseIntentText("ts7 type beat");
+    expect(ts7.input.genre).toBe("ukg");
+    expect(ts7.input.style).toBe("bassline");
+    expect(ts7.input.mood).toBe("aggressive");
+    expect(parseIntentText("booda type beat").input.style).toBe("bassline");
+    expect(parseIntentText("paleface type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("witney type beat").input.bpmRange).toEqual([134, 142]);
+  });
+
+  it("dark 2-step corridor: horsepower / benny ill / kode9 / loefah", () => {
+    const hp = parseIntentText("horsepower productions type beat");
+    expect(hp.input.genre).toBe("ukg");
+    expect(hp.input.style).toBe("deep");
+    expect(hp.input.mood).toBe("dark");
+    expect(parseIntentText("benny ill type beat").input.style).toBe("deep");
+    expect(parseIntentText("kode9 type beat").input.mood).toBe("dark");
+    expect(parseIntentText("loefah type beat").input.genre).toBe("ukg");
+  });
+
+  it("uk funky + afroswing + revival + crossover", () => {
+    expect(parseIntentText("crazy cousins type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("kojo funds type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("yungen type beat").input.bpmRange).toEqual([100, 110]);
+    expect(parseIntentText("main phase type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("badger type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("mura masa type beat").input.mood).toBe("chill");
+    expect(parseIntentText("bakongo type beat").input.genre).toBe("ukg");
+  });
+
+  it("every UKG wave style resolves to a real groove id", () => {
+    for (const id of ["ukg.ukg", "ukg.bassline", "ukg.deep"]) {
       expect(getGrooveById(id), id).toBeDefined();
     }
   });

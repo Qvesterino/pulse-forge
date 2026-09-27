@@ -145,9 +145,10 @@ describe("sub-genre artists", () => {
     expect(latin.preset.style).toBe("dembow");
   });
 
-  it("amapiano lane stays on the afro groove", () => {
+  it("amapiano lane rides its own log drum groove", () => {
     const amapiano = matchArtistPreset("amapiano")!;
     expect(amapiano.preset.label).toBe("amapiano");
-    expect(amapiano.preset.style).toBe("afro");
+    // upgraded from the afro-house pocket when house.amapiano landed
+    expect(amapiano.preset.style).toBe("amapiano");
   });
 });

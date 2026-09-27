@@ -55,6 +55,12 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
   // Variation → temperature + bar variation
   temperature = clamp(0.2, 2, temperature * (0.8 + intent.variation * 0.5));
 
+  // Metric accent — derived AFTER the velocity variation is final, so the
+  // metrical shape scales with the dynamics the intent actually asked for.
+  // 0 = legacy random-only velocity; ≈0.5 = a clear bar hierarchy. Never
+  // reaches 1: the written groove must still be recognisable underneath.
+  const metricAccent = clamp01((velocityVariation - 0.15) * 1.1) * 0.75;
+
   // Mood tweaks
   const mood = intent.mood?.toLowerCase() ?? null;
   if (mood === "dark" || mood === "moody") {
@@ -79,12 +85,23 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
     microWeight,
     velocityVariation,
     temperature,
+    // Metric accent: shape hit velocity by metrical position so the pad's
+    // velocity LAYERS pick the ghost / accent timbres musically (a 16th reads
+    // soft, a downbeat hard) instead of by chance. Scaled by the intent's
+    // velocity variation — a flat "no dynamics" ask keeps the legacy random
+    // velocity untouched, an expressive ask gets the metrical shape.
+    ...(metricAccent > 0 ? { _metricAccent: metricAccent } : {}),
     // Pass hints for drums post-processing (cast to extended type)
     // These are read by generateDrumPattern if present.
     ...(intent.density !== 0.5 ? { _diceDensity: intent.density } : {}),
     ...(intent.complexity !== 0.5 ? { _diceComplexity: intent.complexity } : {}),
     ...(intent.energy !== 0.7 ? { _diceEnergy: intent.energy } : {}),
-  } as GenerateOptions & { _diceDensity?: number; _diceComplexity?: number; _diceEnergy?: number };
+  } as GenerateOptions & {
+    _diceDensity?: number;
+    _diceComplexity?: number;
+    _diceEnergy?: number;
+    _metricAccent?: number;
+  };
 }
 
 /** Extract dice hints from options (if mapped). */

@@ -12,6 +12,7 @@ import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PRIOR_STYLE_VOCAB } from "../src/ai/symbolic/prior-features";
 import { DNB_GROOVES } from "../src/ai/grooves/dnb";
+import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
 import { generateDescriptions } from "../src/intent/descriptions";
 
 const ROOT = process.cwd();

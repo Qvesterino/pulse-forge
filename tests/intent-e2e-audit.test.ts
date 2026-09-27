@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
 import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudness";
 import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
-import { applyFaderIntent } from "../src/intent/conversation";
+import { applyFaderIntent, applyTempoIntent } from "../src/intent/conversation";
+import { applyCompoundIntent } from "../src/intent/compound";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
   addEffect,
@@ -54,7 +55,9 @@ function executeRouted(doc: ProjectDocument, text: string, store?: ProjectStore)
   const route = routeIntentText(text, doc);
   let command = null;
   if (route.kind === "fader") command = applyFaderIntent(doc, route.intent);
+  else if (route.kind === "compound") command = applyCompoundIntent(doc, route.parts);
   else if (route.kind === "exact") command = applyExactIntentCommand(doc, route.plan);
+  else if (route.kind === "tempo") command = applyTempoIntent(doc, route.intent);
   else if (route.kind === "effectIntent") command = applyEffectIntent(doc, route.intent);
   else if (route.kind === "production") command = applyProductionIntentCommand(doc, route.intent);
   else if (route.kind === "mix")
@@ -111,20 +114,70 @@ describe("E2E fader: route → state → undo", () => {
     expect(applyFaderIntent(drumsOnly, { targets: ["lead"], direction: "up" })).toBeNull();
   });
 
-  it("conflicting directions clarify with per-clause executable suggestions", () => {
+  it("COMPOUND: 'zníž basu a zvýš lead' moves BOTH in one undo (no clarify needed)", () => {
+    const store = new ProjectStore(withLead());
+    const bassBefore = bassTrackOf(store.doc).gain;
+    const leadBefore = instrumentTracks(store.doc).find((track) => /\blead\b/i.test(track.name))!.gain;
+
+    const route = routeIntentText("zníž basu a zvýš lead", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({
+        kind: "fader",
+        intent: { targets: ["bass"], direction: "down" },
+      });
+      expect(route.parts[1]).toMatchObject({
+        kind: "fader",
+        intent: { targets: ["lead"], direction: "up" },
+      });
+    }
+    executeRouted(store.doc, "zníž basu a zvýš lead", store);
+
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    expect(instrumentTracks(store.doc).find((track) => /\blead\b/i.test(track.name))!.gain).toBeGreaterThan(leadBefore);
+    // the whole compound is ONE undo entry — not one per clause
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(bassTrackOf(store.doc).gain).toBe(bassBefore);
+    expect(instrumentTracks(store.doc).find((track) => /\blead\b/i.test(track.name))!.gain).toBe(leadBefore);
+  });
+
+  it("compound with amounts parses each clause's modifiers", () => {
+    const doc = withLead();
+    const route = routeIntentText("zníž basu o 10 % a zvýš lead trochu", doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({
+        kind: "fader",
+        intent: { targets: ["bass"], direction: "down", percent: 10 },
+      });
+      expect(route.parts[1]).toMatchObject({
+        kind: "fader",
+        intent: { targets: ["lead"], direction: "up", amount: "subtle" },
+      });
+    }
+  });
+
+  it("partially parseable compounds still clarify (never drops an unparsed clause)", () => {
     const doc = testDoc();
-    const route = routeIntentText("zníž basu a zvýš lead", doc);
+    // "zvýš niečo" has no resolvable target — auto-executing just the bass
+    // half would silently ignore what the user asked about the other half
+    const route = routeIntentText("zníž basu a zvýš niečo", doc);
     expect(route.kind).toBe("clarify");
     if (route.kind === "clarify") {
-      expect(route.suggestions).toEqual(["zníž basu", "zvýš lead"]);
-      for (const suggestion of route.suggestions) {
-        expect(routeIntentText(suggestion, doc).kind).toBe("fader");
-      }
+      expect(route.suggestions).toEqual(["zníž basu"]);
     }
-    // "zníž hlasitosť basu" is ONE direction — hlasitosť is the volume NOUN
+  });
+
+  it("'zníž hlasitosť basu' is ONE direction — hlasitosť is the volume NOUN", () => {
+    const doc = testDoc();
     const single = routeIntentText("zníž hlasitosť basu", doc);
     expect(single.kind).toBe("fader");
-    if (single.kind === "fader") expect(single.intent.direction).toBe("down");
+    if (single.kind === "fader") {
+      expect(single.intent.direction).toBe("down");
+    }
   });
 
   it("direction without a target asks which fader, in the text's language", () => {
@@ -159,6 +212,115 @@ describe("E2E fader: route → state → undo", () => {
     if (route.kind === "fader") expect(route.intent.percent).toBe(100);
     const next = executeRouted(doc, "zníž basu o 300%");
     expect(bassTrackOf(next).gain).toBe(0);
+  });
+});
+
+// ─── 1b. CROSS-EXECUTOR COMPOUNDS — mixed kinds, still ONE undo ─────────────
+
+describe("E2E cross-executor compounds", () => {
+  const leadTrackOf = (doc: ProjectDocument): InstrumentTrack => {
+    const track = instrumentTracks(doc).find((track) => /\blead\b/i.test(track.name));
+    if (!track) throw new Error("fixture: no Lead track");
+    return track;
+  };
+
+  it("REGRESSION: 'zníž tempo a zvýš lead' applies BOTH — the tempo route used to silently drop the lead half", () => {
+    const store = new ProjectStore(withLead());
+    const bpmBefore = store.doc.bpm;
+    const leadBefore = leadTrackOf(store.doc).gain;
+
+    const route = routeIntentText("zníž tempo a zvýš lead", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({ kind: "tempo", intent: { direction: "down" } });
+      expect(route.parts[1]).toMatchObject({ kind: "fader", intent: { targets: ["lead"], direction: "up" } });
+    }
+    executeRouted(store.doc, "zníž tempo a zvýš lead", store);
+
+    expect(store.doc.bpm).toBe(bpmBefore - 6);
+    expect(leadTrackOf(store.doc).gain).toBeGreaterThan(leadBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.bpm).toBe(bpmBefore);
+    expect(leadTrackOf(store.doc).gain).toBe(leadBefore);
+  });
+
+  it("tempo set + fader clause: 'zníž tempo na 128 a zvýš lead'", () => {
+    const store = new ProjectStore(withLead());
+    const leadBefore = leadTrackOf(store.doc).gain;
+    executeRouted(store.doc, "zníž tempo na 128 a zvýš lead", store);
+    expect(store.doc.bpm).toBe(128);
+    expect(leadTrackOf(store.doc).gain).toBeGreaterThan(leadBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.bpm).not.toBe(128);
+    expect(leadTrackOf(store.doc).gain).toBe(leadBefore);
+  });
+
+  it("effect + fader: 'viac delayu na leade a zníž basu' lands both in one undo", () => {
+    const store = new ProjectStore(withLead());
+    const bassBefore = bassTrackOf(store.doc).gain;
+    const route = routeIntentText("viac delayu na leade a zníž basu", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({ kind: "effect", intent: { effectType: "delay" } });
+      expect(route.parts[1]).toMatchObject({ kind: "fader", intent: { targets: ["bass"], direction: "down" } });
+    }
+    executeRouted(store.doc, "viac delayu na leade a zníž basu", store);
+    expect(leadTrackOf(store.doc).effects.some((fx) => fx.type === "delay")).toBe(true);
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(leadTrackOf(store.doc).effects.length).toBe(0);
+    expect(bassTrackOf(store.doc).gain).toBe(bassBefore);
+  });
+
+  it("all-effect compound: 'viac delayu na leade a menej reverbu na basi'", () => {
+    const doc = withLead();
+    const route = routeIntentText("viac delayu na leade a menej reverbu na basi", doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({ kind: "effect", intent: { effectType: "delay", direction: "more" } });
+      expect(route.parts[1]).toMatchObject({ kind: "effect", intent: { effectType: "reverb", direction: "less" } });
+    }
+    const next = executeRouted(doc, "viac delayu na leade a menej reverbu na basi");
+    const delayMixDef = EFFECT_META.delay.params.find((param) => param.id === "mix")!;
+    const reverbMixDef = EFFECT_META.reverb.params.find((param) => param.id === "mix")!;
+    const lead = leadTrackOf(next);
+    expect(lead.effects.find((fx) => fx.type === "delay")!.params.mix).toBeGreaterThan(delayMixDef.default);
+    const bass = bassTrackOf(next);
+    expect(bass.effects.find((fx) => fx.type === "reverb")!.params.mix).toBeLessThan(reverbMixDef.default);
+  });
+
+  it("an already-satisfied clause is skipped honestly — the rest still lands", () => {
+    const store = new ProjectStore(withLead());
+    // pin the lead's delay mix at its max — "viac delayu" can no-op then
+    const withMaxDelay = addEffect(store.doc, leadTrackOf(store.doc).id, "delay").execute(store.doc);
+    const delayFx = leadTrackOf(withMaxDelay).effects.find((fx) => fx.type === "delay")!;
+    const maxMix = EFFECT_META.delay.params.find((param) => param.id === "mix")!.max;
+    store.replaceDoc(
+      setEffectParam(withMaxDelay, leadTrackOf(withMaxDelay).id, delayFx.id, "mix", maxMix).execute(withMaxDelay),
+    );
+    const bassBefore = bassTrackOf(store.doc).gain;
+
+    executeRouted(store.doc, "viac delayu na leade a zníž basu", store);
+    expect(store.undoStackLength).toBe(1);
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    // the delay knob stayed at max (the clause asked for nothing achievable)
+    expect(leadTrackOf(store.doc).effects.find((fx) => fx.type === "delay")!.params.mix).toBe(maxMix);
+  });
+
+  it("all-tempo clause sets stay with the tempo route (first-match, no chaining)", () => {
+    const doc = testDoc();
+    // "tempo na 128 a pomalší" chaining clause-by-clause would land on 122 —
+    // the whole-text tempo route's first-match (128) is the honest reading
+    const route = routeIntentText("tempo na 128 a pomalší", doc);
+    expect(route.kind).toBe("tempo");
+    const next = executeRouted(doc, "tempo na 128 a pomalší");
+    expect(next.bpm).toBe(128);
   });
 });
 

@@ -148,6 +148,18 @@ export const analogParams: ParamDef[] = [
 
 export const bassParams: ParamDef[] = [
   { id: "sub", label: "SUB", min: 0, max: 1, default: 0.6, format: formatPct },
+  {
+    id: "subMode",
+    label: "SUB MODE",
+    min: 0,
+    max: 2,
+    default: 0,
+    options: [
+      { value: 0, label: "Sine" },
+      { value: 1, label: "FM Sub" },
+      { value: 2, label: "Wobble" },
+    ],
+  },
   { id: "body", label: "BODY", min: 0, max: 1, default: 0.7, format: formatPct },
   { id: "punch", label: "PUNCH", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "grit", label: "GRIT", min: 0, max: 1, default: 0.25, format: formatPct },

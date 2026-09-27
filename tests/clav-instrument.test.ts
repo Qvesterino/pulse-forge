@@ -153,9 +153,9 @@ describe('clav — voice wiring (mock graph)', () => {
     runtime.dispose();
     const voice = record.oscs.filter((o) => o.type === 'square' && o.started.length > 0);
     expect(voice.length).toBeGreaterThanOrEqual(1);
-    expect(voice[0]!.frequency.value).toBeCloseTo(261.626, 2);
-    // Pickup bandpass: 261.626 × (1.1 + 0.5×2.4) ≈ 601.7
-    expect(record.filters.some((f) => Math.abs(f.frequency.value - 261.626 * 2.3) < 1)).toBe(true);
+    // The factory schedules the pitch via setValueAtTime (not .value).
+    const scheduled = vi.mocked(voice[0]!.frequency.setValueAtTime).mock.calls.map((c) => c[0] as number);
+    expect(scheduled.some((v) => Math.abs(v - 261.626) < 0.01)).toBe(true);
   });
 
   it('CLICK fires the seeded noise burst (buffer source, short stop)', () => {

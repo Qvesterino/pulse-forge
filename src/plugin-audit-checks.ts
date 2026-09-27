@@ -685,79 +685,130 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
 
 /* ---------------- entry ---------------- */
 
+/**
+ * Shared per-page audit context, cached on `window` so the runner can drive
+ * one evaluate per plugin and survive page reloads (a concurrent file save
+ * reloads the page; the next evaluate transparently rebuilds the context).
+ */
+interface AuditPageState {
+  bank: SampleBank;
+  baseDoc: ProjectDocument;
+  signal: AudioBuffer;
+  dry: AudioBuffer;
+  basePeak: number;
+}
+
+const AUDIT_STATE_KEY = "__kyxPluginAuditState" as const;
+
+function pageState(): AuditPageState | null {
+  return (window as unknown as Record<string, unknown>)[AUDIT_STATE_KEY] as AuditPageState | null;
+}
+
+async function ensurePageState(): Promise<AuditPageState> {
+  const existing = pageState();
+  if (existing) return existing;
+  const bank = await generateFactoryBank();
+  const baseDoc = createProjectFromTemplate("house");
+  // The drum bus must start clean — the house template may ship starter FX.
+  const drum = baseDoc.tracks.find((t: { kind: string }) => t.kind === "drum") as { effects: unknown[] } | undefined;
+  if (drum) drum.effects = [];
+  const signal = buildTestBuffer();
+  const dry = await renderDry(signal);
+  // The host tests measure effect deltas against the HOUSE TEMPLATE's drum
+  // bus — it must actually make sound, or every delta would be zero.
+  const baseRender = await renderDoc(baseDoc, bank);
+  const basePeak = metricsOf(baseRender).peak;
+  if (basePeak < 0.01) throw new Error(`house template drum bus renders silent (peak=${basePeak})`);
+  const state: AuditPageState = { bank, baseDoc, signal, dry, basePeak };
+  (window as unknown as Record<string, unknown>)[AUDIT_STATE_KEY] = state;
+  return state;
+}
+
+/** Build (or reuse) the shared fixtures; returns the base render peak. */
+export async function auditSetup(): Promise<number> {
+  const state = await ensurePageState();
+  return state.basePeak;
+}
+
+/** Full audit of ONE effect type: factory sweep + engine host test. */
+export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
+  const state = await ensurePageState();
+  let sweep: SweepResult;
+  try {
+    sweep = await sweepEffect(type, state.signal, state.dry);
+  } catch (error) {
+    sweep = {
+      type,
+      sweepError: String(error),
+      defaultPeak: 0,
+      defaultFinite: false,
+      bypassDelta: 0,
+      params: [],
+      deadParams: [],
+      unstableParams: [],
+      rapidSwingFinite: false,
+      presetsFinite: 0,
+      presetsTotal: 0,
+    };
+  }
+  let host: HostResult;
+  try {
+    host = await hostTestEffect(state.baseDoc, type, sweep, state.bank);
+  } catch (error) {
+    host = {
+      hostError: String(error),
+      hostProcesses: false,
+      hostDelta: 0,
+      hostBypassEqualsRemoved: false,
+      hostFinite: false,
+      automationDelta: 0,
+      automationFinite: false,
+      restoreMaxDiff: Number.POSITIVE_INFINITY,
+    };
+  }
+  const def = EFFECT_DEFS[type];
+  return { ...sweep, ...host, name: def.name, category: def.category };
+}
+
+/** Full audit of ONE instrument kind. */
+export async function auditOneInstrument(kind: string): Promise<InstrumentAudit> {
+  const state = await ensurePageState();
+  return auditInstrument(kind as (typeof INSTRUMENT_ORDER)[number], state.bank);
+}
+
+/** Interaction block: chains, duplicates, live playback, rapid syncs. */
+export async function auditInteractionsPhase(): Promise<InteractionAudit> {
+  const state = await ensurePageState();
+  return auditInteractions(state.baseDoc, state.bank);
+}
+
+/** One-shot orchestration (used when the whole audit fits in one evaluate). */
 export async function runPluginAudit(
   onProgress?: (msg: string) => void,
   only?: EffectType[],
 ): Promise<PluginAuditReport> {
   const progress = (msg: string) => onProgress?.(msg);
   const startedAt = new Date().toISOString();
-  const bank = await generateFactoryBank();
-  const baseDoc = createProjectFromTemplate("house");
-  // The drum bus must start clean — the house template may ship starter FX.
-  const drum = baseDoc.tracks.find((t: { kind: string }) => t.kind === "drum") as { effects: unknown[] } | undefined;
-  if (drum) drum.effects = [];
-
-  const signal = buildTestBuffer();
-  const dry = await renderDry(signal);
-
-  // The host tests measure effect deltas against the HOUSE TEMPLATE's drum
-  // bus — it must actually make sound, or every delta would be zero.
-  const baseRender = await renderDoc(baseDoc, bank);
-  const basePeak = metricsOf(baseRender).peak;
-  if (basePeak < 0.01) throw new Error(`house template drum bus renders silent (peak=${basePeak})`);
-  progress(`base render peak=${basePeak.toFixed(3)}`);
+  await ensurePageState();
+  const state = pageState()!;
+  progress(`base render peak=${state.basePeak.toFixed(3)}`);
 
   const effects: EffectAudit[] = [];
   const types = (only && only.length > 0 ? only : EFFECT_ORDER).filter((t) => EFFECT_ORDER.includes(t));
   for (const type of types) {
-    progress(`sweep ${type}`);
-    let sweep: SweepResult;
-    try {
-      sweep = await sweepEffect(type, signal, dry);
-    } catch (error) {
-      sweep = {
-        type,
-        sweepError: String(error),
-        defaultPeak: 0,
-        defaultFinite: false,
-        bypassDelta: 0,
-        params: [],
-        deadParams: [],
-        unstableParams: [],
-        rapidSwingFinite: false,
-        presetsFinite: 0,
-        presetsTotal: 0,
-      };
-    }
-    progress(`host ${type}`);
-    let host: HostResult;
-    try {
-      host = await hostTestEffect(baseDoc, type, sweep, bank);
-    } catch (error) {
-      host = {
-        hostError: String(error),
-        hostProcesses: false,
-        hostDelta: 0,
-        hostBypassEqualsRemoved: false,
-        hostFinite: false,
-        automationDelta: 0,
-        automationFinite: false,
-        restoreMaxDiff: Number.POSITIVE_INFINITY,
-      };
-    }
-    const def = EFFECT_DEFS[type];
-    effects.push({ ...sweep, ...host, name: def.name, category: def.category });
+    progress(`effect ${type}`);
+    effects.push(await auditOneEffect(type));
   }
 
   progress("instruments");
   const instruments: InstrumentAudit[] = [];
   for (const kind of INSTRUMENT_ORDER) {
     progress(`instrument ${kind}`);
-    instruments.push(await auditInstrument(kind, bank));
+    instruments.push(await auditOneInstrument(kind));
   }
 
   progress("interactions");
-  const interactions = await auditInteractions(baseDoc, bank);
+  const interactions = await auditInteractionsPhase();
 
   return {
     effects,

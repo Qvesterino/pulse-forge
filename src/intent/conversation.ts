@@ -114,20 +114,12 @@ export function parseFaderIntent(text: string): FaderIntent | null {
 
 const CLAUSE_SPLIT = /\s+(?:a|alebo|and|but|potom)\s+|,\s*|\s*;\s*/i;
 
-/**
- * Per-clause parse for MULTI-ACTION fader asks ("zníž basu a zvýš lead").
- * Splits on clause boundaries and parses each clause independently. Only
- * clauses that fully resolve (direction + target) come back — the caller
- * auto-executes ONLY when every clause resolved, otherwise a half-understood
- * ask would silently drop the part it did not parse.
- */
-export function parseFaderIntentClauses(text: string): FaderIntent[] {
+/** Split a request into clauses ("zníž basu a zvýš lead" → two asks). */
+export function splitIntentClauses(text: string): string[] {
   return text
     .split(CLAUSE_SPLIT)
     .map((clause) => clause.trim())
-    .filter((clause) => clause.length > 0)
-    .map((clause) => parseFaderIntent(clause))
-    .filter((intent): intent is FaderIntent => intent !== null);
+    .filter((clause) => clause.length > 0);
 }
 
 /**
@@ -379,12 +371,7 @@ export function applyFaderIntents(doc: ProjectDocument, intents: FaderIntent[]):
     if (fold.faders > 0) labels.push(fold.label);
   }
   if (faders === 0) return null;
-  return snapshot(
-    "applyFaderIntent",
-    `Fader ${labels.join(" · ")} — ${faders} fader(s)`,
-    doc,
-    next,
-  );
+  return snapshot("applyFaderIntent", `Fader ${labels.join(" · ")} — ${faders} fader(s)`, doc, next);
 }
 
 /** Single-intent convenience wrapper over {@link applyFaderIntents}. */

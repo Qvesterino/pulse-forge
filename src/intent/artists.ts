@@ -774,11 +774,11 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["amapiano", "rema", "tyla", "afrobeat"],
     genre: "house",
-    style: "afro",
+    style: "amapiano",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
-    bpmRange: [110, 115],
+    bpmRange: [110, 116],
     label: "amapiano",
   },
   {
@@ -938,8 +938,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["keinemusik", "&me", "rampa"],
+    // The modern organic wave (Muyè / Say What) — hand-drum hypnotia over
+    // the soft floor, not the classic afro-house groove.
     genre: "house",
-    style: "afro",
+    style: "organic",
     mood: "chill",
     energy: 0.65,
     density: 0.5,
@@ -2211,6 +2213,59 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [90, 102],
     label: "ms nina",
+  },
+  // ── amapiano + organic house wave (researched: MDU aka Mas — "king of the
+  // log drum", MFR Souls, Daliwonga on the amapiano groove; Adam Port
+  // (Keinemusik solo) and HUGEL on the modern organic wave, 118-126) ──
+  {
+    names: ["mdu aka mas", "mdu", "king of the log drum"],
+    genre: "house",
+    style: "amapiano",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [110, 116],
+    label: "mdu aka mas",
+  },
+  {
+    names: ["mfr souls", "mfr souls type beat"],
+    genre: "house",
+    style: "amapiano",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [110, 115],
+    label: "mfr souls",
+  },
+  {
+    names: ["daliwonga", "daliwonga type beat"],
+    genre: "house",
+    style: "amapiano",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [110, 116],
+    label: "daliwonga",
+  },
+  {
+    names: ["adam port", "adam port type beat"],
+    genre: "house",
+    style: "organic",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [120, 124],
+    label: "adam port",
+  },
+  {
+    names: ["hugel", "hugel type beat"],
+    genre: "house",
+    style: "organic",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [120, 126],
+    label: "hugel",
   },
   {
     names: ["sabrina carpenter", "sabrina", "sabrina carpenter type beat"],
@@ -5863,7 +5918,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "dark 2-step",
   },
   {
-    names: ["crazy cousins", "roska", "appleblim", "uk funky"],
+    // "uk funky" is owned by the house.ukfunky entries — this block owns the
+    // dubstep-side spelling only.
+    names: ["crazy cousins", "appleblim"],
     // UK funky — the 2008 bridge between garage and house.
     genre: "ukg",
     style: "ukg",
@@ -5874,7 +5931,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "uk funky",
   },
   {
-    names: ["mostack", "nsg", "kojo funds", "yungen"],
+    // mostack / nsg already have their afroswing entry — this block owns the
+    // remaining names only.
+    names: ["kojo funds", "yungen"],
     // Afroswing — the afrobeat/UKG hybrid (rides ukg.ukg).
     genre: "ukg",
     style: "ukg",

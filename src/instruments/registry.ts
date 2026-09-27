@@ -654,7 +654,82 @@ const bass: InstrumentDefinition = {
           mkVoiceOsc(0, bodyLevel * 0.72, -width, "sawtooth");
           mkVoiceOsc(width * 25, bodyLevel * 0.72, width, "square");
         }
-        mkVoiceOsc(0, (p.sub ?? 0.6) * 0.82, 0, "sine", -12);
+        const subMode = Math.max(0, Math.min(2, Math.round(p.subMode ?? 0)));
+        if (subMode === 1) {
+          // FM Sub: sine sub frequency-modulated at 2× by a deep, slowly
+          // decaying index — the modern "dark FM sub" growl under the note.
+          const fmSub = ctx.createOscillator();
+          fmSub.type = "sine";
+          const fmSubFreq = freq * Math.pow(2, -12 / 12);
+          fmSub.frequency.value = fmSubFreq;
+          const fmMod = ctx.createOscillator();
+          fmMod.type = "sine";
+          fmMod.frequency.value = fmSubFreq * 2;
+          const fmIndex = ctx.createGain();
+          fmIndex.gain.setValueAtTime(fmSubFreq * 1.4, when);
+          fmIndex.gain.setTargetAtTime(fmSubFreq * 0.15, when + 0.03, 0.35);
+          fmMod.connect(fmIndex).connect(fmSub.frequency);
+          const fmGain = ctx.createGain();
+          fmGain.gain.value = (p.sub ?? 0.6) * 0.9;
+          fmSub.connect(fmGain).connect(filter.input);
+          if (slideOn && slideFrom && glide > 0.002) {
+            fmSub.frequency.setValueAtTime(
+              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12),
+              glideStart,
+            );
+            fmSub.frequency.exponentialRampToValueAtTime(fmSubFreq, glideStart + glide);
+            fmMod.frequency.setValueAtTime(
+              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12) * 2,
+              glideStart,
+            );
+            fmMod.frequency.exponentialRampToValueAtTime(fmSubFreq * 2, glideStart + glide);
+            fmSub.start(glideStart);
+            fmMod.start(glideStart);
+          } else {
+            fmSub.start(when);
+            fmMod.start(when);
+          }
+          fmSub.stop(stopTime);
+          fmMod.stop(stopTime);
+        } else if (subMode === 2) {
+          // Wobble: sub driven by an LFO-synced square-ish gain walk — the
+          // trappy wobble without a dedicated worklet. Rate scales with BPM
+          // (eighth-note grid via moveRate knob position is overkill; the
+          // fixed 2.8 Hz sweet spot reads as wobble at all tempos).
+          const wobSub = ctx.createOscillator();
+          wobSub.type = "sine";
+          wobSub.frequency.value = freq * Math.pow(2, -12 / 12);
+          const wobLfo = ctx.createOscillator();
+          wobLfo.type = "square";
+          wobLfo.frequency.value = 2.8;
+          const wobDepth = ctx.createGain();
+          wobDepth.gain.value = (p.sub ?? 0.6) * 0.55;
+          const wobOffset = ctx.createGain();
+          wobOffset.gain.value = (p.sub ?? 0.6) * 0.55;
+          wobLfo.connect(wobDepth).connect(wobSub.detune);
+          const wobAmp = ctx.createGain();
+          wobAmp.gain.value = wobOffset.gain.value + 0.35;
+          wobSub.connect(wobAmp).connect(filter.input);
+          if (slideOn && slideFrom && glide > 0.002) {
+            wobSub.frequency.setValueAtTime(
+              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12),
+              glideStart,
+            );
+            wobSub.frequency.exponentialRampToValueAtTime(
+              wobSub.frequency.value,
+              glideStart + glide,
+            );
+            wobSub.start(glideStart);
+            wobLfo.start(glideStart);
+          } else {
+            wobSub.start(when);
+            wobLfo.start(when);
+          }
+          wobSub.stop(stopTime);
+          wobLfo.stop(stopTime);
+        } else {
+          mkVoiceOsc(0, (p.sub ?? 0.6) * 0.82, 0, "sine", -12);
+        }
 
         const voice = register(
           pitch,
@@ -4631,9 +4706,17 @@ const clav: InstrumentDefinition = {
         amp.connect(output);
 
         // Voice: bright pulse (the tangent-struck string) + growl partial.
+        // Slide support: pattern glides pull the pitch from slideFrom (short
+        // 60 ms glide — the clav snap stays tight even on slides).
         const osc = ctx.createOscillator();
         osc.type = "square";
-        osc.frequency.setValueAtTime(freq, when);
+        if (slideFrom && slideFrom.when !== undefined) {
+          const fromFreq = midiToFreq(slideFrom.pitch);
+          osc.frequency.setValueAtTime(fromFreq, Math.max(when - 0.06, 0));
+          osc.frequency.exponentialRampToValueAtTime(freq, when);
+        } else {
+          osc.frequency.setValueAtTime(freq, when);
+        }
         const oscGain = ctx.createGain();
         oscGain.gain.value = 0.55;
         const bright = ctx.createBiquadFilter();

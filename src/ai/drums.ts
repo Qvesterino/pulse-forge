@@ -180,6 +180,13 @@ export function generateDrumPattern(
 
     // Apply phrase-level velocity contour (2-bar sine envelope)
     applyPhraseContour(rows[padIndex], 0.15);
+    // Metric accent (opt-in): drop off-beat hits toward the ghost band and
+    // keep downbeats full, so the pad's velocity LAYERS pick the ghost /
+    // accent timbres by musical position instead of by chance.
+    const metricAccent = (options as GenerateOptions & { _metricAccent?: number })._metricAccent;
+    if (typeof metricAccent === "number" && metricAccent > 0) {
+      applyMetricAccents(rows[padIndex], role, metricAccent);
+    }
     rows[padIndex] = repairDrumRow(rows[padIndex], options.stepCount);
 
     // Add step meta
@@ -297,6 +304,52 @@ function applyPhraseContour(row: number[], depth: number): void {
     const envelope = Math.sin(posInPhrase * Math.PI); // peaks at midpoint
     const scale = 1 - depth * (1 - envelope);
     row[i] = Math.max(0.1, Math.min(1, row[i] * scale));
+  }
+}
+
+/**
+ * METRIC ACCENT — nudge hit velocity by metrical position so a pad's velocity
+ * LAYERS pick the ghost / accent timbres by music, not by chance.
+ *
+ * The first attempt pulled every hit TOWARD an absolute per-position target
+ * (downbeat 0.96, 16th 0.20) and an empirical check caught it INVERTING the
+ * groove: a house/techno hat is WRITTEN on the 8th off-beats (that is the
+ * groove), so flattening every off-beat to a ghost target while lifting ghost
+ * hits that happened to land on a beat produced a 0.72 down/off ratio — the
+ * exact opposite of the groove. Two guards fix that:
+ *
+ * 1. GHOST PROTECTION — a hit already below the ghost band is decoration the
+ *    generator placed deliberately; it is never lifted (that was how a ghost
+ *    hat on a downbeat became an accent).
+ * 2. BOUNDED NUDGE — hits move by a bounded delta around the bar's hierarchy
+ *    (downbeat +, backbeat ~0, 16ths −), never to an absolute target. The
+ *    groove's own written accents survive; only the contrast between
+ *    positions grows.
+ *
+ * Role sensitivity: hats/perc carry the shape (they are the pulse), kick/
+ * snare/clap are anchors and move 60 % as far, everything else 75 %.
+ * Pure and deterministic — no RNG.
+ */
+export function applyMetricAccents(row: number[], role: PadRole, strength: number): void {
+  if (strength <= 0) return;
+  const roleGain =
+    role === "closedHat" || role === "openHat" || role === "perc"
+      ? 1
+      : role === "kick" || role === "snare" || role === "clap"
+        ? 0.6
+        : 0.75;
+  // Max shift at full strength (~0.4 of the velocity range) — enough to cross
+  // a layer boundary from the middle of a band, small enough that a written
+  // dynamic survives.
+  const amount = strength * roleGain * 0.4;
+  const GHOST_FLOOR = 0.35;
+  for (let i = 0; i < row.length; i++) {
+    const v = row[i];
+    if (v <= 0 || v < GHOST_FLOOR) continue;
+    const s = i % 16;
+    // Signed hierarchy: downbeat +1, backbeat +0.4, other beats ~0, 16ths −1.
+    const shape = s === 0 ? 1 : s === 8 ? 0.4 : s % 4 === 0 ? 0.1 : -1;
+    row[i] = Math.max(0.1, Math.min(1, v + shape * amount));
   }
 }
 

@@ -77,6 +77,13 @@ export interface GenerateOptions {
   _diceEnergy?: number;
   /** Dice swing jitter — absolute swing 0..1 to use instead of groove.swing */
   _diceSwing?: number;
+  /**
+   * Metric-accent strength 0..1 — shapes hit velocity by metrical position
+   * (downbeat strong, 16ths soft so the pad's velocity LAYERS select the ghost
+   * / accent timbres musically). Opt-in: absent = the legacy random-only
+   * velocity, so frozen golden hashes stay byte-identical.
+   */
+  _metricAccent?: number;
 }
 
 export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {

@@ -34,7 +34,8 @@ import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { mutateBeat } from "../gallery/lineage";
-import { applyFaderIntents, applyTempoIntent } from "../intent/conversation";
+import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
+import { applyCompoundIntent } from "../intent/compound";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { resolveVocalTake } from "../vocal/resolve";
@@ -1833,10 +1834,20 @@ export function IntentPanel() {
       } else if (route.kind === "fader") {
         // GOAL 38/40: "zníž basu" / "kick ťažší" / "hlasnejšie bicie" — real
         // pad + track gain changes with amount modifiers, ONE undo step.
-        // Compound asks ("zníž basu a zvýš lead") ride the same snapshot.
-        const command = applyFaderIntents(doc, route.intents);
+        const command = applyFaderIntent(doc, route.intent);
         if (!command) {
           setError("no matching track or pad for the fader intent");
+          return;
+        }
+        services.store.execute(command);
+        setStatus(`${command.label} (one undo step)`);
+      } else if (route.kind === "compound") {
+        // Cross-executor compound ("zníž tempo a zvýš lead") — every clause
+        // parsed on its own; all clauses fold into ONE undoable snapshot.
+        stopAudition();
+        const command = applyCompoundIntent(doc, route.parts);
+        if (!command) {
+          setError("compound intent changed nothing — every clause already matches");
           return;
         }
         services.store.execute(command);

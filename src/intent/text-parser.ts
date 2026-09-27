@@ -46,6 +46,12 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbass house\b|\bfuture house\b/, "house"],
   [/\bg[- ]house\b|\bghetto ?tech\b/, "house"],
   [/\bafro house\b/, "house"],
+  // Amapiano — the log drum genre (house.amapiano); "private school piano"
+  // is the jazzier refined sub-style, same groove.
+  [/\bamapiano\b|\bprivate school piano\b/, "house"],
+  // Organic house — the Anjunadeep / Keinemusik hand-drum wave. Bare
+  // "organic" stays unmapped ("organic ambient" must keep reaching ambient).
+  [/\borganic house\b|\bafro organic\b/, "house"],
   [/\buk drill\b|\bsample drill\b/, "drill"],
   [/\bgrime\b/, "drill"],
   [/\bdrift phonk\b/, "phonk"],
@@ -194,6 +200,8 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // UK funky BEFORE \bfunky\b — "uk funky" is the soca-bounce lane, not the
   // funky house groove ("uk funky" itself genre-routes to the ukg lane).
   [/\buk ?funky\b|\bukfunky\b/, "ukfunky"],
+  // Amapiano — the log drum groove ("private school piano" rides along).
+  [/\bamapiano\b|\bprivate school piano\b/, "amapiano"],
   // Jungle BEFORE the generic "jungle → dnb style" entry — the chopped-breaks
   // groove, not a random dnb pocket. "ragga" bare rides along.
   [/\bjungle\b|\bragga(?: jungle)?\b|\braggajungle\b/, "jungle"],
