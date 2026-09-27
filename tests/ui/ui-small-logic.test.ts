@@ -1,19 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { EFFECT_DEFS } from "../../src/effects/registry";
-import {
-  assetCategoryOf,
-  categoryColor,
-  moodLabel,
-} from "../src/ui/kitColors";
-import {
-  getLastPlayActivity,
-  recordPlayActivity,
-  subscribePlayActivity,
-} from "../src/ui/playActivity";
-import { effectEditorSpec } from "../src/ui/effectEditorRegistry";
-import { gestureMatches, gesturesByArea } from "../src/ui/helpContent";
-import { FACTORY_ASSETS } from "../src/sample-library/manifest";
-import type { DrumPad } from "../src/project-model/types";
+import { assetCategoryOf, categoryColor, moodLabel } from "../../src/ui/kitColors";
+import { getLastPlayActivity, recordPlayActivity, subscribePlayActivity } from "../../src/ui/playActivity";
+import { effectEditorSpec } from "../../src/ui/effectEditorRegistry";
+import { gestureMatches, gesturesByArea } from "../../src/ui/helpContent";
+import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
+import type { DrumPad } from "../../src/project-model/types";
 
 /**
  * Small UI-logic modules that previous rounds never touched: kit color /
@@ -29,7 +21,9 @@ describe("kitColors — category and mood surfaces", () => {
     for (const category of categories) {
       expect(categoryColor(category)).toMatch(/^#[0-9a-fA-F]{6}$/);
     }
-    for (const mood of [...new Set(FACTORY_ASSETS.map((a) => a.mood))].filter((m): m is NonNullable<typeof m> => !!m)) {
+    const moods = [...new Set(FACTORY_ASSETS.flatMap((a) => a.mood))];
+    expect(moods.length).toBeGreaterThan(0);
+    for (const mood of moods) {
       expect(moodLabel(mood).length).toBeGreaterThan(0);
     }
   });
