@@ -77,12 +77,14 @@ export const snaresVsHatesRecipe: Recipe = {
     const boostGainDb = 2;
 
     // ── Sidechain duck on hi-hats, keyed from snare ───────────────────────
-    // Deeper duck when the user prefers sidechain (-6 dB at tilt=1) and
-    // shallower when the carve is doing more of the work (-3 dB at tilt=0).
-    const duckMinDb = -3;
-    const duckMaxDb = -6;
-    const duckAmountDb = duckMinDb + (duckMaxDb - duckMinDb) * sidechainTilt;
-    const duckAmountDbRounded = Math.round(duckAmountDb * 10) / 10;
+    // `duckDb` is MUSICAL INTENT (worst-case depth), not a param — the
+    // executor turns it into the canonical ratio/amount pair. Deeper when
+    // the user prefers sidechain (6 dB at tilt=1), shallower when the carve
+    // is doing more of the work (2.5 dB at tilt=0).
+    const duckMinDb = 2.5;
+    const duckMaxDb = 6;
+    const duckDb = duckMinDb + (duckMaxDb - duckMinDb) * sidechainTilt;
+    const duckDbRounded = Math.round(duckDb * 10) / 10;
 
     // ── Build the batch ───────────────────────────────────────────────────
     const commands: BridgeCommand[] = [];
@@ -122,16 +124,16 @@ export const snaresVsHatesRecipe: Recipe = {
 
     commands.push({
       kind: "sidechain-duck",
-      label: `Sidechain duck hi-hats ${duckAmountDbRounded.toFixed(1)} dB from snare`,
-      rationale: "When snare hits, hi-hats duck briefly — punchier transient, less masking, transparent in the gaps.",
+      label: `Sidechain duck hi-hats ${duckDbRounded.toFixed(1)} dB from snare`,
+      rationale:
+        "When snare hits, hi-hats duck briefly — punchier transient, less masking, transparent in the gaps. Depth is a starting point; nudge RATIO in the rack to taste.",
       target: { namePattern: "hi[-_ ]?hats?|\\bhates\\b", regex: true, preferKind: "any" },
       source: { namePattern: "\\bsnare\\b", regex: true, preferKind: "any" },
-      params: {
-        amountDb: duckAmountDbRounded,
-        attackMs: 5,
-        releaseMs: 100,
-        bypassThreshold: 0.3,
-      },
+      // Seconds, not ms — the canonical `attack`/`release` are time constants.
+      duckDb: duckDbRounded,
+      attackSec: 0.001,
+      releaseSec: 0.12,
+      thresholdDb: -18,
     });
 
     return commands;

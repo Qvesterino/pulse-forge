@@ -33,13 +33,7 @@
  */
 
 /** Canonical sidechain param ids. */
-export type SidechainParamId =
-  | "threshold"
-  | "ratio"
-  | "attack"
-  | "release"
-  | "amount"
-  | "splitFreq";
+export type SidechainParamId = "threshold" | "ratio" | "attack" | "release" | "amount" | "splitFreq";
 
 /** Legal ranges mirrored from `sidechainParams` in src/effects/definitions.ts. */
 export const SIDECHAIN_RANGES = {

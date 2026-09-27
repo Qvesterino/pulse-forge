@@ -21,8 +21,10 @@ import { snapshot } from "../../commands/commands";
 import type { Command } from "../../commands/types";
 import { defaultParamsOf } from "../../effects/definitions";
 import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
+import type { SidechainDuckCommand } from "./types";
 import type { RecipeInput } from "./types";
 import { EQ_BANDS, clampToSlot, type EqBandSlot } from "./eqSlots";
+import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "./sidechainSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
 import type { EffectInstance, ProjectDocument, Track, ID } from "../../project-model/types";
@@ -268,7 +270,7 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
       if (!targetId || !sourceId) {
         throw new Error("internal: track resolution lost between validate and apply");
       }
-      return insertSidechain(doc, targetId, sourceId, cmd.params);
+      return insertSidechain(doc, targetId, sourceId, cmd);
     }
     case "eq-carve":
     case "eq-boost": {
@@ -293,30 +295,59 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
 
 /**
  * Insert a sidechain compressor onto the target track, keyed from source.
- * New EffectInstance is appended to the track's effects list (immutable).
+ *
+ * Writes ONLY canonical param ids (threshold / ratio / attack / release /
+ * amount / splitFreq) seeded from the registry defaults, so the instance
+ * survives `normalizeEffects` and actually changes the sound. The musical
+ * `duckDb` intent is translated to a ratio/amount pair — see
+ * ./sidechainSlots.ts for why that translation is required.
+ *
+ * Reuses the last existing sidechain on the track when one is present, so a
+ * second AI suggestion retunes the duck instead of stacking a second
+ * compressor and doubling the pumping.
  */
-function insertSidechain(
-  doc: ProjectDocument,
-  targetId: ID,
-  sourceId: ID,
-  params: { amountDb: number; attackMs: number; releaseMs: number; bypassThreshold: number },
-): ProjectDocument {
-  const fx: EffectInstance = {
-    id: uid("fx"),
-    type: "sidechain",
-    bypassed: false,
-    params: {
-      amountDb: params.amountDb,
-      attackMs: params.attackMs,
-      releaseMs: params.releaseMs,
-      bypassThreshold: params.bypassThreshold,
-    },
-    sidechainTrackId: sourceId,
+function insertSidechain(doc: ProjectDocument, targetId: ID, sourceId: ID, cmd: SidechainDuckCommand): ProjectDocument {
+  const { ratio, amount } = duckDepthToRatio(cmd.duckDb);
+  const applySpec = (base: Record<string, number>): Record<string, number> => {
+    const existingRatio = base.ratio;
+    // A user who already hand-tuned RATIO knows their mix better than the
+    // bridge does. Only deepen the duck — never walk a stronger existing
+    // setting back to a weaker one the recipe happened to compute.
+    const nextRatio =
+      typeof existingRatio === "number" && Number.isFinite(existingRatio) ? Math.max(ratio, existingRatio) : ratio;
+    return {
+      ...base,
+      threshold: cmd.thresholdDb ?? SIDECHAIN_RANGES.threshold.default,
+      ratio: nextRatio,
+      attack: cmd.attackSec,
+      release: cmd.releaseSec,
+      amount,
+      splitFreq: cmd.splitFreqHz ?? SIDECHAIN_RANGES.splitFreq.default,
+    };
   };
-  return withTrack(doc, targetId, (t) => ({
-    ...t,
-    effects: [...t.effects, fx],
-  }));
+  const base = defaultParamsOf("sidechain");
+
+  return withTrack(doc, targetId, (t) => {
+    const existing = findLastIndex(t.effects, (f) => f.type === "sidechain" && f.sidechainTrackId === sourceId);
+    if (existing >= 0) {
+      const nextEffects = t.effects.slice();
+      nextEffects[existing] = {
+        ...t.effects[existing],
+        params: applySpec(t.effects[existing].params),
+        bypassed: false,
+        sidechainTrackId: sourceId,
+      };
+      return { ...t, effects: nextEffects };
+    }
+    const fx: EffectInstance = {
+      id: uid("fx"),
+      type: "sidechain",
+      bypassed: false,
+      params: applySpec(base),
+      sidechainTrackId: sourceId,
+    };
+    return { ...t, effects: [...t.effects, fx] };
+  });
 }
 
 /**

@@ -91,10 +91,11 @@ function estimateImpact(commands: readonly BridgeCommand[]): EstimatedImpact {
         peakDeltaDb += cmd.kind === "eq-boost" ? Math.max(0, cmd.gainDb) * 0.4 : 0;
         break;
       case "sidechain-duck":
-        // Sidechain duck can pull the signal down by `amountDb` at peak;
-        // RMS is roughly half that on rhythmic material.
-        peakDeltaDb += Math.abs(cmd.params.amountDb) * 0.5;
-        rmsDeltaDb += Math.abs(cmd.params.amountDb) * 0.25;
+        // `duckDb` is the intended worst-case depth; a duck only ever pulls
+        // signal down, so it contributes to the risk estimate in that
+        // direction (half on peak, quarter on RMS for rhythmic material).
+        peakDeltaDb += Math.abs(cmd.duckDb) * 0.5;
+        rmsDeltaDb += Math.abs(cmd.duckDb) * 0.25;
         break;
       case "set-volume":
         peakDeltaDb += cmd.volumeDb * 0.5;

@@ -26,6 +26,7 @@ import type { UserPreferencesSnapshot } from "../../../src/ai/bridge/types";
 import { EMPTY_PREFERENCES } from "../../../src/ai/bridge/types";
 import { executeCommandBatch, __validateBridgeCommandForTest } from "../../../src/ai/bridge/executor";
 import { EQ_BANDS, clampToSlot } from "../../../src/ai/bridge/eqSlots";
+import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "../../../src/ai/bridge/sidechainSlots";
 
 // ─── Fixture ────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,136 @@ describe("AI bridge — snares vs hates", () => {
         expect(key).not.toMatch(/^band\d+_/);
       }
     }
+
+    // Same contract for sidechain: only the canonical ids the worklet and
+    // the fallback both read. The original bridge wrote amountDb / attackMs /
+    // releaseMs / bypassThreshold — none of which exist in sidechainParams.
+    const sc = wired;
+    expect(sc).toBeDefined();
+    for (const id of ["threshold", "ratio", "attack", "release", "amount", "splitFreq"] as const) {
+      expect(sc?.params[id]).toBeTypeOf("number");
+    }
+    for (const key of Object.keys(sc?.params ?? {})) {
+      expect(["threshold", "ratio", "attack", "release", "amount", "splitFreq"]).toContain(key);
+    }
+    // attack/release are SECONDS on the canonical contract, so a 5 ms intent
+    // must land as 0.001, never as 5.
+    expect(sc?.params.attack).toBe(0.001);
+    expect(sc?.params.release).toBe(0.12);
+    // amount is a 0…1 blend, never a dB value.
+    expect(sc?.params.amount).toBeGreaterThanOrEqual(0);
+    expect(sc?.params.amount).toBeLessThanOrEqual(1);
+  });
+
+  it("sidechain params survive normalizeProject (whitelist round-trip)", () => {
+    const doc = bridgeDoc();
+    const result = executeCommandBatch("uprav snares aby sa nebili s hates", {
+      doc,
+      userPreferences: EMPTY_PREFERENCES,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const normalized = normalizeProject(result.doc);
+    const sc = normalized.tracks[1]?.effects.find((fx) => fx.type === "sidechain");
+    expect(sc).toBeDefined();
+    expect(sc?.params.threshold).toBe(-18);
+    expect(sc?.params.attack).toBe(0.001);
+    expect(sc?.params.release).toBe(0.12);
+    // The ratio/amount pair the translation produced must survive too.
+    expect(sc?.params.ratio).toBeGreaterThanOrEqual(SIDECHAIN_RANGES.ratio.min);
+    expect(sc?.params.ratio).toBeLessThanOrEqual(SIDECHAIN_RANGES.ratio.max);
+    // sidechainTrackId survives and still points at a real track.
+    expect(normalized.tracks.some((t) => t.id === sc?.sidechainTrackId)).toBe(true);
+  });
+
+  it("duckDepthToRatio maps intent onto a legal, deeper-is-deeper pair", () => {
+    // Deeper intent must never produce a shallower duck.
+    let previous = 0;
+    for (const db of [0.5, 1, 2, 3, 4, 6, 8, 12, 24]) {
+      const { ratio, amount } = duckDepthToRatio(db);
+      expect(ratio).toBeGreaterThanOrEqual(SIDECHAIN_RANGES.ratio.min);
+      expect(ratio).toBeLessThanOrEqual(SIDECHAIN_RANGES.ratio.max);
+      expect(amount).toBeGreaterThanOrEqual(0);
+      expect(amount).toBeLessThanOrEqual(1);
+      expect(ratio).toBeGreaterThanOrEqual(previous);
+      previous = ratio;
+    }
+    // A 0 dB request is a bypass, not a 1:1 ratio that still pumps.
+    expect(duckDepthToRatio(0).amount).toBe(0);
+    // Absurd input saturates at the registry max instead of dividing by ~0.
+    const absurd = duckDepthToRatio(MAX_SENSIBLE_DUCK_DB);
+    expect(absurd.ratio).toBeLessThanOrEqual(SIDECHAIN_RANGES.ratio.max);
+    expect(Number.isFinite(absurd.ratio)).toBe(true);
+  });
+
+  it("rejects attack/release written in milliseconds (out of the seconds range)", () => {
+    const doc = bridgeDoc();
+    // 5 "ms" as a raw number is 5 SECONDS — far beyond the 0.5 s ceiling.
+    const check = __validateBridgeCommandForTest(doc, {
+      kind: "sidechain-duck",
+      label: "bogus ms attack",
+      rationale: "test",
+      target: { namePattern: "hi[-_ ]?hats?|\\bhates\\b", regex: true, preferKind: "any" },
+      source: { namePattern: "\\bsnare\\b", regex: true, preferKind: "any" },
+      duckDb: 4,
+      attackSec: 5,
+      releaseSec: 0.12,
+    });
+    expect(check.ok).toBe(false);
+    if (check.ok) return;
+    expect(check.message).toContain("attackSec");
+  });
+
+  it("retunes an existing sidechain instead of stacking a second compressor", () => {
+    const base = bridgeDoc();
+    const hihat = base.tracks[1];
+    const snare = base.tracks[0];
+    if (!hihat || !snare) throw new Error("fixture: missing tracks");
+    const doc: ProjectDocument = {
+      ...base,
+      tracks: base.tracks.map((t, i) =>
+        i === 1
+          ? {
+              ...t,
+              effects: [
+                ...t.effects,
+                {
+                  id: "fx-user-sc",
+                  type: "sidechain" as const,
+                  bypassed: true,
+                  params: { ratio: 2 },
+                  sidechainTrackId: snare.id,
+                },
+              ],
+            }
+          : t,
+      ),
+    };
+
+    const result = executeCommandBatch("uprav snares aby sa nebili s hates", {
+      doc,
+      userPreferences: EMPTY_PREFERENCES,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const hihatAfter = result.doc.tracks[1];
+    if (!hihatAfter) throw new Error("fixture: hihat vanished");
+    const scs = hihatAfter.effects.filter((fx) => fx.type === "sidechain");
+    expect(scs.length).toBe(1);
+    // Same instance retuned and re-enabled, not a second compressor.
+    expect(scs[0]?.id).toBe("fx-user-sc");
+    expect(scs[0]?.bypassed).toBe(false);
+    expect(scs[0]?.sidechainTrackId).toBe(snare.id);
+    // The seeded RATIO 2 is stronger than what the recipe computes for its
+    // 4.3 dB intent (~1.6), and a hand-tuned mix move must never be walked
+    // back to a weaker duck by a suggestion.
+    expect(scs[0]?.params.ratio).toBe(2);
+    // ...but the params the bridge DOES own are applied, using canonical ids.
+    expect(scs[0]?.params.attack).toBe(0.001);
+    expect(scs[0]?.params.release).toBe(0.12);
+    expect(scs[0]?.params.amount).toBeGreaterThan(0);
   });
 
   it("eq moves survive normalizeProject (whitelist round-trip)", () => {
