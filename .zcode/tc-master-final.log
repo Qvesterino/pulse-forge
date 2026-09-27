@@ -1,0 +1,9 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+src/ai/bridge/recipes/snaresVsHates.ts(125,19): error TS2345: Argument of type '{ kind: "sidechain-duck"; label: string; rationale: string; target: { namePattern: string; regex: true; preferKind: "any"; }; source: { namePattern: string; regex: true; preferKind: "any"; }; attackSec: number; releaseSec: number; thresholdDb: number; }' is not assignable to parameter of type 'BridgeCommand'.
+  Property 'duckDb' is missing in type '{ kind: "sidechain-duck"; label: string; rationale: string; target: { namePattern: string; regex: true; preferKind: "any"; }; source: { namePattern: string; regex: true; preferKind: "any"; }; attackSec: number; releaseSec: number; thresholdDb: number; }' but required in type 'SidechainDuckCommand'.
+src/ai/style-quality.ts(25,7): error TS2741: Property 'amapiano' is missing in type '{ house: { densityRange: [number, number]; syncopationRange: [number, number]; maxDistance: number; }; techno: { densityRange: [number, number]; syncopationRange: [number, number]; maxDistance: number; }; ... 8 more ...; boombap: { ...; }; }' but required in type 'Record<Genre, StyleQualityProfile>'.
+src/intent/song.ts(83,7): error TS2741: Property 'amapiano' is missing in type '{ house: ({ role: "intro"; label: string; bars: number; intensity: number; transitionIn: null; energyDelta: number; densityDelta: number; complexityDelta: number; instrumentation: ("bass" | "drums")[]; } | ... 4 more ... | { ...; })[]; ... 9 more ...; dnb: ({ ...; } | ... 4 more ... | { ...; })[]; }' but required in type 'Record<Genre, SongSectionSpec[]>'.
+src/intent/song.ts(1396,7): error TS2741: Property 'amapiano' is missing in type '{ house: number; techno: number; trap: number; ambient: number; drill: number; phonk: number; jersey: number; dnb: number; hyperpop: number; ukg: number; boombap: number; }' but required in type 'Record<Genre, number>'.

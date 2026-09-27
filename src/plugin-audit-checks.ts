@@ -35,6 +35,7 @@ import type { ParamDef } from "./effects/types";
 import { CORE_EFFECT_PRESETS } from "./effects/presets";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, type SampleBank } from "./sample-library/factory";
+import { ensureCuratedLayer } from "./sample-library/curated";
 import { loadAllWorklets } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { AudioEngine } from "./audio-engine/AudioEngine";
@@ -476,6 +477,12 @@ const MIX_CLASS_IDS = new Set(["mix", "global.mix", "global.dryWet", "globalMix"
  * ping-pong).
  */
 const FINGERPRINT_OVERRIDES: Partial<Record<EffectType, { id: string; value: number }[]>> = {
+  // The swell needs to CAPTURE time seconds before replaying it reversed:
+  // time@max (8 s) can never complete inside any audit window.
+  reverseSwell: [
+    { id: "engaged", value: 1 },
+    { id: "time", value: 0.25 },
+  ],
   delay: [
     { id: "feedback", value: 0.85 },
     { id: "tone", value: 500 },
@@ -809,6 +816,12 @@ async function ensurePageState(): Promise<AuditPageState> {
   const existing = pageState();
   if (existing) return existing;
   const bank = await generateFactoryBank();
+  // The FIRST renderProject call starts the curated-layer load into this
+  // bank (fire-and-forget, 2 s cap). Renders issued after the fetch lands
+  // use curated WAV drums while earlier ones used the synthesized fallback
+  // - restore pairs straddling that boundary compared different kits. Load
+  // the curated layer UP FRONT so every audit render sees the same bank.
+  await ensureCuratedLayer(bank);
   const baseDoc = createProjectFromTemplate("house");
   // The drum bus must start clean — the house template may ship starter FX.
   const drum = baseDoc.tracks.find((t: { kind: string }) => t.kind === "drum") as { effects: unknown[] } | undefined;

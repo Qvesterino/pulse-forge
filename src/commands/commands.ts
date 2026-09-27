@@ -5400,6 +5400,26 @@ export function addEffectWithLandingCommand(
  * canonical commands (setBpm, setProjectKey, setTrackParams,
  * setPatternLength) over a working document and snapshotting the result.
  */
+/**
+ * STRICT exact-target resolution for destructive/renaming/preset ops:
+ * name-or-kind match only, NO positional fallback — "delete the lead track"
+ * in a project without a lead must fail loudly, never delete
+ * instruments[0] by index. Pad families and the mix are not lanes.
+ */
+export function resolveExactTargetTracks(doc: ProjectDocument, target: ExactTarget): string[] {
+  if (target === "mix" || target === "kick" || target === "snare" || target === "hats") return [];
+  if (target === "drums") return doc.tracks.filter((t) => t.kind === "drum").map((t) => t.id);
+  const instruments = doc.tracks.filter(
+    (t): t is import("../project-model/types").InstrumentTrack => t.kind === "instrument",
+  );
+  const matched = instruments.filter((t) => {
+    if (target === "bass") return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b/i.test(t.name);
+    if (target === "chords") return /\bchord|\bkeys?\b|\bpad\b/i.test(t.name) || t.instrument === "keys";
+    return /\blead\b|\bsynth\b|\bpluck\b/i.test(t.name) || ["lead", "pluck", "spectral"].includes(t.instrument);
+  });
+  return matched.map((t) => t.id);
+}
+
 export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentPlan): Command {
   let next = doc;
   const resolve = (target: string): string[] => {
@@ -5410,24 +5430,6 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
     } catch {
       return [];
     }
-  };
-  // STRICT resolution for destructive/renaming ops: name-or-kind match only,
-  // NO positional fallback — "delete the lead track" in a project without a
-  // lead must fail loudly, never delete instruments[0] by index. Pad
-  // families and the mix are not deletable lanes.
-  const resolveStrictTracks = (d: ProjectDocument, target: ExactTarget): string[] => {
-    if (target === "mix" || target === "kick" || target === "snare" || target === "hats") return [];
-    if (target === "drums") return d.tracks.filter((t) => t.kind === "drum").map((t) => t.id);
-    const instruments = d.tracks.filter(
-      (t): t is import("../project-model/types").InstrumentTrack => t.kind === "instrument",
-    );
-    const matched = instruments.filter((t) => {
-      if (target === "bass")
-        return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b/i.test(t.name);
-      if (target === "chords") return /\bchord|\bkeys?\b|\bpad\b/i.test(t.name) || t.instrument === "keys";
-      return /\blead\b|\bsynth\b|\bpluck\b/i.test(t.name) || ["lead", "pluck", "spectral"].includes(t.instrument);
-    });
-    return matched.map((t) => t.id);
   };
   const paramFor = (trackId: string, op: ExactOp): Partial<TrackParams> | null => {
     const track = next.tracks.find((t) => t.id === trackId);
@@ -5445,19 +5447,19 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       continue;
     }
     if (op.kind === "removeTrack") {
-      const ids = resolveStrictTracks(next, op.target);
+      const ids = resolveExactTargetTracks(next, op.target);
       if (ids.length === 0) throw new Error(`no track matches "${op.target}" — nothing to delete`);
       for (const id of ids) next = deleteTrack(next, id).execute(next);
       continue;
     }
     if (op.kind === "renameTrack") {
-      const ids = resolveStrictTracks(next, op.target);
+      const ids = resolveExactTargetTracks(next, op.target);
       if (ids.length === 0) throw new Error(`no track matches "${op.target}" — nothing to rename`);
       for (const id of ids) next = setTrackParams(next, id, { name: op.name }).execute(next);
       continue;
     }
     if (op.kind === "duplicateTrack") {
-      const ids = resolveStrictTracks(next, op.target);
+      const ids = resolveExactTargetTracks(next, op.target);
       if (ids.length === 0) throw new Error(`no track matches "${op.target}" — nothing to duplicate`);
       for (const id of ids) next = duplicateTrack(next, id).execute(next);
       continue;

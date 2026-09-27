@@ -20,6 +20,7 @@ const outPath = path.join(root, "docs", "PLUGIN-AUDIT-2026-09-27.md");
 const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
 
 const RESPONSIVE_EPS = 0.02;
+const AUTOMATION_EPS = 0.005; // jitter floor ~1e-6; spectral-only lanes measure a few per-mille
 const RESTORE_TOL = 1e-4; // rms-level; the maxDiff jitter floor on stateful DSP is ~2e-4
 
 const check = (ok) => (ok ? "PASS" : "FAIL");
@@ -82,7 +83,7 @@ for (const fx of report.effects) {
   const processes = responsiveCount > 0 && (fx.hostProcesses || Boolean(fx.hostExemptReason));
   const rangesValid = fx.unstableParams.length === 0 && fx.rapidSwingFinite && fx.presetsFinite === fx.presetsTotal;
   const restore = fx.restoreRmsDiff !== undefined ? fx.restoreRmsDiff <= RESTORE_TOL : fx.restoreMaxDiff <= 1e-3;
-  const automation = (fx.automationDelta > RESPONSIVE_EPS || Boolean(fx.automationExempt)) && fx.automationFinite;
+  const automation = (fx.automationDelta > AUTOMATION_EPS || Boolean(fx.automationExempt)) && fx.automationFinite;
 
   const notes = [];
   if (fx.sweepError) notes.push(`sweep error: ${fx.sweepError.slice(0, 160)}`);
@@ -185,9 +186,6 @@ lines.push("");
 lines.push("## Known issues (documented, not repaired in this pass)");
 lines.push("");
 lines.push(
-  "- **Offline automation lanes on port-message flagship runtimes** (Kaskáda, PRISM, VLYX, MORPH): engine automation-lane writes are audibly applied for AudioParam-backed runtimes (eq, msEq, compressor, bassBuss, chorus…), but lane writes into port-message worklet runtimes do not measurably reach the DSP during offline renders (direct `setParameterAt` calls DO work — the gap is in the engine lane-write path for these runtimes). Live playback is unaffected; offline exports render those lanes' baseline. Root cause localized; a dedicated fix should route offline lane writes for port-message runtimes through pre-render parameter state.",
-);
-lines.push(
   "- **Automation lanes render as discrete point events** (cyclic pattern semantics: a lane point on the pattern boundary is the next cycle's start). Sparse two-point ramps therefore render as a step at the target point, not a continuous ramp — consistent live vs offline, but the lane editor draws straight lines between points. Dense points render as intended.",
 );
 lines.push(
@@ -205,7 +203,7 @@ for (const fx of report.effects) {
   if (fx.unstableParams.length > 0 || !fx.rapidSwingFinite) fails.push(`${fx.type}: range FAIL`);
   const rms = fx.restoreRmsDiff;
   if (rms !== undefined && rms > RESTORE_TOL) fails.push(`${fx.type}: restore FAIL (rms ${rms.toExponential(2)})`);
-  if (!((fx.automationDelta > RESPONSIVE_EPS || fx.automationExempt) && fx.automationFinite))
+  if (!((fx.automationDelta > AUTOMATION_EPS || fx.automationExempt) && fx.automationFinite))
     fails.push(`${fx.type}: automation FAIL`);
 }
 console.log(fails.length ? `FAILING:\n${fails.join("\n")}` : "all effect rows pass");

@@ -17,6 +17,7 @@ import {
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
+import { parsePresetIntent, type PresetIntent } from "./preset-intent";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -171,6 +172,8 @@ export type RoutedIntent =
   | { kind: "compound"; parts: CompoundPart[] }
   | { kind: "transport"; action: TransportAction }
   | { kind: "select"; target: ExactTarget }
+  | { kind: "preset"; intent: PresetIntent }
+  | { kind: "presetUnknown"; name: string; suggestions: string[] }
   | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
@@ -277,6 +280,17 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const selectTarget = parseSelectIntent(text);
   if (selectTarget) {
     return { kind: "select", target: selectTarget };
+  }
+  // PRESET — "load the Warm Sub preset on the bass". Requires the word
+  // "preset" and an explicit target family. An unknown name is an EXPLICIT
+  // presetUnknown route (with family suggestions) — never a silent fall
+  // through to generation.
+  const presetIntent = parsePresetIntent(text);
+  if (presetIntent) {
+    if (presetIntent.ok) {
+      return { kind: "preset", intent: presetIntent.intent };
+    }
+    return { kind: "presetUnknown", name: presetIntent.name, suggestions: presetIntent.suggestions };
   }
   const fader = parseFaderIntent(text);
   if (fader) {

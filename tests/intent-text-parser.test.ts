@@ -330,6 +330,32 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parseIntentText("detroit rap beat").input.style).toBe("detroit");
   });
 
+  it("user-request styles: piano house / midtempo / breakbeat / sad chill / dirty ambient", () => {
+    expect(parseIntentText("piano house 126").input.style).toBe("pianohouse");
+    expect(parseIntentText("pianohouse").input.genre).toBe("house");
+    expect(parseIntentText("midtempo bass 100").input.style).toBe("midtempo");
+    expect(parseIntentText("mid tempo 95").input.style).toBe("midtempo");
+    expect(parseIntentText("breakbeat 132").input.style).toBe("breakbeat");
+    expect(parseIntentText("big beat 130").input.style).toBe("breakbeat");
+    // genre word present → style resolves against it
+    expect(parseIntentText("sad chill beat 80").input.genre).toBe("ambient");
+    expect(parseIntentText("sad chill beat 80").input.style).toBe("sadchill");
+    expect(parseIntentText("dirty ambient 75").input.genre).toBe("ambient");
+    expect(parseIntentText("dirty ambient 75").input.style).toBe("dirtyambient");
+  });
+
+  it("all user-request styles resolve to real groove ids", () => {
+    for (const id of [
+      "house.pianohouse",
+      "house.midtempo",
+      "house.breakbeat",
+      "ambient.sadchill",
+      "ambient.dirtyambient",
+    ]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+
   it("new dnb styles resolve to real groove ids", () => {
     for (const id of ["dnb.twostep", "dnb.liquid", "dnb.jumpup", "dnb.neuro", "dnb.dancefloor"]) {
       const groove = getGrooveById(id);

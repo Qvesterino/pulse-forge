@@ -17,7 +17,10 @@ export interface PadMarkovModel {
 /** Groove data — one style variation within a genre */
 /** All available genres (song forms, grooves and intent parsing key off this). */
 export type Genre =
-  "house" | "techno" | "trap" | "ambient" | "drill" | "phonk" | "jersey" | "dnb" | "hyperpop" | "ukg" | "boombap";
+  "house" | "techno" | "trap" | "ambient" | "drill" | "phonk" | "jersey" | "dnb"   | "hyperpop"
+  | "ukg"
+  | "boombap"
+  | "amapiano";
 
 export interface GrooveData {
   id: string;
@@ -111,6 +114,7 @@ export const GENRES = [
   "hyperpop",
   "ukg",
   "boombap",
+  "amapiano",
 ] as const;
 
 /** Pad index → name mapping (matches makeKit in schema.ts) */

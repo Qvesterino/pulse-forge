@@ -12,6 +12,7 @@ import {
 } from "./conversation";
 import { applyEffectIntent, parseEffectIntent, type EffectIntent } from "./mix";
 import { parseExactIntent, type ExactIntentPlan } from "./exact";
+import { applyPresetIntentCommand, parsePresetIntent, type PresetIntent } from "./preset-intent";
 
 /**
  * CROSS-EXECUTOR COMPOUND INTENTS — several asks in one sentence, executed in
@@ -33,7 +34,8 @@ export type CompoundPart =
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effect"; intent: EffectIntent }
-  | { kind: "exact"; plan: ExactIntentPlan };
+  | { kind: "exact"; plan: ExactIntentPlan }
+  | { kind: "preset"; intent: PresetIntent };
 
 function parseCompoundClause(clause: string): CompoundPart | null {
   const fader = parseFaderIntent(clause);
@@ -44,6 +46,8 @@ function parseCompoundClause(clause: string): CompoundPart | null {
   if (effect) return { kind: "effect", intent: effect };
   const exact = parseExactIntent(clause);
   if (exact) return { kind: "exact", plan: exact };
+  const preset = parsePresetIntent(clause);
+  if (preset?.ok) return { kind: "preset", intent: preset.intent };
   return null;
 }
 
@@ -102,7 +106,9 @@ export function applyCompoundIntent(doc: ProjectDocument, parts: CompoundPart[])
             ? applyTempoIntent(next, part.intent)
             : part.kind === "exact"
               ? applyExactIntentCommand(next, part.plan)
-              : applyEffectIntent(next, part.intent);
+              : part.kind === "preset"
+                ? applyPresetIntentCommand(next, part.intent)
+                : applyEffectIntent(next, part.intent);
       if (!command) continue; // fader clause clamped to a no-op
       next = command.execute(next);
       labels.push(command.label);

@@ -41,6 +41,9 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Boom bap: the dusty sampled-break pocket — swing-tolerant, mid density,
   // generous syncopation (off-kilter kick placement is the genre's signature).
   boombap: { densityRange: [0.1, 0.7], syncopationRange: [0.16, 0.78], maxDistance: 1.1 },
+  // Amapiano: the log-drum pocket — sparse four-floor under a busy semiquaver
+  // shaker bed, so density spreads wide while the kick stays steady.
+  amapiano: { densityRange: [0.12, 0.84], syncopationRange: [0.14, 0.86], maxDistance: 1.15 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

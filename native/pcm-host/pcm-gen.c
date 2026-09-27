@@ -23,6 +23,7 @@
  * stdout is switched to BINARY mode — Windows text mode would mangle bytes.
  */
 #include <windows.h>
+#include <mmsystem.h>
 #include <io.h>
 #include <fcntl.h>
 #include <math.h>
@@ -62,6 +63,7 @@ int main(int argc, char **argv) {
   double freq = 440;
   double seconds = 10;
   long blockFrames = 480;
+  int realtime = 0;
 
   for (int i = 1; i + 1 < argc; i += 2) {
     if (strcmp(argv[i], "--rate") == 0) rate = atof(argv[i + 1]);
@@ -69,6 +71,7 @@ int main(int argc, char **argv) {
     else if (strcmp(argv[i], "--freq") == 0) freq = atof(argv[i + 1]);
     else if (strcmp(argv[i], "--seconds") == 0) seconds = atof(argv[i + 1]);
     else if (strcmp(argv[i], "--block-frames") == 0) blockFrames = atol(argv[i + 1]);
+    else if (strcmp(argv[i], "--realtime") == 0) { realtime = 1; i--; }
   }
   if (rate < 8000 || rate > 384000 || channels < 1 || channels > 8 || blockFrames < 16 || blockFrames > 65536 ||
       seconds <= 0 || seconds > 3600) {
@@ -106,6 +109,7 @@ int main(int argc, char **argv) {
     }
     writeFrame(stdout, TYPE_PCM, seq++, block, (unsigned long)(sizeof(float) * frames * (size_t)channels));
     written += frames;
+    if (realtime) Sleep((DWORD)((double)frames / rate * 1000.0 + 0.5));
   }
 
   char stats[128];
@@ -113,6 +117,7 @@ int main(int argc, char **argv) {
   writeJsonFrame(stdout, TYPE_STATS, stats);
   writeJsonFrame(stdout, TYPE_EOF, "{}");
   fflush(stdout);
+  if (realtime) timeEndPeriod(1);
   free(block);
   return 0;
 }

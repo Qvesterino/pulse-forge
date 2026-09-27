@@ -36,6 +36,7 @@ import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import { applyCompoundIntent } from "../intent/compound";
+import { applyPresetIntentCommand } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { resolveVocalTake } from "../vocal/resolve";
@@ -1835,6 +1836,24 @@ export function IntentPanel() {
         }
         selection.setTracks(ids, "replace");
         setStatus(`⚡ selected: ${route.target}`);
+      } else if (route.kind === "preset") {
+        // "load the Warm Sub preset on the bass" — canonical
+        // applyInstrumentPreset folded over the target family, one undo.
+        stopAudition();
+        try {
+          const command = applyPresetIntentCommand(doc, route.intent);
+          services.store.execute(command);
+          setStatus(`✓ ${command.label} (one undo step)`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } else if (route.kind === "presetUnknown") {
+        // Explicit unknown-preset response — never a silent generation.
+        setError(
+          `unknown preset "${route.name}"${
+            route.suggestions.length > 0 ? ` — try: ${route.suggestions.join(", ")}` : ""
+          }`,
+        );
       } else if (route.kind === "arrange") {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));

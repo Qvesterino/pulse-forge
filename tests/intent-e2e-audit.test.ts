@@ -5,6 +5,7 @@ import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } 
 import { applyFaderIntent, applyTempoIntent } from "../src/intent/conversation";
 import { applyCompoundIntent } from "../src/intent/compound";
 import { applyClipArrangeOps } from "../src/intent/arrangeWords";
+import { applyPresetIntentCommand } from "../src/intent/preset-intent";
 import { resolveProductionTargets } from "../src/intent/production";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
@@ -12,6 +13,7 @@ import {
   addEffect,
   applyExactIntentCommand,
   applyProductionIntentCommand,
+  createInstrumentTrack,
   createScene,
   setBpm,
   setEffectParam,
@@ -62,6 +64,7 @@ function executeRouted(doc: ProjectDocument, text: string, store?: ProjectStore)
   if (route.kind === "fader") command = applyFaderIntent(doc, route.intent);
   else if (route.kind === "compound") command = applyCompoundIntent(doc, route.parts);
   else if (route.kind === "clips") command = applyClipArrangeOps(doc, route.ops);
+  else if (route.kind === "preset") command = applyPresetIntentCommand(doc, route.intent);
   else if (route.kind === "exact") command = applyExactIntentCommand(doc, route.plan);
   else if (route.kind === "tempo") command = applyTempoIntent(doc, route.intent);
   else if (route.kind === "effectIntent") command = applyEffectIntent(doc, route.intent);
@@ -983,5 +986,120 @@ describe("E2E clip intents: copy/move/trim/delete", () => {
     expect(routeIntentText("copy the intro clip", doc).kind).not.toBe("clips");
     // and a scene-arrange text without a clip word never reaches the clip route
     expect(routeIntentText("shorten the intro to 2 bars", withRoleClips()).kind).toBe("arrange");
+  });
+});
+
+// ─── 14. PRESET INTENT — load by name, family-wide, one undo ────────────────
+
+describe("E2E preset intents", () => {
+  it("load the Warm Sub preset on the bass applies it to the 808; undo restores", () => {
+    const store = new ProjectStore(testDoc());
+    const bass = bassTrackOf(store.doc);
+    const paramsBefore = { ...bass.params };
+    const presetIdBefore = bass.presetId ?? null;
+
+    const route = routeIntentText("load the Warm Sub preset on the bass", store.doc);
+    expect(route.kind).toBe("preset");
+    if (route.kind !== "preset") throw new Error("expected preset route");
+    expect(route.intent.preset.name).toBe("Warm Sub");
+    expect(route.intent.matchedBy).toBe("exact");
+    expect(route.intent.target).toBe("bass");
+    const routedPresetId = route.intent.preset.id;
+
+    executeRouted(store.doc, "load the Warm Sub preset on the bass", store);
+    const applied = bassTrackOf(store.doc);
+    expect(applied.presetId).toBe(routedPresetId);
+    expect(applied.params).not.toEqual(paramsBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    const restored = bassTrackOf(store.doc);
+    expect(restored.params).toEqual(paramsBefore);
+    expect(restored.presetId ?? null).toBe(presetIdBefore);
+  });
+
+  it("fuzzy: 'warm' matches a warm-named bass-family preset (prefix + family bonus)", () => {
+    const doc = testDoc();
+    const route = routeIntentText("load the warm preset on the bass", doc);
+    expect(route.kind).toBe("preset");
+    if (route.kind === "preset") {
+      expect(route.intent.preset.name.toLowerCase()).toContain("warm");
+      // the family bonus must steer the pick away from non-bass instruments
+      expect(["bass", "808", "logdrum"]).toContain(route.intent.preset.instrument);
+    }
+  });
+
+  it("SK: 'načítaj preset trap 808 bass na basu' resolves by includes", () => {
+    const doc = testDoc();
+    const route = routeIntentText("načítaj preset trap 808 bass na basu", doc);
+    expect(route.kind).toBe("preset");
+    if (route.kind === "preset") expect(route.intent.preset.name.toLowerCase()).toContain("808");
+  });
+
+  it("unknown preset is an EXPLICIT response with suggestions, never generation", () => {
+    const doc = testDoc();
+    const store = new ProjectStore(doc);
+    const route = routeIntentText("load the zzzblorp preset on the bass", doc);
+    expect(route.kind).toBe("presetUnknown");
+    if (route.kind === "presetUnknown") {
+      expect(route.name).toContain("zzzblorp");
+      expect(route.suggestions.length).toBeGreaterThan(0);
+    }
+    expect(store.undoStackLength).toBe(0);
+    expect(store.doc).toBe(doc);
+  });
+
+  it("no target family declines the preset route (explicit target required)", () => {
+    const doc = testDoc();
+    expect(routeIntentText("load the warm sub preset", doc).kind).not.toBe("preset");
+  });
+
+  it("missing family track fails loudly (drums-only project, bass target)", () => {
+    const doc = testDoc();
+    const drumsOnly: ProjectDocument = { ...doc, tracks: doc.tracks.filter((t) => t.kind === "drum") };
+    expect(() => executeRouted(drumsOnly, "load the warm sub preset on the bass")).toThrow(/no track matches/);
+  });
+
+  it("family-wide: every bass-family track gets the preset in ONE undo", () => {
+    const store = new ProjectStore(testDoc());
+    const second = createInstrumentTrack(store.doc, "bass");
+    store.replaceDoc(second.execute(store.doc));
+    const bassTracks = store.doc.tracks.filter(
+      (t): t is InstrumentTrack => t.kind === "instrument" && ["bass", "808"].includes(t.instrument),
+    );
+    expect(bassTracks.length).toBeGreaterThanOrEqual(2);
+
+    executeRouted(store.doc, "load the warm sub preset on the bass", store);
+    for (const track of bassTracks) {
+      const applied = store.doc.tracks.find((t) => t.id === track.id) as InstrumentTrack;
+      // the id is the factory slug ("factory.bass.house.warmsub") — presence
+      // and undo are the contract here, not the exact slug
+      expect(applied.presetId ?? "").toContain("warmsub");
+    }
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    for (const track of bassTracks) {
+      const restored = store.doc.tracks.find((t) => t.id === track.id) as InstrumentTrack;
+      expect(restored.presetId ?? null).toBe(null);
+    }
+  });
+
+  it("preset rides compounds: 'load the warm sub preset on the bass and zníž lead'", () => {
+    const store = new ProjectStore(withLead());
+    const leadBefore = instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain;
+    const route = routeIntentText("load the warm sub preset on the bass and zníž lead", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind !== "compound") throw new Error("expected compound route");
+    expect(route.parts).toHaveLength(2);
+    expect(route.parts[0]).toMatchObject({ kind: "preset" });
+    expect(route.parts[1]).toMatchObject({ kind: "fader" });
+    const routedPresetId = route.parts[0].kind === "preset" ? route.parts[0].intent.preset.id : "";
+
+    executeRouted(store.doc, "load the warm sub preset on the bass and zníž lead", store);
+    expect(bassTrackOf(store.doc).presetId).toBe(routedPresetId);
+    expect(instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain).toBeLessThan(leadBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(bassTrackOf(store.doc).presetId ?? null).toBe(null);
+    expect(instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!.gain).toBe(leadBefore);
   });
 });

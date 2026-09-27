@@ -54,9 +54,12 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbreakbeat\b|\bbig ?beat\b|\bbreaks?\b(?!\s*(?:beat|core))/, "house"],
   // Midtempo - the half-time bass-music floor (house.midtempo).
   [/\bmidtempo\b|\bmid[- ]?tempo\b/, "house"],
-  // Amapiano - the log drum genre (house.amapiano); "private school piano"
-  // is the jazzier refined sub-style, same groove.
-  [/\bamapiano\b|\bprivate school piano\b/, "house"],
+  // Amapiano — first-class since the promotion: the log-drum genre with its
+  // own school tree (yanos / soulful / s'gija / bacardi / quantum / popiano).
+  // "private school piano" is the soulful school, "new age bacardi" the
+  // Pretoria mutation, "popiano" the pop-facing variant.
+  [/\bamapiano\b|\byanos\b|\bprivate school piano\b|\bnew age bacardi\b|\bpopiano\b|\bafropiano\b|\bquantum sound\b/, "amapiano"],
+  [/\bbacardi\b/, "amapiano"],
   // Rock lanes — grunge / alt rock / rapcore / synth punk ride dedicated
   // house-family grooves; "nu metal" is the rapcore family alias. "synth
   // punk" is safe against the post-punk entry (different words entirely).
@@ -266,8 +269,14 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // UK funky BEFORE \bfunky\b — "uk funky" is the soca-bounce lane, not the
   // funky house groove ("uk funky" itself genre-routes to the ukg lane).
   [/\buk ?funky\b|\bukfunky\b/, "ukfunky"],
-  // Amapiano — the log drum groove ("private school piano" rides along).
-  [/\bamapiano\b|\bprivate school piano\b/, "amapiano"],
+  // Amapiano school tree — specific school words BEFORE the generic amapiano
+  // style entry. "yanos" is the core sound; "s'gija" the stripped pocket.
+  [/\bprivate school piano\b|\bsoulful amapiano\b/, "soulful"],
+  [/\bs'?gija\b/, "sgija"],
+  [/\bnew age bacardi\b/, "bacardi"],
+  [/\bquantum sound\b/, "quantum"],
+  [/\bpopiano\b/, "popiano"],
+  [/\bamapiano\b|\byanos\b|\bafropiano\b/, "yanos"],
   // Jungle BEFORE the generic "jungle → dnb style" entry — the chopped-breaks
   // groove, not a random dnb pocket. "ragga" bare rides along.
   [/\bjungle\b|\bragga(?: jungle)?\b|\braggajungle\b/, "jungle"],
