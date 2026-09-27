@@ -217,56 +217,50 @@ describe("default probe path resolution", () => {
 });
 
 describe.skipIf(!nativeReady)("CLAP player end-to-end (ADR 0016 audio hosting)", () => {
-  it(
-    "instantiates the tone fixture, processes it, and streams sine-exact frames",
-    async () => {
-      const PLAYER = path.join(REPO, "native", "clap-host", "build", "Release", "clap-player.exe");
-      const TONE = path.join(REPO, "native", "clap-host", "build", "Release", "clap-tone.clap");
-      if (!existsSync(PLAYER) || !existsSync(TONE)) return; // older build tree — skip honestly
+  it("instantiates the tone fixture, processes it, and streams sine-exact frames", async () => {
+    const PLAYER = path.join(REPO, "native", "clap-host", "build", "Release", "clap-player.exe");
+    const TONE = path.join(REPO, "native", "clap-host", "build", "Release", "clap-tone.clap");
+    if (!existsSync(PLAYER) || !existsSync(TONE)) return; // older build tree — skip honestly
 
-      const RATE = 48000;
-      const source = new PcmPipeSource({
-        hostPath: PLAYER,
-        args: ["--dll", TONE, "--rate", String(RATE), "--seconds", "1"],
+    const RATE = 48000;
+    const source = new PcmPipeSource({
+      hostPath: PLAYER,
+      args: ["--dll", TONE, "--rate", String(RATE), "--seconds", "1"],
+    });
+
+    // Every listener attaches BEFORE start: the fixture's first block is
+    // frame 0 and the transport does not replay missed events.
+    const verdict = await new Promise<{ format: Record<string, unknown>; verified: number }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("stream did not finish in 20 s")), 20_000);
+      let format: Record<string, unknown> | null = null;
+      let absolute = 0;
+      source.on("format", (raw) => (format = raw as Record<string, unknown>));
+      source.on("protocol-error", (e) => {
+        clearTimeout(timer);
+        reject(new Error(String(e)));
       });
-
-      // Every listener attaches BEFORE start: the fixture's first block is
-      // frame 0 and the transport does not replay missed events.
-      const verdict = await new Promise<{ format: Record<string, unknown>; verified: number }>(
-        (resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("stream did not finish in 20 s")), 20_000);
-          let format: Record<string, unknown> | null = null;
-          let absolute = 0;
-          source.on("format", (raw) => (format = raw as Record<string, unknown>));
-          source.on("protocol-error", (e) => {
+      source.on("pcm", (raw) => {
+        const block = raw as { samples: Float32Array };
+        const frames = block.samples.length / 2; // interleaved stereo, channels identical
+        for (let n = 0; n < frames; n++, absolute++) {
+          const expected = 0.25 * Math.sin((2 * Math.PI * 440 * absolute) / RATE);
+          if (Math.abs(block.samples[n * 2] - expected) > 1e-5) {
             clearTimeout(timer);
-            reject(new Error(String(e)));
-          });
-          source.on("pcm", (raw) => {
-            const block = raw as { samples: Float32Array };
-            const frames = block.samples.length / 2; // interleaved stereo, channels identical
-            for (let n = 0; n < frames; n++, absolute++) {
-              const expected = 0.25 * Math.sin((2 * Math.PI * 440 * absolute) / RATE);
-              if (Math.abs(block.samples[n * 2] - expected) > 1e-5) {
-                clearTimeout(timer);
-                reject(new Error(`sample mismatch at absolute frame ${absolute}`));
-                source.stop();
-                return;
-              }
-            }
-          });
-          source.on("close", () => {
-            clearTimeout(timer);
-            if (!format) reject(new Error("no format frame"));
-            else resolve({ format, verified: absolute });
-          });
-          source.start();
-        },
-      );
+            reject(new Error(`sample mismatch at absolute frame ${absolute}`));
+            source.stop();
+            return;
+          }
+        }
+      });
+      source.on("close", () => {
+        clearTimeout(timer);
+        if (!format) reject(new Error("no format frame"));
+        else resolve({ format, verified: absolute });
+      });
+      source.start();
+    });
 
-      expect(verdict.format).toMatchObject({ rate: RATE, channels: 2, plugin: "org.kyx.test.clap-tone" });
-      expect(verdict.verified).toBe(RATE); // exactly one second, every frame verified
-    },
-    30_000,
-  );
+    expect(verdict.format).toMatchObject({ rate: RATE, channels: 2, plugin: "org.kyx.test.clap-tone" });
+    expect(verdict.verified).toBe(RATE); // exactly one second, every frame verified
+  }, 30_000);
 });
