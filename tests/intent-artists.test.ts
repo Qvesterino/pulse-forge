@@ -1699,8 +1699,10 @@ describe("jersey/baltimore/UKG producers + hyperpop-sigilkore underworld (crate-
     expect(bmore.input.bpmRange).toEqual([125, 135]);
     expect(parseIntentText("dj k-swift type beat").input.genre).toBe("jersey");
     expect(parseIntentText("scottie b type beat").input.genre).toBe("jersey");
-    expect(parseIntentText("kw griff type beat").input.style).toBe("bounce");
-    expect(parseIntentText("rod lee type beat").input.style).toBe("bounce");
+    // lineage lanes upgraded onto the dedicated "Think"-break stomp groove
+    // (was jersey.bounce before that groove existed)
+    expect(parseIntentText("kw griff type beat").input.style).toBe("baltimore");
+    expect(parseIntentText("rod lee type beat").input.style).toBe("baltimore");
     expect(parseIntentText("blaqstarr type beat").input.mood).toBe("aggressive");
   });
 

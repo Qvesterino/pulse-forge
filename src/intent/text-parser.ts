@@ -144,6 +144,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bdeep\b/, "house"],
   [/\bgarage\b|\bukg\b|\buk garage\b/, "house"],
   [/\bjersey\b/, "jersey"], // first-class since the sound-quality pass (own grooves + kit)
+  // Baltimore club — the parent sound, before the bare jersey entry would
+  // never catch it ("bmore" has no other anchor).
+  [/\bbaltimore(?: club)?\b|\bbmore(?: club)?\b/, "jersey"],
   [/\bafro\b|\bafrobeats?\b|\bafropop\b/, "house"],
   [/\breggaeton\b|\bdembow\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "house"],
   [/\btechno\b/, "techno"],
