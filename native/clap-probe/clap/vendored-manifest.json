@@ -1,0 +1,281 @@
+{
+  "source": "https://github.com/free-audio/clap",
+  "tag": "1.2.10",
+  "license": "MIT",
+  "vendoredAt": "2026-09-27T00:22:58.970Z",
+  "fileCount": 68,
+  "files": [
+    {
+      "path": "all.h",
+      "sha256": "0f2b5d5ec3007443fa35dd6e9b22f44986d5bb011ebb73849cd87776e5f8b22a"
+    },
+    {
+      "path": "audio-buffer.h",
+      "sha256": "efe1d90ba87499fc8f930d9c9c86157e023bede2c6ade01a20de6d2dfef3828e"
+    },
+    {
+      "path": "clap.h",
+      "sha256": "a92456f80610d3be34e0c037b448619cd10e18291d7ea82c9b4c0900c39b669c"
+    },
+    {
+      "path": "color.h",
+      "sha256": "acc184298ff9987e90c214e7998110b4bdb4b7d8e56d6a7a6f5ef0832713f6ca"
+    },
+    {
+      "path": "entry.h",
+      "sha256": "ef6b40a61a5aaf3bf3c1473da43aba65d247c7cc1c4dd580d076b258d784a604"
+    },
+    {
+      "path": "events.h",
+      "sha256": "681c975f9b4fc1efd54988911d5520a18c29b79133993c54e3abb1b8fc488b9c"
+    },
+    {
+      "path": "ext/ambisonic.h",
+      "sha256": "eabed521abc0677c750937c729c904e302576e7b3890e64a4b27831ea6be7b65"
+    },
+    {
+      "path": "ext/audio-ports-activation.h",
+      "sha256": "44ccd8668bfb2badd6c9538dc7135ccdb69d000c0a1990bc580808b95567a8c2"
+    },
+    {
+      "path": "ext/audio-ports-config.h",
+      "sha256": "4fea079dd1ac5e2638a697bf045af54a407190078914956dc1aec24796853c83"
+    },
+    {
+      "path": "ext/audio-ports.h",
+      "sha256": "560d41cd2985772f1ef0c7720537ebd2b9b1298fa8e82bc8d0665b154cd6405a"
+    },
+    {
+      "path": "ext/configurable-audio-ports.h",
+      "sha256": "32fd49778f25988bcd11c78cadd31cab032bb4ddcf0b6dd10c85129ef3cbda12"
+    },
+    {
+      "path": "ext/context-menu.h",
+      "sha256": "9e235a77132a2eb3121a94d97b7fbc5924d52be6f1f67505d358764b32112223"
+    },
+    {
+      "path": "ext/draft/background-activation.h",
+      "sha256": "3a02cf4c9521ecf356e25848b721d76c456b953515fdbbe16300658e5f6ae493"
+    },
+    {
+      "path": "ext/draft/background-progress.h",
+      "sha256": "f9dd0f528461dedf48aaae34686e9b91264920e38b0c5cb3ec8ed87d4c8e5b1b"
+    },
+    {
+      "path": "ext/draft/background-state-context.h",
+      "sha256": "1765d5cd5f7586e640fef198fdb808094c9d8fed8a7e3eed07a5eb5aff611fe1"
+    },
+    {
+      "path": "ext/draft/extensible-audio-ports.h",
+      "sha256": "dcce635ec4c8202f82058f3682a6c8bfe78a7545092d3be88b247196eaeed918"
+    },
+    {
+      "path": "ext/draft/flush-events.h",
+      "sha256": "aab8a0cbde25dcd57143327e6c3675c7eaedd00cafe8b0c0eb48e2b7d5ac4944"
+    },
+    {
+      "path": "ext/draft/gain-adjustment-metering.h",
+      "sha256": "ea4177b7363bbf2ae87c7b30d8cb8aa14aa0febbfae6ddbaeec6ed42bc08ad51"
+    },
+    {
+      "path": "ext/draft/mini-curve-display.h",
+      "sha256": "e93371a0fdfa10eff539fe0efde1567ee3a8d5c0468e67f6269777d3ab5cdda6"
+    },
+    {
+      "path": "ext/draft/octave-number.h",
+      "sha256": "612ee7516034dd25338a983b5ef3d55ebc18ee9043dc1693442cf12fad71e292"
+    },
+    {
+      "path": "ext/draft/param-hovered.h",
+      "sha256": "8eb4849cdbc9498d856d6c5da3232026e7ca28edac4b42ead24bfe5d46821b3d"
+    },
+    {
+      "path": "ext/draft/params-origin.h",
+      "sha256": "828be0657d52f6ec6264dd45f1d2fdfee62479c63c70809d0276827d676af34f"
+    },
+    {
+      "path": "ext/draft/project-location.h",
+      "sha256": "5f09ac2806fad93fbd40273d777f066ec2a4d2384e27b9d1ac4dd9e33396e3b1"
+    },
+    {
+      "path": "ext/draft/resource-directory.h",
+      "sha256": "7276929113825a3b23d97ddbd03ad2ba1e41d4332ccd97d9478e543652661150"
+    },
+    {
+      "path": "ext/draft/scratch-memory.h",
+      "sha256": "186f42db66fd4107fe4b84e25d0e37066efcf90aaa7eb099a8303305dd5867d1"
+    },
+    {
+      "path": "ext/draft/transport-control.h",
+      "sha256": "0e9861258818b51b37e576de6398601e567942a2e368e0c3b033f231dd50577d"
+    },
+    {
+      "path": "ext/draft/triggers.h",
+      "sha256": "5576da586a679c0b72eb87665b832d64f5d17940d347300c85edaaccab4c4dd1"
+    },
+    {
+      "path": "ext/draft/tuning.h",
+      "sha256": "7a7979f8abcd7875a6708189d35bb337253b42d350a52bc56c4a0cde285f2b9b"
+    },
+    {
+      "path": "ext/draft/undo.h",
+      "sha256": "6d88258bdbd1c42008b4c606490c24cf437db36db754ee0804f9ace1c1712308"
+    },
+    {
+      "path": "ext/draft/webview.h",
+      "sha256": "c7d0a1d4ef8869b993d93512365b4fdf39a2b28451c8f0812f89d1ce4f26acb2"
+    },
+    {
+      "path": "ext/event-registry.h",
+      "sha256": "a673ac102f7af52a18886aa53f218d0fbe8381de745679efa6676eb55c81a9b6"
+    },
+    {
+      "path": "ext/gui.h",
+      "sha256": "489c27e5147e3faa19046a86b50fc439ee1d08f45dcd803637f1c30c62dfbc1e"
+    },
+    {
+      "path": "ext/latency.h",
+      "sha256": "a6ab271c2287817bb5f35a010876c3344357da7d9c380e31ce627949f90e9746"
+    },
+    {
+      "path": "ext/log.h",
+      "sha256": "4c7a28368df3412a1b44b42188f7b4b25920c52a08fd4b525799a7e76f72263c"
+    },
+    {
+      "path": "ext/note-name.h",
+      "sha256": "fac02f93927b0e37d0d662d35233b9293a1aced5854d445c37cd11b1985d26d0"
+    },
+    {
+      "path": "ext/note-ports.h",
+      "sha256": "0bc144d3b41d0495a2f007abba80bcdf31ad0d76b144245d4344386132463fcf"
+    },
+    {
+      "path": "ext/param-indication.h",
+      "sha256": "b60023659350452c61f24017adba5507c9b182f63088ef28862ba0be224cc5a5"
+    },
+    {
+      "path": "ext/params.h",
+      "sha256": "aeeb42ac04847f4664ffdea4dea88e637ff6ce1f687d70a44b9f254582a0d29e"
+    },
+    {
+      "path": "ext/posix-fd-support.h",
+      "sha256": "713bff1fc10ad29b13c43dd800d92bf9f6aa3e5ee699498a722bd9a5332f42a6"
+    },
+    {
+      "path": "ext/preset-load.h",
+      "sha256": "687437dd7eddd9294f625064beb16eb7fb06efab5bc6d26f6e1d262e0f7f106a"
+    },
+    {
+      "path": "ext/remote-controls.h",
+      "sha256": "704cd78099ca5f773d0a35081881a5fbfc07ece820f6406eb47fe74c1264e8f1"
+    },
+    {
+      "path": "ext/render.h",
+      "sha256": "04d36c03bdcc63fd79edb023e9afe3dd02e3e6d9360dd43bc24f33c9c7bb62ba"
+    },
+    {
+      "path": "ext/state-context.h",
+      "sha256": "de392a8a7a7616c3e1016e2854578419c0ef6a0f3501a6536225185cb0a566f6"
+    },
+    {
+      "path": "ext/state.h",
+      "sha256": "616450227a2e4fa7de0a0c7f8d2e6ef7f7f6ab4f346aca06ad927a391a9b0001"
+    },
+    {
+      "path": "ext/surround.h",
+      "sha256": "5dc476e2a3eac9224b01e918840d091f829c3fa70144d4c40ca7ce5e24860739"
+    },
+    {
+      "path": "ext/tail.h",
+      "sha256": "5cd612fc32a292e0e5f0868cb34a1ca4f3a68336ec1d4b47c8b33190236cff06"
+    },
+    {
+      "path": "ext/thread-check.h",
+      "sha256": "0b14e4ff86e4ab10ba46a4b3f644cfcacacede2122b5b4dc1a91b6e3855891d1"
+    },
+    {
+      "path": "ext/thread-pool.h",
+      "sha256": "670f90d6a0da76fece9b3e0c1bbb8e1b03325da53f9a3fc1e5116afc414b89d5"
+    },
+    {
+      "path": "ext/timer-support.h",
+      "sha256": "f3a3cbf10495be51706efb81305e8b319860d2bcdca1fae0d8e42dc14320a26c"
+    },
+    {
+      "path": "ext/track-info.h",
+      "sha256": "5ff9f735240b0d7ada1479b36daa961ded9cc892de56600039034053289f84d4"
+    },
+    {
+      "path": "ext/voice-info.h",
+      "sha256": "b7c1f6fe01007f582bdc360f66e44e64dbf1c7b90737f63abf08f50a27d92617"
+    },
+    {
+      "path": "factory/draft/plugin-invalidation.h",
+      "sha256": "aa6c6275a1cc5c4f66ae0c476c046e7397225fd1bcd2623e3f136e44184ee64c"
+    },
+    {
+      "path": "factory/draft/plugin-state-converter.h",
+      "sha256": "88cb6215d4e79f9ad0f1dc9a430ddd0ae8489280e5bfad17430720d934d36633"
+    },
+    {
+      "path": "factory/plugin-factory.h",
+      "sha256": "10024390809a13ed3f758ddd10ae1beded43dbee3ce1acc090ffa73730a98301"
+    },
+    {
+      "path": "factory/preset-discovery.h",
+      "sha256": "50fa2ade36f2ec1f0a19ded5708226114295bc96de45c2342a579cb6b4b9ab27"
+    },
+    {
+      "path": "fixedpoint.h",
+      "sha256": "58f50936f9539e39b1cf01dfe70f9e95f179c9d730fa6686fbb490b6a7769e8a"
+    },
+    {
+      "path": "host.h",
+      "sha256": "2cfb8845f53f6f04cc69b7714afad7fd2c3b92728f268cbad9ebc2d7d055db7c"
+    },
+    {
+      "path": "id.h",
+      "sha256": "7c8cdeea37bdcc4df1be83473fd42712e1b005c45cb64d5b1fde2f892a182ea4"
+    },
+    {
+      "path": "plugin-features.h",
+      "sha256": "99aff972b7d887ba1bb7370e776373f8500f5b5b9f8f698e60374fd4ce01cc23"
+    },
+    {
+      "path": "plugin.h",
+      "sha256": "d2a178137349749eb1dd9c1d6a437300309044626dcc14b0f6e31995f1c5f25b"
+    },
+    {
+      "path": "private/macros.h",
+      "sha256": "861b57a204da34542413c021110dc4740f3dd27bc7a1f6ba3619092c7fd90b17"
+    },
+    {
+      "path": "private/std.h",
+      "sha256": "6e489536d32a059a7f27ccf3c2833e3e09f16336c1aa77d9101c714e70053011"
+    },
+    {
+      "path": "process.h",
+      "sha256": "93132a2dc8c3ce7073c652ae0c9fa386bebb5ce23408a95a77842d2d85bae0a2"
+    },
+    {
+      "path": "stream.h",
+      "sha256": "bec9b7c95007ec729a668697d9e0637d0cea57eb767504de5744dbce6741957f"
+    },
+    {
+      "path": "string-sizes.h",
+      "sha256": "e8ebc287f05c3f068788f27b2db4bfd5727b252e8cc806064cb3dce7eb608b27"
+    },
+    {
+      "path": "timestamp.h",
+      "sha256": "848e362e19c388dd088c0b2de682be08be628082079a77b2652722296c060acc"
+    },
+    {
+      "path": "universal-plugin-id.h",
+      "sha256": "f25fd6e0479d9f0e0ec54a8e573bbba380d89db18322e51f0de91382624f45ad"
+    },
+    {
+      "path": "version.h",
+      "sha256": "fb9f4863d4e636d07cfb16d661a3f54794347e5cb6952f3d402227ad306eb0a0"
+    }
+  ]
+}

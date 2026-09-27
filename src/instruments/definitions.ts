@@ -645,6 +645,25 @@ export const reeseParams: ParamDef[] = [
 ];
 
 /**
+ * CLAVINET (kind #22) — the funk stab machine. Tangent-struck string picked
+ * up magnetically: bright PULSE through a per-key pickup bandpass (PICK
+ * moves the pickup point = tone), DAMP shortens the sustain (the felt strip),
+ * CLICK is the tangent thunk. Velocity → brightness (harder hit = brighter
+ * pickup). The G-funk/funk-stab answer to STRINGS.
+ */
+export const clavParams: ParamDef[] = [
+  { id: "pick", label: "PICK", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "damp", label: "DAMP", min: 0.05, max: 2, default: 0.55, unit: "s", format: formatSec },
+  { id: "click", label: "CLICK", min: 0, max: 1, default: 0.4, format: formatPct },
+  { id: "growl", label: "GROWL", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "cutoff", label: "CUTOFF", min: 500, max: 14000, default: 5200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "resonance", label: "RESO", min: 0.1, max: 6, default: 1.1, format: (v) => v.toFixed(1) },
+  { id: "release", label: "RELEASE", min: 0.02, max: 1.5, default: 0.12, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+];
+
+
+/**
  * ACID 303 (kind #20) — the squelch. Monophonic saw/square through a
  * high-resonance SVF whose CUTOFF is swept by a fast ENVMOD envelope;
  * ACCENT boosts cutoff+level on hard steps (velocity-driven), GLIDE is
@@ -811,6 +830,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   strings: { kind: "strings", name: "Strings", params: stringsParams },
   bell: { kind: "bell", name: "Bell", params: bellParams },
   reese: { kind: "reese", name: "Reese", params: reeseParams },
+  clav: { kind: "clav", name: "Clavinet", params: clavParams },
   acid: { kind: "acid", name: "Acid 303", params: acidParams },
   brass: { kind: "brass", name: "Synth Brass", params: brassParams },
   pluck: { kind: "pluck", name: "Pluck Synth", params: pluckParams },

@@ -5034,9 +5034,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // Baltimore club — the parent genre (slower, breakbeat + "Think" chops).
   {
     names: ["baltimore club", "dj k-swift", "k-swift", "scottie b", "debonair samir"],
-    // Scottie B / K-Swift / Debonair Samir — the Unruly Records school.
+    // Scottie B / K-Swift / Debonair Samir — the Unruly Records school, on
+    // the dedicated "Think"-break stomp groove (not the jersey triple-kick).
     genre: "jersey",
-    style: "club",
+    style: "baltimore",
     mood: "energetic",
     energy: 0.75,
     density: 0.6,
@@ -5047,7 +5048,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["kw griff", "dj technics", "miss tonya", "rod lee"],
     // The deeper Baltimore lineage (Rod Lee / Technics / KW Griff).
     genre: "jersey",
-    style: "bounce",
+    style: "baltimore",
     mood: "energetic",
     energy: 0.75,
     density: 0.6,

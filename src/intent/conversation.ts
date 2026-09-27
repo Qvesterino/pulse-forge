@@ -23,6 +23,7 @@ import { parsePercent } from "./percent";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import type { ProductionIntent, ProductionTarget } from "./production";
+import type { DeclinedIntentClarification } from "./mix";
 
 // ── FADER ("zníž basu", "hlasnejšie bicie", "turn down the drums") ──────────
 
@@ -107,6 +108,61 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   // Explicit numbers beat vibe words ("o 10 %" wins over "trochu").
   const percent = parsePercent(text);
   return { targets, pads, direction: down ? "down" : "up", amount, ...(percent != null ? { percent } : {}) };
+}
+
+// ── CLARIFICATION: nearest interpretation for DECLINED fader asks ───────────
+
+const CLAUSE_SPLIT = /\s+(?:a|alebo|and|but|potom)\s+|,\s*|\s*;\s*/;
+
+/**
+ * Probe for fader asks the parser had to decline. Two shapes:
+ * 1. CONFLICTING directions ("zníž basu a zvýš lead") — the nearest
+ *    interpretations are the clauses themselves; each parseable clause is
+ *    offered as its own executable ask.
+ * 2. DIRECTION without a target ("zníž", "hlasnejšie", "turn down") — ask
+ *    which fader, offering every family in the parsed direction (SK or EN,
+ *    following the text's own language).
+ * Null when the text is not a declined fader ask (the caller then falls
+ * through to the next route).
+ */
+export function declinedFaderClarification(text: string): DeclinedIntentClarification | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  const down = FADER_DOWN.test(lower);
+  const up = FADER_UP.test(lower);
+  if (!down && !up) return null;
+
+  if (down && FADER_UP_DIRECTIONAL.test(lower)) {
+    const suggestions = text
+      .split(CLAUSE_SPLIT)
+      .map((clause) => clause.trim())
+      .filter((clause) => clause.length > 0 && parseFaderIntent(clause) !== null);
+    if (suggestions.length > 0) {
+      return { reason: "konflikt smerov v jednej vete — rozdel to na kroky:", suggestions };
+    }
+    return null;
+  }
+
+  const hasTarget =
+    FADER_TARGETS.some(([pattern]) => pattern.test(lower)) || FADER_PADS.some(([pattern]) => pattern.test(lower));
+  if (hasTarget) return null;
+  const en = /\b(turn|raise|lower|push|bring|dial|louder|quieter)\b/.test(lower);
+  const suggestions = en
+    ? down
+      ? [
+          "turn down the drums",
+          "turn down the bass",
+          "turn down the chords",
+          "turn down the lead",
+          "turn down the master",
+        ]
+      : ["raise the drums", "raise the bass", "raise the chords", "raise the lead", "raise the master"]
+    : down
+      ? ["zníž basu", "zníž bicie", "zníž lead", "stíš master"]
+      : ["zvýš basu", "hlasnejšie bicie", "zvýš lead", "zvýš master"];
+  return { reason: en ? "which fader?" : "ktorý fader?", suggestions };
 }
 
 // ── TEMPO ("zníž tempo", "pomalší", "zrýchli to", "na 128") ──────────────────

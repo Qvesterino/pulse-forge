@@ -82,6 +82,16 @@ describe("semantic corpus (T1 krok 2)", () => {
     expect(dub.patch.style).toBe("dub");
   });
 
+  it("ambient depth vocabulary present (drone / new age / score / post-rock)", () => {
+    const corpus = buildSemanticCorpus();
+    for (const text of ["drone dark ambient", "new age healing", "kankyo ongaku", "film score", "post-rock", "electroacoustic"]) {
+      expect(corpus.some((entry) => entry.text.includes(text)), text).toBe(true);
+    }
+    const drone = corpus.find((entry) => entry.text.includes("dark drone isolationist"))!;
+    expect(drone.patch.genre).toBe("ambient");
+    expect(drone.patch.style).toBe("drifting");
+  });
+
   it("patches only use canonical vocabulary", () => {
     for (const entry of buildSemanticCorpus()) {
       if (entry.patch.genre) expect(GENRES).toContain(entry.patch.genre);

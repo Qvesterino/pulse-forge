@@ -12,7 +12,7 @@ import { MUSICAL_KEYS } from "../project-model/types";
  * caller can fall through to production/generation intents.
  */
 
-export type ExactTarget = "drums" | "bass" | "lead" | "chords" | "mix";
+export type ExactTarget = "drums" | "bass" | "lead" | "chords" | "mix" | "kick" | "snare" | "hats";
 
 export type ExactOp =
   | { kind: "tempo"; bpm: number }
@@ -37,7 +37,26 @@ const TARGET_RES: [RegExp, ExactTarget][] = [
   [/\b(?:the )?mix\b|\bmaster\b|\bv\u0161etko\b/i, "mix"],
 ];
 
-function firstTarget(lower: string): ExactTarget | null {
+/**
+ * PAD families ("mute the kick", "pan the hats right") resolve per-PAD ops on
+ * the drum track — the applier already owns per-pad mute/solo/pan via
+ * classifyPads. They are checked BEFORE the track targets (a named family is
+ * more specific than the whole drum track) and are deliberately NOT offered
+ * to gainDb/transpose: the applier has no per-pad gain/transpose op, so a
+ * family named there would silently widen to the entire drum track.
+ */
+const PAD_TARGET_RES: [RegExp, ExactTarget][] = [
+  [/\bkick\w*|\bkop\u00e1k/i, "kick"],
+  [/\bsnares?\b|\bclaps?\b|\b\u017een\u00edr/i, "snare"],
+  [/\bhi-?hats?\b|\bhats?\b|\b\u010dinel\w*/i, "hats"],
+];
+
+function firstTarget(lower: string, allowPads = false): ExactTarget | null {
+  if (allowPads) {
+    for (const [re, target] of PAD_TARGET_RES) {
+      if (re.test(lower)) return target;
+    }
+  }
   for (const [re, target] of TARGET_RES) {
     if (re.test(lower)) return target;
   }
@@ -105,27 +124,28 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   }
 
   // Mute / unmute / solo — target required, otherwise skip (too ambiguous).
-  const muteMatch = /\b(mute|st\u00eds)\s+(?:the\s+)?([a-z]+)\b/.exec(lower);
-  const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z]+)\b/.exec(lower);
-  const soloMatch = /\b(solo)\s+(?:the\s+)?([a-z]+)\b/.exec(lower);
+  // The capture allows hyphens so "hi-hats" resolves as the hats family.
+  const muteMatch = /\b(mute|st\u00eds)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const soloMatch = /\b(solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   if (unmuteMatch) {
-    const target = firstTarget(unmuteMatch[2]);
+    const target = firstTarget(unmuteMatch[2], true);
     if (target) ops.push({ kind: "mute", target, value: false });
   } else if (muteMatch) {
-    const target = firstTarget(muteMatch[2]);
+    const target = firstTarget(muteMatch[2], true);
     if (target) ops.push({ kind: "mute", target, value: true });
   }
   if (soloMatch) {
-    const target = firstTarget(soloMatch[1] + " " + soloMatch[2]);
+    const target = firstTarget(soloMatch[1] + " " + soloMatch[2], true);
     if (target) ops.push({ kind: "solo", target, value: true });
   }
 
-  // Pan: "pan the hats 20% right", "pan bass left 30"
+  // Pan: "pan the hats 20% right", "pan bass left 30" — pad families allowed.
   const pan =
-    /pan\s+(?:the\s+)?([a-z]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo)?/.exec(lower) ??
-    /pan\s+(?:the\s+)?([a-z]+)\s*(left|right)\s*(\d{1,3})?/.exec(lower);
+    /pan\s+(?:the\s+)?([a-z-]+)\s*(?:to\s*)?(\d{1,3})\s*%?\s*(left|right|lavo|pravo)?/.exec(lower) ??
+    /pan\s+(?:the\s+)?([a-z-]+)\s*(left|right)\s*(\d{1,3})?/.exec(lower);
   if (pan) {
-    const target = firstTarget(pan[1]);
+    const target = firstTarget(pan[1], true);
     // The second alternative ("pan bass left 30") captures the DIRECTION in
     // [2] and the optional number in [3]; the first captures the number in
     // [2]. Reading [2] as a number unconditionally made Number("left") = NaN

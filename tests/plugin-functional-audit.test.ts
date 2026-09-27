@@ -1,10 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import {
-  EFFECT_META,
-  clampEffectParam,
-  defaultParamsOf,
-  normalizePluginParams,
-} from "../src/effects/definitions";
+import { EFFECT_META, clampEffectParam, defaultParamsOf, normalizePluginParams } from "../src/effects/definitions";
 import {
   EFFECT_DEFS,
   EFFECT_ORDER,
@@ -280,8 +275,7 @@ describe("C. worklet descriptors cover the declared ranges", () => {
       for (const def of EFFECT_META[effect].params) {
         const desc = byId.get(def.id);
         if (!desc) continue; // param not exposed as an AudioParam (message-driven is fine)
-        const toDesc = (v: number) =>
-          LINEAR_GAIN_DESC.has(`${effect}.${def.id}`) ? Math.pow(10, v / 20) : v;
+        const toDesc = (v: number) => (LINEAR_GAIN_DESC.has(`${effect}.${def.id}`) ? Math.pow(10, v / 20) : v);
         expect(
           toDesc(def.min),
           `${effect}.${def.id}: descriptor min covers def (${desc.minValue} ≤ ${toDesc(def.min)})`,
@@ -421,15 +415,14 @@ describe("E. serialization round-trip", () => {
       const edited = store.getDoc();
       const roundTripped = normalizeProject(JSON.parse(JSON.stringify(edited)));
       const owner = roundTripped.tracks.find((t) => t.id === trackId) as
-        | { effects: { id: string; bypassed: boolean; params: Record<string, number> }[] }
-        | undefined;
+        { effects: { id: string; bypassed: boolean; params: Record<string, number> }[] } | undefined;
       expect(owner).toBeDefined();
       const fx = owner!.effects.find((f) => f.id === fxId);
       expect(fx, `${type}: effect survives round-trip`).toBeDefined();
       expect(fx!.bypassed, `${type}: bypassed flag survives`).toBe(true);
       for (const p of EFFECT_META[type].params) {
         const before = edited.tracks.find((t) => t.id === trackId) as unknown as {
-          effects: { params: Record<string, number> }[];
+          effects: { id: string; params: Record<string, number> }[];
         };
         const sent = before.effects.find((f) => f.id === fxId)!.params[p.id];
         expect(fx!.params[p.id], `${type}.${p.id}: survives round-trip`).toBeCloseTo(sent, 6);
@@ -440,7 +433,6 @@ describe("E. serialization round-trip", () => {
   it("step-envelope state (stepGate/beatMangler) survives the round-trip sanitized", () => {
     for (const type of ["stepGate", "beatMangler"] as EffectType[]) {
       const { doc, trackId, fxId } = docWithEffect(type);
-      const store = new ProjectStore(doc);
       // Corrupt the step arrays the way an old/hostile document would.
       const poison = (steps: unknown) => steps;
       const dirty = normalizeProject({
@@ -458,7 +450,7 @@ describe("E. serialization round-trip", () => {
                       : { ...fx, volumeSteps: poison([2, -3, Number.NaN, 0.4]), pitchSteps: poison([99, "x", -1]) },
                 ),
               },
-        ),
+        ) as ProjectDocument["tracks"],
       });
       const fx = (
         dirty.tracks.find((t) => t.id === trackId) as unknown as {
@@ -485,14 +477,14 @@ describe("F. automation targets cover every parameter", () => {
       for (const p of EFFECT_META[type].params) {
         const target = { kind: "fxParam" as const, trackId, fxId, paramId: p.id };
         expect(isAutomationTargetValid(doc, target), `${type}.${p.id}: valid target`).toBe(true);
-        expect(clampTargetValue(doc, target, p.min - 100)).toBe(
-          clampEffectParam(type, p.id, p.min - 100),
+        expect(
+          clampTargetValue(doc, target, p.min - 100),
           `${type}.${p.id}: lane clamp mirrors param clamp`,
-        );
-        expect(clampTargetValue(doc, target, p.max + 100)).toBe(
-          clampEffectParam(type, p.id, p.max + 100),
+        ).toBe(clampEffectParam(type, p.id, p.min - 100));
+        expect(
+          clampTargetValue(doc, target, p.max + 100),
           `${type}.${p.id}: lane clamp mirrors param clamp`,
-        );
+        ).toBe(clampEffectParam(type, p.id, p.max + 100));
         expect(clampTargetValue(doc, target, Number.NaN), `${type}.${p.id}: NaN lane → default`).toBe(p.default);
       }
     });
@@ -529,7 +521,7 @@ describe("G. factory preset surface", () => {
       const defById = new Map(defs.map((p) => [p.id, p]));
       for (const [id, value] of Object.entries(preset.params)) {
         const def = defById.get(id);
-        expect(def, `${preset.name} (${preset.fx}): param ${id} exists`).toBeDefined();
+        expect(def, `${preset.name} (${preset.type}): param ${id} exists`).toBeDefined();
         if (!def) continue;
         expect(Number.isFinite(value), `${preset.name}: ${id} finite`).toBe(true);
         expect(

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  analyzeArtifacts,
-  energyCurveCorrelation,
-  evaluateArtifacts,
-} from "../src/audio-engine/artifactGate";
+import { analyzeArtifacts, logEnvelopeCorrelation, evaluateArtifacts } from "../src/audio-engine/artifactGate";
 
 /**
  * Artifact gate — the numerical defect check that locks the de-click and
@@ -20,13 +16,13 @@ import {
 const SR = 44100;
 
 /** A clean band-limited one-shot: sine burst with a real tail fade. */
-function cleanOneShot(freq = 220, seconds = 0.3, fadeSeconds = 0.02): Float32Array {
+function oneShot(freq = 220, seconds = 0.3, fadeSeconds = 0.02, amp = 0.8): Float32Array {
   const n = Math.floor(seconds * SR);
   const out = new Float32Array(n);
   const fadeStart = n - Math.floor(fadeSeconds * SR);
   for (let i = 0; i < n; i++) {
     const fade = i >= fadeStart ? 1 - (i - fadeStart) / (n - fadeStart) : 1;
-    out[i] = Math.sin((2 * Math.PI * freq * i) / SR) * 0.8 * fade;
+    out[i] = Math.sin((2 * Math.PI * freq * i) / SR) * amp * fade;
   }
   return out;
 }
@@ -42,14 +38,29 @@ function hardCutOneShot(freq = 220, seconds = 0.3): Float32Array {
   return out;
 }
 
+/** The factory RR derivation: linear resample + gain (micr o-variation). */
+function resample(src: Float32Array, rate: number, gain: number): Float32Array {
+  const length = Math.max(1, Math.round(src.length / rate));
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const pos = i * rate;
+    const i0 = Math.floor(pos);
+    const frac = pos - i0;
+    const a = src[i0] ?? 0;
+    const b = i0 + 1 < src.length ? src[i0 + 1] : a;
+    out[i] = (a + (b - a) * frac) * gain;
+  }
+  return out;
+}
+
 describe("artifact gate — clean signals pass", () => {
   it("a clean faded one-shot has a clean tail and no clicks", () => {
-    const report = analyzeArtifacts([cleanOneShot()]);
+    const report = analyzeArtifacts([oneShot()]);
     expect(report.finite).toBe(true);
     expect(report.peak).toBeGreaterThan(0.7);
     expect(report.tailStepRatio).toBeLessThan(0.05);
     expect(report.clickIndices).toEqual([]);
-    expect(evaluateArtifacts(report).ok).toBe(true);
+    expect(evaluateArtifacts(report).failures).toEqual([]);
   });
 
   it("does not treat the intentional attack as a click (kick-like onset)", () => {
@@ -67,16 +78,23 @@ describe("artifact gate — clean signals pass", () => {
   });
 
   it("does not flag a smooth short fade (the de-click tail itself)", () => {
-    const report = analyzeArtifacts([cleanOneShot(220, 0.1, 0.002)]);
+    const report = analyzeArtifacts([oneShot(220, 0.1, 0.002)]);
     expect(report.clickIndices).toEqual([]);
     expect(evaluateArtifacts(report).ok).toBe(true);
+  });
+
+  it("does not flag a clean AC signal with a partial final cycle", () => {
+    // Regression: the first implementation used a mean for DC, which is never
+    // zero for a non-period-aligned signal — every clean render failed.
+    const report = analyzeArtifacts([oneShot(220, 0.3007, 0.005)]);
+    expect(evaluateArtifacts(report).failures).toEqual([]);
   });
 });
 
 describe("artifact gate — each defect class is caught", () => {
   it("catches a hard tail cut that the de-click tail prevents", () => {
     const cut = analyzeArtifacts([hardCutOneShot()]);
-    const clean = analyzeArtifacts([cleanOneShot()]);
+    const clean = analyzeArtifacts([oneShot()]);
     expect(clean.tailStepRatio).toBeLessThan(0.05);
     expect(cut.tailStepRatio).toBeGreaterThan(0.05);
     const verdict = evaluateArtifacts(cut);
@@ -85,7 +103,7 @@ describe("artifact gate — each defect class is caught", () => {
   });
 
   it("catches an isolated discontinuity mid-decay (a slice cut mid-body)", () => {
-    const signal = cleanOneShot(220, 0.4, 0.02);
+    const signal = oneShot(220, 0.4, 0.02);
     // Splice a hard step at 60 % of the duration: the waveform jumps by 0.4
     // and continues — a click, not a fade.
     const at = Math.floor(0.24 * SR);
@@ -97,7 +115,7 @@ describe("artifact gate — each defect class is caught", () => {
   });
 
   it("catches non-finite samples", () => {
-    const signal = cleanOneShot();
+    const signal = oneShot();
     signal[100] = Number.NaN;
     const report = analyzeArtifacts([signal]);
     expect(report.finite).toBe(false);
@@ -109,19 +127,33 @@ describe("artifact gate — each defect class is caught", () => {
     expect(evaluateArtifacts(report).failures).toContain("silent render");
   });
 
-  it("catches DC offset (asymmetric saturation leak)", () => {
-    const signal = cleanOneShot();
-    for (let i = 0; i < signal.length; i++) signal[i] += 0.05;
-    const report = analyzeArtifacts([signal]);
-    expect(report.dcOffsetDb).toBeGreaterThan(-60);
-    expect(evaluateArtifacts(report).failures.join(" ")).toMatch(/DC offset/);
+  it("catches DC offset on sustained material (opt-in, like the browser gate)", () => {
+    const n = SR;
+    const sustained = new Float32Array(n);
+    // Include a real tail fade — an abrupt end is correctly a cut, and this
+    // test is about DC, not the tail.
+    const fadeStart = n - Math.floor(0.05 * SR);
+    for (let i = 0; i < n; i++) {
+      const fade = i >= fadeStart ? 1 - (i - fadeStart) / (n - fadeStart) : 1;
+      sustained[i] = Math.sin((2 * Math.PI * 220 * i) / SR) * 0.5 * fade;
+    }
+    // A clean sustained tone has no sub-audio content.
+    expect(evaluateArtifacts(analyzeArtifacts([sustained]), { dcCeilingDb: -40 }).failures).toEqual([]);
+
+    const leaked = Float32Array.from(sustained, (v) => v + 0.05);
+    const dirty = analyzeArtifacts([leaked]);
+    expect(dirty.dcOffsetDb).toBeGreaterThan(-40);
+    expect(evaluateArtifacts(dirty, { dcCeilingDb: -40 }).failures.join(" ")).toMatch(/DC offset/);
+    // DC is not part of the default failure set — a one-shot cannot measure it.
+    const defaultFailures = evaluateArtifacts(dirty).failures.join(" ");
+    expect(defaultFailures).not.toMatch(/DC offset/);
   });
 
-  it("does not flag a clean AC signal with a partial final cycle", () => {
-    // Regression: the first implementation used a GLOBAL mean, which is never
-    // zero for a non-period-aligned signal — every clean render failed.
-    const report = analyzeArtifacts([cleanOneShot(220, 0.3007, 0.005)]);
-    expect(report.dcOffsetDb).toBeLessThan(-60);
+  it("does not enforce DC on a short one-shot (few cycles is not an offset)", () => {
+    // Regression: mean-based implementations read a clean 180 Hz hit as ~-30
+    // dB of "DC" and failed every percussive render.
+    const report = analyzeArtifacts([oneShot(180, 0.03, 0.005)]);
+    expect(evaluateArtifacts(report).failures).toEqual([]);
   });
 
   it("catches inter-sample peaks above the ceiling", () => {
@@ -142,46 +174,44 @@ describe("artifact gate — each defect class is caught", () => {
   });
 });
 
-describe("artifact gate — round-robin / velocity claims", () => {
-  it("distinguishes a repeated identical hit from a variant", () => {
-    const hit = cleanOneShot(180, 0.15, 0.01);
-    // Identical repetition (the machine gun) correlates 1.0.
-    expect(energyCurveCorrelation(hit, hit)).toBeCloseTo(1, 6);
-    // A micro-variant (resampled + gain, like the factory RR derivation) must
-    // still read as the same instrument while dropping below the identical
-    // hit. Sample-phase correlation would collapse here (~0.1); the envelope
-    // is phase-blind by design.
-    const variant = new Float32Array(hit.length);
-    for (let i = 0; i < hit.length; i++) {
-      const pos = i * 1.018;
-      const i0 = Math.floor(pos);
-      const frac = pos - i0;
-      const a = hit[i0] ?? 0;
-      const b = i0 + 1 < hit.length ? hit[i0 + 1] : a;
-      variant[i] = (a + (b - a) * frac) * 1.04;
-    }
-    const corr = energyCurveCorrelation(hit, variant);
-    expect(corr).toBeLessThan(0.999);
-    expect(corr).toBeGreaterThan(0.9);
+describe("artifact gate — round-robin similarity metric", () => {
+  it("reads an identical hit as 1.0", () => {
+    const hit = oneShot(180, 0.15, 0.01);
+    expect(logEnvelopeCorrelation(hit, hit)).toBeCloseTo(1, 6);
   });
 
-  it("separates a genuinely different drum from a micro-variant", () => {
-    const hit = cleanOneShot(180, 0.15, 0.01);
-    // A different sample: much shorter decay (a real timbre change).
-    const other = cleanOneShot(180, 0.03, 0.005);
-    const variantCorr = energyCurveCorrelation(hit, hit);
-    const differentCorr = energyCurveCorrelation(hit, other);
+  it("keeps a factory RR micro-variant near the identical hit", () => {
+    // Sample-phase correlation collapses (~0.1) on a 1.018 resample; the
+    // log-envelope correlation is phase-blind and stays very high — which is
+    // the point: the variant IS the same drum.
+    const hit = oneShot(180, 0.15, 0.01);
+    const rr2 = resample(hit, 1.018, 1.04);
+    const rr3 = resample(hit, 0.984, 0.95);
+    for (const variant of [rr2, rr3]) {
+      const corr = logEnvelopeCorrelation(hit, variant);
+      expect(corr).toBeGreaterThan(0.99);
+      expect(corr).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("separates a genuinely different sample (decay shape) from a variant", () => {
+    const hit = oneShot(180, 0.15, 0.01);
+    const shortDecay = oneShot(180, 0.03, 0.005); // a much shorter drum
+    const variantCorr = logEnvelopeCorrelation(hit, resample(hit, 1.018, 1.04));
+    const differentCorr = logEnvelopeCorrelation(hit, shortDecay);
     expect(differentCorr).toBeLessThan(variantCorr);
-    // The decay-shape difference pushes it clearly below a micro-variant.
     expect(differentCorr).toBeLessThan(0.9);
   });
 
-  it("flags when consecutive hits are bit-identical (no variation shipped)", () => {
-    // A tiny gain difference is NOT enough — the point of a variant is a
-    // different waveform, not a level trim. Envelope correlation is
-    // scale-invariant, so a pure gain trim reads as identical.
-    const hit = cleanOneShot(180, 0.15, 0.01);
+  it("separates two different drum roles (kick vs snare body)", () => {
+    const snare = oneShot(180, 0.15, 0.01);
+    const kick = oneShot(60, 0.25, 0.02);
+    expect(logEnvelopeCorrelation(snare, kick)).toBeLessThan(0.9);
+  });
+
+  it("a pure gain trim reads as the same hit (envelope is scale-invariant)", () => {
+    const hit = oneShot(180, 0.15, 0.01);
     const trimmed = Float32Array.from(hit, (v) => v * 1.2);
-    expect(energyCurveCorrelation(hit, trimmed)).toBeCloseTo(1, 6);
+    expect(logEnvelopeCorrelation(hit, trimmed)).toBeCloseTo(1, 6);
   });
 });

@@ -46,13 +46,15 @@ try {
     }
   }
 
+  const only = (process.env.KYX_AUDIT_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   let report = null;
   for (let attempt = 1; attempt <= 3 && !report; attempt++) {
     try {
-      report = await page.evaluate(async () => {
+      const onlyArg = JSON.stringify(only);
+      report = await page.evaluate(async (onlyTypes) => {
         const mod = await import("/src/plugin-audit-checks.ts");
-        return mod.runPluginAudit((msg) => console.log(`[audit] ${msg}`));
-      });
+        return mod.runPluginAudit((msg) => console.log(`[audit] ${msg}`), onlyTypes);
+      }, onlyArg);
     } catch (error) {
       if (attempt === 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
       console.log("[retry] page reload race — retrying evaluate");
@@ -60,7 +62,8 @@ try {
     }
   }
 
-  const outPath = path.join(root, "docs", "plugin-audit-2026-09-27.report.json");
+  const suffix = only.length > 0 ? `-${only.join("_")}` : "";
+  const outPath = path.join(root, "docs", `plugin-audit-2026-09-27${suffix}.report.json`);
   fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
   console.log(`[audit] report written to ${outPath}`);
 

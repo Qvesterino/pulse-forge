@@ -491,11 +491,17 @@ export function removeMixEffect(
 export interface EffectIntent {
   effectType: EffectType;
   targets: MixTarget[];
-  direction: "more" | "less" | "remove";
+  /**
+   * "more"/"less" turn the primary knob RELATIVE; "remove" takes the
+   * instance out; "set" is ABSOLUTE — percent IS the knob's target as a
+   * fraction of its own range ("set reverb mix to 25%" → mix 0.25 on a
+   * 0..1 knob).
+   */
+  direction: "more" | "less" | "remove" | "set";
   amount: "subtle" | "medium" | "huge";
   /**
    * Explicit percent ("o 20 %") — fraction of the knob's own range in the
-   * parsed direction. Wins over vibe `amount` when present.
+   * parsed direction. For direction "set" it is the absolute target level.
    */
   percent?: number;
   detected: string[];
@@ -550,18 +556,41 @@ const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
   [/\bbass\w*|\bbas(?:a|u|y|i|ou|ov|om)?\b|\b808\w*/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],
   [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
+  [/\bvocals?\b|\bvok\u00e1l/i, "vocal"],
 ];
+
+/** De-accented lowercase with boundary padding — shared by all scanners. */
+function deaccentLower(text: string): string {
+  return ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
+}
+
+function effectWordIn(lower: string): EffectType | null {
+  for (const [re, type] of EFFECT_WORDS) {
+    if (re.test(lower)) return type;
+  }
+  return null;
+}
+
+/**
+ * True when the text names a param of this effect that is NOT the intent
+ * knob ("set delay time to 375" names `time`, the knob is `mix`) — the
+ * engine must not silently retune a different knob than the one asked for.
+ * Only simple lowercase ids can match as words ("lowShelfGain" never is).
+ */
+function namesForeignKnob(lower: string, effectType: EffectType): boolean {
+  const knob = EFFECT_KNOB[effectType];
+  return EFFECT_META[effectType].params.some((param: { id: string }) => {
+    if (param.id === knob || !/^[a-z][a-z0-9]*$/.test(param.id) || param.id.length < 3) return false;
+    return new RegExp(`\\b${param.id}\\b`).test(lower);
+  });
+}
+
+const SET_VALUE = /\b(?:to|na)\s*(\d{1,3})\s*(?:%|percent\w*|procent\w*)/;
 
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
 export function parseEffectIntent(text: string): EffectIntent | null {
-  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
-  let effectType: EffectType | null = null;
-  for (const [re, type] of EFFECT_WORDS) {
-    if (re.test(lower)) {
-      effectType = type;
-      break;
-    }
-  }
+  const lower = deaccentLower(text);
+  const effectType = effectWordIn(lower);
   if (!effectType) return null;
 
   // remove wins over add (explicit "remove X" / "bez X" / "menej X")
@@ -590,6 +619,28 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   // reverb" belongs to the mix profile, not a track-scoped change.
   if (targets.size === 0) return null;
 
+  // ABSOLUTE SET ("set the lead reverb mix to 25%", "nastav reverb na basi
+  // na 25 %") — v1 addresses only the effect's primary knob, and the number
+  // is a fraction of THAT knob's range (mix 0..1 → 25 % = 0.25). Requires
+  // an explicit percent word ("set delay time to 375" must never touch the
+  // mix knob) and declines when the text names a DIFFERENT param — the
+  // engine does not guess which knob was meant.
+  if (/\bset\b|\bnastav\b/.test(lower)) {
+    const setValue = SET_VALUE.exec(lower);
+    if (setValue) {
+      if (namesForeignKnob(lower, effectType)) return null;
+      const percent = Math.max(0, Math.min(100, Number(setValue[1])));
+      return {
+        effectType,
+        targets: [...targets],
+        direction: "set",
+        amount: "medium",
+        percent,
+        detected: [`set ${effectType} → ${percent}%`, `→ ${[...targets].join("+")}`],
+      };
+    }
+  }
+
   let amount: EffectIntent["amount"] = "medium";
   if (/\bsubtle\b|\btrochu\b|\bmalicko/.test(lower)) amount = "subtle";
   else if (/\bhuge\b|\ba lot\b|\bobri\b|\bvela\b|\bvelmi/.test(lower)) amount = "huge";
@@ -606,6 +657,7 @@ const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medi
 
 /** The knob delta for one targeted adjustment (pre-clamp). */
 export function effectKnobDelta(intent: EffectIntent): number {
+  if (intent.direction === "set") return 0; // absolute — no delta
   const scale = AMOUNT_SCALE[intent.amount];
   const base = 0.16 * scale;
   return intent.direction === "more" ? base : -base;
@@ -661,6 +713,17 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
     }
     const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
+    if (intent.direction === "set") {
+      // SET: percent is ABSOLUTE — the knob lands at min + pct·range.
+      const value = knobDef.min + ((intent.percent ?? 0) / 100) * (knobDef.max - knobDef.min);
+      const clamped = clampEffectParam(intent.effectType, knob, value);
+      if (fx.params[knob] !== clamped) {
+        cursor = setEffectParam(cursor, trackId, fx.id, knob, clamped).execute(cursor);
+        parts.push(`${intent.effectType}=${Math.round(clamped * 100) / 100}`);
+        updates += 1;
+      }
+      continue;
+    }
     const base = fx.params[knob] ?? knobDef.default;
     // Percent = fraction of the knob's own range ("o 20 %" turns mix by a
     // fifth); vibe amounts keep the calibrated fixed steps.
@@ -678,11 +741,63 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
 
   if (updates === 0) throw new Error("effect intent changed nothing — the mix already matches");
 
-  const scaleNote = intent.percent != null ? `±${intent.percent}%` : `×${scale}`;
+  const scaleNote =
+    intent.direction === "set"
+      ? `= ${intent.percent}%`
+      : intent.percent != null
+        ? `±${intent.percent}%`
+        : `×${scale}`;
   return snapshot(
     "applyEffectIntent",
     `Effect: ${[...parts, `${intent.effectType} ${intent.direction} ${scaleNote}`].join(", ")}`,
     doc,
     cursor,
   );
+}
+
+// ── CLARIFICATION: nearest interpretation for DECLINED effect asks ──────────
+
+/** Words that signal an explicit direction/set ask (vs a plain prompt). */
+const DIRECTION_WORD =
+  /\bmore\b|\bless\b|\bremove\b|\bset\b|\badd\b|\bviac\b|\bmenej\b|\bodstran\w*|\bvyhod\w*|\bpridaj\w*|\bdaj\b/;
+
+export interface DeclinedIntentClarification {
+  reason: string;
+  /** Canonical, EXECUTABLE phrasings — each re-routes to a working intent. */
+  suggestions: string[];
+}
+
+/**
+ * Probe for effect asks the parser had to decline: an effect noun plus a
+ * direction word, but no resolvable track target, or a named parameter the
+ * intent layer cannot address. Returns canonical suggestions instead of
+ * letting the text fall to pattern generation. Null when the text does not
+ * look like a declined effect ask.
+ */
+export function declinedEffectClarification(text: string): DeclinedIntentClarification | null {
+  const lower = deaccentLower(text);
+  const effectType = effectWordIn(lower);
+  if (!effectType || !DIRECTION_WORD.test(lower)) return null;
+  const knob = EFFECT_KNOB[effectType] ?? "mix";
+  if (namesForeignKnob(lower, effectType)) {
+    return {
+      reason: `efekt „${effectType}" má parameter, ktorý intent neovláda — motor vie nastaviť primárny knob „${knob}"`,
+      suggestions: [`set ${effectType} ${knob} to 50% on the lead`],
+    };
+  }
+  const setValue = SET_VALUE.exec(lower);
+  const isSet = /\bset\b|\bnastav\b/.test(lower) && setValue !== null;
+  const pct = isSet && setValue ? Math.min(100, Number(setValue[1])) : 50;
+  const wantsRemove = /\bremove\b|\btake out\b|\bodstran|\bvyhod|\bbez\b/.test(lower);
+  const less = /\bless\b|\bmenej\b/.test(lower);
+  const ask = (target: string) =>
+    isSet
+      ? `set ${effectType} ${knob} to ${pct}% on the ${target}`
+      : wantsRemove
+        ? `remove ${effectType} from the ${target}`
+        : `${less ? "less" : "more"} ${effectType} on the ${target}`;
+  return {
+    reason: `na ktorý track má smerovať ${effectType}?`,
+    suggestions: ["drums", "bass", "chords", "lead"].map(ask),
+  };
 }

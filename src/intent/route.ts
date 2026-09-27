@@ -7,6 +7,8 @@ import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, t
 import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 import { parseExactIntent, type ExactIntentPlan } from "./exact";
+import { declinedFaderClarification } from "./conversation";
+import { declinedEffectClarification } from "./mix";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -157,6 +159,7 @@ export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
   | { kind: "exact"; plan: ExactIntentPlan }
   | { kind: "fader"; intent: FaderIntent }
+  | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
   | { kind: "loudness"; parse: { direction: "louder" | "quieter"; targetDb?: number; detected: string[] } }
@@ -263,7 +266,7 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   // trumpets" reached the mix executor with EMPTY overrides — and the profile
   // planner then applied its genre/energy defaults (house + energy 0.7 ⇒ a
   // sidechain pump on bass+chords) that the user never asked for. No detected
-  // decision ⇒ fall through (generation proposes; nothing mutates).
+  // decision ⇒ fall through to the clarification probe / generation below.
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);
     if (mix.detected.length > 0) {
@@ -273,6 +276,18 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const revise = parseReviseIntent(text);
   if (revise) {
     return { kind: "revise", ...revise };
+  }
+  // CLARIFICATION LAYER: the text looks like a DECLINED intent (conflicting
+  // fader directions, a direction without a target, an effect ask whose
+  // track/parameter the engine cannot resolve). Offer the nearest EXECUTABLE
+  // interpretations instead of silently falling to generation. Only when the
+  // text carries NO genre/beat signal — anything that parses as a prompt
+  // stays a prompt.
+  if (!genreSignal && pattern.detected.length === 0) {
+    const clarification = declinedFaderClarification(text) ?? declinedEffectClarification(text);
+    if (clarification) {
+      return { kind: "clarify", reason: clarification.reason, suggestions: clarification.suggestions };
+    }
   }
   return { kind: "pattern", input: pattern.input, detected: pattern.detected };
 }

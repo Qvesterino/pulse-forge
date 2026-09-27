@@ -479,13 +479,13 @@ describe("hip-hop sub-genre roster sweep", () => {
     expect(parseIntentText("old school rap beat").input.style).toBe("oldschool");
   });
 
-  it("pop routing: dance-pop/synth-pop/pop-rap/hyperpop land on existing genres", () => {
+  it("pop routing: dance-pop/synth-pop/pop-rap land on house/trap; hyperpop is first-class", () => {
     expect(parseIntentText("pop beat").input.genre).toBe("house");
     expect(parseIntentText("pop beat").input.style).toBe("pop");
     expect(parseIntentText("dance pop beat at 120").input.genre).toBe("house");
     expect(parseIntentText("synthpop track").input.genre).toBe("house");
     expect(parseIntentText("pop-rap beat").input.genre).toBe("trap");
-    expect(parseIntentText("hyperpop banger").input.genre).toBe("trap");
+    expect(parseIntentText("hyperpop banger").input.genre).toBe("hyperpop");
     expect(parseIntentText("hyperpop banger").input.style).toBe("hyper");
   });
 
@@ -1060,12 +1060,12 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
 describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwork / melodic house (club + global wave)", () => {
   // Each block covers one of the six new club / global presets, asserting
   // genre + style + BPM + mood against the researched values.
-  it("a.g. cook / 100 gecs / underscores → hyperpop wave (trap hyper, 140-160)", () => {
+  it("a.g. cook / 100 gecs / underscores → hyperpop wave (first-class hyperpop, 140-160)", () => {
     // parseIntentText's preprocess collapses all periods into whitespace
     // (regex /[\s,.]+/g), so the "a.g. cook" name won't match the regex
     // pattern. We use "ag cook" (period-free variant) to exercise the lane.
     const ag = parseIntentText("ag cook type beat");
-    expect(ag.input.genre).toBe("trap");
+    expect(ag.input.genre).toBe("hyperpop");
     expect(ag.input.style).toBe("hyper");
     expect(ag.input.bpmRange).toEqual([140, 160]);
     expect(ag.input.energy).toBe(0.9);
@@ -1262,7 +1262,7 @@ describe("trap producers + memphis OGs + UKG revival + UK drill second line (pro
   it("UKG revival: conducta / interplanetary criminal / virji / piri", () => {
     for (const name of ["conducta", "interplanetary criminal", "sammy virji", "piri"]) {
       const parsed = parseIntentText(`${name} type beat`);
-      expect(parsed.input.genre, name).toBe("house");
+      expect(parsed.input.genre, name).toBe("ukg");
       expect(parsed.input.style, name).toBe("ukg");
     }
     expect(parseIntentText("interplanetary criminal type beat").input.bpmRange).toEqual([132, 142]);
@@ -1500,6 +1500,80 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
   });
 });
 
+describe("ambient / score depth wave", () => {
+  it("4th world + minimalist avant-garde", () => {
+    expect(parseIntentText("harold budd type beat").input.style).toBe("drifting");
+    expect(parseIntentText("robert fripp type beat").input.mood).toBe("chill");
+    expect(parseIntentText("terry riley type beat").input.energy).toBe(0.3);
+    expect(parseIntentText("pauline oliveros type beat").input.genre).toBe("ambient");
+  });
+
+  it("drone / dark ambient / isolationist", () => {
+    const lustmord = parseIntentText("lustmord type beat");
+    expect(lustmord.input.genre).toBe("ambient");
+    expect(lustmord.input.style).toBe("drifting");
+    expect(lustmord.input.mood).toBe("dark");
+    expect(lustmord.input.bpmRange).toEqual([40, 70]);
+    expect(parseIntentText("sunn o))) type beat").input.mood).toBe("dark");
+    expect(parseIntentText("kevin drumsm type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("kammarheit type beat").input.mood).toBe("dark");
+    expect(parseIntentText("raison d'etre type beat").input.style).toBe("drifting");
+  });
+
+  it("new age + kankyō ongaku + minimalists", () => {
+    expect(parseIntentText("laraaji type beat").input.style).toBe("organic");
+    expect(parseIntentText("george winston type beat").input.mood).toBe("chill");
+    expect(parseIntentText("midori takada type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("hiroshi yoshimura type beat").input.style).toBe("organic");
+    const glass = parseIntentText("philip glass type beat");
+    expect(glass.input.energy).toBe(0.55);
+    expect(glass.input.bpmRange).toEqual([90, 130]);
+    expect(parseIntentText("steve reich type beat").input.genre).toBe("ambient");
+  });
+
+  it("score composers: orchestral + modern + post-classical", () => {
+    expect(parseIntentText("ennio morricone type beat").input.mood).toBe("dark");
+    expect(parseIntentText("john williams type beat").input.style).toBe("drifting");
+    expect(parseIntentText("trent reznor type beat").input.style).toBe("glitch");
+    expect(parseIntentText("yann tiersen type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("lubomyr melnyk type beat").input.style).toBe("organic");
+    expect(parseIntentText("goldmund type beat").input.mood).toBe("chill");
+  });
+
+  it("modern ambient revival + experimental edges", () => {
+    expect(parseIntentText("caterina barbieri type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("julianna barwick type beat").input.mood).toBe("chill");
+    expect(parseIntentText("kali malone type beat").input.style).toBe("drifting");
+    expect(parseIntentText("huerco s type beat").input.style).toBe("glitch");
+    expect(parseIntentText("moor mother type beat").input.mood).toBe("aggressive");
+    expect(parseIntentText("ryoji ikeda type beat").input.style).toBe("glitch");
+    expect(parseIntentText("squarepusher type beat").input.energy).toBe(0.75);
+  });
+
+  it("ambient techno + post-rock", () => {
+    expect(parseIntentText("global communication type beat").input.style).toBe("drifting");
+    expect(parseIntentText("solar fields type beat").input.mood).toBe("chill");
+    expect(parseIntentText("explosions in the sky type beat").input.energy).toBe(0.6);
+    expect(parseIntentText("mogwai type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("sigur ros type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("godspeed you black emperor type beat").input.mood).toBe("dark");
+  });
+
+  it("guarded aliases never hijack generic words", () => {
+    // "coil" alone is a common English word
+    expect(matchArtistPreset("coil up the cable")).toBeNull();
+    expect(matchArtistPreset("coil type beat")).not.toBeNull();
+    // "alva noto type beat" qualified; bare "noto" is a city
+    expect(matchArtistPreset("alva noto type beat")).not.toBeNull();
+  });
+
+  it("every ambient wave style resolves to a real groove id", () => {
+    for (const id of ["ambient.drifting", "ambient.glitch", "ambient.organic"]) {
+      expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});
+
 describe("house depth wave (Chicago / Detroit / garage / French / disco)", () => {
   it("Chicago founders: knuckles / heard / jefferson / hardy / trax era", () => {
     const knuckles = parseIntentText("frankie knuckles type beat");
@@ -1598,11 +1672,11 @@ describe("experimental + score wave", () => {
     expect(parseIntentText("orbital type beat").input.mood).toBe("aggressive");
   });
 
-  it("2-step originators land on house/ukg", () => {
+  it("2-step originators land on ukg", () => {
     expect(parseIntentText("mj cole type beat").input.style).toBe("ukg");
     expect(parseIntentText("artful dodger type beat").input.mood).toBe("chill");
     expect(parseIntentText("zed bias type beat").input.mood).toBe("dark");
-    expect(parseIntentText("wookie type beat").input.genre).toBe("house");
+    expect(parseIntentText("wookie type beat").input.genre).toBe("ukg");
   });
 });
 
@@ -1632,7 +1706,7 @@ describe("jersey/baltimore/UKG producers + hyperpop-sigilkore underworld (crate-
 
   it("UKG producers: salute / barry can't swim / bassline niche school", () => {
     const salute = parseIntentText("salute type beat");
-    expect(salute.input.genre).toBe("house");
+    expect(salute.input.genre).toBe("ukg");
     expect(salute.input.style).toBe("ukg");
     expect(salute.input.bpmRange).toEqual([132, 140]);
     expect(parseIntentText("barry can't swim type beat").input.mood).toBe("chill");
@@ -1646,7 +1720,7 @@ describe("jersey/baltimore/UKG producers + hyperpop-sigilkore underworld (crate-
 
   it("pc music room + deconstructed club: umru / felicita / shygirl / jockstrap", () => {
     const umru = parseIntentText("umru type beat");
-    expect(umru.input.genre).toBe("trap");
+    expect(umru.input.genre).toBe("hyperpop");
     expect(umru.input.style).toBe("hyper");
     expect(umru.input.bpmRange).toEqual([150, 170]);
     expect(parseIntentText("felicita type beat").input.style).toBe("hyper");

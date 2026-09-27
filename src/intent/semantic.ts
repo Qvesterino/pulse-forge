@@ -180,6 +180,37 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     { text: "dubstep half time wobble", patch: { genre: "trap", mood: "aggressive", energy: 0.9 } },
     { text: "chillhop study beats to relax", patch: { genre: "ambient", mood: "chill", energy: 0.35 } },
     { text: "drone dark ambient soundscape", patch: { genre: "ambient", mood: "dark", energy: 0.25 } },
+    {
+      text: "dark drone isolationist ambient",
+      patch: { genre: "ambient", style: "drifting", mood: "dark", energy: 0.25 },
+    },
+    {
+      text: "new age healing meditation music",
+      patch: { genre: "ambient", style: "organic", mood: "chill", energy: 0.3 },
+    },
+    {
+      text: "japanese environmental kankyo ongaku",
+      patch: { genre: "ambient", style: "organic", mood: "chill", energy: 0.3 },
+    },
+    { text: "minimalist piano repetitive score", patch: { genre: "ambient", style: "organic", energy: 0.55 } },
+    {
+      text: "cinematic orchestral film score",
+      patch: { genre: "ambient", style: "drifting", mood: "dark", energy: 0.4 },
+    },
+    { text: "post-rock crescendo guitars", patch: { genre: "ambient", style: "drifting", energy: 0.6 } },
+    {
+      text: "electroacoustic modular composition",
+      patch: { genre: "ambient", style: "drifting", mood: "chill", energy: 0.35 },
+    },
+    {
+      text: "glitch experimental noise system",
+      patch: { genre: "ambient", style: "glitch", mood: "dark", energy: 0.4 },
+    },
+    {
+      text: "drónová tmavá ambientná plocha",
+      patch: { genre: "ambient", style: "drifting", mood: "dark", energy: 0.25 },
+    },
+    { text: "filmová orchestrálna hudba", patch: { genre: "ambient", style: "drifting", mood: "dark", energy: 0.4 } },
     { text: "tvrdý hard techno na festivale", patch: { genre: "techno", mood: "aggressive", energy: 0.95 } },
     { text: "drift phonk na nočnú jazdu", patch: { genre: "phonk", style: "drift", mood: "aggressive", energy: 0.9 } },
     { text: "boom bap so starým samplom", patch: { genre: "trap", style: "classic", energy: 0.55 } },

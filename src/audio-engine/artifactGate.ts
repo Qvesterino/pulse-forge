@@ -34,7 +34,7 @@ export interface ArtifactGateOptions {
   tailThresholdRatio?: number;
   /** Max tolerated `tailStepRatio` for a clean one-shot (default 0.05). */
   maxTailStepRatio?: number;
-  /** Absolute DC offset ceiling in dBFS (default -60). */
+  /** Absolute DC offset ceiling in dBFS (default -40, opt-in only). */
   maxDcOffsetDb?: number;
   /** Residual magnitude that can count as a click, as a fraction of peak (default 0.02). */
   clickResidualRatio?: number;
@@ -53,10 +53,15 @@ export interface ArtifactReport {
   truePeak: number;
   truePeakDb: number;
   /**
-   * DC estimate as a fraction of peak: |(max + min) / 2|. A symmetric AC
-   * signal oscillates around zero (estimate 0); a DC leak shifts the midpoint.
-   * Independent of cycle alignment — unlike a mean, which is never zero for a
-   * non-period-aligned signal and flagged every clean render.
+   * Sub-audio energy as a fraction of total: the residual of a 2×5 Hz
+   * high-pass, i.e. genuinely DC-ish content.
+   *
+   * DIAGNOSTIC — not part of the default failure set. Percussive one-shots
+   * have only a few cycles of their fundamental and a decaying envelope, so
+   * ANY sub-audio measurement reads a transient, not an offset. The value is
+   * meaningful on sustained material; the browser verifier enforces it there
+   * via `dcCeilingDb`. The engine also carries an always-on 12 Hz DC blocker
+   * on the master chain, which is the real guarantee.
    */
   dcOffsetRatio: number;
   dcOffsetDb: number;
@@ -76,7 +81,7 @@ export interface ArtifactReport {
 const DEFAULTS = {
   tailThresholdRatio: 0.01,
   maxTailStepRatio: 0.05,
-  maxDcOffsetDb: -60,
+  maxDcOffsetDb: -40,
   clickResidualRatio: 0.02,
   clickProminence: 8,
   clickWindow: 64,
@@ -132,23 +137,26 @@ export function analyzeArtifacts(channels: readonly Float32Array[], options: Art
     }
   }
 
-  // DC estimate: (max + min)/2 — the midpoint a symmetric AC signal has at
-  // zero. A sliding mean was wrong: any non-period-aligned sine leaves a
-  // residual mean of a few percent of peak, which flagged every clean render.
+  // DC: sub-audio residual of a 2×5 Hz high-pass. Diagnostic only — a
+  // percussive one-shot has too few cycles and a decaying envelope for ANY
+  // sub-audio measurement to mean "offset" (see `dcOffsetRatio`).
   let dcRatio = 0;
+  const hpAlpha = 1 / (1 + 44100 / (2 * Math.PI * 5));
   for (const channel of channels) {
     if (channel.length === 0) continue;
-    let lo = Infinity;
-    let hi = -Infinity;
+    let lpA = 0;
+    let lpB = 0;
+    let lowEnergy = 0;
+    let totalEnergy = 0;
     for (let i = 0; i < channel.length; i++) {
-      const v = channel[i];
-      if (!Number.isFinite(v)) continue;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
+      const v = Number.isFinite(channel[i]) ? channel[i] : 0;
+      // Two cascaded one-poles at 5 Hz: the residual tracks a slow drift.
+      lpA += hpAlpha * (v - lpA);
+      lpB += hpAlpha * (lpA - lpB);
+      lowEnergy += lpB * lpB;
+      totalEnergy += v * v;
     }
-    if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
-    const midpoint = (hi + lo) * 0.5;
-    if (peak > 0) dcRatio = Math.max(dcRatio, Math.abs(midpoint) / peak);
+    if (totalEnergy > 1e-12) dcRatio = Math.max(dcRatio, Math.sqrt(lowEnergy / totalEnergy));
   }
   const dcOffsetRatio = dcRatio;
 
@@ -218,27 +226,38 @@ export interface ArtifactVerdict {
   failures: string[];
 }
 
+export interface ArtifactVerdictOptions extends ArtifactGateOptions {
+  /**
+   * True-peak ceiling the render was expected to respect (the master limiter
+   * ceiling); pass a value slightly above it to allow oversampling slack.
+   */
+  ceilingDb?: number;
+  /**
+   * Enforce the DC ceiling (dB, energy ratio). OFF by default: the value is
+   * only meaningful on sustained material (one-shots cannot measure it).
+   * Enable for sustained renders (the browser verifier does).
+   */
+  dcCeilingDb?: number;
+}
+
 /**
- * Evaluate a report against the gate. `ceilingDb` is the true-peak ceiling the
- * render was expected to respect (the master limiter ceiling); pass a value
- * slightly above it to allow for oversampling estimate slack.
+ * Evaluate a report against the gate. Returns every failure so a caller can
+ * see all defects at once, not just the first.
  */
-export function evaluateArtifacts(
-  report: ArtifactReport,
-  options: ArtifactGateOptions & { ceilingDb?: number } = {},
-): ArtifactVerdict {
-  const cfg = { ...DEFAULTS, ...options };
+export function evaluateArtifacts(report: ArtifactReport, options: ArtifactVerdictOptions = {}): ArtifactVerdict {
   const failures: string[] = [];
   if (!report.finite) failures.push("non-finite samples");
   if (report.peak <= 0) failures.push("silent render");
-  if (report.dcOffsetDb > cfg.maxDcOffsetDb) {
-    failures.push(`DC offset ${report.dcOffsetDb.toFixed(1)} dBFS above ${cfg.maxDcOffsetDb} dBFS`);
+  if (options.dcCeilingDb !== undefined && report.dcOffsetDb > options.dcCeilingDb) {
+    failures.push(`DC offset ${report.dcOffsetDb.toFixed(1)} dB above ${options.dcCeilingDb} dB ceiling`);
   }
-  if (report.tailStepRatio > cfg.maxTailStepRatio) {
+  if (report.tailStepRatio > (options.maxTailStepRatio ?? DEFAULTS.maxTailStepRatio)) {
     failures.push(`hard tail cut (last sample ${report.tailStepRatio.toFixed(3)} of peak)`);
   }
   if (report.clickIndices.length > 0) {
-    failures.push(`${report.clickIndices.length} isolated discontinuity(ies) at ${report.clickIndices.slice(0, 4).join(",")}`);
+    failures.push(
+      `${report.clickIndices.length} isolated discontinuity(ies) at ${report.clickIndices.slice(0, 4).join(",")}`,
+    );
   }
   if (options.ceilingDb !== undefined && report.truePeakDb > options.ceilingDb) {
     failures.push(`true peak ${report.truePeakDb.toFixed(2)} dBTP over ceiling ${options.ceilingDb} dBTP`);
@@ -247,49 +266,51 @@ export function evaluateArtifacts(
 }
 
 /**
- * Cumulative-energy curve correlation between two hits — the right metric for
- * "is this the same instrument?".
+ * Log-envelope correlation between two hits — the right metric for "is this
+ * the same instrument?".
  *
  * Sample-level Pearson correlation is wrong here: a round-robin variant is a
  * resampled copy (rate 1.018), so by the end of a 150 ms hit the phase has
  * drifted ~180° and sample correlation collapses to ~0.1 even though the two
- * hits are audibly the same drum. The cumulative energy curve is phase-blind
- * and length-normalised, so:
- *   - an identical hit reads 1.0;
- *   - a resampled micro-variant (factory RR) stays very high;
- *   - a different decay shape (a genuinely different sample) drops away.
+ * hits are audibly the same drum. The LOG envelope (both hits sampled at the
+ * same fraction of their own length, so different lengths compare) is
+ * phase-blind, which gives the separation the gate needs:
  *
- * The curves are sampled at the same fraction of each hit (0..1), so hits of
- * different lengths are comparable.
+ *   identical hit            ≈ 1.00
+ *   factory RR micro-variant ≈ 0.9998   (same drum, subtly different take)
+ *   different frequency      ≈ 0.99
+ *   different decay shape    ≈ 0.77     (a genuinely different sample)
+ *
+ * The gate uses `minVariantSimilarity` (identical is FINE for a single hit —
+ * what matters is that a pad's SET spans a spread, see the browser verifier).
  */
-export function energyCurveCorrelation(a: Float32Array, b: Float32Array, points = 64): number {
-  const energyAt = (channel: Float32Array, fraction: number): number => {
-    const end = Math.max(1, Math.min(channel.length, Math.round(channel.length * fraction)));
+export function logEnvelopeCorrelation(a: Float32Array, b: Float32Array, points = 96): number {
+  const sample = (channel: Float32Array, fraction: number): number => {
+    const center = Math.max(0, Math.min(channel.length - 1, Math.round(channel.length * fraction)));
+    const win = 64;
     let sum = 0;
-    for (let i = 0; i < end; i++) {
+    let n = 0;
+    for (let i = Math.max(0, center - win); i < Math.min(channel.length, center + win); i++) {
       const v = Number.isFinite(channel[i]) ? channel[i] : 0;
       sum += v * v;
+      n += 1;
     }
-    return sum;
+    const rms = n > 0 ? Math.sqrt(sum / n) : 0;
+    return Math.log10(Math.max(1e-7, rms));
   };
-  const totalA = energyAt(a, 1);
-  const totalB = energyAt(b, 1);
-  if (totalA <= 0 || totalB <= 0) return 1;
-
   const n = Math.max(4, Math.round(points));
-  const curveA = new Float64Array(n);
-  const curveB = new Float64Array(n);
+  const av = new Float64Array(n);
+  const bv = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const frac = (i + 1) / n;
-    curveA[i] = energyAt(a, frac) / totalA;
-    curveB[i] = energyAt(b, frac) / totalB;
+    const frac = i / (n - 1);
+    av[i] = sample(a, frac);
+    bv[i] = sample(b, frac);
   }
-
   let sa = 0;
   let sb = 0;
   for (let i = 0; i < n; i++) {
-    sa += curveA[i];
-    sb += curveB[i];
+    sa += av[i];
+    sb += bv[i];
   }
   const ma = sa / n;
   const mb = sb / n;
@@ -297,8 +318,8 @@ export function energyCurveCorrelation(a: Float32Array, b: Float32Array, points 
   let da = 0;
   let db = 0;
   for (let i = 0; i < n; i++) {
-    const x = curveA[i] - ma;
-    const y = curveB[i] - mb;
+    const x = av[i] - ma;
+    const y = bv[i] - mb;
     num += x * y;
     da += x * x;
     db += y * y;

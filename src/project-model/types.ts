@@ -77,6 +77,7 @@ export type InstrumentKind =
   | "strings"
   | "bell"
   | "reese"
+  | "clav"
   | "acid"
   | "brass"
   | "fm"

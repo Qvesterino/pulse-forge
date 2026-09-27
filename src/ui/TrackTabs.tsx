@@ -24,6 +24,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   strings: "STR",
   bell: "BEL",
   reese: "RES",
+  clav: "CLV",
   acid: "ACD",
   brass: "BRS",
   fm: "FM",

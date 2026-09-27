@@ -29,7 +29,7 @@ describe("text-parser v2", () => {
     // Sound-quality pass: phonk and drill got their own grooves, song forms
     // and kit colouring — they stopped folding into trap.
     expect(parseIntentText("phonk beat").input.genre).toBe("phonk");
-    expect(parseIntentText("ukg groove").input.genre).toBe("house");
+    expect(parseIntentText("ukg groove").input.genre).toBe("ukg");
     expect(parseIntentText("lofi chill beat").input.genre).toBe("ambient");
     expect(parseIntentText("acid line").input.genre).toBe("techno");
   });
@@ -281,10 +281,10 @@ describe("sub-genre wave — acid trap, garage, baile, neuro, hard groove", () =
     expect(parsed.input.style).toBe("acid"); // acid style on trap grooves
   });
 
-  it("UK garage family: speed garage / bassline / 2-step land on house+ukg", () => {
-    expect(parseIntentText("speed garage at 132").input.genre).toBe("house");
+  it("UK garage family: speed garage / bassline / 2-step land on ukg", () => {
+    expect(parseIntentText("speed garage at 132").input.genre).toBe("ukg");
     expect(parseIntentText("speed garage at 132").input.style).toBe("ukg");
-    expect(parseIntentText("bassline house at 138").input.genre).toBe("house");
+    expect(parseIntentText("bassline house at 138").input.genre).toBe("ukg");
     expect(parseIntentText("2-step garage at 130").input.style).toBe("ukg");
   });
 
@@ -466,7 +466,7 @@ describe("ambient/experimental wave — drone / IDM / Berlin school", () => {
     expect(parseIntentText("vaporwave at 75").input.genre).toBe("ambient");
     expect(parseIntentText("berlin school at 100").input.genre).toBe("techno");
     expect(parseIntentText("krautrock at 110").input.genre).toBe("techno");
-    expect(parseIntentText("deconstructed club at 120").input.genre).toBe("trap");
+    expect(parseIntentText("deconstructed club at 120").input.genre).toBe("hyperpop");
   });
 
   it("drone roster: stars of the lid / basinski / grouper / koner / hecker", () => {

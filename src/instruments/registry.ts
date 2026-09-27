@@ -26,6 +26,7 @@ import {
   stringsParams,
   bellParams,
   reeseParams,
+  clavParams,
   acidParams,
   brassParams,
   logdrumParams,
@@ -1244,7 +1245,8 @@ const sampler: InstrumentDefinition = {
         const loopOn = (p.loop ?? 0) > 0.5 && !((p.stretch ?? 0) > 0.5);
         // Decide the final buffer FIRST — AudioBufferSourceNode.buffer can be
         // assigned only once (a second assignment throws InvalidStateError,
-        // which silently killed the whole LOOP mode).
+        // which silently killed the whole LOOP mode; the STRETCH path had the
+        // same double-assignment bug and threw on every note off root pitch).
         let loopRegion: { start: number; end: number } | null = null;
         if (loopOn) {
           // Sustain loop: whole-buffer loops use the prerendered crossfaded
@@ -1260,15 +1262,9 @@ const sampler: InstrumentDefinition = {
             loopRegion = { start: ls, end: le };
           }
         }
-        src.buffer = playBuffer;
-        if (loopOn) {
-          src.loop = true;
-          if (loopRegion) {
-            src.loopStart = loopRegion.start;
-            src.loopEnd = loopRegion.end;
-          }
-          src.playbackRate.value = Math.pow(2, semitones / 12);
-        } else if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
+        let stretched = false;
+        let finalBuffer = playBuffer;
+        if ((p.stretch ?? 0) > 0.5 && semitones !== 0) {
           // Time-stretch: pitch without changing duration. Cache per (sample,
           // semitones) as per-channel Float32Arrays — every channel runs the
           // same deterministic grain grid (positions depend only on length,
@@ -1285,9 +1281,20 @@ const sampler: InstrumentDefinition = {
             entry = { semitones, data };
             cacheStretch(key, semitones, data);
           }
-          const stretched = ctx.createBuffer(entry.data.length, entry.data[0].length, buffer.sampleRate);
-          for (let ch = 0; ch < entry.data.length; ch++) stretched.getChannelData(ch).set(entry.data[ch]);
-          src.buffer = stretched;
+          const stretchedBuf = ctx.createBuffer(entry.data.length, entry.data[0].length, buffer.sampleRate);
+          for (let ch = 0; ch < entry.data.length; ch++) stretchedBuf.getChannelData(ch).set(entry.data[ch]);
+          finalBuffer = stretchedBuf;
+          stretched = true;
+        }
+        src.buffer = finalBuffer;
+        if (loopOn) {
+          src.loop = true;
+          if (loopRegion) {
+            src.loopStart = loopRegion.start;
+            src.loopEnd = loopRegion.end;
+          }
+          src.playbackRate.value = Math.pow(2, semitones / 12);
+        } else if (stretched) {
           src.playbackRate.value = 1;
         } else {
           src.playbackRate.value = Math.pow(2, semitones / 12);
@@ -4575,6 +4582,175 @@ const brass: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Clavinet (tangent funk) ---------------- */
+// The funk stab machine: a tangent-struck string picked up magnetically —
+// bright PULSE through a per-key pickup bandpass (PICK walks the pickup
+// point = tone), DAMP is the felt mute shortening sustain, CLICK is the
+// tangent thunk, GROWL adds a low growl partial. Velocity → pickup
+// brightness (harder hit = hotter pickup). Deterministic (seeded noise).
+
+const clav: InstrumentDefinition = {
+  kind: "clav",
+  name: "Clavinet",
+  params: clavParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(12);
+    const clickSeed = noiseBuffer(ctx, hashString(track.id) ^ 0x41c1);
+
+    const runtime: InstrumentRuntime = {
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const damp = Math.max(0.05, p.damp ?? 0.55);
+        const release = Math.max(0.02, p.release ?? 0.12);
+        const hold = Math.max(durationSec, 0.05);
+        const off = when + hold;
+        const stopTime = off + release * 2 + damp;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const pick = Math.max(0, Math.min(1, p.pick ?? 0.5));
+        const click = Math.max(0, Math.min(1, p.click ?? 0.4));
+        const growl = Math.max(0, Math.min(1, p.growl ?? 0.25));
+
+        // Amp — tangent strike is instant, sustain decays with DAMP.
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + 0.002);
+        amp.gain.setTargetAtTime(Math.max(level * 0.5, 0.0002), when + 0.008, damp / 3);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // Pickup bandpass — PICK walks the pickup point along the string
+        // (0 = deep/warm near the bridge, 1 = bright near the tangent).
+        const pickup = ctx.createBiquadFilter();
+        pickup.type = "bandpass";
+        pickup.frequency.value = freq * (1.1 + pick * 2.4);
+        pickup.Q.value = 0.8;
+        pickup.connect(amp);
+        amp.connect(output);
+
+        // Voice: bright pulse (the tangent-struck string) + growl partial.
+        const osc = ctx.createOscillator();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(freq, when);
+        const oscGain = ctx.createGain();
+        oscGain.gain.value = 0.55;
+        const bright = ctx.createBiquadFilter();
+        bright.type = "highpass";
+        // Velocity → pickup brightness: harder hit = hotter, brighter output.
+        bright.frequency.value = Math.max(
+          120,
+          Math.min(6000, freq * 0.8 + velocity * 1200 + pick * 900),
+        );
+        osc.connect(oscGain).connect(bright).connect(pickup);
+        osc.start(when);
+        osc.stop(stopTime);
+
+        let growlOsc: OscillatorNode | null = null;
+        let growlGain: GainNode | null = null;
+        if (growl > 0.001) {
+          growlOsc = ctx.createOscillator();
+          growlOsc.type = "square";
+          growlOsc.frequency.value = freq * 0.5; // octave-down growl partial
+          growlGain = ctx.createGain();
+          growlGain.gain.setValueAtTime(0.0001, when);
+          growlGain.gain.exponentialRampToValueAtTime(Math.max(level * growl * 0.5, 0.0002), when + 0.004);
+          growlGain.gain.setTargetAtTime(0.0001, off, release / 3);
+          growlOsc.connect(growlGain).connect(pickup);
+          growlOsc.start(when);
+          growlOsc.stop(stopTime);
+        }
+
+        // Key click — the tangent thunk (seeded noise burst, post-pickup).
+        let clickSrc: AudioBufferSourceNode | null = null;
+        let clickBP: BiquadFilterNode | null = null;
+        let clickGain: GainNode | null = null;
+        if (click > 0.001) {
+          clickSrc = ctx.createBufferSource();
+          clickSrc.buffer = clickSeed;
+          clickBP = ctx.createBiquadFilter();
+          clickBP.type = "bandpass";
+          clickBP.frequency.value = Math.max(1200, freq * 4);
+          clickBP.Q.value = 1.1;
+          clickGain = ctx.createGain();
+          clickGain.gain.setValueAtTime(Math.max(level * click * 0.45, 0.0002), when);
+          clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.015);
+          clickSrc.connect(clickBP).connect(clickGain).connect(pickup);
+          clickSrc.start(when, (hashString(track.id) % 877) / 1000);
+          clickSrc.stop(when + 0.05);
+        }
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.008);
+            for (const node of [osc, growlOsc, clickSrc]) {
+              if (!node) continue;
+              try {
+                node.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.006);
+            for (const node of [osc, growlOsc, clickSrc]) {
+              if (!node) continue;
+              try {
+                node.stop(now + 0.02);
+              } catch {
+                /* already stopped */
+              }
+            }
+          },
+        );
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            osc.disconnect();
+            growlOsc?.disconnect();
+            growlGain?.disconnect();
+            pickup.disconnect();
+            clickBP?.disconnect();
+            clickGain?.disconnect();
+            amp.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- Log Drum (Amapiano) ---------------- */
 // Tuned perc: 3× sine 1 / 2.15 / 3.8 → notch (hollow) → LP SVF + grit
 // pitchDrop on transient, glide + long decay, deterministic
@@ -5845,6 +6021,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   strings,
   bell,
   reese,
+  clav,
   acid,
   brass,
   fm,

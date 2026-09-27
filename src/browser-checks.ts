@@ -1553,7 +1553,10 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         tracks: doc.tracks.map((t) => (t.id === drum.id ? { ...t, mute: muted } : t)),
       });
       engine.previewTrackGain(drum.id, 1.2); // fader dragged to +1.76 dB
-      engine.trigger(drum.id, drum.pads[0], 0.02, 1);
+      // Hit at 0.2 s: the gain param converges exponentially from its node
+      // default (1) after the sync/preview writes — hitting inside the first
+      // ~50 ms would measure that tail, not the mute gate.
+      engine.trigger(drum.id, drum.pads[0], 0.2, 1);
       const out = await ctx.startRendering();
       return peakOf(out.getChannelData(0));
     };
@@ -1580,7 +1583,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       ...doc,
       tracks: doc.tracks.map((t) => (t.id === drum.id ? { ...t, sends: { [ret.id]: 0.9 } } : t)),
     };
-    const renderWithSendPreview = async (previewLevel: number | null): Promise<number> => {
+    const renderWithSendPreview = async (previewLevel: number | null): Promise<Float32Array> => {
       const ctx = new OfflineAudioContext(2, SR, SR);
       await loadAllWorklets(ctx);
       const engine = new AudioEngine();
@@ -1588,16 +1591,28 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       engine.useContext(ctx);
       engine.setProject(withSend);
       if (previewLevel !== null) engine.previewTrackSend(drum.id, ret.id, previewLevel);
-      engine.trigger(drum.id, drum.pads[0], 0.02, 1);
+      // Hit at 0.2 s so the send param has converged (see the mute check above).
+      engine.trigger(drum.id, drum.pads[0], 0.2, 1);
       const out = await ctx.startRendering();
-      return peakOf(out.getChannelData(0));
+      return out.getChannelData(0);
     };
-    const wetPeak = await renderWithSendPreview(null);
-    const dryOnlyPeak = await renderWithSendPreview(0);
+    // Peak alone is dry-dominated (a reverb tail barely moves it) — compare
+    // renders SAMPLE-WISE: previewing 0 must change the wet path, previewing
+    // the committed value must be bit-transparent.
+    const noPreview = await renderWithSendPreview(null);
+    const previewedOff = await renderWithSendPreview(0);
+    const previewedSame = await renderWithSendPreview(0.9);
+    const diffPeak = (a: Float32Array, b: Float32Array): number => {
+      let d = 0;
+      for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i]));
+      return d;
+    };
+    const changed = diffPeak(noPreview, previewedOff);
+    const transparent = diffPeak(noPreview, previewedSame);
     check(
       "mixer preview: send preview drives the real return-bus path",
-      wetPeak > 0.05 && dryOnlyPeak < wetPeak * 0.8,
-      `wet=${wetPeak.toFixed(3)} previewed-dry=${dryOnlyPeak.toFixed(3)}`,
+      changed > 0.01 && transparent < 0.005,
+      `wetDiff=${changed.toFixed(4)} transparentDiff=${transparent.toFixed(5)}`,
     );
   } catch (error) {
     check("mixer preview: send preview drives the real return-bus path", false, String(error));
@@ -1631,6 +1646,10 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const frozenState = engine as unknown as { frozenBuffers: Map<string, AudioBufferSourceNode> };
     const startedWhileLive = frozenState.frozenBuffers.has(drum.id);
     engine.setProject({ ...frozenDoc, tracks: frozenDoc.tracks.filter((t) => t.id !== drum.id) });
+    // A second synchronous setProject lands in the engine's re-entrancy
+    // queue (projectPromise is still pending) — yield a macrotask so the
+    // queued body (and the channel teardown) actually drains.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     check(
       "frozen: deleting a frozen track stops + removes its buffer source",
       startedWhileLive && frozenState.frozenBuffers.size === 0,

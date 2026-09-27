@@ -1775,17 +1775,22 @@ export function IntentPanel() {
   // D3 unified bar: route the text to the right executor — arrange ops,
   // mix profile, or (default) candidate generation.
   const [routeBusy, setRouteBusy] = useState(false);
+  const [clarify, setClarify] = useState<{ reason: string; suggestions: string[] } | null>(null);
   const loudnessBusyRef = useRef(false);
-  const routeAndExecute = async () => {
-    if (!text.trim() || routeBusy) return;
+  // `override` lets the clarification chips re-run the router against a
+  // suggested phrasing in the same tick (React state would still be stale).
+  const routeAndExecute = async (override?: string) => {
+    const source = (override ?? text).trim();
+    if (!source || routeBusy) return;
     setRouteBusy(true);
     setError(null);
     setJustApplied(false);
+    setClarify(null);
     try {
-      const route = routeIntentText(text, doc);
+      const route = routeIntentText(source, doc);
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
-      if (lastGeneration() && resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)) {
-        const followUp = resolveProducerFollowUp(text, lastGeneration()?.intent ?? null)!;
+      if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
+        const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
         const merged: IntentInput = {
           ...(lastGeneration()?.intent ?? {}),
           ...(parsed?.input ?? {}),

@@ -65,6 +65,7 @@ export interface ParamAudit {
 
 export interface SweepResult {
   type: EffectType;
+  sweepError?: string;
   defaultPeak: number;
   defaultFinite: boolean;
   bypassDelta: number;
@@ -77,6 +78,7 @@ export interface SweepResult {
 }
 
 export interface HostResult {
+  hostError?: string;
   hostProcesses: boolean;
   hostDelta: number;
   hostBypassEqualsRemoved: boolean;
@@ -258,6 +260,22 @@ function buildTestBuffer(): AudioBuffer {
   return buffer;
 }
 
+/**
+ * Rhythmic gated noise for the detector input of sidechain-aware effects —
+ * without a modulator feed the vocoder runs its degraded 1:1 carrier
+ * passthrough and every sidechain ducking knob is legitimately inert.
+ */
+function buildModulatorBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const buffer = ctx.createBuffer(1, Math.floor(SR * SIGNAL_SECONDS), SR);
+  const d = buffer.getChannelData(0);
+  const gate = Math.floor(SR * 0.18);
+  for (let i = 0; i < d.length; i++) {
+    const on = i % (gate * 2) < gate;
+    d[i] = on ? 0.8 * (Math.random() * 2 - 1) : 0;
+  }
+  return buffer;
+}
+
 async function renderEffect(type: EffectType, params: Record<string, number>, signal: AudioBuffer): Promise<AudioBuffer> {
   const ctx = new OfflineAudioContext(2, signal.length, SR);
   await loadAllWorklets(ctx);
@@ -267,6 +285,12 @@ async function renderEffect(type: EffectType, params: Record<string, number>, si
   src.connect(rt.input);
   rt.output.connect(ctx.destination);
   src.start(0);
+  if (type === "vocoder" || type === "sidechain") {
+    const mod = ctx.createBufferSource();
+    mod.buffer = buildModulatorBuffer(ctx);
+    rt.setSidechainInput?.(mod);
+    mod.start(0);
+  }
   const out = await ctx.startRendering();
   rt.dispose();
   return out;
@@ -522,7 +546,13 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   for (const p of paramsDef) {
     const deltas: number[] = [];
     for (const value of [p.min, p.max]) {
-      const rendered = await render({ ...defaults, [p.id]: value });
+      let rendered: AudioBuffer;
+      try {
+        rendered = await render({ ...defaults, [p.id]: value });
+      } catch (error) {
+        unstableParams.push(`${p.id}@${value} (threw: ${String(error).slice(0, 120)})`);
+        continue;
+      }
       if (!finiteEverywhere(rendered) || metricsOf(rendered).peak > RUNAWAY_PEAK) {
         unstableParams.push(`${p.id}@${value}`);
         continue;
@@ -550,45 +580,64 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
 async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promise<InteractionAudit> {
   const notes: string[] = [];
   const trackId = drumTrackId(base);
+  const result: InteractionAudit = {
+    chainFinite: false,
+    chainPeak: 0,
+    chainRestoreDiff: Number.POSITIVE_INFINITY,
+    duplicateDelta: 0,
+    duplicateFinite: false,
+    liveInsertRemoveClean: false,
+    rapidSyncsClean: false,
+    notes,
+  };
 
-  // Chain of ALL 47 effects on one drum bus, every mix pulled off full wet —
-  // also the restore stress (JSON round-trip must render identically).
-  const chainStore = new ProjectStore(base);
-  for (const type of EFFECT_ORDER) {
-    const add = addEffect(chainStore.getDoc(), trackId, type);
-    chainStore.execute(add);
-    chainStore.execute(setEffectParam(chainStore.getDoc(), trackId, add.effectId, "mix", 0.5));
+  // Chain of ALL 47 effects on one drum bus, mix pulled to 0.5 where the
+  // effect has one — also the restore stress (JSON round-trip must render
+  // identically).
+  try {
+    const chainStore = new ProjectStore(base);
+    for (const type of EFFECT_ORDER) {
+      const add = addEffect(chainStore.getDoc(), trackId, type);
+      chainStore.execute(add);
+      if (EFFECT_META[type].params.some((p: ParamDef) => p.id === "mix")) {
+        chainStore.execute(setEffectParam(chainStore.getDoc(), trackId, add.effectId, "mix", 0.5));
+      }
+    }
+    const chainDoc = chainStore.getDoc();
+    const chainRender = await renderDoc(chainDoc, bank);
+    result.chainFinite = finiteEverywhere(chainRender);
+    result.chainPeak = metricsOf(chainRender).peak;
+    const chainRestored = await renderDoc(normalizeProject(JSON.parse(JSON.stringify(chainDoc))), bank);
+    result.chainRestoreDiff = maxDiff(chainRender, chainRestored);
+    if (!result.chainFinite) notes.push(`47-effect chain produced non-finite output (peak=${result.chainPeak})`);
+    if (result.chainRestoreDiff > 1e-4) notes.push(`chain restore diff=${result.chainRestoreDiff.toExponential(2)}`);
+  } catch (error) {
+    notes.push(`47-effect chain threw: ${String(error)}`);
   }
-  const chainDoc = chainStore.getDoc();
-  const chainRender = await renderDoc(chainDoc, bank);
-  const chainFinite = finiteEverywhere(chainRender);
-  const chainPeak = metricsOf(chainRender).peak;
-  const chainRestored = await renderDoc(normalizeProject(JSON.parse(JSON.stringify(chainDoc))), bank);
-  const chainRestoreDiff = maxDiff(chainRender, chainRestored);
-  if (!chainFinite) notes.push(`47-effect chain produced non-finite output (peak=${chainPeak})`);
-  if (chainRestoreDiff > 1e-4) notes.push(`chain restore diff=${chainRestoreDiff.toExponential(2)}`);
 
   // Duplicate instances: two delays with different times must differ from one.
-  const dupStore = new ProjectStore(base);
-  const first = addEffect(dupStore.getDoc(), trackId, "delay");
-  dupStore.execute(first);
-  dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, first.effectId, "time", 120));
-  dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, first.effectId, "mix", 0.4));
-  const singleDoc = dupStore.getDoc();
-  const second = addEffect(dupStore.getDoc(), trackId, "delay");
-  dupStore.execute(second);
-  dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, second.effectId, "time", 640));
-  dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, second.effectId, "mix", 0.4));
-  const doubleRender = await renderDoc(dupStore.getDoc(), bank);
-  const singleRender = await renderDoc(singleDoc, bank);
-  const duplicateDelta = deltaVs(metricsOf(singleRender), metricsOf(doubleRender)).delta;
-  const duplicateFinite = finiteEverywhere(doubleRender);
-  if (duplicateDelta <= RESPONSIVE_EPS) notes.push("second delay instance changed nothing (instance ignored?)");
+  try {
+    const dupStore = new ProjectStore(base);
+    const first = addEffect(dupStore.getDoc(), trackId, "delay");
+    dupStore.execute(first);
+    dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, first.effectId, "time", 120));
+    dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, first.effectId, "mix", 0.4));
+    const singleDoc = dupStore.getDoc();
+    const second = addEffect(dupStore.getDoc(), trackId, "delay");
+    dupStore.execute(second);
+    dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, second.effectId, "time", 640));
+    dupStore.execute(setEffectParam(dupStore.getDoc(), trackId, second.effectId, "mix", 0.4));
+    const doubleRender = await renderDoc(dupStore.getDoc(), bank);
+    const singleRender = await renderDoc(singleDoc, bank);
+    result.duplicateDelta = deltaVs(metricsOf(singleRender), metricsOf(doubleRender)).delta;
+    result.duplicateFinite = finiteEverywhere(doubleRender);
+    if (result.duplicateDelta <= RESPONSIVE_EPS) notes.push("second delay instance changed nothing (instance ignored?)");
+  } catch (error) {
+    notes.push(`duplicate-instance test threw: ${String(error)}`);
+  }
 
   // Live insert/remove during playback + rapid parameter syncs through the
   // real projection path.
-  let liveInsertRemoveClean = true;
-  let rapidSyncsClean = true;
   try {
     const ctx = new AudioContext();
     if (ctx.state === "suspended") await ctx.resume();
@@ -612,6 +661,7 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
     engine.setProject(withFx); // re-insert live
     engine.noteOn(trackId, 36, 0.9, ctx.currentTime + 0.05, 0.3);
     await new Promise((r) => setTimeout(r, 120));
+    result.liveInsertRemoveClean = true;
 
     // Rapid parameter changes: alternate extremes on two params, 24 syncs.
     const syncStore = new ProjectStore(withFx);
@@ -623,29 +673,22 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
       engine.setProject(syncStore.getDoc());
       await new Promise((r) => setTimeout(r, 10));
     }
+    result.rapidSyncsClean = true;
     engine.panic();
     await ctx.close();
   } catch (error) {
-    liveInsertRemoveClean = false;
-    rapidSyncsClean = false;
     notes.push(`live interaction threw: ${String(error)}`);
   }
 
-  return {
-    chainFinite,
-    chainPeak,
-    chainRestoreDiff,
-    duplicateDelta,
-    duplicateFinite,
-    liveInsertRemoveClean,
-    rapidSyncsClean,
-    notes,
-  };
+  return result;
 }
 
 /* ---------------- entry ---------------- */
 
-export async function runPluginAudit(onProgress?: (msg: string) => void): Promise<PluginAuditReport> {
+export async function runPluginAudit(
+  onProgress?: (msg: string) => void,
+  only?: EffectType[],
+): Promise<PluginAuditReport> {
   const progress = (msg: string) => onProgress?.(msg);
   const startedAt = new Date().toISOString();
   const bank = await generateFactoryBank();
@@ -665,11 +708,42 @@ export async function runPluginAudit(onProgress?: (msg: string) => void): Promis
   progress(`base render peak=${basePeak.toFixed(3)}`);
 
   const effects: EffectAudit[] = [];
-  for (const type of EFFECT_ORDER) {
+  for (const type of only && only.length > 0 ? only : EFFECT_ORDER) {
     progress(`sweep ${type}`);
-    const sweep = await sweepEffect(type, signal, dry);
+    let sweep: SweepResult;
+    try {
+      sweep = await sweepEffect(type, signal, dry);
+    } catch (error) {
+      sweep = {
+        type,
+        sweepError: String(error),
+        defaultPeak: 0,
+        defaultFinite: false,
+        bypassDelta: 0,
+        params: [],
+        deadParams: [],
+        unstableParams: [],
+        rapidSwingFinite: false,
+        presetsFinite: 0,
+        presetsTotal: 0,
+      };
+    }
     progress(`host ${type}`);
-    const host = await hostTestEffect(baseDoc, type, sweep, bank);
+    let host: HostResult;
+    try {
+      host = await hostTestEffect(baseDoc, type, sweep, bank);
+    } catch (error) {
+      host = {
+        hostError: String(error),
+        hostProcesses: false,
+        hostDelta: 0,
+        hostBypassEqualsRemoved: false,
+        hostFinite: false,
+        automationDelta: 0,
+        automationFinite: false,
+        restoreMaxDiff: Number.POSITIVE_INFINITY,
+      };
+    }
     const def = EFFECT_DEFS[type];
     effects.push({ ...sweep, ...host, name: def.name, category: def.category });
   }
