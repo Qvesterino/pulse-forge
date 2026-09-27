@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
-import { parseProductionIntent, resolveProductionTargets } from "../intent/production";
+import { parseChaseIntent } from "../intent/chaseIntent";
+import { formatSmpTe } from "../midi/smpte";
+import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
 import { reviseSectionProduction } from "../intent/section-production";
 import {
@@ -18,6 +20,7 @@ import {
   applyGenerationResultCommand,
   applyGenerationResultWithFxCommand,
   applyProductionIntentCommand,
+  exactReadback,
   setMasterConfig,
 } from "../commands/commands";
 import { applyArrangeOps, applyClipArrangeOps } from "../intent/arrangeWords";
@@ -36,9 +39,9 @@ import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { mutateBeat } from "../gallery/lineage";
-import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
-import { applyCompoundIntent } from "../intent/compound";
-import { applyPresetIntentCommand } from "../intent/preset-intent";
+import { applyFaderIntent, applyTempoIntent, faderReadback } from "../intent/conversation";
+import { applyCompoundIntent, compoundReadback } from "../intent/compound";
+import { applyPresetIntentCommand, presetReadback } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
 import { resolveVocalTake } from "../vocal/resolve";
@@ -65,7 +68,7 @@ import { evaluateBriefCompliance } from "../intent/brief-gate";
 import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
-import { applyEffectIntent, applyMixIntent, planMixProfile } from "../intent/mix";
+import { applyEffectIntent, applyMixIntent, effectReadback, planMixProfile } from "../intent/mix";
 import { applyLoudnessIntent, measurePreviewLoudness, type LoudnessRecommendation } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -482,6 +485,27 @@ export function IntentPanel() {
         }
       }
       setStatus(statusText);
+      setBusy(false);
+      return;
+    }
+    // CHASE VERB (ADR 0017 wave 2 intent surface): "chase my timecode" /
+    // "sleduj timecode" arms the chaser, "go to 1:23" seeks the playhead to
+    // a timecode position at the current BPM. Transport-domain action (like
+    // clock sync) — immediate, not an undoable document command.
+    const chaseIntent = parseChaseIntent(text);
+    if (chaseIntent) {
+      const chaser = services.mtcChaser;
+      if (chaseIntent.kind === "arm") {
+        chaser.armed = true;
+        setStatus("✓ MTC chase ARMED — transport sleduje externý timecode (full frames skáču okamžite)");
+      } else if (chaseIntent.kind === "disarm") {
+        chaser.armed = false;
+        setStatus("✓ MTC chase vypnutý — transport behá na svojom čase");
+      } else if (chaser.seekToTimecode(chaseIntent.tc)) {
+        setStatus(`✓ playhead → ${formatSmpTe(chaseIntent.tc)} (TC @ ${services.store.getDoc().bpm} BPM)`);
+      } else {
+        setError("Nepodarilo sa namapovať timecode — skontroluj formát (hh:mm:ss:ff).");
+      }
       setBusy(false);
       return;
     }
@@ -1910,7 +1934,8 @@ export function IntentPanel() {
         try {
           const command = applyPresetIntentCommand(doc, route.intent);
           services.store.execute(command);
-          setStatus(`✓ ${command.label} (one undo step)`);
+          const readback = presetReadback(services.store.getDoc(), route.intent);
+          setStatus(`✓ ${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
         }
@@ -1942,13 +1967,15 @@ export function IntentPanel() {
         stopAudition();
         const command = applyExactIntentCommand(doc, route.plan);
         services.store.execute(command);
-        setStatus(`⚡ ${route.plan.label}`);
+        const readback = exactReadback(doc, services.store.getDoc(), route.plan);
+        setStatus(`⚡ ${route.plan.label}${readback ? ` — ${readback}` : ""}`);
       } else if (route.kind === "effectIntent") {
         // D1 v2a: targeted effect × target × direction
         stopAudition();
         const command = applyEffectIntent(doc, route.intent);
         services.store.execute(command);
-        setStatus(`⚡ ${route.intent.detected.join(" · ")}`);
+        const readback = effectReadback(doc, services.store.getDoc(), route.intent);
+        setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}`);
       } else if (route.kind === "production") {
         // Production intent with an explicit target ("make the drums
         // darker") — same executor as the GENERATE path: track FX, one
@@ -1957,7 +1984,8 @@ export function IntentPanel() {
         try {
           const cmd = applyProductionIntentCommand(doc, route.intent);
           services.store.execute(cmd);
-          setStatus(`✓ ${cmd.label} — applied (one undo step)`);
+          const readback = productionReadback(doc, services.store.getDoc(), route.intent);
+          setStatus(`✓ ${cmd.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
         }
@@ -1970,7 +1998,8 @@ export function IntentPanel() {
           return;
         }
         services.store.execute(command);
-        setStatus(`${command.label} (one undo step)`);
+        const readback = faderReadback(doc, services.store.getDoc(), route.intent);
+        setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
       } else if (route.kind === "compound") {
         // Cross-executor compound ("zníž tempo a zvýš lead") — every clause
         // parsed on its own; all clauses fold into ONE undoable snapshot.
@@ -1981,7 +2010,8 @@ export function IntentPanel() {
           return;
         }
         services.store.execute(command);
-        setStatus(`${command.label} (one undo step)`);
+        const readback = compoundReadback(doc, services.store.getDoc(), route.parts);
+        setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
       } else if (route.kind === "tempo") {
         // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step
         services.store.execute(applyTempoIntent(doc, route.intent));

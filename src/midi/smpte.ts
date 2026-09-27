@@ -316,6 +316,20 @@ export class MtcChaser {
     private readonly bpm: () => number,
   ) {}
 
+  /**
+   * Map a timecode onto the project timeline at the CURRENT BPM and seek
+   * there (works stopped and playing). Shared by the armed chase policy and
+   * the "go to 1:23" intent verb. Returns false for garbage input.
+   */
+  seekToTimecode(tc: SmpTeTimecode): boolean {
+    const seconds = smpteToSeconds(tc);
+    if (!Number.isFinite(seconds) || seconds < 0) return false;
+    const tick = seconds * ((this.bpm() / 60) * PPQ);
+    if (!Number.isFinite(tick) || tick < 0) return false;
+    this.transport.seek(tick);
+    return true;
+  }
+
   onFrame(tc: SmpTeTimecode, opts: { immediate?: boolean; wallNow?: number } = {}): ChaseDecision {
     if (!this.armed) return "idle";
     const seconds = smpteToSeconds(tc);
