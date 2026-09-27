@@ -150,8 +150,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["kanye", "kanye west", "kanye type beat", "boom bap", "boombap", "boom-bap"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     // boom-bap warmth = classic style + low energy + slow BPM (no canonical
     // "warm" mood exists in mapIntentToOptions)
     energy: 0.55,
@@ -516,8 +516,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["j cole", "j. cole", "cole world", "dreamville"],
     // Conscious boom bap — the classic groove, laid-back pen.
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -526,8 +526,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["nas", "nas type beat", "illmatic", "ny hip hop", "new york rap"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.55,
     density: 0.5,
@@ -537,8 +537,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["mf doom", "mf doon", "madvillain", "doom type beat"],
     // Dusty lo-fi boom bap — comic-book villain loop digger.
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "chill",
     energy: 0.45,
     density: 0.5,
@@ -653,8 +653,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["tyler the creator", "tyler creator", "igor", "flower boy", "golf wang"],
     // Neo-soul boom bap — the classic groove at Igor/Flower Boy tempo.
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -664,8 +664,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["mac miller", "mac miller type beat", "circles", "kidd"],
     // Jazz-tinged boom bap — laid-back pen over warm loops.
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.45,
     density: 0.5,
@@ -2330,6 +2330,49 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     bpmRange: [92, 108],
     label: "santi",
   },
+  // ── kuduro + tropical wave (researched: Buraka Som Sistema — the Lisbon
+  // crew that globalized kuduro; Kygo — tropical house's biggest crossover,
+  // Klingande — sax-flavored tropical, Matoma) ──
+  {
+    names: ["buraka som sistema", "buraka", "buraka som sistema type beat"],
+    genre: "house",
+    style: "kuduro",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [130, 140],
+    label: "buraka som sistema",
+  },
+  {
+    names: ["kygo", "kygo type beat"],
+    genre: "house",
+    style: "tropical",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.45,
+    bpmRange: [100, 110],
+    label: "kygo",
+  },
+  {
+    names: ["klingande", "klingande type beat"],
+    genre: "house",
+    style: "tropical",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [100, 112],
+    label: "klingande",
+  },
+  {
+    names: ["matoma", "matoma type beat"],
+    genre: "house",
+    style: "tropical",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.45,
+    bpmRange: [100, 110],
+    label: "matoma",
+  },
   {
     names: ["sabrina carpenter", "sabrina", "sabrina carpenter type beat"],
     genre: "house",
@@ -2753,8 +2796,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // planGeneration clamps the prior to the requested window.
   {
     names: ["2pac", "tupac", "makaveli", "2pac type beat"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.6,
     density: 0.55,
@@ -2763,8 +2806,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["biggie", "notorious big", "biggie smalls", "big poppa"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.6,
     density: 0.55,
@@ -2774,8 +2817,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     // Raekwon rides in the same entry (Cuban Linx pocket = the clan pocket).
     names: ["wu-tang", "wu tang", "rza", "raekwon", "ghostface killah", "method man", "gza", "ol dirty"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.6,
     density: 0.5,
@@ -2784,8 +2827,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["jay-z", "jay z", "jigga", "hov", "reasonable doubt"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.55,
     density: 0.5,
@@ -2794,8 +2837,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["mobb deep", "havoc type beat", "shook ones", "the infamous"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.6,
     density: 0.5,
@@ -2805,8 +2848,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── Dirty South founders ───────────────────────────────────────────────
   {
     names: ["outkast", "andre 3000", "andre three thousand", "big boi", "atliens", "stankonia"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "chill",
     energy: 0.6,
     density: 0.55,
@@ -2815,8 +2858,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["ugk", "bun b", "pimp c", "ridin dirty"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "chill",
     energy: 0.55,
     density: 0.5,
@@ -2825,8 +2868,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["geto boys", "scarface type beat", "willie d", "bushwick bill"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.55,
     density: 0.5,
@@ -2838,8 +2881,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // canonical alias is written post-normalization; "tip" alone is SK for
     // "type" and must never become an artist match.
     names: ["t i", "grand hustle", "ti type beat", "trap muzik"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "dark",
     energy: 0.65,
     density: 0.55,
@@ -2880,8 +2923,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── 2000s mainstream ───────────────────────────────────────────────────
   {
     names: ["eminem", "slim shady", "marshall mathers", "eminem type beat", "8 mile"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "aggressive",
     energy: 0.7,
     density: 0.55,
@@ -2890,8 +2933,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["50 cent", "fifty cent", "g-unit", "get rich", "50 cent type beat"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "aggressive",
     energy: 0.7,
     density: 0.55,
@@ -2920,8 +2963,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["dmx", "dark man x", "ruff ryders", "dmx type beat"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "golden",
     mood: "aggressive",
     energy: 0.75,
     density: 0.55,
@@ -3045,8 +3088,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
       "griselda",
       "gxfr",
     ],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "dark",
     energy: 0.55,
     density: 0.5,
@@ -3055,8 +3098,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["navy blue", "earl sweatshirt", "earl type beat", "mike type beat", "ka type beat"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.45,
     density: 0.5,
@@ -3377,8 +3420,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
       "care for me",
       "pivot gang",
     ],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -3538,8 +3581,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["little simz", "simz", "simbi", "grey area"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -5072,8 +5115,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["rapsody type beat", "rapsody"],
-    genre: "trap",
-    style: "classic",
+    genre: "boombap",
+    style: "modern",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -6027,6 +6070,231 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.5,
     bpmRange: [126, 136],
     label: "ukg crossover",
+  },
+  // ── Boom bap school tree (the full lineage, not just the tempo) ─────────
+  // Golden: the 90s production architects who DEFINED the pocket (their
+  // artist entries above carry the rappers; these carry the sound itself).
+  {
+    names: ["dj premier", "premier", "gang starr", "guru"],
+    // The scratch-hook, hard-snare temple — Gang Starr's Daily Operation.
+    genre: "boombap",
+    style: "golden",
+    mood: "dark",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [88, 96],
+    label: "dj premier",
+  },
+  {
+    names: ["pete rock", "cl smooth", "pete rock & cl smooth"],
+    // The horn-loop warmth — Mecca and the Soul Brother.
+    genre: "boombap",
+    style: "golden",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [88, 98],
+    label: "pete rock",
+  },
+  {
+    names: ["large professor", "main source", "breaking atoms"],
+    genre: "boombap",
+    style: "golden",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [86, 96],
+    label: "large professor",
+  },
+  {
+    names: ["marley marl", "juice crew", "biz markie"],
+    // The 80s bridge into the golden era — drum-machine + breakbeat.
+    genre: "boombap",
+    style: "golden",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [95, 108],
+    label: "marley marl",
+  },
+  {
+    names: ["erik b", "erik sermon", "epmd", "hit squad"],
+    // The funk-loop punch that made the pocket harder.
+    genre: "boombap",
+    style: "golden",
+    mood: "aggressive",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [90, 100],
+    label: "epmd",
+  },
+  // Jazz rap: the refinement school.
+  {
+    names: ["a tribe called quest", "tribe called quest", "q-tip", "q tip", "atcq"],
+    // The jazz-rap blueprint — Low End Theory's upright-bass float.
+    genre: "boombap",
+    style: "jazz",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [88, 100],
+    label: "a tribe called quest",
+  },
+  {
+    names: ["de la soul", "native tongues", "3 feet high"],
+    genre: "boombap",
+    style: "jazz",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [90, 104],
+    label: "de la soul",
+  },
+  {
+    names: ["digable planets", "souls of mischief", "hieroglyphics", "del the funky"],
+    // The west-coast jazz-rap corner (93 'til Infinity).
+    genre: "boombap",
+    style: "jazz",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [88, 98],
+    label: "jazz rap west",
+  },
+  {
+    names: ["the pharcyde", "pharcyde", "bizarre ride"],
+    genre: "boombap",
+    style: "jazz",
+    mood: "energetic",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [90, 100],
+    label: "the pharcyde",
+  },
+  // Lo-fi / Dilla: the off-kilter school.
+  {
+    names: ["j dilla", "j-dilla", "dilla", "jay dee", "slum village", "donuts"],
+    // THE off-kilter pocket — the late kick is the signature.
+    genre: "boombap",
+    style: "lofi",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.45,
+    bpmRange: [78, 92],
+    label: "j dilla",
+  },
+  {
+    names: ["madlib", "quasimoto", "madvillainy", "freddie gibbs"],
+    // The dusty-crate maximalist — Madvillainy / Piñata.
+    genre: "boombap",
+    style: "lofi",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [80, 95],
+    label: "madlib",
+  },
+  {
+    names: ["knxwledge", "mndsgn", "ohbliv", "dibia$e", "devonwho"],
+    // The LA beat-scene lo-fi generation.
+    genre: "boombap",
+    style: "lofi",
+    mood: "chill",
+    energy: 0.45,
+    density: 0.45,
+    bpmRange: [78, 92],
+    label: "knxwledge",
+  },
+  {
+    names: ["fat jon", "substantial", "five deez"],
+    // The jazz-sample lo-fi lane (the Modal Soul side players).
+    genre: "boombap",
+    style: "lofi",
+    mood: "chill",
+    energy: 0.45,
+    density: 0.45,
+    bpmRange: [75, 92],
+    label: "jazz-sample lofi",
+  },
+  // Drumless: the Alchemist school.
+  {
+    names: ["the alchemist", "alchemist", "alc", "alfredo"],
+    // The drumless loop master — the sample IS the rhythm.
+    genre: "boombap",
+    style: "drumless",
+    mood: "dark",
+    energy: 0.45,
+    density: 0.4,
+    bpmRange: [78, 92],
+    label: "the alchemist",
+  },
+  {
+    names: ["billy woods", "armand hammer", "elucid", "backwoodz"],
+    // The abstract drumless art-rap corner.
+    genre: "boombap",
+    style: "drumless",
+    mood: "dark",
+    energy: 0.45,
+    density: 0.4,
+    bpmRange: [72, 88],
+    label: "billy woods",
+  },
+  {
+    names: ["mach-hommy", "mach hommy", "gunnlib", "pray for haiti"],
+    // The drumless/lo-fi luxury-rap edge.
+    genre: "boombap",
+    style: "drumless",
+    mood: "dark",
+    energy: 0.5,
+    density: 0.4,
+    bpmRange: [76, 90],
+    label: "mach-hommy",
+  },
+  // Modern: the Griselda-era production room.
+  {
+    names: ["conductor williams", "craven"],
+    // The modern Griselda in-house sound — dusty but tight.
+    genre: "boombap",
+    style: "modern",
+    mood: "dark",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [82, 94],
+    label: "conductor williams",
+  },
+  {
+    names: ["boldy james", "rome streetz", "stove god cooks", "flee lord", "elcamino", "sadhugold"],
+    // The Griselda roster depth beyond Gunn/Conway/Benny.
+    genre: "boombap",
+    style: "modern",
+    mood: "dark",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [82, 94],
+    label: "griselda depth",
+  },
+  {
+    names: ["marcberg", "ka type beat 2", "navy blue 2"],
+    // The drumless-adjacent modern lyricist pocket.
+    genre: "boombap",
+    style: "modern",
+    mood: "dark",
+    energy: 0.5,
+    density: 0.45,
+    bpmRange: [80, 92],
+    label: "marcberg",
+  },
+  // Trapbap: the modern hybrid.
+  {
+    names: ["jpegmafia type", "injury reserve", "clipping 2", "danny brown"],
+    // The modern experimental-rap hybrid — boom-bap samples + trap weight.
+    genre: "boombap",
+    style: "trapbap",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [120, 145],
+    label: "trapbap hybrid",
   },
 ];
 

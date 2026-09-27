@@ -112,6 +112,11 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "house"],
   // Gqom — the Durban broken-kick mutation (NO four-on-the-floor)
   [/\bgqom\b/, "house"],
+  // Kuduro / batida — the Luanda carnival engine (half-time rap rides on
+  // top as melody; "batida" is the Lisbon scene's name for the beat).
+  [/\bkuduro\b|\bbatida\b/, "house"],
+  // Tropical house — the beach lane (soft four-floor, marimba/steel pan).
+  [/\btropical(?: house)?\b/, "house"],
   // Dembow dominicano BEFORE the generic dembow genre word — the rawer,
   // 16th-filled Santo Domingo lane (house.dembowdom).
   [/\bdembow dominicano\b|\bdominican dembow\b/, "house"],
@@ -170,10 +175,27 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bindustrial\b/, "techno"],
   [/\bdub techno\b|\bdubtech\b|\bdub\b/, "techno"],
   [/\bhardcore\b|\bgabber\b/, "techno"],
+  // trap bap must sit ABOVE the bare \btrap\b entry — the hybrid carries the
+  // boom-bap floor even though the phrase contains "trap".
+  [/\btrap ?bap\b|\btrap-?bap\b|\bboombap trap\b/, "boombap"],
   [/\bdrill\b/, "drill"], // first-class since the sound-quality pass (own grooves + kit swap)
   [/\btrap\b/, "trap"],
   [/\bphonk\b|\bmemphis\b|\bmemfis\b/, "phonk"],
-  [/\bhip ?hop\b|\bboombap\b|\bboom bap\b/, "trap"],
+  // Boom bap — first-class genre with the full school tree (golden / jazz /
+  // lofi / drumless / trapbap / modern). Specific phrases BEFORE the generic
+  // hip-hop entry so "jazz rap" / "drumless" / "trap bap" keep their school.
+  // "electro hip hop" is the 80s machine-funk lane (trap.oldschool), not
+  // boom bap — it must sit ABOVE the boom-bap hip-hop entry.
+  [/\belectro hip ?hop\b/, "trap"],
+  [/\bjazz rap\b|\bjazz ?hop\b|\bjazzy hip ?hop\b|\bjazzy beat\b/, "boombap"],
+  [/\bdrumless\b/, "boombap"],
+  [/\bgriselda\b|\bconway\b|\bwestside gunn\b|\broc marciano\b|\bboldy james\b|\badam waun\b/, "boombap"],
+  // "electro hip hop" / "lofi hip hop" keep their own legs — the guard keeps
+  // bare hip-hop talk on the boom-bap floor.
+  [
+    /\bboombap\b|\bboom ?bap\b|\bhip ?hop\b(?! (?:soul|rock|experimental))|\b90s rap\b|\bgolden era\b|\beast coast rap\b/,
+    "boombap",
+  ],
   [/\bambient\b/, "ambient"],
   [/\blofi\b|\blo-?fi\b/, "ambient"],
   [/\bscore\b|\bscene\b|\bsoundscape\b|\bcinematic\b/, "ambient"],
@@ -253,6 +275,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bmoombahton\b/, "moombahton"],
   [/\bgqom\b/, "gqom"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "slaphouse"],
+  // Kuduro / batida + tropical — unique words, no generic collisions.
+  [/\bkuduro\b|\bbatida\b/, "kuduro"],
+  [/\btropical(?: house)?\b/, "tropical"],
   // Ghettotech — Detroit's banging 808 bounce (house.ghettotech); the genre
   // word already routes to house via the g-house entry above.
   [/\bghetto ?tech\b|\bghettotech\b/, "ghettotech"],
@@ -263,6 +288,14 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bdub\b/, "dub"],
   [/\bacid\b/, "acid"],
   [/\bclassic\b|\btraditional\b|\bklasick|\bretro\b|\bvintage\b|\bnostalgick|\bstaromodn/, "classic"],
+  // Boom bap school tree — specific school words BEFORE the generic
+  // classic/match entries. "golden" is bare-qualified ("golden era") so it
+  // never hijacks "golden" as a colour word.
+  [/\bgolden era\b|\bgolden age\b|\bpremier type\b|\bpreemo\b/, "golden"],
+  [/\bdrumless\b|\balchemist type\b/, "drumless"],
+  [/\btrap ?bap\b|\btrap-?bap\b/, "trapbap"],
+  [/\blo-?fi (?:boom ?bap|rap|hip ?hop)\b|\bdilla\b|\bmadlib style\b|\boff-?kilter\b/, "lofi"],
+  [/\bjazz rap\b|\bjazz ?hop\b|\bjazzy\b/, "jazz"],
   [/\brolling\b|\broll\b|\broluj/, "rolling"],
   [/\bsparse\b/, "sparse"],
   [/\bsample drill\b|\bsample\b/, "sample"],
