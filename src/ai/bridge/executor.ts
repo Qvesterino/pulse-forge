@@ -745,11 +745,7 @@ function createInstrumentTrack(doc: ProjectDocument, cmd: CreateInstrumentTrackC
  * for it. Haas width depends on the delay being a doubling cue, and flipping
  * the channel order moves the pre-echo to the wrong ear. See stereoSlots.ts.
  */
-function applyStereoWidth(
-  doc: ProjectDocument,
-  targetId: ID,
-  cmd: HaasWidenerCommand,
-): ProjectDocument {
+function applyStereoWidth(doc: ProjectDocument, targetId: ID, cmd: HaasWidenerCommand): ProjectDocument {
   const s = haasSpec(cmd.width, cmd.intensity);
   if (!s) throw new Error(`applyStereoWidth: unknown width "${cmd.width}"`);
   const params: Record<string, number> = {
@@ -815,11 +811,7 @@ function applyDistortion(doc: ProjectDocument, targetId: ID, cmd: DistortionComm
  * the user did not ask for (two reverbs double the wet level, two distorters
  * turn a tone into a brick).
  */
-function upsertEffect(
-  track: Track,
-  type: EffectType,
-  params: Record<string, number>,
-): Track {
+function upsertEffect(track: Track, type: EffectType, params: Record<string, number>): Track {
   const existing = findLastIndex(track.effects, (f) => f.type === type);
   if (existing >= 0) {
     const effects = track.effects.slice();

@@ -128,19 +128,18 @@ export const punchierDrumsRecipe: Recipe = {
  * group track that is clearly the kit bus, and finally nothing — a project
  * whose kit is spread across single-hit tracks has no bus to treat, and
  * guessing one would push the whole recipe onto the wrong element.
+ *
+ * `namePattern` is the RAW track name; the executor escapes it itself when
+ * `regex` is false.
  */
 function findDrumBus(doc: RecipeInput["doc"]): { namePattern: string; regex: boolean; preferKind: "any" } {
   const named = doc.tracks.find((t) => /^\s*(drums?|drum\s?bus|kit|percussion)\s*$/i.test(t.name));
-  if (named) return { namePattern: escapeLiteral(named.name), regex: false, preferKind: "any" };
+  if (named) return { namePattern: named.name, regex: false, preferKind: "any" };
   const loose = doc.tracks.find((t) => /\bdrums?\b/i.test(t.name));
-  if (loose) return { namePattern: escapeLiteral(loose.name), regex: false, preferKind: "any" };
+  if (loose) return { namePattern: loose.name, regex: false, preferKind: "any" };
   // Nothing drum-shaped: the caller turns the empty batch into
-  // "no drum bus found", which is far more useful than a wrong guess.
+  // "no drum bus found", which is much more useful than a wrong guess.
   return { namePattern: "__no_drum_bus__", regex: false, preferKind: "any" };
-}
-
-function escapeLiteral(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function round2(n: number): number {

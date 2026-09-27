@@ -131,7 +131,7 @@ export const spaciousBassRecipe: Recipe = {
     //    inferred "spacious" intent — that is the recipe overruling a choice
     //    that was already made on purpose. −0.12 is a hint of width, not a
     //    move to the side.
-    const bassTrack = doc.tracks.find((t) => resolveName(t.name) === bass.namePattern);
+    const bassTrack = doc.tracks.find((t) => t.name === bass.namePattern);
     const currentPan = bassTrack?.pan ?? 0;
     if (Math.abs(currentPan) < 0.05) {
       commands.push({
@@ -153,28 +153,19 @@ export const spaciousBassRecipe: Recipe = {
  * intent templates use genre-appropriate names, so this checks the common
  * spellings rather than requiring a literal "Bass" label.
  *
- * The returned matcher is a plain substring (regex: false) so the executor's
- * default resolution is used — and `resolveName` lets build() re-find the same
- * track when it needs the current pan.
+ * `namePattern` is the RAW track name — the executor escapes it itself when
+ * `regex` is false, so escaping here would double up and never match a name
+ * containing a hyphen or a parenthesis.
  */
 function findBassTrack(doc: RecipeInput["doc"]): { namePattern: string; regex: boolean; preferKind: "any" } {
   const patterns = [/^\s*bass(es)?\s*$/i, /\b808\b/i, /\bsub\b/i, /\bbass\b/i];
   for (const re of patterns) {
     const found = doc.tracks.find((t) => re.test(t.name));
-    if (found) return { namePattern: escapeLiteral(found.name), regex: false, preferKind: "any" };
+    if (found) return { namePattern: found.name, regex: false, preferKind: "any" };
   }
   // No bass-shaped track: the empty batch becomes a "no bass found" error,
   // which is far better than putting a hall reverb on the wrong element.
   return { namePattern: "__no_bass_track__", regex: false, preferKind: "any" };
-}
-
-/** Inverse of escapeLiteral — used only to compare a matcher's literal back to a track name. */
-function resolveName(escaped: string): string {
-  return escaped.replace(/\\(.)/g, "$1");
-}
-
-function escapeLiteral(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function round2(n: number): number {

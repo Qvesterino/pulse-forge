@@ -153,19 +153,60 @@ export function haasSpec(width: StereoWidth, intensity: number): HaasSpec | null
 export function midSideSpec(shape: MidSideShape, intensity: number): MidSideSpec | null {
   const t = Math.min(1, Math.max(0, intensity));
   const base: Record<MidSideShape, MidSideSpec> = {
-    scooped: { lowFreqHz: 240, highFreqHz: 2400, lowGainDb: -3, midGainDb: -2, highGainDb: 2, comp: 0.2, soloLow: 0, soloMid: 0, soloHigh: 0, mix: 1 },
-    "vocal-focus": { lowFreqHz: 180, highFreqHz: 3200, lowGainDb: -4, midGainDb: 2.5, highGainDb: -2, comp: 0.3, soloLow: 0, soloMid: 0, soloHigh: 0, mix: 1 },
-    bright: { lowFreqHz: 200, highFreqHz: 2000, lowGainDb: 0, midGainDb: -1, highGainDb: 3, comp: 0.1, soloLow: 0, soloMid: 0, soloHigh: 0, mix: 1 },
-    balanced: { lowFreqHz: 200, highFreqHz: 2000, lowGainDb: 0, midGainDb: 0, highGainDb: 0, comp: 0, soloLow: 0, soloMid: 0, soloHigh: 0, mix: 1 },
+    scooped: {
+      lowFreqHz: 240,
+      highFreqHz: 2400,
+      lowGainDb: -3,
+      midGainDb: -2,
+      highGainDb: 2,
+      comp: 0.2,
+      soloLow: 0,
+      soloMid: 0,
+      soloHigh: 0,
+      mix: 1,
+    },
+    "vocal-focus": {
+      lowFreqHz: 180,
+      highFreqHz: 3200,
+      lowGainDb: -4,
+      midGainDb: 2.5,
+      highGainDb: -2,
+      comp: 0.3,
+      soloLow: 0,
+      soloMid: 0,
+      soloHigh: 0,
+      mix: 1,
+    },
+    bright: {
+      lowFreqHz: 200,
+      highFreqHz: 2000,
+      lowGainDb: 0,
+      midGainDb: -1,
+      highGainDb: 3,
+      comp: 0.1,
+      soloLow: 0,
+      soloMid: 0,
+      soloHigh: 0,
+      mix: 1,
+    },
+    balanced: {
+      lowFreqHz: 200,
+      highFreqHz: 2000,
+      lowGainDb: 0,
+      midGainDb: 0,
+      highGainDb: 0,
+      comp: 0,
+      soloLow: 0,
+      soloMid: 0,
+      soloHigh: 0,
+      mix: 1,
+    },
   };
   const s = base[shape];
   if (!s) return null;
   const scale = (db: number): number => round2(db * (1 + 0.35 * t));
   const lowFreqHz = round2(s.lowFreqHz * (1 - 0.15 * t));
-  const highFreqHz = Math.max(
-    MSEQ_RANGES.highFreq.min,
-    round2(s.highFreqHz * (1 + 0.15 * t)),
-  );
+  const highFreqHz = Math.max(MSEQ_RANGES.highFreq.min, round2(s.highFreqHz * (1 + 0.15 * t)));
   return {
     ...s,
     lowGainDb: scale(s.lowGainDb),

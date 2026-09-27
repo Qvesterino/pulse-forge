@@ -33,8 +33,8 @@
  */
 
 import type { BridgeCommand, Recipe, RecipeInput } from "../types";
-import { uid } from "../../shared/ids";
-import type { InstrumentTrack, ProjectDocument } from "../../project-model/types";
+import { uid } from "../../../shared/ids";
+import type { InstrumentTrack, ProjectDocument } from "../../../project-model/types";
 
 const RECIPE_ID = "malakian-guitar";
 const PALM_RECIPE_ID = "palm-muted-guitar";
@@ -111,7 +111,10 @@ function guitarChain(
 ): BridgeCommand[] {
   const created = createGuitarTrack(doc, trackName);
   if (!created) return [];
-  const target = { namePattern: escapeLiteral(trackName), regex: false, preferKind: "any" as const };
+  // `namePattern` is the RAW track name — the executor escapes it itself when
+  // `regex` is false. Escaping here would double up and never match a name
+  // containing a hyphen or a parenthesis.
+  const target = { namePattern: trackName, regex: false, preferKind: "any" as const };
 
   const commands: BridgeCommand[] = [created];
   const isHighGain = voice === "high-gain";
@@ -177,13 +180,9 @@ function createGuitarTrack(doc: ProjectDocument, trackName: string): BridgeComma
     label: `Add "${trackName}"`,
     rationale:
       "New sampler track for the rhythm part. No notes are written — picking a riff is composition, not mixing, so the rig is set up and the part is yours to play.",
-    target: { namePattern: escapeLiteral(trackName), regex: false, preferKind: "any" },
+    target: { namePattern: trackName, regex: false, preferKind: "any" },
     track: { id, name: trackName },
   };
-}
-
-function escapeLiteral(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function round2(n: number): number {
