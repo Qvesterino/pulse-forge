@@ -596,6 +596,255 @@ const DNB_LEAD: MelodicPatternData = {
   ],
 };
 
+// ── Melodic dialects (per-style pilots) ───────────────
+// Amapiano: the LOG DRUM is melodic content, not a drum — syncopated short
+// bass notes answering the kick, airy chord stabs, gentle piano lead.
+const AMAPIANO_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    // Core log-drum answer — syncopated short notes between the kicks
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    // Log roll — the short-note tumble
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+    ],
+    // Deep walk — root patience, syncopated lift
+    [
+      { degree: 0, duration: 4, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+    ],
+  ],
+};
+
+const AMAPIANO_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 2,
+  sequences: [
+    // Airy stabs — sparse, soft, floating above the log drum
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 5, duration: 4, velocity: 0.45 },
+    ],
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.45 },
+    ],
+  ],
+};
+
+const AMAPIANO_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Gentle piano phrase — patient, jazzy movement
+    [
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 5, duration: 3, velocity: 0.55 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.5 },
+    ],
+  ],
+};
+
+// Dembow: the chop bass — root-heavy staccato answering the rim chop
+const DEMBOW_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 3, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 3, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+    ],
+  ],
+};
+
+const DEMBOW_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Bright stabs answering the chop
+    [
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    [
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 8, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+const DEMBOW_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 1,
+  sequences: [
+    // Syncopated tropical-urban hook
+    [
+      { degree: 0, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 1, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+    [
+      { degree: 5, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 8, velocity: 0 },
+    ],
+  ],
+};
+
+// Metal: the gallop — driving root-heavy 8ths, dark sustained power chords
+const METAL_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    // Gallop — root drive with fifth jumps
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 4, duration: 2, velocity: 0.9 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 4, duration: 2, velocity: 0.9 },
+      { degree: 3, duration: 2, velocity: 0.8 },
+    ],
+    // Chug walk — root 8ths with a dark lift
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: 5, duration: 2, velocity: 0.8 },
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 6, duration: 2, velocity: 0.75 },
+      { degree: 4, duration: 2, velocity: 0.85 },
+    ],
+  ],
+};
+
+const METAL_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Dark sustained power — two heavy hits per bar
+    [
+      { degree: 0, duration: 8, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 6, velocity: 0.8 },
+    ],
+    [
+      { degree: 0, duration: 6, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 8, velocity: 0.8 },
+    ],
+  ],
+};
+
+const METAL_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Dark minor run — the riff line
+    [
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 4, duration: 2, velocity: 0.75 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 6, duration: 2, velocity: 0.65 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: 2, duration: 2, velocity: 0.65 },
+    ],
+    // Sparse menace — long tones, dark intervals
+    [
+      { degree: 0, duration: 4, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.75 },
+    ],
+  ],
+};
+
 // ── Registry ───────────────────────────────────────────
 
 export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
@@ -604,6 +853,22 @@ export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
   trap: [TRAP_BASS, TRAP_CHORD, TRAP_LEAD],
   ambient: [AMBIENT_BASS, AMBIENT_CHORD, AMBIENT_LEAD],
   dnb: [DNB_BASS, DNB_CHORD, DNB_LEAD],
+};
+
+/**
+ * Per-style melodic dialects (Wave: melodic dialects) — keyed by the
+ * `${genre}.${style}` groove id, selected between the production profile
+ * and the genre fallback. A dialect REPLACES the genre array: the dialect
+ * knows all three roles best. Aliases share arrays (dembowdom rides the
+ * dembow chop; thrash/metalcore ride the metal gallop).
+ */
+export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
+  "house.amapiano": [AMAPIANO_BASS, AMAPIANO_CHORD, AMAPIANO_LEAD],
+  "house.dembow": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
+  "house.dembowdom": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
+  "house.metal": [METAL_BASS, METAL_CHORD, METAL_LEAD],
+  "house.thrash": [METAL_BASS, METAL_CHORD, METAL_LEAD],
+  "house.metalcore": [METAL_BASS, METAL_CHORD, METAL_LEAD],
 };
 
 export const MELODIC_BY_PROFILE: Record<ProductionProfile, MelodicPatternData[]> = {

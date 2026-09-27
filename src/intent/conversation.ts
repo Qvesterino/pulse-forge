@@ -412,6 +412,54 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
   return applyFaderIntents(doc, [intent]);
 }
 
+const readGainOf = (doc: ProjectDocument, trackId: string): number | undefined =>
+  doc.tracks.find((track) => track.id === trackId)?.gain;
+
+const fmtGain = (value: number): number => Math.round(value * 100) / 100;
+
+/**
+ * VERIFICATION READ-BACK — what the faders ACTUALLY landed on, read from the
+ * post-execution document (clamps included). "bass 0.85→0.70" proves the
+ * gain moved and shows the real value; dispatch alone proves nothing.
+ */
+export function faderReadback(before: ProjectDocument, after: ProjectDocument, intent: FaderIntent): string {
+  const entries: string[] = [];
+  const trackName = (doc: ProjectDocument, id: string): string =>
+    doc.tracks.find((track) => track.id === id)?.name ?? id;
+  const push = (name: string, gainBefore: number, gainAfter: number) => {
+    if (gainBefore !== gainAfter) entries.push(`${name} ${fmtGain(gainBefore)}→${fmtGain(gainAfter)}`);
+  };
+
+  for (const target of intent.targets) {
+    if (target === "master") {
+      push("master", before.master?.masterGain ?? 1, after.master?.masterGain ?? 1);
+      continue;
+    }
+    for (const trackId of trackIdsForTarget(before, target)) {
+      const gainBefore = readGainOf(before, trackId);
+      const gainAfter = readGainOf(after, trackId);
+      if (gainBefore == null || gainAfter == null) continue;
+      push(trackName(before, trackId), gainBefore, gainAfter);
+    }
+  }
+
+  if ((intent.pads?.length ?? 0) > 0) {
+    const drumBefore = before.tracks.find((track): track is DrumTrack => track.kind === "drum");
+    const drumAfter = after.tracks.find((track): track is DrumTrack => track.kind === "drum");
+    if (drumBefore && drumAfter) {
+      for (const [padIndex, pad] of drumBefore.pads.entries()) {
+        const role = inferPadRole(pad.name, padIndex);
+        if (!(intent.pads ?? []).some((family) => PAD_FAMILY_MATCH[family](role))) continue;
+        const padAfter = drumAfter.pads.find((candidate) => candidate.id === pad.id);
+        if (padAfter) push(pad.name, pad.gain, padAfter.gain);
+      }
+    }
+  }
+
+  if (entries.length > 4) return `${entries.slice(0, 4).join(", ")} +${entries.length - 4}`;
+  return entries.join(", ");
+}
+
 const TEMPO_STEP_BPM = 6;
 
 /** Apply a tempo intent → ONE undoable setBpm command (clamped by setBpm). */

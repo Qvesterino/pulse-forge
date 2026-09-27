@@ -870,6 +870,41 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
   );
 }
 
+/**
+ * VERIFICATION READ-BACK — the knob's ACTUAL landing value per target track,
+ * read from the post-execution document (clamps included). "mix 0.20→0.36 on
+ * Lead" proves the instance exists and the param really moved; dispatch
+ * alone proves nothing. Removals report the instance gone.
+ */
+export function effectReadback(before: ProjectDocument, after: ProjectDocument, intent: EffectIntent): string {
+  const knob = EFFECT_KNOB[intent.effectType];
+  if (!knob) return "";
+  const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
+  const fmt = (value: number): number => Math.round(value * 100) / 100;
+  const entries: string[] = [];
+  for (const target of intent.targets) {
+    for (const trackId of trackIdsForTarget(after, target)) {
+      const track = after.tracks.find((candidate) => candidate.id === trackId);
+      if (!track) continue;
+      if (intent.direction === "remove") {
+        if (!track.effects.some((fx) => fx.type === intent.effectType)) {
+          entries.push(`−${intent.effectType} on ${track.name}`);
+        }
+        continue;
+      }
+      const fx = track.effects.find((effect) => effect.type === intent.effectType);
+      if (!fx) continue;
+      const beforeFx = before.tracks
+        .find((candidate) => candidate.id === trackId)
+        ?.effects.find((effect) => effect.type === intent.effectType);
+      const prev = beforeFx?.params[knob] ?? knobDef?.default ?? 0;
+      entries.push(`${knob} ${fmt(prev)}→${fmt(fx.params[knob])} on ${track.name}`);
+    }
+  }
+  if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;
+  return entries.join(", ");
+}
+
 // ── CLARIFICATION: nearest interpretation for DECLINED effect asks ──────────
 
 /** Words that signal an explicit direction/set ask (vs a plain prompt). */

@@ -658,3 +658,34 @@ export function sanitizeFxIntent(raw: unknown): ProductionIntent | null {
     sourceText: typeof r.sourceText === "string" ? r.sourceText.slice(0, 500) : "",
   };
 }
+
+/**
+ * VERIFICATION READ-BACK — confirm the planned DSP actually landed: for each
+ * planned action, the effect instance must exist on the track in the
+ * post-execution document and the first planned param reads back with its
+ * real (clamped) value. A missing instance reports ✗ instead of pretending.
+ */
+export function productionReadback(before: ProjectDocument, after: ProjectDocument, intent: ProductionIntent): string {
+  try {
+    const { plan } = planProductionActions(before, intent);
+    const fmt = (value: number): number => Math.round(value * 100) / 100;
+    const entries: string[] = [];
+    for (const action of plan.actions.slice(0, 3)) {
+      const track = after.tracks.find((candidate) => candidate.id === action.trackId);
+      const fx = track?.effects.find((effect) => effect.type === action.type);
+      if (!track || !fx) {
+        entries.push(`${action.type} ✗`);
+        continue;
+      }
+      const firstParam = Object.entries(action.params)[0];
+      if (!firstParam) {
+        entries.push(`${action.type} ✓ ${track.name}`);
+        continue;
+      }
+      entries.push(`${action.type} ${firstParam[0]}=${fmt(fx.params[firstParam[0]] ?? 0)} ${track.name}`);
+    }
+    return entries.join(", ");
+  } catch {
+    return ""; // re-planning against a changed doc — stay silent, the label stands
+  }
+}

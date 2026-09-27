@@ -120,3 +120,31 @@ export function applyCompoundIntent(doc: ProjectDocument, parts: CompoundPart[])
   if (labels.length === 0) return null;
   return snapshot("applyCompoundIntent", labels.join(" · "), doc, next);
 }
+
+/**
+ * VERIFICATION READ-BACK for compounds — one verified entry per part
+ * (fader gains, effect knob landings, preset ✓, exact state), all read from
+ * the post-execution document. Tempo parts report the bpm move.
+ */
+export function compoundReadback(before: ProjectDocument, after: ProjectDocument, parts: CompoundPart[]): string {
+  const entries: string[] = [];
+  for (const part of parts) {
+    if (part.kind === "fader") {
+      const entry = faderReadback(before, after, part.intent);
+      if (entry) entries.push(entry);
+    } else if (part.kind === "tempo") {
+      if (before.bpm !== after.bpm) entries.push(`bpm ${before.bpm}→${after.bpm}`);
+    } else if (part.kind === "effect") {
+      const entry = effectReadback(before, after, part.intent);
+      if (entry) entries.push(entry);
+    } else if (part.kind === "preset") {
+      const entry = presetReadback(after, part.intent);
+      if (entry) entries.push(entry);
+    } else {
+      const entry = exactReadback(before, after, part.plan);
+      if (entry) entries.push(entry);
+    }
+  }
+  if (entries.length > 4) return `${entries.slice(0, 4).join(" · ")} +${entries.length - 4}`;
+  return entries.join(" · ");
+}

@@ -5559,6 +5559,68 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
 }
 
 /**
+ * VERIFICATION READ-BACK for exact ops — the resulting state read from the
+ * post-execution document ("bpm 124→140", "Drums mute=true", "bass→sub bass").
+ * Lives beside the applier because it shares resolveExactTargetTracks and
+ * the op vocabulary; keeping the intent module import-free of command values
+ * preserves the acyclic layering.
+ */
+export function exactReadback(before: ProjectDocument, after: ProjectDocument, plan: ExactIntentPlan): string {
+  const fmt = (value: number): number => Math.round(value * 100) / 100;
+  const entries: string[] = [];
+  for (const op of plan.ops) {
+    if (op.kind === "tempo") {
+      if (before.bpm !== after.bpm) entries.push(`bpm ${before.bpm}→${after.bpm}`);
+    } else if (op.kind === "key") {
+      if (before.key !== after.key) entries.push(`key ${after.key}`);
+    } else if (op.kind === "patternLength") {
+      const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
+      if (steps != null) entries.push(`length ${steps}`);
+    } else if (op.kind === "addTrack") {
+      const added = after.tracks[after.tracks.length - 1];
+      if (added) entries.push(`+ ${added.name}`);
+    } else if (op.kind === "removeTrack") {
+      if (resolveExactTargetTracks(after, op.target).length === 0) entries.push(`${op.target} track removed ✓`);
+    } else if (op.kind === "renameTrack") {
+      if (after.tracks.some((t) => t.name === op.name)) entries.push(`→ "${op.name}"`);
+    } else if (op.kind === "duplicateTrack") {
+      const delta = after.tracks.length - before.tracks.length;
+      if (delta > 0) entries.push(`+${delta} track`);
+    } else if (op.kind === "gainDb") {
+      if (op.target === "mix") {
+        entries.push(`master ${fmt(before.master.masterGain)}→${fmt(after.master.masterGain)}`);
+      } else {
+        for (const id of resolveExactTargetTracks(before, op.target)) {
+          const b = before.tracks.find((t) => t.id === id)?.gain;
+          const a = after.tracks.find((t) => t.id === id)?.gain;
+          if (b != null && a != null && b !== a) entries.push(`gain ${fmt(b)}→${fmt(a)}`);
+        }
+      }
+    } else if (op.target === "kick" || op.target === "snare" || op.target === "hats") {
+      // pad-family mute/solo/pan — report the family flag
+      const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");
+      if (drum) {
+        const families = classifyPads(drum.pads);
+        const familyPads = op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
+        if (op.kind === "mute" && familyPads.length > 0) entries.push(`${op.target} mute=${familyPads[0].mute}`);
+        if (op.kind === "solo" && familyPads.length > 0) entries.push(`${op.target} solo=${familyPads[0].solo}`);
+        if (op.kind === "pan" && familyPads.length > 0) entries.push(`${op.target} pan=${fmt(familyPads[0].pan)}`);
+      }
+    } else {
+      for (const id of resolveExactTargetTracks(before, op.target)) {
+        const a = after.tracks.find((t) => t.id === id);
+        if (!a) continue;
+        if (op.kind === "mute" && a.mute) entries.push(`${a.name} mute ✓`);
+        if (op.kind === "solo" && a.solo) entries.push(`${a.name} solo ✓`);
+        if (op.kind === "pan") entries.push(`${a.name} pan=${fmt(a.pan)}`);
+      }
+    }
+  }
+  if (entries.length > 4) return `${entries.slice(0, 4).join(", ")} +${entries.length - 4}`;
+  return entries.join(", ");
+}
+
+/**
  * Production Intent (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md Phase 1+2):
 /**
  * Production Intent (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md Phase 1+2):

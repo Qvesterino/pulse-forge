@@ -3,7 +3,7 @@ import type { GenerateOptions, GenerationRole, MelodicNote, MelodicPatternData }
 import { STEP_TICKS } from "../project-model/types";
 import { parseKey, snapToScale, SCALE_INTERVALS } from "../project-model/scales";
 import { uid } from "../shared/ids";
-import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "./grooves/melodic-data";
+import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE, MELODIC_BY_STYLE } from "./grooves/melodic-data";
 
 const DEGREE_MIN = -1; // rest
 const DEGREE_MAX = 6; // 7th
@@ -253,6 +253,9 @@ export function generateMelodicParts(
 ): MelodicParts {
   const patterns =
     (options.productionProfile ? MELODIC_BY_PROFILE[options.productionProfile] : undefined) ??
+    // Melodic dialects (Wave: melodic dialects) — per-style lane identity
+    // (amapiano log drum, dembow chop, metal gallop), keyed like grooves.
+    (options.style ? MELODIC_BY_STYLE[`${options.genre}.${options.style.toLowerCase()}`] : undefined) ??
     MELODIC_BY_GENRE[options.genre];
   if (!patterns || patterns.length === 0) return { bass: [], chord: [], lead: [] };
 

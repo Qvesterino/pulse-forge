@@ -121,3 +121,18 @@ export function applyPresetIntentCommand(doc: ProjectDocument, intent: PresetInt
   for (const id of ids) next = applyInstrumentPreset(next, id, intent.preset).execute(next);
   return snapshot("applyPresetIntent", `Preset "${intent.preset.name}" → ${ids.length} track(s)`, doc, next);
 }
+
+/**
+ * VERIFICATION READ-BACK — the preset ACTUALLY installed: every track of the
+ * target family must carry this preset's id in the post-execution document.
+ * ✓ per track; ✗ would mean the fold missed (a bug worth surfacing).
+ */
+export function presetReadback(after: ProjectDocument, intent: PresetIntent): string {
+  const ids = resolveExactTargetTracks(after, intent.target);
+  const entries = ids.map((id) => {
+    const track = after.tracks.find((candidate) => candidate.id === id);
+    if (!track) return "✗";
+    return track.presetId === intent.preset.id ? `${track.name} ✓` : `${track.name} ✗`;
+  });
+  return entries.join(", ");
+}
