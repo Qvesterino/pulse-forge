@@ -4227,11 +4227,12 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── City pop (Japanese 80s) — Anri / Tatsuro / Mariya Takeuchi ──────────
   // The 1980s Japanese studio-pop movement (Anri 'Last Summer Whisper' /
   // Tatsuro Yamashita / Mariya Takeuchi 'Plastic Love'). Lush AOR production,
-  // 100-125, organic-instrument heavy. Routes to ambient.organic.
+  // 100-125, organic-instrument heavy. Routes to ambient.citypop (Wave 4) —
+  // the rim-shot backbeat on 2 and 4 is the genre's signature, not a snare.
   {
     names: ["city pop", "anri", "tatsuro", "tatsuro yamashita", "mariya takeuchi"],
     genre: "ambient",
-    style: "organic",
+    style: "citypop",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -4500,7 +4501,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
       "hudson mohawke",
     ],
     genre: "hyperpop",
-    style: "hyper",
+    style: "decon",
     mood: "energetic",
     energy: 0.9,
     density: 0.8,
@@ -4508,13 +4509,14 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "hyperpop wave",
   },
   // ── Baile funk — Anitta / MC Kevin o Chris / DJ Rennan da Penha ──────────
-  // Brazilian baile funk (Anitta 'Envolver' / MC Kevin o Chris). The closest
-  // groove is house.dancefloor (driving four-on-the-floor) since baile funk
-  // shares the percussive-bass-led pocket. BPM 130-150.
+  // Brazilian baile funk (Anitta 'Envolver' / MC Kevin o Chris). Routes to
+  // the new 'house.baile' groove (Wave 4): the tambor (low-tom roll on the
+  // offbeat) is the signature, with the shaker doubling the 16ths. BPM
+  // 130-150, swing 0.2 (the Brazilian shuffle).
   {
     names: ["baile funk", "funk carioca", "anitta", "mc kevin o chris", "mc kevin", "dj rennan da penha", "dj guh mix"],
     genre: "house",
-    style: "dancefloor",
+    style: "baile",
     mood: "energetic",
     energy: 0.85,
     density: 0.7,
@@ -4523,13 +4525,14 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Corridos tumbados — Peso Pluma / Natanael Cano / Junior H ───────────
   // The corridos-tumbados movement (Peso Pluma 'Ella Baila Sola' / Natanael
-  // Cano). Mexican trap-Americana hybrid; closest groove is trap.countrytune
-  // (slower 75-90 BPM with country-tinged instrumentation). Routes there.
-  // BPM 90-130 to capture the tamborazo-sampling range.
+  // Cano). Mexican trap-Americana hybrid. Routes to the new 'trap.corridos'
+  // groove (Wave 4): trap hats + sub-kick, but the snare lands on 3 and 4
+  // (a march backbeat) and the low tom carries the tamborazo roll.
+  // BPM 90-130.
   {
     names: ["corridos tumbados", "peso pluma", "natanael cano", "junior h", "eslabon armado", "fuerza regida"],
     genre: "trap",
-    style: "countrytune",
+    style: "corridos",
     mood: "dark",
     energy: 0.7,
     density: 0.55,
@@ -4538,12 +4541,14 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Industrial techno / EBM — Surgeon / Ancient Methods / Vatican Shadow ─
   // The industrial-techno / EBM scene (Surgeon 'Lum' / Ancient Methods).
-  // Routes to techno.industrial (driving distorted four-on-the-floor).
+  // Routes to the new 'techno.ebm' groove (Wave 4): techno kick on the four,
+  // hard snare on 2 and 4, relentless 8th closed hat, tick machine-gun.
+  // Near-zero swing 0.02 — the drive is mechanical, not humanised.
   // BPM 130-140.
   {
     names: ["industrial techno", "ebm", "surgeon", "ancient methods", "vatican shadow", "boy harsher", "phase fatale"],
     genre: "techno",
-    style: "industrial",
+    style: "ebm",
     mood: "dark",
     energy: 0.9,
     density: 0.65,
@@ -4568,12 +4573,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── Melodic house — Tinlicker / Lane 8 / Yotto / Nora En Pure ────────────
   // Melodic-house / progressive-house (Lane 8 'Brightest Lights' / Tinlicker
   // / Nora En Pure). Ben Böhmer's existing entry covers one flavor; this
-  // covers the deeper / more club-oriented melodic side. Routes to
-  // house.deep. BPM 120-128.
+  // covers the deeper / more club-oriented melodic side. Routes to the new
+  // 'house.melodic' groove (Wave 4): rolling ride + soft ghost hats for the
+  // long-form forward motion. BPM 120-128, swing 0.16.
   {
     names: ["melodic house", "tinlicker", "lane 8", "lane8", "yotto", "nora en pure", "le youth"],
     genre: "house",
-    style: "deep",
+    style: "melodic",
     mood: "chill",
     energy: 0.65,
     density: 0.55,

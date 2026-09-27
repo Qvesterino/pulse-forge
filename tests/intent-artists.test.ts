@@ -1037,10 +1037,10 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
     expect(sp.input.bpmRange).toEqual([88, 105]);
   });
 
-  it("anri / tatsuro yamashita / mariya takeuchi → city pop (ambient organic, 100-125)", () => {
+  it("anri / tatsuro yamashita / mariya takeuchi → city pop (ambient citypop, 100-125)", () => {
     const anri = parseIntentText("anri type beat");
     expect(anri.input.genre).toBe("ambient");
-    expect(anri.input.style).toBe("organic");
+    expect(anri.input.style).toBe("citypop");
     expect(anri.input.bpmRange).toEqual([100, 125]);
     expect(anri.input.mood).toBe("chill");
   });
@@ -1055,12 +1055,15 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
 
   it("the global-pop lanes resolve to real groove ids (resolveGroove contract)", () => {
     // Engine integration smoke — each preset's style must resolve to a real
-    // `genre.style` grooveId via getGrooveById.
+    // `genre.style` grooveId via getGrooveById. Wave 4 swapped ambient.organic
+    // for ambient.citypop in the city-pop lane (both are still covered —
+    // synthwave and downtempo still route to ambient.organic).
     expect(getGrooveById("house.afro")).toBeDefined();
     expect(getGrooveById("house.dancefloor")).toBeDefined();
     expect(getGrooveById("house.pop")).toBeDefined();
     expect(getGrooveById("trap.bounce")).toBeDefined();
     expect(getGrooveById("ambient.organic")).toBeDefined();
+    expect(getGrooveById("ambient.citypop")).toBeDefined();
     expect(getGrooveById("trap.lux")).toBeDefined();
   });
 });
@@ -1074,36 +1077,36 @@ describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwo
     // pattern. We use "ag cook" (period-free variant) to exercise the lane.
     const ag = parseIntentText("ag cook type beat");
     expect(ag.input.genre).toBe("hyperpop");
-    expect(ag.input.style).toBe("hyper");
+    expect(ag.input.style).toBe("decon");
     expect(ag.input.bpmRange).toEqual([140, 160]);
     expect(ag.input.energy).toBe(0.9);
   });
 
-  it("anitta / mc kevin o chris → baile funk (house dancefloor, 130-150)", () => {
+  it("anitta / mc kevin o chris → baile funk (house baile, 130-150)", () => {
     const ani = parseIntentText("anitta type beat");
     expect(ani.input.genre).toBe("house");
-    expect(ani.input.style).toBe("dancefloor");
+    expect(ani.input.style).toBe("baile");
     expect(ani.input.bpmRange).toEqual([130, 150]);
     expect(ani.input.energy).toBe(0.85);
   });
 
-  it("peso pluma / natanael cano → corridos tumbados (trap countrytune, 90-130)", () => {
+  it("peso pluma / natanael cano → corridos tumbados (trap corridos, 90-130)", () => {
     const pp = parseIntentText("peso pluma type beat");
     expect(pp.input.genre).toBe("trap");
-    expect(pp.input.style).toBe("countrytune");
+    expect(pp.input.style).toBe("corridos");
     expect(pp.input.bpmRange).toEqual([90, 130]);
     expect(pp.input.mood).toBe("dark");
   });
 
-  it("surgeon / ancient methods → industrial techno (techno industrial, 130-140)", () => {
+  it("surgeon / ancient methods → industrial techno (techno ebm, 130-140)", () => {
     const surg = parseIntentText("surgeon type beat");
     expect(surg.input.genre).toBe("techno");
-    expect(surg.input.style).toBe("industrial");
+    expect(surg.input.style).toBe("ebm");
     expect(surg.input.bpmRange).toEqual([130, 140]);
     expect(surg.input.mood).toBe("dark");
   });
 
-  it("rp boo / dj rashad → footwork (house dancefloor, 155-165)", () => {
+  it("rp boo / dj rashad → footwork (house footwork, 155-165)", () => {
     const rp = parseIntentText("rp boo type beat");
     expect(rp.input.genre).toBe("house");
     expect(rp.input.style).toBe("footwork");
@@ -1111,10 +1114,10 @@ describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwo
     expect(rp.input.energy).toBe(0.95);
   });
 
-  it("tinlicker / lane 8 / yotto → melodic house (house deep, 120-128)", () => {
+  it("tinlicker / lane 8 / yotto → melodic house (house melodic, 120-128)", () => {
     const t = parseIntentText("tinlicker type beat");
     expect(t.input.genre).toBe("house");
-    expect(t.input.style).toBe("deep");
+    expect(t.input.style).toBe("melodic");
     expect(t.input.bpmRange).toEqual([120, 128]);
     expect(t.input.mood).toBe("chill");
   });
@@ -1122,11 +1125,23 @@ describe("hyperpop / baile funk / corridos tumbados / industrial techno / footwo
   it("the club + global lanes resolve to real groove ids (resolveGroove contract)", () => {
     // Engine integration smoke — each preset's style must resolve to a real
     // `genre.style` grooveId via getGrooveById. Wave 3 promoted footwork from
-    // house.dancefloor (closest-fit) to house.footwork (first-class).
+    // house.dancefloor (closest-fit) to house.footwork (first-class). Wave 4
+    // promoted corridos (was trap.countrytune) and industrial techno (was
+    // techno.industrial) to their own grooves.
     expect(getGrooveById("trap.hyper")).toBeDefined();
-    expect(getGrooveById("trap.countrytune")).toBeDefined();
-    expect(getGrooveById("techno.industrial")).toBeDefined();
     expect(getGrooveById("house.footwork")).toBeDefined();
+    expect(getGrooveById("trap.corridos")).toBeDefined();
+    expect(getGrooveById("techno.ebm")).toBeDefined();
+  });
+
+  it("the wave-4 promoted lanes resolve to real groove ids (resolveGroove contract)", () => {
+    // Wave 4: melodic house (was house.deep), baile funk (was
+    // house.dancefloor), hyperpop decon (was hyperpop.hyper), city pop
+    // (was ambient.organic).
+    expect(getGrooveById("house.melodic")).toBeDefined();
+    expect(getGrooveById("house.baile")).toBeDefined();
+    expect(getGrooveById("hyperpop.decon")).toBeDefined();
+    expect(getGrooveById("ambient.citypop")).toBeDefined();
   });
 });
 
@@ -1508,6 +1523,31 @@ describe("techno depth wave (Detroit / dub techno / acid / electro)", () => {
   });
 });
 
+describe("user-request wave (latin mafia / pluko)", () => {
+  it("latin mafia lands on the house pop lane", () => {
+    const lm = parseIntentText("latin mafia type beat");
+    expect(lm.input.genre).toBe("house");
+    expect(lm.input.style).toBe("pop");
+    expect(lm.input.mood).toBe("chill");
+    expect(lm.input.bpmRange).toEqual([95, 115]);
+  });
+
+  it("pluko lands on the chill future-bass pocket", () => {
+    const p = parseIntentText("pluko type beat");
+    expect(p.input.genre).toBe("trap");
+    expect(p.input.style).toBe("bouncy");
+    expect(p.input.mood).toBe("chill");
+    expect(p.input.bpmRange).toEqual([130, 150]);
+  });
+
+  it("already-covered request artists still resolve to their entries", () => {
+    expect(parseIntentText("overmono type beat").input.genre).toBe("ukg");
+    expect(parseIntentText("duskus type beat").input.style).toBe("future garage");
+    expect(parseIntentText("flume type beat").input.style).toBe("lux");
+    expect(parseIntentText("pinkpantheress type beat").input.genre).toBe("ukg");
+  });
+});
+
 describe("UKG depth wave (originators / bassline / dark / funky / revival)", () => {
   it("UKG originators: so solid / oxide neutrino / groove chronicles / tuff jam", () => {
     const soSolid = parseIntentText("so solid crew type beat");
@@ -1677,7 +1717,9 @@ describe("house depth wave (Chicago / Detroit / garage / French / disco)", () =>
   });
 
   it("modern deep/melodic school + amapiano second line", () => {
-    expect(parseIntentText("nora en pure type beat").input.style).toBe("deep");
+    // nora en pure / lane 8 route to house.melodic (Wave 4 groove) — the
+    // long-form forward-motion lane, previously the closest-fit house.deep.
+    expect(parseIntentText("nora en pure type beat").input.style).toBe("melodic");
     expect(parseIntentText("lane 8 type beat").input.mood).toBe("chill");
     expect(parseIntentText("harrison bdp type beat").input.genre).toBe("house");
     expect(parseIntentText("jody wisternoff type beat").input.style).toBe("minimal");
