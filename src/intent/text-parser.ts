@@ -279,12 +279,14 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // ambient) — its style must be drifting, not the boom-bap lofi token.
   [/\blofi hip ?hop\b/, "drifting"],
   // Shoegaze / dream pop — BEFORE \bpop\b ("dream pop" contains "pop").
-  [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "altrock"],
-  // Post-rock — the crescendo-guitar lane (house.altrock today).
-  [/\bpost[- ]?rock\b/, "altrock"],
-  // Reggae / ska / one-drop — BEFORE the generic \bdub\b entry. trap.dancehall
-  // carries the snare-on-3 one-drop and the 88-105 BPM pocket.
-  [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b|\breggae dub\b/, "dancehall"],
+  // house.shoegaze is the dedicated wall-of-guitars groove (P2 wave).
+  [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "shoegaze"],
+  // Post-rock — the crescendo-guitar lane (house.shoegaze groove, which was
+  // built with the same fade-in shape).
+  [/\bpost[- ]?rock\b/, "shoegaze"],
+  // Reggae / ska / one-drop — BEFORE the generic \bdub\b entry. house.reggae
+  // is the dedicated one-drop groove (kick+snare on 3, empty beat 1).
+  [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b|\breggae dub\b/, "reggae"],
   // Nu jazz / broken beat — the West London school (house.broken groove).
   [/\bnu ?jazz\b|\bnu[- ]?jazz\b|\bnew jazz\b|\buk jazz\b|\bjazz fusion\b|\bacid jazz\b/, "broken"],
   // Balearic / chillout — the sunset lane (house.organic groove).

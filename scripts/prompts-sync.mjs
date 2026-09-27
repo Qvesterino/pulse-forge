@@ -45,11 +45,14 @@ const FAMILY_A_DIRS = ["00_CORE", "01_COMMON", "03_PULSE_FORGE", "04_SCHEDULED"]
 
 const CONTRACT = join(PROMPTS, "00_CORE", "MASTER_DAW_HARDENING_PROMPT.md");
 
-/** Each Family-A directory names the same concept differently. */
+/**
+ * Each Family-A directory names the same concept differently. Values are
+ * alternative markers for that directory, tried in order.
+ */
 const MISSION_HEADINGS = {
-  "01_COMMON": "## Audit-specific mission",
-  "03_PULSE_FORGE": "## Pulse Forge mission",
-  "04_SCHEDULED": "## Scheduled mission",
+  "01_COMMON": ["## Audit-specific mission"],
+  "03_PULSE_FORGE": ["## Pulse Forge mission", "## Product-specific mission"],
+  "04_SCHEDULED": ["## Scheduled mission"],
 };
 
 const args = process.argv.slice(2);
@@ -92,12 +95,20 @@ function listFragments() {
  */
 function parsePrompt(path, dir) {
   const raw = readFileSync(path, "utf8");
-  const marker = MISSION_HEADINGS[dir];
-  if (!marker) throw new Error(`no mission marker mapped for directory ${dir} (${path})`);
+  const markers = MISSION_HEADINGS[dir];
+  if (!markers) throw new Error(`no mission marker mapped for directory ${dir} (${path})`);
 
-  const missionStart = raw.indexOf(marker);
+  let missionStart = -1;
+  let found = null;
+  for (const marker of markers) {
+    const at = raw.indexOf(marker);
+    if (at !== -1 && (missionStart === -1 || at < missionStart)) {
+      missionStart = at;
+      found = marker;
+    }
+  }
   if (missionStart === -1) {
-    throw new Error(`${path}: expected mission section "${marker}" not found`);
+    throw new Error(`${path}: expected a mission section (${markers.join(" | ")}) not found`);
   }
 
   const titleMatch = raw.match(/^#\s+(.+)$/m);
@@ -108,7 +119,7 @@ function parsePrompt(path, dir) {
     throw new Error(`${path}: mission section is suspiciously short (${mission.length} chars)`);
   }
 
-  return { title: titleMatch[1].trim(), mission };
+  return { title: titleMatch[1].trim(), mission, marker: found };
 }
 
 /** A fragment is title + pointer + mission. Nothing else. */

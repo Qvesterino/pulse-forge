@@ -428,28 +428,39 @@ function fmtBytes(n: number): string {
 async function main(): Promise<void> {
   startGcObserver();
   const gcSupported = observingGc;
-  console.log(`\nPulse Forge hot-path benchmark — ${ITERATIONS} iterations/round (median reported), ${WARMUP} warmup`);
+  console.log(`\nPulse Forge hot-path benchmark — ${ITERATIONS} iterations/round (median), ${WARMUP} warmup`);
   console.log(`Node ${process.version} · ${process.arch} · GC observer: ${gcSupported ? "on" : "unavailable"}`);
+
+  // Noise floor: how much does the allocation probe report for a function
+  // that allocates nothing? Anything at or below this magnitude is not a
+  // measurable difference — it is heap accounting jitter.
+  const noise = await measureAlloc(() => 0);
+  console.log(`Measurement noise floor: ${fmtBytes(noise.bytesPerCall)}/call (no-op probe)`);
   console.log("=".repeat(112));
 
   const benches = [benchB7(), benchA3(), benchA4(), benchC5()];
   const results: ABLegacy[] = [];
   for (const p of benches) results.push(await p);
 
+  const NOISE = Math.abs(noise.bytesPerCall) * 2;
+
   console.log(
-    `${"defect".padEnd(66)}${"pre-fix".padStart(12)}${"optimised".padStart(12)}${"speedup".padStart(11)}${"alloc Δ/call".padStart(14)}`,
+    `${"defect".padEnd(66)}${"pre-fix".padStart(12)}${"optimised".padStart(12)}${"speedup".padStart(11)}${"alloc Δ/call".padStart(14)}${"signal".padStart(10)}`,
   );
-  console.log("-".repeat(112));
+  console.log("-".repeat(118));
   for (const r of results) {
     const speedupLabel = r.speedup >= 1.005 ? `${r.speedup.toFixed(2)}×` : `0.${Math.round(r.speedup * 100)}×`;
+    const allocSignal = Math.abs(r.allocDelta) > NOISE;
+    const timeSignal = r.speedup > 1.05;
+    const signal = timeSignal || allocSignal ? (timeSignal && allocSignal ? "both" : timeSignal ? "time" : "alloc") : "noise";
     console.log(
-      `${r.name.padEnd(66)}${`${fmt(r.msLegacy, 4)} ms`.padStart(12)}${`${fmt(r.msCurrent, 4)} ms`.padStart(12)}${speedupLabel.padStart(11)}${fmtBytes(r.allocDelta).padStart(14)}`,
+      `${r.name.padEnd(66)}${`${fmt(r.msLegacy, 4)} ms`.padStart(12)}${`${fmt(r.msCurrent, 4)} ms`.padStart(12)}${speedupLabel.padStart(11)}${fmtBytes(r.allocDelta).padStart(14)}${signal.padStart(10)}`,
     );
   }
-  console.log("-".repeat(112));
+  console.log("-".repeat(118));
 
   if (gcSupported) {
-    console.log("\nGC events per call (averaged over the allocation batch):");
+    console.log("\nGC events per call (allocation batch):");
     for (const r of results) {
       console.log(
         `  ${r.name.padEnd(66)}${`legacy ${fmt(r.gcLegacy, 4)}`.padStart(14)}${`optimised ${fmt(r.gcCurrent, 4)}`.padStart(14)}`,
@@ -457,20 +468,21 @@ async function main(): Promise<void> {
     }
   }
 
-  const wins = results.filter((r) => r.speedup > 1.02);
-  const losses = results.filter((r) => r.speedup < 0.98);
-  console.log("\nVerdict:");
-  if (wins.length === 0) {
-    console.log("  No measurable win on any defect — the fixes are in the noise on this workload.");
-  } else {
-    for (const r of wins) {
-      console.log(
-        `  ✓ ${r.name.split("  ")[0]} ${r.speedup.toFixed(2)}× faster, ${fmtBytes(r.allocDelta)} less allocated per op`,
-      );
+  console.log("\nVerdict (only counts a defect as a win when it clears the noise floor):\n");
+  for (const r of results) {
+    const code = r.name.slice(0, 3).trim();
+    const timeWin = r.speedup > 1.05;
+    const allocWin = r.allocDelta > NOISE;
+    if (timeWin || allocWin) {
+      const parts: string[] = [];
+      if (timeWin) parts.push(`${r.speedup.toFixed(2)}× faster`);
+      if (allocWin) parts.push(`${fmtBytes(r.allocDelta)} less allocated per call`);
+      console.log(`  ✓ ${code}  ${parts.join(", ")}`);
+    } else if (r.speedup < 0.95) {
+      console.log(`  ✗ ${code}  REGRESSED ${(1 / r.speedup).toFixed(2)}× — investigate`);
+    } else {
+      console.log(`  ~ ${code}  no measurable effect on this workload (within noise floor)`);
     }
-  }
-  for (const r of losses) {
-    console.log(`  ✗ ${r.name.split("  ")[0]} REGRESSED ${(1 / r.speedup).toFixed(2)}× — investigate`);
   }
   console.log("");
 }

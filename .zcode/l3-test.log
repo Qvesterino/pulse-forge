@@ -1,0 +1,26 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/intent-production-level3.test.ts [2m([22m[2m43 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 123[2mms[22m[39m
+[31m   [31m├Ś[31m level 3 ÔÇö English detection[2m > [22maccepts the Slovak forms too[90m 10[2mms[22m[31m[39m
+[31m     Ôćĺ Cannot read properties of null (reading 'goals')[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 1 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-production-level3.test.ts > level 3 ÔÇö English detection > accepts the Slovak forms too
+TypeError: Cannot read properties of null (reading 'goals')
+ ÔŁ» tests/intent-production-level3.test.ts:86:51
+     84|   it("accepts the Slovak forms too", () => {
+     85|     expect(parseProductionIntent("pridaj phaser na lead")!.goals.map((ÔÇŽ
+     86|     expect(parseProductionIntent("viac sub na bas")!.goals.map((g) => ÔÇŽ
+       |                                                   ^
+     87|     expect(parseProductionIntent("obr├íten├Ż lead")!.goals.map((g) => g.ÔÇŽ
+     88|   });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/1]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m42 passed[39m[22m[90m (43)[39m
+[2m   Start at [22m 18:45:34
+[2m   Duration [22m 40.94s[2m (transform 2.10s, setup 1.37s, collect 2.66s, tests 123ms, environment 8.61s, prepare 1.99s)[22m
+

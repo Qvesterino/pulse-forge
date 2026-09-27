@@ -7,11 +7,12 @@ import { parsePluginFinderIntent } from "../src/intent/pluginFinderIntent";
 import { parseChaseIntent } from "../src/intent/chaseIntent";
 
 const require = createRequire(import.meta.url);
-const { listInstalledClapFiles, defaultScanDirectories, registerClapIpcHandlers } = require("../desktop/clap-host-manager.cjs") as {
-  listInstalledClapFiles: (dirs?: string[]) => string[];
-  defaultScanDirectories: (env?: Record<string, string | undefined>) => string[];
-  registerClapIpcHandlers: (ipcMain: unknown, options?: Record<string, unknown>) => unknown;
-};
+const { listInstalledClapFiles, defaultScanDirectories, registerClapIpcHandlers } =
+  require("../desktop/clap-host-manager.cjs") as {
+    listInstalledClapFiles: (dirs?: string[]) => string[];
+    defaultScanDirectories: (env?: Record<string, string | undefined>) => string[];
+    registerClapIpcHandlers: (ipcMain: unknown, options?: Record<string, unknown>) => unknown;
+  };
 
 /**
  * Plugin finder verb (ADR 0016 intent surface): "aké clapy mám?" —
@@ -80,11 +81,17 @@ describe("CLAP IPC registration (kyx:clap:scan)", () => {
     fs.writeFileSync(path.join(root, "only.clap"), "MZ");
     try {
       const handlers = new Map<string, () => Promise<unknown>>();
-      const fakeIpcMain = { handle: (channel: string, handler: () => Promise<unknown>) => handlers.set(channel, handler) };
+      const fakeIpcMain = {
+        handle: (channel: string, handler: () => Promise<unknown>) => handlers.set(channel, handler),
+      };
       registerClapIpcHandlers(fakeIpcMain, {
         directories: [root],
         manager: {
-          scanPaths: async (files: string[]) => ({ status: "ok", plugins: files.map((f) => ({ file: f })), counts: { ok: 1, notClap: 0, failed: 0 } }),
+          scanPaths: async (files: string[]) => ({
+            status: "ok",
+            plugins: files.map((f) => ({ file: f })),
+            counts: { ok: 1, notClap: 0, failed: 0 },
+          }),
         },
       });
       expect(handlers.has("kyx:clap:scan")).toBe(true);
