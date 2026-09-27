@@ -5433,7 +5433,16 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       continue;
     }
     if (op.kind === "gainDb") {
-      for (const trackId of op.target === "mix" ? [next.tracks[0]?.id ?? ""] : resolve(op.target)) {
+      // "the mix"/"master" is the MASTER FADER (doc.master.masterGain) — the
+      // old mapping to tracks[0] boosted whatever happened to be the first
+      // track (usually the drums), silently missing the master.
+      if (op.target === "mix") {
+        const masterGain = next.master?.masterGain ?? 1;
+        const targetMasterGain = Math.max(0, Math.min(1.5, masterGain * Math.pow(10, op.deltaDb / 20)));
+        next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
+        continue;
+      }
+      for (const trackId of resolve(op.target)) {
         const track = next.tracks.find((t) => t.id === trackId);
         if (!track || track.kind === "group") continue;
         const targetGain = Math.max(0, Math.min(1.5, track.gain * Math.pow(10, op.deltaDb / 20)));

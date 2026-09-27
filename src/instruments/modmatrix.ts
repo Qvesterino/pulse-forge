@@ -412,7 +412,17 @@ export function modMatrixParams(morph: boolean, opts?: { cutoff?: boolean }): Pa
       format: (v) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(0)}%`,
     },
     { id: "modBSrc", label: "MOD B SRC", min: 0, max: 3, default: 0, options: MOD_SRC_OPTIONS },
-    { id: "modBDst", label: "MOD B DST", min: 0, max: 3, default: 1, options: modDstOptions(morph, cutoff) },
+    // The CUTOFF default (1) only exists where cutoff is a routable option —
+    // on cutoff-less instruments (vocalchop) it advertised a default the UI
+    // dropdown can never show; fall back to OFF like MOD A.
+    {
+      id: "modBDst",
+      label: "MOD B DST",
+      min: 0,
+      max: 3,
+      default: cutoff ? 1 : 0,
+      options: modDstOptions(morph, cutoff),
+    },
     {
       id: "modBAmt",
       label: "MOD B AMT",

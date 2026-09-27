@@ -413,6 +413,71 @@ const DNB_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const HYPERPOP_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "I-V-vi-IV (euphoric loop)",
+    genre: "hyperpop",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+  {
+    name: "vi-IV-I-V (sad-happy)",
+    genre: "hyperpop",
+    events: [
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-VI-III-VII (minor lift)",
+    genre: "hyperpop",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 2, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+];
+
+const UKG_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "vi-IV-I-V (emotional garage)",
+    genre: "ukg",
+    events: [
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj7", duration: 4, func: "S" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "I-vi-IV-V (doo-wop shuffle)",
+    genre: "ukg",
+    events: [
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "ii-V-I (deep garage)",
+    genre: "ukg",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 8, func: "T" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -422,6 +487,8 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   phonk: PHONK_PROGRESSIONS,
   jersey: JERSEY_PROGRESSIONS,
   dnb: DNB_PROGRESSIONS,
+  hyperpop: HYPERPOP_PROGRESSIONS,
+  ukg: UKG_PROGRESSIONS,
 };
 
 /**

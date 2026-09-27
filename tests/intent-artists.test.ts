@@ -1592,7 +1592,7 @@ describe("experimental + score wave", () => {
   });
 
   it("big beat + 90s rave lineage resolve", () => {
-    expect(parseIntentText("fatboy slim type beat").input.style).toBe("broken");
+    expect(parseIntentText("fatboy slim type beat").input.style).toBe("bigbeat");
     expect(parseIntentText("chemical brothers type beat").input.genre).toBe("house");
     expect(parseIntentText("prodigy type beat").input.genre).toBe("techno");
     expect(parseIntentText("orbital type beat").input.mood).toBe("aggressive");

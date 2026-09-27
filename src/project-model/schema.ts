@@ -149,6 +149,8 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   strings: "Strings",
   bell: "Bell",
   reese: "Reese",
+  acid: "Acid 303",
+  brass: "Synth Brass",
   fm: "FM",
   pluck: "Pluck",
   flute: "Flute",

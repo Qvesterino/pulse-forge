@@ -302,6 +302,34 @@
           }
         },
         {
+          "kind": "acid",
+          "defaults": {
+            "wave": 0,
+            "tune": 0,
+            "cutoff": 320,
+            "reso": 4.5,
+            "envMod": 0.55,
+            "accent": 0.4,
+            "glide": 0.5,
+            "decay": 0.35,
+            "level": -9
+          }
+        },
+        {
+          "kind": "brass",
+          "defaults": {
+            "bite": 0.6,
+            "sweep": 0.55,
+            "sweepTime": 0.09,
+            "spread": 0.4,
+            "cutoff": 2400,
+            "reso": 1.2,
+            "attack": 0.02,
+            "release": 0.25,
+            "level": -8
+          }
+        },
+        {
           "kind": "fm",
           "defaults": {
             "ratio": 2,
@@ -431,7 +459,7 @@
             "modADst": 0,
             "modAAmt": 0,
             "modBSrc": 0,
-            "modBDst": 1,
+            "modBDst": 0,
             "modBAmt": 0,
             "modLfoRate": 2
           }
@@ -1315,6 +1343,50 @@
       "input": {
         "kind": "reese",
         "paramId": "detune",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam acid:wave",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "acid",
+        "paramId": "wave",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampInstrumentParam brass:bite",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "brass",
+        "paramId": "bite",
         "probes": [
           -100,
           0,

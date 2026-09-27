@@ -31,14 +31,19 @@ export function parseLoudnessIntent(text: string): LoudnessIntentParse | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
   // Lookbehind (not \b) so a LEADING minus at a word boundary still matches
-  // ("−9 lufs" — \b before "-" fails the transition space→hyphen).
-  const targetMatch = /\bloudness (?:na |to |target )?(-?\d{1,2})\b|(?<![\d-])(-?\d{1,2})\s*lufs\b/.exec(lower);
+  // ("−9 lufs" — \b before "-" fails the transition space→hyphen). Both the
+  // ASCII hyphen and the typographic minus (U+2212, what copy-paste and some
+  // IMEs produce) are accepted.
+  const targetMatch =
+    /\bloudness (?:na |to |target )?([-\u2212]?\d{1,2})\b|(?<![\d-\u2212])([-\u2212]?\d{1,2})\s*lufs\b/.exec(lower);
   const isLouder = /\bmake it louder\b|\blouder\b|\bmore loud\b|\bhlas(?:it|ie|ej)/.test(lower);
   const isQuieter = /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bmenej hlas|\bsofter mix\b/.test(
     lower,
   );
   if (targetMatch) {
-    const targetDb = Number(targetMatch[1] ?? targetMatch[2]);
+    const raw = targetMatch[1] ?? targetMatch[2];
+    const sign = raw.startsWith("\u2212") ? -1 : 1;
+    const targetDb = sign * Number(raw.replace("\u2212", ""));
     const detected = [`loudness ${targetDb} LUFS`];
     if (isQuieter) {
       return { direction: "quieter", targetDb, detected };

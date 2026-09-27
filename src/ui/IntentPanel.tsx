@@ -13,6 +13,7 @@ import {
   resolveSessionReference,
 } from "../intent/session-context";
 import {
+  applyExactIntentCommand,
   applyGenerationResultCommand,
   applyGenerationResultWithFxCommand,
   applyProductionIntentCommand,
@@ -1799,6 +1800,13 @@ export function IntentPanel() {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));
         setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}`);
+      } else if (route.kind === "exact") {
+        // Exact mixer commands ("mute the drums", "pan the bass left 30") —
+        // one undoable command group.
+        stopAudition();
+        const command = applyExactIntentCommand(doc, route.plan);
+        services.store.execute(command);
+        setStatus(`⚡ ${route.plan.label}`);
       } else if (route.kind === "effectIntent") {
         // D1 v2a: targeted effect × target × direction
         stopAudition();
@@ -1819,21 +1827,14 @@ export function IntentPanel() {
         }
       } else if (route.kind === "fader") {
         // GOAL 38/40: "zníž basu" / "kick ťažší" / "hlasnejšie bicie" — real
-        // pad + track gain changes with amount modifiers
-        const commands = applyFaderIntent(doc, route.intent);
-        if (commands.length === 0) {
+        // pad + track gain changes with amount modifiers, ONE undo step.
+        const command = applyFaderIntent(doc, route.intent);
+        if (!command) {
           setError("no matching track or pad for the fader intent");
           return;
         }
-        commands.forEach((command) => services.store.execute(command));
-        const label = [...route.intent.targets, ...(route.intent.pads ?? [])].join(" + ");
-        const sizeNote =
-          route.intent.percent != null
-            ? `${route.intent.direction === "down" ? "−" : "+"}${route.intent.percent}%`
-            : route.intent.amount;
-        setStatus(
-          `⚡ fader ${route.intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label} — ${commands.length} fader(s) (one undo step)`,
-        );
+        services.store.execute(command);
+        setStatus(`${command.label} (one undo step)`);
       } else if (route.kind === "tempo") {
         // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step
         services.store.execute(applyTempoIntent(doc, route.intent));

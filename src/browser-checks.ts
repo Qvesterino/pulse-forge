@@ -1535,6 +1535,111 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("groups: moved track feeds only the new group", false, String(error));
   }
 
+  // Mixer fader preview must ride the SAME mute/solo gate as the committed
+  // write (syncProject drives the identical gain param with `audible ?
+  // gain : 0`). Regression: previewTrackGain wrote the raw fader value, so
+  // dragging a muted strip's fader audibly un-muted it until release.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const renderWithPreview = async (muted: boolean): Promise<number> => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadAllWorklets(ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject({
+        ...doc,
+        tracks: doc.tracks.map((t) => (t.id === drum.id ? { ...t, mute: muted } : t)),
+      });
+      engine.previewTrackGain(drum.id, 1.2); // fader dragged to +1.76 dB
+      engine.trigger(drum.id, drum.pads[0], 0.02, 1);
+      const out = await ctx.startRendering();
+      return peakOf(out.getChannelData(0));
+    };
+    const mutedPeak = await renderWithPreview(true);
+    const openPeak = await renderWithPreview(false);
+    check(
+      "mixer preview: fader preview on a muted channel stays silent (unmuted stays audible)",
+      mutedPeak < 0.005 && openPeak > 0.05,
+      `muted=${mutedPeak.toFixed(4)} open=${openPeak.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("mixer preview: fader preview on a muted channel stays silent (unmuted stays audible)", false, String(error));
+  }
+
+  // Send-level preview must move the REAL send gain into the return bus (the
+  // wet path), not just a UI number. Committing a send of 0.9 but previewing
+  // 0 must render dry-only; previewing the committed value must render the
+  // full wet+dry mix.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const ret = doc.returns[0];
+    const withSend = {
+      ...doc,
+      tracks: doc.tracks.map((t) => (t.id === drum.id ? { ...t, sends: { [ret.id]: 0.9 } } : t)),
+    };
+    const renderWithSendPreview = async (previewLevel: number | null): Promise<number> => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadAllWorklets(ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(withSend);
+      if (previewLevel !== null) engine.previewTrackSend(drum.id, ret.id, previewLevel);
+      engine.trigger(drum.id, drum.pads[0], 0.02, 1);
+      const out = await ctx.startRendering();
+      return peakOf(out.getChannelData(0));
+    };
+    const wetPeak = await renderWithSendPreview(null);
+    const dryOnlyPeak = await renderWithSendPreview(0);
+    check(
+      "mixer preview: send preview drives the real return-bus path",
+      wetPeak > 0.05 && dryOnlyPeak < wetPeak * 0.8,
+      `wet=${wetPeak.toFixed(3)} previewed-dry=${dryOnlyPeak.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("mixer preview: send preview drives the real return-bus path", false, String(error));
+  }
+
+  // Deleting a FROZEN track must stop and drop its looping buffer source.
+  // Regression: disposeTrackNodes left the source running inside
+  // frozenBuffers until the next panic/project switch.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    const engine = new AudioEngine();
+    const frozenId = "frozen-check-delete";
+    const buffer = ctx.createBuffer(2, SR, SR);
+    for (let c = 0; c < 2; c++) {
+      const data = buffer.getChannelData(c);
+      for (let i = 0; i < data.length; i++) data[i] = Math.sin(i / 20) * 0.5;
+    }
+    bank.add(frozenId, buffer);
+    const doc = createProjectFromTemplate("house");
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const frozenDoc = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.id === drum.id ? { ...t, frozen: { bufferId: frozenId, durationSec: 1, sampleRate: SR } } : t,
+      ),
+    };
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(frozenDoc);
+    engine.restartFrozenSources(0); // live playback path owns frozen source creation
+    const frozenState = engine as unknown as { frozenBuffers: Map<string, AudioBufferSourceNode> };
+    const startedWhileLive = frozenState.frozenBuffers.has(drum.id);
+    engine.setProject({ ...frozenDoc, tracks: frozenDoc.tracks.filter((t) => t.id !== drum.id) });
+    check(
+      "frozen: deleting a frozen track stops + removes its buffer source",
+      startedWhileLive && frozenState.frozenBuffers.size === 0,
+      `started=${startedWhileLive} remainingSources=${frozenState.frozenBuffers.size}`,
+    );
+  } catch (error) {
+    check("frozen: deleting a frozen track stops + removes its buffer source", false, String(error));
+  }
+
   // Realtime resample: the LiveRecorder taps the post-limiter master and the
   // take decodes back into an audible AudioBuffer — the "bounce what you
   // hear" path that resampled pads/flips are built on.

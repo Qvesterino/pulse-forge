@@ -149,7 +149,7 @@ export function planMixProfile(
     overrides.punch ??
     (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : (artistMix?.punch ?? null));
   const lushGenre = genre === "ambient";
-  const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk";
+  const dryGenre = genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk" || genre === "hyperpop";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -169,7 +169,7 @@ export function planMixProfile(
         ? true
         : artistMix?.pump !== undefined
           ? artistMix.pump
-          : (genre === "house" || genre === "techno" || genre === "jersey") && intent.energy >= 0.55;
+          : (genre === "house" || genre === "techno" || genre === "jersey" || genre === "ukg") && intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];
   const summary: string[] = [];

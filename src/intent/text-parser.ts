@@ -61,7 +61,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // sub-genre wave (world-roster follow-up) — specifics still BEFORE generics
   [/\bacid trap\b|\bacid rap\b/, "trap"],
   [/\bfuture garage\b/, "ambient"],
-  [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b/, "house"],
+  // UKG — first-class genre since the garage promotion (own grooves +
+  // form + mix). "garage house" / "NJ garage" keep their house reading via
+  // the house entries below (this phrase needs the explicit UK markers).
+  [/\bspeed garage\b|\bbassline(?: house)?\b|\b2.?step garage\b|\buk funky\b|\bukg\b|\buk garage\b/, "ukg"],
   [/\bbaile funk\b|\bfunk mandel\w*|\bbrazilian phonk\b|\bbr phonk\b/, "phonk"],
   [/\bneurofunk\b|\bneuro\b/, "dnb"],
   // Southern specialties (bounce / miami / snap) + afroswing + countrytune.

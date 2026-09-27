@@ -34,6 +34,10 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Jersey: busy bouncy club patterns; DnB: syncopated two-step breaks.
   jersey: { densityRange: [0.14, 0.8], syncopationRange: [0.16, 0.72], maxDistance: 1.0 },
   dnb: { densityRange: [0.12, 0.82], syncopationRange: [0.2, 0.85], maxDistance: 1.1 },
+  // Hyperpop: maximalist, glitchy, dense; UKG: swung 2-step with chopped
+  // vocal space (syncopation-friendly).
+  hyperpop: { densityRange: [0.16, 0.88], syncopationRange: [0.14, 0.86], maxDistance: 1.15 },
+  ukg: { densityRange: [0.12, 0.84], syncopationRange: [0.18, 0.88], maxDistance: 1.1 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

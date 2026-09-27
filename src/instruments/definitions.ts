@@ -644,6 +644,54 @@ export const reeseParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -7, unit: "dB", format: formatDb },
 ];
 
+/**
+ * ACID 303 (kind #20) — the squelch. Monophonic saw/square through a
+ * high-resonance SVF whose CUTOFF is swept by a fast ENVMOD envelope;
+ * ACCENT boosts cutoff+level on hard steps (velocity-driven), GLIDE is
+ * mandatory legato (slide between consecutive notes, engine slideFrom).
+ */
+export const acidParams: ParamDef[] = [
+  {
+    id: "wave",
+    label: "WAVE",
+    min: 0,
+    max: 1,
+    default: 0,
+    options: [
+      { value: 0, label: "Saw" },
+      { value: 1, label: "Square" },
+    ],
+  },
+  { id: "tune", label: "TUNE", min: -12, max: 12, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+  { id: "cutoff", label: "CUTOFF", min: 80, max: 8000, default: 320, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "reso", label: "RESO", min: 0.5, max: 8, default: 4.5, format: (v) => v.toFixed(1) },
+  { id: "envMod", label: "ENV", min: 0, max: 1, default: 0.55, format: formatPct },
+  { id: "accent", label: "ACCENT", min: 0, max: 1, default: 0.4, format: formatPct },
+  { id: "glide", label: "GLIDE", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "decay", label: "DECAY", min: 0.05, max: 1.5, default: 0.35, unit: "s", format: formatSec },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -9, unit: "dB", format: formatDb },
+];
+
+/**
+ * SYNTH BRASS (kind #21) — the horn stab. Three detuned saws with a PUNCHY
+ * filter envelope (the brass swoosh is the filter, not the amp): cutoff
+ * slams open on the attack and decays back. VELOCITY → cutoff+level
+ * scaling, ACCENT-style bite on hard hits. Ensemble spread thinner than
+ * Strings (a section, not a symphony).
+ */
+export const brassParams: ParamDef[] = [
+  { id: "bite", label: "BITE", min: 0, max: 1, default: 0.6, format: formatPct },
+  { id: "sweep", label: "SWEEP", min: 0, max: 1, default: 0.55, format: formatPct },
+  { id: "sweepTime", label: "S-TIME", min: 0.01, max: 0.8, default: 0.09, unit: "s", format: formatMs },
+  { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0.4, format: formatPct },
+  { id: "cutoff", label: "CUTOFF", min: 300, max: 10000, default: 2400, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "reso", label: "RESO", min: 0.1, max: 6, default: 1.2, format: (v) => v.toFixed(1) },
+  { id: "attack", label: "ATTACK", min: 0.005, max: 0.3, default: 0.02, unit: "s", format: formatMs },
+  { id: "release", label: "RELEASE", min: 0.03, max: 2, default: 0.25, unit: "s", format: formatMs },
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
+];
+
+
 export const logdrumParams: ParamDef[] = [
   { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },
   { id: "pitchDrop", label: "DROP", min: 0, max: 1, default: 0.35, format: formatPct },
@@ -763,6 +811,8 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   strings: { kind: "strings", name: "Strings", params: stringsParams },
   bell: { kind: "bell", name: "Bell", params: bellParams },
   reese: { kind: "reese", name: "Reese", params: reeseParams },
+  acid: { kind: "acid", name: "Acid 303", params: acidParams },
+  brass: { kind: "brass", name: "Synth Brass", params: brassParams },
   pluck: { kind: "pluck", name: "Pluck Synth", params: pluckParams },
   flute: { kind: "flute", name: "Flute", params: fluteParams },
   logdrum: { kind: "logdrum", name: "Log Drum", params: logdrumParams },
@@ -784,6 +834,8 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "strings",
   "bell",
   "reese",
+  "acid",
+  "brass",
   "fm",
   "pluck",
   "flute",

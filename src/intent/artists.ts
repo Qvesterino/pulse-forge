@@ -245,7 +245,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["hyperpop", "hyper pop", "hyperpop type beat"],
     // The generic hyperpop ask — extreme BPM and energy on the hyper groove.
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "energetic",
     energy: 0.9,
@@ -353,7 +353,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["pinkpantheress", "pink pantheress", "pinkpantheress type beat"],
     // 2-step/pop hybrids — ukg groove, bright and bouncy.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.65,
@@ -740,7 +740,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["disclosure", "uk garage house"],
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.8,
@@ -935,7 +935,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["overmono", "joy orbison"],
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.75,
@@ -1166,7 +1166,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["jamie xx"],
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.7,
@@ -1359,7 +1359,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── UK bass / breaks ──────────────────────────────────
   {
     names: ["overmono", "overmono type beat"],
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.75,
@@ -1535,7 +1535,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["arca", "arca type beat"],
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "dark",
     energy: 0.8,
@@ -1545,7 +1545,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["sophie", "sophie type beat", "pc music"],
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "energetic",
     energy: 0.85,
@@ -3939,7 +3939,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["conducta"],
     // Kiwi Rekords — warm, vocal-forward 2-step revival.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.8,
@@ -3950,7 +3950,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["interplanetary criminal"],
     // The 2022 revival anthem corner (B.O.T.A. energy).
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.85,
@@ -3961,7 +3961,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["sammy virji", "virji"],
     // Bass-forward speed-garage bounce.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.85,
@@ -3972,7 +3972,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["piri"],
     // piri & tommy — the pop-facing, melodic UKG lane.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "chill",
     energy: 0.7,
@@ -4028,7 +4028,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
       "iglooghost",
       "hudson mohawke",
     ],
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "energetic",
     energy: 0.9,
@@ -4917,7 +4917,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // 2-step garage lineage (UKG had the revival wave but not the originators).
   {
     names: ["mj cole", "artful dodger", "craig david type beat"],
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "chill",
     energy: 0.6,
@@ -4928,7 +4928,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["zed bias", "el-b", "el b", "wookie"],
     // The dark side of UKG — ghostly, sub-heavy.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "dark",
     energy: 0.65,
@@ -5065,7 +5065,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["salute"],
     // The 2020s UKG-via-electronic-pop lane — bright, emotional, club-ready.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.8,
@@ -5076,7 +5076,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["barry can't swim", "barry cant swim"],
     // The UKG-adjacent indie-dance crossover (emotional, vocal-led).
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "chill",
     energy: 0.7,
@@ -5087,7 +5087,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["dj q", "t2", "burgaboy", "jamie duggan", "trc"],
     // Bassline / Niche Sheffield school — speed-garage bass pressure.
-    genre: "house",
+    genre: "ukg",
     style: "ukg",
     mood: "energetic",
     energy: 0.85,
@@ -5102,7 +5102,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["umru", "felicita", "easyfun", "life sim", "hdmird"],
     // The PC Music production room outside A.G. Cook — deconstructed club
     // maximalism (umru, felicita, easyFun).
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "energetic",
     energy: 0.9,
@@ -5114,7 +5114,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["shygirl", "jockstrap", "black dresses"],
     // The art-pop / deconstructed-club edge (Shygirl, Jockstrap, Black
     // Dresses) — vocals against broken club pressure.
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "aggressive",
     energy: 0.85,
@@ -5136,7 +5136,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["food house", "gupi", "fraxiom", "that kid"],
     // The 2020 hyperpop scene's DIY heart (food house = gupi + fraxiom).
-    genre: "trap",
+    genre: "hyperpop",
     style: "hyper",
     mood: "energetic",
     energy: 0.9,

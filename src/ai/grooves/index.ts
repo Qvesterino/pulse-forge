@@ -9,6 +9,8 @@ import { PHONK_GROOVES } from "./phonk";
 import { JERSEY_GROOVES } from "./jersey";
 import { DNB_GROOVES } from "./dnb";
 import { WESTCOAST_GROOVES } from "./westcoast";
+import { HYPERPOP_GROOVES } from "./hyperpop";
+import { UKG_GROOVES } from "./ukg";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -21,6 +23,8 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...PHONK_GROOVES,
   ...JERSEY_GROOVES,
   ...DNB_GROOVES,
+  ...HYPERPOP_GROOVES,
+  ...UKG_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

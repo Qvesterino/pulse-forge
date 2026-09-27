@@ -399,9 +399,7 @@ function MasterStrip() {
             max={4}
             defaultValue={0}
             format={(v) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`)}
-            onCommit={(tiltDb) =>
-              services.store.execute(setMasterConfig(doc, { tiltDb: Math.round(tiltDb * 2) / 2 }))
-            }
+            onCommit={(tiltDb) => services.store.execute(setMasterConfig(doc, { tiltDb: Math.round(tiltDb * 2) / 2 }))}
           />
           {/* Genre loudness trim: auto-written by the song builder from the
               measured genre references so exports land at ≈ −14 LUFS; drag to
@@ -656,6 +654,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                 defaultValue={0}
                 format={(v) => (v < 0.005 ? "OFF" : `${Math.round((v / 1.5) * 100)}%`)}
                 onCommit={(level) => services.store.execute(setTrackSend(doc, track.id, ret.id, level))}
+                onPreview={(level) => services.engine.previewTrackSend(track.id, ret.id, level)}
+                onCancel={() => services.engine.previewTrackSend(track.id, ret.id, track.sends[ret.id] ?? 0)}
                 onMenu={(x, y) => setFaderMenu({ x, y, param: `send:${ret.id}`, defaultValue: 0, trackId: track.id })}
               />
             </div>

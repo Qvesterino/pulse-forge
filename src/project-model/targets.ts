@@ -186,7 +186,11 @@ export function clampTargetValue(doc: ProjectDocument, target: AutomationTarget,
   if (!Number.isFinite(value)) return def.default;
   if (target.kind === "fxParam") {
     const effect = targetEffectsOf(doc, target.trackId).find((fx) => fx.id === target.fxId);
-    if (effect?.type === "ultina" && target.paramId) return clampUltinaParam(target.paramId, value);
+    // Rack-surface ids clamp against the rack registry FIRST: for ultina the
+    // vendored schema stores global.mix as percent (0..100) while the doc and
+    // rack def store 0..1 (ultinaNode rescales ×100 on the way to the DSP).
+    // Clamping the rack id against the vendored scale admitted lane values up
+    // to 100 — a value of 2 crossed to full-wet instead of stopping at 1.
     if (
       effect?.type &&
       target.paramId &&
@@ -194,6 +198,7 @@ export function clampTargetValue(doc: ProjectDocument, target: AutomationTarget,
     ) {
       return clampEffectParam(effect.type, target.paramId, value);
     }
+    if (effect?.type === "ultina" && target.paramId) return clampUltinaParam(target.paramId, value);
   }
   if (target.kind === "instParam") {
     const owner = targetOwner(doc, target.trackId);

@@ -149,8 +149,12 @@ export const GENRE_FEEL: Partial<Record<GenerateOptions["genre"], { humanizeTimi
     // Ambient is deliberately almost flat — drift comes from the pads, not
     // from jittered onsets.
     ambient: { humanizeTiming: 0.15, humanizeVelocity: 0.1 },
+    // Hyperpop is deliberately rigid (grid-locked, machine energy); UKG swings
+    // hard — the shuffle IS the genre, so timing humanize stays low and the
+    // groove's swing carries it.
+    hyperpop: { humanizeTiming: 0.02, humanizeVelocity: 0.08 },
+    ukg: { humanizeTiming: 0.07, humanizeVelocity: 0.14 },
   };
-
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:
  * a non-zero humanize the user (or an earlier generation) already set wins,

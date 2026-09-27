@@ -30,6 +30,8 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   trap: ["trap", "trap beat", "hip-hop", "808 beat"],
   ambient: ["ambient", "atmospheric", "soundscape", "textures"],
   dnb: ["drum and bass", "dnb", "jungle", "neurofunk", "liquid dnb"],
+  hyperpop: ["hyperpop", "hyper pop", "maximalist pop", "deconstructed club"],
+  ukg: ["UK garage", "ukg", "2-step", "speed garage"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -38,6 +40,8 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   funky: ["funky", "funky groove", "groovy", "swinging"],
   deep: ["deep", "deep and dubby", "sub-heavy", "warm and round"],
   ukg: ["UKG", "UK garage", "two-step", "speed garage"],
+  hyper: ["hyper", "hyperpop", "maximalist", "stuttering"],
+  rage: ["rage", "rage beat", "distorted rage", "opium rage"],
   afro: ["afro", "afrobeat", "tribal", "organic percussion"],
   industrial: ["industrial", "harsh", "metallic", "warehouse industrial"],
   dub: ["dubby", "dub techno", "space echo", "echoes"],

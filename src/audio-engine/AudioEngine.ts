@@ -1661,8 +1661,12 @@ export class AudioEngine {
     }
     if (this.masterMs) {
       const enabled = config.msEnabled ?? false;
-      const midLin = enabled ? Math.pow(10, (config.msMidGain ?? 0) / 20) : 1;
-      const sideLin = enabled ? Math.pow(10, (config.msSideGain ?? 0) / 20) : 1;
+      // Clamp like normalizeProject (±6 dB): the collab/YDoc path can carry
+      // hostile values straight into these AudioParams otherwise.
+      const midDb = Math.min(6, Math.max(-6, config.msMidGain ?? 0));
+      const sideDb = Math.min(6, Math.max(-6, config.msSideGain ?? 0));
+      const midLin = enabled ? Math.pow(10, midDb / 20) : 1;
+      const sideLin = enabled ? Math.pow(10, sideDb / 20) : 1;
       this.masterMs.midGain.gain.setTargetAtTime(midLin, now, 0.01);
       this.masterMs.sideGain.gain.setTargetAtTime(sideLin, now, 0.01);
     }
@@ -2097,6 +2101,11 @@ export class AudioEngine {
   }
 
   private disposeTrackNodes(id: string, nodes: TrackNodes): void {
+    // A frozen track's looping buffer source must die with its channel —
+    // only the unfreeze/panic paths touch it otherwise, so deleting a
+    // frozen track used to leave the source running (and pinned in memory)
+    // inside frozenBuffers until the next project switch.
+    this.disposeFrozenSource(id);
     this.setGenerativeSourceConnection(id, nodes, false);
     this.generativeSources.delete(id);
     this.connectedGenerativeSources.delete(id);
@@ -5387,7 +5396,20 @@ export class AudioEngine {
   previewTrackGain(trackId: string, gain: number): void {
     const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
     if (!nodes || !this.ctx) return;
-    nodes.gain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, gain)), this.ctx.currentTime, 0.01);
+    // This is the SAME param syncProject drives with `audible ? gain : 0` —
+    // a preview that wrote the raw fader value would audibly un-mute a
+    // muted (or soloed-out) channel for the length of the drag, then snap
+    // back to silence on commit.
+    const audible = this.doc ? soloAudibility(this.doc).audible(trackId) : true;
+    nodes.gain.gain.setTargetAtTime(audible ? Math.min(1.5, Math.max(0, gain)) : 0, this.ctx.currentTime, 0.01);
+  }
+
+  /** Live send-level preview (mirrors syncSends' write; commit is setTrackSend). */
+  previewTrackSend(trackId: string, returnId: string, level: number): void {
+    const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
+    const sendGain = nodes?.sends.get(returnId);
+    if (!sendGain || !this.ctx) return;
+    sendGain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, level)), this.ctx.currentTime, 0.01);
   }
 
   previewTrackPan(trackId: string, pan: number): void {

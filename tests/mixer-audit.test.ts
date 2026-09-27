@@ -1,15 +1,12 @@
+import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { normalizeProject } from "../src/project-model/schema";
+import { createGroupTrackModel, normalizeProject } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
-import {
-  addToGroup,
-  createGroupTrack,
-  setGroupMute,
-  setGroupSolo,
-  setTrackParams,
-} from "../src/commands/commands";
+import { addToGroup, createGroupTrack, setGroupMute, setGroupSolo, setTrackParams } from "../src/commands/commands";
 
 /**
  * AUDIT 04 — Mixer regression invariants
@@ -148,5 +145,96 @@ describe("group mute/solo — member state preservation (audit 04)", () => {
     s.execute(setGroupSolo(s.getDoc(), group.id, true));
     expect(s.getDoc().tracks.find((t) => t.id === group.id)!.solo).toBe(true);
     expect(s.getDoc().tracks.find((t) => t.id === member.id)!.solo).toBe(false);
+  });
+});
+
+/**
+ * Mixer signal-flow audit (2026-09-27) — structural pins for the engine
+ * paths that cannot run under vitest (no WebAudio): the live-preview gate,
+ * frozen-channel teardown and the send-preview wiring. The audible
+ * behaviour itself is verified by runChecks() browser gates:
+ *   - "mixer preview: fader preview on a muted channel stays silent"
+ *   - "mixer preview: send preview drives the real return-bus path"
+ *   - "frozen: deleting a frozen track stops + removes its buffer source"
+ */
+describe("mixer signal-flow audit — preview/teardown contracts", () => {
+  const engineSrc = () => readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+  const mixerSrc = () => readFileSync(resolve(process.cwd(), "src/ui/Mixer.tsx"), "utf8");
+
+  it("previewTrackGain consults the SAME soloAudibility gate syncProject writes (no drag un-mutes a muted channel)", () => {
+    const src = engineSrc();
+    const previewBody = src.slice(src.indexOf("previewTrackGain(trackId"), src.indexOf("previewTrackSend("));
+    expect(previewBody, "preview must route through soloAudibility").toMatch(/soloAudibility\(this\.doc\)/);
+    expect(previewBody, "inaudible channel must preview 0, never the raw fader value").toMatch(
+      /audible\s*\?\s*Math\.min\(1\.5,\s*Math\.max\(0,\s*gain\)\)\s*:\s*0/,
+    );
+  });
+
+  it("disposeTrackNodes tears down the frozen buffer source (deleting a frozen track cannot leak it)", () => {
+    const src = engineSrc();
+    const disposeBody = src.slice(
+      src.indexOf("private disposeTrackNodes("),
+      src.indexOf("private disposeInstrumentRuntime("),
+    );
+    expect(disposeBody, "disposeTrackNodes must call disposeFrozenSource").toMatch(/this\.disposeFrozenSource\(id\)/);
+  });
+
+  it("send sliders are live-preview wired like gain/pan (no silent-until-release mixer control)", () => {
+    const src = mixerSrc();
+    const start = src.indexOf("ret.name.toUpperCase()");
+    expect(start, "send slider block must exist").toBeGreaterThan(0);
+    const sendSlider = src.slice(start, start + 2000);
+    expect(sendSlider).toMatch(/onPreview=\{\(level\) => services\.engine\.previewTrackSend\(/);
+    expect(sendSlider).toMatch(/onCancel=\{\(\) => services\.engine\.previewTrackSend\(/);
+  });
+
+  it("persisted mixer state restores exactly: extreme faders, mute/solo, sends, groups, master chain", async () => {
+    const { ProjectRepository } = await import("../src/persistence/ProjectRepository");
+    const base = createProjectFromTemplate("house");
+    const group = { ...createGroupTrackModel("Mix Bus"), gain: 1.4, pan: 0.5, mute: false, solo: true };
+    const doc: ProjectDocument = normalizeProject({
+      ...base,
+      tracks: base.tracks.map((t, i) => {
+        if (t.kind === "group") return group;
+        const first = t.id === base.tracks.find((x) => x.kind !== "group")!.id;
+        return {
+          ...t,
+          gain: i % 2 ? 1.5 : 0,
+          pan: i % 2 ? -1 : 1,
+          mute: i % 3 === 0,
+          solo: first ? true : t.solo,
+          groupId: group.id,
+          sends: { [base.returns[0].id]: i % 2 ? 1.5 : 0.25 },
+        };
+      }),
+      returns: base.returns.map((r, i) => ({ ...r, gain: i === 0 ? 1.5 : 0.1 })),
+      master: {
+        ...base.master,
+        masterGain: 1.5,
+        ceilingDb: -12,
+        limiterEnabled: false,
+        clipperEnabled: true,
+        tiltDb: 4,
+        loudnessTrimDb: -6,
+        bassMonoEnabled: true,
+        bassMonoFreq: 400,
+      },
+    });
+    const repo = new ProjectRepository();
+    await repo.save(doc);
+    const loaded = (await repo.load(doc.id))!;
+    expect(loaded).toBeTruthy();
+    const strip = (d: ProjectDocument) =>
+      d.tracks.map((t) => ({
+        g: t.gain,
+        p: t.pan,
+        m: t.mute,
+        s: t.solo,
+        grp: "groupId" in t ? t.groupId : undefined,
+        snd: t.sends,
+      }));
+    expect(strip(loaded)).toEqual(strip(doc));
+    expect(loaded.master).toEqual(doc.master);
+    expect(loaded.returns.map((r) => r.gain)).toEqual(doc.returns.map((r) => r.gain));
   });
 });

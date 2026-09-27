@@ -26,6 +26,8 @@ import {
   stringsParams,
   bellParams,
   reeseParams,
+  acidParams,
+  brassParams,
   logdrumParams,
   spectralParams,
   vocalchopParams,
@@ -4300,6 +4302,279 @@ const reese: InstrumentDefinition = {
   },
 };
 
+/* ---------------- Acid 303 ---------------- */
+// The squelch: monophonic saw/square through a high-resonance SVF whose
+// cutoff is SLAMMED open by a fast envelope (ENVMOD) and decays back —
+// that sweep IS the acid sound. ACCENT (velocity-driven) boosts the cutoff
+// ceiling and level on hard steps. GLIDE is legato mandatory (slides
+// between consecutive notes). Deterministic (no noise sources needed).
+
+const acid: InstrumentDefinition = {
+  kind: "acid",
+  name: "Acid 303",
+  params: acidParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(1); // strictly mono
+    const WAVE_TYPES = ["sawtooth", "square"] as const;
+
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch) * Math.pow(2, (p.tune ?? 0) / 12);
+        const decay = Math.max(0.05, p.decay ?? 0.35);
+        const release = Math.min(decay, 0.15); // short tail, 303-like
+        const hold = Math.max(durationSec, 0.06);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.1;
+        const level = velocity * dbToLin(p.level ?? -9);
+        const accent = Math.max(0, Math.min(1, p.accent ?? 0.4));
+        const accentVel = velocity >= 0.75 ? accent : 0; // hard steps only
+        const cutoffBase = Math.max(80, Math.min(8000, p.cutoff ?? 320));
+        const envMod = Math.max(0, Math.min(1, p.envMod ?? 0.55));
+        const reso = Math.max(0.5, Math.min(8, p.reso ?? 4.5));
+
+        // Amp: fast attack, accent lifts the peak.
+        const amp = ctx.createGain();
+        const peakLevel = level * (1 + accentVel * 0.6);
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(peakLevel, 0.0002), when + 0.004);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // SVF — the squelch engine. Cutoff envelope: slams to
+        // cutoff × (1 + envMod × 4 + accent×2), decays back to cutoff.
+        const svf = createVoiceFilter(ctx, cutoffBase, reso, 0, 0);
+        const cutoffEnvPeak = Math.min(
+          12000,
+          cutoffBase * (1 + envMod * 4 + accentVel * 2),
+        );
+        svf.frequency.setValueAtTime(cutoffEnvPeak, when);
+        svf.frequency.setTargetAtTime(cutoffBase, when + 0.01, decay / 3);
+        svf.output.connect(amp);
+        amp.connect(output);
+
+        // Osc — saw or square, glide from lastFreq or slideFrom.
+        const osc = ctx.createOscillator();
+        osc.type = WAVE_TYPES[Math.max(0, Math.min(1, Math.round(p.wave ?? 0)))];
+        const glideAmt = Math.max(0, Math.min(1, p.glide ?? 0.5));
+        const fromFreq = slideFrom
+          ? midiToFreq(slideFrom.pitch) * Math.pow(2, (p.tune ?? 0) / 12)
+          : glideAmt > 0.001
+            ? runtime.lastFreq
+            : null;
+        if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
+          const glideSec = Math.max(0.02, glideAmt * 0.3);
+          osc.frequency.setValueAtTime(fromFreq, when);
+          osc.frequency.exponentialRampToValueAtTime(freq, Math.min(when + glideSec, off));
+        } else {
+          osc.frequency.setValueAtTime(freq, when);
+        }
+        osc.connect(svf.input);
+        osc.start(when);
+        osc.stop(stopTime);
+
+        runtime.lastFreq = freq;
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.01);
+            try {
+              osc.stop(t + 0.05);
+            } catch {
+              /* already stopped */
+            }
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.008);
+            try {
+              osc.stop(now + 0.02);
+            } catch {
+              /* already stopped */
+            }
+          },
+        );
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            osc.disconnect();
+            svf.disconnect();
+            amp.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
+/* ---------------- Synth Brass ---------------- */
+// The horn stab: three detuned saws with a PUNCHY filter envelope — the
+// swoosh IS the filter slamming open, not the amp. VELOCITY drives cutoff
+// ceiling + level (hard hits bite harder), BITE adds high-shelf grind.
+// Spread thinner than Strings (a section, not a symphony).
+
+const brass: InstrumentDefinition = {
+  kind: "brass",
+  name: "Synth Brass",
+  params: brassParams,
+  factory(ctx, track) {
+    const output = ctx.createGain();
+    output.gain.value = 1;
+    const p = { ...track.params };
+    const { voices, register, cleanup, findByPitch } = makeVoiceManager(8);
+
+    const runtime: InstrumentRuntime & { lastFreq: number | null } = {
+      lastFreq: null,
+      output,
+      noteOn(pitch, velocity, when, durationSec, slideFrom) {
+        const freq = midiToFreq(pitch);
+        const attack = Math.max(0.005, p.attack ?? 0.02);
+        const release = Math.max(0.03, p.release ?? 0.25);
+        const hold = Math.max(durationSec, attack + 0.04);
+        const off = when + hold;
+        const stopTime = off + release * 2 + 0.2;
+        const level = velocity * dbToLin(p.level ?? -8);
+        const bite = Math.max(0, Math.min(1, p.bite ?? 0.6));
+        const sweep = Math.max(0, Math.min(1, p.sweep ?? 0.55));
+        const sweepTime = Math.max(0.01, Math.min(0.8, p.sweepTime ?? 0.09));
+        const spread = Math.max(0, Math.min(1, p.spread ?? 0.4));
+        const cutoffBase = Math.max(300, Math.min(10000, p.cutoff ?? 2400));
+        const reso = Math.max(0.1, Math.min(6, p.reso ?? 1.2));
+
+        // Amp — quick brass attack (not bowed like Strings).
+        const amp = ctx.createGain();
+        amp.gain.setValueAtTime(0.0001, when);
+        amp.gain.exponentialRampToValueAtTime(Math.max(level, 0.0002), when + attack);
+        amp.gain.setTargetAtTime(0.0001, off, release / 3);
+
+        // The swoosh: cutoff slams open (sweep × velocity), decays back.
+        const svf = createVoiceFilter(
+          ctx,
+          cutoffBase * (0.7 + velocity * 0.5),
+          reso,
+          0,
+          0,
+        );
+        const sweepPeak = Math.min(12000, cutoffBase * (1 + sweep * 3 * (0.5 + velocity * 0.5)));
+        svf.frequency.setValueAtTime(sweepPeak, when);
+        svf.frequency.setTargetAtTime(cutoffBase * (0.7 + velocity * 0.5), when + attack, sweepTime);
+
+        // Bite: high-shelf grind on top (the brass edge).
+        const biteShelf = ctx.createBiquadFilter();
+        biteShelf.type = "highshelf";
+        biteShelf.frequency.value = 2800;
+        biteShelf.gain.value = bite * 5;
+
+        svf.output.connect(biteShelf);
+        biteShelf.connect(amp);
+        amp.connect(output);
+
+        // Three detuned saws — a tight section, thinner spread than Strings.
+        const offsets = [0, 6, -9];
+        for (let v = 0; v < 3; v++) {
+          const osc = ctx.createOscillator();
+          osc.type = "sawtooth";
+          const cents = v === 0 ? 0 : offsets[v]! * (0.3 + spread * 0.7);
+          osc.frequency.setValueAtTime(freq * Math.pow(2, cents / 1200), when);
+          const glideAmt = 0;
+          const fromFreq = slideFrom ? midiToFreq(slideFrom.pitch) : glideAmt > 0.001 ? runtime.lastFreq : null;
+          if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
+            osc.frequency.setValueAtTime(fromFreq * Math.pow(2, cents / 1200), when);
+            osc.frequency.exponentialRampToValueAtTime(
+              freq * Math.pow(2, cents / 1200),
+              Math.min(when + 0.08, off),
+            );
+          }
+          const vg = ctx.createGain();
+          vg.gain.value = v === 0 ? 1 : 0.65;
+          osc.connect(vg).connect(svf.input);
+          osc.start(when);
+          osc.stop(stopTime);
+        }
+
+        runtime.lastFreq = freq;
+
+        const voice = register(
+          pitch,
+          stopTime,
+          (whenStop) => {
+            const t = Math.max(whenStop, 0);
+            amp.gain.cancelScheduledValues(t);
+            amp.gain.setTargetAtTime(0.0001, t, 0.02);
+          },
+          (now) => {
+            amp.gain.cancelScheduledValues(now);
+            amp.gain.setTargetAtTime(0.0001, now, 0.012);
+          },
+        );
+        const clock = ctx.createOscillator();
+        clock.type = "sine";
+        clock.frequency.value = 440;
+        const clockGain = ctx.createGain();
+        clockGain.gain.value = 0;
+        clock.connect(clockGain).connect(ctx.destination);
+        clock.start(when);
+        clock.stop(stopTime);
+        clock.onended = () => {
+          cleanup(voice);
+          try {
+            svf.disconnect();
+            biteShelf.disconnect();
+            amp.disconnect();
+          } catch {
+            /* already */
+          }
+        };
+      },
+      noteOff(pitch, when) {
+        for (const v of findByPitch(pitch)) v.stop(when);
+      },
+      setParameter(id, value) {
+        if (Number.isFinite(value)) p[id] = value;
+      },
+      panic() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+      },
+      dispose() {
+        for (const v of [...voices]) v.silence(ctx.currentTime);
+        output.disconnect();
+      },
+    };
+    return runtime;
+  },
+};
+
 /* ---------------- Log Drum (Amapiano) ---------------- */
 // Tuned perc: 3× sine 1 / 2.15 / 3.8 → notch (hollow) → LP SVF + grit
 // pitchDrop on transient, glide + long decay, deterministic
@@ -5570,6 +5845,8 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   strings,
   bell,
   reese,
+  acid,
+  brass,
   fm,
   pluck,
   flute,

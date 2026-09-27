@@ -89,22 +89,32 @@ describe("parsePopIntent", () => {
 describe("applyFaderIntent / applyTempoIntent", () => {
   it("down reduces the resolved bass track gain, one undoable command", () => {
     const doc = testDoc();
-    // the fixture names may not say "bass" — the resolver falls back to the
-    // first instrument track (ROLE_INDEX bass = 0)
+    // the fixture's instrument KIND "808" resolves the bass family
     const bassTrack = doc.tracks.find((track) => track.kind === "instrument");
     expect(bassTrack).toBeDefined();
     const before = (bassTrack as { gain: number }).gain;
-    const commands = applyFaderIntent(doc, { targets: ["bass"], direction: "down" });
-    expect(commands).toHaveLength(1);
-    const next = commands[0].execute(doc);
+    const command = applyFaderIntent(doc, { targets: ["bass"], direction: "down" });
+    expect(command).not.toBeNull();
+    const next = command!.execute(doc);
     const applied = next.tracks.find((track) => track.id === bassTrack!.id) as { gain: number };
     expect(applied.gain).toBeLessThan(before);
   });
 
+  it("no matching track → null (explicit failure, no guessed substitute)", () => {
+    // drums-only project: there is no bass family track to turn down
+    const drumsOnly = testDoc();
+    const onlyDrums = {
+      ...drumsOnly,
+      tracks: drumsOnly.tracks.filter((track) => track.kind === "drum"),
+    };
+    expect(applyFaderIntent(onlyDrums, { targets: ["bass"], direction: "down" })).toBeNull();
+    expect(applyFaderIntent(onlyDrums, { targets: ["lead"], direction: "up" })).toBeNull();
+  });
+
   it("clamps at the fader floor (no negative gain)", () => {
     const doc = testDoc();
-    const commands = applyFaderIntent(doc, { targets: ["master"], direction: "down" });
-    const next = commands[0].execute(doc);
+    const command = applyFaderIntent(doc, { targets: ["master"], direction: "down" });
+    const next = command!.execute(doc);
     expect(next.master?.masterGain).toBeGreaterThanOrEqual(0);
   });
 
@@ -174,17 +184,17 @@ describe("fader percent + 808 targets", () => {
 
   it("percent drives exact relative gain (10 % → ×1.10)", () => {
     const doc = testDoc();
-    const commands = applyFaderIntent(doc, { targets: ["master"], direction: "up", percent: 10 });
-    const next = commands[0].execute(doc);
+    const command = applyFaderIntent(doc, { targets: ["master"], direction: "up", percent: 10 });
+    const next = command!.execute(doc);
     const before = doc.master?.masterGain ?? 1;
     expect(next.master?.masterGain).toBeCloseTo(before * 1.1, 2);
-    const down = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 10 })[0].execute(doc);
+    const down = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 10 })!.execute(doc);
     expect(down.master?.masterGain).toBeCloseTo(before * 0.9, 2);
   });
 
   it("down 100 % mutes without going negative", () => {
     const doc = testDoc();
-    const next = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 100 })[0].execute(doc);
+    const next = applyFaderIntent(doc, { targets: ["master"], direction: "down", percent: 100 })!.execute(doc);
     expect(next.master?.masterGain).toBe(0);
   });
 });
@@ -229,11 +239,11 @@ describe("applyFaderIntent — amounts and pads", () => {
     const downNormal = applyFaderIntent(
       { ...doc, tracks: doc.tracks },
       { targets: ["master"], pads: [], direction: "down", amount: "normal" },
-    )[0].execute(doc);
+    )!.execute(doc);
     const downSubtle = applyFaderIntent(
       { ...doc, tracks: doc.tracks },
       { targets: ["master"], pads: [], direction: "down", amount: "subtle" },
-    )[0].execute(doc);
+    )!.execute(doc);
     expect(downSubtle.master?.masterGain).toBeGreaterThan(downNormal.master?.masterGain ?? 0);
     expect(downNormal.master?.masterGain).toBeLessThan(doc.master?.masterGain ?? 1);
   });
@@ -250,10 +260,9 @@ describe("applyFaderIntent — amounts and pads", () => {
     );
     const beforeKick = kickPad!.gain;
     const beforeOther = otherPad?.gain ?? 0;
-    const commands = applyFaderIntent(doc, { targets: [], pads: ["kick"], direction: "up", amount: "big" });
-    expect(commands.length).toBeGreaterThan(0);
-    let next = doc;
-    for (const command of commands) next = command.execute(next);
+    const command = applyFaderIntent(doc, { targets: [], pads: ["kick"], direction: "up", amount: "big" });
+    expect(command).not.toBeNull();
+    const next = command!.execute(doc);
     const nextDrum = next.tracks.find((track): track is DrumTrack => track.kind === "drum");
     const afterKick = nextDrum?.pads.find((pad) => pad.id === kickPad!.id);
     const afterOther = nextDrum?.pads.find((pad) => pad.id === otherPad?.id);
@@ -264,13 +273,13 @@ describe("applyFaderIntent — amounts and pads", () => {
   });
 
   it("full amount down clamps at the gain floor", () => {
-    const commands = applyFaderIntent(doc, {
+    const command = applyFaderIntent(doc, {
       targets: ["master"],
       pads: [],
       direction: "down",
       amount: "full",
     });
-    const next = commands[0].execute(doc);
+    const next = command!.execute(doc);
     expect(next.master?.masterGain).toBeGreaterThanOrEqual(0);
   });
 });

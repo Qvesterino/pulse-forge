@@ -77,6 +77,8 @@ export type InstrumentKind =
   | "strings"
   | "bell"
   | "reese"
+  | "acid"
+  | "brass"
   | "fm"
   | "pluck"
   | "flute"

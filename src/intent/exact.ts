@@ -83,17 +83,17 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   const ops: ExactOp[] = [];
 
   // Tempo: "set tempo to 142", "142 bpm", "tempo 138"
-  const tempo =
-    /(?:tempo|bpm)\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower);
+  const tempo = /(?:tempo|bpm)\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower);
   if (tempo) {
     const bpm = Math.min(300, Math.max(20, Number(tempo[1])));
     ops.push({ kind: "tempo", bpm });
   }
 
   // Key: "change the key to D minor", "key = f# minor", "d mol"
-  const key = /(?:key|tonina)\s*(?:to|=|:)?\s*([a-h])\s*(#|b|\u266f|\u266d)?\s*(natural\s+|harmonic\s+|melodic\s+|pentatonic\s+)?(major|minor|maj|min|mol|dorian|phrygian|mixolydian|locrian)/.exec(
-    lower,
-  );
+  const key =
+    /(?:key|tonina)\s*(?:to|=|:)?\s*([a-h])\s*(#|b|\u266f|\u266d)?\s*(natural\s+|harmonic\s+|melodic\s+|pentatonic\s+)?(major|minor|maj|min|mol|dorian|phrygian|mixolydian|locrian)/.exec(
+      lower,
+    );
   if (key) {
     const letter = key[1];
     const accidental = key[2] === "\u266f" ? "#" : key[2] === "\u266d" ? "b" : (key[2] ?? "");
@@ -126,12 +126,18 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     /pan\s+(?:the\s+)?([a-z]+)\s*(left|right)\s*(\d{1,3})?/.exec(lower);
   if (pan) {
     const target = firstTarget(pan[1]);
-    let pct = Number(pan[2]);
-    let dir = pan[3];
+    // The second alternative ("pan bass left 30") captures the DIRECTION in
+    // [2] and the optional number in [3]; the first captures the number in
+    // [2]. Reading [2] as a number unconditionally made Number("left") = NaN
+    // and silently dropped the whole op.
+    const directional = pan[2] === "left" || pan[2] === "right";
+    const pct = Number(directional ? pan[3] : pan[2]);
+    const dir = directional ? pan[2] : pan[3];
     if (target && Number.isFinite(pct)) {
-      if (dir === "left") pct = -pct;
-      if (/left|lavo/.test(lower) && !dir && /to\s*-?\d/.test(lower)) pct = -pct;
-      const value = Math.max(-1, Math.min(1, pct / 100));
+      let value = pct;
+      if (dir === "left") value = -value;
+      if (!dir && /left|lavo/.test(lower) && /to\s*-?\d/.test(lower)) value = -value;
+      value = Math.max(-1, Math.min(1, value / 100));
       ops.push({ kind: "pan", target, value });
     }
   }
@@ -156,8 +162,15 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     const target = firstTarget(transpose[1]) ?? "lead";
     const dir = /up|hore/.test(transpose[2]) ? 1 : -1;
     const unit = transpose[4];
-    const count = transpose[3] === "one" || transpose[3] === "an" ? 1 : transpose[3] === "two" ? 2 : transpose[3] === "three" ? 3 : Number(transpose[3] ?? 1);
-    const semitones = dir * (/octave/.test(unit) ? 12 * (count || 1) : (count || 1));
+    const count =
+      transpose[3] === "one" || transpose[3] === "an"
+        ? 1
+        : transpose[3] === "two"
+          ? 2
+          : transpose[3] === "three"
+            ? 3
+            : Number(transpose[3] ?? 1);
+    const semitones = dir * (/octave/.test(unit) ? 12 * (count || 1) : count || 1);
     ops.push({ kind: "transpose", target, semitones });
   }
 

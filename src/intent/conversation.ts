@@ -18,7 +18,7 @@
  * reports. Never throws.
  */
 import type { Command } from "../commands/types";
-import { setBpm, setMasterConfig, setPadParams, setTrackParams } from "../commands/commands";
+import { setBpm, setMasterConfig, setPadParams, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent } from "./percent";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
@@ -49,9 +49,12 @@ export interface FaderIntent {
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
-  /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b/;
+  /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b/;
 const FADER_UP =
-  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b/;
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b/;
+/** UP stems that unambiguously name a direction (loud-words excluded). */
+const FADER_UP_DIRECTIONAL =
+  /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b/;
 
 const FADER_TARGETS: ReadonlyArray<readonly [RegExp, FaderTarget]> = [
   [/\bbas(?:u|e|y|ov|om)?\b|\bbass\w*|\b808\w*/, "bass"],
@@ -86,6 +89,11 @@ export function parseFaderIntent(text: string): FaderIntent | null {
   const down = FADER_DOWN.test(lower);
   const up = !down && FADER_UP.test(lower);
   if (!down && !up) return null;
+  // CONFLICTING directions ("zníž basu a zvýš lead") must not silently take
+  // the down-priority and move BOTH targets the same way — decline instead.
+  // The loud-words ("hlasnejšie"/"hlasitosť") are excluded from the conflict
+  // check: "zníž hlasitosť basu" names the volume NOUN, not an up-direction.
+  if (down && FADER_UP_DIRECTIONAL.test(lower)) return null;
   const targets = FADER_TARGETS.filter(([pattern]) => pattern.test(lower)).map(([, target]) => target);
   const pads = FADER_PADS.filter(([pattern]) => pattern.test(lower)).map(([, family]) => family);
   if (targets.length === 0 && pads.length === 0) return null; // "zniz" alone is ambiguous
@@ -180,6 +188,14 @@ const PAD_FAMILY_MATCH: Record<FaderPadFamily, (role: string) => boolean> = {
   tom: (role) => role === "tom",
 };
 
+/**
+ * Resolve a fader target to concrete track ids. Named tracks win, then the
+ * instrument KIND (808/logdrum ⇒ bass, keys ⇒ chords, pluck/spectral ⇒ lead
+ * — same semantics as production's resolveProductionTargets). NO positional
+ * fallback: when the named family has no track, the resolver returns [] and
+ * the caller fails explicitly — turning down the lead because "the bass is
+ * missing" would be an unintended mutation.
+ */
 function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] {
   if (target === "drums") {
     return doc.tracks.filter((track) => track.kind === "drum").map((track) => track.id);
@@ -187,20 +203,27 @@ function trackIdsForTarget(doc: ProjectDocument, target: FaderTarget): string[] 
   const instruments = doc.tracks.filter(
     (track): track is Extract<typeof track, { kind: "instrument" }> => track.kind === "instrument",
   );
-  const roleIndex: Record<string, number> = { bass: 0, chords: 1, lead: 2 };
   const named = instruments.filter((track) => track.name.toLowerCase().includes(target));
   if (named.length > 0) return named.map((track) => track.id);
-  const fallback = instruments[roleIndex[target] % Math.max(1, instruments.length)];
-  return fallback ? [fallback.id] : [];
+  const byKind = instruments.filter((track) => {
+    if (target === "bass") return ["bass", "808", "logdrum"].includes(track.instrument);
+    if (target === "chords") return /\bchord|\bkeys?\b|\bpad\b/i.test(track.name) || track.instrument === "keys";
+    return /\blead\b|\bsynth\b|\bpluck\b/i.test(track.name) || ["lead", "pluck", "spectral"].includes(track.instrument);
+  });
+  return byKind.map((track) => track.id);
 }
 
 /**
- * Apply a fader intent → the undoable gain commands. PER-PAD families
- * ("kick ťažší", "haty tichšie") drive setPadParams on the matching drum
- * pads; track targets drive setTrackParams / setMasterConfig. Pads first,
- * then tracks.
+ * Apply a fader intent → ONE undoable command. PER-PAD families ("kick ťažší",
+ * "haty tichšie") drive setPadParams on the matching drum pads; track targets
+ * drive setTrackParams / setMasterConfig. Pads first, then tracks — every
+ * change folds into a single snapshot so one Ctrl+Z undoes the whole ask
+ * (the panel's "(one undo step)" promise must be literally true).
+ *
+ * Returns null when NO pad/track resolved — the caller surfaces an explicit
+ * "no matching track" error instead of mutating a guessed substitute.
  */
-export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Command[] {
+export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Command | null {
   // Percent = relative gain change in the parsed direction (10 % → ×1.10 up
   // / ×0.90 down); vibe amounts are the fallback when no number is named.
   const factor =
@@ -212,7 +235,8 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
           const factors = FADER_FACTORS[intent.amount ?? "normal"];
           return intent.direction === "down" ? factors.down : factors.up;
         })();
-  const commands: Command[] = [];
+  let next = doc;
+  let faders = 0;
 
   if ((intent.pads?.length ?? 0) > 0) {
     const drumTrack = doc.tracks.find((track): track is DrumTrack => track.kind === "drum");
@@ -222,7 +246,8 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
         if (!(intent.pads ?? []).some((family) => PAD_FAMILY_MATCH[family](role))) continue;
         const gain = clampGain(pad.gain * factor);
         if (gain === pad.gain) continue;
-        commands.push(setPadParams(doc, pad.id, { gain }));
+        next = setPadParams(next, pad.id, { gain }).execute(next);
+        faders += 1;
       }
     }
   }
@@ -230,17 +255,34 @@ export function applyFaderIntent(doc: ProjectDocument, intent: FaderIntent): Com
   for (const target of intent.targets) {
     if (target === "master") {
       const masterGain = doc.master?.masterGain ?? 1;
-      commands.push(setMasterConfig(doc, { masterGain: Math.max(GAIN_MIN, Math.min(GAIN_MAX, masterGain * factor)) }));
+      next = setMasterConfig(next, {
+        masterGain: Math.max(GAIN_MIN, Math.min(GAIN_MAX, masterGain * factor)),
+      }).execute(next);
+      faders += 1;
       continue;
     }
     for (const trackId of trackIdsForTarget(doc, target)) {
-      const track = doc.tracks.find((track) => track.id === trackId);
+      const track = next.tracks.find((track) => track.id === trackId);
       if (!track) continue;
       const gain = clampGain(track.gain * factor);
-      commands.push(setTrackParams(doc, trackId, { gain }));
+      if (gain === track.gain) continue;
+      next = setTrackParams(next, trackId, { gain }).execute(next);
+      faders += 1;
     }
   }
-  return commands;
+
+  if (faders === 0) return null;
+  const label = [...intent.targets, ...(intent.pads ?? [])].join(" + ");
+  const sizeNote =
+    intent.percent != null
+      ? `${intent.direction === "down" ? "−" : "+"}${intent.percent}%`
+      : (intent.amount ?? "normal");
+  return snapshot(
+    "applyFaderIntent",
+    `Fader ${intent.direction === "down" ? "↓" : "↑"} [${sizeNote}]: ${label} — ${faders} fader(s)`,
+    doc,
+    next,
+  );
 }
 
 const TEMPO_STEP_BPM = 6;

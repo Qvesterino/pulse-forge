@@ -6,6 +6,7 @@ import { parseLoudnessIntent } from "./loudness";
 import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
+import { parseExactIntent, type ExactIntentPlan } from "./exact";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -154,6 +155,7 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
+  | { kind: "exact"; plan: ExactIntentPlan }
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
@@ -174,24 +176,28 @@ export type RoutedIntent =
  * executors. Priority:
  *   1. ARRANGE — the doc has scenes and the text parses into arrangement ops
  *      ("shorten the intro", "add a break before the drop").
- *   2. FADER — a NAMED track fader ask ("zníž basu", "hlasitosť 808s o 10 %"):
+ *   2. EXACT — explicit mixer commands with explicit targets/values ("mute
+ *      the drums", "pan the bass left 30", "transpose the lead up one
+ *      octave", "set tempo to 142").
+ *   3. FADER — a NAMED track fader ask ("zníž basu", "hlasitosť 808s o 10 %"):
  *      targeted beats global, so it wins over the loudness loop below.
- *   3. LOUDNESS — untargeted louder/quieter shouts ("make it louder") and
+ *   4. LOUDNESS — untargeted louder/quieter shouts ("make it louder") and
  *      explicit targets ("loudness na −9") — the master measure→trim loop.
- *   4. TEMPO / POP VIBE — "tempo na 128", "popovejšie".
- *   5. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
+ *   5. TEMPO / POP VIBE — "tempo na 128", "popovejšie".
+ *   6. EFFECT INTENT (D1 v2a) — a TARGETED effect request: effect noun ×
  *      target × direction ("viac delayu na leade", "remove reverb from the
  *      bass") — more specific than the mix profile, so it wins over it.
- *   6. PRODUCTION — a production concept ("darker", "punchier", "deeper"…)
+ *   7. PRODUCTION — a production concept ("darker", "punchier", "deeper"…)
  *      with an EXPLICIT target track named ("make the drums darker") and no
  *      genre signal: the user said WHERE, so the change lands on that track's
  *      FX (mirrors the GENERATE button's production path). Without a named
  *      target, tone comparatives stay with the mix profile.
- *   7. MIX — mix nouns/verbs or tone comparatives without a target ("more
- *      reverb", "punchier", "darker mix") — SOUND processing.
- *   8. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
+ *   8. MIX — mix nouns/verbs or tone comparatives without a target ("more
+ *      reverb", "punchier", "darker mix") — SOUND processing. Only when the
+ *      text actually parses into a mix decision (see the branch below).
+ *   9. REVISE — "more/less energetic|busy" — CONTENT sliders on the LAST
  *      result, same seed (identity preserved).
- *   9. PATTERN — everything else is a generation intent (default).
+ *  10. PATTERN — everything else is a generation intent (default).
  * Ambiguity is resolved toward the LEAST destructive interpretation: arrange
  * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
  * revise only on comparative + attribute pairs.
@@ -209,6 +215,18 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   // bass") is a track ask, the master loop only owns untargeted shouts
   // ("make it louder"). parseFaderIntent is null without a target, so the
   // global path below is untouched.
+  // EXACT intents (master doc §4.1 — "prefer exact extraction first"):
+  // explicit mixer commands with explicit targets/values ("mute the drums",
+  // "pan the bass left 30", "transpose the lead up one octave"). Without this
+  // branch they fell through to PATTERN GENERATION — an explicit "mute the
+  // drums" produced a new beat instead of a mute. Exact runs before fader so
+  // "lower drums by 2 dB" keeps its precise dB semantics over the ×0.82 vibe
+  // step; its vocabulary is deliberately narrow (verb + target [+ number]),
+  // so prompts like "dark techno at 140" never match.
+  const exact = parseExactIntent(text);
+  if (exact) {
+    return { kind: "exact", plan: exact };
+  }
   const fader = parseFaderIntent(text);
   if (fader) {
     return { kind: "fader", intent: fader };
@@ -239,9 +257,18 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
       return { kind: "production", intent: production };
     }
   }
+  // MIX only when the text actually PARSED into a mix decision. isMixIntentText
+  // alone is not enough: nouns it merely matches on ("delay", "compression",
+  // "eq") have no parseMixIntent branch, so a request like "more delay on the
+  // trumpets" reached the mix executor with EMPTY overrides — and the profile
+  // planner then applied its genre/energy defaults (house + energy 0.7 ⇒ a
+  // sidechain pump on bass+chords) that the user never asked for. No detected
+  // decision ⇒ fall through (generation proposes; nothing mutates).
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);
-    return { kind: "mix", overrides: mix.overrides, detected: mix.detected };
+    if (mix.detected.length > 0) {
+      return { kind: "mix", overrides: mix.overrides, detected: mix.detected };
+    }
   }
   const revise = parseReviseIntent(text);
   if (revise) {
