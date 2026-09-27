@@ -40,7 +40,9 @@ class PcmRingNodeWriter {
     const cap = this.format.capacityFrames;
     const writeIndex = Atomics.load(this.words, 4);
     const readIndex = Atomics.load(this.words, 5);
-    const space = cap - ringDistance(writeIndex, readIndex);
+    // Clamp guards a writer regression (queued > cap) instead of letting a
+    // negative space move the write index backward.
+    const space = Math.max(0, cap - ringDistance(writeIndex, readIndex));
     const wanted = interleaved.length / ch;
     const writable = Math.min(wanted, space);
     const base = writeIndex % cap;
@@ -70,7 +72,9 @@ class PcmPipeToSabBridge {
       source.on("format", (format) => {
         if (format.rate !== this.writer.format.sampleRate) {
           this.stop();
-          onError?.(`source rate ${format.rate} != context rate ${this.writer.format.sampleRate} — resampling is wave 3.5`);
+          onError?.(
+            `source rate ${format.rate} != context rate ${this.writer.format.sampleRate} — resampling is wave 3.5`,
+          );
         }
       }),
       source.on("pcm", (block) => {

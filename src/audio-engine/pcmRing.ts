@@ -135,7 +135,9 @@ export class PcmRingReader {
   /**
    * Read up to `wanted` interleaved frames into `out`. Returns frames read;
    * when fewer are available the rest of `out` is zeroed (silence) and an
-   * underrun is counted.
+   * underrun is counted. Underruns count PARTIAL reads — a tight polling
+   * consumer inflates the counter by design; the intended consumer is the
+   * AudioWorklet quantum reader, where a partial read is an audible glitch.
    */
   readInto(out: Float32Array, wanted: number): number {
     const ch = this.format.channels;
@@ -164,11 +166,7 @@ export class PcmRingReader {
 }
 
 /** Deinterleave an interleaved block into per-channel outputs (worklet core). */
-export function deinterleaveToChannels(
-  interleaved: Float32Array,
-  channels: number,
-  outputs: Float32Array[],
-): void {
+export function deinterleaveToChannels(interleaved: Float32Array, channels: number, outputs: Float32Array[]): void {
   const frames = interleaved.length / channels;
   for (let n = 0; n < frames; n++) {
     for (let c = 0; c < channels; c++) outputs[c][n] = interleaved[n * channels + c];
