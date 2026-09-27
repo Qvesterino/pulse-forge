@@ -28,16 +28,28 @@ describe("flow density — the rap-flow grid", () => {
     expect(normalizeIntent(parseIntentText("dark trap at 140").input).flow).toBeUndefined();
   });
 
-  it("triplet flow snaps every lead start to the 80-tick grid", () => {
+  it("triplet flow GENERATES on the 80-tick grid (not a post-snap)", () => {
     const starts = leadStarts("triplet");
     expect(starts.length).toBeGreaterThan(0);
-    const grid = STEP_TICKS * (2 / 3); // 80 ticks — triplet 16ths
     for (const start of starts) {
-      expect(Math.abs(start - Math.round(start / grid) * grid)).toBeLessThan(0.01);
+      expect(start % 80).toBe(0); // exact triplet-16th positions
     }
-    // And it actually MOVED notes off the straight 16th grid (that's the point).
-    const straight = leadStarts(undefined);
-    expect(starts).not.toEqual(straight);
+    // Regeneration proof: at least one note sits BETWEEN straight 16ths —
+    // a position the old post-snap of a straight motif could produce only
+    // by luck, and the triplet pattern table produces by design.
+    expect(starts.some((start) => start % STEP_TICKS !== 0)).toBe(true);
+    // Motif replay integrity: with a 5-bar phrase the bar-4 replay keeps
+    // the same grid.
+    const long = generateMultiVoice(doc(), "trap", 12345, 80, null, 0.7, 0.3, 0.5, 0.5, undefined, "triplet");
+    for (const note of long.lead) expect(note.start % 80).toBe(0);
+  });
+
+  it("flow gating: no two lead notes overlap (monophonic rap flow)", () => {
+    const result = generateMultiVoice(doc(), "trap", 12345, 64, null, 0.75, 0.3, 0.5, 0.5, undefined, "triplet");
+    const sorted = [...result.lead].sort((a, b) => a.start - b.start);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      expect(sorted[i]!.start + sorted[i]!.duration).toBeLessThanOrEqual(sorted[i + 1]!.start + 0.01);
+    }
   });
 
   it("offbeat flow pushes lead starts half a 16th late", () => {
@@ -51,5 +63,18 @@ describe("flow density — the rap-flow grid", () => {
     for (const note of result.bass) {
       expect(note.start % STEP_TICKS).toBe(0);
     }
+  });
+});
+
+describe("artist flow defaults", () => {
+  it("babytron carries the offbeat default; user triplet wins", () => {
+    expect(normalizeIntent(parseIntentText("babytron type beat").input).flow).toBe("offbeat");
+    expect(normalizeIntent(parseIntentText("triplet flow babytron").input).flow).toBe("triplet");
+    expect(parseIntentText("babytron type beat").detected.some((d) => d.includes("offbeat flow"))).toBe(false);
+  });
+
+  it("snoop laid-back offbeat; grime straight", () => {
+    expect(normalizeIntent(parseIntentText("snoop dogg type beat").input).flow).toBe("offbeat");
+    expect(normalizeIntent(parseIntentText("skepta type beat").input).flow).toBe("straight");
   });
 });

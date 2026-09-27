@@ -223,21 +223,37 @@ export function generateMultiVoice(
       : energy >= 0.7
         ? RHYTHM_LEAD_FULL
         : RHYTHM_LEAD_SPARSE;
+    // Flow grid (roadmap: flow density) — per-bar NOTE START OFFSETS in
+    // ticks, generated ON-grid instead of post-quantized: triplet 16ths
+    // (80 ticks, the trap/detroit bounce — includes true triplet pairs the
+    // straight 16th grid cannot represent) or the offbeat push (+60).
+    // Bass and chords keep the straight grid — the groove anchors while
+    // the lead flow rides.
+    const TRIPLET_LEAD_FULL = [0, 80, 240, 320, 480, 560, 720, 960, 1040, 1200, 1440, 1680];
+    const TRIPLET_LEAD_SPARSE = [0, 240, 480, 720, 960, 1200];
+    const flowOffsets = (): number[] => {
+      if (flow === "triplet") return spaceyProfile || energy < 0.7 ? TRIPLET_LEAD_SPARSE : TRIPLET_LEAD_FULL;
+      if (flow === "offbeat") return rhythmSteps.map((s) => s * STEP_TICKS + STEP_TICKS / 2);
+      return rhythmSteps.map((s) => s * STEP_TICKS);
+    };
     // P3 motif carry: bar 0 is the motif — every 4th bar replays its rhythm
     // and tone choices transposed onto that bar's own chord (same idea, new
     // harmony — call-and-response across the phrase). Recorded, not
     // re-sampled: motif bars skip the tone/approach draws, velocities stay
-    // fresh from the stream.
-    const motif: Array<{ rhythmStep: number; toneIndex: number; approachDir: number }> = [];
+    // fresh from the stream. The motif stores TICK OFFSETS so the flow grid
+    // survives the replay.
+    const motif: Array<{ offset: number; toneIndex: number; approachDir: number }> = [];
     for (let bar = 0; bar < bars; bar++) {
-      const barStart = bar * 16;
+      const barStartTicks = bar * 16 * STEP_TICKS;
       const replay = bar > 0 && bar % 4 === 0 && motif.length > 0;
-      const steps = replay ? motif.map((m) => m.rhythmStep) : rhythmSteps;
-      for (let i = 0; i < steps.length; i++) {
-        const rhythmStep = steps[i];
-        const step = barStart + rhythmStep;
-        if (step >= stepCount) continue;
-        const slot = chordAtStep(chordSlots, step);
+      const offsets = replay ? motif.map((m) => m.offset) : flowOffsets();
+      for (let i = 0; i < offsets.length; i++) {
+        const offset = offsets[i]!;
+        const startTick = barStartTicks + offset;
+        const maxTick = stepCount * STEP_TICKS;
+        if (startTick >= maxTick) continue;
+        const step = Math.floor(startTick / STEP_TICKS);
+        const slot = chordAtStep(chordSlots, Math.min(step, stepCount - 1));
         if (!slot) continue;
 
         // Chord tone selection: root, 3rd, or 5th of the current chord
@@ -254,7 +270,7 @@ export function generateMultiVoice(
           // (P2: chance widens with complexity — 0.3 at the 0.5 default).
           const isApproach = rand() < approachChance && step > 0;
           approachDir = isApproach ? (rand() > 0.5 ? 1 : -1) : 0;
-          if (bar === 0) motif.push({ rhythmStep, toneIndex, approachDir });
+          if (bar === 0) motif.push({ offset, toneIndex, approachDir });
         }
         const toneOffset = tones[toneIndex % tones.length];
 
@@ -262,36 +278,38 @@ export function generateMultiVoice(
         const snapped = key ? snapToScale(pitch, key) : pitch;
 
         const velocity = Math.max(0.2, Math.min(1, (0.7 + (rand() - 0.5) * velocitySpread * 2) * energyVelocityGain));
+        // Flow gating: on triplet/offbeat grids the note cuts at the next
+        // flow position (rap staccato) instead of ringing over the grid.
+        const baseDuration = (spaceyProfile ? 4 : 1) * STEP_TICKS;
+        const gated =
+          flow === "triplet" || flow === "offbeat"
+            ? Math.max(STEP_TICKS / 2, Math.min(baseDuration, STEP_TICKS - (offset % STEP_TICKS) / 2))
+            : baseDuration;
         leadEvents.push({
           id: uid("note"),
           pitch: Math.max(0, Math.min(127, snapped)),
-          start: step * STEP_TICKS,
-          duration: (spaceyProfile ? 4 : 1) * STEP_TICKS,
+          start: startTick,
+          duration: Math.min(gated, Math.max(STEP_TICKS / 2, maxTick - startTick)),
           velocity,
         });
       }
     }
+    // Overlap gate: within the lead voice a later note cuts the earlier one
+    // (monophonic rap flow) — sort and clamp so no two notes sound at once.
+    leadEvents.sort((a, b) => a.start - b.start);
+    for (let i = 0; i < leadEvents.length - 1; i++) {
+      const cur = leadEvents[i]!;
+      const next = leadEvents[i + 1]!;
+      if (cur.start + cur.duration > next.start) {
+        cur.duration = Math.max(STEP_TICKS / 3, next.start - cur.start);
+      }
+    }
   }
-
-  // Flow density (roadmap: the rap-flow grid) — reshapes the LEAD line's
-  // rhythm without touching pitch choices: triplet 16ths (the 80-tick
-  // trap/detroit bounce grid) or the offbeat push (+half a 16th). Bass and
-  // chords keep the straight grid — the groove anchors while the flow rides.
-  const flowedLead =
-    flow === "triplet"
-      ? leadEvents.map((note) => ({
-          ...note,
-          start: Math.round(note.start / (STEP_TICKS * (2 / 3))) * (STEP_TICKS * (2 / 3)),
-          duration: Math.max(STEP_TICKS * (2 / 3), note.duration),
-        }))
-      : flow === "offbeat"
-        ? leadEvents.map((note) => ({ ...note, start: note.start + STEP_TICKS / 2 }))
-        : leadEvents;
 
   return {
     bass: bassEvents,
     chord: chordEvents,
-    lead: flowedLead,
+    lead: leadEvents,
     progressionName: progression.name,
     progressionDegree: progression.events[0]?.degree ?? 0,
   };

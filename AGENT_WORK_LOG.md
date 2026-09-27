@@ -4764,3 +4764,24 @@ Testy +4 bloky (190/190 na 2 súboroch); regresia kľúčových suít 273/273; t
 **Poznámky:** dataset/prior retrain (aby ONNX prior generoval priamo v flow mriežke) ostáva budúca práca — táto verzia je deterministický post-transform nad generovanými notami. Width/sub consumer v planMixProfile už spravila ich session (mix.ts:259-283) — nič netreba.
 
 **Intent engine stav po Vlne 9.5:** interpret → groove+BPM+productionProfile+**flow mriežka** → mix/master podpis (305 curated + deep chain) → FX hinty + 15 konceptov → brief → iterácie → reference audio → konverzačné intenty.
+
+---
+
+## VLNA 9.7 — FLOW DENSITY DONE PROPERLY (2026-09-26, user: „poriadne spraviť")
+
+**Úprimná sebakritika Vlny 9.5:** post-snap kvantizácia nie je flow — zachová tvar rytmu a len ho prisunie. Plus: žiadne gating, žiadne per-artist flow, motif replay v nesúlad.
+
+**Rewrite — generovanie NA mriežke namiesto post-snapu:**
+
+1. **Flow rhythm patterny v tickoch** (per-bar start offsety): TRIPLET_LEAD_FULL [0,80,240,320,480,560,720,960,1040,1200,1440,1680] — obsahuje PRAVÉ triolové dvojice (80-tick susedia), ktoré straight 16th mriežka nedokáže; SPARSE subset pre nízku energiu/spacey; offbeat = straight steps + 60 tickov. Lead loop počíta startTick = barStartTicks + offset priamo.
+2. **Flow gating** — na triplet/offbeat mriežke nota skráti na ďalšiu flow pozíciu (rap staccato), nerozlieva sa cez mriežku. **Overlap gate** — lead je monofónny: sort + clamp (žiadne dve noty neznejú naraz).
+3. **Motif integrita** — P3 call-and-response motif ukladá TICK OFFSETS (nie step indexy): replay bar-4 hrá tú istú flow frázu nad novou harmóniou.
+4. **Per-artist flow defaults:** `ArtistPreset.flow` (12 ikonických: babytron/veeze/drill offbeat, snoop offbeat laid, dre/memphis/screw/grime straight, travis triplet, juice/kodak offbeat). Parser: preset.flow sa nastaví v single branchi; FLOW_PHRASES pass beží neskôr a prebijá — user slová > artist default. Blend: primary artist (bude nasledovať).
+
+**Testy:** flow-density 4 → **7** (on-grid 80-tick exact + regeneračný proof — nota medzi straight 16thmi; motif replay grid na 5-bar phrase; overlap gate; babytron offbeat default + user triplet wins; snoop offbeat vs skepta straight).
+
+**Validácia:** 8-súborová battery **324/324**; tsc čistý na campaign súboroch (zvyšok = ich in-flight clav/organ inštrument pridávanie).
+
+**Dokumentovaný limit:** drum triplet-haty (Migos rolls) vyžadujú sub-16 rozlíšenie, ktoré 16-step rows nemajú — pattern model extension (budúca práca, oficiálne zdokumentovaná). Lead noty sú tick-based, preto flow funguje tam.
+
+**Dôležité súbory:** src/intent/multi-voice.ts (lead na flow mriežke + gating + overlap gate), src/intent/{artists,text-parser}.ts (flow presets), tests/flow-density.test.ts (7).

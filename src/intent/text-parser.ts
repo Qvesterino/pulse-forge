@@ -82,6 +82,8 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bjump ?up\b|\bjumpup\b/, "dnb"],
   [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
   [/\bragga(?: jungle)?\b|\braggajungle\b|\bdancehall dnb\b/, "dnb"],
+  // bare "jungle" — the 1994 chopped-breaks lane (dnb.jungle)
+  [/\bjungle\b/, "dnb"],
   [/\bhalftime (?:dnb|drum ?n ?bass|jungle)\b|\b(?:dnb|jungle) halftime\b/, "dnb"],
   [/\bminimal dnb\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
   [/\bhard groove\b|\bhardgroove\b/, "techno"],
@@ -180,6 +182,15 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bpsytrance\b|\bpsy\b/, "psytrance"],
   [/\buplifting trance\b|\bvocal trance\b|\btrance\b/, "trance"],
   [/\bprogressive\b|\bprog\b/, "progressive"],
+  // UK funky BEFORE \bfunky\b — "uk funky" is the soca-bounce lane, not the
+  // funky house groove ("uk funky" itself genre-routes to the ukg lane).
+  [/\buk ?funky\b|\bukfunky\b/, "ukfunky"],
+  // Jungle BEFORE the generic "jungle → dnb style" entry — the chopped-breaks
+  // groove, not a random dnb pocket. "ragga" bare rides along.
+  [/\bjungle\b|\bragga(?: jungle)?\b|\braggajungle\b/, "jungle"],
+  // Baltimore — the "Think"-break stomp (jersey.baltimore), above the club
+  // family's generic readings.
+  [/\bbaltimore(?: club)?\b|\bbmore(?: club)?\b/, "baltimore"],
   [/\belectro swing\b/, "funky"],
   [/\belectro house\b/, "dancefloor"],
   [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b/, "electro"],
@@ -685,6 +696,9 @@ export function parseIntentText(text: string): ParsedIntent {
       // The label keys the artist mix-signature table (artist-mix.ts) —
       // "drake type beat" carries the drake mix/master character.
       input.artist = preset.label;
+      // Artist flow default (flow density) — the FLOW_PHRASES pass below
+      // runs later and overwrites when the user typed a flow word.
+      if (preset.flow) input.flow = preset.flow;
       if (preset.mood) input.mood = preset.mood;
       if (preset.energy !== undefined) input.energy = preset.energy;
       if (preset.density !== undefined) input.density = preset.density;

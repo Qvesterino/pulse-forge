@@ -33,6 +33,8 @@ export interface ArtistPreset {
   /** UI chip label. */
   /** Optional named-plugin concept words riding the generation ("metallic"). */
   fx?: readonly string[];
+  /** Rap flow grid for the lead line (flow density) — user words override. */
+  flow?: "straight" | "triplet" | "offbeat";
   label: string;
 }
 
@@ -47,6 +49,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.7,
     density: 0.55,
     bpmRange: [130, 140],
+    flow: "triplet",
     label: "travis scott",
   },
   {
@@ -120,6 +123,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.65,
     density: 0.45,
     bpmRange: [140, 145],
+    flow: "offbeat",
     label: "drill",
   },
   {
@@ -166,6 +170,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.55,
     density: 0.55,
     bpmRange: [92, 96],
+    flow: "offbeat",
     label: "snoop dogg",
   },
   {
@@ -176,6 +181,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.6,
     density: 0.55,
     bpmRange: [93, 96],
+    flow: "straight",
     label: "dr. dre",
   },
   {
@@ -405,6 +411,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.4,
     bpmRange: [66, 78],
     fx: ["tape"],
+    flow: "straight",
     label: "dj screw / chopped and screwed",
   },
   {
@@ -427,6 +434,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.7,
     density: 0.6,
     bpmRange: [138, 148],
+    flow: "offbeat",
     label: "babytron",
   },
   {
@@ -437,6 +445,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.6,
     density: 0.55,
     bpmRange: [130, 144],
+    flow: "offbeat",
     label: "veeze / detroit",
   },
   {
@@ -448,6 +457,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.85,
     density: 0.65,
     bpmRange: [138, 144],
+    flow: "straight",
     label: "skepta / grime",
   },
   {
@@ -489,6 +499,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.95,
     density: 0.65,
     bpmRange: [98, 108],
+    flow: "straight",
     label: "lil jon / crunk",
   },
   {
@@ -569,6 +580,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.5,
     density: 0.45,
     bpmRange: [125, 140],
+    flow: "offbeat",
     label: "kodak black",
   },
   {
@@ -624,6 +636,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     energy: 0.75,
     density: 0.6,
     bpmRange: [135, 155],
+    flow: "offbeat",
     label: "juice wrld",
   },
   {
@@ -1005,6 +1018,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.5,
     bpmRange: [128, 140],
     fx: ["tape"],
+    flow: "straight",
     label: "memphis phonk",
   },
   // ── Phonk bounce: TikTok-era cowbell-forward phonk, busy hat work ───────
@@ -4843,16 +4857,6 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "rapsody",
   },
   {
-    names: ["g herbo", "herbo"],
-    genre: "drill",
-    style: "dark",
-    mood: "dark",
-    energy: 0.7,
-    density: 0.55,
-    bpmRange: [130, 145],
-    label: "g herbo",
-  },
-  {
     names: ["currensy", "spitta", "wiz khalifa", "taylor gang"],
     genre: "trap",
     style: "sparse",
@@ -5448,7 +5452,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "eurodisco",
   },
   {
-    names: ["nile rodgers", "chic type beat", "sister sledge", "kool and the gang", "arthur russell"],
+    // nile rodgers / chic already have their disco entry above — this block
+    // owns the remaining 70s disco/boogie names only.
+    names: ["sister sledge", "kool and the gang", "arthur russell"],
     // The 70s disco/boogie wellspring house music grew from.
     genre: "house",
     style: "disco",
@@ -5457,6 +5463,239 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [104, 120],
     label: "disco origin",
+  },
+  // ── ambient / score depth wave — the roster's thinnest genre (37) ────────
+  // Missing entirely: the ambient originators' peers, drone/dark ambient,
+  // new age/Japanese environmental, modern composition and the score
+  // composers. Styles ride existing ambient.* grooves (drifting / glitch /
+  // organic) — no new DSP, and every alias below is collision-checked.
+  {
+    names: ["harold budd", "robert fripp", "fripp type beat", "larry fast"],
+    // The Eno collaborators — 4th world / ambient guitar.
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.3,
+    bpmRange: [55, 80],
+    label: "4th world",
+  },
+  {
+    names: ["terry riley", "la monte young", "pauline oliveros"],
+    // The minimalist avant-garde ancestors (drone/just intonation).
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.25,
+    bpmRange: [50, 75],
+    label: "minimalist avant",
+  },
+  {
+    // "coil" alone is a common word — the alias stays qualified.
+    names: ["coil type beat", "throbbing gristle", "nurse with wound"],
+    // Industrial's ambient underbelly — musique concrète, tape, dread.
+    genre: "ambient",
+    style: "glitch",
+    mood: "dark",
+    energy: 0.4,
+    density: 0.45,
+    bpmRange: [70, 100],
+    label: "industrial ambient",
+  },
+  {
+    names: ["lustmord", "sunn o)))", "sunn o", "kevin drumsm", "deathprod"],
+    // Dark ambient / drone metal's low-end: monumental, slow, cavernous.
+    genre: "ambient",
+    style: "drifting",
+    mood: "dark",
+    energy: 0.25,
+    density: 0.3,
+    bpmRange: [40, 70],
+    label: "dark drone",
+  },
+  {
+    names: ["svarte greiner", "kammarheit", "desiderii margini", "raison d'etre", "eleh"],
+    // The isolationist / "death ambient" school.
+    genre: "ambient",
+    style: "drifting",
+    mood: "dark",
+    energy: 0.25,
+    density: 0.35,
+    bpmRange: [45, 75],
+    label: "isolationist",
+  },
+  {
+    names: ["laraaji", "constance demby", "george winston", "windham hill", "hiroshi yoshimura"],
+    // New age / healing: bright, meditative, acoustic-electronic.
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.3,
+    bpmRange: [55, 85],
+    label: "new age",
+  },
+  {
+    names: ["midori takada", "satoshi ashikawa", "yasuaki shimizu", "kankyo ongaku"],
+    // Japanese environmental music — the kankyō ongaku school.
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.35,
+    bpmRange: [60, 90],
+    label: "kankyō ongaku",
+  },
+  {
+    names: ["philip glass", "steve reich", "michael nyman"],
+    // The minimalists proper — pulsing, repetitive, film-score DNA.
+    genre: "ambient",
+    style: "organic",
+    mood: "energetic",
+    energy: 0.55,
+    density: 0.6,
+    bpmRange: [90, 130],
+    label: "minimalist",
+  },
+  {
+    names: [
+      "ennio morricone",
+      "angelo badalamenti",
+      "james horner",
+      "john williams",
+      "howard shore",
+      "alexandre desplat",
+    ],
+    // The orchestral score tradition.
+    genre: "ambient",
+    style: "drifting",
+    mood: "dark",
+    energy: 0.4,
+    density: 0.45,
+    bpmRange: [55, 90],
+    label: "orchestral score",
+  },
+  {
+    names: ["thomas newman", "trent reznor", "atticus ross", "yann tiersen", "jozef van wissem"],
+    // Modern film / television composers (the "prestige drama" palette).
+    genre: "ambient",
+    style: "glitch",
+    mood: "dark",
+    energy: 0.35,
+    density: 0.4,
+    bpmRange: [55, 85],
+    label: "modern score",
+  },
+  {
+    names: ["lubomyr melnyk", "peter broderick", "goldmund", "dustin ohalloran"],
+    // Continuous-music piano / post-classical minimalism.
+    genre: "ambient",
+    style: "organic",
+    mood: "chill",
+    energy: 0.4,
+    density: 0.5,
+    bpmRange: [60, 100],
+    label: "post-classical",
+  },
+  {
+    names: ["caterina barbieri", "alessandro cortini", "sarah davachi", "kali malone"],
+    // Modular/electroacoustic composition — the modern art wing.
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.4,
+    bpmRange: [55, 85],
+    label: "electroacoustic",
+  },
+  {
+    names: ["kaitlyn aurelia smith", "emily a sprague", "julianna barwick", "ana roxanne", "claire rousay"],
+    // The 2010s ambient revival (voice-as-texture, tape, patience).
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.35,
+    bpmRange: [55, 90],
+    label: "ambient revival",
+  },
+  {
+    names: ["huerco s", "lilien rosarian", "space afrika"],
+    genre: "ambient",
+    style: "glitch",
+    mood: "chill",
+    energy: 0.4,
+    density: 0.45,
+    bpmRange: [70, 110],
+    label: "ambient club",
+  },
+  {
+    // moore mother / lotic / herndon live in the hyperpop + experimental
+    // entries above where relevant — no "arca" here (it has its own entry).
+    names: ["moor mother", "lotic", "holly herndon"],
+    // Experimental club's ambient/industrial edge.
+    genre: "ambient",
+    style: "glitch",
+    mood: "aggressive",
+    energy: 0.55,
+    density: 0.55,
+    bpmRange: [70, 120],
+    label: "experimental club",
+  },
+  {
+    names: ["ryoji ikeda", "florian hecker", "alva noto type beat", "ben frost"],
+    // The glitch/ultrasonic school — sine, noise, system.
+    genre: "ambient",
+    style: "glitch",
+    mood: "dark",
+    energy: 0.4,
+    density: 0.5,
+    bpmRange: [60, 110],
+    label: "glitch school",
+  },
+  {
+    names: ["haxan cloak", "squarepusher", "venetian snares", "amon tobin"],
+    // Drill'n'bass / breakcore's experimental wing (ambient-adjacent).
+    genre: "ambient",
+    style: "glitch",
+    mood: "aggressive",
+    energy: 0.75,
+    density: 0.7,
+    bpmRange: [120, 175],
+    label: "breakcore experimental",
+  },
+  {
+    names: ["global communication", "solar fields", "purl", "segue", "brock van wey"],
+    // Ambient techno / dub ambient (the chill side of the techno axis).
+    genre: "ambient",
+    style: "drifting",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.4,
+    bpmRange: [70, 110],
+    label: "ambient techno",
+  },
+  {
+    names: ["explosions in the sky", "mogwai", "sigur ros", "this will destroy you", "balmorhea"],
+    // Post-rock — the crescendo guitar school (score's loud sibling).
+    genre: "ambient",
+    style: "drifting",
+    mood: "energetic",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [70, 120],
+    label: "post-rock",
+  },
+  {
+    names: ["godspeed you black emperor", "godspeed you! black emperor", "gybe"],
+    genre: "ambient",
+    style: "drifting",
+    mood: "dark",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [60, 100],
+    label: "post-rock dark",
   },
 ];
 
