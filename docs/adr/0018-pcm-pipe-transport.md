@@ -67,9 +67,18 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
   contiguity, bounded non-silent samples, clean EOF. Streaming from REAL
   hardware drivers and the 300 s soak stay owner gates — the fixture
   proves the host, not any specific driver.
-- Renderer playback (AudioWorklet ring fed from the main process) and
-  project-model integration: wave 3. Nothing in the web bundle changes in
-  this wave.
+- Renderer playback (wave 3) IS shipped: the SPSC SharedArrayBuffer ring
+  (`src/audio-engine/pcmRing.ts`) with the Node producer mirror
+  (`desktop/pcm-ring-layout.cjs`), the `pcm-playback` AudioWorklet, and the
+  pipe→SAB bridge; E2E verifies 48 000 sine-exact frames across the ring
+  wrap with zero overruns against a realtime-paced source. The audible
+  browser E2E (Electron + real AudioWorklet → `browser-checks`) stays an
+  owner gate.
+- Resampling (wave 3.5) IS shipped: the bridge linear-resamples a source at
+  a different rate than the ring (stateful across blocks). Acceptance: a
+  440 Hz tone through 44100→48000 stays a 440 Hz tone within the linear
+  interpolation error (< 0.005 amplitude) across block boundaries.
+  Master-grade conversion remains future work.
 
 ## Support matrix
 
@@ -77,8 +86,9 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
 | ------------------------------------------ | -------------------------- |
 | Framed PCM pipe protocol + Node consumer   | Shipped, acceptance-tested |
 | Reference source (deterministic generator) | Shipped                    |
-| ASIO streaming host (driver → frames)      | Blocked on test hardware   |
-| Renderer playback from the pipe ring       | Wave 3                     |
+| ASIO streaming host (driver → frames)      | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate |
+| Renderer playback from the pipe ring       | Shipped (wave 3); audible browser E2E = owner gate |
+| Resampling (source rate ≠ context rate)    | Shipped (wave 3.5, linear interpolation); master-grade conversion = future work |
 
 ## Consequences
 
