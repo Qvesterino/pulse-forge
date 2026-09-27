@@ -1,0 +1,4 @@
+tests/boombap.test.ts(53,16): error TS6133: 'school' is declared but its value is never read.
+tests/clav-instrument.test.ts(63,7): error TS2740: Type '(v: number, when: number) => any' is missing the following properties from type 'Mock<Procedure>': getMockName, mockName, mock, mockClear, and 13 more.
+tests/clav-instrument.test.ts(151,42): error TS2554: Expected 3 arguments, but got 2.
+tests/clav-instrument.test.ts(163,42): error TS2554: Expected 3 arguments, but got 2.

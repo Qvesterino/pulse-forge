@@ -478,6 +478,39 @@ const UKG_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const BOOMBAP_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VI-III-VII (golden minor)",
+    genre: "boombap",
+    events: [
+      { degree: 0, quality: "min7", duration: 4, func: "T" },
+      { degree: 5, quality: "maj7", duration: 4, func: "T" },
+      { degree: 2, quality: "maj7", duration: 4, func: "S" },
+      { degree: 6, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "ii-V-I-vi (jazz rap turnaround)",
+    genre: "boombap",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "i-iv-VII-III (dusty loop)",
+    genre: "boombap",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min7", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+      { degree: 2, quality: "maj7", duration: 4, func: "T" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -489,6 +522,7 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   dnb: DNB_PROGRESSIONS,
   hyperpop: HYPERPOP_PROGRESSIONS,
   ukg: UKG_PROGRESSIONS,
+  boombap: BOOMBAP_PROGRESSIONS,
 };
 
 /**

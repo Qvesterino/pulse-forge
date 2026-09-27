@@ -1,12 +1,19 @@
 import type { ProjectDocument } from "../project-model/types";
-import { parseArrangeIntent, type ArrangeOp } from "./arrangeWords";
+import { parseArrangeIntent, parseClipArrangeIntent, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
 import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
-import { parseExactIntent, type ExactIntentPlan } from "./exact";
+import {
+  parseExactIntent,
+  parseSelectIntent,
+  parseTransportIntent,
+  type ExactIntentPlan,
+  type ExactTarget,
+  type TransportAction,
+} from "./exact";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
@@ -158,9 +165,12 @@ export function parseReviseIntent(text: string): ReviseParse | null {
 
 export type RoutedIntent =
   | { kind: "arrange"; ops: ArrangeOp[]; unrecognized: string[] }
+  | { kind: "clips"; ops: ClipArrangeOp[] }
   | { kind: "exact"; plan: ExactIntentPlan }
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "compound"; parts: CompoundPart[] }
+  | { kind: "transport"; action: TransportAction }
+  | { kind: "select"; target: ExactTarget }
   | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
@@ -210,44 +220,63 @@ export type RoutedIntent =
  * revise only on comparative + attribute pairs.
  */
 export function routeIntentText(text: string, doc: ProjectDocument): RoutedIntent {
+  // TRANSPORT — bare-word runtime commands ("stop", "play", "pauza",
+  // "metronome on"). Anchored to the WHOLE text: "stop the beat" is a
+  // generation prompt, never a transport command. Transport is runtime
+  // service state — the panel dispatches straight to services.transport.
+  const transportAction = parseTransportIntent(text);
+  if (transportAction) {
+    return { kind: "transport", action: transportAction };
+  }
   if (doc.scenes.length > 0) {
+    // CLIP-LEVEL ops first ("copy the intro clip to bar 5", "trim the clip
+    // at bar 5 to 2 bars") — clip wording is more specific than scene
+    // wording, and the arrange path would otherwise answer a clip copy with
+    // a scene-variation duplicate. Clip ops keep ABSOLUTE positions (no
+    // contiguous relayout).
+    const clipOps = parseClipArrangeIntent(text, doc);
+    if (clipOps) {
+      return { kind: "clips", ops: clipOps };
+    }
     const arrange = parseArrangeIntent(text, doc);
     if (arrange.ops.length > 0) {
       return { kind: "arrange", ops: arrange.ops, unrecognized: arrange.unrecognized };
     }
   }
-  // GOAL 38 conversation intents — everyday producer asks: per-track fader,
-  // project tempo, and the "popovejšie"-style vibe composite. Fader runs
-  // BEFORE loudness on purpose: a NAMED track ("hlasitosť 808s", "louder
-  // bass") is a track ask, the master loop only owns untargeted shouts
-  // ("make it louder"). parseFaderIntent is null without a target, so the
-  // global path below is untouched.
+  // CROSS-EXECUTOR COMPOUND ("zníž tempo a zvýš lead", "viac delayu na leade
+  // a zníž basu", "mute the drums and zníž basu"): EVERY clause resolves on
+  // its own (fader | tempo | effect | single exact plan) → execute them all
+  // in ONE undoable command. This sits BEFORE the exact, fader, loudness and
+  // tempo whole-text routes: those would otherwise partial-apply their half
+  // of the sentence and silently drop the rest ("zníž tempo" winning while
+  // "zvýš lead" vanishes; the fader's greedy target words swallowing "leade"
+  // out of "delayu na leade"; an exact mute plan dropping the fader clause).
+  // All-tempo clause sets stay with the tempo route (first-match-wins is the
+  // honest reading of "tempo na 128 a pomalší"); partially parseable asks
+  // fall to the clarification probe — a compound never silently drops what
+  // it did not parse.
+  const compound = parseCompoundIntent(text);
+  if (compound) {
+    return { kind: "compound", parts: compound };
+  }
   // EXACT intents (master doc §4.1 — "prefer exact extraction first"):
   // explicit mixer commands with explicit targets/values ("mute the drums",
-  // "pan the bass left 30", "transpose the lead up one octave"). Without this
-  // branch they fell through to PATTERN GENERATION — an explicit "mute the
-  // drums" produced a new beat instead of a mute. Exact runs before fader so
-  // "lower drums by 2 dB" keeps its precise dB semantics over the ×0.82 vibe
-  // step; its vocabulary is deliberately narrow (verb + target [+ number]),
-  // so prompts like "dark techno at 140" never match.
+  // "pan the bass left 30", "transpose the lead up one octave", "add a bass
+  // track", "rename the bass to sub"). Without this branch they fell through
+  // to PATTERN GENERATION — an explicit "mute the drums" produced a new beat
+  // instead of a mute. Exact runs before fader so "lower drums by 2 dB"
+  // keeps its precise dB semantics over the ×0.82 vibe step; its vocabulary
+  // is deliberately narrow (verb + target [+ number]), so prompts like
+  // "dark techno at 140" never match.
   const exact = parseExactIntent(text);
   if (exact) {
     return { kind: "exact", plan: exact };
   }
-  // CROSS-EXECUTOR COMPOUND ("zníž tempo a zvýš lead", "viac delayu na leade
-  // a zníž basu", "zníž basu a zvýš lead"): EVERY clause resolves on its own
-  // → execute them all in ONE undoable command. This sits BEFORE the fader,
-  // loudness and tempo whole-text routes for two reasons: those routes would
-  // otherwise partial-apply their half of the sentence and silently drop the
-  // rest ("zníž tempo" winning while "zvýš lead" vanishes), and the fader's
-  // greedy target words ("leade" is a lead AND part of "delayu na leade")
-  // would swallow effect asks. All-tempo clause sets stay with the tempo
-  // route (first-match-wins is the honest reading of "tempo na 128 a
-  // pomalší"); partially parseable asks fall to the clarification probe —
-  // a compound never silently drops what it did not parse.
-  const compound = parseCompoundIntent(text);
-  if (compound) {
-    return { kind: "compound", parts: compound };
+  // SELECT — explicit track selection ("select the bass", "vyber bicie").
+  // UI state (SelectionStore), not document state: no undo, no mutation.
+  const selectTarget = parseSelectIntent(text);
+  if (selectTarget) {
+    return { kind: "select", target: selectTarget };
   }
   const fader = parseFaderIntent(text);
   if (fader) {

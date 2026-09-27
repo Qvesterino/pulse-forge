@@ -71,19 +71,31 @@ describe("intent contract and generation pipeline", () => {
     expect(preview.recipe.grooveId).toBe("house.driving");
   });
 
-  it("keeps local pipeline content identical to the frozen generator", () => {
+  it("keeps local pipeline content identical to the frozen generator (with the intent's metric accent)", () => {
     const doc = createDefaultProject();
-    const direct = generatePattern(doc, options);
+    // The intent pipeline adds ONE hint the bare options do not carry: the
+    // metric accent, which shapes hit velocity by metrical position so the
+    // pad's velocity layers select timbres musically. The frozen generator is
+    // unchanged (no hint = legacy velocity), so the contract is "same output
+    // as generatePattern given the SAME plan options" — read the hint back
+    // from the plan so this test never pins a magic number.
     const result = generateLocalResultFromOptions(doc, options, "preview");
     const proposal = result.proposal;
 
     expect(result.status).toBe("accepted");
     expect(proposal).toBeDefined();
+    const direct = generatePattern(doc, result.plan.options);
     expect(contentHash(canonicalizePattern(doc, proposal!.pattern))).toBe(
       contentHash(canonicalizePattern(doc, direct)),
     );
     expect(proposal!.pattern.generation?.intentHash).toBe(result.plan.intentHash);
     expect(proposal!.pattern.generation?.intent).toEqual(result.plan.intent);
+
+    // The accent IS the difference: without it the frozen generator keeps its
+    // legacy velocity (the golden fixtures depend on that).
+    expect((result.plan.options as { _metricAccent?: number })._metricAccent).toBeGreaterThan(0);
+    const legacy = generatePattern(doc, options);
+    expect(contentHash(canonicalizePattern(doc, legacy))).not.toBe(contentHash(canonicalizePattern(doc, direct)));
   });
 
   it("keeps normalized intent provenance through JSON round-trip", () => {

@@ -59,11 +59,13 @@ function mockCtx() {
         connect: (n: unknown) => n,
         disconnect: () => undefined,
       };
-      const originalSet = filter.frequency.setValueAtTime;
-      filter.frequency.setValueAtTime = (v: number, when: number) => {
+      // Spy on setValueAtTime so the test can read what frequencies the
+      // factory scheduled (vs. written through .value). vi.fn keeps the
+      // Mock<Procedure> shape — a plain function would lose .mock.calls.
+      const setSpy = vi.fn((v: number, _when: number) => {
         filter.setValueCalls.push(v);
-        return originalSet(v, when);
-      };
+      });
+      filter.frequency.setValueAtTime = setSpy as never;
       record.filters.push(filter);
       return filter;
     },
@@ -146,9 +148,10 @@ describe("clav — registry + params", () => {
 });
 
 describe('clav — voice wiring (mock graph)', () => {
+  const clavEnv = { bpm: 120, getSample: () => undefined } as const;
   it('builds the bright square voice; pickup bandpass lands at freq×(1.1+pick×2.4)', () => {
     const { ctx, record } = mockCtx();
-    const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ pick: 0.5 }) as never);
+    const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ pick: 0.5 }) as never, clavEnv);
     runtime.noteOn(60, 0.9, 0, 0.3);
     runtime.dispose();
     const voice = record.oscs.filter((o) => o.type === 'square' && o.started.length > 0);
@@ -160,7 +163,7 @@ describe('clav — voice wiring (mock graph)', () => {
 
   it('CLICK fires the seeded noise burst (buffer source, short stop)', () => {
     const { ctx, record } = mockCtx();
-    const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ click: 0.8 }) as never);
+    const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ click: 0.8 }) as never, clavEnv);
     runtime.noteOn(60, 0.9, 0, 0.3);
     runtime.dispose();
     expect(record.buffers.length).toBeGreaterThanOrEqual(1);

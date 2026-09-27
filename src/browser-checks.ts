@@ -798,6 +798,93 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("Texture Synth: deterministic render (LFO clock anchored to the note timeline)", false, String(error));
   }
 
+  // Offline export parity for the event-queue voice worklets: the wtVoice /
+  // grainVoice processors take notes via port messages, which Chromium does
+  // not deliver during an OfflineAudioContext render. The factories must
+  // route offline renders through the native voice graphs — before that fix
+  // both instruments exported silence while live playback worked.
+  try {
+    const offlineVoice = async (kind: "wavetable" | "granular") => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      const track: InstrumentTrack = {
+        id: `check-offline-${kind}`,
+        kind: "instrument",
+        instrument: kind,
+        name: kind,
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: kind === "granular" ? "factory.tonal.keys" : null,
+        params:
+          kind === "granular"
+            ? { ...defaultInstrumentParams("granular"), release: 0.01, rate: 30 }
+            : defaultInstrumentParams("wavetable"),
+        effects: [],
+        sends: {},
+      };
+      const rt = INSTRUMENT_DEFS[kind].factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 0.5);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return peakOf(buffer.getChannelData(0));
+    };
+    const wtPeak = await offlineVoice("wavetable");
+    const granPeak = await offlineVoice("granular");
+    check(
+      "offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)",
+      wtPeak > 0.001 && granPeak > 0.001,
+      `wavetable=${wtPeak.toFixed(4)} granular=${granPeak.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)", false, String(error));
+  }
+
+  // Sampler STRETCH regression: the stretch path used to assign
+  // AudioBufferSourceNode.buffer twice (spec-forbidden — InvalidStateError),
+  // throwing inside noteOn for every note off root pitch. +12 st forces the
+  // stretch path; the render must complete and be audible.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadCoreWorklets(ctx);
+    const source = ctx.createBuffer(1, SR, SR);
+    for (let i = 0; i < source.length; i++) {
+      source.getChannelData(0)[i] = 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR);
+    }
+    const track: InstrumentTrack = {
+      id: "check-sampler-stretch",
+      kind: "instrument",
+      instrument: "sampler",
+      name: "Sampler",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: "check.stretch.src",
+      params: { ...defaultInstrumentParams("sampler"), stretch: 1 },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.sampler.factory(ctx, track, {
+      bpm: 124,
+      getSample: (id) => (id === "check.stretch.src" ? source : undefined),
+    });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(72, 0.9, 0.05, 0.5); // +12 st forces the stretch path
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const stretchPeak = peakOf(buffer.getChannelData(0));
+    check(
+      "sampler STRETCH renders a +12st note (single buffer assignment)",
+      stretchPeak > 0.001,
+      `peak=${stretchPeak.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("sampler STRETCH renders a +12st note (single buffer assignment)", false, String(error));
+  }
+
   // Intent ranker worker (goal doc Fáze 3/4): the ONNX model must load from
   // local assets in the worker and score a real batch — or fall back in a
   // controlled way (offline installs without the model artifact).

@@ -1,5 +1,5 @@
 import type { Command } from "../commands/types";
-import type { ProjectDocument, Scene, SceneRole } from "../project-model/types";
+import type { ArrangementClip, ProjectDocument, Scene, SceneRole } from "../project-model/types";
 import {
   addArrangementClip,
   autoArrangeSong,
@@ -7,6 +7,7 @@ import {
   deleteArrangementClip,
   deleteScene,
   duplicateSceneAsVariation,
+  moveArrangementClip,
   resizeArrangementClip,
   setSceneRole,
   snapshot,
@@ -399,4 +400,131 @@ export function applyArrangeOps(doc: ProjectDocument, ops: ArrangeOp[]): Command
   }
   const next = relayout(cursor);
   return snapshot("arrangeWords", `Arrange: ${steps.map((st) => st.label).join(" → ")}`, doc, next);
+}
+
+// ── CLIP WORDS — clip-level trim/copy/move/delete at ABSOLUTE positions ─────
+
+/**
+ * Clip-level arrangement asks ("copy the intro clip to bar 5", "trim the
+ * clip at bar 5 to 2 bars", "delete the clip at bar 9"). Unlike scene ops,
+ * these PRESERVE absolute positions — no contiguous relayout — because the
+ * user is placing copies at explicit bars, not reshaping a back-to-back
+ * song form. Overlaps fail with the commands' own explicit errors.
+ *
+ * A clip is referenced by a scene role ("the intro clip"), by position
+ * ("the clip at bar 3") or by ordinal ("the second clip"). A copy needs an
+ * explicit destination ("to bar N") — a destination-less copy stays with the
+ * scene-variation duplicate path.
+ */
+
+export type ClipArrangeOp =
+  | { op: "copyClip"; clipId: string; toBar: number }
+  | { op: "moveClip"; clipId: string; toBar: number }
+  | { op: "resizeClip"; clipId: string; bars: number }
+  | { op: "deleteClip"; clipId: string };
+
+const CLIP_WORD = /\bclips?\b|\bklip/;
+
+/** Destination position: "to bar 16" / "na takt 16" → 0-based bar index. */
+function destBarIn(clause: string): number | null {
+  const m = /\b(?:to|na)\s+(?:the\s+)?(?:bar|takt(?:e|u|ov|y)?)\s*(\d{1,3})/.exec(clause);
+  return m ? Math.max(0, Number(m[1]) - 1) : null;
+}
+
+/** Source position reference: "the clip at bar 3" → the clip covering bar 2. */
+function clipAtBar(clips: ArrangementClip[], clause: string): ArrangementClip | null {
+  const m = /\b(?:at\s+bar|bar|takt(?:e|u|ov|y)?)\s+(\d{1,3})/.exec(clause);
+  if (!m) return null;
+  const bar = Math.max(0, Number(m[1]) - 1);
+  return clips.find((c) => bar >= c.startBar && bar < c.startBar + c.lengthBars) ?? null;
+}
+
+function resolveClipTarget(doc: ProjectDocument, clause: string, clips: ArrangementClip[]): ArrangementClip | null {
+  const byPosition = clipAtBar(clips, clause);
+  if (byPosition) return byPosition;
+  for (const role of rolesIn(clause)) {
+    for (const scene of scenesWithRole(doc, role)) {
+      const clip = clips.find((c) => c.sceneId === scene.id);
+      if (clip) return clip;
+    }
+  }
+  const ordinal = ordinalIn(clause);
+  if (ordinal !== null && clips.length > 0) {
+    const index = ordinal === -1 ? clips.length - 1 : Math.min(ordinal, clips.length - 1);
+    return clips[index];
+  }
+  return null;
+}
+
+/**
+ * Parse clip-level ops. Null unless the text names CLIPS and at least one
+ * clause resolves to a full op (verb + resolvable clip + required number).
+ * A destination-less copy or a numberless trim deliberately returns null —
+ * the scene-level arrange path (variation duplicate / half-size resize) is
+ * the nearest interpretation for those, and it already exists.
+ */
+export function parseClipArrangeIntent(text: string, doc: ProjectDocument): ClipArrangeOp[] | null {
+  const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+  if (clips.length === 0) return null;
+  const ops: ClipArrangeOp[] = [];
+  for (const raw of splitClauses(deaccent(text))) {
+    const clause = raw.replace(/\b(?:to|na)\s+(?:the\s+)?(?:bar|takt(?:e|u|ov|y)?)\s*\d{1,3}/, " "); // strip the destination so it never resolves as the SOURCE clip
+    if (!CLIP_WORD.test(clause)) continue;
+    const clip = resolveClipTarget(doc, clause, clips);
+    if (!clip) continue;
+    const n = firstNumber(clause);
+    const dest = destBarIn(raw);
+    if (verbHits(clause, VERBS.duplicate)) {
+      if (dest !== null) ops.push({ op: "copyClip", clipId: clip.id, toBar: dest });
+      continue;
+    }
+    if (verbHits(clause, VERBS.move)) {
+      if (dest !== null) ops.push({ op: "moveClip", clipId: clip.id, toBar: dest });
+      continue;
+    }
+    if (verbHits(clause, VERBS.remove)) {
+      ops.push({ op: "deleteClip", clipId: clip.id });
+      continue;
+    }
+    if (
+      (verbHits(clause, VERBS.resizeShorter) ||
+        verbHits(clause, VERBS.resizeLonger) ||
+        verbHits(clause, VERBS.makeSize)) &&
+      n !== null
+    ) {
+      ops.push({ op: "resizeClip", clipId: clip.id, bars: n });
+    }
+  }
+  return ops.length > 0 ? ops : null;
+}
+
+/**
+ * Execute clip ops as ONE undoable command over the canonical clip commands
+ * (add/move/resize/delete — each overlap-checked). NO relayout: absolute
+ * positions survive. Returns null when every op lost its clip (the
+ * arrangement changed under the request) — the caller surfaces it.
+ */
+export function applyClipArrangeOps(doc: ProjectDocument, ops: ClipArrangeOp[]): Command | null {
+  if (ops.length === 0) return null;
+  let cursor = doc;
+  const labels: string[] = [];
+  for (const op of ops) {
+    const clip = cursor.arrangement.clips.find((c) => c.id === op.clipId);
+    if (!clip) return null; // arrangement changed under the request — refuse
+    if (op.op === "copyClip") {
+      cursor = addArrangementClip(cursor, clip.sceneId, op.toBar, clip.lengthBars).execute(cursor);
+      labels.push(`copy → bar ${op.toBar + 1}`);
+    } else if (op.op === "moveClip") {
+      cursor = moveArrangementClip(cursor, op.clipId, op.toBar).execute(cursor);
+      labels.push(`move → bar ${op.toBar + 1}`);
+    } else if (op.op === "resizeClip") {
+      cursor = resizeArrangementClip(cursor, op.clipId, op.bars).execute(cursor);
+      labels.push(`resize → ${op.bars} bars`);
+    } else {
+      cursor = deleteArrangementClip(cursor, op.clipId).execute(cursor);
+      labels.push("delete clip");
+    }
+  }
+  if (cursor === doc) return null;
+  return snapshot("clipWords", `Clips: ${labels.join(", ")}`, doc, cursor);
 }

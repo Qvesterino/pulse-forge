@@ -283,9 +283,11 @@ export class SymbolicPriorProvider implements GenerationProvider {
       const generationPlan = searchVariant?.generationPlan ?? candidatePlan(plan, symbolicSeed);
       const generationOptions = generationPlan.options;
       const styleId = resolveGrooveForGeneration(doc, generationOptions).id;
-      // These models have a fixed, versioned vocabulary. New groove-library
-      // styles stay on the template path until matching models are trained;
-      // mapping an unseen style onto a known one-hot silently biases it.
+      // These models have a fixed, versioned one-hot vocabulary — the STYLE
+      // block is all-zero for styles outside it. Since the ds.v3 retrain the
+      // semantic channel covers EVERY library groove (98 styles in
+      // style-embeddings.json), so v3/v2 are valid for any style; the one-hot
+      // gate only still matters for the v1 fallback below.
       const supportsDrumPrior =
         (PRIOR_GENRES as readonly string[]).includes(generationOptions.genre) &&
         (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
@@ -357,12 +359,14 @@ export class SymbolicPriorProvider implements GenerationProvider {
         const rowsById: Record<string, number[]> = {};
         let semanticUsed = false;
         if (pads.length > 0 && (supportsDrumPrior || semantic)) {
-          // Conditioning priority (shadow-A/B hybrid): v3 (semantic + one-hot,
-          // 60-dim — needs the style vocab) → v2 (semantic-only, 35-dim — any
-          // genre) → v1 (genre+style one-hot). First failure drops to the next
-          // channel for the rest of this call.
+          // Conditioning priority (v3 hybrid): v3 (semantic + one-hot, 60-dim;
+          // since the ds.v3 retrain the semantic channel covers EVERY library
+          // groove, so v3 serves any style — the one-hot block is simply
+          // zero for styles outside the frozen vocab) → v2 (semantic-only,
+          // 35-dim) → v1 (genre+style one-hot, the vocab-bound fallback).
+          // First failure drops to the next channel for the rest of this call.
           let run: PriorRunResult | null = null;
-          if (semantic && supportsDrumPrior && !v3Unavailable) {
+          if (semantic && !v3Unavailable) {
             const featureRows = buildPriorV3GridRows({
               semantic,
               genre: priorGenreOf(generationOptions.genre),

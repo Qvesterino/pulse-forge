@@ -38,6 +38,9 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // vocal space (syncopation-friendly).
   hyperpop: { densityRange: [0.16, 0.88], syncopationRange: [0.14, 0.86], maxDistance: 1.15 },
   ukg: { densityRange: [0.12, 0.84], syncopationRange: [0.18, 0.88], maxDistance: 1.1 },
+  // Boom bap: the dusty sampled-break pocket — swing-tolerant, mid density,
+  // generous syncopation (off-kilter kick placement is the genre's signature).
+  boombap: { densityRange: [0.1, 0.7], syncopationRange: [0.16, 0.78], maxDistance: 1.1 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

@@ -95,6 +95,8 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   // DnB leans dark by default (reese pressure, chopped breaks) — liquid and
   // explicitly bright/chill asks still win via moodTone/overrides above.
   dnb: "dark",
+  // Boom bap is the warm-and-dusty genre — the sampled-break tone.
+  boombap: "warm",
 };
 
 /**
@@ -135,7 +137,8 @@ export function planMixProfile(
   // club-pumping, dnb dark (reese pressure over crisp breaks) but always
   // punching. GENRE_TONE_DEFAULT (above) is the single source for the tone
   // defaults AND the master tilt mapping.
-  const characterGenre = genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb";
+  const characterGenre =
+    genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb" || genre === "boombap";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
@@ -150,7 +153,12 @@ export function planMixProfile(
     (intent.energy >= 0.75 || intent.mood === "aggressive" || characterGenre ? "more" : (artistMix?.punch ?? null));
   const lushGenre = genre === "ambient";
   const dryGenre =
-    genre === "techno" || genre === "trap" || genre === "drill" || genre === "phonk" || genre === "hyperpop";
+    genre === "techno" ||
+    genre === "trap" ||
+    genre === "drill" ||
+    genre === "phonk" ||
+    genre === "hyperpop" ||
+    genre === "boombap";
 
   const reverbMore =
     overrides.reverb === "more" ||

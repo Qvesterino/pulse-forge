@@ -13,7 +13,7 @@ const out = await page.evaluate(async () => {
   const loader = await import("/src/audio-worklets/loader.ts");
   const mk = (kind, id) => ({ id, kind: "instrument", instrument: kind, name: kind, gain: 1, pan: 0, mute: false, solo: false, sampleId: null, params: reg.defaultInstrumentParams(kind), effects: [], sends: {} });
   const peakOf = (buf) => { let v = 0; for (const ch of [0,1]) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) v = Math.max(v, Math.abs(d[i])); } return v; };
-  const bank = (await import("/src/sample-library/factory.ts")).generateFactoryBank();
+  const bank = await (await import("/src/sample-library/factory.ts")).generateFactoryBank();
   const run = async (kind, loadWorklets, live) => {
     let ctx;
     if (live) { ctx = new AudioContext(); if (ctx.state === "suspended") await ctx.resume(); }

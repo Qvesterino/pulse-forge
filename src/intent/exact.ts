@@ -1,4 +1,4 @@
-import type { MusicalKey } from "../project-model/types";
+import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import { MUSICAL_KEYS } from "../project-model/types";
 
 /**
@@ -22,7 +22,11 @@ export type ExactOp =
   | { kind: "pan"; target: ExactTarget; value: number }
   | { kind: "gainDb"; target: ExactTarget; deltaDb: number }
   | { kind: "transpose"; target: ExactTarget; semitones: number }
-  | { kind: "patternLength"; steps: number };
+  | { kind: "patternLength"; steps: number }
+  | { kind: "addTrack"; trackKind: "drum" | "instrument"; instrument: InstrumentKind }
+  | { kind: "removeTrack"; target: ExactTarget }
+  | { kind: "renameTrack"; target: ExactTarget; name: string }
+  | { kind: "duplicateTrack"; target: ExactTarget };
 
 export interface ExactIntentPlan {
   label: string;
@@ -30,7 +34,7 @@ export interface ExactIntentPlan {
 }
 
 const TARGET_RES: [RegExp, ExactTarget][] = [
-  [/\bdrums?\b|\bbic\u00edc|\bbubny\b/i, "drums"],
+  [/\bdrums?\b|\bbic\u00edc|\bbic(?:i|ie|ich)?\b|\bbubny\b/i, "drums"],
   [/\bbass\b|\b808\b|\bbasa\b/i, "bass"],
   [/\blead\b|\bsynth(?:esizer)?\b|\bsynt\u00e9z/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
@@ -62,6 +66,33 @@ function firstTarget(lower: string, allowPads = false): ExactTarget | null {
   }
   return null;
 }
+
+/** Instrument-kind words an "add a … track" ask may name (bounded v1 set). */
+const INSTRUMENT_KIND_WORDS: ReadonlyArray<readonly [RegExp, InstrumentKind]> = [
+  [/\b808\b/, "808"],
+  [/\bbass\b|\bbasov/i, "bass"],
+  [/\blog ?drums?\b/i, "logdrum"],
+  [/\bkeys?\b|\bkeyboards?\b/i, "keys"],
+  [/\bpluck/i, "pluck"],
+  [/\bflute/i, "flute"],
+  [/\bacid/i, "acid"],
+  [/\bbrass/i, "brass"],
+  [/\bfm\b/i, "fm"],
+  [/\breese/i, "reese"],
+  [/\bstrings?\b/i, "strings"],
+  [/\bbells?\b/i, "bell"],
+  [/\borgan\b/i, "organ"],
+  [/\btexture\b/i, "texture"],
+  [/\bwavetable\b/i, "wavetable"],
+  [/\bgranular\b/i, "granular"],
+  [/\bsampler\b/i, "sampler"],
+  [/\bvocal ?chops?\b/i, "vocalchop"],
+  [/\bdrum ?synth\b/i, "drumsynth"],
+  [/\bsynth\b|\banalog\b/i, "analog"],
+];
+
+/** Pad-family words — a pad is not a track, "add a hat track" must decline. */
+const PAD_WORD = /\b(?:kick|snare|clap|hat|hi-?hat|tom|perc)/i;
 
 const SCALE_MAP: Record<string, string> = {
   major: "Major",
@@ -162,6 +193,52 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     }
   }
 
+  // Track CRUD — the word "track" is REQUIRED ("add drums" or "remove the
+  // bass" alone stay generation/clarify territory; only an explicit track
+  // ask creates or destroys a lane). Pad words decline: a pad is not a track.
+  const addTrack = /\b(?:add|pridaj|prid)\b\s+(?:a\s+|an\s+|new\s+|nov[yý]\s+)?([a-z -]*?)\s*tracks?\b/.exec(lower);
+  if (addTrack) {
+    const desc = (addTrack[1] ?? "").trim();
+    if (!PAD_WORD.test(desc)) {
+      if (/\bdrums?\b|\bbic[ií]c?|\bbubn/i.test(desc)) {
+        ops.push({ kind: "addTrack", trackKind: "drum", instrument: "analog" });
+      } else {
+        const instrument = INSTRUMENT_KIND_WORDS.find(([re]) => re.test(desc))?.[1];
+        if (instrument) ops.push({ kind: "addTrack", trackKind: "instrument", instrument });
+        else if (desc === "" || /\binstrument|\bmelodic|\bmusic/.test(desc)) {
+          ops.push({ kind: "addTrack", trackKind: "instrument", instrument: "analog" });
+        }
+        // unknown descriptor → no op (the engine does not guess lanes)
+      }
+    }
+  }
+
+  const removeTrack =
+    /\b(?:delete|remove|drop|zmaz|odstr[aá]ň|odstran|zahoď|zahod)\b\s+(?:the\s+)?([a-z-]+)\s+tracks?\b/.exec(lower);
+  if (removeTrack) {
+    const target = firstTarget(removeTrack[1]);
+    if (target && target !== "mix") ops.push({ kind: "removeTrack", target });
+  }
+
+  const renameTrack = /\b(?:rename|premenuj)\b\s+(?:the\s+)?([a-z-]+)(?:\s+tracks?)?\s+(?:to|na)\s+(.+)/.exec(lower);
+  if (renameTrack) {
+    const target = firstTarget(renameTrack[1]);
+    // Sanitize: strip quotes, collapse whitespace, cap the length — the name
+    // is user text flowing into the document and every UI surface.
+    const name = renameTrack[2]
+      .replace(/['"“”]/g, "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 40);
+    if (target && target !== "mix" && name.length > 0) ops.push({ kind: "renameTrack", target, name });
+  }
+
+  const duplicateTrackM = /\b(?:duplicate|duplikuj|klonuj)\b\s+(?:the\s+)?([a-z-]+)\s+tracks?\b/.exec(lower);
+  if (duplicateTrackM) {
+    const target = firstTarget(duplicateTrackM[1]);
+    if (target && target !== "mix") ops.push({ kind: "duplicateTrack", target });
+  }
+
   // Gain dB delta: "lower drums by 2 dB", "boost the mix by 1.5 dB"
   const gainDb =
     /(lower|reduce|drop|cut|raise|boost|increase)\s+(?:the\s+)?(drums?|bass|808|lead|synth|chords?|keys?|mix|master)\b(?:\s+by\s+)?\s*(\d+(?:\.\d+)?)?\s*db/.exec(
@@ -211,8 +288,62 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "pan") return `pan ${op.target} ${op.value.toFixed(2)}`;
       if (op.kind === "gainDb") return `${op.deltaDb > 0 ? "+" : ""}${op.deltaDb} dB ${op.target}`;
       if (op.kind === "transpose") return `transpose ${op.target} ${op.semitones > 0 ? "+" : ""}${op.semitones} st`;
+      if (op.kind === "addTrack") {
+        return op.trackKind === "drum" ? "add drum track" : `add ${op.instrument} track`;
+      }
+      if (op.kind === "removeTrack") return `delete ${op.target} track`;
+      if (op.kind === "renameTrack") return `rename ${op.target} → "${op.name}"`;
+      if (op.kind === "duplicateTrack") return `duplicate ${op.target} track`;
       return `length ${op.steps}`;
     })
     .join(", ");
   return { label, ops };
+}
+
+// ── TRANSPORT — bare-word runtime commands (not document state) ─────────────
+
+export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metronomeOff";
+
+/**
+ * Transport commands are accepted as BARE WORDS ONLY ("stop", "play",
+ * "pauza", "metronome on"). "stop the beat" is a generation prompt, not a
+ * transport command — anchoring the whole text keeps the transport out of
+ * prompt space. Transport is runtime state (the Transport service), not
+ * project state: no command, no undo — dispatch is the whole operation.
+ */
+export function parseTransportIntent(text: string): TransportAction | null {
+  if (
+    !/^\s*(?:please\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?)\s*[.!]?\s*$/i.test(
+      text,
+    )
+  ) {
+    return null;
+  }
+  const lower = text.toLowerCase().trim();
+  if (/^metronom/.test(lower)) {
+    if (/\bon\b|\bzapni|\bstart/.test(lower)) return "metronomeOn";
+    if (/\boff\b|\bvypni/.test(lower)) return "metronomeOff";
+    return null; // bare "metronome" — on or off? decline
+  }
+  if (/^(?:play|hraj|hrať|start|štart)/.test(lower)) return "play";
+  if (/^(?:pause|pauza|pauzu)/.test(lower)) return "pause";
+  return "stop"; // stop / zastav / stoj
+}
+
+// ── SELECT — explicit track selection (UI state, not document state) ────────
+
+/**
+ * "select the bass" → the bass family track. Bare-word anchored like
+ * transport. Selection lives in the SelectionStore (UI state — no undo,
+ * no document mutation); the panel resolves the family to a track id and
+ * selects it. "the mix"/pad families are not selectable lanes → declined.
+ */
+export function parseSelectIntent(text: string): ExactTarget | null {
+  const m = /^\s*(?:select|vyber)\s+(?:the\s+)?([a-z-]+)\s*[.!]?\s*$/i.exec(
+    text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+  );
+  if (!m) return null;
+  const target = firstTarget(m[1]);
+  if (!target || target === "mix") return null;
+  return target;
 }

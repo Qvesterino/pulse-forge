@@ -5,37 +5,37 @@
   "modelPath": "/models/symbolic-prior-v2.onnx",
   "inputName": "features",
   "outputName": "logits",
-  "modelHash": "b28fbd77f39642301bd0c23a7f5c91f22a430bb07c7f98edf7374601a05b8762",
+  "modelHash": "826f22e4738e2f7624b6182072faaed428071fb895a24ff33e1be8738e607958",
   "hidden": [
     64,
     32
   ],
   "report": {
-    "datasetVersion": "symbolic-prior-ds.v2",
+    "datasetVersion": "symbolic-prior-ds.v3",
     "featureVersion": "prior-features-v2",
     "featureCount": 35,
     "mode": "embedding-v2",
-    "augmentedSamples": 248064,
+    "augmentedSamples": 313344,
     "hidden": [
       64,
       32
     ],
     "epochs": 500,
-    "samples": 95232,
-    "hitRatio": 0.0834,
-    "posWeight": 8.498,
-    "valAuc": 0.8449,
-    "trainAuc": 0.7935,
-    "bestF1Threshold": 0.64,
+    "samples": 230400,
+    "hitRatio": 0.0857,
+    "posWeight": 8.715,
+    "valAuc": 0.8043,
+    "trainAuc": 0.7765,
+    "bestF1Threshold": 0.65,
     "val": {
-      "precision": 0.2761,
-      "recall": 0.6289,
-      "f1": 0.3837
+      "precision": 0.2363,
+      "recall": 0.6185,
+      "f1": 0.3419
     },
     "train": {
-      "precision": 0.2847,
-      "recall": 0.554,
-      "f1": 0.3761
+      "precision": 0.2492,
+      "recall": 0.5954,
+      "f1": 0.3513
     }
   },
   "kind": "drums-v2",

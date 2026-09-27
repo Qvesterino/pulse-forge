@@ -36,7 +36,9 @@ describe("artist type-beat presets (C1)", () => {
     expect(parseIntentText("rage beat").input.mood).toBe("aggressive");
     expect(parseIntentText("rage beat").input.bpmRange).toEqual([150, 165]);
     expect(parseIntentText("southstar type beat").input.style).toBe("bouncy");
-    expect(parseIntentText("kanye type beat").input.style).toBe("classic");
+    // Kanye moved to the boom-bap genre with the promotion (86-92 pocket).
+    expect(parseIntentText("kanye type beat").input.genre).toBe("boombap");
+    expect(parseIntentText("kanye type beat").input.style).toBe("golden");
     expect(parseIntentText("kanye type beat").input.bpmRange).toEqual([86, 92]);
   });
 
@@ -474,9 +476,13 @@ describe("hip-hop sub-genre roster sweep", () => {
     const kdot = parseIntentText("kendrick type beat");
     expect(kdot.input.style).toBe("headnod");
     expect(kdot.input.bpmRange).toEqual([92, 110]);
-    expect(parseIntentText("j cole type beat").input.style).toBe("classic");
-    expect(parseIntentText("nas type beat").input.style).toBe("classic");
+    expect(parseIntentText("j cole type beat").input.genre).toBe("boombap");
+    expect(parseIntentText("j cole type beat").input.style).toBe("modern");
+    expect(parseIntentText("nas type beat").input.genre).toBe("boombap");
+    expect(parseIntentText("nas type beat").input.style).toBe("golden");
     expect(parseIntentText("mf doom type beat").input.mood).toBe("chill");
+    // "old school rap" is its own 80s machine-funk style lane (trap.oldschool),
+    // distinct from the boom-bap promotion.
     expect(parseIntentText("old school rap beat").input.style).toBe("oldschool");
   });
 
@@ -608,25 +614,25 @@ describe("southern specialties + afroswing + countrytune (bounce wave)", () => {
 });
 
 describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () => {
-  it("90s NY: 2pac / biggie / wu-tang (+raekwon) / jay-z / mobb deep → classic dark 84-96", () => {
+  it("90s NY: 2pac / biggie / wu-tang (+raekwon) / jay-z / mobb deep → boombap golden 84-96", () => {
     const pac = parseIntentText("2pac type beat");
-    expect(pac.input.genre).toBe("trap");
-    expect(pac.input.style).toBe("classic");
+    expect(pac.input.genre).toBe("boombap");
+    expect(pac.input.style).toBe("golden");
     expect(pac.input.mood).toBe("dark");
     expect(pac.input.bpmRange).toEqual([88, 95]);
     expect(parseIntentText("biggie type beat").input.bpmRange).toEqual([87, 94]);
-    expect(parseIntentText("raekwon type beat").input.style).toBe("classic");
+    expect(parseIntentText("raekwon type beat").input.style).toBe("golden");
     expect(parseIntentText("raekwon type beat").detected).toContain("♪ wu-tang");
     expect(parseIntentText("jay-z type beat").input.bpmRange).toEqual([86, 95]);
-    expect(parseIntentText("mobb deep type beat").input.style).toBe("classic");
+    expect(parseIntentText("mobb deep type beat").input.style).toBe("golden");
     expect(getGrooveById("trap.classic")).toBeDefined();
   });
 
   it("dirty south founders: outkast / ugk / scarface / t.i. / jeezy / gucci / mannie", () => {
     expect(parseIntentText("outkast type beat").input.mood).toBe("chill");
     expect(parseIntentText("ugk type beat").input.bpmRange).toEqual([82, 94]);
-    expect(parseIntentText("scarface type beat").input.style).toBe("classic");
-    expect(parseIntentText("t.i. type beat").input.style).toBe("classic");
+    expect(parseIntentText("scarface type beat").input.genre).toBe("boombap");
+    expect(parseIntentText("t.i. type beat").input.genre).toBe("boombap");
     expect(parseIntentText("jeezy type beat").input.style).toBe("rolling");
     expect(parseIntentText("gucci mane type beat").input.style).toBe("sparse");
     expect(parseIntentText("mannie fresh type beat").input.style).toBe("bounce");
@@ -634,10 +640,10 @@ describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () =>
 
   it("2000s mainstream: eminem / 50 / wayne / ross / dmx / busta / missy-timbaland", () => {
     expect(parseIntentText("eminem type beat").input.mood).toBe("aggressive");
-    expect(parseIntentText("50 cent type beat").input.style).toBe("classic");
+    expect(parseIntentText("50 cent type beat").input.genre).toBe("boombap");
     expect(parseIntentText("lil wayne type beat").input.style).toBe("bouncy");
     expect(parseIntentText("rick ross type beat").input.style).toBe("rolling");
-    expect(parseIntentText("dmx type beat").input.style).toBe("classic");
+    expect(parseIntentText("dmx type beat").input.genre).toBe("boombap");
     // name-masking: "dark" in "dark man x" must not flip the preset mood
     expect(parseIntentText("dark man x type beat").input.mood).toBe("aggressive");
     // ...but a name that IS the descriptor keeps the legacy reading
@@ -665,7 +671,8 @@ describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () =>
     expect(three6.input.style).toBe("memphis");
     expect(parseIntentText("dj paul type beat").detected).toContain("♪ three 6 mafia");
     const griz = parseIntentText("westside gunn type beat");
-    expect(griz.input.style).toBe("classic");
+    expect(griz.input.genre).toBe("boombap");
+    expect(griz.input.style).toBe("modern");
     expect(griz.input.bpmRange).toEqual([84, 94]);
     expect(parseIntentText("earl sweatshirt type beat").input.mood).toBe("chill");
   });
@@ -673,7 +680,7 @@ describe("legends + dirty south + g-era + griselda/three6 (legends wave)", () =>
   it("explicit words still override legends presets", () => {
     const bright = parseIntentText("2pac type beat bright");
     expect(bright.input.mood).toBe("energetic");
-    expect(bright.input.genre).toBe("trap");
+    expect(bright.input.genre).toBe("boombap");
   });
 });
 describe("mainstream heavyweights roster", () => {
@@ -706,10 +713,10 @@ describe("mainstream heavyweights roster", () => {
 
   it("conscious boom bap corner: tyler / mac miller at the slow pocket", () => {
     const tyler = parseIntentText("igor type beat");
-    expect(tyler.input.style).toBe("classic");
+    expect(tyler.input.genre).toBe("boombap");
     expect(tyler.input.bpmRange).toEqual([75, 105]);
     expect(parseIntentText("mac miller type beat").input.mood).toBe("chill");
-    expect(parseIntentText("mac miller type beat").input.style).toBe("classic");
+    expect(parseIntentText("mac miller type beat").input.genre).toBe("boombap");
   });
 
   it("sing-rap corner: rod wave / lil peep / a boogie sparse; megan rolling houston", () => {
@@ -1130,10 +1137,10 @@ describe("regional now + female / latin / scloud / experimental (now wave)", () 
     expect(von.input.style).toBe("dark");
     expect(von.input.bpmRange).toEqual([135, 145]);
     const chi = parseIntentText("chance the rapper type beat");
-    expect(chi.input.style).toBe("classic");
+    expect(chi.input.genre).toBe("boombap");
     expect(chi.input.bpmRange).toEqual([82, 94]);
     expect(parseIntentText("noname type beat").detected).toContain("♪ chicago conscious");
-    expect(parseIntentText("saba type beat").input.style).toBe("classic");
+    expect(parseIntentText("saba type beat").input.style).toBe("modern");
     expect(getGrooveById("drill.dark")).toBeDefined();
   });
 
@@ -1184,7 +1191,7 @@ describe("regional now + female / latin / scloud / experimental (now wave)", () 
     expect(parseIntentText("f n f beat").detected).toContain("♪ glorilla");
     expect(parseIntentText("sexyy red type beat").input.style).toBe("rolling");
     expect(parseIntentText("doechii type beat").input.style).toBe("bouncy");
-    expect(parseIntentText("little simz type beat").input.style).toBe("classic");
+    expect(parseIntentText("little simz type beat").input.genre).toBe("boombap");
     expect(getGrooveById("trap.crunk")).toBeDefined();
   });
 

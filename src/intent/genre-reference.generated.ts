@@ -37,4 +37,5 @@ export const GENRE_REFERENCE: Record<string, GenreSongReference> = {
   dnb: { integrated: -12.8, punchPlrDb: 11.8, tiltDb: 13.8, bars: 64 },
   hyperpop: { integrated: -11.7, punchPlrDb: 10.7, tiltDb: 17.7, bars: 36 },
   ukg: { integrated: -10, punchPlrDb: 9, tiltDb: 24, bars: 72 },
+  boombap: { integrated: -9.9, punchPlrDb: 8.9, tiltDb: 24.1, bars: 72 },
 };

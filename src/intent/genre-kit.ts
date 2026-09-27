@@ -119,6 +119,15 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 4, assetId: "factory.snare.main" },
     { index: 8, assetId: "factory.hat.closed.soft" },
   ],
+  boombap: [
+    // The dusty crate: the knock kick (boom-bap tuned), cracking main snare
+    // and the soft hat for the swung 8ths. The knock was built for this lane.
+    { index: 0, assetId: "factory.kick.knock" },
+    { index: 1, assetId: "factory.kick.deep" },
+    { index: 4, assetId: "factory.snare.main" },
+    { index: 5, assetId: "factory.snare.tight" },
+    { index: 8, assetId: "factory.hat.closed.soft" },
+  ],
 };
 
 /**
@@ -168,6 +177,9 @@ export const GENRE_FEEL: Partial<
   // groove's swing carries it.
   hyperpop: { humanizeTiming: 0.02, humanizeVelocity: 0.08 },
   ukg: { humanizeTiming: 0.07, humanizeVelocity: 0.14 },
+  // Boom bap is the humanized genre: sampled breaks are never grid-locked,
+  // so timing jitter is the genre's feel (the groove's swing adds on top).
+  boombap: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
 };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:

@@ -49,6 +49,13 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Amapiano — the log drum genre (house.amapiano); "private school piano"
   // is the jazzier refined sub-style, same groove.
   [/\bamapiano\b|\bprivate school piano\b/, "house"],
+  // Rock lanes — grunge / alt rock / rapcore / synth punk ride dedicated
+  // house-family grooves; "nu metal" is the rapcore family alias. "synth
+  // punk" is safe against the post-punk entry (different words entirely).
+  [/\bgrunge\b/, "house"],
+  [/\balt(?:ernative)? ?rock\b|\baltrock\b/, "house"],
+  [/\brapcore\b|\bnu ?metal\b|\brap ?metal\b/, "house"],
+  [/\bsynth[- ]?punk\b/, "house"],
   // Organic house — the Anjunadeep / Keinemusik hand-drum wave. Bare
   // "organic" stays unmapped ("organic ambient" must keep reaching ambient).
   [/\borganic house\b|\bafro organic\b/, "house"],
@@ -278,6 +285,12 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Kuduro / batida + tropical — unique words, no generic collisions.
   [/\bkuduro\b|\bbatida\b/, "kuduro"],
   [/\btropical(?: house)?\b/, "tropical"],
+  // Rock styles — the verse/pre-chorus/chorus form rides via
+  // ROCK_FORM_STYLES in the song builder.
+  [/\bgrunge\b/, "grunge"],
+  [/\balt(?:ernative)? ?rock\b|\baltrock\b/, "altrock"],
+  [/\brapcore\b|\bnu ?metal\b|\brap ?metal\b/, "rapcore"],
+  [/\bsynth[- ]?punk\b/, "synthpunk"],
   // Ghettotech — Detroit's banging 808 bounce (house.ghettotech); the genre
   // word already routes to house via the g-house entry above.
   [/\bghetto ?tech\b|\bghettotech\b/, "ghettotech"],

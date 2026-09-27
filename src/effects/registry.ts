@@ -1947,6 +1947,11 @@ const phaser: EffectDefinition = {
         /* nothing */
       }
       if (stageCount > 0) {
+        // stage.disconnect() above also cleared the INTER-STAGE links made
+        // in buildStages — without relinking, stage 1+ get no input, the wet
+        // path stays silent and the phaser only attenuates the dry signal.
+        for (let i = 0; i < stagesL.length - 1; i++) stagesL[i].connect(stagesL[i + 1]);
+        for (let i = 0; i < stagesR.length - 1; i++) stagesR[i].connect(stagesR[i + 1]);
         mix.wet.connect(splitter);
         splitter.connect(stagesL[0], 0);
         splitter.connect(stagesR[0], 1);

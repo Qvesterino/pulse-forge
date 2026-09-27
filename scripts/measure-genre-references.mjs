@@ -33,7 +33,19 @@ const outFile = path.join(root, "src", "intent", "genre-reference.generated.ts")
 const TARGET_LUFS = -14;
 /** Hard clamp mirrored by the song builder's trim computation. */
 const TRIM_LIMIT_DB = 6;
-const GENRES = ["house", "techno", "trap", "ambient", "drill", "phonk", "jersey", "dnb", "hyperpop", "ukg"];
+const GENRES = [
+  "house",
+  "techno",
+  "trap",
+  "ambient",
+  "drill",
+  "phonk",
+  "jersey",
+  "dnb",
+  "hyperpop",
+  "ukg",
+  "boombap",
+];
 const SEEDS = ["ref-a", "ref-b"];
 
 const server = await createServer({

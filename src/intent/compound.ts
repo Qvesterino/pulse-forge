@@ -1,6 +1,6 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
-import { snapshot } from "../commands/commands";
+import { applyExactIntentCommand, snapshot } from "../commands/commands";
 import {
   applyFaderIntents,
   applyTempoIntent,
@@ -11,26 +11,29 @@ import {
   type TempoIntent,
 } from "./conversation";
 import { applyEffectIntent, parseEffectIntent, type EffectIntent } from "./mix";
+import { parseExactIntent, type ExactIntentPlan } from "./exact";
 
 /**
  * CROSS-EXECUTOR COMPOUND INTENTS — several asks in one sentence, executed in
  * ONE undoable command ("zníž tempo a zvýš lead", "viac delayu na leade a
- * zníž basu").
+ * zníž basu", "mute the drums and zníž basu").
  *
- * Bounded to the three cheap, synchronous, command-emitting conversation
- * executors: FADER (track/pad/master gain), TEMPO (project BPM) and targeted
- * EFFECT (primary knob add/turn). Each CLAUSE must parse on its own — the
- * compound is all-or-nothing, so a half-understood sentence never silently
- * drops the clause it did not understand. All-tempo compounds are excluded:
- * tempo clauses all mutate the SAME scalar, and "tempo na 128 a pomalší"
- * chains into 122 instead of the asked 128 — the whole-text tempo route's
- * first-match-wins stays the honest reading there.
+ * Bounded to the cheap, synchronous, command-emitting executors: FADER
+ * (track/pad/master gain), TEMPO (project BPM), targeted EFFECT (primary
+ * knob add/turn) and EXACT (single-op doc commands — mute/pan/tempo/track
+ * CRUD). Each CLAUSE must parse on its own — the compound is all-or-nothing,
+ * so a half-understood sentence never silently drops the clause it did not
+ * understand. All-tempo compounds are excluded: tempo clauses all mutate the
+ * SAME scalar, and "tempo na 128 a pomalší" chains into 122 instead of the
+ * asked 128 — the whole-text tempo route's first-match-wins stays the
+ * honest reading there.
  */
 
 export type CompoundPart =
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "tempo"; intent: TempoIntent }
-  | { kind: "effect"; intent: EffectIntent };
+  | { kind: "effect"; intent: EffectIntent }
+  | { kind: "exact"; plan: ExactIntentPlan };
 
 function parseCompoundClause(clause: string): CompoundPart | null {
   const fader = parseFaderIntent(clause);
@@ -39,24 +42,45 @@ function parseCompoundClause(clause: string): CompoundPart | null {
   if (tempo) return { kind: "tempo", intent: tempo };
   const effect = parseEffectIntent(clause);
   if (effect) return { kind: "effect", intent: effect };
+  const exact = parseExactIntent(clause);
+  if (exact) return { kind: "exact", plan: exact };
   return null;
 }
 
 /**
  * Parse a multi-clause compound ask. Null unless there are ≥2 clauses and
  * EVERY clause resolves to a compoundable part and they are not all tempo.
+ *
+ * Two split strategies, tried in order: the full clause split (includes the
+ * SK conjunction "a") and a strong-delimiter split that never cuts on the
+ * ARTICLE "a" — "add a keys track and zníž basu" must not become "add" +
+ * "keys track" + "zníž basu". The first strategy that fully parses wins.
  */
+const STRONG_SPLIT = /\s+(?:and|alebo|but|potom)\s+|,\s*|\s*;\s*/i;
+
 export function parseCompoundIntent(text: string): CompoundPart[] | null {
-  const clauses = splitIntentClauses(text);
-  if (clauses.length < 2) return null;
-  const parts: CompoundPart[] = [];
-  for (const clause of clauses) {
-    const part = parseCompoundClause(clause);
-    if (!part) return null; // all-or-nothing: no silent partial compound
-    parts.push(part);
+  const strategies: string[][] = [
+    splitIntentClauses(text),
+    text
+      .split(STRONG_SPLIT)
+      .map((clause) => clause.trim())
+      .filter((clause) => clause.length > 0),
+  ];
+  for (const clauses of strategies) {
+    if (clauses.length < 2) continue;
+    const parts: CompoundPart[] = [];
+    let allParsed = true;
+    for (const clause of clauses) {
+      const part = parseCompoundClause(clause);
+      if (!part) {
+        allParsed = false;
+        break;
+      }
+      parts.push(part);
+    }
+    if (allParsed && parts.length >= 2 && !parts.every((part) => part.kind === "tempo")) return parts;
   }
-  if (parts.every((part) => part.kind === "tempo")) return null;
-  return parts;
+  return null;
 }
 
 /**
@@ -76,7 +100,9 @@ export function applyCompoundIntent(doc: ProjectDocument, parts: CompoundPart[])
           ? applyFaderIntents(next, [part.intent])
           : part.kind === "tempo"
             ? applyTempoIntent(next, part.intent)
-            : applyEffectIntent(next, part.intent);
+            : part.kind === "exact"
+              ? applyExactIntentCommand(next, part.plan)
+              : applyEffectIntent(next, part.intent);
       if (!command) continue; // fader clause clamped to a no-op
       next = command.execute(next);
       labels.push(command.label);

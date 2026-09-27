@@ -6,7 +6,7 @@ import { resolveEffectiveSeed, resolveGrooveForGeneration, sourcePatternContentH
 import type { GenerateOptions } from "../ai/types";
 import { intentHash } from "./hash";
 import { normalizeIntent } from "./normalize";
-import { mapIntentToOptions } from "./mapping";
+import { mapIntentToOptions, metricAccentFromVelocityVariation } from "./mapping";
 import type { GenerationPlan, IntentInput, IntentRole, IntentSpec } from "./types";
 
 export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
@@ -45,14 +45,30 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
 }
 
 /**
- * Metric-accent strength from the intent's velocity variation: a flat
- * "no dynamics" ask (variation ≈ 0.15) keeps the legacy random-only velocity,
- * an expressive ask gets the metrical shape. Capped at 0.75 so the written
- * groove stays recognisable underneath.
+ * Metric-accent strength for an intent — the energy/mood-adjusted velocity
+ * variation is what the explicit mapping path would produce, so the default
+ * fast path and an explicit intent agree on the same pocket.
  */
 export function metricAccentFor(intent: IntentSpec): number {
-  const variation = Math.max(0, Math.min(1, intent.controls.velocityVariation));
-  return Math.max(0, Math.min(1, (variation - 0.15) * 1.1)) * 0.75;
+  return metricAccentFromVelocityVariation(adjustedVelocityVariation(intent));
+}
+
+/**
+ * The velocity variation `mapIntentToOptions` computes: energy scales it and
+ * the mood multipliers follow. Kept beside the mapping so the two cannot
+ * drift; the fast path needs the value WITHOUT running the full mapping.
+ */
+export function adjustedVelocityVariation(intent: IntentSpec): number {
+  let variation = clamp01(intent.controls.velocityVariation + (intent.energy - 0.5) * 0.4);
+  const mood = intent.mood?.toLowerCase() ?? null;
+  if (mood === "dark" || mood === "moody") variation = clamp01(variation * 0.9);
+  else if (mood === "aggressive" || mood === "hard") variation = clamp01(variation * 1.25);
+  else if (mood === "chill" || mood === "soft" || mood === "mellow") variation = clamp01(variation * 0.8);
+  return variation;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 function resolveBpm(bpm: [number, number], requested: [number, number] | null): number | null {

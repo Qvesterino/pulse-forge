@@ -4,13 +4,18 @@ import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudne
 import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
 import { applyFaderIntent, applyTempoIntent } from "../src/intent/conversation";
 import { applyCompoundIntent } from "../src/intent/compound";
+import { applyClipArrangeOps } from "../src/intent/arrangeWords";
+import { resolveProductionTargets } from "../src/intent/production";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
+  addArrangementClip,
   addEffect,
   applyExactIntentCommand,
   applyProductionIntentCommand,
+  createScene,
   setBpm,
   setEffectParam,
+  setSceneRole,
 } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc, drumTrackOf } from "./fixtures/doc";
@@ -56,6 +61,7 @@ function executeRouted(doc: ProjectDocument, text: string, store?: ProjectStore)
   let command = null;
   if (route.kind === "fader") command = applyFaderIntent(doc, route.intent);
   else if (route.kind === "compound") command = applyCompoundIntent(doc, route.parts);
+  else if (route.kind === "clips") command = applyClipArrangeOps(doc, route.ops);
   else if (route.kind === "exact") command = applyExactIntentCommand(doc, route.plan);
   else if (route.kind === "tempo") command = applyTempoIntent(doc, route.intent);
   else if (route.kind === "effectIntent") command = applyEffectIntent(doc, route.intent);
@@ -387,9 +393,12 @@ describe("E2E exact intents: route → state → undo", () => {
     expect(bassTrackOf(next).gain).toBe(bassBefore);
   });
 
-  it("multi-action request applies both ops in ONE undo entry", () => {
+  it("multi-action request applies both ops in ONE undo entry (compound route)", () => {
     const store = new ProjectStore(testDoc());
     const bpmBefore = store.doc.bpm;
+    // whole-text exact would partial-apply (mute only, "set tempo" clause is
+    // a tempo parse) — the compound owns the sentence now
+    expect(routeIntentText("mute the drums and set tempo to 140", store.doc).kind).toBe("compound");
     executeRouted(store.doc, "mute the drums and set tempo to 140", store);
     expect(drumTrackOf(store.doc).mute).toBe(true);
     expect(store.doc.bpm).toBe(140);
@@ -397,6 +406,25 @@ describe("E2E exact intents: route → state → undo", () => {
     store.undo();
     expect(drumTrackOf(store.doc).mute).toBe(false);
     expect(store.doc.bpm).toBe(bpmBefore);
+  });
+
+  it("REGRESSION: 'mute the drums and zníž basu' applies BOTH (exact used to drop the fader clause)", () => {
+    const store = new ProjectStore(testDoc());
+    const bassBefore = bassTrackOf(store.doc).gain;
+    const route = routeIntentText("mute the drums and zníž basu", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind === "compound") {
+      expect(route.parts).toHaveLength(2);
+      expect(route.parts[0]).toMatchObject({ kind: "exact" });
+      expect(route.parts[1]).toMatchObject({ kind: "fader", intent: { targets: ["bass"], direction: "down" } });
+    }
+    executeRouted(store.doc, "mute the drums and zníž basu", store);
+    expect(drumTrackOf(store.doc).mute).toBe(true);
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(drumTrackOf(store.doc).mute).toBe(false);
+    expect(bassTrackOf(store.doc).gain).toBe(bassBefore);
   });
 
   it("150 bpm routes exact and applies; out-of-range asks never mutate", () => {
@@ -737,5 +765,223 @@ describe("E2E absolute-set effect asks", () => {
     expect(intent).toMatchObject({ effectType: "reverb", direction: "set", targets: ["vocal"] });
     // no arrangement audio in the fixture → explicit failure, never silence
     expect(() => applyEffectIntent(doc, intent!)).toThrow(/no tracks match/);
+  });
+});
+
+// ─── 11. TRACK CRUD — add/rename/duplicate/delete via canonical commands ────
+
+describe("E2E track CRUD intents", () => {
+  it("add a drum track creates a drum lane; one undo removes it", () => {
+    const store = new ProjectStore(testDoc());
+    const drumsBefore = store.doc.tracks.filter((t) => t.kind === "drum").length;
+    expect(routeIntentText("add a drum track", store.doc).kind).toBe("exact");
+    executeRouted(store.doc, "add a drum track", store);
+    expect(store.doc.tracks.filter((t) => t.kind === "drum")).toHaveLength(drumsBefore + 1);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.tracks.filter((t) => t.kind === "drum")).toHaveLength(drumsBefore);
+  });
+
+  it("add a bass track names the kind; bare 'add a track' defaults to analog; pads decline", () => {
+    const doc = testDoc();
+    const withBass = executeRouted(doc, "add a bass track");
+    expect(instrumentTracks(withBass).some((t) => t.instrument === "bass")).toBe(true);
+    const withDefault = executeRouted(doc, "add a track");
+    expect(instrumentTracks(withDefault).some((t) => t.instrument === "analog")).toBe(true);
+    // a pad is not a lane — the engine does not guess one from a pad word
+    expect(routeIntentText("add a hat track", doc).kind).not.toBe("exact");
+  });
+
+  it("rename the bass renames the resolved track; undo restores the old name", () => {
+    const store = new ProjectStore(testDoc());
+    const nameBefore = bassTrackOf(store.doc).name;
+    expect(routeIntentText('rename the bass to "sub bass"', store.doc).kind).toBe("exact");
+    executeRouted(store.doc, 'rename the bass to "sub bass"', store);
+    expect(bassTrackOf(store.doc).name).toBe("sub bass");
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(bassTrackOf(store.doc).name).toBe(nameBefore);
+  });
+
+  it("delete the lead track removes it, undo restores it, missing family fails loudly", () => {
+    const store = new ProjectStore(withLead());
+    executeRouted(store.doc, "delete the lead track", store);
+    expect(store.doc.tracks.some((t) => /\blead\b/i.test(t.name))).toBe(false);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.tracks.some((t) => /\blead\b/i.test(t.name))).toBe(true);
+    // destructive ops never guess by position: no lead family → explicit error
+    const noLead = new ProjectStore(testDoc());
+    expect(() => executeRouted(noLead.doc, "delete the lead track", noLead)).toThrow(/no track matches/);
+  });
+
+  it("delete respects the last-track guard and never targets the mix", () => {
+    const doc = testDoc();
+    const drum = drumTrackOf(doc);
+    const drumsOnly: ProjectDocument = { ...doc, tracks: [drum] };
+    expect(() => executeRouted(drumsOnly, "delete the drum track")).toThrow(/Cannot delete the last/);
+    expect(routeIntentText("delete the mix track", doc).kind).not.toBe("exact");
+  });
+
+  it("duplicate the bass track clones it; undo removes the clone", () => {
+    const store = new ProjectStore(testDoc());
+    const before = instrumentTracks(store.doc).length;
+    executeRouted(store.doc, "duplicate the bass track", store);
+    expect(instrumentTracks(store.doc)).toHaveLength(before + 1);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(instrumentTracks(store.doc)).toHaveLength(before);
+  });
+
+  it("track CRUD rides compounds: 'add a keys track and zníž basu' lands both", () => {
+    const store = new ProjectStore(testDoc());
+    const bassBefore = bassTrackOf(store.doc).gain;
+    const route = routeIntentText("add a keys track and zníž basu", store.doc);
+    expect(route.kind).toBe("compound");
+    executeRouted(store.doc, "add a keys track and zníž basu", store);
+    expect(instrumentTracks(store.doc).some((t) => t.instrument === "keys")).toBe(true);
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(instrumentTracks(store.doc).some((t) => t.instrument === "keys")).toBe(false);
+    expect(bassTrackOf(store.doc).gain).toBe(bassBefore);
+  });
+});
+
+// ─── 12. TRANSPORT + SELECT — runtime/UI state, never document mutations ────
+
+describe("E2E transport + select intents", () => {
+  it("bare words route to transport; anything with a tail stays a prompt", () => {
+    const doc = testDoc();
+    const cases = [
+      ["stop", "stop"],
+      ["play", "play"],
+      ["pause", "pause"],
+      ["hraj", "play"],
+      ["štart", "play"],
+      ["pauza", "pause"],
+      ["zastav", "stop"],
+      ["metronome on", "metronomeOn"],
+      ["metronome off", "metronomeOff"],
+    ] as const;
+    for (const [text, action] of cases) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind).toBe("transport");
+      if (route.kind === "transport") expect(route.action).toBe(action);
+    }
+    expect(routeIntentText("stop the beat", doc).kind).not.toBe("transport");
+    expect(routeIntentText("play something funky", doc).kind).not.toBe("transport");
+    expect(routeIntentText("metronome", doc).kind).not.toBe("transport"); // on/off? decline
+  });
+
+  it("select routes with the family and never mutates the document", () => {
+    const doc = testDoc();
+    const store = new ProjectStore(doc);
+    const route = routeIntentText("select the bass", doc);
+    expect(route.kind).toBe("select");
+    if (route.kind === "select") {
+      expect(route.target).toBe("bass");
+      // the resolver contract the panel dispatches through
+      expect(resolveProductionTargets(doc, [route.target as never]).length).toBeGreaterThan(0);
+    }
+    expect(routeIntentText("vyber bicie", doc).kind).toBe("select");
+    // the mix is not a selectable lane; routing alone never mutated anything
+    expect(routeIntentText("select the mix", doc).kind).not.toBe("select");
+    expect(store.undoStackLength).toBe(0);
+    expect(store.doc).toBe(doc);
+  });
+});
+
+// ─── 13. CLIP WORDS — trim/copy/move/delete at absolute positions ───────────
+
+describe("E2E clip intents: copy/move/trim/delete", () => {
+  /** Scenes with roles + one clip each: intro at bar 0 (4 bars), drop at bar 4 (4 bars). */
+  function withRoleClips(): ProjectDocument {
+    let doc = testDoc();
+    doc = createScene(doc, "Intro").execute(doc);
+    doc = setSceneRole(doc, doc.scenes[doc.scenes.length - 1].id, "intro").execute(doc);
+    doc = addArrangementClip(doc, doc.scenes[doc.scenes.length - 1].id, 0, 4).execute(doc);
+    doc = createScene(doc, "Drop").execute(doc);
+    doc = setSceneRole(doc, doc.scenes[doc.scenes.length - 1].id, "drop").execute(doc);
+    doc = addArrangementClip(doc, doc.scenes[doc.scenes.length - 1].id, 4, 4).execute(doc);
+    return doc;
+  }
+
+  it("copy the intro clip to bar 5 places a same-length copy at bar 4 (0-based)", () => {
+    const store = new ProjectStore(withRoleClips());
+    // user bar 9 = 0-based 8 — the first FREE bar (the drop covers bars 5–8)
+    const route = routeIntentText("copy the intro clip to bar 9", store.doc);
+    expect(route.kind).toBe("clips");
+    if (route.kind === "clips") {
+      expect(route.ops).toEqual([{ op: "copyClip", clipId: route.ops[0].clipId, toBar: 8 }]);
+    }
+    executeRouted(store.doc, "copy the intro clip to bar 9", store);
+    expect(store.doc.arrangement.clips).toHaveLength(3);
+    const copy = store.doc.arrangement.clips.find((c) => c.startBar === 8);
+    expect(copy).toBeDefined();
+    const introSceneId = store.doc.arrangement.clips[0].sceneId;
+    expect(copy!.sceneId).toBe(introSceneId);
+    expect(copy!.lengthBars).toBe(4);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+  });
+
+  it("copy by position: 'the clip at bar 1' resolves the clip covering bar 0", () => {
+    const doc = withRoleClips();
+    const next = executeRouted(doc, "copy the clip at bar 1 to bar 9");
+    const copy = next.arrangement.clips.find((c) => c.startBar === 8);
+    expect(copy).toBeDefined();
+    // source strip: the "to bar 9" destination must not resolve as the source
+    expect(copy!.startBar).toBe(8);
+  });
+
+  it("move the drop clip to bar 9 keeps absolute positions — NO relayout", () => {
+    const doc = withRoleClips();
+    const next = executeRouted(doc, "move the drop clip to bar 9");
+    const intro = next.arrangement.clips.find((c) => c.startBar === 0);
+    expect(intro).toBeDefined(); // untouched — the arrange relayout would have squished it
+    const moved = next.arrangement.clips.find((c) => c.startBar === 8);
+    expect(moved).toBeDefined();
+    expect(moved!.lengthBars).toBe(4);
+  });
+
+  it("trim the clip at bar 5 to 2 bars resizes in place", () => {
+    const doc = withRoleClips();
+    const route = routeIntentText("trim the clip at bar 5 to 2 bars", doc);
+    expect(route.kind).toBe("clips");
+    const next = executeRouted(doc, "trim the clip at bar 5 to 2 bars");
+    const trimmed = next.arrangement.clips.find((c) => c.startBar === 4);
+    expect(trimmed!.lengthBars).toBe(2);
+    expect(next.arrangement.clips).toHaveLength(2); // no scene harmed
+  });
+
+  it("delete the clip at bar 8 removes only the clip — the scene survives", () => {
+    const store = new ProjectStore(withRoleClips());
+    const scenesBefore = store.doc.scenes.length;
+    executeRouted(store.doc, "delete the clip at bar 8", store);
+    expect(store.doc.arrangement.clips).toHaveLength(1);
+    expect(store.doc.scenes).toHaveLength(scenesBefore);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.arrangement.clips).toHaveLength(2);
+  });
+
+  it("a position no clip covers declines the clip route (explicit, not guessed)", () => {
+    // user bar 12 lies past every clip — nothing to delete, no guessing
+    expect(routeIntentText("delete the clip at bar 12", withRoleClips()).kind).not.toBe("clips");
+  });
+
+  it("overlapping copy fails with the command's own explicit error", () => {
+    const doc = withRoleClips();
+    // bar 5 (0-based 4) is occupied by the drop clip
+    expect(() => executeRouted(doc, "copy the intro clip to bar 5")).toThrow(/overlaps/i);
+  });
+
+  it("destination-less copy declines the clip route (scene variation stays nearest)", () => {
+    const doc = withRoleClips();
+    expect(routeIntentText("copy the intro clip", doc).kind).not.toBe("clips");
+    // and a scene-arrange text without a clip word never reaches the clip route
+    expect(routeIntentText("shorten the intro to 2 bars", withRoleClips()).kind).toBe("arrange");
   });
 });

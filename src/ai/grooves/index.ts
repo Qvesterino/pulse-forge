@@ -11,6 +11,7 @@ import { DNB_GROOVES } from "./dnb";
 import { WESTCOAST_GROOVES } from "./westcoast";
 import { HYPERPOP_GROOVES } from "./hyperpop";
 import { UKG_GROOVES } from "./ukg";
+import { BOOMBAP_GROOVES } from "./boombap";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -25,6 +26,7 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...DNB_GROOVES,
   ...HYPERPOP_GROOVES,
   ...UKG_GROOVES,
+  ...BOOMBAP_GROOVES,
 ];
 
 /** Get all groove styles for a genre */

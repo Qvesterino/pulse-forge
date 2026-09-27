@@ -338,10 +338,10 @@ export function applyMetricAccents(row: number[], role: PadRole, strength: numbe
       : role === "kick" || role === "snare" || role === "clap"
         ? 0.6
         : 0.75;
-  // Max shift at full strength (~0.4 of the velocity range) — enough to cross
+  // Max shift at full strength (~0.3 of the velocity range) — enough to cross
   // a layer boundary from the middle of a band, small enough that a written
-  // dynamic survives.
-  const amount = strength * roleGain * 0.4;
+  // dynamic survives and a 16th never collapses to the floor.
+  const amount = strength * roleGain * 0.3;
   const GHOST_FLOOR = 0.35;
   for (let i = 0; i < row.length; i++) {
     const v = row[i];

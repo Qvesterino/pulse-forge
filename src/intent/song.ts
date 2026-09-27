@@ -837,6 +837,90 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       instrumentation: ["drums", "chords"],
     },
   ],
+  boombap: [
+    // BOOM BAP dialect: the 90s NY song shape — 16-bar verses, a hook that
+    // repeats, no drop theatrics. The verse IS the song; the hook is the
+    // chopped-vocal loop. Second hook lands via the impact pair.
+    {
+      role: "intro",
+      label: "Intro",
+      bars: 4,
+      intensity: 0.55,
+      transitionIn: null,
+      energyDelta: -0.1,
+      densityDelta: -0.15,
+      complexityDelta: -0.05,
+      instrumentation: ["drums"],
+    },
+    {
+      role: "verse",
+      label: "Verse 1",
+      bars: 16,
+      intensity: 0.75,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 1",
+      bars: 8,
+      intensity: 0.8,
+      marker: { type: "cue", name: "HOOK 1" },
+      transitionIn: "fill",
+      energyDelta: 0.1,
+      densityDelta: 0.05,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "verse",
+      label: "Verse 2",
+      bars: 16,
+      intensity: 0.75,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "chorus",
+      label: "Hook 2",
+      bars: 8,
+      intensity: 0.85,
+      marker: { type: "impact", name: "HOOK 2" },
+      transitionIn: "impact",
+      energyDelta: 0.15,
+      densityDelta: 0.05,
+      complexityDelta: 0,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "verse",
+      label: "Verse 3",
+      bars: 16,
+      intensity: 0.8,
+      transitionIn: "fill",
+      energyDelta: 0.05,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "outro",
+      label: "Outro",
+      bars: 4,
+      intensity: 0.45,
+      transitionIn: "break",
+      energyDelta: -0.2,
+      densityDelta: -0.15,
+      complexityDelta: -0.05,
+      instrumentation: ["drums", "chords"],
+    },
+  ],
   dnb: [
     // DnB dialect: intro → build → DROP. The second drop lands on the
     // reverse-suck + boom pair; the breakdown breathes before the last one.
@@ -1238,11 +1322,19 @@ const POP_FORM: SongSectionSpec[] = [
 /** Pop styles get the POP_FORM shape regardless of genre (style wins, like FRED_FORM). */
 const POP_FORM_STYLES = new Set(["pop"]);
 
+/**
+ * Rock styles share the POP_FORM shape — verse / pre-chorus / chorus /
+ * bridge IS the rock-radio form. Without this, rock lanes falling in the
+ * house family would get the club intro/build/drop shape.
+ */
+const ROCK_FORM_STYLES = new Set(["grunge", "altrock", "rapcore", "synthpunk"]);
+
 /** The emotional-UKG styles that get the FRED_FORM shape. */
 const FRED_FORM_STYLES = new Set(["ukg", "heartbeat"]);
 
 function songFormFor(intent: IntentSpec): SongSectionSpec[] {
   if (intent.style && POP_FORM_STYLES.has(intent.style)) return POP_FORM;
+  if (intent.style && ROCK_FORM_STYLES.has(intent.style)) return POP_FORM;
   if (intent.genre === "house" && intent.style && FRED_FORM_STYLES.has(intent.style)) return FRED_FORM;
   return SONG_FORMS[intent.genre];
 }
@@ -1300,6 +1392,7 @@ const GENRE_DEFAULT_BPM: Record<IntentSpec["genre"], number> = {
   dnb: 174,
   hyperpop: 155,
   ukg: 134,
+  boombap: 90,
 };
 
 function formBpm(intent: IntentSpec): number {

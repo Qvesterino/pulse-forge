@@ -47,7 +47,26 @@ import type { EffectType, InstrumentTrack, PlayMode, ProjectDocument } from "./p
 const SR = 44100;
 const SIGNAL_SECONDS = 0.75;
 const RESPONSIVE_EPS = 0.02;
+/** Host delta below this still counts as processing (jitter floor ~1e-7). */
+const HOST_EPS = 0.01;
+
 const RUNAWAY_PEAK = 40;
+
+/**
+ * Effects whose DSP is bar- or transport-synced: a 0.75 s window at 124 BPM
+ * is shorter than one bar, so mangling/gating/swell cycles never complete
+ * and every parameter measures inert. These render a 2-bar window instead.
+ */
+const BAR_SYNCED_EFFECTS = new Set<EffectType>([
+  "beatMangler",
+  "stepGate",
+  "pump",
+  "reverseSwell",
+  "tapeStop",
+  "granularFreeze",
+  "stutter",
+]);
+const signalSecondsFor = (type: EffectType) => (BAR_SYNCED_EFFECTS.has(type) ? 4.4 : SIGNAL_SECONDS);
 
 /* ---------------- report shapes ---------------- */
 
@@ -86,8 +105,11 @@ export interface HostResult {
   hostBypassEqualsRemoved: boolean;
   hostFinite: boolean;
   automationDelta: number;
+  /** Set when the minimal host doc cannot exercise automation by design. */
+  automationExempt?: string;
   automationFinite: boolean;
   restoreMaxDiff: number;
+  restoreRmsDiff: number;
 }
 
 export interface EffectAudit extends SweepResult, HostResult {
@@ -238,14 +260,22 @@ function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
 
 function buildTestBuffer(): AudioBuffer {
   const ctx = new OfflineAudioContext(2, Math.floor(SR * SIGNAL_SECONDS), SR);
-  const buffer = ctx.createBuffer(2, Math.floor(SR * SIGNAL_SECONDS), SR);
+  return buildTestBufferInto(ctx, SIGNAL_SECONDS);
+}
+
+function buildTestBufferInto(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const buffer = ctx.createBuffer(2, Math.floor(SR * seconds), SR);
   const l = buffer.getChannelData(0);
   const r = buffer.getChannelData(1);
   const kickLen = Math.floor(SR * 0.25);
+  // 110 Hz saw harmonics give the 300-3000 Hz band real energy - formant
+  // filters (vowel), notch sweeps (phaser) and band-focused EQs would
+  // otherwise measure against a spectrally sparse signal and look inert.
+  const sawPhase = (t: number) => 2 * (t * 110 - Math.floor(t * 110 + 0.5));
   for (let i = 0; i < l.length; i++) {
     const t = i / SR;
-    let sl = 0.32 * Math.sin(2 * Math.PI * 220 * t);
-    let sr = 0.32 * Math.sin(2 * Math.PI * 277 * t);
+    let sl = 0.22 * Math.sin(2 * Math.PI * 220 * t) + 0.14 * sawPhase(t);
+    let sr = 0.22 * Math.sin(2 * Math.PI * 277 * t) + 0.14 * sawPhase(t * 1.007);
     if (i < kickLen) {
       const env = Math.exp((-9 * i) / SR);
       const thump = Math.sin(2 * Math.PI * (52 + 30 * Math.exp((-30 * i) / SR)) * t);
@@ -315,6 +345,11 @@ async function renderDry(signal: AudioBuffer): Promise<AudioBuffer> {
 
 async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuffer): Promise<SweepResult> {
   const paramsDef: ParamDef[] = EFFECT_META[type].params;
+  if (Math.abs(signalSecondsFor(type) - signal.duration) > 1e-6) {
+    const longCtx = new OfflineAudioContext(2, Math.floor(SR * signalSecondsFor(type)), SR);
+    signal = buildTestBufferInto(longCtx, signalSecondsFor(type));
+    dry = await renderDry(signal);
+  }
   const baseline = await renderEffect(type, defaultParamsOf(type), signal);
   const base = metricsOf(baseline);
   const bypassDelta = deltaVs(metricsOf(dry), base).delta;
@@ -431,8 +466,26 @@ async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioB
 /** Params whose dry extreme silences the effect (mix/wet classes). */
 const MIX_CLASS_IDS = new Set(["mix", "global.mix", "global.dryWet", "globalMix", "level"]);
 
+/**
+ * Per-effect fingerprint overrides where the strongest sweep extreme is not
+ * the most host-audible one (out-of-window delay times, mono-invisible
+ * ping-pong).
+ */
+const FINGERPRINT_OVERRIDES: Partial<Record<EffectType, { id: string; value: number }[]>> = {
+  delay: [
+    { id: "feedback", value: 0.85 },
+    { id: "tone", value: 500 },
+  ],
+  duckDelay: [
+    { id: "feedback", value: 0.85 },
+    { id: "duckAmount", value: 1 },
+  ],
+};
+
 /** Fingerprint: the two strongest non-dry-class extremes from the sweep. */
 function fingerprintOf(sweep: SweepResult): { id: string; value: number }[] {
+  const override = FINGERPRINT_OVERRIDES[sweep.type];
+  if (override) return override;
   const paramsDef = EFFECT_META[sweep.type].params;
   const candidates = sweep.params
     .filter((p: ParamAudit) => !MIX_CLASS_IDS.has(p.id))
@@ -495,6 +548,8 @@ async function hostTestEffect(
   const restored = normalizeProject(JSON.parse(JSON.stringify(doc)));
   const restoreRender = await renderDoc(restored, bank);
   const restoreMaxDiff = maxDiff(on, restoreRender);
+  const onRms = metricsOf(on).rms;
+  const restoreRmsDiff = Math.abs(onRms - metricsOf(restoreRender).rms) / Math.max(onRms, 1e-6);
 
   // Automation: a lane stepping the strongest param mid-pattern must
   // audibly move the output vs the SAME doc without the lane. The lane is
@@ -529,13 +584,15 @@ async function hostTestEffect(
   return {
     hostError: undefined,
     hostExemptReason,
-    hostProcesses: hostDelta.delta > RESPONSIVE_EPS,
+    hostProcesses: hostDelta.delta > HOST_EPS,
     hostDelta: hostDelta.delta,
     hostBypassEqualsRemoved,
     hostFinite,
     automationDelta,
+    automationExempt: hostExemptReason,
     automationFinite: finiteEverywhere(autoRender),
     restoreMaxDiff,
+    restoreRmsDiff,
   };
 }
 
@@ -799,6 +856,7 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
       automationDelta: 0,
       automationFinite: false,
       restoreMaxDiff: Number.POSITIVE_INFINITY,
+      restoreRmsDiff: Number.POSITIVE_INFINITY,
     };
   }
   const def = EFFECT_DEFS[type];

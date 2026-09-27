@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useServices } from "./context";
+import { useSelectionStore, useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
-import { parseProductionIntent } from "../intent/production";
+import { parseProductionIntent, resolveProductionTargets } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
 import {
   applySessionCandidateCommand,
@@ -19,7 +19,7 @@ import {
   applyProductionIntentCommand,
   setMasterConfig,
 } from "../commands/commands";
-import { applyArrangeOps } from "../intent/arrangeWords";
+import { applyArrangeOps, applyClipArrangeOps } from "../intent/arrangeWords";
 import {
   reviseSection,
   replacePatternInPlaceCommand,
@@ -113,6 +113,7 @@ const BRIEF_CONFLICT_BLOCK_MESSAGE =
 
 export function IntentPanel() {
   const services = useServices();
+  const selection = useSelectionStore();
   const doc = services.store.getDoc();
   const [text, setText] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -1802,10 +1803,53 @@ export function IntentPanel() {
         await generate();
         return;
       }
-      if (route.kind === "arrange") {
+      if (route.kind === "transport") {
+        // Bare-word transport commands — runtime SERVICE state, not document
+        // state: dispatch is the whole operation, nothing to undo.
+        if (route.action === "play") {
+          stopAudition();
+          services.transport.play();
+          setStatus("⚡ transport: play");
+        } else if (route.action === "pause") {
+          services.transport.pause();
+          setStatus("⚡ transport: pause");
+        } else if (route.action === "stop") {
+          stopAudition();
+          services.transport.stop();
+          setStatus("⚡ transport: stop");
+        } else if (route.action === "metronomeOn") {
+          services.transport.setMetronome(true);
+          setStatus("⚡ metronome on");
+        } else {
+          services.transport.setMetronome(false);
+          setStatus("⚡ metronome off");
+        }
+      } else if (route.kind === "select") {
+        // Explicit track selection — UI state (SelectionStore), not document
+        // state: no undo, no mutation. Family → ids via the production
+        // resolver; "mix"/pads never reach this branch (parser declines).
+        const ids = resolveProductionTargets(doc, [route.target as never]);
+        if (ids.length === 0) {
+          setError(`no track matches "${route.target}"`);
+          return;
+        }
+        selection.setTracks(ids, "replace");
+        setStatus(`⚡ selected: ${route.target}`);
+      } else if (route.kind === "arrange") {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));
         setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}`);
+      } else if (route.kind === "clips") {
+        // Clip-level trim/copy/move/delete at absolute positions — one
+        // undoable command, NO relayout (the user placed clips on purpose).
+        stopAudition();
+        const command = applyClipArrangeOps(doc, route.ops);
+        if (!command) {
+          setError("clip changed under the request — try again");
+          return;
+        }
+        services.store.execute(command);
+        setStatus(`⚡ ${command.label}`);
       } else if (route.kind === "exact") {
         // Exact mixer commands ("mute the drums", "pan the bass left 30") —
         // one undoable command group.
