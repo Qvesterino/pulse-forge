@@ -63,7 +63,10 @@ describe("MidiOutput.cancelPending (audit 03)", () => {
     // stubbing navigator MIDIAccess would be heavy — instead verify the
     // timer/message contract through the public dispose-adjacent behavior:
     // sendNoteOn with delay must NOT have fired after cancelPending.
-    const anyOutput = output as unknown as { pending: Map<ReturnType<typeof setTimeout>, Uint8Array>; getOutput: () => unknown };
+    const anyOutput = output as unknown as {
+      pending: Map<ReturnType<typeof setTimeout>, Uint8Array>;
+      getOutput: () => unknown;
+    };
     anyOutput.getOutput = () => ({ send: (msg: Uint8Array) => sent.push(msg) }) as unknown as MIDIOutput;
 
     output.sendNoteOn(0, 60, 100, 500); // ghost hit — must be dropped

@@ -217,9 +217,11 @@ export function MasterMeter() {
           sourceId={effectiveSpectroSource}
           onSourceChange={setSpectroSource}
           getTrackAnalyser={
-            (services.engine as unknown as {
-              getSpectrogramTrackAnalyser?: (id: string) => AnalyserNode | null;
-            }).getSpectrogramTrackAnalyser?.bind(services.engine) ?? (() => null)
+            (
+              services.engine as unknown as {
+                getSpectrogramTrackAnalyser?: (id: string) => AnalyserNode | null;
+              }
+            ).getSpectrogramTrackAnalyser?.bind(services.engine) ?? (() => null)
           }
           transport={services.transport}
           id="master"

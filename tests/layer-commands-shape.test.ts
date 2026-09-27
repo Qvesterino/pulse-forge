@@ -75,7 +75,10 @@ function returnsCommand(sig: string): boolean {
   return /:\s*[^()\n]*\bCommand\b/.test(sig);
 }
 
-function scanBody(lines: string[], startIdx: number): {
+function scanBody(
+  lines: string[],
+  startIdx: number,
+): {
   hasExecute: boolean;
   hasUndo: boolean;
   hasSnapshotReturn: boolean;
@@ -101,10 +104,7 @@ function scanBody(lines: string[], startIdx: number): {
   return result;
 }
 
-const LAYER_COMMANDS: string[] = [
-  "setVelocityLayersCommand",
-  "randomizeInstrumentCommand",
-];
+const LAYER_COMMANDS: string[] = ["setVelocityLayersCommand", "randomizeInstrumentCommand"];
 
 const INTERNAL_HELPERS: string[] = [
   "sanitizeLayers", // untrusted-JSON filter, must remain non-exported.
@@ -121,15 +121,10 @@ describe("layerCommands.ts — Command shape (source-grep)", () => {
       it(title, () => {
         const idx = findExportFn(layerLines, name);
         if (idx === null) {
-          throw new Error(
-            "Layer factory " + name + " no longer exported — restore it or update LAYER_COMMANDS",
-          );
+          throw new Error("Layer factory " + name + " no longer exported — restore it or update LAYER_COMMANDS");
         }
         const sig = readSignature(layerLines, idx);
-        expect(
-          returnsCommand(sig),
-          name + " must declare `: Command`. Got:\n" + sig,
-        ).toBe(true);
+        expect(returnsCommand(sig), name + " must declare `: Command`. Got:\n" + sig).toBe(true);
       });
     }
   });
@@ -169,14 +164,12 @@ describe("layerCommands.ts — Command shape (source-grep)", () => {
         const expIdx = findExportFn(layerLines, name);
         expect(
           expIdx,
-          name + " is now exported from layerCommands.ts. sanitizeLayers operates on untrusted JSON — leaking it past the snapshot guardrail is a regression. Demote it back to an internal helper or wrap with a factory that re-validates at apply time.",
+          name +
+            " is now exported from layerCommands.ts. sanitizeLayers operates on untrusted JSON — leaking it past the snapshot guardrail is a regression. Demote it back to an internal helper or wrap with a factory that re-validates at apply time.",
         ).toBeNull();
         // Must still be defined as a function in the file.
         const anyIdx = findAnyFn(layerLines, name);
-        expect(
-          anyIdx,
-          name + " must still exist in layerCommands.ts",
-        ).not.toBeNull();
+        expect(anyIdx, name + " must still exist in layerCommands.ts").not.toBeNull();
       });
     }
   });

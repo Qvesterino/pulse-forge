@@ -51,16 +51,7 @@ describe("artist-profiles registry", () => {
     // the generator needs today. When the engine broadens its Genre enum
     // (src/ai/types.ts: house | techno | trap | ambient | drill | phonk |
     // jersey | dnb), the profile layer is already populated.
-    const engineGenre = new Set([
-      "house",
-      "techno",
-      "trap",
-      "ambient",
-      "drill",
-      "phonk",
-      "jersey",
-      "dnb",
-    ]);
+    const engineGenre = new Set(["house", "techno", "trap", "ambient", "drill", "phonk", "jersey", "dnb"]);
     const allGenres = new Set<string>();
     for (const profile of Object.values(ARTIST_PROFILES)) {
       for (const genre of profile.genres) allGenres.add(genre);

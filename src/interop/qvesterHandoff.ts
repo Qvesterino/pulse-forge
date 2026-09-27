@@ -181,7 +181,7 @@ export function gatherBeatMetadata(doc: ProjectDocument): {
   const activePattern = doc.patterns.find((p) => p.id === doc.activePatternId);
   const generationGenre =
     activePattern && typeof (activePattern as { generation?: { genre?: string } }).generation?.genre === "string"
-      ? (activePattern as { generation?: { genre?: string } }).generation?.genre ?? null
+      ? ((activePattern as { generation?: { genre?: string } }).generation?.genre ?? null)
       : null;
   return {
     beatGridOffsetSec: 0,

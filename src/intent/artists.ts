@@ -919,8 +919,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["trance", "tiesto", "armin van buuren", "psytrance"],
     // psytrance in this lane rides its own style below; the trance lane
     // itself now has a dedicated groove (offbeat open hat, 136-142).
-    genre: "techno",
-    style: "trance",
+    genre: "trance",
+    style: "uplifting",
     mood: "energetic",
     energy: 0.85,
     density: 0.65,
@@ -2044,8 +2044,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["above and beyond", "above & beyond", "anjunabeats", "anjunadeep"],
-    genre: "techno",
-    style: "trance",
+    genre: "trance",
+    style: "progressive",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -2054,8 +2054,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["paul van dyk", "pvd", "paul van dyk type beat"],
-    genre: "techno",
-    style: "trance",
+    genre: "trance",
+    style: "uplifting",
     mood: "energetic",
     energy: 0.85,
     density: 0.6,
@@ -3954,8 +3954,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // psy side via the new 'techno.psytrance' groove (Wave 3). 138-145 pocket.
   {
     names: ["astrix", "vini vici", "infected mushroom"],
-    genre: "techno",
-    style: "psytrance",
+    genre: "trance",
+    style: "psy",
     mood: "energetic",
     energy: 0.9,
     density: 0.65,
@@ -6603,7 +6603,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["kooldrink"],
-    // The popiano × gqom bridge (Overdue) — DJ Lag keeps his gqom entry above.
+    // The popiano → gqom bridge (Overdue) - DJ Lag keeps his gqom entry above.
     genre: "amapiano",
     style: "popiano",
     mood: "energetic",
@@ -6611,6 +6611,75 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [110, 118],
     label: "popiano bridge",
+  },
+  // ── Trance school tree (the Wikipedia-documented sub-genres) ────────────
+  // Uplifting is the anthem school (already carried by the trance / paul van
+  // dyk entries above); these cover the rest of the tree.
+  {
+    names: ["ferry corsten", "gareth emery", "aly & fila", "aly and fila"],
+    // The uplifting hitmakers — supersaw, breakdown, big anthem.
+    genre: "trance",
+    style: "uplifting",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [136, 142],
+    label: "uplifting hitmakers",
+  },
+  {
+    names: ["nick warren", "hernan cattaneo"],
+    // The progressive end — deep, patient, long-phrase.
+    genre: "trance",
+    style: "progressive",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [126, 134],
+    label: "progressive trance",
+  },
+  {
+    names: ["robert miles", "children trance", "dream trance"],
+    // The Robert Miles school — soft kick, piano-led euphoria.
+    genre: "trance",
+    style: "dream",
+    mood: "chill",
+    energy: 0.6,
+    density: 0.5,
+    bpmRange: [128, 136],
+    label: "dream trance",
+  },
+  {
+    names: ["simon patterson", "john askew", "sean tyas", "will atkinson"],
+    // The tech-trance / hard-trance school — warehouse crossover.
+    genre: "trance",
+    style: "tech",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [136, 144],
+    label: "tech trance",
+  },
+  {
+    names: ["kaskade trance", "kai tracid", "cosmic baby", "art of trance"],
+    // The acid-trance / early-90s school — 303 lead lines.
+    genre: "trance",
+    style: "acid",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [132, 142],
+    label: "acid trance",
+  },
+  {
+    names: ["psy producers"],
+    // The psy / Goa lineage — full-on rolling bass (moved off the old entry).
+    genre: "trance",
+    style: "psy",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [138, 148],
+    label: "psytrance producers",
   },
 ];
 

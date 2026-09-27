@@ -78,7 +78,10 @@ export function CollabPanel({ onReplaceServices }: { onReplaceServices: (service
           if (mounted.current) onReplaceServices(next);
           return;
         } catch (reopenErr) {
-          if (mounted.current) setSwitchError(`Switch failed and reopen failed too — reload the page. (${reopenErr instanceof Error ? reopenErr.message : String(reopenErr)})`);
+          if (mounted.current)
+            setSwitchError(
+              `Switch failed and reopen failed too — reload the page. (${reopenErr instanceof Error ? reopenErr.message : String(reopenErr)})`,
+            );
         }
       }
     } finally {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { matchArtistPreset } from "../src/intent/artists";
+import { ARTIST_PRESETS, matchArtistPreset } from "../src/intent/artists";
 import { parseIntentText } from "../src/intent/text-parser";
 import { getGrooveById } from "../src/ai/grooves/index";
 import { normalizeIntent } from "../src/intent/normalize";
-import { parseReviseIntent, routeIntentText, REVISE_DELTA } from "../src/intent/route";
+import { parseReviseIntent, parseSectionFlowIntent, routeIntentText, REVISE_DELTA } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
 import { generateAsyncResult } from "../src/intent/pipeline";
 
@@ -192,6 +192,22 @@ describe("targeted section revise (C3)", () => {
       expect(route.attribute).toBe("energy");
     }
   });
+
+  it("routes an explicit rhythmic-flow request to one named section", () => {
+    expect(parseSectionFlowIntent("give the drop triplet flow")).toEqual({
+      targetRole: "drop",
+      flow: "triplet",
+      detected: ["drop §", "triplet flow"],
+    });
+    expect(parseSectionFlowIntent("offbeat flow in the bridge")?.flow).toBe("offbeat");
+    expect(parseSectionFlowIntent("straight flow")).toBeNull();
+
+    expect(routeIntentText("give the drop triplet flow", testDoc())).toMatchObject({
+      kind: "sectionFlow",
+      targetRole: "drop",
+      flow: "triplet",
+    });
+  });
 });
 
 describe("expanded artist roster (vocabulary wave)", () => {
@@ -232,7 +248,7 @@ describe("expanded artist roster (vocabulary wave)", () => {
     // keinemusik upgraded onto the organic-house groove (the modern wave)
     expect(parseIntentText("keinemusik type beat").input.style).toBe("organic");
     expect(parseIntentText("dom dolla type beat").input.bpmRange).toEqual([124, 127]);
-    expect(parseIntentText("trance type beat").input.genre).toBe("techno");
+    expect(parseIntentText("trance type beat").input.genre).toBe("trance");
   });
 
   it("explicit words still override the expanded presets", () => {
@@ -910,10 +926,10 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
     expect(head.input.energy).toBe(0.95);
   });
 
-  it("astrix / vini vici / infected mushroom → psytrance (techno acid, 138-145)", () => {
+  it("astrix / vini vici / infected mushroom → psytrance (138-145)", () => {
     const astrix = parseIntentText("astrix type beat");
-    expect(astrix.input.genre).toBe("techno");
-    expect(astrix.input.style).toBe("psytrance");
+    expect(astrix.input.genre).toBe("trance");
+    expect(astrix.input.style).toBe("psy");
     expect(astrix.input.bpmRange).toEqual([138, 145]);
     expect(astrix.input.energy).toBe(0.9);
   });
@@ -922,7 +938,7 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
     // Engine integration smoke — each preset's style must resolve to a real
     // `genre.style` grooveId via getGrooveById. Wave 3 added dedicated grooves
     // for bass-house (house.basshouse), g-house (house.ghouse), hardstyle
-    // (techno.hardstyle), and psytrance (techno.psytrance); the corresponding
+    // (techno.hardstyle), and psytrance (trance.psy); the corresponding
     // artist presets now route to those first-class grooves instead of the
     // closest-fit mappings.
     expect(getGrooveById("house.basshouse")).toBeDefined();
@@ -930,7 +946,7 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
     expect(getGrooveById("house.broken")).toBeDefined();
     expect(getGrooveById("trap.dubstep")).toBeDefined();
     expect(getGrooveById("techno.hardstyle")).toBeDefined();
-    expect(getGrooveById("techno.psytrance")).toBeDefined();
+    expect(getGrooveById("trance.psy")).toBeDefined();
   });
 });
 
@@ -1891,6 +1907,46 @@ describe("jersey/baltimore/UKG producers + hyperpop-sigilkore underworld (crate-
       "ambient.glitch",
     ]) {
       expect(getGrooveById(id), id).toBeDefined();
+    }
+  });
+});
+
+describe("vocabulary-gap regression — no artist preset may dangle", () => {
+  // docs/VOCABULARY-GAP-RESEARCH.md §1a: nine presets declared a style that no
+  // groove carried (trap/dark, drill/sparse, jersey/bouncy, ambient/sparse),
+  // so their requests silently fell back to a RANDOM groove inside the genre.
+  // This gate walks every preset through the exact lookup resolveGroove
+  // performs (`getGrooveById(genre.style)`) and fails on any dangling style.
+  it("every preset style resolves to a real genre.style groove", () => {
+    const dangling: string[] = [];
+    for (const preset of ARTIST_PRESETS) {
+      if (!preset.style) continue;
+      const style = preset.style.toLowerCase().replace(/\s+/g, "");
+      if (!getGrooveById(`${preset.genre}.${style}`)) {
+        dangling.push(`${preset.genre}/${preset.style} (${preset.label})`);
+      }
+    }
+    expect(dangling).toEqual([]);
+  });
+
+  it("the previously dangling presets now resolve their remapped lanes", () => {
+    const cases: Array<[string, string, string]> = [
+      ["metro boomin type beat", "trap", "sparse"],
+      ["21 savage type beat", "trap", "sparse"],
+      ["southside type beat", "trap", "sparse"],
+      ["808 mafia type beat", "trap", "sparse"],
+      ["wondagurl type beat", "trap", "sparse"],
+      ["mike will made it type beat", "trap", "rolling"],
+      ["pop smoke type beat", "drill", "uk"],
+      ["ice spice type beat", "jersey", "club"],
+      ["billie eilish type beat", "ambient", "sadchill"],
+      ["lorde type beat", "ambient", "sadchill"],
+    ];
+    for (const [text, genre, style] of cases) {
+      const parsed = parseIntentText(text);
+      expect(parsed.input.genre, text).toBe(genre);
+      expect(parsed.input.style, text).toBe(style);
+      expect(getGrooveById(`${genre}.${style}`), text).toBeDefined();
     }
   });
 });

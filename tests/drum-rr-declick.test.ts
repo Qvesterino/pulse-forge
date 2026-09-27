@@ -4,7 +4,13 @@ import { normalizeProject, sanitizeSampleLayers, migrateProject, SCHEMA_VERSION 
 import { drumHitsInWindow, resolveHitSampleId, MAX_RATCHET } from "../src/project-model/groove";
 import { declickFadeOut, DECLICK_TAIL_SEC, resolveSlicePlayback } from "../src/audio-engine/AudioEngine";
 import { FACTORY_SNARE_RR, roundRobinLayers } from "../src/sample-library/velocity-layers";
-import { applyGenreKitToDoc, applyGenreFeelToDoc, DEFAULT_BEAT_RR, GENRE_FEEL, GENRE_KIT_SWAPS } from "../src/intent/genre-kit";
+import {
+  applyGenreKitToDoc,
+  applyGenreFeelToDoc,
+  DEFAULT_BEAT_RR,
+  GENRE_FEEL,
+  GENRE_KIT_SWAPS,
+} from "../src/intent/genre-kit";
 import { RR_VARIATIONS } from "../src/sample-library/factory";
 import { FACTORY_ASSETS } from "../src/sample-library/manifest";
 import type { DrumTrack, ProjectDocument, SampleLayer } from "../src/project-model/types";

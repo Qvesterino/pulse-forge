@@ -58,10 +58,7 @@ const AUDIO_TARGETS: Record<string, GenreAudioTarget> = {
 export const AUDIO_FEEDBACK_WEIGHT = 0.3;
 
 /** Score a candidate's audio features against the genre target. 0..1, higher = better fit. */
-export function scoreAudioFit(
-  features: AudioFeatures,
-  target: GenreAudioTarget,
-): number {
+export function scoreAudioFit(features: AudioFeatures, target: GenreAudioTarget): number {
   let total = 0;
   let dimensions = 0;
 

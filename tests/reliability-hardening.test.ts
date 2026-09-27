@@ -79,13 +79,15 @@ describe("deleteTrack — cross-reference undo integrity", () => {
     // The store applies: execute → normalizeProject (this is where the
     // sidechain ref used to be pruned OUTSIDE the captured delta).
     const applied = normalizeProject(cmd.execute(doc));
-    const appliedFx = (applied.tracks.find((t) => t.id === keeperId) as { effects?: Array<{ id: string; sidechainTrackId?: string }> })
-      .effects?.find((e) => e.id === fxId);
+    const appliedFx = (
+      applied.tracks.find((t) => t.id === keeperId) as { effects?: Array<{ id: string; sidechainTrackId?: string }> }
+    ).effects?.find((e) => e.id === fxId);
     expect(appliedFx?.sidechainTrackId, "delete must drop the sidechain ref").toBeUndefined();
 
     const restored = normalizeProject(cmd.undo(applied));
-    const restoredFx = (restored.tracks.find((t) => t.id === keeperId) as { effects?: Array<{ id: string; sidechainTrackId?: string }> })
-      .effects?.find((e) => e.id === fxId);
+    const restoredFx = (
+      restored.tracks.find((t) => t.id === keeperId) as { effects?: Array<{ id: string; sidechainTrackId?: string }> }
+    ).effects?.find((e) => e.id === fxId);
     expect(restoredFx?.sidechainTrackId, "undo must restore the sidechain ref").toBe(victimId);
   });
 
@@ -258,15 +260,10 @@ describe("tx() — sync-throw atomicity", () => {
     await tx(db, STORE_META, "readwrite", (store) => store.put("sentinel", key));
 
     await expect(
-      tx(
-        db,
-        STORE_META,
-        "readwrite",
-        (store) => {
-          store.put("clobbered", key);
-          throw new Error("sync boom");
-        },
-      ),
+      tx(db, STORE_META, "readwrite", (store) => {
+        store.put("clobbered", key);
+        throw new Error("sync boom");
+      }),
     ).rejects.toThrow("sync boom");
 
     const after = await tx<string>(db, STORE_META, "readonly", (store) => store.get(key) as IDBRequest<string>);
@@ -340,7 +337,11 @@ describe("renderer — export content correctness", () => {
     // the curated-layer wait (up to 2s) + worklet load + graph build are
     // seconds of setup during which an abort must fail fast with AbortError.
     class StubOfflineAudioContext {
-      constructor(public channels: number, public length: number, public sampleRate: number) {}
+      constructor(
+        public channels: number,
+        public length: number,
+        public sampleRate: number,
+      ) {}
     }
     const globalRef = globalThis as { OfflineAudioContext?: unknown };
     const hadOac = "OfflineAudioContext" in globalRef;

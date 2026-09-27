@@ -136,9 +136,7 @@ describe("AudioWorklet stereo output contract", () => {
     // `channelCount: 2` configures inputs only and does not make its output
     // stereo, so each signal processor must declare outputChannelCount.
     const monoControlNodes = new Set(["envfollower-node.ts"]);
-    const files = readdirSync(directory).filter(
-      (file) => file.endsWith("-node.ts") && !monoControlNodes.has(file),
-    );
+    const files = readdirSync(directory).filter((file) => file.endsWith("-node.ts") && !monoControlNodes.has(file));
 
     for (const file of files) {
       const source = readFileSync(resolve(directory, file), "utf8");
@@ -156,9 +154,7 @@ describe("AudioWorklet stereo output contract", () => {
       ["src/effects/ozvenaNode.ts", "ozvena"],
     ]) {
       const source = readFileSync(resolve(process.cwd(), path), "utf8");
-      expect(source, `${worklet} constructor must declare stereo output`).toMatch(
-        /outputChannelCount:\s*\[\s*2\s*\]/,
-      );
+      expect(source, `${worklet} constructor must declare stereo output`).toMatch(/outputChannelCount:\s*\[\s*2\s*\]/);
     }
 
     const instrumentSource = readFileSync(resolve(process.cwd(), "src/instruments/registry.ts"), "utf8");

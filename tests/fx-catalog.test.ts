@@ -12,7 +12,14 @@ import type { EffectType } from "../src/project-model/types";
  */
 
 // Flagships carry their own panels and preset systems — out of this gate.
-const FLAGSHIP_PANELS = new Set<EffectType>([...FLAGSHIP_EFFECT_ORDER, "fxeq", "ultina", "ozvena", "morphdynamics", "kaskada"]);
+const FLAGSHIP_PANELS = new Set<EffectType>([
+  ...FLAGSHIP_EFFECT_ORDER,
+  "fxeq",
+  "ultina",
+  "ozvena",
+  "morphdynamics",
+  "kaskada",
+]);
 
 const nonFlagshipTypes = (Object.keys(EFFECT_DEFS) as EffectType[]).filter((type) => !FLAGSHIP_PANELS.has(type));
 

@@ -79,6 +79,24 @@ describe("CandidateLaneReceipt", () => {
     expect(screen.getByText("neplánovaný")).toBeInTheDocument();
   });
 
+  it("explains when audio fit displaced the first-pass winner using visible bank positions", () => {
+    render(
+      <CandidateLaneReceipt
+        plan={planWithSlots(3)}
+        candidates={[
+          candidate(8, "experimental", "experimental"),
+          candidate(3, "safe", "baseline", "baseline"),
+          candidate(1, "personal", "cold-start"),
+        ]}
+        warnings={[]}
+        selection={{ audioRerank: { displacedCandidateIndex: 3, selectedCandidateIndex: 8 } }}
+      />,
+    );
+
+    expect(screen.getByLabelText("Audio rerank explanation")).toHaveTextContent(/posunul kandidáta #1 pred #2/);
+    expect(screen.getByLabelText("Audio rerank explanation")).toHaveTextContent(/nie objektívna známka kvality/);
+  });
+
   it("does not add a lane summary to a single-candidate run", () => {
     const { container } = render(
       <CandidateLaneReceipt plan={planWithSlots(1)} candidates={[candidate(0, "safe", "baseline")]} warnings={[]} />,

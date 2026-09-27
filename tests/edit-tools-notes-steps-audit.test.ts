@@ -208,7 +208,9 @@ describe("N7 undo integrity", () => {
   it("deleteNotes → undo restores the removed notes verbatim", () => {
     const { doc, trackId } = docWithTrack();
     let working = addNote(doc, trackId, { pitch: 60, start: 0, duration: 4, velocity: 0.8 }).execute(doc);
-    working = addNote(working, trackId, { pitch: 64, start: 8 * STEP_TICKS, duration: 4, velocity: 0.8 }).execute(working);
+    working = addNote(working, trackId, { pitch: 64, start: 8 * STEP_TICKS, duration: 4, velocity: 0.8 }).execute(
+      working,
+    );
     const ids = notesOf(working, trackId).map((n) => n.id);
     const cmd = deleteNotes(working, trackId, ids);
     const emptied = cmd.execute(working);

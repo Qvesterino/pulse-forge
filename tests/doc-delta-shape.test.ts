@@ -77,12 +77,7 @@ function returnsType(sig: string, typeName: string): boolean {
   return new RegExp(":\\s*[^()\\n]*\\b" + typeName + "\\b").test(sig);
 }
 
-const PUBLIC_API: string[] = [
-  "computeDocDelta",
-  "applyDocDelta",
-  "deepEqualRef",
-  "deepFreeze",
-];
+const PUBLIC_API: string[] = ["computeDocDelta", "applyDocDelta", "deepEqualRef", "deepFreeze"];
 
 const INTERNAL_HELPERS: string[] = [
   "isPlainObject",
@@ -124,7 +119,9 @@ describe("docDelta.ts — public surface (source-grep)", () => {
       for (const k of kinds) {
         expect(
           DELTA_OP_KINDS.includes(k),
-          "Novel DeltaOp kind '" + k + "' not tracked in DELTA_OP_KINDS. Add it before merging (runtime applyOp may not handle it).",
+          "Novel DeltaOp kind '" +
+            k +
+            "' not tracked in DELTA_OP_KINDS. Add it before merging (runtime applyOp may not handle it).",
         ).toBe(true);
       }
       // eslint-disable-next-line no-console
@@ -160,7 +157,9 @@ describe("docDelta.ts — public surface (source-grep)", () => {
         // helper, which is the whole point of the module.
         expect(
           !returnsType(sig, "ProjectDocument"),
-          name + " is no longer a pure utility. Returning ProjectDocument means callers can hand it a doc and observe doc-shaped output — that's applyDocDelta's job. Got:\n" + sig,
+          name +
+            " is no longer a pure utility. Returning ProjectDocument means callers can hand it a doc and observe doc-shaped output — that's applyDocDelta's job. Got:\n" +
+            sig,
         ).toBe(true);
       }
     });
@@ -173,7 +172,8 @@ describe("docDelta.ts — public surface (source-grep)", () => {
         const expIdx = findExportFn(lines, name);
         expect(
           expIdx,
-          name + " is now exported from docDelta.ts. The diff/apply walk helpers are an implementation detail — leaking them past computeDocDelta lets UI/CAFs bypass the reference-pruning pass and apply an under-specified patch. Demote back or wrap with a re-validation factory.",
+          name +
+            " is now exported from docDelta.ts. The diff/apply walk helpers are an implementation detail — leaking them past computeDocDelta lets UI/CAFs bypass the reference-pruning pass and apply an under-specified patch. Demote back or wrap with a re-validation factory.",
         ).toBeNull();
         const anyIdx = findAnyFn(lines, name);
         expect(anyIdx, name + " must still exist in docDelta.ts").not.toBeNull();

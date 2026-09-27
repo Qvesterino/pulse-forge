@@ -52,12 +52,50 @@ describe("audioClipPlayWindow", () => {
     expect(audioClipPlayWindow(clip, 6, 10, 1).duration).toBeCloseTo(5.5, 5);
   });
 
-  it("mirrors the play offset from the buffer end for reversed clips", () => {
+  it("starts negative-rate reverse at the high edge of the selected source window", () => {
     const clip = makeClip({ offsetSec: 1, trimStart: 0.5, trimEnd: 1, reverse: true });
     const win = audioClipPlayWindow(clip, 6, 10, 1);
-    // duration 3.5, offset 1.5 -> start 6 - 1.5 - 3.5 = 1
-    expect(win.playOffset).toBeCloseTo(1, 5);
+    // Negative-rate playback starts at the selected source window's high edge.
+    expect(win.playOffset).toBeCloseTo(5, 5);
     expect(win.duration).toBeCloseTo(3.5, 5);
+    expect(win.bufferDuration).toBeCloseTo(3.5, 5);
+  });
+
+  it("uses reversed-buffer coordinates for pitch-preserving reverse", () => {
+    const clip = makeClip({
+      offsetSec: 1,
+      trimStart: 0.5,
+      trimEnd: 1,
+      reverse: true,
+      stretchRate: 2,
+      stretchMode: "stretch",
+    });
+    const win = audioClipPlayWindow(clip, 12, 10, 2);
+    expect(win.playOffset).toBeCloseTo(2, 5); // 12 - scaled start 3 - 7 s content
+    expect(win.duration).toBeCloseTo(7, 5);
+    expect(win.bufferDuration).toBeCloseTo(7, 5);
+  });
+
+  it("converts requested wall time to buffer duration at resample rates", () => {
+    const clip = makeClip({ stretchRate: 2 });
+    const win = audioClipPlayWindow(clip, 6, 2, 1);
+    expect(win.duration).toBeCloseTo(2, 5);
+    expect(win.bufferDuration).toBeCloseTo(4, 5);
+  });
+
+  it("keeps loop bounds stable while starting from an advanced loop phase", () => {
+    const clip = makeClip({
+      offsetSec: 1,
+      trimStart: 0.5,
+      trimEnd: 1,
+      loop: true,
+      loopPhaseOffsetSec: 4.25,
+    });
+    const win = audioClipPlayWindow(clip, 6, 2, 1);
+    expect(win.loopStart).toBeCloseTo(1.5, 5);
+    expect(win.loopEnd).toBeCloseTo(5, 5);
+    expect(win.playOffset).toBeCloseTo(2.25, 5); // phase wraps by 3.5 s
+    expect(win.duration).toBeCloseTo(2, 5);
   });
 
   it("never produces a negative or zero duration when trims consume the buffer", () => {

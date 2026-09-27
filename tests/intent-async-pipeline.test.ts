@@ -1,12 +1,16 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
 import { generateAsyncResult, generateLocalResult, resultForCandidate } from "../src/intent/pipeline";
 import { applyGenerationResultCommand } from "../src/commands/commands";
 import { resetRankerClient } from "../src/ai/ranking/ranker-client";
-import type { GenerationResult } from "../src/intent/types";
-import type { ProjectDocument } from "../src/project-model/types";
+import { localDeterministicProvider } from "../src/intent/providers/local";
+import * as soundRanking from "../src/intent/ranking-v3";
+import type { CandidateBankEntry } from "../src/intent/candidate-bank";
+import type { GenerationRanked, GenerationResult } from "../src/intent/types";
+import type { Pattern, ProjectDocument } from "../src/project-model/types";
+import type { SampleBank } from "../src/sample-library/factory";
 
 /**
  * Canonical interactive generation path (async provider) + preview/apply
@@ -196,5 +200,94 @@ describe("ranker provenance through the canonical path", () => {
     const shadow = await generateAsyncResult(doc, INTENT);
     expect(hashOf(doc, shadow)).toBe(hashOf(doc, heuristic)); // winner unchanged
     expect(shadow.proposal!.pattern.generation?.ranker).toMatchObject({ mode: "shadow", source: "fallback" });
+  });
+});
+
+describe("audio rerank selection provenance", () => {
+  it("keeps the proposal, bank head, diagnostics, and selected index on the audio winner", async () => {
+    const doc = createDefaultProject();
+    const generated = generateLocalResult(doc, INTENT).proposal!.pattern;
+    const makePattern = (id: string): Pattern => ({
+      ...generated,
+      id,
+      generation: { ...generated.generation!, seed: id, outputContentHash: `content-${id}` },
+    });
+    const firstPattern = makePattern("ranked-first");
+    const secondPattern = makePattern("audio-winner");
+    const first: CandidateBankEntry = {
+      candidateIndex: 3,
+      seed: "ranked-first",
+      pattern: firstPattern,
+      status: "accepted",
+      repairs: [],
+      score: 0.9,
+      contentHash: "hash-first",
+      source: "template",
+    };
+    const second: CandidateBankEntry = {
+      candidateIndex: 8,
+      seed: "audio-winner",
+      pattern: secondPattern,
+      status: "repaired",
+      repairs: ["repair-audio-winner"],
+      score: 0.8,
+      contentHash: "hash-second",
+      source: "symbolic-prior",
+    };
+    const providerResult: GenerationRanked = {
+      proposal: {
+        pattern: firstPattern,
+        status: "accepted",
+        diagnostics: {
+          warnings: ["candidate-bank-selected:3:template", "ranker:model:active"],
+          repairs: [],
+          errors: [],
+        },
+      },
+      ranked: [first, second],
+      modelScores: [0.9, 0.8],
+      ranker: {
+        featureVersion: "features.v1",
+        rankerVersion: "test-ranker",
+        modelHash: "test-model-hash",
+        mode: "active",
+        source: "model",
+      },
+    };
+    const providerSpy = vi.spyOn(localDeterministicProvider, "generateRanked").mockResolvedValue(providerResult);
+    const soundSpy = vi
+      .spyOn(soundRanking, "rerankTopBySound")
+      .mockImplementation(async (_doc, bank) => [bank[1]!, bank[0]!]);
+
+    try {
+      const result = await generateAsyncResult(doc, INTENT, {
+        includeBank: true,
+        sound: { bank: {} as SampleBank },
+      });
+
+      expect(result.bank?.[0]?.candidateIndex).toBe(8);
+      expect(result.proposal?.pattern).toBe(result.bank?.[0]?.pattern);
+      expect(result.proposal?.pattern.id).toBe("audio-winner");
+      expect(result.status).toBe("repaired");
+      expect(result.proposal?.diagnostics).toBe(result.diagnostics);
+      expect(result.diagnostics.repairs).toEqual(["repair-audio-winner"]);
+      expect(result.diagnostics.warnings).toContain("candidate-bank-selected:8:symbolic-prior");
+      expect(result.diagnostics.warnings).not.toContain("candidate-bank-selected:3:template");
+      expect(result.diagnostics.warnings).toContain("audio-rerank-selected:3->8");
+      expect(result.proposal?.pattern.generation?.ranker?.selectedIndex).toBe(8);
+      expect(result.selection).toMatchObject({
+        selectedIndex: 8,
+        audioRerank: { displacedCandidateIndex: 3, selectedCandidateIndex: 8 },
+      });
+
+      const store = storeFor(doc);
+      store.execute(applyGenerationResultCommand(doc, result, "Audio winner"));
+      const applied = store.doc.patterns.find((pattern) => pattern.id === secondPattern.id);
+      expect(applied?.generation?.ranker?.selectedIndex).toBe(8);
+      expect(applied?.name).toBe("Audio winner");
+    } finally {
+      providerSpy.mockRestore();
+      soundSpy.mockRestore();
+    }
   });
 });

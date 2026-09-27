@@ -120,8 +120,40 @@ describe("updateAudioClip", () => {
     const off = updateAudioClip(on, clipId, { loop: false }).execute(on);
     expect(off.arrangement.audioClips!.find((c) => c.id === clipId)!.loop).toBe(false);
     const base = createDefaultProject();
-    const added = addAudioClip(base, base.tracks[0].id, "factory.kick", 0, 8, { loop: true }).execute(base);
+    const added = addAudioClip(base, base.tracks[0].id, "factory.kick", 0, 8, {
+      loop: true,
+      loopPhaseOffsetSec: 2,
+    }).execute(base);
     expect(added.arrangement.audioClips![0].loop).toBe(true);
+    const unlooped = updateAudioClip(added, added.arrangement.audioClips![0]!.id, { loop: false }).execute(added);
+    expect(unlooped.arrangement.audioClips![0]!.loopPhaseOffsetSec).toBeUndefined();
+  });
+
+  it("sanitizes loop phase only for finite, forward looped clips", () => {
+    const base = createDefaultProject();
+    const trackId = base.tracks[0].id;
+    const clips = sanitizeAudioClips(
+      [
+        { id: "valid", trackId, bufferId: "take", startBar: 0, lengthBars: 1, loop: true, loopPhaseOffsetSec: 2.5 },
+        { id: "negative", trackId, bufferId: "take", startBar: 1, lengthBars: 1, loop: true, loopPhaseOffsetSec: -1 },
+        { id: "not-looped", trackId, bufferId: "take", startBar: 2, lengthBars: 1, loopPhaseOffsetSec: 3 },
+        {
+          id: "reverse",
+          trackId,
+          bufferId: "take",
+          startBar: 3,
+          lengthBars: 1,
+          loop: true,
+          reverse: true,
+          loopPhaseOffsetSec: 3,
+        },
+      ],
+      new Set(base.tracks.map((track) => track.id)),
+    )!;
+    expect(clips.find((clip) => clip.id === "valid")!.loopPhaseOffsetSec).toBe(2.5);
+    expect(clips.find((clip) => clip.id === "negative")!.loopPhaseOffsetSec).toBeUndefined();
+    expect(clips.find((clip) => clip.id === "not-looped")!.loopPhaseOffsetSec).toBeUndefined();
+    expect(clips.find((clip) => clip.id === "reverse")!.loopPhaseOffsetSec).toBeUndefined();
   });
 
   it("sanitizeAudioClips keeps loop only when strictly true", () => {

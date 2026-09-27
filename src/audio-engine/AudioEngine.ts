@@ -2891,7 +2891,12 @@ export class AudioEngine {
     gain.connect(nodes.input);
 
     // Offset / trim handling
-    const { duration, playOffset, contentDur } = audioClipPlayWindow(clip, playBuffer.duration, clipDurSec, timeScale);
+    const { duration, bufferDuration, playOffset, contentDur, loopStart, loopEnd } = audioClipPlayWindow(
+      clip,
+      playBuffer.duration,
+      clipDurSec,
+      timeScale,
+    );
 
     const hasWarpPins = (clip.warpMarkers?.length ?? 0) > 0;
     const clipTicks = clip.lengthBars * BAR_TICKS;
@@ -2932,10 +2937,9 @@ export class AudioEngine {
     // playback and fades still apply at the clip edges. Skipped for reverse
     // (negative-rate looping is undefined behaviour in Web Audio).
     if (!warpSegs && clip.loop === true && !reverse && contentDur > 0.02) {
-      const loopEnd = Math.min(playBuffer.duration, playOffset + contentDur);
-      if (loopEnd - playOffset >= 0.01) {
+      if (loopEnd - loopStart >= 0.01) {
         source.loop = true;
-        source.loopStart = playOffset;
+        source.loopStart = loopStart;
         source.loopEnd = loopEnd;
       }
     }
@@ -3025,17 +3029,18 @@ export class AudioEngine {
     } else {
       // A preserving-warp hit plays the pre-rendered clip from its head.
       const effOffset = warpedHit ? 0 : playOffset;
-      const effDur = warpedHit ? Math.min(clipDurSec, warpedHit.duration) : duration;
+      const effWallDuration = warpedHit ? Math.min(clipDurSec, warpedHit.duration) : duration;
+      const effBufferDuration = warpedHit ? effWallDuration : bufferDuration;
       try {
         if (source.loop) {
-          // The optional `start(..., duration)` argument is measured against
-          // the source buffer and stops after one pass, even when `loop` is
-          // enabled. Let the loop run until the arrangement clip boundary.
+          // Keep the loop's source window separate from its starting phase.
+          // The optional duration argument counts source-buffer seconds, so
+          // stop() owns the arrangement-time boundary for repeated loops.
           source.start(when, effOffset);
-          source.stop(when + clipDurSec + 0.01);
+          source.stop(when + effWallDuration + 0.01);
         } else {
-          source.start(when, effOffset, effDur);
-          source.stop(when + effDur + 0.01);
+          source.start(when, effOffset, effBufferDuration);
+          source.stop(when + effWallDuration + 0.01);
         }
       } catch {
         /* already started */
@@ -5940,11 +5945,45 @@ export function audioClipPlayWindow(
   playBufferDurationSec: number,
   requestedDurationSec: number,
   timeScale: number,
-): { duration: number; playOffset: number; contentDur: number } {
+): {
+  /** Wall-clock duration after source-window limits are applied. */
+  duration: number;
+  /** Duration argument for AudioBufferSourceNode.start(), in buffer seconds. */
+  bufferDuration: number;
+  /** Source playhead position passed to start(). */
+  playOffset: number;
+  /** Trimmed content length in play-buffer seconds. */
+  contentDur: number;
+  /** Loop region endpoints in play-buffer seconds. */
+  loopStart: number;
+  loopEnd: number;
+} {
   const offset = Math.max(0, ((clip.offsetSec ?? 0) + (clip.trimStart ?? 0)) * timeScale);
   const trimEnd = Math.max(0, (clip.trimEnd ?? 0) * timeScale);
   const maxDur = Math.max(0.01, playBufferDurationSec - offset - trimEnd);
-  const duration = Math.min(requestedDurationSec, maxDur);
-  const playOffset = clip.reverse ? Math.max(0, playBufferDurationSec - offset - duration) : offset;
-  return { duration, playOffset, contentDur: maxDur };
+  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+  const preStretched = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01 && timeScale !== 1;
+  const playbackRate = preStretched ? 1 : rate;
+  const bufferDuration = Math.min(Math.max(0, requestedDurationSec * playbackRate), maxDur);
+  const loopStart = offset;
+  const loopEnd = Math.min(playBufferDurationSec, offset + maxDur);
+  const loopContentDur = Math.max(0, loopEnd - loopStart);
+  const loopingForward = clip.loop === true && clip.reverse !== true && loopContentDur > 0.02;
+  const duration = loopingForward ? requestedDurationSec : bufferDuration / playbackRate;
+  let playOffset: number;
+  if (loopingForward) {
+    const sourceLoopDur = loopContentDur / timeScale;
+    const phase = Math.max(0, Number.isFinite(clip.loopPhaseOffsetSec) ? clip.loopPhaseOffsetSec! : 0);
+    const wrappedPhase = sourceLoopDur > 0 ? phase % sourceLoopDur : 0;
+    playOffset = loopStart + wrappedPhase * timeScale;
+  } else if (clip.reverse) {
+    // Pitch-preserving reverse uses a physically reversed stretched buffer;
+    // resample reverse uses the original buffer and a negative playbackRate.
+    playOffset = preStretched
+      ? Math.max(0, playBufferDurationSec - offset - bufferDuration)
+      : Math.min(playBufferDurationSec, offset + bufferDuration);
+  } else {
+    playOffset = offset;
+  }
+  return { duration, bufferDuration, playOffset, contentDur: maxDur, loopStart, loopEnd };
 }

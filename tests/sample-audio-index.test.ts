@@ -11,7 +11,12 @@ import {
 import type { AudioSampleIndex, AudioIndexEntry } from "../src/sample-library/audio-index";
 
 /** Minimal AudioBuffer shape for the pure helpers (jsdom has none). */
-function fakeBuffer(channels: number, length: number, sampleRate: number, fill: (i: number, ch: number) => number): AudioBuffer {
+function fakeBuffer(
+  channels: number,
+  length: number,
+  sampleRate: number,
+  fill: (i: number, ch: number) => number,
+): AudioBuffer {
   const data: Float32Array[] = [];
   for (let ch = 0; ch < channels; ch++) {
     const arr = new Float32Array(length);
@@ -75,9 +80,15 @@ describe("audio index search", () => {
     modelId: "test",
     builtAt: 0,
     entries: [
-      entry("factory.kick.deep", [["Kick", 0.9], ["Bass drum", 0.4]]),
+      entry("factory.kick.deep", [
+        ["Kick", 0.9],
+        ["Bass drum", 0.4],
+      ]),
       entry("factory.hat.closed", [["Hi-hat", 0.85]]),
-      entry("user.mystery", [["Synthetic bass", 0.6], ["Sustain", 0.3]]),
+      entry("user.mystery", [
+        ["Synthetic bass", 0.6],
+        ["Sustain", 0.3],
+      ]),
     ],
   };
 
@@ -132,14 +143,15 @@ describe("buildAudioIndex (injected classifier)", () => {
 import { bankSignature, cacheAudioIndex, loadCachedAudioIndex } from "../src/sample-library/audio-index";
 
 describe("audio index localStorage cache", () => {
-  const makeBank = (ids: string[]) => ({
-    entries: () => ids.map((id) => [id, {} as AudioBuffer]),
-  }) as unknown as import("../src/sample-library/factory").SampleBank;
+  const makeBank = (ids: string[]) =>
+    ({
+      entries: () => ids.map((id) => [id, {} as AudioBuffer]),
+    }) as unknown as import("../src/sample-library/factory").SampleBank;
 
   const makeIndex = () => ({
-    modelId: "test", builtAt: 1, entries: [
-      { assetId: "a", name: "a", labels: [{ label: "Kick", score: 0.9 }] },
-    ],
+    modelId: "test",
+    builtAt: 1,
+    entries: [{ assetId: "a", name: "a", labels: [{ label: "Kick", score: 0.9 }] }],
   });
 
   it("caches and loads with matching bank signature", () => {

@@ -1,8 +1,0 @@
-src/intent/route.ts(4,3): error TS6133: 'parseClipArrangeIntent' is declared but its value is never read.
-src/intent/route.ts(6,8): error TS6133: 'ClipArrangeOp' is declared but its value is never read.
-tests/boombap.test.ts(53,16): error TS6133: 'school' is declared but its value is never read.
-tests/clav-instrument.test.ts(63,7): error TS2740: Type '(v: number, when: number) => any' is missing the following properties from type 'Mock<Procedure>': getMockName, mockName, mock, mockClear, and 13 more.
-tests/clav-instrument.test.ts(151,42): error TS2554: Expected 3 arguments, but got 2.
-tests/clav-instrument.test.ts(163,42): error TS2554: Expected 3 arguments, but got 2.
-tests/pcm-pipe.test.ts(203,41): error TS2749: 'EventEmitter' refers to a value, but is being used as a type here. Did you mean 'typeof EventEmitter'?
-tests/pcm-pipe.test.ts(203,66): error TS2749: 'PassThrough' refers to a value, but is being used as a type here. Did you mean 'typeof PassThrough'?

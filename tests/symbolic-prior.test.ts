@@ -9,6 +9,7 @@ import {
 } from "../src/ai/symbolic/prior-features";
 import { planGeneration } from "../src/intent/plan";
 import { normalizeIntent } from "../src/intent/normalize";
+import { parseIntentText } from "../src/intent/text-parser";
 import { symbolicPriorProvider, symbolicWanted } from "../src/intent/providers/symbolic";
 import { rankCandidateBank } from "../src/intent/candidate-bank";
 import { STEP_TICKS } from "../src/project-model/types";
@@ -21,15 +22,38 @@ import { STEP_TICKS } from "../src/project-model/types";
 // fallback) — tests/symbolic-melodic.test.ts covers the melodic path.
 vi.mock("../src/ai/symbolic/prior-client", () => ({
   runPriorGrid: vi.fn(),
+  runPriorGridV2: vi.fn(),
+  runPriorGridV3: vi.fn(),
   runMelodicNext: vi.fn(async () => ({ ok: false, degree: null, duration: null, source: "fallback" as const })),
   priorMode: vi.fn(() => "on" as const),
+  embeddingConditionedMode: vi.fn(() => "on" as const),
   resetPriorClient: vi.fn(),
   currentPriorManifest: vi.fn(() => null),
 }));
 
-import { runPriorGrid } from "../src/ai/symbolic/prior-client";
+import { runPriorGrid, runPriorGridV3 } from "../src/ai/symbolic/prior-client";
+import { V3_SEMANTIC_DIMS } from "../src/ai/symbolic/prior-features-v3";
+
+/**
+ * The semantic (embedding-conditioned) channel. The provider calls
+ * `semanticConditioningForIntent` once per candidate batch and uses the result
+ * to pick v3 → v2 → v1. In production it embeds the prompt with MiniLM; in
+ * Node there is no Worker, so it would return null and every test would
+ * silently exercise the template path. This mock makes the channel explicit
+ * and controllable: `semanticVector = null` mirrors "no embedding available".
+ */
+const semanticHolder: { vector: readonly number[] | null } = { vector: null };
+vi.mock("../src/intent/semantic-conditioning", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/intent/semantic-conditioning")>();
+  return {
+    ...actual,
+    semanticConditioningForIntent: vi.fn(async () => semanticHolder.vector),
+    semanticConditioning: vi.fn(async () => semanticHolder.vector),
+  };
+});
 
 const runPriorGridMock = vi.mocked(runPriorGrid);
+const runPriorGridV3Mock = vi.mocked(runPriorGridV3);
 
 /** Deterministic synthetic prior: kick hits downbeats, hats hit offbeats. */
 function stubProbs(batch: Float32Array, rowCount: number): number[] {
@@ -48,13 +72,112 @@ function stubProbs(batch: Float32Array, rowCount: number): number[] {
 }
 
 beforeEach(() => {
+  // Default to "no embedding available" so the pre-existing suites keep
+  // exercising exactly the path they were written against. The semantic-gate
+  // suite opts in explicitly.
+  semanticHolder.vector = null;
   runPriorGridMock.mockReset();
+  runPriorGridV3Mock.mockReset();
   runPriorGridMock.mockImplementation(async (batch: Float32Array, rowCount: number) => {
     const featureCount = batch.length / rowCount;
     if (!Number.isInteger(featureCount) || featureCount !== PRIOR_FEATURE_COUNT) {
       return { ok: false, probs: null, source: "fallback" as const };
     }
     return { ok: true, probs: stubProbs(batch, rowCount), source: "model" as const };
+  });
+  // v3 row layout: [0..15] semantic projection, then the v1 one-hot block.
+  runPriorGridV3Mock.mockImplementation(async (batch: Float32Array, rowCount: number) => {
+    const featureCount = batch.length / rowCount;
+    if (!Number.isInteger(featureCount) || featureCount <= V3_SEMANTIC_DIMS) {
+      return { ok: false, probs: null, source: "fallback" as const };
+    }
+    const tail = new Float32Array(rowCount * (featureCount - V3_SEMANTIC_DIMS));
+    for (let row = 0; row < rowCount; row++) {
+      tail.set(
+        batch.subarray(row * featureCount + V3_SEMANTIC_DIMS, (row + 1) * featureCount),
+        row * (featureCount - V3_SEMANTIC_DIMS),
+      );
+    }
+    const v1Probs = stubProbs(tail, rowCount);
+    return { ok: true, probs: v1Probs, source: "model" as const };
+  });
+});
+
+describe("semantic conditioning gate", () => {
+  // The v1 one-hot vocabulary covers a small slice of the library (house 7/53,
+  // trap 5/26, dnb and boombap none), so an out-of-vocab groove silently falls
+  // back to template drums. The escape hatch is the semantic (v2/v3) channel,
+  // and it is gated ONLY on `intent.text`. This suite pins the whole chain:
+  // parser → normalize → semanticConditioning → v3 client.
+  const doc = testDoc();
+
+  /**
+   * The shape IntentPanel actually builds: the PARSED prompt (which now
+   * carries `text`) merged with plan-shaping fields. Pin the groove to
+   * house.afropop so this test always exercises the v3-only vocabulary gap.
+   */
+  const planFromPrompt = (prompt: string) =>
+    planGeneration(
+      normalizeIntent({
+        ...parseIntentText(prompt).input,
+        genre: "house",
+        style: "afropop",
+        seed: "semantic-gate",
+        length: 16,
+        candidateCount: 1,
+        symbolicCandidates: 1,
+        roles: ["drums", "bass", "chords", "lead"],
+      }),
+      doc,
+    );
+
+  it("carries the raw prompt text from the parser into the intent", () => {
+    const raw = "travis scott meets metro boomin";
+    const intent = normalizeIntent(parseIntentText(raw).input);
+    expect(intent.text).toBe(raw);
+  });
+
+  it("routes an out-of-vocabulary groove to the v3 semantic prior when text is present", async () => {
+    // The provider prefers v3 (semantic + one-hot, 60-dim) for ANY style.
+    // Without an embedding it degrades to v1-or-template — which is exactly
+    // the 13%-coverage regression that the missing `intent.text` caused.
+    semanticHolder.vector = Object.freeze(new Array<number>(V3_SEMANTIC_DIMS).fill(0.05));
+
+    // house.afropop is deliberately outside PRIOR_STYLE_VOCAB.
+    expect((PRIOR_STYLE_VOCAB as readonly string[]).includes("house.afropop")).toBe(false);
+
+    const plan = planFromPrompt("travis scott meets metro boomin");
+
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
+    expect(failures).toEqual([]);
+    expect(runPriorGridV3Mock).toHaveBeenCalled();
+    // A prior-produced grid ⇒ the candidate is tagged prior-derived, not
+    // template. This is the coverage the missing `text` used to cost.
+    expect(entries[0].source).toBe("symbolic-prior");
+  });
+
+  it("falls back to the template for the same groove when no embedding is available", async () => {
+    // The mirror image: same prompt, embedding unavailable. This is what a
+    // user without the semantic model gets, and it must degrade safely rather
+    // than guess a grid.
+    semanticHolder.vector = null;
+
+    const plan = planFromPrompt("travis scott meets metro boomin");
+
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(
+      plan,
+      { project: doc, mode: "apply" },
+      0,
+    );
+    expect(failures).toEqual([]);
+    expect(runPriorGridV3Mock).not.toHaveBeenCalled();
+    expect(entries[0].source).toBe("template");
+    // Still a usable pattern — every drum row is shaped for the step count.
+    for (const row of Object.values(entries[0].pattern.rows)) expect(row.length).toBe(16);
   });
 });
 

@@ -163,7 +163,11 @@ describe("pattern clipboard — meta carry + id freshness (audit 01)", () => {
       ...base,
       patterns: base.patterns.map((p, i) =>
         i === 0
-          ? { ...p, rows: { ...p.rows, [padId]: p.rows[padId]?.map((v) => (v > 0 ? v : 0.8)) ?? [] }, stepMeta: { [padId]: { 0: { locks: { pitch: 7 } } } } }
+          ? {
+              ...p,
+              rows: { ...p.rows, [padId]: p.rows[padId]?.map((v) => (v > 0 ? v : 0.8)) ?? [] },
+              stepMeta: { [padId]: { 0: { locks: { pitch: 7 } } } },
+            }
           : p,
       ),
     });

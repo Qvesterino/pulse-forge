@@ -189,6 +189,14 @@ describe("unified router (D3)", () => {
     expect(routeIntentText("warmer 808 please", docWithScenes()).kind).toBe("production");
   });
 
+  it("routes section-named tone changes to the audition-first scene-FX path", () => {
+    for (const text of ["darker drop", "make the drop darker", "make bridge warmer"]) {
+      expect(routeIntentText(text, docWithScenes()).kind).toBe("sectionProduction");
+    }
+    expect(routeIntentText("make the drums darker", docWithScenes()).kind).toBe("production");
+    expect(routeIntentText("darker drop and warmer bridge", docWithScenes()).kind).toBe("clarify");
+  });
+
   it("tone comparatives WITHOUT a target still route to the mix profile", () => {
     expect(routeIntentText("darker", docWithScenes()).kind).toBe("mix");
     expect(routeIntentText("make the mix warmer", docWithScenes()).kind).toBe("mix");

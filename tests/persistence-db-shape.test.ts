@@ -96,12 +96,16 @@ describe("persistence/db.ts — IndexedDB schema owner (source-grep)", () => {
     it("DB_NAME + DB_VERSION stay `export const`", () => {
       for (const name of METADATA_CONSTS) {
         const idx = findExportConst(lines, name);
-        expect(idx, name + " must be `export const` (used by the migration runner / IndexedDB schema opener)").not.toBeNull();
+        expect(
+          idx,
+          name + " must be `export const` (used by the migration runner / IndexedDB schema opener)",
+        ).not.toBeNull();
         const letRe = new RegExp("^(?:export\\s+)?let\\s+" + name + "\\b");
         for (const ln of lines) {
           expect(
             !letRe.test(ln),
-            name + " drifted to `let`. The DB name / version are schema-defining identifiers - a mid-run reassignment would silently orphan every IndexedDB reference.",
+            name +
+              " drifted to `let`. The DB name / version are schema-defining identifiers - a mid-run reassignment would silently orphan every IndexedDB reference.",
           ).toBe(true);
         }
       }
@@ -112,13 +116,18 @@ describe("persistence/db.ts — IndexedDB schema owner (source-grep)", () => {
       it(title, () => {
         const idx = findExportConst(lines, name);
         if (idx === null) {
-          throw new Error("Constant " + name + " no longer exported from db.ts. Restore it or update STORE_CONSTS - downstream repositories depend on the symbol being a stable handle.");
+          throw new Error(
+            "Constant " +
+              name +
+              " no longer exported from db.ts. Restore it or update STORE_CONSTS - downstream repositories depend on the symbol being a stable handle.",
+          );
         }
         const letRe = new RegExp("^(?:export\\s+)?let\\s+" + name + "\\b");
         for (const ln of lines) {
           expect(
             !letRe.test(ln),
-            name + " drifted to `let`. Store-name strings are schema-defining - they need to match across tabs and versions. A reassignment breaks every existing data store on reload.",
+            name +
+              " drifted to `let`. Store-name strings are schema-defining - they need to match across tabs and versions. A reassignment breaks every existing data store on reload.",
           ).toBe(true);
         }
       });
@@ -170,7 +179,8 @@ describe("persistence/db.ts — IndexedDB schema owner (source-grep)", () => {
         for (const ln of lines) {
           expect(
             !reConst.test(ln) && !reLet.test(ln),
-            name + " is now exported. " +
+            name +
+              " is now exported. " +
               (name === "dbPromise"
                 ? "The lazy IndexedDB singleton holds cross-call state - exposing it lets callers reset it and force a fresh connection, which races with other tabs."
                 : "OPEN_BLOCKED_TIMEOUT_MS is the open-vs-other-tab race window - exposing it lets callers shorten the wait and surface false `Database is locked` errors."),
@@ -188,11 +198,7 @@ describe("persistence/db.ts — IndexedDB schema owner (source-grep)", () => {
         const m = ln.match(re);
         if (m) seen.push({ name: m[2], kind: m[1] });
       }
-      const tracked = new Set<string>([
-        ...METADATA_CONSTS,
-        ...STORE_CONSTS,
-        ...PUBLIC_FUNCTIONS,
-      ]);
+      const tracked = new Set<string>([...METADATA_CONSTS, ...STORE_CONSTS, ...PUBLIC_FUNCTIONS]);
       const novel: string[] = [];
       for (const item of seen) {
         if (!tracked.has(item.name)) novel.push(item.name + ":" + item.kind);

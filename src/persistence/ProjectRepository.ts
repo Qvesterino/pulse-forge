@@ -107,9 +107,7 @@ export class ProjectRepository {
     return all
       .filter(
         (doc) =>
-          validateProjectShape(doc) &&
-          typeof doc.schemaVersion === "number" &&
-          doc.schemaVersion > SCHEMA_VERSION,
+          validateProjectShape(doc) && typeof doc.schemaVersion === "number" && doc.schemaVersion > SCHEMA_VERSION,
       )
       .map((doc) => ({
         id: doc.id,

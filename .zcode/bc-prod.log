@@ -1,0 +1,11 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/intent-production.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 1801[2mms[22m[39m
+   [33m[2mÔťô[22m[39m planner[2m > [22mdeeper Ôćĺ pitchShift with amount-scaled semitones, clamped to metadata [33m1743[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m20 passed[39m[22m[90m (20)[39m
+[2m   Start at [22m 13:15:07
+[2m   Duration [22m 12.34s[2m (transform 4.53s, setup 893ms, collect 4.97s, tests 1.80s, environment 2.86s, prepare 408ms)[22m
+

@@ -85,9 +85,7 @@ describe("security: isAllowedServerUrl rejects hostile ?server= overrides", () =
     // loopback overrides are the same-host legitimate path. Skip the
     // rejection assertions when running on dev and only test the
     // port-hopping variant (which is also dev-relevant).
-    const onLoopback = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(
-      location.hostname.toLowerCase(),
-    );
+    const onLoopback = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(location.hostname.toLowerCase());
 
     it("rejects localhost / 127.0.0.1 / 0.0.0.0 / ::1 overrides (non-loopback origin)", () => {
       if (onLoopback) return; // covered by the same-host allow-list above
@@ -152,13 +150,7 @@ describe("security: isAllowedServerUrl rejects hostile ?server= overrides", () =
     });
 
     it("rejects IPv4-shaped strings with extra labels (regex precision)", () => {
-      const tricky = [
-        "1.2.3.4.5",
-        "999.999.999.999",
-        "1.2.3",
-        "1.2.3.4 ",
-        " 1.2.3.4",
-      ];
+      const tricky = ["1.2.3.4.5", "999.999.999.999", "1.2.3", "1.2.3.4 ", " 1.2.3.4"];
       for (const t of tricky) {
         expect(probeOverride(`ws://${t}:1234`)).toBeNull();
       }

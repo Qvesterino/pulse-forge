@@ -6,6 +6,7 @@ import {
   applySongCommand,
   previewSongForm,
   reviseSection,
+  reviseSectionFlow,
   replacePatternInPlaceCommand,
   type SongBuild,
 } from "../src/intent/song";
@@ -14,6 +15,7 @@ import { getActivePattern } from "../src/project-model/types";
 import type { Pattern, Scene } from "../src/project-model/types";
 import { SampleBank } from "../src/sample-library/factory";
 import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
+import { instrumentTrackForRole } from "../src/ai/role-targets";
 
 const INTENT = normalizeIntent({ genre: "house", seed: "song-test", bpmRange: [140, 140] });
 
@@ -387,6 +389,42 @@ describe("targeted section revise (C3)", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.error).toContain("no bridge section");
   });
+
+  it("changes only a section's lead flow and preserves all other musical roles", async () => {
+    const doc = testDoc();
+    const build = await buildSong(
+      doc,
+      normalizeIntent({ genre: "trap", flow: "straight", energy: 0.9, seed: "section-flow", bpmRange: [140, 140] }),
+      { yieldBetweenSections: false },
+    );
+    const withSong = applySongCommand(doc, build).execute(withDocBpm(doc, build));
+    const chorus = withSong.scenes.find((scene) => scene.role === "chorus")!;
+    const original = withSong.patterns.find((pattern) => pattern.id === chorus.patternId)!;
+    const originalIntent = normalizeIntent(original.generation?.intent);
+    const leadTrack = instrumentTrackForRole(withSong, "lead", originalIntent.targetTracks.instrumentTrackIds);
+    expect(leadTrack).toBeDefined();
+    if (!leadTrack) return;
+
+    const triplet = reviseSectionFlow(withSong, "chorus", "triplet");
+    if (!triplet.ok) throw new Error(triplet.error);
+    expect(triplet.ok).toBe(true);
+    if (!triplet.ok) return;
+    expect(triplet.pattern.id).toBe(original.id);
+    expect(triplet.pattern.generation?.seed).toBe(original.generation?.seed);
+    expect(triplet.pattern.generation?.intent).toMatchObject({ flow: "triplet" });
+    expect(triplet.pattern.notes[leadTrack.id]?.length).toBeGreaterThan(0);
+    expect(triplet.pattern.notes[leadTrack.id]?.every((note) => note.start % 80 === 0)).toBe(true);
+    expect(Object.fromEntries(Object.entries(triplet.pattern.notes).filter(([id]) => id !== leadTrack.id))).toEqual(
+      Object.fromEntries(Object.entries(original.notes).filter(([id]) => id !== leadTrack.id)),
+    );
+
+    const straight = reviseSectionFlow(withSong, "chorus", "straight");
+    if (!straight.ok) throw new Error(straight.error);
+    expect(straight.ok).toBe(true);
+    if (!straight.ok) return;
+    expect(straight.pattern.notes[leadTrack.id]?.every((note) => note.start % 120 === 0)).toBe(true);
+    expect(straight.pattern.generation?.outputContentHash).not.toBe(triplet.pattern.generation?.outputContentHash);
+  }, 60_000);
 });
 
 function withDocBpm(doc: Parameters<typeof applySongCommand>[0], build: { resolvedBpm: number | null }) {

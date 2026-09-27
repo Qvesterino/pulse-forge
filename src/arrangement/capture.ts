@@ -171,7 +171,12 @@ export class ArrangementCaptureController {
     // Audit 08 D7: delta snapshot, not a whole-doc pin — `undo: () => doc`
     // clobbered any change that reached the store between capture build and
     // the undo (async finalize, generative refresh).
-    return snapshot("captureLastTake", `Capture last take (${this.capturedEventCount || ""} events)`, doc, next) as Command;
+    return snapshot(
+      "captureLastTake",
+      `Capture last take (${this.capturedEventCount || ""} events)`,
+      doc,
+      next,
+    ) as Command;
   };
 
   // ── Arrangement launch capture (existing feature) ───────────────────────

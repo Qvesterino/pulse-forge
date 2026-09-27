@@ -32,11 +32,9 @@ export function tempoDivisionOptions(
   idOrder: readonly string[],
   optionOrder: readonly string[] = TEMPO_NOTE_DIVISIONS.map(({ label }) => label),
 ): { value: number; label: string }[] {
-  return optionOrder
-    .map((label) => ({ value: idOrder.indexOf(label), label }))
-    .filter((option) => option.value >= 0);
+  return optionOrder.map((label) => ({ value: idOrder.indexOf(label), label })).filter((option) => option.value >= 0);
 }
 
 export function tempoDivisionBeatsById(idOrder: readonly string[]): number[] {
-  return idOrder.map((label) => (label === "OFF" ? 0 : (TEMPO_DIVISION_BEATS as Record<string, number>)[label] ?? 0));
+  return idOrder.map((label) => (label === "OFF" ? 0 : ((TEMPO_DIVISION_BEATS as Record<string, number>)[label] ?? 0)));
 }

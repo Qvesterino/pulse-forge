@@ -94,7 +94,10 @@ export const QUERY_SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]>
 
 /** Match a query against the synonym map → AudioSet label substrings. */
 export function queryToLabelStems(query: string): string[] {
-  const lower = ` ${query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")} `;
+  const lower = ` ${query
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
   const stems: string[] = [];
   for (const [re, labels] of QUERY_SYNONYMS) {
     if (re.test(lower)) stems.push(...labels);
@@ -171,17 +174,23 @@ const CACHE_KEY = "pf:audio-index-cache";
 
 /** Deterministic bank fingerprint — changes when assets are added/removed. */
 export function bankSignature(bank: SampleBank): string {
-  const ids = bank.entries().map(([id]) => id).sort();
+  const ids = bank
+    .entries()
+    .map(([id]) => id)
+    .sort();
   return `${ids.length}:${ids.slice(0, 3).join(",")}:${ids.slice(-3).join(",")}`;
 }
 
 export function cacheAudioIndex(index: AudioSampleIndex, bank: SampleBank): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({
-      version: 1,
-      signature: bankSignature(bank),
-      index,
-    }));
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        version: 1,
+        signature: bankSignature(bank),
+        index,
+      }),
+    );
   } catch {
     /* quota/blocked — cache is best-effort */
   }

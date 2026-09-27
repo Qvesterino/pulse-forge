@@ -48,26 +48,31 @@ export function EffectIntentAssistant({
     [services.engine],
   );
 
-  const onPreviewEnded = useCallback((reason: EffectIntentPreviewEndReason) => {
-    previewRef.current = null;
-    setPreviewing(false);
-    if (!mountedRef.current) return;
-    if (reason === "projectChanged") {
-      proposalRef.current = null;
-      setProposal(null);
-      setMessage("Projekt sa zmenil. Preview sa obnovilo a návrh treba vytvoriť znova.");
-    } else if (reason === "transportStarted") {
-      setMessage("Preview sa zastavilo pri spustení prehrávania; projekt sa nezmenil.");
-    } else if (reason === "restoreFailed") {
-      if (proposalRef.current && services.store.getDoc() !== proposalRef.current.doc) {
+  const onPreviewEnded = useCallback(
+    (reason: EffectIntentPreviewEndReason) => {
+      previewRef.current = null;
+      setPreviewing(false);
+      if (!mountedRef.current) return;
+      if (reason === "projectChanged") {
         proposalRef.current = null;
         setProposal(null);
+        setMessage("Projekt sa zmenil. Preview sa obnovilo a návrh treba vytvoriť znova.");
+      } else if (reason === "transportStarted") {
+        setMessage("Preview sa zastavilo pri spustení prehrávania; projekt sa nezmenil.");
+      } else if (reason === "restoreFailed") {
+        if (proposalRef.current && services.store.getDoc() !== proposalRef.current.doc) {
+          proposalRef.current = null;
+          setProposal(null);
+        }
+        setMessage(
+          "Plugin odmietol obnoviť pôvodné audio hodnoty. Projekt sa nezmenil; zastav prehrávanie a znovu načítaj zariadenie.",
+        );
+      } else {
+        setMessage("Preview zastavené; projekt ostal nezmenený.");
       }
-      setMessage("Plugin odmietol obnoviť pôvodné audio hodnoty. Projekt sa nezmenil; zastav prehrávanie a znovu načítaj zariadenie.");
-    } else {
-      setMessage("Preview zastavené; projekt ostal nezmenený.");
-    }
-  }, [services.store]);
+    },
+    [services.store],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -183,7 +188,11 @@ export function EffectIntentAssistant({
       setMessage("Pred preview zastav prehrávanie, aby sa nebilo s automatizáciou parametrov.");
       return;
     }
-    if (proposalRef.current?.proposal !== proposal || proposalRef.current.doc !== doc || !isEffectIntentProposalCurrent(doc, proposal)) {
+    if (
+      proposalRef.current?.proposal !== proposal ||
+      proposalRef.current.doc !== doc ||
+      !isEffectIntentProposalCurrent(doc, proposal)
+    ) {
       proposalRef.current = null;
       setProposal(null);
       setMessage("Zariadenie sa zmenilo. Vytvor nový návrh z aktuálneho stavu.");
@@ -214,7 +223,11 @@ export function EffectIntentAssistant({
       setMessage("Vyber aspoň jeden parameter, ktorý chceš aplikovať.");
       return;
     }
-    if (proposalRef.current?.proposal !== proposal || proposalRef.current.doc !== doc || !isEffectIntentProposalCurrent(doc, proposal)) {
+    if (
+      proposalRef.current?.proposal !== proposal ||
+      proposalRef.current.doc !== doc ||
+      !isEffectIntentProposalCurrent(doc, proposal)
+    ) {
       cancelPreview();
       proposalRef.current = null;
       setProposal(null);
@@ -285,7 +298,11 @@ export function EffectIntentAssistant({
           </form>
 
           {fallbackReason && <p className="effect-intent-warning">Audio beží cez fallback: {fallbackReason}</p>}
-          {message && <p className="effect-intent-message" role="status" aria-live="polite">{message}</p>}
+          {message && (
+            <p className="effect-intent-message" role="status" aria-live="polite">
+              {message}
+            </p>
+          )}
 
           {proposal && (
             <div className="effect-intent-proposal">
@@ -319,7 +336,9 @@ export function EffectIntentAssistant({
                       />
                       <span className="effect-intent-change">
                         <strong>{change.label}</strong>
-                        <span>{change.beforeText} <span aria-hidden="true">→</span> {change.afterText}</span>
+                        <span>
+                          {change.beforeText} <span aria-hidden="true">→</span> {change.afterText}
+                        </span>
                       </span>
                     </label>
                     <small>{change.rationale}</small>
@@ -327,19 +346,30 @@ export function EffectIntentAssistant({
                 ))}
               </ul>
               {proposal.warnings.map((warning) => (
-                <p className="effect-intent-warning" key={warning}>{warning}</p>
+                <p className="effect-intent-warning" key={warning}>
+                  {warning}
+                </p>
               ))}
               <div className="effect-intent-actions">
                 <button
                   type="button"
                   className={`btn btn-small${previewing ? " active" : ""}`}
                   disabled={effect.bypassed || selectedParamIds.size === 0}
-                  title={effect.bypassed ? "Najprv zapni zariadenie, aby sa dalo vypočuť" : "Dočasne vypočuť iba vybrané zmeny"}
+                  title={
+                    effect.bypassed
+                      ? "Najprv zapni zariadenie, aby sa dalo vypočuť"
+                      : "Dočasne vypočuť iba vybrané zmeny"
+                  }
                   onClick={togglePreview}
                 >
                   {previewing ? "Zastaviť preview" : "Vypočuť"}
                 </button>
-                <button type="button" className="btn btn-small btn-primary" onClick={applyProposal} disabled={selectedParamIds.size === 0}>
+                <button
+                  type="button"
+                  className="btn btn-small btn-primary"
+                  onClick={applyProposal}
+                  disabled={selectedParamIds.size === 0}
+                >
                   Apply zmeny
                 </button>
                 <button

@@ -20,11 +20,7 @@ class FakeAudioWorkletProcessor {
 }
 
 interface VocoderLike {
-  process: (
-    inputs: Float32Array[][],
-    outputs: Float32Array[][],
-    parameters: Record<string, Float32Array>,
-  ) => boolean;
+  process: (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) => boolean;
 }
 
 const SR = 44100;
@@ -261,7 +257,14 @@ describe("Vocoder processor", () => {
     const out: Float32Array[][] = [[new Float32Array(n), new Float32Array(n)]];
     // Only a legacy subset of params present.
     expect(() =>
-      fx.process([[car, car], [mod, mod]], out, param({ bands: 16, loFreq: 120, hiFreq: 7000, mix: 1 })),
+      fx.process(
+        [
+          [car, car],
+          [mod, mod],
+        ],
+        out,
+        param({ bands: 16, loFreq: 120, hiFreq: 7000, mix: 1 }),
+      ),
     ).not.toThrow();
     expect(energyOf(out[0])).toBeGreaterThan(0);
   });

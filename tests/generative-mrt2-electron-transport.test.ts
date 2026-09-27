@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createMrt2ElectronProvider,
-  encodeMrt2AudioPacket,
-  type Mrt2ControlMessage,
-} from "../src/generative";
+import { createMrt2ElectronProvider, encodeMrt2AudioPacket, type Mrt2ControlMessage } from "../src/generative";
 
 function input() {
   return {

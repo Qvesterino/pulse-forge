@@ -847,6 +847,13 @@
   overflow-wrap: anywhere;
 }
 
+.intent-lane-receipt-audio {
+  margin: 0;
+  color: var(--text-muted, #aaa);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 @media (max-width: 520px) {
   .intent-lane-receipt-list {
     grid-template-columns: 1fr;

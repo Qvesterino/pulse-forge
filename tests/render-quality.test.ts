@@ -97,7 +97,10 @@ describe("VØID render tail (2026-09-19 audit)", () => {
     params: Record<string, number>;
   };
   const docWithOzvena = (effects: OzvenaFixture[], returns: OzvenaFixture[] = []) =>
-    ({ tracks: [{ id: "track-1", effects }], returns: returns.map((fx) => ({ id: "ret-1", effects: [fx] })) }) as unknown as ProjectDocument;
+    ({
+      tracks: [{ id: "track-1", effects }],
+      returns: returns.map((fx) => ({ id: "ret-1", effects: [fx] })),
+    }) as unknown as ProjectDocument;
 
   it("falls back to 2 s without a VØID reverb", () => {
     expect(resolveRenderTailSeconds(docWithEffects([]))).toBe(2);

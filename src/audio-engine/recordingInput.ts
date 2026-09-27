@@ -49,7 +49,10 @@ export function loadRecordingInputGainDb(storage: RecordingInputStorage | null =
   }
 }
 
-export function saveRecordingInputGainDb(gainDb: number, storage: RecordingInputStorage | null = browserStorage()): void {
+export function saveRecordingInputGainDb(
+  gainDb: number,
+  storage: RecordingInputStorage | null = browserStorage(),
+): void {
   try {
     if (!storage) return;
     // No rounding — exact round-trip so the slider reads the same value
@@ -63,15 +66,21 @@ export function saveRecordingInputGainDb(gainDb: number, storage: RecordingInput
 
 /** Device labels are often withheld until the user grants audio-input permission. */
 export async function listRecordingInputDevices(
-  mediaDevices: Pick<MediaDevices, "enumerateDevices"> | null =
-    typeof navigator !== "undefined" ? navigator.mediaDevices : null,
+  mediaDevices: Pick<MediaDevices, "enumerateDevices"> | null = typeof navigator !== "undefined"
+    ? navigator.mediaDevices
+    : null,
 ): Promise<RecordingInputDevice[]> {
   if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") return [];
   const devices = await mediaDevices.enumerateDevices();
   let anonymousIndex = 0;
   const seen = new Set<string>();
   return devices.flatMap((device) => {
-    if (device.kind !== "audioinput" || !device.deviceId || device.deviceId === "default" || seen.has(device.deviceId)) {
+    if (
+      device.kind !== "audioinput" ||
+      !device.deviceId ||
+      device.deviceId === "default" ||
+      seen.has(device.deviceId)
+    ) {
       return [];
     }
     seen.add(device.deviceId);

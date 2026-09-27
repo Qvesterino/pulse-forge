@@ -46,17 +46,13 @@ describe("humContourLayout", () => {
   });
 
   it("expands pitch bounds to include notes AND voiced frames (with padding)", () => {
-    const layout = humContourLayout(
-      [frame({ midi: 67 })],
-      [note({ pitch: 72 })],
-      {
-        bpm: 120,
-        patternLengthTicks: BAR_TICKS * 2,
-        anchorTick: null,
-        width: 400,
-        height: 80,
-      },
-    );
+    const layout = humContourLayout([frame({ midi: 67 })], [note({ pitch: 72 })], {
+      bpm: 120,
+      patternLengthTicks: BAR_TICKS * 2,
+      anchorTick: null,
+      width: 400,
+      height: 80,
+    });
     // Pitch range must cover both 67 (frame) and 72 (note), plus 2-semitone
     // padding on each side. A regression that ignored the frames would
     // silently clip the hum curve outside the note range.
@@ -99,34 +95,26 @@ describe("humContourLayout", () => {
   it("free-time mode drops frames past the pattern end", () => {
     const len = BAR_TICKS;
     const farFuture = 999; // timeSec = 999 → tick = 999 * secPerTick → past len
-    const layout = humContourLayout(
-      [frame({ timeSec: 0 }), frame({ timeSec: farFuture })],
-      [],
-      {
-        bpm: 60, // 1 sec per beat
-        patternLengthTicks: len,
-        anchorTick: null,
-        width: 400,
-        height: 80,
-      },
-    );
+    const layout = humContourLayout([frame({ timeSec: 0 }), frame({ timeSec: farFuture })], [], {
+      bpm: 60, // 1 sec per beat
+      patternLengthTicks: len,
+      anchorTick: null,
+      width: 400,
+      height: 80,
+    });
     expect(layout.points).toHaveLength(1);
   });
 
   it("beat-synced mode wraps points into the [0, len) tick range", () => {
     // Two frames at timeSec=0 and timeSec=2 with anchor=0 at 60 BPM land at
     // tick 0 and tick PPQ*2 (480*2 = 960). Both stay inside [0, BAR_TICKS).
-    const layout = humContourLayout(
-      [frame({ timeSec: 0, midi: 60 }), frame({ timeSec: 2, midi: 62 })],
-      [],
-      {
-        bpm: 60,
-        patternLengthTicks: BAR_TICKS,
-        anchorTick: 0,
-        width: 400,
-        height: 80,
-      },
-    );
+    const layout = humContourLayout([frame({ timeSec: 0, midi: 60 }), frame({ timeSec: 2, midi: 62 })], [], {
+      bpm: 60,
+      patternLengthTicks: BAR_TICKS,
+      anchorTick: 0,
+      width: 400,
+      height: 80,
+    });
     expect(layout.points).toHaveLength(2);
     // The x coordinates must be inside the canvas width — a regression that
     // forgot modulo would produce negative or out-of-range x values.

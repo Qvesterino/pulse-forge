@@ -16,7 +16,12 @@ import type { ProjectDocument } from "../src/project-model/types";
  */
 
 /** Minimal AudioBuffer stand-in (encodeWav touches exactly these members). */
-function fakeBuffer(channels: number, sampleRate: number, frames: number, fill: (ch: number, i: number) => number): AudioBuffer {
+function fakeBuffer(
+  channels: number,
+  sampleRate: number,
+  frames: number,
+  fill: (ch: number, i: number) => number,
+): AudioBuffer {
   const data: Float32Array[] = [];
   for (let ch = 0; ch < channels; ch++) {
     const arr = new Float32Array(frames);
@@ -48,7 +53,14 @@ function parseWav(bytes: ArrayBuffer) {
     sumSquares += s * s;
     count++;
   }
-  return { riff, riffSize, dataSize, peak, rms: count > 0 ? Math.sqrt(sumSquares / count) : 0, fileBytes: bytes.byteLength };
+  return {
+    riff,
+    riffSize,
+    dataSize,
+    peak,
+    rms: count > 0 ? Math.sqrt(sumSquares / count) : 0,
+    fileBytes: bytes.byteLength,
+  };
 }
 
 describe("export verification — WAV encode contract (audit 11 wave 4)", () => {

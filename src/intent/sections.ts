@@ -164,12 +164,12 @@ export function parseSectionRequests(text: string): SectionParse | null {
   // 1) Scoped FX — "vinyl break", optional bar count between the words
   //    ("vinyl 8-bar break"). One request per (concept, role).
   const scopedRe = new RegExp(
-    `\\b(${wordList(ALL_FX_WORDS)})\\s+(?:(?:\\d{1,3})[\\s-]*(?:${BAR_UNITS})\\s+)?${ROLE_ATOM}\\b`,
+    `\\b(?:(${wordList(ALL_FX_WORDS)})\\s+(?:(?:\\d{1,3})[\\s-]*(?:${BAR_UNITS})\\s+)?${ROLE_ATOM}|${ROLE_ATOM}\\s+(?:(?:\\d{1,3})[\\s-]*(?:${BAR_UNITS})\\s+)?(${wordList(ALL_FX_WORDS)}))\\b`,
     "i",
   );
   for (let match = working.match(scopedRe); match; match = working.match(scopedRe)) {
-    const role = roleForWord(de(match[2]!));
-    const concept = conceptForWord(de(match[1]!));
+    const role = roleForWord(de(match[2] ?? match[3]!));
+    const concept = conceptForWord(de(match[1] ?? match[4]!));
     if (role && concept && !scopedFx.some((s) => s.role === role && s.fx.goals[0]?.concept === concept)) {
       scopedFx.push({
         role,

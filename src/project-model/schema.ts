@@ -38,7 +38,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams }
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -550,6 +550,10 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
     const reverse = raw.reverse === true;
     const loop = raw.loop === true;
+    const loopPhaseOffsetSec =
+      loop && !reverse && Number.isFinite(Number(raw.loopPhaseOffsetSec)) && Number(raw.loopPhaseOffsetSec) >= 0
+        ? Number(raw.loopPhaseOffsetSec)
+        : undefined;
     const sourceChannel =
       Number.isSafeInteger(raw.sourceChannel) && Number(raw.sourceChannel) >= 0 && Number(raw.sourceChannel) < 32
         ? Number(raw.sourceChannel)
@@ -594,6 +598,7 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
       ...(takeGroupId && takeId ? { takeGroupId, takeId } : {}),
       ...(takeGroupId && takeId && compSourceTakeId ? { compSourceTakeId } : {}),
       ...(loop ? { loop } : {}),
+      ...(loopPhaseOffsetSec !== undefined ? { loopPhaseOffsetSec } : {}),
       ...(stretchMode ? { stretchMode } : {}),
       ...(warpMarkers ? { warpMarkers } : {}),
     });
@@ -943,7 +948,8 @@ export function sanitizeSampleLayers(raw: unknown): import("./types").SampleLaye
   return cleanLayers.length > 0 ? cleanLayers : undefined;
 }
 
-function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod | null {  if (typeof raw !== "object" || raw === null) return null;
+function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod | null {
+  if (typeof raw !== "object" || raw === null) return null;
   const m = raw as Record<string, unknown>;
   const target = typeof m.target === "string" && PAD_MOD_TARGETS.has(m.target) ? m.target : null;
   if (!target) return null;
@@ -2319,7 +2325,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // source-channel routing; v5 adds non-destructive AudioClip take groups;
   // v6 adds an optional production profile to generated-pattern provenance;
   // v7 adds take-comp provenance and permits short, positive AudioClip ranges;
-  // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`).
+  // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`);
+  // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

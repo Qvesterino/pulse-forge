@@ -63,8 +63,10 @@ function freeBar(doc: ProjectDocument): number {
   return doc.arrangement.clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0) + 1;
 }
 
-const addNoteTo = (pitch = 61, start = 0, duration = 120) => (store: ProjectStore) =>
-  run(store, (d) => C.addNote(d, instrumentOf(d).id, { pitch, start, duration, velocity: 0.7 }));
+const addNoteTo =
+  (pitch = 61, start = 0, duration = 120) =>
+  (store: ProjectStore) =>
+    run(store, (d) => C.addNote(d, instrumentOf(d).id, { pitch, start, duration, velocity: 0.7 }));
 
 const CASES: Case[] = [
   // ── project ──
@@ -159,7 +161,10 @@ const CASES: Case[] = [
     build: (d) => C.clearAllSolos(d),
   },
   // ── notes ──
-  { name: "addNote", build: (d) => C.addNote(d, instrumentOf(d).id, { pitch: 61, start: 0, duration: 120, velocity: 0.7 }) },
+  {
+    name: "addNote",
+    build: (d) => C.addNote(d, instrumentOf(d).id, { pitch: 61, start: 0, duration: 120, velocity: 0.7 }),
+  },
   {
     name: "deleteNote",
     setup: [addNoteTo(99, 3, 150)],
@@ -442,7 +447,9 @@ describe("DEBUG note diffs", () => {
     const store = new ProjectStore(createProjectFromTemplate("house"));
     const instr = store.doc.tracks.find((t) => t.kind === "instrument")!;
     store.execute(C.addNote(store.doc, instr.id, { pitch: 61, start: 0, duration: 120, velocity: 0.7 }));
-    const noteId = (store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<string, { id: string }[]>)[instr.id]![0]!.id;
+    const noteId = (
+      store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<string, { id: string }[]>
+    )[instr.id]![0]!.id;
     store.execute(C.deleteNote(store.doc, instr.id, noteId));
     const pre = normalizeProject(store.doc);
     store.undo();
@@ -455,16 +462,41 @@ describe("DEBUG note diffs", () => {
     const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
     const notes = pattern.notes as Record<string, { id: string; duration: number }[]>;
     const noteId = notes[instr.id]![0]!.id;
-    console.log("note count:", notes[instr.id]!.length, "durations:", notes[instr.id]!.map((n) => n.duration));
+    console.log(
+      "note count:",
+      notes[instr.id]!.length,
+      "durations:",
+      notes[instr.id]!.map((n) => n.duration),
+    );
     const pre = normalizeProject(store.doc);
     store.execute(C.resizeNote(store.doc, instr.id, noteId, 240));
     const post = normalizeProject(store.doc);
-    const postNotes = (post.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<string, { id: string; duration: number }[]>)[instr.id]!;
-    console.log("after execute durations:", postNotes?.map((n) => n.duration), "target id:", noteId);
+    const postNotes = (
+      post.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<
+        string,
+        { id: string; duration: number }[]
+      >
+    )[instr.id]!;
+    console.log(
+      "after execute durations:",
+      postNotes?.map((n) => n.duration),
+      "target id:",
+      noteId,
+    );
     console.log("execute changed:", JSON.stringify(pre) !== JSON.stringify(post));
     store.undo();
     store.redo();
-    const redone = (store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<string, { id: string; duration: number }[]>)[instr.id]!;
-    console.log("after redo durations:", redone?.map((n) => n.duration), "count:", redone?.length);
+    const redone = (
+      store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.notes as Record<
+        string,
+        { id: string; duration: number }[]
+      >
+    )[instr.id]!;
+    console.log(
+      "after redo durations:",
+      redone?.map((n) => n.duration),
+      "count:",
+      redone?.length,
+    );
   });
 });

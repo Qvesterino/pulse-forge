@@ -44,7 +44,7 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Was routed to techno before the groove existed, which left style
   // "synthwave" with no techno.synthwave id → silent random techno fallback.
   [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b/, "ambient"],
-  [/\btrance\b|\bpsytrance\b|\bpsy\b/, "techno"],
+  [/\btrance\b|\bpsytrance\b|\bpsy\b|\buplifting trance\b|\bvocal trance\b|\bdream trance\b/, "trance"],
   [/\bacid house\b/, "house"],
   [/\bbass house\b|\bfuture house\b/, "house"],
   [/\bg[- ]house\b|\bghetto ?tech\b/, "house"],
@@ -225,6 +225,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bbaltimore(?: club)?\b|\bbmore(?: club)?\b/, "jersey"],
   [/\bafro\b|\bafrobeats?\b|\bafropop\b/, "house"],
   [/\breggaeton\b|\bdembow\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "house"],
+  // Trance school compounds MUST sit above the techno acid/tech entries:
+  // "acid trance" / "tech trance" are trance, not techno.
+  [/\bacid trance\b|\btech trance\b|\btechtrance\b|\bprogressive trance\b|\bprog trance\b|\bdream trance\b/, "trance"],
   [/\btechno\b/, "techno"],
   [/\btech\b/, "techno"],
   [/\bacid\b/, "techno"],
@@ -272,6 +275,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Synthwave family — BEFORE "driving" ("synthwave night drive" would
   // otherwise be stolen by \bdrive\b). ambient.synthwave is the real pocket.
   [/\bsynthwave\b|\bretrowave\b|\bdarksynth\b|\boutrun\b|\bnight drive\b/, "synthwave"],
+  // "lofi hip hop" is the ambient study-beats lane (genre entry above pins
+  // ambient) — its style must be drifting, not the boom-bap lofi token.
+  [/\blofi hip ?hop\b/, "drifting"],
   // Shoegaze / dream pop — BEFORE \bpop\b ("dream pop" contains "pop").
   [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "altrock"],
   // Post-rock — the crescendo-guitar lane (house.altrock today).
@@ -308,8 +314,15 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // trance" rides the trance groove), and "electro swing / house / pop /
   // hip hop" keep their own lanes before bare "electro" (Detroit machine
   // funk, NOT electro house).
-  [/\bpsytrance\b|\bpsy\b/, "psytrance"],
-  [/\buplifting trance\b|\bvocal trance\b|\btrance\b/, "trance"],
+  // Trance school tree — specific school phrases BEFORE the generic entries.
+  // "acid trance" / "tech trance" / "progressive trance" must not be stolen
+  // by the techno/house acid/tech/progressive lanes.
+  [/\bacid trance\b/, "acid"],
+  [/\btech trance\b|\btechtrance\b/, "tech"],
+  [/\bprogressive trance\b|\bprog trance\b/, "progressive"],
+  [/\bdream trance\b/, "dream"],
+  [/\bpsytrance\b|\bpsy trance\b|\bgoa\b|\bfull[- ]?on\b/, "psy"],
+  [/\buplifting trance\b|\bvocal trance\b|\banthem trance\b|\btrance\b/, "uplifting"],
   [/\bprogressive\b|\bprog\b/, "progressive"],
   // UK funky BEFORE \bfunky\b — "uk funky" is the soca-bounce lane, not the
   // funky house groove ("uk funky" itself genre-routes to the ukg lane).
@@ -856,7 +869,14 @@ export function parseIntentText(text: string): ParsedIntent {
     .trim()} `;
   const detected: string[] = [];
 
-  const input: IntentInput = {};
+  // The RAW text is the input to the semantic (embedding-conditioned) prior:
+  // `normalizeIntent` caps it at MAX_TEXT_LENGTH. Without it here,
+  // `semanticConditioning(intent.text)` is null for every UI request, the v2/v3
+  // priors are skipped, and `supportsDrumPrior` falls back to the v1 one-hot —
+  // which only covers a small slice of the groove library. That is why the
+  // multi-vibe blend above keeps both artist names in the text: the blend has
+  // to reach MiniLM for the conditioning to see it.
+  const input: IntentInput = { text };
 
   // ARTIST "type beat" preset (C1) — applied FIRST as the base: it sets
   // genre/style/mood/sliders/BPM, and the explicit-word steps below still

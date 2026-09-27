@@ -1,10 +1,11 @@
-import type { GenerationPlan, RankedCandidate } from "../intent/types";
+import type { GenerationPlan, RankedCandidate, RankerSelectionMeta } from "../intent/types";
 import { searchLaneForCandidate, type SearchLane } from "../intent/candidate-search";
 
 interface CandidateLaneReceiptProps {
   plan: Pick<GenerationPlan, "candidateSeeds" | "symbolicSeeds">;
   candidates: readonly RankedCandidate[];
   warnings: readonly string[];
+  selection?: Pick<RankerSelectionMeta, "audioRerank">;
 }
 
 const LANES: readonly SearchLane[] = ["safe", "personal", "experimental"];
@@ -67,9 +68,17 @@ function candidateFailureLabel(warnings: readonly string[], candidateIndices: re
   return "nezostal samostatný platný take; variant mohol byť odmietnutý alebo zhodný s iným";
 }
 
-export function CandidateLaneReceipt({ plan, candidates, warnings }: CandidateLaneReceiptProps) {
+export function CandidateLaneReceipt({ plan, candidates, warnings, selection }: CandidateLaneReceiptProps) {
   const plannedCount = plan.candidateSeeds.length + plan.symbolicSeeds.length;
   if (plannedCount < 2) return null;
+
+  const audioRerank = selection?.audioRerank;
+  const audioWinnerPosition = audioRerank
+    ? candidates.findIndex((candidate) => candidate.candidateIndex === audioRerank.selectedCandidateIndex)
+    : -1;
+  const displacedPosition = audioRerank
+    ? candidates.findIndex((candidate) => candidate.candidateIndex === audioRerank.displacedCandidateIndex)
+    : -1;
 
   const plannedIndices = Array.from({ length: plannedCount }, (_, index) => index);
   const lanes = LANES.map((lane) => {
@@ -107,6 +116,12 @@ export function CandidateLaneReceipt({ plan, candidates, warnings }: CandidateLa
           </li>
         ))}
       </ul>
+      {audioRerank && audioWinnerPosition >= 0 && displacedPosition >= 0 && (
+        <p className="intent-lane-receipt-audio" aria-label="Audio rerank explanation">
+          Zvukový fit posunul kandidáta #{audioWinnerPosition + 1} pred #{displacedPosition + 1}. Je to technický
+          signál, nie objektívna známka kvality.
+        </p>
+      )}
     </section>
   );
 }

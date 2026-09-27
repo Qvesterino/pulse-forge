@@ -77,11 +77,7 @@ export interface TransitionSeam {
  * with stretchRate 1 — a one-shot that is shorter than its region simply
  * ends early, so the curated/mastered asset keeps its exact character.
  */
-export function buildTransitionCueClips(
-  seams: TransitionSeam[],
-  bpm: number,
-  trackId: string,
-): AudioClip[] {
+export function buildTransitionCueClips(seams: TransitionSeam[], bpm: number, trackId: string): AudioClip[] {
   const effectiveBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
   const barSeconds = 240 / effectiveBpm;
   const clips: AudioClip[] = [];

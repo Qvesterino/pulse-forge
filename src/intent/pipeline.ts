@@ -130,6 +130,7 @@ export async function generateAsyncResult(
     pattern: entry.pattern,
     ...(entry.search ? { search: entry.search } : {}),
   }));
+  const firstPassSelectedIndex = bank[0]?.candidateIndex;
   let finalBank = bank;
   if (options.sound) {
     // Ranking v3: render the top finalists and re-order by the weighted mix
@@ -143,16 +144,69 @@ export async function generateAsyncResult(
     });
   }
   const base = resultFromProposal(plan, ranked.proposal);
-  const proposal = base.proposal
-    ? finalBank.length > 0 && finalBank[0].pattern !== base.proposal.pattern
-      ? { ...base.proposal, pattern: finalBank[0].pattern }
-      : base.proposal
-    : base.proposal;
+  let proposal = base.proposal;
+  let diagnostics = base.diagnostics;
+  let status = base.status;
+  const selected = finalBank[0];
+  const selectionChangedBySound =
+    options.sound !== undefined &&
+    firstPassSelectedIndex !== undefined &&
+    selected !== undefined &&
+    selected.candidateIndex !== firstPassSelectedIndex;
+
+  if (proposal && selected) {
+    const generation = selected.pattern.generation;
+    const pattern =
+      generation && ranked.ranker.mode !== "off"
+        ? {
+            ...selected.pattern,
+            generation: {
+              ...generation,
+              ranker: {
+                featureVersion: ranked.ranker.featureVersion,
+                rankerVersion: ranked.ranker.rankerVersion,
+                modelHash: ranked.ranker.modelHash,
+                selectedIndex: selected.candidateIndex,
+                mode: ranked.ranker.mode === "active" ? ("active" as const) : ("shadow" as const),
+                source: ranked.ranker.source,
+              },
+            },
+          }
+        : selected.pattern;
+    const warnings = base.diagnostics.warnings.filter((warning) => !warning.startsWith("candidate-bank-selected:"));
+    warnings.push(`candidate-bank-selected:${selected.candidateIndex}:${selected.source}`);
+    if (selectionChangedBySound && firstPassSelectedIndex !== undefined) {
+      warnings.push(`audio-rerank-selected:${firstPassSelectedIndex}->${selected.candidateIndex}`);
+    }
+    diagnostics = { ...base.diagnostics, warnings, repairs: [...selected.repairs] };
+    if (generation?.quality) diagnostics.quality = generation.quality;
+    else delete diagnostics.quality;
+    proposal = { ...proposal, pattern, status: selected.status, diagnostics };
+    status = selected.status;
+    finalBank = [{ ...selected, pattern }, ...finalBank.slice(1)];
+  }
+
+  const selection = selected
+    ? {
+        ...ranked.ranker,
+        selectedIndex: selected.candidateIndex,
+        ...(selectionChangedBySound && firstPassSelectedIndex !== undefined
+          ? {
+              audioRerank: {
+                displacedCandidateIndex: firstPassSelectedIndex,
+                selectedCandidateIndex: selected.candidateIndex,
+              },
+            }
+          : {}),
+      }
+    : ranked.ranker;
   return {
     ...base,
+    status,
     proposal,
+    diagnostics,
     bank: finalBank,
-    selection: ranked.ranker,
+    selection,
   };
 }
 

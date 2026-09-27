@@ -31,7 +31,9 @@ describe("share-code decode: hostile and malformed inputs normalize-or-reject", 
       compressToEncodedURIComponent('{"tracks": 42}'),
       compressToEncodedURIComponent('{"tracks": "nope", "patterns": null}'),
       compressToEncodedURIComponent('{"tracks": [{}], "patterns": [{}], "bpm": "fast"}'),
-      compressToEncodedURIComponent(JSON.stringify({ tracks: [], patterns: [], scenes: [], __proto__: { injected: true } })),
+      compressToEncodedURIComponent(
+        JSON.stringify({ tracks: [], patterns: [], scenes: [], __proto__: { injected: true } }),
+      ),
       compressToEncodedURIComponent(JSON.stringify({ tracks: [], bomb: "x".repeat(1_000_000) })),
     ];
     for (const input of corpus) {
@@ -135,9 +137,7 @@ describe("MIDI import: malformed files fail with named errors", () => {
   it("rejects empty, truncated and non-MIDI buffers", () => {
     expect(() => parseMidiFile(new Uint8Array(0))).toThrow(MidiParseError);
     expect(() => parseMidiFile(new Uint8Array([0x4d, 0x54]))).toThrow(MidiParseError);
-    expect(() => parseMidiFile(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]))).toThrow(
-      /MThd/,
-    );
+    expect(() => parseMidiFile(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]))).toThrow(/MThd/);
   });
 
   it("rejects format 2, zero division and SMPTE timing", () => {
@@ -284,7 +284,7 @@ describe("WAV encode round-trip (GOAL 08)", () => {
     const wav = parseWav(encodeWav(fakeBuffer(2, [left, right]), 32));
     expect(wav.channels).toBe(2);
     for (let i = 0; i < 3; i++) {
-      expect(wav.data.getFloat32((i * 2) * 4, true)).toBeCloseTo(left[i]!, 6);
+      expect(wav.data.getFloat32(i * 2 * 4, true)).toBeCloseTo(left[i]!, 6);
       expect(wav.data.getFloat32((i * 2 + 1) * 4, true)).toBeCloseTo(right[i]!, 6);
     }
   });

@@ -33,8 +33,8 @@ describe("audit 14 re-run — browser lifecycle pins", () => {
     // interruption: stop + preserve staged PCM. Tab hidden / OS sleep /
     // device disconnect all funnel through this path.
     const recorder = read("src/audio-engine/PcmMicRecorder.ts");
-    expect(recorder).toContain('onContextStateChange');
-    expect(recorder).toContain("ctx.state !== \"running\"");
+    expect(recorder).toContain("onContextStateChange");
+    expect(recorder).toContain('ctx.state !== "running"');
     // The harness proves the behavior at runtime:
     const tests = read("tests/pcm-mic-recorder.test.ts");
     expect(tests).toContain("stops and preserves the take when the AudioContext is suspended");

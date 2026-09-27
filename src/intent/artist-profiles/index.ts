@@ -546,7 +546,11 @@ const AG_COOK: ArtistProfile = {
       "metallic / plastic textures (artificial, hyperreal)",
       "sidechain-pumping synth bass",
     ],
-    samples: ["pop acapella chops (pitched + processed)", "PC Music custom-synth one-shots", "synthesized percussion hits"],
+    samples: [
+      "pop acapella chops (pitched + processed)",
+      "PC Music custom-synth one-shots",
+      "synthesized percussion hits",
+    ],
     bpm: { typical: [130, 150] },
     keys: ["F major", "C major", "G major", "D minor"],
   },
@@ -579,10 +583,7 @@ const AG_COOK: ArtistProfile = {
     "custom / bespoke Max4Live devices for PC Music workflow",
   ],
   vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
-  sources: [
-    "https://en.wikipedia.org/wiki/A._G._Cook",
-    "https://www.residentadvisor.net/features/2942",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/A._G._Cook", "https://www.residentadvisor.net/features/2942"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -696,10 +697,7 @@ const SKEPTA: ArtistProfile = {
     "Valhalla VintageVerb",
   ],
   vibe: ["aggressive", "dark", "British", "raw", "street", "no-nonsense", "authentic"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Skepta",
-    "https://www.complex.com/music/best-songs-skepta-produced",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Skepta", "https://www.complex.com/music/best-songs-skepta-produced"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -758,10 +756,7 @@ const SEVEN_LIONS: ArtistProfile = {
     "LFO Tool (sidechain + rhythmic gating)",
   ],
   vibe: ["emotional", "ethereal", "euphoric", "cinematic", "melodic", "transcendent"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Seven_Lions",
-    "https://www.opheliarecords.com/",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Seven_Lions", "https://www.opheliarecords.com/"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -842,7 +837,11 @@ const SOPHIE: ArtistProfile = {
       "heavy reverb on top-end synths (alien, vast space)",
       "wide stereo detuned leads (supersaw-adjacent)",
     ],
-    samples: ["custom synthesized one-shots", "abstract vocal textures (often pitch-shifted beyond recognition)", "transgressive pop acapella chops"],
+    samples: [
+      "custom synthesized one-shots",
+      "abstract vocal textures (often pitch-shifted beyond recognition)",
+      "transgressive pop acapella chops",
+    ],
     bpm: { typical: [120, 140] },
     keys: ["F minor", "D minor", "G minor", "keyless / synthetic atonal moments"],
   },
@@ -874,10 +873,7 @@ const SOPHIE: ArtistProfile = {
     "Pitchproof (pitch-correction for the alien vocal texture)",
   ],
   vibe: ["ethereal", "futuristic", "synthetic", "metallic", "transcendent", "otherworldly", "pioneering"],
-  sources: [
-    "https://en.wikipedia.org/wiki/SOPHIE_(musician)",
-    "https://www.pitchfork.com/features/profile/sophie/",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/SOPHIE_(musician)", "https://www.pitchfork.com/features/profile/sophie/"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -984,10 +980,7 @@ const WILEY: ArtistProfile = {
     "minimal processing — character comes from raw sound sources",
   ],
   vibe: ["raw", "pioneering", "pirate-radio", "aggressive", "authentic", "foundational", "London"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Wiley_(musician)",
-    "https://www.theguardian.com/music/wiley",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Wiley_(musician)", "https://www.theguardian.com/music/wiley"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -1047,10 +1040,7 @@ const EXCISION: ArtistProfile = {
     "Valhalla VintageVerb (snare reverb tails)",
   ],
   vibe: ["aggressive", "mechanical", "heavy", "brutal", "industrial", "alien", "relentless"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Excision_(DJs)",
-    "https://www.dubstepforum.com/wiki/excision",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Excision_(DJs)", "https://www.dubstepforum.com/wiki/excision"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -1109,10 +1099,7 @@ const ANYMA: ArtistProfile = {
     "RC-20 Retro Color (on pad bus)",
   ],
   vibe: ["hypnotic", "ethereal", "atmospheric", "transcendent", "euphoric", "cinematic", "afterhours"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Anyma",
-    "https://www.residentadvisor.net/features/3782",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Anyma", "https://www.residentadvisor.net/features/3782"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -1302,10 +1289,7 @@ const BOARDS_OF_CANADA: ArtistProfile = {
     "film archive libraries (educational footage — public domain)",
   ],
   vibe: ["nostalgic", "melancholic", "lo-fi", "faded", "childhood memory", "hypnagogic", "warm", "familiar"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Boards_of_Canada",
-    "https://www.residentadvisor.net/features/179",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Boards_of_Canada", "https://www.residentadvisor.net/features/179"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -1425,10 +1409,7 @@ const KAYTRANADA: ArtistProfile = {
     "Valhalla VintageVerb",
   ],
   vibe: ["lo-fi", "soulful", "smooth", "future R&B", "danceable", "warm", "swinging"],
-  sources: [
-    "https://en.wikipedia.org/wiki/Kaytranada",
-    "https://www.residentadvisor.net/features/2481",
-  ],
+  sources: ["https://en.wikipedia.org/wiki/Kaytranada", "https://www.residentadvisor.net/features/2481"],
   verificationStatus: "ai-inferred",
   lastUpdated: "2026-09-26",
 };
@@ -1566,32 +1547,29 @@ export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile
 
   // tone
   const tone: ArtistMixProfile["tone"] | undefined =
-    profile.mix.eqTilt === "bright" ? "bright" :
-    profile.mix.eqTilt === "dark" ? "dark" :
-    profile.mix.eqTilt === "neutral" ? "warm" :
-    undefined;
+    profile.mix.eqTilt === "bright"
+      ? "bright"
+      : profile.mix.eqTilt === "dark"
+        ? "dark"
+        : profile.mix.eqTilt === "neutral"
+          ? "warm"
+          : undefined;
   if (tone) derived.tone = tone;
 
   // punch
   const punch: ArtistMixProfile["punch"] | undefined =
-    profile.mix.compression === "heavy" ? "more" :
-    profile.mix.compression === "light" ? "less" :
-    undefined;
+    profile.mix.compression === "heavy" ? "more" : profile.mix.compression === "light" ? "less" : undefined;
   if (punch) derived.punch = punch;
 
   // width — direct passthrough (only "wide"/"narrow" are producer-decisions;
   // "normal" leaves the genre default in place)
   const width: ArtistMixProfile["width"] | undefined =
-    profile.mix.stereoWidth === "wide" ? "wide" :
-    profile.mix.stereoWidth === "narrow" ? "narrow" :
-    undefined;
+    profile.mix.stereoWidth === "wide" ? "wide" : profile.mix.stereoWidth === "narrow" ? "narrow" : undefined;
   if (width) derived.width = width;
 
   // sub — direct passthrough (only "prominent"/"subtle" are producer-decisions)
   const sub: ArtistMixProfile["sub"] | undefined =
-    profile.mix.subEmphasis === "prominent" ? "prominent" :
-    profile.mix.subEmphasis === "subtle" ? "subtle" :
-    undefined;
+    profile.mix.subEmphasis === "prominent" ? "prominent" : profile.mix.subEmphasis === "subtle" ? "subtle" : undefined;
   if (sub) derived.sub = sub;
 
   // lufs (Phase 2 slice 3) — the artist's mastered integrated loudness.
@@ -1615,8 +1593,9 @@ export function deepProfileToArtistMix(profile: ArtistProfile): ArtistMixProfile
   if (/\bscoop(?:ed|ing)?\b/i.test(profile.master.tonalBalance)) derived.scoop = true;
 
   // pump — keyword scan across signature sound + vibe
-  const pumpSignal = [...profile.signature.sound, ...profile.vibe]
-    .some((text) => /\bsidechain|\bpump(?:ing|s|ed)?\b/i.test(text));
+  const pumpSignal = [...profile.signature.sound, ...profile.vibe].some((text) =>
+    /\bsidechain|\bpump(?:ing|s|ed)?\b/i.test(text),
+  );
   if (pumpSignal) derived.pump = true;
 
   // reverb — keyword scan across vibe

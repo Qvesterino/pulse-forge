@@ -689,6 +689,12 @@ export interface AudioClip {
    */
   loop?: boolean;
   /**
+   * Cumulative source-time offset into the trimmed loop region. Splitting a
+   * looped clip advances this phase on the right fragment without changing
+   * the loop's source bounds. Stored in seconds of the original sample.
+   */
+  loopPhaseOffsetSec?: number;
+  /**
    * Stretch mode:
    * - "resample" (default): playbackRate changes pitch + time together
    * - "stretch": non-destructive time-stretch that preserves pitch

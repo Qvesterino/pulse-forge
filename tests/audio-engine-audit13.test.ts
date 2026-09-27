@@ -66,7 +66,7 @@ describe("audit 13 — hum-to-melody analyze cancellation", () => {
   it("the pitch-tracker client honours the signal (worker terminate + resolve [])", () => {
     const client = read("src/audio-workers/pitch-tracker-client.ts");
     expect(client).toContain("if (signal?.aborted) return Promise.resolve([]);");
-    expect(client).toContain("signal.addEventListener(\"abort\", onAbort, { once: true });");
+    expect(client).toContain('signal.addEventListener("abort", onAbort, { once: true });');
   });
 });
 

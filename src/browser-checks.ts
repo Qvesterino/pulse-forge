@@ -839,7 +839,11 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       `wavetable=${wtPeak.toFixed(4)} granular=${granPeak.toFixed(4)}`,
     );
   } catch (error) {
-    check("offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)", false, String(error));
+    check(
+      "offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)",
+      false,
+      String(error),
+    );
   }
 
   // Sampler STRETCH regression: the stretch path used to assign
@@ -3455,6 +3459,81 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   } catch (error) {
     check("audio clip stretch: pitch preserved, duration scaled, source untouched", false, String(error));
+  }
+
+  // Reversed sources use a high-edge playhead with negative playback rate;
+  // loop splits use the same trimmed loop window but continue at their saved
+  // phase instead of restarting at the source head.
+  try {
+    const RAMP_ID = "check-reverse-loop-ramp";
+    const rampContext = new OfflineAudioContext(1, SR, SR);
+    const rampBuffer = rampContext.createBuffer(1, SR, SR);
+    const ramp = rampBuffer.getChannelData(0);
+    for (let frame = 0; frame < ramp.length; frame++) {
+      const envelope = 0.15 + (0.5 * frame) / ramp.length;
+      ramp[frame] = envelope * Math.sin((2 * Math.PI * 440 * frame) / SR);
+    }
+    bank.add(RAMP_ID, rampBuffer);
+
+    const renderRampClip = async (clipPatch: { reverse?: boolean; loop?: boolean; loopPhaseOffsetSec?: number }) => {
+      const ctx = new OfflineAudioContext(1, Math.ceil(SR * 1.3), SR);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      const doc = createProjectFromTemplate("empty");
+      doc.master.limiterEnabled = false;
+      doc.master.clipperEnabled = false;
+      engine.setProject(doc);
+      const track = doc.tracks[0];
+      if (!track) throw new Error("empty-project audio track fixture missing");
+      engine.triggerAudioClip(
+        {
+          id: "check-reverse-loop-clip",
+          trackId: track.id,
+          bufferId: RAMP_ID,
+          startBar: 0,
+          lengthBars: 4,
+          offsetSec: 0,
+          trimStart: 0,
+          trimEnd: 0,
+          gain: 1,
+          fadeIn: 0,
+          fadeOut: 0,
+          stretchRate: 1,
+          reverse: false,
+          ...clipPatch,
+        },
+        0.01,
+        1.15,
+      );
+      const rendered = await ctx.startRendering();
+      engine.panic();
+      engine.detachBank();
+      return rendered.getChannelData(0);
+    };
+    const rmsAt = (data: Float32Array, relativeSec: number): number => {
+      const start = Math.round((0.01 + relativeSec) * SR);
+      const count = Math.round(0.02 * SR);
+      let sumSquares = 0;
+      for (let frame = start; frame < start + count; frame++) {
+        const sample = data[frame] ?? 0;
+        sumSquares += sample * sample;
+      }
+      return Math.sqrt(sumSquares / count);
+    };
+
+    const reversed = await renderRampClip({ reverse: true });
+    const loopedAtPhase = await renderRampClip({ loop: true, loopPhaseOffsetSec: 0.25 });
+    const reverseStartsHighAndFalls = rmsAt(reversed, 0.05) > rmsAt(reversed, 0.45) * 1.1;
+    const loopStartsAtPhaseAndWraps = rmsAt(loopedAtPhase, 0.05) > rmsAt(loopedAtPhase, 0.8) * 1.2;
+    check(
+      "audio clip playback: reverse starts at the high edge and loop phase wraps",
+      reverseStartsHighAndFalls && loopStartsAtPhaseAndWraps,
+      `reverse=${rmsAt(reversed, 0.05).toFixed(3)}→${rmsAt(reversed, 0.45).toFixed(3)} ` +
+        `loop=${rmsAt(loopedAtPhase, 0.05).toFixed(3)}→${rmsAt(loopedAtPhase, 0.8).toFixed(3)}`,
+    );
+  } catch (error) {
+    check("audio clip playback: reverse starts at the high edge and loop phase wraps", false, String(error));
   }
 
   try {

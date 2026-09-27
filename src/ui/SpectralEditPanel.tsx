@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "./context";
 import { updateAudioClip } from "../commands/commands";
 import { uid } from "../shared/ids";
-import { applySpectralEditsToChannels, computeStftDbFrames, suggestNoiseRegionFromFrames, type SpectralEdit } from "../audio-engine/spectralEdit";
+import {
+  applySpectralEditsToChannels,
+  computeStftDbFrames,
+  suggestNoiseRegionFromFrames,
+  type SpectralEdit,
+} from "../audio-engine/spectralEdit";
 import {
   SPECTRO_MIN_FREQ,
   createSpectrogramBandMap,
@@ -244,8 +249,7 @@ export function SpectralEditPanel({
       return;
     }
     setGainDb(sug.gainDb);
-    const yFor = (f: number) =>
-      backing.h * (1 - Math.log(f / SPECTRO_MIN_FREQ) / Math.log(nyquist / SPECTRO_MIN_FREQ));
+    const yFor = (f: number) => backing.h * (1 - Math.log(f / SPECTRO_MIN_FREQ) / Math.log(nyquist / SPECTRO_MIN_FREQ));
     setSel({ x0: 0, x1: backing.w, y0: yFor(sug.freqHiHz), y1: yFor(sug.freqLoHz) });
     setStatus(`Noise band ≈ ${Math.round(sug.freqLoHz)}–${Math.round(sug.freqHiHz)} Hz suggested — preview and APPLY`);
   };
@@ -255,7 +259,8 @@ export function SpectralEditPanel({
     if (!ctx) {
       setStatus("Audio engine not running — press play once first");
       return;
-    }    const edit = currentEdit();
+    }
+    const edit = currentEdit();
     if (!edit) {
       setStatus("Select a region first (drag on the spectrogram)");
       return;
@@ -331,15 +336,27 @@ export function SpectralEditPanel({
             marginBottom: 8,
           }}
         >
-          <span>SPECTRAL EDIT — {buffer.numberOfChannels === 1 ? "MONO" : "STEREO"} {duration.toFixed(2)}s</span>
-          <button type="button" style={btnStyle} onClick={() => { stopPreview(); onClose(); }}>
+          <span>
+            SPECTRAL EDIT — {buffer.numberOfChannels === 1 ? "MONO" : "STEREO"} {duration.toFixed(2)}s
+          </span>
+          <button
+            type="button"
+            style={btnStyle}
+            onClick={() => {
+              stopPreview();
+              onClose();
+            }}
+          >
             ✕
           </button>
         </div>
 
         <div ref={wrapRef} style={{ width: "100%", marginBottom: 8 }}>
           <div style={{ position: "relative", width: "100%", height: CANVAS_H }}>
-            <canvas ref={dataRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 4 }} />
+            <canvas
+              ref={dataRef}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 4 }}
+            />
             <canvas
               ref={overlayRef}
               data-testid="spectral-edit-overlay"
@@ -442,13 +459,21 @@ export function SpectralEditPanel({
           >
             APPLY
           </button>
-          <button type="button" style={btnStyle} onClick={() => { stopPreview(); onClose(); }}>
+          <button
+            type="button"
+            style={btnStyle}
+            onClick={() => {
+              stopPreview();
+              onClose();
+            }}
+          >
             CLOSE
           </button>
         </div>
 
         <div style={{ fontFamily: "var(--mono, monospace)", fontSize: 10, color: "var(--text-faint, #888)" }}>
-          {status} · APPLY renders a new buffer and rewires the clip — the original stays in the library (Ctrl+Z to undo).
+          {status} · APPLY renders a new buffer and rewires the clip — the original stays in the library (Ctrl+Z to
+          undo).
         </div>
       </div>
     </div>

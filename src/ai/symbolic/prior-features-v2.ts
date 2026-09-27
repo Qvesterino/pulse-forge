@@ -15,9 +15,7 @@ export const PRIOR_V2_FEATURES_VERSION = "prior-features-v2";
 
 export const V2_SEMANTIC_DIMS = 16;
 
-export const V2_ROLE_VOCAB = [
-  "kick", "snare", "clap", "closedHat", "openHat", "perc", "tom", "fx", "unknown",
-] as const;
+export const V2_ROLE_VOCAB = ["kick", "snare", "clap", "closedHat", "openHat", "perc", "tom", "fx", "unknown"] as const;
 
 export const V2_FEATURE_COUNT =
   V2_SEMANTIC_DIMS + // semantic projection (16)
@@ -80,12 +78,14 @@ export function buildPriorV2GridRows(params: {
   const rows: number[][] = [];
   for (const role of params.padRoles) {
     for (let step = 0; step < params.stepCount; step++) {
-      rows.push(buildPriorV2FeatureRow({
-        semantic: params.semantic,
-        role: role as V2PriorFeatureInput["role"],
-        step,
-        stepCount: params.stepCount,
-      }));
+      rows.push(
+        buildPriorV2FeatureRow({
+          semantic: params.semantic,
+          role: role as V2PriorFeatureInput["role"],
+          step,
+          stepCount: params.stepCount,
+        }),
+      );
     }
   }
   return rows;

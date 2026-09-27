@@ -32,14 +32,20 @@ describe("AudioEngine effect intent preview lease", () => {
     const onEnded = vi.fn();
 
     expect(engine.beginEffectIntentPreview(track.id, "fx-reverb", { mix: 0.6, decay: 2.2 }, onEnded)).toBe(true);
-    expect(setParameter.mock.calls).toEqual([["mix", 0.6], ["decay", 2.2]]);
+    expect(setParameter.mock.calls).toEqual([
+      ["mix", 0.6],
+      ["decay", 2.2],
+    ]);
 
     const changedDoc = structuredClone(doc);
     changedDoc.tracks.find((candidate) => candidate.id === track.id)!.effects[0].params.mix = 0.42;
     changedDoc.tracks.find((candidate) => candidate.id === track.id)!.effects[0].params.decay = 2;
     engine.cancelEffectIntentPreview(changedDoc, "projectChanged");
 
-    expect(setParameter.mock.calls.slice(2)).toEqual([["mix", 0.42], ["decay", 2]]);
+    expect(setParameter.mock.calls.slice(2)).toEqual([
+      ["mix", 0.42],
+      ["decay", 2],
+    ]);
     expect(onEnded).toHaveBeenCalledWith("projectChanged");
   });
 
@@ -60,7 +66,10 @@ describe("AudioEngine effect intent preview lease", () => {
     expect(engine.beginEffectIntentPreview(track.id, "fx-reverb", { mix: 0.6 }, onEnded)).toBe(true);
     engine.transportStarted(0, 0);
 
-    expect(setParameter.mock.calls).toEqual([["mix", 0.6], ["mix", 0.3]]);
+    expect(setParameter.mock.calls).toEqual([
+      ["mix", 0.6],
+      ["mix", 0.3],
+    ]);
     expect(onEnded).toHaveBeenCalledWith("transportStarted");
   });
 

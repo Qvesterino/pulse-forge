@@ -277,11 +277,7 @@ describe("fxeq-core hardening #2 — crossover split surface (6 bands)", () => {
  * in the LINEAR region of the shaper, where output = driveLinear exactly.
  */
 describe("FXEQ oversampling gain parity (2026-09-19 audit)", () => {
-  function measureGain(
-    quality: "standard" | "high" | "render",
-    mode: number,
-    driveDb: number,
-  ): number {
+  function measureGain(quality: "standard" | "high" | "render", mode: number, driveDb: number): number {
     const block = 256;
     const mod = createOversampledSaturation();
     mod.prepare(SR, 1, block);

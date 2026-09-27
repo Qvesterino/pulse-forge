@@ -18,12 +18,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  * replays it once the real runtime installs), and protects every caller
  * (FxEq/Ultina/KASKÁDA/MorphDynamics panels + renderer) at once.
  */
-function createPreviewEngine(
-  doc: ProjectDocument,
-  trackId: string,
-  fxId: string,
-  runtime: EffectRuntime,
-) {
+function createPreviewEngine(doc: ProjectDocument, trackId: string, fxId: string, runtime: EffectRuntime) {
   const engine = Object.create(AudioEngine.prototype) as AudioEngine;
   const internals = engine as unknown as {
     doc: ProjectDocument;

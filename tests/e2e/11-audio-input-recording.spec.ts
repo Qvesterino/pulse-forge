@@ -278,7 +278,7 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
     const continueCard = page.locator(".pb-continue-card").first();
     if ((await continueCard.count()) > 0) await continueCard.click();
-    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    else await page.getByRole("button", { name: "OPEN" }).first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
@@ -291,8 +291,6 @@ test.describe("11 — audio-input recording", () => {
       [440, 550],
     ]);
     await openHouseTemplate(page);
-    const initialContinueCard = page.locator(".pb-continue-card").first();
-    if (await initialContinueCard.isVisible().catch(() => false)) await initialContinueCard.click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await page.getByLabel("Arm track for recording").selectOption({ index: 1 });
@@ -328,7 +326,7 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
     const capturedProjectCard = page.locator(".pb-continue-card").first();
     if ((await capturedProjectCard.count()) > 0) await capturedProjectCard.click();
-    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    else await page.getByRole("button", { name: "OPEN" }).first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip")).toHaveCount(2, { timeout: 20_000 });
@@ -509,6 +507,135 @@ test.describe("11 — audio-input recording", () => {
     await page.locator('button[aria-label="Redo"]').click();
     await expect(warpedCompClip.locator(".warp-pin")).toHaveCount(1);
 
+    const readPersistedCompWarp = async (): Promise<Array<{ timeSec: number; tick: number }>> =>
+      page.evaluate(async (expectedGroupId: string) => {
+        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+        const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+        const project = await new ProjectRepository().loadMostRecent();
+        const group = project?.arrangement.takeGroups?.find(
+          (candidate: { id: string }) => candidate.id === expectedGroupId,
+        );
+        return (project?.arrangement.audioClips ?? [])
+          .filter(
+            (clip: { takeGroupId?: string; takeId?: string }) =>
+              clip.takeGroupId === expectedGroupId && clip.takeId === group?.compTakeId,
+          )
+          .flatMap((clip: { warpMarkers?: Array<{ timeSec: number; tick: number }> }) => clip.warpMarkers ?? []);
+      }, groupId);
+    await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toHaveLength(1);
+    const originalWarp = (await readPersistedCompWarp())[0];
+    if (!originalWarp) throw new Error("The captured-PCM comp warp pin was not persisted");
+    const warpHandle = warpedCompClip.locator(".warp-pin-handle").first();
+    const warpHandleBox = await warpHandle.boundingBox();
+    if (!warpHandleBox) throw new Error("The captured-PCM warp pin handle is not visible for dragging");
+    const dragStartX = warpHandleBox.x + warpHandleBox.width / 2;
+    const dragTargetX = dragStartX + 6;
+    const dragY = warpHandleBox.y + warpHandleBox.height / 2;
+    await page.mouse.move(dragStartX, dragY);
+    await page.mouse.down();
+    await page.mouse.move(dragTargetX, dragY, { steps: 3 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await readPersistedCompWarp())[0]?.tick, { timeout: 20_000, intervals: [250, 500, 1_000] })
+      .not.toBe(originalWarp.tick);
+    const draggedWarp = (await readPersistedCompWarp())[0];
+    if (!draggedWarp) throw new Error("Dragging the captured-PCM warp pin removed its marker");
+    expect(draggedWarp.timeSec).toBe(originalWarp.timeSec);
+    await page.locator('button[aria-label="Undo"]').click();
+    await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toEqual([originalWarp]);
+    await page.locator('button[aria-label="Redo"]').click();
+    await expect.poll(readPersistedCompWarp, { timeout: 20_000, intervals: [250, 500, 1_000] }).toEqual([draggedWarp]);
+
+    // Loop splitting is tested after comping because comp source mapping is
+    // intentionally limited to forward, unlooped source clips. Apply the same
+    // project commands to the captured PCM source and persist that edit.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (expectedGroupId: string) => {
+            const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+            const { ProjectRepository } = await load("/src/persistence/ProjectRepository.ts");
+            const project = await new ProjectRepository().loadMostRecent();
+            const group = project?.arrangement.takeGroups?.find(
+              (candidate: { id: string }) => candidate.id === expectedGroupId,
+            );
+            const compHasWarpPin = (project?.arrangement.audioClips ?? [])
+              .filter(
+                (clip: { takeGroupId?: string; takeId?: string }) =>
+                  clip.takeGroupId === expectedGroupId && clip.takeId === group?.compTakeId,
+              )
+              .some((clip: { warpMarkers?: Array<{ tick: number }> }) => (clip.warpMarkers?.length ?? 0) > 0);
+            return Boolean(group?.compTakeId && group.activeTakeId === group.compTakeId && compHasWarpPin);
+          }, groupId),
+        { timeout: 20_000, intervals: [250, 500, 1_000] },
+      )
+      .toBe(true);
+    const phaseSplitPlan = await page.evaluate(
+      async ({ expectedGroupId, expectedTakeId }) => {
+        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+        const [projectRepoModule, sampleModule, userRepoModule, commandsModule] = await Promise.all([
+          load("/src/persistence/ProjectRepository.ts"),
+          load("/src/sample-library/factory.ts"),
+          load("/src/persistence/UserSampleRepository.ts"),
+          load("/src/commands/commands.ts"),
+        ]);
+        const { ProjectRepository } = projectRepoModule;
+        const { SampleBank } = sampleModule;
+        const { restoreUserSampleAudio } = userRepoModule;
+        const { splitAudioClipAtTick, updateAudioClip } = commandsModule;
+        const repository = new ProjectRepository();
+        const project = await repository.loadMostRecent();
+        if (!project) throw new Error("The captured take project did not reopen from IndexedDB");
+        const source = (project.arrangement.audioClips ?? [])
+          .filter(
+            (candidate: { takeGroupId?: string; takeId?: string }) =>
+              candidate.takeGroupId === expectedGroupId && candidate.takeId === expectedTakeId,
+          )
+          .sort((left: { startBar: number }, right: { startBar: number }) => left.startBar - right.startBar)
+          .at(-1);
+        if (!source) throw new Error("The captured PCM source fragment for loop splitting is missing");
+        const bank = new SampleBank();
+        await restoreUserSampleAudio(bank);
+        const buffer = bank.get(source.bufferId);
+        if (!buffer) throw new Error("The captured PCM source was not restored before loop splitting");
+        const loopCommand = updateAudioClip(project, source.id, { loop: true });
+        const looped = loopCommand.execute(project);
+        const loopedSource = (looped.arrangement.audioClips ?? []).find(
+          (candidate: { id: string }) => candidate.id === source.id,
+        );
+        if (!loopedSource?.loop) throw new Error("The loop command did not enable looping on the captured take");
+        const relativeTick = (loopedSource.lengthBars * 1_920) / 2;
+        const tick = loopedSource.startBar * 1_920 + relativeTick;
+        const splitCommand = splitAudioClipAtTick(looped, loopedSource.id, tick, buffer.duration);
+        const split = splitCommand.execute(looped);
+        const undone = splitCommand.undo(split);
+        const redone = splitCommand.execute(looped);
+        if (JSON.stringify(undone) !== JSON.stringify(looped) || JSON.stringify(redone) !== JSON.stringify(split)) {
+          throw new Error("Captured-PCM loop split did not preserve its exact undo/redo state");
+        }
+        const fragments = (split.arrangement.audioClips ?? [])
+          .filter(
+            (candidate: { takeGroupId?: string; takeId?: string; loop?: boolean }) =>
+              candidate.takeGroupId === expectedGroupId && candidate.takeId === expectedTakeId && candidate.loop,
+          )
+          .sort((left: { startBar: number }, right: { startBar: number }) => left.startBar - right.startBar);
+        if (fragments.length !== 2) throw new Error(`Expected two looped fragments, found ${fragments.length}`);
+        const wallSeconds = (relativeTick * 60) / (project.bpm * 480);
+        const rate = loopedSource.stretchRate ?? 1;
+        const sourceAdvance = loopedSource.stretchMode === "stretch" ? wallSeconds / rate : wallSeconds * rate;
+        await repository.save(split);
+        return {
+          tick,
+          phaseSec: loopedSource.loopPhaseOffsetSec ?? 0,
+          expectedRightPhaseSec: (loopedSource.loopPhaseOffsetSec ?? 0) + sourceAdvance,
+          offsetSec: loopedSource.offsetSec ?? 0,
+          trimStart: loopedSource.trimStart ?? 0,
+          trimEnd: loopedSource.trimEnd ?? 0,
+        };
+      },
+      { expectedGroupId: groupId, expectedTakeId: splitPlan.takeId },
+    );
+
     const renderSavedTakeExport = async (): Promise<{
       groupId: string;
       compTakeId: string;
@@ -522,7 +649,13 @@ test.describe("11 — audio-input recording", () => {
         lengthBars: number;
         offsetSec: number;
         trimStart: number;
+        trimEnd: number;
+        loop: boolean;
+        loopPhaseOffsetSec: number;
       }>;
+      loopWavSha256: string;
+      loopWavFrames: number;
+      loopWavPeak: number;
       bufferIds: string[];
       buffersRestored: boolean;
       sourcePcmSha256: string[];
@@ -530,149 +663,190 @@ test.describe("11 — audio-input recording", () => {
       peak: number;
       wavSha256: string;
     }> => {
-      return page.evaluate(async (expectedGroupId: string) => {
-        const load = (specifier: string) => import(/* @vite-ignore */ specifier);
-        const [projectRepoModule, sampleModule, userRepoModule, rendererModule, wavModule] = await Promise.all([
-          load("/src/persistence/ProjectRepository.ts"),
-          load("/src/sample-library/factory.ts"),
-          load("/src/persistence/UserSampleRepository.ts"),
-          load("/src/rendering/renderer.ts"),
-          load("/src/rendering/wav.ts"),
-        ]);
-        const { ProjectRepository } = projectRepoModule;
-        const { SampleBank } = sampleModule;
-        const { restoreUserSampleAudio } = userRepoModule;
-        const { renderProject } = rendererModule;
-        const { encodeWavAsync } = wavModule;
-        const project = await new ProjectRepository().loadMostRecent();
-        if (!project) throw new Error("The captured take project did not reopen from IndexedDB");
-        const group = project.arrangement.takeGroups?.find(
-          (candidate: { id: string }) => candidate.id === expectedGroupId,
-        );
-        if (!group?.compTakeId || group.activeTakeId !== group.compTakeId) {
-          throw new Error("The saved take group has no active comp");
-        }
-        const groupClips = (project.arrangement.audioClips ?? []).filter(
-          (clip: { takeGroupId?: string }) => clip.takeGroupId === expectedGroupId,
-        );
-        const sourceTakeIds = Array.from(
-          new Set(
-            groupClips
-              .map((clip: { takeId?: string }) => clip.takeId)
-              .filter((takeId: string | undefined) => takeId && takeId !== group.compTakeId),
-          ),
-        ) as string[];
-        const compClips = groupClips.filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId);
-        const warpMarkers = compClips.flatMap(
-          (clip: { warpMarkers?: Array<{ timeSec: number; tick: number }> }) => clip.warpMarkers ?? [],
-        );
-        const sourceClipWindows = groupClips
-          .filter((clip: { takeId?: string }) => clip.takeId !== group.compTakeId)
-          .map(
-            (clip: {
-              takeId?: string;
-              startBar: number;
-              lengthBars: number;
-              offsetSec?: number;
-              trimStart?: number;
-            }) => ({
-              takeId: clip.takeId,
-              startBar: clip.startBar,
-              lengthBars: clip.lengthBars,
-              offsetSec: clip.offsetSec ?? 0,
-              trimStart: clip.trimStart ?? 0,
+      return page.evaluate(
+        async ({ expectedGroupId, expectedLoopTakeId }: { expectedGroupId: string; expectedLoopTakeId: string }) => {
+          const load = (specifier: string) => import(/* @vite-ignore */ specifier);
+          const [projectRepoModule, sampleModule, userRepoModule, rendererModule, wavModule] = await Promise.all([
+            load("/src/persistence/ProjectRepository.ts"),
+            load("/src/sample-library/factory.ts"),
+            load("/src/persistence/UserSampleRepository.ts"),
+            load("/src/rendering/renderer.ts"),
+            load("/src/rendering/wav.ts"),
+          ]);
+          const { ProjectRepository } = projectRepoModule;
+          const { SampleBank } = sampleModule;
+          const { restoreUserSampleAudio } = userRepoModule;
+          const { renderProject } = rendererModule;
+          const { encodeWavAsync } = wavModule;
+          const project = await new ProjectRepository().loadMostRecent();
+          if (!project) throw new Error("The captured take project did not reopen from IndexedDB");
+          const group = project.arrangement.takeGroups?.find(
+            (candidate: { id: string }) => candidate.id === expectedGroupId,
+          );
+          if (!group?.compTakeId || group.activeTakeId !== group.compTakeId) {
+            throw new Error("The saved take group has no active comp");
+          }
+          const groupClips = (project.arrangement.audioClips ?? []).filter(
+            (clip: { takeGroupId?: string }) => clip.takeGroupId === expectedGroupId,
+          );
+          const sourceTakeIds = Array.from(
+            new Set(
+              groupClips
+                .map((clip: { takeId?: string }) => clip.takeId)
+                .filter((takeId: string | undefined) => takeId && takeId !== group.compTakeId),
+            ),
+          ) as string[];
+          const compClips = groupClips.filter((clip: { takeId?: string }) => clip.takeId === group.compTakeId);
+          const warpMarkers = compClips.flatMap(
+            (clip: { warpMarkers?: Array<{ timeSec: number; tick: number }> }) => clip.warpMarkers ?? [],
+          );
+          const sourceClipWindows = groupClips
+            .filter((clip: { takeId?: string }) => clip.takeId !== group.compTakeId)
+            .map(
+              (clip: {
+                takeId?: string;
+                startBar: number;
+                lengthBars: number;
+                offsetSec?: number;
+                trimStart?: number;
+                trimEnd?: number;
+                loop?: boolean;
+                loopPhaseOffsetSec?: number;
+              }) => ({
+                takeId: clip.takeId,
+                startBar: clip.startBar,
+                lengthBars: clip.lengthBars,
+                offsetSec: clip.offsetSec ?? 0,
+                trimStart: clip.trimStart ?? 0,
+                trimEnd: clip.trimEnd ?? 0,
+                loop: Boolean(clip.loop),
+                loopPhaseOffsetSec: clip.loopPhaseOffsetSec ?? 0,
+              }),
+            );
+          const loopSourceClips = groupClips.filter(
+            (clip: { takeId?: string; loop?: boolean }) => clip.takeId === expectedLoopTakeId && clip.loop,
+          );
+          if (loopSourceClips.length !== 2) {
+            throw new Error(`Expected two looped captured-PCM fragments, found ${loopSourceClips.length}`);
+          }
+          const compSourceTakeIds = Array.from(
+            new Set(compClips.map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId).filter(Boolean)),
+          ) as string[];
+          const bufferIds: string[] = Array.from(
+            new Set<string>(groupClips.map((clip: { bufferId: string }) => clip.bufferId)),
+          );
+          const bank = new SampleBank();
+          await restoreUserSampleAudio(bank);
+          const sourcePcmSha256 = await Promise.all(
+            bufferIds.map(async (bufferId: string) => {
+              const buffer = bank.get(bufferId);
+              if (!buffer) throw new Error(`Recorded PCM buffer ${bufferId} was not restored`);
+              const channelDigests: string[] = [];
+              for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+                const samples = buffer.getChannelData(channel);
+                const sampleBytes = samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.byteLength);
+                const digest = await crypto.subtle.digest("SHA-256", sampleBytes);
+                channelDigests.push(
+                  Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+                );
+              }
+              return channelDigests.join(":");
             }),
           );
-        const compSourceTakeIds = Array.from(
-          new Set(compClips.map((clip: { compSourceTakeId?: string }) => clip.compSourceTakeId).filter(Boolean)),
-        ) as string[];
-        const bufferIds: string[] = Array.from(
-          new Set<string>(groupClips.map((clip: { bufferId: string }) => clip.bufferId)),
-        );
-        const bank = new SampleBank();
-        await restoreUserSampleAudio(bank);
-        const sourcePcmSha256 = await Promise.all(
-          bufferIds.map(async (bufferId: string) => {
-            const buffer = bank.get(bufferId);
-            if (!buffer) throw new Error(`Recorded PCM buffer ${bufferId} was not restored`);
-            const channelDigests: string[] = [];
-            for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-              const samples = buffer.getChannelData(channel);
-              const sampleBytes = samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.byteLength);
-              const digest = await crypto.subtle.digest("SHA-256", sampleBytes);
-              channelDigests.push(
-                Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
-              );
-            }
-            return channelDigests.join(":");
-          }),
-        );
-        const renderScene = project.scenes[0];
-        if (!renderScene) throw new Error("The captured-take project has no scene for an isolated render window");
-        const renderLengthBars = Math.max(
-          1,
-          Math.ceil(
-            Math.max(
-              ...groupClips.map((clip: { startBar: number; lengthBars: number }) => clip.startBar + clip.lengthBars),
+          const renderScene = project.scenes[0];
+          if (!renderScene) throw new Error("The captured-take project has no scene for an isolated render window");
+          const renderLengthBars = Math.max(
+            1,
+            Math.ceil(
+              Math.max(
+                ...groupClips.map((clip: { startBar: number; lengthBars: number }) => clip.startBar + clip.lengthBars),
+              ),
             ),
-          ),
-        );
-        const renderDoc = {
-          ...project,
-          patterns: project.patterns.map(
-            (pattern: { rows: Record<string, number[]>; notes: Record<string, unknown[]> }) => ({
-              ...pattern,
-              rows: {},
-              notes: {},
-            }),
-          ),
-          automation: [],
-          sceneAutomation: [],
-          arrangement: {
-            ...project.arrangement,
-            // An empty song arrangement intentionally falls back to the
-            // active pattern. Keep one blank scene window instead so the
-            // export witness contains only the recorded takes.
-            clips: [
-              {
-                id: `e2e-export-${expectedGroupId}`,
-                sceneId: renderScene.id,
-                startBar: 0,
-                lengthBars: renderLengthBars,
-              },
-            ],
-            audioClips: groupClips,
-            transitions: [],
-          },
-        };
-        const rendered = await renderProject(renderDoc, bank, {
-          mode: "song",
-          sampleRate: 48_000,
-          tailSeconds: 0,
-        });
-        const wav = await encodeWavAsync(rendered, 32);
-        const digest = await crypto.subtle.digest("SHA-256", wav);
-        const wavSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-        let peak = 0;
-        for (let channel = 0; channel < rendered.numberOfChannels; channel++) {
-          for (const sample of rendered.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
-        }
-        return {
-          groupId: group.id,
-          compTakeId: group.compTakeId,
-          activeTakeId: group.activeTakeId,
-          sourceTakeIds,
-          compSourceTakeIds,
-          warpMarkers,
-          sourceClipWindows,
-          bufferIds,
-          buffersRestored: bufferIds.every((bufferId: string) => bank.has(bufferId)),
-          sourcePcmSha256,
-          frames: rendered.length,
-          peak,
-          wavSha256,
-        };
-      }, groupId);
+          );
+          const renderDoc = {
+            ...project,
+            patterns: project.patterns.map(
+              (pattern: { rows: Record<string, number[]>; notes: Record<string, unknown[]> }) => ({
+                ...pattern,
+                rows: {},
+                notes: {},
+              }),
+            ),
+            automation: [],
+            sceneAutomation: [],
+            arrangement: {
+              ...project.arrangement,
+              // An empty song arrangement intentionally falls back to the
+              // active pattern. Keep one blank scene window instead so the
+              // export witness contains only the recorded takes.
+              clips: [
+                {
+                  id: `e2e-export-${expectedGroupId}`,
+                  sceneId: renderScene.id,
+                  startBar: 0,
+                  lengthBars: renderLengthBars,
+                },
+              ],
+              audioClips: groupClips,
+              transitions: [],
+            },
+          };
+          const rendered = await renderProject(renderDoc, bank, {
+            mode: "song",
+            sampleRate: 48_000,
+            tailSeconds: 0,
+          });
+          const wav = await encodeWavAsync(rendered, 32);
+          const digest = await crypto.subtle.digest("SHA-256", wav);
+          const wavSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+          const loopOnlyDoc = {
+            ...renderDoc,
+            arrangement: {
+              ...renderDoc.arrangement,
+              takeGroups: [],
+              audioClips: loopSourceClips,
+            },
+          };
+          const loopRendered = await renderProject(loopOnlyDoc, bank, {
+            mode: "song",
+            sampleRate: 48_000,
+            tailSeconds: 0,
+          });
+          const loopWav = await encodeWavAsync(loopRendered, 32);
+          const loopDigest = await crypto.subtle.digest("SHA-256", loopWav);
+          const loopWavSha256 = Array.from(new Uint8Array(loopDigest), (byte) =>
+            byte.toString(16).padStart(2, "0"),
+          ).join("");
+          let loopWavPeak = 0;
+          for (let channel = 0; channel < loopRendered.numberOfChannels; channel++) {
+            for (const sample of loopRendered.getChannelData(channel))
+              loopWavPeak = Math.max(loopWavPeak, Math.abs(sample));
+          }
+          let peak = 0;
+          for (let channel = 0; channel < rendered.numberOfChannels; channel++) {
+            for (const sample of rendered.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
+          }
+          return {
+            groupId: group.id,
+            compTakeId: group.compTakeId,
+            activeTakeId: group.activeTakeId,
+            sourceTakeIds,
+            compSourceTakeIds,
+            warpMarkers,
+            sourceClipWindows,
+            loopWavSha256,
+            loopWavFrames: loopRendered.length,
+            loopWavPeak,
+            bufferIds,
+            buffersRestored: bufferIds.every((bufferId: string) => bank.has(bufferId)),
+            sourcePcmSha256,
+            frames: rendered.length,
+            peak,
+            wavSha256,
+          };
+        },
+        { expectedGroupId: groupId, expectedLoopTakeId: splitPlan.takeId },
+      );
     };
 
     // Wait for the autosave to commit the redo state before measuring the
@@ -719,16 +893,21 @@ test.describe("11 — audio-input recording", () => {
     expect(beforeReloadExport.sourceTakeIds).toHaveLength(2);
     expect(beforeReloadExport.compSourceTakeIds).toEqual(expect.arrayContaining(beforeReloadExport.sourceTakeIds));
     expect(beforeReloadExport.warpMarkers).toHaveLength(1);
-    expect(beforeReloadExport.sourceClipWindows).toHaveLength(3);
+    expect(beforeReloadExport.sourceClipWindows).toHaveLength(4);
     const splitTakeWindows = beforeReloadExport.sourceClipWindows
       .filter((clip) => clip.takeId === splitPlan.takeId)
       .sort((left, right) => left.startBar - right.startBar);
-    expect(splitTakeWindows).toHaveLength(2);
+    expect(splitTakeWindows).toHaveLength(3);
     expect(splitTakeWindows[0]!.startBar + splitTakeWindows[0]!.lengthBars).toBeCloseTo(
       splitTakeWindows[1]!.startBar,
       12,
     );
+    expect(splitTakeWindows[1]!.startBar + splitTakeWindows[1]!.lengthBars).toBeCloseTo(
+      splitTakeWindows[2]!.startBar,
+      12,
+    );
     expect(splitTakeWindows[1]!.startBar * 1_920).toBeCloseTo(splitPlan.tick, 8);
+    expect(splitTakeWindows[2]!.startBar * 1_920).toBeCloseTo(phaseSplitPlan.tick, 8);
     expect(splitTakeWindows[1]!.offsetSec + splitTakeWindows[1]!.trimStart).toBeCloseTo(
       splitPlan.expectedRightSourceOffsetSec,
       12,
@@ -736,16 +915,28 @@ test.describe("11 — audio-input recording", () => {
     const rightSourceFrame = (splitTakeWindows[1]!.offsetSec + splitTakeWindows[1]!.trimStart) * splitPlan.sampleRate;
     expect(Math.abs(rightSourceFrame - Math.round(rightSourceFrame))).toBeCloseTo(splitPlan.sourceFrameError, 8);
     expect(splitPlan.sourceFrameError).toBeLessThanOrEqual(0.5);
+    expect(splitTakeWindows[1]!.loop).toBe(true);
+    expect(splitTakeWindows[2]!.loop).toBe(true);
+    expect(splitTakeWindows[1]!.offsetSec).toBe(phaseSplitPlan.offsetSec);
+    expect(splitTakeWindows[2]!.offsetSec).toBe(phaseSplitPlan.offsetSec);
+    expect(splitTakeWindows[1]!.trimStart).toBe(phaseSplitPlan.trimStart);
+    expect(splitTakeWindows[2]!.trimStart).toBe(phaseSplitPlan.trimStart);
+    expect(splitTakeWindows[1]!.trimEnd).toBe(phaseSplitPlan.trimEnd);
+    expect(splitTakeWindows[2]!.trimEnd).toBe(phaseSplitPlan.trimEnd);
+    expect(splitTakeWindows[1]!.loopPhaseOffsetSec).toBe(phaseSplitPlan.phaseSec);
+    expect(splitTakeWindows[2]!.loopPhaseOffsetSec).toBeCloseTo(phaseSplitPlan.expectedRightPhaseSec, 10);
     expect(beforeReloadExport.bufferIds).toHaveLength(2);
     expect(beforeReloadExport.buffersRestored).toBe(true);
     expect(beforeReloadExport.frames).toBeGreaterThan(48_000);
     expect(beforeReloadExport.peak).toBeGreaterThan(0.01);
+    expect(beforeReloadExport.loopWavFrames).toBeGreaterThan(48_000);
+    expect(beforeReloadExport.loopWavPeak).toBeGreaterThan(0.01);
 
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
     const reopenedCard = page.locator(".pb-continue-card").first();
     if ((await reopenedCard.count()) > 0) await reopenedCard.click();
-    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    else await page.getByRole("button", { name: "OPEN" }).first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.locator(".arr-audio-clip.comp").first()).toBeVisible({ timeout: 20_000 });
@@ -758,6 +949,9 @@ test.describe("11 — audio-input recording", () => {
       compSourceTakeIds: beforeReloadExport.compSourceTakeIds,
       warpMarkers: beforeReloadExport.warpMarkers,
       sourceClipWindows: beforeReloadExport.sourceClipWindows,
+      loopWavSha256: beforeReloadExport.loopWavSha256,
+      loopWavFrames: beforeReloadExport.loopWavFrames,
+      loopWavPeak: beforeReloadExport.loopWavPeak,
       bufferIds: beforeReloadExport.bufferIds,
       buffersRestored: true,
       sourcePcmSha256: beforeReloadExport.sourcePcmSha256,
@@ -1009,7 +1203,7 @@ test.describe("11 — audio-input recording", () => {
     await expect(page.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
     const continueCard = page.locator(".pb-continue-card").first();
     if ((await continueCard.count()) > 0) await continueCard.click();
-    else await page.locator(".pb-row button:has-text(OPEN)").first().click();
+    else await page.getByRole("button", { name: "OPEN" }).first().click();
     await expect(page.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(page);
     await expect(page.getByRole("region", { name: "Recoverable audio recordings" })).toBeVisible({ timeout: 15_000 });
@@ -1130,7 +1324,7 @@ test.describe("11 — audio-input recording", () => {
     await expect(recoveredPage.locator(".project-browser")).toBeVisible({ timeout: 30_000 });
     const continueCard = recoveredPage.locator(".pb-continue-card").first();
     if ((await continueCard.count()) > 0) await continueCard.click();
-    else await recoveredPage.locator(".pb-row button:has-text(OPEN)").first().click();
+    else await recoveredPage.getByRole("button", { name: "OPEN" }).first().click();
     await expect(recoveredPage.locator(".sequencer")).toBeVisible({ timeout: 30_000 });
     await ensureArrangementVisible(recoveredPage);
     const recoveryRegion = recoveredPage.getByRole("region", { name: "Recoverable audio recordings" });

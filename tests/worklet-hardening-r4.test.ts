@@ -64,11 +64,7 @@ beforeAll(async () => {
   const load = (name: string) => {
     const source = readFileSync(resolve("src/audio-worklets", name), "utf8");
     const host = new Function("registerProcessor", "AudioWorkletProcessor", "globalThis", source);
-    host(
-      (n: string, cls: new () => any) => registered.set(n, cls),
-      FakeAudioWorkletProcessor,
-      globalThis,
-    );
+    host((n: string, cls: new () => any) => registered.set(n, cls), FakeAudioWorkletProcessor, globalThis);
   };
   for (const name of [
     "ducking-delay-processor.js",

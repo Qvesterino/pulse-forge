@@ -138,6 +138,15 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 7, assetId: "factory.shaker.soft" },
     { index: 8, assetId: "factory.hat.closed.soft" },
   ],
+  trance: [
+    // The trance kit: the techno kick up front (the de-emphasised four-floor
+    // Wikipedia describes — the bass mask carries the weight), the open hat
+    // for the offbeat mask, and the ride for the arp layer.
+    { index: 0, assetId: "factory.kick.techno" },
+    { index: 1, assetId: "factory.kick.punch" },
+    { index: 8, assetId: "factory.hat.closed" },
+    { index: 10, assetId: "factory.hat.open" },
+  ],
 };
 
 /**
@@ -192,6 +201,9 @@ export const GENRE_FEEL: Partial<
   boombap: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
   // Amapiano sits between: the shaker bed is tight, the log drum breathes.
   amapiano: { humanizeTiming: 0.09, humanizeVelocity: 0.15 },
+  // Trance is the most grid-locked genre in the library — the arp and the
+  // kick ARE the machine; a jittered trance read is a broken trance read.
+  trance: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
 };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:

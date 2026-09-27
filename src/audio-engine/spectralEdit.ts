@@ -188,7 +188,7 @@ export function applySpectralEdits(
       for (const e of active) {
         const tIn =
           raisedCosine((frameTimeCenter(frameStartSec, fftSize, sampleRate) - (e.startSec - featherSec)) * featherInv) *
-          raisedCosine(((e.endSec + featherSec) - frameTimeCenter(frameStartSec, fftSize, sampleRate)) * featherInv);
+          raisedCosine((e.endSec + featherSec - frameTimeCenter(frameStartSec, fftSize, sampleRate)) * featherInv);
         if (tIn <= 0) continue;
         for (let bin = e.binFrom; bin <= e.binTo; bin++) {
           const freq = bin * binHz;

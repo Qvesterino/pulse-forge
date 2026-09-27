@@ -10,8 +10,12 @@ import type {
 } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
-import { generateOptionsFromIntent } from "./plan";
+import { generateOptionsFromIntent, planGeneration } from "./plan";
 import { generateAsyncResult, generateLocalResult } from "./pipeline";
+import { generateMultiVoice } from "./multi-voice";
+import { instrumentTrackForRole } from "../ai/role-targets";
+import { attachProvenance } from "./providers/candidate";
+import { refreshPatternQuality } from "./quality";
 import type { RenderCandidateFn } from "./audio-feedback";
 import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
@@ -36,6 +40,7 @@ import { vocalSectionAdjust } from "../vocal/form";
 import type { VocalProfile } from "../vocal/types";
 import { EFFECT_META } from "../effects/definitions";
 import { createSongSectionIntent } from "./song-section-intent";
+import { hashString } from "../shared/rng";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -2342,6 +2347,70 @@ export function reviseSection(
       patternId: pattern.id,
       pattern: next,
       label: `${targetRole}: ${attribute} ${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(2)} — same seed`,
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Re-shape only the lead rhythm in one section. Unlike full section
+ * regeneration this deliberately preserves the existing drums, bass, chords,
+ * scene bindings and seed; flow is a lead-performance choice, not a new beat.
+ */
+export function reviseSectionFlow(
+  doc: ProjectDocument,
+  targetRole: SceneRole,
+  flow: "straight" | "triplet" | "offbeat",
+): SectionReviseOutcome {
+  const scene = doc.scenes.find((candidate) => sceneRoleOf(candidate) === targetRole);
+  if (!scene) return { ok: false, error: `no ${targetRole} section in the project — build a song first` };
+  const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  if (!pattern) return { ok: false, error: `${targetRole} scene has no pattern` };
+  const snapshotIntent = pattern.generation?.intent;
+  if (!snapshotIntent || typeof snapshotIntent !== "object") {
+    return { ok: false, error: `${targetRole} pattern has no intent provenance to revise` };
+  }
+
+  try {
+    const intent = normalizeIntent(snapshotIntent);
+    if (!intent.roles.includes("lead") || intent.preserve?.includes("lead")) {
+      return { ok: false, error: `${targetRole} section brief protects or omits the lead role` };
+    }
+    const leadTrack = instrumentTrackForRole(doc, "lead", intent.targetTracks.instrumentTrackIds);
+    if (!leadTrack) return { ok: false, error: `${targetRole} section has no lead instrument track` };
+
+    const revisedIntent = normalizeIntent({ ...intent, flow });
+    const numericSeed = hashString(`${intent.seed}|section-flow`);
+    const lead = generateMultiVoice(
+      doc,
+      intent.genre,
+      numericSeed,
+      pattern.stepCount,
+      intent.key ?? doc.key ?? null,
+      intent.energy,
+      intent.controls.velocityVariation,
+      intent.density,
+      intent.complexity,
+      intent.productionProfile,
+      flow,
+    ).lead;
+    if (lead.length === 0) {
+      return { ok: false, error: `${targetRole} lead is silent at this section's current energy` };
+    }
+
+    const plan = planGeneration(revisedIntent, doc);
+    const shaped = refreshPatternQuality(
+      doc,
+      { ...pattern, notes: { ...pattern.notes, [leadTrack.id]: lead } },
+      plan.options,
+    );
+    const next: Pattern = { ...attachProvenance(shaped, plan, doc), id: pattern.id, name: pattern.name };
+    return {
+      ok: true,
+      patternId: pattern.id,
+      pattern: next,
+      label: `${targetRole} lead: ${flow} flow — drums, bass and chords preserved`,
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

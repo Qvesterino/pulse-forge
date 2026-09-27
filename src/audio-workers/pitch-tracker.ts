@@ -138,7 +138,12 @@ export function trackPitch(data: Float32Array, sampleRate: number): PitchFrame[]
 
     const hz = sampleRate / tauPick;
     const midi = 69 + 12 * Math.log2(hz / 440);
-    frames.push({ timeSec: start / sampleRate, midi: Number.isFinite(midi) ? midi : 0, clarity: Math.max(0, 1 - bestValue), rms });
+    frames.push({
+      timeSec: start / sampleRate,
+      midi: Number.isFinite(midi) ? midi : 0,
+      clarity: Math.max(0, 1 - bestValue),
+      rms,
+    });
   }
   return frames;
 }

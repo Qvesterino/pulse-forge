@@ -2962,6 +2962,9 @@ export function addAudioClip(
       : {}),
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
     ...(patch.loop === true ? { loop: true as const } : {}),
+    ...(patch.loop === true && Number.isFinite(patch.loopPhaseOffsetSec)
+      ? { loopPhaseOffsetSec: Math.max(0, patch.loopPhaseOffsetSec!) }
+      : {}),
     ...(patch.warpMarkers ? { warpMarkers: patch.warpMarkers.map((m) => ({ ...m })) } : {}),
   };
   const next: ProjectDocument = {
@@ -3710,7 +3713,11 @@ export function updateAudioClip(
   if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
   if (patch.warpMarkers !== undefined) nextPatch.warpMarkers = patch.warpMarkers;
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
-  if (patch.loop !== undefined) nextPatch.loop = patch.loop === true;
+  if (patch.loop !== undefined) {
+    nextPatch.loop = patch.loop === true;
+    if (patch.loop !== true) nextPatch.loopPhaseOffsetSec = undefined;
+  }
+  if (patch.reverse === true) nextPatch.loopPhaseOffsetSec = undefined;
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3888,7 +3895,14 @@ export function splitAudioClipAtTick(
   if (leftBars < 0.05 || rightBars < 0.05) throw new Error("Split too close to edge");
   const secondsPerTick = 60 / (doc.bpm * PPQ);
   const leftSec = (splitTick - startTick) * secondsPerTick;
-  const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSec * (clip.stretchRate ?? 1);
+  const rightSec = (endTick - splitTick) * secondsPerTick;
+  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
+  const sourceSecondsPerWallSecond = preservingStretch ? 1 / rate : rate;
+  const leftSourceSec = leftSec * sourceSecondsPerWallSecond;
+  const rightSourceSec = rightSec * sourceSecondsPerWallSecond;
+  const rightOffset = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0) + leftSourceSec;
+  const reverseLeftOffset = (clip.offsetSec ?? 0) + rightSourceSec;
   const sourceStartSec = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
   const sourceEndSec =
     Number.isFinite(sourceDurationSec) && sourceDurationSec! > 0 ? sourceDurationSec! - (clip.trimEnd ?? 0) : NaN;
@@ -3952,6 +3966,8 @@ export function splitAudioClipAtTick(
     ...(leftWarpMarkers ? { warpMarkers: leftWarpMarkers } : copyWarps()),
     id: leftId,
     lengthBars: leftLength,
+    ...(clip.reverse && !preserveWarpAcrossSplit ? { offsetSec: reverseLeftOffset } : {}),
+    ...(clip.loop === true && !clip.reverse ? { loopPhaseOffsetSec: clip.loopPhaseOffsetSec ?? 0 } : {}),
     ...(preserveWarpAcrossSplit && sourceDurationSec !== undefined && warpSplitTimeSec !== null
       ? { trimEnd: sourceDurationSec - warpSplitTimeSec }
       : {}),
@@ -3965,21 +3981,15 @@ export function splitAudioClipAtTick(
     lengthBars: rightLength,
     offsetSec: preserveWarpAcrossSplit
       ? warpSplitTimeSec!
-      : clip.reverse
+      : clip.reverse || clip.loop === true
         ? clip.offsetSec
         : Math.max(0, rightOffset - (clip.trimStart ?? 0)),
+    ...(clip.loop === true && !clip.reverse
+      ? { loopPhaseOffsetSec: (clip.loopPhaseOffsetSec ?? 0) + leftSourceSec }
+      : {}),
     ...(preserveWarpAcrossSplit ? { trimStart: 0 } : {}),
     fadeIn: splitDeclickFadeSec,
-    // For reverse, keep offset as is — approximate
   };
-  // Fix reverse offset handling: keep original for now if reverse
-  if (clip.reverse) {
-    rightClip.offsetSec = clip.offsetSec;
-    leftClip.offsetSec = Math.max(
-      0,
-      (clip.offsetSec ?? 0) + rightBars * BAR_TICKS * secondsPerTick * (clip.stretchRate ?? 1),
-    );
-  }
   const nextClips = (doc.arrangement.audioClips ?? [])
     .filter((c) => c.id !== clipId)
     .concat([leftClip, rightClip])

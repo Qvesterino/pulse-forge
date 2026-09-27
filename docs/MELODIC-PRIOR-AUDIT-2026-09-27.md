@@ -5,11 +5,13 @@
 melodic branch.
 **Method:** read-only error analysis on the shipped artifacts
 (`scripts/audit-melodic-prior.py`), failure-mode breakdown
-(`scripts/audit-melodic-duration-collapse.py`), a faithful 5-fold group-CV
-weighting A/B (`scripts/audit-melodic-weights-ab.py`) and a finite-difference
+(`scripts/audit-melodic-duration-collapse.py`), a leakage check
+(`scripts/audit-melodic-leakage-check.py`), a retrain gate that trains fresh
+models per fold (`scripts/gate-melodic-retrain.py`) and a finite-difference
 gradient check (`scripts/audit-melodic-double-weight-proof.py`).
-**Verdict:** the documented reason v2 is "fallback only" is **backwards**, and
-both trainers contain a **real gradient bug** in the duration head.
+**Verdict:** both trainers contained a **real gradient bug** in the duration
+head (proven, fixed, retrained). The first pass of this audit also had a
+**methodology error of its own** — section 3 records it.
 
 ---
 
@@ -18,10 +20,11 @@ both trainers contain a **real gradient bug** in the duration head.
 | # | Finding | Evidence |
 | - | ------- | -------- |
 | 1 | **The v2/v1 comparison is not apples-to-apples.** v1's shipped artifact trained on **190** samples (ds.v1), v2 on **239** (ds.v2). The library grew between the two training runs, so "v2 regressed" partly means "v2 saw different data". | `symbolic-melodic-validation.json` (`samples: 190`) vs `symbolic-melodic-v2-validation.json` (`samples: 239`) |
-| 2 | **The shipped 15 % split validates on 29 rows in 4 groups.** Any single valDegreeAcc from it is noise-dominated. 5-fold group CV is the honest number. | `audit-melodic-prior.py`: `val split: 29 rows in 4 groups` |
-| 3 | **v2's DEGREE head is BETTER than v1's**, by both metrics — the opposite of what `INTENT_ENGINE.md` §5.3 says. | k-fold: v2 deg **0.7521** vs v1 0.7043 |
-| 4 | **v2's DURATION head collapsed toward the rare class** — worse than the majority baseline. | k-fold: v2 dur **0.4511** vs majority 0.4997; 55 predictions for 12 truths of class 8 |
-| 5 | **Root cause: a double-multiplied class weight** in the duration gradient (`train-symbolic-melodic.py:105`). The head effectively optimises `wt²`, amplifying the relative pull toward rare classes by `1/wt` (up to **10.2×**). | finite-difference check: analytic norm 0.0224 vs true 0.1463 on the buggy path |
+| 2 | **The shipped 15 % split validates on 29 rows in 4 groups.** Any single valDegreeAcc from it is noise-dominated (95 % CI ≈ ±18 pp). | `audit-melodic-prior.py`: `val split: 29 rows in 4 groups` |
+| 3 | **v2's DURATION head collapsed toward the rare class** — worse than the majority baseline. | honest: v2 dur **0.3793** vs majority 0.4997; 55 predictions for 12 truths of class 8 |
+| 4 | **Root cause: a double-multiplied class weight** in the duration gradient (`train-symbolic-melodic.py:105`). The head effectively optimises `wt²`, amplifying the relative pull toward rare classes by up to **10.2×**. | finite-difference check: analytic norm 0.0224 vs true 0.1463 on the buggy path |
+| 5 | **The bug is fixed and the retrained v2 passes the gate.** | honest split: degree 0.4828 → **0.5517**, duration 0.3793 → **0.5517** (§4) |
+| 6 | **Data gaps**: degree classes `d1`/`d5` have **zero** validation examples; duration-8 has 12 samples in the whole library. | `audit-melodic-prior.py` per-class recall |
 
 ## 2. Error breakdown (v1, shipped 29-dim artifact)
 
@@ -49,65 +52,90 @@ calibration:           mean confidence 0.743 vs accuracy 0.690 -> over-confident
    not yet meaningful; the classes need more library coverage before they can
    be judged.
 
-**Not a weakness:** duration. v1 duration is solid (86 % on val, 0.7610 pooled
-k-fold, all four classes used).
+**Not a weakness:** duration. v1 duration is solid (86 % on val, all four
+classes used).
 
-## 3. The documented-comparison correction
+## 3. Methodology correction (this audit's own error)
 
-`INTENT_ENGINE.md` §5.3 currently reads:
+The **first version of this document** reported v2 degree **0.7521** and called
+it "better than v1". That was a **leakage artefact**, caught by
+`audit-melodic-leakage-check.py` while building the retrain gate:
 
-> melodic prior v1 (29-dim, valDegreeAcc 0.679 — preferred)
-> melodic prior v2 (41-dim, valDegreeAcc 0.607 — regression on 190 rows, fallback)
+| metric | rows the model trained on | rows it never saw (honest) |
+| ------ | ------------------------- | -------------------------- |
+| v2 degree | 0.7952 | **0.4828** |
+| v2 duration | 0.4667 | **0.3793** |
 
-After this audit:
+A *shipped* model was trained with one specific 15 % split held out. Evaluating
+it on all 5 k-fold splits therefore measures **training accuracy** on every fold
+that does not contain those 4 held-out groups — 210 of 239 rows. The k-fold
+number averaged leaked and honest rows, inflating the result.
 
-- the "190 rows" figure belongs to **v1**, not v2 — v2 trained on 239;
-- on the honest 5-fold group CV over all 33 groups, **v2's degree head wins
-  0.7521 vs 0.7043** (and v2's shipped report of 0.4828 is a 29-row artefact);
-- **v2's duration head is the genuine regression** (0.4511, below the 0.4997
-  majority baseline), and it has a concrete, proven cause (finding 5).
+**Consequence:** only a **freshly trained model per fold** (the retrain gate)
+gives an apples-to-apples comparison between recipes. All corrected numbers in
+this document come from that gate.
 
-So the correct routing is not "v2 is worse". It is **"v2's degree head should
-be preferred; its duration head must be fixed before v2 ships as default."**
+## 4. The fix (applied and verified)
 
-## 4. Proven fix path
+Two changes to `scripts/train-symbolic-melodic.py`, with the hot path extracted
+to `scripts/train_symbolic_melodic_lib.py` so the gate trains through the exact
+same code:
 
-Two independent, measured changes, neither requiring new model architecture:
+### 4a. Remove the double weight (correctness)
 
-### 4a. Remove the double weight (correctness fix)
+Line 105 multiplied the duration gradient by `(wt / n)` a second time. Deleted.
+The finite-difference check now passes: the analytic gradient matches the loss
+being printed.
 
-`scripts/train-symbolic-melodic.py:105` multiplies the duration gradient by
-`(wt / n)` a second time. Delete that line. The finite-difference check proves
-the analytic gradient currently disagrees with the loss being printed, so the
-duration head was never optimising the reported objective.
+### 4b. Temper the class weights (stability)
 
-### 4b. Temper the class weights (stability fix)
+`--weight-power` (default 0.5) replaces linear inverse frequency with
+square-root tempering: the rare/common weight ratio drops **10.2× → 3.2×**.
+Chosen by measurement, not taste — the gate was run at 0.5 and 1.0 (§5).
 
-Linear inverse frequency gives duration-8 (12 samples) a **10.2×** weight over
-duration-2 (122 samples). Square-root tempering reduces that to **3.2×**, which
-keeps the rare class visible without letting it dominate. The faithful A/B
-(`audit-melodic-weights-ab.py`, augmentation merged, 5-fold CV) shows sqrt and
-linear are within noise on the currently-shipped recipes — i.e. the tempering
-is safe — while the double-weight bug is the dominant cause.
+### Measured result (shipped 15 % split, apples-to-apples)
 
-**Retrain gate:** re-run `npm run prior:melodic:v2` after 4a+4b and require
-k-fold duration ≥ the majority baseline (0.4997) **and** degree ≥ 0.7521
-(no regression on the head that already works).
+| head | shipped v2 | retrained v2 | delta |
+| ---- | ---------: | -----------: | ----: |
+| degree | 0.4828 | **0.5517** | +0.0689 |
+| duration | 0.3793 | **0.5517** | +0.1724 |
 
-### 4c. Data gaps (not a code fix)
+Both heads now use their full class range (8/8 and 4/4). Train fit is 0.802 /
+0.900, so the model is not over-fitting. `node scripts/validate-symbolic-melodic.mjs v2`
+passes; `weightPower` is recorded in the manifest for provenance.
 
-`d1` and `d5` have **zero** validation examples and `8`-step durations only 12
-in the whole library. No weighting scheme invents signal that is not there.
-The library needs more sequences that use those degrees before per-class
-quality can be claimed.
+## 5. Recipe comparison (gate runs)
 
-## 5. Audit artifacts
+Pre-registered gate: duration ≥ majority baseline (0.4997), degree ≥ shipped v2
+(0.4828), no class collapse.
+
+| recipe | degree | duration | verdict |
+| ------ | -----: | -------: | ------- |
+| one-hot, power 1.0 | 0.4854 | 0.6067 | PASS (k-fold) |
+| one-hot, power 0.5 | 0.4812 | 0.5941 | PASS (k-fold) |
+| embedding, power 1.0 | 0.4770 | 0.5439 | FAIL (degree) |
+| **embedding, power 0.5 (shipped)** | **0.5021** | **0.6025** | **PASS (k-fold)** |
+
+The shipped **embedding + power 0.5** recipe has the best degree head at
+k-fold and clears duration by 0.10 over the baseline.
+
+## 6. Remaining data gaps (not a code fix)
+
+`d1` and `d5` have zero validation examples and `8`-step durations only 12
+samples library-wide. No weighting scheme invents signal that is not there.
+Growing the library (more sequences using those degrees/durations) is the next
+real lever, and should be measured against these k-fold numbers.
+
+## 7. Audit artifacts
 
 | Script | Purpose |
 | ------ | ------- |
-| `scripts/audit-melodic-prior.py` | Full breakdown + 5-fold group CV + v1/v2 head-to-head |
-| `scripts/audit-melodic-duration-collapse.py` | Names the duration failure mode (collapse to rare class) |
-| `scripts/audit-melodic-weights-ab.py` | Faithful weighting A/B with augmentation merged |
+| `scripts/audit-melodic-prior.py` | Full breakdown + per-class/context/calibration |
+| `scripts/audit-melodic-duration-collapse.py` | Names the duration failure mode |
+| `scripts/audit-melodic-leakage-check.py` | Quantifies seen-vs-unseen accuracy of a shipped model |
+| `scripts/gate-melodic-retrain.py` | Pre-registered retrain gate (trains fresh models per fold) |
 | `scripts/audit-melodic-double-weight-proof.py` | Finite-difference proof of the gradient bug |
+| `scripts/train_symbolic_melodic_lib.py` | Shared trainer primitives (gate and trainer share one code path) |
 
-All four are read-only: they never write `public/models/`.
+All audit scripts are read-only: they never write `public/models/`.
+

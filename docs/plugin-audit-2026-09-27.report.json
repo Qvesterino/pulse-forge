@@ -4352,29 +4352,6 @@
       "category": "dynamics"
     },
     {
-      "type": "ozvena",
-      "sweepError": "runner: TimeoutError: page.goto: Timeout 180000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:5221/\", waiting until \"domcontentloaded\"\u001b[22m\n",
-      "defaultPeak": 0,
-      "defaultFinite": false,
-      "bypassDelta": 0,
-      "params": [],
-      "deadParams": [],
-      "unstableParams": [],
-      "rapidSwingFinite": false,
-      "presetsFinite": 0,
-      "presetsTotal": 0,
-      "hostError": "not reached",
-      "hostProcesses": false,
-      "hostDelta": 0,
-      "hostBypassEqualsRemoved": false,
-      "hostFinite": false,
-      "automationDelta": 0,
-      "automationFinite": false,
-      "restoreMaxDiff": null,
-      "name": "ozvena",
-      "category": "unknown"
-    },
-    {
       "type": "morphdynamics",
       "defaultPeak": 0.37389135360717773,
       "defaultFinite": true,
@@ -4497,21 +4474,1267 @@
       "restoreRmsDiff": 2.0501984043832548e-10,
       "name": "MORPH",
       "category": "dynamics"
+    },
+    {
+      "type": "tapeStop",
+      "defaultPeak": 0.35598355531692505,
+      "defaultFinite": true,
+      "bypassDelta": 0,
+      "params": [
+        {
+          "id": "engaged",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.3585234582424164,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 27.07456468189849
+        },
+        {
+          "id": "time",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "curve",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "spin",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        }
+      ],
+      "deadParams": [
+        "time",
+        "curve",
+        "spin",
+        "mix"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.3733516762211584,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.21607741760241392,
+      "automationFinite": true,
+      "restoreMaxDiff": 1.341104507446289e-7,
+      "restoreRmsDiff": 1.2835951914030882e-11,
+      "name": "Tape Stop",
+      "category": "movement"
+    },
+    {
+      "type": "freqShifter",
+      "defaultPeak": 0.5003603100776672,
+      "defaultFinite": true,
+      "bypassDelta": 0.22263756766153064,
+      "params": [
+        {
+          "id": "shift",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5873217582702637,
+          "maxPeak": 0.5515328049659729,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.22284258275459215
+        },
+        {
+          "id": "fine",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5451714396476746,
+          "maxPeak": 0.5016489028930664,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.8151169383607061
+        },
+        {
+          "id": "side",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5003603100776672,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "lfoRate",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5003603100776672,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "sync",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5003603100776672,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "lfoDepth",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5322617292404175,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.1483740335996659
+        },
+        {
+          "id": "feedback",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 1.1465762853622437,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.5701123758739655
+        },
+        {
+          "id": "delayTime",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5003603100776672,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "drive",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 1.028518795967102,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.374319394738591
+        },
+        {
+          "id": "tone",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4583573043346405,
+          "maxPeak": 0.5003603100776672,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.10476478020783103
+        },
+        {
+          "id": "spread",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5003603100776672,
+          "maxPeak": 0.5003603100776672,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.5003603100776672,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.182096128525935
+        }
+      ],
+      "deadParams": [
+        "side",
+        "lfoRate",
+        "sync",
+        "delayTime",
+        "spread"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 7,
+      "presetsTotal": 7,
+      "hostProcesses": true,
+      "hostDelta": 0.7606179253649747,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 1.309064864964538,
+      "automationFinite": true,
+      "restoreMaxDiff": 0.00001728534698486328,
+      "restoreRmsDiff": 3.8694078963598055e-9,
+      "name": "Freq Shift",
+      "category": "movement"
+    },
+    {
+      "type": "pitchShift",
+      "defaultPeak": 0.41983267664909363,
+      "defaultFinite": true,
+      "bypassDelta": 0.2887775650380235,
+      "params": [
+        {
+          "id": "semitones",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4401325583457947,
+          "maxPeak": 0.596282422542572,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.4586020746768554
+        },
+        {
+          "id": "fine",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.40293681621551514,
+          "maxPeak": 0.45626330375671387,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.17757680393130199
+        },
+        {
+          "id": "grainMs",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.42299917340278625,
+          "maxPeak": 0.4668046832084656,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.21949943997349375
+        },
+        {
+          "id": "width",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.41983267664909363,
+          "maxPeak": 0.4650580883026123,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.03834285620300892
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.41983267664909363,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.224070912523608
+        }
+      ],
+      "deadParams": [],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 4,
+      "presetsTotal": 4,
+      "hostProcesses": true,
+      "hostDelta": 8.657666136744355,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.305787977509735,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 5.930352017090213e-11,
+      "name": "Pitch Shift",
+      "category": "character"
+    },
+    {
+      "type": "vinyl",
+      "defaultPeak": 0.1560104340314865,
+      "defaultFinite": true,
+      "bypassDelta": 0.8076834589002171,
+      "params": [
+        {
+          "id": "amount",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1524886190891266,
+          "maxPeak": 0.15103259682655334,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.060076063349579364
+        },
+        {
+          "id": "crackle",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1555582582950592,
+          "maxPeak": 0.1560104340314865,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.001207558727173103
+        },
+        {
+          "id": "crackleTone",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1560104340314865,
+          "maxPeak": 0.1560104340314865,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 0.000026314323433701095
+        },
+        {
+          "id": "crackleDecay",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1560104340314865,
+          "maxPeak": 0.1560104340314865,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.00004356526347248004
+        },
+        {
+          "id": "hiss",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1555565893650055,
+          "maxPeak": 0.15685321390628815,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.000795070107842711
+        },
+        {
+          "id": "hissTone",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.15579435229301453,
+          "maxPeak": 0.15600429475307465,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.0002580805417728759
+        },
+        {
+          "id": "rumble",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1560104340314865,
+          "maxPeak": 0.15577206015586853,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.003199483395725164
+        },
+        {
+          "id": "rumbleTone",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1560104340314865,
+          "maxPeak": 0.1560104340314865,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "wowRate",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1592860072851181,
+          "maxPeak": 0.15791329741477966,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "centroid",
+          "delta": 0.07903566024250161
+        },
+        {
+          "id": "wow",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.16117268800735474,
+          "maxPeak": 0.15141652524471283,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.45831214351187394
+        },
+        {
+          "id": "flutterRate",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.15707673132419586,
+          "maxPeak": 0.1617918312549591,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.07326944509066431
+        },
+        {
+          "id": "flutter",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1576654314994812,
+          "maxPeak": 0.15903788805007935,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.03964965374677877
+        },
+        {
+          "id": "drive",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.1560104340314865,
+          "maxPeak": 0.3414114713668823,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.5106115234387523
+        },
+        {
+          "id": "year",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.3528812825679779,
+          "maxPeak": 0.11517320573329926,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 1.7774266423868759
+        },
+        {
+          "id": "toneLp",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.10853466391563416,
+          "maxPeak": 0.1560104340314865,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.1486974720425924
+        },
+        {
+          "id": "toneHp",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.15900655090808868,
+          "maxPeak": 0.16106869280338287,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.4144826842791996
+        },
+        {
+          "id": "width",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.13089385628700256,
+          "maxPeak": 0.19063089787960052,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 1
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.1560104340314865,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 4.199760739671129
+        }
+      ],
+      "deadParams": [
+        "crackle",
+        "crackleTone",
+        "crackleDecay",
+        "hiss",
+        "hissTone",
+        "rumble",
+        "rumbleTone"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 7,
+      "presetsTotal": 7,
+      "hostProcesses": true,
+      "hostDelta": 3.0621852266500795,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 1.453345777390626,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 2.317821569573128e-10,
+      "name": "Vinyl Suite",
+      "category": "character"
+    },
+    {
+      "type": "beatMangler",
+      "sweepExemptReason": "bar-mangling engages via transport loop events + step envelopes - evidenced by host fingerprint + dedicated beatmangler suites",
+      "defaultPeak": 0.35598355531692505,
+      "defaultFinite": true,
+      "bypassDelta": 0,
+      "params": [
+        {
+          "id": "playMode",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "repeatFill",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "trigger",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 0.004007837723165856
+        },
+        {
+          "id": "interval",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "offset",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "chance",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "gate",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.35598355531692505,
+          "maxPeak": 0.35598355531692505,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        }
+      ],
+      "deadParams": [
+        "playMode",
+        "repeatFill",
+        "trigger",
+        "interval",
+        "offset",
+        "chance",
+        "gate",
+        "mix"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 2,
+      "presetsTotal": 2,
+      "hostProcesses": true,
+      "hostDelta": 0.48898603279866704,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.06279655939779777,
+      "automationFinite": true,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 1.3495384847858526e-10,
+      "name": "Beat Mangler",
+      "category": "movement"
+    },
+    {
+      "type": "ozvena",
+      "defaultPeak": 0.4382043480873108,
+      "defaultFinite": true,
+      "bypassDelta": 0.9101449779188345,
+      "params": [
+        {
+          "id": "global.inputGainDb",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.02764882519841194,
+          "maxPeak": 0.9673014879226685,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.6747079475491276
+        },
+        {
+          "id": "blendPad.x",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.393341064453125,
+          "maxPeak": 0.49876952171325684,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.1990590212548277
+        },
+        {
+          "id": "blendPad.y",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4387698173522949,
+          "maxPeak": 0.5132099986076355,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.3802068212513086
+        },
+        {
+          "id": "global.dryWet",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.5013460516929626,
+          "maxPeak": 0.9660509824752808,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.790480158951134
+        },
+        {
+          "id": "global.outputGainDb",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.02764882519841194,
+          "maxPeak": 0.9673014879226685,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.6747079918245136
+        },
+        {
+          "id": "engines.e1.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.48115554451942444,
+          "maxPeak": 0.4382043480873108,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.07604032038303143
+        },
+        {
+          "id": "engines.e2.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4475266933441162,
+          "maxPeak": 0.4382043480873108,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.13051684033549615
+        },
+        {
+          "id": "engines.e3.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4387698173522949,
+          "maxPeak": 0.4382043480873108,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.3802068212513086
+        },
+        {
+          "id": "global.quality",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4382134675979614,
+          "maxPeak": 0.43847060203552246,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.0033162974642771317
+        }
+      ],
+      "deadParams": [
+        "global.quality"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 0,
+      "presetsTotal": 0,
+      "hostProcesses": true,
+      "hostDelta": 8.845950612741595,
+      "hostBypassEqualsRemoved": false,
+      "hostFinite": true,
+      "automationDelta": 2.3575200478919083,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 4.891250487735615e-10,
+      "name": "VØID",
+      "category": "space"
+    },
+    {
+      "type": "ringMod",
+      "defaultPeak": 0.42534610629081726,
+      "defaultFinite": true,
+      "bypassDelta": 0.23513250672415728,
+      "params": [
+        {
+          "id": "frequency",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.15985289216041565,
+          "maxPeak": 0.4478093683719635,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 2.51031604424367
+        },
+        {
+          "id": "feedback",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.42534610629081726,
+          "maxPeak": 0.41253891587257385,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.08195806971968975
+        },
+        {
+          "id": "xmode",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.42534610629081726,
+          "maxPeak": 0.42534610629081726,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "centroid",
+          "delta": 0.09905698358435544
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.42534610629081726,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.307416001845118
+        }
+      ],
+      "deadParams": [],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.13495221154120246,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.24119674619791542,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 2.805088728638221e-10,
+      "name": "Ring Mod",
+      "category": "movement"
     }
   ],
-  "instruments": [],
+  "instruments": [
+    {
+      "kind": "sampler",
+      "name": "Sampler",
+      "defaultAudible": true,
+      "defaultPeak": 0.17937207221984863,
+      "unstableParams": [],
+      "deadParams": [
+        "decay",
+        "release",
+        "pitchDecayT",
+        "resonance",
+        "keytrack",
+        "velFlt",
+        "loop",
+        "loopXfade",
+        "loopStart",
+        "loopEnd",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modBAmt",
+        "modLfoRate"
+      ],
+      "wiredParams": 11,
+      "totalParams": 28
+    },
+    {
+      "kind": "analog",
+      "name": "Analog Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.36075225472450256,
+      "unstableParams": [],
+      "deadParams": [
+        "filterEnv",
+        "spread",
+        "lfoRate",
+        "lfoSync",
+        "lfoDepth",
+        "aShape",
+        "dShape",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 21,
+      "totalParams": 34
+    },
+    {
+      "kind": "bass",
+      "name": "Bass Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.7531448602676392,
+      "unstableParams": [],
+      "deadParams": [
+        "glide",
+        "spread",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 24
+    },
+    {
+      "kind": "808",
+      "name": "808 Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.92267906665802,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "glide",
+        "mono",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 9,
+      "totalParams": 18
+    },
+    {
+      "kind": "texture",
+      "name": "Texture Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.18165776133537292,
+      "unstableParams": [],
+      "deadParams": [
+        "space",
+        "chaos",
+        "diffuse",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 14,
+      "totalParams": 23
+    },
+    {
+      "kind": "wavetable",
+      "name": "Wavetable Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.3897079527378082,
+      "unstableParams": [],
+      "deadParams": [
+        "table",
+        "morph",
+        "morphRate",
+        "morphDepth",
+        "spread",
+        "keytrack",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modBAmt",
+        "modLfoRate"
+      ],
+      "wiredParams": 10,
+      "totalParams": 23
+    },
+    {
+      "kind": "granular",
+      "name": "Granular Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.08050957322120667,
+      "unstableParams": [],
+      "deadParams": [
+        "release"
+      ],
+      "wiredParams": 14,
+      "totalParams": 15
+    },
+    {
+      "kind": "keys",
+      "name": "Keys",
+      "defaultAudible": true,
+      "defaultPeak": 0.038110796362161636,
+      "unstableParams": [],
+      "deadParams": [
+        "spread",
+        "lfoRate",
+        "lfoSync",
+        "lfoDepth",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 26
+    },
+    {
+      "kind": "organ",
+      "name": "Organ",
+      "defaultAudible": true,
+      "defaultPeak": 0.2523030936717987,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "glide"
+      ],
+      "wiredParams": 10,
+      "totalParams": 12
+    },
+    {
+      "kind": "strings",
+      "name": "Strings",
+      "defaultAudible": true,
+      "defaultPeak": 0.6430032849311829,
+      "unstableParams": [],
+      "deadParams": [
+        "vibrato",
+        "vibRate",
+        "vibDelay"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10
+    },
+    {
+      "kind": "bell",
+      "name": "Bell",
+      "defaultAudible": true,
+      "defaultPeak": 0.23508836328983307,
+      "unstableParams": [],
+      "deadParams": [
+        "shimmer",
+        "strike"
+      ],
+      "wiredParams": 5,
+      "totalParams": 7
+    },
+    {
+      "kind": "reese",
+      "name": "Reese",
+      "defaultAudible": true,
+      "defaultPeak": 0.19035495817661285,
+      "unstableParams": [],
+      "deadParams": [
+        "movement",
+        "moveRate",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10
+    },
+    {
+      "kind": "clav",
+      "name": "Clavinet",
+      "defaultAudible": true,
+      "defaultPeak": 0.025064636021852493,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "cutoff",
+        "resonance"
+      ],
+      "wiredParams": 5,
+      "totalParams": 8
+    },
+    {
+      "kind": "acid",
+      "name": "Acid 303",
+      "defaultAudible": true,
+      "defaultPeak": 0.4130555987358093,
+      "unstableParams": [],
+      "deadParams": [
+        "envMod",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 9
+    },
+    {
+      "kind": "brass",
+      "name": "Synth Brass",
+      "defaultAudible": true,
+      "defaultPeak": 0.6132485866546631,
+      "unstableParams": [],
+      "deadParams": [
+        "bite",
+        "sweep",
+        "sweepTime"
+      ],
+      "wiredParams": 6,
+      "totalParams": 9
+    },
+    {
+      "kind": "fm",
+      "name": "FM",
+      "defaultAudible": true,
+      "defaultPeak": 0.3161630630493164,
+      "unstableParams": [],
+      "deadParams": [
+        "fbDecay"
+      ],
+      "wiredParams": 12,
+      "totalParams": 13
+    },
+    {
+      "kind": "pluck",
+      "name": "Pluck Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.020687807351350784,
+      "unstableParams": [],
+      "deadParams": [
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 12,
+      "totalParams": 18
+    },
+    {
+      "kind": "flute",
+      "name": "Flute",
+      "defaultAudible": true,
+      "defaultPeak": 0.3236413598060608,
+      "unstableParams": [],
+      "deadParams": [
+        "breath",
+        "breathTone",
+        "vibrato",
+        "vibRate",
+        "vibDelay",
+        "glide"
+      ],
+      "wiredParams": 9,
+      "totalParams": 15
+    },
+    {
+      "kind": "logdrum",
+      "name": "Log Drum",
+      "defaultAudible": true,
+      "defaultPeak": 0.31045085191726685,
+      "unstableParams": [],
+      "deadParams": [
+        "glide",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 10,
+      "totalParams": 17
+    },
+    {
+      "kind": "spectral",
+      "name": "Spectral Pad",
+      "defaultAudible": true,
+      "defaultPeak": 0.14844821393489838,
+      "unstableParams": [],
+      "deadParams": [
+        "skew",
+        "resonance",
+        "motionRate",
+        "motionSync",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 12,
+      "totalParams": 22
+    },
+    {
+      "kind": "vocalchop",
+      "name": "Vocal Chop",
+      "defaultAudible": true,
+      "defaultPeak": 0.04885624349117279,
+      "unstableParams": [],
+      "deadParams": [
+        "sharp",
+        "cons",
+        "morph",
+        "release",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modBAmt",
+        "modLfoRate"
+      ],
+      "wiredParams": 9,
+      "totalParams": 20
+    },
+    {
+      "kind": "drumsynth",
+      "name": "Drum Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.11606655269861221,
+      "unstableParams": [],
+      "deadParams": [
+        "snap"
+      ],
+      "wiredParams": 7,
+      "totalParams": 8
+    }
+  ],
   "interactions": {
-    "chainFinite": false,
-    "chainPeak": 0,
-    "chainRestoreDiff": null,
-    "duplicateDelta": 0,
-    "duplicateFinite": false,
-    "liveInsertRemoveClean": false,
-    "rapidSyncsClean": false,
+    "chainFinite": true,
+    "chainPeak": 0.7913976907730103,
+    "chainRestoreDiff": 0.17130706831812859,
+    "duplicateDelta": 0.11067370251191268,
+    "duplicateFinite": true,
+    "liveInsertRemoveClean": true,
+    "rapidSyncsClean": true,
     "notes": [
-      "runner: Error: page.evaluate: TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:5221/src/plugin-audit-checks.ts?bust=1790505174571"
+      "chain restore diff=1.71e-1"
     ]
   },
   "startedAt": "2026-09-27T10:18:00.701Z",
-  "finishedAt": null
+  "finishedAt": "2026-09-27T11:26:12.570Z"
 }

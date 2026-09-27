@@ -11,6 +11,7 @@ import {
 } from "../src/commands/commands";
 import { BAR_TICKS, PPQ } from "../src/project-model/types";
 import { warpBufferTimeAtTick } from "../src/project-model/audio-clip-warp";
+import { audioClipPlayWindow } from "../src/audio-engine/AudioEngine";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -229,6 +230,118 @@ describe("I4 copies own their mutable state", () => {
       }
       expect(command.undo(next)).toEqual(doc);
       expect(command.execute(doc)).toEqual(next);
+    },
+  );
+
+  it.each(["resample", "stretch"] as const)(
+    "unwarped %s split preserves forward and reverse source windows",
+    (stretchMode) => {
+      const sourceDurationSec = 16;
+      const { doc, clipId } = docWithClip({
+        offsetSec: 1,
+        trimStart: 0.25,
+        trimEnd: 0.5,
+        stretchRate: 1.5,
+        stretchMode,
+      });
+      const original = clipsOf(doc).find((clip) => clip.id === clipId)!;
+      const splitTick = original.startBar * BAR + 1.5 * BAR;
+      const secondsPerTick = 60 / (doc.bpm * PPQ);
+      const usesStretchedBuffer = stretchMode === "stretch" && Math.abs(original.stretchRate - 1) >= 0.01;
+      const timeScale = usesStretchedBuffer ? original.stretchRate : 1;
+      const windowFor = (clip: AudioClip) =>
+        audioClipPlayWindow(clip, sourceDurationSec * timeScale, clip.lengthBars * BAR * secondsPerTick, timeScale);
+      const rangeFor = (clip: AudioClip): { start: number; end: number } => {
+        const window = windowFor(clip);
+        if (!clip.reverse) {
+          const start = window.playOffset / timeScale;
+          return { start, end: start + window.bufferDuration / timeScale };
+        }
+        const end = usesStretchedBuffer
+          ? (sourceDurationSec * timeScale - window.playOffset) / timeScale
+          : window.playOffset;
+        return { start: end - window.bufferDuration / timeScale, end };
+      };
+
+      for (const reverse of [false, true]) {
+        const sourceDoc = reverse ? updateAudioClip(doc, clipId, { reverse: true }).execute(doc) : doc;
+        const source = clipsOf(sourceDoc).find((clip) => clip.id === clipId)!;
+        const sourceRange = rangeFor(source);
+        const cmd = splitAudioClipAtTick(sourceDoc, clipId, splitTick, sourceDurationSec);
+        const splitDoc = cmd.execute(sourceDoc);
+        const [left, right] = clipsOf(splitDoc).sort((a, b) => a.startBar - b.startBar);
+        const leftRange = rangeFor(left!);
+        const rightRange = rangeFor(right!);
+
+        if (reverse) {
+          expect(leftRange.end).toBeCloseTo(sourceRange.end, 10);
+          expect(leftRange.start).toBeCloseTo(rightRange.end, 10);
+          expect(rightRange.start).toBeCloseTo(sourceRange.start, 10);
+        } else {
+          expect(leftRange.start).toBeCloseTo(sourceRange.start, 10);
+          expect(leftRange.end).toBeCloseTo(rightRange.start, 10);
+          expect(rightRange.end).toBeCloseTo(sourceRange.end, 10);
+        }
+        expect(cmd.undo(splitDoc)).toEqual(sourceDoc);
+        expect(cmd.execute(sourceDoc)).toEqual(splitDoc);
+      }
+    },
+  );
+
+  it.each(["resample", "stretch"] as const)(
+    "looped %s split advances phase while keeping the trimmed loop bounds",
+    (stretchMode) => {
+      const sourceDurationSec = 16;
+      const loopPhaseOffsetSec = 12;
+      const { doc, clipId } = docWithClip({
+        offsetSec: 1,
+        trimStart: 0.25,
+        trimEnd: 0.5,
+        stretchRate: 1.5,
+        stretchMode,
+        loop: true,
+        loopPhaseOffsetSec,
+      });
+      const original = clipsOf(doc).find((clip) => clip.id === clipId)!;
+      const splitTick = original.startBar * BAR + 1.5 * BAR;
+      const secondsPerTick = 60 / (doc.bpm * PPQ);
+      const leftWallSec = 1.5 * BAR * secondsPerTick;
+      const usesStretchedBuffer = stretchMode === "stretch";
+      const timeScale = usesStretchedBuffer ? original.stretchRate : 1;
+      const sourceAdvanceSec = usesStretchedBuffer
+        ? leftWallSec / original.stretchRate
+        : leftWallSec * original.stretchRate;
+      const loopDurationSec = sourceDurationSec - original.offsetSec - original.trimStart - original.trimEnd;
+      const expectedRightPhase = (loopPhaseOffsetSec + sourceAdvanceSec) % loopDurationSec;
+      const cmd = splitAudioClipAtTick(doc, clipId, splitTick, sourceDurationSec);
+      const splitDoc = cmd.execute(doc);
+      const [left, right] = clipsOf(splitDoc).sort((a, b) => a.startBar - b.startBar);
+      const playBufferDurationSec = sourceDurationSec * timeScale;
+      const leftWindow = audioClipPlayWindow(
+        left!,
+        playBufferDurationSec,
+        left!.lengthBars * BAR * secondsPerTick,
+        timeScale,
+      );
+      const rightWindow = audioClipPlayWindow(
+        right!,
+        playBufferDurationSec,
+        right!.lengthBars * BAR * secondsPerTick,
+        timeScale,
+      );
+
+      expect(left!.offsetSec).toBe(original.offsetSec);
+      expect(right!.offsetSec).toBe(original.offsetSec);
+      expect(left!.loopPhaseOffsetSec).toBe(loopPhaseOffsetSec);
+      expect(right!.loopPhaseOffsetSec).toBeCloseTo(loopPhaseOffsetSec + sourceAdvanceSec, 10);
+      expect(leftWindow.loopStart).toBeCloseTo(rightWindow.loopStart, 10);
+      expect(leftWindow.loopEnd).toBeCloseTo(rightWindow.loopEnd, 10);
+      expect(leftWindow.playOffset).toBeCloseTo(
+        leftWindow.loopStart + (loopPhaseOffsetSec % loopDurationSec) * timeScale,
+        10,
+      );
+      expect(rightWindow.playOffset).toBeCloseTo(rightWindow.loopStart + expectedRightPhase * timeScale, 10);
+      expect(cmd.undo(splitDoc)).toEqual(doc);
     },
   );
 });

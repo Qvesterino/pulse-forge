@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ProjectRepository } from "../../src/persistence/ProjectRepository";
 import { TEMPLATES, createProjectFromTemplate } from "../../src/project-model/templates";
 import { migrateProject, normalizeProject } from "../../src/project-model/schema";
+import { addAudioClip, splitAudioClipAtTick } from "../../src/commands/commands";
+import { BAR_TICKS, PPQ } from "../../src/project-model/types";
 import type { ProjectDocument } from "../../src/project-model/types";
 
 /**
@@ -51,6 +53,52 @@ describe("persistence integrity — deep save/load round-trip", () => {
     await repo.save(first);
     const second = await repo.load(first.id);
     expect(stripStamps(second!)).toEqual(stripStamps(first));
+  });
+
+  it("persists both loop-split source windows and the advanced right-fragment phase", async () => {
+    const repo = new ProjectRepository();
+    const base = createProjectFromTemplate("house");
+    const trackId = base.tracks.find((track) => track.kind === "instrument")!.id;
+    const phaseSec = 0.375;
+    const sourceDurationSec = 12;
+    const withLoop = addAudioClip(base, trackId, "user.recording-loop-roundtrip", 4, 4, {
+      offsetSec: 0.4,
+      trimStart: 0.1,
+      trimEnd: 0.2,
+      loop: true,
+      loopPhaseOffsetSec: phaseSec,
+      fadeIn: 0,
+      fadeOut: 0,
+    }).execute(base);
+    const source = withLoop.arrangement.audioClips!.find((clip) => clip.bufferId === "user.recording-loop-roundtrip")!;
+    const splitTick = source.startBar * BAR_TICKS + 137.25;
+    const elapsedWallSec = (137.25 * 60) / (withLoop.bpm * PPQ);
+    const expectedRightPhase = phaseSec + elapsedWallSec * (source.stretchRate ?? 1);
+    const command = splitAudioClipAtTick(withLoop, source.id, splitTick, sourceDurationSec);
+    const split = command.execute(withLoop);
+    expect(command.undo(split)).toEqual(withLoop);
+    expect(command.execute(withLoop)).toEqual(split);
+
+    await repo.save(split);
+    const reopened = await repo.load(split.id);
+    expect(reopened).not.toBeNull();
+    const fragments = reopened!.arrangement
+      .audioClips!.filter((clip) => clip.bufferId === source.bufferId)
+      .sort((left, right) => left.startBar - right.startBar);
+
+    expect(fragments).toHaveLength(2);
+    expect(fragments[0]!.startBar + fragments[0]!.lengthBars).toBe(fragments[1]!.startBar);
+    expect(fragments[0]!.offsetSec).toBe(source.offsetSec);
+    expect(fragments[1]!.offsetSec).toBe(source.offsetSec);
+    expect(fragments[0]!.trimStart).toBe(source.trimStart);
+    expect(fragments[1]!.trimStart).toBe(source.trimStart);
+    expect(fragments[0]!.trimEnd).toBe(source.trimEnd);
+    expect(fragments[1]!.trimEnd).toBe(source.trimEnd);
+    expect(fragments[0]!.loop).toBe(true);
+    expect(fragments[1]!.loop).toBe(true);
+    expect(fragments[0]!.loopPhaseOffsetSec).toBe(phaseSec);
+    expect(fragments[1]!.loopPhaseOffsetSec).toBeCloseTo(expectedRightPhase, 12);
+    expect(stripStamps(reopened!)).toEqual(stripStamps(split));
   });
 });
 

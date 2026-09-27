@@ -293,11 +293,7 @@ export function createOzvenaProcessor(): OzvenaProcessor {
 
   /** Precomputed-spectra twin of loadUserIr — the FFT batch already ran
    *  off the audio thread. (Reconciled from Pulse Forge, 2026-09-09.) */
-  function loadPrecomputedIr(
-    sets: PrecomputedIrSet[],
-    channels: 1 | 2 | 4,
-    source: "user" | "factory" = "user",
-  ): void {
+  function loadPrecomputedIr(sets: PrecomputedIrSet[], channels: 1 | 2 | 4, source: "user" | "factory" = "user"): void {
     if (!prepared || sets.length === 0) return;
     convolution.loadIrPrecomputed(sets, channels);
     userIrActive = source === "user";

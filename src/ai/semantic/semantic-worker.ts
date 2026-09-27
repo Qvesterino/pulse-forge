@@ -23,6 +23,7 @@ type Extractor = Awaited<ReturnType<Transformers["pipeline"]>>;
 
 const LOCAL_MODEL_PATH = "/models/semantic/";
 const SUPPORTED_MODELS = new Set(["Xenova/paraphrase-multilingual-MiniLM-L12-v2", "Xenova/all-MiniLM-L6-v2"]);
+const MODEL_PACK_CACHE = "pf:model-packs";
 
 let extractorPromise: Promise<Extractor> | null = null;
 
@@ -38,15 +39,12 @@ let extractorPromise: Promise<Extractor> | null = null;
 const originalFetch = self.fetch.bind(self);
 self.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   try {
-    const [{ MODEL_PACKS }, { installedPackResponseForUrl }] = await Promise.all([
-      import("../packs/registry"),
-      import("../packs/modelPackManager"),
-    ]);
     const absolute = new URL(
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
       self.location.href,
     ).href;
-    const cached = await installedPackResponseForUrl(absolute, MODEL_PACKS);
+    const cache = await caches.open(MODEL_PACK_CACHE);
+    const cached = await cache.match(absolute);
     if (cached) return cached;
   } catch {
     // Cache lookup must never break model loading — fall through to network.

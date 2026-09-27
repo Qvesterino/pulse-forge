@@ -116,7 +116,10 @@ describe("acid — the squelch wiring", () => {
     // Source pin: the acid factory schedules the SVF cutoff with a peak
     // (setValueAtTime) followed by a setTargetAtTime decay — the squelch.
     const registry = readFileSync(resolve(process.cwd(), "src/instruments/registry.ts"), "utf8");
-    const acidBlock = registry.slice(registry.indexOf("const acid: InstrumentDefinition"), registry.indexOf("const brass: InstrumentDefinition"));
+    const acidBlock = registry.slice(
+      registry.indexOf("const acid: InstrumentDefinition"),
+      registry.indexOf("const brass: InstrumentDefinition"),
+    );
     expect(acidBlock).toContain("svf.frequency.setValueAtTime(cutoffEnvPeak, when)");
     expect(acidBlock).toContain("svf.frequency.setTargetAtTime(cutoffBase, when + 0.01, decay / 3)");
     expect(acidBlock).toContain("cutoffBase * (1 + envMod * 4 + accentVel * 2)");

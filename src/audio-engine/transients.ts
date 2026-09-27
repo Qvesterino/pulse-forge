@@ -126,9 +126,7 @@ export function snapToGrid(times: number[], bpm: number, divisionsPerBeat: numbe
   // time to 0 (the grid step is "infinite" so all onsets land on the
   // leading edge) — better than poisoning the result with NaN.
   if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(divisionsPerBeat) || divisionsPerBeat <= 0) {
-    return times
-      .map((t) => Math.max(0, t))
-      .filter((t) => t === 0);
+    return times.map((t) => Math.max(0, t)).filter((t) => t === 0);
   }
   const step = 60 / bpm / divisionsPerBeat;
   const snapped = times.map((t) => Math.max(0, Math.round(t / step) * step));

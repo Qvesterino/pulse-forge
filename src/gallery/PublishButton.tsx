@@ -2,7 +2,6 @@ import { useDoc } from "../ui/context";
 import { encodeProjectForGallery, PUBLISH_CODE_KEY, setRemixParent } from "./galleryApi";
 import { funnelEvent } from "../services/funnel";
 
-
 /**
  * PUBLISH TO GALLERY — hands the current project to /gallery via
  * sessionStorage (keeps the URL clean) and opens the gallery in a new tab,

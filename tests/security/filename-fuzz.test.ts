@@ -23,9 +23,7 @@ const SOURCE = readFileSync(resolve(__dirname, "../../src/export/project-io.ts")
 function stripJsComments(s: string): string {
   // Remove /* … */ and // …\n comments. Good enough for the small
   // bodies we parse here; doesn't have to be a full TS scanner.
-  return s
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 // Match the sanitizeFilename definition including its body.
@@ -42,10 +40,9 @@ const exprMatch = cleaned.match(RETURN_RE);
 if (!exprMatch) throw new Error("Could not parse sanitizeFilename body");
 
 const expr = exprMatch[1].replace(/\s+/g, " ").trim();
-const sanitizeFilename: (name: string) => string = new Function(
-  "name",
-  `return (${expr});`,
-) as (name: string) => string;
+const sanitizeFilename: (name: string) => string = new Function("name", `return (${expr});`) as (
+  name: string,
+) => string;
 
 /** All character ranges the contract guarantees stripped. */
 const STRIPPED_RANGES: Array<[number, number, string]> = [
@@ -84,15 +81,7 @@ describe("security: sanitizeFilename strips control / format / RTL chars", () =>
   });
 
   it("strips every stripped range even when wrapped in regular chars", () => {
-    const name = "proj" +
-      "\u0000" +
-      "ect" +
-      "\u200B" +
-      "name" +
-      "\u202E" +
-      "rtl" +
-      "\uFEFF" +
-      ".wav";
+    const name = "proj" + "\u0000" + "ect" + "\u200B" + "name" + "\u202E" + "rtl" + "\uFEFF" + ".wav";
     const out = sanitizeFilename(name);
     expect(out).not.toMatch(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/);
     // The remaining chars collapse to the word + dash glue.

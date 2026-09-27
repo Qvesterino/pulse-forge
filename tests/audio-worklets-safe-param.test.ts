@@ -109,8 +109,6 @@ describe("safeApplyAudioParam (FázA §6 defensive layer)", () => {
     const node = makeNode(p, "drive");
     // A real downstream failure must still surface — the guard only
     // guards non-finite, not the contract between this helper and Web Audio.
-    expect(() => safeApplyAudioParam(node as never, "drive", 0.5, 1.0)).toThrow(
-      "real audio graph exploded",
-    );
+    expect(() => safeApplyAudioParam(node as never, "drive", 0.5, 1.0)).toThrow("real audio graph exploded");
   });
 });

@@ -544,6 +544,39 @@ const AMAPIANO_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const TRANCE_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VI-III-VII (uplifting lift)",
+    genre: "trance",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 2, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "vi-IV-I-V (anthem loop)",
+    genre: "trance",
+    events: [
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-VII-VI-VII (psy drive)",
+    genre: "trance",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -557,6 +590,7 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   ukg: UKG_PROGRESSIONS,
   boombap: BOOMBAP_PROGRESSIONS,
   amapiano: AMAPIANO_PROGRESSIONS,
+  trance: TRANCE_PROGRESSIONS,
 };
 
 /**

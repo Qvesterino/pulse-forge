@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applySpectralEdits, computeStftDbFrames, fftInPlace, suggestNoiseRegion, suggestNoiseRegionFromFrames } from "../src/audio-engine/spectralEdit";
+import {
+  applySpectralEdits,
+  computeStftDbFrames,
+  fftInPlace,
+  suggestNoiseRegion,
+  suggestNoiseRegionFromFrames,
+} from "../src/audio-engine/spectralEdit";
 
 const SR = 44100;
 
@@ -105,9 +111,7 @@ describe("applySpectralEdits — selectivity", () => {
   it("boosts a band by the requested gain", () => {
     const freq = onBinFreq(30);
     const input = sine(freq, 1);
-    const out = applySpectralEdits(input, SR, [
-      { startSec: 0, endSec: 1, freqLoHz: 400, freqHiHz: 800, gainDb: 6 },
-    ]);
+    const out = applySpectralEdits(input, SR, [{ startSec: 0, endSec: 1, freqLoHz: 400, freqHiHz: 800, gainDb: 6 }]);
     const ratio = rms(out, 0.25, 0.75) / rms(input, 0.25, 0.75);
     expect(ratio).toBeGreaterThan(1.7); // ~+6 dB ≈ ×2, feather trims a little
     expect(ratio).toBeLessThan(2.1);
@@ -140,7 +144,7 @@ describe("suggestNoiseRegion — erase-noise preset", () => {
     for (let i = 0; i < n; i++) {
       // Deterministic LCG-based white noise.
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      const white = ((seed / 0x3fffffff) - 1) * amp;
+      const white = (seed / 0x3fffffff - 1) * amp;
       out[i] = lowpass ? (prev = prev + 0.12 * (white - prev)) : white;
     }
     return out;

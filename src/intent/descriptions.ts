@@ -37,6 +37,7 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   jersey: ["jersey club", "brick city club", "bounce club", "jersey bounce"],
   boombap: ["boom bap", "boombap", "hip-hop", "90s rap", "golden era"],
   amapiano: ["amapiano", "yanos", "log drum", "South African house"],
+  trance: ["trance", "uplifting", "psytrance", "supersaw"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -62,6 +63,13 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   afro: ["afro", "afrobeat", "tribal", "organic percussion"],
   industrial: ["industrial", "harsh", "metallic", "warehouse industrial"],
   dub: ["dubby", "dub techno", "space echo", "echoes"],
+  // Trance school tree — the trance-specific tokens sit ABOVE the techno
+  // `acid` entry so "acid trance" never renders as a plain 303 line.
+  uplifting: ["uplifting trance", "anthem trance", "euphoric build", "supersaw lead"],
+  progressive: ["progressive trance", "prog trance", "deep rolling trance", "long build"],
+  psy: ["psytrance", "psy trance", "goa", "full-on"],
+  tech: ["tech trance", "warehouse trance", "hard rolling trance", "metallic trance"],
+  dream: ["dream trance", "piano trance", "euphoric piano", "soft trance"],
   acid: ["acid", "303 acid", "acid lines", "squelchy acid"],
   classic: ["classic", "golden era", "timeless", "traditional"],
   rolling: ["rolling", "rolling energy", "rolling bass", "rolling grooves"],
@@ -88,6 +96,17 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   snap: ["snap", "snap music", "ringtone snap", "finger-snap minimal"],
   afroswing: ["afroswing", "afro swing", "uk afroswing", "mellow afro bounce"],
   countrytune: ["country tune", "country rap", "country trap", "bluesy country rap"],
+  // Vocabulary-gap depth lanes (docs/VOCABULARY-GAP-RESEARCH.md) — training
+  // text for the lanes whose phrases landed before their dedicated grooves.
+  synthwave: ["synthwave", "outrun", "retrowave", "darksynth", "night drive"],
+  futuregarage: ["future garage", "duskus school", "chopped vocal garage", "rainy garage"],
+  altrock: ["alt rock", "shoegaze", "dream pop", "wall of guitars", "post-rock crescendo"],
+  broken: ["broken beat", "nu jazz", "West London broken", "UK jazz renaissance"],
+  hard: ["hard", "gabber", "hardcore techno", "uptempo", "150+ hard"],
+  hardstyle: ["hardstyle", "reverse bass", "euphoric hardstyle", "screech lead"],
+  lofimap: ["lo-fi trap", "lo-fi map", "dusty trap", "warped sample trap"],
+  ambienttechno: ["ambient techno", "deep space techno", "Berlin ambient", "hypnotic pads"],
+  techhouse: ["tech house", "warehouse groove", "rolling tech house", "club tool"],
 };
 
 const MOOD_WORDS: Record<string, { en: string[]; sk: string[] }> = {
@@ -113,6 +132,11 @@ const TEMPO_WORDS: Record<string, string[]> = {
   breakbeat: ["at 132", "at 136", "at 128", "breaks tempo"],
   sadchill: ["at 80", "at 75", "at 85", "sad tempo"],
   dirtyambient: ["at 70", "at 65", "at 80", "degraded tempo"],
+  trance: ["at 138", "at 140", "at 136", "euphoric tempo"],
+  synthwave: ["at 105", "at 110", "at 100", "night-drive tempo"],
+  altrock: ["at 110", "at 120", "at 100", "wall-of-sound tempo"],
+  hard: ["at 160", "at 170", "at 155", "gabber tempo"],
+  hardstyle: ["at 152", "at 150", "at 155", "reverse-bass tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

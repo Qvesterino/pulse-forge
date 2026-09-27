@@ -241,11 +241,7 @@ export function effectProcessorStatus(
 ): EffectProcessorStatus {
   const severity = WORKLET_EFFECTS[type];
   if (!severity) return "ok";
-  return isWorkletReady(type as WorkletType, ctx)
-    ? "ok"
-    : severity === "critical"
-      ? "bypassed"
-      : "fallback";
+  return isWorkletReady(type as WorkletType, ctx) ? "ok" : severity === "critical" ? "bypassed" : "fallback";
 }
 
 /** Transparent 1:1 passthrough for contexts where the worklet is unavailable. */

@@ -87,7 +87,11 @@ function readBody(lines: string[], startIdx: number): string[] {
     if (!inBody) {
       // Look for the body's opening brace on a line that ends with `{` and
       // has the parens already balanced.
-      if (/^\s*\)\s*:\s*[^{]+\{\s*$/.test(ln) || /^\s*\)\s*\{\s*$/.test(ln) || (/\)\s*\{/.test(ln) && !ln.includes("}"))) {
+      if (
+        /^\s*\)\s*:\s*[^{]+\{\s*$/.test(ln) ||
+        /^\s*\)\s*\{\s*$/.test(ln) ||
+        (/\)\s*\{/.test(ln) && !ln.includes("}"))
+      ) {
         inBody = true;
         depth = 1;
         buf.push(ln);
@@ -120,9 +124,9 @@ describe("rendering/track-renderer.ts — public surface (source-grep)", () => {
       }
       const sig = readSignature(lines, idx);
       expect(
-        returnsType(sig, "Promise<AudioBuffer>") ||
-          (returnsType(sig, "Promise") && returnsType(sig, "AudioBuffer")),
-        "renderTrack must declare Promise<AudioBuffer> return so callers can .then() into the offline renderer. Got:\n" + sig,
+        returnsType(sig, "Promise<AudioBuffer>") || (returnsType(sig, "Promise") && returnsType(sig, "AudioBuffer")),
+        "renderTrack must declare Promise<AudioBuffer> return so callers can .then() into the offline renderer. Got:\n" +
+          sig,
       ).toBe(true);
     });
   });
@@ -149,7 +153,8 @@ describe("rendering/track-renderer.ts — public surface (source-grep)", () => {
         const expIdx = findExportFn(lines, name);
         expect(
           expIdx,
-          name + " is now exported from track-renderer.ts. createFilteredDoc builds a stripped-down project for renderProject() - exposing it to UI lets callers compose ProjectDocument fragments directly and skip the freeze step downstream. Demote back or wrap with a frozen-doc factory.",
+          name +
+            " is now exported from track-renderer.ts. createFilteredDoc builds a stripped-down project for renderProject() - exposing it to UI lets callers compose ProjectDocument fragments directly and skip the freeze step downstream. Demote back or wrap with a frozen-doc factory.",
         ).toBeNull();
         const anyIdx = findAnyFn(lines, name);
         expect(anyIdx, name + " must still exist in track-renderer.ts").not.toBeNull();

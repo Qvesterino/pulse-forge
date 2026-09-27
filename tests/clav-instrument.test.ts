@@ -147,31 +147,33 @@ describe("clav — registry + params", () => {
   });
 });
 
-describe('clav — voice wiring (mock graph)', () => {
+describe("clav — voice wiring (mock graph)", () => {
   const clavEnv = { bpm: 120, getSample: () => undefined } as const;
-  it('builds the bright square voice; pickup bandpass lands at freq×(1.1+pick×2.4)', () => {
+  it("builds the bright square voice; pickup bandpass lands at freq×(1.1+pick×2.4)", () => {
     const { ctx, record } = mockCtx();
     const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ pick: 0.5 }) as never, clavEnv);
     runtime.noteOn(60, 0.9, 0, 0.3);
     runtime.dispose();
-    const voice = record.oscs.filter((o) => o.type === 'square' && o.started.length > 0);
+    const voice = record.oscs.filter((o) => o.type === "square" && o.started.length > 0);
     expect(voice.length).toBeGreaterThanOrEqual(1);
     // The factory schedules the pitch via setValueAtTime (not .value).
     const scheduled = vi.mocked(voice[0]!.frequency.setValueAtTime).mock.calls.map((c) => c[0] as number);
     expect(scheduled.some((v) => Math.abs(v - 261.626) < 0.01)).toBe(true);
   });
 
-  it('CLICK fires the seeded noise burst (buffer source, short stop)', () => {
+  it("CLICK fires the seeded noise burst (buffer source, short stop)", () => {
     const { ctx, record } = mockCtx();
     const runtime = INSTRUMENT_DEFS.clav.factory(ctx as never, clavTrack({ click: 0.8 }) as never, clavEnv);
     runtime.noteOn(60, 0.9, 0, 0.3);
     runtime.dispose();
     expect(record.buffers.length).toBeGreaterThanOrEqual(1);
     // Source pin: the click path (post-pickup, fast 15 ms decay).
-    const src = readFileSync(resolve(process.cwd(), 'src/instruments/registry.ts'), 'utf8');
-    const clavBlock = src.slice(src.indexOf('const clav: InstrumentDefinition'), src.indexOf('/* ---------------- Log Drum'));
-    expect(clavBlock).toContain('clickSrc.connect(clickBP).connect(clickGain).connect(pickup)');
-    expect(clavBlock).toContain('clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.015)');
+    const src = readFileSync(resolve(process.cwd(), "src/instruments/registry.ts"), "utf8");
+    const clavBlock = src.slice(
+      src.indexOf("const clav: InstrumentDefinition"),
+      src.indexOf("/* ---------------- Log Drum"),
+    );
+    expect(clavBlock).toContain("clickSrc.connect(clickBP).connect(clickGain).connect(pickup)");
+    expect(clavBlock).toContain("clickGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.015)");
   });
 });
-

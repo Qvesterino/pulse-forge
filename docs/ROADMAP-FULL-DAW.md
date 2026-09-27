@@ -169,8 +169,13 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       Forward warped splits now also map and crop the source window at the
       resolved warp boundary for both resample and stretch modes; the editor
       and renderer share stable duplicate-pin handling and the 64-segment cap.
-      Unit coverage checks source mapping on both sides and execute/undo/redo.
-      Reverse/loop split mapping and real-material edit parity remain open.
+      Reverse split windows now preserve the high/low source boundaries, and
+      loop splits retain their trimmed loop region while advancing the right
+      fragment's persisted phase. Unit tests cover resample/stretch source
+      continuity, loop wrapping, schema migration and undo/redo; ProjectRepository
+      save/load now verifies both split windows and the advanced loop phase;
+      a Chromium OfflineAudioContext check verifies audible reverse direction
+      and loop phase wrap. Real-material edit parity remains open.
 - [x] Add an undoable, tick-range comp edit from transport locators. Keep source
       passes immutable, persist comp provenance, replace only the selected
       interval, and route comp AudioClips through shared live/offline playback.
@@ -190,11 +195,13 @@ shared/exclusive fallbacks. Record raw measurements with each test result.
       PCM passes through AudioWorklet capture, reloads them from IndexedDB,
       splits one restored pass at a PCM-frame-near arrangement tick and checks
       contiguous boundaries plus exact source-window offset, comps through the
-      take-lane UI, and adds a warp pin from the comp waveform context menu.
-      Undo/Redo, PCM/marker persistence and identical 32-bit float WAV output
-      after project reopen are also verified. This certifies the software
-      capture/edit/persistence/export path, not physical input routing or the
-      musical quality of real performances.
+      take-lane UI, adds and drags a warp pin on the captured-PCM comp, and
+      checks its tick/time behavior through Undo/Redo and persistence. After
+      comping, it loop-enables and splits another restored PCM fragment with
+      the project commands; stable trimmed loop bounds, advanced phase and
+      loop-only 32-bit float WAV hash parity after reopen are verified too.
+      This certifies the synthetic software capture/edit/persistence/export
+      path, not physical input routing or the musical quality of real takes.
 - [x] Add runtime live take-lane audition as a non-destructive playback
       projection. Targeted scheduler, service-lifecycle and UI tests pass;
       Chromium verifies the actual buffer-source offset, resumed fade gain and
@@ -330,10 +337,13 @@ recovery and project interchange proven.
    over save/reopen. Synthetic tests cover crossfade implementation and
    live/offline parity; a captured-PCM Chromium fixture covers one PCM-frame-
    near UI split and source-window mapping, take-lane comp, context-menu warp-
-   pin creation, Undo/Redo, PCM/marker persistence and exact WAV parity across
-   reopen. Forward warped split source mapping is now covered at the command
-   level; broader sample-accurate edit coverage, waveform-drag warp on recorded
-   material and physical hardware takes remain open. The fixed 3 ms
+   pin creation and drag on the captured-PCM comp, then loop-splits another
+   restored PCM fragment through the project commands. Undo/Redo, PCM/marker
+   persistence, advanced loop phase and exact active-comp plus loop-only WAV
+   parity across reopen are covered. Forward warped split source mapping is
+   covered at command level, and a ProjectRepository round-trip preserves
+   trimmed loop bounds and phase; other sample-accurate boundaries, repeated
+   comp/edit sequences and physical hardware takes remain open. The fixed 3 ms
    warp-segment de-click is separate from musical crossfades.
 2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
    interface, driver mode and exact device-use window before opening a physical

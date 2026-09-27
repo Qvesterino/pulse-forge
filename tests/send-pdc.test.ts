@@ -123,15 +123,13 @@ describe("engine send-PDC wiring", () => {
     engine.useContext(mockCtx() as unknown as BaseAudioContext);
     const { doc, trackId, returnId } = docWithSend();
     engine.setProject(doc);
-    const trackNodes = (
-      engine as unknown as {
-        trackNodes: Map<
-          string,
-          { sends: Map<string, unknown>; sendDelays: Map<string, unknown>; fx: { pdcDelay: unknown } }
-        >;
-        returnNodes: Map<string, { fx: { pdcDelay: unknown } }>;
-      }
-    );
+    const trackNodes = engine as unknown as {
+      trackNodes: Map<
+        string,
+        { sends: Map<string, unknown>; sendDelays: Map<string, unknown>; fx: { pdcDelay: unknown } }
+      >;
+      returnNodes: Map<string, { fx: { pdcDelay: unknown } }>;
+    };
     const nodes = trackNodes.trackNodes.get(trackId)!;
     expect(nodes.sends.has(returnId)).toBe(true);
     expect(nodes.sendDelays.has(returnId)).toBe(true);

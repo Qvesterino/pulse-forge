@@ -496,10 +496,7 @@ describe("Ozvena hardening — quality switches are scalar-only on the audio thr
       }
       const outL = new Float32Array(BLOCK);
       const outR = new Float32Array(BLOCK);
-      proc.process(
-        [[inL, inR]],
-        [[outL.subarray(0, BLOCK), outR.subarray(0, BLOCK)]],
-      );
+      proc.process([[inL, inR]], [[outL.subarray(0, BLOCK), outR.subarray(0, BLOCK)]]);
       // NOTE: outL/outR here are fresh per-block buffers (not views into a
       // shared render), so block-boundary steps are measured explicitly.
       for (let i = 0; i < BLOCK; i++) {
@@ -777,11 +774,7 @@ describe("Ozvena hardening — freeze loop-gain safety (2026-09-19 audit)", () =
   // tail grew exponentially until the output limiter pinned it at the
   // ceiling (measured pre-fix: 0.38-0.48 RMS sustained, peak 0.966).
   // The fix clamps every band to unity in freeze: a true hold, no growth.
-  function renderFreeze(
-    proc: ProcShape,
-    freezeAtSec: number,
-    seconds: number,
-  ): Float32Array[] {
+  function renderFreeze(proc: ProcShape, freezeAtSec: number, seconds: number): Float32Array[] {
     const rng = makeRng(0x5eed);
     setTime(0);
     const blocks = Math.ceil((seconds * SR) / BLOCK);
@@ -870,7 +863,7 @@ describe("Ozvena hardening — E1 tap crossfade clock (2026-09-19 audit)", () =>
     sendParam(proc, "engines.e1.diffusion", 100);
     const blocks = Math.ceil((1.0 * SR) / blockSize);
     const out = new Float32Array(blocks * blockSize);
-    const changeAt = Math.round(0.4 * SR / blockSize);
+    const changeAt = Math.round((0.4 * SR) / blockSize);
     let s = 0x1234;
     for (let b = 0; b < blocks; b++) {
       if (b === changeAt) sendParam(proc, "engines.e1.time", 240);
@@ -914,4 +907,3 @@ describe("Ozvena hardening — E1 tap crossfade clock (2026-09-19 audit)", () =>
     expect(countNonFinite([renderE1Fade(128)])).toBe(0);
   });
 });
-

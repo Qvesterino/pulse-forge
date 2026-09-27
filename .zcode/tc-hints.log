@@ -1,0 +1,24 @@
+
+> pulse-forge@0.1.0 typecheck
+> tsc --noEmit
+
+src/audio-engine/AudioEngine.ts(5976,52): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+src/audio-engine/AudioEngine.ts(5976,79): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+src/commands/commands.ts(2965,54): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">>'.
+src/commands/commands.ts(2966,49): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">>'.
+src/commands/commands.ts(3718,40): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'Partial<AudioClip>'.
+src/commands/commands.ts(3720,41): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'Partial<AudioClip>'.
+src/commands/commands.ts(3970,74): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+src/commands/commands.ts(3988,37): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/audio-clip-window.test.ts(92,7): error TS2353: Object literal may only specify known properties, and 'loopPhaseOffsetSec' does not exist in type 'Partial<AudioClip>'.
+tests/edit-tools-audit.test.ts(308,9): error TS2353: Object literal may only specify known properties, and 'loopPhaseOffsetSec' does not exist in type 'Partial<AudioClip>'.
+tests/edit-tools-audit.test.ts(338,20): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/edit-tools-audit.test.ts(339,21): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/project-model.test.ts(447,50): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/project-model.test.ts(449,76): error TS2353: Object literal may only specify known properties, and 'loopPhaseOffsetSec' does not exist in type 'Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">>'.
+tests/update-audio-clip.test.ts(125,7): error TS2353: Object literal may only specify known properties, and 'loopPhaseOffsetSec' does not exist in type 'Partial<Omit<AudioClip, "id" | "trackId" | "bufferId" | "startBar" | "lengthBars">>'.
+tests/update-audio-clip.test.ts(129,49): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/update-audio-clip.test.ts(153,55): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/update-audio-clip.test.ts(154,58): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/update-audio-clip.test.ts(155,60): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.
+tests/update-audio-clip.test.ts(156,57): error TS2339: Property 'loopPhaseOffsetSec' does not exist on type 'AudioClip'.

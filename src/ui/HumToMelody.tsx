@@ -75,10 +75,7 @@ export function humContourLayout(
 
   // Pitch bounds from everything drawable (notes included — an octave shift
   // must stay visible), padded and with a sane minimum span.
-  const pitches = [
-    ...notes.map((n) => n.pitch),
-    ...frames.filter((f) => f.midi > 0).map((f) => f.midi),
-  ];
+  const pitches = [...notes.map((n) => n.pitch), ...frames.filter((f) => f.midi > 0).map((f) => f.midi)];
   let pitchMin = pitches.length > 0 ? Math.min(...pitches) : 48;
   let pitchMax = pitches.length > 0 ? Math.max(...pitches) : 72;
   pitchMin -= 2;
@@ -89,7 +86,7 @@ export function humContourLayout(
     pitchMax = mid + 5;
   }
   const yOf = (pitch: number) => pad + ((pitchMax - pitch) / (pitchMax - pitchMin)) * innerH;
-  const xOf = (tick: number) => ((tick % len) + len) % len * (options.width / len);
+  const xOf = (tick: number) => (((tick % len) + len) % len) * (options.width / len);
 
   const points: ContourPoint[] = [];
   if (beatSynced) {
@@ -296,9 +293,7 @@ export function HumToMelodyPanel({
     );
     setAuditioning(true);
     // Self-stop when the melody finishes (keep the timer array for cleanup).
-    auditionTimersRef.current.push(
-      window.setTimeout(() => setAuditioning(false), lastMs - timings[0]!.delayMs + 250),
-    );
+    auditionTimersRef.current.push(window.setTimeout(() => setAuditioning(false), lastMs - timings[0]!.delayMs + 250));
   };
 
   const shiftOctave = (octaves: number) => {
@@ -522,7 +517,10 @@ export function HumToMelodyPanel({
               ? `Hum to the beat — the transport rolls with the click and notes land where you sing (${pattern.stepCount} steps @ ${services.store.getDoc().bpm} BPM${docKey ? `, ${docKey}` : ""}).`
               : `Hum the melody free-time (${pattern.stepCount} steps @ ${services.store.getDoc().bpm} BPM${docKey ? `, snapped to ${docKey}` : ""}).`}
           </p>
-          <label className="hum-mode" title="Beat-synced: start the transport with a click and map hummed timing from the transport position. Off: take time maps from tick 0.">
+          <label
+            className="hum-mode"
+            title="Beat-synced: start the transport with a click and map hummed timing from the transport position. Off: take time maps from tick 0."
+          >
             <input
               type="checkbox"
               checked={toBeat}

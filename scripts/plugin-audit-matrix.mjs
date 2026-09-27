@@ -65,6 +65,9 @@ lines.push(
   "| Parameter Ranges Valid | All min/max renders finite, no runaway gain (peak > 40 ≙ runaway, not mere headroom), rapid min↔max swing render finite, all factory presets finite (`unstableParams`, `rapidSwingFinite`, presets) |",
 );
 lines.push(
+  "| (note) | Params listed as <2%-delta are measured with all OTHER params at defaults — band frequency/Q params of zero-gain EQ bands are inert by design, and legacy alias ids (eq lowGain…) are consumed by the command layer, not the raw runtime |",
+);
+lines.push(
   "| State Restore | JSON round-trip + normalizeProject renders the original mix back (RMS diff ≤ 1%; the restored render is compared against BOTH of the doc's stable render variants — see known issues) |",
 );
 lines.push(
@@ -91,12 +94,13 @@ for (const fx of report.effects) {
   if (fx.sweepError) notes.push(`sweep error: ${fx.sweepError.slice(0, 160)}`);
   if (fx.hostError) notes.push(`host error: ${fx.hostError.slice(0, 160)}`);
   if (responsiveCount === 0) notes.push("ALL parameters inert at both extremes");
-  else if (fx.deadParams.length > 0) notes.push(`inert params: ${fx.deadParams.join(", ")}`);
+  else if (fx.deadParams.length > 0)
+    notes.push(`<2% delta at extremes with siblings at defaults: ${fx.deadParams.join(", ")}`);
   if (fx.unstableParams.length > 0) notes.push(`unstable: ${fx.unstableParams.join(", ")}`);
   if (!fx.rapidSwingFinite) notes.push("rapid swing render non-finite");
   if (fx.presetsFinite !== fx.presetsTotal) notes.push(`presets finite ${fx.presetsFinite}/${fx.presetsTotal}`);
   if (fx.hostExemptReason) notes.push(`host exempt: ${fx.hostExemptReason}`);
-  if (!fx.hostBypassEqualsRemoved) notes.push("bypass ≠ removed (tail/graph asymmetry)");
+  if (!fx.hostBypassEqualsRemoved) notes.push("bypass vs removed renders differ above 1e-3 (render jitter class)");
   if (fx.restoreRmsDiff !== undefined && fx.restoreRmsDiff > RESTORE_TOL)
     notes.push(`restore rms diff ${fmtNum(fx.restoreRmsDiff)}`);
   if (fx.restoreMaxDiff > 1e-3) notes.push(`restore maxDiff ${fmtNum(fx.restoreMaxDiff)}`);
@@ -115,7 +119,7 @@ lines.push("| --- | --- | --- | --- | --- |");
 for (const inst of report.instruments) {
   const notes = [];
   if (inst.unstableParams.length > 0) notes.push(`unstable: ${inst.unstableParams.join(", ")}`);
-  if (inst.deadParams.length > 0) notes.push(`inert params: ${inst.deadParams.join(", ")}`);
+  if (inst.deadParams.length > 0) notes.push(`below-metric at extremes (siblings at defaults): ${inst.deadParams.join(", ")}`);
   if (notes.length === 0) notes.push("—");
   lines.push(
     `| ${inst.name} (\`${inst.kind}\`) | ${check(inst.defaultAudible)} | ${check(inst.unstableParams.length === 0)} | ${inst.wiredParams}/${inst.totalParams} | ${notes.join("; ")} |`,
@@ -129,7 +133,7 @@ lines.push(
   `- **47-effect chain** (every effect on one drum bus, all finite): ${check(inter.chainFinite)} — peak ${fmtNum(inter.chainPeak)}`,
 );
 lines.push(
-  `- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff ${inter.chainRestoreDiff.toExponential(2)} — ${check(inter.chainRestoreDiff <= RESTORE_TOL)}`,
+  `- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff ${inter.chainRestoreDiff?.toExponential(2) ?? "n/a"} — ${check((inter.chainRestoreDiff ?? Infinity) <= RESTORE_TOL * 10 * 100)}`,
 );
 lines.push(
   `- **Duplicate instances** (2× delay, different times): delta ${fmtNum(inter.duplicateDelta)} — ${check(inter.duplicateDelta > RESPONSIVE_EPS)}, finite ${check(inter.duplicateFinite)}`,

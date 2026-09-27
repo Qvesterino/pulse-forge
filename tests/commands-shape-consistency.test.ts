@@ -78,7 +78,10 @@ function returnsNonCommandReturn(sig: string): boolean {
   // Find the `: Type` after `)`. We look for any non-void named return.
   const m = sig.match(/\)\s*:\s*([^\n{]+)/);
   if (!m) return false;
-  const t = m[1].trim().replace(/[;{].*/, "").trim();
+  const t = m[1]
+    .trim()
+    .replace(/[;{].*/, "")
+    .trim();
   if (!t) return false;
   if (/\bCommand\b/.test(t)) return false;
   if (t === "void") return false;
@@ -189,15 +192,8 @@ const PURE_QUERIES: string[] = [
 //  - DIRECT: factories that return an object literal with `execute:` / `undo:`.
 //  - HELPER: factories that delegate to `snapshot(...)` — execute/undo live in
 //    the helper body, not here. We verify the delegation + the helper itself.
-const STRUCTURAL_DIRECT: string[] = [
-  "setProjectName",
-  "setBpm",
-  "setStepVelocityCommand",
-];
-const STRUCTURAL_HELPER: string[] = [
-  "createPattern",
-  "duplicatePattern",
-];
+const STRUCTURAL_DIRECT: string[] = ["setProjectName", "setBpm", "setStepVelocityCommand"];
+const STRUCTURAL_HELPER: string[] = ["createPattern", "duplicatePattern"];
 
 describe("commands.ts — Command shape consistency (source-grep baseline)", () => {
   it("reads commands.ts", () => {
@@ -255,14 +251,8 @@ describe("commands.ts — Command shape consistency (source-grep baseline)", () 
           throw new Error("Structural anchor " + name + " not found in commands.ts");
         }
         const body = scanBody(lines, idx);
-        expect(
-          body.hasExecute,
-          name + " must contain an `execute:` property in its returned Command shape",
-        ).toBe(true);
-        expect(
-          body.hasUndo,
-          name + " must contain an `undo:` property in its returned Command shape",
-        ).toBe(true);
+        expect(body.hasExecute, name + " must contain an `execute:` property in its returned Command shape").toBe(true);
+        expect(body.hasUndo, name + " must contain an `undo:` property in its returned Command shape").toBe(true);
         expect(
           body.hasType || body.hasLabel,
           name + " should also declare `type:` / `label:` in its returned Command",
@@ -289,14 +279,10 @@ describe("commands.ts — Command shape consistency (source-grep baseline)", () 
         const helperIdx = findExportFn(lines, "snapshot");
         expect(helperIdx, "snapshot helper must be exported").not.toBeNull();
         const helperBody = scanBody(lines, helperIdx!);
-        expect(
-          helperBody.hasExecute,
-          "snapshot helper must contain `execute:` (transitive Command contract)",
-        ).toBe(true);
-        expect(
-          helperBody.hasUndo,
-          "snapshot helper must contain `undo:` (transitive Command contract)",
-        ).toBe(true);
+        expect(helperBody.hasExecute, "snapshot helper must contain `execute:` (transitive Command contract)").toBe(
+          true,
+        );
+        expect(helperBody.hasUndo, "snapshot helper must contain `undo:` (transitive Command contract)").toBe(true);
       });
     }
   });
@@ -312,10 +298,9 @@ describe("commands.ts — Command shape consistency (source-grep baseline)", () 
         expect(idx, name + " must be exported from commands.ts").not.toBeNull();
         if (idx === null) continue;
         const sig = readSignature(lines, idx);
-        expect(
-          returnsCommand(sig),
-          name + " must return a Command (or a union containing Command). Got:\n" + sig,
-        ).toBe(true);
+        expect(returnsCommand(sig), name + " must return a Command (or a union containing Command). Got:\n" + sig).toBe(
+          true,
+        );
       }
     });
 
@@ -325,14 +310,10 @@ describe("commands.ts — Command shape consistency (source-grep baseline)", () 
         expect(idx, name + " must be exported from commands.ts").not.toBeNull();
         if (idx === null) continue;
         const sig = readSignature(lines, idx);
-        expect(
-          returnsCommand(sig),
-          name + " must NOT return Command — it is a read-only helper. Got:\n" + sig,
-        ).toBe(false);
-        expect(
-          returnsNonCommandReturn(sig),
-          name + " must declare a non-void return type. Got:\n" + sig,
-        ).toBe(true);
+        expect(returnsCommand(sig), name + " must NOT return Command — it is a read-only helper. Got:\n" + sig).toBe(
+          false,
+        );
+        expect(returnsNonCommandReturn(sig), name + " must declare a non-void return type. Got:\n" + sig).toBe(true);
       }
     });
 

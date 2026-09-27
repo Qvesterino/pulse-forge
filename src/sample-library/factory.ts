@@ -2372,7 +2372,8 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
 /** Derive one variation: linear-resample (pitch + length together) and scale. */
 function deriveVariation(src: AudioBuffer, rate: number, gain: number): AudioBuffer {
   const length = Math.max(1, Math.round(src.length / rate));
-  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length, sampleRate: src.sampleRate });  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length, sampleRate: src.sampleRate });
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
     const s = src.getChannelData(ch);
     const d = out.getChannelData(ch);
     for (let i = 0; i < length; i++) {

@@ -124,7 +124,7 @@ export function Spectrogram({
   // a multires M/S matrix would double the tap count for little gain.
   const msAnalyser =
     !sourceId && viewMode !== "mix" && stereoTaps ? (viewMode === "mid" ? stereoTaps.mid : stereoTaps.side) : null;
-  const effectiveAnalyser = sourceId ? trackAnalyser : msAnalyser ?? analyser;
+  const effectiveAnalyser = sourceId ? trackAnalyser : (msAnalyser ?? analyser);
   const effectiveMulti = multi && !sourceId && !msAnalyser;
 
   useEffect(() => {
@@ -225,7 +225,15 @@ export function Spectrogram({
         reduceFrameToRows(freqDataArrs[i], bandMaps[i], bandRows[i]);
       }
       if (useMulti) {
-        composeMultiResRows(bandRows[0], bandRows[1], bandRows[2], rowFreqs, MULTIRES_CROSS_LOW_HZ, MULTIRES_CROSS_HIGH_HZ, rows);
+        composeMultiResRows(
+          bandRows[0],
+          bandRows[1],
+          bandRows[2],
+          rowFreqs,
+          MULTIRES_CROSS_LOW_HZ,
+          MULTIRES_CROSS_HIGH_HZ,
+          rows,
+        );
       } else {
         rows.set(bandRows[0]);
       }
@@ -435,11 +443,7 @@ export function Spectrogram({
           <>
             <label className="spectrogram-ctl" title="Analyse the master output or one track/bus">
               SRC
-              <select
-                value={sourceId}
-                onChange={(e) => onSourceChange(e.target.value)}
-                aria-label="Spectrogram source"
-              >
+              <select value={sourceId} onChange={(e) => onSourceChange(e.target.value)} aria-label="Spectrogram source">
                 <option value="">MASTER</option>
                 {sources.map((s) => (
                   <option key={s.id} value={s.id}>

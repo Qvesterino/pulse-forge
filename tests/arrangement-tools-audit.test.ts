@@ -130,8 +130,8 @@ describe("ripple edit", () => {
     // clips after the removed one keep their pairwise gaps
     for (let i = 2; i < list.length; i++) {
       const before = list[i]!.startBar - list[i - 1]!.startBar;
-      const after = (remaining[i - 1] ?? remaining[remaining.length - 1])!.startBar -
-        (remaining[i - 2] ?? remaining[0])!.startBar;
+      const after =
+        (remaining[i - 1] ?? remaining[remaining.length - 1])!.startBar - (remaining[i - 2] ?? remaining[0])!.startBar;
       if (i - 2 >= 1) expect(after).toBe(before);
     }
     expectNoOverlap(next);

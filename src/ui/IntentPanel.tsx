@@ -4,6 +4,7 @@ import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseProductionIntent, resolveProductionTargets } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
+import { reviseSectionProduction } from "../intent/section-production";
 import {
   applySessionCandidateCommand,
   lastGeneration,
@@ -22,6 +23,7 @@ import {
 import { applyArrangeOps, applyClipArrangeOps } from "../intent/arrangeWords";
 import {
   reviseSection,
+  reviseSectionFlow,
   replacePatternInPlaceCommand,
   applySongCommand,
   type SongBuild,
@@ -89,6 +91,7 @@ import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
+import type { Command } from "../commands/types";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
@@ -137,20 +140,22 @@ export function IntentPanel() {
   // Fáza 2 stale guard — the document revision the current preview was
   // computed against; USE blocks while the store's doc has moved on.
   const previewDocRef = useRef<ProjectDocument | null>(null);
-  // Fáza 5 section proposal — a targeted section revision (reviseSection
-  // outcome) previewed via audition; confirm applies the one-undo in-place
-  // swap, dismiss leaves nothing behind. docRef = stale guard.
+  // Audition-first section proposal. Pattern edits and scene-FX edits share
+  // one stale-guarded command; the preview callback renders exactly what the
+  // stored command would apply.
   const [sectionProposal, setSectionProposal] = useState<{
-    outcome: { patternId: string; pattern: Pattern; label: string };
+    label: string;
     docRef: ProjectDocument;
+    command: Command;
+    render: () => Promise<AudioBuffer>;
   } | null>(null);
   const sectionAuditionTokenRef = useRef(0);
   const [sectionPlaying, setSectionPlaying] = useState(false);
 
-  const auditionSectionProposal = async (pattern: Pattern) => {
+  const auditionSectionProposal = async (render: () => Promise<AudioBuffer>) => {
     const token = ++sectionAuditionTokenRef.current;
     try {
-      const buffer = await renderAuditionBuffer(services.store.getDoc(), services.bank, pattern, null);
+      const buffer = await render();
       if (token !== sectionAuditionTokenRef.current) return;
       playAuditionBuffer(buffer, () => setSectionPlaying(false));
       setSectionPlaying(true);
@@ -172,13 +177,11 @@ export function IntentPanel() {
       setError("Projekt sa zmenil od náhľadu — návrh je zastaraný. Spusť zmenu znova.");
       return;
     }
-    services.store.execute(
-      replacePatternInPlaceCommand(proposal.docRef, proposal.outcome.patternId, proposal.outcome.pattern),
-    );
+    services.store.execute(proposal.command);
     stopAudition();
     setSectionPlaying(false);
     setSectionProposal(null);
-    setStatus(`✓ ${proposal.outcome.label} — aplikované (jeden undo)`);
+    setStatus(`✓ ${proposal.label} — aplikované (jeden undo)`);
   };
 
   const dismissSectionProposal = () => {
@@ -186,6 +189,29 @@ export function IntentPanel() {
     setSectionPlaying(false);
     setSectionProposal(null);
     setStatus("Návrh sekcie odmietnutý — projekt ostal nezmenený.");
+  };
+
+  const proposeSectionChange = (
+    label: string,
+    docRef: ProjectDocument,
+    command: Command,
+    render: () => Promise<AudioBuffer>,
+  ) => {
+    setSectionProposal({ label, docRef, command, render });
+    void auditionSectionProposal(render);
+  };
+
+  const proposeSectionPattern = (
+    outcome: { patternId: string; pattern: Pattern; label: string },
+    baseDoc: ProjectDocument,
+  ) => {
+    const render = () => renderAuditionBuffer(baseDoc, services.bank, outcome.pattern, null);
+    proposeSectionChange(
+      outcome.label,
+      baseDoc,
+      replacePatternInPlaceCommand(baseDoc, outcome.patternId, outcome.pattern),
+      render,
+    );
   };
   // Ghost versions (time machine) — every pattern USE pushes its applied
   // content; A/B + slider audition and morph between takes. Buffers cache
@@ -894,8 +920,7 @@ export function IntentPanel() {
       return;
     }
     stopAudition();
-    setSectionProposal({ outcome, docRef: doc });
-    void auditionSectionProposal(outcome.pattern);
+    proposeSectionPattern(outcome, doc);
     setStatus(`⟡ ${suggestion.reason} → ${outcome.label} — ▶ náhľad, ✓ potvrdiť alebo ✗ ponechať`);
   };
   const sectionBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
@@ -1950,6 +1975,32 @@ export function IntentPanel() {
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
+      } else if (route.kind === "sectionProduction" || route.kind === "sectionFlow") {
+        stopAudition();
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        setStatus(null);
+        try {
+          const outcome =
+            route.kind === "sectionProduction"
+              ? reviseSectionProduction(doc, route.targetRole, route.intent)
+              : reviseSectionFlow(doc, route.targetRole, route.flow);
+          if (!outcome.ok) {
+            setStatus(`⚡ ${outcome.error}`);
+            return;
+          }
+          const auditionDoc = "auditionDoc" in outcome ? outcome.auditionDoc : doc;
+          const command =
+            "command" in outcome
+              ? outcome.command
+              : replacePatternInPlaceCommand(doc, outcome.patternId, outcome.pattern);
+          const render = () => renderAuditionBuffer(auditionDoc, services.bank, outcome.pattern, null);
+          proposeSectionChange(outcome.label, doc, command, render);
+          setStatus(`↻ ${outcome.label} — náhľad sekcie, ✓ potvrdiť alebo ✗ ponechať`);
+        } finally {
+          setBusy(false);
+        }
       } else if (route.kind === "revise") {
         // C2: shift a content slider on the LAST generation and re-run with
         // the SAME seed — the beat keeps its identity, the character moves.
@@ -1981,8 +2032,7 @@ export function IntentPanel() {
               return;
             }
             stopAudition();
-            setSectionProposal({ outcome, docRef: doc });
-            void auditionSectionProposal(outcome.pattern);
+            proposeSectionPattern(outcome, doc);
             setStatus(`↻ ${outcome.label} — ▶ náhľad, ✓ potvrdiť alebo ✗ ponechať`);
           } finally {
             // Unlike global revisions, this synchronous targeted path does
@@ -2390,11 +2440,12 @@ export function IntentPanel() {
           plan={bankResult.plan}
           candidates={bankResult.bank ?? []}
           warnings={bankResult.diagnostics.warnings}
+          selection={bankResult.selection}
         />
       )}
       {sectionProposal && (
         <div className="section-proposal" aria-label="Section change proposal">
-          <span className="section-proposal-label">↻ {sectionProposal.outcome.label}</span>
+          <span className="section-proposal-label">↻ {sectionProposal.label}</span>
           <span className="section-proposal-actions">
             <button
               type="button"
@@ -2403,7 +2454,7 @@ export function IntentPanel() {
               onClick={() =>
                 sectionPlaying
                   ? (stopAudition(), setSectionPlaying(false))
-                  : void auditionSectionProposal(sectionProposal.outcome.pattern)
+                  : void auditionSectionProposal(sectionProposal.render)
               }
             >
               {sectionPlaying ? "■" : "▶"}

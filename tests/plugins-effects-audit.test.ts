@@ -51,7 +51,13 @@ function withReferences(doc: ProjectDocument, trackId: string, fxId: string): Pr
             ...m,
             mappings: [
               ...m.mappings,
-              { id: "map-1", trackId, param: "mix", target: { kind: "fxParam" as const, trackId, fxId, paramId: "mix" }, amount: 0.5 },
+              {
+                id: "map-1",
+                trackId,
+                param: "mix",
+                target: { kind: "fxParam" as const, trackId, fxId, paramId: "mix" },
+                amount: 0.5,
+              },
             ],
           }
         : m,

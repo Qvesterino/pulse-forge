@@ -54,7 +54,9 @@ function profileFixture(master: ArtistProfile["master"]): ArtistProfile {
 
 describe("deepProfileToArtistMix — master.targetLufs → lufs (Phase 2 slice 3)", () => {
   it("carries the artist's mastered LUFS as a signal", () => {
-    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -7, tonalBalance: "modern loud-master" })).lufs).toBe(-7);
+    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -7, tonalBalance: "modern loud-master" })).lufs).toBe(
+      -7,
+    );
   });
 
   it("omits lufs when targetLufs is not finite", () => {
@@ -64,19 +66,47 @@ describe("deepProfileToArtistMix — master.targetLufs → lufs (Phase 2 slice 3
 
 describe("deepProfileToArtistMix — master.dynamicRange → glue (Phase 2 slice 3)", () => {
   it('"low - ..." descriptor engages the glue', () => {
-    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -6, tonalBalance: "x", dynamicRange: "low - modern loud-master target" })).glue).toBe(true);
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({ targetLufs: -6, tonalBalance: "x", dynamicRange: "low - modern loud-master target" }),
+      ).glue,
+    ).toBe(true);
   });
 
   it('"limited - ..." descriptor engages the glue', () => {
-    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -6, tonalBalance: "x", dynamicRange: "limited - club-system target, tight master" })).glue).toBe(true);
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          targetLufs: -6,
+          tonalBalance: "x",
+          dynamicRange: "limited - club-system target, tight master",
+        }),
+      ).glue,
+    ).toBe(true);
   });
 
   it('"wide - ..." descriptor bypasses the glue', () => {
-    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -12, tonalBalance: "x", dynamicRange: "wide - NOT loud-mastered, character over loudness" })).glue).toBe(false);
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          targetLufs: -12,
+          tonalBalance: "x",
+          dynamicRange: "wide - NOT loud-mastered, character over loudness",
+        }),
+      ).glue,
+    ).toBe(false);
   });
 
   it('"moderate - ..." descriptor leaves the glue alone (undefined)', () => {
-    expect(deepProfileToArtistMix(profileFixture({ targetLufs: -7, tonalBalance: "x", dynamicRange: "moderate - modern trap loud-master target" })).glue).toBeUndefined();
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          targetLufs: -7,
+          tonalBalance: "x",
+          dynamicRange: "moderate - modern trap loud-master target",
+        }),
+      ).glue,
+    ).toBeUndefined();
   });
 
   it("absent dynamicRange leaves the glue alone (undefined)", () => {

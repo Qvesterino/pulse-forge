@@ -134,3 +134,56 @@ describe("semantic worker client failure handling", () => {
     }
   });
 });
+
+describe("semantic worker model-pack cache bridge", () => {
+  let previousFetch: typeof self.fetch;
+  let previousOnMessage: typeof self.onmessage;
+
+  beforeEach(() => {
+    vi.resetModules();
+    previousFetch = self.fetch;
+    previousOnMessage = self.onmessage;
+  });
+
+  afterEach(() => {
+    self.fetch = previousFetch;
+    self.onmessage = previousOnMessage;
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("serves an installed model-pack URL from the shared cache before network", async () => {
+    const cachedResponse = new Response("cached model manifest");
+    const match = vi.fn().mockResolvedValue(cachedResponse);
+    const open = vi.fn().mockResolvedValue({ match });
+    const networkFetch = vi.fn();
+    vi.stubGlobal("caches", { open });
+    vi.stubGlobal("fetch", networkFetch);
+
+    await import("../src/ai/semantic/semantic-worker");
+    const url = "/models/semantic/manifest.json";
+    await expect(self.fetch(url)).resolves.toBe(cachedResponse);
+
+    expect(open).toHaveBeenCalledWith("pf:model-packs");
+    expect(match).toHaveBeenCalledWith(new URL(url, self.location.href).href);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the original fetch when the model-pack cache misses or fails", async () => {
+    const networkResponse = new Response("origin model manifest");
+    const networkFetch = vi.fn().mockResolvedValue(networkResponse);
+    const match = vi.fn().mockResolvedValue(null);
+    const open = vi.fn().mockResolvedValue({ match });
+    vi.stubGlobal("caches", { open });
+    vi.stubGlobal("fetch", networkFetch);
+
+    await import("../src/ai/semantic/semantic-worker");
+    const url = "/models/semantic/manifest.json";
+    await expect(self.fetch(url)).resolves.toBe(networkResponse);
+    expect(networkFetch).toHaveBeenCalledWith(url, undefined);
+
+    open.mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(self.fetch(url)).resolves.toBe(networkResponse);
+    expect(networkFetch).toHaveBeenCalledTimes(2);
+  });
+});

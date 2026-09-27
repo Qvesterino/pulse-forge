@@ -80,9 +80,7 @@ describe("commands.ts JSDoc baseline", () => {
       it(title, () => {
         const idx = findExportLine(lines, name);
         if (idx === null) {
-          throw new Error(
-            "Anchor " + name + " no longer exported from commands.ts — restore or update list",
-          );
+          throw new Error("Anchor " + name + " no longer exported from commands.ts — restore or update list");
         }
         expect(
           hasJSDocAbove(lines, idx),
@@ -142,15 +140,9 @@ describe("commands.ts JSDoc baseline", () => {
       for (const name of ANCHORS_OUTSIDE_FILE) {
         const idx = findExportLine(lines, name);
         expect(idx === null || idx >= 0).toBe(true);
-        if (
-          idx !== null &&
-          !FOLLOWUP_TARGETS.includes(name) &&
-          !ANCHORS_WITH_JSDOC.includes(name)
-        ) {
+        if (idx !== null && !FOLLOWUP_TARGETS.includes(name) && !ANCHORS_WITH_JSDOC.includes(name)) {
           throw new Error(
-            "Anchor " +
-              name +
-              " resolves in commands.ts but is not in any tracked set (pinned/follow-up/outside)",
+            "Anchor " + name + " resolves in commands.ts but is not in any tracked set (pinned/follow-up/outside)",
           );
         }
       }

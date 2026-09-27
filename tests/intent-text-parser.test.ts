@@ -12,7 +12,31 @@ describe("text-parser v2", () => {
 
   it("returns empty input for unrecognized text", () => {
     const parsed = parseIntentText("hello world something");
-    expect(Object.keys(parsed.input).length === 0 || parsed.input.genre === undefined).toBe(true);
+    // The only key present is `text` — no structured field was recognised.
+    expect(Object.keys(parsed.input)).toEqual(["text"]);
+    expect(parsed.input.genre).toBeUndefined();
+  });
+
+  // Regression guard: `text` is the INPUT to the embedding-conditioned prior
+  // (semanticConditioning(intent.text)). When the parser dropped it, the v2/v3
+  // priors were skipped for every UI request and `supportsDrumPrior` fell back
+  // to the v1 genre+style one-hot — which covers only a small slice of the
+  // groove library (house 7/53, dnb and boombap none). Multi-vibe blends
+  // ("travis scott meets metro boomin") depend on both names reaching MiniLM.
+  it("carries the raw text so the semantic prior can consume it", () => {
+    const raw = "travis scott meets metro boomin, dark techno beat with vinyl break";
+    const parsed = parseIntentText(raw);
+    expect(parsed.input.text).toBe(raw);
+    expect(normalizeIntent(parsed.input).text).toBe(raw);
+  });
+
+  it("trims and caps text at the normalize-stage limit", () => {
+    const long = "x".repeat(500);
+    // Parser passes the raw string; normalizeIntent owns the 300-char cap.
+    expect(normalizeIntent(parseIntentText(long).input).text).toHaveLength(300);
+    // Blank input is OMITTED, not stored as an empty string — an empty vector
+    // is worse than no vector, since semanticConditioning would still embed it.
+    expect(normalizeIntent(parseIntentText("   ").input).text).toBeUndefined();
   });
 
   it("extracts genre, style, mood and bpm from one sentence", () => {
@@ -97,7 +121,16 @@ describe("text-parser v2", () => {
   it("is idempotent under whitespace and case noise", () => {
     const clean = parseIntentText("dark rolling techno at 140");
     const noisy = parseIntentText("  DARK   rolling,\tTECHNO  at 140 ");
-    expect(noisy.input).toEqual(clean.input);
+    // Compare the PARSED reading, not the raw carrier. Every field the parser
+    // derives is normalized and noise-invariant. `text` is the one exception
+    // by design: it is passed through verbatim so the embedding sees exactly
+    // what the user typed, and normalizeIntent owns its trim + 300-char cap.
+    const { text: _cleanText, ...cleanFields } = clean.input;
+    const { text: _noisyText, ...noisyFields } = noisy.input;
+    expect(noisyFields).toEqual(cleanFields);
+    // The raw text IS preserved verbatim on both sides.
+    expect(clean.input.text).toBe("dark rolling techno at 140");
+    expect(noisy.input.text).toBe("  DARK   rolling,\tTECHNO  at 140 ");
   });
 });
 
@@ -169,8 +202,13 @@ describe("vocabulary wave — sub-genres, moods, traits", () => {
     expect(parseIntentText("chillhop study beats").input.genre).toBe("ambient");
     expect(parseIntentText("dark ambient drone").input.genre).toBe("ambient");
     expect(parseIntentText("breakcore at 180").input.genre).toBe("dnb");
-    expect(parseIntentText("synthwave night drive").input.genre).toBe("techno");
-    expect(parseIntentText("trance at 138").input.genre).toBe("techno");
+    // Synthwave was routed to techno before the ambient.synthwave groove
+    // existed (Wave 5) — style "synthwave" had no techno id, so every
+    // synthwave ask silently fell back to a random techno pocket.
+    expect(parseIntentText("synthwave night drive").input.genre).toBe("ambient");
+    expect(parseIntentText("synthwave night drive").input.style).toBe("synthwave");
+    // Trance became a first-class genre in the same wave.
+    expect(parseIntentText("trance at 138").input.genre).toBe("trance");
   });
 
   it("resolves the expanded mood vocabulary", () => {
@@ -658,5 +696,59 @@ describe("hip-hop sub-genre sweep", () => {
     }
     // Screwed IS the slowness — the slowest rap groove in the library.
     expect(getGrooveById("trap.screwed")!.bpm[0]).toBeLessThan(80);
+  });
+});
+
+describe("vocabulary-gap depth lanes — every phrase resolves to a real groove", () => {
+  // Regression lock for docs/VOCABULARY-GAP-RESEARCH.md §1b: before this wave
+  // these asks produced no genre/style at all (or a random pocket) because the
+  // phrase emitted a style token no groove carried. Each case asserts BOTH the
+  // parsed pair AND that the pair resolves through getGrooveById — the exact
+  // lookup resolveGroove performs.
+  const cases: Array<{ text: string; genre: string; style: string; groove: string }> = [
+    { text: "synthwave night drive", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
+    { text: "outrun", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
+    { text: "darksynth", genre: "ambient", style: "synthwave", groove: "ambient.synthwave" },
+    { text: "trip hop", genre: "ambient", style: "organic", groove: "ambient.organic" },
+    { text: "downtempo", genre: "ambient", style: "organic", groove: "ambient.organic" },
+    { text: "chillhop", genre: "ambient", style: "drifting", groove: "ambient.drifting" },
+    { text: "study beats", genre: "ambient", style: "drifting", groove: "ambient.drifting" },
+    { text: "reggae", genre: "trap", style: "dancehall", groove: "trap.dancehall" },
+    { text: "ska", genre: "trap", style: "dancehall", groove: "trap.dancehall" },
+    { text: "boogie", genre: "house", style: "funky", groove: "house.funky" },
+    { text: "balearic", genre: "house", style: "organic", groove: "house.organic" },
+    { text: "shoegaze", genre: "house", style: "altrock", groove: "house.altrock" },
+    { text: "dream pop", genre: "house", style: "altrock", groove: "house.altrock" },
+    { text: "nu jazz", genre: "house", style: "broken", groove: "house.broken" },
+    { text: "post rock", genre: "house", style: "altrock", groove: "house.altrock" },
+    { text: "breakcore", genre: "dnb", style: "amen", groove: "dnb.amen" },
+    { text: "gabber", genre: "techno", style: "hard", groove: "techno.hard" },
+    { text: "hardcore techno", genre: "techno", style: "hard", groove: "techno.hard" },
+    { text: "happy hardcore", genre: "techno", style: "hard", groove: "techno.hard" },
+    { text: "uptempo hardcore", genre: "techno", style: "hard", groove: "techno.hard" },
+    { text: "hardstyle", genre: "techno", style: "hardstyle", groove: "techno.hardstyle" },
+  ];
+
+  it.each(cases)("$text → $groove", ({ text, genre, style, groove }) => {
+    const parsed = parseIntentText(text);
+    expect(parsed.input.genre).toBe(genre);
+    expect(parsed.input.style).toBe(style);
+    expect(getGrooveById(groove)).toBeDefined();
+  });
+
+  it("bare hardcore keeps the punk reading (gabber never steals it)", () => {
+    const parsed = parseIntentText("hardcore");
+    expect(parsed.input.genre).toBe("house");
+    expect(parsed.input.style).toBe("hardcorepunk");
+    expect(getGrooveById("house.hardcorepunk")).toBeDefined();
+  });
+
+  it("lofi hip hop keeps its ambient lane and lo-fi hip hop keeps boombap", () => {
+    // Both spellings were already pinned; the depth wave must not move them.
+    expect(parseIntentText("lofi hip hop").input.genre).toBe("ambient");
+    expect(parseIntentText("lofi hip hop").input.style).toBe("drifting");
+    const boombapLofi = parseIntentText("lo-fi hip hop");
+    expect(boombapLofi.input.genre).toBe("boombap");
+    expect(getGrooveById(`boombap.${boombapLofi.input.style}`)).toBeDefined();
   });
 });

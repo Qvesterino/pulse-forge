@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate, emptyPattern } from "../src/project-model/templates";
 import { parseSectionRequests } from "../src/intent/sections";
+import { reviseSectionProduction } from "../src/intent/section-production";
 import { planSongForm, buildSong, applySongCommand, sectionFxChips } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
 import { applyGenerationResultWithFxCommand } from "../src/commands/commands";
 import { auditionDoc } from "../src/intent/audition";
+import type { ProductionIntent } from "../src/intent/production";
 import type { ProjectDocument, InstrumentTrack } from "../src/project-model/types";
 
 /**
@@ -70,6 +72,17 @@ describe("parseSectionRequests", () => {
     expect(parseSectionRequests("dark rolling techno at 140")).toBeNull();
     expect(parseSectionRequests("make the bass deeper")).toBeNull();
   });
+
+  it("scopes timbral requests whether the adjective comes before or after the section", () => {
+    expect(parseSectionRequests("darker drop")?.scopedFx[0]).toMatchObject({
+      role: "drop",
+      fx: { goals: [{ concept: "darker", amount: 0.7 }] },
+    });
+    expect(parseSectionRequests("make the bridge warmer")?.scopedFx[0]).toMatchObject({
+      role: "bridge",
+      fx: { goals: [{ concept: "warmer", amount: 0.7 }] },
+    });
+  });
 });
 
 describe("applySectionRequests / planSongForm", () => {
@@ -100,6 +113,63 @@ describe("applySectionRequests / planSongForm", () => {
     const form = planSongForm(intent, parse);
     expect(form.sections.length).toBeGreaterThan(0);
   });
+});
+
+describe("section-local production revision", () => {
+  it("isolates a proposed filter to one arranged section and undoes as one command", async () => {
+    const doc = createProjectFromTemplate("house");
+    const build = await buildSong(doc, normalizeIntent({ genre: "house", seed: "section-fx", bpmRange: [124, 124] }), {
+      yieldBetweenSections: false,
+    });
+    const song = applySongCommand(doc, build).execute(doc);
+    const targetScene = song.scenes.find(
+      (scene) => scene.role === "drop" && song.arrangement.clips.some((clip) => clip.sceneId === scene.id),
+    )!;
+    const drumTrackBefore = drumTrackOf(song);
+    const intent: ProductionIntent = {
+      targets: ["drums"],
+      goals: [{ concept: "darker" as const, amount: 0.7 }],
+      sourceText: "darker drop",
+    };
+    const outcome = reviseSectionProduction(song, "drop", intent);
+
+    if (!outcome.ok) throw new Error(outcome.error);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.previewDoc).toEqual(outcome.command.execute(song));
+    const drumTrackAfter = drumTrackOf(outcome.previewDoc);
+    const added = drumTrackAfter.effects.find(
+      (effect) => effect.type === "svFilter" && !drumTrackBefore.effects.some((before) => before.id === effect.id),
+    );
+    expect(added).toBeDefined();
+    expect(added?.params.mix).toBe(0);
+    expect(drumTrackOf(outcome.auditionDoc).effects.find((effect) => effect.id === added?.id)?.params.mix).toBe(1);
+
+    const lanes = outcome.previewDoc.sceneAutomation.filter((lane) => lane.target.fxId === added?.id);
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0]?.sceneId).toBe(targetScene.id);
+    expect(lanes[0]?.target).toMatchObject({ kind: "fxParam", trackId: drumTrackBefore.id, paramId: "mix" });
+    expect(lanes[0]?.points[0]?.value).toBe(1);
+    expect(lanes[0]?.points[1]?.value).toBe(1);
+
+    expect(drumTrackAfter.effects.filter((effect) => effect.id !== added?.id)).toEqual(drumTrackBefore.effects);
+    expect(outcome.previewDoc.tracks.filter((track) => track.id !== drumTrackBefore.id)).toEqual(
+      song.tracks.filter((track) => track.id !== drumTrackBefore.id),
+    );
+    for (const before of song.sceneAutomation) {
+      expect(outcome.previewDoc.sceneAutomation.find((lane) => lane.id === before.id)).toEqual(before);
+    }
+    expect(outcome.command.undo(outcome.previewDoc)).toEqual(song);
+
+    const repeated = reviseSectionProduction(outcome.previewDoc, "drop", intent);
+    if (!repeated.ok) throw new Error(repeated.error);
+    const repeatedTrack = drumTrackOf(repeated.previewDoc);
+    expect(repeatedTrack.effects.filter((effect) => effect.id === added?.id)).toHaveLength(1);
+    expect(repeated.previewDoc.sceneAutomation.filter((lane) => lane.target.fxId === added?.id)).toHaveLength(1);
+    expect(repeatedTrack.effects.filter((effect) => effect.type === "svFilter")).toHaveLength(
+      drumTrackBefore.effects.filter((effect) => effect.type === "svFilter").length + 1,
+    );
+  }, 60_000);
 });
 
 describe("IntentSpec.fx (wave 1)", () => {
@@ -240,9 +310,7 @@ describe("song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl b
     }
 
     // A swept section (intro/build riser) marks its chip with sweep.
-    const sweptSections = build.sections.filter(
-      (s) => s.role === "intro" || s.role === "build",
-    );
+    const sweptSections = build.sections.filter((s) => s.role === "intro" || s.role === "build");
     expect(sweptSections.length).toBeGreaterThanOrEqual(1);
     for (const section of sweptSections) {
       const chips = sectionFxChips(applied, `scene-${section.pattern.id}`);
@@ -297,8 +365,6 @@ describe("song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl b
       applied.sceneAutomation.map((lane) =>
         JSON.stringify({ kind: lane.target.kind, param: lane.target.paramId, points: lane.points }),
       );
-    expect(laneShape(applySongCommand(doc, a).execute(doc))).toEqual(
-      laneShape(applySongCommand(doc, b).execute(doc)),
-    );
+    expect(laneShape(applySongCommand(doc, a).execute(doc))).toEqual(laneShape(applySongCommand(doc, b).execute(doc)));
   });
 });

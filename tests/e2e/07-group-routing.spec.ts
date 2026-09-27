@@ -27,11 +27,19 @@ test("moving a track between groups removes its old audio route", async ({ page 
     const withGroups = {
       ...doc,
       master: { ...doc.master, limiterEnabled: false, clipperEnabled: false, glueEnabled: false },
-      tracks: [...doc.tracks.map((track: { id: string }) => (track.id === drum.id ? { ...track, groupId: groupA.id, sends: {} } : track)), groupA, groupB],
+      tracks: [
+        ...doc.tracks.map((track: { id: string }) =>
+          track.id === drum.id ? { ...track, groupId: groupA.id, sends: {} } : track,
+        ),
+        groupA,
+        groupB,
+      ],
     };
     const moved = {
       ...withGroups,
-      tracks: withGroups.tracks.map((track: { id: string }) => (track.id === drum.id ? { ...track, groupId: groupB.id } : track)),
+      tracks: withGroups.tracks.map((track: { id: string }) =>
+        track.id === drum.id ? { ...track, groupId: groupB.id } : track,
+      ),
     };
     const engine = new AudioEngine();
     engine.attachBank(bank);
@@ -128,9 +136,7 @@ test("moving a track between groups removes its old audio route", async ({ page 
     const controlOutput = await controlContext.startRendering();
     const pannerOutput = pannerProbe();
     const groupOutput = groupOutputProbe();
-    const masterStages = Object.fromEntries(
-      Object.entries(masterStageProbes).map(([name, read]) => [name, read()]),
-    );
+    const masterStages = Object.fromEntries(Object.entries(masterStageProbes).map(([name, read]) => [name, read()]));
 
     const directContext = new OfflineAudioContext(2, 44_100, 44_100);
     const directSource = directContext.createOscillator();

@@ -45,7 +45,6 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-
 /** Command pool — every entry validates against the CURRENT doc before
  * returning a factory; anything invalid for this state is skipped (the
  * command factories throw by design for hostile states). */
@@ -108,7 +107,8 @@ function commandPool(): Array<(doc: ProjectDocument, rnd: () => number) => (() =
     },
     // automation
     (doc) => {
-      return () => addSceneAutomation(doc, doc.scenes[0]!.id, { kind: "trackGain", trackId: doc.tracks[0]!.id }).execute(doc);
+      return () =>
+        addSceneAutomation(doc, doc.scenes[0]!.id, { kind: "trackGain", trackId: doc.tracks[0]!.id }).execute(doc);
     },
     (doc, rnd) => {
       const lane = pick(doc.automation, rnd);
@@ -202,7 +202,9 @@ describe("undo/redo round-trip fuzz (audit 09)", () => {
     const store = new ProjectStore(base);
     const trackId = base.tracks.find((t) => t.kind === "instrument")!.id;
     for (let i = 0; i < 70; i++) {
-      store.execute(addNote(store.getDoc(), trackId, { pitch: 40 + (i % 40), start: (i % 16) * 120, duration: 240, velocity: 0.8 }));
+      store.execute(
+        addNote(store.getDoc(), trackId, { pitch: 40 + (i % 40), start: (i % 16) * 120, duration: 240, velocity: 0.8 }),
+      );
     }
     // The window slides: dense 0..63, no empty holes (white-box — the field
     // is private; a hole would corrupt the history panel's diff offsets).

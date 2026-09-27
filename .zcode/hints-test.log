@@ -1,0 +1,70 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/intent-artist-plan-hints.test.ts [2m([22m[2m20 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[90m 97[2mms[22m[39m
+[31m   [31m├Ś[31m planMixProfile ÔÇö scoop decision (Phase 2 slice 5)[2m > [22ma scooped artist gets a low-mid peaking cut on chords + lead[90m 22[2mms[22m[31m[39m
+[31m     Ôćĺ expected 0 to be greater than 0[39m
+[31m   [31m├Ś[31m planMixProfile ÔÇö scoop decision (Phase 2 slice 5)[2m > [22mthe scoop is surfaced in the human-readable summary[90m 10[2mms[22m[31m[39m
+[31m     Ôćĺ expected false to be true // Object.is equality[39m
+[31m   [31m├Ś[31m artistKeyHint / artistKeyCandidates[2m > [22mreturns [] for a keyless / atonal entry (no concrete preference)[90m 5[2mms[22m[31m[39m
+[31m     Ôćĺ expected [ 'a major' ] to deeply equal [][39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 3 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-artist-plan-hints.test.ts > planMixProfile ÔÇö scoop decision (Phase 2 slice 5) > a scooped artist gets a low-mid peaking cut on chords + lead
+AssertionError: expected 0 to be greater than 0
+ ÔŁ» tests/intent-artist-plan-hints.test.ts:92:27
+     90|       (d) => d.effectType === "eq" && d.params.lowMidFreq === 320 && dÔÇŽ
+     91|     );
+     92|     expect(scoops.length).toBeGreaterThan(0);
+       |                           ^
+     93|     expect(scoops.map((d) => d.target).sort()).toEqual(["chords", "leaÔÇŽ
+     94|   });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/3]ÔÄ»
+
+ FAIL  tests/intent-artist-plan-hints.test.ts > planMixProfile ÔÇö scoop decision (Phase 2 slice 5) > the scoop is surfaced in the human-readable summary
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ÔŁ» tests/intent-artist-plan-hints.test.ts:106:71
+    104|   it("the scoop is surfaced in the human-readable summary", () => {
+    105|     const profile = planMixProfile(baseIntent({ artist: "metro-boomin"ÔÇŽ
+    106|     expect(profile.summary.some((line) => line.startsWith("scoop:"))).ÔÇŽ
+       |                                                                       ^
+    107|   });
+    108| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/3]ÔÄ»
+
+ FAIL  tests/intent-artist-plan-hints.test.ts > artistKeyHint / artistKeyCandidates > returns [] for a keyless / atonal entry (no concrete preference)
+AssertionError: expected [ 'a major' ] to deeply equal []
+
+- Expected
++ Received
+
+- Array []
++ Array [
++   "a major",
++ ]
+
+ ÔŁ» tests/intent-artist-plan-hints.test.ts:164:65
+    162|   it("returns [] for a keyless / atonal entry (no concrete preference)ÔÇŽ
+    163|     // Aphex Twin's descriptor says "variable ÔÇö often modal or atonal".
+    164|     expect(artistKeyCandidates(getArtistProfile("aphex-twin"))).toEquaÔÇŽ
+       |                                                                 ^
+    165|   });
+    166| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[3/3]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m17 passed[39m[22m[90m (20)[39m
+[2m   Start at [22m 12:57:59
+[2m   Duration [22m 20.30s[2m (transform 8.99s, setup 1.51s, collect 11.87s, tests 97ms, environment 4.42s, prepare 635ms)[22m
+

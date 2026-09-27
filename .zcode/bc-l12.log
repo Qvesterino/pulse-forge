@@ -1,0 +1,69 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/intent-production-degree.test.ts [2m([22m[2m22 tests[22m[2m)[22m[90m 54[2mms[22m[39m
+ [32mÔťô[39m tests/intent-semantic-client.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 2351[2mms[22m[39m
+   [33m[2mÔťô[22m[39m semantic worker client failure handling[2m > [22mresolves worker runtime errors immediately and trips the circuit breaker [33m1423[2mms[22m[39m
+   [33m[2mÔťô[22m[39m semantic worker client failure handling[2m > [22mcold-start timeouts resolve to null WITHOUT tripping the circuit breaker [33m312[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-signature-seeding.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 29[2mms[22m[39m
+ [32mÔťô[39m tests/intent-text-parser.test.ts [2m([22m[2m93 tests[22m[2m)[22m[33m 3031[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-plan-hints.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 69[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-mix-wiring.test.ts [2m([22m[2m45 tests[22m[2m)[22m[90m 118[2mms[22m[39m
+ [32mÔťô[39m tests/intent-async-pipeline.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 851[2mms[22m[39m
+ [32mÔťô[39m tests/intent-transitions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 438[2mms[22m[39m
+ [32mÔťô[39m tests/intent-sections-fx.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 1181[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl break'[2m > [22mbuilds the reshaped form and installs gated section FX [33m347[2mms[22m[39m
+ [32mÔťô[39m tests/intent-loudness.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 748[2mms[22m[39m
+ [32mÔťô[39m tests/intent-mix-route.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 1425[2mms[22m[39m
+   [33m[2mÔťô[22m[39m unified router (D3)[2m > [22mroutes mix vocabulary to the mix executor [33m474[2mms[22m[39m
+ [32mÔťô[39m tests/intent-e2e-audit.test.ts [2m([22m[2m71 tests[22m[2m)[22m[33m 1582[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-production.test.ts [2m([22m[2m20 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 5376[2mms[22m[39m
+[31m   [31m├Ś[31m planner[2m > [22mdeeper Ôćĺ pitchShift with amount-scaled semitones, clamped to metadata[33m 5032[2mms[22m[31m[39m
+[31m     Ôćĺ Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32mÔťô[39m tests/intent-song.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 3952[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song builder[2m > [22mgenerates related but distinct section patterns [33m511[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song builder[2m > [22mcarries the full producer brief into every generated song section [33m1209[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song builder[2m > [22mbuilds complete coherent song lanes and sound-checks section finalists [33m906[2mms[22m[39m
+   [33m[2mÔťô[22m[39m role-aware instrumentation (A2 v2)[2m > [22mscenes carry the new songwriting roles into the arrangement [33m336[2mms[22m[39m
+ [32mÔťô[39m tests/intent-master-decisions.test.ts [2m([22m[2m19 tests[22m[2m)[22m[90m 171[2mms[22m[39m
+ [32mÔťô[39m tests/intent-binding.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 255[2mms[22m[39m
+ [32mÔťô[39m tests/intent-ranker-active.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 856[2mms[22m[39m
+   [33m[2mÔťô[22m[39m active ranker participation in the canonical path[2m > [22mactive + model participation: neutral model scores preserve the heuristic winner, provenance records the model [33m429[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artists.test.ts [2m([22m[2m178 tests[22m[2m)[22m[33m 7117[2mms[22m[39m
+   [33m[2mÔťô[22m[39m artist type-beat presets (C1)[2m > [22mtravis scott type beat Ôćĺ trap/rolling/dark with researched BPM [33m501[2mms[22m[39m
+ [32mÔťô[39m tests/intent-preserve.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 372[2mms[22m[39m
+ [32mÔťô[39m tests/intent-song-audio-review.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 373[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-profiles.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 292[2mms[22m[39m
+ [32mÔťô[39m tests/intent-semantic.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1498[2mms[22m[39m
+   [33m[2mÔťô[22m[39m semantic corpus (T1 krok 2)[2m > [22mpatches only use canonical vocabulary [33m1231[2mms[22m[39m
+ [32mÔťô[39m tests/intent-exact.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 221[2mms[22m[39m
+ [32mÔťô[39m tests/intent-preference-ledger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 439[2mms[22m[39m
+   [33m[2mÔťô[22m[39m Producer DNA preference ledger[2m > [22mcanonicalizes pair order and choice while storing only versioned feature snapshots [33m314[2mms[22m[39m
+ [32mÔťô[39m tests/intent-effect-targets.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 1521[2mms[22m[39m
+   [33m[2mÔťô[22m[39m targeted effect intents (D1 v2a)[2m > [22mrouter: targeted effect beats the generic mix profile [33m404[2mms[22m[39m
+   [33m[2mÔťô[22m[39m applyEffectIntent execution[2m > [22mcomposes with the song builder: per-section FX stay section-scoped in TESTS [33m944[2mms[22m[39m
+ [32mÔťô[39m tests/intent-pipeline.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 381[2mms[22m[39m
+ [32mÔťô[39m tests/intent-regen-chain.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 725[2mms[22m[39m
+   [33m[2mÔťô[22m[39m ?regen=1 chain on a real engine beat[2m > [22msurvives publish Ôćĺ import Ôćĺ snapshot Ôćĺ fresh-seed regeneration [33m690[2mms[22m[39m
+ [32mÔťô[39m tests/intent-mapping.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 125[2mms[22m[39m
+ [32mÔťô[39m tests/intent-brief-suite.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1254[2mms[22m[39m
+   [33m[2mÔťô[22m[39m AI-first producer ÔÇö SK/EN brief suite (F├íza 0)[2m > [22minterpret: EN: explicit BPM is extracted [33m458[2mms[22m[39m
+ [32mÔťô[39m tests/intent-descriptions.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 134[2mms[22m[39m
+ [32mÔťô[39m tests/intent-audio-feedback.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 433[2mms[22m[39m
+ [32mÔťô[39m tests/intent-ranker-golden.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32mÔťô[39m tests/intent-percent.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/intent-async-fallback.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 56[2mms[22m[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 1 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-production.test.ts > planner > deeper Ôćĺ pitchShift with amount-scaled semitones, clamped to metadata
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/1]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m33 passed[39m[22m[90m (34)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m725 passed[39m[22m[90m (726)[39m
+[2m   Start at [22m 14:56:27
+[2m   Duration [22m 70.08s[2m (transform 44.14s, setup 149.69s, collect 208.10s, tests 37.48s, environment 483.80s, prepare 17.46s)[22m
+

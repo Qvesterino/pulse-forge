@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ARTIST_MIX_PROFILES, artistMixProfileOf } from "../src/intent/artist-mix";
-import {
-  deepProfileToArtistMix,
-  getArtistProfile,
-  normalizeArtistSlug,
-} from "../src/intent/artist-profiles";
+import { deepProfileToArtistMix, getArtistProfile, normalizeArtistSlug } from "../src/intent/artist-profiles";
 import type { ArtistProfile } from "../src/intent/artist-profiles";
 import { INTENT_SCHEMA_VERSION, type IntentSpec } from "../src/intent/types";
 import { planMixProfile } from "../src/intent/mix";
@@ -124,15 +120,33 @@ describe("deepProfileToArtistMix — eqTilt → tone mapping", () => {
   }
 
   it("dark eqTilt → dark tone", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "dark", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } })).tone).toBe("dark");
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "dark", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).tone,
+    ).toBe("dark");
   });
 
   it("bright eqTilt → bright tone", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "bright", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } })).tone).toBe("bright");
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "bright", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).tone,
+    ).toBe("bright");
   });
 
   it("neutral eqTilt → warm tone (engine's closest producer-decision)", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } })).tone).toBe("warm");
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).tone,
+    ).toBe("warm");
   });
 });
 
@@ -155,15 +169,33 @@ describe("deepProfileToArtistMix — compression → punch mapping", () => {
   }
 
   it("heavy compression → punch: more", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "heavy", stereoWidth: "normal", subEmphasis: "moderate" } })).punch).toBe("more");
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "heavy", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).punch,
+    ).toBe("more");
   });
 
   it("light compression → punch: less", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "light", stereoWidth: "normal", subEmphasis: "moderate" } })).punch).toBe("less");
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "light", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).punch,
+    ).toBe("less");
   });
 
   it("medium compression → punch: undefined (genre default wins)", () => {
-    expect(deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } })).punch).toBeUndefined();
+    expect(
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).punch,
+    ).toBeUndefined();
   });
 });
 
@@ -304,22 +336,31 @@ describe("artistMixProfileOf — round-trip with intent.artist", () => {
 describe("deepProfileToArtistMix — stereoWidth → width mapping", () => {
   it("wide stereoWidth → width: wide", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "wide", subEmphasis: "moderate" } }))
-        .width,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "wide", subEmphasis: "moderate" },
+        }),
+      ).width,
     ).toBe("wide");
   });
 
   it("narrow stereoWidth → width: narrow", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "narrow", subEmphasis: "moderate" } }))
-        .width,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "narrow", subEmphasis: "moderate" },
+        }),
+      ).width,
     ).toBe("narrow");
   });
 
   it("normal stereoWidth → width: undefined (genre default wins)", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } }))
-        .width,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).width,
     ).toBeUndefined();
   });
 });
@@ -327,22 +368,31 @@ describe("deepProfileToArtistMix — stereoWidth → width mapping", () => {
 describe("deepProfileToArtistMix — subEmphasis → sub mapping", () => {
   it("prominent subEmphasis → sub: prominent", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "prominent" } }))
-        .sub,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "prominent" },
+        }),
+      ).sub,
     ).toBe("prominent");
   });
 
   it("subtle subEmphasis → sub: subtle", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "subtle" } }))
-        .sub,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "subtle" },
+        }),
+      ).sub,
     ).toBe("subtle");
   });
 
   it("moderate subEmphasis → sub: undefined", () => {
     expect(
-      deepProfileToArtistMix(profileFixture({ mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" } }))
-        .sub,
+      deepProfileToArtistMix(
+        profileFixture({
+          mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
+        }),
+      ).sub,
     ).toBeUndefined();
   });
 });

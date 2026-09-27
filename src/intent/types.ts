@@ -221,7 +221,12 @@ export interface RankerSelectionMeta {
   modelHash: string | null;
   /** "off" = heuristic-only ranking (in-memory meta; persisted provenance coerces to "shadow"). */
   mode: "off" | "shadow" | "active";
+  /** First-pass scorer; an audio rerank may subsequently choose another candidate. */
   source: "model" | "fallback";
+  /** Final candidate after every enabled selection stage. */
+  selectedIndex?: number;
+  /** Present only when audio-fit reordering displaced the first-pass winner. */
+  audioRerank?: { displacedCandidateIndex: number; selectedCandidateIndex: number };
 }
 
 /** Full provider ranking output — proposal plus the auditionable bank. */

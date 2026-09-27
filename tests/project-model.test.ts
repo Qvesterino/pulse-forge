@@ -10,6 +10,7 @@ import {
 } from "../src/project-model/schema";
 import { PPQ, STEPS_PER_PATTERN, STEP_TICKS } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { addAudioClip } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
 
 function minimalDoc(overrides: Partial<ProjectDocument> = {}): ProjectDocument {
@@ -435,6 +436,18 @@ describe("migrateProject", () => {
     const older = { ...doc, schemaVersion: 0 } as ProjectDocument;
     const migrated = migrateProject(older);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("upgrades schema v8 loop clips and preserves valid v9 phase offsets", () => {
+    const base = createDefaultProject();
+    const trackId = base.tracks[0]!.id;
+    const legacyLoop = addAudioClip(base, trackId, "loop", 0, 4, { loop: true }).execute(base);
+    const migrated = migrateProject({ ...legacyLoop, schemaVersion: 8 });
+    expect(migrated.schemaVersion).toBe(9);
+    expect(migrated.arrangement.audioClips?.[0]?.loopPhaseOffsetSec).toBeUndefined();
+
+    const phased = addAudioClip(base, trackId, "loop", 0, 4, { loop: true, loopPhaseOffsetSec: 2.25 }).execute(base);
+    expect(migrateProject(phased)).toEqual(phased);
   });
 
   it("throws on a schemaVersion newer than supported", () => {

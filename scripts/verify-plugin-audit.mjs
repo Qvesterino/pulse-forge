@@ -54,7 +54,7 @@ if (fs.existsSync(outPath)) {
     report.instruments = (prior.instruments ?? []).filter(
       (i) => i.defaultAudible && !(i.unstableParams ?? []).some((u) => String(u).startsWith("runner:")),
     );
-    report.interactions = prior.interactions ?? null;
+    report.interactions = prior.interactions && prior.interactions.chainRestoreDiff != null ? prior.interactions : null;
     console.log(`[resume] keeping ${report.effects.length} effect rows, ${report.instruments.length} instrument rows`);
   } catch {
     console.log("[resume] existing report unreadable — starting fresh");

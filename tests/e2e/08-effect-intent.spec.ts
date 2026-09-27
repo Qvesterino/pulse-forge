@@ -82,10 +82,9 @@ test.describe("08 — Effect Intent Engine", () => {
     if (!(await devicePanel.isVisible().catch(() => false))) await clickPanelAction(page, "FX");
     await expect(devicePanel).toBeVisible();
     await expect(page.locator(".fx-device").filter({ hasText: "Reverb" }).first()).toBeVisible();
-    await expect(page.locator(".fx-device").filter({ hasText: "Reverb" }).first().getByRole("slider", { name: "DECAY" })).toHaveAttribute(
-      "aria-valuenow",
-      applied!,
-    );
+    await expect(
+      page.locator(".fx-device").filter({ hasText: "Reverb" }).first().getByRole("slider", { name: "DECAY" }),
+    ).toHaveAttribute("aria-valuenow", applied!);
   });
 
   test("EQ brightness mapping remains available in a fresh offline project", async ({ page }) => {

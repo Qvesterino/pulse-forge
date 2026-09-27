@@ -93,10 +93,65 @@ const PRESERVE_PHRASES: readonly { phrase: string; area: EffectIntentProtectedAr
 ];
 
 const FILLER_WORDS = new Set([
-  "a", "ale", "ako", "and", "but", "bit", "can", "could", "do", "for", "i", "it", "keep", "leave", "make", "me", "mi", "na",
-  "please", "prosim", "prosimta", "set", "sound", "sprav", "to", "urob", "you", "chcem", "chcela", "chcel",
-  "nech", "tak", "the", "trochu", "jemne", "mierne", "slightly", "subtly", "subtle", "little", "much",
-  "really", "more", "less", "a", "very", "viac", "menej", "unchanged", "alone", "as", "is", "same", "zvuk", "zvukovo", "ho", "ju", "toho", "ten",
+  "a",
+  "ale",
+  "ako",
+  "and",
+  "but",
+  "bit",
+  "can",
+  "could",
+  "do",
+  "for",
+  "i",
+  "it",
+  "keep",
+  "leave",
+  "make",
+  "me",
+  "mi",
+  "na",
+  "please",
+  "prosim",
+  "prosimta",
+  "set",
+  "sound",
+  "sprav",
+  "to",
+  "urob",
+  "you",
+  "chcem",
+  "chcela",
+  "chcel",
+  "nech",
+  "tak",
+  "the",
+  "trochu",
+  "jemne",
+  "mierne",
+  "slightly",
+  "subtly",
+  "subtle",
+  "little",
+  "much",
+  "really",
+  "more",
+  "less",
+  "a",
+  "very",
+  "viac",
+  "menej",
+  "unchanged",
+  "alone",
+  "as",
+  "is",
+  "same",
+  "zvuk",
+  "zvukovo",
+  "ho",
+  "ju",
+  "toho",
+  "ten",
 ]);
 
 function normalizeText(value: string): string {
@@ -151,7 +206,10 @@ function intensityOf(text: string): { amount: number; residual: string; conflict
 
 export function parseEffectIntent(sourceText: string): EffectIntentParseResult {
   if (sourceText.length > 500) {
-    return { status: "unsupported", diagnostics: ["Požiadavka je príliš dlhá. Skráť ju na jeden krátky zvukový zámer."] };
+    return {
+      status: "unsupported",
+      diagnostics: ["Požiadavka je príliš dlhá. Skráť ju na jeden krátky zvukový zámer."],
+    };
   }
   const normalized = normalizeText(sourceText);
   if (!normalized) return { status: "needsClarification", diagnostics: ["Opíš, akú zvukovú zmenu chceš."] };
@@ -178,13 +236,13 @@ export function parseEffectIntent(sourceText: string): EffectIntentParseResult {
 
   const intensity = intensityOf(residual);
   residual = intensity.residual;
-  const unknown = residual
-    .split(" ")
-    .filter((word) => word && !FILLER_WORDS.has(word));
+  const unknown = residual.split(" ").filter((word) => word && !FILLER_WORDS.has(word));
   if (unknown.length > 0) {
     return {
       status: "unsupported",
-      diagnostics: [`Zatiaľ nepoznám výraz „${unknown.join(" ")}“. Skús konkrétnejšie: teplejšie, jasnejšie alebo viac/menej priestoru.`],
+      diagnostics: [
+        `Zatiaľ nepoznám výraz „${unknown.join(" ")}“. Skús konkrétnejšie: teplejšie, jasnejšie alebo viac/menej priestoru.`,
+      ],
     };
   }
   if (intensity.conflict) {
@@ -196,7 +254,9 @@ export function parseEffectIntent(sourceText: string): EffectIntentParseResult {
   if (requested.size === 0) {
     return {
       status: "needsClarification",
-      diagnostics: ["Rozpoznal som iba obmedzenie, nie cieľ zmeny. Skús teplejšie, jasnejšie alebo viac/menej priestoru."],
+      diagnostics: [
+        "Rozpoznal som iba obmedzenie, nie cieľ zmeny. Skús teplejšie, jasnejšie alebo viac/menej priestoru.",
+      ],
     };
   }
 

@@ -21,11 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  clampInputGainDb,
-  MAX_INPUT_GAIN_DB,
-  MIN_INPUT_GAIN_DB,
-} from "../../src/audio-engine/PcmMicRecorder";
+import { clampInputGainDb, MAX_INPUT_GAIN_DB, MIN_INPUT_GAIN_DB } from "../../src/audio-engine/PcmMicRecorder";
 
 describe("clampInputGainDb", () => {
   it("returns the value unchanged when inside the legal range", () => {
@@ -85,9 +81,7 @@ describe("ArrangementPanel — input-gain wiring (source-grep regression)", () =
     // Hydration contract: the first read of storage happens inside the
     // useState initializer (lazy) and is clamped immediately, so a
     // corrupted storage value never lands as an unclamped slider value.
-    expect(src).toMatch(
-      /useState<number>\(\(\)\s*=>\s*clampInputGainDb\(loadRecordingInputGainDb\(\)\)\)/,
-    );
+    expect(src).toMatch(/useState<number>\(\(\)\s*=>\s*clampInputGainDb\(loadRecordingInputGainDb\(\)\)\)/);
   });
 
   it("wires the slider to changeInputGain via onChange", () => {
@@ -95,9 +89,7 @@ describe("ArrangementPanel — input-gain wiring (source-grep regression)", () =
     expect(src).toMatch(/type="range"/);
     expect(src).toMatch(/min=\{MIN_INPUT_GAIN_DB\}/);
     expect(src).toMatch(/max=\{MAX_INPUT_GAIN_DB\}/);
-    expect(src).toMatch(
-      /onChange=\{\s*\(event\)\s*=>\s*changeInputGain\(Number\(event\.target\.value\)\)\s*\}/,
-    );
+    expect(src).toMatch(/onChange=\{\s*\(event\)\s*=>\s*changeInputGain\(Number\(event\.target\.value\)\)\s*\}/);
   });
 
   it("changeInputGain clamps, persists, applies live, and resets the clip flag", () => {

@@ -685,15 +685,9 @@ const bass: InstrumentDefinition = {
           fmGain.gain.value = (p.sub ?? 0.6) * 0.9;
           fmSub.connect(fmGain).connect(filter.input);
           if (slideOn && slideFrom && glide > 0.002) {
-            fmSub.frequency.setValueAtTime(
-              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12),
-              glideStart,
-            );
+            fmSub.frequency.setValueAtTime(midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12), glideStart);
             fmSub.frequency.exponentialRampToValueAtTime(fmSubFreq, glideStart + glide);
-            fmMod.frequency.setValueAtTime(
-              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12) * 2,
-              glideStart,
-            );
+            fmMod.frequency.setValueAtTime(midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12) * 2, glideStart);
             fmMod.frequency.exponentialRampToValueAtTime(fmSubFreq * 2, glideStart + glide);
             fmSub.start(glideStart);
             fmMod.start(glideStart);
@@ -723,14 +717,8 @@ const bass: InstrumentDefinition = {
           wobAmp.gain.value = wobOffset.gain.value + 0.35;
           wobSub.connect(wobAmp).connect(filter.input);
           if (slideOn && slideFrom && glide > 0.002) {
-            wobSub.frequency.setValueAtTime(
-              midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12),
-              glideStart,
-            );
-            wobSub.frequency.exponentialRampToValueAtTime(
-              wobSub.frequency.value,
-              glideStart + glide,
-            );
+            wobSub.frequency.setValueAtTime(midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12), glideStart);
+            wobSub.frequency.exponentialRampToValueAtTime(wobSub.frequency.value, glideStart + glide);
             wobSub.start(glideStart);
             wobLfo.start(glideStart);
           } else {
@@ -4451,10 +4439,7 @@ const acid: InstrumentDefinition = {
         // SVF — the squelch engine. Cutoff envelope: slams to
         // cutoff × (1 + envMod × 4 + accent×2), decays back to cutoff.
         const svf = createVoiceFilter(ctx, cutoffBase, reso, 0, 0);
-        const cutoffEnvPeak = Math.min(
-          12000,
-          cutoffBase * (1 + envMod * 4 + accentVel * 2),
-        );
+        const cutoffEnvPeak = Math.min(12000, cutoffBase * (1 + envMod * 4 + accentVel * 2));
         svf.frequency.setValueAtTime(cutoffEnvPeak, when);
         svf.frequency.setTargetAtTime(cutoffBase, when + 0.01, decay / 3);
         svf.output.connect(amp);
@@ -4583,13 +4568,7 @@ const brass: InstrumentDefinition = {
         amp.gain.setTargetAtTime(0.0001, off, release / 3);
 
         // The swoosh: cutoff slams open (sweep × velocity), decays back.
-        const svf = createVoiceFilter(
-          ctx,
-          cutoffBase * (0.7 + velocity * 0.5),
-          reso,
-          0,
-          0,
-        );
+        const svf = createVoiceFilter(ctx, cutoffBase * (0.7 + velocity * 0.5), reso, 0, 0);
         const sweepPeak = Math.min(12000, cutoffBase * (1 + sweep * 3 * (0.5 + velocity * 0.5)));
         svf.frequency.setValueAtTime(sweepPeak, when);
         svf.frequency.setTargetAtTime(cutoffBase * (0.7 + velocity * 0.5), when + attack, sweepTime);
@@ -4615,10 +4594,7 @@ const brass: InstrumentDefinition = {
           const fromFreq = slideFrom ? midiToFreq(slideFrom.pitch) : glideAmt > 0.001 ? runtime.lastFreq : null;
           if (fromFreq && fromFreq > 20 && fromFreq !== freq) {
             osc.frequency.setValueAtTime(fromFreq * Math.pow(2, cents / 1200), when);
-            osc.frequency.exponentialRampToValueAtTime(
-              freq * Math.pow(2, cents / 1200),
-              Math.min(when + 0.08, off),
-            );
+            osc.frequency.exponentialRampToValueAtTime(freq * Math.pow(2, cents / 1200), Math.min(when + 0.08, off));
           }
           const vg = ctx.createGain();
           vg.gain.value = v === 0 ? 1 : 0.65;
@@ -4744,10 +4720,7 @@ const clav: InstrumentDefinition = {
         const bright = ctx.createBiquadFilter();
         bright.type = "highpass";
         // Velocity → pickup brightness: harder hit = hotter, brighter output.
-        bright.frequency.value = Math.max(
-          120,
-          Math.min(6000, freq * 0.8 + velocity * 1200 + pick * 900),
-        );
+        bright.frequency.value = Math.max(120, Math.min(6000, freq * 0.8 + velocity * 1200 + pick * 900));
         osc.connect(oscGain).connect(bright).connect(pickup);
         osc.start(when);
         osc.stop(stopTime);

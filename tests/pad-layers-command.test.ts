@@ -19,7 +19,7 @@ function doc(): { doc: ProjectDocument; padId: string } {
 }
 
 function padOf(doc: ProjectDocument, padId: string) {
-  return (doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!).pads.find((p) => p.id === padId)!;
+  return doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!.pads.find((p) => p.id === padId)!;
 }
 
 describe("setPadParams — pad layer sets", () => {

@@ -90,7 +90,9 @@ function readSignature(lines: string[], startIdx: number, maxLines = 12): string
 
 function signatureReturnsArrayOf(sig: string, elementType: string): boolean {
   // Match `: number[]` or `: <Type>[]`. Compound generic <Type>[] also matches.
-  const re = new RegExp(":\\s*(?:[A-Za-z_<>,\\s\\[\\]]*\\b)?" + elementType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
+  const re = new RegExp(
+    ":\\s*(?:[A-Za-z_<>,\\s\\[\\]]*\\b)?" + elementType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b",
+  );
   return re.test(sig);
 }
 
@@ -147,7 +149,11 @@ describe("audio-engine/transients.ts — pure-utility baseline (source-grep)", (
       it(title, () => {
         const idx = findExport(lines, "function", name);
         if (idx === null) {
-          throw new Error("Function " + name + " no longer exported from transients.ts. Restore it or update PUBLIC_FUNCTIONS — the Slice / Beat-Slicer / Chop-to-Pads features reach this symbol by name.");
+          throw new Error(
+            "Function " +
+              name +
+              " no longer exported from transients.ts. Restore it or update PUBLIC_FUNCTIONS — the Slice / Beat-Slicer / Chop-to-Pads features reach this symbol by name.",
+          );
         }
       });
     }
@@ -223,11 +229,7 @@ describe("audio-engine/transients.ts — pure-utility baseline (source-grep)", (
       }
       // eslint-disable-next-line no-console
       console.info(
-        "[transients-audit] transients.ts — exports: " +
-          seen.length +
-          " (" +
-          seen.map((s) => s.name).join(", ") +
-          ")",
+        "[transients-audit] transients.ts — exports: " + seen.length + " (" + seen.map((s) => s.name).join(", ") + ")",
       );
     });
   });

@@ -1,4 +1,0 @@
-src/ai/bridge/recipes/punchierDrums.ts(87,9): error TS2561: Object literal may only specify known properties, but 'output' does not exist in type '{ readonly attack: number; readonly sustain: number; readonly sensitivity: number; readonly mix: number; readonly outputDb: number; }'. Did you mean to write 'outputDb'?
-tests/ai/bridge/compressor.test.ts(168,109): error TS2339: Property 'intensity' does not exist on type 'CompressorSpec'.
-tests/intent-artist-signature-seeding.test.ts(41,10): error TS6133: 'withEmbeddingMode' is declared but its value is never read.
-tests/pcm-playback.test.ts(178,11): error TS6133: 'bridge' is declared but its value is never read.

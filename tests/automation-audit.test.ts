@@ -96,9 +96,11 @@ describe("automation point ops — index-shift tolerance (audit 06)", () => {
     // not throw on an out-of-range index.
     const withShift = normalizeProject({
       ...store.getDoc(),
-      automation: store.getDoc().automation.map((l) =>
-        l.id === laneId ? { ...l, points: [{ tick: -0 + 10, value: 0.1 } as const, ...l.points] } : l,
-      ),
+      automation: store
+        .getDoc()
+        .automation.map((l) =>
+          l.id === laneId ? { ...l, points: [{ tick: -0 + 10, value: 0.1 } as const, ...l.points] } : l,
+        ),
     });
     const store2 = new ProjectStore(withShift);
     store2.execute(moveAutomationPoint(withShift, laneId, 1, { tick: 1440 }));

@@ -100,7 +100,10 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     { text: "midtempo bass half time", patch: { genre: "house", style: "midtempo", mood: "dark", energy: 0.85 } },
     { text: "breakbeat big beat samples", patch: { genre: "house", style: "breakbeat", energy: 0.9 } },
     { text: "sad chill lo-fi to cry to", patch: { genre: "ambient", style: "sadchill", mood: "chill", energy: 0.4 } },
-    { text: "dirty ambient corroded tape", patch: { genre: "ambient", style: "dirtyambient", mood: "dark", energy: 0.3 } },
+    {
+      text: "dirty ambient corroded tape",
+      patch: { genre: "ambient", style: "dirtyambient", mood: "dark", energy: 0.3 },
+    },
     { text: "latin mafia bedroom bass pop", patch: { genre: "house", style: "pop", mood: "chill", energy: 0.6 } },
     { text: "disco boogie strings", patch: { genre: "house", style: "disco", energy: 0.75 } },
     { text: "chicago house jacking groove", patch: { genre: "house", style: "soulful", energy: 0.8 } },
@@ -160,7 +163,32 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     },
     { text: "acidová 303 linka", patch: { genre: "techno", style: "acid", energy: 0.85 } },
     { text: "trance euphoric breakdown with supersaw", patch: { genre: "techno", mood: "energetic", energy: 0.85 } },
-    { text: "synthwave outrun night drive", patch: { genre: "techno", mood: "energetic", energy: 0.7 } },
+    // Synthwave moved to its own ambient.synthwave groove (Wave 5); the old
+    // techno/no-style patch resolved to a random warehouse pocket.
+    {
+      text: "synthwave outrun night drive",
+      patch: { genre: "ambient", style: "synthwave", mood: "energetic", energy: 0.7 },
+    },
+    { text: "darksynth neon chase", patch: { genre: "ambient", style: "synthwave", mood: "dark", energy: 0.8 } },
+    // Vocabulary-gap depth lanes (docs/VOCABULARY-GAP-RESEARCH.md).
+    { text: "trip hop downtempo with dusty samples", patch: { genre: "ambient", style: "organic", mood: "chill" } },
+    { text: "reggae one drop with dub delays", patch: { genre: "trap", style: "dancehall", mood: "chill" } },
+    { text: "ska upstroke skank", patch: { genre: "trap", style: "dancehall", mood: "energetic", energy: 0.8 } },
+    {
+      text: "gabber hardcore techno at 170",
+      patch: { genre: "techno", style: "hard", mood: "aggressive", energy: 0.95 },
+    },
+    {
+      text: "euphoric hardstyle reverse bass",
+      patch: { genre: "techno", style: "hardstyle", mood: "aggressive", energy: 0.9 },
+    },
+    { text: "shoegaze wall of guitars reverb", patch: { genre: "house", style: "altrock", mood: "chill" } },
+    { text: "dream pop hazy vocals", patch: { genre: "house", style: "altrock", mood: "chill" } },
+    { text: "nu jazz broken beat west london", patch: { genre: "house", style: "broken", mood: "energetic" } },
+    { text: "boogie funk synth bass", patch: { genre: "house", style: "funky", mood: "energetic" } },
+    { text: "balearic sunset chillout", patch: { genre: "house", style: "organic", mood: "chill" } },
+    { text: "breakcore chopped amen chaos", patch: { genre: "dnb", style: "amen", mood: "aggressive", energy: 0.95 } },
+    { text: "post-rock crescendo guitars", patch: { genre: "house", style: "altrock", energy: 0.6 } },
     {
       text: "drift phonk for a night drive",
       patch: { genre: "phonk", style: "drift", mood: "aggressive", energy: 0.9 },

@@ -90,7 +90,7 @@ interface SliderProps {
   max: number;
   defaultValue: number;
   format?: (value: number) => string;
-  onCommit: (value: number) => void;  /**
+  onCommit: (value: number) => void; /**
    * Fire-and-forget live preview while dragging (open plugin panels push the
    * value straight to the audio runtime so the knob is audible DURING the
    * drag). The document write still happens once, on commit — the preview

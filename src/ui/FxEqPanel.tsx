@@ -823,7 +823,9 @@ export function FxEqPanel({
                   aria-label={`Crossover ${index + 2} frequency`}
                   value={Math.round(freq)}
                   min={Math.round(Math.max(80, schema.defById.get(`crossoverFreq${index + 2}`)?.minValue ?? 80))}
-                  max={Math.round(Math.min(AXIS_MAX_HZ, schema.defById.get(`crossoverFreq${index + 2}`)?.maxValue ?? AXIS_MAX_HZ))}
+                  max={Math.round(
+                    Math.min(AXIS_MAX_HZ, schema.defById.get(`crossoverFreq${index + 2}`)?.maxValue ?? AXIS_MAX_HZ),
+                  )}
                   step={10}
                   onChange={(event) => {
                     const raw = Number(event.target.value);

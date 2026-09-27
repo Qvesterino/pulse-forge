@@ -254,7 +254,8 @@ describe("generator — adversarial inputs", () => {
   // TODO: src/ai/quality.ts:L28 — repairDrumRow does not clamp negative
   //       stepCount before `new Array(stepCount)`, leading to RangeError on
   //       negative input. Generator should pre-sanitize stepCount.
-  it("survives negative stepCount without throwing", () => { // re-enabled verification (see src/ai/quality.ts L27)
+  it("survives negative stepCount without throwing", () => {
+    // re-enabled verification (see src/ai/quality.ts L27)
     const doc = freshDoc();
     expect(() => generatePattern(doc, makeOptions({ stepCount: -16 }))).not.toThrow();
   });

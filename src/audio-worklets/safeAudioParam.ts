@@ -25,12 +25,7 @@
  * never lose precision in the audio thread); pass an AudioContext time to
  * schedule the change via `setValueAtTime` (used by automation `paramAt`).
  */
-export function safeApplyAudioParam(
-  node: AudioWorkletNode,
-  id: string,
-  value: number,
-  when?: number,
-): void {
+export function safeApplyAudioParam(node: AudioWorkletNode, id: string, value: number, when?: number): void {
   const p = node.parameters.get(id);
   if (!p) return;
   // Spec-mandated guard: non-finite AudioParam values throw TypeError.

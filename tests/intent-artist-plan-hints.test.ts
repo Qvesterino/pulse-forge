@@ -136,7 +136,10 @@ describe("artistBpmHint", () => {
 function profileFixtureWithBpm(typical: [number, number]): ArtistProfile {
   return profileFixture({ targetLufs: -7, tonalBalance: "x" }).signature.bpm.typical === typical
     ? { ...profileFixture({ targetLufs: -7, tonalBalance: "x" }) }
-    : { ...profileFixture({ targetLufs: -7, tonalBalance: "x" }), signature: { sound: [], samples: [], bpm: { typical }, keys: [] } };
+    : {
+        ...profileFixture({ targetLufs: -7, tonalBalance: "x" }),
+        signature: { sound: [], samples: [], bpm: { typical }, keys: [] },
+      };
 }
 
 describe("artistHalfTimeHint", () => {
@@ -212,4 +215,3 @@ describe("hasArtistSignature stays a pure guard", () => {
     expect(hasArtistSignature(null)).toBe(false);
   });
 });
-

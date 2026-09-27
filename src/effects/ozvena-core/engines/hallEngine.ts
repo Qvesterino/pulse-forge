@@ -412,8 +412,7 @@ export function createHallEngine(): HallEngine {
         // around the 0.5 midpoint), so the reservation includes that
         // factor — a size change stays scalar-only.
         const SIZE_MACRO_MAX = 1.2;
-        const maxLen =
-          Math.max(8, Math.round(base[l] * maxSrScale * densityScale * SIZE_MACRO_MAX)) + 96;
+        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale * SIZE_MACRO_MAX)) + 96;
         ls.push(new Float32Array(maxLen));
         wi.push(0);
         lp.push(0);

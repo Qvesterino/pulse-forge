@@ -204,8 +204,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
   // lands on the same grid slots).
   const maxRms = segmented.reduce((max, r) => Math.max(max, r.rmsMax), 1e-9);
   const secPerTick = 60 / (bpm * PPQ);
-  const beatSynced =
-    options.transportStartTick !== undefined && Number.isFinite(options.transportStartTick);
+  const beatSynced = options.transportStartTick !== undefined && Number.isFinite(options.transportStartTick);
   const anchor = beatSynced ? Math.max(0, options.transportStartTick!) : 0;
   const patternLen = options.patternLengthTicks;
   const wrapTick = (tick: number): number => ((tick % patternLen) + patternLen) % patternLen;
@@ -227,10 +226,7 @@ export function framesToNotes(frames: readonly PitchFrame[], options: HumNoteOpt
     let best = Math.round(mean);
     let bestCount = -1;
     for (const [pitch, count] of counts) {
-      if (
-        count > bestCount ||
-        (count === bestCount && Math.abs(pitch - mean) < Math.abs(best - mean))
-      ) {
+      if (count > bestCount || (count === bestCount && Math.abs(pitch - mean) < Math.abs(best - mean))) {
         best = pitch;
         bestCount = count;
       }
@@ -343,9 +339,7 @@ export function humToNotesCommand(
     target.mode === "merge"
       ? [
           ...existing,
-          ...notes.filter(
-            (note) => !existing.some((e) => e.pitch === note.pitch && e.start === note.start),
-          ),
+          ...notes.filter((note) => !existing.some((e) => e.pitch === note.pitch && e.start === note.start)),
         ]
       : [...notes];
   const sorted = [...nextNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
@@ -404,10 +398,7 @@ export function shiftNotesToBarStart(notes: readonly NoteEvent[]): NoteEvent[] {
  * copy crossing the pattern end is clipped. A phrase that already reaches
  * the pattern end comes back unchanged.
  */
-export function tileNotesAcrossPattern(
-  notes: readonly NoteEvent[],
-  patternLengthTicks: number,
-): NoteEvent[] {
+export function tileNotesAcrossPattern(notes: readonly NoteEvent[], patternLengthTicks: number): NoteEvent[] {
   if (notes.length === 0 || patternLengthTicks <= 0) return [...notes];
   const first = Math.min(...notes.map((note) => note.start));
   const lastEnd = Math.max(...notes.map((note) => note.start + note.duration));
@@ -444,11 +435,7 @@ export interface AuditionTiming {
  * through engine.noteOn at its delay — nothing is scheduled ahead inside the
  * engine, so STOP is instant silence with no dangling notes.
  */
-export function auditionTimings(
-  notes: readonly NoteEvent[],
-  bpm: number,
-  leadInSec = 0.12,
-): AuditionTiming[] {
+export function auditionTimings(notes: readonly NoteEvent[], bpm: number, leadInSec = 0.12): AuditionTiming[] {
   const effectiveBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
   const secPerTick = 60 / (effectiveBpm * PPQ);
   return notes.map((note) => ({
@@ -466,10 +453,7 @@ export function auditionTimings(
  * track carrying the take name; tempo baked into the conductor track so the
  * file opens at the project's groove in any DAW.
  */
-export function notesToMidiBlob(
-  notes: readonly NoteEvent[],
-  options: { bpm: number; name?: string },
-): Blob {
+export function notesToMidiBlob(notes: readonly NoteEvent[], options: { bpm: number; name?: string }): Blob {
   if (notes.length === 0) throw new Error("No hummed notes to export");
   const bytes = writeMidiFile({
     bpm: Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120,

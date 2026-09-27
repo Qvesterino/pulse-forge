@@ -104,7 +104,9 @@ describe("rolePresetFor table", () => {
     const drums = d.tracks.find((t) => t.kind === "drum")!;
     const cmd = addEffectWithLandingCommand(d, drums.id, "svFilter", { cutoff: 99999, resonance: -5, mix: 2 });
     const next = cmd.execute(d);
-    const fx = (next.tracks.find((t) => t.id === drums.id) as InstrumentTrack).effects.find((f) => f.type === "svFilter")!;
+    const fx = (next.tracks.find((t) => t.id === drums.id) as InstrumentTrack).effects.find(
+      (f) => f.type === "svFilter",
+    )!;
     const cutoffDef = EFFECT_DEFS.svFilter.params.find((p) => p.id === "cutoff")!;
     expect(fx.params.cutoff).toBe(cutoffDef.max);
     expect(fx.params.resonance).toBe(0);
@@ -120,4 +122,3 @@ describe("rolePresetFor table", () => {
     expect(fx.params.amount).toBe(0.4);
   });
 });
-

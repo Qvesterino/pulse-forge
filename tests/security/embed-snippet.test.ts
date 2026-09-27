@@ -140,7 +140,7 @@ describe("security: embedSnippet escapes HTML-significant chars in the URL", () 
             '"><script>alert(1)</script>',
             '" onerror="alert(1)"',
             '&redirect=evil&x="y"',
-            '<img/src=x onerror=alert(1)>',
+            "<img/src=x onerror=alert(1)>",
             "normal-path/with?key=value&other=1",
           ];
           return prefix[Math.floor(Math.random() * prefix.length)] + suffix[Math.floor(Math.random() * suffix.length)];
@@ -175,14 +175,7 @@ describe("security: embedSnippet escapes HTML-significant chars in the URL", () 
 
   describe("structural invariants hold regardless of input", () => {
     it("output always contains the iframe + title", () => {
-      const inputs = [
-        "",
-        "https://forge.app/embed/#p=abc",
-        'javascript:alert(1)"',
-        "<x>",
-        "&<>",
-        "data:text/html,foo",
-      ];
+      const inputs = ["", "https://forge.app/embed/#p=abc", 'javascript:alert(1)"', "<x>", "&<>", "data:text/html,foo"];
       for (const url of inputs) {
         const out = embedSnippet(url);
         expect(out).toContain("<iframe");

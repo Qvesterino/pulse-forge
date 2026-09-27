@@ -28,12 +28,12 @@ describe("parseProductionIntent", () => {
     expect(intent!.goals).toEqual([{ concept: "deeper", amount: 0.7 }]);
   });
 
-  it("amount modifiers: 'much punchier drums' → 0.9, 'slightly darker' → 0.45", () => {
+  it("amount modifiers: 'much punchier drums' → 0.85, 'slightly darker' → 0.35", () => {
     const much = parseProductionIntent("make the drums much punchier");
-    expect(much!.goals[0]).toEqual({ concept: "punchier", amount: 0.9 });
+    expect(much!.goals[0]).toEqual({ concept: "punchier", amount: 0.85 });
     expect(much!.targets).toContain("drums");
     const slight = parseProductionIntent("slightly darker");
-    expect(slight!.goals[0]).toEqual({ concept: "darker", amount: 0.45 });
+    expect(slight!.goals[0]).toEqual({ concept: "darker", amount: 0.35 });
   });
 
   it("multi-goal: 'make the bass warmer and drums punchier'", () => {
@@ -190,7 +190,8 @@ describe("applyProductionIntentCommand", () => {
     const d = doc();
     const next = applyProductionIntentCommand(d, parseProductionIntent("make the drums wobbly")!).execute(d);
     const drumTrack = next.tracks.find((t) => t.kind === "drum");
-    const fx = drumTrack && "effects" in drumTrack ? drumTrack.effects.find((f) => f.type === "beatMangler") : undefined;
+    const fx =
+      drumTrack && "effects" in drumTrack ? drumTrack.effects.find((f) => f.type === "beatMangler") : undefined;
     expect(fx).toBeDefined();
     expect(fx!.volumeSteps).toHaveLength(16);
     expect(fx!.pitchSteps).toHaveLength(16);

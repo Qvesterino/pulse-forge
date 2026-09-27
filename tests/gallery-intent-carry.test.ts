@@ -6,31 +6,21 @@ import type { PatternGeneration, ProjectDocument } from "../src/project-model/ty
 
 /** Stamp a document's patterns with intent provenance in the ENGINE WRITER
  *  shape — `pattern.generation.intent` (attachProvenance, local.ts). */
-function withEngineIntents(
-  doc: ProjectDocument,
-  intents: Array<Record<string, unknown> | null>,
-): ProjectDocument {
+function withEngineIntents(doc: ProjectDocument, intents: Array<Record<string, unknown> | null>): ProjectDocument {
   return {
     ...doc,
     patterns: doc.patterns.map((p, i) =>
-      intents[i]
-        ? { ...p, generation: { ...p.generation, intent: intents[i] } as PatternGeneration }
-        : p,
+      intents[i] ? { ...p, generation: { ...p.generation, intent: intents[i] } as PatternGeneration } : p,
     ),
   };
 }
 
 /** Stamp the LEGACY top-level `pattern.intent` shape (pre-fix fixtures,
  *  kept readable as a fallback). */
-function withIntents(
-  doc: ProjectDocument,
-  intents: Array<Record<string, unknown> | null>,
-): ProjectDocument {
+function withIntents(doc: ProjectDocument, intents: Array<Record<string, unknown> | null>): ProjectDocument {
   return {
     ...doc,
-    patterns: doc.patterns.map((p, i) =>
-      intents[i] ? ({ ...p, intent: intents[i] } as typeof p) : p,
-    ),
+    patterns: doc.patterns.map((p, i) => (intents[i] ? ({ ...p, intent: intents[i] } as typeof p) : p)),
   };
 }
 
@@ -59,7 +49,7 @@ describe("intentSnapshotOfDoc", () => {
   it("prefers generation.intent when a pattern somehow carries both shapes", () => {
     const base = createProjectFromTemplate("house");
     const doc = withEngineIntents(
-      { ...base, patterns: [{ ...base.patterns[0]!, intent: { genre: "house" } } as typeof base.patterns[number]] },
+      { ...base, patterns: [{ ...base.patterns[0]!, intent: { genre: "house" } } as (typeof base.patterns)[number]] },
       [{ genre: "drill", energy: 0.7 }],
     );
     const snapshot = intentSnapshotOfDoc(doc);
@@ -76,16 +66,17 @@ describe("intentSnapshotOfDoc", () => {
   it("prefers the DROP scene's pattern provenance (the beat's character)", () => {
     // Drop scene → pattern B (stamped trap); pattern A (house) sits first in
     // the array and must LOSE to the drop scene's pick.
-    const doc = withIntents(twoPatternDoc(), [{ genre: "house", energy: 0.5 }, { genre: "trap", energy: 0.9 }]);
+    const doc = withIntents(twoPatternDoc(), [
+      { genre: "house", energy: 0.5 },
+      { genre: "trap", energy: 0.9 },
+    ]);
     const snapshot = intentSnapshotOfDoc(doc);
     expect((snapshot as { genre?: string } | null)?.genre).toBe("trap");
   });
 
   it("falls back to any pattern with provenance when no drop scene exists", () => {
     const base = createProjectFromTemplate("house");
-    const doc = withIntents({ ...base, scenes: [] as ProjectDocument["scenes"] }, [
-      { genre: "techno", energy: 0.8 },
-    ]);
+    const doc = withIntents({ ...base, scenes: [] as ProjectDocument["scenes"] }, [{ genre: "techno", energy: 0.8 }]);
     const snapshot = intentSnapshotOfDoc(doc);
     expect((snapshot as { genre?: string } | null)?.genre).toBe("techno");
   });

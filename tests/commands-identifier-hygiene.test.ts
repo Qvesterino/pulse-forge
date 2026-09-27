@@ -55,9 +55,7 @@ describe("commands.ts identifier hygiene — conventional verb-prefix coverage",
     // would drop below the threshold and fail here before code review
     // even sees them.
     const names = loadCommandExportNames();
-    const conventional = names.filter((n) =>
-      CONVENTIONAL_PREFIXES.some((p) => n.startsWith(p)),
-    ).length;
+    const conventional = names.filter((n) => CONVENTIONAL_PREFIXES.some((p) => n.startsWith(p))).length;
     const ratio = conventional / names.length;
     expect(
       ratio,
@@ -83,9 +81,7 @@ describe("commands.ts identifier hygiene — conventional verb-prefix coverage",
     // commands named `doFoo()` triggers the regression guard without
     // having to update this test by feel.
     const names = loadCommandExportNames();
-    const nonConventional = names.filter(
-      (n) => !CONVENTIONAL_PREFIXES.some((p) => n.startsWith(p)),
-    ).length;
+    const nonConventional = names.filter((n) => !CONVENTIONAL_PREFIXES.some((p) => n.startsWith(p))).length;
     const ratio = nonConventional / names.length;
     expect(ratio).toBeLessThan(0.4);
   });

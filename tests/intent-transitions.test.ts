@@ -12,7 +12,8 @@ import type { Pattern, ProjectDocument } from "../src/project-model/types";
 const doc = testDoc();
 const drumTrack = doc.tracks.find((t) => t.kind === "drum")!;
 const pads = drumTrack.kind === "drum" ? drumTrack.pads : [];
-const padByRole = (role: string) => pads.filter((pad, index) => inferPadRole(pad.name, index) === role).map((pad) => pad.id);
+const padByRole = (role: string) =>
+  pads.filter((pad, index) => inferPadRole(pad.name, index) === role).map((pad) => pad.id);
 
 function makePattern(stepCount: number): Pattern {
   const rows: Record<string, number[]> = {};

@@ -59,7 +59,9 @@ const FAMILY_WORDS: ReadonlyArray<readonly [RegExp, VerbFamily]> = [
  * (the caller falls through to generation/production).
  */
 export function parsePatternVerbs(text: string): PatternVerbsParse | null {
-  const folded = ` ${fold(text).replace(/[\s,.]+/g, " ").trim()} `;
+  const folded = ` ${fold(text)
+    .replace(/[\s,.]+/g, " ")
+    .trim()} `;
   const verbs: PatternVerb[] = [];
   const detected: string[] = [];
 

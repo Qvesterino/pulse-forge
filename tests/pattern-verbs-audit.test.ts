@@ -107,9 +107,7 @@ describe("applyPatternVerbsCommand", () => {
     const hatPad = drum.pads.find((p) => p.name.toLowerCase().includes("hat"))!;
     const cmd = applyPatternVerbsCommand(doc, pattern.id, [{ kind: "thin", family: "hats" }], "cmd");
     const next = cmd.execute(doc);
-    expect(next.patterns.find((p) => p.id === pattern.id)!.rows[hatPad.id]).not.toEqual(
-      pattern.rows[hatPad.id],
-    );
+    expect(next.patterns.find((p) => p.id === pattern.id)!.rows[hatPad.id]).not.toEqual(pattern.rows[hatPad.id]);
     expect(cmd.undo(next)).toEqual(doc);
   });
 
@@ -127,8 +125,8 @@ describe("applyPatternVerbsCommand", () => {
 
   it("unknown pattern throws", () => {
     const { doc } = docWithPattern();
-    expect(() =>
-      applyPatternVerbsCommand(doc, "pattern-nope", [{ kind: "thin", family: "hats" }]),
-    ).toThrow(/not found/);
+    expect(() => applyPatternVerbsCommand(doc, "pattern-nope", [{ kind: "thin", family: "hats" }])).toThrow(
+      /not found/,
+    );
   });
 });

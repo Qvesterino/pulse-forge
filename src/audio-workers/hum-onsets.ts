@@ -21,11 +21,7 @@ export interface HumReAttackOptions {
   recoveryRatio?: number;
 }
 
-export function detectHumReAttacks(
-  data: Float32Array,
-  sampleRate: number,
-  options: HumReAttackOptions = {},
-): number[] {
+export function detectHumReAttacks(data: Float32Array, sampleRate: number, options: HumReAttackOptions = {}): number[] {
   const dipRatio = options.dipRatio ?? 0.5;
   const recoveryRatio = options.recoveryRatio ?? 0.8;
   if (!Number.isFinite(sampleRate) || sampleRate <= 0 || data.length < sampleRate * 0.3) return [];

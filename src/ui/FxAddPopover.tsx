@@ -48,7 +48,15 @@ interface FxAddPopoverProps {
   onClose: () => void;
 }
 
-export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal, onAssistant, onClose }: FxAddPopoverProps) {
+export function FxAddPopover({
+  trackLabel,
+  devices,
+  role = null,
+  onPick,
+  onGoal,
+  onAssistant,
+  onClose,
+}: FxAddPopoverProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -140,10 +148,8 @@ export function FxAddPopover({ trackLabel, devices, role = null, onPick, onGoal,
           onClick={() => onAssistant?.(assistantIntent)}
           title="Assistant proposal — finds or adds the right device and tunes it"
         >
-          ◈ {assistantIntent.goals
-            .map((g) => `${g.goal} ${g.direction === "increase" ? "↑" : "↓"}`)
-            .join(" + ")}{" "}
-          — assistant tune on this track
+          ◈ {assistantIntent.goals.map((g) => `${g.goal} ${g.direction === "increase" ? "↑" : "↓"}`).join(" + ")} —
+          assistant tune on this track
         </button>
       )}
 

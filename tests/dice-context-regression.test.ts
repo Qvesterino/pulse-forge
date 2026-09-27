@@ -27,9 +27,7 @@ describe("DiceContext — provider / hook public surface", () => {
     // silently return null/undefined and crash downstream on `.session.x`.
     const source = readDiceCtx();
     expect(source).toMatch(/export\s+function\s+useDice\s*\(/);
-    expect(source).toMatch(
-      /if\s*\(\s*!ctx\s*\)\s*throw\s+new\s+Error\s*\(\s*["']DiceContext not initialized/i,
-    );
+    expect(source).toMatch(/if\s*\(\s*!ctx\s*\)\s*throw\s+new\s+Error\s*\(\s*["']DiceContext not initialized/i);
   });
 
   it("exports a DiceProvider that accepts { doc, active, children }", () => {
@@ -72,10 +70,9 @@ describe("DiceContext — provider / hook public surface", () => {
       "setGenre",
       "setStyle",
     ]) {
-      expect(
-        source,
-        `DiceContextValue must expose ${method}() for the dice panel consumers`,
-      ).toMatch(new RegExp(`\\b${method}\\s*:`));
+      expect(source, `DiceContextValue must expose ${method}() for the dice panel consumers`).toMatch(
+        new RegExp(`\\b${method}\\s*:`),
+      );
     }
   });
 });

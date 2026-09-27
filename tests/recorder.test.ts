@@ -48,13 +48,10 @@ describe("pickMimeType", () => {
     // A vendor-specific MIME check might throw on a different browser —
     // the caller MUST recover and try the next candidate instead of
     // bubbling the error up to the recorder UI.
-    const picked = pickMimeType(
-      ["audio/webm", "audio/ogg;codecs=opus"],
-      (type) => {
-        if (type.includes("webm")) throw new Error("vendor check failed");
-        return type.includes("ogg");
-      },
-    );
+    const picked = pickMimeType(["audio/webm", "audio/ogg;codecs=opus"], (type) => {
+      if (type.includes("webm")) throw new Error("vendor check failed");
+      return type.includes("ogg");
+    });
     expect(picked).toBe("audio/ogg;codecs=opus");
   });
 

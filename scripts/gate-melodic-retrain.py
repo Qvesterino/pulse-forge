@@ -33,6 +33,7 @@ from train_symbolic_melodic_lib import (  # noqa: E402
     LR,
     MLP,
     SEED,
+    VAL_FRACTION,
     class_weights,
     load_datasets,
     softmax,
@@ -168,18 +169,39 @@ def main() -> None:
     parser.add_argument("--weight-power", type=float, default=0.5)
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--embedding", action="store_true", help="v2 recipe (41-dim semantic conditioning)")
+    parser.add_argument(
+        "--shipped-split",
+        action="store_true",
+        help="use the trainer's EXACT 15%% split instead of k-fold, so the result "
+        "is directly comparable with the shipped artifact's honest numbers",
+    )
+    parser.add_argument(
+        "--exclude-dnb",
+        action="store_true",
+        help="drop dnb rows from base AND augmentation — reproduces the ds.v1 "
+        "problem space, which is the only fair comparison for the shipped v1",
+    )
     args = parser.parse_args()
 
     base, aug = load_datasets()
+    if args.exclude_dnb:
+        base = [s for s in base if not str(s["group"]).startswith("dnb")]
+        aug = [s for s in aug if not str(s["group"]).startswith("dnb")]
     groups = np.array([s["group"] for s in base])
     unique = np.unique(groups)
     rng = np.random.default_rng(SEED)
     rng.shuffle(unique)
-    folds = [set(f.tolist()) for f in np.array_split(unique, args.folds)]
+    if args.shipped_split:
+        val_count = max(1, int(len(unique) * VAL_FRACTION))
+        folds = [set(unique[:val_count].tolist())]
+    else:
+        folds = [set(f.tolist()) for f in np.array_split(unique, args.folds)]
 
     recipe = "embedding-v2" if args.embedding else "genre-onehot-v1"
+    mode = "shipped 15% split" if args.shipped_split else f"{args.folds}-fold group CV"
+    vintage = "ds.v1 (no dnb)" if args.exclude_dnb else "ds.v2 (current)"
     print("=" * 78)
-    print(f"MELODIC RETRAIN GATE -- {args.folds}-fold group CV, {recipe}, weightPower={args.weight_power}")
+    print(f"MELODIC RETRAIN GATE -- {mode}, {recipe}, {vintage}, weightPower={args.weight_power}")
     print("=" * 78)
     print(f"base={len(base)} rows / {len(unique)} groups, augmented={len(aug)} rows (train-only)")
     print()

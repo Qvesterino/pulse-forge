@@ -674,7 +674,6 @@ export const clavParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
 ];
 
-
 /**
  * ACID 303 (kind #20) — the squelch. Monophonic saw/square through a
  * high-resonance SVF whose CUTOFF is swept by a fast ENVMOD envelope;
@@ -693,7 +692,15 @@ export const acidParams: ParamDef[] = [
       { value: 1, label: "Square" },
     ],
   },
-  { id: "tune", label: "TUNE", min: -12, max: 12, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+  {
+    id: "tune",
+    label: "TUNE",
+    min: -12,
+    max: 12,
+    default: 0,
+    unit: "st",
+    format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st`,
+  },
   { id: "cutoff", label: "CUTOFF", min: 80, max: 8000, default: 320, unit: "Hz", format: formatHz, taper: "log" },
   { id: "reso", label: "RESO", min: 0.5, max: 8, default: 4.5, format: (v) => v.toFixed(1) },
   { id: "envMod", label: "ENV", min: 0, max: 1, default: 0.55, format: formatPct },
@@ -721,7 +728,6 @@ export const brassParams: ParamDef[] = [
   { id: "release", label: "RELEASE", min: 0.03, max: 2, default: 0.25, unit: "s", format: formatMs },
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -8, unit: "dB", format: formatDb },
 ];
-
 
 export const logdrumParams: ParamDef[] = [
   { id: "decay", label: "DECAY", min: 0.15, max: 3.5, default: 1.1, unit: "s", format: formatSec },

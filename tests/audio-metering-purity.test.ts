@@ -172,9 +172,7 @@ describe("audio-engine/metering.ts — pure-utility baseline (source-grep)", () 
       it(title, () => {
         const idx = findExport(lines, a.name, "const");
         if (idx === null) {
-          throw new Error(
-            "Constant " + a.name + " no longer exported. Restore it or update CONSTANTS.",
-          );
+          throw new Error("Constant " + a.name + " no longer exported. Restore it or update CONSTANTS.");
         }
         const letRe = new RegExp("^export\\s+let\\s+" + a.name + "\\b");
         for (const ln of lines) {
@@ -193,9 +191,7 @@ describe("audio-engine/metering.ts — pure-utility baseline (source-grep)", () 
       it(title, () => {
         const idx = findExport(lines, a.name, "fn");
         if (idx === null) {
-          throw new Error(
-            "Function " + a.name + " no longer exported. Restore it or update PURE_HELPERS.",
-          );
+          throw new Error("Function " + a.name + " no longer exported. Restore it or update PURE_HELPERS.");
         }
         const body = readBody(lines, idx);
         const offender = bodyHasSideEffect(body.lines);
@@ -218,9 +214,7 @@ describe("audio-engine/metering.ts — pure-utility baseline (source-grep)", () 
       it(title, () => {
         const idx = findExport(lines, a.name, a.kind);
         if (idx === null) {
-          throw new Error(
-            "Type " + a.name + " no longer exported. Restore it or update TYPES.",
-          );
+          throw new Error("Type " + a.name + " no longer exported. Restore it or update TYPES.");
         }
         // No drift to class.
         const classRe = new RegExp("^export\\s+class\\s+" + a.name + "\\b");

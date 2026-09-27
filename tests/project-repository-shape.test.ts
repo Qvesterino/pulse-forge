@@ -65,7 +65,12 @@ function findAny(lines: string[], kind: "class" | "interface" | "function" | "co
   return null;
 }
 
-function findClassMethod(lines: string[], classIdx: number, methodName: string, visibility?: "public" | "private"): number | null {
+function findClassMethod(
+  lines: string[],
+  classIdx: number,
+  methodName: string,
+  visibility?: "public" | "private",
+): number | null {
   // In TypeScript classes, methods without an explicit visibility modifier
   // are public by default. Match either `<vis> METHOD(` (where <vis> is the
   // explicit modifier) or the no-modifier form when looking for public.
@@ -179,7 +184,9 @@ describe("persistence/ProjectRepository.ts — IndexedDB contract (source-grep)"
           const methodIdx = findClassMethod(lines, classIdx, method, "public");
           expect(
             methodIdx,
-            "ProjectRepository." + method + " missing or drifted to private/static. Callers chain off this method on the project service.",
+            "ProjectRepository." +
+              method +
+              " missing or drifted to private/static. Callers chain off this method on the project service.",
           ).not.toBeNull();
         });
       }
@@ -200,7 +207,9 @@ describe("persistence/ProjectRepository.ts — IndexedDB contract (source-grep)"
           const pubIdx = findClassMethod(lines, classIdx, method, "public");
           expect(
             pubIdx,
-            "ProjectRepository." + method + " now has a public override. The private helper holds db-promise caching / schema-migration logic that should not be reachable from the public API.",
+            "ProjectRepository." +
+              method +
+              " now has a public override. The private helper holds db-promise caching / schema-migration logic that should not be reachable from the public API.",
           ).toBeNull();
         });
       }
@@ -239,7 +248,9 @@ describe("persistence/ProjectRepository.ts — IndexedDB contract (source-grep)"
           const matches = body.filter((ln) => /\btx\s*\(/.test(ln));
           expect(
             matches.length,
-            "ProjectRepository." + method + " must open its work via the shared `tx(...)` helper. Found " +
+            "ProjectRepository." +
+              method +
+              " must open its work via the shared `tx(...)` helper. Found " +
               matches.length +
               " tx(...) call site(s) — opening the transaction by hand or calling IDBDatabase directly would lose atomicity and risk corrupting the project graph on a tab suspend.",
           ).toBeGreaterThan(0);
@@ -271,7 +282,8 @@ describe("persistence/ProjectRepository.ts — IndexedDB contract (source-grep)"
         for (const ln of lines) {
           expect(
             !reConst.test(ln) && !reFn.test(ln) && !reClass.test(ln),
-            name + " is now exported from ProjectRepository.ts. " +
+            name +
+              " is now exported from ProjectRepository.ts. " +
               (name === "KEY_RECENT"
                 ? "The recent-project pointer is a module-private slot — exposing it lets callers corrupt the resume state without going through save."
                 : "metaOf converts a ProjectDocument to its meta shape only when migration passes — exposing it bypasses the migration gate."),
@@ -291,10 +303,7 @@ describe("persistence/ProjectRepository.ts — IndexedDB contract (source-grep)"
         const m = ln.match(re);
         if (m) seen.push({ name: m[2], kind: m[1] });
       }
-      const tracked = new Set<string>([
-        "ProjectRepository",
-        ...INTERFACES,
-      ]);
+      const tracked = new Set<string>(["ProjectRepository", ...INTERFACES]);
       const novel: string[] = [];
       for (const item of seen) {
         if (!tracked.has(item.name)) novel.push(item.name + ":" + item.kind);

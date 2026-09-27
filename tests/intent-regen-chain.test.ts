@@ -98,7 +98,7 @@ describe("?regen=1 chain on a real engine beat", () => {
     // Beats published BEFORE the reader fix — a hand-stamped top-level
     // snapshot on an otherwise real-shaped doc — must stay regenerable.
     const doc = testDoc();
-    const stamped = { ...doc.patterns[0]!, intent: { genre: "house", energy: 0.5 } } as typeof doc.patterns[number];
+    const stamped = { ...doc.patterns[0]!, intent: { genre: "house", energy: 0.5 } } as (typeof doc.patterns)[number];
     const snapshot = intentSnapshotOfDoc({ ...doc, patterns: [stamped, ...doc.patterns.slice(1)] });
     expect(snapshot).not.toBeNull();
     expect((snapshot as Record<string, unknown>).genre).toBe("house");

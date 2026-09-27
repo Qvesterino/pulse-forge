@@ -271,9 +271,8 @@ describe("round-robin sample content", () => {
   });
 
   it("beat kits separate velocity DYNAMICS from pure round robin", async () => {
-    const { FACTORY_BEAT_RR_KITS, FACTORY_SNARE_DYNAMIC, FACTORY_HAT_DYNAMIC, FACTORY_HAT_OPEN_RR } = await import(
-      "../src/sample-library/velocity-layers"
-    );
+    const { FACTORY_BEAT_RR_KITS, FACTORY_SNARE_DYNAMIC, FACTORY_HAT_DYNAMIC, FACTORY_HAT_OPEN_RR } =
+      await import("../src/sample-library/velocity-layers");
     // Snare + closed hat are DYNAMIC (disjoint bands: ghost / body / accent)…
     for (const layers of [FACTORY_SNARE_DYNAMIC, FACTORY_HAT_DYNAMIC]) {
       expect(layers.length).toBeGreaterThanOrEqual(3);

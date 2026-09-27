@@ -44,24 +44,19 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [listError, setListError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const applyLists = useCallback(
-    (list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
-      setListError(null);
-      setProjects(list);
-      setNewerProjects(newer);
-    },
-    [],
-  );
+  const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
+    setListError(null);
+    setProjects(list);
+    setNewerProjects(newer);
+  }, []);
 
   const fetchLists = useCallback(async (): Promise<void> => {
     // Newer-version rows are additive — if that probe fails, still show the
     // openable library rather than blocking on it.
-    const newer = await core.repo
-      .listIncompatible()
-      .catch((err) => {
-        console.warn("[ProjectBrowser] incompatible project list failed:", err);
-        return [] as IncompatibleProjectMeta[];
-      });
+    const newer = await core.repo.listIncompatible().catch((err) => {
+      console.warn("[ProjectBrowser] incompatible project list failed:", err);
+      return [] as IncompatibleProjectMeta[];
+    });
     applyLists(await core.repo.listAll(), newer);
   }, [core, applyLists]);
 
@@ -210,7 +205,12 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       <header className="pb-header">
         {/* DAW convention: the logo always leads home — /?landing shows the
             KYX landing page even for returning users (main.tsx Entry). */}
-        <a className="brand" href={appUrl("/?landing")} title="KYX — landing page" aria-label="KYX — go to landing page">
+        <a
+          className="brand"
+          href={appUrl("/?landing")}
+          title="KYX — landing page"
+          aria-label="KYX — go to landing page"
+        >
           <span className="brand-mark">KX</span>
           <span className="brand-name">KYX</span>
         </a>
@@ -304,11 +304,15 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                   const project = row.meta;
                   return (
                     <div key={project.id} className="pb-row pb-row-newer">
-                      <span className="pb-row-name pb-row-name-static" title="This project was made in a newer app version. Update KYX to open it.">
+                      <span
+                        className="pb-row-name pb-row-name-static"
+                        title="This project was made in a newer app version. Update KYX to open it."
+                      >
                         {project.name}
                       </span>
                       <span className="pb-row-meta">
-                        <span className="pb-badge-newer">NEWER VERSION</span> · saved {formatRelative(project.updatedAt)}
+                        <span className="pb-badge-newer">NEWER VERSION</span> · saved{" "}
+                        {formatRelative(project.updatedAt)}
                       </span>
                       <div className="pb-row-actions">
                         {confirmDeleteId === project.id ? (
@@ -336,81 +340,81 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
                 }
                 const project = row.meta;
                 return (
-                <div key={project.id} className="pb-row">
-                  {renamingId === project.id ? (
-                    <input
-                      className="pb-rename-input"
-                      value={renameValue}
-                      autoFocus
-                      aria-label="Project name"
-                      onChange={(event) => setRenameValue(event.target.value)}
-                      onBlur={() => void commitRename(project.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                        if (event.key === "Escape") {
-                          setRenamingId(null);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      className="pb-row-name"
-                      onClick={() => void openById(project.id)}
-                      disabled={busy}
-                    >
-                      {project.name}
-                    </button>
-                  )}
-                  <span className="pb-row-meta">
-                    {project.bpm} BPM · {project.trackCount} tracks · saved {formatRelative(project.updatedAt)}
-                  </span>
-                  <div className="pb-row-actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => void openById(project.id)}
-                      disabled={busy}
-                    >
-                      OPEN
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => void duplicate(project.id)}
-                      title="Duplicate project"
-                    >
-                      DUP
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => startRename(project)}
-                      title="Rename project"
-                    >
-                      REN
-                    </button>
-                    {confirmDeleteId === project.id ? (
-                      <>
-                        <button type="button" className="btn btn-danger" onClick={() => void remove(project.id)}>
-                          DELETE?
-                        </button>
-                        <button type="button" className="btn btn-ghost" onClick={() => setConfirmDeleteId(null)}>
-                          NO
-                        </button>
-                      </>
+                  <div key={project.id} className="pb-row">
+                    {renamingId === project.id ? (
+                      <input
+                        className="pb-rename-input"
+                        value={renameValue}
+                        autoFocus
+                        aria-label="Project name"
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onBlur={() => void commitRename(project.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") event.currentTarget.blur();
+                          if (event.key === "Escape") {
+                            setRenamingId(null);
+                          }
+                        }}
+                      />
                     ) : (
                       <button
                         type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setConfirmDeleteId(project.id)}
-                        title="Delete project"
+                        className="pb-row-name"
+                        onClick={() => void openById(project.id)}
+                        disabled={busy}
                       >
-                        DEL
+                        {project.name}
                       </button>
                     )}
+                    <span className="pb-row-meta">
+                      {project.bpm} BPM · {project.trackCount} tracks · saved {formatRelative(project.updatedAt)}
+                    </span>
+                    <div className="pb-row-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => void openById(project.id)}
+                        disabled={busy}
+                      >
+                        OPEN
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => void duplicate(project.id)}
+                        title="Duplicate project"
+                      >
+                        DUP
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => startRename(project)}
+                        title="Rename project"
+                      >
+                        REN
+                      </button>
+                      {confirmDeleteId === project.id ? (
+                        <>
+                          <button type="button" className="btn btn-danger" onClick={() => void remove(project.id)}>
+                            DELETE?
+                          </button>
+                          <button type="button" className="btn btn-ghost" onClick={() => setConfirmDeleteId(null)}>
+                            NO
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setConfirmDeleteId(project.id)}
+                          title="Delete project"
+                        >
+                          DEL
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
                 );
               })}
             </div>

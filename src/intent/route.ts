@@ -1,4 +1,4 @@
-import type { ProjectDocument } from "../project-model/types";
+import type { ProjectDocument, SceneRole } from "../project-model/types";
 import { parseArrangeIntent, parseClipArrangeIntent, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent } from "./mix";
@@ -18,6 +18,7 @@ import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
 import { parsePresetIntent, type PresetIntent } from "./preset-intent";
+import { parseSectionRequests } from "./sections";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -117,13 +118,21 @@ export interface ReviseParse {
 /** Per-revise slider step (clamped at apply time). */
 export const REVISE_DELTA = 0.15;
 
+export type SectionFlow = "straight" | "triplet" | "offbeat";
+
+export interface SectionFlowParse {
+  targetRole: SceneRole;
+  flow: SectionFlow;
+  detected: string[];
+}
+
 const REVISE_ENERGY_MORE = /\bmore (?:energetic|energic|energy)\b|\benergickejsi\b|\bviac (?:energie|energicky)\b/;
 const REVISE_ENERGY_LESS = /\bless (?:energetic|energic|energy)\b|\bcalmer\b|\bmenej (?:energie|energicky)\b/;
 const REVISE_DENSITY_MORE = /\b(?:more )?(?:busier|denser)\b|\bhustejsi\b|\bviac prvkov\b/;
 const REVISE_DENSITY_LESS = /\bsparser\b|\bless busy\b|\bmenej hust/;
 
 /** Section-role words that turn a global revise into a TARGETED one. */
-const REVISE_ROLE_WORDS: ReadonlyArray<readonly [string, RegExp]> = [
+const REVISE_ROLE_WORDS: ReadonlyArray<readonly [SceneRole, RegExp]> = [
   ["bridge", /\b(bridge|most|mostik)\b/],
   ["chorus", /\b(chorus|hook|refren)\b/],
   ["verse", /\b(verse|zloh)/],
@@ -134,11 +143,31 @@ const REVISE_ROLE_WORDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["drop", /\bdrop\b/],
 ];
 
-function reviseRoleIn(lower: string): string | null {
+function reviseRoleIn(lower: string): SceneRole | null {
   for (const [role, re] of REVISE_ROLE_WORDS) {
     if (re.test(lower)) return role;
   }
   return null;
+}
+
+/** Parse an explicit lead-flow request scoped to one named song section. */
+export function parseSectionFlowIntent(text: string): SectionFlowParse | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  const targetRole = reviseRoleIn(lower);
+  if (!targetRole) return null;
+
+  const flow: SectionFlow | null = /\btriplet(?:y|ovy)?(?: flow)?\b/.test(lower)
+    ? "triplet"
+    : /\boff(?:-)?beat(?: flow)?\b/.test(lower)
+      ? "offbeat"
+      : /\bstraight flow\b/.test(lower)
+        ? "straight"
+        : null;
+  if (!flow) return null;
+  return { targetRole, flow, detected: [`${targetRole} §`, `${flow} flow`] };
 }
 
 /** Parse "more energetic"-style content revisions. Null = not a revise. */
@@ -180,6 +209,8 @@ export type RoutedIntent =
   | { kind: "loudness"; parse: { direction: "louder" | "quieter"; targetDb?: number; detected: string[] } }
   | { kind: "production"; intent: ProductionIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
+  | ({ kind: "sectionFlow" } & SectionFlowParse)
+  | { kind: "sectionProduction"; targetRole: SceneRole; intent: ProductionIntent; detected: string[] }
   | {
       kind: "revise";
       attribute: ReviseAttribute;
@@ -316,6 +347,36 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   // drill" GENERATES with the mangler) — same rule as the GENERATE path.
   const pattern = parseIntentText(text);
   const genreSignal = Boolean(pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")));
+  const sectionRequests = parseSectionRequests(text);
+  const sectionFlow = parseSectionFlowIntent(text);
+  if (sectionFlow && sectionRequests?.scopedFx.length) {
+    return {
+      kind: "clarify",
+      reason: "A section can be changed in one audition-first operation at a time.",
+      suggestions: ["Set the section's lead flow", "Set the section's sound/FX"],
+    };
+  }
+  if (sectionFlow) {
+    return { kind: "sectionFlow", ...sectionFlow };
+  }
+  if (!genreSignal && sectionRequests?.scopedFx.length) {
+    if (sectionRequests.requests.length > 0 || sectionRequests.scopedFx.length > 1) {
+      return {
+        kind: "clarify",
+        reason: "Apply one section-scoped sound change at a time; mixed structure and FX edits are not combined yet.",
+        suggestions: ["Apply the section sound change", "Change the song structure"],
+      };
+    }
+    const [scoped] = sectionRequests.scopedFx;
+    if (scoped) {
+      return {
+        kind: "sectionProduction",
+        targetRole: scoped.role,
+        intent: scoped.fx,
+        detected: [`${scoped.role} §`, ...scoped.fx.goals.map((goal) => goal.concept)],
+      };
+    }
+  }
   if (!genreSignal) {
     const production = parseProductionIntent(text);
     if (production && namesProductionTarget(text)) {

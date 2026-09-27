@@ -41,7 +41,8 @@ describe("chord progression engine (functional harmony)", () => {
 
   it("expansion fills exactly the target step count", () => {
     const prog: ChordProgression = {
-      name: "test", genre: "house",
+      name: "test",
+      genre: "house",
       events: [
         { degree: 0, quality: "maj", duration: 4, func: "T" },
         { degree: 4, quality: "dom7", duration: 4, func: "D" },
@@ -75,8 +76,10 @@ describe("chord progression engine (functional harmony)", () => {
     expect(result.length).toBe(3);
     // Movement should be less than or equal to root-position movement
     const rootPosDistance = Math.abs(65 - 60) + Math.abs(69 - 64) + Math.abs(72 - 67);
-    const actualDistance = result.reduce((sum, pitch, i) =>
-      sum + Math.abs(pitch - prev[Math.min(i, prev.length - 1)]), 0);
+    const actualDistance = result.reduce(
+      (sum, pitch, i) => sum + Math.abs(pitch - prev[Math.min(i, prev.length - 1)]),
+      0,
+    );
     expect(actualDistance).toBeLessThanOrEqual(rootPosDistance + 12); // allow octave jump
   });
 });
@@ -114,13 +117,21 @@ describe("multi-voice orchestrator (harmonic awareness)", () => {
     const doc = testDoc();
     const result = generateMultiVoice(doc, "house", 42, 64, null, 0.8, 0.3);
     // Chord notes at consecutive chord starts should be close together
-    const chordStarts = result.chord.map((note) => note.start).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+    const chordStarts = result.chord
+      .map((note) => note.start)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort((a, b) => a - b);
     if (chordStarts.length >= 2) {
-      const pitchesAtStart1 = result.chord.filter((n) => n.start === chordStarts[0]).map((n) => n.pitch).sort((a, b) => a - b);
-      const pitchesAtStart2 = result.chord.filter((n) => n.start === chordStarts[1]).map((n) => n.pitch).sort((a, b) => a - b);
+      const pitchesAtStart1 = result.chord
+        .filter((n) => n.start === chordStarts[0])
+        .map((n) => n.pitch)
+        .sort((a, b) => a - b);
+      const pitchesAtStart2 = result.chord
+        .filter((n) => n.start === chordStarts[1])
+        .map((n) => n.pitch)
+        .sort((a, b) => a - b);
       // Average movement should be reasonable (less than an octave)
-      const movements = pitchesAtStart2.map((p2, i) =>
-        Math.abs(p2 - (pitchesAtStart1[i] ?? pitchesAtStart1[0])));
+      const movements = pitchesAtStart2.map((p2, i) => Math.abs(p2 - (pitchesAtStart1[i] ?? pitchesAtStart1[0])));
       const avgMovement = movements.reduce((s, m) => s + m, 0) / Math.max(1, movements.length);
       expect(avgMovement).toBeLessThan(12); // less than an octave average movement
     }
@@ -131,10 +142,9 @@ describe("multi-voice orchestrator (harmonic awareness)", () => {
     const a = generateMultiVoice(doc, "trap", 42, 64, "A Natural Minor", 0.8, 0.3);
     const b = generateMultiVoice(doc, "trap", 42, 64, "A Natural Minor", 0.8, 0.3);
     expect(a.bass.map((n) => [n.pitch, n.start, n.velocity])).toEqual(
-      b.bass.map((n) => [n.pitch, n.start, n.velocity]));
-    expect(a.chord.map((n) => [n.pitch, n.start])).toEqual(
-      b.chord.map((n) => [n.pitch, n.start]));
-    expect(a.lead.map((n) => [n.pitch, n.start])).toEqual(
-      b.lead.map((n) => [n.pitch, n.start]));
+      b.bass.map((n) => [n.pitch, n.start, n.velocity]),
+    );
+    expect(a.chord.map((n) => [n.pitch, n.start])).toEqual(b.chord.map((n) => [n.pitch, n.start]));
+    expect(a.lead.map((n) => [n.pitch, n.start])).toEqual(b.lead.map((n) => [n.pitch, n.start]));
   });
 });
