@@ -35,6 +35,7 @@ const out = await page.evaluate(
     const mod = await import(`/src/plugin-audit-checks.ts?bust=${Date.now()}`);
     await mod.auditSetup();
     const state = window.__kyxPluginAuditState;
+    const schema = await import("/src/project-model/schema.ts");
     const commands = await import("/src/commands/commands.ts");
     const renderer = await import("/src/rendering/renderer.ts");
     const storeMod = await import("/src/store/ProjectStore.ts");
@@ -111,6 +112,55 @@ const out = await page.evaluate(
       for (let i = 0; i < N; i++) renders.push(await renderDocOpts(doc, { masterProcessing: false }));
     } else if (mode === "reverb") {
       const doc = buildDoc("reverb", [{ id: "mix", value: 0.5 }], false);
+      for (let i = 0; i < N; i++) renders.push(await renderDocOpts(doc, { masterProcessing: false }));
+    } else if (mode === "phaserFb" || mode === "haasFb") {
+      const templates = await import("/src/project-model/templates.ts");
+      const full = templates.createProjectFromTemplate("house");
+      const keep = full.tracks.find((t) => t.kind === "instrument");
+      const minimal = schema.normalizeProject({
+        ...full,
+        tracks: [{ ...keep, effects: [] }],
+        returns: [],
+        groups: full.tracks.filter((t) => t.kind === "group").map((g) => ({ ...g, effects: [] })),
+        master: { ...full.master, masterGain: 1, limiterEnabled: false, clipperEnabled: false, tapeEnabled: false, msEnabled: false },
+      });
+      const instId = minimal.tracks[0].id;
+      const st = new storeMod.ProjectStore(minimal);
+      const add = commands.addEffect(st.getDoc(), instId, mode === "phaserFb" ? "phaser" : "haasWidener");
+      st.execute(add);
+      if (mode === "phaserFb") {
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "feedback", 0.9));
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "mix", 1));
+      } else {
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "feedback", 0.6));
+      }
+      const doc = st.getDoc();
+      for (let i = 0; i < N; i++) renders.push(await renderDocOpts(doc, { masterProcessing: false }));
+    } else if (mode === "minBypassed" || mode === "minMix0" || mode === "minStockDelay") {
+      const templates = await import("/src/project-model/templates.ts");
+      const full = templates.createProjectFromTemplate("house");
+      const keep = full.tracks.find((t) => t.kind === "instrument");
+      const minimal = schema.normalizeProject({
+        ...full,
+        tracks: [{ ...keep, effects: [] }],
+        returns: [],
+        groups: full.tracks.filter((t) => t.kind === "group").map((g) => ({ ...g, effects: [] })),
+        master: { ...full.master, masterGain: 1, limiterEnabled: false, clipperEnabled: false, tapeEnabled: false, msEnabled: false },
+      });
+      const instId = minimal.tracks[0].id;
+      const st = new storeMod.ProjectStore(minimal);
+      const fxType = mode === "minStockDelay" ? "delay" : "multiTapDelay";
+      const add = commands.addEffect(st.getDoc(), instId, fxType);
+      st.execute(add);
+      if (mode === "minStockDelay") {
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "feedback", 0));
+      } else {
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "feedback", 0));
+        st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "taps", 1));
+        if (mode === "minMix0") st.execute(commands.setEffectParam(st.getDoc(), instId, add.effectId, "mix", 0));
+        if (mode === "minBypassed") st.execute(commands.toggleEffectBypass(st.getDoc(), instId, add.effectId));
+      }
+      const doc = st.getDoc();
       for (let i = 0; i < N; i++) renders.push(await renderDocOpts(doc, { masterProcessing: false }));
     } else {
       const doc = buildDoc("multiTapDelay", [{ id: "feedback", value: 0.85 }, { id: "taps", value: 1 }], false);

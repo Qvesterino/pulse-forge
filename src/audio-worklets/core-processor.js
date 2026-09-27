@@ -15,6 +15,7 @@ import "./autowah-processor.js";
 import "./stutter-processor.js";
 import "./tape-processor.js";
 import "./comb-processor.js";
+import "./multitap-processor.js";
 import "./vowel-processor.js";
 import "./ducking-delay-processor.js";
 import "./eq-processor.js";

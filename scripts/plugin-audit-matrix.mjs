@@ -21,7 +21,7 @@ const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
 
 const RESPONSIVE_EPS = 0.02;
 const AUTOMATION_EPS = 0.005; // jitter floor ~1e-6; spectral-only lanes measure a few per-mille
-const RESTORE_TOL = 1e-2; // rms-level; transport-phase jitter on bar-synced DSP measures up to ~1%
+const RESTORE_TOL = 1e-4; // strict again after the Phase 1 multitap worklet port killed render nondeterminism
 
 const check = (ok) => (ok ? "PASS" : "FAIL");
 
@@ -119,7 +119,8 @@ lines.push("| --- | --- | --- | --- | --- |");
 for (const inst of report.instruments) {
   const notes = [];
   if (inst.unstableParams.length > 0) notes.push(`unstable: ${inst.unstableParams.join(", ")}`);
-  if (inst.deadParams.length > 0) notes.push(`below-metric at extremes (siblings at defaults): ${inst.deadParams.join(", ")}`);
+  if (inst.deadParams.length > 0)
+    notes.push(`below-metric at extremes (siblings at defaults): ${inst.deadParams.join(", ")}`);
   if (notes.length === 0) notes.push("—");
   lines.push(
     `| ${inst.name} (\`${inst.kind}\`) | ${check(inst.defaultAudible)} | ${check(inst.unstableParams.length === 0)} | ${inst.wiredParams}/${inst.totalParams} | ${notes.join("; ")} |`,
@@ -133,7 +134,8 @@ lines.push(
   `- **47-effect chain** (every effect on one drum bus, all finite): ${check(inter.chainFinite)} — peak ${fmtNum(inter.chainPeak)}`,
 );
 lines.push(
-  `- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff ${inter.chainRestoreDiff?.toExponential(2) ?? "n/a"} — ${check((inter.chainRestoreDiff ?? Infinity) <= RESTORE_TOL * 10 * 100)}`,
+  `- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff ${inter.chainRestoreDiff?.toExponential(2) ?? "n/a"} — ${check((inter.chainRestoreDiff ?? Infinity) <= 1e-3)}`,
+  `- **Determinism gate** (3× render of the same 47-effect doc, sample-identical): ${check(inter.chainDeterministic ?? false)} — maxDiff ${inter.chainDeterminismDiff?.toExponential(2) ?? "n/a"}`,
 );
 lines.push(
   `- **Duplicate instances** (2× delay, different times): delta ${fmtNum(inter.duplicateDelta)} — ${check(inter.duplicateDelta > RESPONSIVE_EPS)}, finite ${check(inter.duplicateFinite)}`,
@@ -195,7 +197,7 @@ lines.push(
   "- **Automation lanes render as discrete point events** (cyclic pattern semantics: a lane point on the pattern boundary is the next cycle's start). Sparse two-point ramps therefore render as a step at the target point, not a continuous ramp — consistent live vs offline, but the lane editor draws straight lines between points. Dense points render as intended.",
 );
 lines.push(
-  "- **Cross-render two-variant alternation**: consecutive offline renders of the SAME document alternate between two stable audio variants (measured ~8% RMS on a high-feedback Multi-Tap config; identical within a variant to ~1e-9). The restore comparison therefore renders the source doc twice and accepts a match against either variant. Root cause is a per-render alternating state in the render path (not plugin params — those are bit-identical through save/load); localized but not repaired in this pass.",
+  "- **Phaser residual render jitter**: the phaser's native allpass feedback loops (fbL/fbR) still break nondeterministically across offline contexts, but the measured variance is the ±0.008% RMS class (vs the ~8% the multi-tap had before its worklet port) — under the 1e-4 restore tolerance. A phaser worklet port is the remaining Phase 1b item.",
 );
 
 fs.writeFileSync(outPath, lines.join("\n") + "\n");

@@ -20,6 +20,8 @@ import { createAutowahNode } from "../audio-worklets/autowah-node";
 import { createStutterNode } from "../audio-worklets/stutter-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createCombNode } from "../audio-worklets/comb-node";
+import { createMultitapNode } from "../audio-worklets/multitap-node";
+export { multitapDelaySec } from "../audio-worklets/multitap-node";
 import { createChorusNode } from "../audio-worklets/chorus-node";
 import { createEqNode } from "../audio-worklets/eq-node";
 import { createStockDelayNode } from "../audio-worklets/stock-delay-node";
@@ -195,6 +197,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   stutter: "critical",
   tapeSat: "critical",
   comb: "critical",
+  multiTapDelay: "critical",
   vowel: "critical",
   duckDelay: "critical",
   reverb: "degraded",
@@ -3303,19 +3306,14 @@ const freqShifter: EffectDefinition = {
   },
 };
 
-const MULTITAP_BAR_MULTS = [2, 4 / 3, 1, 2 / 3, 0.5, 1 / 3, 0.25, 1 / 6];
-/** Same values read as "beats per division": the labels above are note
- * values (1/2 note = 2 beats …), so the delay seconds = beats × seconds/beat.
- * Multiplying a BAR length by these values made every tap 4× too long. */
-export const multitapDelaySec = (divisionIndex: number, bpm: number): number => {
-  const beats = MULTITAP_BAR_MULTS[Math.max(0, Math.min(MULTITAP_BAR_MULTS.length - 1, divisionIndex))];
-  return Math.max(0.02, (60 / (bpm || 124)) * beats);
-};
-
 /**
  * Multi-tap delay (FX expansion): four tempo-synced taps, each with its own
- * division / gain / pan, sharing a tone-shaped feedback path. Pure native
- * Web Audio — no worklet.
+ * division / gain / pan, sharing a tone-shaped feedback path. The feedback
+ * loop runs inside the multitap worklet processor — the previous native
+ * DelayNode cycle rendered nondeterministically across offline contexts
+ * (Phase 1 of docs/PLUGIN-AUDIT-FOLLOWUP-ROADMAP.md: Chromium breaks native
+ * feedback cycles differently per render, so two exports of the same project
+ * could differ audibly).
  */
 const multiTapDelay: EffectDefinition = {
   type: "multiTapDelay",
@@ -3323,150 +3321,8 @@ const multiTapDelay: EffectDefinition = {
   category: "space",
   params: multiTapDelayParams,
   factory(ctx, instance, env) {
-    const paramDef = (id: string) => EFFECT_DEFS.multiTapDelay.params.find((pd) => pd.id === id)!;
-    const clampParam = (id: string, raw: number) => {
-      const def = paramDef(id);
-      if (!Number.isFinite(raw)) return def.default;
-      return Math.min(def.max, Math.max(def.min, raw));
-    };
-    const p = (id: string) => clampParam(id, instance.params[id]);
-    let tapCount = Math.round(p("taps"));
-    let spread = p("spread");
-    let bpm = Number.isFinite(env.bpm) && env.bpm > 0 ? env.bpm : 124;
-    const divisions = Array.from({ length: 4 }, (_, t) => Math.round(p(`t${t + 1}Div`)));
-    const input = ctx.createGain();
-    const output = ctx.createGain();
-    const wet = ctx.createGain();
-    const tone = ctx.createBiquadFilter();
-    tone.type = "lowpass";
-    tone.frequency.value = p("tone");
-
-    const panFor = (index: number) => (tapCount <= 1 ? 0 : (index / (tapCount - 1)) * 2 - 1) * spread * 0.9;
-
-    const tapNodes: { delay: DelayNode; gain: GainNode; pan: StereoPannerNode }[] = [];
-    for (let t = 0; t < 4; t++) {
-      const delay = ctx.createDelay(8);
-      const gain = ctx.createGain();
-      const pan = ctx.createStereoPanner();
-      delay.delayTime.value = multitapDelaySec(divisions[t], bpm);
-      gain.gain.value = t < tapCount ? 1 / Math.sqrt(t + 1) : 0;
-      pan.pan.value = panFor(t);
-      input.connect(delay).connect(gain).connect(pan).connect(tone);
-      tapNodes.push({ delay, gain, pan });
-    }
-
-    // Shared feedback loop around the tone stage.
-    const feedbackGain = ctx.createGain();
-    let feedback = p("feedback");
-    const feedbackLoopGain = () => {
-      let sum = 0;
-      for (let t = 0; t < tapCount; t++) sum += 1 / Math.sqrt(t + 1);
-      return Math.max(1, sum);
-    };
-    // The feedback loop fans back into every active tap. Normalize the return
-    // gain by their summed gains so four taps cannot turn a safe feedback
-    // setting into a runaway loop.
-    const effectiveFeedback = () => feedback / feedbackLoopGain();
-    feedbackGain.gain.value = effectiveFeedback();
-    tone.connect(feedbackGain).connect(input);
-
-    tone.connect(wet).connect(output);
-    // Dry passthrough — wet mixes over the input like the stock delay.
-    input.connect(output);
-
-    const applyMix = (v: number, when?: number) => {
-      wet.gain.setValueAtTime(v, when ?? ctx.currentTime);
-    };
-    applyMix(p("mix"));
-
-    const applyFeedback = (value: number, when?: number) => {
-      feedback = clampParam("feedback", value);
-      const normalized = effectiveFeedback();
-      if (when !== undefined) feedbackGain.gain.setValueAtTime(normalized, when);
-      else feedbackGain.gain.value = normalized;
-    };
-
-    const setDivision = (tapIndex: number, rawDivisionIndex: number, when?: number) => {
-      const divisionIndex = Math.round(clampParam(`t${tapIndex + 1}Div`, rawDivisionIndex));
-      divisions[tapIndex] = divisionIndex;
-      const delayTime = tapNodes[tapIndex].delay.delayTime;
-      if (when !== undefined) delayTime.setValueAtTime(multitapDelaySec(divisionIndex, bpm), when);
-      else delayTime.setTargetAtTime(multitapDelaySec(divisionIndex, bpm), ctx.currentTime, 0.01);
-    };
-
-    /** Keep the spread cache and all tap positions in sync for UI + automation. */
-    const applySpread = (value: number, when?: number) => {
-      spread = clampParam("spread", value);
-      tapNodes.forEach((tap, t) => {
-        const pan = panFor(t);
-        if (when !== undefined) tap.pan.pan.setValueAtTime(pan, when);
-        else tap.pan.pan.value = pan;
-      });
-    };
-
-    const applyTapCount = (value: number, when?: number) => {
-      tapCount = Math.round(clampParam("taps", value));
-      for (let t = 0; t < 4; t++) {
-        const gain = t < tapCount ? 1 / Math.sqrt(t + 1) : 0;
-        if (when !== undefined) tapNodes[t].gain.gain.setValueAtTime(gain, when);
-        else tapNodes[t].gain.gain.value = gain;
-      }
-      applyFeedback(feedback, when);
-      applySpread(spread, when);
-    };
-
-    const setParameter = (id: string, value: number, when?: number) => {
-      if (id === "mix") {
-        applyMix(clampParam(id, value), when);
-        return;
-      }
-      if (id === "feedback") {
-        applyFeedback(value, when);
-        return;
-      }
-      if (id === "tone") {
-        const frequency = clampParam(id, value);
-        if (when !== undefined) tone.frequency.setValueAtTime(frequency, when);
-        else tone.frequency.value = frequency;
-        return;
-      }
-      if (id === "spread") {
-        applySpread(value, when);
-        return;
-      }
-      if (id === "taps") {
-        applyTapCount(value, when);
-        return;
-      }
-      const tapMatch = /^t([1-4])Div$/.exec(id);
-      if (tapMatch) setDivision(Number(tapMatch[1]) - 1, value, when);
-    };
-
-    return {
-      input,
-      output,
-      setParameter: (id, v) => setParameter(id, v),
-      setParameterAt: (id, v, when) => setParameter(id, v, when),
-      syncBpm: (nextBpm, when) => {
-        bpm = Number.isFinite(nextBpm) && nextBpm > 0 ? nextBpm : 124;
-        const at = when ?? ctx.currentTime;
-        for (let t = 0; t < 4; t++) {
-          tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), at, 0.05);
-        }
-      },
-      dispose() {
-        input.disconnect();
-        tone.disconnect();
-        feedbackGain.disconnect();
-        wet.disconnect();
-        output.disconnect();
-        for (const { delay, gain, pan } of tapNodes) {
-          delay.disconnect();
-          gain.disconnect();
-          pan.disconnect();
-        }
-      },
-    };
+    if (isWorkletReady("multiTapDelay", ctx)) return createMultitapNode(ctx, instance, env.bpm);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — multi-tap delay bypassed (1:1 signal)");
   },
 };
 

@@ -15,7 +15,8 @@ import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { FACTORY_PRESET_LOUDNESS, NON_DETERMINISTIC_PRESETS } from "./presets/preset-loudness.generated";
 import { analyzeLoudnessBuffer } from "./audio-engine/kweighting";
 import { analyzeArtifacts, evaluateArtifacts, logEnvelopeCorrelation } from "./audio-engine/artifactGate";
-import { applyInstrumentPreset } from "./commands/commands";
+import { addEffect, applyInstrumentPreset, setEffectParam } from "./commands/commands";
+import { ProjectStore } from "./store/ProjectStore";
 import { PPQ } from "./project-model/types";
 import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
@@ -844,6 +845,45 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       false,
       String(error),
     );
+  }
+
+  // Multi-tap determinism regression (Phase 1 of the plugin-audit follow-up):
+  // the native DelayNode feedback cycle flipped between two stable variants
+  // across offline renders (~8% RMS at feedback .85) — two exports of the
+  // same project could sound different. The loop now lives inside the
+  // multitap worklet processor; three renders of the same doc must be
+  // sample-identical AND the wet path must stay audible.
+  try {
+    const renderMtd = async (feedback: number) => {
+      const doc = createProjectFromTemplate("house");
+      const drum = doc.tracks.find((t) => t.kind === "drum") as { id: string; effects: unknown[] };
+      drum.effects = [];
+      const st = new ProjectStore(doc);
+      const add = addEffect(st.getDoc(), drum.id, "multiTapDelay");
+      st.execute(add);
+      st.execute(setEffectParam(st.getDoc(), drum.id, add.effectId, "feedback", feedback));
+      const out = await renderProject(st.getDoc(), bank, {
+        mode: "pattern",
+        sampleRate: SR,
+        tailSeconds: 0.6,
+        masterProcessing: false,
+      });
+      return Array.from(out.getChannelData(0));
+    };
+    const a = await renderMtd(0.85);
+    const b = await renderMtd(0.85);
+    let maxDiff = 0;
+    for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
+    const dry = await renderMtd(0);
+    let peakWet = 0;
+    for (let i = Math.floor(SR / 2); i < a.length; i++) peakWet = Math.max(peakWet, Math.abs(a[i] - dry[i]));
+    check(
+      "multi-tap delay deterministic across renders + feedback audible (worklet loop)",
+      maxDiff < 1e-6 && peakWet > 0.001,
+      `maxDiff=${maxDiff.toExponential(2)} wetPeak=${peakWet.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("multi-tap delay deterministic across renders + feedback audible (worklet loop)", false, String(error));
   }
 
   // Sampler STRETCH regression: the stretch path used to assign

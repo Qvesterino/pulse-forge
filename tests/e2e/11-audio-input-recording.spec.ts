@@ -685,13 +685,22 @@ test.describe("11 — audio-input recording", () => {
       deltaX: number,
       deltaY: number,
       grabAtBottom = false,
+      fadeCorner?: "left" | "right",
     ): Promise<void> => {
       const box = await handle.boundingBox();
       if (!box) throw new Error("A captured-PCM clip edit handle is not visible");
-      const x = box.x + box.width / 2;
-      // Fade corners overlap the centered gain tab on short captured takes;
-      // grab their lower pixel so the pointerdown targets the intended handle.
-      const y = box.y + (grabAtBottom ? box.height - 1 : box.height / 2);
+      const x =
+        fadeCorner === "left" ? box.x + 1 : fadeCorner === "right" ? box.x + box.width - 1 : box.x + box.width / 2;
+      // Aim inside the triangular fade hit target, away from the centered gain
+      // tab. The point must also survive the clip's overflow clipping.
+      const y = box.y + (grabAtBottom ? box.height - 2 : box.height / 2);
+      if (fadeCorner) {
+        const hitsFadeHandle = await handle.evaluate(
+          (element, point) => document.elementFromPoint(point.x, point.y) === element,
+          { x, y },
+        );
+        if (!hitsFadeHandle) throw new Error(`The ${fadeCorner} fade-handle drag point is clipped or covered`);
+      }
       await page.mouse.move(x, y);
       await page.mouse.down();
       await page.mouse.move(x + deltaX, y + deltaY, { steps: 4 });
@@ -701,8 +710,27 @@ test.describe("11 — audio-input recording", () => {
     // Exercise the arrangement's visible non-destructive fade and clip-gain
     // handles on the recorded comp. Every gesture is one project command and
     // must survive Undo/Redo and the later export/reopen comparison.
+    for (let zoomStep = 0; zoomStep < 12; zoomStep += 1) {
+      const clipBox = await warpedCompClip.boundingBox();
+      if (clipBox && clipBox.width >= 44) break;
+      await page.getByRole("button", { name: "Zoom in" }).click();
+    }
+    await expect
+      .poll(async () => (await warpedCompClip.boundingBox())?.width ?? 0, {
+        timeout: 5_000,
+        intervals: [100, 250],
+      })
+      .toBeGreaterThanOrEqual(44);
+    await warpedCompClip.scrollIntoViewIfNeeded();
+    const fadeBarWidth = await page.locator(".arr-ruler").evaluate((element) => {
+      const marks = element.querySelectorAll<HTMLElement>(".arr-ruler-mark");
+      const fourBarOffset = Number.parseFloat(marks[1]?.style.left ?? "");
+      return Number.isFinite(fourBarOffset) && fourBarOffset > 0 ? fourBarOffset / 4 : 0;
+    });
+    if (!(fadeBarWidth > 0)) throw new Error("Could not measure the zoomed arrangement for fade editing");
+    const fadeDragPixels = Math.ceil(fadeBarWidth * 0.15);
     const fadeInBaseline = await readCompClipEdit();
-    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-fade.left"), 16, 0, true);
+    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-fade.left"), fadeDragPixels, 0, true, "left");
     await expect
       .poll(async () => (await readCompClipEdit()).fadeIn, { timeout: 20_000, intervals: [250, 500, 1_000] })
       .toBeGreaterThan(fadeInBaseline.fadeIn + 0.05);
@@ -717,7 +745,13 @@ test.describe("11 — audio-input recording", () => {
       .toBe(fadeInEdit.fadeIn);
 
     const fadeOutBaseline = await readCompClipEdit();
-    await dragClipHandle(warpedCompClip.locator(".arr-audio-clip-handle-fade.right"), -16, 0, true);
+    await dragClipHandle(
+      warpedCompClip.locator(".arr-audio-clip-handle-fade.right"),
+      -fadeDragPixels,
+      0,
+      true,
+      "right",
+    );
     await expect
       .poll(async () => (await readCompClipEdit()).fadeOut, { timeout: 20_000, intervals: [250, 500, 1_000] })
       .toBeGreaterThan(fadeOutBaseline.fadeOut + 0.05);

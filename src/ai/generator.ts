@@ -12,6 +12,70 @@ import { measureDrumQuality, measureMelodicQuality } from "./quality";
 import { evaluateStyleDistance } from "./style-quality";
 import { buildPhrasePlan } from "./phrase";
 
+/**
+ * Stable seeded groove selection — ARCHITECTURE.md #67 / invariant #4
+ * ("Old projects must not silently sound different").
+ *
+ * The obvious implementation is `Math.floor(rand() * grooves.length)`, but the
+ * picked groove is then a function of the ARRAY LENGTH, not of the seed. Any
+ * library edit — one new groove per genre per wave — remaps *every* seed at
+ * once, so reopening a project and regenerating with the same seed yields a
+ * different pocket than the day it was written. Measured on this repository:
+ * house 52 grooves, seed "my-project-seed" resolved to `house.ukg`; adding one
+ * groove flipped it to `house.afro`.
+ *
+ * Rendezvous (highest-random-weight) hashing instead scores each candidate
+ * independently and takes the maximum:
+ *   - order-independent — re-sorting the library changes nothing;
+ *   - insertion-tolerant — a NEW groove only wins the seeds where its own hash
+ *     beats the incumbent, i.e. ~1/(N+1) of them, not 100%.
+ *
+ * The residual ~1/(N+1) is unavoidable and correct: if the candidate set gains
+ * a member, some seed is entitled to prefer it. What must not happen is the
+ * current behaviour where adding one groove invalidates all N.
+ */
+function pickGrooveBySeed(grooves: readonly GrooveData[], seed: string): GrooveData {
+  let best = grooves[0];
+  let bestWeight = -1;
+  for (const groove of grooves) {
+    // Tie-break on id so a 32-bit hash collision can never make the result
+    // depend on array order.
+    const weight = hashString(`${seed}|${groove.id}`);
+    if (weight > bestWeight || (weight === bestWeight && groove.id < best.id)) {
+      bestWeight = weight;
+      best = groove;
+    }
+  }
+  return best;
+}
+
+/**
+ * Seeded groove resolution used by generation. Explicit `style` still wins
+ * (by id, then by display name) so a named request is never overridden.
+ */
+export function resolveGrooveSeeded(
+  genre: GenerateOptions["genre"],
+  style: string | undefined,
+  seed: string,
+): GrooveData {
+  if (style) {
+    const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, "")}`);
+    if (byId) return byId;
+
+    const named = getGroovesForGenre(genre).find((g) => g.name.toLowerCase() === style.toLowerCase());
+    if (named) return named;
+  }
+
+  let grooves = getGroovesForGenre(genre);
+  if (grooves.length === 0) {
+    // Fallback for unknown / mistyped genres — never let the indexed lookup
+    // dereference `undefined.id` and throw into the generator pipeline.
+    grooves = getGroovesForGenre("house");
+  }
+  if (grooves.length === 0) throw new Error("resolveGrooveSeeded: groove library is empty");
+  return pickGrooveBySeed(grooves, `${genre}|${seed}`);
+}
+
 /** Resolve which groove to use based on genre + optional style name */
 export function resolveGroove(genre: GenerateOptions["genre"], style?: string, rand?: () => number): GrooveData {
   if (style) {
@@ -23,11 +87,11 @@ export function resolveGroove(genre: GenerateOptions["genre"], style?: string, r
     if (match) return match;
   }
 
-  // Pick a random groove from the genre (deterministic if rand provided)
+  // Index-based selection: kept for the explicit `rand` seam used by tests and
+  // for the genre's canonical first entry. Generation itself goes through
+  // resolveGrooveSeeded so that the pick does not depend on array length.
   let grooves = getGroovesForGenre(genre);
   if (grooves.length === 0) {
-    // Fallback for unknown / mistyped genres — never let the indexed lookup
-    // dereference `undefined.id` and throw into the generator pipeline.
     grooves = getGroovesForGenre("house");
   }
   const idx = rand ? Math.floor(rand() * grooves.length) : 0;
@@ -47,10 +111,17 @@ export function resolveEffectiveSeed(doc: ProjectDocument, options: GenerateOpti
   return inputHash ? hashString(`${options.seed}|${inputHash}`).toString(36) : options.seed;
 }
 
-/** Resolve the groove using exactly the same seed derivation as generation. */
+/**
+ * Resolve the groove using exactly the same seed derivation as generation.
+ *
+ * Goes through resolveGrooveSeeded, NOT resolveGroove: the index-based pick
+ * depends on how many grooves the genre happens to have, so every new groove
+ * in the library would change what an existing seed produces. See the
+ * pickGrooveBySeed comment for the measured regression this avoids.
+ */
 export function resolveGrooveForGeneration(doc: ProjectDocument, options: GenerateOptions): GrooveData {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
-  return resolveGroove(options.genre, options.style, forkRandom(`${options.genre}|${effectiveSeed}`, "groove"));
+  return resolveGrooveSeeded(options.genre, options.style, effectiveSeed);
 }
 
 export interface DiceLocks {

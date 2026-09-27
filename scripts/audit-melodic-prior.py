@@ -305,37 +305,37 @@ def main() -> None:
 
     print()
     print("=" * 78)
-    print("K-FOLD GROUP CV (every group validated once -- the honest number)")
+    print("SHIPPED-MODEL EVALUATION (honest: only rows the model never saw)")
     print("=" * 78)
-    print("The shipped split validates on a handful of groups; these folds use")
-    print("all 33 groups, so the mean is what you should compare retrains against.")
+    print("A shipped model was trained with ONE 15 % split held out. Evaluating it")
+    print("on other splits measures TRAINING accuracy (it saw those rows), so the")
+    print("only honest number is on the groups it was actually held out from.")
+    print("For cross-recipe comparison use scripts/gate-melodic-retrain.py, which")
+    print("trains a FRESH model per fold.")
     print()
     for name in rows:
         r = results[name]
         manifest = r["manifest"]
-        width = int(manifest["featureCount"])
-        features = x_v2 if width == 41 else x_all
-        session, _ = load_session(name)
-        fold_deg: list[float] = []
-        fold_dur: list[float] = []
-        for mask in group_kfold(groups, k=5):
-            logits_d, logits_t = run(session, manifest, features[mask])
-            fold_deg.append(acc(logits_d.argmax(axis=1), y_degree[mask]))
-            fold_dur.append(acc(logits_t.argmax(axis=1), y_duration[mask]))
-        # Pooled: concatenate all folds' predictions for one aggregate number.
-        pooled_d = np.zeros(len(y_degree), dtype=np.int64)
-        pooled_t = np.zeros(len(y_duration), dtype=np.int64)
-        for mask in group_kfold(groups, k=5):
-            logits_d, logits_t = run(session, manifest, features[mask])
-            pooled_d[mask] = logits_d.argmax(axis=1)
-            pooled_t[mask] = logits_t.argmax(axis=1)
-        print(f"  {name}")
-        print(f"    deg  folds=[{', '.join(f'{x:.3f}' for x in fold_deg)}]  "
-              f"mean={np.mean(fold_deg):.4f}  std={np.std(fold_deg):.4f}  pooled={acc(pooled_d, y_degree):.4f}")
-        print(f"    dur  folds=[{', '.join(f'{x:.3f}' for x in fold_dur)}]  "
-              f"mean={np.mean(fold_dur):.4f}  std={np.std(fold_dur):.4f}  pooled={acc(pooled_t, y_duration):.4f}")
+        report = manifest.get("report", {})
+        trained_samples = int(report.get("samples") or 0)
+        # Reconstruct the vintage: ds.v1 (190 rows, no dnb) vs ds.v2 (239).
+        vintage_mask = np.array(
+            [not str(g).startswith("dnb") for g in groups]
+        ) if trained_samples <= 200 else np.ones(len(groups), dtype=bool)
+        vint_groups = np.unique(groups[vintage_mask])
+        rng = np.random.default_rng(SEED)
+        shuffled = vint_groups.copy()
+        rng.shuffle(shuffled)
+        held = set(shuffled[: max(1, int(len(vint_groups) * VAL_FRACTION))].tolist())
+        unseen = np.array([g in held for g in groups])
 
-    # Majority baselines on the same folds, so the model's lift is visible.
+        pred_d = r["pred_d"]
+        pred_t = r["pred_t"]
+        print(f"  {name}  (vintage: {len(vint_groups)} groups, {vintage_mask.sum()} rows)")
+        print(f"    honest deg={pct(acc(pred_d[unseen], y_degree[unseen]))}  "
+              f"dur={pct(acc(pred_t[unseen], y_duration[unseen]))}  (n={unseen.sum()})")
+        print(f"    manifest claims valDeg={report.get('valDegreeAcc')} valDur={report.get('valDurationAcc')}")
+
     print()
     print("  majority baselines (same folds):")
     for label, y in [("deg", y_degree), ("dur", y_duration)]:
@@ -350,6 +350,9 @@ def main() -> None:
     print("=" * 78)
     print("VERDICT")
     print("=" * 78)
+    print("  See the honest block above. The earlier 'k-fold on shipped models'")
+    print("  number was leaked for the folds the model had trained on; it is")
+    print("  deliberately no longer printed.")
 
 
 if __name__ == "__main__":

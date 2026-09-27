@@ -1911,4 +1911,102 @@ export const HOUSE_GROOVES: GrooveData[] = [
   // 'and' of 2, and 4. Bad Bunny's existing entry covers the harder perreo
   // side; this is the brighter dancefloor-pop reggaeton. BPM 88-100,
   // swing 0.10.
+
+  // ── Reggae (one-drop) ──────────────────────────────────────────────────
+  // The roots/dub one-drop family (Bob Marley / Peter Tosh / Steel Pulse /
+  // Lee Perry). The defining trait: the kick and snare land TOGETHER on beat
+  // 3 (the "one drop") while beat 1 is EMPTY - the space where a four-floor
+  // kick would be. Skank hats on the offbeats (the upstroke), rim tick for
+  // the nyabinghi texture. BPM 60-90 (research target; dub can halve it -
+  // the pocket reads half-time at 70-75). swing 0.12.
+  {
+    id: "house.reggae",
+    genre: "house",
+    name: "Reggae",
+    bpm: [60, 90],
+    swing: 0.12,
+    activePads: [0, 5, 8, 14, 10],
+    patterns: [
+      {
+        0: [0, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0, 0, 0, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4],
+        14: [0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0],
+        10: [0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0, 0.45, 0],
+      },
+      {
+        // The rockers - kick answers after the one-drop
+        0: [0, 0, 0, 0, 0, 0, 0.6, 0, 0.95, 0, 0, 0, 0, 0, 0.5, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0.35, 0],
+        8: [0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35],
+        14: [0.28, 0, 0, 0, 0, 0, 0.26, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
+      },
+      {
+        // Dub - the drop sparse; only the one-drop and the echo tick
+        0: [0, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0, 0, 0, 0],
+        5: [0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3],
+        14: [0, 0, 0, 0, 0.24, 0, 0, 0, 0, 0, 0, 0, 0.24, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35, 0],
+      },
+      {
+        // Dancehall-adjacent - the one-drop with a kick pickup
+        0: [0, 0, 0, 0.55, 0, 0, 0, 0, 0.95, 0, 0, 0, 0, 0, 0, 0],
+        5: [0, 0.3, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0.38, 0, 0.38, 0, 0.38, 0, 0.38, 0, 0.38, 0, 0.38, 0, 0.38, 0, 0.38],
+        14: [0, 0, 0.28, 0, 0, 0, 0.28, 0, 0, 0, 0.28, 0, 0, 0, 0.28, 0],
+        10: [0, 0, 0, 0, 0, 0, 0.42, 0, 0, 0, 0, 0, 0, 0, 0.42, 0],
+      },
+    ],
+  },
+
+  // ── Shoegaze (the wall-of-guitars family) ──────────────────────────────
+  // My Bloody Valentine / Slowdive / Beach House lane. Shoegaze drums are
+  // deliberately BURIED: a soft thudding kick, a snare that reads as wash
+  // rather than crack, and a ride that carries the blurred pulse. The point
+  // is the texture, not the pocket - velocities stay low and even. BPM
+  // 90-130 (research target; the classic era sits around 100-115). swing
+  // 0.06.
+  {
+    id: "house.shoegaze",
+    genre: "house",
+    name: "Shoegaze",
+    bpm: [90, 130],
+    swing: 0.06,
+    activePads: [0, 4, 8, 10, 12],
+    patterns: [
+      {
+        0: [0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.72, 0, 0, 0, 0, 0, 0, 0, 0.72, 0, 0, 0],
+        8: [0.4, 0, 0.35, 0, 0.4, 0, 0.35, 0, 0.4, 0, 0.35, 0, 0.4, 0, 0.35, 0.4],
+        10: [0, 0, 0, 0, 0, 0, 0.38, 0, 0, 0, 0, 0, 0, 0, 0.38, 0],
+        12: [0.32, 0, 0, 0, 0.32, 0, 0, 0, 0.32, 0, 0, 0, 0.32, 0, 0, 0],
+      },
+      {
+        // Wash - the snare blurs into the ride
+        0: [0.68, 0, 0, 0, 0.68, 0, 0, 0, 0.68, 0, 0, 0, 0.68, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0, 0.7, 0, 0, 0],
+        8: [0.38, 0, 0.34, 0, 0.38, 0, 0.34, 0, 0.38, 0, 0.34, 0, 0.38, 0, 0.34, 0],
+        10: [0, 0, 0, 0, 0, 0, 0.36, 0, 0, 0, 0, 0, 0, 0, 0.36, 0],
+        12: [0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0],
+      },
+      {
+        // Crescendo - the drums fade IN, not out (the post-rock shape)
+        0: [0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.72, 0, 0, 0, 0.78, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0, 0.78, 0, 0, 0],
+        8: [0.35, 0, 0.3, 0, 0.35, 0, 0.3, 0, 0.42, 0, 0.38, 0, 0.45, 0, 0.4, 0.42],
+        10: [0, 0, 0, 0, 0, 0, 0.32, 0, 0, 0, 0, 0, 0, 0, 0.42, 0],
+        12: [0.28, 0, 0, 0, 0.28, 0, 0, 0, 0.34, 0, 0, 0, 0.38, 0, 0, 0],
+      },
+      {
+        // Breakdown - everything but the ride drops
+        0: [0.62, 0, 0, 0, 0, 0, 0, 0, 0.62, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.36, 0, 0, 0, 0.36, 0, 0, 0, 0.36, 0, 0, 0, 0.36, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0.3, 0, 0.28, 0, 0.3, 0, 0.28, 0, 0.3, 0, 0.28, 0, 0.3, 0, 0.28, 0],
+      },
+    ],
+  },
 ];

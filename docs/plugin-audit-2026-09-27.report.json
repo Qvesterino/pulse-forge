@@ -2,38 +2,38 @@
   "effects": [
     {
       "type": "eq",
-      "defaultPeak": 0.5649495720863342,
+      "defaultPeak": 0.5649306774139404,
       "defaultFinite": true,
-      "bypassDelta": 0.00797597508333578,
+      "bypassDelta": 0.007949138580069853,
       "params": [
         {
           "id": "hpFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
           "maxPeak": 0.2654418349266052,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.8554323421910984
+          "delta": 0.8554323453388757
         },
         {
           "id": "lpFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5097166299819946,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5096980333328247,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.01836919191847288
+          "delta": 0.01837024070907031
         },
         {
           "id": "lowShelfFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -43,41 +43,41 @@
           "id": "lowShelfGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6156535148620605,
-          "maxPeak": 1.4006978273391724,
+          "minPeak": 0.6156532764434814,
+          "maxPeak": 1.4007760286331177,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 1.5374758475829469
+          "delta": 1.537588246966173
         },
         {
           "id": "lowMidFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
-          "bestExtreme": "min",
-          "metric": "side",
-          "delta": 1.1887824919978365e-16
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
         },
         {
           "id": "lowMidGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.37469422817230225,
+          "minPeak": 0.37470605969429016,
           "maxPeak": 0.9689124226570129,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.4391661404226106
+          "delta": 1.4391660977045302
         },
         {
           "id": "lowMidQ",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -87,8 +87,8 @@
           "id": "highMidFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -98,19 +98,19 @@
           "id": "highMidGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4911346733570099,
-          "maxPeak": 0.9213330745697021,
+          "minPeak": 0.49116915464401245,
+          "maxPeak": 0.921314537525177,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.18679525459754664
+          "delta": 0.18679645926857888
         },
         {
           "id": "highMidQ",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -120,8 +120,8 @@
           "id": "highShelfFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -131,19 +131,19 @@
           "id": "highShelfGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.530267059803009,
-          "maxPeak": 1.5322694778442383,
+          "minPeak": 0.5302483439445496,
+          "maxPeak": 1.5322508811950684,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.2741774378714943
+          "delta": 0.2741789528527289
         },
         {
           "id": "lowGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -153,8 +153,8 @@
           "id": "lowFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -164,8 +164,8 @@
           "id": "midGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -175,8 +175,8 @@
           "id": "midFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -186,8 +186,8 @@
           "id": "midQ",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -197,8 +197,8 @@
           "id": "highGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -208,8 +208,8 @@
           "id": "highFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5649495720863342,
-          "maxPeak": 0.5649495720863342,
+          "minPeak": 0.5649306774139404,
+          "maxPeak": 0.5649306774139404,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -237,13 +237,13 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 2.423792445232799,
+      "hostDelta": 2.4217992203844423,
       "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 4.1576873937503995,
+      "automationDelta": 4.157774445769631,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0024433135986328125,
-      "restoreRmsDiff": 0.0000013729882014890774,
+      "restoreMaxDiff": 4.76837158203125e-7,
+      "restoreRmsDiff": 1.737440001715542e-11,
       "name": "EQ",
       "category": "tone"
     },
@@ -269,11 +269,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4680437445640564,
-          "maxPeak": 1.2854554653167725,
+          "maxPeak": 1.2854658365249634,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 3.1844821703927813
+          "delta": 3.18453459137709
         },
         {
           "id": "midHighFreq",
@@ -312,12 +312,12 @@
           "id": "sideLowGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.48075973987579346,
-          "maxPeak": 0.6970970034599304,
+          "minPeak": 0.48075976967811584,
+          "maxPeak": 0.6970969438552856,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.5393064256564005
+          "delta": 0.5393067523254663
         },
         {
           "id": "sideHighFreq",
@@ -353,131 +353,131 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 2.242910370383294,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 2.2429052361185504,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.2429103672941713,
+      "automationDelta": 2.242905219983164,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0003184676170349121,
-      "restoreRmsDiff": 1.1037253931065725e-8,
+      "restoreMaxDiff": 0.00001558661460876465,
+      "restoreRmsDiff": 3.1252711389379576e-8,
       "name": "M/S EQ",
       "category": "tone"
     },
     {
       "type": "multiband",
-      "defaultPeak": 0.450398713350296,
+      "defaultPeak": 0.45040884613990784,
       "defaultFinite": true,
-      "bypassDelta": 0.018187095364034588,
+      "bypassDelta": 0.01815990797895524,
       "params": [
         {
           "id": "lowFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.44929739832878113,
-          "maxPeak": 0.4509754478931427,
+          "minPeak": 0.4492836594581604,
+          "maxPeak": 0.4509683847427368,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.003391351415030321
+          "delta": 0.003368933373074108
         },
         {
           "id": "highFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.44951215386390686,
-          "maxPeak": 0.45092862844467163,
+          "minPeak": 0.4495314955711365,
+          "maxPeak": 0.45094043016433716,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.0009907449223943538
+          "delta": 0.000984172815044362
         },
         {
           "id": "lowGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.531612753868103,
-          "maxPeak": 1.434709906578064,
+          "minPeak": 0.5316153168678284,
+          "maxPeak": 1.4347121715545654,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.2259763394321546
+          "delta": 2.2259719719887903
         },
         {
           "id": "midGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.40414029359817505,
-          "maxPeak": 2.1102070808410645,
+          "minPeak": 0.40413880348205566,
+          "maxPeak": 2.1102075576782227,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 3.986264900264755
+          "delta": 3.986263105026604
         },
         {
           "id": "highGain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4644838571548462,
-          "maxPeak": 1.1462574005126953,
+          "minPeak": 0.4644955098628998,
+          "maxPeak": 1.1462583541870117,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.2369513392036714
+          "delta": 0.23695391521190146
         },
         {
           "id": "comp",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.450398713350296,
-          "maxPeak": 0.4996531009674072,
+          "minPeak": 0.45040884613990784,
+          "maxPeak": 0.5002529621124268,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.09432309373181605
+          "delta": 0.09426702475500268
         },
         {
           "id": "soloLow",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.45039868354797363,
-          "maxPeak": 0.45039868354797363,
+          "minPeak": 0.45040881633758545,
+          "maxPeak": 0.45040884613990784,
           "responsive": false,
           "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 5.72338224579171e-9
+          "metric": "centroid",
+          "delta": 6.059443845493513e-9
         },
         {
           "id": "soloMid",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4503987431526184,
-          "maxPeak": 0.45039868354797363,
+          "minPeak": 0.45040881633758545,
+          "maxPeak": 0.45040881633758545,
           "responsive": false,
-          "bestExtreme": "max",
+          "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 9.208908083067504e-9
+          "delta": 6.307305909755874e-9
         },
         {
           "id": "soloHigh",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.45039868354797363,
-          "maxPeak": 0.450398713350296,
+          "minPeak": 0.45040881633758545,
+          "maxPeak": 0.45040884613990784,
           "responsive": false,
-          "bestExtreme": "min",
+          "bestExtreme": "max",
           "metric": "centroid",
-          "delta": 6.274495738194397e-9
+          "delta": 6.059443845493513e-9
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.45039868354797363,
+          "maxPeak": 0.45040881633758545,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.018523992991086178
+          "delta": 0.0184957898200861
         }
       ],
       "deadParams": [
@@ -493,94 +493,94 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 1.8479304472121814,
+      "hostDelta": 1.8479273592938317,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.6038603298911374,
+      "automationDelta": 1.6038712307971836,
       "automationFinite": true,
-      "restoreMaxDiff": 9.5367431640625e-7,
-      "restoreRmsDiff": 4.446530087281901e-10,
+      "restoreMaxDiff": 4.76837158203125e-7,
+      "restoreRmsDiff": 6.564746472539071e-11,
       "name": "Multiband",
       "category": "tone"
     },
     {
       "type": "compressor",
-      "defaultPeak": 0.249064102768898,
+      "defaultPeak": 0.24906407296657562,
       "defaultFinite": true,
-      "bypassDelta": 0.3575625296395381,
+      "bypassDelta": 0.35759199279401777,
       "params": [
         {
           "id": "threshold",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.01043844036757946,
+          "minPeak": 0.01043381541967392,
           "maxPeak": 0.4668046832084656,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.9594023689237444
+          "delta": 0.9594036757995301
         },
         {
           "id": "ratio",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.21450603008270264,
+          "maxPeak": 0.21450597047805786,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.5565717227529011
+          "delta": 0.5566431127614496
         },
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.24447153508663177,
-          "maxPeak": 0.4291824996471405,
+          "maxPeak": 0.42914968729019165,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.305294692813671
+          "delta": 0.3049697277156146
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.28234079480171204,
-          "maxPeak": 0.222844660282135,
+          "minPeak": 0.2823376953601837,
+          "maxPeak": 0.22285564243793488,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.21268967383507809
+          "delta": 0.21263260433330164
         },
         {
           "id": "knee",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.24906553328037262,
-          "maxPeak": 0.2083577811717987,
+          "minPeak": 0.24906550347805023,
+          "maxPeak": 0.20819763839244843,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.1871134662259477
+          "delta": 0.18719853307773032
         },
         {
           "id": "detector",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.249064102768898,
-          "maxPeak": 0.22378046810626984,
+          "minPeak": 0.24906407296657562,
+          "maxPeak": 0.22369925677776337,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.08219900901850888
+          "delta": 0.08218815256936995
         },
         {
           "id": "scHpf",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.249064102768898,
-          "maxPeak": 0.249064102768898,
+          "minPeak": 0.24906407296657562,
+          "maxPeak": 0.24906407296657562,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -590,34 +590,34 @@
           "id": "autoRelease",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.249064102768898,
-          "maxPeak": 0.25139379501342773,
+          "minPeak": 0.24906407296657562,
+          "maxPeak": 0.25139373540878296,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.03722832410766006
+          "delta": 0.03723878704827955
         },
         {
           "id": "makeup",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.249064102768898,
-          "maxPeak": 3.9474000930786133,
+          "minPeak": 0.24906407296657562,
+          "maxPeak": 3.947399616241455,
           "responsive": true,
           "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 14.84893226831002
+          "metric": "side",
+          "delta": 14.848932271797365
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.249064102768898,
+          "maxPeak": 0.24906407296657562,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.5565717227529011
+          "delta": 0.5566431127614496
         }
       ],
       "deadParams": [
@@ -628,98 +628,98 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 1.3346861942759238,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 1.3359819949701222,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 9.319448860847409,
+      "automationDelta": 9.306918252773368,
       "automationFinite": true,
-      "restoreMaxDiff": 9.5367431640625e-7,
-      "restoreRmsDiff": 3.767888955056384e-10,
+      "restoreMaxDiff": 0.0000019073486328125,
+      "restoreRmsDiff": 2.166412393930318e-10,
       "name": "Compressor",
       "category": "dynamics"
     },
     {
       "type": "saturation",
-      "defaultPeak": 1.0119407176971436,
+      "defaultPeak": 1.011940836906433,
       "defaultFinite": true,
-      "bypassDelta": 2.1295730026199555,
+      "bypassDelta": 2.129566426619264,
       "params": [
         {
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6733502149581909,
-          "maxPeak": 1.268227458000183,
+          "minPeak": 0.6732816696166992,
+          "maxPeak": 1.2682253122329712,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.6362778770126847
+          "delta": 0.6362844833011237
         },
         {
           "id": "character",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.0119407176971436,
-          "maxPeak": 0.8415535092353821,
+          "minPeak": 1.011940836906433,
+          "maxPeak": 0.8415126204490662,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.33451915214368827
+          "delta": 0.3345198597498342
         },
         {
           "id": "bias",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.011637568473816,
-          "maxPeak": 1.1378414630889893,
+          "minPeak": 1.0117024183273315,
+          "maxPeak": 1.1378438472747803,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 2.814308574922341
+          "delta": 2.815191146434056
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.0853451490402222,
-          "maxPeak": 1.0083080530166626,
+          "minPeak": 1.0853524208068848,
+          "maxPeak": 1.008306622505188,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.11772329871513057
+          "delta": 0.11772339558476862
         },
         {
           "id": "preHpfHz",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.0119407176971436,
+          "minPeak": 1.011940836906433,
           "maxPeak": 0.9793886542320251,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.5426329942098748
+          "delta": 0.5426320331675653
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 1.0119407176971436,
+          "maxPeak": 1.011940836906433,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.6804675912136131
+          "delta": 0.680466919796217
         },
         {
           "id": "output",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.25820252299308777,
-          "maxPeak": 4.012627124786377,
+          "minPeak": 0.25820255279541016,
+          "maxPeak": 4.012627601623535,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 2.980276366896364
+          "delta": 2.9802764322086075
         }
       ],
       "deadParams": [],
@@ -728,13 +728,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 5.453171445968158,
+      "hostDelta": 5.453022232375235,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.1020501414834345,
+      "automationDelta": 2.102002245760481,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00041294097900390625,
-      "restoreRmsDiff": 1.113003143633785e-7,
+      "restoreMaxDiff": 0.0002486705780029297,
+      "restoreRmsDiff": 1.9818901143656062e-8,
       "name": "Saturation",
       "category": "character"
     },
@@ -806,13 +806,13 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 2.3607905167512206,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 2.360797417451555,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 2.292459612862846,
+      "automationDelta": 2.2924419408238372,
       "automationFinite": true,
-      "restoreMaxDiff": 0.003157779574394226,
-      "restoreRmsDiff": 7.164187057003695e-8,
+      "restoreMaxDiff": 4.76837158203125e-7,
+      "restoreRmsDiff": 1.5099753696759993e-11,
       "name": "Tape Sat",
       "category": "character"
     },
@@ -884,21 +884,21 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.42542207050453096,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 0.4254213001876764,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 0.21110470351167543,
+      "automationDelta": 0.21110760316240126,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0024431943893432617,
-      "restoreRmsDiff": 0.000009057200417099263,
+      "restoreMaxDiff": 6.854534149169922e-7,
+      "restoreRmsDiff": 6.138699655080549e-11,
       "name": "Clipper",
       "category": "character"
     },
     {
       "type": "limiter",
-      "defaultPeak": 0.46663132309913635,
+      "defaultPeak": 0.46491676568984985,
       "defaultFinite": true,
-      "bypassDelta": 0.01457961769419583,
+      "bypassDelta": 0.01457511525939777,
       "params": [
         {
           "id": "ceiling",
@@ -909,62 +909,62 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.6550256306191069
+          "delta": 0.6549274294837024
         },
         {
           "id": "threshold",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.46663132309913635,
+          "minPeak": 0.46491676568984985,
           "maxPeak": 0.4668046832084656,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.00041494425400371405
+          "delta": 0.004523217207798446
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4655190110206604,
+          "maxPeak": 0.454631507396698,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.0018339361336378143
+          "delta": 0.018060749860794232
         },
         {
           "id": "lookaheadMs",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4666542410850525,
-          "maxPeak": 0.5812253355979919,
+          "minPeak": 0.46520015597343445,
+          "maxPeak": 0.5779971480369568,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.09463691190255281
+          "delta": 0.09456174644634459
         },
         {
           "id": "link",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.46663132309913635,
-          "maxPeak": 0.46663132309913635,
+          "minPeak": 0.46491676568984985,
+          "maxPeak": 0.46491676568984985,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.00041494425400371405
+          "delta": 0.004523217207798446
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.46663132309913635,
+          "maxPeak": 0.46491676568984985,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.00041494425400371405
+          "delta": 0.004523217207798446
         }
       ],
       "deadParams": [
@@ -978,13 +978,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.4858501432630035,
+      "hostDelta": 0.4858530316799644,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.3940557356666591,
+      "automationDelta": 0.3939301890539018,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00041297823190689087,
-      "restoreRmsDiff": 9.706428292367265e-8,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 1.518545189179783e-9,
       "name": "Limiter",
       "category": "dynamics"
     },
@@ -1045,13 +1045,13 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 0.10499376298803634,
+      "hostDelta": 0.1049369893441599,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.10500579684814958,
+      "automationDelta": 0.10493698775063223,
       "automationFinite": true,
-      "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 5.386068166662206e-11,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 3.6106374087135537e-10,
       "name": "Step Gate",
       "category": "movement"
     },
@@ -1065,23 +1065,23 @@
           "id": "cutoff",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.031477104872465134,
+          "minPeak": 0.031533461064100266,
           "maxPeak": 0.6450644135475159,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 5.655800728975007
+          "delta": 5.669085141699879
         },
         {
           "id": "resonance",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4463210105895996,
-          "maxPeak": 2.9383018016815186,
+          "maxPeak": 2.7069950103759766,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 10.024630289124644
+          "delta": 5.990109817264276
         },
         {
           "id": "mode",
@@ -1125,21 +1125,21 @@
       "presetsFinite": 9,
       "presetsTotal": 9,
       "hostProcesses": true,
-      "hostDelta": 1.1103704940194408,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 1.1103677014982798,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 6.897286863425964,
+      "automationDelta": 6.8973624684068,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0031577572226524353,
-      "restoreRmsDiff": 0.000002616500035702023,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 8.478370854779339e-11,
       "name": "SV Filter",
       "category": "tone"
     },
     {
       "type": "flanger",
-      "defaultPeak": 0.40134990215301514,
+      "defaultPeak": 0.40135622024536133,
       "defaultFinite": true,
-      "bypassDelta": 0.5816850445911239,
+      "bypassDelta": 0.5816850388840757,
       "params": [
         {
           "id": "rate",
@@ -1150,58 +1150,58 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.38815014253847113
+          "delta": 0.3881500966341103
         },
         {
           "id": "sync",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.40134990215301514,
+          "minPeak": 0.40135622024536133,
           "maxPeak": 0.3669387996196747,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.12923088179295691
+          "delta": 0.1292308868190029
         },
         {
           "id": "depth",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.30402347445487976,
+          "minPeak": 0.3040217161178589,
           "maxPeak": 0.3951340317726135,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.6941663902829848
+          "delta": 0.6943282838081984
         },
         {
           "id": "base",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.3444935083389282,
-          "maxPeak": 0.4320228397846222,
+          "maxPeak": 0.42352917790412903,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.9683754018084958
+          "delta": 0.9683585988652419
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4054212272167206,
-          "maxPeak": 1.1589620113372803,
+          "maxPeak": 1.1667643785476685,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.0482603480043213
+          "delta": 1.0491574041954987
         },
         {
           "id": "spread",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.40134990215301514,
-          "maxPeak": 0.40134990215301514,
+          "minPeak": 0.40135622024536133,
+          "maxPeak": 0.40135622024536133,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -1211,23 +1211,23 @@
           "id": "invert",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.40134990215301514,
-          "maxPeak": 0.40717193484306335,
+          "minPeak": 0.40135622024536133,
+          "maxPeak": 0.4071701169013977,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.3169799145087012
+          "delta": 0.3169789198614261
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.5744202136993408,
+          "maxPeak": 0.5744198560714722,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.8148086094276562
+          "delta": 0.8148077727637644
         }
       ],
       "deadParams": [
@@ -1238,13 +1238,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 21.395174920735087,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 21.395264553890353,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.539918241057886,
+      "automationDelta": 1.5399182467539976,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 3.634683557206204e-10,
+      "restoreMaxDiff": 4.76837158203125e-7,
+      "restoreRmsDiff": 3.5059517459593144e-10,
       "name": "Flanger",
       "category": "movement"
     },
@@ -1327,13 +1327,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.16633851999326,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 3.1663531679150005,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 3.3746825667143647,
+      "automationDelta": 3.374684795152351,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.1410471622713141e-10,
+      "restoreRmsDiff": 2.313099813494388e-11,
       "name": "Tremolo",
       "category": "movement"
     },
@@ -1341,7 +1341,7 @@
       "type": "autowah",
       "defaultPeak": 0.21622449159622192,
       "defaultFinite": true,
-      "bypassDelta": 0.7392794386652944,
+      "bypassDelta": 0.7392851004767365,
       "params": [
         {
           "id": "minFreq",
@@ -1352,51 +1352,51 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.366286265393309
+          "delta": 0.36627419488487506
         },
         {
           "id": "maxFreq",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.36270883679389954,
-          "maxPeak": 0.21493299305438995,
+          "maxPeak": 0.21494337916374207,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 2.3813585258546834
+          "delta": 2.38137930905332
         },
         {
           "id": "resonance",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1171576976776123,
-          "maxPeak": 3.6463587284088135,
+          "minPeak": 0.11715313047170639,
+          "maxPeak": 3.350710153579712,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 35.38452815276431
+          "delta": 46.100549459385455
         },
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.21287965774536133,
-          "maxPeak": 0.22365324199199677,
+          "maxPeak": 0.2236531376838684,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.24623049352016388
+          "delta": 0.2466807914119593
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.21933571994304657,
-          "maxPeak": 0.2127387970685959,
+          "maxPeak": 0.2127380520105362,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.13184939180603925
+          "delta": 0.13193984067289782
         },
         {
           "id": "sensitivity",
@@ -1407,18 +1407,18 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.8161402698033303
+          "delta": 0.8160976441385716
         },
         {
           "id": "mode",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.21622449159622192,
-          "maxPeak": 0.4832116365432739,
+          "maxPeak": 0.48322564363479614,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.9524783923110327
+          "delta": 2.9525585365432505
         },
         {
           "id": "direction",
@@ -1429,18 +1429,18 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.22030337297132638
+          "delta": 0.22025916511104368
         },
         {
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.21622449159622192,
-          "maxPeak": 1.1566253900527954,
+          "maxPeak": 1.1566264629364014,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 6.408223368079912
+          "delta": 6.408241574952749
         },
         {
           "id": "mix",
@@ -1451,7 +1451,7 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 2.835524113942931
+          "delta": 2.8356074080483085
         }
       ],
       "deadParams": [],
@@ -1460,61 +1460,61 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 5.472575107707678,
+      "hostDelta": 5.472612267077718,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 8.08794422692807,
+      "automationDelta": 8.087973819235344,
       "automationFinite": true,
       "restoreMaxDiff": 9.5367431640625e-7,
-      "restoreRmsDiff": 8.222474749892598e-9,
+      "restoreRmsDiff": 1.0662609787229627e-8,
       "name": "Autowah",
       "category": "movement"
     },
     {
       "type": "stutter",
-      "defaultPeak": 0.7439442276954651,
+      "defaultPeak": 0.7300423979759216,
       "defaultFinite": true,
-      "bypassDelta": 8.166391821690175,
+      "bypassDelta": 8.371912554873008,
       "params": [
         {
           "id": "division",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.07119670510292053,
-          "maxPeak": 0.7568241953849792,
+          "maxPeak": 0.7429223656654358,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.8909058202561874
+          "delta": 0.8932981938166161
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.35598355531692505,
-          "maxPeak": 0.8762710690498352,
+          "maxPeak": 0.8580842614173889,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 241.0289776237242
+          "delta": 236.58619758433096
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.7439442276954651,
-          "maxPeak": 0.7439442276954651,
+          "minPeak": 0.7300423979759216,
+          "maxPeak": 0.7300423979759216,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.1188382305590164
+          "delta": 0.11865417574654735
         },
         {
           "id": "smooth",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.7439442276954651,
-          "maxPeak": 0.7439442276954651,
+          "minPeak": 0.7300423979759216,
+          "maxPeak": 0.7300423979759216,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -1529,76 +1529,76 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.4559116175010353,
+      "hostDelta": 0.4559108778670028,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.09777680974871977,
+      "automationDelta": 0.09777644661173707,
       "automationFinite": true,
       "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 2.1985873482451746e-10,
+      "restoreRmsDiff": 5.945805043621617e-11,
       "name": "Stutter",
       "category": "movement"
     },
     {
       "type": "comb",
-      "defaultPeak": 0.18268370628356934,
+      "defaultPeak": 0.1836167424917221,
       "defaultFinite": true,
-      "bypassDelta": 0.6446641112405761,
+      "bypassDelta": 0.6446839708339634,
       "params": [
         {
           "id": "delayMs",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.5291630625724792,
-          "maxPeak": 0.5160840749740601,
+          "maxPeak": 0.4960908591747284,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.8543394046534478
+          "delta": 1.8543170467768606
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8624129295349121,
-          "maxPeak": 0.41877657175064087,
+          "minPeak": 0.8096067309379578,
+          "maxPeak": 0.3965688645839691,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 1.9253473675953199
+          "delta": 1.9210321734734512
         },
         {
           "id": "damp",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.19484981894493103,
-          "maxPeak": 0.18558241426944733,
+          "minPeak": 0.19539767503738403,
+          "maxPeak": 0.18615096807479858,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.2372492019818098
+          "delta": 0.23914518555071698
         },
         {
           "id": "spread",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.18268370628356934,
-          "maxPeak": 0.2423378825187683,
+          "minPeak": 0.1836167424917221,
+          "maxPeak": 0.24380403757095337,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.12082883666152464
+          "delta": 0.12089698772372705
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.42771387100219727,
+          "maxPeak": 0.42588505148887634,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 1.8142386728547941
+          "delta": 1.814395968420292
         }
       ],
       "deadParams": [],
@@ -1607,13 +1607,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.3720233991356396,
+      "hostDelta": 3.3720390033568197,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 3.4916594702527193,
+      "automationDelta": 3.491659468461134,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 3.4194451218310345e-11,
+      "restoreMaxDiff": 0.00041300058364868164,
+      "restoreRmsDiff": 3.9447068739929904e-8,
       "name": "Comb",
       "category": "movement"
     },
@@ -1621,29 +1621,29 @@
       "type": "vowel",
       "defaultPeak": 0.5368966460227966,
       "defaultFinite": true,
-      "bypassDelta": 0.11717683381665832,
+      "bypassDelta": 0.11717683688670616,
       "params": [
         {
           "id": "vowel",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.5368966460227966,
-          "maxPeak": 0.5970190763473511,
+          "maxPeak": 0.5970188975334167,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.23803870441467387
+          "delta": 0.23803770893155146
         },
         {
           "id": "resonance",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.544089138507843,
-          "maxPeak": 0.5419435501098633,
+          "maxPeak": 0.5419386625289917,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.02136613416009106
+          "delta": 0.021366774945284755
         },
         {
           "id": "mix",
@@ -1654,7 +1654,7 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.1327296771370898
+          "delta": 0.13272968107619612
         }
       ],
       "deadParams": [],
@@ -1663,143 +1663,143 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.18595018181324222,
+      "hostDelta": 0.18594947691238842,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.0016138359504513174,
+      "automationDelta": 0.0016116548136215034,
       "automationExempt": "formant-Q lane is spectral-only - moves the formant shape by ~0.2% rms/centroid; writes ride the native AudioParam schedule",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 6.366010860587799e-11,
+      "restoreRmsDiff": 5.001224792185677e-11,
       "name": "Vowel",
       "category": "movement"
     },
     {
       "type": "vocoder",
-      "defaultPeak": 0.34598439931869507,
+      "defaultPeak": 0.4023846685886383,
       "defaultFinite": true,
-      "bypassDelta": 356.10772888221044,
+      "bypassDelta": 280.9273269713724,
       "params": [
         {
           "id": "bands",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3981526494026184,
-          "maxPeak": 0.3744142949581146,
+          "minPeak": 0.40167826414108276,
+          "maxPeak": 0.36983412504196167,
           "responsive": true,
           "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.1417842442125123
+          "metric": "dyn",
+          "delta": 0.3678896913441785
         },
         {
           "id": "loFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3663894832134247,
-          "maxPeak": 0.38029059767723083,
+          "minPeak": 0.357694536447525,
+          "maxPeak": 0.3609735071659088,
           "responsive": true,
-          "bestExtreme": "max",
+          "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.2297756803738991
+          "delta": 0.10434619025432477
         },
         {
           "id": "hiFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3901118040084839,
-          "maxPeak": 0.40454500913619995,
+          "minPeak": 0.4100218713283539,
+          "maxPeak": 0.3559279143810272,
           "responsive": true,
           "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 0.27504420546276304
+          "metric": "side",
+          "delta": 0.17461825710574938
         },
         {
           "id": "q",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4550822675228119,
-          "maxPeak": 0.3717619776725769,
+          "minPeak": 0.38345441222190857,
+          "maxPeak": 0.40627992153167725,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 3.4975241001880595
+          "delta": 3.6865197326163344
         },
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3787029981613159,
-          "maxPeak": 0.37327077984809875,
+          "minPeak": 0.40856996178627014,
+          "maxPeak": 0.3510090410709381,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.7172851169522183
+          "delta": 1.297604040348642
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.37742313742637634,
-          "maxPeak": 0.3939548134803772,
+          "minPeak": 0.40263742208480835,
+          "maxPeak": 0.3702489137649536,
           "responsive": true,
-          "bestExtreme": "max",
+          "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.9594584992637595
+          "delta": 1.1615975667517333
         },
         {
           "id": "shift",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.37157973647117615,
-          "maxPeak": 0.3523768186569214,
+          "minPeak": 0.4068136513233185,
+          "maxPeak": 0.43627244234085083,
           "responsive": true,
-          "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.5130406033049524
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 1.027046380639094
         },
         {
           "id": "sibilance",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.02513885870575905,
-          "maxPeak": 1.0348740816116333,
+          "minPeak": 0.025130080059170723,
+          "maxPeak": 0.9810845851898193,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.8351460287154264
+          "delta": 1.9414663809752817
         },
         {
           "id": "stereo",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3603106141090393,
-          "maxPeak": 0.3982054591178894,
+          "minPeak": 0.3797730803489685,
+          "maxPeak": 0.4225732088088989,
           "responsive": true,
-          "bestExtreme": "min",
+          "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.3661619762262116
+          "delta": 0.24284201831229008
         },
         {
           "id": "level",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.025524424389004707,
-          "maxPeak": 1.4614226818084717,
+          "minPeak": 0.022432170808315277,
+          "maxPeak": 1.4484974145889282,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.8800787447258074
+          "delta": 3.067564322350888
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.38290154933929443,
+          "maxPeak": 0.47260016202926636,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 32.90759502461263
+          "delta": 34.050019479833416
         }
       ],
       "deadParams": [],
@@ -1809,14 +1809,14 @@
       "presetsTotal": 5,
       "hostExemptReason": "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence",
       "hostProcesses": false,
-      "hostDelta": 5.488896248338395e-9,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 2.152147345460513e-9,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 7.725143760441042e-8,
+      "automationDelta": 1.6071558093621091e-9,
       "automationExempt": "host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 9.950253030717435e-11,
+      "restoreRmsDiff": 2.5231352659601632e-11,
       "name": "Vocoder",
       "category": "character"
     },
@@ -1918,13 +1918,13 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": false,
-      "hostDelta": 8.90868940677233e-10,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 4.1204845245026056e-9,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.08135369453427983,
+      "automationDelta": 0.08082218738793186,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 1.3140686943768945e-10,
+      "restoreRmsDiff": 6.876512995996882e-11,
       "name": "Reverse Swell",
       "category": "movement"
     },
@@ -2061,142 +2061,142 @@
       "presetsFinite": 5,
       "presetsTotal": 5,
       "hostProcesses": true,
-      "hostDelta": 0.5097403474976899,
+      "hostDelta": 0.5094442141177125,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.5097403461290607,
+      "automationDelta": 0.5094442145442561,
       "automationFinite": true,
-      "restoreMaxDiff": 0.002443253993988037,
-      "restoreRmsDiff": 0.000012430908926886806,
+      "restoreMaxDiff": 1.341104507446289e-7,
+      "restoreRmsDiff": 3.560737144927266e-11,
       "name": "Granular Freeze",
       "category": "space"
     },
     {
       "type": "duckDelay",
-      "defaultPeak": 0.33846819400787354,
+      "defaultPeak": 0.33165353536605835,
       "defaultFinite": true,
-      "bypassDelta": 0.4864439385226851,
+      "bypassDelta": 0.4905288030351199,
       "params": [
         {
           "id": "time",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.2797236740589142,
+          "minPeak": 0.2864449918270111,
           "maxPeak": 0.3267632722854614,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.32725347176550074
+          "delta": 0.3290971653683704
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.33846819400787354,
-          "maxPeak": 0.33846819400787354,
+          "minPeak": 0.33165353536605835,
+          "maxPeak": 0.33165353536605835,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.2710300516339508e-7
+          "delta": 2.6092084744599497e-7
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3283279538154602,
-          "maxPeak": 0.3424590528011322,
+          "minPeak": 0.3267632722854614,
+          "maxPeak": 0.33934250473976135,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.057982068075171554
+          "delta": 0.07107832563366748
         },
         {
           "id": "duckAmount",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3638710081577301,
-          "maxPeak": 0.3275812566280365,
+          "minPeak": 0.3579007685184479,
+          "maxPeak": 0.3267632722854614,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.14016108250985046
+          "delta": 0.1386524740055371
         },
         {
           "id": "duckThresh",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3335050940513611,
-          "maxPeak": 0.3638710081577301,
+          "minPeak": 0.3268022835254669,
+          "maxPeak": 0.3579007685184479,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.14016108250985046
+          "delta": 0.1386524740055371
         },
         {
           "id": "duckAttack",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.33433040976524353,
-          "maxPeak": 0.35851722955703735,
+          "minPeak": 0.3275890052318573,
+          "maxPeak": 0.3522261679172516,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.10879828638619982
+          "delta": 0.10783445570788806
         },
         {
           "id": "duckRelease",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3448033034801483,
+          "minPeak": 0.33796417713165283,
           "maxPeak": 0.3267632722854614,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.09516412073947812
+          "delta": 0.09512121113102433
         },
         {
           "id": "sync",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.33846819400787354,
-          "maxPeak": 0.4168398678302765,
+          "minPeak": 0.33165353536605835,
+          "maxPeak": 0.4292713403701782,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.17351068525971716
+          "delta": 0.17332979990420455
         },
         {
           "id": "pingpong",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.33846819400787354,
-          "maxPeak": 0.33846819400787354,
+          "minPeak": 0.33165353536605835,
+          "maxPeak": 0.33165353536605835,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 4.7282391545780434e-8
+          "delta": 8.025831665158083e-8
         },
         {
           "id": "loopHpfHz",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.36536145210266113,
+          "minPeak": 0.3584499657154083,
           "maxPeak": 0.3267632722854614,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.3272865764187159
+          "delta": 0.32913017930113586
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.5875644683837891,
+          "maxPeak": 0.5584666132926941,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 778.8464574953352
+          "delta": 800.0944647395083
         }
       ],
       "deadParams": [
@@ -2208,13 +2208,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.09869079393759708,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 0.09869047513502263,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.03600045450554953,
+      "automationDelta": 0.03600051040891989,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0031577646732330322,
-      "restoreRmsDiff": 0.0000026307565877549334,
+      "restoreMaxDiff": 0.00041297078132629395,
+      "restoreRmsDiff": 3.7445701500219003e-8,
       "name": "Duck Delay",
       "category": "space"
     },
@@ -2222,29 +2222,29 @@
       "type": "kaskada",
       "defaultPeak": 0.18066741526126862,
       "defaultFinite": true,
-      "bypassDelta": 0.6154086571292657,
+      "bypassDelta": 0.6154930257936007,
       "params": [
         {
           "id": "time",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.17707276344299316,
-          "maxPeak": 0.20567819476127625,
+          "maxPeak": 0.20643462240695953,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.23776746009102942
+          "delta": 0.246256979777342
         },
         {
           "id": "sync",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.18066741526126862,
-          "maxPeak": 0.17393499612808228,
+          "maxPeak": 0.18156908452510834,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.1057433817656014
+          "delta": 0.1086086110203513
         },
         {
           "id": "pingPong",
@@ -2266,7 +2266,7 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.052476954736773544
+          "delta": 0.05268631048577925
         },
         {
           "id": "feedback",
@@ -2288,18 +2288,18 @@
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.4384899440244578
+          "delta": 0.43848994234618094
         },
         {
           "id": "toneHp",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.20119212567806244,
+          "minPeak": 0.2007855325937271,
           "maxPeak": 0.17546741664409637,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.3207161437129697
+          "delta": 0.32071614563746703
         },
         {
           "id": "drive",
@@ -2310,14 +2310,14 @@
           "responsive": false,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.009024472889401239
+          "delta": 0.008826913754744183
         },
         {
           "id": "modRate",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.1784297525882721,
-          "maxPeak": 0.17546741664409637,
+          "maxPeak": 0.17757751047611237,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
@@ -2328,11 +2328,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.17546741664409637,
-          "maxPeak": 0.18707595765590668,
+          "maxPeak": 0.19370274245738983,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.3799335841407862
+          "delta": 0.3799335841405669
         },
         {
           "id": "spread",
@@ -2365,7 +2365,7 @@
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.11477276022816583
+          "delta": 0.11470629530538891
         },
         {
           "id": "unmask",
@@ -2416,33 +2416,33 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.18957500159740448,
-          "maxPeak": 0.21789158880710602,
+          "maxPeak": 0.2151462435722351,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.3595239664206045
+          "delta": 0.3595239625647005
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.23395654559135437,
-          "maxPeak": 0.28152111172676086,
+          "maxPeak": 0.26950782537460327,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 401.73798371255225
+          "delta": 411.54539139896355
         },
         {
           "id": "soloWet",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.18066741526126862,
-          "maxPeak": 0.07038027793169022,
+          "maxPeak": 0.06737695634365082,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 99.68449592813808
+          "delta": 102.13634784974089
         },
         {
           "id": "deltaListen",
@@ -2459,12 +2459,12 @@
           "id": "level",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.02274468168616295,
+          "minPeak": 0.0227446798235178,
           "maxPeak": 0.719249963760376,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 2.9810717044176402
+          "delta": 2.9810717049913915
         }
       ],
       "deadParams": [
@@ -2481,120 +2481,120 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.5097403460054665,
+      "hostDelta": 0.5094442153508705,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.2358022031789655,
+      "automationDelta": 0.2353374269368838,
       "automationFinite": true,
-      "restoreMaxDiff": 1.4901161193847656e-7,
-      "restoreRmsDiff": 4.930748194771588e-11,
+      "restoreMaxDiff": 1.7881393432617188e-7,
+      "restoreRmsDiff": 9.093346681639968e-11,
       "name": "RYFT",
       "category": "space"
     },
     {
       "type": "multiTapDelay",
-      "defaultPeak": 0.6151624917984009,
+      "defaultPeak": 0.46905839443206787,
       "defaultFinite": true,
-      "bypassDelta": 0.41188306290450344,
+      "bypassDelta": 0.18032144772324948,
       "params": [
         {
           "id": "taps",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6302299499511719,
-          "maxPeak": 0.56819087266922,
+          "minPeak": 0.6354545950889587,
+          "maxPeak": 0.4668046832084656,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.42586481281610816
+          "delta": 0.27372856503457255
         },
         {
           "id": "t1Div",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5230177044868469,
-          "maxPeak": 0.7793126106262207,
+          "minPeak": 0.46905839443206787,
+          "maxPeak": 0.6097598671913147,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 1.0363189000397437
+          "delta": 0.4138148944542635
         },
         {
           "id": "t2Div",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6782354712486267,
-          "maxPeak": 0.6441868543624878,
+          "minPeak": 0.5018389225006104,
+          "maxPeak": 0.5214712619781494,
           "responsive": true,
-          "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.32534277567242753
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.2763825109778151
         },
         {
           "id": "t3Div",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.7332888841629028,
-          "maxPeak": 0.7159002423286438,
+          "minPeak": 0.46905839443206787,
+          "maxPeak": 0.5363004207611084,
           "responsive": true,
           "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 0.3907887070106992
+          "metric": "side",
+          "delta": 0.05800336146908503
         },
         {
           "id": "t4Div",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6151624917984009,
-          "maxPeak": 0.6151624917984009,
+          "minPeak": 0.46905839443206787,
+          "maxPeak": 0.46905839443206787,
           "responsive": false,
           "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 4.2446668067506916e-10
+          "metric": "",
+          "delta": 0
         },
         {
           "id": "spread",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5913518667221069,
-          "maxPeak": 0.6593850255012512,
+          "minPeak": 0.5282049775123596,
+          "maxPeak": 0.46905839443206787,
           "responsive": true,
           "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.3370252159739969
+          "metric": "dyn",
+          "delta": 0.11534186619540823
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5838385820388794,
-          "maxPeak": 0.8832460641860962,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.5816460251808167,
           "responsive": true,
           "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 0.4337372777736507
+          "metric": "dyn",
+          "delta": 0.2500667425261294
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6228976249694824,
-          "maxPeak": 0.6375088691711426,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.47954311966896057,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.13759360333113563
+          "delta": 0.3171685634565934
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 1.520969271659851,
+          "maxPeak": 0.8476262092590332,
           "responsive": true,
           "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 1.3344754356994677
+          "metric": "dyn",
+          "delta": 0.7045027505906607
         }
       ],
       "deadParams": [
@@ -2605,98 +2605,98 @@
       "presetsFinite": 6,
       "presetsTotal": 6,
       "hostProcesses": true,
-      "hostDelta": 11.413953975393053,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 2.245286916594941,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 0.5725601414725151,
+      "automationDelta": 0.05866015687285612,
       "automationFinite": true,
-      "restoreMaxDiff": 7.152557373046875e-7,
-      "restoreRmsDiff": 5.350345070986004e-10,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 6.028447547896327e-12,
       "name": "Multi-Tap",
       "category": "space"
     },
     {
       "type": "reverb",
-      "defaultPeak": 0.4032425880432129,
+      "defaultPeak": 0.40262776613235474,
       "defaultFinite": true,
-      "bypassDelta": 0.2172157422365383,
+      "bypassDelta": 0.22710786628390545,
       "params": [
         {
           "id": "decay",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.29945632815361023,
-          "maxPeak": 0.4722953736782074,
+          "minPeak": 0.2993212938308716,
+          "maxPeak": 0.4710952937602997,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.314559290435377
+          "delta": 0.3103733418684973
         },
         {
           "id": "predelay",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.32171279191970825,
+          "minPeak": 0.3220002353191376,
           "maxPeak": 0.32798805832862854,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.3034777801664125
+          "delta": 0.3038356175829701
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.34225618839263916,
-          "maxPeak": 0.40437471866607666,
+          "minPeak": 0.3379990756511688,
+          "maxPeak": 0.40376901626586914,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.21991042497288002
+          "delta": 0.22808067838388948
         },
         {
           "id": "damping",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3116195797920227,
-          "maxPeak": 0.4166727662086487,
+          "minPeak": 0.30768969655036926,
+          "maxPeak": 0.41791868209838867,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.2778561111711825
+          "delta": 0.28603878938876937
         },
         {
           "id": "diffusion",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3804550766944885,
-          "maxPeak": 0.4430563449859619,
+          "minPeak": 0.3762919008731842,
+          "maxPeak": 0.43279001116752625,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.25638408694980036
+          "delta": 0.19940062306076484
         },
         {
           "id": "mod",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3981284499168396,
-          "maxPeak": 0.39305248856544495,
+          "minPeak": 0.39767518639564514,
+          "maxPeak": 0.3945920765399933,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.161755126843748
+          "delta": 0.16809285736762647
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.7413192391395569,
+          "maxPeak": 0.7233394384384155,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.3779963163749797
+          "delta": 0.35453678352058765
         }
       ],
       "deadParams": [],
@@ -2705,19 +2705,19 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 8.500463334044616,
+      "hostDelta": 8.500502671580419,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.22167855563904,
+      "automationDelta": 2.2216785572661237,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 5.899252900810859e-10,
+      "restoreRmsDiff": 1.627500036599382e-10,
       "name": "Reverb",
       "category": "space"
     },
     {
       "type": "delay",
-      "defaultPeak": 0.39264410734176636,
+      "defaultPeak": 0.40539783239364624,
       "defaultFinite": true,
       "bypassDelta": 0.43332182934517144,
       "params": [
@@ -2725,7 +2725,7 @@
           "id": "time",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.34108850359916687,
+          "minPeak": 0.34188178181648254,
           "maxPeak": 0.350103497505188,
           "responsive": true,
           "bestExtreme": "max",
@@ -2736,56 +2736,56 @@
           "id": "sync",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39264410734176636,
-          "maxPeak": 0.4506646692752838,
+          "minPeak": 0.40539783239364624,
+          "maxPeak": 0.4482244849205017,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.16820437373781455
+          "delta": 0.16836699954449957
         },
         {
           "id": "pingPong",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39264410734176636,
+          "minPeak": 0.40539783239364624,
           "maxPeak": 0.3706904649734497,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.1768277320026497
+          "delta": 0.1761895740340145
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39264410734176636,
-          "maxPeak": 0.39264410734176636,
+          "minPeak": 0.40539783239364624,
+          "maxPeak": 0.40539783239364624,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.8950766286148163e-7
+          "delta": 6.311965220446388e-7
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39264410734176636,
-          "maxPeak": 0.39264410734176636,
+          "minPeak": 0.40539783239364624,
+          "maxPeak": 0.40539783239364624,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.5449523092240733e-7
+          "delta": 3.2894328750380767e-7
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.8812370300292969,
+          "maxPeak": 0.8534612655639648,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 1119.3305197410514
+          "delta": 1086.552726616047
         }
       ],
       "deadParams": [
@@ -2797,13 +2797,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.5078988618581757,
+      "hostDelta": 0.5078991657249482,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.2433317003149178,
+      "automationDelta": 0.24333172488087593,
       "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 5.67091603540125e-11,
+      "restoreMaxDiff": 1.1920928955078125e-7,
+      "restoreRmsDiff": 9.300256561617426e-11,
       "name": "Delay",
       "category": "space"
     },
@@ -2853,99 +2853,99 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.07507612843632784,
+      "hostDelta": 0.075078657206578,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.0007590803357212707,
+      "automationDelta": 0.0007590970155765864,
       "automationExempt": "duck-depth lane keeps average loudness flat on an already-dynamic bus; write path instrumented OK, depth covered by the dedicated pump check",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 3.111430900175089e-12,
+      "restoreRmsDiff": 9.042369701304143e-13,
       "name": "Pump",
       "category": "movement"
     },
     {
       "type": "distortion",
-      "defaultPeak": 1.04884672164917,
+      "defaultPeak": 1.0488406419754028,
       "defaultFinite": true,
-      "bypassDelta": 2.609713464992029,
+      "bypassDelta": 2.6097095139634647,
       "params": [
         {
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6709197163581848,
-          "maxPeak": 1.2732181549072266,
+          "minPeak": 0.6708512306213379,
+          "maxPeak": 1.273218035697937,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.6352909645385775
+          "delta": 0.6352920539018058
         },
         {
           "id": "character",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.04884672164917,
-          "maxPeak": 0.8717330694198608,
+          "minPeak": 1.0488406419754028,
+          "maxPeak": 0.8717005252838135,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.3560236092864611
+          "delta": 0.35602464040831255
         },
         {
           "id": "bias",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.0238947868347168,
-          "maxPeak": 1.1765196323394775,
+          "minPeak": 1.0239129066467285,
+          "maxPeak": 1.1765937805175781,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 5.422744107364273
+          "delta": 5.424216362146894
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.1437537670135498,
-          "maxPeak": 1.0395724773406982,
+          "minPeak": 1.143707036972046,
+          "maxPeak": 1.0395691394805908,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.11648712212399562
+          "delta": 0.1164873221386971
         },
         {
           "id": "preHpfHz",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.04884672164917,
+          "minPeak": 1.0488406419754028,
           "maxPeak": 1.0353002548217773,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.515975828991146
+          "delta": 0.5159752991996717
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 1.04884672164917,
+          "maxPeak": 1.0488406419754028,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.7229697011415813
+          "delta": 0.7229693979164548
         },
         {
           "id": "output",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.2650546133518219,
-          "maxPeak": 4.169177532196045,
+          "minPeak": 0.26505306363105774,
+          "maxPeak": 4.169153213500977,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 2.980318346602113
+          "delta": 2.980318416048218
         }
       ],
       "deadParams": [],
@@ -2954,13 +2954,13 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 2.411869060724652,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 2.4128784459960864,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 0.20525131171410085,
+      "automationDelta": 0.20525854377160954,
       "automationFinite": true,
-      "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 2.278611610354201e-11,
+      "restoreMaxDiff": 0.0005743503570556641,
+      "restoreRmsDiff": 1.4090702606052389e-7,
       "name": "Distortion",
       "category": "character"
     },
@@ -3045,13 +3045,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.9677715178502543,
+      "hostDelta": 0.9677197472061535,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.9989037830090489,
+      "automationDelta": 0.9988181489980617,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 7.643187512721846e-12,
+      "restoreRmsDiff": 1.0663610212666638e-11,
       "name": "Bitcrusher",
       "category": "character"
     },
@@ -3121,11 +3121,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.44370976090431213,
-          "maxPeak": 0.8977091908454895,
+          "maxPeak": 0.8976755738258362,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.9785255993691152
+          "delta": 0.9785888867110285
         },
         {
           "id": "voices",
@@ -3178,39 +3178,39 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 3.0900447546965366,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 3.09003669080353,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.2355402485555222,
+      "automationDelta": 2.234997647734196,
       "automationFinite": true,
       "restoreMaxDiff": 4.76837158203125e-7,
-      "restoreRmsDiff": 5.798771214130652e-13,
+      "restoreRmsDiff": 3.5855672318633794e-10,
       "name": "Chorus",
       "category": "movement"
     },
     {
       "type": "phaser",
-      "defaultPeak": 0.4740642309188843,
+      "defaultPeak": 0.47396308183670044,
       "defaultFinite": true,
-      "bypassDelta": 0.09120481146579432,
+      "bypassDelta": 0.09122590842743808,
       "params": [
         {
           "id": "rate",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4875486195087433,
-          "maxPeak": 0.5406494140625,
+          "minPeak": 0.4878586530685425,
+          "maxPeak": 0.5406477451324463,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.6526164913682664
+          "delta": 0.6525861045769942
         },
         {
           "id": "sync",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4740642309188843,
-          "maxPeak": 0.4740642309188843,
+          "minPeak": 0.47396308183670044,
+          "maxPeak": 0.47396308183670044,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -3220,67 +3220,67 @@
           "id": "depth",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.48383116722106934,
-          "maxPeak": 0.47671616077423096,
+          "minPeak": 0.48403385281562805,
+          "maxPeak": 0.47672951221466064,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.047059547153485516
+          "delta": 0.047086453156712386
         },
         {
           "id": "center",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4437103867530823,
-          "maxPeak": 0.4622885584831238,
+          "minPeak": 0.44364798069000244,
+          "maxPeak": 0.46229827404022217,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.027503285002733874
+          "delta": 0.027477957986738105
         },
         {
           "id": "spread",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.47473496198654175,
-          "maxPeak": 0.4736379384994507,
+          "minPeak": 0.4747138023376465,
+          "maxPeak": 0.4735552668571472,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.00007553344715913074
+          "delta": 0.0000753461356253738
         },
         {
           "id": "feedback",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4591781497001648,
-          "maxPeak": 0.49270084500312805,
+          "minPeak": 0.4592879116535187,
+          "maxPeak": 0.49271145462989807,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.175555839670911
+          "delta": 0.1752633437169886
         },
         {
           "id": "stages",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4617086350917816,
-          "maxPeak": 0.4824713468551636,
+          "minPeak": 0.46170666813850403,
+          "maxPeak": 0.4833434820175171,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.04690926041518068
+          "delta": 0.04686998370710002
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.5186989903450012,
+          "maxPeak": 0.5184853076934814,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.08358175340455168
+          "delta": 0.08359947076302782
         }
       ],
       "deadParams": [
@@ -3292,13 +3292,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.9278980104673984,
+      "hostDelta": 3.927739937182306,
       "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 0.5602637799335366,
+      "automationDelta": 0.560263776863023,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0024433135986328125,
-      "restoreRmsDiff": 0.000007954690126259022,
+      "restoreMaxDiff": 0.000021964311599731445,
+      "restoreRmsDiff": 3.295211627998541e-8,
       "name": "Phaser",
       "category": "movement"
     },
@@ -3357,11 +3357,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.5461906790733337,
-          "maxPeak": 0.5198642015457153,
+          "maxPeak": 0.5208897590637207,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.27721969611464176
+          "delta": 0.2774348462659142
         }
       ],
       "deadParams": [],
@@ -3370,87 +3370,87 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 3.5721377467678854,
+      "hostDelta": 3.571992990649638,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.5350972733447149,
+      "automationDelta": 0.5350972734275727,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.308717485788e-10,
+      "restoreRmsDiff": 1.3134375342671644e-10,
       "name": "Haas Widener",
       "category": "movement"
     },
     {
       "type": "sidechain",
-      "defaultPeak": 0.19328723847866058,
+      "defaultPeak": 0.19361579418182373,
       "defaultFinite": true,
-      "bypassDelta": 0.6413069687387091,
+      "bypassDelta": 0.6424829225796448,
       "params": [
         {
           "id": "threshold",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.005143699701875448,
+          "minPeak": 0.005135698709636927,
           "maxPeak": 0.4668046832084656,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.7878991584632913
+          "delta": 1.7970691839826083
         },
         {
           "id": "ratio",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.16389434039592743,
+          "maxPeak": 0.16436675190925598,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.7878991584632913
+          "delta": 1.7970691839826083
         },
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1769130825996399,
+          "minPeak": 0.1769133061170578,
           "maxPeak": 0.4668046832084656,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.7649163687175005
+          "delta": 1.7747310750979304
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.3819236755371094,
-          "maxPeak": 0.12612122297286987,
+          "maxPeak": 0.1255316138267517,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 1.067140796226526
+          "delta": 1.0745515191984856
         },
         {
           "id": "amount",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.19199085235595703,
+          "maxPeak": 0.19566968083381653,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.7878991584632913
+          "delta": 1.7970691839826083
         },
         {
           "id": "splitFreq",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.19357095658779144,
-          "maxPeak": 0.3705523610115051,
+          "minPeak": 0.19204118847846985,
+          "maxPeak": 0.37056535482406616,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.9019614773391242
+          "delta": 0.9085657655861373
         }
       ],
       "deadParams": [],
@@ -3460,77 +3460,77 @@
       "presetsTotal": 4,
       "hostExemptReason": "host has no key track — dry path is correct; sweep carries the processing evidence",
       "hostProcesses": false,
-      "hostDelta": 3.693306753593898e-9,
+      "hostDelta": 3.742881997599401e-9,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 8.130088784719227e-9,
+      "automationDelta": 2.1521473408287746e-9,
       "automationExempt": "host has no key track — dry path is correct; sweep carries the processing evidence",
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 9.752519809090293e-11,
+      "restoreRmsDiff": 3.244622428240652e-11,
       "name": "Sidechain",
       "category": "dynamics"
     },
     {
       "type": "transient",
-      "defaultPeak": 0.49613288044929504,
+      "defaultPeak": 0.4966534674167633,
       "defaultFinite": true,
-      "bypassDelta": 0.06938135272704331,
+      "bypassDelta": 0.07018393804824254,
       "params": [
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.44521352648735046,
-          "maxPeak": 0.5841175317764282,
+          "minPeak": 0.4449634253978729,
+          "maxPeak": 0.5861998200416565,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.22528144718366772
+          "delta": 0.22734946196978822
         },
         {
           "id": "sustain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4012925326824188,
-          "maxPeak": 0.5909732580184937,
+          "minPeak": 0.40209075808525085,
+          "maxPeak": 0.5912162065505981,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.19198749276976954
+          "delta": 0.19186166333317167
         },
         {
           "id": "sensitivity",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4785359799861908,
-          "maxPeak": 0.5137298107147217,
+          "minPeak": 0.4787442088127136,
+          "maxPeak": 0.514562726020813,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.042581048659383045
+          "delta": 0.042999584603387965
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.49613288044929504,
+          "maxPeak": 0.4966534674167633,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.06487989766243167
+          "delta": 0.06558119174937453
         },
         {
           "id": "output",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.03130386769771576,
-          "maxPeak": 7.863176345825195,
+          "minPeak": 0.0313367135822773,
+          "maxPeak": 7.871427059173584,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 14.848931926687056
+          "delta": 14.848931930762552
         }
       ],
       "deadParams": [],
@@ -3539,109 +3539,109 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 19.849808793709936,
+      "hostDelta": 19.849772180290636,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 10.380508663093932,
+      "automationDelta": 10.38598738656216,
       "automationFinite": true,
       "restoreMaxDiff": 0.000003814697265625,
-      "restoreRmsDiff": 3.7110873152302176e-11,
+      "restoreRmsDiff": 2.1193108814303885e-12,
       "name": "Transient Shaper",
       "category": "dynamics"
     },
     {
       "type": "drumBuss",
-      "defaultPeak": 0.6439364552497864,
+      "defaultPeak": 0.644573450088501,
       "defaultFinite": true,
-      "bypassDelta": 0.3383251520021769,
+      "bypassDelta": 0.33793935019488947,
       "params": [
         {
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3726581931114197,
-          "maxPeak": 0.6095255017280579,
+          "minPeak": 0.3726677894592285,
+          "maxPeak": 0.609692394733429,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.40341610458360366
+          "delta": 0.40333845589194783
         },
         {
           "id": "transient",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.9131731986999512,
-          "maxPeak": 0.509580135345459,
+          "minPeak": 0.9144022464752197,
+          "maxPeak": 0.5095697641372681,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 1.4446751395078221
+          "delta": 1.4485946054229752
         },
         {
           "id": "compressor",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.2667970657348633,
-          "maxPeak": 0.0472676120698452,
+          "minPeak": 1.266777753829956,
+          "maxPeak": 0.04713868349790573,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 1.2620283374979675
+          "delta": 1.2616297201274043
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5799494981765747,
-          "maxPeak": 0.6508321762084961,
+          "minPeak": 0.5802874565124512,
+          "maxPeak": 0.6514775156974792,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.21170355598288507
+          "delta": 0.21188243828653192
         },
         {
           "id": "boomFrequency",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6461717486381531,
-          "maxPeak": 0.6402689218521118,
+          "minPeak": 0.6467987298965454,
+          "maxPeak": 0.6409183740615845,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.029797927538611674
+          "delta": 0.029797981320764125
         },
         {
           "id": "boomAmount",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6482350826263428,
-          "maxPeak": 0.6171280145645142,
+          "minPeak": 0.648875892162323,
+          "maxPeak": 0.6176842451095581,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.059578347944425805
+          "delta": 0.05944975155332951
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.6439364552497864,
+          "maxPeak": 0.644573450088501,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.2527974248231319
+          "delta": 0.2525819650536954
         },
         {
           "id": "output",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.08106679469347,
-          "maxPeak": 5.114968776702881,
+          "minPeak": 0.08114698529243469,
+          "maxPeak": 5.120028972625732,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 6.942140761869648
+          "delta": 6.94214815600726
         }
       ],
       "deadParams": [],
@@ -3650,131 +3650,131 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 4.634588182038264,
+      "hostDelta": 4.634577505051458,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 3.3733353727601516,
+      "automationDelta": 3.3737816155001,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00011873245239257812,
-      "restoreRmsDiff": 8.430343128898553e-8,
+      "restoreMaxDiff": 0.0031577348709106445,
+      "restoreRmsDiff": 2.812684645605962e-7,
       "name": "Drum Buss",
       "category": "character"
     },
     {
       "type": "bassBuss",
-      "defaultPeak": 0.5337226390838623,
+      "defaultPeak": 0.5337221622467041,
       "defaultFinite": true,
-      "bypassDelta": 0.38957480113825294,
+      "bypassDelta": 0.3896087209367684,
       "params": [
         {
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39433178305625916,
-          "maxPeak": 0.61649489402771,
+          "minPeak": 0.3943377733230591,
+          "maxPeak": 0.6165083646774292,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.4385159486511744
+          "delta": 0.43847391268754077
         },
         {
           "id": "subEnhance",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5296920537948608,
-          "maxPeak": 0.5886151194572449,
+          "minPeak": 0.5296970009803772,
+          "maxPeak": 0.5887329578399658,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.35921285328532443
+          "delta": 0.35944674679811217
         },
         {
           "id": "subOsc",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5337226390838623,
-          "maxPeak": 0.5337226390838623,
+          "minPeak": 0.5337221622467041,
+          "maxPeak": 0.5337221622467041,
           "responsive": false,
-          "bestExtreme": "min",
+          "bestExtreme": "max",
           "metric": "centroid",
-          "delta": 1.9934690610149817e-9
+          "delta": 1.1392121403747063e-9
         },
         {
           "id": "subFrequency",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5299967527389526,
-          "maxPeak": 0.555998682975769,
+          "minPeak": 0.5299935936927795,
+          "maxPeak": 0.5559985041618347,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.05031600301809362
+          "delta": 0.05031464453280129
         },
         {
           "id": "compression",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 1.3171144723892212,
-          "maxPeak": 0.03394545987248421,
+          "minPeak": 1.3171112537384033,
+          "maxPeak": 0.03394521772861481,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.5008842534260238
+          "delta": 1.5008066965504618
         },
         {
           "id": "attack",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5176489353179932,
-          "maxPeak": 0.9175665974617004,
+          "minPeak": 0.517648458480835,
+          "maxPeak": 0.9180322289466858,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.7033573390594005
+          "delta": 0.7041179570324139
         },
         {
           "id": "release",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5517456531524658,
-          "maxPeak": 0.5003504157066345,
+          "minPeak": 0.5517454147338867,
+          "maxPeak": 0.5004305243492126,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.05883880605061094
+          "delta": 0.0586941838168848
         },
         {
           "id": "monoBassFrequency",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3932197093963623,
-          "maxPeak": 0.4754336476325989,
+          "minPeak": 0.3933022618293762,
+          "maxPeak": 0.4754354953765869,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.2783421017176911
+          "delta": 0.2784894131476259
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.5337226390838623,
+          "maxPeak": 0.5337221622467041,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 0.28035540139266885
+          "delta": 0.28037296763230146
         },
         {
           "id": "output",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.06719155609607697,
-          "maxPeak": 4.239470958709717,
+          "minPeak": 0.06719186156988144,
+          "maxPeak": 4.239469051361084,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 6.941128403205067
+          "delta": 6.941124834779275
         }
       ],
       "deadParams": [
@@ -3785,98 +3785,98 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 6.559613356916011,
+      "hostDelta": 6.55965477562315,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 2.802170999232394,
+      "automationDelta": 2.8015963826691883,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00011730194091796875,
-      "restoreRmsDiff": 1.4022656003404648e-7,
+      "restoreMaxDiff": 0.00012826919555664062,
+      "restoreRmsDiff": 5.486936171078347e-7,
       "name": "Bass Buss",
       "category": "character"
     },
     {
       "type": "utility",
-      "defaultPeak": 0.5176730751991272,
+      "defaultPeak": 0.5175406336784363,
       "defaultFinite": true,
-      "bypassDelta": 0.0652621369755968,
+      "bypassDelta": 0.06517470445200638,
       "params": [
         {
           "id": "gain",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.03584098443388939,
-          "maxPeak": 8.161806106567383,
+          "minPeak": 0.03584692254662514,
+          "maxPeak": 8.159716606140137,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 14.844814935720546
+          "delta": 14.844814927404082
         },
         {
           "id": "pan",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.8408140540122986,
-          "maxPeak": 0.8408142328262329,
+          "minPeak": 0.840686023235321,
+          "maxPeak": 0.8406862020492554,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 7.7594925636459235
+          "delta": 7.7621483809326195
         },
         {
           "id": "width",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4204126000404358,
-          "maxPeak": 0.7029625773429871,
+          "minPeak": 0.420348584651947,
+          "maxPeak": 0.7030586004257202,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.000001176241771
+          "delta": 1.0000011756260878
         },
         {
           "id": "monoBassFrequency",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5176730751991272,
+          "minPeak": 0.5175406336784363,
           "maxPeak": 0.42441070079803467,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.9214489385953171
+          "delta": 0.9216066774029542
         },
         {
           "id": "phaseLeft",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5176730751991272,
-          "maxPeak": 0.5176730751991272,
+          "minPeak": 0.5175406336784363,
+          "maxPeak": 0.5175406336784363,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.013386027615216662
+          "delta": 0.013387411096332751
         },
         {
           "id": "phaseRight",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5176730751991272,
-          "maxPeak": 0.5104848146438599,
+          "minPeak": 0.5175405740737915,
+          "maxPeak": 0.5103533267974854,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.013386028863142854
+          "delta": 0.013387411906178322
         },
         {
           "id": "dcBlock",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5176730751991272,
-          "maxPeak": 0.5661259889602661,
+          "minPeak": 0.5175406336784363,
+          "maxPeak": 0.5657938718795776,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.015652350674995995
+          "delta": 0.015936911829025544
         }
       ],
       "deadParams": [
@@ -3889,206 +3889,110 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 214.3925290723994,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 214.3873000551497,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 9.512326289289105,
+      "automationDelta": 9.511848061238345,
       "automationFinite": true,
-      "restoreMaxDiff": 0.0005270540714263916,
-      "restoreRmsDiff": 2.1643996907908925e-11,
+      "restoreMaxDiff": 0.00099945068359375,
+      "restoreRmsDiff": 1.5172611442540425e-11,
       "name": "Utility",
       "category": "tone"
     },
     {
       "type": "gate",
-      "defaultPeak": 0.4668046832084656,
-      "defaultFinite": true,
+      "sweepError": "runner: TimeoutError: page.goto: Timeout 180000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:5221/\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "defaultPeak": 0,
+      "defaultFinite": false,
       "bypassDelta": 0,
-      "params": [
-        {
-          "id": "threshold",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.0018583828350529075,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "side",
-          "delta": 0.996018928475627
-        },
-        {
-          "id": "hysteresis",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "attack",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "hold",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "release",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "range",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "lookahead",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        },
-        {
-          "id": "mix",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.4668046832084656,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "",
-          "delta": 0
-        }
-      ],
-      "deadParams": [
-        "hysteresis",
-        "attack",
-        "hold",
-        "release",
-        "range",
-        "lookahead",
-        "mix"
-      ],
+      "params": [],
+      "deadParams": [],
       "unstableParams": [],
-      "rapidSwingFinite": true,
-      "presetsFinite": 3,
-      "presetsTotal": 3,
-      "hostProcesses": true,
-      "hostDelta": 0.08644365379866398,
-      "hostBypassEqualsRemoved": true,
-      "hostFinite": true,
-      "automationDelta": 0.07221095380034087,
-      "automationFinite": true,
-      "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 4.323484969798804e-11,
-      "name": "Gate",
-      "category": "dynamics"
+      "rapidSwingFinite": false,
+      "presetsFinite": 0,
+      "presetsTotal": 0,
+      "hostError": "not reached",
+      "hostProcesses": false,
+      "hostDelta": 0,
+      "hostBypassEqualsRemoved": false,
+      "hostFinite": false,
+      "automationDelta": 0,
+      "automationFinite": false,
+      "restoreMaxDiff": null,
+      "name": "gate",
+      "category": "unknown"
     },
     {
       "type": "shimmer",
-      "defaultPeak": 0.48043304681777954,
+      "defaultPeak": 0.5530338287353516,
       "defaultFinite": true,
-      "bypassDelta": 0.37333898996876513,
+      "bypassDelta": 0.36929776373737316,
       "params": [
         {
           "id": "amount",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.2998834550380707,
-          "maxPeak": 1.0729960203170776,
+          "minPeak": 0.28942355513572693,
+          "maxPeak": 1.415749430656433,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 1.1077531633988225
+          "delta": 1.1072263719793272
         },
         {
           "id": "tone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.6535702347755432,
-          "maxPeak": 0.4149278700351715,
+          "minPeak": 0.6274060010910034,
+          "maxPeak": 0.41121137142181396,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.13077837452849733
+          "delta": 0.10792792833786587
         },
         {
           "id": "decay",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.48043301701545715,
-          "maxPeak": 0.48043304681777954,
+          "minPeak": 0.5530338287353516,
+          "maxPeak": 0.5530338287353516,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.030005507089138836
+          "delta": 0.024885466514046262
         },
         {
           "id": "shift",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.48043304681777954,
-          "maxPeak": 0.48043304681777954,
+          "minPeak": 0.5530338287353516,
+          "maxPeak": 0.5530338287353516,
           "responsive": false,
           "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.0040222538963291185
+          "metric": "rms",
+          "delta": 0.004563355457724035
         },
         {
           "id": "shimmer",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.39775994420051575,
-          "maxPeak": 0.5355484485626221,
+          "minPeak": 0.47354012727737427,
+          "maxPeak": 0.6060296297073364,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.13085359038970965
+          "delta": 0.12498806363636181
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.8243800401687622,
+          "maxPeak": 1.0553816556930542,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 72.424497549969
+          "delta": 71.93504451705283
         }
       ],
       "deadParams": [
@@ -4099,109 +4003,109 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.1758624689778008,
+      "hostDelta": 0.17586242459572599,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.6412788742013891,
+      "automationDelta": 0.6412557462771925,
       "automationFinite": true,
-      "restoreMaxDiff": 5.960464477539062e-7,
-      "restoreRmsDiff": 9.525883818784303e-11,
+      "restoreMaxDiff": 6.556510925292969e-7,
+      "restoreRmsDiff": 1.0560275837157385e-10,
       "name": "Shimmer",
       "category": "character"
     },
     {
       "type": "fxeq",
-      "defaultPeak": 0.4703792929649353,
+      "defaultPeak": 0.47037938237190247,
       "defaultFinite": true,
-      "bypassDelta": 0.06417383062135038,
+      "bypassDelta": 0.06417343990793865,
       "params": [
         {
           "id": "inputGainDb",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.029678914695978165,
+          "minPeak": 0.02967892773449421,
           "maxPeak": 0.9660519957542419,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 1.8677102000489867
+          "delta": 1.8664610627932106
         },
         {
           "id": "bandCount",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4733773171901703,
-          "maxPeak": 0.4703792929649353,
+          "minPeak": 0.4733774662017822,
+          "maxPeak": 0.47037938237190247,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.015566856019360014
+          "delta": 0.015565586900596319
         },
         {
           "id": "crossoverOrder",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.49745702743530273,
-          "maxPeak": 0.51634281873703,
+          "minPeak": 0.49745744466781616,
+          "maxPeak": 0.5163166522979736,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.1862086230761419
+          "delta": 0.18620976940766557
         },
         {
           "id": "crossoverEqualize",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4387122690677643,
-          "maxPeak": 0.4703792929649353,
+          "minPeak": 0.43871262669563293,
+          "maxPeak": 0.47037938237190247,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 0.09157942452909523
+          "delta": 0.09157943958870562
         },
         {
           "id": "mix",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.5134223103523254,
-          "maxPeak": 0.4703792929649353,
+          "minPeak": 0.5134366154670715,
+          "maxPeak": 0.47037938237190247,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.08114375529532415
+          "delta": 0.08114316614302741
         },
         {
           "id": "outputGainDb",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.02967892773449421,
-          "maxPeak": 7.455009460449219,
+          "minPeak": 0.029678933322429657,
+          "maxPeak": 7.455010890960693,
           "responsive": true,
           "bestExtreme": "max",
-          "metric": "side",
-          "delta": 14.848931933106096
+          "metric": "rms",
+          "delta": 14.848931932544437
         },
         {
           "id": "limiterEnabled",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4703916907310486,
-          "maxPeak": 0.4703792929649353,
+          "minPeak": 0.47039178013801575,
+          "maxPeak": 0.47037938237190247,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.021512864006887608
+          "delta": 0.021512864114087184
         },
         {
           "id": "limiterCeilDb",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.40536510944366455,
-          "maxPeak": 0.4703792929649353,
+          "minPeak": 0.3984377384185791,
+          "maxPeak": 0.47037938237190247,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
-          "delta": 0.12015724133413794
+          "delta": 0.12173788031097507
         }
       ],
       "deadParams": [
@@ -4212,13 +4116,13 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 8.621912216885388,
+      "hostDelta": 8.6221386693932,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 9.748625350012478,
+      "automationDelta": 9.76037219845166,
       "automationFinite": true,
-      "restoreMaxDiff": 0.000008702278137207031,
-      "restoreRmsDiff": 7.807133106180367e-10,
+      "restoreMaxDiff": 0.000017642974853515625,
+      "restoreRmsDiff": 8.247465046118416e-9,
       "name": "PRISM",
       "category": "character"
     },
@@ -4266,11 +4170,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.2710718512535095,
+          "maxPeak": 0.27107271552085876,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.29011851571590064
+          "delta": 0.29002915194122475
         },
         {
           "id": "transient.enabled",
@@ -4341,120 +4245,244 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 34.58409489596047,
+      "hostDelta": 34.58254058143323,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 9.51224548531808,
+      "automationDelta": 9.51223526087897,
       "automationFinite": true,
       "restoreMaxDiff": 0.000003814697265625,
-      "restoreRmsDiff": 5.388877996165407e-11,
+      "restoreRmsDiff": 3.7060586964431307e-11,
       "name": "VLYX",
       "category": "dynamics"
     },
     {
-      "type": "morphdynamics",
-      "defaultPeak": 0.37389135360717773,
+      "type": "ozvena",
+      "defaultPeak": 0.4387497305870056,
       "defaultFinite": true,
-      "bypassDelta": 0.11996779673892274,
+      "bypassDelta": 0.8971368330196468,
       "params": [
         {
           "id": "global.inputGainDb",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.045616548508405685,
-          "maxPeak": 1,
+          "minPeak": 0.027683237567543983,
+          "maxPeak": 0.966865599155426,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 2.886365439024742
+          "delta": 1.6738488263700744
         },
         {
-          "id": "global.mix",
+          "id": "blendPad.x",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.4619311988353729,
-          "maxPeak": 0.37389135360717773,
+          "minPeak": 0.39255523681640625,
+          "maxPeak": 0.5007307529449463,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.1963874698722162
+        },
+        {
+          "id": "blendPad.y",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.43955978751182556,
+          "maxPeak": 0.5128747820854187,
           "responsive": true,
           "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.13566640910027775
+          "metric": "dyn",
+          "delta": 0.3757649835566654
         },
         {
-          "id": "macro.pressure",
+          "id": "global.dryWet",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.36524245142936707,
-          "maxPeak": 0.6811710000038147,
+          "minPeak": 0.5013460516929626,
+          "maxPeak": 0.9660509824752808,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.9378949534027669
-        },
-        {
-          "id": "macro.punch",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.3166389465332031,
-          "maxPeak": 0.5312171578407288,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 0.26672389954088765
-        },
-        {
-          "id": "macro.body",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4518522620201111,
-          "maxPeak": 0.42990443110466003,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "rms",
-          "delta": 0.1863001783715081
-        },
-        {
-          "id": "macro.texture",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.37136003375053406,
-          "maxPeak": 0.3764227032661438,
-          "responsive": false,
-          "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 0.016061698652399804
-        },
-        {
-          "id": "macro.motion",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.36118853092193604,
-          "maxPeak": 0.397482305765152,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "side",
-          "delta": 0.08748556734893344
-        },
-        {
-          "id": "macro.space",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.3897300362586975,
-          "maxPeak": 0.41876569390296936,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 0.20463629800545854
+          "delta": 1.798290280181321
         },
         {
           "id": "global.outputGainDb",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.03725346550345421,
-          "maxPeak": 5.872373580932617,
+          "minPeak": 0.027683235704898834,
+          "maxPeak": 0.966865599155426,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.673848850763343
+        },
+        {
+          "id": "engines.e1.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4801029860973358,
+          "maxPeak": 0.4387497305870056,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.07595058349306412
+        },
+        {
+          "id": "engines.e2.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.44677454233169556,
+          "maxPeak": 0.4387497305870056,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.10979701913401442
+        },
+        {
+          "id": "engines.e3.enabled",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.43955978751182556,
+          "maxPeak": 0.4387497305870056,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.3757649835566654
+        },
+        {
+          "id": "global.quality",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4373273253440857,
+          "maxPeak": 0.4374907314777374,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.003362860492480312
+        }
+      ],
+      "deadParams": [
+        "global.quality"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 0,
+      "presetsTotal": 0,
+      "hostProcesses": true,
+      "hostDelta": 8.845863532938138,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 2.3575200600759576,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 2.0862348118712205e-9,
+      "name": "VØID",
+      "category": "space"
+    },
+    {
+      "type": "morphdynamics",
+      "defaultPeak": 0.3727288246154785,
+      "defaultFinite": true,
+      "bypassDelta": 0.12003855312717843,
+      "params": [
+        {
+          "id": "global.inputGainDb",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.04493819922208786,
+          "maxPeak": 1,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 2.885957730030965
+        },
+        {
+          "id": "global.mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4618079662322998,
+          "maxPeak": 0.3727288246154785,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.1357575056026496
+        },
+        {
+          "id": "macro.pressure",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.3645762503147125,
+          "maxPeak": 0.6812810897827148,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.9383167749675297
+        },
+        {
+          "id": "macro.punch",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.3166543245315552,
+          "maxPeak": 0.5301774740219116,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.2673518952818721
+        },
+        {
+          "id": "macro.body",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.45118066668510437,
+          "maxPeak": 0.42989087104797363,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 0.18626687261844896
+        },
+        {
+          "id": "macro.texture",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.37109872698783875,
+          "maxPeak": 0.37505608797073364,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.016070862238455642
+        },
+        {
+          "id": "macro.motion",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.3600936532020569,
+          "maxPeak": 0.39619460701942444,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 14.826153732370944
+          "delta": 0.08748533091433588
+        },
+        {
+          "id": "macro.space",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.3894237279891968,
+          "maxPeak": 0.41887766122817993,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.20519284034713414
+        },
+        {
+          "id": "global.outputGainDb",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.03720714896917343,
+          "maxPeak": 5.854115009307861,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 14.826154002984095
         }
       ],
       "deadParams": [
@@ -4465,15 +4493,82 @@
       "presetsFinite": 0,
       "presetsTotal": 0,
       "hostProcesses": true,
-      "hostDelta": 13.265341508358917,
-      "hostBypassEqualsRemoved": false,
+      "hostDelta": 13.265208995687946,
+      "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 10.11300112622023,
+      "automationDelta": 10.112989125180153,
       "automationFinite": true,
-      "restoreMaxDiff": 0.17040865868330002,
-      "restoreRmsDiff": 2.0501984043832548e-10,
+      "restoreMaxDiff": 0.0000019073486328125,
+      "restoreRmsDiff": 2.875921868467681e-11,
       "name": "MORPH",
       "category": "dynamics"
+    },
+    {
+      "type": "ringMod",
+      "defaultPeak": 0.42534610629081726,
+      "defaultFinite": true,
+      "bypassDelta": 0.23513250672415728,
+      "params": [
+        {
+          "id": "frequency",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.15985289216041565,
+          "maxPeak": 0.4478093683719635,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 2.51031604424367
+        },
+        {
+          "id": "feedback",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.42534610629081726,
+          "maxPeak": 0.41253891587257385,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.08195806971968975
+        },
+        {
+          "id": "xmode",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.42534610629081726,
+          "maxPeak": 0.42534610629081726,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "centroid",
+          "delta": 0.09905698358435544
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.42534610629081726,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.307416001845118
+        }
+      ],
+      "deadParams": [],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.1349510904673406,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.24119805530016722,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 8.330427045862133e-11,
+      "name": "Ring Mod",
+      "category": "movement"
     },
     {
       "type": "tapeStop",
@@ -4548,13 +4643,13 @@
       "presetsFinite": 3,
       "presetsTotal": 3,
       "hostProcesses": true,
-      "hostDelta": 0.3733516762211584,
+      "hostDelta": 0.37335057691696333,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.21607741760241392,
+      "automationDelta": 0.21610040190035099,
       "automationFinite": true,
-      "restoreMaxDiff": 1.341104507446289e-7,
-      "restoreRmsDiff": 1.2835951914030882e-11,
+      "restoreMaxDiff": 1.1920928955078125e-7,
+      "restoreRmsDiff": 4.448887836021789e-11,
       "name": "Tape Stop",
       "category": "movement"
     },
@@ -4635,11 +4730,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.5003603100776672,
-          "maxPeak": 1.1465762853622437,
+          "maxPeak": 1.1832261085510254,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.5701123758739655
+          "delta": 1.565889396117912
         },
         {
           "id": "delayTime",
@@ -4709,13 +4804,13 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 0.7606179253649747,
+      "hostDelta": 0.7606288043209157,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 1.309064864964538,
+      "automationDelta": 1.3091196566327254,
       "automationFinite": true,
-      "restoreMaxDiff": 0.00001728534698486328,
-      "restoreRmsDiff": 3.8694078963598055e-9,
+      "restoreMaxDiff": 0.00001615285873413086,
+      "restoreRmsDiff": 3.074014390378642e-9,
       "name": "Freq Shift",
       "category": "movement"
     },
@@ -4787,21 +4882,21 @@
       "presetsFinite": 4,
       "presetsTotal": 4,
       "hostProcesses": true,
-      "hostDelta": 8.657666136744355,
+      "hostDelta": 8.657335961484014,
       "hostBypassEqualsRemoved": true,
       "hostFinite": true,
-      "automationDelta": 0.305787977509735,
+      "automationDelta": 0.30589103665006745,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 5.930352017090213e-11,
+      "restoreRmsDiff": 4.587805895030863e-11,
       "name": "Pitch Shift",
       "category": "character"
     },
     {
       "type": "vinyl",
-      "defaultPeak": 0.1560104340314865,
+      "defaultPeak": 0.15601038932800293,
       "defaultFinite": true,
-      "bypassDelta": 0.8076834589002171,
+      "bypassDelta": 0.8076834572545791,
       "params": [
         {
           "id": "amount",
@@ -4818,8 +4913,8 @@
           "id": "crackle",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1555582582950592,
-          "maxPeak": 0.1560104340314865,
+          "minPeak": 0.15555821359157562,
+          "maxPeak": 0.15601038932800293,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
@@ -4829,30 +4924,30 @@
           "id": "crackleTone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1560104340314865,
-          "maxPeak": 0.1560104340314865,
+          "minPeak": 0.15601038932800293,
+          "maxPeak": 0.15601038932800293,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "side",
-          "delta": 0.000026314323433701095
+          "delta": 0.000026314327282821737
         },
         {
           "id": "crackleDecay",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1560104340314865,
-          "maxPeak": 0.1560104340314865,
+          "minPeak": 0.15601038932800293,
+          "maxPeak": 0.15601038932800293,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.00004356526347248004
+          "delta": 0.000043565224574743906
         },
         {
           "id": "hiss",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1555565893650055,
-          "maxPeak": 0.15685321390628815,
+          "minPeak": 0.1555565446615219,
+          "maxPeak": 0.15685316920280457,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
@@ -4862,8 +4957,8 @@
           "id": "hissTone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.15579435229301453,
-          "maxPeak": 0.15600429475307465,
+          "minPeak": 0.15579430758953094,
+          "maxPeak": 0.15600425004959106,
           "responsive": false,
           "bestExtreme": "min",
           "metric": "dyn",
@@ -4873,19 +4968,19 @@
           "id": "rumble",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1560104340314865,
-          "maxPeak": 0.15577206015586853,
+          "minPeak": 0.15601038932800293,
+          "maxPeak": 0.15577201545238495,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.003199483395725164
+          "delta": 0.0031994885533119296
         },
         {
           "id": "rumbleTone",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1560104340314865,
-          "maxPeak": 0.1560104340314865,
+          "minPeak": 0.15601038932800293,
+          "maxPeak": 0.15601038932800293,
           "responsive": false,
           "bestExtreme": "max",
           "metric": "",
@@ -4896,17 +4991,17 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.1592860072851181,
-          "maxPeak": 0.15791329741477966,
+          "maxPeak": 0.15791325271129608,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "centroid",
-          "delta": 0.07903566024250161
+          "delta": 0.07903566477839855
         },
         {
           "id": "wow",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.16117268800735474,
+          "minPeak": 0.16117267310619354,
           "maxPeak": 0.15141652524471283,
           "responsive": true,
           "bestExtreme": "min",
@@ -4917,12 +5012,12 @@
           "id": "flutterRate",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.15707673132419586,
+          "minPeak": 0.15707668662071228,
           "maxPeak": 0.1617918312549591,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "dyn",
-          "delta": 0.07326944509066431
+          "delta": 0.0732694529586123
         },
         {
           "id": "flutter",
@@ -4939,30 +5034,30 @@
           "id": "drive",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.1560104340314865,
+          "minPeak": 0.15601038932800293,
           "maxPeak": 0.3414114713668823,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 1.5106115234387523
+          "delta": 1.510611526556852
         },
         {
           "id": "year",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.3528812825679779,
-          "maxPeak": 0.11517320573329926,
+          "minPeak": 0.35288095474243164,
+          "maxPeak": 0.11517316848039627,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "rms",
-          "delta": 1.7774266423868759
+          "delta": 1.7774266034243371
         },
         {
           "id": "toneLp",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.10853466391563416,
-          "maxPeak": 0.1560104340314865,
+          "minPeak": 0.10853461921215057,
+          "maxPeak": 0.15601038932800293,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "dyn",
@@ -4972,19 +5067,19 @@
           "id": "toneHp",
           "minFinite": true,
           "maxFinite": true,
-          "minPeak": 0.15900655090808868,
+          "minPeak": 0.15900403261184692,
           "maxPeak": 0.16106869280338287,
           "responsive": true,
           "bestExtreme": "max",
           "metric": "rms",
-          "delta": 0.4144826842791996
+          "delta": 0.41448268315456843
         },
         {
           "id": "width",
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.13089385628700256,
-          "maxPeak": 0.19063089787960052,
+          "maxPeak": 0.19063083827495575,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
@@ -4995,11 +5090,11 @@
           "minFinite": true,
           "maxFinite": true,
           "minPeak": 0.4668046832084656,
-          "maxPeak": 0.1560104340314865,
+          "maxPeak": 0.15601038932800293,
           "responsive": true,
           "bestExtreme": "min",
           "metric": "side",
-          "delta": 4.199760739671129
+          "delta": 4.199760695177172
         }
       ],
       "deadParams": [
@@ -5016,13 +5111,13 @@
       "presetsFinite": 7,
       "presetsTotal": 7,
       "hostProcesses": true,
-      "hostDelta": 3.0621852266500795,
-      "hostBypassEqualsRemoved": true,
+      "hostDelta": 3.062019767331309,
+      "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 1.453345777390626,
+      "automationDelta": 1.4533109253367062,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.317821569573128e-10,
+      "restoreRmsDiff": 4.208351555548857e-11,
       "name": "Vinyl Suite",
       "category": "character"
     },
@@ -5137,205 +5232,14 @@
       "presetsFinite": 2,
       "presetsTotal": 2,
       "hostProcesses": true,
-      "hostDelta": 0.48898603279866704,
-      "hostBypassEqualsRemoved": true,
-      "hostFinite": true,
-      "automationDelta": 0.06279655939779777,
-      "automationFinite": true,
-      "restoreMaxDiff": 1.7881393432617188e-7,
-      "restoreRmsDiff": 1.3495384847858526e-10,
-      "name": "Beat Mangler",
-      "category": "movement"
-    },
-    {
-      "type": "ozvena",
-      "defaultPeak": 0.4382043480873108,
-      "defaultFinite": true,
-      "bypassDelta": 0.9101449779188345,
-      "params": [
-        {
-          "id": "global.inputGainDb",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.02764882519841194,
-          "maxPeak": 0.9673014879226685,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 1.6747079475491276
-        },
-        {
-          "id": "blendPad.x",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.393341064453125,
-          "maxPeak": 0.49876952171325684,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "dyn",
-          "delta": 0.1990590212548277
-        },
-        {
-          "id": "blendPad.y",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4387698173522949,
-          "maxPeak": 0.5132099986076355,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 0.3802068212513086
-        },
-        {
-          "id": "global.dryWet",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.5013460516929626,
-          "maxPeak": 0.9660509824752808,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 1.790480158951134
-        },
-        {
-          "id": "global.outputGainDb",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.02764882519841194,
-          "maxPeak": 0.9673014879226685,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 1.6747079918245136
-        },
-        {
-          "id": "engines.e1.enabled",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.48115554451942444,
-          "maxPeak": 0.4382043480873108,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.07604032038303143
-        },
-        {
-          "id": "engines.e2.enabled",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4475266933441162,
-          "maxPeak": 0.4382043480873108,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 0.13051684033549615
-        },
-        {
-          "id": "engines.e3.enabled",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4387698173522949,
-          "maxPeak": 0.4382043480873108,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 0.3802068212513086
-        },
-        {
-          "id": "global.quality",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4382134675979614,
-          "maxPeak": 0.43847060203552246,
-          "responsive": false,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 0.0033162974642771317
-        }
-      ],
-      "deadParams": [
-        "global.quality"
-      ],
-      "unstableParams": [],
-      "rapidSwingFinite": true,
-      "presetsFinite": 0,
-      "presetsTotal": 0,
-      "hostProcesses": true,
-      "hostDelta": 8.845950612741595,
+      "hostDelta": 0.48898603683847297,
       "hostBypassEqualsRemoved": false,
       "hostFinite": true,
-      "automationDelta": 2.3575200478919083,
+      "automationDelta": 0.06279191133263332,
       "automationFinite": true,
       "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 4.891250487735615e-10,
-      "name": "VØID",
-      "category": "space"
-    },
-    {
-      "type": "ringMod",
-      "defaultPeak": 0.42534610629081726,
-      "defaultFinite": true,
-      "bypassDelta": 0.23513250672415728,
-      "params": [
-        {
-          "id": "frequency",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.15985289216041565,
-          "maxPeak": 0.4478093683719635,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "dyn",
-          "delta": 2.51031604424367
-        },
-        {
-          "id": "feedback",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.42534610629081726,
-          "maxPeak": 0.41253891587257385,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "rms",
-          "delta": 0.08195806971968975
-        },
-        {
-          "id": "xmode",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.42534610629081726,
-          "maxPeak": 0.42534610629081726,
-          "responsive": true,
-          "bestExtreme": "max",
-          "metric": "centroid",
-          "delta": 0.09905698358435544
-        },
-        {
-          "id": "mix",
-          "minFinite": true,
-          "maxFinite": true,
-          "minPeak": 0.4668046832084656,
-          "maxPeak": 0.42534610629081726,
-          "responsive": true,
-          "bestExtreme": "min",
-          "metric": "side",
-          "delta": 0.307416001845118
-        }
-      ],
-      "deadParams": [],
-      "unstableParams": [],
-      "rapidSwingFinite": true,
-      "presetsFinite": 3,
-      "presetsTotal": 3,
-      "hostProcesses": true,
-      "hostDelta": 0.13495221154120246,
-      "hostBypassEqualsRemoved": true,
-      "hostFinite": true,
-      "automationDelta": 0.24119674619791542,
-      "automationFinite": true,
-      "restoreMaxDiff": 2.384185791015625e-7,
-      "restoreRmsDiff": 2.805088728638221e-10,
-      "name": "Ring Mod",
+      "restoreRmsDiff": 2.928565125868355e-10,
+      "name": "Beat Mangler",
       "category": "movement"
     }
   ],
@@ -5372,7 +5276,7 @@
       "kind": "analog",
       "name": "Analog Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.36075225472450256,
+      "defaultPeak": 0.3607522249221802,
       "unstableParams": [],
       "deadParams": [
         "filterEnv",
@@ -5435,7 +5339,7 @@
       "kind": "texture",
       "name": "Texture Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.18165776133537292,
+      "defaultPeak": 0.18165777623653412,
       "unstableParams": [],
       "deadParams": [
         "space",
@@ -5455,7 +5359,7 @@
       "kind": "wavetable",
       "name": "Wavetable Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.3897079527378082,
+      "defaultPeak": 0.3897077739238739,
       "unstableParams": [],
       "deadParams": [
         "table",
@@ -5486,255 +5390,9 @@
       ],
       "wiredParams": 14,
       "totalParams": 15
-    },
-    {
-      "kind": "keys",
-      "name": "Keys",
-      "defaultAudible": true,
-      "defaultPeak": 0.038110796362161636,
-      "unstableParams": [],
-      "deadParams": [
-        "spread",
-        "lfoRate",
-        "lfoSync",
-        "lfoDepth",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 16,
-      "totalParams": 26
-    },
-    {
-      "kind": "organ",
-      "name": "Organ",
-      "defaultAudible": true,
-      "defaultPeak": 0.2523030936717987,
-      "unstableParams": [],
-      "deadParams": [
-        "click",
-        "glide"
-      ],
-      "wiredParams": 10,
-      "totalParams": 12
-    },
-    {
-      "kind": "strings",
-      "name": "Strings",
-      "defaultAudible": true,
-      "defaultPeak": 0.6430032849311829,
-      "unstableParams": [],
-      "deadParams": [
-        "vibrato",
-        "vibRate",
-        "vibDelay"
-      ],
-      "wiredParams": 7,
-      "totalParams": 10
-    },
-    {
-      "kind": "bell",
-      "name": "Bell",
-      "defaultAudible": true,
-      "defaultPeak": 0.23508836328983307,
-      "unstableParams": [],
-      "deadParams": [
-        "shimmer",
-        "strike"
-      ],
-      "wiredParams": 5,
-      "totalParams": 7
-    },
-    {
-      "kind": "reese",
-      "name": "Reese",
-      "defaultAudible": true,
-      "defaultPeak": 0.19035495817661285,
-      "unstableParams": [],
-      "deadParams": [
-        "movement",
-        "moveRate",
-        "glide"
-      ],
-      "wiredParams": 7,
-      "totalParams": 10
-    },
-    {
-      "kind": "clav",
-      "name": "Clavinet",
-      "defaultAudible": true,
-      "defaultPeak": 0.025064636021852493,
-      "unstableParams": [],
-      "deadParams": [
-        "click",
-        "cutoff",
-        "resonance"
-      ],
-      "wiredParams": 5,
-      "totalParams": 8
-    },
-    {
-      "kind": "acid",
-      "name": "Acid 303",
-      "defaultAudible": true,
-      "defaultPeak": 0.4130555987358093,
-      "unstableParams": [],
-      "deadParams": [
-        "envMod",
-        "glide"
-      ],
-      "wiredParams": 7,
-      "totalParams": 9
-    },
-    {
-      "kind": "brass",
-      "name": "Synth Brass",
-      "defaultAudible": true,
-      "defaultPeak": 0.6132485866546631,
-      "unstableParams": [],
-      "deadParams": [
-        "bite",
-        "sweep",
-        "sweepTime"
-      ],
-      "wiredParams": 6,
-      "totalParams": 9
-    },
-    {
-      "kind": "fm",
-      "name": "FM",
-      "defaultAudible": true,
-      "defaultPeak": 0.3161630630493164,
-      "unstableParams": [],
-      "deadParams": [
-        "fbDecay"
-      ],
-      "wiredParams": 12,
-      "totalParams": 13
-    },
-    {
-      "kind": "pluck",
-      "name": "Pluck Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.020687807351350784,
-      "unstableParams": [],
-      "deadParams": [
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 12,
-      "totalParams": 18
-    },
-    {
-      "kind": "flute",
-      "name": "Flute",
-      "defaultAudible": true,
-      "defaultPeak": 0.3236413598060608,
-      "unstableParams": [],
-      "deadParams": [
-        "breath",
-        "breathTone",
-        "vibrato",
-        "vibRate",
-        "vibDelay",
-        "glide"
-      ],
-      "wiredParams": 9,
-      "totalParams": 15
-    },
-    {
-      "kind": "logdrum",
-      "name": "Log Drum",
-      "defaultAudible": true,
-      "defaultPeak": 0.31045085191726685,
-      "unstableParams": [],
-      "deadParams": [
-        "glide",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 10,
-      "totalParams": 17
-    },
-    {
-      "kind": "spectral",
-      "name": "Spectral Pad",
-      "defaultAudible": true,
-      "defaultPeak": 0.14844821393489838,
-      "unstableParams": [],
-      "deadParams": [
-        "skew",
-        "resonance",
-        "motionRate",
-        "motionSync",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 12,
-      "totalParams": 22
-    },
-    {
-      "kind": "vocalchop",
-      "name": "Vocal Chop",
-      "defaultAudible": true,
-      "defaultPeak": 0.04885624349117279,
-      "unstableParams": [],
-      "deadParams": [
-        "sharp",
-        "cons",
-        "morph",
-        "release",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modBAmt",
-        "modLfoRate"
-      ],
-      "wiredParams": 9,
-      "totalParams": 20
-    },
-    {
-      "kind": "drumsynth",
-      "name": "Drum Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.11606655269861221,
-      "unstableParams": [],
-      "deadParams": [
-        "snap"
-      ],
-      "wiredParams": 7,
-      "totalParams": 8
     }
   ],
-  "interactions": {
-    "chainFinite": true,
-    "chainPeak": 0.7913976907730103,
-    "chainRestoreDiff": 0.17130706831812859,
-    "duplicateDelta": 0.11067370251191268,
-    "duplicateFinite": true,
-    "liveInsertRemoveClean": true,
-    "rapidSyncsClean": true,
-    "notes": [
-      "chain restore diff=1.71e-1"
-    ]
-  },
-  "startedAt": "2026-09-27T10:18:00.701Z",
-  "finishedAt": "2026-09-27T11:26:12.570Z"
+  "interactions": null,
+  "startedAt": "2026-09-27T15:13:04.397Z",
+  "finishedAt": null
 }

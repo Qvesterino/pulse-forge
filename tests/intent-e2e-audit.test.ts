@@ -2,10 +2,14 @@ import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
 import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudness";
 import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
-import { applyFaderIntent, applyTempoIntent } from "../src/intent/conversation";
-import { applyCompoundIntent } from "../src/intent/compound";
+import { applyFaderIntent, applyTempoIntent, faderReadback, type FaderIntent } from "../src/intent/conversation";
+import { applyCompoundIntent, compoundReadback } from "../src/intent/compound";
 import { applyClipArrangeOps } from "../src/intent/arrangeWords";
-import { applyPresetIntentCommand } from "../src/intent/preset-intent";
+import { applyPresetIntentCommand, parsePresetIntent, presetReadback } from "../src/intent/preset-intent";
+import { effectReadback } from "../src/intent/mix";
+import { parseProductionIntent, productionReadback } from "../src/intent/production";
+import { parseExactIntent } from "../src/intent/exact";
+import { exactReadback } from "../src/commands/commands";
 import { resolveProductionTargets } from "../src/intent/production";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
@@ -1221,5 +1225,110 @@ describe("E2E save/export/record routing", () => {
     }
     expect(store.undoStackLength).toBe(0);
     expect(store.doc).toBe(doc);
+  });
+});
+
+// ─── 17. VERIFICATION READ-BACK — resulting state, not dispatch ─────────────
+
+describe("E2E readback verification loop", () => {
+  it("fader readback shows real before→after gains, pads included", () => {
+    const doc = testDoc();
+    const intent: FaderIntent = { targets: ["bass"], pads: ["kick"], direction: "up", amount: "big" };
+    const after = applyFaderIntent(doc, intent)!.execute(doc);
+    const readback = faderReadback(doc, after, intent);
+    const bass = bassTrackOf(doc);
+    expect(readback).toContain(`${bass.name} ${bass.gain}`);
+    expect(readback).toMatch(/→/);
+  });
+
+  it("absolute set readback shows the exact landing (50% → 0.75)", () => {
+    const doc = testDoc();
+    const intent: FaderIntent = { targets: ["bass"], direction: "set", percent: 50 };
+    const after = applyFaderIntent(doc, intent)!.execute(doc);
+    expect(faderReadback(doc, after, intent)).toContain("→0.75");
+  });
+
+  it("clamped fader readback shows the honest floor (o 300% → 0)", () => {
+    const doc = testDoc();
+    const intent: FaderIntent = { targets: ["bass"], direction: "down", percent: 100 };
+    const after = applyFaderIntent(doc, intent)!.execute(doc);
+    expect(faderReadback(doc, after, intent)).toMatch(/→0(\.0+)?$/m);
+  });
+
+  it("effect readback shows the knob landing; set-mode shows the clamped value", () => {
+    const doc = withLead();
+    const more = parseEffectIntent("viac delayu na leade")!;
+    const afterMore = applyEffectIntent(doc, more).execute(doc);
+    expect(effectReadback(doc, afterMore, more)).toMatch(/mix 0\.\d+→0\.\d+ on Lead/);
+
+    const setIntent = parseEffectIntent("set the lead reverb mix to 250%")!;
+    const afterSet = applyEffectIntent(doc, setIntent).execute(doc);
+    const maxMix = EFFECT_META.reverb.params.find((param) => param.id === "mix")!.max;
+    expect(effectReadback(doc, afterSet, setIntent)).toContain(`→${maxMix}`);
+
+    const remove = parseEffectIntent("remove reverb from the lead")!;
+    const afterRemove = applyEffectIntent(afterSet, remove).execute(afterSet);
+    expect(effectReadback(afterSet, afterRemove, remove)).toContain("−reverb on Lead");
+  });
+
+  it("production readback confirms the planned DSP with real param values", () => {
+    const doc = testDoc();
+    const intent = parseProductionIntent("make the drums darker")!;
+    const after = applyProductionIntentCommand(doc, intent).execute(doc);
+    const readback = productionReadback(doc, after, intent);
+    // darker plans { cutoff, mode, mix } — the first planned param reads back
+    expect(readback).toMatch(/svFilter cutoff=\d+(\.\d+)? Drums/);
+  });
+
+  it("preset readback verifies the presetId landed on every family track", () => {
+    const doc = testDoc();
+    const parsed = parsePresetIntent("load the warm sub preset on the bass")!;
+    if (!parsed.ok) throw new Error("expected preset parse");
+    const after = applyPresetIntentCommand(doc, parsed.intent).execute(doc);
+    const readback = presetReadback(after, parsed.intent);
+    const bassName = bassTrackOf(after).name;
+    expect(readback).toContain(`${bassName} ✓`);
+    // a wrong doc (preset never applied) must NOT verify
+    expect(presetReadback(doc, parsed.intent)).toContain("✗");
+  });
+
+  it("exact readback: mute/tempo/rename report the resulting state", () => {
+    const doc = testDoc();
+    const mute = parseExactIntent("mute the drums")!;
+    const afterMute = applyExactIntentCommand(doc, mute).execute(doc);
+    expect(exactReadback(doc, afterMute, mute)).toContain("mute ✓");
+
+    const tempo = parseExactIntent("set tempo to 142")!;
+    const afterTempo = applyExactIntentCommand(doc, tempo).execute(doc);
+    expect(exactReadback(doc, afterTempo, tempo)).toBe(`bpm ${doc.bpm}→142`);
+
+    const rename = parseExactIntent('rename the bass to "sub bass"')!;
+    const afterRename = applyExactIntentCommand(doc, rename).execute(doc);
+    expect(exactReadback(doc, afterRename, rename)).toContain('→ "sub bass"');
+  });
+
+  it("compound readback combines verified entries from every part kind", () => {
+    const store = new ProjectStore(withLead());
+    const before = store.doc;
+    const route = routeIntentText("zníž tempo a zvýš lead", store.doc);
+    if (route.kind !== "compound") throw new Error("expected compound route");
+    store.execute(applyCompoundIntent(store.doc, route.parts)!);
+    const readback = compoundReadback(before, store.doc, route.parts);
+    expect(readback).toMatch(/bpm \d+→\d+/);
+    expect(readback).toMatch(/Lead \d+(\.\d+)?→\d+(\.\d+)?/);
+  });
+
+  it("empty readback when nothing moved (no false verification)", () => {
+    const doc = testDoc();
+    const intent: FaderIntent = { targets: ["bass"], direction: "up", amount: "subtle" };
+    // gain already at max clamps to a no-op → readback reports nothing
+    const bass = bassTrackOf(doc);
+    const maxed = { ...doc, tracks: doc.tracks.map((t) => (t.id === bass.id ? { ...t, gain: 1.5 } : t)) };
+    const after = applyFaderIntent(maxed, intent);
+    if (after) {
+      expect(faderReadback(maxed, after.execute(maxed), intent)).toBe("");
+    } else {
+      expect(after).toBeNull();
+    }
   });
 });

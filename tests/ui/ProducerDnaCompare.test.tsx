@@ -69,7 +69,7 @@ describe("ProducerDnaCompare", () => {
     fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
 
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent(/niet páru s porovnateľným globálnym skóre a jasným rozdielom/i);
+    expect(status).toHaveTextContent(/niet nového páru s porovnateľným globálnym skóre a jasným rozdielom/i);
     expect(
       screen.getAllByRole("button", { name: "A" }).some((button) => button.getAttribute("aria-pressed") === "true"),
     ).toBe(false);
@@ -112,6 +112,10 @@ describe("ProducerDnaCompare", () => {
 
   it("lets the producer skip a suggested pair and proposes a different one next", () => {
     const { project, result } = buildFixture();
+    const probeResult: GenerationResult = {
+      ...result,
+      bank: result.bank?.map((candidate, index) => ({ ...candidate, globalScore: 0.7 - index * 0.02 })),
+    };
     const syncopationIndex = FEATURE_NAMES.indexOf("drums.syncopation");
     vi.spyOn(featureExtractor, "extractPatternFeatures").mockImplementation(({ pattern }) => {
       const values = new Float32Array(FEATURE_COUNT).fill(0.5);
@@ -127,7 +131,7 @@ describe("ProducerDnaCompare", () => {
     });
     vi.spyOn(window.crypto, "getRandomValues").mockReturnValue(new Uint8Array([0]) as never);
     const onAudition = vi.fn();
-    render(<ProducerDnaCompare project={project} result={result} onAudition={onAudition} />);
+    render(<ProducerDnaCompare project={project} result={probeResult} onAudition={onAudition} />);
     fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
     fireEvent.click(screen.getByRole("button", { name: "Zrušiť slepé porovnanie" }));
 

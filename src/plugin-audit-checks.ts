@@ -139,6 +139,9 @@ export interface InteractionAudit {
   chainFinite: boolean;
   chainPeak: number;
   chainRestoreDiff: number;
+  /** 3× same-doc render must be sample-identical (Phase 1 determinism gate). */
+  chainDeterministic: boolean;
+  chainDeterminismDiff: number;
   duplicateDelta: number;
   duplicateFinite: boolean;
   liveInsertRemoveClean: boolean;
@@ -611,21 +614,14 @@ async function hostTestEffect(
   // State restore: the SAME doc through a JSON round-trip must render the
   // same mix (worklet offline renders are deterministic).
   // State restore: the SAME doc through a JSON round-trip must render the
-  // same mix. Some render-path state alternates between two stable variants
-  // on consecutive renders (measured on high-feedback delay configs), so the
-  // doc is rendered twice and the restored render is compared against BOTH -
-  // a genuine restore failure matches neither.
+  // same mix. (Native DelayNode feedback cycles used to alternate between
+  // two stable variants across renders — the multitap worklet port closed
+  // that; the strict single-pair comparison is the regression gate.)
   const restored = normalizeProject(JSON.parse(JSON.stringify(doc)));
   const restoreRender = await renderDoc(restored, bank);
-  const on2 = await renderDoc(doc, bank);
-  const restoreMaxDiff = Math.min(maxDiff(on, restoreRender), maxDiff(on2, restoreRender));
+  const restoreMaxDiff = maxDiff(on, restoreRender);
   const onRms = metricsOf(on).rms;
-  const on2Rms = metricsOf(on2).rms;
-  const restoredRms = metricsOf(restoreRender).rms;
-  const restoreRmsDiff = Math.min(
-    Math.abs(onRms - restoredRms) / Math.max(onRms, 1e-6),
-    Math.abs(on2Rms - restoredRms) / Math.max(on2Rms, 1e-6),
-  );
+  const restoreRmsDiff = Math.abs(onRms - metricsOf(restoreRender).rms) / Math.max(onRms, 1e-6);
 
   // Automation: a lane stepping the strongest param mid-pattern must
   // audibly move the output vs the SAME doc without the lane. The lane is
@@ -759,6 +755,8 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
     chainFinite: false,
     chainPeak: 0,
     chainRestoreDiff: Number.POSITIVE_INFINITY,
+    chainDeterministic: false,
+    chainDeterminismDiff: Number.POSITIVE_INFINITY,
     duplicateDelta: 0,
     duplicateFinite: false,
     liveInsertRemoveClean: false,
@@ -784,6 +782,15 @@ async function auditInteractions(base: ProjectDocument, bank: SampleBank): Promi
     result.chainPeak = metricsOf(chainRender).peak;
     const chainRestored = await renderDoc(normalizeProject(JSON.parse(JSON.stringify(chainDoc))), bank);
     result.chainRestoreDiff = maxDiff(chainRender, chainRestored);
+    // Determinism gate (Phase 1): two more renders of the SAME doc must be
+    // sample-identical to the first. The native-DelayNode feedback cycles
+    // used to flip between variants here (~8% RMS on high-feedback taps).
+    const chainRender2 = await renderDoc(chainDoc, bank);
+    const chainRender3 = await renderDoc(chainDoc, bank);
+    result.chainDeterminismDiff = Math.max(maxDiff(chainRender, chainRender2), maxDiff(chainRender, chainRender3));
+    result.chainDeterministic = result.chainDeterminismDiff <= 1e-6;
+    if (!result.chainDeterministic)
+      notes.push(`chain nondeterministic across renders (diff=${result.chainDeterminismDiff.toExponential(2)})`);
     if (!result.chainFinite) notes.push(`47-effect chain produced non-finite output (peak=${result.chainPeak})`);
     if (result.chainRestoreDiff > 1e-4) notes.push(`chain restore diff=${result.chainRestoreDiff.toExponential(2)}`);
   } catch (error) {

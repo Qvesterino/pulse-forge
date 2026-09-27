@@ -1668,6 +1668,15 @@ export function ArrangementPanel() {
     return Math.max(0, Math.floor((event.clientX - rect.left) / barWidth));
   };
 
+  // Audio trim/move/fade gestures need sub-bar precision. Keep the snapped
+  // bar helper above for scene clips, whose arrangement moves are bar-based.
+  const audioBarFromEvent = (event: React.PointerEvent): number => {
+    const lane = laneRef.current;
+    if (!lane) return 0;
+    const rect = lane.getBoundingClientRect();
+    return Math.max(0, (event.clientX - rect.left) / barWidth);
+  };
+
   const seekFromRulerEvent = (event: React.PointerEvent) => {
     const lane = laneRef.current;
     if (!lane) return;
@@ -1908,7 +1917,7 @@ export function ArrangementPanel() {
       origFadeIn: clip.fadeIn ?? 0,
       origFadeOut: clip.fadeOut ?? 0,
       origGain: clip.gain ?? 1,
-      grabBar: barFromEvent(event),
+      grabBar: audioBarFromEvent(event),
       grabX: event.clientX,
       grabY: event.clientY,
     };
@@ -1920,7 +1929,7 @@ export function ArrangementPanel() {
   const onAudioPointerMove = (event: React.PointerEvent) => {
     const cur = audioDragRef.current;
     if (!cur) return;
-    const bar = barFromEvent(event);
+    const bar = audioBarFromEvent(event);
     const delta = bar - cur.grabBar;
     const secPerBar = (BAR_TICKS * 60) / (doc.bpm * PPQ);
     if (cur.mode === "move") setAudioDrag({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });

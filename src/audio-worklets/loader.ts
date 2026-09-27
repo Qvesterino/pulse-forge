@@ -56,6 +56,7 @@ const CORE_TYPES = [
   "stutter",
   "tapeSat",
   "comb",
+  "multiTapDelay",
   "vowel",
   "duckDelay",
   "chorus",

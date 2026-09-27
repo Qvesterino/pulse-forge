@@ -1,18 +1,19 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
-import { applyExactIntentCommand, snapshot } from "../commands/commands";
+import { applyExactIntentCommand, exactReadback, snapshot } from "../commands/commands";
 import {
   applyFaderIntents,
   applyTempoIntent,
+  faderReadback,
   parseFaderIntent,
   parseTempoIntent,
   splitIntentClauses,
   type FaderIntent,
   type TempoIntent,
 } from "./conversation";
-import { applyEffectIntent, parseEffectIntent, type EffectIntent } from "./mix";
+import { applyEffectIntent, effectReadback, parseEffectIntent, type EffectIntent } from "./mix";
 import { parseExactIntent, type ExactIntentPlan } from "./exact";
-import { applyPresetIntentCommand, parsePresetIntent, type PresetIntent } from "./preset-intent";
+import { applyPresetIntentCommand, parsePresetIntent, presetReadback, type PresetIntent } from "./preset-intent";
 
 /**
  * CROSS-EXECUTOR COMPOUND INTENTS — several asks in one sentence, executed in

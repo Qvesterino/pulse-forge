@@ -5601,7 +5601,8 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
       const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");
       if (drum) {
         const families = classifyPads(drum.pads);
-        const familyPads = op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
+        const familyPads =
+          op.target === "hats" ? families.hats : op.target === "snare" ? families.snares : families.kicks;
         if (op.kind === "mute" && familyPads.length > 0) entries.push(`${op.target} mute=${familyPads[0].mute}`);
         if (op.kind === "solo" && familyPads.length > 0) entries.push(`${op.target} solo=${familyPads[0].solo}`);
         if (op.kind === "pan" && familyPads.length > 0) entries.push(`${op.target} pan=${fmt(familyPads[0].pan)}`);

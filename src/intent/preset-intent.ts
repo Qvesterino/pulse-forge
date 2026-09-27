@@ -1,5 +1,5 @@
 import type { Command } from "../commands/types";
-import type { ProjectDocument } from "../project-model/types";
+import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { applyInstrumentPreset, resolveExactTargetTracks, snapshot } from "../commands/commands";
 import { FACTORY_PRESETS } from "../presets/factory";
 import type { InstrumentPreset } from "../presets/types";
@@ -130,7 +130,7 @@ export function applyPresetIntentCommand(doc: ProjectDocument, intent: PresetInt
 export function presetReadback(after: ProjectDocument, intent: PresetIntent): string {
   const ids = resolveExactTargetTracks(after, intent.target);
   const entries = ids.map((id) => {
-    const track = after.tracks.find((candidate) => candidate.id === id);
+    const track = after.tracks.find((candidate): candidate is InstrumentTrack => candidate.id === id);
     if (!track) return "✗";
     return track.presetId === intent.preset.id ? `${track.name} ✓` : `${track.name} ✗`;
   });
