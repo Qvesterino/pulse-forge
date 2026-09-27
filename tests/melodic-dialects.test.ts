@@ -90,3 +90,52 @@ describe("melodic dialects", () => {
     }
   });
 });
+
+describe("melodic dialects wave 2 (ghettotech / baile / footwork / jungle / slaphouse)", () => {
+  it("all five dialects produce distinct bass different from the genre fallback", () => {
+    const house = musical(partsFor("house"));
+    for (const style of ["ghettotech", "baile", "footwork", "slaphouse"]) {
+      const dialect = partsFor("house", style);
+      expect(dialect.bass.length, style).toBeGreaterThan(0);
+      expect(musical(dialect).bass, style).not.toEqual(house.bass);
+    }
+    const jungle = partsFor("dnb", "jungle");
+    expect(jungle.bass.length).toBeGreaterThan(0);
+    expect(musical(jungle).bass).not.toEqual(house.bass);
+  });
+
+  it("jungle bass is the long deep sub — few notes, long durations", () => {
+    const jungle = musical(partsFor("dnb", "jungle")).bass;
+    // the patient sub: at most 3 notes per generated bar
+    expect(jungle.length).toBeLessThanOrEqual(24);
+    const avgDuration = jungle.reduce((sum, n) => sum + n.duration, 0) / jungle.length;
+    expect(avgDuration).toBeGreaterThan(240); // longer than a quarter at 120 bpm ticks
+  });
+
+  it("slaphouse bass is plucky — short notes, bouncy", () => {
+    const slap = musical(partsFor("house", "slaphouse")).bass;
+    expect(slap.length).toBeGreaterThanOrEqual(6);
+    for (const note of slap) {
+      expect(note.duration).toBeLessThanOrEqual(120); // 16th-note plucks max
+    }
+  });
+
+  it("every new dialect stays key-safe", () => {
+    const allowed = new Set([0, 2, 3, 5, 7, 8, 10]);
+    for (const [genre, style] of [
+      ["house", "ghettotech"],
+      ["house", "baile"],
+      ["house", "footwork"],
+      ["dnb", "jungle"],
+      ["house", "slaphouse"],
+    ] as const) {
+      const options = generateOptionsFromIntent(
+        normalizeIntent({ genre, style, seed: "melodic-dialect-fixture", length: 64 }),
+      );
+      const parts = generateMelodicParts(options, forkRandom("key-safety-2", "melody"), "C Natural Minor");
+      for (const note of parts.bass) {
+        expect(allowed.has(((note.pitch % 12) + 12) % 12), `${genre}.${style}`).toBe(true);
+      }
+    }
+  });
+});

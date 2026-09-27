@@ -862,6 +862,290 @@ export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
  * knows all three roles best. Aliases share arrays (dembowdom rides the
  * dembow chop; thrash/metalcore ride the metal gallop).
  */
+// ── Melodic dialects (wave 2) ─────────────────────────
+
+// Ghettotech: the banging 808 bounce — syncopated root stabs with Miami
+// bass pickups, short and hooky
+const GHETTOTECH_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const GHETTOTECH_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Sparse chant stab
+    [
+      { degree: 0, duration: 4, velocity: 0.7 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const GHETTOTECH_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Short electro licks — hooky, chromatic-feeling edges
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+// Baile funk: the tamborzão — punchy bass riding the syncopation, minimal
+// melody, call-and-response
+const BAILE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+    ],
+  ],
+};
+
+const BAILE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Minimal chant stab — one shout per bar
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 10, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const BAILE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Call-and-response short phrase
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 5, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 5, velocity: 0 },
+    ],
+  ],
+};
+
+// Footwork: jumpy polyrhythm — off-grid short notes with octave jumps,
+// repeating 2-3 note motifs
+const FOOTWORK_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 1, velocity: 0 },
+    ],
+  ],
+};
+
+const FOOTWORK_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Sparse — the battle is between bass and drums
+    [
+      { degree: -1, duration: 8, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+const FOOTWORK_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Manic repeated motif — 2-3 notes, machine-repeated
+    [
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 5, velocity: 0 },
+    ],
+  ],
+};
+
+// Jungle: THE chop bass — long deep sub notes under the fast break; the
+// contrast between frantic drums and patient sub IS the genre
+const JUNGLE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 8, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 6, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.8 },
+    ],
+  ],
+};
+
+const JUNGLE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Sparse reggae-ish skank stabs on the offbeats
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 5, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 5, velocity: 0 },
+    ],
+  ],
+};
+
+const JUNGLE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Ragga-ish stabs — sparse, punchy, patient
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.6 },
+    ],
+  ],
+};
+
+// Slap house: the slap — plucky short notes with fifth pops, bouncy and
+// minimal; chords stay out of the way
+const SLAPHOUSE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 1, velocity: 0.95 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+    ],
+  ],
+};
+
+const SLAPHOUSE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Long soft pad — the slap carries the identity
+    [
+      { degree: 0, duration: 8, velocity: 0.45 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 5, duration: 4, velocity: 0.4 },
+    ],
+  ],
+};
+
+const SLAPHOUSE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Sparse hook — patient, roomy
+    [
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
 export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "house.amapiano": [AMAPIANO_BASS, AMAPIANO_CHORD, AMAPIANO_LEAD],
   "house.dembow": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
@@ -869,6 +1153,11 @@ export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "house.metal": [METAL_BASS, METAL_CHORD, METAL_LEAD],
   "house.thrash": [METAL_BASS, METAL_CHORD, METAL_LEAD],
   "house.metalcore": [METAL_BASS, METAL_CHORD, METAL_LEAD],
+  "house.ghettotech": [GHETTOTECH_BASS, GHETTOTECH_CHORD, GHETTOTECH_LEAD],
+  "house.baile": [BAILE_BASS, BAILE_CHORD, BAILE_LEAD],
+  "house.footwork": [FOOTWORK_BASS, FOOTWORK_CHORD, FOOTWORK_LEAD],
+  "dnb.jungle": [JUNGLE_BASS, JUNGLE_CHORD, JUNGLE_LEAD],
+  "house.slaphouse": [SLAPHOUSE_BASS, SLAPHOUSE_CHORD, SLAPHOUSE_LEAD],
 };
 
 export const MELODIC_BY_PROFILE: Record<ProductionProfile, MelodicPatternData[]> = {
