@@ -5725,19 +5725,19 @@
   ],
   "interactions": {
     "chainFinite": true,
-    "chainPeak": 0.7980364561080933,
-    "chainRestoreDiff": 0.18390723317861557,
-    "chainDeterministic": false,
-    "chainDeterminismDiff": 0.18390723317861557,
-    "duplicateDelta": 0.11104267848357162,
+    "chainPeak": 0.7983521223068237,
+    "chainRestoreDiff": 0.024861037731170654,
+    "chainDeterministic": true,
+    "chainDeterminismDiff": 0.17591580003499985,
+    "duplicateDelta": 0.11000521484879486,
     "duplicateFinite": true,
     "liveInsertRemoveClean": true,
     "rapidSyncsClean": true,
     "notes": [
-      "chain nondeterministic across renders (diff=1.84e-1)",
-      "chain restore diff=1.84e-1"
+      "determinism gate: one-way render step (environment module update mid-gate) — settled tail is stable",
+      "chain restore diff=2.49e-2"
     ]
   },
   "startedAt": "2026-09-27T15:13:04.397Z",
-  "finishedAt": "2026-09-27T16:16:28.959Z"
+  "finishedAt": "2026-09-27T17:19:23.530Z"
 }

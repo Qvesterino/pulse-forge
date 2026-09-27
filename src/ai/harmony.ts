@@ -577,6 +577,37 @@ const TRANCE_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const DETROIT_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VI-VII (machine minor)",
+    genre: "detroit",
+    events: [
+      { degree: 0, quality: "min7", duration: 4, func: "T" },
+      { degree: 5, quality: "maj7", duration: 4, func: "T" },
+      { degree: 6, quality: "dom7", duration: 8, func: "D" },
+    ],
+  },
+  {
+    name: "i-iv-v (electro drive)",
+    genre: "detroit",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min", duration: 4, func: "S" },
+      { degree: 4, quality: "min7", duration: 8, func: "D" },
+    ],
+  },
+  {
+    name: "I-vi-ii-V (machine soul)",
+    genre: "detroit",
+    events: [
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -591,6 +622,7 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   boombap: BOOMBAP_PROGRESSIONS,
   amapiano: AMAPIANO_PROGRESSIONS,
   trance: TRANCE_PROGRESSIONS,
+  detroit: DETROIT_PROGRESSIONS,
 };
 
 /**

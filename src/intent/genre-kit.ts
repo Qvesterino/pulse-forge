@@ -147,6 +147,13 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 8, assetId: "factory.hat.closed" },
     { index: 10, assetId: "factory.hat.open" },
   ],
+  detroit: [
+    // The machine-funk kit: the 808 pure kick (the Belleville low end), the
+    // punch alt, and the hard closed hat for the tick chatter.
+    { index: 0, assetId: "factory.kick.808pure" },
+    { index: 1, assetId: "factory.kick.808drive" },
+    { index: 8, assetId: "factory.hat.closed" },
+  ],
 };
 
 /**
@@ -203,8 +210,11 @@ export const GENRE_FEEL: Partial<
   amapiano: { humanizeTiming: 0.09, humanizeVelocity: 0.15 },
   // Trance is the most grid-locked genre in the library — the arp and the
   // kick ARE the machine; a jittered trance read is a broken trance read.
-  trance: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
-};
+    trance: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
+    // Detroit rides a drum machine — near-zero jitter, the 808 timing is the
+    // composition (the "complete mistake" was a sequencer, per Derrick May).
+    detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
+  };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:
  * a non-zero humanize the user (or an earlier generation) already set wins,

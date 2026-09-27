@@ -104,6 +104,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Deep dubstep BEFORE the generic dubstep entry — the 140 Croydon sound is
   // its own lane (halftime, sub-heavy), not the brostep/riddim side.
   [/\bdeep dubstep\b|\buk dubstep\b|\b140 dubstep\b|\bdeep dub\b/, "trap"],
+  // Brostep / bass dubstep — the modern US drop-era lane (trap.bassdubstep,
+  // P2 wave). MUST sit above the generic dubstep entry.
+  [/\bbrostep\b|\bbass ?dubstep\b|\bbass music\b|\btearout dubstep\b/, "trap"],
   [/\bdubstep\b|\briddim\b|\bhybrid trap\b/, "trap"],
   // hip-hop sub-genre sweep — grime is a 140 UK floor (house family)
   [/\bgrime\b|\beski\b/, "house"],
@@ -140,16 +143,17 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bminimal dnb\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
   [/\bhard groove\b|\bhardgroove\b/, "techno"],
   // Detroit's two faces: "detroit techno" / "detroit electro" must not fall
-  // into the hip-hop "detroit rap" entry further down.
-  [/\bdetroit (?:techno|electro|house)\b/, "techno"],
-  [/\btechno (?:detroit|electro)\b/, "techno"],
+  // into the hip-hop "detroit rap" entry further down. Promoted to the
+  // first-class `detroit` genre (machine-funk lineage + electro school).
+  [/\bdetroit (?:techno|electro|house)\b/, "detroit"],
+  [/\btechno (?:detroit|electro)\b/, "detroit"],
   // Electronic sub-genre wave — progressive house, classic electro, big beat,
   // moombahton (house × dembow), slap house. Specific guards BEFORE the bare
   // "electro" entry, and "electro pop/swing" must not be stolen by it.
   [/\bprogressive house\b|\bprog house\b/, "house"],
   [/\belectro pop\b|\belectro swing\b/, "house"],
   [/\belectro house\b/, "house"],
-  [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b|\bclassic electro\b/, "techno"],
+  [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b|\bclassic electro\b/, "detroit"],
   [/\bbig beat\b|\bbreakbeat\b|\bnus?kool breaks\b/, "house"],
   [/\bmoombahton\b|\bmoombah(?:core|ton)?\b/, "house"],
   [/\bslap house\b|\bslaphouse\b|\bbrazilian bass\b/, "house"],
@@ -176,19 +180,19 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bvaporwave\b/, "ambient"],
   [/\bberlin school\b/, "techno"],
   [/\bkrautrock\b/, "techno"],
-  // Shoegaze / dream pop / noise pop — the wall-of-guitars family rides the
-  // rock lanes (house.altrock); a dedicated lane is researched in P1a.
-  // MUST sit above the generic \bpop\b genre entry — "dream pop" contains it.
+  // Shoegaze / dream pop / noise pop — the wall-of-guitars family rides
+  // house.shoegaze (dedicated P2 groove). MUST sit above the generic \bpop\b
+  // genre entry — "dream pop" contains it.
   [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "house"],
-  // Reggae / ska / roots — the one-drop family (trap.dancehall carries the
-  // snare-on-3 one-drop and the 88-105 pocket; dedicated reggae lane is P1a).
-  [/\breggae\b|\bska\b|\broots reggae\b/, "trap"],
-  // Nu jazz / broken beat / boogie / balearic / post-rock — depth lanes that
-  // ride existing house-family grooves (broken / funky / organic / altrock).
+  // Reggae / ska / roots — the one-drop family (house.reggae groove).
+  [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b/, "house"],
+  // Post-rock — the crescendo-guitar lane (house.shoegaze groove).
+  [/\bpost[- ]?rock\b/, "house"],
+  // Nu jazz / broken beat / boogie / balearic — depth lanes that ride
+  // existing house-family grooves (broken / funky / organic).
   [/\bnu ?jazz\b|\bnu[- ]?jazz\b|\bnew jazz\b|\buk jazz\b|\bjazz fusion\b|\bacid jazz\b/, "house"],
   [/\bboogie\b|\bboogie funk\b|\bsynth funk\b/, "house"],
   [/\bbalearic\b|\bchillout\b|\bchill out\b/, "house"],
-  [/\bpost[- ]?rock\b/, "house"],
   // pop wave — specifics BEFORE the generic "pop" entry; all ride existing
   // genres (dance-pop base = house, pop-rap = trap). "bedroom pop" above stays
   // first (more specific). SK "pop" is indeclinable, "popovú" stem covered.
@@ -347,6 +351,8 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\belectro house\b/, "dancefloor"],
   [/\belectro\b(?!\s+(?:pop|swing|house|hip hop))|\belectro funk\b/, "electro"],
   [/\bdeep dubstep\b|\buk dubstep\b|\b140 dubstep\b|\bdeep dub\b/, "deepdubstep"],
+  // Brostep / bass dubstep — the drop-era lane (trap.bassdubstep, P2 wave).
+  [/\bbrostep\b|\bbass ?dubstep\b|\bbass music\b|\btearout dubstep\b/, "bassdubstep"],
   // West Coast / G-funk (MUST sit above the generic "funk" entry — \bfunk\b
   // matches inside "g-funk" because '-' is a non-word char). SK stems
   // deaccented.
@@ -408,14 +414,26 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // contains "hardcore" and would otherwise be stolen by hardcorepunk.
   // Bare "hardcore" keeps the punk reading (deliberate; see genre table).
   [/\bhardstyle\b|\bhard style\b/, "hardstyle"],
-  [/\bhardcore techno\b|\bhappy hardcore\b|\bfrenchcore\b|\bterrorcore\b|\bspeedcore\b|\bhardcore rave\b/, "hard"],
-  [/\bgabber\b|\buptempo\b/, "hard"],
+  // Gabber family BEFORE the punk-hardcore entry. "hardcore techno" and
+  // friends ride techno.gabber (the dedicated 160-180 stomp, P2 wave);
+  // bare "hardcore" below keeps the punk reading (deliberate).
+  [/\bhardcore techno\b|\bhappy hardcore\b|\bfrenchcore\b|\bterrorcore\b|\bspeedcore\b|\bhardcore rave\b/, "gabber"],
+  [/\bgabber\b|\buptempo\b/, "gabber"],
   [/\bhardcore(?: punk)?\b/, "hardcorepunk"],
   [/\bpop[- ]?punk\b/, "poppunk"],
   [/\bindie(?: rock)?\b/, "indie"],
   // Ghettotech — Detroit's banging 808 bounce (house.ghettotech); the genre
   // word already routes to house via the g-house entry above.
+  // Detroit school tree — specific school phrases BEFORE the generic
+  // electro/genre entries. "detroit techno" / "detroit electro" genre-route
+  // ABOVE; these carry the style token.
   [/\bghetto ?tech\b|\bghettotech\b/, "ghettotech"],
+  // Detroit school tree.
+  [/\bbelleville\b|\bbelleville three\b/, "belleville"],
+  [/\bunderground resistance\b|\bur second wave\b/, "secondwave"],
+  [/\btechno ?bass\b/, "technobass"],
+  [/\bdetroit electro\b|\bcybotron\b/, "electro"],
+  [/\bminimal nation\b/, "minimal"],
   // Alté — the Lagos alternative lane (R&B/soul-tinged afrobeats) on the
   // afropop pocket.
   [/\balte\b/, "afropop"],
@@ -483,10 +501,9 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bhead ?nod\b|\bheadnod\b/, "headnod"],
   // Fred-style emotional UKG (house.heartbeat groove + FRED_FORM)
   [/\bheartbeat\b|\bsrdcov(?:y|ý) tep\b/, "heartbeat"],
-  // ── Depth lanes without a dedicated groove yet (closest honest pocket) ──
-  // Trip-hop / downtempo: the organic-instrument half-time pocket
-  // (ambient.organic — the Bonobo lane; a dedicated groove is P1a research).
-  [/\btrip[- ]?hop\b|\bdowntempo\b|\bdown[- ]?tempo\b/, "organic"],
+  // ── Dedicated lanes from the P2 wave (docs/VOCABULARY-GAP-RESEARCH.md) ──
+  // Trip-hop / downtempo: ambient.triphop — the dusty halftime pocket.
+  [/\btrip[- ]?hop\b|\bdowntempo\b|\bdown[- ]?tempo\b/, "triphop"],
   // Breakcore: chopped amens at DnB tempo (dnb.amen is the real pocket).
   [/\bbreakcore\b|\bbreak ?core\b|\bglitch ?core\b|\bdigital hardcore\b/, "amen"],
 ];

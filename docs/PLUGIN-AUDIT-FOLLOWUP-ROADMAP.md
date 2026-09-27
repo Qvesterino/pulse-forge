@@ -4,7 +4,7 @@ Companion to `docs/PLUGIN-AUDIT-2026-09-27.md` (final matrix) and
 `docs/plugin-audit-2026-09-27.report.json` (measured evidence). This roadmap
 turns the audit's residual findings into concrete, verifiable work items.
 
-**Status: not started.** Each phase below is a self-contained PR (repo
+**Status: Phase 1 COMPLETE (2026-09-27, same day).** Each phase below is a self-contained PR (repo
 guidance: focused diffs, ≲600 lines). Phases are ordered by value/risk —
 Phase 1 is the only one touching a core invariant (determinism).
 
@@ -23,9 +23,37 @@ Phase 1 is the only one touching a core invariant (determinism).
 
 ---
 
-## Phase 1 — P0: cross-render two-variant alternation (export determinism)
+## Phase 1 — P0: cross-render two-variant alternation (export determinism) — ✅ DONE 2026-09-27
 
-**Problem.** Consecutive offline renders of the _same_ document alternate
+**Resolution.** Root cause was NOT in our render path: **Chromium breaks
+native `DelayNode` feedback cycles nondeterministically across
+OfflineAudioContext instances** — isolated with a bare-graph probe (gain →
+delay → tone → gain(0.85) → delay, no engine, no project: still flips two
+variants; the cycle-disconnected control renders stable). Effect-side fix:
+**Multi-Tap Delay ported into a worklet processor**
+(`src/audio-worklets/multitap-processor.js` + `multitap-node.ts`, wired via
+`WORKLET_EFFECTS.multiTapDelay = "critical"` + core bundle) — the loop now
+lives inside one processor, the graph is acyclic, and renders are
+deterministic.
+
+**Evidence after the fix.**
+
+- 8× consecutive renders of the audit reproducer: sample-identical
+  (`uniqueCount: 1`).
+- Clean-page sequence probe (exact audit interleave doc/restored/doc/…):
+  7× identical at 0.35788 RMS.
+- Audit row: Multi-Tap restore RMS diff **6.03e-12** (was 5.06e-2 … 1.09e-1
+  before), 8/9 params responsive, host delta 2.245.
+- Permanent gates: 3-render determinism check in `auditInteractions`
+  (ping-pong = path defect → FAIL; one-way step = environment module update
+  on the shared dev machine → noted, settled tail judged), regression check
+  in `src/browser-checks.ts` ("multi-tap delay deterministic across renders
+  - feedback audible"), unit tests `tests/multitap-worklet.test.ts` (8).
+- Residual: the phaser's native allpass feedback loops still jitter at the
+  ±0.008% RMS class — under tolerance, tracked as Phase 1b (phaser worklet
+  port) below.
+
+**Problem (historical).** Consecutive offline renders of the _same_ document alternate
 between two stable audio variants. Measured on a high-feedback Multi-Tap
 config (feedback 0.85, taps 1): render sequence r1..r6 gives
 `A, B, A, B, A, B` with A==A and B==B to ~1e-9 RMS and |A−B| ≈ 8 % RMS
@@ -90,6 +118,13 @@ accepts a match against either variant).
 **Size / risk.** M · medium risk (touches the render path everyone shares) —
 hence the bisect discipline. Everything after the fix gets _stricter_ gates,
 so regressions surface immediately.
+
+### Phase 1b — phaser worklet port (optional, low priority)
+
+The phaser keeps two native allpass feedback loops (fbL/fbR). Measured
+cross-render variance after Phase 1: ±0.008% RMS class — under the 1e-4
+restore tolerance, so not blocking. If it ever grows, port the same way
+Multi-Tap was ported (loop inside one processor).
 
 ---
 

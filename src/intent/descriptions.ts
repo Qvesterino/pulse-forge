@@ -38,6 +38,7 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   boombap: ["boom bap", "boombap", "hip-hop", "90s rap", "golden era"],
   amapiano: ["amapiano", "yanos", "log drum", "South African house"],
   trance: ["trance", "uplifting", "psytrance", "supersaw"],
+  detroit: ["detroit techno", "detroit electro", "machine funk", "808 talk"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -70,6 +71,11 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   psy: ["psytrance", "psy trance", "goa", "full-on"],
   tech: ["tech trance", "warehouse trance", "hard rolling trance", "metallic trance"],
   dream: ["dream trance", "piano trance", "euphoric piano", "soft trance"],
+  belleville: ["belleville", "first wave detroit", "808 syncopation", "tom talk"],
+  secondwave: ["underground resistance", "second wave", "militant techno", "stripped machine"],
+  technobass: ["techno bass", "detroit bass", "808 pressure", "machine bass"],
+  electro: ["electro", "classic electro", "cybotron", "vocoder funk"],
+  ghettotech: ["ghettotech", "detroit booty", "fast 808", "raw machine"],
   acid: ["acid", "303 acid", "acid lines", "squelchy acid"],
   classic: ["classic", "golden era", "timeless", "traditional"],
   rolling: ["rolling", "rolling energy", "rolling bass", "rolling grooves"],
@@ -107,6 +113,12 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   lofimap: ["lo-fi trap", "lo-fi map", "dusty trap", "warped sample trap"],
   ambienttechno: ["ambient techno", "deep space techno", "Berlin ambient", "hypnotic pads"],
   techhouse: ["tech house", "warehouse groove", "rolling tech house", "club tool"],
+  // P2 dedicated lanes (the wave that closed the closest-fit mappings).
+  triphop: ["trip-hop", "downtempo", "dusty samples", "Bonobo lane", "halftime haze"],
+  gabber: ["gabber", "hardcore techno", "uptempo", "160-180 stomp", "distorted kick"],
+  shoegaze: ["shoegaze", "wall of guitars", "dream pop", "buried drums", "wash of reverb"],
+  reggae: ["reggae", "one drop", "roots", "ska skank", "dub delays"],
+  bassdubstep: ["bass dubstep", "brostep", "tearout", "drop-era", "machine-gun hats"],
 };
 
 const MOOD_WORDS: Record<string, { en: string[]; sk: string[] }> = {
@@ -135,8 +147,13 @@ const TEMPO_WORDS: Record<string, string[]> = {
   trance: ["at 138", "at 140", "at 136", "euphoric tempo"],
   synthwave: ["at 105", "at 110", "at 100", "night-drive tempo"],
   altrock: ["at 110", "at 120", "at 100", "wall-of-sound tempo"],
-  hard: ["at 160", "at 170", "at 155", "gabber tempo"],
+  hard: ["at 160", "at 170", "at 155", "hard tempo"],
   hardstyle: ["at 152", "at 150", "at 155", "reverse-bass tempo"],
+  triphop: ["at 90", "at 85", "at 95", "dusty halftime tempo"],
+  gabber: ["at 170", "at 175", "at 165", "gabber stomp tempo"],
+  shoegaze: ["at 110", "at 105", "at 115", "wall-of-guitars tempo"],
+  reggae: ["at 75", "at 80", "at 70", "one-drop tempo"],
+  bassdubstep: ["at 145", "at 150", "at 140", "drop tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

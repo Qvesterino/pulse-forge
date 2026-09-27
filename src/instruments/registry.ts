@@ -100,6 +100,40 @@ function dbToLin(db: number): number {
   return Math.pow(10, db / 20);
 }
 
+/**
+ * Analog drift — a slow, seeded detune wander wired into the oscillator's
+ * detune input. This is THE Serum/Omnisphere "alive" ingredient every static
+ * Web Audio synth lacks: real analog oscillators never hold their pitch
+ * perfectly. Deterministic: the drift phase derives from the track id hash
+ * and the osc slot, so live==offline and identical renders stay identical.
+ * Returns the LFO for voice-level stop scheduling; harmless if never stopped
+ * beyond the voice lifetime (it shares the osc's stop time via the caller).
+ */
+function addOscDrift(
+  ctx: BaseAudioContext,
+  osc: OscillatorNode,
+  seed: number,
+  slot: number,
+  when: number,
+  stopTime: number,
+  cents = 4,
+): OscillatorNode {
+  const drift = ctx.createOscillator();
+  drift.type = "sine";
+  // 0.4–0.9 Hz per slot — slow enough to read as analog instability.
+  drift.frequency.value = 0.4 + ((seed + slot * 97) % 50) / 100;
+  const phase = ((seed + slot * 613) % 628) / 100;
+  const depth = ctx.createGain();
+  depth.gain.value = cents;
+  // Start at a seeded phase point via the detune offset (sin(phase)·cents).
+  drift.detune.value = Math.sin(phase) * cents;
+  osc.detune.value += Math.sin(phase) * cents;
+  drift.connect(depth).connect(osc.detune);
+  drift.start(when);
+  drift.stop(stopTime);
+  return drift;
+}
+
 interface Voice {
   pitch: number;
   stopAt: number;
@@ -335,6 +369,9 @@ const analog: InstrumentDefinition = {
 
         const oscs: OscillatorNode[] = [];
         const lfoNodes: OscillatorNode[] = [];
+        const driftNodes: OscillatorNode[] = [];
+        // Seed base from the track id — deterministic drift phases per track.
+        const seedBase = hashString(track.id) % 1000;
         const mkOsc = (waveIndex: number, detune: number, level: number, transpose = 0) => {
           const osc = ctx.createOscillator();
           const wave = WAVE_NAMES[Math.max(0, Math.min(3, Math.round(waveIndex)))];
@@ -350,6 +387,9 @@ const analog: InstrumentDefinition = {
           osc.start(when);
           osc.stop(stopTime);
           oscs.push(osc);
+          // Analog drift: the Serum "alive" pitch wander (sine sub keeps
+          // rock-solid pitch — subs should never wobble).
+          if (wave !== "sine") driftNodes.push(addOscDrift(ctx, osc, seedBase + oscs.length, oscs.length, when, stopTime));
         };
         mkOsc(p.oscA ?? 2, 0, 0.5);
         mkOsc(p.oscB ?? 2, p.oscBDetune ?? 8, 0.5 * 0.9);
@@ -390,6 +430,7 @@ const analog: InstrumentDefinition = {
             osc.start(when);
             osc.stop(stopTime);
             oscs.push(osc);
+            driftNodes.push(addOscDrift(ctx, osc, seedBase + 100 + u, u, when, stopTime));
           }
         }
         if ((p.noiseLevel ?? 0) > 0.0005) {
@@ -424,6 +465,13 @@ const analog: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            for (const d of driftNodes) {
+              try {
+                d.stop(t + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -431,6 +479,13 @@ const analog: InstrumentDefinition = {
             for (const lfo of lfoNodes) {
               try {
                 lfo.stop(now + 0.03);
+              } catch {
+                /* already stopped */
+              }
+            }
+            for (const d of driftNodes) {
+              try {
+                d.stop(now + 0.03);
               } catch {
                 /* already stopped */
               }
@@ -2973,6 +3028,14 @@ const keys: InstrumentDefinition = {
           const mod = ctx.createOscillator();
           mod.type = "sine";
           mod.frequency.value = freq * modRatio * detuneMul;
+          // Analog drift: subtle detune wander on the carrier (audit-15
+          // quality kit — the static sine read as MIDI, not as a Rhodes).
+          const driftLfo = ctx.createOscillator();
+          driftLfo.type = "sine";
+          driftLfo.frequency.value = 0.6 + (modRatio % 0.5);
+          const driftDepth = ctx.createGain();
+          driftDepth.gain.value = 3.2;
+          driftLfo.connect(driftDepth).connect(car.detune);
 
           const modEnv = ctx.createGain();
           modEnv.gain.setValueAtTime(0.0001, when);
@@ -3002,6 +3065,8 @@ const keys: InstrumentDefinition = {
           car.start(when);
           car.stop(stopTime);
           return { mod, car, modEnv, carEnv, modGain, panner };
+          driftLfo.start(when);
+          driftLfo.stop(stopTime);
         };
 
         // Velocity drives FM brightness — soft hits are rounder (Rhodes response)

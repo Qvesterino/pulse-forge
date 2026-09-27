@@ -1,0 +1,57 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/intent-text-parser.test.ts [2m([22m[2m93 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[33m 2159[2mms[22m[39m
+[31m   [31m├Ś[31m vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove[2m > [22m'reggae' Ôćĺ 'trap.dancehall'[90m 21[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'reggae' to be 'dancehall' // Object.is equality[39m
+[31m   [31m├Ś[31m vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove[2m > [22m'ska' Ôćĺ 'trap.dancehall'[90m 8[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'reggae' to be 'dancehall' // Object.is equality[39m
+[31m   [31m├Ś[31m vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove[2m > [22m'shoegaze' Ôćĺ 'house.altrock'[90m 8[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'shoegaze' to be 'altrock' // Object.is equality[39m
+[31m   [31m├Ś[31m vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove[2m > [22m'dream pop' Ôćĺ 'house.altrock'[90m 7[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'shoegaze' to be 'altrock' // Object.is equality[39m
+[31m   [31m├Ś[31m vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove[2m > [22m'post rock' Ôćĺ 'house.altrock'[90m 7[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'shoegaze' to be 'altrock' // Object.is equality[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 5 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-text-parser.test.ts > vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove > 'reggae' Ôćĺ 'trap.dancehall'
+ FAIL  tests/intent-text-parser.test.ts > vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove > 'ska' Ôćĺ 'trap.dancehall'
+AssertionError: expected 'reggae' to be 'dancehall' // Object.is equality
+
+Expected: "dancehall"
+Received: "reggae"
+
+ ÔŁ» tests/intent-text-parser.test.ts:735:32
+    733|     const parsed = parseIntentText(text);
+    734|     expect(parsed.input.genre).toBe(genre);
+    735|     expect(parsed.input.style).toBe(style);
+       |                                ^
+    736|     expect(getGrooveById(groove)).toBeDefined();
+    737|   });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/5]ÔÄ»
+
+ FAIL  tests/intent-text-parser.test.ts > vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove > 'shoegaze' Ôćĺ 'house.altrock'
+ FAIL  tests/intent-text-parser.test.ts > vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove > 'dream pop' Ôćĺ 'house.altrock'
+ FAIL  tests/intent-text-parser.test.ts > vocabulary-gap depth lanes ÔÇö every phrase resolves to a real groove > 'post rock' Ôćĺ 'house.altrock'
+AssertionError: expected 'shoegaze' to be 'altrock' // Object.is equality
+
+Expected: "altrock"
+Received: "shoegaze"
+
+ ÔŁ» tests/intent-text-parser.test.ts:735:32
+    733|     const parsed = parseIntentText(text);
+    734|     expect(parsed.input.genre).toBe(genre);
+    735|     expect(parsed.input.style).toBe(style);
+       |                                ^
+    736|     expect(getGrooveById(groove)).toBeDefined();
+    737|   });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/5]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m88 passed[39m[22m[90m (93)[39m
+[2m   Start at [22m 19:03:41
+[2m   Duration [22m 6.98s[2m (transform 522ms, setup 534ms, collect 596ms, tests 2.16s, environment 2.44s, prepare 262ms)[22m
+

@@ -2064,7 +2064,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["egyptian lover", "egypt egypt"],
-    genre: "techno",
+    genre: "detroit",
     style: "electro",
     mood: "energetic",
     energy: 0.75,
@@ -2274,7 +2274,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // Engine), Lady Donli, Santi — the Lagos alté alternative lane) ──
   {
     names: ["dj godfather", "dj godfather type beat"],
-    genre: "house",
+    genre: "detroit",
     style: "ghettotech",
     mood: "energetic",
     energy: 0.85,
@@ -2284,7 +2284,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["dj assault", "dj assault type beat"],
-    genre: "house",
+    genre: "detroit",
     style: "ghettotech",
     mood: "energetic",
     energy: 0.85,
@@ -4835,8 +4835,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["jeff mills", "the wizard", "purpose maker"],
     // Detroit techno's axis: hypnotic loops, relentless drive, sci-fi motif.
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "secondwave",
     mood: "energetic",
     energy: 0.9,
     density: 0.65,
@@ -4857,8 +4857,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["derrick may", "mayday", "strings of life"],
     // Detroit's string-heavy high-tech soul.
-    genre: "techno",
-    style: "melodic",
+    genre: "detroit",
+    style: "belleville",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -4869,7 +4869,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     names: ["juan atkins", "model 500", "cybotron"],
     // Electro-techno originator: machine funk, 808 backbone — now rides the
     // dedicated techno.electro groove instead of driving techno.
-    genre: "techno",
+    genre: "detroit",
     style: "electro",
     mood: "energetic",
     energy: 0.8,
@@ -4881,8 +4881,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // NOTE: no bare "reese" alias — "Reese bass" is a DnB technique and the
     // name would hijack every "reese bass" prompt. Full name only.
     names: ["kevin saunderson", "inner city type beat"],
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "belleville",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -4892,8 +4892,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["carl craig", "paperclip people", "69 type beat"],
     // Detroit techno's eclectic edge — from ambient to jacking.
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "secondwave",
     mood: "chill",
     energy: 0.7,
     density: 0.55,
@@ -4903,7 +4903,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["robert hood", "minimal nation", "monobox"],
     // The minimal-nation architect: stripped, loopy, surgical.
-    genre: "techno",
+    genre: "detroit",
     style: "minimal",
     mood: "dark",
     energy: 0.75,
@@ -4913,8 +4913,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["octave one", "black water", "lenny burden"],
-    genre: "techno",
-    style: "melodic",
+    genre: "detroit",
+    style: "belleville",
     mood: "energetic",
     energy: 0.75,
     density: 0.55,
@@ -4924,8 +4924,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["terrence dixon", "dixon techno"],
     // Detroit's live-improvisation wizard.
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "secondwave",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -4935,8 +4935,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["omar s", "omar-s", "fxhe"],
     // Detroit raw analogue house-techno crossover.
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "secondwave",
     mood: "chill",
     energy: 0.65,
     density: 0.5,
@@ -5233,7 +5233,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // Electro — Detroit's other half; rides the dedicated techno.electro groove.
   {
     names: ["drexciya", "dopplereffekt", "japanese telecom"],
-    genre: "techno",
+    genre: "detroit",
     style: "electro",
     mood: "dark",
     energy: 0.75,
@@ -5263,8 +5263,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["aux 88", "cybotron electro", "electro techno"],
-    genre: "techno",
-    style: "driving",
+    genre: "detroit",
+    style: "technobass",
     mood: "energetic",
     energy: 0.75,
     density: 0.6,
@@ -6672,7 +6672,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["psy producers"],
-    // The psy / Goa lineage — full-on rolling bass (moved off the old entry).
+    // The psy / Goa lineage - full-on rolling bass (moved off the old entry).
     genre: "trance",
     style: "psy",
     mood: "aggressive",
@@ -6680,6 +6680,74 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.7,
     bpmRange: [138, 148],
     label: "psytrance producers",
+  },
+  // ── Detroit school tree (the machine-funk lineage, Wikipedia-documented) ─
+  {
+    names: ["k-hand"],
+    // The Belleville-era first wave beyond the Three (Metroplex / Music
+    // Institute roster) - the dancefloor originators.
+    genre: "detroit",
+    style: "belleville",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [122, 132],
+    label: "belleville era",
+  },
+  {
+    names: ["underground resistance", "mike banks", "galaxy 2 galaxy"],
+    // UR - the militant second wave (Predator / Riot).
+    genre: "detroit",
+    style: "secondwave",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.65,
+    bpmRange: [130, 140],
+    label: "underground resistance",
+  },
+  {
+    names: ["detroit booty"],
+    // The ghettotech school - Detroit booty bass at speed.
+    genre: "detroit",
+    style: "ghettotech",
+    mood: "aggressive",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [140, 150],
+    label: "ghettotech extra",
+  },
+  {
+    names: ["dopplereffekt side", "drexciya research"],
+    // The electro-science side - vocoder, machine mystique.
+    genre: "detroit",
+    style: "electro",
+    mood: "dark",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [118, 132],
+    label: "electro science",
+  },
+  {
+    names: ["plasticman", "plus 8"],
+    // The +8 school - minimal progressive hardcore (Vortex).
+    genre: "detroit",
+    style: "minimal",
+    mood: "dark",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [125, 134],
+    label: "plus 8",
+  },
+  {
+    names: ["kenny larkin", "claude young"],
+    // The second-wave depth - deeper, jazzier machine soul.
+    genre: "detroit",
+    style: "belleville",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [122, 132],
+    label: "detroit machine soul",
   },
 ];
 

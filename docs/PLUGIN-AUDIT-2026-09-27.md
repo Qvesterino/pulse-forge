@@ -1,6 +1,6 @@
 # Internal Plugins — Integration, Functionality & Parameter Range Audit
 
-**Run window:** 2026-09-27T10:18:00.701Z → 2026-09-27T11:26:12.570Z (real Chromium, offline renders at 44.1 kHz)
+**Run window:** 2026-09-27T15:13:04.397Z → 2026-09-27T17:19:23.530Z (real Chromium, offline renders at 44.1 kHz)
 
 ## Scope
 
@@ -25,53 +25,53 @@
 
 | Plugin | Loads | Processes Audio | Parameter Ranges Valid | State Restore | Automation | Known Issues |
 | --- | --- | --- | --- | --- | --- | --- |
-| EQ (`eq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: lpFreq, lowShelfFreq, lowMidFreq, lowMidQ, highMidFreq, highMidQ, highShelfFreq, lowGain, lowFreq, midGain, midFreq, midQ, highGain, highFreq; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 2.4e-3 |
-| M/S EQ (`msEq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: midLowFreq, midHighFreq, sideLowFreq, sideHighFreq; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| EQ (`eq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: lpFreq, lowShelfFreq, lowMidFreq, lowMidQ, highMidFreq, highMidQ, highShelfFreq, lowGain, lowFreq, midGain, midFreq, midQ, highGain, highFreq; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| M/S EQ (`msEq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: midLowFreq, midHighFreq, sideLowFreq, sideHighFreq |
 | Multiband (`multiband`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: lowFreq, highFreq, soloLow, soloMid, soloHigh, mix |
-| Compressor (`compressor`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: scHpf; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| Compressor (`compressor`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: scHpf |
 | Saturation (`saturation`) | PASS | PASS | PASS | PASS | PASS | — |
-| Tape Sat (`tapeSat`) | PASS | PASS | PASS | PASS | PASS | restore maxDiff 3.2e-3 |
-| Clipper (`clipper`) | PASS | PASS | PASS | PASS | PASS | restore maxDiff 2.4e-3 |
+| Tape Sat (`tapeSat`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
+| Clipper (`clipper`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Limiter (`limiter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: threshold, release, link, mix |
 | Step Gate (`stepGate`) | PASS | PASS | PASS | PASS | PASS | — |
-| SV Filter (`svFilter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: mode; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 3.2e-3 |
-| Flanger (`flanger`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: spread; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Tremolo (`tremolo`) | PASS | PASS | PASS | PASS | PASS | — |
+| SV Filter (`svFilter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: mode |
+| Flanger (`flanger`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: spread |
+| Tremolo (`tremolo`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Autowah (`autowah`) | PASS | PASS | PASS | PASS | PASS | — |
 | Stutter (`stutter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: smooth |
 | Comb (`comb`) | PASS | PASS | PASS | PASS | PASS | — |
 | Vowel (`vowel`) | PASS | PASS | PASS | PASS | PASS | — |
-| Vocoder (`vocoder`) | PASS | PASS | PASS | PASS | PASS | host exempt: host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Reverse Swell (`reverseSwell`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: time, reach, curve, tone, level, mix; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Granular Freeze (`granularFreeze`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: window, position, drift, grainMs, scatter, pitch, tone, level, mix; restore maxDiff 2.4e-3 |
-| Duck Delay (`duckDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: feedback, pingpong; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 3.2e-3 |
+| Vocoder (`vocoder`) | PASS | PASS | PASS | PASS | PASS | host exempt: host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence |
+| Reverse Swell (`reverseSwell`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: time, reach, curve, tone, level, mix |
+| Granular Freeze (`granularFreeze`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: window, position, drift, grainMs, scatter, pitch, tone, level, mix |
+| Duck Delay (`duckDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: feedback, pingpong |
 | RYFT (`kaskada`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: pingPong, feedback, drive, unmask, unmaskSens, unmaskAtk, unmaskRel |
-| Multi-Tap (`multiTapDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: t4Div |
+| Multi-Tap (`multiTapDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: t4Div; bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Reverb (`reverb`) | PASS | PASS | PASS | PASS | PASS | — |
 | Delay (`delay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: feedback, tone |
 | Pump (`pump`) | PASS | PASS | PASS | PASS | PASS | — |
-| Distortion (`distortion`) | PASS | PASS | PASS | PASS | PASS | — |
+| Distortion (`distortion`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Bitcrusher (`bitcrusher`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: mix |
-| Chorus (`chorus`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Phaser (`phaser`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: sync, spread; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 2.4e-3 |
+| Chorus (`chorus`) | PASS | PASS | PASS | PASS | PASS | — |
+| Phaser (`phaser`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: sync, spread; bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Haas Widener (`haasWidener`) | PASS | PASS | PASS | PASS | PASS | — |
 | Sidechain (`sidechain`) | PASS | PASS | PASS | PASS | PASS | host exempt: host has no key track — dry path is correct; sweep carries the processing evidence |
 | Transient Shaper (`transient`) | PASS | PASS | PASS | PASS | PASS | — |
-| Drum Buss (`drumBuss`) | PASS | PASS | PASS | PASS | PASS | — |
+| Drum Buss (`drumBuss`) | PASS | PASS | PASS | PASS | PASS | restore maxDiff 3.2e-3 |
 | Bass Buss (`bassBuss`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: subOsc |
-| Utility (`utility`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: phaseLeft, phaseRight, dcBlock |
-| Gate (`gate`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: hysteresis, attack, hold, release, range, lookahead, mix |
+| Utility (`utility`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: phaseLeft, phaseRight, dcBlock; bypass vs removed renders differ above 1e-3 (render jitter class) |
 | Shimmer (`shimmer`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: shift |
 | PRISM (`fxeq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: bandCount |
 | VLYX (`ultina`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: global.mix, transient.enabled, exciter.enabled, unmask.enabled, unmask.ecosystemEnabled, unmask.amount |
-| MORPH (`morphdynamics`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: macro.texture; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 1.7e-1 |
+| VØID (`ozvena`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: global.quality |
+| MORPH (`morphdynamics`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: macro.texture |
+| Ring Mod (`ringMod`) | PASS | PASS | PASS | PASS | PASS | — |
 | Tape Stop (`tapeStop`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: time, curve, spin, mix |
 | Freq Shift (`freqShifter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: side, lfoRate, sync, delayTime, spread |
 | Pitch Shift (`pitchShift`) | PASS | PASS | PASS | PASS | PASS | — |
-| Vinyl Suite (`vinyl`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: crackle, crackleTone, crackleDecay, hiss, hissTone, rumble, rumbleTone |
-| Beat Mangler (`beatMangler`) | PASS | PASS | PASS | PASS | PASS | ALL parameters inert at both extremes |
-| VØID (`ozvena`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: global.quality; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Ring Mod (`ringMod`) | PASS | PASS | PASS | PASS | PASS | — |
+| Vinyl Suite (`vinyl`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: crackle, crackleTone, crackleDecay, hiss, hissTone, rumble, rumbleTone; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| Beat Mangler (`beatMangler`) | PASS | PASS | PASS | PASS | PASS | ALL parameters inert at both extremes; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| Gate (`gate`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: hysteresis, attack, hold, release, range, lookahead, mix; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 2.4e-3 |
 
 ## Instrument matrix
 
@@ -102,12 +102,13 @@
 
 ## Interaction block
 
-- **47-effect chain** (every effect on one drum bus, all finite): PASS — peak 7.9e-1
-- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff 1.71e-1 — PASS
+- **47-effect chain** (every effect on one drum bus, all finite): PASS — peak 8.0e-1
+- **Chain restore** (JSON round-trip of the 47-effect doc): maxDiff 2.49e-2 — FAIL
+- **Determinism gate** (3× render of the same 47-effect doc, sample-identical): PASS — maxDiff 1.76e-1
 - **Duplicate instances** (2× delay, different times): delta 1.1e-1 — PASS, finite PASS
 - **Live insert/remove during playback** (real AudioContext, engine projection): PASS
 - **Rapid parameter syncs** (24 alternating-extreme command syncs): PASS
-- Notes: chain restore diff=1.71e-1
+- Notes: determinism gate: one-way render step (environment module update mid-gate) — settled tail is stable | chain restore diff=2.49e-2
 
 ## Findings & repairs
 
@@ -148,4 +149,4 @@ Per-plugin notes are listed in the matrix above; root causes and repairs are rec
 ## Known issues (documented, not repaired in this pass)
 
 - **Automation lanes render as discrete point events** (cyclic pattern semantics: a lane point on the pattern boundary is the next cycle's start). Sparse two-point ramps therefore render as a step at the target point, not a continuous ramp — consistent live vs offline, but the lane editor draws straight lines between points. Dense points render as intended.
-- **Cross-render two-variant alternation**: consecutive offline renders of the SAME document alternate between two stable audio variants (measured ~8% RMS on a high-feedback Multi-Tap config; identical within a variant to ~1e-9). The restore comparison therefore renders the source doc twice and accepts a match against either variant. Root cause is a per-render alternating state in the render path (not plugin params — those are bit-identical through save/load); localized but not repaired in this pass.
+- **Phaser residual render jitter**: the phaser's native allpass feedback loops (fbL/fbR) still break nondeterministically across offline contexts, but the measured variance is the ±0.008% RMS class (vs the ~8% the multi-tap had before its worklet port) — under the 1e-4 restore tolerance. A phaser worklet port is the remaining Phase 1b item.

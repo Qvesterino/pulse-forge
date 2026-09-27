@@ -60,8 +60,20 @@ class MultitapProcessor extends AudioWorkletProcessor {
       // Tap delay times in seconds; defaults mirror the rack division
       // defaults (1/8, 1/16, 1/4, 1/2) at 124 BPM — the wrapper always
       // writes the division-derived values on construction.
-      { name: "t1Time", defaultValue: beat * 0.5, minValue: 0.02, maxValue: MULTITAP_MAX_SEC, automationRate: "k-rate" },
-      { name: "t2Time", defaultValue: beat * 0.25, minValue: 0.02, maxValue: MULTITAP_MAX_SEC, automationRate: "k-rate" },
+      {
+        name: "t1Time",
+        defaultValue: beat * 0.5,
+        minValue: 0.02,
+        maxValue: MULTITAP_MAX_SEC,
+        automationRate: "k-rate",
+      },
+      {
+        name: "t2Time",
+        defaultValue: beat * 0.25,
+        minValue: 0.02,
+        maxValue: MULTITAP_MAX_SEC,
+        automationRate: "k-rate",
+      },
       { name: "t3Time", defaultValue: beat, minValue: 0.02, maxValue: MULTITAP_MAX_SEC, automationRate: "k-rate" },
       { name: "t4Time", defaultValue: beat * 2, minValue: 0.02, maxValue: MULTITAP_MAX_SEC, automationRate: "k-rate" },
     ];
@@ -121,7 +133,7 @@ class MultitapProcessor extends AudioWorkletProcessor {
     const panL = [0, 0, 0, 0];
     const panR = [0, 0, 0, 0];
     for (let t = 0; t < 4; t++) {
-      const pan = (tapCount <= 1 ? 0 : ((t / (tapCount - 1)) * 2 - 1) * spread * 0.9);
+      const pan = tapCount <= 1 ? 0 : ((t / (tapCount - 1)) * 2 - 1) * spread * 0.9;
       const angle = ((pan + 1) * Math.PI) / 4;
       panL[t] = Math.cos(angle);
       panR[t] = Math.sin(angle);
