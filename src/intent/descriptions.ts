@@ -35,6 +35,8 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   drill: ["drill", "drill beat", "sliding 808", "dark drill"],
   phonk: ["phonk", "memphis phonk", "drift phonk", "cowbell phonk"],
   jersey: ["jersey club", "brick city club", "bounce club", "jersey bounce"],
+  boombap: ["boom bap", "boombap", "hip-hop", "90s rap", "golden era"],
+  amapiano: ["amapiano", "yanos", "log drum", "South African house"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -51,6 +53,12 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   drumless: ["drumless", "sample-only", "no drums", "loop-driven"],
   trapbap: ["trap bap", "trap-bap", "808 boom bap", "hybrid boom bap"],
   modern: ["modern boom bap", "griselda-style", "dusty trap", "cinematic loop"],
+  yanos: ["yanos", "log drum", "Kabza-style", "deep amapiano"],
+  soulful: ["soulful amapiano", "private school piano", "mellow log drum", "jazz chords"],
+  sgija: ["s'gija", "sgija", "stripped amapiano", "hypnotic log"],
+  bacardi: ["bacardi", "new age bacardi", "Pretoria bacardi", "raw stabs"],
+  quantum: ["quantum sound", "taxi kick", "gqom 2.0", "re-edit energy"],
+  popiano: ["popiano", "pop amapiano", "Tyla-style", "bright log drum"],
   afro: ["afro", "afrobeat", "tribal", "organic percussion"],
   industrial: ["industrial", "harsh", "metallic", "warehouse industrial"],
   dub: ["dubby", "dub techno", "space echo", "echoes"],

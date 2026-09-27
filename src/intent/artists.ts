@@ -65,8 +65,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["metro boomin", "metroboomin"],
+    // Dark sparse pocket (no trap.dark groove; trap.sparse is the real lane).
     genre: "trap",
-    style: "dark",
+    style: "sparse",
     mood: "dark",
     energy: 0.65,
     density: 0.5,
@@ -75,8 +76,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["21 savage", "21 savage type beat"],
+    // Dark sparse pocket (no trap.dark groove; trap.sparse is the real lane).
     genre: "trap",
-    style: "dark",
+    style: "sparse",
     mood: "dark",
     energy: 0.6,
     density: 0.5,
@@ -118,7 +120,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // First-class drill since the sound-quality pass — own grooves + kit swap
     // (sliding-808 kick, dark snare) instead of folding into trap.
     genre: "drill",
-    style: "sparse",
+    style: "uk",
     mood: "dark",
     energy: 0.65,
     density: 0.45,
@@ -131,7 +133,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     // First-class jersey since the sound-quality pass — bouncy club grooves
     // + punchy kit instead of folding into trap.
     genre: "jersey",
-    style: "bouncy",
+    style: "club",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -772,9 +774,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "tech house",
   },
   {
-    names: ["amapiano", "rema", "tyla", "afrobeat"],
-    genre: "house",
-    style: "amapiano",
+    names: ["amapiano", "afrobeat"],
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -1657,7 +1659,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["billie eilish", "billie", "billie eilish type beat"],
     genre: "ambient",
-    style: "sparse",
+    style: "sadchill",
     mood: "dark",
     energy: 0.4,
     density: 0.35,
@@ -1717,7 +1719,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["lorde", "lorde type beat"],
     genre: "ambient",
-    style: "sparse",
+    style: "sadchill",
     mood: "dark",
     energy: 0.45,
     density: 0.4,
@@ -2219,8 +2221,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // (Keinemusik solo) and HUGEL on the modern organic wave, 118-126) ──
   {
     names: ["mdu aka mas", "mdu", "king of the log drum"],
-    genre: "house",
-    style: "amapiano",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.65,
     density: 0.55,
@@ -2229,8 +2231,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["mfr souls", "mfr souls type beat"],
-    genre: "house",
-    style: "amapiano",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -2239,8 +2241,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["daliwonga", "daliwonga type beat"],
-    genre: "house",
-    style: "amapiano",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -3905,12 +3907,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── Future bass — melodic half-time pop-EDM, chopped vocal leads ──────────
   // The bright side of post-2014 pop-future-bass (Marshmello / Said The Sky).
   // Flume's existing entry covers the 'lux' trap-flavour; this entry adds
-  // the brighter pop-future-bass side via 'broken' (closest existing groove
-  // to choppy future bass).
+  // the brighter pop-future-bass side. Routes to house.futurebass (Wave 5):
+  // four-on-the-floor with the genre's syncopated 'skip' bass (kick-alt on
+  // the 'e' and 'a' of 2) and a reverse-filling open hat on the last 16th.
   {
     names: ["marshmello", "said the sky"],
     genre: "house",
-    style: "broken",
+    style: "futurebass",
     mood: "energetic",
     energy: 0.85,
     density: 0.6,
@@ -4098,13 +4101,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Synthwave — 80s-style analog synth leads + driving four-on-the-floor ─
   // Kavinsky 'Nightcall' / The Midnight / FM-84 / Mitch Murder / Timecop1983.
-  // Mid-tempo pocket 95-115, dreamy-energetic mood, organic instrumentation.
-  // Routes to ambient.organic (closest groove for the analog-synth side of
-  // the ambient spectrum; synthwave isn't a first-class groove).
+  // Mid-tempo pocket 95-115 with analog-synth colour. Routes to
+  // ambient.synthwave (Wave 5) — a real 4/4 with gated snare on 2 and 4 and
+  // driving toms, not the loose ambient pocket of ambient.organic.
   {
     names: ["synthwave", "kavinsky", "the midnight", "fm-84", "mitch murder", "timecop1983", "lazerhawk"],
     genre: "ambient",
-    style: "organic",
+    style: "synthwave",
     mood: "chill",
     energy: 0.55,
     density: 0.5,
@@ -4155,12 +4158,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── Trap soul / R&B-trap — Bryson Tiller / PartyNextDoor / 6LACK ─────────
   // Slow R&B-leaning trap (Bryson Tiller 'TrapSoul' / PartyNextDoor). Drake's
   // existing trap/sparse entry covers the mid-tempo Toronto hybrid; this
-  // covers the slow sung-R&B-trap side. BPM 78-95, sparse grooves for vocal
-  // lead. Routes to trap.sparse.
+  // covers the slow sung-R&B-trap side. Routes to trap.trapsoul (Wave 5):
+  // the distinguishing feature vs trap.sparse is the limping kick on 1, the
+  // 'and' of 2, 3, and the 'and' of 4, with the snare on 4 only. BPM 78-95.
   {
     names: ["trap soul", "trapsoul", "bryson tiller", "partynextdoor", "6lack"],
     genre: "trap",
-    style: "sparse",
+    style: "trapsoul",
     mood: "chill",
     energy: 0.5,
     density: 0.5,
@@ -4199,11 +4203,12 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── K-pop / Korean R&B — BTS / NewJeans / IU / Stray Kids / BLACKPINK ────
   // Korean pop production (BTS 'Dynamite' / NewJeans 'OMG' / IU). High-energy
-  // pop at 100-120, closest groove is house.pop (the pop-dancefloor side).
+  // pop at 100-120. Routes to house.kpop (Wave 5): the half-time snare flip
+  // (backbeat on 3, the "k-step" bounce) is what separates it from house.pop.
   {
     names: ["kpop", "k-pop", "bts", "newjeans", "iu", "stray kids", "blackpink"],
     genre: "house",
-    style: "pop",
+    style: "kpop",
     mood: "energetic",
     energy: 0.85,
     density: 0.65,
@@ -4212,12 +4217,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── Dancehall / Reggae-pop — Sean Paul / Damian Marley / Popcaan / Vybz ───
   // Caribbean dancehall (Sean Paul 'Temperature' / Popcaan / Vybz Kartel).
-  // The trap.bounce groove (98-104 BPM) is the closest fit — driving
-  // half-time riddim with room for the toasting vocal lead. BPM 88-105.
+  // Routes to trap.dancehall (Wave 5): the one-drop — snare on 3 (step 8)
+  // with the kick on 1 and the 'and' of 2, leaving the sparse 2-3 window the
+  // toasting vocal rides. Ride + tick are the skank anchors. BPM 88-105.
   {
     names: ["dancehall", "sean paul", "damian marley", "popcaan", "vybz kartel", "shaggy"],
     genre: "trap",
-    style: "bounce",
+    style: "dancehall",
     mood: "chill",
     energy: 0.7,
     density: 0.55,
@@ -4241,12 +4247,12 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   // ── 88rising / Asian-American pop — Joji / Rich Brian / NIKI ────────────
   // The 88rising wave (Joji 'Sanctuary' / Rich Brian 'Dat $tick'). Lush
-  // bedroom-R&B / indie-pop at slower tempos. Routes to trap.lux (closest
-  // trap groove for the lo-fi-indie-pop side of the trap spectrum).
+  // bedroom-R&B / indie-pop. Routes to trap.bedroom (Wave 5): soft
+  // offbeat-anchored kick, rim-tap instead of a snare backbeat, 80-110.
   {
     names: ["88rising", "joji", "rich brian", "niki", "atarashii gakko"],
     genre: "trap",
-    style: "lux",
+    style: "bedroom",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -4271,9 +4277,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["southside", "808 mafia"],
-    // 808 Mafia aggressive corner — dark, hard, relentless.
+    // 808 Mafia aggressive corner — dark, hard, relentless (trap.sparse lane).
     genre: "trap",
-    style: "dark",
+    style: "sparse",
     mood: "aggressive",
     energy: 0.85,
     density: 0.6,
@@ -4303,9 +4309,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["mike will", "mike will made it", "mike will made-it", "mike will madeit"],
-    // HUMBLE. (150) — the hard-hitting dark-keys corner.
+    // HUMBLE. (150) — the hard-hitting dark-keys corner (trap.rolling lane).
     genre: "trap",
-    style: "dark",
+    style: "rolling",
     mood: "aggressive",
     energy: 0.85,
     density: 0.6,
@@ -4335,9 +4341,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["wondagurl", "wonda"],
-    // Cinematic dark trap (Take Care-era, Travis placements).
+    // Cinematic dark trap (Take Care-era, Travis placements) — trap.sparse lane.
     genre: "trap",
-    style: "dark",
+    style: "sparse",
     mood: "dark",
     energy: 0.7,
     density: 0.55,
@@ -4682,8 +4688,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["kabza de small", "dj maphorisa"],
     // The amapiano kings (John Wick era) — log-drum-forward.
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -4692,8 +4698,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["mr jazziq", "jazziq"],
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -4703,8 +4709,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["uncle waffles"],
     // The amapiano-to-mainstream bridge (Tanzania).
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "chill",
     energy: 0.6,
     density: 0.5,
@@ -4713,8 +4719,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["major league djz", "major league"],
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "energetic",
     energy: 0.7,
     density: 0.55,
@@ -4724,8 +4730,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["focalistic"],
     // Pitori rap over amapiano — energetic vocal-forward side.
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "energetic",
     energy: 0.7,
     density: 0.55,
@@ -4735,8 +4741,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["kelvin momo", "sun-el musician", "sun el"],
     // Soulful amapiano (smooth piano + vocal pads).
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "soulful",
     mood: "chill",
     energy: 0.55,
     density: 0.5,
@@ -5896,8 +5902,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["musa keys", "young stunna", "de mthuda", "sir trill"],
     // Amapiano second line (the school's next generation).
-    genre: "house",
-    style: "afro",
+    genre: "amapiano",
+    style: "yanos",
     mood: "energetic",
     energy: 0.7,
     density: 0.6,
@@ -6506,7 +6512,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["pluko", "pluko type beat"],
-    // Future-bass / chill-trap producer (Foreign Family) — warm supersaws.
+    // Future-bass / chill-trap producer (Foreign Family) - warm supersaws.
     genre: "trap",
     style: "bouncy",
     mood: "chill",
@@ -6514,6 +6520,97 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [130, 150],
     label: "pluko",
+  },
+  // ── Amapiano school tree (the Wikipedia-documented sub-genres) ──────────
+  // Yanos is the core (already carried by the entries above); these entries
+  // cover the schools those generic entries would flatten.
+  {
+    names: ["felo le tee", "myztro", "mas musiq", "vigro deep", "dj stokie", "sam deep"],
+    // The yanos hitmakers — the log-drum chart sound.
+    genre: "amapiano",
+    style: "yanos",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.55,
+    bpmRange: [110, 116],
+    label: "yanos hitmakers",
+  },
+  {
+    names: ["focalistic 2", "busta 929", "njelic", "danko"],
+    // The vocal-forward yanos side (piano-rap delivery).
+    genre: "amapiano",
+    style: "yanos",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [110, 116],
+    label: "yanos vocal",
+  },
+  {
+    names: ["sino msolo", "boohle", "nkosazana daughter", "kamo mphela"],
+    // The soulful vocal school (Kelvin Momo's orbit).
+    genre: "amapiano",
+    style: "soulful",
+    mood: "chill",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [108, 114],
+    label: "soulful vocal",
+  },
+  {
+    names: ["s'gija", "sgija", "mdu s'gija"],
+    // The stripped S'gija school — fewer elements, harder kick.
+    genre: "amapiano",
+    style: "sgija",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.5,
+    bpmRange: [112, 118],
+    label: "sgija",
+  },
+  {
+    names: ["mellow & sleazy", "mellow and sleazy", "trust fund"],
+    // New-age bacardi — the slowed Pretoria mutation (with Kabza + Focalistic).
+    genre: "amapiano",
+    style: "bacardi",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.55,
+    bpmRange: [108, 114],
+    label: "new age bacardi",
+  },
+  {
+    names: ["realshaunmusiq", "sizwe nineteen", "nandipha808"],
+    // Quantum Sound — the gqom-2.0 re-edit school.
+    genre: "amapiano",
+    style: "quantum",
+    mood: "aggressive",
+    energy: 0.85,
+    density: 0.6,
+    bpmRange: [112, 120],
+    label: "quantum sound",
+  },
+  {
+    names: ["tyla", "popiano"],
+    // Popiano — the pop-facing variant (Water).
+    genre: "amapiano",
+    style: "popiano",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.5,
+    bpmRange: [108, 116],
+    label: "popiano",
+  },
+  {
+    names: ["kooldrink"],
+    // The popiano × gqom bridge (Overdue) — DJ Lag keeps his gqom entry above.
+    genre: "amapiano",
+    style: "popiano",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [110, 118],
+    label: "popiano bridge",
   },
 ];
 

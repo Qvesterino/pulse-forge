@@ -111,9 +111,12 @@ describe("landing route — static import budget (Fáza C)", () => {
     const files = [...graph.keys()];
     expect(files.some((file) => file.endsWith("renderer.ts"))).toBe(false);
     expect(files.some((file) => file.endsWith("AudioEngine.ts"))).toBe(false);
-    // Guard against the walker silently matching nothing: the known-good
-    // static edge commands.ts (intent apply — the sanctioned heaviest
-    // landing module) must still be in the walked graph.
-    expect(files.some((file) => file.endsWith("commands.ts"))).toBe(true);
+    // The composer is intentionally absent from first paint; it loads only
+    // after Forge, keeping the parser/song/command graph out of the landing
+    // route until the visitor asks to generate.
+    expect(files.some((file) => file.endsWith("landingBeat.ts"))).toBe(false);
+    expect(files.some((file) => file.endsWith("commands.ts"))).toBe(false);
+    const landingPrompt = readFileSync(resolve(process.cwd(), "src/landing/LandingPrompt.tsx"), "utf8");
+    expect(landingPrompt).toMatch(/import\(["']\.\/landingBeat["']\)/);
   });
 });

@@ -128,6 +128,16 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 5, assetId: "factory.snare.tight" },
     { index: 8, assetId: "factory.hat.closed.soft" },
   ],
+  amapiano: [
+    // The log-drum kit: the deep soft kick (the quiet four-floor), the soft
+    // closed hat for the semiquaver shaker bed, and the soft shaker up front.
+    // The tom pads (12/13) already carry the low/high toms the log-drum
+    // answer rides — no swap needed there.
+    { index: 0, assetId: "factory.kick.deep" },
+    { index: 1, assetId: "factory.kick.soft" },
+    { index: 7, assetId: "factory.shaker.soft" },
+    { index: 8, assetId: "factory.hat.closed.soft" },
+  ],
 };
 
 /**
@@ -180,6 +190,8 @@ export const GENRE_FEEL: Partial<
   // Boom bap is the humanized genre: sampled breaks are never grid-locked,
   // so timing jitter is the genre's feel (the groove's swing adds on top).
   boombap: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
+  // Amapiano sits between: the shaker bed is tight, the log drum breathes.
+  amapiano: { humanizeTiming: 0.09, humanizeVelocity: 0.15 },
 };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:

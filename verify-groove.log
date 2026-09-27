@@ -1,0 +1,41 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32mÔťô[39m tests/groove-extract.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32mÔťô[39m tests/groove-extraction.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 49[2mms[22m[39m
+ [32mÔťô[39m tests/groove.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32mÔťô[39m tests/groove-steal.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+ [32mÔťô[39m tests/groove-commands.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 63[2mms[22m[39m
+ [31mÔŁ»[39m tests/grooves-wave-5.test.ts [2m([22m[2m7 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 164[2mms[22m[39m
+[31m   [31m├Ś[31m groove wave 5 ÔÇö registration[2m > [22mevery pattern uses only activePads and every row is a valid 16-step velocity[90m 79[2mms[22m[31m[39m
+[31m     Ôćĺ expected [ +0, +0, +0, +0, 0.85, +0, +0, ÔÇŽ(8) ] to have a length of 16 but got 15[39m
+ [32mÔťô[39m tests/grooves-wave-3.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 200[2mms[22m[39m
+ [32mÔťô[39m tests/grooves-wave-4.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 223[2mms[22m[39m
+ [32mÔťô[39m tests/boombap.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 138[2mms[22m[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 1 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/grooves-wave-5.test.ts > groove wave 5 ÔÇö registration > every pattern uses only activePads and every row is a valid 16-step velocity
+AssertionError: expected [ +0, +0, +0, +0, 0.85, +0, +0, ÔÇŽ(8) ] to have a length of 16 but got 15
+
+- Expected
++ Received
+
+- 16
++ 15
+
+ ÔŁ» tests/grooves-wave-5.test.ts:75:23
+     73|         for (const [padKey, row] of Object.entries(pattern)) {
+     74|           expect(active.has(Number(padKey)), `${expected.id} pad ${padÔÇŽ
+     75|           expect(row).toHaveLength(16);
+       |                       ^
+     76|           for (const v of row) {
+     77|             expect(v).toBeGreaterThanOrEqual(0);
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/1]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m8 passed[39m[22m[90m (9)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m85 passed[39m[22m[90m (86)[39m
+[2m   Start at [22m 11:44:45
+[2m   Duration [22m 10.95s[2m (transform 4.46s, setup 8.39s, collect 20.66s, tests 994ms, environment 37.37s, prepare 3.32s)[22m
+

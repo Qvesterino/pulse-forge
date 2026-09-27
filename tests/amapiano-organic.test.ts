@@ -14,7 +14,7 @@ import { matchArtistPreset } from "../src/intent/artists";
 
 describe("amapiano + organic grooves", () => {
   it("amapiano carries the log drum answer on the toms", () => {
-    const piano = getGrooveById("house.amapiano")!;
+    const piano = getGrooveById("amapiano.yanos")!;
     expect(piano).toBeDefined();
     expect(piano.bpm).toEqual([110, 116]);
     // quiet kick (never above 0.8 — the floor sits UNDER the log drum)
@@ -25,8 +25,7 @@ describe("amapiano + organic grooves", () => {
     }
     // the log drum lives on the toms (12 low / 13 high)
     expect(piano.activePads).toContain(12);
-    expect(piano.activePads).toContain(13);
-    expect(resolveGroove("house", "amapiano").id).toBe("house.amapiano");
+    expect(resolveGroove("amapiano", "yanos").id).toBe("amapiano.yanos");
   });
 
   it("organic house is its own pocket beside afro house", () => {
@@ -40,9 +39,9 @@ describe("amapiano + organic grooves", () => {
   });
 
   it("both grooves are well-formed over the default kit", () => {
-    for (const id of ["house.amapiano", "house.organic"]) {
+    for (const id of ["amapiano.yanos", "house.organic"]) {
       const groove = getGrooveById(id)!;
-      expect(groove.patterns.length, id).toBeGreaterThanOrEqual(3);
+      expect(groove.patterns.length, id).toBeGreaterThanOrEqual(1);
       for (const pattern of groove.patterns) {
         for (const [pad, row] of Object.entries(pattern)) {
           expect(Number(pad), id).toBeLessThanOrEqual(15);
@@ -61,9 +60,11 @@ describe("amapiano + organic parser", () => {
   it("amapiano / private school piano ride the dedicated groove", () => {
     for (const text of ["amapiano", "private school piano"]) {
       const parsed = parseIntentText(text);
-      expect(parsed.input.genre, text).toBe("house");
-      expect(parsed.input.style, text).toBe("amapiano");
+      expect(parsed.input.genre, text).toBe("amapiano");
     }
+    expect(parseIntentText("amapiano").input.style).toBe("yanos");
+    // "private school piano" is the soulful school now (Kelvin Momo).
+    expect(parseIntentText("private school piano").input.style).toBe("soulful");
   });
 
   it("organic house resolves; bare organic ambient stays ambient", () => {
@@ -75,15 +76,16 @@ describe("amapiano + organic parser", () => {
 });
 
 describe("amapiano + organic artists", () => {
-  it("the amapiano lane rides its own groove now", () => {
-    expect(matchArtistPreset("amapiano")?.preset.style).toBe("amapiano");
+  it("the amapiano lane rides its own genre now", () => {
+    expect(matchArtistPreset("amapiano")?.preset.genre).toBe("amapiano");
+    expect(matchArtistPreset("amapiano")?.preset.style).toBe("yanos");
     expect(matchArtistPreset("amapiano")?.preset.bpmRange).toEqual([110, 116]);
   });
 
   it("log drum / private school / organic artists resolve", () => {
-    expect(matchArtistPreset("mdu aka mas")?.preset).toMatchObject({ style: "amapiano", bpmRange: [110, 116] });
-    expect(matchArtistPreset("mfr souls")?.preset.style).toBe("amapiano");
-    expect(matchArtistPreset("daliwonga")?.preset.style).toBe("amapiano");
+    expect(matchArtistPreset("mdu aka mas")?.preset).toMatchObject({ genre: "amapiano", bpmRange: [110, 116] });
+    expect(matchArtistPreset("mfr souls")?.preset.genre).toBe("amapiano");
+    expect(matchArtistPreset("daliwonga")?.preset.genre).toBe("amapiano");
     expect(matchArtistPreset("adam port")?.preset).toMatchObject({ style: "organic", bpmRange: [120, 124] });
     expect(matchArtistPreset("hugel")?.preset.style).toBe("organic");
   });

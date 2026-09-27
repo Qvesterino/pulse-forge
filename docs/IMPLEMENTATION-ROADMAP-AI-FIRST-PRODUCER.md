@@ -379,6 +379,21 @@ Pred označením workflow za hotové musí prejsť:
   zvýšenie capu) patrí ownerovi**, rozpad je tu zapísaný ako podklad.
 - **(c) blind listening:** nezmenené — owed, tooling stojí (`npm run listening:serve`).
 
+### Rozhodnutie ownera — bundle budget, 2026-09-27
+
+Owner zvolil zachovať aktuálne funkcie a nastaviť meraný limit DAW JS na **3 170 KB**.
+Pred zmenou limitu produkčný build nameral **3 158 KB raw / približne 930 KB gzip**, oproti
+2 747 KB z 2026-09-26. Nárast zodpovedá aktuálnej producer vlne: rozšíreným žánrovým a
+groove dátam, artist-signature conditioning, bridge receptom pre kompresor/transient a
+renderer playback. Zmena teda nie je všeobecné povolenie na ďalší rast: strop ponecháva iba
+12 KB rezervu a ďalší rast sa musí najprv kompenzovať alebo rozdeliť do lazy chunkov.
+
+Landing beat/song composer sa zároveň presunul za dynamický import. Jeho on-demand graf je
+**157/600 KB**; pôvodné meranie pred splitom bolo 727/815 KB. Samostatné limity entry
+(1070 KB), optional AI runtime (650 KB), landing route (600 KB) a core worklets (150 KB)
+zostávajú nezmenené. Zmena limitu v `scripts/check-bundle-size.mjs` je zdokumentovaná
+meraním; úspešný `npm run build` je stále potrebný dôkaz, že aktuálny pracovný strom prejde.
+
 ## 4. Prvý konkrétny míľnik
 
 Prvý shipping slice nemusí čakať na MRT2 ani na celý song composer. Mal by vedieť:

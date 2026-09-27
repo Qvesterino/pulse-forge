@@ -113,6 +113,8 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   dnb: "dark",
   // Boom bap is the warm-and-dusty genre — the sampled-break tone.
   boombap: "warm",
+  // Amapiano is the log-drum warmth — deep and round, never bright.
+  amapiano: "warm",
 };
 
 /**
@@ -154,7 +156,12 @@ export function planMixProfile(
   // punching. GENRE_TONE_DEFAULT (above) is the single source for the tone
   // defaults AND the master tilt mapping.
   const characterGenre =
-    genre === "drill" || genre === "phonk" || genre === "jersey" || genre === "dnb" || genre === "boombap";
+    genre === "drill" ||
+    genre === "phonk" ||
+    genre === "jersey" ||
+    genre === "dnb" ||
+    genre === "boombap" ||
+    genre === "amapiano";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
@@ -194,7 +201,12 @@ export function planMixProfile(
         ? true
         : artistMix?.pump !== undefined
           ? artistMix.pump
-          : (genre === "house" || genre === "techno" || genre === "jersey" || genre === "ukg") && intent.energy >= 0.55;
+          : (genre === "house" ||
+              genre === "techno" ||
+              genre === "jersey" ||
+              genre === "ukg" ||
+              genre === "amapiano") &&
+            intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];
   const summary: string[] = [];

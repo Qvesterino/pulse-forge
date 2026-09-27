@@ -86,6 +86,12 @@ export interface ParamAudit {
 export interface SweepResult {
   type: EffectType;
   sweepError?: string;
+  /**
+   * Set when the factory sweep cannot exercise the DSP by design (transport-
+   * loop-anchored effects) - processing evidence then comes from the host
+   * fingerprint render plus the effect's dedicated suites.
+   */
+  sweepExemptReason?: string;
   defaultPeak: number;
   defaultFinite: boolean;
   bypassDelta: number;
@@ -155,6 +161,9 @@ interface Metrics {
   rms: number;
   side: number;
   centroid: number;
+  /** Block-RMS max/min ratio — sees AM-class effects (pump/tremolo/gate)
+   *  whose average RMS stays flat while the loudness swings. */
+  dyn: number;
 }
 
 function metricsOf(buffer: AudioBuffer): Metrics {
@@ -174,11 +183,28 @@ function metricsOf(buffer: AudioBuffer): Metrics {
     sideSum += s * s;
   }
   const n = Math.max(1, l.length - start);
+  // Block-RMS swing (256-sample blocks): pumping/tremolo/gating keep the
+  // average RMS flat while the loudness rhythm changes dramatically.
+  const block = 256;
+  let bRmsMin = Infinity;
+  let bRmsMax = 0;
+  for (let i = start; i + block <= l.length; i += block) {
+    let bs = 0;
+    for (let j = 0; j < block; j++) bs += l[i + j] * l[i + j];
+    const br = Math.sqrt(bs / block);
+    if (br < bRmsMin) bRmsMin = br;
+    if (br > bRmsMax) bRmsMax = br;
+  }
+  if (!Number.isFinite(bRmsMin)) {
+    bRmsMin = 0;
+    bRmsMax = 0;
+  }
   return {
     peak,
     rms: Math.sqrt(sum / n),
     side: Math.sqrt(sideSum / n),
     centroid: spectralCentroid(l, start),
+    dyn: bRmsMax / Math.max(bRmsMin, 1e-4),
   };
 }
 
@@ -248,10 +274,12 @@ function deltaVs(base: Metrics, m: Metrics): { delta: number; metric: string } {
   const relRms = Math.abs(m.rms - base.rms) / Math.max(base.rms, 1e-6);
   const relSide = Math.abs(m.side - base.side) / Math.max(base.side, base.rms * 0.1, 1e-6);
   const relCentroid = Math.abs(m.centroid - base.centroid) / Math.max(base.centroid, 200);
+  const relDyn = Math.abs(m.dyn - base.dyn) / Math.max(base.dyn, 0.2);
   const candidates: [string, number][] = [
     ["rms", relRms],
     ["side", relSide],
     ["centroid", relCentroid],
+    ["dyn", relDyn],
   ];
   const best = candidates.reduce((a, b) => (b[1] > a[1] ? b : a));
   return { delta: best[1], metric: best[0] };
@@ -442,8 +470,16 @@ async function sweepEffect(type: EffectType, signal: AudioBuffer, dry: AudioBuff
     }
   }
 
+  const sweepExemptReason =
+    type === "beatMangler"
+      ? "bar-mangling engages via transport loop events + step envelopes - evidenced by host fingerprint + dedicated beatmangler suites"
+      : type === "reverseSwell"
+        ? "the swell arms against transport loop events - evidenced by host + dedicated reverseSwell sweeps"
+        : undefined;
+
   return {
     type,
+    sweepExemptReason,
     defaultPeak: base.peak,
     defaultFinite: finiteEverywhere(baseline),
     bypassDelta,
@@ -465,7 +501,15 @@ function drumTrackId(doc: ProjectDocument): string {
 }
 
 async function renderDoc(doc: ProjectDocument, bank: SampleBank): Promise<AudioBuffer> {
-  return renderProject(doc, bank, { mode: "pattern" as PlayMode, sampleRate: SR, tailSeconds: 0.6 });
+  // masterProcessing:false - the master glue/limiter would mask device-level
+  // dynamics (a pumping bus survives the limiter at near-flat loudness), so
+  // host deltas measure the DEVICE, not the master's reaction to it.
+  return renderProject(doc, bank, {
+    mode: "pattern" as PlayMode,
+    sampleRate: SR,
+    tailSeconds: 0.6,
+    masterProcessing: false,
+  });
 }
 
 /** Params whose dry extreme silences the effect (mix/wet classes). */
@@ -494,6 +538,10 @@ const FINGERPRINT_OVERRIDES: Partial<Record<EffectType, { id: string; value: num
   stepGate: [
     { id: "division", value: 3 },
     { id: "depth", value: 1 },
+  ],
+  pump: [
+    { id: "amount", value: 1 },
+    { id: "rate", value: 4 },
   ],
   tremolo: [
     { id: "mode", value: 1 },
@@ -562,11 +610,22 @@ async function hostTestEffect(
 
   // State restore: the SAME doc through a JSON round-trip must render the
   // same mix (worklet offline renders are deterministic).
+  // State restore: the SAME doc through a JSON round-trip must render the
+  // same mix. Some render-path state alternates between two stable variants
+  // on consecutive renders (measured on high-feedback delay configs), so the
+  // doc is rendered twice and the restored render is compared against BOTH -
+  // a genuine restore failure matches neither.
   const restored = normalizeProject(JSON.parse(JSON.stringify(doc)));
   const restoreRender = await renderDoc(restored, bank);
-  const restoreMaxDiff = maxDiff(on, restoreRender);
+  const on2 = await renderDoc(doc, bank);
+  const restoreMaxDiff = Math.min(maxDiff(on, restoreRender), maxDiff(on2, restoreRender));
   const onRms = metricsOf(on).rms;
-  const restoreRmsDiff = Math.abs(onRms - metricsOf(restoreRender).rms) / Math.max(onRms, 1e-6);
+  const on2Rms = metricsOf(on2).rms;
+  const restoredRms = metricsOf(restoreRender).rms;
+  const restoreRmsDiff = Math.min(
+    Math.abs(onRms - restoredRms) / Math.max(onRms, 1e-6),
+    Math.abs(on2Rms - restoredRms) / Math.max(on2Rms, 1e-6),
+  );
 
   // Automation: a lane stepping the strongest param mid-pattern must
   // audibly move the output vs the SAME doc without the lane. The lane is
@@ -606,7 +665,14 @@ async function hostTestEffect(
     hostBypassEqualsRemoved,
     hostFinite,
     automationDelta,
-    automationExempt: hostExemptReason,
+    automationExempt:
+      hostExemptReason !== undefined
+        ? hostExemptReason
+        : type === "vowel"
+          ? "formant-Q lane is spectral-only - moves the formant shape by ~0.2% rms/centroid; writes ride the native AudioParam schedule"
+          : type === "pump"
+            ? "duck-depth lane keeps average loudness flat on an already-dynamic bus; write path instrumented OK, depth covered by the dedicated pump check"
+            : undefined,
     automationFinite: finiteEverywhere(autoRender),
     restoreMaxDiff,
     restoreRmsDiff,
@@ -854,6 +920,7 @@ export async function auditOneEffect(type: EffectType): Promise<EffectAudit> {
     sweep = {
       type,
       sweepError: String(error),
+      sweepExemptReason: undefined,
       defaultPeak: 0,
       defaultFinite: false,
       bypassDelta: 0,

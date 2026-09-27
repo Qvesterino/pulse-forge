@@ -305,7 +305,51 @@ def main() -> None:
 
     print()
     print("=" * 78)
+    print("K-FOLD GROUP CV (every group validated once -- the honest number)")
+    print("=" * 78)
+    print("The shipped split validates on a handful of groups; these folds use")
+    print("all 33 groups, so the mean is what you should compare retrains against.")
+    print()
+    for name in rows:
+        r = results[name]
+        manifest = r["manifest"]
+        width = int(manifest["featureCount"])
+        features = x_v2 if width == 41 else x_all
+        session, _ = load_session(name)
+        fold_deg: list[float] = []
+        fold_dur: list[float] = []
+        for mask in group_kfold(groups, k=5):
+            logits_d, logits_t = run(session, manifest, features[mask])
+            fold_deg.append(acc(logits_d.argmax(axis=1), y_degree[mask]))
+            fold_dur.append(acc(logits_t.argmax(axis=1), y_duration[mask]))
+        # Pooled: concatenate all folds' predictions for one aggregate number.
+        pooled_d = np.zeros(len(y_degree), dtype=np.int64)
+        pooled_t = np.zeros(len(y_duration), dtype=np.int64)
+        for mask in group_kfold(groups, k=5):
+            logits_d, logits_t = run(session, manifest, features[mask])
+            pooled_d[mask] = logits_d.argmax(axis=1)
+            pooled_t[mask] = logits_t.argmax(axis=1)
+        print(f"  {name}")
+        print(f"    deg  folds=[{', '.join(f'{x:.3f}' for x in fold_deg)}]  "
+              f"mean={np.mean(fold_deg):.4f}  std={np.std(fold_deg):.4f}  pooled={acc(pooled_d, y_degree):.4f}")
+        print(f"    dur  folds=[{', '.join(f'{x:.3f}' for x in fold_dur)}]  "
+              f"mean={np.mean(fold_dur):.4f}  std={np.std(fold_dur):.4f}  pooled={acc(pooled_t, y_duration):.4f}")
+
+    # Majority baselines on the same folds, so the model's lift is visible.
+    print()
+    print("  majority baselines (same folds):")
+    for label, y in [("deg", y_degree), ("dur", y_duration)]:
+        scores = []
+        for mask in group_kfold(groups, k=5):
+            train = ~mask
+            majority = Counter(y[train]).most_common(1)[0][0]
+            scores.append(float((y[mask] == majority).mean()))
+        print(f"    {label}  mean={np.mean(scores):.4f}  std={np.std(scores):.4f}")
+
+    print()
+    print("=" * 78)
     print("VERDICT")
+    print("=" * 78)
 
 
 if __name__ == "__main__":

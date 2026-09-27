@@ -886,10 +886,10 @@ describe("bass-house / g-house / future-bass / riddim-dubstep / hardstyle / psyt
     expect(don.input.mood).toBe("chill");
   });
 
-  it("marshmello / said the sky → future bass (broken / 140-150)", () => {
+  it("marshmello / said the sky → future bass (futurebass / 140-150)", () => {
     const mello = parseIntentText("marshmello type beat");
     expect(mello.input.genre).toBe("house");
-    expect(mello.input.style).toBe("broken");
+    expect(mello.input.style).toBe("futurebass");
     expect(mello.input.bpmRange).toEqual([140, 150]);
     expect(mello.input.energy).toBe(0.85);
   });
@@ -954,7 +954,7 @@ describe("vaporwave / synthwave / lofi / downtempo / plugg-newer / trap-soul (ch
   it("synthwave / kavinsky / the midnight → ambient organic at 95-115", () => {
     const kav = parseIntentText("kavinsky type beat");
     expect(kav.input.genre).toBe("ambient");
-    expect(kav.input.style).toBe("organic");
+    expect(kav.input.style).toBe("synthwave");
     expect(kav.input.bpmRange).toEqual([95, 115]);
     expect(kav.input.mood).toBe("chill");
   });
@@ -983,10 +983,10 @@ describe("vaporwave / synthwave / lofi / downtempo / plugg-newer / trap-soul (ch
     expect(ns.input.energy).toBe(0.7);
   });
 
-  it("bryson tiller / partynextdoor / 6lack → trap sparse at 78-95 (R&B-trap)", () => {
+  it("bryson tiller / partynextdoor / 6lack → trap soul at 78-95 (R&B-trap)", () => {
     const bt = parseIntentText("bryson tiller type beat");
     expect(bt.input.genre).toBe("trap");
-    expect(bt.input.style).toBe("sparse");
+    expect(bt.input.style).toBe("trapsoul");
     expect(bt.input.bpmRange).toEqual([78, 95]);
     expect(bt.input.mood).toBe("chill");
   });
@@ -1025,7 +1025,7 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
   it("bts / newjeans / blackpink → k-pop (house pop, 100-120)", () => {
     const bts = parseIntentText("bts type beat");
     expect(bts.input.genre).toBe("house");
-    expect(bts.input.style).toBe("pop");
+    expect(bts.input.style).toBe("kpop");
     expect(bts.input.bpmRange).toEqual([100, 120]);
     expect(bts.input.energy).toBe(0.85);
   });
@@ -1033,7 +1033,7 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
   it("sean paul / vybz kartel / popcaan → dancehall (trap bounce, 88-105)", () => {
     const sp = parseIntentText("sean paul type beat");
     expect(sp.input.genre).toBe("trap");
-    expect(sp.input.style).toBe("bounce");
+    expect(sp.input.style).toBe("dancehall");
     expect(sp.input.bpmRange).toEqual([88, 105]);
   });
 
@@ -1048,7 +1048,7 @@ describe("afrobeats / latin urban / k-pop / dancehall / city pop / 88rising (glo
   it("joji / rich brian / niki → 88rising (trap lux, 80-110)", () => {
     const joji = parseIntentText("joji type beat");
     expect(joji.input.genre).toBe("trap");
-    expect(joji.input.style).toBe("lux");
+    expect(joji.input.style).toBe("bedroom");
     expect(joji.input.bpmRange).toEqual([80, 110]);
     expect(joji.input.mood).toBe("chill");
   });
@@ -1251,9 +1251,9 @@ describe("trap producers + memphis OGs + UKG revival + UK drill second line (pro
     expect(wheezy.input.style).toBe("lux");
     expect(wheezy.input.bpmRange).toEqual([130, 146]);
     const southside = parseIntentText("southside type beat");
-    expect(southside.input.style).toBe("dark");
+    expect(southside.input.style).toBe("sparse");
     expect(southside.input.mood).toBe("aggressive");
-    expect(parseIntentText("808 mafia type beat").input.style).toBe("dark");
+    expect(parseIntentText("808 mafia type beat").input.style).toBe("sparse");
     const tm88 = parseIntentText("tm88 type beat");
     expect(tm88.input.style).toBe("bouncy");
     expect(tm88.input.bpmRange).toEqual([138, 150]);
@@ -1261,9 +1261,9 @@ describe("trap producers + memphis OGs + UKG revival + UK drill second line (pro
 
   it("A-list producers: mike will / murda / hit-boy / london / wondagurl / sonny", () => {
     const will = parseIntentText("mike will made it type beat");
-    expect(will.input.style).toBe("dark");
+    expect(will.input.style).toBe("rolling");
     expect(will.input.bpmRange).toEqual([138, 150]);
-    expect(parseIntentText("mike will type beat").input.style).toBe("dark");
+    expect(parseIntentText("mike will type beat").input.style).toBe("rolling");
     expect(parseIntentText("murda beatz type beat").input.style).toBe("bouncy");
     expect(parseIntentText("hit-boy type beat").input.style).toBe("rolling");
     expect(parseIntentText("london on da track type beat").input.style).toBe("bouncy");
@@ -1388,14 +1388,17 @@ describe("plugg / opium producers + amapiano / afro-house + phonk TikTok wave 2"
 
   it("amapiano producers: kabza / maphorisa / jazziq / waffles / major league / focalistic", () => {
     const kabza = parseIntentText("kabza de small type beat");
-    expect(kabza.input.genre).toBe("house");
-    expect(kabza.input.style).toBe("afro");
+    expect(kabza.input.genre).toBe("amapiano");
+    expect(kabza.input.style).toBe("yanos");
     expect(kabza.input.bpmRange).toEqual([110, 116]);
-    expect(parseIntentText("dj maphorisa type beat").input.style).toBe("afro");
-    expect(parseIntentText("mr jazziq type beat").input.style).toBe("afro");
-    expect(parseIntentText("uncle waffles type beat").input.style).toBe("afro");
-    expect(parseIntentText("major league djz type beat").input.style).toBe("afro");
+    expect(parseIntentText("dj maphorisa type beat").input.style).toBe("yanos");
+    expect(parseIntentText("mr jazziq type beat").input.style).toBe("yanos");
+    expect(parseIntentText("uncle waffles type beat").input.style).toBe("yanos");
+    expect(parseIntentText("major league djz type beat").input.style).toBe("yanos");
+    expect(parseIntentText("focalistic type beat").input.genre).toBe("amapiano");
     expect(parseIntentText("focalistic type beat").input.mood).toBe("energetic");
+    expect(parseIntentText("kelvin momo type beat").input.genre).toBe("amapiano");
+    expect(parseIntentText("kelvin momo type beat").input.style).toBe("soulful");
     expect(parseIntentText("kelvin momo type beat").input.mood).toBe("chill");
   });
 
@@ -1723,8 +1726,9 @@ describe("house depth wave (Chicago / Detroit / garage / French / disco)", () =>
     expect(parseIntentText("lane 8 type beat").input.mood).toBe("chill");
     expect(parseIntentText("harrison bdp type beat").input.genre).toBe("house");
     expect(parseIntentText("jody wisternoff type beat").input.style).toBe("minimal");
-    expect(parseIntentText("musa keys type beat").input.style).toBe("afro");
-    expect(parseIntentText("young stunna type beat").input.genre).toBe("house");
+    expect(parseIntentText("musa keys type beat").input.style).toBe("yanos");
+    expect(parseIntentText("young stunna type beat").input.genre).toBe("amapiano");
+    expect(parseIntentText("young stunna type beat").input.style).toBe("yanos");
   });
 
   it("guarded aliases never hijack generic words", () => {

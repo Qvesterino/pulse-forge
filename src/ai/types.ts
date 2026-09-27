@@ -17,7 +17,15 @@ export interface PadMarkovModel {
 /** Groove data — one style variation within a genre */
 /** All available genres (song forms, grooves and intent parsing key off this). */
 export type Genre =
-  "house" | "techno" | "trap" | "ambient" | "drill" | "phonk" | "jersey" | "dnb"   | "hyperpop"
+  | "house"
+  | "techno"
+  | "trap"
+  | "ambient"
+  | "drill"
+  | "phonk"
+  | "jersey"
+  | "dnb"
+  | "hyperpop"
   | "ukg"
   | "boombap"
   | "amapiano";

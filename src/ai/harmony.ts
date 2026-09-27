@@ -511,6 +511,39 @@ const BOOMBAP_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const AMAPIANO_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VII-VI-VII (log-drum minor)",
+    genre: "amapiano",
+    events: [
+      { degree: 0, quality: "min7", duration: 4, func: "T" },
+      { degree: 6, quality: "maj7", duration: 4, func: "D" },
+      { degree: 5, quality: "maj7", duration: 4, func: "T" },
+      { degree: 6, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "ii-V-I-vi (soulful jazz turn)",
+    genre: "amapiano",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "I-IV-vi-V (popiano lift)",
+    genre: "amapiano",
+    events: [
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 3, quality: "maj7", duration: 4, func: "S" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -523,6 +556,7 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   hyperpop: HYPERPOP_PROGRESSIONS,
   ukg: UKG_PROGRESSIONS,
   boombap: BOOMBAP_PROGRESSIONS,
+  amapiano: AMAPIANO_PROGRESSIONS,
 };
 
 /**

@@ -302,10 +302,13 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   **valDurationAcc 0.571** (baseline 0.469), 190 vzoriek / 27 skupín —
   malý dataset je úprimný limit: model interpoluje knižnicu, favorites ho
   naučia viac. Melodic v2 (`symbolic-melodic-v2.onnx`, 21 217 B, 41-dim
-  embedding) je na rovnakých dátach HORŠÍ (valDegreeAcc 0.607, valDuration
-  0.464) — preto provider preferuje v2 len keď je embedding dostupný a
-  per-call fallbackuje na v1 (P1 audit 2026-09-23: drums držať na v3,
-  melodic preferovať v1 kým nebude väčší dataset).
+  embedding): manifest hlási valDegreeAcc 0.607, ale to je 29-riadkový split —
+  **audit 2026-09-27 (viď nižšie) nameral na 5-fold CV degree 0.7521 (LEPŠIE
+  než v1) a duration 0.4511 (skutočná regresia, root cause v trénerovi)**.
+  Provider preto preferuje v2 len keď je embedding dostupný a per-call
+  fallbackuje na v1 (P1 audit 2026-09-23: drums držať na v3, melodic
+  preferovať v1 kým nebude väčší dataset — **revidované auditom 2026-09-27**:
+  v2 degree je použiteľná, blokuje len duration hlava).
 - **Provider**: `SymbolicPriorProvider` v2 — pri dostupnom modeli NAHRADZuje
   template melódiu prior-samplovanými notami (autoregresívne po rolách,
   roly bežia paralelne; `controls.temperature` tvaruje distribúcie).
@@ -325,6 +328,32 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   (validátory zelené). Pravidlo bolo predregistrované: aktivovať v2 len pri
   gape nad šumom. Skutočný blokér: val má 4 skupiny/28 vzoriek — ďalší QA krok
   musí zväčšiť library grupy, nie augmentáciu.
+
+- **AUDIT 2026-09-27 (k-fold + root cause, `docs/MELODIC-PRIOR-AUDIT-2026-09-27.md`)**:
+  štyri read-only skripty (`scripts/audit-melodic-*.py`) premerali shipnuté
+  artefakty cez **5-fold group CV nad všetkými 33 grupami** (namiesto 29 riadkov
+  v 4 grupách, kde je 95% CI ±18 p.b.). Zistenia, ktoré menia záver:
+
+  1. **Porovnanie nebolo apples-to-apples** — v1 trénoval na **190** vzorkách
+     (ds.v1), v2 na **239** (ds.v2); knižnica medzitým narástla. „v2 horší" je
+     čiastočne „v2 videl iné dáta".
+  2. **Degree hlava v2 je LEPŠIA**: k-fold **0.7521** vs v1 0.7043 (shipnutý
+     report v2 0.4828 je artefakt 29-riadkového splitu).
+  3. **Duration hlava v2 je SKUTOČNÁ regresia**: k-fold **0.4511** — pod
+     majority baseline 0.4997; hlava predpovedá triedu 8 (12 vzoriek) 55×.
+  4. **Root cause dokázaný**: `train-symbolic-melodic.py:105` násobí duration
+     gradient `(wt / n)` **druhýkrát** (riadok 104 už raz). Finite-difference
+     check: analytický gradient 0.0224 vs skutočný 0.1463 → hlava nikdy
+     neoptimalizovala reportovaný loss. Efektívna váha je `wt²`, čo relatívny
+     ťah k vzácnym triedam zosilní až **10.2×** (duration-2 wt 0.098 → 0.098²).
+  5. **Dátové diery**: `d1` a `d5` majú **nula** validačných príkladov,
+     duration-8 len 12 v celej knižnici — žiadne váženie nevymyslí signál.
+
+  **Opravené smerovanie**: nie „v2 je horší", ale „**v2 degree hlava je
+  preferovaná, duration hlava musí byť opravená pred defaultom**". Fix path
+  (4a) zmazať riadok 105, (4b) sqrt-tempering váh (10.2× → 3.2×), potom
+  retrain s gate: k-fold duration ≥ 0.4997 a degree ≥ 0.7521.
+
 
 ### 5.4 Favorites feedback loop (T2 v2 — učenie z tvojich roliek, HOTOVÉ)
 

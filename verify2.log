@@ -1,0 +1,973 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/symbolic-prior.test.ts [2m([22m[2m14 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 348[2mms[22m[39m
+[31m   [31m├Ś[31m symbolic prior provider[2m > [22mproduces valid, invariant-clean candidates through the shared gates[90m 155[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'template' to be 'symbolic-prior' // Object.is equality[39m
+[31m   [31m├Ś[31m symbolic prior provider[2m > [22mshrink-to-zero on prior failure ÔÇö never throws[90m 45[2mms[22m[31m[39m
+[31m     Ôćĺ expected [ { candidateIndex: 1, ÔÇŽ(7) }, ÔÇŽ(1) ] to deeply equal [][39m
+ [31mÔŁ»[39m tests/ai/bridge/compressor.test.ts [2m([22m[2m12 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 120[2mms[22m[39m
+[31m   [31m├Ś[31m AI bridge ÔÇö punchier drums recipe[2m > [22mtransient params survive normalizeProject and keep their sign[90m 29[2mms[22m[31m[39m
+[31m     Ôćĺ expected false to be true // Object.is equality[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 3 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > produces valid, invariant-clean candidates through the shared gates
+AssertionError: expected 'template' to be 'symbolic-prior' // Object.is equality
+
+Expected: "symbolic-prior"
+Received: "template"
+
+ ÔŁ» tests/symbolic-prior.test.ts:164:28
+    162|     expect(entries.length).toBe(2);
+    163|     for (const entry of entries) {
+    164|       expect(entry.source).toBe("symbolic-prior");
+       |                            ^
+    165|       expect(entry.status === "accepted" || entry.status === "repairedÔÇŽ
+    166|       // rows are complete and shaped for every pad of the drum track
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/3]ÔÄ»
+
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > shrink-to-zero on prior failure ÔÇö never throws
+AssertionError: expected [ { candidateIndex: 1, ÔÇŽ(7) }, ÔÇŽ(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- Array []
++ Array [
++   Object {
++     "candidateIndex": 1,
++     "contentHash": "",
++     "pattern": Object {
++       "generation": Object {
++         "engineId": "pulse-forge.symbolic-prior",
++         "engineVersion": "prior.v2",
++         "genre": "house",
++         "ghostWeight": 0.3,
++         "grooveId": "house.broken",
++         "inputContentHash": null,
++         "intent": Object {
++           "applyGrooveSettings": false,
++           "bpmRange": null,
++           "candidateCount": 1,
++           "complexity": 0.5,
++           "constraints": Object {
++             "allowGhosts": true,
++             "allowSwing": true,
++             "preserveAnchors": true,
++           },
++           "controls": Object {
++             "ghostWeight": 0.3,
++             "microWeight": 0.2,
++             "temperature": 1,
++             "velocityVariation": 0.3,
++           },
++           "density": 0.5,
++           "energy": 0.7,
++           "fx": null,
++           "genre": "house",
++           "key": null,
++           "length": 16,
++           "mood": null,
++           "replaceMode": "new",
++           "roles": Array [
++             "drums",
++             "bass",
++             "chords",
++             "lead",
++           ],
++           "seed": "sym-test",
++           "sourcePatternId": null,
++           "style": null,
++           "symbolicCandidates": 2,
++           "targetTracks": Object {
++             "drumTrackId": null,
++             "instrumentTrackIds": Array [],
++           },
++           "variation": 0.3,
++           "version": 1,
++         },
++         "intentHash": "d7bbacdd",
++         "microWeight": 0.2,
++         "outputContentHash": "2b3c3be7",
++         "quality": Object {
++           "anchorCoverage": 1,
++           "melodicDurationLongRatio": 0,
++           "melodicMotifRepetition": 0,
++           "melodicRestRatio": 0.625,
++           "styleAccepted": true,
++           "styleDistance": 0.274672,
++           "syncopation": 0.173913,
++         },
++         "seed": "sym-test|symbolic:0",
++         "sourcePatternId": null,
++         "stepCount": 16,
++         "style": null,
++         "temperature": 1,
++         "velocityVariation": 0.3,
++       },
++       "id": "pattern-ac3fea6d-b653-493b-beab-2e80db4ee529",
++       "name": "house - Broken (template+mv)",
++       "notes": Object {
++         "track-322d0f0b-dd74-483f-8d66-0ade44bdb8f4": Array [
++           Object {
++             "duration": 480,
++             "id": "note-77ae3bae-3ffa-4eb1-a2a0-be963c7a8348",
++             "pitch": 48,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-eaf9d1ab-ca7e-476b-92ba-2787612bc42f",
++             "pitch": 52,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-eacbf06d-650d-4b2a-a9b8-6b054dc43ac1",
++             "pitch": 55,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-fa5d89ab-0563-471f-aa70-cd9b8d89d632",
++             "pitch": 59,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-c4f2d008-0261-4d19-be45-136338b45395",
++             "pitch": 57,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-f4b1dba7-4186-4db0-a499-265b9ca97d3f",
++             "pitch": 60,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-28cc333d-c04e-4a9b-bdfb-164f565941da",
++             "pitch": 64,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-7f01df4f-edb3-49f2-bf58-b2d46568bf0a",
++             "pitch": 67,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-87f8de14-f462-4641-922b-258777710781",
++             "pitch": 53,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-f1c532f8-1d7c-40d8-9a3d-af0860458f31",
++             "pitch": 57,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-d7be9ccc-9ae1-4a03-93f4-7a53525e1100",
++             "pitch": 60,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-56d1e441-12a6-4dab-9c98-0a26ca417c45",
++             "pitch": 55,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-f3f1ef1a-7a37-4a9c-b22f-851cde4a53a4",
++             "pitch": 59,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-18b5155f-29f4-4897-831c-bbbdce187772",
++             "pitch": 62,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-600ccbab-0db6-4bd0-a4d1-2a484fef3d8f",
++             "pitch": 65,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++         ],
++         "track-a2d39ba9-fde7-4792-b11b-8c1c99c51cad": Array [
++           Object {
++             "duration": 240,
++             "id": "note-3f45ac5c-6add-4315-9373-01b7a8d99836",
++             "pitch": 36,
++             "start": 0,
++             "velocity": 0.8675258364761248,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-53822a2e-01ec-40e3-8ebf-e4f96b2317c8",
++             "pitch": 36,
++             "start": 240,
++             "velocity": 0.4204940251307562,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-80979228-e06f-4406-ab0f-e98412aede3c",
++             "pitch": 45,
++             "start": 480,
++             "velocity": 0.873860811535269,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-1cc9f0d3-d93b-41f6-a27c-d73aae61fb8d",
++             "pitch": 45,
++             "start": 720,
++             "velocity": 0.4951327626919374,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-deaa89d1-5358-4db6-baa7-fb3d470d842c",
++             "pitch": 41,
++             "start": 960,
++             "velocity": 0.8540957192890346,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-0b0aa527-ea60-4d30-b318-38a79cd6da38",
++             "pitch": 41,
++             "start": 1200,
++             "velocity": 0.4968506900034845,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-34884381-94c5-49a0-bbd7-463673920be6",
++             "pitch": 43,
++             "start": 1440,
++             "velocity": 0.9465266024926677,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-bca2877d-16dd-482b-a6a6-d97ed39792c4",
++             "pitch": 43,
++             "start": 1680,
++             "velocity": 0.5672505564801396,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-f2088500-cdbb-405a-9428-6cdd8184af37",
++             "pitch": 71,
++             "start": 0,
++             "velocity": 0.6193444355484098,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-44ebb262-f1d2-4011-89fc-053523fd2498",
++             "pitch": 67,
++             "start": 360,
++             "velocity": 0.7369510405417531,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-261a9824-2c87-4383-9895-85c9547746ba",
++             "pitch": 76,
++             "start": 720,
++             "velocity": 0.6279335492756217,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-0108aeb5-0e6c-4a26-8122-0ad6dfce41dd",
++             "pitch": 65,
++             "start": 960,
++             "velocity": 0.712628805488348,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-4a5bdcbe-4352-4a7e-95bc-bc5674fff0fd",
++             "pitch": 70,
++             "start": 1320,
++             "velocity": 0.6023858810216188,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-9f4fd6e1-44c3-4bc0-b308-122e369f2000",
++             "pitch": 77,
++             "start": 1680,
++             "velocity": 0.7855632224446162,
++           },
++         ],
++       },
++       "phrasePlan": Array [
++         Object {
++           "bar": 0,
++           "endStep": 16,
++           "section": "main",
++           "startStep": 0,
++         },
++       ],
++       "rows": Object {
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-01": Array [
++           0.8503199545853726,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0.47362207012431995,
++           0,
++           0,
++           0,
++           0.9096228816897464,
++           0,
++           0.6756512123161513,
++           0,
++           0,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-05": Array [
++           0,
++           0,
++           0,
++           0,
++           0.8704167981809001,
++           0,
++           0.21087261254564185,
++           0.5126089910411276,
++           0.3172641389126572,
++           0,
++           0,
++           0,
++           0.8739372217691372,
++           0,
++           0.6033285030887818,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-07": Array [
++           0,
++           0.16645524492701605,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-09": Array [
++           0.4930682023016968,
++           0,
++           0.508327995304256,
++           0,
++           0.5225475848618524,
++           0,
++           0.49031315016555477,
++           0.583096584230878,
++           0.6375966764270621,
++           0,
++           0.6053317679166063,
++           0,
++           0.6280211422797266,
++           0,
++           0.5043580421172539,
++           0.526109231481083,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-11": Array [
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0.5167823767845885,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0.5082750242698421,
++           0,
++         ],
++       },
++       "stepCount": 16,
++       "stepMeta": Object {
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-01": Object {
++           "12": Object {
++             "probability": 0.6278288086876272,
++           },
++           "6": Object {
++             "probability": 0.7227344508748501,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-05": Object {
++           "7": Object {
++             "microtiming": 0.05,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-07": Object {
++           "1": Object {
++             "microtiming": 0.05,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-09": Object {
++           "15": Object {
++             "microtiming": 0.05,
++           },
++           "2": Object {
++             "ratchet": 2,
++           },
++           "7": Object {
++             "microtiming": 0.05,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-11": Object {
++           "6": Object {
++             "probability": 0.7012197309639304,
++           },
++         },
++       },
++     },
++     "repairs": Array [],
++     "score": 0,
++     "seed": "sym-test|symbolic:0",
++     "source": "template",
++     "status": "accepted",
++   },
++   Object {
++     "candidateIndex": 2,
++     "contentHash": "",
++     "pattern": Object {
++       "generation": Object {
++         "engineId": "pulse-forge.symbolic-prior",
++         "engineVersion": "prior.v2",
++         "genre": "house",
++         "ghostWeight": 0.3,
++         "grooveId": "house.afrobeats",
++         "inputContentHash": null,
++         "intent": Object {
++           "applyGrooveSettings": false,
++           "bpmRange": null,
++           "candidateCount": 1,
++           "complexity": 0.5,
++           "constraints": Object {
++             "allowGhosts": true,
++             "allowSwing": true,
++             "preserveAnchors": true,
++           },
++           "controls": Object {
++             "ghostWeight": 0.3,
++             "microWeight": 0.2,
++             "temperature": 1,
++             "velocityVariation": 0.3,
++           },
++           "density": 0.5,
++           "energy": 0.7,
++           "fx": null,
++           "genre": "house",
++           "key": null,
++           "length": 16,
++           "mood": null,
++           "replaceMode": "new",
++           "roles": Array [
++             "drums",
++             "bass",
++             "chords",
++             "lead",
++           ],
++           "seed": "sym-test",
++           "sourcePatternId": null,
++           "style": null,
++           "symbolicCandidates": 2,
++           "targetTracks": Object {
++             "drumTrackId": null,
++             "instrumentTrackIds": Array [],
++           },
++           "variation": 0.3,
++           "version": 1,
++         },
++         "intentHash": "d7bbacdd",
++         "microWeight": 0.2,
++         "outputContentHash": "7e0e4e3a",
++         "quality": Object {
++           "anchorCoverage": 1,
++           "melodicDurationLongRatio": 0,
++           "melodicMotifRepetition": 0,
++           "melodicRestRatio": 0.4375,
++           "styleAccepted": true,
++           "styleDistance": 0.141337,
++           "syncopation": 0.264706,
++         },
++         "seed": "sym-test|symbolic:1",
++         "sourcePatternId": null,
++         "stepCount": 16,
++         "style": null,
++         "temperature": 1,
++         "velocityVariation": 0.3,
++       },
++       "id": "pattern-50d82f60-1530-4229-9c79-44aaadec45bd",
++       "name": "house - Afrobeats (template+mv)",
++       "notes": Object {
++         "track-322d0f0b-dd74-483f-8d66-0ade44bdb8f4": Array [
++           Object {
++             "duration": 480,
++             "id": "note-c8c96f1c-e111-4808-b4e6-3f215b7109b1",
++             "pitch": 48,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-989e6f8b-7e0b-4d3a-b27b-ae0de12ba5b5",
++             "pitch": 52,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-8cfaf4ea-f233-4faf-a6ba-fc35812ae2b2",
++             "pitch": 55,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-379bec98-d3e7-4020-830b-0ec704261483",
++             "pitch": 59,
++             "start": 0,
++             "velocity": 0.6277674179780297,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-9821a784-d491-4f2a-b5d0-be50c1e5e910",
++             "pitch": 57,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-6ed186bb-3d55-451e-bad7-0fb6d0ab6a0e",
++             "pitch": 60,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-ea64e6fc-36be-498a-8d29-aa20013d1fad",
++             "pitch": 64,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-29c6fe06-82ee-486e-bc8c-a7cfe0bb7560",
++             "pitch": 67,
++             "start": 480,
++             "velocity": 0.5517074935673736,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-027e0fd5-4815-48da-9ca4-8952f8b3448b",
++             "pitch": 53,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-1399a420-08be-4317-a025-2f43eb608061",
++             "pitch": 57,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-7118a2a0-59f2-4763-8c1b-430451ff3194",
++             "pitch": 60,
++             "start": 960,
++             "velocity": 0.5661244418611749,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-4635023d-905b-4b14-958d-b65a5942a630",
++             "pitch": 55,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-41e4b3cd-f694-4c76-9850-05b42e56b978",
++             "pitch": 59,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-4422e9a5-c8d8-4c04-956c-68033ba08b97",
++             "pitch": 62,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++           Object {
++             "duration": 480,
++             "id": "note-6c190af7-db08-456f-8b45-849856f51458",
++             "pitch": 65,
++             "start": 1440,
++             "velocity": 0.6116013996116817,
++           },
++         ],
++         "track-a2d39ba9-fde7-4792-b11b-8c1c99c51cad": Array [
++           Object {
++             "duration": 240,
++             "id": "note-0312e199-7653-44b5-98b0-92a54eee24ff",
++             "pitch": 36,
++             "start": 0,
++             "velocity": 0.8675258364761248,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-a07850cf-6bca-49da-93b4-cbfd9783d66b",
++             "pitch": 36,
++             "start": 240,
++             "velocity": 0.4204940251307562,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-0bdec73d-a559-4765-9d74-fd382a9d463a",
++             "pitch": 45,
++             "start": 480,
++             "velocity": 0.873860811535269,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-369b5e77-0e41-4130-b29d-6278e8dff569",
++             "pitch": 45,
++             "start": 720,
++             "velocity": 0.4951327626919374,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-51a55a23-14d4-43fb-8378-1d3a53cd200a",
++             "pitch": 41,
++             "start": 960,
++             "velocity": 0.8540957192890346,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-876742a3-be1c-484b-8add-22ef8fa41d4f",
++             "pitch": 41,
++             "start": 1200,
++             "velocity": 0.4968506900034845,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-9b76547d-bc8f-474e-9a06-60de20d525bc",
++             "pitch": 43,
++             "start": 1440,
++             "velocity": 0.9465266024926677,
++           },
++           Object {
++             "duration": 240,
++             "id": "note-56a2c6f5-6c59-4a5b-8994-4d0de93dae4f",
++             "pitch": 43,
++             "start": 1680,
++             "velocity": 0.5672505564801396,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-5b375741-72d7-4e10-b669-e752f08ccb80",
++             "pitch": 71,
++             "start": 0,
++             "velocity": 0.6193444355484098,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-79de1a1e-c862-4d8e-b289-8468aada8983",
++             "pitch": 67,
++             "start": 360,
++             "velocity": 0.7369510405417531,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-109792e3-c944-4616-bb37-93c728407d87",
++             "pitch": 76,
++             "start": 720,
++             "velocity": 0.6279335492756217,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-c7725441-a267-427c-98f3-874ff3ae73f5",
++             "pitch": 65,
++             "start": 960,
++             "velocity": 0.712628805488348,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-d8ea8bea-de63-4b66-a2ca-71e0df8a7895",
++             "pitch": 70,
++             "start": 1320,
++             "velocity": 0.6023858810216188,
++           },
++           Object {
++             "duration": 120,
++             "id": "note-332d08a0-6415-40a5-aa66-8cbe046037db",
++             "pitch": 77,
++             "start": 1680,
++             "velocity": 0.7855632224446162,
++           },
++         ],
++       },
++       "phrasePlan": Array [
++         Object {
++           "bar": 0,
++           "endStep": 16,
++           "section": "main",
++           "startStep": 0,
++         },
++       ],
++       "rows": Object {
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-01": Array [
++           0.884155,
++           0,
++           0.8374285138547771,
++           0,
++           0,
++           0,
++           0.7995722902639735,
++           0,
++           0.7450525031411562,
++           0,
++           0,
++           0,
++           0.7596806763556702,
++           0,
++           0.9424349633796485,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-02": Array [
++           0.5246335360171226,
++           0,
++           0.5440844545775051,
++           0,
++           0.5775235813259866,
++           0,
++           0,
++           0,
++           0.5554286295890598,
++           0,
++           0,
++           0,
++           0.6020224791772779,
++           0,
++           0,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-05": Array [
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0.8911792325045383,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-08": Array [
++           0.6488117170198354,
++           0.15988108132231657,
++           0.3832473082786584,
++           0.49340761917491993,
++           0.572691683892111,
++           0.19253230271612556,
++           0.47007738934557186,
++           0.20833820960042393,
++           0.6818636112449598,
++           0.2624469752593862,
++           0.4907408429177833,
++           0.3331338124048904,
++           0.48788740487963,
++           0.22313174053546228,
++           0.5794052399923183,
++           0.30168592265350486,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-09": Array [
++           0.5761384213882964,
++           0,
++           0,
++           0,
++           0.6467755086270036,
++           0,
++           0,
++           0,
++           0.6151276487473737,
++           0,
++           0.3133065282977166,
++           0,
++           0.5586685514671287,
++           0,
++           0,
++           0,
++         ],
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-15": Array [
++           0,
++           0,
++           0,
++           0.20640836406686713,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++         ],
++       },
++       "stepCount": 16,
++       "stepMeta": Object {
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-01": Object {
++           "0": Object {
++             "microtiming": 0.07,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-02": Object {
++           "8": Object {
++             "probability": 0.6959641664056108,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-05": Object {
++           "8": Object {
++             "microtiming": -0.09,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-08": Object {
++           "1": Object {
++             "microtiming": 0.18,
++           },
++           "10": Object {
++             "microtiming": -0.06,
++           },
++           "11": Object {
++             "microtiming": 0.04,
++           },
++           "13": Object {
++             "microtiming": 0.04,
++           },
++           "14": Object {
++             "microtiming": -0.13,
++           },
++           "15": Object {
++             "microtiming": 0.04,
++           },
++           "3": Object {
++             "microtiming": -0.01,
++           },
++           "5": Object {
++             "microtiming": 0.04,
++           },
++           "7": Object {
++             "microtiming": -0.13,
++           },
++           "9": Object {
++             "microtiming": 0.04,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-09": Object {
++           "0": Object {
++             "microtiming": 0.11,
++           },
++           "10": Object {
++             "probability": 0.6098388099577278,
++           },
++           "4": Object {
++             "microtiming": 0.07,
++           },
++         },
++         "track-e6283bd0-762f-4e94-acc1-e08eef8d4b43-pad-15": Object {
++           "3": Object {
++             "microtiming": 0.04,
++           },
++         },
++       },
++     },
++     "repairs": Array [],
++     "score": 0,
++     "seed": "sym-test|symbolic:1",
++     "source": "template",
++     "status": "accepted",
++   },
++ ]
+
+ ÔŁ» tests/symbolic-prior.test.ts:267:21
+    265|       1,
+    266|     );
+    267|     expect(entries).toEqual([]);
+       |                     ^
+    268|     expect(failures.length).toBe(2);
+    269|     expect(failures[0]).toContain("prior-fallback");
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/3]ÔÄ»
+
+ FAIL  tests/ai/bridge/compressor.test.ts > AI bridge ÔÇö punchier drums recipe > transient params survive normalizeProject and keep their sign
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ÔŁ» tests/ai/bridge/compressor.test.ts:188:23
+    186|       userPreferences: EMPTY_PREFERENCES,
+    187|     });
+    188|     expect(result.ok).toBe(true);
+       |                       ^
+    189|     if (!result.ok) return;
+    190| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[3/3]ÔÄ»
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m23 passed[39m[22m[90m (26)[39m
+[2m   Start at [22m 11:49:56
+[2m   Duration [22m 12.66s[2m (transform 4.29s, setup 2.82s, collect 10.75s, tests 468ms, environment 8.43s, prepare 731ms)[22m
+

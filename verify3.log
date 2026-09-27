@@ -1,0 +1,30 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/symbolic-prior.test.ts [2m([22m[2m15 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 309[2mms[22m[39m
+[31m   [31m├Ś[31m symbolic prior provider[2m > [22muses the selected alternate groove for symbolic candidates without changing validation provenance[90m 48[2mms[22m[31m[39m
+[31m     Ôćĺ expected 'evolving-hook' to be 'alternate-groove' // Object.is equality[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 1 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > uses the selected alternate groove for symbolic candidates without changing validation provenance
+AssertionError: expected 'evolving-hook' to be 'alternate-groove' // Object.is equality
+
+Expected: "alternate-groove"
+Received: "evolving-hook"
+
+ ÔŁ» tests/symbolic-prior.test.ts:217:42
+    215|     expect(entries).toHaveLength(2);
+    216|     const experimental = entries.find((entry) => entry.search?.lane ==ÔÇŽ
+    217|     expect(experimental?.search?.family).toBe("alternate-groove");
+       |                                          ^
+    218|     expect(experimental?.search?.melodyFamily).toBe("evolving-hook");
+    219|     expect(experimental?.search?.grooveId).not.toBe(plan.groove.id);
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/1]ÔÄ»
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m14 passed[39m[22m[90m (15)[39m
+[2m   Start at [22m 12:05:23
+[2m   Duration [22m 24.52s[2m (transform 11.19s, setup 1.28s, collect 14.91s, tests 309ms, environment 6.40s, prepare 247ms)[22m
+

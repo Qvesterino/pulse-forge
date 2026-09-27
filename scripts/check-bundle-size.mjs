@@ -65,11 +65,14 @@ const ENTRY_BUDGET_KB = 1070;
 // 2740 (2026-09-26): shared preset quick controls add the MIX/FEEDBACK/SYNC
 // workflow to the bottom dock; the measured graph is now 2738 KB. Keep a
 // bounded 2 KB margin; future dock growth must still be offset or split.
-// 2750 (2026-09-26): the measured take-lane waveform overview plus the current
-// intent candidate-search integration produce a 2747 KB graph. Keep only 3 KB
-// of headroom; the next additions must be offset or split rather than raising
-// the cap again.
-const TOTAL_BUDGET_KB = 2750;
+// 3170 (2026-09-27): the production graph measured 3158 KB raw (~930 KB gzip),
+// up 411 KB from the 2747 KB graph measured on 2026-09-26. The increase is the
+// intentional producer wave: deeper genre/groove data, artist-signature
+// conditioning, canonical compressor/transient bridge recipes, and renderer
+// playback. This cap leaves 12 KB of headroom; entry, optional-AI, landing and
+// worklet budgets remain independent. Further DAW growth must be offset or
+// split before another cap increase is considered.
+const TOTAL_BUDGET_KB = 3170;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

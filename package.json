@@ -31,6 +31,8 @@
     "prior:v3": "vite-node scripts/generate-symbolic-prior-dataset.mts && python scripts/train-symbolic-prior.py --embedding scripts/data/style-embeddings.json --hybrid --augmented scripts/data/augmented-drum-dataset.json && node scripts/validate-symbolic-prior.mjs v3",
     "prior:melodic": "vite-node scripts/generate-symbolic-melodic-dataset.mts && python scripts/train-symbolic-melodic.py --augmented scripts/data/augmented-melodic-dataset.json && node scripts/validate-symbolic-melodic.mjs",
     "prior:melodic:v2": "vite-node scripts/generate-symbolic-melodic-dataset.mts && python scripts/train-symbolic-melodic.py --embedding scripts/data/style-embeddings.json --augmented scripts/data/augmented-melodic-dataset.json && node scripts/validate-symbolic-melodic.mjs v2",
+    "audit:melodic": "python scripts/audit-melodic-prior.py && python scripts/audit-melodic-duration-collapse.py",
+    "audit:melodic:weights": "python scripts/audit-melodic-weights-ab.py && python scripts/audit-melodic-double-weight-proof.py",
     "pca:module": "node scripts/generate-pca-projection-module.mjs",
     "prior:favorites": "vite-node scripts/export-favorites-training.mts",
     "favorites:retrain": "vite-node scripts/export-favorites-training.mts",

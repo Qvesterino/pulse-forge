@@ -175,7 +175,9 @@ describe("Node producer ↔ TS consumer interop (same SAB)", () => {
       },
     };
     const errors: string[] = [];
-    const bridge = new PcmPipeToSabBridge({ source: fakeSource, sab, onError: (m) => errors.push(m) });
+    // Constructed for its side effect: the bridge subscribes to fakeSource and
+    // writes decoded blocks into the SAB that PcmRingReader below reads from.
+    new PcmPipeToSabBridge({ source: fakeSource, sab, onError: (m) => errors.push(m) });
 
     // Matching rate streams into the ring.
     fakeSource.emit("format", { rate: 48000, channels: 2, blockFrames: 480 });

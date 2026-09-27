@@ -131,8 +131,29 @@ describe("prior-features contract", () => {
 });
 
 describe("symbolic prior provider", () => {
+  // The drum-prior one-hot block only covers the frozen training vocabulary
+  // (house: 7 of 53 grooves, trap: 5 of 26, dnb/boombap: none). An intent
+  // WITHOUT an explicit style makes resolveGroove() pick a random groove, so
+  // the prior is skipped and every candidate is honestly tagged "template".
+  // That degradation is real — it is pinned by its own test below.
+  //
+  // `priorIntent` therefore pins an in-vocabulary style so the prior-path
+  // assertions actually exercise the prior. It is kept separate from
+  // `intent` because an explicit style is a request-level contract:
+  // candidateSearchVariant() deliberately disables the `alternate-groove`
+  // family when `plan.intent.style` is set (candidate-search.ts:125), and the
+  // search-lane tests below depend on that family being available.
   const intent = normalizeIntent({
     genre: "house",
+    seed: "sym-test",
+    length: 16,
+    candidateCount: 1,
+    symbolicCandidates: 2,
+    roles: ["drums", "bass", "chords", "lead"],
+  });
+  const priorIntent = normalizeIntent({
+    genre: "house",
+    style: "deep",
     seed: "sym-test",
     length: 16,
     candidateCount: 1,
@@ -152,7 +173,7 @@ describe("symbolic prior provider", () => {
   });
 
   it("produces valid, invariant-clean candidates through the shared gates", async () => {
-    const plan = planGeneration(intent, doc);
+    const plan = planGeneration(priorIntent, doc);
     const { entries, failures } = await symbolicPriorProvider.collectCandidates(
       plan,
       { project: doc, mode: "apply" },
@@ -258,7 +279,7 @@ describe("symbolic prior provider", () => {
 
   it("shrink-to-zero on prior failure — never throws", async () => {
     runPriorGridMock.mockResolvedValue({ ok: false, probs: null, source: "fallback" });
-    const plan = planGeneration(intent, doc);
+    const plan = planGeneration(priorIntent, doc);
     const { entries, failures } = await symbolicPriorProvider.collectCandidates(
       plan,
       { project: doc, mode: "apply" },
@@ -290,6 +311,36 @@ describe("symbolic prior provider", () => {
     expect(runPriorGridMock).not.toHaveBeenCalled();
     expect(entries).toHaveLength(1);
     expect(entries[0].source).toBe("template");
+    const drumRows = Object.values(entries[0].pattern.rows);
+    expect(drumRows.length).toBeGreaterThan(0);
+    for (const row of drumRows) expect(row.length).toBe(16);
+  });
+
+  // Guards the coverage gap the pinned `style: "deep"` fixture above hides.
+  // The v1 drum prior only answers for grooves in its frozen one-hot vocab, so
+  // any in-genre-but-out-of-vocab groove silently falls back to template
+  // drums. That is the correct safe behaviour (a missing prior must never
+  // fabricate a bad grid), but it is invisible unless it is asserted here.
+  it("degrades an in-genre but out-of-vocabulary groove to template instead of guessing", async () => {
+    const afropopIntent = normalizeIntent({
+      genre: "house",
+      style: "afropop",
+      seed: "out-of-vocab-groove",
+      length: 16,
+      candidateCount: 0,
+      symbolicCandidates: 1,
+      roles: ["drums", "bass", "chords", "lead"],
+    });
+    expect((PRIOR_STYLE_VOCAB as readonly string[]).includes("house.afropop")).toBe(false);
+
+    const plan = planGeneration(afropopIntent, doc);
+    const { entries, failures } = await symbolicPriorProvider.collectCandidates(plan, { project: doc, mode: "apply" }, 0);
+    expect(failures).toEqual([]);
+    // The prior client is never consulted for a style it was not trained on.
+    expect(runPriorGridMock).not.toHaveBeenCalled();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].source).toBe("template");
+    // Still a usable pattern: every drum row is shaped for the step count.
     const drumRows = Object.values(entries[0].pattern.rows);
     expect(drumRows.length).toBeGreaterThan(0);
     for (const row of drumRows) expect(row.length).toBe(16);

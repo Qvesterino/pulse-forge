@@ -88,7 +88,7 @@ try {
 
   // Phase 0: fixtures (bank + signal + base render), cached on window.
   const basePeak = await evaluateResilient(page, async () => {
-    const mod = await import("/src/plugin-audit-checks.ts");
+    const mod = await import(`/src/plugin-audit-checks.ts?bust=${Date.now()}`);
     const p = await mod.auditSetup();
     return p;
   });
@@ -106,7 +106,7 @@ try {
       const result = await evaluateResilient(
         page,
         async (t) => {
-          const mod = await import("/src/plugin-audit-checks.ts");
+          const mod = await import(`/src/plugin-audit-checks.ts?bust=${Date.now()}`);
           return mod.auditOneEffect(t);
         },
         type,
@@ -156,7 +156,7 @@ try {
       const result = await evaluateResilient(
         page,
         async (k) => {
-          const mod = await import("/src/plugin-audit-checks.ts");
+          const mod = await import(`/src/plugin-audit-checks.ts?bust=${Date.now()}`);
           return mod.auditOneInstrument(k);
         },
         kind,
@@ -186,7 +186,7 @@ try {
     console.log("[audit] interactions");
     try {
       report.interactions = await evaluateResilient(page, async () => {
-        const mod = await import("/src/plugin-audit-checks.ts");
+        const mod = await import(`/src/plugin-audit-checks.ts?bust=${Date.now()}`);
         return mod.auditInteractionsPhase();
       });
     } catch (error) {

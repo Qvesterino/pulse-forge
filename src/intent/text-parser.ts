@@ -58,7 +58,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // own school tree (yanos / soulful / s'gija / bacardi / quantum / popiano).
   // "private school piano" is the soulful school, "new age bacardi" the
   // Pretoria mutation, "popiano" the pop-facing variant.
-  [/\bamapiano\b|\byanos\b|\bprivate school piano\b|\bnew age bacardi\b|\bpopiano\b|\bafropiano\b|\bquantum sound\b/, "amapiano"],
+  [
+    /\bamapiano\b|\byanos\b|\bprivate school piano\b|\bnew age bacardi\b|\bpopiano\b|\bafropiano\b|\bquantum sound\b/,
+    "amapiano",
+  ],
   [/\bbacardi\b/, "amapiano"],
   // Rock lanes — grunge / alt rock / rapcore / synth punk ride dedicated
   // house-family grooves; "nu metal" is the rapcore family alias. "synth

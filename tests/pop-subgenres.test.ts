@@ -145,10 +145,11 @@ describe("sub-genre artists", () => {
     expect(latin.preset.style).toBe("dembow");
   });
 
-  it("amapiano lane rides its own log drum groove", () => {
+  it("amapiano lane rides its own log drum genre", () => {
     const amapiano = matchArtistPreset("amapiano")!;
     expect(amapiano.preset.label).toBe("amapiano");
-    // upgraded from the afro-house pocket when house.amapiano landed
-    expect(amapiano.preset.style).toBe("amapiano");
+    // promoted from the house lane when the amapiano genre landed
+    expect(amapiano.preset.genre).toBe("amapiano");
+    expect(amapiano.preset.style).toBe("yanos");
   });
 });

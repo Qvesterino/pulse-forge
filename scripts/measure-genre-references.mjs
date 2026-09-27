@@ -45,6 +45,7 @@ const GENRES = [
   "hyperpop",
   "ukg",
   "boombap",
+  "amapiano",
 ];
 const SEEDS = ["ref-a", "ref-b"];
 

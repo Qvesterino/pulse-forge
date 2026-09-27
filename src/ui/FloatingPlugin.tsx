@@ -8,6 +8,13 @@ import { GranularPanel } from "./GranularPanel";
 import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
 import { EnvEditor } from "./EnvEditor";
 import { Slider } from "./controls";
+import {
+  DRUM_SYNTH_DEFAULTS,
+  DRUM_SYNTH_TYPE_LABELS,
+  DRUM_SYNTH_TYPE_ORDER,
+  asDrumSynthType,
+  mergeSynth,
+} from "./drumSynthVoices";
 import type { Track } from "../project-model/types";
 
 /** Hobby vs Profi — hobby shows 4 essential knobs, profi shows all. */
@@ -407,29 +414,18 @@ function DrumPluginContent({
             <select
               value={pad.synth?.type ?? "hatClosed"}
               onChange={(e) => {
-                const type = e.target.value as any;
-                const defaults: Record<string, { decay: number; tone: number; snap: number; body: number }> = {
-                  hatClosed: { decay: 0.08, tone: 7500, snap: 0.35, body: 0.3 },
-                  hatOpen: { decay: 0.32, tone: 7000, snap: 0.55, body: 0.5 },
-                  clap: { decay: 0.25, tone: 1200, snap: 0.4, body: 0.5 },
-                  perc: { decay: 0.12, tone: 2100, snap: 0.35, body: 0.45 },
-                  cowbell: { decay: 0.32, tone: 540, snap: 0.35, body: 0.5 },
-                  kick: { decay: 0.42, tone: 5000, snap: 0.3, body: 0.6 },
-                  snare: { decay: 0.22, tone: 1750, snap: 0.45, body: 0.5 },
-                };
-                const d = defaults[type];
-                services.store.execute(
-                  setPadSynth(doc, pad.id, { type, decay: d.decay, tone: d.tone, snap: d.snap, body: d.body }),
-                );
+                // Validated against the union; an unknown value leaves the
+                // current voice alone instead of throwing on a missing key.
+                const type = asDrumSynthType(e.target.value);
+                if (!type) return;
+                services.store.execute(setPadSynth(doc, pad.id, { type, ...DRUM_SYNTH_DEFAULTS[type] }));
               }}
             >
-              <option value="hatClosed">Hat Closed</option>
-              <option value="hatOpen">Hat Open</option>
-              <option value="clap">Clap</option>
-              <option value="perc">Perc</option>
-              <option value="cowbell">Cowbell</option>
-              <option value="kick">Kick</option>
-              <option value="snare">Snare</option>
+              {DRUM_SYNTH_TYPE_ORDER.map((type) => (
+                <option key={type} value={type}>
+                  {DRUM_SYNTH_TYPE_LABELS[type]}
+                </option>
+              ))}
             </select>
           </label>
           <Slider
@@ -440,7 +436,7 @@ function DrumPluginContent({
             max={1.2}
             defaultValue={0.08}
             format={(v) => `${v.toFixed(2)} s`}
-            onCommit={(decay) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), decay }))}
+            onCommit={(decay) => services.store.execute(setPadSynth(doc, pad.id, mergeSynth(pad.synth, { decay })))}
           />
           <Slider
             compact
@@ -451,18 +447,18 @@ function DrumPluginContent({
             defaultValue={5000}
             format={(v) => `${Math.round(v)} Hz`}
             taper="log"
-            onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), tone }))}
+            onCommit={(tone) => services.store.execute(setPadSynth(doc, pad.id, mergeSynth(pad.synth, { tone })))}
           />
           {(mode === "profi" || pad.synth?.type === "hatClosed" || pad.synth?.type === "hatOpen") && (
             <Slider
               compact
               label="SNAP"
-              value={(pad.synth as any)?.snap ?? 0.35}
+              value={pad.synth?.snap ?? 0.35}
               min={0}
               max={1}
               defaultValue={0.35}
               format={(v) => `${Math.round(v * 100)}`}
-              onCommit={(snap) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), snap }))}
+              onCommit={(snap) => services.store.execute(setPadSynth(doc, pad.id, mergeSynth(pad.synth, { snap })))}
             />
           )}
           {mode === "profi" &&
@@ -470,12 +466,12 @@ function DrumPluginContent({
               <Slider
                 compact
                 label="BODY"
-                value={(pad.synth as any)?.body ?? 0.5}
+                value={pad.synth?.body ?? 0.5}
                 min={0}
                 max={1}
                 defaultValue={0.5}
                 format={(v) => `${Math.round(v * 100)}`}
-                onCommit={(body) => services.store.execute(setPadSynth(doc, pad.id, { ...(pad.synth as any), body }))}
+                onCommit={(body) => services.store.execute(setPadSynth(doc, pad.id, mergeSynth(pad.synth, { body })))}
               />
             )}
         </div>

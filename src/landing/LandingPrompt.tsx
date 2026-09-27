@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
 import { encodeShareCode } from "../export/shareCode";
 import { createProjectFromTemplate } from "../project-model/templates";
-import { generateLandingBeat, generateLandingSong } from "./landingBeat";
 import { savePendingHandoff } from "./handoff";
 import { funnelEvent, funnelTiming } from "../services/funnel";
 
@@ -51,6 +50,9 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
     setPhase({ kind: "busy", mode, detail: null });
     try {
       if (mode === "song") {
+        // Keep the landing's first-paint route lean. The actual intent/song
+        // composer is loaded only after the visitor asks KYX to forge audio.
+        const { generateLandingSong } = await import("./landingBeat");
         const song = await generateLandingSong(text, controller.signal, (done, label, total) => {
           if (controller.signal.aborted) return;
           setPhase({ kind: "busy", mode, detail: `${label} (${done}/${total})` });
@@ -65,6 +67,9 @@ export function LandingPrompt({ onEnterStudio }: { onEnterStudio: () => void }) 
           label: `${song.sections} sections · ${song.totalBars} bars${song.resolvedBpm ? ` · ${song.resolvedBpm} BPM` : ""}`,
         });
       } else {
+        // This dynamic edge keeps the parser, command graph and song builder
+        // out of the landing route until the user explicitly generates.
+        const { generateLandingBeat } = await import("./landingBeat");
         const beat = await generateLandingBeat(text, controller.signal);
         if (controller.signal.aborted) return;
         funnelEvent("landing_prompt_forged");
