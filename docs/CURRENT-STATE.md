@@ -26,8 +26,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | **Factory presets**                    | **469** | `src/presets/factory.ts`                                                                                                      |
 | └─ instrument presets                  |     463 | `FACTORY_PRESETS`                                                                                                             |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                        |
-| **Architecture decision records**      |  **17** | `docs/adr/0001` … `0015`, plus 0006/0007 each have two companion files                                                        |
-| **Vitest spec files**                  | **584** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                  |
+| **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                        |
+| **Vitest spec files**                  | **589** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                  |
 
 ## Flagship plugin implementations
 
@@ -153,6 +153,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 
 - **ADR 0012 — MRT2 generative tracks** records the Mac Apple-Silicon-only generative-tracks helper path; the helper builds in `native/mrt2-host/`, packaging lives in `electron-builder.yml` and `desktop:build:mac:mrt2`. `.github/workflows/ci.yml` gates its downloadable QA artifact on the shared test suite and packaged-app smoke verification.
 - **ADR 0013 — Windows generative companion tiers** records the separate Windows manager/transport, capture-first capability tiers, benchmark gate and fixed optional companion/model paths. The checked-in JAX capture host, opt-in WSL2/CUDA near-realtime launcher, SHA-256 package manifest verifier and guarded model-data uninstall script live under `companion/mrt2-windows/`, `desktop/` and `scripts/`; the macOS helper remains Apple Silicon-only. The 2026-09-25 RTX 3060 Laptop 600 s WSL2 stream failed promotion (35.98 ms p95, 9 overruns), so Windows live playback is still experimental and is not advertised as promoted realtime.
+- **Pro-DAW standards waves 1–2** (ADR 0016–0018) — BWF `bext` metadata on deliverable WAVs (EBU Tech 3285 v2 loudness fields); CLAP plugin **scanning** out-of-process (`npm run build:clap-probe`, MIT 1.2.10 headers vendored with SHA-256 manifest, real-probe acceptance against compiled fixtures); MIDI Timecode in (`src/midi/smpte.ts`, quarter-frame + full-frame decode, correct 29.97 drop-frame math, statusbar readout, BWF timeReference bridge); ASIO driver **discovery** (`npm run vendor:asio` + `build:asio-probe`, headers-only Steinberg fetch behind the license gate — SDK is not redistributable; COM/IASIO probe, timeout-survivable partial results); framed PCM pipe **transport** (ADR 0018: "KYXP" frames, `pcm-gen` deterministic reference host, strict Node consumer, acceptance = sample-exact sine verification + seq contiguity + ≥4× realtime). Streaming (ASIO host audio, CLAP audio hosting, renderer playback from the pipe ring, transport chase) is explicitly NOT shipped — each waits on test hardware / its wave; see the ADR support matrices.
 
 ## Prior test-gate baseline — not verified on the current revision
 
