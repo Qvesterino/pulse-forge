@@ -35,7 +35,7 @@ import { PatternRecorder } from "./midi/patternRecorder";
 import { recordPlayActivity } from "./ui/playActivity";
 import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
-import { MtcReceiver } from "./midi/smpte";
+import { MtcChaser, MtcReceiver } from "./midi/smpte";
 import { UserSampleRepository, restoreUserSampleAudioMemoized } from "./persistence/UserSampleRepository";
 import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
 import { ensureCuratedLayer } from "./sample-library/curated";
@@ -132,6 +132,8 @@ export interface Services {
   midiClock: MidiClock;
   /** MIDI Timecode (SMPTE) receiver — statusbar readout source. */
   mtc: MtcReceiver;
+  /** Timecode chase policy — armed from the statusbar MTC chip. */
+  mtcChaser: MtcChaser;
   /** Ableton Link session client (statusbar chip) — inert until connected. */
   linkSync: LinkSync;
   userSamples: IUserSampleRepository;
@@ -494,6 +496,7 @@ export async function openProject(
   const midiOutput = new MidiOutput();
   const midiClock = new MidiClock();
   const mtc = new MtcReceiver();
+  const mtcChaser = new MtcChaser(transport, () => store.doc.bpm);
   const linkSync = new LinkSync({ now: () => engine.currentTime }, (bpm) => {
     // An adopted session tempo lands in the doc, so the onDocChanged tempo
     // re-apply agrees with Link instead of fighting the correction loop.
@@ -889,10 +892,13 @@ export async function openProject(
       continue: () => midiClock.handleSlaveContinue(transport),
       stop: () => midiClock.handleSlaveStop(transport),
     });
-    // Wire MIDI Timecode (SMPTE) — statusbar readout; chase comes with ADR 0017 wave 2.
+    // Wire MIDI Timecode (SMPTE) — statusbar readout + armed transport chase.
     midi.onMtc({
       quarter: (piece, data) => mtc.handleQuarter(piece, data),
       fullFrame: (bytes) => mtc.handleFullFrame(bytes),
+    });
+    mtc.subscribe((snapshot) => {
+      mtcChaser.onFrame(snapshot.timecode, { immediate: snapshot.source === "full" });
     });
   });
   void midiOutput.requestAccess();
@@ -1116,6 +1122,7 @@ export async function openProject(
     midiOutput,
     midiClock,
     mtc,
+    mtcChaser,
     linkSync,
     userSamples,
     recordingRecovery,

@@ -10,6 +10,8 @@
  * Everything is pure and network-boundary hardened: bytes from the MIDI wire
  * are validated before they can reach Transport or any UI readout.
  */
+import { PPQ } from "../project-model/types";
+import type { Transport } from "../transport/Transport";
 
 /** Timecode families. `2997` = 29.97 fps drop-frame ("30 DF"), `30` = 30 non-drop. */
 export type SmpTeRate = 24 | 25 | 2997 | 30;
@@ -236,6 +238,8 @@ export class MtcDecoder {
 export interface MtcSnapshot {
   timecode: SmpTeTimecode;
   atEpochMs: number;
+  /** Quarter frames stream; full frames announce explicit jumps. */
+  source: "quarter" | "full";
 }
 
 /**
@@ -246,9 +250,9 @@ export interface MtcSnapshot {
 export class MtcReceiver {
   private decoder = new MtcDecoder();
   private snapshot: MtcSnapshot | null = null;
-  private readonly listeners = new Set<() => void>();
+  private readonly listeners = new Set<(snapshot: MtcSnapshot) => void>();
 
-  subscribe(listener: () => void): () => void {
+  subscribe(listener: (snapshot: MtcSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -264,7 +268,7 @@ export class MtcReceiver {
 
   handleQuarter(pieceIndex: number, data: number): void {
     const frame = this.decoder.feed(pieceIndex, data);
-    if (frame) this.note(frame);
+    if (frame) this.note(frame, "quarter");
   }
 
   handleFullFrame(bytes: Uint8Array): void {
@@ -272,7 +276,7 @@ export class MtcReceiver {
     if (frame) {
       // A full frame is a jump — the quarter-frame stream restarts around it.
       this.decoder.resync();
-      this.note(frame);
+      this.note(frame, "full");
     }
   }
 
@@ -281,8 +285,59 @@ export class MtcReceiver {
     this.snapshot = null;
   }
 
-  private note(frame: SmpTeTimecode): void {
-    this.snapshot = { timecode: frame, atEpochMs: Date.now() };
-    for (const listener of this.listeners) listener();
+  private note(frame: SmpTeTimecode, source: "quarter" | "full"): void {
+    this.snapshot = { timecode: frame, atEpochMs: Date.now(), source };
+    for (const listener of this.listeners) listener(this.snapshot);
+  }
+}
+
+export const CHASE_RESYNC_SECONDS = 0.5;
+/** While playing, drift re-syncs are throttled — chasing every frame jitters. */
+export const CHASE_MIN_INTERVAL_MS = 2000;
+
+export type ChaseDecision = "chased" | "skipped" | "idle";
+
+/**
+ * Transport chase (ADR 0017 wave 2): map received SMPTE positions onto the
+ * project timeline — TC seconds → ticks at the CURRENT project BPM, with
+ * TC 00:00:00:00 = tick 0 (a TC start-offset knob is a future addition).
+ *
+ * Policy: stopped, every frame moves the pause position (pressing play then
+ * starts at the received timecode). Playing, only meaningful drift re-syncs,
+ * throttled — EXCEPT full frames, which are explicit jumps and chase
+ * immediately. Disarmed, it does nothing (arming is a deliberate act).
+ */
+export class MtcChaser {
+  armed = false;
+  private lastResyncAt = -Infinity;
+
+  constructor(
+    private readonly transport: Transport,
+    private readonly bpm: () => number,
+  ) {}
+
+  onFrame(tc: SmpTeTimecode, opts: { immediate?: boolean; wallNow?: number } = {}): ChaseDecision {
+    if (!this.armed) return "idle";
+    const seconds = smpteToSeconds(tc);
+    if (!Number.isFinite(seconds) || seconds < 0) return "skipped";
+    const ticksPerSecond = (this.bpm() / 60) * PPQ;
+    const tick = seconds * ticksPerSecond;
+    if (!Number.isFinite(tick) || tick < 0) return "skipped";
+
+    const wallNow = opts.wallNow ?? Date.now();
+    if (!this.transport.playing) {
+      // Stopped: seek moves the pause position — play resumes at the TC spot.
+      this.transport.seek(tick);
+      return "chased";
+    }
+    const ourSeconds = this.transport.position / ticksPerSecond;
+    const drifted = Math.abs(ourSeconds - seconds) > CHASE_RESYNC_SECONDS;
+    const due = opts.immediate === true || wallNow - this.lastResyncAt >= CHASE_MIN_INTERVAL_MS;
+    if (drifted && due) {
+      this.transport.seek(tick);
+      this.lastResyncAt = wallNow;
+      return "chased";
+    }
+    return "skipped";
   }
 }

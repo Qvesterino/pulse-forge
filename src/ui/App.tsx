@@ -195,10 +195,24 @@ function MtcChip({ services }: { services: Services }) {
   const snapshot = mtc.getSnapshot();
   if (!snapshot || !mtc.isFresh()) return null;
   void tick;
+  const armed = services.mtcChaser.armed;
   return (
-    <span className="perf-readout-item" title="MIDI Timecode incoming (SMPTE)">
-      MTC {formatSmpTe(snapshot.timecode)}
-    </span>
+    <button
+      type="button"
+      className="perf-readout-item link-chip"
+      data-state={armed ? "on" : "off"}
+      title={
+        armed
+          ? "MTC chase ARMED — the transport follows external timecode (full frames jump, drift re-syncs). Click to disarm."
+          : "MIDI Timecode incoming (SMPTE). Click to ARM chase — the transport will follow this timecode."
+      }
+      onClick={() => {
+        services.mtcChaser.armed = !services.mtcChaser.armed;
+        setTick((n) => n + 1);
+      }}
+    >
+      MTC{armed ? " CHASE" : ""} {formatSmpTe(snapshot.timecode)}
+    </button>
   );
 }
 
