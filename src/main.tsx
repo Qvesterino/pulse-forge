@@ -16,7 +16,7 @@ import { initTheme } from "./ui/theme";
 import { initPadKeys } from "./ui/padKeys";
 
 // Ecosystem mount (Qvester Studio subpath): when built with
-// STUDIO_APP_BASE=/pulse-forge/, BASE_URL carries the mount — root-absolute
+// STUDIO_APP_BASE=/kyx/, BASE_URL carries the mount — root-absolute
 // asset paths (worklets, models, samples) must be prefixed ONCE before any
 // loader runs, and the router must strip the prefix from location.pathname.
 configureAssetBase(import.meta.env.BASE_URL);
@@ -58,6 +58,16 @@ declare global {
   interface Window {
     kyxDesktop?: {
       isDesktop: true;
+      /** CLAP hosting surface (desktop shell only, ADR 0016). */
+      clap?: {
+        /** Crash-isolated scan of the standard CLAP directories. */
+        scan: () => Promise<{
+          status: string;
+          plugins: Array<{ name: string; id: string; vendor?: string; version?: string }>;
+          counts?: { ok: number; notClap: number; failed: number };
+          scannedDirectories?: string[];
+        }>;
+      };
       mrt2?: {
         getAvailability: () => Promise<{
           nativeInstalled: boolean;

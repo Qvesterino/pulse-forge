@@ -3,6 +3,7 @@ import { useSelectionStore, useServices } from "./context";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
+import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
@@ -485,6 +486,38 @@ export function IntentPanel() {
         }
       }
       setStatus(statusText);
+      setBusy(false);
+      return;
+    }
+    // PLUGIN FINDER VERB (ADR 0016 intent surface): "aké clapy mám?" runs
+    // the desktop crash-isolated CLAP scan; the web build answers honestly
+    // that plugins live behind the desktop shell.
+    const pluginFinder = parsePluginFinderIntent(text);
+    if (pluginFinder) {
+      const desktop = (window as unknown as {
+        kyxDesktop?: { clap?: { scan?: () => Promise<{ status: string; plugins: Array<{ name: string; vendor?: string; id: string }>; scannedDirectories?: string[] }> } };
+      }).kyxDesktop;
+      const scan = desktop?.clap?.scan;
+      if (typeof scan !== "function") {
+        setStatus("✓ CLAP pluginy sa skenujú v desktop shelli (Electron) — prehliadač nemá natívny prístup k pluginom.");
+        setBusy(false);
+        return;
+      }
+      setStatus("Skenujem CLAP pluginy…");
+      try {
+        const result = await scan();
+        if (result.status !== "ok") {
+          setError(`CLAP scan zlyhal (${result.status}) — pozri desktop log.`);
+        } else if (result.plugins.length === 0) {
+          setStatus(`✓ Žiadne CLAP pluginy v štandardných adresároch (${(result.scannedDirectories ?? []).join(" · ")})`);
+        } else {
+          const shown = result.plugins.slice(0, 6).map((p) => `${p.name}${p.vendor ? ` — ${p.vendor}` : ""}`);
+          const more = result.plugins.length > shown.length ? ` · +${result.plugins.length - shown.length} ďalších` : "";
+          setStatus(`✓ ${result.plugins.length} CLAP pluginov: ${shown.join(" · ")}${more}`);
+        }
+      } catch (err) {
+        setError(`CLAP scan zlyhal: ${String(err)}`);
+      }
       setBusy(false);
       return;
     }

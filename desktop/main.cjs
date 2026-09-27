@@ -22,6 +22,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const os = require("node:os");
 const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
+const { registerClapIpcHandlers } = require("./clap-host-manager.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
 const { Mrt2Wsl2HostManager } = require("./mrt2-wsl2-host-manager.cjs");
@@ -198,6 +199,7 @@ app.whenReady().then(() => {
     nativeHostManager: mrt2NativeHost,
     isTrustedSender: isTrustedMrt2Frame,
   });
+  registerClapIpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
   buildMenu();
   createWindow();
   scheduleUpdateChecks();

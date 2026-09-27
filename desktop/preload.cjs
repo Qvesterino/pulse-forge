@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
       return () => ipcRenderer.removeListener("kyx:mrt2:transport-event", handler);
     },
   },
+  clap: {
+    /** Crash-isolated scan of the standard CLAP directories (probe per file). */
+    scan: () => ipcRenderer.invoke("kyx:clap:scan"),
+  },
 });

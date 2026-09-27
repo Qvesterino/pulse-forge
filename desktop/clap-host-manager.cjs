@@ -195,10 +195,64 @@ class ClapProbeManager {
   }
 }
 
+/**
+ * Standard CLAP search directories on Windows (per the CLAP spec: flat
+ * folders, no recursion). Missing directories simply hold no plugins.
+ */
+function defaultScanDirectories(env = process.env) {
+  const dirs = [];
+  if (env.COMMONPROGRAMFILES) dirs.push(path.join(env.COMMONPROGRAMFILES, "CLAP"));
+  if (env.LOCALAPPDATA) dirs.push(path.join(env.LOCALAPPDATA, "Programs", "Common", "CLAP"));
+  return dirs.filter((dir) => typeof dir === "string" && dir.length > 0);
+}
+
+/**
+ * Enumerate .clap files under the given directories (default: the standard
+ * ones). Bounded — a runaway folder tree cannot outgrow the cap.
+ */
+function listInstalledClapFiles(directories = defaultScanDirectories(), fsMod = require("node:fs")) {
+  const files = [];
+  for (const dir of directories) {
+    let entries;
+    try {
+      entries = fsMod.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // missing directory = nothing installed there
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(".clap")) {
+        files.push(path.join(dir, entry.name));
+        if (files.length >= 4096) return files;
+      }
+    }
+  }
+  return files;
+}
+
+/**
+ * Electron IPC surface (kyx:clap:scan) — the renderer's "aké clapy mám?"
+ * verb lands here. Registration mirrors the MRT2 bridge; the heavy work is
+ * the same crash-isolated probe-per-file scan the manager always does.
+ */
+function registerClapIpcHandlers(ipcMain, options = {}) {
+  if (!ipcMain || typeof ipcMain.handle !== "function") throw new Error("Electron ipcMain is required");
+  const manager = options.manager ?? new ClapProbeManager(options);
+  const directories = options.directories ?? defaultScanDirectories();
+  ipcMain.handle("kyx:clap:scan", async () => {
+    const files = listInstalledClapFiles(directories);
+    const result = await manager.scanPaths(files);
+    return { ...result, scannedDirectories: directories };
+  });
+  return manager;
+}
+
 module.exports = {
   ClapProbeManager,
   defaultProbePath,
   validatePluginDescriptor,
+  defaultScanDirectories,
+  listInstalledClapFiles,
+  registerClapIpcHandlers,
   PROBE_EXIT,
   MAX_PLUGIN_LINES,
   DEFAULT_TIMEOUT_MS,
