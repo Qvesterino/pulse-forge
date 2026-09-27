@@ -65,6 +65,8 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // under this) never get silently dropped from the offline kit.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     navigateFallback: "index.html",
-    navigateFallbackDenylist: [/^\/api\//],
+    // Qvester owns this nested marketing route. The KYX worker shares the
+    // /kyx/ scope, but must let the host shell serve /kyx/landing.
+    navigateFallbackDenylist: [/^\/api\//, /^\/kyx\/landing(?:\/|$)/],
   },
 };

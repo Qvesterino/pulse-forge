@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "clap/clap.h"
+#include "clap/ext/params.h"
 
 static void writeFrame(FILE *out, unsigned char type, unsigned long seq, const void *payload, unsigned long len) {
   unsigned char header[16];
@@ -69,29 +70,39 @@ static const clap_host_t HOST = {
     .request_callback = hostRequestNoop,
 };
 
-/* ---- empty event queues (silent input, discard output) ---- */
-
-static uint32_t CLAP_ABI inEventsSize(const struct clap_input_events *list) {
-  (void)list;
-  return 0;
-}
-
-static const clap_event_header_t *CLAP_ABI inEventsGet(const struct clap_input_events *list, uint32_t index) {
-  (void)list;
-  (void)index;
-  return NULL;
-}
+/* ---- event queues: one optional PARAM_VALUE in, discard out ---- */
 
 static void CLAP_ABI outEventsTryPush(const struct clap_output_events *list, const clap_event_header_t *event) {
   (void)list;
   (void)event;
 }
 
+/* Input queue: zero or one queued PARAM_VALUE event (--set), delivered at
+   sample 0 of the first process call. */
+static clap_event_param_value_t g_paramEvent;
+static int g_paramEventQueued = 0;
+
+static uint32_t CLAP_ABI inEventsSize(const struct clap_input_events *list) {
+  (void)list;
+  return g_paramEventQueued ? 1 : 0;
+}
+
+static const clap_event_header_t *CLAP_ABI inEventsGet(const struct clap_input_events *list, uint32_t index) {
+  (void)list;
+  if (index != 0 || !g_paramEventQueued) return NULL;
+  return &g_paramEvent.header;
+}
+
+static clap_input_events_t g_inEvents = {NULL, inEventsSize, inEventsGet};
+static clap_output_events_t g_outEvents = {NULL, outEventsTryPush};
+
 int main(int argc, char **argv) {
   const wchar_t *dllPath = NULL;
   double seconds = 2;
   long rate = 48000;
   long block = 480;
+  int queuedParam = 0;
+  double queuedParamValue = 0;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--realtime") == 0) continue; /* accepted, ignored: pipe pacing is the source's business */
@@ -111,6 +122,10 @@ int main(int argc, char **argv) {
       i++;
     } else if (strcmp(argv[i], "--block") == 0) {
       block = atol(argv[i + 1]);
+      i++;
+    } else if (strcmp(argv[i], "--set") == 0) {
+      queuedParamValue = atof(argv[i + 1]);
+      queuedParam = 1;
       i++;
     }
   }
@@ -177,6 +192,42 @@ int main(int argc, char **argv) {
            desc->id ? desc->id : "?");
   writeJsonFrame(stdout, 2, event);
 
+  /* Params extension: list them (bounded) and build the queued --set event. */
+  const clap_plugin_params_t *params =
+      (const clap_plugin_params_t *)plugin->get_extension(plugin, CLAP_EXT_PARAMS);
+  if (params) {
+    const uint32_t paramCount = params->count(plugin);
+    char paramsJson[2048];
+    unsigned long pos = 0;
+    pos += (unsigned long)snprintf(paramsJson + pos, sizeof(paramsJson) - pos, "{\"params\":[");
+    for (uint32_t p = 0; p < paramCount && p < 32; p++) {
+      clap_param_info_t info;
+      if (!params->get_info(plugin, p, &info)) continue;
+      pos += (unsigned long)snprintf(paramsJson + pos, sizeof(paramsJson) - pos,
+                                     "%s{\"id\":%lu,\"name\":\"%s\",\"min\":%.1f,\"max\":%.1f,\"default\":%.1f}",
+                                     p > 0 ? "," : "", (unsigned long)info.id, info.name, info.min_value,
+                                     info.max_value, info.default_value);
+      if (queuedParam && p == 0) {
+        memset(&g_paramEvent, 0, sizeof(g_paramEvent));
+        g_paramEvent.header.size = sizeof(clap_event_param_value_t);
+        g_paramEvent.header.time = 0;
+        g_paramEvent.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        g_paramEvent.header.type = CLAP_EVENT_PARAM_VALUE;
+        g_paramEvent.header.flags = 0;
+        g_paramEvent.param_id = info.id;
+        g_paramEvent.cookie = info.cookie;
+        g_paramEvent.note_id = -1;
+        g_paramEvent.port_index = -1;
+        g_paramEvent.channel = -1;
+        g_paramEvent.key = -1;
+        g_paramEvent.value = queuedParamValue;
+        g_paramEventQueued = 1;
+      }
+    }
+    pos += (unsigned long)snprintf(paramsJson + pos, sizeof(paramsJson) - pos, "]}");
+    writeJsonFrame(stdout, 2, paramsJson);
+  }
+
   /* Stereo float32 output buffers, silent input, empty event queues. */
   float buffers[2][8192];
   float *interleaved = (float *)malloc(sizeof(float) * 8192 * 2);
@@ -189,9 +240,6 @@ int main(int argc, char **argv) {
     outputs[ch].latency = 0;
     outputs[ch].constant_mask = 0;
   }
-  clap_input_events_t inEvents = {NULL, inEventsSize, inEventsGet};
-  clap_output_events_t outEvents = {NULL, outEventsTryPush};
-
   const unsigned long totalFrames = (unsigned long)((double)rate * seconds);
   unsigned long written = 0;
   unsigned long seq = 0;
@@ -210,8 +258,8 @@ int main(int argc, char **argv) {
     process.audio_inputs_count = 0;
     process.audio_outputs = outputs;
     process.audio_outputs_count = 2;
-    process.in_events = &inEvents;
-    process.out_events = &outEvents;
+    process.in_events = &g_inEvents;
+    process.out_events = &g_outEvents;
 
     const clap_process_status status = plugin->process(plugin, &process);
     if (status == CLAP_PROCESS_ERROR) break;

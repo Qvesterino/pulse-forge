@@ -3900,29 +3900,6 @@
       "category": "tone"
     },
     {
-      "type": "gate",
-      "sweepError": "runner: TimeoutError: page.goto: Timeout 180000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:5221/\", waiting until \"domcontentloaded\"\u001b[22m\n",
-      "defaultPeak": 0,
-      "defaultFinite": false,
-      "bypassDelta": 0,
-      "params": [],
-      "deadParams": [],
-      "unstableParams": [],
-      "rapidSwingFinite": false,
-      "presetsFinite": 0,
-      "presetsTotal": 0,
-      "hostError": "not reached",
-      "hostProcesses": false,
-      "hostDelta": 0,
-      "hostBypassEqualsRemoved": false,
-      "hostFinite": false,
-      "automationDelta": 0,
-      "automationFinite": false,
-      "restoreMaxDiff": null,
-      "name": "gate",
-      "category": "unknown"
-    },
-    {
       "type": "shimmer",
       "defaultPeak": 0.5530338287353516,
       "defaultFinite": true,
@@ -5241,6 +5218,125 @@
       "restoreRmsDiff": 2.928565125868355e-10,
       "name": "Beat Mangler",
       "category": "movement"
+    },
+    {
+      "type": "gate",
+      "defaultPeak": 0.4668046832084656,
+      "defaultFinite": true,
+      "bypassDelta": 0,
+      "params": [
+        {
+          "id": "threshold",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.0018583828350529075,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 0.996018928475627
+        },
+        {
+          "id": "hysteresis",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "attack",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "hold",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "release",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "range",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "lookahead",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        }
+      ],
+      "deadParams": [
+        "hysteresis",
+        "attack",
+        "hold",
+        "release",
+        "range",
+        "lookahead",
+        "mix"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.08644483077831455,
+      "hostBypassEqualsRemoved": false,
+      "hostFinite": true,
+      "automationDelta": 0.07219698010289433,
+      "automationFinite": true,
+      "restoreMaxDiff": 0.0024433135986328125,
+      "restoreRmsDiff": 0.00002096752404750889,
+      "name": "Gate",
+      "category": "dynamics"
     }
   ],
   "instruments": [
@@ -5390,9 +5486,258 @@
       ],
       "wiredParams": 14,
       "totalParams": 15
+    },
+    {
+      "kind": "keys",
+      "name": "Keys",
+      "defaultAudible": true,
+      "defaultPeak": 0.038110796362161636,
+      "unstableParams": [],
+      "deadParams": [
+        "spread",
+        "lfoRate",
+        "lfoSync",
+        "lfoDepth",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 26
+    },
+    {
+      "kind": "organ",
+      "name": "Organ",
+      "defaultAudible": true,
+      "defaultPeak": 0.2523030936717987,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "glide"
+      ],
+      "wiredParams": 10,
+      "totalParams": 12
+    },
+    {
+      "kind": "strings",
+      "name": "Strings",
+      "defaultAudible": true,
+      "defaultPeak": 0.6430032849311829,
+      "unstableParams": [],
+      "deadParams": [
+        "vibrato",
+        "vibRate",
+        "vibDelay"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10
+    },
+    {
+      "kind": "bell",
+      "name": "Bell",
+      "defaultAudible": true,
+      "defaultPeak": 0.23508836328983307,
+      "unstableParams": [],
+      "deadParams": [
+        "shimmer",
+        "strike"
+      ],
+      "wiredParams": 5,
+      "totalParams": 7
+    },
+    {
+      "kind": "reese",
+      "name": "Reese",
+      "defaultAudible": true,
+      "defaultPeak": 0.19035495817661285,
+      "unstableParams": [],
+      "deadParams": [
+        "movement",
+        "moveRate",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10
+    },
+    {
+      "kind": "clav",
+      "name": "Clavinet",
+      "defaultAudible": true,
+      "defaultPeak": 0.025064636021852493,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "cutoff",
+        "resonance"
+      ],
+      "wiredParams": 5,
+      "totalParams": 8
+    },
+    {
+      "kind": "acid",
+      "name": "Acid 303",
+      "defaultAudible": true,
+      "defaultPeak": 0.4130555987358093,
+      "unstableParams": [],
+      "deadParams": [
+        "envMod",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 9
+    },
+    {
+      "kind": "brass",
+      "name": "Synth Brass",
+      "defaultAudible": true,
+      "defaultPeak": 0.6132484674453735,
+      "unstableParams": [],
+      "deadParams": [
+        "bite",
+        "sweep",
+        "sweepTime"
+      ],
+      "wiredParams": 6,
+      "totalParams": 9
+    },
+    {
+      "kind": "fm",
+      "name": "FM",
+      "defaultAudible": true,
+      "defaultPeak": 0.3161630630493164,
+      "unstableParams": [],
+      "deadParams": [
+        "fbDecay"
+      ],
+      "wiredParams": 12,
+      "totalParams": 13
+    },
+    {
+      "kind": "pluck",
+      "name": "Pluck Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.020687807351350784,
+      "unstableParams": [],
+      "deadParams": [
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 12,
+      "totalParams": 18
+    },
+    {
+      "kind": "flute",
+      "name": "Flute",
+      "defaultAudible": true,
+      "defaultPeak": 0.3236413598060608,
+      "unstableParams": [],
+      "deadParams": [
+        "breath",
+        "breathTone",
+        "vibrato",
+        "vibRate",
+        "vibDelay",
+        "glide"
+      ],
+      "wiredParams": 9,
+      "totalParams": 15
+    },
+    {
+      "kind": "logdrum",
+      "name": "Log Drum",
+      "defaultAudible": true,
+      "defaultPeak": 0.3104507327079773,
+      "unstableParams": [],
+      "deadParams": [
+        "glide",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 10,
+      "totalParams": 17
+    },
+    {
+      "kind": "spectral",
+      "name": "Spectral Pad",
+      "defaultAudible": true,
+      "defaultPeak": 0.14844821393489838,
+      "unstableParams": [],
+      "deadParams": [
+        "skew",
+        "resonance",
+        "motionRate",
+        "motionSync",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 12,
+      "totalParams": 22
+    },
+    {
+      "kind": "vocalchop",
+      "name": "Vocal Chop",
+      "defaultAudible": true,
+      "defaultPeak": 0.04885624349117279,
+      "unstableParams": [],
+      "deadParams": [
+        "sharp",
+        "cons",
+        "morph",
+        "release",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modBAmt",
+        "modLfoRate"
+      ],
+      "wiredParams": 9,
+      "totalParams": 20
+    },
+    {
+      "kind": "drumsynth",
+      "name": "Drum Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.11606655269861221,
+      "unstableParams": [],
+      "deadParams": [
+        "snap"
+      ],
+      "wiredParams": 7,
+      "totalParams": 8
     }
   ],
-  "interactions": null,
+  "interactions": {
+    "chainFinite": true,
+    "chainPeak": 0.7980364561080933,
+    "chainRestoreDiff": 0.18390723317861557,
+    "chainDeterministic": false,
+    "chainDeterminismDiff": 0.18390723317861557,
+    "duplicateDelta": 0.11104267848357162,
+    "duplicateFinite": true,
+    "liveInsertRemoveClean": true,
+    "rapidSyncsClean": true,
+    "notes": [
+      "chain nondeterministic across renders (diff=1.84e-1)",
+      "chain restore diff=1.84e-1"
+    ]
+  },
   "startedAt": "2026-09-27T15:13:04.397Z",
-  "finishedAt": null
+  "finishedAt": "2026-09-27T16:16:28.959Z"
 }

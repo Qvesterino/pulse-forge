@@ -1,7 +1,7 @@
 /**
  * KYX → Qvester Studio sync bridge.
  *
- * Builds the app for the ecosystem mount (STUDIO_APP_BASE=/pulse-forge/)
+ * Builds the app for the ecosystem mount (STUDIO_APP_BASE=/kyx/)
  * and copies the artifact into the Qvester Studio repo, which vendors the
  * BUILT dist (apps/KYX/dist) — the landing repo's CI never sees this repo.
  * Re-run before every KYX release you want the ecosystem to serve:
@@ -17,7 +17,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writ
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MOUNT = "/pulse-forge/";
+const MOUNT = "/kyx/";
 const here = fileURLToPath(new URL("..", import.meta.url));
 const target =
   process.env.QVESTER_TARGET !== undefined
@@ -37,7 +37,7 @@ if (!existsSync(join(target, "package.json"))) {
 }
 
 // 2. Build with the mount base. spawnSync passes env verbatim (no shell
-// path mangling), so "/pulse-forge/" survives Windows Git Bash hosts.
+// path mangling), so "/kyx/" survives Windows Git Bash hosts.
 console.log(`[ecosystem:sync] building with base ${MOUNT} …`);
 const build = spawnSync("npx", ["vite", "build"], {
   cwd: here,
@@ -79,4 +79,6 @@ writeFileSync(
 for (const required of ["index.html", "sw.js", "manifest.webmanifest"]) {
   if (!existsSync(join(targetDist, required))) fail(`target dist missing ${required}`);
 }
-console.log(`[ecosystem:sync] OK — KYX dist (commit ${commit}) synced to ${targetDist}. Review + commit in the Qvester repo.`);
+console.log(
+  `[ecosystem:sync] OK — KYX dist (commit ${commit}) synced to ${targetDist}. Review + commit in the Qvester repo.`,
+);

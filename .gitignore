@@ -1,4 +1,7 @@
 node_modules/
+
+# Generated: contract + mission fragment reassembly (npm run prompts:build)
+prompts/_built/
 __pycache__/
 *.pyc
 dist/

@@ -27,8 +27,14 @@ export function uid(prefix: string): string {
   if (deterministicMode) {
     return `${prefix}-test-${(deterministicCounter++).toString(36).padStart(4, "0")}`;
   }
+  // `typeof … === "function"` rather than `"randomUUID" in crypto`: the `in`
+  // check is satisfied by a property that is present-but-undefined (partial
+  // WebCrypto polyfills, older Safari 14, some embedded webviews), so the
+  // `in` form passes the guard and then throws `is not a function` instead of
+  // taking the fallback. Matches the guard in RecordingRecoveryRepository and
+  // PcmMicRecorder.
   const raw =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2) + Date.now().toString(36);
   return `${prefix}-${raw}`;

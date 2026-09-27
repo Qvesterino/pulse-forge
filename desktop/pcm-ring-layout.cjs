@@ -91,4 +91,10 @@ class PcmPipeToSabBridge {
   }
 }
 
-module.exports = { PcmRingNodeWriter, PcmPipeToSabBridge, PCM_RING_MAGIC, PCM_RING_HEADER_BYTES };
+module.exports = {
+  PcmRingNodeWriter,
+  PcmPipeToSabBridge,
+  createLinearResampler,
+  PCM_RING_MAGIC,
+  PCM_RING_HEADER_BYTES,
+};

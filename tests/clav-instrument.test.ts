@@ -48,6 +48,7 @@ function mockCtx() {
     currentTime: 0,
     destination: { toString: () => "destination" },
     createGain: () => ({ gain: mockParam(1), connect: (n: unknown) => n, disconnect: () => undefined }),
+    createStereoPanner: () => ({ pan: mockParam(0), connect: (n: unknown) => n, disconnect: () => undefined }),
     createBiquadFilter: () => {
       const filter = {
         type: "",

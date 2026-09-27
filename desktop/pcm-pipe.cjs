@@ -159,8 +159,14 @@ class PcmPipeSource {
       return;
     }
     if (frame.type === FRAME_TYPES.EVENT) {
-      this.format = parsed;
-      this.emit("format", parsed);
+      if (parsed.rate !== undefined) {
+        this.format = parsed;
+        this.emit("format", parsed);
+      } else {
+        // Auxiliary JSON events (e.g. a params listing) — surface, don't
+        // overwrite the stream format.
+        this.emit("event", parsed);
+      }
     } else if (frame.type === FRAME_TYPES.STATS) {
       this.emit("stats", parsed);
     } else if (frame.type === FRAME_TYPES.EOF) {

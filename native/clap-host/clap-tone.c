@@ -11,9 +11,12 @@
  * doubles as the proof that the default path works.
  */
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "clap/clap.h"
+#include "clap/ext/params.h"
 
 static const char *const TONE_FEATURES[] = {
     CLAP_PLUGIN_FEATURE_UTILITY,
@@ -35,6 +38,19 @@ static const clap_plugin_descriptor_t TONE_DESCRIPTOR = {
 };
 
 static double TONE_RATE = 48000.0;
+static double TONE_FREQ = 440.0;
+#define TONE_PARAM_FREQ 7001
+
+static void CLAP_ABI tone_apply_param_events(const clap_input_events_t *in) {
+  if (!in) return;
+  const uint32_t count = in->size(in);
+  for (uint32_t i = 0; i < count; i++) {
+    const clap_event_header_t *header = in->get(in, i);
+    if (!header || header->type != CLAP_EVENT_PARAM_VALUE) continue;
+    const clap_event_param_value_t *event = (const clap_event_param_value_t *)header;
+    if (event->param_id == TONE_PARAM_FREQ) TONE_FREQ = event->value;
+  }
+}
 
 static const clap_plugin_descriptor_t *tone_descriptor(const struct clap_plugin_factory *factory, uint32_t index) {
   (void)factory;
@@ -45,6 +61,17 @@ static uint32_t CLAP_ABI tone_count(const struct clap_plugin_factory *factory) {
   (void)factory;
   return 1;
 }
+
+static void CLAP_ABI tone_apply_param_events(const clap_input_events_t *in);
+static uint32_t CLAP_ABI params_count(const struct clap_plugin *plugin);
+static bool CLAP_ABI params_get_info(const struct clap_plugin *plugin, uint32_t index, clap_param_info_t *info);
+static bool CLAP_ABI params_get_value(const struct clap_plugin *plugin, clap_id param_id, double *out_value);
+static bool CLAP_ABI params_value_to_text(const struct clap_plugin *plugin, clap_id param_id, double value,
+                                          char *out_buffer, uint32_t out_buffer_size);
+static bool CLAP_ABI params_text_to_value(const struct clap_plugin *plugin, clap_id param_id, const char *text,
+                                          double *out_value);
+static void CLAP_ABI params_flush(const struct clap_plugin *plugin, const clap_input_events_t *in,
+                                  const clap_output_events_t *out);
 
 static bool CLAP_ABI tone_init(const struct clap_plugin *plugin);
 static void CLAP_ABI tone_noop_plugin(const struct clap_plugin *plugin);
@@ -107,8 +134,9 @@ static bool tone_activate(const struct clap_plugin *plugin, double sample_rate, 
 static clap_process_status CLAP_ABI tone_process(const struct clap_plugin *plugin, const clap_process_t *process) {
   (void)plugin;
   if (!process || !process->audio_outputs || process->audio_outputs_count < 1) return CLAP_PROCESS_CONTINUE;
+  tone_apply_param_events(process->in_events);
   const int64_t steady = process->steady_time >= 0 ? process->steady_time : 0;
-  const double step = 6.283185307179586476925286766559 * 440.0 / TONE_RATE;
+  const double step = 6.283185307179586476925286766559 * TONE_FREQ / TONE_RATE;
   for (uint32_t ch = 0; ch < process->audio_outputs_count; ch++) {
     float *out = process->audio_outputs[ch].data32;
     if (!out) continue;
@@ -119,9 +147,69 @@ static clap_process_status CLAP_ABI tone_process(const struct clap_plugin *plugi
   return CLAP_PROCESS_CONTINUE;
 }
 
+static uint32_t CLAP_ABI params_count(const struct clap_plugin *plugin) {
+  (void)plugin;
+  return 1;
+}
+
+static bool CLAP_ABI params_get_info(const struct clap_plugin *plugin, uint32_t index, clap_param_info_t *info) {
+  (void)plugin;
+  if (index != 0 || !info) return false;
+  info->id = TONE_PARAM_FREQ;
+  info->flags = CLAP_PARAM_IS_AUTOMATABLE;
+  info->cookie = NULL;
+  snprintf(info->name, sizeof(info->name), "Tone Frequency");
+  snprintf(info->module, sizeof(info->module), "tone");
+  info->min_value = 50.0;
+  info->max_value = 2000.0;
+  info->default_value = 440.0;
+  return true;
+}
+
+static bool CLAP_ABI params_get_value(const struct clap_plugin *plugin, clap_id param_id, double *out_value) {
+  (void)plugin;
+  if (param_id != TONE_PARAM_FREQ || !out_value) return false;
+  *out_value = TONE_FREQ;
+  return true;
+}
+
+static bool CLAP_ABI params_value_to_text(const struct clap_plugin *plugin, clap_id param_id, double value,
+                                          char *out_buffer, uint32_t out_buffer_size) {
+  (void)plugin;
+  (void)param_id;
+  if (!out_buffer || out_buffer_size == 0) return false;
+  snprintf(out_buffer, out_buffer_size, "%.1f Hz", value);
+  return true;
+}
+
+static bool CLAP_ABI params_text_to_value(const struct clap_plugin *plugin, clap_id param_id, const char *text,
+                                          double *out_value) {
+  (void)plugin;
+  if (param_id != TONE_PARAM_FREQ || !text || !out_value) return false;
+  *out_value = atof(text);
+  return true;
+}
+
+static void CLAP_ABI params_flush(const struct clap_plugin *plugin, const clap_input_events_t *in,
+                                  const clap_output_events_t *out) {
+  (void)plugin;
+  (void)out;
+  tone_apply_param_events(in);
+}
+
 static const void *CLAP_ABI tone_get_extension(const struct clap_plugin *plugin, const char *id) {
   (void)plugin;
-  (void)id;
+  if (strcmp(id, CLAP_EXT_PARAMS) == 0) {
+    static const clap_plugin_params_t PARAMS = {
+        .count = params_count,
+        .get_info = params_get_info,
+        .get_value = params_get_value,
+        .value_to_text = params_value_to_text,
+        .text_to_value = params_text_to_value,
+        .flush = params_flush,
+    };
+    return &PARAMS;
+  }
   return NULL;
 }
 

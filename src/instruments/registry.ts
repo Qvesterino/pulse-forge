@@ -698,24 +698,24 @@ const bass: InstrumentDefinition = {
           fmSub.stop(stopTime);
           fmMod.stop(stopTime);
         } else if (subMode === 2) {
-          // Wobble: sub driven by an LFO-synced square-ish gain walk — the
-          // trappy wobble without a dedicated worklet. Rate scales with BPM
+          // Wobble: sine sub anchor + the CLASSIC filter wobble — a square
+          // LFO walking the FILTER cutoff (the sub detune wobble read as
+          // pitch chirp, not the trappy filter wobble). Rate scales with BPM
           // (eighth-note grid via moveRate knob position is overkill; the
           // fixed 2.8 Hz sweet spot reads as wobble at all tempos).
           const wobSub = ctx.createOscillator();
           wobSub.type = "sine";
           wobSub.frequency.value = freq * Math.pow(2, -12 / 12);
+          const wobAmp = ctx.createGain();
+          wobAmp.gain.value = (p.sub ?? 0.6) * 1.15;
+          wobSub.connect(wobAmp).connect(filter.input);
+          // Filter wobble: square LFO on cutoff — down-up each cycle.
           const wobLfo = ctx.createOscillator();
           wobLfo.type = "square";
           wobLfo.frequency.value = 2.8;
-          const wobDepth = ctx.createGain();
-          wobDepth.gain.value = (p.sub ?? 0.6) * 0.55;
-          const wobOffset = ctx.createGain();
-          wobOffset.gain.value = (p.sub ?? 0.6) * 0.55;
-          wobLfo.connect(wobDepth).connect(wobSub.detune);
-          const wobAmp = ctx.createGain();
-          wobAmp.gain.value = wobOffset.gain.value + 0.35;
-          wobSub.connect(wobAmp).connect(filter.input);
+          const wobCutoff = ctx.createGain();
+          wobCutoff.gain.value = Math.max(120, (p.cutoff ?? 700) * 0.55);
+          wobLfo.connect(wobCutoff).connect(filter.frequency);
           if (slideOn && slideFrom && glide > 0.002) {
             wobSub.frequency.setValueAtTime(midiToFreq(slideFrom.pitch) * Math.pow(2, -12 / 12), glideStart);
             wobSub.frequency.exponentialRampToValueAtTime(wobSub.frequency.value, glideStart + glide);
@@ -4703,27 +4703,71 @@ const clav: InstrumentDefinition = {
         pickup.connect(amp);
         amp.connect(output);
 
-        // Voice: bright pulse (the tangent-struck string) + growl partial.
-        // Slide support: pattern glides pull the pitch from slideFrom (short
-        // 60 ms glide — the clav snap stays tight even on slides).
-        const osc = ctx.createOscillator();
-        osc.type = "square";
+        // Voice v2: tangent-string body = square (bite) + saw (body warmth),
+        // slightly detuned and panned for stereo; plus a TINE partial (freq×2
+        // sine, fast decay) — the metallic "ting" that reads as a real clav.
+        const oscA = ctx.createOscillator();
+        oscA.type = "square";
+        const oscB = ctx.createOscillator();
+        oscB.type = "sawtooth";
+        // Drift: slow detune walk per osc (seeded phase, live==offline).
+        const driftLfoA = ctx.createOscillator();
+        driftLfoA.type = "sine";
+        driftLfoA.frequency.value = 0.7;
+        const driftA = ctx.createGain();
+        driftA.gain.value = 3.5;
+        driftLfoA.connect(driftA).connect(oscA.detune);
+        const driftLfoB = ctx.createOscillator();
+        driftLfoB.type = "sine";
+        driftLfoB.frequency.value = 0.55;
+        const driftB = ctx.createGain();
+        driftB.gain.value = 4.5;
+        driftLfoB.connect(driftB).connect(oscB.detune);
         if (slideFrom && slideFrom.when !== undefined) {
           const fromFreq = midiToFreq(slideFrom.pitch);
-          osc.frequency.setValueAtTime(fromFreq, Math.max(when - 0.06, 0));
-          osc.frequency.exponentialRampToValueAtTime(freq, when);
+          for (const o of [oscA, oscB]) {
+            o.frequency.setValueAtTime(fromFreq, Math.max(when - 0.06, 0));
+            o.frequency.exponentialRampToValueAtTime(freq, when);
+          }
         } else {
-          osc.frequency.setValueAtTime(freq, when);
+          for (const o of [oscA, oscB]) o.frequency.setValueAtTime(freq, when);
         }
-        const oscGain = ctx.createGain();
-        oscGain.gain.value = 0.55;
+        const oscGainA = ctx.createGain();
+        oscGainA.gain.value = 0.42;
+        const oscGainB = ctx.createGain();
+        oscGainB.gain.value = 0.4;
+        const panA = ctx.createStereoPanner();
+        panA.pan.value = -0.12;
+        const panB = ctx.createStereoPanner();
+        panB.pan.value = 0.12;
         const bright = ctx.createBiquadFilter();
         bright.type = "highpass";
         // Velocity → pickup brightness: harder hit = hotter, brighter output.
         bright.frequency.value = Math.max(120, Math.min(6000, freq * 0.8 + velocity * 1200 + pick * 900));
-        osc.connect(oscGain).connect(bright).connect(pickup);
-        osc.start(when);
-        osc.stop(stopTime);
+        oscA.connect(oscGainA).connect(panA).connect(bright);
+        oscB.connect(oscGainB).connect(panB).connect(bright);
+        bright.connect(pickup);
+
+        // Tine partial — the metallic attack "ting" that makes it a clav and
+        // not a square lead. Fast exponential decay, velocity-scaled.
+        const tine = ctx.createOscillator();
+        tine.type = "sine";
+        tine.frequency.value = freq * 2.01;
+        const tineGain = ctx.createGain();
+        tineGain.gain.setValueAtTime(Math.max(level * (0.2 + velocity * 0.4), 0.0002), when);
+        tineGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.12);
+        tine.connect(tineGain).connect(bright);
+        tine.start(when);
+        tine.stop(when + 0.15);
+
+        oscA.start(when);
+        oscB.start(when);
+        driftLfoA.start(when);
+        driftLfoB.start(when);
+        oscA.stop(stopTime);
+        oscB.stop(stopTime);
+        driftLfoA.stop(stopTime);
+        driftLfoB.stop(stopTime);
 
         let growlOsc: OscillatorNode | null = null;
         let growlGain: GainNode | null = null;
@@ -4766,7 +4810,7 @@ const clav: InstrumentDefinition = {
             const t = Math.max(whenStop, 0);
             amp.gain.cancelScheduledValues(t);
             amp.gain.setTargetAtTime(0.0001, t, 0.008);
-            for (const node of [osc, growlOsc, clickSrc]) {
+            for (const node of [oscA, oscB, tine, driftLfoA, driftLfoB, growlOsc, clickSrc]) {
               if (!node) continue;
               try {
                 node.stop(t + 0.05);
@@ -4778,7 +4822,7 @@ const clav: InstrumentDefinition = {
           (now) => {
             amp.gain.cancelScheduledValues(now);
             amp.gain.setTargetAtTime(0.0001, now, 0.006);
-            for (const node of [osc, growlOsc, clickSrc]) {
+            for (const node of [oscA, oscB, tine, driftLfoA, driftLfoB, growlOsc, clickSrc]) {
               if (!node) continue;
               try {
                 node.stop(now + 0.02);
@@ -4799,7 +4843,11 @@ const clav: InstrumentDefinition = {
         clock.onended = () => {
           cleanup(voice);
           try {
-            osc.disconnect();
+            for (const node of [oscA, oscB, tine, driftLfoA, driftLfoB]) node.disconnect();
+            oscGainA.disconnect();
+            oscGainB.disconnect();
+            panA.disconnect();
+            panB.disconnect();
             growlOsc?.disconnect();
             growlGain?.disconnect();
             pickup.disconnect();

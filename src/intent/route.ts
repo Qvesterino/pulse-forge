@@ -22,6 +22,7 @@ import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
 import { parsePresetIntent, type PresetIntent } from "./preset-intent";
+import { typoCorrections } from "./typo";
 import { parseSectionRequests } from "./sections";
 
 /**
@@ -432,6 +433,17 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
     const clarification = declinedFaderClarification(text) ?? declinedEffectClarification(text);
     if (clarification) {
       return { kind: "clarify", reason: clarification.reason, suggestions: clarification.suggestions };
+    }
+    // TYPO LAYER — "mut the drums" is one edit from a command verb. Offer the
+    // corrected sentence ONLY when the fix actually parses into an
+    // executable intent (re-routed here must land non-pattern); offer-only,
+    // never auto-executed. Recursion is bounded: each correction fixes one
+    // token into a vocabulary verb, which is never corrected again.
+    for (const candidate of typoCorrections(text)) {
+      const corrected = routeIntentText(candidate, doc);
+      if (corrected.kind !== "pattern" && corrected.kind !== "clarify") {
+        return { kind: "clarify", reason: `did you mean "${candidate}"?`, suggestions: [candidate] };
+      }
     }
   }
   return { kind: "pattern", input: pattern.input, detected: pattern.detected };

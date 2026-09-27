@@ -1109,6 +1109,80 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       instrumentation: ["drums", "bass"],
     },
   ],
+  detroit: [
+    // DETROIT dialect: the machine-funk song shape — long instrumental
+    // stretches, no vocal-led verse/chorus pull, layers arriving every 16
+    // bars. The "track" IS the composition (Belleville lineage).
+    {
+      role: "intro",
+      label: "Intro",
+      bars: 16,
+      intensity: 0.5,
+      transitionIn: null,
+      energyDelta: -0.2,
+      densityDelta: -0.2,
+      complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
+    },
+    {
+      role: "verse",
+      label: "Groove 1",
+      bars: 16,
+      intensity: 0.7,
+      transitionIn: "fill",
+      energyDelta: 0,
+      densityDelta: 0.05,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "chorus",
+      label: "Lead Theme",
+      bars: 16,
+      intensity: 0.9,
+      marker: { type: "cue", name: "LEAD THEME" },
+      transitionIn: "fill",
+      energyDelta: 0.15,
+      densityDelta: 0.05,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "bridge",
+      label: "Breakdown",
+      bars: 16,
+      intensity: 0.4,
+      marker: { type: "cue", name: "BREAKDOWN" },
+      transitionIn: "break",
+      energyDelta: -0.3,
+      densityDelta: -0.3,
+      complexityDelta: -0.1,
+      instrumentation: ["chords", "lead"],
+    },
+    {
+      role: "chorus",
+      label: "Return",
+      bars: 16,
+      intensity: 0.9,
+      marker: { type: "impact", name: "RETURN" },
+      transitionIn: "impact",
+      energyDelta: 0.2,
+      densityDelta: 0.1,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "outro",
+      label: "Outro",
+      bars: 16,
+      intensity: 0.4,
+      transitionIn: "break",
+      energyDelta: -0.3,
+      densityDelta: -0.25,
+      complexityDelta: -0.1,
+      instrumentation: ["drums", "bass"],
+    },
+  ],
   dnb: [
     // DnB dialect: intro → build → DROP. The second drop lands on the
     // reverse-suck + boom pair; the breakdown breathes before the last one.
@@ -1595,6 +1669,7 @@ const GENRE_DEFAULT_BPM: Record<IntentSpec["genre"], number> = {
   boombap: 90,
   amapiano: 112,
   trance: 138,
+  detroit: 130,
 };
 
 function formBpm(intent: IntentSpec): number {
@@ -2211,6 +2286,19 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   }
 
   const bpmUpdate = build.resolvedBpm != null ? { bpm: build.resolvedBpm } : {};
+  // SONG AUDIT S1: the arrangement clips are FULLY replaced, but markers were
+  // APPENDED — every re-generate stacked a duplicate set of section markers
+  // ("Intro@0, Intro@0, …") and left the old ones dangling on clip ids that
+  // no longer exist. Drop exactly the markers whose linked clip existed in
+  // the OLD arrangement and is gone in the new one (song section markers by
+  // construction; a user marker tied to a replaced clip dangles the same
+  // way). Unlinked user markers survive untouched, and previously-dangling
+  // legacy markers are left alone — this build only cleans up what it
+  // replaces.
+  const oldClipIds = new Set(doc.arrangement.clips.map((clip) => clip.id));
+  const keptMarkers = (next.markers ?? []).filter(
+    (marker) => !(marker.linkedClipId && oldClipIds.has(marker.linkedClipId)),
+  );
   next = {
     ...next,
     tracks: existingFx ? next.tracks : [...next.tracks, fxTrack],
@@ -2225,7 +2313,7 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
       // takes, imported audio) on other tracks survive a re-generate.
       audioClips: [...(next.arrangement.audioClips ?? []).filter((c) => c.trackId !== fxTrack.id), ...cueClips],
     },
-    markers: [...(next.markers ?? []), ...markers],
+    markers: [...keptMarkers, ...markers],
     activePatternId: build.sections[build.sections.length - 1].pattern.id,
     ...bpmUpdate,
   };

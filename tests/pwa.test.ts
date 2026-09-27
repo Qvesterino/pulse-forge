@@ -92,17 +92,24 @@ describe("PWA caching strategy", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
   });
 
+  it("lets the Qvester shell own the nested product landing navigation", () => {
+    const denylist = pwaOptions.workbox!.navigateFallbackDenylist as RegExp[];
+    expect(denylist.some((pattern) => pattern.test("/kyx/landing"))).toBe(true);
+    expect(denylist.some((pattern) => pattern.test("/kyx/landing/"))).toBe(true);
+    expect(denylist.some((pattern) => pattern.test("/kyx/"))).toBe(false);
+  });
+
   it("derives manifest scope/start_url from STUDIO_APP_BASE for ecosystem mounts", async () => {
-    // Qvester Studio mounts the built app at /pulse-forge/ — the manifest
+    // Qvester Studio mounts the built app at /kyx/ — the manifest
     // scope must live inside that subpath or the browser rejects the
     // service-worker registration. Unset (root deploy) stays "/".
-    vi.stubEnv("STUDIO_APP_BASE", "/pulse-forge/");
+    vi.stubEnv("STUDIO_APP_BASE", "/kyx/");
     vi.resetModules();
     try {
       const mounted = (await import("../src/pwa")).pwaOptions as typeof pwaOptions;
       const m = mounted.manifest as unknown as TestManifest;
-      expect(m.start_url).toBe("/pulse-forge/");
-      expect(m.scope).toBe("/pulse-forge/");
+      expect(m.start_url).toBe("/kyx/");
+      expect(m.scope).toBe("/kyx/");
     } finally {
       vi.unstubAllEnvs();
       vi.resetModules();

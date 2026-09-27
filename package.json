@@ -98,7 +98,10 @@
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs",
     "ecosystem:sync": "node scripts/sync-to-qvester.mjs",
     "preview:cf": "npm run build && npx wrangler pages dev dist",
-    "deploy:cf": "npm run build && npx wrangler pages deploy dist"
+    "deploy:cf": "npm run build && npx wrangler pages deploy dist",
+    "prompts:check": "node scripts/prompts-sync.mjs",
+    "prompts:sync": "node scripts/prompts-sync.mjs --fix",
+    "prompts:build": "node scripts/prompts-sync.mjs --build"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

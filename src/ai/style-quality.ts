@@ -47,6 +47,9 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Trance: four-on-the-floor under arpeggio layers — steady kick, wide
   // density (intros/breakdowns thin out), melodic syncopation tolerance.
   trance: { densityRange: [0.1, 0.84], syncopationRange: [0.1, 0.78], maxDistance: 1.1 },
+  // Detroit: the machine-funk lineage — steady four-floor, syncopated 808
+  // kick talk, generous room for tom/electro percussion.
+  detroit: { densityRange: [0.1, 0.78], syncopationRange: [0.14, 0.8], maxDistance: 1.1 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

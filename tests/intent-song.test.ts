@@ -448,3 +448,58 @@ describe("FRED form (Vlna 2 — emotional UKG shape)", () => {
     expect(plain.sections[0]!.label).toBe("Intro");
   });
 });
+
+describe("song re-generation (SONG AUDIT S1)", () => {
+  it("replacing a song does NOT stack duplicate section markers or dangle links", async () => {
+    const doc0 = testDoc();
+    const build1 = await buildSong(doc0, { genre: "house", seed: "regen-a" });
+    const after1 = applySongCommand(doc0, build1).execute(doc0);
+    const markersAfter1 = after1.markers.length;
+
+    const build2 = await buildSong(after1, { genre: "house", seed: "regen-b" });
+    const after2 = applySongCommand(after1, build2).execute(after1);
+
+    // the same form replaces its markers — no "Intro@0, Intro@0" stacking
+    expect(after2.markers.length).toBeLessThanOrEqual(markersAfter1);
+    // every surviving linked marker points at a clip that exists
+    const clipIds = new Set(after2.arrangement.clips.map((clip) => clip.id));
+    const dangling = after2.markers.filter((m) => m.linkedClipId && !clipIds.has(m.linkedClipId));
+    expect(dangling).toHaveLength(0);
+    // section marker names stay unique per tick
+    const seen = new Set<string>();
+    for (const marker of after2.markers) {
+      const key = `${marker.name}@${marker.tick}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+    // the NEW song's section markers are all present (replaced, not dropped)
+    expect(after2.markers.length).toBeGreaterThanOrEqual(build2.sections.filter((s) => s.marker).length);
+  });
+
+  it("unlinked USER markers survive a song re-generate", async () => {
+    const doc0 = testDoc();
+    const build1 = await buildSong(doc0, { genre: "techno", seed: "regen-c" });
+    const after1 = applySongCommand(doc0, build1).execute(doc0);
+    const withUserMarker = {
+      ...after1,
+      markers: [...after1.markers, { id: "user-marker-1", name: "My Cue", type: "cue" as const, tick: 96 }],
+    };
+
+    const build2 = await buildSong(withUserMarker, { genre: "techno", seed: "regen-d" });
+    const after2 = applySongCommand(withUserMarker, build2).execute(withUserMarker);
+    expect(after2.markers.some((m) => m.id === "user-marker-1")).toBe(true);
+  });
+
+  it("one undo of a re-generate restores the FIRST song intact", async () => {
+    const doc0 = testDoc();
+    const build1 = await buildSong(doc0, { genre: "house", seed: "regen-e" });
+    const after1 = applySongCommand(doc0, build1).execute(doc0);
+    const build2 = await buildSong(after1, { genre: "house", seed: "regen-f" });
+    const command = applySongCommand(after1, build2);
+    const after2 = command.execute(after1);
+    const undone = command.undo(after2);
+    expect(undone).toBe(after1);
+    expect(undone.markers).toBe(after1.markers);
+    expect(undone.arrangement.clips).toBe(after1.arrangement.clips);
+  });
+});

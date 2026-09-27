@@ -1,8 +1,8 @@
 /**
  * Subpath-mount route helper (Qvester Studio ecosystem mount).
  *
- * When the app is built with `STUDIO_APP_BASE=/pulse-forge/` and served at
- * that subpath, `location.pathname` arrives as `/pulse-forge/studio` while
+ * When the app is built with `STUDIO_APP_BASE=/kyx/` and served at
+ * that subpath, `location.pathname` arrives as `/kyx/studio` while
  * the router's route regexes expect `/studio`. Vite exposes the mount as
  * `import.meta.env.BASE_URL` — this helper strips exactly one leading base
  * prefix (and nothing else), so root deployments ("/") are a no-op.

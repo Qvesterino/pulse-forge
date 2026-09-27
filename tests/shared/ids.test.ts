@@ -29,7 +29,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clamp, resetDeterministicIds, uid, useDeterministicIds } from "../../src/shared/ids";
 
-/** Run `fn` with `crypto.randomUUID` absent, exercising the fallback branch. */
+/**
+ * Run `fn` with `crypto.randomUUID` absent, exercising the fallback branch.
+ *
+ * The property is set to `undefined` rather than deleted, which is the harder
+ * case: `"randomUUID" in crypto` is still true for a present-but-undefined
+ * property, so a guard written with `in` passes and then throws.
+ */
 function withoutCryptoUUID<T>(fn: () => T): T {
   const original = globalThis.crypto;
   Object.defineProperty(globalThis, "crypto", {
@@ -72,10 +78,9 @@ describe("shared/ids — collision contract", () => {
 
   it("prefixes the id exactly once even for hyphenated namespaces", () => {
     // Prefixes in the codebase are bare (`track`, `scene`), but a future
-    // namespace like `audio-clip` must not produce a raw id that itself
-    // carries a dash the consumer might re-split on. crypto.randomUUID is
-    // dash-separated, so the contract worth pinning is: the part after the
-    // prefix is the raw id, verbatim.
+    // namespace like `audio-clip` must still produce a single `<prefix>-<raw>`
+    // shape. crypto.randomUUID is itself dash-separated, so the contract worth
+    // pinning is that the prefix is added once and the raw id follows verbatim.
     const id = uid("audio-clip");
     expect(id.startsWith("audio-clip-")).toBe(true);
     expect(id.slice("audio-clip-".length)).toBeTruthy();
@@ -113,19 +118,24 @@ describe("shared/ids — deterministic mode", () => {
     releases.push(release);
     resetDeterministicIds();
     const first = [uid("p"), uid("p"), uid("p")];
+    // 100 decimal is "2s" in base 36 — the counter is base-36 throughout.
     resetDeterministicIds(100);
     // The point of the reset is to shift the base, not to rewind into already
     // emitted ids — a fixture that emitted twice would otherwise collide.
-    expect(uid("p")).toBe("p-test-0100");
-    expect(uid("p")).toBe("p-test-0101");
+    expect(uid("p")).toBe("p-test-002s");
+    expect(uid("p")).toBe("p-test-002t");
     expect(first).toEqual(["p-test-0000", "p-test-0001", "p-test-0002"]);
   });
 
-  it("grows past four digits without truncating", () => {
+  it("numbers in base-36 — 36⁴−1 is the last four-character id", () => {
+    // 36⁴ = 1 679 616, so the padStart(4) field holds for the first 1 679 616
+    // ids in base 36. A decimal switch would blow past the field width at 10 000
+    // and churn every downstream snapshot that embeds a deterministic id.
     const release = useDeterministicIds();
     releases.push(release);
-    resetDeterministicIds(0xffff);
-    expect(uid("x")).toBe("x-test-ffff");
+    resetDeterministicIds(36 ** 4 - 1);
+    expect(uid("x")).toBe("x-test-zzzz");
+    // The very next id grows to five characters rather than wrapping.
     expect(uid("x")).toBe("x-test-10000");
   });
 
@@ -137,16 +147,24 @@ describe("shared/ids — deterministic mode", () => {
     expect(uid("p")).not.toBe("p-test-0001");
   });
 
-  it("numbers in base-36 so the suffix stays compact for long runs", () => {
-    // Guards the padStart(4) contract against a decimal switch: base-36 holds
-    // the suffix at 4 characters for the first 1 679 616 ids, decimal blows
-    // past the field width at 10 000 and would churn every downstream snapshot.
-    const release = useDeterministicIds();
-    releases.push(release);
-    resetDeterministicIds(0);
-    for (let i = 0; i < 3; i++) uid("p");
-    resetDeterministicIds(36);
-    expect(uid("p")).toBe("p-test-0010");
+  it("nests — an inner scope restores the outer scope, not 'off'", () => {
+    // A builder inside a builder: releasing the inner scope must hand
+    // determinism back to its caller, otherwise the outer builder silently
+    // loses reproducible ids mid-document and its golden snapshot churns.
+    const outerRelease = useDeterministicIds();
+    releases.push(outerRelease);
+    resetDeterministicIds();
+    const beforeInner = uid("p");
+    const innerRelease = useDeterministicIds();
+    const duringInner = uid("p");
+    innerRelease();
+    const afterInner = uid("p");
+    // Still deterministic after the inner release — the key assertion.
+    expect(duringInner).toMatch(/^p-test-/);
+    expect(afterInner).toMatch(/^p-test-/);
+    expect(beforeInner).not.toBe(afterInner);
+    outerRelease();
+    expect(uid("p")).not.toMatch(/^p-test-/);
   });
 });
 
@@ -158,11 +176,16 @@ describe("shared/ids — clamp companion", () => {
     expect(clamp(0, 0, 0)).toBe(0);
   });
 
-  it("propagates NaN instead of silently returning a bound", () => {
-    // Math.min/max propagate NaN, so a non-finite input leaves the parameter
-    // poisoned downstream. Pinned as the *current* contract: a future
-    // hardening pass has to make that choice deliberately.
-    expect(clamp(Number.NaN, 0, 10)).toBeNaN();
+  it("clamps a non-finite value to the floor instead of propagating NaN", () => {
+    // NaN survives a Math.min/max chain unchanged, so a NaN velocity from a
+    // parse bug would poison a pattern row or a note. The floor is the safe
+    // direction: silent, inaudible, and recoverable — unlike NaN reaching an
+    // AudioParam. Infinity is covered by the same guard.
+    expect(clamp(Number.NaN, 0, 10)).toBe(0);
+    expect(clamp(Number.POSITIVE_INFINITY, 0, 10)).toBe(0);
+    expect(clamp(Number.NEGATIVE_INFINITY, 0, 10)).toBe(0);
+    // Non-zero floor — the guard must use `min`, not a hardcoded 0.
+    expect(clamp(Number.NaN, 3, 10)).toBe(3);
   });
 
   it("does not throw on a reversed min/max range", () => {

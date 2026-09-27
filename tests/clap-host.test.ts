@@ -263,4 +263,56 @@ describe.skipIf(!nativeReady)("CLAP player end-to-end (ADR 0016 audio hosting)",
     expect(verdict.format).toMatchObject({ rate: RATE, channels: 2, plugin: "org.kyx.test.clap-tone" });
     expect(verdict.verified).toBe(RATE); // exactly one second, every frame verified
   }, 30_000);
+
+  it(
+    "applies --set through the params extension: the tone moves to 880 Hz",
+    async () => {
+      const PLAYER = path.join(REPO, "native", "clap-host", "build", "Release", "clap-player.exe");
+      const TONE = path.join(REPO, "native", "clap-host", "build", "Release", "clap-tone.clap");
+      if (!existsSync(PLAYER) || !existsSync(TONE)) return; // older build tree
+
+      const RATE = 48000;
+      const source = new PcmPipeSource({
+        hostPath: PLAYER,
+        args: ["--dll", TONE, "--rate", String(RATE), "--seconds", "1", "--set", "880"],
+      });
+
+      // All listeners before start (transport does not replay events).
+      const verdict = await new Promise<{ params: unknown; verified: number }>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("stream did not finish in 20 s")), 20_000);
+        let absolute = 0;
+        let params: unknown = null;
+        source.on("event", (payload) => {
+          const record = payload as { params?: unknown };
+          if (record.params) params = record.params;
+        });
+        source.on("pcm", (raw) => {
+          const block = raw as { samples: Float32Array };
+          const frames = block.samples.length / 2; // interleaved stereo, identical channels
+          for (let n = 0; n < frames; n++, absolute++) {
+            // The queued PARAM_VALUE event retunes the FIRST block — the
+            // whole stream is 880 Hz, not 440.
+            const expected = 0.25 * Math.sin((2 * Math.PI * 880 * absolute) / RATE);
+            if (Math.abs(block.samples[n * 2] - expected) > 1e-5) {
+              clearTimeout(timer);
+              reject(new Error(`sample mismatch at absolute frame ${absolute} (expected an 880 Hz tone)`));
+              source.stop();
+              return;
+            }
+          }
+        });
+        source.on("close", () => {
+          clearTimeout(timer);
+          resolve({ params, verified: absolute });
+        });
+        source.start();
+      });
+
+      expect(verdict.verified).toBe(RATE);
+      expect(verdict.params).toEqual([
+        { id: 7001, name: "Tone Frequency", min: 50, max: 2000, default: 440 },
+      ]);
+    },
+    30_000,
+  );
 });

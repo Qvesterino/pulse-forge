@@ -1332,3 +1332,65 @@ describe("E2E readback verification loop", () => {
     }
   });
 });
+
+// ─── 18. TYPO LAYER — "did you mean?" for near-miss command verbs ───────────
+
+describe("E2E typo clarification", () => {
+  it("'mut the drums' offers 'mute the drums' instead of generating a beat", () => {
+    const doc = testDoc();
+    const route = routeIntentText("mut the drums", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") {
+      expect(route.suggestions).toEqual(["mute the drums"]);
+      expect(route.reason).toContain("mute the drums");
+      // the suggestion is genuinely executable
+      expect(routeIntentText("mute the drums", doc).kind).toBe("exact");
+    }
+  });
+
+  it("'pann the bass left 30' corrects the verb and the fix parses", () => {
+    const doc = testDoc();
+    const route = routeIntentText("pann the bass left 30", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") {
+      expect(route.suggestions).toContain("pan the bass left 30");
+      expect(routeIntentText("pan the bass left 30", doc).kind).toBe("exact");
+    }
+  });
+
+  it("SK typo: 'stmaz track basu'? no — 'zmazz the bass track' corrects to zmaz", () => {
+    const doc = testDoc();
+    const route = routeIntentText("zmazz the bass track", doc);
+    expect(route.kind).toBe("clarify");
+    if (route.kind === "clarify") {
+      expect(route.suggestions[0]).toContain("zmaz");
+      expect(routeIntentText(route.suggestions[0], doc).kind).toBe("exact");
+    }
+  });
+
+  it("real prompts NEVER fire the typo layer (genre signal wins)", () => {
+    const doc = testDoc();
+    for (const text of [
+      "dark techno at 140",
+      "make me a trap beat",
+      "mut the drums in a dark trap beat",
+      "banging house groove with swing",
+    ]) {
+      expect(routeIntentText(text, doc).kind).toBe("pattern");
+    }
+  });
+
+  it("a correction that still parses as a prompt is NOT offered", () => {
+    const doc = testDoc();
+    // "plan the set" — "plan"→"play"? "set" is a vocab verb token; whatever
+    // the single-token fixes produce, none may surface unless executable
+    const route = routeIntentText("plan the drums", doc);
+    if (route.kind === "clarify") {
+      for (const suggestion of route.suggestions) {
+        expect(routeIntentText(suggestion, doc).kind).not.toBe("pattern");
+      }
+    }
+    // vocabulary words themselves are never "corrected"
+    expect(routeIntentText("solo the bass", doc).kind).toBe("exact");
+  });
+});
