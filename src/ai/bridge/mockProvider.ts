@@ -97,6 +97,23 @@ function estimateImpact(commands: readonly BridgeCommand[]): EstimatedImpact {
         peakDeltaDb += Math.abs(cmd.duckDb) * 0.5;
         rmsDeltaDb += Math.abs(cmd.duckDb) * 0.25;
         break;
+      case "compressor":
+        // Compression is level-reducing and the character carries its own
+        // makeup, so the net delta stays small. Only the makeup can lift it.
+        rmsDeltaDb += cmd.intensity * 2;
+        peakDeltaDb += cmd.intensity * 1.5;
+        break;
+      case "eq-corner":
+        // A high-pass only removes energy, and only below the corner — it can
+        // never raise a level, so the loudness delta is effectively zero. It
+        // still counts toward the "how much did we touch" risk proxy.
+        break;
+      case "insert-transient":
+        // Shaping redistributes the spectrum in place; the output trim is the
+        // only part that moves the level.
+        rmsDeltaDb += cmd.params.outputDb * 0.5;
+        peakDeltaDb += cmd.params.outputDb * 0.5;
+        break;
       case "set-volume":
         peakDeltaDb += cmd.volumeDb * 0.5;
         rmsDeltaDb += cmd.volumeDb * 0.5;

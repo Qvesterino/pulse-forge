@@ -20,6 +20,7 @@
 
 import type { ProjectDocument } from "../../project-model/types";
 import type { EqBandSlot } from "./eqSlots";
+import type { CompressorCharacter } from "./compressorSlots";
 
 /**
  * All bridge command kinds the MVP knows how to execute. Adding a kind here
@@ -27,7 +28,15 @@ import type { EqBandSlot } from "./eqSlots";
  * site via `assertNever`). Future recipe authors add a new variant here AND
  * a matching executor branch in `./executor.ts`.
  */
-export type BridgeCommandKind = "sidechain-duck" | "eq-carve" | "eq-boost" | "set-volume" | "set-track-pan";
+export type BridgeCommandKind =
+  | "sidechain-duck"
+  | "compressor"
+  | "insert-transient"
+  | "eq-corner"
+  | "eq-carve"
+  | "eq-boost"
+  | "set-volume"
+  | "set-track-pan";
 
 /**
  * High-level command produced by a recipe. The executor (./executor.ts) is
@@ -110,6 +119,64 @@ export interface EqBoostCommand extends BridgeCommandBase {
 }
 
 /**
+ * Insert or retune a compressor on `target`.
+ *
+ * Two shapes, because they carry different guarantees:
+ *   - `character` (no `source`): a plain keyed-by-nothing compressor. The
+ *     executor resolves the character's numbers from
+ *     ./compressorSlots.ts and writes the canonical param set. Works on both
+ *     the worklet and the native fallback path.
+ *   - `character` + `source`: a PUMPED compressor. AudioEngine routes
+ *     `sidechainTrackId` into the worklet's second input, but the native
+ *     fallback has no sidechain input at all — see
+ *     COMPRESSOR_SIDECHAIN_CAVEAT. The executor still writes the key (it is
+ *     correct for the worklet path) and the rationale says so.
+ *
+ * `intensity` ∈ [0,1] tilts the character toward more reduction.
+ */
+export interface CompressorCommand extends BridgeCommandBase {
+  readonly kind: "compressor";
+  readonly target: TrackMatcher;
+  /** Musical character; the bridge owns the parameter translation. */
+  readonly character: CompressorCharacter;
+  /** 0 = as authored, 1 = maximum reduction for this character. */
+  readonly intensity: number;
+  /** Optional key source track — makes this a pump. Worklet path only. */
+  readonly source?: TrackMatcher;
+}
+
+/**
+ * Move an EQ CORNER filter (`hp` / `lp`). Corners have no gain param, so they
+ * are their own command kind rather than an `eq-carve` with a zero gain —
+ * that keeps the carve/boost sign discipline meaningful and stops a recipe
+ * from "cutting" a filter that cannot be cut.
+ */
+export interface EqCornerCommand extends BridgeCommandBase {
+  readonly kind: "eq-corner";
+  readonly target: TrackMatcher;
+  /** Only "hp" and "lp" are valid corners. */
+  readonly band: "hp" | "lp";
+  /** Corner frequency in Hz; snapped into the slot's window by the executor. */
+  readonly freqHz: number;
+}
+
+/**
+ * Insert or retune a Transient Shaper on `target`. `attack` / `sustain` are
+ * SIGNED (−1…1) on the canonical contract — see ./transientSlots.ts.
+ */
+export interface InsertTransientCommand extends BridgeCommandBase {
+  readonly kind: "insert-transient";
+  readonly target: TrackMatcher;
+  readonly params: {
+    readonly attack: number;
+    readonly sustain: number;
+    readonly sensitivity: number;
+    readonly mix: number;
+    readonly outputDb: number;
+  };
+}
+
+/**
  * Set a track's output volume in dBFS.
  */
 export interface SetVolumeCommand extends BridgeCommandBase {
@@ -128,7 +195,14 @@ export interface SetTrackPanCommand extends BridgeCommandBase {
 }
 
 export type BridgeCommand =
-  SidechainDuckCommand | EqCarveCommand | EqBoostCommand | SetVolumeCommand | SetTrackPanCommand;
+  | SidechainDuckCommand
+  | CompressorCommand
+  | EqCornerCommand
+  | InsertTransientCommand
+  | EqCarveCommand
+  | EqBoostCommand
+  | SetVolumeCommand
+  | SetTrackPanCommand;
 
 /**
  * Pattern-match helper used by every recipe's `apply` to locate the right

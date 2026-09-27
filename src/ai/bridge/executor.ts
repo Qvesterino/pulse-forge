@@ -21,10 +21,12 @@ import { snapshot } from "../../commands/commands";
 import type { Command } from "../../commands/types";
 import { defaultParamsOf } from "../../effects/definitions";
 import type { BridgeCommand, BridgeExecutionError, BridgeExecutionResult, TrackMatcher } from "./types";
-import type { SidechainDuckCommand } from "./types";
+import type { SidechainDuckCommand, CompressorCommand, InsertTransientCommand } from "./types";
 import type { RecipeInput } from "./types";
 import { EQ_BANDS, clampToSlot, type EqBandSlot } from "./eqSlots";
 import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "./sidechainSlots";
+import { COMPRESSOR_CHARACTERS, COMPRESSOR_RANGES, tuneCharacter } from "./compressorSlots";
+import { TRANSIENT_RANGES } from "./transientSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
 import type { EffectInstance, ProjectDocument, Track, ID } from "../../project-model/types";
@@ -174,6 +176,91 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
       }
       return { ok: true };
     }
+    case "compressor": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (!COMPRESSOR_CHARACTERS[cmd.character]) {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `unknown compressor character "${cmd.character}"`,
+          hint: `Valid characters: ${Object.keys(COMPRESSOR_CHARACTERS).join(", ")}.`,
+        };
+      }
+      if (!Number.isFinite(cmd.intensity) || cmd.intensity < 0 || cmd.intensity > 1) {
+        return paramRange("intensity", cmd.intensity, 0, 1);
+      }
+      if (cmd.source) {
+        const source = resolveTrackMatcher(doc, cmd.source);
+        if (!source) return trackMissing(cmd.source.namePattern);
+        if (source === target) {
+          return {
+            ok: false,
+            code: "validation-failed",
+            message: "compressor source and target resolve to the same track",
+            hint: "A track cannot pump itself — pick a different key source.",
+          };
+        }
+      }
+      // The character is only safe if every value it expands to lands inside
+      // the registry whitelist — otherwise normalizeEffects clamps a value the
+      // audio engine never sees.
+      const spec = tuneCharacter(COMPRESSOR_CHARACTERS[cmd.character], cmd.intensity);
+      const checks: Array<[keyof typeof COMPRESSOR_RANGES, number]> = [
+        ["threshold", spec.thresholdDb],
+        ["ratio", spec.ratio],
+        ["attack", spec.attackSec],
+        ["release", spec.releaseSec],
+        ["knee", spec.kneeDb],
+        ["detector", spec.detector],
+        ["scHpf", spec.scHpfHz],
+        ["autoRelease", spec.autoRelease],
+        ["makeup", spec.makeupDb],
+        ["mix", spec.mix],
+      ];
+      for (const [id, value] of checks) {
+        const range = COMPRESSOR_RANGES[id];
+        if (!Number.isFinite(value) || value < range.min || value > range.max) {
+          return paramRange(id, value, range.min, range.max);
+        }
+      }
+      return { ok: true };
+    }
+    case "eq-corner": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      if (cmd.band !== "hp" && cmd.band !== "lp") {
+        return {
+          ok: false,
+          code: "validation-failed",
+          message: `"${cmd.band}" is not an EQ corner`,
+          hint: 'Corners are "hp" and "lp". Shelves and bells use eq-carve/eq-boost.',
+        };
+      }
+      if (!Number.isFinite(cmd.freqHz) || cmd.freqHz < FREQ_MIN_HZ || cmd.freqHz > FREQ_MAX_HZ) {
+        return paramRange("freqHz", cmd.freqHz, FREQ_MIN_HZ, FREQ_MAX_HZ);
+      }
+      return { ok: true };
+    }
+    case "insert-transient": {
+      const target = resolveTrackMatcher(doc, cmd.target);
+      if (!target) return trackMissing(cmd.target.namePattern);
+      const p = cmd.params;
+      const checks: Array<[keyof typeof TRANSIENT_RANGES, number]> = [
+        ["attack", p.attack],
+        ["sustain", p.sustain],
+        ["sensitivity", p.sensitivity],
+        ["mix", p.mix],
+        ["output", p.outputDb],
+      ];
+      for (const [id, value] of checks) {
+        const range = TRANSIENT_RANGES[id];
+        if (!Number.isFinite(value) || value < range.min || value > range.max) {
+          return paramRange(id, value, range.min, range.max);
+        }
+      }
+      return { ok: true };
+    }
     case "eq-carve":
     case "eq-boost": {
       const target = resolveTrackMatcher(doc, cmd.target);
@@ -272,6 +359,22 @@ function applyCommand(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument
       }
       return insertSidechain(doc, targetId, sourceId, cmd);
     }
+    case "eq-corner": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applyEqCorner(doc, targetId, cmd.band, cmd.freqHz);
+    }
+    case "insert-transient": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      return applyTransient(doc, targetId, cmd);
+    }
+    case "compressor": {
+      const targetId = resolveTrackMatcher(doc, cmd.target);
+      if (!targetId) throw new Error("internal: track resolution lost between validate and apply");
+      const sourceId = cmd.source ? resolveTrackMatcher(doc, cmd.source) : null;
+      return applyCompressor(doc, targetId, cmd, sourceId);
+    }
     case "eq-carve":
     case "eq-boost": {
       const targetId = resolveTrackMatcher(doc, cmd.target);
@@ -351,8 +454,116 @@ function insertSidechain(doc: ProjectDocument, targetId: ID, sourceId: ID, cmd: 
 }
 
 /**
- * Move one band of the target track's `eq` effect.
+ * Move an EQ corner (hp / lp) on the target. Same reuse rule as
+ * `applyEqMove`: the last existing `eq` instance is retuned, and a fresh one
+ * is seeded from the registry defaults when the track has none.
+ */
+function applyEqCorner(doc: ProjectDocument, targetId: ID, band: "hp" | "lp", freqHz: number): ProjectDocument {
+  const spec = EQ_BANDS[band];
+  const { freqHz: snapped } = clampToSlot(spec, freqHz);
+  return withTrack(doc, targetId, (t) => {
+    const existingEqIdx = findLastIndex(t.effects, (fx) => fx.type === "eq");
+    const next: Record<string, number> = {
+      ...(existingEqIdx >= 0 ? t.effects[existingEqIdx].params : defaultParamsOf("eq")),
+      [spec.freqId]: snapped,
+    };
+    if (existingEqIdx >= 0) {
+      const nextEffects = t.effects.slice();
+      nextEffects[existingEqIdx] = { ...t.effects[existingEqIdx], params: next };
+      return { ...t, effects: nextEffects };
+    }
+    const fx: EffectInstance = { id: uid("fx"), type: "eq", bypassed: false, params: next };
+    return { ...t, effects: [...t.effects, fx] };
+  });
+}
+
+/**
+ * Insert or retune a Transient Shaper on the target track, writing only the
+ * canonical `transientParams` ids. `attack` / `sustain` are signed, so a
+ * negative `sustain` shortens the body — see ./transientSlots.ts.
+ */
+function applyTransient(doc: ProjectDocument, targetId: ID, cmd: InsertTransientCommand): ProjectDocument {
+  const p = cmd.params;
+  const params: Record<string, number> = {
+    ...defaultParamsOf("transient"),
+    attack: p.attack,
+    sustain: p.sustain,
+    sensitivity: p.sensitivity,
+    mix: p.mix,
+    output: p.outputDb,
+  };
+  return withTrack(doc, targetId, (t) => {
+    const existing = findLastIndex(t.effects, (f) => f.type === "transient");
+    if (existing >= 0) {
+      const nextEffects = t.effects.slice();
+      nextEffects[existing] = { ...t.effects[existing], params, bypassed: false };
+      return { ...t, effects: nextEffects };
+    }
+    const fx: EffectInstance = { id: uid("fx"), type: "transient", bypassed: false, params };
+    return { ...t, effects: [...t.effects, fx] };
+  });
+}
+
+/**
+ * Insert or retune a compressor on the target track.
  *
+ * Writes only canonical `compressorParams` ids seeded from the registry
+ * defaults, so the instance survives `normalizeEffects` and actually
+ * compresses. Unlike the sidechain path there is no `amount` param to
+ * translate — the character's numbers are already in registry units, with
+ * `makeup` in dB (the worklet converts to linear itself).
+ *
+ * Retunes rather than stacking: a second compressor on the same track would
+ * compound the GR and surprise the user. When the character wants a pump and
+ * the track already has a keyed compressor from another source, the new
+ * source replaces the old one so the track never holds two key feeds.
+ */
+function applyCompressor(
+  doc: ProjectDocument,
+  targetId: ID,
+  cmd: CompressorCommand,
+  sourceId: ID | null,
+): ProjectDocument {
+  const spec = tuneCharacter(COMPRESSOR_CHARACTERS[cmd.character], cmd.intensity);
+  const params: Record<string, number> = {
+    ...defaultParamsOf("compressor"),
+    threshold: spec.thresholdDb,
+    ratio: spec.ratio,
+    attack: spec.attackSec,
+    release: spec.releaseSec,
+    knee: spec.kneeDb,
+    detector: spec.detector,
+    scHpf: spec.scHpfHz,
+    autoRelease: spec.autoRelease,
+    makeup: spec.makeupDb,
+    mix: spec.mix,
+  };
+
+  return withTrack(doc, targetId, (t) => {
+    const existing = findLastIndex(t.effects, (f) => f.type === "compressor");
+    if (existing >= 0) {
+      const nextEffects = t.effects.slice();
+      nextEffects[existing] = {
+        ...t.effects[existing],
+        params,
+        bypassed: false,
+        sidechainTrackId: sourceId,
+      };
+      return { ...t, effects: nextEffects };
+    }
+    const fx: EffectInstance = {
+      id: uid("fx"),
+      type: "compressor",
+      bypassed: false,
+      params,
+      sidechainTrackId: sourceId,
+    };
+    return { ...t, effects: [...t.effects, fx] };
+  });
+}
+
+/**
+ * Move one band of the target track's `eq` effect.
  * Real integration, not a model-only write: the params written here are the
  * canonical ids the audio engine actually reads (`highMidFreq` /
  * `highMidGain` / `highMidQ`, …) so the change survives `normalizeEffects`
