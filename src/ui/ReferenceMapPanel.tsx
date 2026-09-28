@@ -45,9 +45,11 @@ import { useDoc } from "./context";
  * The analysis itself is pure: no RNG, no network, no time dependence. That is
  * what makes the JSON export comparable between sessions and machines.
  *
- * No `innerHTML` anywhere (invariant #10) — every user-controlled string (the
- * dropped file name) is rendered through JSX, which escapes it, and only
- * reaches the filesystem through `sanitizeFilename`.
+ * No raw-DOM injection anywhere (invariant #10) — every user-controlled string
+ * (the dropped file name) is rendered through JSX, which escapes it, and only
+ * reaches the filesystem through `sanitizeFilename`. Note: the invariant
+ * scanner matches the forbidden token as raw text, so naming it in this
+ * comment would itself trip the check.
  */
 
 const ACCEPTED_EXTENSIONS = /\.(wav|wave|mp3|ogg|oga|flac|aiff|aif|m4a|aac|opus|webm)$/i;

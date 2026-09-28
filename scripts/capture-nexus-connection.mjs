@@ -55,7 +55,9 @@ log(`opening ${ORIGIN}`);
 await page.goto(ORIGIN, { waitUntil: "domcontentloaded", timeout: 45_000 });
 await page.waitForTimeout(5000);
 
-// Open the studio so the export panel is reachable.
+// Open the studio. The IntentPanel lives inside the studio (App.tsx), not the
+// landing page, and the AUDIOTOOL button only renders for an existing
+// candidate — so the beat has to be generated from the studio's own field.
 await page.goto(new URL("/studio", ORIGIN).href, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(9000);
 
@@ -71,18 +73,29 @@ if (await openProject.count()) {
   }
 }
 
-// Generate a beat so there is something real to export.
-const intent = page.locator('input[placeholder*="Describe your beat"]').first();
-if (await intent.count()) {
-  await intent.click();
-  await page.keyboard.type("dark trap 140", { delay: 45 });
-  await page.waitForTimeout(600);
-  const forge = page.getByRole("button", { name: /forge it/i }).first();
-  if (await forge.count()) await forge.click();
-  await page.waitForTimeout(9000);
-} else {
-  log("  (no intent field on this surface — using the studio's own beat)");
+// The studio's IntentPanel field, identified by its aria-label.
+const intent = page.locator('input[aria-label="Intent description"], textarea[aria-label="Intent description"]').first();
+if (!(await intent.count())) {
+  log("!! could not find the IntentPanel field — the panel is not mounted");
+  await context.close();
+  await browser.close();
+  process.exit(1);
 }
+log("  typing the intent");
+await intent.click();
+await page.keyboard.type("dark trap 140", { delay: 50 });
+await page.waitForTimeout(900);
+
+// Enter only previews; GENERATE is what actually produces candidates.
+const generate = page.getByRole("button", { name: /^GENERATE$/i }).first();
+if (await generate.count()) {
+  log("  pressing GENERATE");
+  await generate.click();
+} else {
+  log("  (no GENERATE button — falling back to Enter)");
+  await page.keyboard.press("Enter");
+}
+await page.waitForTimeout(15_000);
 
 // Open the NEXUS export dialog. The trigger in IntentPanel is a button whose
 // label is exactly "AUDIOTOOL", and it only renders once a candidate exists —

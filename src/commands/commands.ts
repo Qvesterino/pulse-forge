@@ -5534,10 +5534,19 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       continue;
     }
     if (op.kind === "transpose") {
-      // Melodic notes only — drums have no pitch.
+      // Melodic notes only — drums have no pitch. A named target that
+      // resolves to nothing (or to drums only) fails LOUDLY: the old silent
+      // no-op reported success while the notes never moved.
+      const melodicIds = resolve(op.target).filter((id) => {
+        const track = next.tracks.find((t) => t.id === id);
+        return track?.kind === "instrument";
+      });
+      if (melodicIds.length === 0) {
+        throw new Error(`no melodic track matches "${op.target}" — nothing to transpose`);
+      }
       for (const track of next.tracks) {
         if (track.kind !== "instrument") continue;
-        if (!resolve(op.target).includes(track.id)) continue;
+        if (!melodicIds.includes(track.id)) continue;
         const pattern = next.patterns.find((p) => p.id === next.activePatternId);
         if (!pattern) continue;
         const notes = pattern.notes[track.id];
@@ -5639,11 +5648,25 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
       }
     } else if (op.kind === "patternLengthDelta") {
       const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
-      if (steps != null) entries.push(`length ${before.patterns.find((p) => p.id === before.activePatternId)?.stepCount ?? "?"}→${steps}`);
+      if (steps != null)
+        entries.push(
+          `length ${before.patterns.find((p) => p.id === before.activePatternId)?.stepCount ?? "?"}→${steps}`,
+        );
     } else if (op.kind === "swing") {
       const b = Math.round((before.groove?.swing ?? 0) * 100);
       const a = Math.round((after.groove?.swing ?? 0) * 100);
       if (b !== a) entries.push(`swing ${b}%→${a}%`);
+    } else if (op.kind === "transpose") {
+      // Verified against the ACTIVE pattern's notes: the entry fires only
+      // when a resolved track's pitch actually moved by the requested amount.
+      for (const id of resolveExactTargetTracks(before, op.target)) {
+        const b = before.patterns.find((p) => p.id === before.activePatternId)?.notes[id]?.[0]?.pitch;
+        const a = after.patterns.find((p) => p.id === after.activePatternId)?.notes[id]?.[0]?.pitch;
+        if (b != null && a != null && a - b === op.semitones) {
+          entries.push(`transpose ${op.semitones > 0 ? "+" : ""}${op.semitones} st ✓`);
+          break;
+        }
+      }
     } else if (op.target === "kick" || op.target === "snare" || op.target === "hats") {
       // pad-family mute/solo/pan — report the family flag
       const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");

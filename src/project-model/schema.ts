@@ -28,7 +28,7 @@ import type {
   StepMeta,
   AutomationTarget,
 } from "./types";
-import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { PPQ, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";

@@ -141,6 +141,8 @@ describe("semanticConditioning — artist signature as the base", () => {
     const result = await semanticConditioningForIntent({
       artist: "travis scott",
       text: "travis scott type beat, but brighter",
+      genre: "trap",
+      style: null,
     });
 
     expect(result).not.toBeNull();

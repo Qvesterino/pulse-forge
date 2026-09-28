@@ -215,13 +215,25 @@ describe("named-plugin concepts (Vlna 8 — pluginy cez intent)", () => {
   it("telephone → band-pass svFilter + crackle distortion on the named track", () => {
     const intent = parseProductionIntent("telephone vocal");
     expect(intent!.goals[0]).toEqual({ concept: "telephone", amount: 0.7 });
-    const { actions } = planProductionActions(doc(), intent!);
+    // "vocal" is not a production target — the concept's lead default must
+    // resolve against a REAL lead track (strict resolution, no positional
+    // fallback onto instruments[0]).
+    const withLead = doc();
+    const lead: InstrumentTrack = {
+      ...(withLead.tracks.find((t): t is InstrumentTrack => t.kind === "instrument") as InstrumentTrack),
+      id: "track-lead-telephone",
+      name: "Lead",
+      instrument: "analog",
+    };
+    const { actions } = planProductionActions({ ...withLead, tracks: [...withLead.tracks, lead] }, intent!);
     const types = actions.map((a) => a.type);
     expect(types).toContain("svFilter");
     expect(types).toContain("distortion");
     const bp = actions.find((a) => a.type === "svFilter")!;
     expect(bp.params.mode).toBe(1); // band-pass
     expect(bp.params.cutoff).toBeGreaterThan(900);
+    // and the effects land on the LEAD, not on whatever instruments[0] is
+    expect(actions.every((a) => a.trackId === lead.id)).toBe(true);
   });
 
   it("tape → heavier tapeSat than 'warmer'", () => {

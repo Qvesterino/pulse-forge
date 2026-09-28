@@ -30,6 +30,7 @@ import {
   hasArtistSignature,
 } from "./artist-signature";
 import { getArtistProfile, normalizeArtistSlug, type ArtistProfile } from "./artist-profiles";
+import { structuredStyleVector } from "./structured-style-vector";
 import type { IntentSpec } from "./types";
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
@@ -96,6 +97,14 @@ export async function semanticConditioning(
    * the pre-slice behaviour.
    */
   artist?: ArtistProfile | null,
+  /**
+   * Optional STRUCTURED fallback vector (2026-09-28), resolved by the caller
+   * from the in-repo 170x16 style-embedding table. Used only when the neural
+   * embed produced nothing — on a device that has opted out of the 129 MB
+   * MiniLM, on save-data, or when the worker is unavailable. Pass null and
+   * the chain is byte-identical to the pre-fallback behaviour.
+   */
+  structured?: readonly number[] | null,
 ): Promise<readonly number[] | null> {
   try {
     // Lazy: keep the semantic client out of the landing-route static closure
@@ -108,8 +117,8 @@ export async function semanticConditioning(
     // legitimate ("🎧 REF + generate", "travis scott type beat" where the
     // user only typed the name) — the base alone drives the conditioning.
     // Without either there is nothing to say, so empty text stays null.
-    if (!trimmed && !audioReferenceOverride && !seedingProfile) return null;
-    if (embeddingConditionedMode() !== "on") return null;
+    if (!trimmed && !audioReferenceOverride && !seedingProfile && !structured) return null;
+    if (embeddingConditionedMode() !== "on" && !structured) return null;
 
     const ledger = readFavoriteLedger();
     const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}|${
@@ -163,6 +172,23 @@ export async function semanticConditioning(
     if (pure) {
       const style = await computeStyleVector(ledger, embed);
       result = style ? Object.freeze(blendSemantic(pure, style)) : Object.freeze(pure);
+    } else if (structured) {
+      // STRUCTURED FALLBACK (2026-09-28): the neural embed is unavailable or
+      // the device has opted out of the 129 MB model, but the STRUCTURED half
+      // of the conditioning signal — genre centre / named style row, read from
+      // the 170x16 style-embedding table already in the repo — is still
+      // reachable at zero model cost.
+      //
+      // This is what keeps the v3 drum prior alive on a phone. Without it, a
+      // <= 4 GB device resolves semantic=null, the provider's
+      // `(supportsDrumPrior || semantic)` gate falls through to template
+      // drums, and the user is left with 88% of the library unusable while
+      // desktop gets the full model.
+      //
+      // It is weaker than the embed on purpose and does not pretend otherwise:
+      // free-text steering ("darker, more space") needs the model. What it
+      // does carry is the pocket the request is actually made of.
+      result = Object.freeze(structured);
     }
 
     if (projectionCache.size >= MAX_CACHE_ENTRIES) projectionCache.clear();
@@ -212,10 +238,16 @@ export function primeSemanticForText(
 /** Resolve the parsed artist preset and pass its curated signature to the
  * embedding conditioner. Keeping this at the intent boundary means every
  * provider gets the same artist + user-text blend instead of silently
- * dropping artist identity before the semantic prior. */
+ * dropping artist identity before the semantic prior.
+ *
+ * The STRUCTURED vector (genre centre / named style row, from the in-repo
+ * style-embedding table) rides along as a fallback so a device that opted out
+ * of the 129 MB MiniLM still reaches the v3 drum prior instead of dropping to
+ * template. It is only consulted when the neural path produced nothing. */
 export function semanticConditioningForIntent(
-  intent: Pick<IntentSpec, "artist" | "text">,
+  intent: Pick<IntentSpec, "artist" | "text" | "genre" | "style">,
 ): Promise<readonly number[] | null> {
   const artist = intent.artist ? (getArtistProfile(normalizeArtistSlug(intent.artist)) ?? null) : null;
-  return semanticConditioning(intent.text, undefined, artist);
+  const structured = structuredStyleVector({ genre: intent.genre, style: intent.style });
+  return semanticConditioning(intent.text, undefined, artist, structured);
 }

@@ -20,6 +20,7 @@
 import type { Command } from "../commands/types";
 import { setBpm, setMasterConfig, setPadParams, setTrackParams, snapshot } from "../commands/commands";
 import { parsePercent, parsePercentAllowingZero } from "./percent";
+import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
 import type { ProductionIntent, ProductionTarget } from "./production";
@@ -210,7 +211,10 @@ const HAS_TEMPO_WORD =
   /\btempo\b|\bbpm\b|\bpomal|\brychl|\bslow(?:er| down| it down)?\b|\bfaster\b|\bspeed (?:it )?up\b|\bzrychli|\btempa\b/;
 const TEMPO_DOWN = /dole|down|nizs|zniz|pomal|slow|spomal/;
 const TEMPO_UP = /hore|up|vys|zvys|rychl|faster|speed|zrychli/;
-const TEMPO_SET = /(?:tempo|bpm) (?:na |to |at )?(\d{2,3})|(\d{2,3}) bpm/;
+const TEMPO_SET_TEMPO = /\btempo (?:na |to |at )?(\d{2,3})/;
+// Bare-number bpm forms are genre-gated at the call site: "hard techno
+// 150 bpm" is a generation prompt, not a tempo command.
+const TEMPO_SET_BPM = /\bbpm (?:na |to |at )?(\d{2,3})|(\d{2,3}) bpm/;
 
 export function parseTempoIntent(text: string): TempoIntent | null {
   const lower = ` ${text
@@ -218,7 +222,7 @@ export function parseTempoIntent(text: string): TempoIntent | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")} `;
   if (!HAS_TEMPO_WORD.test(lower)) return null;
-  const setMatch = TEMPO_SET.exec(lower);
+  const setMatch = TEMPO_SET_TEMPO.exec(lower) ?? (intentCarriesGenreSignal(text) ? null : TEMPO_SET_BPM.exec(lower));
   if (setMatch) {
     const bpm = Number(setMatch[1] ?? setMatch[2]);
     if (bpm >= 40 && bpm <= 220) return { direction: "set", bpm };

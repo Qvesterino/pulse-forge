@@ -1,5 +1,6 @@
 import type { InstrumentKind, MusicalKey } from "../project-model/types";
 import { MUSICAL_KEYS } from "../project-model/types";
+import { parseIntentText } from "./text-parser";
 
 /**
  * Exact Intents (KYX_PRODUCTION_INTENT_ENGINE_MASTER.md §4.1, §19):
@@ -134,6 +135,18 @@ function flatToSharp(letter: string, accidental: string): string {
   return flatMap[letter] ?? NOTE_BASE[letter];
 }
 
+/**
+ * True when the text parses as a genre/beat PROMPT (a genre word or a ♪
+ * style chip) — router semantics. Shared by the exact and conversation
+ * tempo parsers: bare-number bpm forms ("142 bpm") inside a prompt name the
+ * bpm of the beat the user WANTS, not a fader move, and must not be
+ * hijacked into a silent tempo change that generates nothing.
+ */
+export function intentCarriesGenreSignal(text: string): boolean {
+  const pattern = parseIntentText(text);
+  return Boolean(pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")));
+}
+
 export function parseExactIntent(text: string): ExactIntentPlan | null {
   // De-accented like every other parser — SK diacritics break \b word
   // boundaries ("všetko" never matches a "vsetko" stem otherwise). The
@@ -144,8 +157,14 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     .replace(/[\u0300-\u036f]/g, "");
   const ops: ExactOp[] = [];
 
-  // Tempo: "set tempo to 142", "142 bpm", "tempo 138"
-  const tempo = /(?:tempo|bpm)\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower);
+  // Tempo: "set tempo to 142", "142 bpm", "tempo 138". The "tempo"-word form
+  // is an explicit ask and always parses; the bare-number forms ("142 bpm",
+  // "bpm 138") are GENRE-GATED (see intentCarriesGenreSignal).
+  const tempo =
+    /\btempo\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ??
+    (intentCarriesGenreSignal(text)
+      ? null
+      : (/\bbpm\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower) ?? /\b(\d{1,3})\s*bpm\b/.exec(lower)));
   if (tempo) {
     const bpm = Math.min(300, Math.max(20, Number(tempo[1])));
     ops.push({ kind: "tempo", bpm });
@@ -314,11 +333,14 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     );
   if (transpose) {
     // "everything/all" resolves to the mix family, but transpose has no
-    // mix-wide op — decline rather than silently no-op (the "lead" fallback
-    // is only for an unnamed SINGLE track, never for an all-ask).
+    // mix-wide op — decline rather than silently no-op. Unnamed transposes
+    // ("transpose it up an octave") decline too: guessing "lead" used to
+    // mutate whatever instruments[0] happened to be via the resolver's old
+    // positional fallback. A named-but-absent target fails loudly in the
+    // applier instead.
     const named = firstTarget(transpose[1]);
-    if (named !== "mix") {
-      const target = named ?? "lead";
+    if (named && named !== "mix") {
+      const target = named;
       const dir = /up|hore/.test(transpose[2]) ? 1 : -1;
       const unit = transpose[4];
       const count =
@@ -346,9 +368,10 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       lower,
     );
   if (transposeSk) {
+    // Same no-guess rule as the EN branch: a target word is required.
     const named = firstTarget(transposeSk[1]);
-    if (named !== "mix") {
-      const target = named ?? "lead";
+    if (named && named !== "mix") {
+      const target = named;
       const countWord = transposeSk.groups!.count;
       const count =
         Number(countWord) ||
