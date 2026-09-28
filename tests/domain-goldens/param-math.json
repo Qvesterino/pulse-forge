@@ -118,6 +118,10 @@
           "defaults": {
             "decay": 0.9,
             "pitchDrop": 0.4,
+            "punch": 0,
+            "punchTime": 0.06,
+            "knock": 0,
+            "grit": 0,
             "click": 0.35,
             "drive": 0.25,
             "glide": 0.34,

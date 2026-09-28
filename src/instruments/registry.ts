@@ -96,6 +96,38 @@ function hardClipCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+function tapeCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  // Tape saturation: gentle compression that leans harder as it heats up —
+  // the "analog glue" 808. Sub stays round, transients lean back, mids
+  // thicken. Mild asymmetry adds a whisper of 2nd harmonic.
+  const k = 1.1 + drive * 1.9;
+  const curve = new Float32Array(new ArrayBuffer(n * 4));
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const sat = Math.tanh(x * k) / Math.tanh(k);
+    curve[i] = sat * (1 - 0.08 * drive * x * x) + 0.05 * drive * Math.sin(Math.PI * x);
+  }
+  return curve;
+}
+
+function foldCurve(drive: number, n = 1024): Float32Array<ArrayBuffer> {
+  // Wavefolder: folds the wave back on itself — the phonk/drill "metal"
+  // grind. Folds escalate with drive; a tanh keeps the output bounded so
+  // heavy settings squint instead of exploding. The shaper runs 4x
+  // oversampled, which keeps the fold's added harmonics from aliasing hard.
+  const folds = 1 + Math.round(drive * 3);
+  const k = 1.2 + drive * 1.6;
+  const curve = new Float32Array(new ArrayBuffer(n * 4));
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    let y = x * k * folds;
+    // triangular fold into [-1, 1]
+    y = Math.abs(((y + 1) % 4) - 2) - 1;
+    curve[i] = Math.tanh(y * 1.4);
+  }
+  return curve;
+}
+
 function dbToLin(db: number): number {
   return Math.pow(10, db / 20);
 }
@@ -932,6 +964,13 @@ const bass808: InstrumentDefinition = {
         const freq = midiToFreq(pitch);
         const decay = Math.max(0.05, p.decay ?? 0.9);
         const drop = p.pitchDrop ?? 0.4;
+        // PUNCH: the modern-trap beater — the pitch envelope starts N
+        // semitones ABOVE the target and snaps down in P-TIME, so the 808
+        // knocks like a kick instead of fading in like a sine.
+        const punch = Math.max(0, Math.min(24, p.punch ?? 0));
+        const punchTime = Math.max(0.005, Math.min(0.15, p.punchTime ?? 0.06));
+        const knock = Math.max(0, Math.min(1, p.knock ?? 0));
+        const grit = Math.max(0, Math.min(1, p.grit ?? 0));
         const toneHz = 150 * Math.pow(2, (p.tone ?? 0.35) * 5.5);
         const gainVal = velocity * (p.gain ?? 0.85);
         const gated = (p.gate ?? 1) > 0.5;
@@ -941,7 +980,7 @@ const bass808: InstrumentDefinition = {
 
         const glideNorm = Math.max(0, Math.min(1, p.glide ?? 0.34));
         const glide = glideNorm * 0.35; // 0..1 → 0..0.35 s linear
-        const distType = Math.max(0, Math.min(2, Math.round(p.distType ?? 0)));
+        const distType = Math.max(0, Math.min(4, Math.round(p.distType ?? 0)));
         const drive = p.drive ?? 0.25;
         const subLev = Math.max(0, Math.min(1, p.sub ?? 0.35));
         const slideOn = !!slideFrom;
@@ -951,7 +990,15 @@ const bass808: InstrumentDefinition = {
         const shaper = ctx.createWaveShaper();
         shaper.oversample = "4x";
         shaper.curve =
-          distType === 2 ? hardClipCurve(drive) : distType === 1 ? tubeCurve(drive) : tanhCurve(1.8 + drive * 2);
+          distType === 4
+            ? foldCurve(drive)
+            : distType === 3
+              ? tapeCurve(drive)
+              : distType === 2
+                ? hardClipCurve(drive)
+                : distType === 1
+                  ? tubeCurve(drive)
+                  : tanhCurve(1.8 + drive * 2);
 
         const pre = ctx.createGain();
         pre.gain.value = 1 + drive * 4;
@@ -1015,9 +1062,11 @@ const bass808: InstrumentDefinition = {
           amp.gain.setValueAtTime(Math.max(gainVal, 0.0002), when);
           amp.gain.setTargetAtTime(0.0001, Math.max(off, when + 0.01), decay / 3);
         } else {
-          const startFreq = freq * (1 + drop * 1.3);
+          // P-DROP = legacy multiplicative whip; PUNCH = additive semitone
+          // beater on top. Both snap to the target inside P-TIME.
+          const startFreq = freq * (1 + drop * 1.3) * Math.pow(2, punch / 12);
           osc.frequency.setValueAtTime(Math.max(20, startFreq), when);
-          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when + 0.06);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), when + punchTime);
           osc.start(when);
         }
         osc.connect(amp);
@@ -1046,6 +1095,52 @@ const bass808: InstrumentDefinition = {
             subOsc.start(when);
           }
           subOsc.stop(stopTime);
+        }
+
+        // GRIT — square harmonic anchor at the fundamental, wired INTO the
+        // shaper so DRIVE/DIST cook it into the 200–400 Hz harmonics that
+        // make an 808 audible on a phone speaker. Decays faster than the
+        // body; on slides it glides with the pitch so the grind stays
+        // attached (a drill slide keeps its dirt).
+        let gritOsc: OscillatorNode | null = null;
+        let gritGain: GainNode | null = null;
+        if (grit > 0.005) {
+          gritOsc = ctx.createOscillator();
+          gritOsc.type = "square";
+          gritGain = ctx.createGain();
+          const gritLevel = grit * 0.4 * velocity;
+          if (slideOn && slideFrom) {
+            const fromFreq = midiToFreq(slideFrom.pitch);
+            const glideTime = glide > 0.002 ? glide : 0;
+            gritOsc.frequency.setValueAtTime(Math.max(20, fromFreq), glideStart);
+            if (glideTime > 0)
+              gritOsc.frequency.exponentialRampToValueAtTime(Math.max(20, freq), glideStart + glideTime);
+            else gritOsc.frequency.setValueAtTime(Math.max(20, freq), when);
+            gritOsc.start(glideStart);
+            gritGain.gain.setValueAtTime(Math.max(gritLevel * 0.9, 0.0002), glideStart);
+          } else {
+            gritOsc.frequency.value = freq;
+            gritOsc.start(when);
+            gritGain.gain.setValueAtTime(gritLevel, when);
+          }
+          gritGain.gain.setTargetAtTime(0.0001, gated ? off : when + 0.01, decay / 5);
+          gritOsc.connect(gritGain).connect(toneFilter);
+          gritOsc.stop(stopTime);
+        }
+
+        // KNOCK — the beater: a short sine thump ~2.5× up that the shaper
+        // turns into the "hit" real 808s get from layering a kick sample
+        // under the sub. Non-slide only — slides are continuous by design.
+        if (knock > 0.005 && !slideOn) {
+          const knockOsc = ctx.createOscillator();
+          knockOsc.type = "sine";
+          knockOsc.frequency.value = Math.min(1200, freq * 2.5);
+          const knockGain = ctx.createGain();
+          knockGain.gain.setValueAtTime(knock * 0.9 * velocity, when);
+          knockGain.gain.setTargetAtTime(0.0001, when + 0.004, 0.012);
+          knockOsc.connect(knockGain).connect(toneFilter);
+          knockOsc.start(when);
+          knockOsc.stop(when + 0.12);
         }
 
         if ((p.click ?? 0.35) > 0.005 && !slideOn) {
@@ -1092,6 +1187,10 @@ const bass808: InstrumentDefinition = {
               subGain.gain.cancelScheduledValues(t);
               subGain.gain.setTargetAtTime(0.0001, t, 0.01);
             }
+            if (gritGain) {
+              gritGain.gain.cancelScheduledValues(t);
+              gritGain.gain.setTargetAtTime(0.0001, t, 0.01);
+            }
             try {
               osc.stop(t + 0.06);
             } catch {
@@ -1104,6 +1203,13 @@ const bass808: InstrumentDefinition = {
                 /* already stopped */
               }
             }
+            if (gritOsc) {
+              try {
+                gritOsc.stop(t + 0.06);
+              } catch {
+                /* already stopped */
+              }
+            }
           },
           silence: (now) => {
             amp.gain.cancelScheduledValues(now);
@@ -1111,6 +1217,10 @@ const bass808: InstrumentDefinition = {
             if (subGain) {
               subGain.gain.cancelScheduledValues(now);
               subGain.gain.setTargetAtTime(0.0001, now, 0.008);
+            }
+            if (gritGain) {
+              gritGain.gain.cancelScheduledValues(now);
+              gritGain.gain.setTargetAtTime(0.0001, now, 0.008);
             }
             try {
               osc.stop(now + 0.05);
@@ -1120,6 +1230,13 @@ const bass808: InstrumentDefinition = {
             if (subOsc) {
               try {
                 subOsc.stop(now + 0.05);
+              } catch {
+                /* already stopped */
+              }
+            }
+            if (gritOsc) {
+              try {
+                gritOsc.stop(now + 0.05);
               } catch {
                 /* already stopped */
               }
@@ -1149,6 +1266,20 @@ const bass808: InstrumentDefinition = {
           if (subGain) {
             try {
               subGain.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          if (gritOsc) {
+            try {
+              gritOsc.disconnect();
+            } catch {
+              /* already */
+            }
+          }
+          if (gritGain) {
+            try {
+              gritGain.disconnect();
             } catch {
               /* already */
             }

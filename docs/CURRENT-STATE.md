@@ -11,23 +11,23 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 
 ## Headline numbers
 
-| What                                   |   Count | Source of truth                                                                                                                  |
-| -------------------------------------- | ------: | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Instruments** (melodic track kind)   |  **22** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                           |
-| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                          |
-| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                         |
-| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                              |
-| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                                 |
-| **Project templates**                  |  **14** | `TemplateId` union in `src/project-model/templates.ts`                                                                           |
+| What                                   |   Count | Source of truth                                                                                                                          |
+| -------------------------------------- | ------: | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Instruments** (melodic track kind)   |  **22** | `INSTRUMENT_DEFS` / `InstrumentKind` in `src/instruments/registry.ts` and `src/project-model/types.ts`                                   |
+| **Effects** (registry entries)         |  **47** | `EFFECT_DEFS` in `src/effects/registry.ts` (mirrors `EffectType` union in `src/project-model/types.ts`)                                  |
+| └─ native/core effects                 |      42 | `EFFECT_ORDER` excluding flagship suites                                                                                                 |
+| └─ primary Add Effect choices          |      26 | `CORE_EFFECT_ORDER` (the rest are surfaced through the effect rack)                                                                      |
+| └─ flagship plugin suites              |   **5** | `FLAGSHIP_EFFECT_ORDER` (`fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)                                                         |
+| **Project templates**                  |  **14** | `TemplateId` union in `src/project-model/templates.ts`                                                                                   |
 | **First-class genres**                 |  **14** | `GENRES` in `src/ai/types.ts` (house/techno/trap/ambient/drill/phonk/jersey/dnb + hyperpop/ukg/boombap/amapiano/trance/detroit promoted) |
-| **Groove library entries**             | **164** | `GROOVE_LIBRARY` in `src/ai/grooves/index.ts` (15 genre files)                                                                   |
-| **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                             |
-| └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only)    |
-| **Factory presets**                    | **483** | `src/presets/factory.ts`                                                                                                         |
-| └─ instrument presets                  |     477 | `FACTORY_PRESETS`                                                                                                                |
-| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                           |
-| **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                           |
-| **Vitest spec files**                  | **621** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                     |
+| **Groove library entries**             | **164** | `GROOVE_LIBRARY` in `src/ai/grooves/index.ts` (15 genre files)                                                                           |
+| **Factory assets** (drum / tonal / FX) |  **94** | `FACTORY_ASSETS` in `src/sample-library/manifest.ts`                                                                                     |
+| └─ curated WAV overrides               |      91 | `CURATED_SAMPLES` in `src/sample-library/curated.ts` (same-id override contract; only the 3 mallet slots stay synthesis-only)            |
+| **Factory presets**                    | **494** | `src/presets/factory.ts`                                                                                                                 |
+| └─ instrument presets                  |     488 | `FACTORY_PRESETS`                                                                                                                        |
+| └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                                   |
+| **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                                   |
+| **Vitest spec files**                  | **621** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                             |
 
 ## Flagship plugin implementations
 
@@ -49,13 +49,13 @@ All five flagship suites use AudioWorklet DSP. PRISM, VLYX and VØID include sep
 
 ## AI models shipped in the browser
 
-| Model                      |   Size | Feature version                     | Role                                                                                                                                                                                 |
-| -------------------------- | -----: | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)         | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)                                                                                                                         |
-| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)   | drum prior fallback branch (one-hot style×role×position)                                                                                                                             |
-| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)   | drum prior intermediate (16-dim semantic conditioning; ds.v2, valAUC 0.845)                                                                                                          |
-| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)   | drum prior **default** branch (hybrid; ds.v2, valAUC 0.905)                                                                                                                          |
-| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features) | melodic next-note prior, **preferred** (honest valDegreeAcc 0.6897 / valDurationAcc 0.8621 on rows it never saw)                                                                     |
+| Model                      |   Size | Feature version                     | Role                                                                                                                                                                                        |
+| -------------------------- | -----: | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `intent-ranker-v1.onnx`    | ~25 KB | `features.v1` (54 features)         | heuristic-vs-ONNX ranker, default **active** (0.6/0.4 blend)                                                                                                                                |
+| `symbolic-prior-v1.onnx`   | ~20 KB | `prior-features.v1` (44 features)   | drum prior fallback branch (one-hot style×role×position)                                                                                                                                    |
+| `symbolic-prior-v2.onnx`   | ~18 KB | `prior-features-v2` (35 features)   | drum prior intermediate (16-dim semantic conditioning; ds.v2, valAUC 0.845)                                                                                                                 |
+| `symbolic-prior-v3.onnx`   | ~24 KB | `prior-features-v3` (60 features)   | drum prior **default** branch (hybrid; ds.v2, valAUC 0.905)                                                                                                                                 |
+| `symbolic-melodic-v1.onnx` | ~18 KB | `melodic-features.v1` (29 features) | melodic next-note prior, **preferred** (honest valDegreeAcc 0.6897 / valDurationAcc 0.8621 on rows it never saw)                                                                            |
 | `symbolic-melodic-v2.onnx` | ~21 KB | `melodic-features-v2` (41 features) | melodic embedding variant, **retrained 2026-09-27 (ds.v3, style-aware conditioning)** (honest degree 0.4828 → **0.5946**, duration 0.3793 → **0.5766**; `weightPower: 0.5` in the manifest) |
 
 All six are loaded lazily in dedicated Web Workers with bounded timeouts + circuit breaker + deterministic heuristic fallback (`src/ai/ranking/ranker-client.ts`, `src/ai/symbolic/prior-client.ts`). Inference never runs on the audio thread. Two further models are lazy-fetched on demand (not in git): multilingual MiniLM q8 ~118 MB (`npm run semantic:fetch` → `public/models/semantic/`) and AST AudioSet q8 ~86.6 MB (`npm run audio:fetch` → `public/models/audio/`); both degrade to keyword/heuristic paths when absent. The retrained `hybrid v3` symbolic prior (label smoothing + variant embeddings, logit saturation fix) is the active generation source behind the candidate bank; see `INTENT_ENGINE.md` for the full conditioning chain (semantic embedding, user style vector, SUNO MODE button).
@@ -106,6 +106,7 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 - Synth presets 199 → 220 — 21 genre-anchored synth voices (analog leads / stabs / pads, wavetable morph leads, fm bells / keys, club plucks). _(feat `7af7c0d`)_
 - Drum presets 220 → 232 — 12 genre-anchored drum-synth voices (drill crackers, memphis snare, dusty tom, jersey clap, dnb snare / rim / open cup, first Rimshot type). _(feat `027dcab`)_
 - 808 presets 232 → 242 — 10 genre-anchored 808 voices with `GLIDE` front and center for drill / phonk slide ladder. _(feat `2ba6a9d`)_
+- **808 MASSIVE engine** — the 808 synth gains the modern-trap beater stack: `PUNCH` (pitch envelope +0–24 st above the target, `P-TIME` ramp 5–150 ms — kicks instead of fading), `KNOCK` (short 2.5× sine beater through the shaper), `GRIT` (square at the fundamental wired pre-shaper so DRIVE/DIST generate phone-audible 200–400 Hz harmonics; glides with slides), and the DIST ladder grows `TAPE` (smooth no-plateau saturation) + `FOLD` (wavefolder grind). 11 new presets (Metro Knock, Phone 808, Drill Knock, Folded Drill, Phonk Fold, Tape Boom, Cube Clean, Cinematic Drop, Jersey Punch, Grit Sub, Slide Lesson) take 808 voices 25 → 36, all measured into the loudness map. Locked by `tests/808-massive.test.ts` (11 wiring contracts).
 - Browser factory preset audio QA currently green at 252/252 (after Flute preset addition).
 - Pop preset pack — 24 vocal-first presets (bright keys/plucks, lush/bedroom/air pads, marimba/celesta/nylon/rhodes/wurli/sad-piano carriers, round basses, tuned 808s, soft leads, FM bells), all measured into the loudness map.
 - Pop preset delta — 7 fill-in voices: intimate upright piano, kalimba + music box (consuming the two orphaned mallet assets), funky moving bass, dance-pop saw lead, FM DX-style piano, vocal-chop pop adlib; tonal/mallet factory assets now all have a preset consumer. _(feat pop preset delta)_
