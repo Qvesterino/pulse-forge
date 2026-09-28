@@ -1184,3 +1184,26 @@ export function parseIntentText(text: string): ParsedIntent {
 
   return { input, detected, prohibitedRoles: [...prohibited], conflicts };
 }
+
+/**
+ * AMBIGUITY CANDIDATES (lane chips) — every style lane the prompt touches,
+ * in parser-priority order (the first one IS what the engine picked; the
+ * rest are the honest alternatives a chip can offer). Mirrors the parse
+ * pipeline exactly: deaccent → artist masking → the style table. Genre is
+ * not resolved here on purpose — the chips ride the parsed genre.
+ */
+export function styleCandidatesForPrompt(text: string): string[] {
+  const lower = ` ${deaccent(text)
+    .replace(/[\s,.]+/g, " ")
+    .trim()} `;
+  const maskNames = matchAllArtistPresets(lower)
+    .slice(0, 2)
+    .map((m) => m.matched)
+    .filter((name) => !isDescriptorName(name));
+  const masked = maskNames.length > 0 ? maskArtistNames(lower, maskNames) : lower;
+  const candidates: string[] = [];
+  for (const [re, style] of STYLE_PHRASES) {
+    if (re.test(masked) && !candidates.includes(style)) candidates.push(style);
+  }
+  return candidates;
+}

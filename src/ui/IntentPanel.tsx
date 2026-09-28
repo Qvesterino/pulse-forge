@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
-import { parseIntentText } from "../intent/text-parser";
+import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
@@ -2313,6 +2313,34 @@ export function IntentPanel() {
           {detectedText}
         </div>
       )}
+      {(() => {
+        // Ambiguity chips — when the prompt touches two-plus style lanes,
+        // the parser's first-wins order silently picks one. The chips name
+        // the picked lane and its honest alternatives; one click rides the
+        // chosen style into the next generation (one-shot patch).
+        const candidates = text.trim() ? styleCandidatesForPrompt(text) : [];
+        if (candidates.length < 2 || !parsed?.input.genre) return null;
+        const picked = parsed.input.style ?? candidates[0]!;
+        const prettify = (style: string) => style.charAt(0).toUpperCase() + style.slice(1);
+        return (
+          <div className="intent-lane-chips" aria-label="Lane alternatives">
+            {candidates.slice(0, 4).map((style) => (
+              <button
+                key={style}
+                type="button"
+                className={`btn btn-small intent-lane-chip${style === picked ? " picked" : ""}`}
+                title={`Route this prompt to the ${prettify(style)} lane (one generation)`}
+                onClick={() => {
+                  setRefPatch({ style });
+                  setStatus(`⚡ lane: ${prettify(style)} — ${parsed.input.genre} generation rides this style`);
+                }}
+              >
+                {style === picked ? `● ${prettify(style)}` : prettify(style)}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
       {text.trim() !== "" && (
         <BriefContractSummary
           contract={briefContract}
