@@ -25,7 +25,7 @@ import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 1;
+const DATASET_VERSION = 2;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 
 /** Fixed dataset document: deterministic ids, role scenes, two clips. */
@@ -301,13 +301,156 @@ function corpus(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   ];
 }
 
+/**
+ * Combinatorial augmentation — mechanical phrase families the parsers are
+ * KNOWN to resolve (each generated instruction is verified against the
+ * teacher before it enters the dataset; a template row that routes to
+ * pattern is silently dropped, so only live vocabulary ships).
+ */
+function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
+  const en: string[] = [];
+  const sk: string[] = [];
+
+  // fader: direction × target × amount
+  for (const verb of ["turn down", "lower", "quiet down"]) {
+    for (const target of ["drums", "bass", "lead", "chords"]) {
+      for (const tail of ["", " a bit", " a lot", " completely"]) {
+        if (verb === "quiet down" && tail !== "") continue; // curated stem only
+        en.push(`${verb} the ${target}${tail}`);
+      }
+    }
+  }
+  for (const verb of ["raise", "turn up", "push up"]) {
+    for (const target of ["drums", "bass", "lead", "chords"]) {
+      en.push(`${verb} the ${target}`);
+      en.push(`${verb} the ${target} a bit`);
+    }
+  }
+  // fader: absolute set × target × percent
+  for (const target of ["bass", "drums", "lead", "master"]) {
+    for (const pct of [0, 20, 35, 50, 75, 100]) {
+      en.push(`set the ${target} to ${pct}%`);
+    }
+  }
+  // fader: relative percent
+  for (const target of ["bass", "drums", "lead"]) {
+    for (const pct of [5, 10, 25, 40]) {
+      en.push(`turn down the ${target} by ${pct} percent`);
+      en.push(`raise the ${target} by ${pct} percent`);
+    }
+  }
+  // SK fader
+  for (const target of ["basu", "bicie", "lead"]) {
+    for (const tail of ["", " trochu", " o dosť", " úplne"]) {
+      sk.push(`zníž ${target}${tail}`);
+    }
+    sk.push(`zvýš ${target}`);
+  }
+  // SK absolute
+  for (const target of ["basu", "master", "kick"]) {
+    for (const pct of [0, 25, 50, 80, 100]) {
+      sk.push(`nastav ${target} na ${pct} %`);
+    }
+  }
+
+  // mute/solo × target
+  for (const verb of ["mute", "unmute", "solo", "unsolo"]) {
+    for (const target of ["drums", "bass", "lead", "chords"]) {
+      en.push(`${verb} the ${target}`);
+    }
+  }
+  for (const verb of ["vypni", "zapni"]) {
+    for (const target of ["basu", "bicie", "lead"]) {
+      sk.push(`${verb} ${target}`);
+    }
+  }
+
+  // pan × direction × magnitude
+  for (const target of ["bass", "lead", "hats"]) {
+    for (const dir of ["left", "right"]) {
+      for (const mag of [10, 30, 60, 90]) {
+        en.push(`pan the ${target} ${dir} ${mag}`);
+      }
+    }
+    en.push(`center the ${target}`);
+  }
+
+  // tempo set × bpm grid
+  for (const bpm of [90, 100, 110, 120, 128, 132, 140, 150, 160, 174]) {
+    en.push(`set tempo to ${bpm}`);
+    en.push(`${bpm} bpm`);
+  }
+  for (const bpm of [90, 120, 128, 140, 150]) {
+    sk.push(`tempo na ${bpm}`);
+  }
+
+  // effect × target × direction (no effect instance needed for parse)
+  for (const effect of ["reverb", "delay", "chorus", "distortion", "tremolo"]) {
+    for (const target of ["lead", "bass", "chords"]) {
+      en.push(`more ${effect} on the ${target}`);
+      en.push(`less ${effect} on the ${target}`);
+      en.push(`remove ${effect} from the ${target}`);
+    }
+  }
+  // effect absolute set
+  for (const pct of [10, 25, 50, 75, 90]) {
+    en.push(`set the lead reverb mix to ${pct}%`);
+  }
+  // sends
+  for (const effect of ["reverb", "delay"]) {
+    for (const target of ["lead", "bass", "drums"]) {
+      en.push(`more ${effect} send on the ${target}`);
+      en.push(`no ${effect} send on the ${target}`);
+    }
+    en.push(`set the ${effect} send to 30% on the lead`);
+  }
+  // bypass
+  for (const effect of ["reverb", "delay", "chorus"]) {
+    for (const target of ["lead", "drums"]) {
+      en.push(`bypass the ${effect} on the ${target}`);
+      en.push(`enable the ${effect} on the ${target}`);
+    }
+  }
+
+  // production × concept × target (subset grid — full grid is huge)
+  const concepts = ["darker", "brighter", "punchier", "warmer", "deeper", "wider"];
+  for (const concept of concepts) {
+    for (const target of ["drums", "bass", "lead"]) {
+      en.push(`make the ${target} ${concept}`);
+    }
+  }
+
+  // transport / app bare words with polite wrappers
+  for (const word of ["play", "stop", "pause", "save", "export", "record"]) {
+    en.push(`please ${word}`);
+  }
+
+  // typo variants — one edit away, the typo layer offers the fix
+  for (const base of ["mute the drums", "solo the bass", "pan the lead left 30", "stop", "record"]) {
+    const tokens = base.split(" ");
+    const mutated = tokens.map((t, i) => (i === 1 ? t + "x" : t)).join(" ");
+    en.push(mutated);
+  }
+
+  // mixed-language sentences (SK verb + EN target/fx — real producer slang)
+  sk.push("daj more reverb na lead");
+  sk.push("nastav delay na bass to 25%");
+  sk.push("bypass reverb na drums prosím");
+  sk.push("mute the bass a zvýš lead");
+
+  return [
+    { lang: "en", instructions: en },
+    { lang: "sk", instructions: sk },
+  ];
+}
+
 // ── Generation ──────────────────────────────────────────────────────────────
 
 function main(): void {
   const doc = datasetDoc();
   const all: Array<Pair & { index: number }> = [];
   let index = 0;
-  for (const { lang, instructions } of corpus()) {
+  for (const { lang, instructions } of [...corpus(), ...augmentation()]) {
     for (const pair of collect(doc, lang, instructions)) {
       all.push({ ...pair, index: index++ });
     }
@@ -377,6 +520,14 @@ function main(): void {
     "mut the drums",
     "more compression",
     "load the zzzblorp preset on the bass",
+    "set the drums to 75%",
+    "turn down the lead by 40 percent",
+    "nastav kick na 80 %",
+    "more chorus on the chords",
+    "no delay send on the drums",
+    "bypass reverb on the drums",
+    "please stop",
+    "mute the bass a zvýš lead",
   ];
   const byInstruction = new Map(unique.map((p) => [p.instruction, p]));
   const golden = goldenPicks.map((instruction) => byInstruction.get(instruction)).filter((p) => p != null);

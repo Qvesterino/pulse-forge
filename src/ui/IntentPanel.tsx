@@ -92,7 +92,8 @@ import {
   type SongAudioReview,
   type SongSectionSuggestion,
 } from "../intent/song-audio-review";
-import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/route";
+import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
+import { tryModelRoute } from "../intent/model-resolver";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
@@ -1131,6 +1132,8 @@ export function IntentPanel() {
   // resolve ("ten istý, len pomalšie") before the generic routes.
   const [sessionTick, setSessionTick] = useState(0);
   const oneShotPatchRef = useRef<IntentInput | null>(null);
+  /** Pre-routed re-entry for the local-model fallback (see routeAndExecute). */
+  const preRoutedRef = useRef<RoutedIntent | null>(null);
   /** One-shot: variant chips / follow-ups plant a patch, the NEXT generation
    *  consumes it once. */
   const consumeOneShotPatch = (): IntentInput | null => {
@@ -1967,7 +1970,10 @@ export function IntentPanel() {
     setJustApplied(false);
     setClarify(null);
     try {
-      const route = routeIntentText(source, doc);
+      // Pre-routed entry: the local-model fallback (below) re-enters with an
+      // adapted route so the big dispatch chain runs exactly once.
+      const route = preRoutedRef.current ?? routeIntentText(source, doc);
+      preRoutedRef.current = null;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
         const followUp = resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)!;
@@ -2293,6 +2299,18 @@ export function IntentPanel() {
         setClarify({ reason: route.reason, suggestions: route.suggestions });
         setStatus(route.reason);
       } else {
+        // LOCAL-MODEL FALLBACK: the deterministic layer came up empty — let
+        // the registered intent model try the instruction before falling to
+        // generation. A hit re-enters with the adapted route (one dispatch);
+        // a miss (no provider / invalid output / unresolvable refs) keeps
+        // today's behavior unchanged.
+        const modelRoute = await tryModelRoute(source, doc);
+        if (modelRoute) {
+          preRoutedRef.current = modelRoute;
+          setStatus("🤖 lokálny model — akcia rozpoznaná");
+          void routeAndExecute();
+          return;
+        }
         await generate();
       }
     } catch (err) {

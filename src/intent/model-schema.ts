@@ -115,7 +115,7 @@ export const VOCAB = {
 // ── The model-facing schema, as data (drives validation AND GBNF) ───────────
 
 export type SlotType =
-  "enum" | "int" | "number" | "bool" | "scalar" | "string" | "stringArray" | "enumArray" | "objArray";
+  "enum" | "int" | "number" | "bool" | "scalar" | "string" | "stringArray" | "partsArray" | "enumArray" | "objArray";
 
 export interface Slot {
   name: string;
@@ -153,6 +153,9 @@ const T = (name: string, required = true): Slot => ({ name, type: "string", requ
 const B = (name: string, required = true): Slot => ({ name, type: "bool", required });
 /** Free-form string array (clarify/presetUnknown suggestion lists). */
 const SA = (name: string, required = true): Slot => ({ name, type: "stringArray", required });
+/** Compound sub-actions: model emits JSON strings, engine-form holds objects —
+ *  structural validation of each part happens in the model adapter. */
+const PA = (name: string, required = true): Slot => ({ name, type: "partsArray", required });
 /** Finite float within a range ("deltaDb 1.5", pan value 0.3). */
 const N = (name: string, min: number, max: number, required = false): Slot => ({
   name,
@@ -271,7 +274,7 @@ export const MODEL_ACTIONS: Record<string, ActionSpec> = {
   compound: {
     // nested sub-actions reference the same kinds — the grammar keeps it to
     // one level (fader | tempo | effect | send | bypass | preset | exact)
-    slots: [OA("parts", [T("part")])],
+    slots: [PA("parts")],
   },
   clarify: { slots: [SA("suggestions")] },
   presetUnknown: { slots: [T("name"), SA("suggestions", false)] },
@@ -337,6 +340,15 @@ function validateSlotValue(value: unknown, slot: Slot, path: string, errors: str
     case "stringArray":
       if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
         errors.push(`${path}: ${slot.name} must be an array of strings`);
+      }
+      return;
+    case "partsArray":
+      if (
+        !Array.isArray(value) ||
+        value.length === 0 ||
+        value.some((v) => typeof v !== "string" && typeof v !== "object")
+      ) {
+        errors.push(`${path}: ${slot.name} must be a non-empty array of sub-actions`);
       }
       return;
     case "objArray":
@@ -418,9 +430,11 @@ function gbnfSlot(kind: string, slot: Slot): string[] {
     case "string":
       return [`${rule} ::= "\\"" ( [^"\\\\] )* "\\""`];
     case "stringArray":
+    case "partsArray":
+      // partsArray: the model emits each sub-action as a JSON-encoded string
       return [
         `${rule} ::= "[" ws ( ${rule}-str ( "," ws ${rule}-str )* )? "]"`,
-        `${rule}-str ::= "\\"" ( [^"\\\\] )* "\\""`,
+        `${rule}-str ::= "\\"" ( [^"\\\\] )* "\\"`,
       ];
     case "bool":
       return [`${rule} ::= "true" | "false"`];

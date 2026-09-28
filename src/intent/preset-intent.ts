@@ -77,19 +77,32 @@ export function parsePresetIntent(text: string): ParsedPresetIntent | null {
   if (!targetFamily) return null;
   const want = deaccent(ask[1]).replace(/\s+/g, " ").trim();
   if (want.length < 2) return null;
+  return resolvePresetByName(ask[1].trim(), want, targetFamily);
+}
 
+/**
+ * Name → PresetIntent resolution shared by the text parser and the local
+ * intent model adapter (the model emits a preset NAME; the engine owns the
+ * id). Exact > prefix > includes with a family-instrument bonus; unknown
+ * names return explicit suggestions, never a silent miss.
+ */
+export function resolvePresetByName(
+  displayName: string,
+  normalizedWant: string,
+  targetFamily: PresetTargetFamily,
+): ParsedPresetIntent {
   let best: { preset: InstrumentPreset; score: number; matchedBy: PresetIntent["matchedBy"] } | null = null;
   for (const preset of FACTORY_PRESETS) {
     const name = deaccent(preset.name);
     let score = 0;
     let matchedBy: PresetIntent["matchedBy"] = "includes";
-    if (name === want) {
+    if (name === normalizedWant) {
       score = 3;
       matchedBy = "exact";
-    } else if (name.startsWith(want)) {
+    } else if (name.startsWith(normalizedWant)) {
       score = 2;
       matchedBy = "prefix";
-    } else if (name.includes(want)) {
+    } else if (name.includes(normalizedWant)) {
       score = 1;
       matchedBy = "includes";
     } else {
@@ -104,7 +117,7 @@ export function parsePresetIntent(text: string): ParsedPresetIntent | null {
   const suggestions = FACTORY_PRESETS.filter((p) => FAMILY_INSTRUMENTS[targetFamily].has(p.instrument))
     .slice(0, 3)
     .map((p) => p.name);
-  return { ok: false, name: ask[1].trim(), suggestions };
+  return { ok: false, name: displayName, suggestions };
 }
 
 /**

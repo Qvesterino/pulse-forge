@@ -457,6 +457,23 @@ function resolveClipTarget(doc: ProjectDocument, clause: string, clips: Arrangem
 }
 
 /**
+ * Role/at-bar clip resolution for the local intent model adapter (the model
+ * emits a clip REF — a role word or a bar number — never an internal id).
+ * Returns the resolved clip id or null when nothing matches; no guessing.
+ */
+export function resolveClipRef(doc: ProjectDocument, ref: string, atBar?: number): string | null {
+  const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+  if (clips.length === 0) return null;
+  if (atBar != null && Number.isFinite(atBar)) {
+    const bar = Math.max(0, Math.floor(atBar) - 1); // model/user bars are 1-based
+    const byPosition = clips.find((c) => bar >= c.startBar && bar < c.startBar + c.lengthBars);
+    if (byPosition) return byPosition.id;
+  }
+  const byRef = resolveClipTarget(doc, ref, clips);
+  return byRef?.id ?? null;
+}
+
+/**
  * Parse clip-level ops. Null unless the text names CLIPS and at least one
  * clause resolves to a full op (verb + resolvable clip + required number).
  * A destination-less copy or a numberless trim deliberately returns null —
