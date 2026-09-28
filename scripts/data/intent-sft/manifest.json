@@ -1,0 +1,34 @@
+{
+  "datasetVersion": 1,
+  "total": 190,
+  "train": 163,
+  "val": 27,
+  "golden": 41,
+  "langs": {
+    "en": 141,
+    "sk": 49
+  },
+  "kinds": {
+    "arrange": 8,
+    "bypassIntent": 4,
+    "clarify": 6,
+    "clips": 5,
+    "compound": 7,
+    "effectIntent": 12,
+    "exact": 37,
+    "export": 5,
+    "fader": 31,
+    "loudness": 3,
+    "mix": 10,
+    "preset": 5,
+    "presetUnknown": 1,
+    "production": 13,
+    "record": 5,
+    "revise": 6,
+    "save": 3,
+    "select": 4,
+    "sendIntent": 8,
+    "tempo": 4,
+    "transport": 13
+  }
+}

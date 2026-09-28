@@ -1,0 +1,84 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/intent-artists.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31mÔŁ»[39m tests/intent-text-parser.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-production-degree.test.ts [2m([22m[2m22 tests[22m[2m)[22m[90m 33[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-signature-seeding.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 26[2mms[22m[39m
+ [32mÔťô[39m tests/intent-production-level3.test.ts [2m([22m[2m43 tests[22m[2m)[22m[90m 80[2mms[22m[39m
+ [32mÔťô[39m tests/intent-exact.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 44[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-e2e-audit.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31mÔŁ»[39m tests/intent-loudness.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-async-pipeline.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 318[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-mix-wiring.test.ts [2m([22m[2m45 tests[22m[2m)[22m[90m 65[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-plan-hints.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 87[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-mix-route.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-sections-fx.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 606[2mms[22m[39m
+ [32mÔťô[39m tests/intent-semantic-client.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 766[2mms[22m[39m
+ [32mÔťô[39m tests/intent-production.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 3313[2mms[22m[39m
+   [33m[2mÔťô[22m[39m planner[2m > [22mdeeper Ôćĺ pitchShift with amount-scaled semitones, clamped to metadata [33m3242[2mms[22m[39m
+ [32mÔťô[39m tests/intent-song.test.ts [2m([22m[2m22 tests[22m[2m)[22m[33m 2257[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song builder[2m > [22mcarries the full producer brief into every generated song section [33m445[2mms[22m[39m
+   [33m[2mÔťô[22m[39m song re-generation (SONG AUDIT S1)[2m > [22munlinked USER markers survive a song re-generate [33m382[2mms[22m[39m
+ [32mÔťô[39m tests/intent-master-decisions.test.ts [2m([22m[2m19 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/intent-transitions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 131[2mms[22m[39m
+ [32mÔťô[39m tests/intent-binding.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 130[2mms[22m[39m
+ [32mÔťô[39m tests/intent-ranker-active.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 333[2mms[22m[39m
+ [32mÔťô[39m tests/semantic-escape-hatch.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 20[2mms[22m[39m
+ [32mÔťô[39m tests/intent-artist-profiles.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 31[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-semantic.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-song-audio-review.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 131[2mms[22m[39m
+ [32mÔťô[39m tests/intent-preserve.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 72[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-effect-targets.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31mÔŁ»[39m tests/intent-model-schema.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-regen-chain.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 124[2mms[22m[39m
+ [32mÔťô[39m tests/intent-preference-ledger.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 42[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-brief-suite.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-pipeline.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 69[2mms[22m[39m
+ [31mÔŁ»[39m tests/intent-sft-golden.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31mÔŁ»[39m tests/intent-audio-feedback.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32mÔťô[39m tests/intent-descriptions.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32mÔťô[39m tests/intent-mapping.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 30[2mms[22m[39m
+ [32mÔťô[39m tests/intent-ranker-golden.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32mÔťô[39m tests/intent-percent.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32mÔťô[39m tests/intent-async-fallback.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 12[2mms[22m[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Suites 11 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/intent-artists.test.ts [ tests/intent-artists.test.ts ]
+ FAIL  tests/intent-audio-feedback.test.ts [ tests/intent-audio-feedback.test.ts ]
+ FAIL  tests/intent-brief-suite.test.ts [ tests/intent-brief-suite.test.ts ]
+ FAIL  tests/intent-e2e-audit.test.ts [ tests/intent-e2e-audit.test.ts ]
+ FAIL  tests/intent-effect-targets.test.ts [ tests/intent-effect-targets.test.ts ]
+ FAIL  tests/intent-loudness.test.ts [ tests/intent-loudness.test.ts ]
+ FAIL  tests/intent-mix-route.test.ts [ tests/intent-mix-route.test.ts ]
+ FAIL  tests/intent-model-schema.test.ts [ tests/intent-model-schema.test.ts ]
+ FAIL  tests/intent-semantic.test.ts [ tests/intent-semantic.test.ts ]
+ FAIL  tests/intent-sft-golden.test.ts [ tests/intent-sft-golden.test.ts ]
+ FAIL  tests/intent-text-parser.test.ts [ tests/intent-text-parser.test.ts ]
+Error: Transform failed with 1 error:
+D:/pulse-forge/src/intent/artists.ts:7299:0: ERROR: Unexpected "]"
+  Plugin: vite:esbuild
+  File: D:/pulse-forge/src/intent/artists.ts:7299:0
+  
+  Unexpected "]"
+  7297|    },
+  7298|  ];
+  7299|  ];
+     |  ^
+  7300|  
+  7301|  export interface ArtistMatch {
+  
+ ÔŁ» failureErrorWithLog node_modules/vitest/node_modules/esbuild/lib/main.js:1472:15
+ ÔŁ» node_modules/vitest/node_modules/esbuild/lib/main.js:755:50
+ ÔŁ» responseCallbacks.<computed> node_modules/vitest/node_modules/esbuild/lib/main.js:622:9
+ ÔŁ» handleIncomingPacket node_modules/vitest/node_modules/esbuild/lib/main.js:677:12
+ ÔŁ» Socket.readFromStdout node_modules/vitest/node_modules/esbuild/lib/main.js:600:7
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/11]ÔÄ»
+
+[2m Test Files [22m [1m[31m11 failed[39m[22m[2m | [22m[1m[32m27 passed[39m[22m[90m (38)[39m
+[2m      Tests [22m [1m[32m375 passed[39m[22m[90m (375)[39m
+[2m   Start at [22m 16:17:49
+[2m   Duration [22m 25.23s[2m (transform 10.48s, setup 45.33s, collect 38.29s, tests 8.77s, environment 189.76s, prepare 11.43s)[22m
+

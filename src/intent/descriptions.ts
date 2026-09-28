@@ -40,6 +40,10 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   trance: ["trance", "uplifting", "psytrance", "supersaw"],
   detroit: ["detroit techno", "detroit electro", "machine funk", "808 talk"],
   postrock: ["post rock", "postrock", "crescendo guitar", "atmospheric rock"],
+  drone: ["drone", "drone music", "dark ambient", "sustained tone"],
+  chiptune: ["chiptune", "8-bit", "game boy", "vgm", "nes music"],
+  eurodance: ["eurodance", "euro house", "90s dance", "hands up"],
+  latin: ["latin", "cumbia", "salsa", "bachata", "merengue", "bossa nova"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -78,6 +82,11 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   postmetal: ["post metal", "heavy postrock", "Cult of Luna style", "doom riffs"],
   math: ["math rock", "angular postrock", "displaced kicks", "Slint style"],
   ambient: ["ambient postrock", "spacey postrock", "Kranky label", "drone rock"],
+  neoclassical: ["neo-classical", "modern classical", "piano and strings", "minimalist composition"],
+  minimalism: ["minimalism", "pulsing repetition", "phasing pattern", "Steve Reich style"],
+  isolationism: ["isolationism", "dark drone", "sparse texture", "room as instrument"],
+  electroacoustic: ["electroacoustic", "modular drone", "clicks and ticks", "Barriga style"],
+  score: ["film score", "cinematic score", "main title", "orchestral underscore"],
   belleville: ["belleville", "first wave detroit", "808 syncopation", "tom talk"],
   secondwave: ["underground resistance", "second wave", "militant techno", "stripped machine"],
   technobass: ["techno bass", "detroit bass", "808 pressure", "machine bass"],
@@ -126,6 +135,25 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   shoegaze: ["shoegaze", "wall of guitars", "dream pop", "buried drums", "wash of reverb"],
   reggae: ["reggae", "one drop", "roots", "ska skank", "dub delays"],
   bassdubstep: ["bass dubstep", "brostep", "tearout", "drop-era", "machine-gun hats"],
+  // Chiptune / eurodance / latin school tree (the three-family wave).
+  nintendo: ["nintendo", "nes era", "overworld theme", "action platformer"],
+  gameboy: ["game boy", "lsdj", "chip break", "handheld chip"],
+  chipband: ["modern chip", "chip band", "nes lead", "live chip"],
+  ballad: ["chip ballad", "town theme", "ending theme", "sad chip"],
+  boss: ["boss battle", "vgm metal", "final boss", "driving chip"],
+  tracker: ["tracker", "demoscene", "fasttracker", "arpeggio churn"],
+  nrg: ["euro nrg", "90s eurodance", "euro classic", "radio dance"],
+  happy: ["happy eurodance", "euphoric dance", "supersaw lift", "hands in the air"],
+  handsup: ["hands up", "german dance", "hard dance", "pitched vocal"],
+  trancecore: ["trancecore", "euro trance", "dance melody", "90s trance hit"],
+  italo: ["italo dance", "italian floor", "autotune hook", "warm euro"],
+  hands: ["hands", "festival revival", "modern hands up", "big drop"],
+  cumbia: ["cumbia", "sonidera", "guiro", "colombian dance"],
+  merengue: ["merengue", "tambora", "dominican two feel", "pambiche"],
+  bachata: ["bachata", "bongo led", "dominican romance", "derecho"],
+  salsa: ["salsa", "son clave", "tumbao", "montuno"],
+  mambo: ["mambo", "big band latin", "cowbell latin", "descarga"],
+  bossa: ["bossa nova", "brazilian cool", "two bar rim", "brushed latin"],
 };
 
 const MOOD_WORDS: Record<string, { en: string[]; sk: string[] }> = {
@@ -161,6 +189,10 @@ const TEMPO_WORDS: Record<string, string[]> = {
   shoegaze: ["at 110", "at 105", "at 115", "wall-of-guitars tempo"],
   reggae: ["at 75", "at 80", "at 70", "one-drop tempo"],
   bassdubstep: ["at 145", "at 150", "at 140", "drop tempo"],
+  // Chiptune / eurodance / latin tempo anchors.
+  chiptune: ["at 140", "at 150", "at 120", "chip tempo"],
+  eurodance: ["at 140", "at 145", "at 135", "euro tempo"],
+  latin: ["at 95", "at 100", "at 120", "clave tempo"],
 };
 
 // ── Template engine ─────────────────────────────────────────────────────────

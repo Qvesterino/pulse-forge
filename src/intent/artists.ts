@@ -1492,8 +1492,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   // ── drone / deep ambient (40-70 BPM or beatless — the slowest corner) ──
   {
     names: ["stars of the lid", "stars of the lid type beat"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "chill",
     energy: 0.15,
     density: 0.25,
@@ -1512,8 +1512,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["william basinski", "basinski", "disintegration loops"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "dark",
     energy: 0.15,
     density: 0.25,
@@ -1522,8 +1522,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["grouper", "grouper type beat"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "dark",
     energy: 0.2,
     density: 0.25,
@@ -1532,8 +1532,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["thomas koner", "thomas köner"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "dark",
     energy: 0.15,
     density: 0.2,
@@ -5566,8 +5566,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     // Neoclassical / modern score — the ambient genre's biggest hole.
     names: ["ludovico einaudi", "einaudi", "olafur arnalds", "nils frahm"],
-    genre: "ambient",
-    style: "organic",
+    genre: "drone",
+    style: "neoclassical",
     mood: "chill",
     energy: 0.35,
     density: 0.35,
@@ -5576,8 +5576,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["max richter", "hildur", "johann johannsson", "hans zimmer type beat", "clint mansell"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "neoclassical",
     mood: "dark",
     energy: 0.4,
     density: 0.4,
@@ -5596,8 +5596,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["steve roach", "robert rich", "alva noto", "ryuichi sakamoto"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "chill",
     energy: 0.3,
     density: 0.3,
@@ -5606,8 +5606,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["loscil", "biosphere", "hammock"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "isolationism",
     mood: "chill",
     energy: 0.35,
     density: 0.35,
@@ -6170,8 +6170,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["harold budd", "robert fripp", "fripp type beat", "larry fast"],
     // The Eno collaborators — 4th world / ambient guitar.
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "minimalism",
     mood: "chill",
     energy: 0.3,
     density: 0.3,
@@ -6181,8 +6181,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["terry riley", "la monte young", "pauline oliveros"],
     // The minimalist avant-garde ancestors (drone/just intonation).
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "minimalism",
     mood: "chill",
     energy: 0.3,
     density: 0.25,
@@ -6204,8 +6204,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["lustmord", "sunn o)))", "sunn o", "kevin drumsm", "deathprod"],
     // Dark ambient / drone metal's low-end: monumental, slow, cavernous.
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "dark",
     energy: 0.25,
     density: 0.3,
@@ -6215,8 +6215,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["svarte greiner", "kammarheit", "desiderii margini", "raison d'etre", "eleh"],
     // The isolationist / "death ambient" school.
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "isolationism",
     mood: "dark",
     energy: 0.25,
     density: 0.35,
@@ -6248,8 +6248,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["philip glass", "steve reich", "michael nyman"],
     // The minimalists proper — pulsing, repetitive, film-score DNA.
-    genre: "ambient",
-    style: "organic",
+    genre: "drone",
+    style: "minimalism",
     mood: "energetic",
     energy: 0.55,
     density: 0.6,
@@ -6266,8 +6266,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
       "alexandre desplat",
     ],
     // The orchestral score tradition.
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "score",
     mood: "dark",
     energy: 0.4,
     density: 0.45,
@@ -6277,8 +6277,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["thomas newman", "trent reznor", "atticus ross", "yann tiersen", "jozef van wissem"],
     // Modern film / television composers (the "prestige drama" palette).
-    genre: "ambient",
-    style: "glitch",
+    genre: "drone",
+    style: "neoclassical",
     mood: "dark",
     energy: 0.35,
     density: 0.4,
@@ -6299,8 +6299,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["caterina barbieri", "alessandro cortini", "sarah davachi", "kali malone"],
     // Modular/electroacoustic composition — the modern art wing.
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "electroacoustic",
     mood: "chill",
     energy: 0.35,
     density: 0.4,
@@ -6310,8 +6310,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   {
     names: ["kaitlyn aurelia smith", "emily a sprague", "julianna barwick", "ana roxanne", "claire rousay"],
     // The 2010s ambient revival (voice-as-texture, tape, patience).
-    genre: "ambient",
-    style: "drifting",
+    genre: "drone",
+    style: "drone",
     mood: "chill",
     energy: 0.3,
     density: 0.35,
@@ -7046,6 +7046,254 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.35,
     bpmRange: [60, 85],
     label: "post-rock ambient",
+  },
+  // ── Chiptune (the sound-chip tradition) ──────────────────────────────────
+  {
+    names: ["koji kondo", "nobuo uematsu", "yuzo koshiro", "grant kirkhope", "david wise"],
+    // The NES/SNES era composers — the action-platformer march.
+    genre: "chiptune",
+    style: "nintendo",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [110, 150],
+    label: "nintendo era",
+  },
+  {
+    names: ["chipzel", "4mat", "jeroen tel", "rob hubbard", "tim follin", "sabrepulse"],
+    // The LSDj / Game Boy scene and the C64 composers — clipped pulses,
+    // breakbeat-leaning noise drums.
+    genre: "chiptune",
+    style: "gameboy",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.7,
+    bpmRange: [120, 160],
+    label: "game boy scene",
+  },
+  {
+    names: ["anamanaguchi", "dan terminus", "disasterpeace", "lena raine", "c418"],
+    // The modern chip band / indie game composers — live-ish drums under
+    // NES leads.
+    genre: "chiptune",
+    style: "chipband",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.65,
+    bpmRange: [140, 180],
+    label: "modern chip",
+  },
+  {
+    names: ["boss battle", "final boss theme", "vgm metal"],
+    // The boss-battle corner: driving double-kick feel, aggressive noise.
+    genre: "chiptune",
+    style: "boss",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.8,
+    bpmRange: [150, 185],
+    label: "chiptune boss",
+  },
+  {
+    names: ["town theme", "overworld theme", "ending theme", "save room"],
+    // The ballad pocket — the arpeggio IS the arrangement.
+    genre: "chiptune",
+    style: "ballad",
+    mood: "chill",
+    energy: 0.25,
+    density: 0.25,
+    bpmRange: [70, 100],
+    label: "chip ballad",
+  },
+  {
+    names: ["fasttracker", "impulse tracker", "demoscene chip"],
+    // The demoscene tracker lineage: dense arpeggio churn over a pulse.
+    genre: "chiptune",
+    style: "tracker",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.75,
+    bpmRange: [130, 170],
+    label: "tracker",
+  },
+  // ── Eurodance (the 90s Euro-NRG tradition) ───────────────────────────────
+  {
+    names: ["snap!", "2 unlimited", "corona", "la bouche", "culture beat", "real mccoy", "hadaway"],
+    // The classic Euro-NRG core — four-floor under the offbeat open hat.
+    genre: "eurodance",
+    style: "nrg",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [128, 140],
+    label: "euro classic",
+  },
+  {
+    names: ["vengaboys", "sash!", "alice deejay", "cascada", "dj sammy", "groove coverage"],
+    // The happy / euphoric end — supersaw lift, big emotional chorus.
+    genre: "eurodance",
+    style: "happy",
+    mood: "energetic",
+    energy: 0.95,
+    density: 0.75,
+    bpmRange: [138, 150],
+    label: "happy eurodance",
+  },
+  {
+    names: ["scooter", "dj bobo", "brooklyn bounce", "masterboy", "cappella"],
+    // The german hands-up scene — harder kick, pitched-up vocal chops.
+    genre: "eurodance",
+    style: "handsup",
+    mood: "aggressive",
+    energy: 0.95,
+    density: 0.8,
+    bpmRange: [140, 155],
+    label: "hands up",
+  },
+  {
+    names: ["atb", "gigi dagostino", "molella", "prezioso", "robert miles"],
+    // The euro-trance crossover — the melody IS the genre.
+    genre: "eurodance",
+    style: "trancecore",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [135, 148],
+    label: "trancecore",
+  },
+  {
+    names: ["eiffel 65", "bliss team", "kim lucas", "prezioso italo"],
+    // The Italo-dance lineage — autotune hooks, warm bass.
+    genre: "eurodance",
+    style: "italo",
+    mood: "energetic",
+    energy: 0.8,
+    density: 0.6,
+    bpmRange: [125, 138],
+    label: "italo dance",
+  },
+  {
+    names: ["hands up revival", "festival hands", "modern hands up"],
+    // The modern festival revival — big build-drop, hardstyle-leaning kick.
+    genre: "eurodance",
+    style: "hands",
+    mood: "aggressive",
+    energy: 0.98,
+    density: 0.82,
+    bpmRange: [150, 160],
+    label: "hands",
+  },
+  // ── Latin (the Afro-Caribbean + South American tradition) ────────────────
+  {
+    names: ["los angeles azules", "la sonora dinamita", "el gran combo", "kumbia kings", "celso pina"],
+    // The Colombian + Mexican cumbia / sonidera lane — guiro answers the kick.
+    genre: "latin",
+    style: "cumbia",
+    mood: "energetic",
+    energy: 0.7,
+    density: 0.6,
+    bpmRange: [85, 105],
+    label: "cumbia",
+  },
+  {
+    names: ["juan luis guerra", "wilfrido vargas", "elvis crespo", "grupo mania", "los hermanos rosario"],
+    // The Dominican merengue — tambora march under the sax hook.
+    genre: "latin",
+    style: "merengue",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.7,
+    bpmRange: [120, 160],
+    label: "merengue",
+  },
+  {
+    names: ["romeo santos", "avenura", "prince royce", "grupo extra", "monchy and alexandra"],
+    // The Dominican bachata — bongo-led romance, the derecho pattern.
+    genre: "latin",
+    style: "bachata",
+    mood: "chill",
+    energy: 0.65,
+    density: 0.55,
+    bpmRange: [120, 140],
+    label: "bachata",
+  },
+  {
+    names: ["celia cruz", "hector lavoe", "marc anthony", "grupo niche", "ruben blades", "willie colon"],
+    // The salsa dura / NY son — the 3-2 clave on the rim over the tumbao.
+    genre: "latin",
+    style: "salsa",
+    mood: "energetic",
+    energy: 0.9,
+    density: 0.75,
+    bpmRange: [160, 200],
+    label: "salsa",
+  },
+  {
+    names: ["tito puente", "perez prado", "machito", "poncho sanchez"],
+    // The big-band mambo — cowbell on the offbeat, mambo bell.
+    genre: "latin",
+    style: "mambo",
+    mood: "energetic",
+    energy: 0.95,
+    density: 0.8,
+    bpmRange: [170, 210],
+    label: "mambo",
+  },
+  {
+    names: ["joao gilberto", "stan getz", "sergio mendes", "antonio carlos jobim", "astrud gilberto"],
+    // The Brazilian bossa nova — the two-bar rim pattern, brushed, cool.
+    genre: "latin",
+    style: "bossa",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.35,
+    bpmRange: [120, 140],
+    label: "bossa nova",
+  },
+  // ── Drone / neo-classical school tree (Wikipedia-documented) ────────────
+  {
+    names: ["pierre henry", "eliane radigue", "hafler trio"],
+    // Musique concrete → the electroacoustic school: the patch IS the piece.
+    genre: "drone",
+    style: "electroacoustic",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.4,
+    bpmRange: [55, 95],
+    label: "musique concrete",
+  },
+  {
+    names: ["john cage", "gavin bryars"],
+    // The minimalism school proper: conceptual, pulsing, patient.
+    genre: "drone",
+    style: "minimalism",
+    mood: "chill",
+    energy: 0.3,
+    density: 0.45,
+    bpmRange: [85, 130],
+    label: "minimalism proper",
+  },
+  {
+    names: ["alexander desplat", "jonny greenwood", "dario marianelli"],
+    // The film-score school: the cue structure drives the arrangement.
+    genre: "drone",
+    style: "score",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [55, 95],
+    label: "film score composers",
+  },
+  {
+    names: ["zo keating", "hildur guonadottir"],
+    // Solo-instrument loop school: the cellist's layering (neoclassical).
+    genre: "drone",
+    style: "neoclassical",
+    mood: "chill",
+    energy: 0.35,
+    density: 0.4,
+    bpmRange: [55, 90],
+    label: "solo-instrument loops",
   },
 ];
 

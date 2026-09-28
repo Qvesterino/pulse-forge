@@ -1902,13 +1902,20 @@ function normalizeLineageDomain(s: NormalizeState): void {
 
 function normalizeMarkersDomain(s: NormalizeState): void {
   const doc = s.doc;
-  // markers — backfill array, clamp each.
-  const totalProjectTicks = Math.max(
-    0,
-    ...doc.scenes.map((sc) => (doc.patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
-    ...(doc.arrangement?.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
-  );
-  const cleanedMarkers = sanitizeMarkers(doc.markers, totalProjectTicks);
+  // Markers are NAVIGATION points, not arrangement content. Normalize used
+  // to clamp every marker to the project's current length on every command,
+  // which silently collapsed anything past the last clip onto the final bar:
+  // a producer placing cues at bars 8/16/24/32 got all four stacked on bar 4,
+  // no error, no warning. Measured on every template ("empty" and "house"
+  // both end at 4 bars, so a 32-bar song lost 80% of its markers).
+  //
+  // The intentional shrink-clamp still exists, in the command that shrinks:
+  // `markerClampPatch` in commands.ts runs on the delete-scene path so undo
+  // restores the original ticks. This pass only normalizes SHAPE (id, name,
+  // type) and keeps ticks non-negative. Number.MAX_SAFE_INTEGER is the "no
+  // ceiling" sentinel; `sanitizeMarkers` floors the value, so a corrupt file
+  // still cannot produce an Infinity or fractional tick.
+  const cleanedMarkers = sanitizeMarkers(doc.markers, Number.MAX_SAFE_INTEGER);
   const markersChanged = !Array.isArray(doc.markers) || JSON.stringify(cleanedMarkers) !== JSON.stringify(doc.markers);
   if (markersChanged) {
     s.doc = { ...doc, markers: cleanedMarkers };

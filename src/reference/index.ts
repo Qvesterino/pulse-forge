@@ -49,6 +49,23 @@ export { decodeReferenceFile, ReferenceDecodeError, type DecodedReference } from
 export { toMono } from "./audio/mono";
 
 /**
+ * Reference Map → project commands (F4-full). Pure `(doc, map) → Command`
+ * functions so a panel can act on an analysis without owning any mutation
+ * logic, and so the mapping is testable without React.
+ */
+export {
+  bpmCommand,
+  effectiveBpm,
+  grooveCommand,
+  keyCommand,
+  markerCommand,
+  musicalKeyFor,
+  secondsToTicks,
+  type PhraseMarkerOptions,
+  type TempoReading,
+} from "./apply";
+
+/**
  * Confidence wording lives in the engine so the thresholds cannot drift from
  * the number that produced them. F4 renders the label directly; a panel that
  * invents its own "High/Moderate/Low" cutoffs would silently disagree with

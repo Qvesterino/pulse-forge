@@ -53,6 +53,18 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Post-rock: texture-driven — wide dynamic range (quiet → loud crescendos),
   // generous syncopation tolerance for irregular first-wave meters.
   postrock: { densityRange: [0.04, 0.72], syncopationRange: [0.1, 0.82], maxDistance: 1.2 },
+  // Drone / neo-classical: texture-driven, very sparse (the drums are
+  // atmosphere, not groove) — low density floor, wide syncopation tolerance.
+  drone: { densityRange: [0.02, 0.5], syncopationRange: [0.06, 0.7], maxDistance: 1.25 },
+  // Chiptune: the noise channel is scarce - density must stay low enough
+  // that the sparse percussion reads as the 8-bit constraint, not a choice.
+  chiptune: { densityRange: [0.06, 0.66], syncopationRange: [0.04, 0.62], maxDistance: 1.0 },
+  // Eurodance: a programmed floor - steady density, the offbeat mask is the
+  // syncopation and it must not wander.
+  eurodance: { densityRange: [0.16, 0.74], syncopationRange: [0.06, 0.6], maxDistance: 0.95 },
+  // Latin: the percussion section is polyrhythmic by nature - wide
+  // syncopation range (clave displacement is idiomatic), high density.
+  latin: { densityRange: [0.14, 0.82], syncopationRange: [0.18, 0.9], maxDistance: 1.15 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

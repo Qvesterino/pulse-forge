@@ -1,0 +1,163 @@
+{"instruction":"turn down the drums","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}},"index":0}
+{"instruction":"turn down the bass","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},"index":1}
+{"instruction":"turn down the lead","lang":"en","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}},"index":2}
+{"instruction":"raise the drums","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal"}},"index":4}
+{"instruction":"raise the bass a bit","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"subtle"}},"index":5}
+{"instruction":"lower the lead a lot","lang":"en","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"big"}},"index":6}
+{"instruction":"quieter drums","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}},"index":7}
+{"instruction":"louder bass","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}},"index":8}
+{"instruction":"turn down the drums by 25 percent","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":["perc"],"direction":"down","amount":"normal","percent":25}},"index":9}
+{"instruction":"turn down the drums completely","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"full"}},"index":11}
+{"instruction":"set the bass to 50%","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":50}},"index":12}
+{"instruction":"set the drums to 100%","lang":"en","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"set","percent":100}},"index":13}
+{"instruction":"set the lead to 25%","lang":"en","response":{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"set","percent":25}},"index":14}
+{"instruction":"set the bass to 0%","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":0}},"index":15}
+{"instruction":"set the master to 80%","lang":"en","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"set","percent":80}},"index":16}
+{"instruction":"mute the drums","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"drums","value":true}]},"index":18}
+{"instruction":"unmute the drums","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"drums","value":false}]},"index":19}
+{"instruction":"mute the bass","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"bass","value":true}]},"index":20}
+{"instruction":"mute everything","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"mix","value":true}]},"index":21}
+{"instruction":"unmute everything","lang":"en","response":{"kind":"exact","ops":[{"kind":"mute","target":"mix","value":false}]},"index":22}
+{"instruction":"solo the bass","lang":"en","response":{"kind":"exact","ops":[{"kind":"solo","target":"bass","value":true}]},"index":23}
+{"instruction":"solo the drums","lang":"en","response":{"kind":"exact","ops":[{"kind":"solo","target":"drums","value":true}]},"index":25}
+{"instruction":"pan the bass left 30","lang":"en","response":{"kind":"exact","ops":[{"kind":"pan","target":"bass","value":-0.3}]},"index":26}
+{"instruction":"pan the hats 80% right","lang":"en","response":{"kind":"exact","ops":[{"kind":"pan","target":"hats","value":0.8}]},"index":27}
+{"instruction":"center the bass","lang":"en","response":{"kind":"exact","ops":[{"kind":"pan","target":"bass","value":0}]},"index":28}
+{"instruction":"center the hi-hats","lang":"en","response":{"kind":"exact","ops":[{"kind":"pan","target":"hats","value":0}]},"index":29}
+{"instruction":"set tempo to 140","lang":"en","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":140}]},"index":30}
+{"instruction":"tempo 138","lang":"en","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":138}]},"index":32}
+{"instruction":"128 bpm","lang":"en","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":128}]},"index":33}
+{"instruction":"change the key to D minor","lang":"en","response":{"kind":"exact","ops":[{"kind":"key","key":"D Natural Minor"}]},"index":34}
+{"instruction":"set key to F# minor","lang":"en","response":{"kind":"exact","ops":[{"kind":"key","key":"F# Natural Minor"}]},"index":35}
+{"instruction":"transpose the lead up one octave","lang":"en","response":{"kind":"exact","ops":[{"kind":"transpose","target":"lead","semitones":12}]},"index":36}
+{"instruction":"pattern length to 32","lang":"en","response":{"kind":"exact","ops":[{"kind":"patternLength","steps":32}]},"index":37}
+{"instruction":"boost the drums by 2 dB","lang":"en","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"drums","deltaDb":2}]},"index":39}
+{"instruction":"lower the mix by 1.5 dB","lang":"en","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"mix","deltaDb":-1.5}]},"index":40}
+{"instruction":"boost the mix by 3 dB","lang":"en","response":{"kind":"exact","ops":[{"kind":"gainDb","target":"mix","deltaDb":3}]},"index":41}
+{"instruction":"add a drum track","lang":"en","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"drum","instrument":"analog"}]},"index":42}
+{"instruction":"add a bass track","lang":"en","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"instrument","instrument":"bass"}]},"index":43}
+{"instruction":"add a keys track","lang":"en","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"instrument","instrument":"keys"}]},"index":44}
+{"instruction":"delete the lead track","lang":"en","response":{"kind":"exact","ops":[{"kind":"removeTrack","target":"lead"}]},"index":46}
+{"instruction":"duplicate the bass track","lang":"en","response":{"kind":"exact","ops":[{"kind":"duplicateTrack","target":"bass"}]},"index":47}
+{"instruction":"rename the bass to \"sub bass\"","lang":"en","response":{"kind":"exact","ops":[{"kind":"renameTrack","target":"bass","name":"sub bass"}]},"index":48}
+{"instruction":"play","lang":"en","response":{"kind":"transport","action":"play"},"index":49}
+{"instruction":"pause","lang":"en","response":{"kind":"transport","action":"pause"},"index":50}
+{"instruction":"stop","lang":"en","response":{"kind":"transport","action":"stop"},"index":51}
+{"instruction":"metronome off","lang":"en","response":{"kind":"transport","action":"metronomeOff"},"index":53}
+{"instruction":"loop on","lang":"en","response":{"kind":"transport","action":"loopOn"},"index":54}
+{"instruction":"loop off","lang":"en","response":{"kind":"transport","action":"loopOff"},"index":55}
+{"instruction":"save","lang":"en","response":{"kind":"save"},"index":56}
+{"instruction":"export wav","lang":"en","response":{"kind":"export","format":"wav"},"index":57}
+{"instruction":"export mp3","lang":"en","response":{"kind":"export","format":"mp3"},"index":58}
+{"instruction":"record","lang":"en","response":{"kind":"record","arm":true},"index":60}
+{"instruction":"stop recording","lang":"en","response":{"kind":"record","arm":false},"index":61}
+{"instruction":"rec","lang":"en","response":{"kind":"record","arm":true},"index":62}
+{"instruction":"select the bass","lang":"en","response":{"kind":"select","target":"bass"},"index":63}
+{"instruction":"select the drums","lang":"en","response":{"kind":"select","target":"drums"},"index":64}
+{"instruction":"select the lead","lang":"en","response":{"kind":"select","target":"lead"},"index":65}
+{"instruction":"load the warm preset on the bass","lang":"en","response":{"kind":"preset","preset":{"id":"factory.bass.house.warmsub","name":"Warm Sub"},"target":"bass","matchedBy":"prefix"},"index":67}
+{"instruction":"load the House Chords preset on the chords","lang":"en","response":{"kind":"preset","preset":{"id":"factory.analog.house.chords","name":"House Chords"},"target":"chords","matchedBy":"exact"},"index":68}
+{"instruction":"load the Reese preset on the lead","lang":"en","response":{"kind":"preset","preset":{"id":"factory.bass.techno.reese","name":"Reese"},"target":"lead","matchedBy":"exact"},"index":69}
+{"instruction":"more reverb on the lead","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["lead"],"direction":"more","amount":"medium","detected":["more reverb","→ lead"]}},"index":70}
+{"instruction":"less reverb on the chords","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["chords"],"direction":"less","amount":"medium","detected":["less reverb","→ chords"]}},"index":71}
+{"instruction":"more delay on the bass","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["bass"],"direction":"more","amount":"medium","detected":["more delay","→ bass"]}},"index":72}
+{"instruction":"set the lead reverb mix to 25%","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["lead"],"direction":"set","amount":"medium","percent":25,"detected":["set reverb → 25%","→ lead"]}},"index":74}
+{"instruction":"more compression on the drums","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"compressor","targets":["drums"],"direction":"more","amount":"medium","detected":["more compressor","→ drums"]}},"index":75}
+{"instruction":"more saturation on the bass","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"saturation","targets":["bass"],"direction":"more","amount":"medium","detected":["more saturation","→ bass"]}},"index":76}
+{"instruction":"more chorus on the chords","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"chorus","targets":["chords","drums","bass","lead"],"direction":"more","amount":"medium","detected":["more chorus","→ chords+drums+bass+lead"]}},"index":77}
+{"instruction":"add reverb to the drop","lang":"en","response":{"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}]},"index":78}
+{"instruction":"more reverb send on the lead","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"lead","direction":"more"}},"index":79}
+{"instruction":"less reverb send on the lead","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"lead","direction":"less"}},"index":81}
+{"instruction":"set the delay send to 40% on the bass","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"delay","target":"bass","direction":"set","percent":40}},"index":82}
+{"instruction":"no reverb send on the drums","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"drums","direction":"remove"}},"index":83}
+{"instruction":"add reverb send to the lead","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"lead","direction":"more"}},"index":84}
+{"instruction":"bypass the delay on the lead","lang":"en","response":{"kind":"bypassIntent","intent":{"effectType":"delay","target":"lead","bypassed":true}},"index":85}
+{"instruction":"bypass reverb on the drums","lang":"en","response":{"kind":"bypassIntent","intent":{"effectType":"reverb","target":"drums","bypassed":true}},"index":86}
+{"instruction":"more reverb","lang":"en","response":{"kind":"mix","overrides":{"reverb":"more"},"detected":["more reverb"]},"index":88}
+{"instruction":"drier mix","lang":"en","response":{"kind":"mix","overrides":{"reverb":"less"},"detected":["drier"]},"index":89}
+{"instruction":"huge reverb","lang":"en","response":{"kind":"mix","overrides":{"reverb":"huge"},"detected":["huge reverb"]},"index":90}
+{"instruction":"punchier","lang":"en","response":{"kind":"mix","overrides":{"punch":"more"},"detected":["more punch"]},"index":91}
+{"instruction":"no pump","lang":"en","response":{"kind":"mix","overrides":{"pump":"off"},"detected":["pump off"]},"index":92}
+{"instruction":"darker","lang":"en","response":{"kind":"mix","overrides":{"tone":"dark"},"detected":["darker tone"]},"index":93}
+{"instruction":"warmer mix","lang":"en","response":{"kind":"mix","overrides":{"tone":"warm"},"detected":["warmer tone"]},"index":95}
+{"instruction":"make it louder","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","detected":["louder"]}},"index":96}
+{"instruction":"make it quieter","lang":"en","response":{"kind":"loudness","parse":{"direction":"quieter","detected":["quieter"]}},"index":97}
+{"instruction":"loudness to -9","lang":"en","response":{"kind":"loudness","parse":{"direction":"louder","targetDb":-9,"detected":["loudness -9 LUFS"]}},"index":98}
+{"instruction":"make the drums darker","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"darker","amount":0.7}],"sourceText":"make the drums darker"}},"index":99}
+{"instruction":"make the bass deeper","lang":"en","response":{"kind":"production","intent":{"targets":["bass"],"goals":[{"concept":"deeper","amount":0.7}],"sourceText":"make the bass deeper"}},"index":100}
+{"instruction":"make the lead wider","lang":"en","response":{"kind":"production","intent":{"targets":["lead"],"goals":[{"concept":"wider","amount":0.7}],"sourceText":"make the lead wider"}},"index":102}
+{"instruction":"make the bass warmer","lang":"en","response":{"kind":"production","intent":{"targets":["bass"],"goals":[{"concept":"warmer","amount":0.7}],"sourceText":"make the bass warmer"}},"index":103}
+{"instruction":"make the drums grittier","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"grittier","amount":0.7}],"sourceText":"make the drums grittier"}},"index":104}
+{"instruction":"make the lead telephone","lang":"en","response":{"kind":"production","intent":{"targets":["lead"],"goals":[{"concept":"telephone","amount":0.7}],"sourceText":"make the lead telephone"}},"index":105}
+{"instruction":"make the lead robotic","lang":"en","response":{"kind":"production","intent":{"targets":["lead"],"goals":[{"concept":"robotic","amount":0.7}],"sourceText":"make the lead robotic"}},"index":106}
+{"instruction":"make the drums tape","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"tape","amount":0.7}],"sourceText":"make the drums tape"}},"index":107}
+{"instruction":"make the drums glue","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"glue","amount":0.7}],"sourceText":"make the drums glue"}},"index":109}
+{"instruction":"make the bass metallic","lang":"en","response":{"kind":"production","intent":{"targets":["bass"],"goals":[{"concept":"metallic","amount":0.7}],"sourceText":"make the bass metallic"}},"index":110}
+{"instruction":"make the lead wobbly","lang":"en","response":{"kind":"production","intent":{"targets":["lead"],"goals":[{"concept":"wobbly","amount":0.7}],"sourceText":"make the lead wobbly"}},"index":111}
+{"instruction":"more energetic","lang":"en","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":null},"index":112}
+{"instruction":"less energetic","lang":"en","response":{"kind":"revise","attribute":"energy","direction":"less","targetRole":null},"index":113}
+{"instruction":"less busy","lang":"en","response":{"kind":"revise","attribute":"density","direction":"less","targetRole":null},"index":114}
+{"instruction":"copy the intro clip to bar 9","lang":"en","response":{"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":8}]},"index":116}
+{"instruction":"copy the clip at bar 1 to bar 9","lang":"en","response":{"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":8}]},"index":117}
+{"instruction":"move the drop clip to bar 9","lang":"en","response":{"kind":"clips","ops":[{"op":"moveClip","clipId":"clip-test-0012","toBar":8}]},"index":118}
+{"instruction":"trim the clip at bar 5 to 2 bars","lang":"en","response":{"kind":"clips","ops":[{"op":"resizeClip","clipId":"clip-test-0012","bars":2}]},"index":119}
+{"instruction":"delete the clip at bar 8","lang":"en","response":{"kind":"clips","ops":[{"op":"deleteClip","clipId":"clip-test-0012"}]},"index":120}
+{"instruction":"shorten the intro to 2 bars","lang":"en","response":{"kind":"arrange","ops":[{"op":"resize","sceneId":"scene-test-000z","role":"intro","name":"Intro","bars":2}]},"index":121}
+{"instruction":"duplicate the drop","lang":"en","response":{"kind":"arrange","ops":[{"op":"duplicate","sceneId":"scene-test-0011","role":"drop","name":"Drop"}]},"index":123}
+{"instruction":"remove the intro","lang":"en","response":{"kind":"arrange","ops":[{"op":"remove","sceneId":"scene-test-000z","role":"intro","name":"Intro"}]},"index":124}
+{"instruction":"auto-arrange into a song","lang":"en","response":{"kind":"arrange","ops":[{"op":"autoArrange"}]},"index":125}
+{"instruction":"zníž tempo a zvýš lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"tempo","intent":{"direction":"down"}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"up","amount":"normal"}}]},"index":126}
+{"instruction":"mute the drums and set tempo to 140","lang":"en","response":{"kind":"compound","parts":[{"kind":"exact","plan":{"label":"mute drums","ops":[{"kind":"mute","target":"drums","value":true}]}},{"kind":"tempo","intent":{"direction":"set","bpm":140}}]},"index":127}
+{"instruction":"mute the drums and zníž basu","lang":"en","response":{"kind":"compound","parts":[{"kind":"exact","plan":{"label":"mute drums","ops":[{"kind":"mute","target":"drums","value":true}]}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}}]},"index":128}
+{"instruction":"load the Warm Sub preset on the bass and zníž lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"preset","intent":{"preset":{"id":"factory.bass.house.warmsub","name":"Warm Sub","instrument":"bass","genre":"house","mood":["warm","clean"],"tags":["sub","warm","round"],"params":{"sub":0.75,"body":0.6,"punch":0.35,"grit":0.08,"movement":0.05,"width":0.15,"cutoff":520,"resonance":0.8,"level":-6}},"target":"bass","matchedBy":"exact"}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}}]},"index":130}
+{"instruction":"bypass the delay on the lead and zníž basu","lang":"en","response":{"kind":"compound","parts":[{"kind":"bypass","intent":{"effectType":"delay","target":"lead","bypassed":true}},{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}}]},"index":131}
+{"instruction":"more reverb send on the lead and turn down the drums","lang":"en","response":{"kind":"compound","parts":[{"kind":"send","intent":{"effectType":"reverb","target":"lead","direction":"more"}},{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}}]},"index":132}
+{"instruction":"zníž","lang":"en","response":{"kind":"clarify","reason":"ktorý fader?","suggestions":["zníž basu","zníž bicie","zníž lead","stíš master"]},"index":133}
+{"instruction":"more compression","lang":"en","response":{"kind":"clarify","reason":"na ktorý track má smerovať compressor?","suggestions":["more compressor on the drums","more compressor on the bass","more compressor on the chords","more compressor on the lead"]},"index":134}
+{"instruction":"more delay on the trumpets","lang":"en","response":{"kind":"clarify","reason":"na ktorý track má smerovať delay?","suggestions":["more delay on the drums","more delay on the bass","more delay on the chords","more delay on the lead"]},"index":135}
+{"instruction":"pann the bass left 30","lang":"en","response":{"kind":"clarify","reason":"did you mean \"pan the bass left 30\"?","suggestions":["pan the bass left 30"]},"index":137}
+{"instruction":"load the zzzblorp preset on the bass","lang":"en","response":{"kind":"presetUnknown","name":"zzzblorp","suggestions":["House Pluck","Deep House Bass","Warm Sub"]},"index":138}
+{"instruction":"set tempo to 500","lang":"en","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":300}]},"index":139}
+{"instruction":"set the reverb decay to 30%","lang":"en","response":{"kind":"clarify","reason":"efekt „reverb\" má parameter, ktorý intent neovláda — motor vie nastaviť primárny knob „mix\"","suggestions":["set reverb mix to 50% on the lead"]},"index":140}
+{"instruction":"zníž basu","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal"}},"index":141}
+{"instruction":"zníž bicie","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"down","amount":"normal"}},"index":142}
+{"instruction":"zníž basu trochu","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"subtle"}},"index":144}
+{"instruction":"zníž basu o 10 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"down","amount":"normal","percent":10}},"index":145}
+{"instruction":"zvýš 808 na 30 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal","percent":30}},"index":146}
+{"instruction":"stíš celý mix","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"normal"}},"index":147}
+{"instruction":"kick ťažší","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["kick"],"direction":"up","amount":"normal"}},"index":148}
+{"instruction":"haty tichšie","lang":"sk","response":{"kind":"fader","intent":{"targets":[],"pads":["hat"],"direction":"down","amount":"normal"}},"index":149}
+{"instruction":"nastav master na 80 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"set","percent":80}},"index":151}
+{"instruction":"vypni basu","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"bass","value":true}]},"index":152}
+{"instruction":"zapni bicie","lang":"sk","response":{"kind":"exact","ops":[{"kind":"mute","target":"drums","value":false}]},"index":153}
+{"instruction":"zníž tempo","lang":"sk","response":{"kind":"tempo","intent":{"direction":"down"}},"index":154}
+{"instruction":"tempo na 128","lang":"sk","response":{"kind":"tempo","intent":{"direction":"set","bpm":128}},"index":155}
+{"instruction":"140 bpm","lang":"sk","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":140}]},"index":156}
+{"instruction":"zrýchli to","lang":"sk","response":{"kind":"tempo","intent":{"direction":"up"}},"index":158}
+{"instruction":"všetko stíš","lang":"sk","response":{"kind":"fader","intent":{"targets":["master"],"pads":[],"direction":"down","amount":"normal"}},"index":159}
+{"instruction":"pridaj basový track","lang":"sk","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"instrument","instrument":"bass"}]},"index":160}
+{"instruction":"premenuj basu na sub","lang":"sk","response":{"kind":"exact","ops":[{"kind":"renameTrack","target":"bass","name":"sub"}]},"index":161}
+{"instruction":"ulož","lang":"sk","response":{"kind":"save"},"index":162}
+{"instruction":"ulož projekt","lang":"sk","response":{"kind":"save"},"index":163}
+{"instruction":"exportuj mp3","lang":"sk","response":{"kind":"export","format":"mp3"},"index":165}
+{"instruction":"nahrávaj","lang":"sk","response":{"kind":"record","arm":true},"index":166}
+{"instruction":"prestav nahrávanie","lang":"sk","response":{"kind":"record","arm":false},"index":167}
+{"instruction":"hraj","lang":"sk","response":{"kind":"transport","action":"play"},"index":168}
+{"instruction":"pauza","lang":"sk","response":{"kind":"transport","action":"pause"},"index":169}
+{"instruction":"zastav","lang":"sk","response":{"kind":"transport","action":"stop"},"index":170}
+{"instruction":"loop zapni","lang":"sk","response":{"kind":"transport","action":"loopOn"},"index":172}
+{"instruction":"cykluj vypni","lang":"sk","response":{"kind":"transport","action":"loopOff"},"index":173}
+{"instruction":"vyber basu","lang":"sk","response":{"kind":"select","target":"bass"},"index":174}
+{"instruction":"načítaj preset warm sub na basu","lang":"sk","response":{"kind":"preset","preset":{"id":"factory.bass.house.warmsub","name":"Warm Sub"},"target":"bass","matchedBy":"exact"},"index":175}
+{"instruction":"viac reverbu na leade","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["lead"],"direction":"more","amount":"medium","detected":["more reverb","→ lead"]}},"index":176}
+{"instruction":"menej delayu na basi","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["bass"],"direction":"remove","amount":"medium","detected":["remove delay","→ bass"]}},"index":177}
+{"instruction":"nastav delay mix na leade na 30 %","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"delay","targets":["lead"],"direction":"set","amount":"medium","percent":30,"detected":["set delay → 30%","→ lead"]}},"index":179}
+{"instruction":"viac reverb send na leade","lang":"sk","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"lead","direction":"more"}},"index":180}
+{"instruction":"menej reverb send na leade","lang":"sk","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"lead","direction":"less"}},"index":181}
+{"instruction":"bypass delay na leade","lang":"sk","response":{"kind":"bypassIntent","intent":{"effectType":"delay","target":"lead","bypassed":true}},"index":182}
+{"instruction":"viac energie","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":null},"index":183}
+{"instruction":"menej energie","lang":"sk","response":{"kind":"revise","attribute":"energy","direction":"less","targetRole":null},"index":184}
+{"instruction":"pridaj break pred drop","lang":"sk","response":{"kind":"arrange","ops":[{"op":"addRole","role":"break","beforeSceneId":"scene-test-0011"}]},"index":186}
+{"instruction":"darker mix","lang":"sk","response":{"kind":"mix","overrides":{"tone":"dark"},"detected":["darker tone"]},"index":187}
+{"instruction":"viac dozvuku","lang":"sk","response":{"kind":"mix","overrides":{"reverb":"more"},"detected":["more reverb"]},"index":188}
+{"instruction":"mlčanie na leade a zníž basu","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass","lead"],"pads":[],"direction":"down","amount":"normal"}},"index":189}

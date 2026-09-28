@@ -639,6 +639,139 @@ const DETROIT_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+/** Chiptune progressions — the 8-bit era's diatonic loops. The NES composer
+ *  worked with three monophonic voices, so chords are implied by arpeggios;
+ *  the progression is short and repeats hard (that IS the game-music idiom). */
+const CHIPTUNE_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "I-V-vi-IV (overworld loop)",
+    genre: "chiptune",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+  {
+    name: "vi-IV-I-V (the emotional theme)",
+    genre: "chiptune",
+    events: [
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-VI-III-VII (boss minor)",
+    genre: "chiptune",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 2, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+];
+
+/** Eurodance progressions — the 90s dance-maximalism. Minor-key anthems with
+ *  the VI-VII lift (the "euro" cadence) and the minor-to-relative-major
+ *  chorus switch the female vocal rides. */
+const EURODANCE_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VI-III-VII (euro anthem)",
+    genre: "eurodance",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 2, quality: "maj", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "i-VII-VI-VII (the lift)",
+    genre: "eurodance",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+  {
+    name: "I-V-vi-IV (hands in the air)",
+    genre: "eurodance",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+];
+
+/** Latin progressions — the son/tumbao harmonic cells. The ii-V-I with the
+ *  minor iv (the "Andalusian" colour) and the montuno vamp the coro rides. */
+const LATIN_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "ii-V-I (tumbao cadence)",
+    genre: "latin",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 8, func: "T" },
+    ],
+  },
+  {
+    name: "i-iv-V-i (minor montuno)",
+    genre: "latin",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min", duration: 4, func: "S" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "I-vi-ii-V (bossa turnaround)",
+    genre: "latin",
+    events: [
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "min7", duration: 4, func: "T" },
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+    ],
+  },
+];
+
+const DRONE_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i (the drone - one chord, one swell)",
+    genre: "drone",
+    events: [
+      { degree: 0, quality: "min7", duration: 16, func: "T" },
+    ],
+  },
+  {
+    name: "i-VII (minimal drift)",
+    genre: "drone",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 6, quality: "maj", duration: 8, func: "D" },
+    ],
+  },
+  {
+    name: "i-iv-VII-III (neo-classical turn)",
+    genre: "drone",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 3, quality: "min7", duration: 4, func: "S" },
+      { degree: 6, quality: "maj", duration: 4, func: "D" },
+      { degree: 2, quality: "maj7", duration: 4, func: "T" },
+    ],
+  },
+];
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -655,6 +788,10 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   trance: TRANCE_PROGRESSIONS,
   detroit: DETROIT_PROGRESSIONS,
   postrock: POSTROCK_PROGRESSIONS,
+  chiptune: CHIPTUNE_PROGRESSIONS,
+  eurodance: EURODANCE_PROGRESSIONS,
+  latin: LATIN_PROGRESSIONS,
+  drone: DRONE_PROGRESSIONS,
 };
 
 /**

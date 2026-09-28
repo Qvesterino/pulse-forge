@@ -1,0 +1,96 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31mÔŁ»[39m tests/reference/apply.test.ts [2m([22m[2m20 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[33m 1145[2mms[22m[39m
+[31m   [31m├Ś[31m apply ÔÇö keyCommand[2m > [22mwrites the project key hint and restores the previous one on undo[90m 14[2mms[22m[31m[39m
+[31m     Ôćĺ expected undefined to be null[39m
+[31m   [31m├Ś[31m apply ÔÇö markerCommand[2m > [22mdrops a bar-aligned marker per phrase and undoes the whole import at once[90m 142[2mms[22m[31m[39m
+[31m     Ôćĺ expected +0 to be 3840 // Object.is equality[39m
+[31m   [31m├Ś[31m apply ÔÇö markerCommand[2m > [22mdoes not stack duplicate markers when snapped boundaries collide[90m 165[2mms[22m[31m[39m
+[31m     Ôćĺ expected 4 to be 7 // Object.is equality[39m
+[31m   [31m├Ś[31m apply ÔÇö grooveCommand[2m > [22mclamps out-of-range and drops non-finite values[90m 1[2mms[22m[31m[39m
+[31m     Ôćĺ expected +0 to be undefined[39m
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ» Failed Tests 4 ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»
+
+ FAIL  tests/reference/apply.test.ts > apply ÔÇö keyCommand > writes the project key hint and restores the previous one on undo
+AssertionError: expected undefined to be null
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ÔŁ» tests/reference/apply.test.ts:114:32
+    112|     expect(store.getDoc().key).toBe("F# Natural Minor");
+    113|     store.undo();
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+    114|     expect(store.getDoc().key).toBeNull();
+       |                                ^
+    115|   });
+    116| 
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m16 passed[39m[22m[90m (20)[39m
+[2m   Start at [22m 15:57:43
+[2m   Duration [22m 5.84s[2m (transform 1.41s, setup 355ms, collect 2.06s, tests 1.15s, environment 1.43s, prepare 222ms)[22m
+
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[1/4]ÔÄ»
+
+ FAIL  tests/reference/apply.test.ts > apply ÔÇö markerCommand > drops a bar-aligned marker per phrase and undoes the whole import at once
+AssertionError: expected +0 to be 3840 // Object.is equality
+
+- Expected
++ Received
+
+- 3840
++ 0
+
+ ÔŁ» tests/reference/apply.test.ts:162:39
+    160|     const ticks = added.map((m) => m.tick).sort((a, b) => a - b);
+    161|     for (let i = 1; i < ticks.length; i++) {
+    162|       expect(ticks[i] - ticks[i - 1]).toBe(2 * BAR_TICKS);
+       |                                       ^
+    163|     }
+    164| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[2/4]ÔÄ»
+
+ FAIL  tests/reference/apply.test.ts > apply ÔÇö markerCommand > does not stack duplicate markers when snapped boundaries collide
+AssertionError: expected 4 to be 7 // Object.is equality
+
+- Expected
++ Received
+
+- 7
++ 4
+
+ ÔŁ» tests/reference/apply.test.ts:206:33
+    204|     // Two beats that snap onto one bar would otherwise leave two markÔÇŽ
+    205|     // the same tick, which reads as a bug on the timeline.
+    206|     expect(new Set(ticks).size).toBe(ticks.length);
+       |                                 ^
+    207|   });
+    208| });
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[3/4]ÔÄ»
+
+ FAIL  tests/reference/apply.test.ts > apply ÔÇö grooveCommand > clamps out-of-range and drops non-finite values
+AssertionError: expected +0 to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+0
+
+ ÔŁ» tests/reference/apply.test.ts:227:38
+    225|     expect(groove?.humanizeTiming).toBe(0);
+    226|     // NaN is dropped entirely rather than written as a poisoned paramÔÇŽ
+    227|     expect(groove?.humanizeVelocity).toBeUndefined();
+       |                                      ^
+    228|   });
+    229| 
+
+ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»ÔÄ»[4/4]ÔÄ»
+

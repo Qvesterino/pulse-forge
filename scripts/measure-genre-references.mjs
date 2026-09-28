@@ -49,6 +49,9 @@ const GENRES = [
   "trance",
   "detroit",
   "postrock",
+  "chiptune",
+  "eurodance",
+  "latin",
 ];
 const SEEDS = ["ref-a", "ref-b"];
 

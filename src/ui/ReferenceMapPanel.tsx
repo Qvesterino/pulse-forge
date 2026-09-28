@@ -4,10 +4,16 @@ import {
   PITCH_CLASSES,
   REFERENCE_STAGE_LABELS,
   analyzeReferenceAsync,
+  bpmCommand,
   confidenceLabel,
   decodeReferenceFile,
+  effectiveBpm,
+  grooveCommand,
+  keyCommand,
+  markerCommand,
   toMono,
   toPercent,
+  type PhraseMarkerOptions,
   type ReferenceKeyCandidate,
   type ReferenceMap,
   type ReferenceMode,
@@ -17,6 +23,9 @@ import {
 import { downloadBlob } from "../export/download";
 import { sanitizeFilename } from "../rendering/wav";
 import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
+import { type ProjectDocument } from "../project-model/types";
+import type { Command } from "../commands/types";
+import { useDoc } from "./context";
 
 /**
  * Reference Map — F4-lite surface.
@@ -251,7 +260,6 @@ export function ReferenceMapPanel() {
   const rhythmBpm = analysis?.map.rhythm.bpm ?? null;
   const readingBpm = applyReading(rhythmBpm, correction.reading);
   const shownBpm = correction.bpm ?? readingBpm;
-
   const halfCandidate = useMemo<TempoCandidate | null>(
     () => analysis?.map.rhythm.candidates.find((c) => c.relation === "half-time") ?? null,
     [analysis],
@@ -263,6 +271,72 @@ export function ReferenceMapPanel() {
   const keyCandidates = analysis?.map.tonal.candidates ?? [];
   const shownTonic = correction.tonic ?? analysis?.map.tonal.tonic ?? null;
   const shownMode = correction.mode ?? analysis?.map.tonal.mode ?? null;
+
+  // ---------------------------------------------------------------------------
+  // F4-full — acting on the reference.
+  //
+  // Every handler routes through the pure builders in `src/reference/apply.ts`
+  // and executes ONE command, so each action is a single undo step. The panel
+  // never mutates the document itself.
+  // ---------------------------------------------------------------------------
+  const doc = useDoc();
+  const [beatsPerPhrase, setBeatsPerPhrase] = useState(8);
+  const [swingPercent, setSwingPercent] = useState(0);
+  const [applied, setApplied] = useState<string | null>(null);
+
+  const runCommand = useCallback(
+    (build: (d: ProjectDocument) => Command | null, fallback: string) => {
+      const command = build(doc);
+      if (!command) {
+        setApplied(fallback);
+        return;
+      }
+      services.store.execute(command);
+      setApplied(command.label);
+    },
+    [doc, services.store],
+  );
+
+  const applyBpm = useCallback(() => {
+    if (!analysis) return;
+    const bpm = effectiveBpm(analysis.map, correction.reading, correction.bpm);
+    if (bpm === null) {
+      setApplied("No tempo detected — nothing applied.");
+      return;
+    }
+    runCommand((d) => bpmCommand(d, bpm), "");
+  }, [analysis, correction, runCommand]);
+
+  const applyKey = useCallback(() => {
+    if (!shownTonic || !shownMode) {
+      setApplied("No key detected — nothing applied.");
+      return;
+    }
+    runCommand((d) => keyCommand(d, shownTonic, shownMode), "");
+  }, [shownTonic, shownMode, runCommand]);
+
+  const applyMarkers = useCallback(() => {
+    if (!analysis) return;
+    const options: PhraseMarkerOptions = {
+      beatsPerPhrase,
+      bpm: shownBpm ?? readingBpm ?? doc.bpm,
+      label: analysis.fileName.replace(/\.[^.]+$/, ""),
+    };
+    runCommand(
+      (d) => markerCommand(d, analysis.map, options),
+      "Not enough beats for a phrase marker.",
+    );
+  }, [analysis, beatsPerPhrase, shownBpm, readingBpm, doc.bpm, runCommand]);
+
+  const applyGroove = useCallback(() => {
+    // Manual, not detected: F1 does not measure swing. The slider is the
+    // producer's own judgement, and the command writes exactly that.
+    runCommand((d) => grooveCommand(d, { swing: swingPercent / 100 }), "Set a swing value first.");
+  }, [swingPercent, runCommand]);
+
+  // Tick length is tempo-dependent, so marker placement is only correct if the
+  // project is actually running at the reference tempo when the user imports.
+  const tempoMismatch = shownBpm !== null && Math.abs(shownBpm - doc.bpm) > 0.5;
 
   return (
     <div className="panel reference-map-panel" data-testid="reference-map-panel">
@@ -410,6 +484,77 @@ export function ReferenceMapPanel() {
               Export JSON
             </button>
           </div>
+
+          <section className="reference-apply" data-testid="reference-apply">
+            <h4>Apply to project</h4>
+            {tempoMismatch && (
+              <p className="panel-sub" data-testid="reference-tempo-warning">
+                Project is at {doc.bpm} BPM but the reference reads {shownBpm?.toFixed(2)}. Apply the tempo first —
+                marker positions are measured in project ticks, which change with tempo.
+              </p>
+            )}
+            <div className="reference-apply-row">
+              <button
+                type="button"
+                onClick={applyBpm}
+                disabled={shownBpm === null}
+                data-testid="reference-apply-bpm"
+              >
+                Set project BPM
+              </button>
+              <button
+                type="button"
+                onClick={applyKey}
+                disabled={shownTonic === null || shownMode === null}
+                data-testid="reference-apply-key"
+              >
+                Set project key
+              </button>
+            </div>
+            <div className="reference-apply-row">
+              <label>
+                Phrase
+                <select
+                  value={beatsPerPhrase}
+                  onChange={(e) => setBeatsPerPhrase(Number(e.target.value))}
+                  data-testid="reference-phrase-length"
+                >
+                  <option value={4}>1 bar</option>
+                  <option value={8}>2 bars</option>
+                  <option value={16}>4 bars</option>
+                  <option value={32}>8 bars</option>
+                </select>
+              </label>
+              <button type="button" onClick={applyMarkers} data-testid="reference-apply-markers">
+                Import phrase markers
+              </button>
+            </div>
+            <div className="reference-apply-row">
+              <label>
+                Swing {swingPercent}%
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={swingPercent}
+                  onChange={(e) => setSwingPercent(Number(e.target.value))}
+                  data-testid="reference-swing"
+                />
+              </label>
+              <button type="button" onClick={applyGroove} data-testid="reference-apply-groove">
+                Apply groove feel
+              </button>
+            </div>
+            <p className="panel-sub reference-apply-note">
+              Swing is yours, not the engine's — the analyzer does not measure feel. Each action is one undo step.
+            </p>
+            {applied && (
+              <p className="reference-applied" role="status" data-testid="reference-applied">
+                {applied}
+              </p>
+            )}
+          </section>
 
           <nav className="reference-tabs" role="tablist">
             {TABS.map((t) => (

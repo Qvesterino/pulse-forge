@@ -1,0 +1,27 @@
+{"instruction":"turn down the chords","lang":"en","response":{"kind":"fader","intent":{"targets":["chords"],"pads":[],"direction":"down","amount":"normal"}},"index":3}
+{"instruction":"raise the bass by 10 percent","lang":"en","response":{"kind":"fader","intent":{"targets":["bass"],"pads":["perc"],"direction":"up","amount":"normal","percent":10}},"index":10}
+{"instruction":"set the kick to 100%","lang":"en","response":{"kind":"fader","intent":{"targets":[],"pads":["kick"],"direction":"set","percent":100}},"index":17}
+{"instruction":"unsolo the bass","lang":"en","response":{"kind":"exact","ops":[{"kind":"solo","target":"bass","value":false}]},"index":24}
+{"instruction":"set tempo to 90 bpm","lang":"en","response":{"kind":"exact","ops":[{"kind":"tempo","bpm":90}]},"index":31}
+{"instruction":"length to 64","lang":"en","response":{"kind":"exact","ops":[{"kind":"patternLength","steps":64}]},"index":38}
+{"instruction":"add a track","lang":"en","response":{"kind":"exact","ops":[{"kind":"addTrack","trackKind":"instrument","instrument":"analog"}]},"index":45}
+{"instruction":"metronome on","lang":"en","response":{"kind":"transport","action":"metronomeOn"},"index":52}
+{"instruction":"bounce","lang":"en","response":{"kind":"export","format":"wav"},"index":59}
+{"instruction":"load the Warm Sub preset on the bass","lang":"en","response":{"kind":"preset","preset":{"id":"factory.bass.house.warmsub","name":"Warm Sub"},"target":"bass","matchedBy":"exact"},"index":66}
+{"instruction":"remove reverb from the bass","lang":"en","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["bass"],"direction":"remove","amount":"medium","detected":["remove reverb","→ bass"]}},"index":73}
+{"instruction":"more reverb send on the drums","lang":"en","response":{"kind":"sendIntent","intent":{"effectType":"reverb","target":"drums","direction":"more"}},"index":80}
+{"instruction":"enable the delay on the lead","lang":"en","response":{"kind":"bypassIntent","intent":{"effectType":"delay","target":"lead","bypassed":false}},"index":87}
+{"instruction":"brighter","lang":"en","response":{"kind":"mix","overrides":{"tone":"bright"},"detected":["brighter tone"]},"index":94}
+{"instruction":"make the drums punchier","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"punchier","amount":0.7}],"sourceText":"make the drums punchier"}},"index":101}
+{"instruction":"make the drums stutter","lang":"en","response":{"kind":"production","intent":{"targets":["drums"],"goals":[{"concept":"stutter","amount":0.7}],"sourceText":"make the drums stutter"}},"index":108}
+{"instruction":"make the bridge more energetic","lang":"en","response":{"kind":"revise","attribute":"energy","direction":"more","targetRole":"bridge"},"index":115}
+{"instruction":"add a break before the drop","lang":"en","response":{"kind":"arrange","ops":[{"op":"addRole","role":"break","beforeSceneId":"scene-test-0011"}]},"index":122}
+{"instruction":"set the bass to 50% and zníž lead","lang":"en","response":{"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":50}},{"kind":"fader","intent":{"targets":["lead"],"pads":[],"direction":"down","amount":"normal"}}]},"index":129}
+{"instruction":"mut the drums","lang":"en","response":{"kind":"clarify","reason":"did you mean \"mute the drums\"?","suggestions":["mute the drums"]},"index":136}
+{"instruction":"hlasnejšie bicie","lang":"sk","response":{"kind":"fader","intent":{"targets":["drums"],"pads":[],"direction":"up","amount":"normal"}},"index":143}
+{"instruction":"nastav basu na 50 %","lang":"sk","response":{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"set","percent":50}},"index":150}
+{"instruction":"pomalší","lang":"sk","response":{"kind":"tempo","intent":{"direction":"down"}},"index":157}
+{"instruction":"exportuj wav","lang":"sk","response":{"kind":"export","format":"wav"},"index":164}
+{"instruction":"metronome zapni","lang":"sk","response":{"kind":"transport","action":"metronomeOn"},"index":171}
+{"instruction":"odstrán reverb z basy","lang":"sk","response":{"kind":"effectIntent","intent":{"effectType":"reverb","targets":["bass"],"direction":"remove","amount":"medium","detected":["remove reverb","→ bass"]}},"index":178}
+{"instruction":"skráť intro na 2 takty","lang":"sk","response":{"kind":"arrange","ops":[{"op":"resize","sceneId":"scene-test-000z","role":"intro","name":"Intro","bars":2}]},"index":185}

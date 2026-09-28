@@ -1,3 +1,4 @@
+import { warmSemanticModel } from "./ai/semantic/semantic-client";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { Scheduler } from "./scheduler/Scheduler";
 import { Transport } from "./transport/Transport";
@@ -357,6 +358,15 @@ export async function createCoreServices(): Promise<CoreServices> {
   // sounds; these progressively replace the curated slots as they decode.
   // Export paths await `curatedReady()` so renders use the intended sound.
   void ensureCuratedLayer(bank);
+  // Warm the semantic embedding model (semantic escape hatch, fix A).
+  // 88% of library grooves are outside PRIOR_STYLE_VOCAB, so the v3 channel
+  // is what keeps generated drums off the template fallback — but its FIRST
+  // call pays the whole ~118 MB load inside the request budget. Priming here
+  // overlaps that load with project opening, so the first real intent finds
+  // the model already resident. Fire-and-forget: boot never blocks on it, and
+  // the helper no-ops on a device that has opted out via the embed flag or the
+  // mobile deviceMemory guard.
+  warmSemanticModel();
   const library = new LibraryRepository();
   // Audit 14 D1: best-effort durable storage - without persist() iOS Safari
   // may evict ALL projects after ~7 days of non-use. Silent if refused.

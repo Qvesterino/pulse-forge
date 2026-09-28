@@ -358,6 +358,21 @@ export class SymbolicPriorProvider implements GenerationProvider {
 
         const rowsById: Record<string, number[]> = {};
         let semanticUsed = false;
+        if (pads.length > 0 && !(supportsDrumPrior || semantic)) {
+          // Measured 2026-09-28: PRIOR_STYLE_VOCAB covers 21 of 170 library
+          // grooves, so 88% of generations arrive here out-of-vocab. The only
+          // thing that can save them is the v3 semantic channel, and it is
+          // unavailable exactly when the model is cold, opted out by device
+          // memory, or the embed worker is down.
+          //
+          // Before this tag the outcome was indistinguishable from success:
+          // the drums came from the template, the provider returned a valid
+          // pattern, and the UI said "generated". Naming the reason is what
+          // makes the coverage gap diagnosable instead of invisible.
+          failures.push(
+            `candidate-${startIndex + offset}:drums-template-${semantic ? "prior-vocab-miss" : "semantic-unavailable"}`,
+          );
+        }
         if (pads.length > 0 && (supportsDrumPrior || semantic)) {
           // Conditioning priority (v3 hybrid): v3 (semantic + one-hot, 60-dim;
           // since the ds.v3 retrain the semantic channel covers EVERY library

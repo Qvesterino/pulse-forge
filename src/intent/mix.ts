@@ -123,6 +123,12 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   detroit: "cold",
   // Post-rock is the warm-and-dusty guitar genre (the whole point is texture).
   postrock: "warm",
+  // Chiptune is the cold digital genre - no warmth, the pulses are square.
+  chiptune: "cold",
+  // Eurodance is the bright euphoric-lift genre (supersaw air, 90s radio).
+  eurodance: "bright",
+  // Latin is the warm hand-drum genre (conga/wood body, live room).
+  latin: "warm",
 };
 
 /**
@@ -172,7 +178,11 @@ export function planMixProfile(
     genre === "amapiano" ||
     genre === "trance" ||
     genre === "detroit" ||
-    genre === "postrock";
+    genre === "postrock" ||
+    genre === "drone" ||
+    genre === "chiptune" ||
+    genre === "eurodance" ||
+    genre === "latin";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
@@ -195,7 +205,10 @@ export function planMixProfile(
     genre === "boombap" ||
     genre === "trance" ||
     genre === "detroit" ||
-    genre === "postrock";
+    genre === "postrock" ||
+    genre === "drone" ||
+    genre === "chiptune" ||
+    genre === "eurodance";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -222,7 +235,11 @@ export function planMixProfile(
               genre === "amapiano" ||
               genre === "trance" ||
               genre === "detroit" ||
-              genre === "postrock") &&
+              genre === "postrock" ||
+              genre === "drone" ||
+              genre === "chiptune" ||
+              genre === "eurodance" ||
+              genre === "latin") &&
             intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];

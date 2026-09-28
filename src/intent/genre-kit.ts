@@ -160,6 +160,44 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 8, assetId: "factory.hat.closed.soft" },
     { index: 11, assetId: "factory.ride.ping" },
   ],
+  drone: [
+    { index: 0, assetId: "factory.kick.soft" },
+    { index: 1, assetId: "factory.kick.deep" },
+    { index: 4, assetId: "factory.snare.lofi" },
+    { index: 7, assetId: "factory.shaker.soft" },
+  ],
+  chiptune: [
+    // The chip kit: a tight punch kick (the 2A03 kick is a short pitched
+    // blip, never a deep 808), the tight snare for the noise-channel crack,
+    // the chip rim as the signature tick, and the pop clap for the NES
+    // "explosion" accents.
+    { index: 0, assetId: "factory.kick.punch" },
+    { index: 1, assetId: "factory.kick.soft" },
+    { index: 4, assetId: "factory.snare.tight" },
+    { index: 3, assetId: "factory.rim.chip" },
+    { index: 6, assetId: "factory.clap.pop" },
+  ],
+  eurodance: [
+    // The Euro-NRG kit: the 909-style pop kick up front (the 90s floor was
+    // a 909 or an M1 kick), punch alt, the tight snare, and the open hat
+    // short for the offbeat mask.
+    { index: 0, assetId: "factory.kick.pop" },
+    { index: 1, assetId: "factory.kick.punch" },
+    { index: 4, assetId: "factory.snare.punch" },
+    { index: 8, assetId: "factory.hat.closed" },
+    { index: 10, assetId: "factory.hat.open.short" },
+    { index: 6, assetId: "factory.clap.pop" },
+  ],
+  latin: [
+    // The Latin kit: the warm deep kick (the bass drum role), the soft snare
+    // for brushed work, and the soft closed hat where a güira would sit.
+    // The hand-drum voice lives on the tom pads (12/13) which the default
+    // kit already carries — no swap needed there.
+    { index: 0, assetId: "factory.kick.deep" },
+    { index: 4, assetId: "factory.snare.main" },
+    { index: 7, assetId: "factory.shaker.soft" },
+    { index: 8, assetId: "factory.hat.closed.soft" },
+  ],
 };
 
 /**
@@ -221,6 +259,17 @@ export const GENRE_FEEL: Partial<
     // composition (the "complete mistake" was a sequencer, per Derrick May).
     detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
     postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.22 },
+    // Chiptune is a SEQUENCER, not a drummer - tracker rows land exactly on
+    // the grid, and the "humanity" comes from the arpeggio, not timing.
+    chiptune: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
+    // Eurodance is programmed dance music - tight, but the offbeat mask
+    // breathes a little (the 90s hardware sequencers had slight jitter).
+    eurodance: { humanizeTiming: 0.04, humanizeVelocity: 0.09 },
+    // Latin is PLAYED by a percussion section - the highest humanize in the
+    // library alongside postrock, because the hand drums are the genre.
+    latin: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
+    // Drone keeps a steady pulse (Reich-precise) but lets the texture breathe.
+    drone: { humanizeTiming: 0.1, humanizeVelocity: 0.16 },
   };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:
