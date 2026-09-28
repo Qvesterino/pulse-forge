@@ -5,7 +5,7 @@ import { parseIntentText } from "../src/intent/text-parser";
 import { planSongForm } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { GENRE_KIT_SWAPS, GENRE_FEEL } from "../src/intent/genre-kit";
-import { planMixProfile, genreMasterTiltDb } from "../src/intent/mix";
+import { genreMasterTiltDb } from "../src/intent/mix";
 import { selectProgression } from "../src/ai/harmony";
 import { FACTORY_ASSETS } from "../src/sample-library/manifest";
 import { resolveGroove } from "../src/ai/generator";
