@@ -2,7 +2,7 @@ import type { ProjectDocument, Pattern, NoteEvent, StepMeta } from "../project-m
 import type { GenerateOptions, GrooveData } from "./types";
 import { forkRandom, hashString } from "../shared/rng";
 import { uid } from "../shared/ids";
-import { getGroovesForGenre, getGrooveById, preferGroovesForWindow } from "./grooves/index";
+import { getGroovesForGenre, getGrooveById, preferGroovesByLanes, preferGroovesForWindow } from "./grooves/index";
 import { generateDrumPattern } from "./drums";
 import { generateMelodicParts } from "./melodic";
 import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "./role-targets";
@@ -59,6 +59,8 @@ export function resolveGrooveSeeded(
   seed: string,
   /** Artist tempo pocket: narrows the eligible grooves before the hash pick. */
   grooveBpmWindow?: [number, number] | null,
+  /** Artist groove lanes: refines the tempo pocket to the lanes they occupy. */
+  grooveLanes?: readonly string[] | null,
 ): GrooveData {
   if (style) {
     const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, "")}`);
@@ -72,7 +74,14 @@ export function resolveGrooveSeeded(
   // rendezvous pick. A seed that already resolved inside the window keeps its
   // groove; only seeds that would have fallen outside move. No window, or a
   // window nothing overlaps, leaves the candidate set exactly as it was.
-  let grooves = preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow);
+  // Tempo first, then lanes: the window says which tempos are allowed, the
+  // lanes say which grooves the artist actually occupies inside them. Each
+  // filter is a refinement that falls back to its input, so a profile that
+  // over-specifies one of them still resolves on the other.
+  let grooves = preferGroovesByLanes(
+    preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow),
+    grooveLanes,
+  );
   if (grooves.length === 0) {
     // Fallback for unknown / mistyped genres — never let the indexed lookup
     // dereference `undefined.id` and throw into the generator pipeline.
@@ -127,7 +136,13 @@ export function resolveEffectiveSeed(doc: ProjectDocument, options: GenerateOpti
  */
 export function resolveGrooveForGeneration(doc: ProjectDocument, options: GenerateOptions): GrooveData {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
-  return resolveGrooveSeeded(options.genre, options.style, effectiveSeed, options.grooveBpmWindow ?? null);
+  return resolveGrooveSeeded(
+    options.genre,
+    options.style,
+    effectiveSeed,
+    options.grooveBpmWindow ?? null,
+    options.grooveLanes ?? null,
+  );
 }
 
 export interface DiceLocks {

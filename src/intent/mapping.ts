@@ -24,6 +24,20 @@ function artistGrooveWindow(intent: IntentSpec): [number, number] | null {
 }
 
 /**
+ * The artist groove lanes, from the same profile as the tempo window.
+ *
+ * Returns null when no artist matched or the profile declares no lanes, so
+ * an artist without lane data behaves exactly as before this existed — the
+ * tempo pocket still narrows, there is just no second filter.
+ */
+function artistGrooveLanes(intent: IntentSpec): readonly string[] | null {
+  if (!intent.artist) return null;
+  const profile = getArtistProfile(normalizeArtistSlug(intent.artist));
+  const lanes = profile?.grooveLanes;
+  return lanes && lanes.length > 0 ? lanes : null;
+}
+
+/**
  * Derive engine-facing GenerateOptions from an IntentSpec with
  * energy/density/complexity/variation mapping.
  *
@@ -55,7 +69,12 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
   // default sliders ("travis scott type beat", nothing else) would silently
   // lose its pocket and fall back to whichever groove the hash favoured.
   const grooveWindow = artistGrooveWindow(intent);
-  const baseWithWindow: GenerateOptions = grooveWindow ? { ...base, grooveBpmWindow: grooveWindow } : base;
+  const grooveLanes = artistGrooveLanes(intent);
+  const baseWithWindow: GenerateOptions = {
+    ...base,
+    ...(grooveWindow ? { grooveBpmWindow: grooveWindow } : {}),
+    ...(grooveLanes ? { grooveLanes } : {}),
+  };
   if (isDefaultEnergy && isDefaultDensity && isDefaultComplexity && isDefaultVariation && isDefaultMood) {
     return baseWithWindow;
   }

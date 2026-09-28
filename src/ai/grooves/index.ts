@@ -88,6 +88,36 @@ export function preferGroovesForWindow(
   return within.length > 0 ? within : grooves;
 }
 
+/**
+ * Narrow a genre's grooves to a set of named lanes.
+ *
+ * WHY ON TOP OF THE BPM WINDOW: the artist profiles already narrow by tempo
+ * (preferGroovesForWindow), but a genre can hold a dozen lanes across the
+ * same tempo band. "Metro boomin type beat" wants the orchestral lane, not
+ * the hyphy one, and both sit at 130-145. Tempo alone cannot separate them;
+ * the lane name is the only signal that does.
+ *
+ * Behaves like a REFINEMENT, not a replacement: the candidate list arriving
+ * here is already tempo-narrowed, and this only intersects it further. Lanes
+ * that are not in the list simply do not match, and a lane set that matches
+ * NOTHING returns the incoming list unchanged — an artist whose lanes were
+ * renamed keeps working on the tempo pocket alone rather than silently
+ * losing every groove.
+ */
+export function preferGroovesByLanes(
+  grooves: readonly GrooveData[],
+  lanes: readonly string[] | null | undefined,
+): readonly GrooveData[] {
+  if (!lanes || lanes.length === 0 || grooves.length <= 1) return grooves;
+  const wanted = new Set(lanes.map((lane) => lane.trim().toLowerCase()).filter(Boolean));
+  if (wanted.size === 0) return grooves;
+  const within = grooves.filter((groove) => {
+    const lane = groove.id.split(".").slice(1).join(".");
+    return wanted.has(lane);
+  });
+  return within.length > 0 ? within : grooves;
+}
+
 /** Get a specific groove by id */
 export function getGrooveById(id: string): GrooveData | undefined {
   return GROOVE_LIBRARY.find((g) => g.id === id);

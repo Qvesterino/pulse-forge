@@ -73,6 +73,7 @@
     "build:pcm-host": "node scripts/build-pcm-host.mjs",
     "build:pcm-worklet": "node scripts/build-pcm-worklet.mjs",
     "sweep:claps": "node scripts/sweep-claps.mjs",
+    "soak:asio": "node scripts/soak-asio.mjs",
     "build:mrt2-windows-host": "node scripts/build-mrt2-windows-host.mjs",
     "benchmark:mrt2:windows": "node scripts/benchmark-mrt2-windows.mjs",
     "create:mrt2:windows:manifest": "node scripts/create-mrt2-windows-manifest.mjs",

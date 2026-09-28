@@ -19,6 +19,14 @@ import {
   type ExportFormat,
   type TransportAction,
 } from "./exact";
+import {
+  parseAutomateIntent,
+  parseGrooveIntent,
+  parseMarkerIntent,
+  type AutomateIntent,
+  type GrooveIntent,
+  type MarkerIntent,
+} from "./studio-words";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
@@ -209,6 +217,9 @@ export type RoutedIntent =
   | { kind: "save" }
   | { kind: "export"; format: ExportFormat }
   | { kind: "record"; arm: boolean }
+  | { kind: "grooveIntent"; intent: GrooveIntent }
+  | { kind: "automateIntent"; intent: AutomateIntent }
+  | { kind: "markerIntent"; intent: MarkerIntent }
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
@@ -287,6 +298,28 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const recordIntent = parseRecordIntent(text);
   if (recordIntent) {
     return { kind: "record", arm: recordIntent.arm };
+  }
+  // STUDIO WORDS — groove/swing, gain automation ramps, markers. Unambiguous
+  // command verbs (automate/groove/marker), so the gate is genre-only:
+  // "more swing on a dark techno beat" is a generation prompt, not a groove
+  // ask (a detected "bass" chip must NOT block "automate the bass volume").
+  const studioPattern = parseIntentText(text);
+  const studioGenreSignal = Boolean(
+    studioPattern.input.genre || studioPattern.detected.some((chip) => chip.startsWith("♪")),
+  );
+  if (!studioGenreSignal) {
+    const grooveIntent = parseGrooveIntent(text);
+    if (grooveIntent) {
+      return { kind: "grooveIntent", intent: grooveIntent };
+    }
+    const automateIntent = parseAutomateIntent(text);
+    if (automateIntent) {
+      return { kind: "automateIntent", intent: automateIntent };
+    }
+    const markerIntent = parseMarkerIntent(text);
+    if (markerIntent) {
+      return { kind: "markerIntent", intent: markerIntent };
+    }
   }
   if (doc.scenes.length > 0) {
     // CLIP-LEVEL ops first ("copy the intro clip to bar 5", "trim the clip

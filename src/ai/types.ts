@@ -86,6 +86,14 @@ export interface GenerateOptions {
    * candidates and the user range still clamps the resulting number.
    */
   grooveBpmWindow?: [number, number] | null;
+
+  /**
+   * Groove lanes the artist profile lives in, e.g. ["lux", "rolling"].
+   * Refines grooveBpmWindow: tempo narrows WHICH tempos are eligible, lanes
+   * narrow further to the ones the artist actually occupies, because a genre
+   * holds a dozen lanes inside one tempo band.
+   */
+  grooveLanes?: readonly string[] | null;
   /** Enabled semantic output roles. Omitted means all roles for backwards compatibility. */
   roles?: readonly GenerationRole[];
   /** Hard generation constraints. Omitted means the legacy permissive defaults. */

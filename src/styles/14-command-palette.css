@@ -431,6 +431,30 @@ a.brand:hover .brand-mark {
   font-size: 10px;
   color: var(--muted);
 }
+/* LOCAL INTENT MODEL chip — availability + explicit opt-in toggle. The
+   model is OFF by default (a hundreds-of-MB download class, see
+   docs/LOCAL-INTENT-MODEL.md); the chip is the only surface that flips it. */
+.intent-model-chip {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.intent-model-chip[data-state="loading"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.intent-model-chip[data-state="ready"] {
+  color: var(--accent);
+}
+.intent-model-chip[data-state="error"] {
+  color: #e06c75;
+}
 .intent-textarea {
   width: 100%;
   min-height: 60px;

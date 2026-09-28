@@ -119,6 +119,18 @@ export interface ArtistProfile {
   gear: readonly string[];
   /** Vibe / feeling descriptors for matching against user vibe words. */
   vibe: readonly string[];
+  /**
+   * Groove lanes this artist's pocket lives in, e.g. ["lux", "rolling"].
+   *
+   * This is the signal the tempo window cannot carry. A genre holds a dozen
+   * lanes inside ONE tempo band — trap alone has 26 — and "Metro boomin type
+   * beat" wants the orchestral lane while "DJ mustard type beat" wants the
+   * bounce, both at 130-145 BPM. `preferGroovesByLanes` intersects the
+   * already tempo-narrowed candidates with these, so the two filters compose
+   * rather than compete. Every id here is a real groove lane; a lane that
+   * does not exist simply never matches and costs nothing.
+   */
+  grooveLanes: readonly string[];
   /** Source URLs that back the profile (interview / gear list / breakdown). */
   sources: readonly string[];
   verificationStatus: VerificationStatus;
@@ -178,6 +190,8 @@ const AXL_BEATS: ArtistProfile = {
     "Soundtoys Decapitator (on 808 bus)",
     "Valhalla VintageVerb",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["uk", "bounce", "grime", "screwed"],
   vibe: ["menacing", "dark", "hypnotic", "cinematic", "tight"],
   sources: [
     "https://www.soundonsound.com/techniques/inside-track-pop-smoke-dior",
@@ -234,6 +248,8 @@ const DVRST: ArtistProfile = {
     "CamelCrusher (on cowbell bus)",
     "FabFilter Saturn 2 (saturation)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["drift", "memphis", "horror", "bounce"],
   vibe: ["dark", "hypnotic", "nostalgic", "eerie", "retro-futurist", "menacing"],
   sources: [
     "https://en.wikipedia.org/wiki/Drift_phonk",
@@ -284,9 +300,11 @@ const DJ_TAMEIL: ArtistProfile = {
     "FabFilter Pro-Q 3",
     "LFO Tool (sidechain + rhythmic gating)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["bounce", "club", "flip", "baltimore"],
   vibe: ["energetic", "bouncy", "danceable", "club", "tight", "forward"],
   sources: ["https://en.wikipedia.org/wiki/Jersey_club", "https://www.residentadvisor.net/features/3587"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -337,12 +355,14 @@ const TRAVIS_SCOTT: ArtistProfile = {
     "Valhalla VintageVerb",
     "Antares Auto-Tune EFX (vocal ad-lib bus)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["classic", "rolling", "bouncy", "lux"],
   vibe: ["cinematic", "dark", "hypnotic", "psychedelic", "atmospheric", "menacing"],
   sources: [
     "https://en.wikipedia.org/wiki/Travis_Scott_production_discography",
     "https://www.soundonsound.com/techniques/travis-scott-sicko-mode-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -384,15 +404,20 @@ const METRO_BOOMIN: ArtistProfile = {
     "Omnisphere",
     "FabFilter Pro-Q 3",
     "FabFilter Pro-L 2 (limiter)",
+    "Serato Sample (his stated #1 plugin — chopping)",
+    "Akai MPC 2000XL (modified, 8 outputs; central to his drum sound)",
+    "Spectrasonics Trilian (bass)",
     "Soundtoys Decapitator (parallel compression)",
     "RC-20 Retro Color (orchestral hit bus)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["lux", "classic", "rolling", "bassdubstep"],
   vibe: ["dark", "cinematic", "punchy", "menacing", "modern"],
   sources: [
     "https://en.wikipedia.org/wiki/Metro_Boomin",
     "https://www.soundonsound.com/techniques/metro-boomin-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -440,16 +465,20 @@ const J_DILLA: ArtistProfile = {
     "Ensoniq ASR-10 (sampling)",
     "SP-1200 (sampling — earlier work)",
     "Motu 2408 interface",
+    "Akai MPC 60 (the machine that made the swing adjustable per-note)",
+    "E-mu SP-1200 / SP-12 (earlier sampling)",
     "various outboard compressors (often run in series for color)",
     "vinyl sampling workflow (records as the source material)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["headnod", "oldschool", "crunk", "trapsoul"],
   vibe: ["dusty", "soulful", "swung", "intimate", "raw", "warm", "foundational"],
   sources: [
     "https://en.wikipedia.org/wiki/J_Dilla",
     "https://www.soundonsound.com/techniques/j-dilla-donuts-production",
     "https://www.dangermouse.net/dilla.html",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -503,6 +532,8 @@ const FRED_AGAIN: ArtistProfile = {
     "Soundtoys Decapitator (parallel vocal bus)",
     "iPhone Voice Memos (sample source)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["ukg", "progressive", "broken", "ukfunky"],
   vibe: ["emotional", "bright", "garage-revival", "energetic", "intimate", "warm", "modern"],
   sources: [
     "https://en.wikipedia.org/wiki/Fred_Again..",
@@ -582,6 +613,8 @@ const AG_COOK: ArtistProfile = {
     "Antares Auto-Tune (heavy on vocals)",
     "custom / bespoke Max4Live devices for PC Music workflow",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["progressive", "bubblegum", "synthpop", "futurebass"],
   vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
   sources: ["https://en.wikipedia.org/wiki/A._G._Cook", "https://www.residentadvisor.net/features/2942"],
   verificationStatus: "ai-inferred",
@@ -641,6 +674,8 @@ const DR_DRE: ArtistProfile = {
     "talkbox hardware (often a vintage model)",
     "Outboard compressors (Teletronix LA-2A, dbx 160)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["gfunk", "oldschool", "crunk", "screwed"],
   vibe: ["smooth", "funky", "deep", "west coast", "classic", "soulful", "iconic"],
   sources: [
     "https://en.wikipedia.org/wiki/Dr._Dre_production_discography",
@@ -696,6 +731,8 @@ const SKEPTA: ArtistProfile = {
     "Soundtoys Decapitator",
     "Valhalla VintageVerb",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["uk", "grime", "bounce", "dark"],
   vibe: ["aggressive", "dark", "British", "raw", "street", "no-nonsense", "authentic"],
   sources: ["https://en.wikipedia.org/wiki/Skepta", "https://www.complex.com/music/best-songs-skepta-produced"],
   verificationStatus: "ai-inferred",
@@ -755,9 +792,11 @@ const SEVEN_LIONS: ArtistProfile = {
     "Valhalla Supermassive",
     "LFO Tool (sidechain + rhythmic gating)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["liquid", "halftime", "roller", "neuro"],
   vibe: ["emotional", "ethereal", "euphoric", "cinematic", "melodic", "transcendent"],
   sources: ["https://en.wikipedia.org/wiki/Seven_Lions", "https://www.opheliarecords.com/"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -804,19 +843,21 @@ const BURIAL: ArtistProfile = {
     dynamicRange: "wide — NOT loud-mastered, character over loudness (anti-loudness stance)",
   },
   gear: [
-    "Reason (early work)",
-    "Soundforge",
+    "Sony Sound Forge (the Untrue tool — an audio editor, not a DAW)",
     "classic jungle / garage sample packs",
-    "vinyl sampling workflow",
-    "DAW with heavy audio manipulation (time-stretch, pitch-shift)",
+    "deliberately FAKE vinyl crackle (added to digital recordings, not sampled)",
+    "time-stretch + pitch-shift as the primary instrument",
+    "Lyn Collins 'Think (About It)' break (grewl influence)",
     "outboard processors for analog warmth (varies)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["twostep", "liquid", "halftime", "ambient"],
   vibe: ["melancholic", "dark", "nostalgic", "ghostly", "rainy", "London-night", "lonely", "haunted"],
   sources: [
     "https://en.wikipedia.org/wiki/Burial_(musician)",
     "https://www.theguardian.com/music/2007/jun/10/popandrock.electronicanddance",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -863,18 +904,23 @@ const SOPHIE: ArtistProfile = {
     dynamicRange: "moderate — modern loud-master with saturation character",
   },
   gear: [
-    "Ableton Live",
+    "Elektron Monomachine (her primary instrument — nearly every sound)",
+    "Xfer Serum (elementary waveforms, no samples)",
+    "Ableton Live (run as a single instrument)",
     "custom software synths (often self-built Max4Live devices)",
-    "Moog Subsequent 25 / Mother-32 (hardware bass)",
+    "Pioneer CDJ-2000 + DJM-800 (live set)",
+    "Yamaha NS-10M monitors",
     "Soundtoys Decapitator",
     "FabFilter Pro-Q 3",
     "Valhalla VintageVerb",
     "Valhalla Supermassive",
     "Pitchproof (pitch-correction for the alien vocal texture)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["bubblegum", "synthpop", "progressive", "gqom"],
   vibe: ["ethereal", "futuristic", "synthetic", "metallic", "transcendent", "otherworldly", "pioneering"],
   sources: ["https://en.wikipedia.org/wiki/SOPHIE_(musician)", "https://www.pitchfork.com/features/profile/sophie/"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -917,20 +963,24 @@ const DJ_MUSTARD: ArtistProfile = {
     dynamicRange: "moderate — modern West Coast club master",
   },
   gear: [
-    "FL Studio (transitioned from earlier DAW)",
-    "Nexus (early work)",
+    "Reason 6.5 (his DAW since 5/6)",
+    "reFX Nexus 2 (lead-influenced synths)",
+    "The YG 'Mustard on the beat, ho!' vocal tag sample",
+    "Akai MPC (drum programming)",
     "Sylenth1",
     "FabFilter Pro-Q 3",
     "RC-20 Retro Color (on clap bus)",
     "Soundtoys Decapitator (parallel on master)",
     "LFO Tool (subtle sidechain)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["bounce", "gfunk", "westcoast", "crunk"],
   vibe: ["bouncy", "minimal", "R&B-influenced", "club", "west coast revival", "iconic", "catchy"],
   sources: [
     "https://en.wikipedia.org/wiki/DJ_Mustard",
     "https://www.complex.com/music/best-songs-produced-by-dj-mustard",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -979,6 +1029,8 @@ const WILEY: ArtistProfile = {
     "Roland TR-808 samples",
     "minimal processing — character comes from raw sound sources",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["grime", "uk", "bounce", "dark"],
   vibe: ["raw", "pioneering", "pirate-radio", "aggressive", "authentic", "foundational", "London"],
   sources: ["https://en.wikipedia.org/wiki/Wiley_(musician)", "https://www.theguardian.com/music/wiley"],
   verificationStatus: "ai-inferred",
@@ -1009,7 +1061,7 @@ const EXCISION: ArtistProfile = {
       "white noise sweeps",
       "cinematic trailer impacts",
     ],
-    bpm: { typical: [148, 152], halfTime: [74, 76] },
+    bpm: { typical: [140, 152], halfTime: [74, 76] },
     keys: ["F minor", "G minor", "A minor", "atonal / keyless passages common"],
   },
   mix: {
@@ -1039,9 +1091,11 @@ const EXCISION: ArtistProfile = {
     "RC-20 Retro Color",
     "Valhalla VintageVerb (snare reverb tails)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["neuro", "jumpup", "techstep", "halftime"],
   vibe: ["aggressive", "mechanical", "heavy", "brutal", "industrial", "alien", "relentless"],
   sources: ["https://en.wikipedia.org/wiki/Excision_(DJs)", "https://www.dubstepforum.com/wiki/excision"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1067,7 +1121,7 @@ const ANYMA: ArtistProfile = {
       "synth pad recordings (Prophet, Prophet-style hardware)",
       "field recordings (rain, distant city, white noise washes)",
     ],
-    bpm: { typical: [122, 126] },
+    bpm: { typical: [124, 126] },
     keys: ["D minor", "F minor", "A minor", "C minor — often modal (Dorian, Aeolian)"],
   },
   mix: {
@@ -1092,15 +1146,18 @@ const ANYMA: ArtistProfile = {
     "Serum",
     "Pigments (Arturia)",
     "Massive X",
+    "Afterlife Records releases (124-125 BPM mode across the catalogue)",
     "Prophet Rev2 (hardware pad source — often sampled)",
     "FabFilter Pro-Q 3",
     "Valhalla VintageVerb",
     "Valhalla Supermassive",
     "RC-20 Retro Color (on pad bus)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["progressive", "melodic", "minimal", "driving"],
   vibe: ["hypnotic", "ethereal", "atmospheric", "transcendent", "euphoric", "cinematic", "afterhours"],
   sources: ["https://en.wikipedia.org/wiki/Anyma", "https://www.residentadvisor.net/features/3782"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1160,6 +1217,8 @@ const FLUME: ArtistProfile = {
     "Granulator II (Max4Live — for the granular vocal chops)",
     "Pitchproof (pitch-correction for the pitched vocal chops)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["futurebass", "synthpop", "progressive", "trance"],
   vibe: ["euphoric", "melodic", "atmospheric", "dreamy", "modern", "lush"],
   sources: [
     "https://en.wikipedia.org/wiki/Flume_(musician)",
@@ -1225,6 +1284,8 @@ const APHEX_TWIN: ArtistProfile = {
     "Mac (custom Max / software patches)",
     "Studer A800 (tape machine — used on his masters)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["liquid", "halftime", "breakbeat", "ambient"],
   vibe: ["experimental", "complex", "atmospheric", "pioneering", "intense", "beautiful", "haunting"],
   sources: [
     "https://en.wikipedia.org/wiki/Aphex_Twin",
@@ -1288,6 +1349,8 @@ const BOARDS_OF_CANADA: ArtistProfile = {
     "custom Max / MSP patches",
     "film archive libraries (educational footage — public domain)",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["ambient", "organic", "drifting", "melodic"],
   vibe: ["nostalgic", "melancholic", "lo-fi", "faded", "childhood memory", "hypnagogic", "warm", "familiar"],
   sources: ["https://en.wikipedia.org/wiki/Boards_of_Canada", "https://www.residentadvisor.net/features/179"],
   verificationStatus: "ai-inferred",
@@ -1346,6 +1409,8 @@ const LIL_UZI_VERT: ArtistProfile = {
     "Valhalla VintageVerb (vocal reverb tails)",
     "RC-20 Retro Color",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["bouncy", "lux", "pop", "bassdubstep"],
   vibe: ["emo", "ethereal", "melodic", "rebellious", "youthful", "dreamy", "punk-influenced"],
   sources: [
     "https://en.wikipedia.org/wiki/Lil_Uzi_Vert",
@@ -1408,6 +1473,8 @@ const KAYTRANADA: ArtistProfile = {
     "Soundtoys Decapitator (parallel on master)",
     "Valhalla VintageVerb",
   ],
+  /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
+  grooveLanes: ["ukg", "soulful", "broken", "funky"],
   vibe: ["lo-fi", "soulful", "smooth", "future R&B", "danceable", "warm", "swinging"],
   sources: ["https://en.wikipedia.org/wiki/Kaytranada", "https://www.residentadvisor.net/features/2481"],
   verificationStatus: "ai-inferred",

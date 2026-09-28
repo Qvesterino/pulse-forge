@@ -63,28 +63,38 @@ static IASIO *g_iasio = NULL;
 static ASIOBufferInfo g_infos[2];
 static long g_blockFrames = 0;
 static long g_channels = 2;
-static unsigned long g_targetSwitches = 0;
+static unsigned long g_totalFrames = 0;
+static unsigned long g_writtenFrames = 0;
 static unsigned long g_switches = 0;
 static unsigned long g_seq = 0;
 static int g_done = 0;
 static float *g_convert = NULL;
 static FILE *g_out = NULL;
 
-static void convertAndEmit(long index) {
+/* Emit exactly `count` frames (the FINAL block may be partial so the
+   delivered sample count matches the requested duration exactly). */
+static void convertAndEmit(long index, unsigned long count) {
   for (long ch = 0; ch < g_channels; ch++) {
     const short *src = (const short *)g_infos[ch].buffers[index];
     float *dst = g_convert + (size_t)ch * g_blockFrames;
-    for (long n = 0; n < g_blockFrames; n++) dst[n] = (float)(src[n] / 32768.0);
+    for (unsigned long n = 0; n < count; n++) dst[n] = (float)(src[n] / 32768.0);
   }
-  writeFrame(g_out, 1, g_seq++, g_convert, (unsigned long)(sizeof(float) * g_blockFrames * g_channels));
+  writeFrame(g_out, 1, g_seq++, g_convert, (unsigned long)(sizeof(float) * count * g_channels));
 }
 
 static void bufferSwitch(long index, ASIOBool directProcess) {
   (void)directProcess;
   if (g_done) return;
-  convertAndEmit(index);
+  const unsigned long remaining = g_totalFrames > g_writtenFrames ? g_totalFrames - g_writtenFrames : 0;
+  if (remaining == 0) {
+    g_done = 1;
+    return;
+  }
+  const unsigned long count = remaining < (unsigned long)g_blockFrames ? remaining : (unsigned long)g_blockFrames;
+  convertAndEmit(index, count);
+  g_writtenFrames += count;
   g_switches++;
-  if (g_switches >= g_targetSwitches) g_done = 1;
+  if (g_writtenFrames >= g_totalFrames) g_done = 1;
 }
 
 // The driver calls asioMessage() during createBuffers — a NULL there is an
@@ -271,8 +281,8 @@ int main(int argc, char **argv) {
            (long)rate, channels, g_blockFrames, driverName);
   writeJsonFrame(stdout, 2, event);
 
-  g_targetSwitches = (unsigned long)((rate * seconds) / g_blockFrames);
-  if (g_targetSwitches < 1) g_targetSwitches = 1;
+  g_totalFrames = (unsigned long)((double)rate * seconds);
+  if (g_totalFrames < (unsigned long)g_blockFrames) g_totalFrames = (unsigned long)g_blockFrames;
 
   // The fixture driver paces its callback thread with Sleep(blockMs); at
   // the default 15.6 ms Windows timer resolution that would starve the
@@ -298,7 +308,7 @@ int main(int argc, char **argv) {
 
   char stats[160];
   snprintf(stats, sizeof(stats),
-           "{\"framesWritten\":%lu,\"switches\":%lu,\"blockFrames\":%ld,\"done\":%s}", g_seq, g_switches,
+           "{\"framesWritten\":%lu,\"switches\":%lu,\"blockFrames\":%ld,\"done\":%s}", g_writtenFrames, g_switches,
            g_blockFrames, g_done ? "true" : "false");
   writeJsonFrame(stdout, 3, stats);
   writeJsonFrame(stdout, 4, "{}");
