@@ -23,9 +23,11 @@ import {
   parseAutomateIntent,
   parseGrooveIntent,
   parseMarkerIntent,
+  parseSectionGrooveIntent,
   type AutomateIntent,
   type GrooveIntent,
   type MarkerIntent,
+  type SectionGrooveIntent,
 } from "./studio-words";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
@@ -218,6 +220,7 @@ export type RoutedIntent =
   | { kind: "export"; format: ExportFormat }
   | { kind: "record"; arm: boolean }
   | { kind: "grooveIntent"; intent: GrooveIntent }
+  | { kind: "sectionGrooveIntent"; intent: SectionGrooveIntent }
   | { kind: "automateIntent"; intent: AutomateIntent }
   | { kind: "markerIntent"; intent: MarkerIntent }
   | { kind: "select"; target: ExactTarget }
@@ -308,6 +311,12 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
     studioPattern.input.genre || studioPattern.detected.some((chip) => chip.startsWith("♪")),
   );
   if (!studioGenreSignal) {
+    // SECTION-SCOPED groove first ("more swing in the drop") — more specific
+    // than the global groove ask; falls through to global when unscoped.
+    const sectionGrooveIntent = parseSectionGrooveIntent(text);
+    if (sectionGrooveIntent) {
+      return { kind: "sectionGrooveIntent", intent: sectionGrooveIntent };
+    }
     const grooveIntent = parseGrooveIntent(text);
     if (grooveIntent) {
       return { kind: "grooveIntent", intent: grooveIntent };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
@@ -48,6 +48,7 @@ import {
   applyAutomateIntent,
   applyGrooveIntent,
   applyMarkerIntent,
+  applySectionGrooveIntent,
   grooveReadback,
   markerReadback,
 } from "../intent/studio-words";
@@ -126,7 +127,12 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
-import { AudiotoolNexusExport } from "./AudiotoolNexusExport";
+
+// The Audiotool connector is an explicit opt-in path. Keep its UI and adapter
+// out of the regular Intent bundle until the user chooses to export a take.
+const AudiotoolNexusExport = lazy(() =>
+  import("./AudiotoolNexusExport").then((module) => ({ default: module.AudiotoolNexusExport })),
+);
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
@@ -2172,6 +2178,16 @@ export function IntentPanel() {
         // the recorder's own ONE-undo-frame lifecycle.
         services.patternRecorder.setArmed(route.arm);
         setStatus(route.arm ? "⏺ REC armed — play to lay it in, stop ends the take" : "⏹ recording disarmed");
+      } else if (route.kind === "sectionGrooveIntent") {
+        // "more swing in the drop" — the swing DELTA baked into the section
+        // pattern's odd 16ths (microtiming), one undo step.
+        const command = applySectionGrooveIntent(doc, route.intent);
+        if (!command) {
+          setError(`no pattern for the "${route.intent.role}" section`);
+          return;
+        }
+        services.store.execute(command);
+        setStatus(`🥁 ${command.label} (one undo step)`);
       } else if (route.kind === "grooveIntent") {
         // "more swing" / "tighter groove" / "swing 60%" — project groove,
         // ONE undo step, read-back shows the landing values.
@@ -3047,16 +3063,24 @@ export function IntentPanel() {
         </div>
       )}
       {audiotoolExport && (
-        <AudiotoolNexusExport
-          key={audiotoolExport.candidateIndex}
-          pattern={audiotoolExport.pattern}
-          tracks={audiotoolExport.sourceDoc.tracks}
-          timeSignature={audiotoolExport.sourceDoc.timeSignature}
-          sourceBpm={audiotoolExport.sourceDoc.bpm}
-          candidateLabel={`#${audiotoolExport.candidateIndex + 1}`}
-          isSourceCurrent={() => services.store.getDoc() === audiotoolExport.sourceDoc}
-          onClose={() => setAudiotoolExport(null)}
-        />
+        <Suspense
+          fallback={
+            <div className="intent-song-draft" role="status">
+              Načítavam Audiotool connector…
+            </div>
+          }
+        >
+          <AudiotoolNexusExport
+            key={audiotoolExport.candidateIndex}
+            pattern={audiotoolExport.pattern}
+            tracks={audiotoolExport.sourceDoc.tracks}
+            timeSignature={audiotoolExport.sourceDoc.timeSignature}
+            sourceBpm={audiotoolExport.sourceDoc.bpm}
+            candidateLabel={`#${audiotoolExport.candidateIndex + 1}`}
+            isSourceCurrent={() => services.store.getDoc() === audiotoolExport.sourceDoc}
+            onClose={() => setAudiotoolExport(null)}
+          />
+        </Suspense>
       )}
       {bankResult && candidates && candidates.length > 1 && (
         <ProducerDnaCompare

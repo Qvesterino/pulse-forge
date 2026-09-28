@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
-import { parseGrooveIntent, applyGrooveIntent, applyAutomateIntent, applyMarkerIntent, grooveReadback } from "../src/intent/studio-words";
+import {
+  parseGrooveIntent,
+  applyGrooveIntent,
+  applyAutomateIntent,
+  applyMarkerIntent,
+  applySectionGrooveIntent,
+  grooveReadback,
+} from "../src/intent/studio-words";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
+import { createScene, setSceneRole } from "../src/commands/commands";
+import type { ProjectDocument } from "../src/project-model/types";
 
 /**
  * STUDIO WORDS — groove/swing, gain automation ramps, markers.
@@ -153,5 +162,89 @@ describe("marker intents", () => {
     // empty again → applyMarkerIntent returns null (nothing within a bar)
     const command = applyMarkerIntent(store.doc, { action: "remove", bar: 8 });
     expect(command).toBeNull();
+  });
+});
+
+// ─── SECTION GROOVE — swing baked into a named section's pattern ────────────
+
+describe("section groove intents", () => {
+  /** house doc + a drop-role scene with its own 16-step pattern. */
+  function withDropScene() {
+    const doc = freshDoc();
+    const drums = doc.tracks.find((t) => t.kind === "drum")!;
+    const padId = drums.pads[0].id;
+    const scene = createScene(doc, "Drop X").execute(doc);
+    const withRole = setSceneRole(scene, scene.scenes[scene.scenes.length - 1].id, "drop").execute(scene);
+    const dropScene = withRole.scenes[withRole.scenes.length - 1];
+    if (!dropScene) throw new Error("fixture: drop scene was not created");
+    const dropPattern = withRole.patterns.find((candidate) => candidate.id === dropScene.patternId);
+    if (!dropPattern) throw new Error("fixture: drop scene pattern was not created");
+    const patternId = "pattern-drop-x";
+    const pattern = {
+      ...dropPattern,
+      id: patternId,
+      name: "Drop Pattern",
+      stepCount: 16,
+      rows: { [padId]: new Array(16).fill(0).map((_, i) => (i % 2 === 1 ? 0.8 : 0)) },
+    };
+    return {
+      ...withRole,
+      patterns: withRole.patterns.map((candidate) => (candidate.id === dropPattern.id ? pattern : candidate)),
+      scenes: withRole.scenes.map((candidate) =>
+        candidate.id === dropScene.id ? { ...candidate, patternId } : candidate,
+      ),
+    } as ProjectDocument;
+  }
+
+  function executeSectionGroove(store: ProjectStore, text: string): void {
+    const route = routeIntentText(text, store.doc);
+    if (route.kind !== "sectionGrooveIntent") throw new Error("expected sectionGroove");
+    const command = applySectionGrooveIntent(store.doc, route.intent);
+    if (!command) throw new Error("no section groove command");
+    store.execute(command);
+  }
+
+  it("more swing in the drop routes sectionGrooveIntent with role", () => {
+    const doc = withDropScene();
+    const route = routeIntentText("more swing in the drop", doc);
+    expect(route.kind).toBe("sectionGrooveIntent");
+    if (route.kind !== "sectionGrooveIntent") throw new Error("expected sectionGroove");
+    expect(route.intent.role).toBe("drop");
+    expect(route.intent.direction).toBe("swingUp");
+  });
+
+  it("bakes microtiming into ODD steps of the section pattern; even steps untouched", () => {
+    const store = new ProjectStore(withDropScene());
+    executeSectionGroove(store, "more swing in the drop");
+    const pattern = store.doc.patterns.find((p) => p.id === "pattern-drop-x")!;
+    const padId = Object.keys(pattern.rows)[0] ?? "";
+    let oddBaked = 0;
+    let evenTouched = false;
+    for (let step = 0; step < 16; step++) {
+      const micro = pattern.stepMeta?.[padId]?.[step]?.microtiming ?? 0;
+      if (step % 2 === 1) {
+        if (micro > 0) oddBaked += 1;
+      } else if (micro !== 0) evenTouched = true;
+    }
+    expect(oddBaked).toBeGreaterThan(0);
+    expect(evenTouched).toBe(false);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    const restored = store.doc.patterns.find((p) => p.id === "pattern-drop-x")!;
+    const restoredPadId = Object.keys(restored.stepMeta ?? {})[0] ?? "";
+    expect(restored.stepMeta?.[restoredPadId]?.[1]?.microtiming ?? 0).toBe(0);
+  });
+
+  it("set absolute: 'swing 65% in the drop' lands the ×5/3 converted micro", () => {
+    const store = new ProjectStore(withDropScene());
+    const route = routeIntentText("swing 65% in the drop", store.doc);
+    if (route.kind !== "sectionGrooveIntent") throw new Error("expected sectionGroove");
+    expect(route.intent.direction).toBe("set");
+    expect(route.intent.swingPercent).toBe(65);
+    executeSectionGroove(store, "swing 65% in the drop");
+    const pattern = store.doc.patterns.find((p) => p.id === "pattern-drop-x")!;
+    const padId = Object.keys(pattern.rows)[0] ?? "";
+    const expected = Math.min(1, 0.65 * (5 / 3));
+    expect(pattern.stepMeta?.[padId]?.[1]?.microtiming).toBeCloseTo(expected, 3);
   });
 });

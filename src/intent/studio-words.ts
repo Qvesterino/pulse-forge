@@ -192,3 +192,131 @@ export function markerReadback(after: ProjectDocument, intent: MarkerIntent): st
   const near = after.markers.filter((m) => Math.abs(m.tick - tick) < 4 * 480);
   return near.map((m) => `${m.name}@${Math.round(m.tick / 480 / 4) + 1}`).join(", ");
 }
+
+// ── SECTION GROOVE — swing baked into a named section's pattern ─────────────
+
+import type { DrumTrack } from "../project-model/types";
+import { resolveSceneTarget, type ArrangeRole } from "./arrangeWords";
+import { setStepMeta } from "../commands/commands";
+
+/**
+ * "more swing in the drop", "tighter groove on the intro", "swing 65% in the
+ * drop" — SECTION-SCOPED groove. The engine applies global swing live from
+ * doc.groove (swingOffsetTicks on odd 16ths), so a section ask bakes the
+ * DELTA into the section pattern's step metadata instead: odd steps get
+ * microtiming (1 unit = MAX_MICRO_TIMING = 0.3 step = 36 ticks, while swing
+ * 1.0 delays an odd step by 60 ticks — hence the ×5/3 conversion). Even
+ * steps are untouched. ONE undo step via snapshot; even steps and other
+ * patterns are never modified.
+ */
+
+export interface SectionGrooveIntent {
+  role: string;
+  direction: "swingUp" | "swingDown" | "tighter" | "set";
+  swingPercent?: number;
+}
+
+const SECTION_GROOVE_ASK = /\b(?:swing|groove|humaniz\w*|swingu|groovu)\b/i;
+
+const ROLE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/intro|uvod/, "intro"],
+  [/build|stavb/, "build"],
+  [/chorus|hook|refren/, "chorus"],
+  [/verse|zloh/, "verse"],
+  [/bridge|most/, "bridge"],
+  [/drop/, "drop"],
+  [/break|brejk/, "break"],
+  [/outro|zaver|koncovka/, "outro"],
+  [/fill|veto/, "fill"],
+];
+
+export function parseSectionGrooveIntent(text: string): SectionGrooveIntent | null {
+  if (!SECTION_GROOVE_ASK.test(text)) return null;
+  // the role must be a NAMED SPAN, not the object of another verb
+  let role: string | null = null;
+  for (const [re, name] of ROLE_WORDS) {
+    if (re.test(text)) {
+      role = name;
+      break;
+    }
+  }
+  if (!role) return null;
+  // scoped connector: "in|on|through the drop", "na dropu", "v intro"
+  if (!/\b(?:in|on|through|na|v|cez|po)\b/i.test(text)) return null;
+  // competing scene ops must not be hijacked ("remove the drop" stays arrange)
+  if (/\b(?:remove|delete|duplicate|shorten|extend|add)\b/i.test(text)) return null;
+
+  const absolute = /\b(?:swing|groove)\s*(?:to|=|na)?\s*(\d{1,3})\s*%?/i.exec(text);
+  if (absolute) {
+    return { role, direction: "set", swingPercent: Math.max(0, Math.min(100, Number(absolute[1]))) };
+  }
+  if (/\btight(?:er|en)\b/i.test(text)) return { role, direction: "tighter" };
+  if (/\b(?:more|viac)\b/i.test(text)) return { role, direction: "swingUp" };
+  if (/\b(?:less|menej)\b/i.test(text)) return { role, direction: "swingDown" };
+  return null;
+}
+
+/** swing units → stepMeta microtiming units (odd 16ths): ×(60/36) = ×5/3. */
+const SWING_TO_MICRO = 5 / 3;
+const MICRO_STEP = 0.1 * SWING_TO_MICRO;
+
+export function applySectionGrooveIntent(doc: ProjectDocument, intent: SectionGrooveIntent): Command | null {
+  const role = intent.role as ArrangeRole;
+  const scene = resolveSceneTarget(doc, intent.role, [role]);
+  if (!scene) return null;
+  const pattern = doc.patterns.find((p) => p.id === scene.patternId);
+  if (!pattern) return null;
+  const drumTracks = doc.tracks.filter((t): t is DrumTrack => t.kind === "drum");
+  if (drumTracks.length === 0) return null;
+
+  let next = doc;
+  let baked = 0;
+  for (const track of drumTracks) {
+    for (const pad of track.pads) {
+      for (let stepIndex = 1; stepIndex < pattern.stepCount; stepIndex += 2) {
+        const meta = pattern.stepMeta?.[pad.id]?.[stepIndex];
+        const current = meta?.microtiming ?? 0;
+        let delta: number;
+        if (intent.direction === "set") {
+          const target = ((intent.swingPercent ?? 0) / 100) * SWING_TO_MICRO;
+          delta = target - current;
+        } else if (intent.direction === "swingUp") delta = MICRO_STEP;
+        else if (intent.direction === "swingDown") delta = -MICRO_STEP;
+        else delta = -MICRO_STEP * 2.5; // tighter
+        const clamped = Math.max(-1, Math.min(1, current + delta));
+        if (Math.abs(clamped - current) < 0.001) continue;
+        const hasVelocity = (pattern.rows[pad.id]?.[stepIndex] ?? 0) > 0;
+        if (!hasVelocity && intent.direction !== "set") continue; // only audible steps
+        next = setStepMeta(next, pattern.id, pad.id, stepIndex, {
+          microtiming: Math.round(clamped * 1000) / 1000,
+        }).execute(next);
+        baked += 1;
+      }
+    }
+  }
+  if (baked === 0) return null;
+  return snapshot(
+    "applySectionGrooveIntent",
+    `Groove ${intent.direction === "set" ? `=${intent.swingPercent}%` : intent.direction} → ${scene.name} (${baked} steps)`,
+    doc,
+    next,
+  );
+}
+
+/** Read-back: average baked microtiming on odd steps of the section pattern. */
+export function sectionGrooveReadback(after: ProjectDocument, intent: SectionGrooveIntent): string {
+  const scene = after.scenes.find((s) => s.name.toLowerCase().includes(intent.role));
+  const pattern = after.patterns.find((p) => p.id === scene?.patternId);
+  if (!pattern) return "";
+  const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  if (!drum) return "";
+  let sum = 0;
+  let count = 0;
+  for (const pad of drum.pads) {
+    for (let stepIndex = 1; stepIndex < pattern.stepCount; stepIndex += 2) {
+      sum += Math.abs(pattern.stepMeta?.[pad.id]?.[stepIndex]?.microtiming ?? 0);
+      count += 1;
+    }
+  }
+  return count > 0 ? `micro ${Math.round((sum / count) * 1000) / 1000}` : "";
+}
