@@ -86,7 +86,7 @@ clean JSON or a partial timeout, never a hang.
 | Timecode math (DF/NDF, seconds, samples, BWF bridge) | Shipped                    |
 | Transport chase to external timecode                 | Not shipped (wave 2)       |
 | ASIO driver discovery (registry + COM probe)         | Shipped (Windows, desktop) |
-| ASIO streaming (fixture driver -> PCM frames over the ADR 0018 pipe) | Shipped (wave 2.5): acceptance-tested against the SDK sample driver built as a 64-bit fixture DLL; streaming from REAL hardware drivers and the 300 s soak remain owner gates |
+| ASIO streaming (fixture driver -> PCM frames over the ADR 0018 pipe) | Shipped (wave 2.5): acceptance-tested against the SDK sample driver built as a 64-bit fixture DLL. **300 s soak PASS** (`npm run soak:asio`, repeatable): 14 400 000 / 14 400 000 frames exact, zero seq gaps, zero non-finite, zero out-of-band, clean EOF. Streaming from REAL hardware drivers remains an owner gate: all 5 registered drivers on the dev machine (ASIO4ALL, FL Studio, M-Audio M-Track 2X2, Magix Low Latency, UA Volt) register 32-bit-only DLLs unloadable from a 64-bit process — a 64-bit universal driver (e.g. FlexASIO) or vendor 64-bit update unblocks it |
 | Transport chase to external timecode                 | Shipped (wave 2): full frames jump immediately, playing drift re-syncs throttled (0.5 s / 2 s), stopped frames move the pause position; armed from the statusbar MTC chip. TC 00:00:00:00 = tick 0, an offset knob is future work |
 | LTC decode/emission, MTC emission                    | Not shipped                |
 
