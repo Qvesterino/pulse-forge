@@ -67,6 +67,7 @@ hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="b
   <button data-suite="intent">INTENT učenie (rank ★)</button>
   <button data-suite="conditioning">CONDITIONING (v1 vs v3)</button>
   <button data-suite="grooves">GROOVY ★ (nové)</button>
+  <button data-suite="packy">PACKY (staré packy)</button>
 </div>
 
 <div id="playerWrap"><audio id="player" controls preload="auto" style="width:100%"></audio></div>
@@ -77,6 +78,7 @@ hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="b
 <div class="suite" id="suite-intent"></div>
 <div class="suite" id="suite-conditioning"></div>
 <div class="suite" id="suite-grooves"></div>
+<div class="suite" id="suite-packy"></div>
 
 <p class="hint" id="verdicts-info">verdikty: …</p>
 
@@ -564,6 +566,75 @@ fetch("../lanes/lanes.json")
     const root = document.getElementById("suite-lanes");
     root.innerHTML = '<div class="hint">lanes/lanes.json nenájdené — spusti <b>node scripts/render-lane-listening.mjs</b></div>';
   });
+
+// ── PACKY suite — the older flat packs under one generic tab ───────────────
+// Same three verdicts as LANES; one verdict per FILE (these packs carry no
+// manifest, the filename is the identity).
+const packyRatings = new Map(); // "pack|file" -> verdict
+
+async function buildPacky() {
+  const root = document.getElementById("suite-packy");
+  let packs;
+  try {
+    packs = (await (await fetch("/api/packs")).json()).packs;
+  } catch {
+    root.innerHTML = '<div class="hint">server bez /api/packs — spusti čerstvý listening:serve</div>';
+    return;
+  }
+  const bar = document.createElement("div");
+  bar.className = "toolbar";
+  const select = document.createElement("select");
+  select.style.cssText = "font:inherit;background:#1c1c1c;color:#ccc;border:1px solid #333;border-radius:4px;padding:5px 8px";
+  for (const pack of packs) {
+    const option = document.createElement("option");
+    option.value = pack.name;
+    option.textContent = pack.name + " (" + pack.files.length + " WAV)";
+    select.append(option);
+  }
+  bar.append(select);
+  const list = document.createElement("div");
+  bar.append(list);
+  root.append(bar);
+
+  const renderPack = (pack) => {
+    list.innerHTML = "";
+    for (const file of pack.files) {
+      const key = pack.name + "|" + file;
+      const row = document.createElement("table");
+      row.style.width = "100%";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td style='width:52%'><b>" + file + "</b></td>" +
+        "<td>" +
+        '<button class="play">▶</button> ' +
+        '<button class="v-fits">✓ sedí</button> ' +
+        '<button class="v-off">✗ nesedí</button> ' +
+        '<button class="v-hit">★ hit</button>' +
+        "</td><td class='packy-sent sent'>" + (packyRatings.get(key) ?? "") + "</td>";
+      tr.querySelector(".play").addEventListener("click", () => playFile("/pack/" + pack.name + "/" + file, tr));
+      const rate = (verdict) => {
+        packyRatings.set(key, verdict);
+        tr.querySelector(".packy-sent").textContent = verdict;
+        postVerdict({ kind: "pack-item", pack: pack.name, file, verdict, blind: BLIND, savedAt: Date.now() })
+          .then(() => loadVerdictCount())
+          .catch(() => {
+            tr.querySelector(".packy-sent").textContent = "✗ server nefunguje";
+          });
+      };
+      tr.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
+      tr.querySelector(".v-off").addEventListener("click", () => rate("off"));
+      tr.querySelector(".v-hit").addEventListener("click", () => rate("hit"));
+      row.append(tr);
+      list.append(row);
+    }
+  };
+  renderPack(packs[0] ?? { name: "", files: [] });
+  select.addEventListener("change", () => {
+    const pack = packs.find((p) => p.name === select.value);
+    if (pack) renderPack(pack);
+  });
+}
+buildPacky();
 loadVerdictCount();
 
 document.querySelectorAll(".tabs button").forEach((btn) => {

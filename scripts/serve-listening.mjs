@@ -3,7 +3,7 @@
  * http://127.0.0.1:5179  (serves listening/ with correct WAV mime type).
  */
 import { createServer } from "node:http";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile, readdir } from "node:fs/promises";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,14 @@ const MIME = {
 };
 
 const VERDICTS = path.join(SERVE_ROOT, "verdicts.json");
+
+// Flat listening packs that live OUTSIDE listening/ — the PACKY tab reads
+// them through /api/packs + /pack/<name>/<file>. Only whitelisted names.
+const PACKS = {
+  "groove-listening": path.join(ROOT, "groove-listening"),
+  "v1v3-listening": path.join(ROOT, "v1v3-listening"),
+  "golden-review": path.join(ROOT, "golden-review"),
+};
 
 const readVerdicts = async () => {
   try {
@@ -72,6 +80,38 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ count: verdicts.length, verdicts }));
       return;
+    }
+    // PACKS — the flat listening packs, listed and served for the PACKY tab.
+    if (url.pathname === "/api/packs" && req.method === "GET") {
+      const packs = [];
+      for (const [name, dir] of Object.entries(PACKS)) {
+        try {
+          const entries = await readdir(dir);
+          packs.push({ name, files: entries.filter((f) => f.endsWith(".wav")).sort() });
+        } catch {
+          packs.push({ name, files: [] }); // not rendered on this machine
+        }
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ packs }));
+      return;
+    }
+    {
+      const packMatch = /^\/pack\/([\w-]+)\/([^/]+)$/.exec(url.pathname);
+      if (packMatch) {
+        const packDir = PACKS[packMatch[1]];
+        if (!packDir) throw new Error("unknown pack");
+        const abs = path.join(packDir, path.basename(packMatch[2]));
+        if (!abs.startsWith(packDir)) throw new Error("traversal");
+        const data = await readFile(abs);
+        res.writeHead(200, {
+          "content-type": MIME[path.extname(abs).toLowerCase()] ?? "application/octet-stream",
+          "content-length": data.length,
+          "accept-ranges": "none",
+        });
+        res.end(data);
+        return;
+      }
     }
     let rel = decodeURIComponent(url.pathname);
     if (rel === "/" || rel === "/morph/") rel = "/morph/index.html";
