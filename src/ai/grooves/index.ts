@@ -19,6 +19,12 @@ import { POSTROCK_GROOVES } from "./postrock";
 import { CHIPTUNE_GROOVES } from "./chiptune";
 import { EURODANCE_GROOVES } from "./eurodance";
 import { LATIN_GROOVES } from "./latin";
+import { AFRICAN_GROOVES } from "./african";
+import { FOLK_GROOVES } from "./folk";
+import { JAZZ_GROOVES } from "./jazz";
+import { BASS_EXOTICS_GROOVES } from "./bass-exotics";
+import { BALKAN_GROOVES } from "./balkan";
+import { EMO_NICHE_GROOVES } from "./emo-niche";
 import { DRONE_GROOVES } from "./drone";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
@@ -42,6 +48,12 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...CHIPTUNE_GROOVES,
   ...EURODANCE_GROOVES,
   ...LATIN_GROOVES,
+  ...AFRICAN_GROOVES,
+  ...FOLK_GROOVES,
+  ...JAZZ_GROOVES,
+  ...BASS_EXOTICS_GROOVES,
+  ...BALKAN_GROOVES,
+  ...EMO_NICHE_GROOVES,
   ...DRONE_GROOVES,
 ];
 

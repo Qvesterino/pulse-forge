@@ -52,6 +52,8 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Piano house - the 90s/2020s piano-led floor (house.pianohouse). Before
   // the generic "house" entry below.
   [/\bpiano house\b|\bpianohouse\b|\bpiano (?:club|groove)\b/, "house"],
+  // Breakbeat hardcore is a Eurodance/rave lineage, not generic house breaks.
+  [/\bbreakbeat\s+hardcore\b/, "eurodance"],
   // Breakbeat / big beat - the breaks floor (house.breakbeat). "breaks" and
   // "breakbeat" both land here; "broken beat" stays its own house.broken.
   [/\bbreakbeat\b|\bbig ?beat\b|\bbreaks?\b(?!\s*(?:beat|core))/, "house"],
@@ -268,6 +270,14 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // never catch it ("bmore" has no other anchor).
   [/\bbaltimore(?: club)?\b|\bbmore(?: club)?\b/, "jersey"],
   [/\bafro\b|\bafrobeats?\b|\bafropop\b/, "house"],
+  // African-roots wave — the foundational traditions ride house (the
+  // afrobeats/kuduro route). Before the generic house entry.
+  [/\bhighlife\b|\bsoukous\b|\bzouk\b|\bkizomba\b|\bcoup[ée]?[- ]d[ée]cal[ée]\b|\bcoupe ?decale\b/, "house"],
+  // Folk / bluegrass / gospel — the Americana family rides house (the
+  // countrypop route).
+  [/\bbluegrass\b|\bgospel\b|\bfolk\b|\bfolkov\w*/, "house"],
+  // Jazz proper — rides boombap (the jazz-break floor).
+  [/\bbebop\b|\bbig ?band\b|\bswing jazz\b|\bjazz proper\b/, "boombap"],
   [/\breggaeton\b|\bdembow\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "house"],
   // Trance school compounds MUST sit above the techno acid/tech entries:
   // "acid trance" / "tech trance" are trance, not techno.
@@ -382,6 +392,8 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // token is what resolveGroove looks up ("house.pianohouse").
   [/\bpiano house\b|\bpianohouse\b/, "pianohouse"],
   // Breakbeat / big beat before \bbreaks\b-adjacent entries.
+  // Breakbeat hardcore is its own Eurodance lane, not generic breakbeat.
+  [/\bbreakbeat\s+hardcore\b/, "bhc"],
   [/\bbreakbeat\b|\bbig ?beat\b/, "breakbeat"],
   [/\bmidtempo\b|\bmid[- ]?tempo\b/, "midtempo"],
   // Sad chill / dirty ambient — the ambient-family style tokens.
@@ -454,6 +466,7 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Boogie funk BEFORE the generic \bfunk\b — the early-80s synth-funk lane
   // rides house.funky; "funk" bare stays the funky-house reading.
   [/\bboogie\b|\bboogie funk\b|\bsynth funk\b/, "funky"],
+  [/\bfuture ?funk\b/, "futurefunk"],
   [/\bfunky\b|\bfunk\b/, "funky"],
   [/\bdeep\b|\bhlbok/, "deep"],
   // Afroswing BEFORE the generic afro entry — "afro swing" contains the
@@ -491,6 +504,44 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Kuduro / batida + tropical — unique words, no generic collisions.
   [/\bkuduro\b|\bbatida\b/, "kuduro"],
   [/\btropical(?: house)?\b/, "tropical"],
+  // African-roots wave lanes (ride house).
+  [/\bhighlife\b/, "highlife"],
+  [/\bsoukous\b|\bcongolese rumba\b/, "soukous"],
+  [/\bzouk\b|\bzouk ?love\b/, "zouk"],
+  [/\bkizomba\b|\btarraxinha\b/, "kizomba"],
+  [/\bcoup[ée]?[- ]d[ée]cal[ée]\b|\bcoupe ?decale\b/, "coupledecale"],
+  // Folk family lanes (ride house).
+  [/\bbluegrass\b|\bnewgrass\b/, "bluegrass"],
+  [/\bgospel\b|\bworship\b/, "gospel"],
+  [/\bfolk\b|\bfolkov\w*/, "folk"],
+  // Jazz proper + turntablism lanes (ride boombap). "swing" as a BARE word
+  // stays the swing-feel style modifier — only compounds claim the lane.
+  [/\bbebop\b/, "bebop"],
+  [/\bbig ?band\b/, "bigband"],
+  [/\bswing jazz\b/, "swing"],
+  [/\bturntablism\b|\bturntablist\b/, "turntablism"],
+  // Bass-exotics lanes.
+  [/\bcomplextro\b/, "complextro"],
+  [/\bmelbourne bounce\b|\bmelbourne\\?b[ou]unce\b|\bbounce house\b/, "melbournebounce"],
+  [/\bglitch ?hop\b/, "glitchhop"],
+  // Balkan lanes (ride eurodance).
+  [/\bturbo ?folk\b/, "turbofolk"],
+  [/\bchalga\b|\bchalgov\w*/, "chalga"],
+  [/\bmanele\b|\bmanea\w*/, "manele"],
+  // Emo / digicore lanes.
+  [/\bdigicore\b/, "digicore"],
+  [/\bdariacore\b/, "dariacore"],
+  [/\bemo ?rap\b|\bsadcore ?rap\b/, "emorap"],
+  // Niche lanes.
+  [/\bdungeon ?synth\b/, "dungeonsynth"],
+  [/\bsingeli\b|\bsengele\b/, "singeli"],
+  [/\bmahragan\w*/, "mahraganat"],
+  [/\bmakina\b/, "makina"],
+  [/\bhard ?wave\b/, "hardwave"],
+  [/\bslowcore\b|\bsadcore\b/, "slowcore"],
+  // Eurodance family completion.
+  [/\beurobeat\b/, "eurobeat"],
+  [/\bold ?skool rave\b|\boldschool rave\b|\brave breaks?\b/, "rave"],
   // Rock styles — the verse/pre-chorus/chorus form rides via
   // ROCK_FORM_STYLES in the song builder.
   [/\bgrunge\b/, "grunge"],
