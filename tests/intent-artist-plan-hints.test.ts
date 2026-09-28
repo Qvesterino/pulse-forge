@@ -54,6 +54,7 @@ function profileFixture(master: ArtistProfile["master"]): ArtistProfile {
     mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
     master,
     gear: [],
+    grooveLanes: [],
     vibe: [],
     sources: [],
     verificationStatus: "ai-inferred",

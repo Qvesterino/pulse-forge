@@ -191,7 +191,7 @@ const AXL_BEATS: ArtistProfile = {
     "Valhalla VintageVerb",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["uk", "bounce", "grime", "screwed"],
+  grooveLanes: ["uk", "jerk", "bounce", "sample"],
   vibe: ["menacing", "dark", "hypnotic", "cinematic", "tight"],
   sources: [
     "https://www.soundonsound.com/techniques/inside-track-pop-smoke-dior",
@@ -249,7 +249,7 @@ const DVRST: ArtistProfile = {
     "FabFilter Saturn 2 (saturation)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["drift", "memphis", "horror", "bounce"],
+  grooveLanes: ["drift", "memphis", "brazil", "reverb"],
   vibe: ["dark", "hypnotic", "nostalgic", "eerie", "retro-futurist", "menacing"],
   sources: [
     "https://en.wikipedia.org/wiki/Drift_phonk",
@@ -737,7 +737,11 @@ const SKEPTA: ArtistProfile = {
     dynamicRange: "moderate — modern grime master target (louder than classic era)",
   },
   gear: [
-    "Logic Pro",
+    "PlayStation Music 2000 (his FIRST DAW — the bedroom tool that made grime)",
+    "Steinberg Cubase (his next step up)",
+    "Logic Pro (the genre-standard for grime production)",
+    "Alesis DM5 / VST analogue polys (the brash keyboard riff)",
+    "Arturia Electra X",
     "Native Instruments Massive",
     "Sylenth1",
     "Rob Papen Predator",
@@ -746,10 +750,10 @@ const SKEPTA: ArtistProfile = {
     "Valhalla VintageVerb",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["uk", "grime", "bounce", "dark"],
+  grooveLanes: ["uk", "grime", "jerk", "bounce"],
   vibe: ["aggressive", "dark", "British", "raw", "street", "no-nonsense", "authentic"],
   sources: ["https://en.wikipedia.org/wiki/Skepta", "https://www.complex.com/music/best-songs-skepta-produced"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1044,7 +1048,7 @@ const WILEY: ArtistProfile = {
     "minimal processing — character comes from raw sound sources",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["grime", "uk", "bounce", "dark"],
+  grooveLanes: ["grime", "uk", "jerk", "bounce"],
   vibe: ["raw", "pioneering", "pirate-radio", "aggressive", "authentic", "foundational", "London"],
   sources: ["https://en.wikipedia.org/wiki/Wiley_(musician)", "https://www.theguardian.com/music/wiley"],
   verificationStatus: "verified",
@@ -1396,8 +1400,8 @@ const LIL_UZI_VERT: ArtistProfile = {
       "vocal chops from features (often pitched + processed)",
       "ethereal vocal textures (choir-like, atmospheric)",
     ],
-    bpm: { typical: [140, 160], halfTime: [70, 80] },
-    keys: ["F minor", "G minor", "C minor", "B♭ minor"],
+    bpm: { typical: [150, 160], halfTime: [70, 80] },
+    keys: ["F minor", "G minor", "C minor", "B minor (Xo Tour Llif3, the reference track)"],
   },
   mix: {
     eqTilt: "bright",
@@ -1419,7 +1423,10 @@ const LIL_UZI_VERT: ArtistProfile = {
   gear: [
     "FL Studio (longtime primary DAW)",
     "Pro Tools (mixing)",
-    "Antares Auto-Tune Pro (heavy on vocals — the signature effect)",
+    "Antares Auto-Tune Pro (FIRST plugin on every vocal — engineer-confirmed)",
+    "Waves De-Esser (directly after Auto-Tune)",
+    "Avid EQ3 (seven-band)",
+    "Waves C1 (gate)",
     "Omnisphere",
     "Kontakt",
     "FabFilter Pro-Q 3",
@@ -1434,7 +1441,7 @@ const LIL_UZI_VERT: ArtistProfile = {
     "https://en.wikipedia.org/wiki/Lil_Uzi_Vert",
     "https://www.soundonsound.com/techniques/lil-uzi-vert-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1709,3 +1716,4 @@ export function artistMixProfileFromDeep(artistLabel: string): ArtistMixProfile 
   if (Object.keys(derived).length === 0) return null;
   return derived;
 }
+  

@@ -50,6 +50,7 @@ function profileFixture(overrides: Partial<ArtistProfile>): ArtistProfile {
     mix: { eqTilt: "neutral", compression: "medium", stereoWidth: "normal", subEmphasis: "moderate" },
     master: { targetLufs: -8, tonalBalance: "x" },
     gear: [],
+    grooveLanes: [],
     vibe: [],
     sources: [],
     verificationStatus: "ai-inferred",

@@ -9,10 +9,10 @@
  * beat ale tvrdší" leans the reference harder instead of being ignored),
  * then the USER STYLE VECTOR blend applies as usual (INTENT_BLEND_WEIGHT)
  * → conditioning vector for the v2 priors (drum + melodic — both consume
- * this ONE vector). Returns null when the flag is off, the text is empty,
- * the semantic model is unavailable, or the projection is degenerate — the
- * provider then falls back to the v1 genre+style one-hot prior. NEVER
- * throws.
+ * this ONE vector). With embedding off/unavailable, an explicit audio
+ * reference or structured genre/style vector can still condition v3 without
+ * loading or calling the neural embedder. Returns null when no such fallback
+ * exists, the text is empty, or projection is degenerate. NEVER throws.
  *
  * Memoization key = trimmed text + style-vector SIGNATURE + audio EPOCH:
  * a new ★, a dropped one, or a new reference changes the key, so
@@ -107,9 +107,6 @@ export async function semanticConditioning(
   structured?: readonly number[] | null,
 ): Promise<readonly number[] | null> {
   try {
-    // Lazy: keep the semantic client out of the landing-route static closure
-    // (see style-vector.ts).
-    const embed = embedFn ?? embedOverride ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     const trimmed = (text ?? "").trim().slice(0, MAX_TEXT_LENGTH);
     const seedingProfile = hasArtistSignature(artist) ? artist : null;
     const signatureText = seedingProfile ? artistSignatureText(seedingProfile) : "";
@@ -118,13 +115,30 @@ export async function semanticConditioning(
     // user only typed the name) — the base alone drives the conditioning.
     // Without either there is nothing to say, so empty text stays null.
     if (!trimmed && !audioReferenceOverride && !seedingProfile && !structured) return null;
-    if (embeddingConditionedMode() !== "on" && !structured) return null;
+    const embeddingEnabled = embeddingConditionedMode() === "on";
+    if (!embeddingEnabled && !audioReferenceOverride && !structured) return null;
 
     const ledger = readFavoriteLedger();
+    const structuredSignature = structured ? structured.join(",") : "no-structured-vector";
     const cacheKey = `${trimmed}|${styleVectorSignature(ledger)}|${audioEpoch}|${
       seedingProfile ? artistSignatureSignature(seedingProfile) : "no-artist"
-    }`;
+    }|${structuredSignature}`;
     if (projectionCache.has(cacheKey)) return projectionCache.get(cacheKey) ?? null;
+
+    if (!embeddingEnabled) {
+      // Respect the user's/model's embedding opt-out. The compact in-repo
+      // style table and an already-installed audio reference need no neural
+      // model, so they remain available without importing the semantic client.
+      const fallback = audioReferenceOverride ?? structured;
+      const result = fallback ? Object.freeze([...fallback]) : null;
+      if (projectionCache.size >= MAX_CACHE_ENTRIES) projectionCache.clear();
+      projectionCache.set(cacheKey, result);
+      return result;
+    }
+
+    // Lazy: keep the semantic client out of the landing-route static closure
+    // (see style-vector.ts), and do not import it when embedding is disabled.
+    const embed = embedFn ?? embedOverride ?? (await import("../ai/semantic/semantic-client")).embedTexts;
 
     // Embed the typed text and the artist signature in ONE batched call so the
     // seeding costs no extra worker round-trip. The encoder sees two
@@ -223,10 +237,7 @@ export async function semanticConditioning(
  * `semanticConditioningForIntent` on the normal path, so a primed cache is
  * an optimisation, never a correctness dependency.
  */
-export function primeSemanticForText(
-  text: string | null | undefined,
-  artist?: ArtistProfile | null,
-): void {
+export function primeSemanticForText(text: string | null | undefined, artist?: ArtistProfile | null): void {
   const trimmed = (text ?? "").trim();
   if (!trimmed) return;
   // Defer so the worker spawn never blocks the parse caller's turn.

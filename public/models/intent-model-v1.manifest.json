@@ -1,0 +1,460 @@
+{
+  "intentModelVersion": "intent-model.v1",
+  "schemaVersion": 1,
+  "grammarSha256": "646dcf47c30c37abf60ed422f78e822b166aaf6fe10b3221eb6e0b07b779b699",
+  "runtime": {
+    "kind": "onnx-intent-v1",
+    "module": "/models/llm/intent-runtime.js",
+    "export": "createIntentLlmRuntime"
+  },
+  "model": {
+    "url": "/models/intent-model-v1.onnx",
+    "bytes": 806932,
+    "sha256": "1970552af5aae4f6ce4f32f899ee74b736b977ff04ee21ba2c631234fea8b394"
+  },
+  "prompt": {
+    "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
+    "instructionTemplate": "INSTRUCTION: {instruction}\nACTION:"
+  },
+  "generation": {
+    "maxTokens": 1,
+    "temperature": 0
+  },
+  "features": {
+    "version": "intent-features.v1",
+    "vocabSha256": "f00c1ff4924b8b2030825400e3404c5c3ec28e612b948a8435fb90f6bd6ce6b7",
+    "vocabSize": 221,
+    "inputName": "features",
+    "outputNames": [
+      "head_kind",
+      "head_direction",
+      "head_targets",
+      "head_pads",
+      "head_targets_one",
+      "head_effectType",
+      "head_amount",
+      "head_percent",
+      "head_bpm",
+      "head_targetDb",
+      "head_deltaDb",
+      "head_panValue",
+      "head_semitones",
+      "head_steps",
+      "head_key",
+      "head_exactOp",
+      "head_boolValue",
+      "head_trackKind",
+      "head_instrument",
+      "head_trackName",
+      "head_transportAction",
+      "head_exportFormat",
+      "head_selectTarget",
+      "head_reviseAttribute",
+      "head_prodConcept",
+      "head_prodAmount",
+      "head_mixReverb",
+      "head_mixTone",
+      "head_mixPunch",
+      "head_mixPump"
+    ],
+    "heads": [
+      {
+        "name": "kind",
+        "kind": "softmax",
+        "classes": [
+          "abstain",
+          "fader",
+          "exact",
+          "transport",
+          "save",
+          "export",
+          "record",
+          "select",
+          "effectIntent",
+          "sendIntent",
+          "bypassIntent",
+          "mix",
+          "loudness",
+          "tempo",
+          "production",
+          "revise"
+        ]
+      },
+      {
+        "name": "direction",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "down",
+          "less",
+          "louder",
+          "more",
+          "quieter",
+          "remove",
+          "set",
+          "up"
+        ]
+      },
+      {
+        "name": "targets",
+        "kind": "sigmoid",
+        "classes": [
+          "bass",
+          "chords",
+          "clap",
+          "drums",
+          "hat",
+          "hats",
+          "kick",
+          "lead",
+          "master",
+          "mix",
+          "perc",
+          "snare",
+          "tom",
+          "vocal"
+        ]
+      },
+      {
+        "name": "pads",
+        "kind": "sigmoid",
+        "classes": [
+          "clap",
+          "hat",
+          "kick",
+          "perc",
+          "snare",
+          "tom"
+        ]
+      },
+      {
+        "name": "targets_one",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "bass",
+          "chords",
+          "clap",
+          "drums",
+          "hat",
+          "hats",
+          "kick",
+          "lead",
+          "master",
+          "mix",
+          "perc",
+          "snare",
+          "tom",
+          "vocal"
+        ]
+      },
+      {
+        "name": "effectType",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "bitcrusher",
+          "chorus",
+          "compressor",
+          "delay",
+          "distortion",
+          "eq",
+          "flanger",
+          "phaser",
+          "pump",
+          "reverb",
+          "saturation",
+          "tremolo"
+        ]
+      },
+      {
+        "name": "amount",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "big",
+          "full",
+          "huge",
+          "medium",
+          "normal",
+          "subtle"
+        ]
+      },
+      {
+        "name": "percent",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "0",
+          "5",
+          "10",
+          "20",
+          "25",
+          "30",
+          "35",
+          "40",
+          "50",
+          "75",
+          "80",
+          "90",
+          "100"
+        ]
+      },
+      {
+        "name": "bpm",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "90",
+          "100",
+          "110",
+          "120",
+          "128",
+          "132",
+          "138",
+          "140",
+          "150",
+          "160",
+          "174",
+          "300"
+        ]
+      },
+      {
+        "name": "targetDb",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "-9"
+        ]
+      },
+      {
+        "name": "deltaDb",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "-1.5",
+          "2",
+          "3"
+        ]
+      },
+      {
+        "name": "panValue",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "-0.9",
+          "-0.6",
+          "-0.3",
+          "-0.1",
+          "0",
+          "0.1",
+          "0.3",
+          "0.6",
+          "0.8",
+          "0.9"
+        ]
+      },
+      {
+        "name": "semitones",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "12"
+        ]
+      },
+      {
+        "name": "steps",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "32",
+          "64"
+        ]
+      },
+      {
+        "name": "key",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "D Natural Minor",
+          "F# Natural Minor"
+        ]
+      },
+      {
+        "name": "exactOp",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "addTrack",
+          "duplicateTrack",
+          "gainDb",
+          "key",
+          "mute",
+          "pan",
+          "patternLength",
+          "removeTrack",
+          "renameTrack",
+          "solo",
+          "tempo",
+          "transpose"
+        ]
+      },
+      {
+        "name": "boolValue",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "true",
+          "false"
+        ]
+      },
+      {
+        "name": "trackKind",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "drum",
+          "instrument"
+        ]
+      },
+      {
+        "name": "instrument",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "analog",
+          "bass",
+          "keys"
+        ]
+      },
+      {
+        "name": "trackName",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "sub",
+          "sub bass"
+        ]
+      },
+      {
+        "name": "transportAction",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "loopOff",
+          "loopOn",
+          "metronomeOff",
+          "metronomeOn",
+          "pause",
+          "play",
+          "stop"
+        ]
+      },
+      {
+        "name": "exportFormat",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "mp3",
+          "wav"
+        ]
+      },
+      {
+        "name": "selectTarget",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "bass",
+          "chords",
+          "drums",
+          "lead"
+        ]
+      },
+      {
+        "name": "reviseAttribute",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "density",
+          "energy"
+        ]
+      },
+      {
+        "name": "prodConcept",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "brighter",
+          "darker",
+          "deeper",
+          "glue",
+          "grittier",
+          "lofi",
+          "metallic",
+          "punchier",
+          "robotic",
+          "stutter",
+          "tape",
+          "telephone",
+          "warmer",
+          "wider",
+          "wobbly"
+        ]
+      },
+      {
+        "name": "prodAmount",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "0.7"
+        ]
+      },
+      {
+        "name": "mixReverb",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "more",
+          "less",
+          "huge"
+        ]
+      },
+      {
+        "name": "mixTone",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "dark",
+          "bright",
+          "warm",
+          "cold"
+        ]
+      },
+      {
+        "name": "mixPunch",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "more",
+          "less"
+        ]
+      },
+      {
+        "name": "mixPump",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  "report": {
+    "trainRows": 389,
+    "valRows": 65,
+    "goldenRows": 49,
+    "valHeadAccuracyMean": 0.9654,
+    "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
+  }
+}

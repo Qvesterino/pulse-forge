@@ -133,15 +133,15 @@ describe("applyExactIntentCommand", () => {
     const plan = parseExactIntent("swing 60 percent")!;
     const applySwing = applyExactIntentCommand(d, plan);
     const next = applySwing.execute(d);
-    expect(next.groove.swing).toBeCloseTo(0.6, 6);
+    expect(next.groove?.swing).toBeCloseTo(0.6, 6);
     // numeric off + undo round-trip (undo uses the ORIGINAL command object —
     // its snapshot-before is the doc the command was constructed against)
     const offPlan = parseExactIntent("vypni swing")!;
     const off = applyExactIntentCommand(next, offPlan);
     const after = off.execute(next);
-    expect(after.groove.swing).toBe(0);
+    expect(after.groove?.swing).toBe(0);
     const restored = off.undo(after);
-    expect(restored.groove.swing).toBeCloseTo(0.6, 6);
+    expect(restored.groove?.swing).toBeCloseTo(0.6, 6);
   });
 
   it("tempo applies to the document", () => {

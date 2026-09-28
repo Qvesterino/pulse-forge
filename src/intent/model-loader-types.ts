@@ -18,6 +18,9 @@ import { toGbnfGrammar } from "./model-schema";
  * reports unavailable and the deterministic parsers remain the engine.
  */
 
+export type IntentModelMode = "off" | "on";
+export type IntentModelState = "off" | "unavailable" | "loading" | "ready" | "error";
+
 export interface IntentModelManifest {
   /** Model identity + version, e.g. "intent-model.v1". */
   intentModelVersion: string;
@@ -50,6 +53,34 @@ export interface IntentModelManifest {
     maxTokens: number;
     temperature: number;
   };
+  /** ONNX v1 student pin: the vocab artifact the decoder reads class lists
+   * from (written by the trainer, hash-verified here). */
+  features?: {
+    version: string;
+    vocabSha256: string;
+    vocabSize: number;
+    inputName: string;
+    outputNames: string[];
+    heads: IntentModelHead[];
+  };
+  /** Training/eval summary (display + gates), engine-ignored. */
+  report?: Record<string, unknown>;
+}
+
+/** One closed classification head of the v1 student. Lives here (not in
+ * model-decoder.ts) so the manifest validator can check it without pulling
+ * the decoder graph into the worker bundle. */
+export interface IntentModelHead {
+  name: string;
+  kind: "softmax" | "sigmoid";
+  classes: string[];
+}
+
+export interface IntentModelVocab {
+  version: 1;
+  tokens: string[];
+  trunk: number[];
+  heads: IntentModelHead[];
 }
 
 export type IntentModelRequest =
@@ -64,6 +95,9 @@ export type IntentModelResponse =
   | { type: "generate"; requestId: number; ok: false; error: string }
   | { type: "reset"; requestId: number; ok: true }
   | { type: "progress"; requestId: number; loaded: number; total: number };
+
+/** What request() resolves with - progress ticks are filtered, never settle. */
+export type IntentModelReply = Exclude<IntentModelResponse, { type: "progress" }>;
 
 /**
  * The runtime adapter every vendored LLM backend must export. Weights are
@@ -101,10 +135,7 @@ export function isIntentModelManifest(value: unknown): value is IntentModelManif
   if (typeof m.model.sha256 !== "string" || !HEX.test(m.model.sha256)) return false;
   if (m.prompt == null || typeof m.prompt !== "object") return false;
   if (typeof m.prompt.system !== "string" || m.prompt.system.length === 0) return false;
-  if (
-    typeof m.prompt.instructionTemplate !== "string" ||
-    !m.prompt.instructionTemplate.includes("{instruction}")
-  ) {
+  if (typeof m.prompt.instructionTemplate !== "string" || !m.prompt.instructionTemplate.includes("{instruction}")) {
     return false;
   }
   if (m.generation == null || typeof m.generation !== "object") return false;
@@ -112,6 +143,22 @@ export function isIntentModelManifest(value: unknown): value is IntentModelManif
   if (m.generation.maxTokens < 1 || m.generation.maxTokens > 512) return false;
   if (typeof m.generation.temperature !== "number" || !Number.isFinite(m.generation.temperature)) return false;
   if (m.generation.temperature < 0 || m.generation.temperature > 2) return false;
+  if (m.features !== undefined) {
+    const f = m.features;
+    if (typeof f.version !== "string" || f.version.length === 0) return false;
+    if (typeof f.vocabSha256 !== "string" || !HEX.test(f.vocabSha256)) return false;
+    if (typeof f.vocabSize !== "number" || !Number.isInteger(f.vocabSize) || f.vocabSize <= 0) return false;
+    if (typeof f.inputName !== "string" || f.inputName.length === 0) return false;
+    if (!Array.isArray(f.outputNames) || f.outputNames.some((name) => typeof name !== "string")) return false;
+    if (!Array.isArray(f.heads) || f.heads.length === 0) return false;
+    for (const head of f.heads) {
+      if (head == null || typeof head !== "object") return false;
+      if (typeof head.name !== "string" || head.name.length === 0) return false;
+      if (head.kind !== "softmax" && head.kind !== "sigmoid") return false;
+      if (!Array.isArray(head.classes) || head.classes.length === 0) return false;
+      if (head.classes.some((cls) => typeof cls !== "string")) return false;
+    }
+  }
   return true;
 }
 

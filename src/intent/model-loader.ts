@@ -2,10 +2,14 @@ import { assetUrl } from "../shared/assetUrls";
 import {
   isIntentModelManifest,
   type IntentModelManifest,
+  type IntentModelReply,
   type IntentModelRequest,
   type IntentModelResponse,
 } from "./model-loader-types";
+import type { IntentModelMode, IntentModelState } from "./model-loader-types";
 import { getIntentModelProvider, setIntentModelProvider, type IntentModelProvider } from "./model-resolver";
+
+export type { IntentModelMode, IntentModelState } from "./model-loader-types";
 
 /**
  * LOCAL INTENT MODEL — MAIN-THREAD LOADER (pipeline step [C] client).
@@ -25,9 +29,6 @@ import { getIntentModelProvider, setIntentModelProvider, type IntentModelProvide
  * is a hundreds-of-MB download class. Without the flag — or without the
  * trained model on the origin — this module costs one 404 and nothing else.
  */
-
-export type IntentModelMode = "off" | "on";
-export type IntentModelState = "off" | "unavailable" | "loading" | "ready" | "error";
 
 /** Feature flag: localStorage `pf:intent-model` = on|off (default off). */
 export function intentModelMode(): IntentModelMode {
@@ -99,7 +100,11 @@ function notifyState(): void {
 
 export function onIntentModelStateChange(listener: StateListener): () => void {
   stateListeners.add(listener);
-  listener(computeState());
+  // Sync the tracked state while pushing the current one — a direct
+  // computeState() here would desync lastState from what listeners saw and
+  // swallow the next real transition.
+  lastState = computeState();
+  listener(lastState);
   return () => stateListeners.delete(listener);
 }
 
@@ -142,9 +147,13 @@ function recordFailure(): void {
   notifyState();
 }
 
-function request(payload: IntentModelRequest, timeoutMs: number, timeoutCountsTowardFailure: boolean): Promise<IntentModelResponse> {
+function request(
+  payload: IntentModelRequest,
+  timeoutMs: number,
+  timeoutCountsTowardFailure: boolean,
+): Promise<IntentModelReply> {
   const active = spawnWorker();
-  if (!active) return Promise.resolve({ ...payload, ok: false, error: "worker-unavailable" } as IntentModelResponse);
+  if (!active) return Promise.resolve({ ...payload, ok: false, error: "worker-unavailable" } as IntentModelReply);
   return new Promise((resolve) => {
     let settled = false;
     const cleanup = () => {
@@ -157,7 +166,7 @@ function request(payload: IntentModelRequest, timeoutMs: number, timeoutCountsTo
       settled = true;
       cleanup();
       if (counts) recordFailure();
-      resolve({ ...payload, ok: false, error } as IntentModelResponse);
+      resolve({ ...payload, ok: false, error } as IntentModelReply);
     };
     const timer = setTimeout(() => fail("timeout", timeoutCountsTowardFailure), timeoutMs);
     const onMessage = (event: MessageEvent<IntentModelResponse>) => {
@@ -226,13 +235,10 @@ async function doEnsure(): Promise<boolean> {
     id: "pulse-forge.intent-model",
     version,
     generate: async (instruction: string) => {
-      const response = await request(
-        { type: "generate", requestId: nextRequestId++, instruction },
-        generateMs,
-        true,
-      );
+      const response = await request({ type: "generate", requestId: nextRequestId++, instruction }, generateMs, true);
       if (!response.ok || response.type !== "generate" || typeof response.text !== "string") {
-        const reason = response.ok === false && "error" in response && response.error ? response.error : "model-generate-failed";
+        const reason =
+          response.ok === false && "error" in response && response.error ? response.error : "model-generate-failed";
         throw new Error(reason);
       }
       if (!response.text.trim()) throw new Error("empty completion");

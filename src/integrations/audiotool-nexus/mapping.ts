@@ -1,4 +1,12 @@
-import type { InstrumentTrack, NoteEvent, Pattern, TimeSignature, Track } from "../../project-model/types";
+import type {
+  DrumPad,
+  DrumSynthType,
+  InstrumentTrack,
+  NoteEvent,
+  Pattern,
+  TimeSignature,
+  Track,
+} from "../../project-model/types";
 import { PPQ } from "../../project-model/types";
 import { patternLengthTicks } from "../../midi/hum-to-notes";
 
@@ -8,6 +16,49 @@ export const KYX_TO_AUDIOTOOL_TICK_SCALE = AUDIOTOOL_TICKS_PER_QUARTER / PPQ;
 export const MAX_AUDIOTOOL_PARTS = 24;
 export const MAX_AUDIOTOOL_NOTES = 4096;
 export const MAX_AUDIOTOOL_BARS = 256;
+export const AUDIOTOOL_BEATBOX_STEP_TICKS = AUDIOTOOL_TICKS_PER_QUARTER / 4;
+export const MAX_AUDIOTOOL_BEATBOX_STEPS = 64;
+
+export type AudiotoolBeatboxRole =
+  | "bassdrumIsActive"
+  | "snaredrumIsActive"
+  | "tomCongaLowIsActive"
+  | "tomCongaMidIsActive"
+  | "tomCongaHighIsActive"
+  | "rimClavesIsActive"
+  | "clapMaracasIsActive"
+  | "cowbellIsActive"
+  | "cymbalIsActive"
+  | "openHihatIsActive"
+  | "closedHihatIsActive";
+
+export interface AudiotoolBeatboxStep {
+  bassdrumIsActive: boolean;
+  snaredrumIsActive: boolean;
+  tomCongaLowIsActive: boolean;
+  tomCongaMidIsActive: boolean;
+  tomCongaHighIsActive: boolean;
+  rimClavesIsActive: boolean;
+  clapMaracasIsActive: boolean;
+  cowbellIsActive: boolean;
+  cymbalIsActive: boolean;
+  openHihatIsActive: boolean;
+  closedHihatIsActive: boolean;
+  isAccented: boolean;
+}
+
+export type AudiotoolBeatboxSteps = AudiotoolBeatboxStep[] & { length: 64 };
+
+export interface AudiotoolBeatboxPattern {
+  /** Number of active steps in the exported 16th-note pattern. */
+  length: number;
+  /** Original KYX step count, retained to report/cap patterns longer than Beatbox8. */
+  sourceStepCount: number;
+  /** Beatbox8 requires exactly 64 step objects even when `length` is shorter. */
+  steps: AudiotoolBeatboxSteps;
+  /** Number of distinct Beatbox8 role/step activations after collision merging. */
+  hitCount: number;
+}
 
 export interface AudiotoolMidiNote {
   pitch: number;
@@ -29,8 +80,10 @@ export interface AudiotoolWritePlan {
   durationTicks: number;
   bars: number;
   parts: AudiotoolMidiPart[];
+  drumPattern?: AudiotoolBeatboxPattern;
   noteCount: number;
   unsupportedDrumHits: number;
+  collapsedDrumHits: number;
   unsupportedNoteCount: number;
   fingerprint: string;
 }
@@ -72,9 +125,8 @@ export function audiotoolProjectUrl(projectId: string): string {
 }
 
 /**
- * Pure, bounded conversion of KYX's selected pattern into Audiotool MIDI.
- * Drum rows and unrecognized note lanes are reported rather than silently
- * represented as supported content.
+ * Pure, bounded conversion of KYX's selected pattern into Audiotool MIDI and
+ * the explicitly supported Beatbox8 drum roles. Unknown content is reported.
  */
 export function buildAudiotoolWritePlan(args: {
   pattern: Pattern;
@@ -96,9 +148,15 @@ export function buildAudiotoolWritePlan(args: {
   ) {
     return { ok: false, error: "The KYX time signature is not supported." };
   }
-
   const barTicks = (AUDIOTOOL_TICKS_PER_QUARTER * 4 * timeSignature.numerator) / timeSignature.denominator;
   if (!Number.isInteger(barTicks) || barTicks <= 0) return { ok: false, error: "The KYX bar length is invalid." };
+  const maxSourceSteps = Math.max(1, Math.floor((MAX_AUDIOTOOL_BARS * barTicks) / AUDIOTOOL_BEATBOX_STEP_TICKS));
+  if (!Number.isSafeInteger(pattern.stepCount) || pattern.stepCount < 1 || pattern.stepCount > maxSourceSteps) {
+    return {
+      ok: false,
+      error: `This idea has an invalid or unsupported pattern length (maximum ${MAX_AUDIOTOOL_BARS} bars).`,
+    };
+  }
 
   const instruments = new Map<string, InstrumentTrack>();
   for (const track of tracks) if (track.kind === "instrument") instruments.set(track.id, track);
@@ -144,10 +202,14 @@ export function buildAudiotoolWritePlan(args: {
     parts.push({ name: safePartName(instrument.name, parts.length + 1), notes });
   }
 
-  if (parts.length === 0 || noteCount === 0) {
+  const drumResult = mapDrumPattern(pattern, tracks, maxSourceSteps);
+  if (!drumResult.ok) return drumResult;
+  const drumPattern = drumResult.pattern;
+
+  if ((parts.length === 0 || noteCount === 0) && !drumPattern) {
     return {
       ok: false,
-      error: "This idea has no pitched MIDI notes to send. Drum-only patterns are not supported yet.",
+      error: "This idea has no supported pitched MIDI notes or Beatbox8-compatible drum hits to send.",
     };
   }
 
@@ -162,13 +224,22 @@ export function buildAudiotoolWritePlan(args: {
     return { ok: false, error: `This idea exceeds the ${MAX_AUDIOTOOL_BARS}-bar safety limit.` };
   }
 
-  const fingerprintInput = JSON.stringify({
+  const fingerprintPayload: {
+    projectId: string;
+    sourceBpm: number;
+    timeSignature: TimeSignature;
+    durationTicks: number;
+    parts: AudiotoolMidiPart[];
+    drumPattern?: Pick<AudiotoolBeatboxPattern, "length" | "steps">;
+  } = {
     projectId,
     sourceBpm,
     timeSignature,
     durationTicks,
     parts: parts.map((part) => ({ name: part.name, notes: part.notes })),
-  });
+  };
+  if (drumPattern) fingerprintPayload.drumPattern = { length: drumPattern.length, steps: drumPattern.steps };
+  const fingerprintInput = JSON.stringify(fingerprintPayload);
   const plan: AudiotoolWritePlan = {
     projectId,
     sourceBpm,
@@ -176,13 +247,143 @@ export function buildAudiotoolWritePlan(args: {
     durationTicks,
     bars,
     parts,
+    ...(drumPattern ? { drumPattern } : {}),
     noteCount,
-    unsupportedDrumHits: countDrumHits(pattern),
+    unsupportedDrumHits: drumResult.unsupportedHits,
+    collapsedDrumHits: drumResult.collapsedHits,
     unsupportedNoteCount,
     // This is an idempotency marker, not a cryptographic integrity check.
     fingerprint: stableFingerprint(fingerprintInput),
   };
   return { ok: true, plan };
+}
+
+type DrumMappingResult =
+  | { ok: true; pattern?: AudiotoolBeatboxPattern; unsupportedHits: number; collapsedHits: number }
+  | { ok: false; error: string };
+
+const FACTORY_DRUM_ROLES: ReadonlyArray<readonly [string, AudiotoolBeatboxRole]> = [
+  ["factory.kick.", "bassdrumIsActive"],
+  ["factory.snare.", "snaredrumIsActive"],
+  ["factory.clap.", "clapMaracasIsActive"],
+  ["factory.hat.open", "openHihatIsActive"],
+  ["factory.hat.closed", "closedHihatIsActive"],
+  ["factory.hat.pedal", "closedHihatIsActive"],
+  ["factory.hat.", "closedHihatIsActive"],
+  ["factory.tom.low", "tomCongaLowIsActive"],
+  ["factory.tom.floor", "tomCongaLowIsActive"],
+  ["factory.tom.mid", "tomCongaMidIsActive"],
+  ["factory.tom.high", "tomCongaHighIsActive"],
+  ["factory.rim.", "rimClavesIsActive"],
+  ["factory.cowbell.", "cowbellIsActive"],
+  ["factory.cymbal.", "cymbalIsActive"],
+  ["factory.crash.", "cymbalIsActive"],
+  ["factory.ride.", "cymbalIsActive"],
+];
+
+const SYNTH_DRUM_ROLES: Record<DrumSynthType, AudiotoolBeatboxRole | null> = {
+  kick: "bassdrumIsActive",
+  snare: "snaredrumIsActive",
+  hatClosed: "closedHihatIsActive",
+  hatOpen: "openHihatIsActive",
+  clap: "clapMaracasIsActive",
+  cowbell: "cowbellIsActive",
+  perc: null,
+};
+
+function mapDrumPattern(pattern: Pattern, tracks: readonly Track[], maxSourceSteps: number): DrumMappingResult {
+  const padRoles = new Map<string, AudiotoolBeatboxRole | null>();
+  for (const track of tracks) {
+    if (track.kind !== "drum") continue;
+    for (const pad of track.pads) {
+      if (padRoles.has(pad.id)) {
+        padRoles.set(pad.id, null);
+      } else {
+        padRoles.set(pad.id, beatboxRoleForPad(pad));
+      }
+    }
+  }
+
+  const steps = Array.from({ length: MAX_AUDIOTOOL_BEATBOX_STEPS }, createEmptyBeatboxStep) as AudiotoolBeatboxSteps;
+  let hitCount = 0;
+  let unsupportedHits = 0;
+  let collapsedHits = 0;
+
+  for (const [padId, row] of Object.entries(pattern.rows)) {
+    if (!Array.isArray(row)) return { ok: false, error: "This idea contains an invalid drum row." };
+    if (row.length > maxSourceSteps) {
+      return { ok: false, error: "This idea contains a drum row beyond the supported timeline." };
+    }
+    const role = padRoles.get(padId) ?? null;
+    for (let stepIndex = 0; stepIndex < row.length; stepIndex += 1) {
+      const velocity = row[stepIndex];
+      if (typeof velocity !== "number" || !Number.isFinite(velocity) || velocity < 0 || velocity > 1) {
+        return { ok: false, error: "This idea contains an invalid drum velocity." };
+      }
+      if (velocity === 0) continue;
+      if (stepIndex >= pattern.stepCount || stepIndex >= MAX_AUDIOTOOL_BEATBOX_STEPS || !role) {
+        unsupportedHits += 1;
+        continue;
+      }
+      const step = steps[stepIndex];
+      if (!step) return { ok: false, error: "This idea contains a drum step outside the supported timeline." };
+      if (step[role]) {
+        collapsedHits += 1;
+      } else {
+        step[role] = true;
+        hitCount += 1;
+      }
+      if (velocity >= 0.75) step.isAccented = true;
+    }
+  }
+
+  if (hitCount === 0) return { ok: true, unsupportedHits, collapsedHits };
+  return {
+    ok: true,
+    pattern: {
+      length: Math.min(pattern.stepCount, MAX_AUDIOTOOL_BEATBOX_STEPS),
+      sourceStepCount: pattern.stepCount,
+      steps,
+      hitCount,
+    },
+    unsupportedHits,
+    collapsedHits,
+  };
+}
+
+function createEmptyBeatboxStep(): AudiotoolBeatboxStep {
+  return {
+    bassdrumIsActive: false,
+    snaredrumIsActive: false,
+    tomCongaLowIsActive: false,
+    tomCongaMidIsActive: false,
+    tomCongaHighIsActive: false,
+    rimClavesIsActive: false,
+    clapMaracasIsActive: false,
+    cowbellIsActive: false,
+    cymbalIsActive: false,
+    openHihatIsActive: false,
+    closedHihatIsActive: false,
+    isAccented: false,
+  };
+}
+
+function beatboxRoleForPad(pad: DrumPad): AudiotoolBeatboxRole | null {
+  if (pad.layers?.length) {
+    const layerRoles = pad.layers.map((layer) => factoryAssetBeatboxRole(layer.sampleId));
+    const first = layerRoles[0];
+    return first && layerRoles.every((role) => role === first) ? first : null;
+  }
+  if (pad.assetId) return factoryAssetBeatboxRole(pad.assetId);
+  return pad.synth ? (SYNTH_DRUM_ROLES[pad.synth.type] ?? null) : null;
+}
+
+function factoryAssetBeatboxRole(assetId: string | null): AudiotoolBeatboxRole | null {
+  if (!assetId) return null;
+  for (const [prefix, role] of FACTORY_DRUM_ROLES) {
+    if (assetId === prefix.slice(0, -1) || assetId.startsWith(prefix)) return role;
+  }
+  return null;
 }
 
 function isValidNote(note: NoteEvent): boolean {
@@ -219,13 +420,6 @@ function safePartName(name: string, index: number): string {
     .trim()
     .slice(0, 48);
   return cleaned || `KYX Part ${index}`;
-}
-
-function countDrumHits(pattern: Pattern): number {
-  return Object.values(pattern.rows).reduce(
-    (total, row) => total + row.reduce((hits, value) => hits + (Number.isFinite(value) && value > 0 ? 1 : 0), 0),
-    0,
-  );
 }
 
 function stableFingerprint(value: string): string {

@@ -1,0 +1,623 @@
+{
+  "version": 1,
+  "tokens": [
+    "the",
+    "lead",
+    "bass",
+    "on",
+    "drums",
+    "to",
+    "set",
+    "reverb",
+    "turn",
+    "a",
+    "na",
+    "chords",
+    "down",
+    "more",
+    "make",
+    "by",
+    "pan",
+    "delay",
+    "percent",
+    "zniz",
+    "send",
+    "tempo",
+    "less",
+    "basu",
+    "bit",
+    "raise",
+    "%",
+    "lower",
+    "up",
+    "left",
+    "nastav",
+    "remove",
+    "from",
+    "chorus",
+    "master",
+    "mix",
+    "hats",
+    "right",
+    "10",
+    "30",
+    "bpm",
+    "bypass",
+    "5",
+    "90",
+    "completely",
+    "distortion",
+    "mute",
+    "tremolo",
+    "25",
+    "lot",
+    "no",
+    "push",
+    "40",
+    "bar",
+    "bicie",
+    "leade",
+    "preset",
+    "track",
+    "60",
+    "75%",
+    "add",
+    "and",
+    "clip",
+    "darker",
+    "kick",
+    "load",
+    "please",
+    "zvys",
+    "0%",
+    "100",
+    "140",
+    "50%",
+    "9",
+    "center",
+    "drop",
+    "enable",
+    "o",
+    "solo",
+    "sub",
+    "unmute",
+    "viac",
+    "vypni",
+    "warmer",
+    "100%",
+    "120",
+    "128",
+    "150",
+    "2",
+    "20%",
+    "30%",
+    "35%",
+    "80",
+    "at",
+    "db",
+    "deeper",
+    "dost",
+    "export",
+    "intro",
+    "loop",
+    "menej",
+    "punchier",
+    "select",
+    "stop",
+    "trochu",
+    "uplne",
+    "warm",
+    "zapni",
+    "0",
+    "1",
+    "110",
+    "160",
+    "25%",
+    "50",
+    "80%",
+    "bars",
+    "boost",
+    "brighter",
+    "compression",
+    "copy",
+    "delete",
+    "duplicate",
+    "energetic",
+    "energie",
+    "everything",
+    "it",
+    "key",
+    "louder",
+    "minor",
+    "mp3",
+    "off",
+    "pause",
+    "play",
+    "pridaj",
+    "quieter",
+    "save",
+    "stis",
+    "uloz",
+    "unsolo",
+    "wider",
+    "10%",
+    "132",
+    "138",
+    "174",
+    "3",
+    "32",
+    "40%",
+    "500",
+    "8",
+    "808",
+    "90%",
+    "arrange",
+    "auto",
+    "basi",
+    "basovy",
+    "break",
+    "busy",
+    "cely",
+    "change",
+    "cykluj",
+    "d",
+    "daj",
+    "decay",
+    "delayu",
+    "dozvuku",
+    "drier",
+    "drum",
+    "exportuj",
+    "f",
+    "glue",
+    "grittier",
+    "haty",
+    "hi",
+    "house",
+    "hraj",
+    "huge",
+    "into",
+    "keys",
+    "length",
+    "loudness",
+    "metallic",
+    "metronome",
+    "mlcanie",
+    "move",
+    "nacitaj",
+    "nahravaj",
+    "nahravanie",
+    "octave",
+    "one",
+    "pann",
+    "pattern",
+    "pauza",
+    "pred",
+    "premenuj",
+    "prestav",
+    "projekt",
+    "prosim",
+    "pump",
+    "rec",
+    "record",
+    "recording",
+    "reese",
+    "rename",
+    "reverbu",
+    "robotic",
+    "saturation",
+    "shorten",
+    "song",
+    "tape",
+    "tazsi",
+    "telephone",
+    "tichsie",
+    "transpose",
+    "trim",
+    "trumpets",
+    "vsetko",
+    "vyber",
+    "wav",
+    "wobbly",
+    "zastav",
+    "zrychli",
+    "zzzblorp"
+  ],
+  "trunk": [
+    384,
+    192
+  ],
+  "heads": [
+    {
+      "name": "kind",
+      "kind": "softmax",
+      "classes": [
+        "abstain",
+        "fader",
+        "exact",
+        "transport",
+        "save",
+        "export",
+        "record",
+        "select",
+        "effectIntent",
+        "sendIntent",
+        "bypassIntent",
+        "mix",
+        "loudness",
+        "tempo",
+        "production",
+        "revise"
+      ]
+    },
+    {
+      "name": "direction",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "down",
+        "less",
+        "louder",
+        "more",
+        "quieter",
+        "remove",
+        "set",
+        "up"
+      ]
+    },
+    {
+      "name": "targets",
+      "kind": "sigmoid",
+      "classes": [
+        "bass",
+        "chords",
+        "clap",
+        "drums",
+        "hat",
+        "hats",
+        "kick",
+        "lead",
+        "master",
+        "mix",
+        "perc",
+        "snare",
+        "tom",
+        "vocal"
+      ]
+    },
+    {
+      "name": "pads",
+      "kind": "sigmoid",
+      "classes": [
+        "clap",
+        "hat",
+        "kick",
+        "perc",
+        "snare",
+        "tom"
+      ]
+    },
+    {
+      "name": "targets_one",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "bass",
+        "chords",
+        "clap",
+        "drums",
+        "hat",
+        "hats",
+        "kick",
+        "lead",
+        "master",
+        "mix",
+        "perc",
+        "snare",
+        "tom",
+        "vocal"
+      ]
+    },
+    {
+      "name": "effectType",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "bitcrusher",
+        "chorus",
+        "compressor",
+        "delay",
+        "distortion",
+        "eq",
+        "flanger",
+        "phaser",
+        "pump",
+        "reverb",
+        "saturation",
+        "tremolo"
+      ]
+    },
+    {
+      "name": "amount",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "big",
+        "full",
+        "huge",
+        "medium",
+        "normal",
+        "subtle"
+      ]
+    },
+    {
+      "name": "percent",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "0",
+        "5",
+        "10",
+        "20",
+        "25",
+        "30",
+        "35",
+        "40",
+        "50",
+        "75",
+        "80",
+        "90",
+        "100"
+      ]
+    },
+    {
+      "name": "bpm",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "90",
+        "100",
+        "110",
+        "120",
+        "128",
+        "132",
+        "138",
+        "140",
+        "150",
+        "160",
+        "174",
+        "300"
+      ]
+    },
+    {
+      "name": "targetDb",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "-9"
+      ]
+    },
+    {
+      "name": "deltaDb",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "-1.5",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "name": "panValue",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "-0.9",
+        "-0.6",
+        "-0.3",
+        "-0.1",
+        "0",
+        "0.1",
+        "0.3",
+        "0.6",
+        "0.8",
+        "0.9"
+      ]
+    },
+    {
+      "name": "semitones",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "12"
+      ]
+    },
+    {
+      "name": "steps",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "32",
+        "64"
+      ]
+    },
+    {
+      "name": "key",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "D Natural Minor",
+        "F# Natural Minor"
+      ]
+    },
+    {
+      "name": "exactOp",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "addTrack",
+        "duplicateTrack",
+        "gainDb",
+        "key",
+        "mute",
+        "pan",
+        "patternLength",
+        "removeTrack",
+        "renameTrack",
+        "solo",
+        "tempo",
+        "transpose"
+      ]
+    },
+    {
+      "name": "boolValue",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "true",
+        "false"
+      ]
+    },
+    {
+      "name": "trackKind",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "drum",
+        "instrument"
+      ]
+    },
+    {
+      "name": "instrument",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "analog",
+        "bass",
+        "keys"
+      ]
+    },
+    {
+      "name": "trackName",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "sub",
+        "sub bass"
+      ]
+    },
+    {
+      "name": "transportAction",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "loopOff",
+        "loopOn",
+        "metronomeOff",
+        "metronomeOn",
+        "pause",
+        "play",
+        "stop"
+      ]
+    },
+    {
+      "name": "exportFormat",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "mp3",
+        "wav"
+      ]
+    },
+    {
+      "name": "selectTarget",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "bass",
+        "chords",
+        "drums",
+        "lead"
+      ]
+    },
+    {
+      "name": "reviseAttribute",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "density",
+        "energy"
+      ]
+    },
+    {
+      "name": "prodConcept",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "brighter",
+        "darker",
+        "deeper",
+        "glue",
+        "grittier",
+        "lofi",
+        "metallic",
+        "punchier",
+        "robotic",
+        "stutter",
+        "tape",
+        "telephone",
+        "warmer",
+        "wider",
+        "wobbly"
+      ]
+    },
+    {
+      "name": "prodAmount",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "0.7"
+      ]
+    },
+    {
+      "name": "mixReverb",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "more",
+        "less",
+        "huge"
+      ]
+    },
+    {
+      "name": "mixTone",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "dark",
+        "bright",
+        "warm",
+        "cold"
+      ]
+    },
+    {
+      "name": "mixPunch",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "more",
+        "less"
+      ]
+    },
+    {
+      "name": "mixPump",
+      "kind": "softmax",
+      "classes": [
+        "__absent__",
+        "on",
+        "off"
+      ]
+    }
+  ],
+  "tokenPattern": "lower, NFD-strip, [a-z0-9%+]+, binary presence BoW"
+}

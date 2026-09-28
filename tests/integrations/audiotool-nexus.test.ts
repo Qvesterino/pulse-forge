@@ -6,6 +6,7 @@ import type { AuthenticatedClient, SyncedDocument } from "@audiotool/nexus";
 import { createDefaultProject } from "../../src/project-model/schema";
 import type { Pattern } from "../../src/project-model/types";
 import { audiotoolProjectIdFromUrl, buildAudiotoolWritePlan } from "../../src/integrations/audiotool-nexus/mapping";
+import { readAudiotoolProjectTempo } from "../../src/integrations/audiotool-nexus/tempo";
 import { writeAudiotoolPlan } from "../../src/integrations/audiotool-nexus/writer";
 import { AudiotoolNexusExport } from "../../src/ui/AudiotoolNexusExport";
 
@@ -60,6 +61,100 @@ describe("Audiotool Nexus MIDI mapping", () => {
     expect(repeatedPlan.ok).toBe(true);
     if (repeatedPlan.ok) expect(result.plan.fingerprint).toBe(repeatedPlan.plan.fingerprint);
     expect(doc.patterns.find((candidate) => candidate.id === doc.activePatternId)?.notes).toEqual(pattern.notes);
+  });
+
+  it("maps supported factory and synth drum roles, merges collisions, and reports unsupported hits", () => {
+    const project = createDefaultProject();
+    const drumTrack = project.tracks.find((track) => track.kind === "drum");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    expect(drumTrack?.kind).toBe("drum");
+    expect(pattern).toBeDefined();
+    if (!drumTrack || drumTrack.kind !== "drum" || !pattern) return;
+
+    const kickPads = drumTrack.pads.filter((pad) => pad.assetId?.startsWith("factory.kick."));
+    const snarePad = drumTrack.pads.find((pad) => pad.assetId?.startsWith("factory.snare."));
+    const openHatPad = drumTrack.pads.find((pad) => pad.assetId?.startsWith("factory.hat.open"));
+    const referencePad = drumTrack.pads[0];
+    expect(kickPads.length).toBeGreaterThanOrEqual(2);
+    expect(snarePad).toBeDefined();
+    expect(openHatPad).toBeDefined();
+    expect(referencePad).toBeDefined();
+    if (kickPads.length < 2 || !snarePad || !openHatPad || !referencePad) return;
+
+    const cowbellPad = {
+      ...referencePad,
+      id: "cowbell-synth-pad",
+      assetId: null,
+      synth: { type: "cowbell" as const, decay: 0.4, tone: 1200, snap: 0.3, body: 0.5 },
+    };
+    const customPad = { ...referencePad, id: "custom-audio-pad", assetId: "user.sample.unknown", synth: null };
+    const tracks = project.tracks.map((track) =>
+      track.id === drumTrack.id ? { ...drumTrack, pads: [...drumTrack.pads, cowbellPad, customPad] } : track,
+    );
+    const customOverflow = Array(65).fill(0) as number[];
+    customOverflow[64] = 0.4;
+    const selected: Pattern = {
+      ...pattern,
+      stepCount: 80,
+      notes: {},
+      rows: {
+        [kickPads[0]!.id]: [0.7],
+        [kickPads[1]!.id]: [0.9],
+        [snarePad.id]: [0, 0.5],
+        [openHatPad.id]: [0, 0, 0.3],
+        [cowbellPad.id]: [0, 0, 0, 0.8],
+        [customPad.id]: [0, 0, 0, 0, 0.6],
+        [kickPads[0]!.id + "-overflow"]: customOverflow,
+      },
+    };
+    const result = buildAudiotoolWritePlan({
+      pattern: selected,
+      tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: project.bpm,
+      projectId: "drum-only-project",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.parts).toHaveLength(0);
+    expect(result.plan.noteCount).toBe(0);
+    expect(result.plan.drumPattern).toMatchObject({ length: 64, sourceStepCount: 80, hitCount: 4 });
+    expect(result.plan.drumPattern?.steps[0]).toMatchObject({ bassdrumIsActive: true, isAccented: true });
+    expect(result.plan.drumPattern?.steps[1]).toMatchObject({ snaredrumIsActive: true, isAccented: false });
+    expect(result.plan.drumPattern?.steps[2]?.openHihatIsActive).toBe(true);
+    expect(result.plan.drumPattern?.steps[3]?.cowbellIsActive).toBe(true);
+    expect(result.plan.collapsedDrumHits).toBe(1);
+    expect(result.plan.unsupportedDrumHits).toBe(2);
+  });
+
+  it("reads target tempo and meter without mutating Audiotool config", async () => {
+    const document = await createOfflineDocument();
+    const defaults = readAudiotoolProjectTempo(document);
+    expect(defaults).toEqual({
+      bpm: 125,
+      timeSignature: { numerator: 4, denominator: 4 },
+      isDefault: true,
+    });
+    expect(document.queryEntities.ofTypes("config").get()).toHaveLength(0);
+    await document.modify((transaction) => {
+      const groove = transaction.create("groove", {});
+      transaction.create("config", {
+        tempoBpm: 142,
+        signatureNumerator: 3,
+        signatureDenominator: 4,
+        defaultGroove: groove.location,
+      });
+    });
+    const config = document.queryEntities.ofTypes("config").get()[0];
+    expect(config).toBeDefined();
+    expect(readAudiotoolProjectTempo(document)).toEqual({
+      bpm: 142,
+      timeSignature: { numerator: 3, denominator: 4 },
+      isDefault: false,
+    });
+    expect(config?.fields.tempoBpm.value).toBe(142);
+    expect(config?.fields.signatureNumerator.value).toBe(3);
   });
 
   it("rejects invalid notes and reports note lanes that are not KYX instrument tracks", () => {
@@ -163,20 +258,54 @@ describe("Audiotool Nexus offline entity write", () => {
 
     const openDocument = await createOfflineDocument();
     const first = await writeAudiotoolPlan(openDocument, result.plan);
-    expect(first).toMatchObject({ status: "created", parts: 1, notes: 1, devices: 1, mixerChannels: 1, cables: 1 });
+    expect(first).toMatchObject({
+      status: "created",
+      parts: 1,
+      notes: 1,
+      devices: 1,
+      beatboxDevices: 1,
+      drumPatterns: 1,
+      drumHits: result.plan.drumPattern?.hitCount,
+      mixerChannels: 2,
+      cables: 2,
+    });
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
+    const heisenberg = openDocument.queryEntities.ofTypes("heisenberg").get()[0];
+    expect(heisenberg?.fields.isActive.value).toBe(true);
+    expect(heisenberg?.fields.operatorA.fields.gain.value).toBeGreaterThan(0);
+    expect(heisenberg?.fields.operatorA.fields.waveformIndex.value).toBe(1);
     expect(openDocument.queryEntities.ofTypes("noteTrack").get()).toHaveLength(1);
     expect(openDocument.queryEntities.ofTypes("noteRegion").get()).toHaveLength(1);
     const notes = openDocument.queryEntities.ofTypes("note").get();
     expect(notes).toHaveLength(1);
     expect(notes[0]?.fields.positionTicks.value).toBe(3840);
     expect(notes[0]?.fields.durationTicks.value).toBe(960);
-    expect(openDocument.queryEntities.ofTypes("mixerChannel").get()).toHaveLength(1);
-    expect(openDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(1);
+    expect(openDocument.queryEntities.ofTypes("mixerChannel").get()).toHaveLength(2);
+    expect(openDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(2);
+    const beatbox = openDocument.queryEntities.ofTypes("beatbox8").get()[0];
+    const beatboxPattern = openDocument.queryEntities.ofTypes("beatbox8Pattern").get()[0];
+    expect(beatbox?.fields.isActive.value).toBe(true);
+    expect(beatboxPattern?.fields.length.value).toBe(result.plan.drumPattern?.length);
+    expect(beatboxPattern?.fields.stepScaleIndex.value).toBe(3);
+    expect(beatboxPattern?.fields.steps.array).toHaveLength(64);
+    for (let index = 0; index < 64; index += 1) {
+      const actual = beatboxPattern?.fields.steps.array[index];
+      const expected = result.plan.drumPattern?.steps[index];
+      expect(actual?.fields.isAccented.value).toBe(expected?.isAccented);
+      expect(actual?.fields.bassdrumIsActive.value).toBe(expected?.bassdrumIsActive);
+      expect(actual?.fields.snaredrumIsActive.value).toBe(expected?.snaredrumIsActive);
+      expect(actual?.fields.closedHihatIsActive.value).toBe(expected?.closedHihatIsActive);
+      expect(actual?.fields.openHihatIsActive.value).toBe(expected?.openHihatIsActive);
+    }
+    expect(openDocument.queryEntities.ofTypes("patternTrack").get()[0]?.fields.isEnabled.value).toBe(true);
+    expect(openDocument.queryEntities.ofTypes("patternRegion").get()[0]?.fields.region.fields.isEnabled.value).toBe(
+      true,
+    );
 
     const retry = await writeAudiotoolPlan(openDocument, result.plan);
     expect(retry).toMatchObject({ status: "already-imported", parts: 0, notes: 0 });
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
+    expect(openDocument.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
     expect(openDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
 
     let preflightChecks = 0;
@@ -192,6 +321,93 @@ describe("Audiotool Nexus offline entity write", () => {
     expect(preflightChecks).toBe(2);
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
     expect(openDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
+  });
+
+  it("supports a drum-only export and keeps its retry idempotent", async () => {
+    const project = createDefaultProject();
+    const drumTrack = project.tracks.find((track) => track.kind === "drum");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    const kick =
+      drumTrack?.kind === "drum" ? drumTrack.pads.find((pad) => pad.assetId === "factory.kick.deep") : undefined;
+    expect(drumTrack?.kind).toBe("drum");
+    expect(kick).toBeDefined();
+    expect(pattern).toBeDefined();
+    if (!drumTrack || drumTrack.kind !== "drum" || !kick || !pattern) return;
+
+    const result = buildAudiotoolWritePlan({
+      pattern: { ...pattern, notes: {}, rows: { [kick.id]: [0.9] } },
+      tracks: project.tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: project.bpm,
+      projectId: "drum-only-offline-project",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.parts).toHaveLength(0);
+
+    const document = await createOfflineDocument();
+    const receipt = await writeAudiotoolPlan(document, result.plan);
+    expect(receipt).toMatchObject({
+      status: "created",
+      parts: 0,
+      notes: 0,
+      beatboxDevices: 1,
+      drumPatterns: 1,
+      drumHits: 1,
+    });
+    expect(document.queryEntities.ofTypes("heisenberg").get()).toHaveLength(0);
+    expect(document.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(1);
+    expect(await writeAudiotoolPlan(document, result.plan)).toMatchObject({ status: "already-imported" });
+    expect(document.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
+  });
+
+  it("adds drums to a matching legacy MIDI import without duplicating its notes or synth", async () => {
+    const project = createDefaultProject();
+    const drumTrack = project.tracks.find((track) => track.kind === "drum");
+    const instrument = project.tracks.find((track) => track.kind === "instrument");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    const kick =
+      drumTrack?.kind === "drum" ? drumTrack.pads.find((pad) => pad.assetId === "factory.kick.deep") : undefined;
+    expect(instrument?.kind).toBe("instrument");
+    expect(kick).toBeDefined();
+    expect(pattern).toBeDefined();
+    if (!instrument || instrument.kind !== "instrument" || !kick || !pattern) return;
+
+    const shared = {
+      ...pattern,
+      stepCount: 16,
+      notes: { [instrument.id]: [{ id: "legacy-midi", pitch: 60, start: 0, duration: 480, velocity: 0.8 }] },
+    };
+    const legacyPlan = buildAudiotoolWritePlan({
+      pattern: { ...shared, rows: {} },
+      tracks: project.tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: project.bpm,
+      projectId: "legacy-upgrade-project",
+    });
+    const upgradedPlan = buildAudiotoolWritePlan({
+      pattern: { ...shared, rows: { [kick.id]: [0.8] } },
+      tracks: project.tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: project.bpm,
+      projectId: "legacy-upgrade-project",
+    });
+    expect(legacyPlan.ok).toBe(true);
+    expect(upgradedPlan.ok).toBe(true);
+    if (!legacyPlan.ok || !upgradedPlan.ok) return;
+
+    const document = await createOfflineDocument();
+    await writeAudiotoolPlan(document, legacyPlan.plan);
+    const upgrade = await writeAudiotoolPlan(document, upgradedPlan.plan);
+    expect(upgrade).toMatchObject({ status: "created", parts: 0, notes: 0, beatboxDevices: 1, drumPatterns: 1 });
+    expect(document.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("note").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
+    expect(await writeAudiotoolPlan(document, upgradedPlan.plan)).toMatchObject({ status: "already-imported" });
+    expect(document.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("note").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
   });
 
   it("does not treat edited imported notes as an unchanged idempotent retry", async () => {
@@ -352,7 +568,7 @@ describe("Audiotool Nexus connection UX", () => {
     expect(screen.getByText(/1 MIDI part/)).toBeInTheDocument();
 
     const confirm = screen.getByRole("checkbox");
-    const sendButton = screen.getByRole("button", { name: "PRIDAŤ MIDI DO AUDIOTOOLU" });
+    const sendButton = screen.getByRole("button", { name: "PRIDAŤ MIDI + DRUMS DO AUDIOTOOLU" });
     expect(sendButton).toBeDisabled();
     fireEvent.click(confirm);
     expect(sendButton).toBeEnabled();
@@ -372,7 +588,8 @@ describe("Audiotool Nexus connection UX", () => {
     expect(await screen.findByRole("button", { name: "ODOSLANÉ" })).toBeInTheDocument();
     expect(screen.getByText(/Pridané: 1 MIDI part/)).toBeInTheDocument();
     expect(offlineDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
-    expect(offlineDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(1);
+    expect(offlineDocument.queryEntities.ofTypes("beatbox8Pattern").get()).toHaveLength(1);
+    expect(offlineDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "ODPOJIŤ PROJEKT" }));
     await waitFor(() => expect(session.stop).toHaveBeenCalledOnce());

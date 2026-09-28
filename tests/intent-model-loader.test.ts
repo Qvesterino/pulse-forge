@@ -98,7 +98,10 @@ describe("manifest contract", () => {
     expect(isIntentModelManifest({ ...validManifest(), schemaVersion: 0 })).toBe(false);
     expect(isIntentModelManifest({ ...validManifest(), model: { ...validManifest().model, bytes: 0 } })).toBe(false);
     expect(
-      isIntentModelManifest({ ...validManifest(), prompt: { ...validManifest().prompt, instructionTemplate: "no slot" } }),
+      isIntentModelManifest({
+        ...validManifest(),
+        prompt: { ...validManifest().prompt, instructionTemplate: "no slot" },
+      }),
     ).toBe(false);
     expect(isIntentModelManifest(null)).toBe(false);
   });
@@ -147,7 +150,10 @@ describe("loader flag + probe", () => {
 describe("loader registration + timeouts + breaker", () => {
   it("a scripted model registers the resolver provider and routes through it", async () => {
     setIntentModelMode("on");
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(validManifest())));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest())),
+    );
     const worker = new FakeModelWorker();
     worker.onMessage = (request, reply) => {
       if (request.type === "load") reply({ type: "load", requestId: request.requestId, ok: true });
@@ -160,7 +166,7 @@ describe("loader registration + timeouts + breaker", () => {
         });
       }
     };
-    setIntentModelWorkerFactoryForTests(() => worker);
+    setIntentModelWorkerFactoryForTests(() => worker as unknown as Worker);
     await expect(ensureIntentModelProvider()).resolves.toBe(true);
     const provider = getIntentModelProvider();
     expect(provider?.id).toBe("pulse-forge.intent-model");
@@ -176,31 +182,37 @@ describe("loader registration + timeouts + breaker", () => {
   it("a generate timeout is a controlled miss, never a throw into the caller", async () => {
     setIntentModelMode("on");
     setIntentModelTimeoutsForTests({ generateMs: 25 });
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(validManifest())));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest())),
+    );
     const worker = new FakeModelWorker();
     worker.onMessage = (request, reply) => {
       if (request.type === "load") reply({ type: "load", requestId: request.requestId, ok: true });
       // generate: never replies → warm timeout
     };
-    setIntentModelWorkerFactoryForTests(() => worker);
+    setIntentModelWorkerFactoryForTests(() => worker as unknown as Worker);
     await expect(ensureIntentModelProvider()).resolves.toBe(true);
     const provider = getIntentModelProvider();
     expect(provider).not.toBeNull();
-    await expect(provider!.generate("anything")).rejects.toThrow(/timeout/);
     const doc = createProjectFromTemplate("house");
+    await expect(provider!.generate("anything", doc)).rejects.toThrow(/timeout/);
     await expect(tryModelRoute("halt everything now", doc)).resolves.toBeNull();
   });
 
   it("a cold load timeout does not trip the breaker — the next ensure recovers", async () => {
     setIntentModelMode("on");
     setIntentModelTimeoutsForTests({ coldLoadMs: 25 });
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(validManifest())));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest())),
+    );
     let answerLoads = false;
     const worker = new FakeModelWorker();
     worker.onMessage = (request, reply) => {
       if (request.type === "load" && answerLoads) reply({ type: "load", requestId: request.requestId, ok: true });
     };
-    setIntentModelWorkerFactoryForTests(() => worker);
+    setIntentModelWorkerFactoryForTests(() => worker as unknown as Worker);
     await expect(ensureIntentModelProvider()).resolves.toBe(false); // cold timeout
     expect(worker.terminated).toBe(false); // still loading in the background
     answerLoads = true; // weights land while we wait
@@ -210,7 +222,10 @@ describe("loader registration + timeouts + breaker", () => {
 
   it("repeated load failures trip the circuit breaker for the session", async () => {
     setIntentModelMode("on");
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(validManifest())));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest())),
+    );
     let spawns = 0;
     setIntentModelWorkerFactoryForTests(() => {
       spawns += 1;
@@ -220,7 +235,7 @@ describe("loader registration + timeouts + breaker", () => {
           reply({ type: "load", requestId: request.requestId, ok: false, error: "model artifact corrupt" });
         }
       };
-      return worker;
+      return worker as unknown as Worker;
     });
     await expect(ensureIntentModelProvider()).resolves.toBe(false);
     await expect(ensureIntentModelProvider()).resolves.toBe(false);
@@ -243,16 +258,15 @@ describe("loader registration + timeouts + breaker", () => {
 describe("model worker message handling", () => {
   /** Drive the worker module directly: jsdom has self but no worker glue. */
   async function loadThroughWorker(manifest: IntentModelManifest, weights: Uint8Array): Promise<IntentModelResponse> {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(weights, { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(weights as unknown as BodyInit, { status: 200 })),
+    );
     const replies: IntentModelResponse[] = [];
     (self as unknown as { postMessage: (message: IntentModelResponse) => void }).postMessage = (message) => {
       if (message.type !== "progress") replies.push(message);
     };
-    const { default: _unused, ...workerModule } = (await import("../src/intent/model-worker")) as unknown as Record<
-      string,
-      unknown
-    >;
-    void _unused;
+    await import("../src/intent/model-worker");
     const onmessage = (self as unknown as { onmessage: (event: { data: unknown }) => Promise<void> }).onmessage;
     expect(onmessage).toBeTypeOf("function");
     await onmessage({ data: { type: "load", requestId: 7, manifest } as IntentModelRequest });
@@ -263,14 +277,14 @@ describe("model worker message handling", () => {
     const manifest = validManifest({ model: { url: "/models/llm/m.gguf", bytes: 8, sha256: "0".repeat(64) } });
     const response = await loadThroughWorker(manifest, new TextEncoder().encode("weights!"));
     expect(response).toMatchObject({ type: "load", requestId: 7, ok: false });
-    if (response.ok === false) expect(response.error).toContain("model hash mismatch");
+    if (response.type === "load" && response.ok === false) expect(response.error).toContain("model hash mismatch");
   });
 
   it("refuses a load whose manifest pins a grammar this build does not generate", async () => {
     const manifest = validManifest({ grammarSha256: "0".repeat(64) });
     const response = await loadThroughWorker(manifest, new TextEncoder().encode("weights!"));
-    expect(response.ok).toBe(false);
-    if (response.ok === false) expect(response.error).toContain("grammar drift");
+    expect(response.type).toBe("load");
+    if (response.type === "load" && response.ok === false) expect(response.error).toContain("grammar drift");
   });
 
   it("drops malformed messages silently and answers generate-before-load with a controlled error", async () => {
@@ -284,6 +298,8 @@ describe("model worker message handling", () => {
     await onmessage({ data: { type: "generate", requestId: 3, instruction: "hi" } });
     const generateReply = replies.find((reply) => reply.requestId === 3);
     expect(generateReply).toMatchObject({ type: "generate", requestId: 3, ok: false });
-    if (generateReply?.ok === false) expect(generateReply.error).toContain("model not loaded");
+    if (generateReply?.type === "generate" && generateReply.ok === false) {
+      expect(generateReply.error).toContain("model not loaded");
+    }
   });
 });

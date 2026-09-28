@@ -97,12 +97,22 @@ if (await generate.count()) {
 }
 await page.waitForTimeout(15_000);
 
-// Open the NEXUS export dialog. The trigger in IntentPanel is a button whose
-// label is exactly "AUDIOTOOL", and it only renders once a candidate exists —
-// so generating a beat above is a precondition, not a nicety.
+// The AUDIOTOOL entry point only renders for an APPLIED candidate — not for
+// a generated one. So the order is: GENERATE -> USE -> AUDIOTOOL.
+const use = page.getByRole("button", { name: /^USE$/i }).first();
+if (!(await use.count())) {
+  log("!! no USE button — no candidate was generated");
+  await context.close();
+  await browser.close();
+  process.exit(1);
+}
+log("  applying the winning candidate with USE");
+await use.click();
+await page.waitForTimeout(7000);
+
 const nexusButton = page.getByRole("button", { name: "AUDIOTOOL", exact: true }).first();
 if (!(await nexusButton.count())) {
-  log("!! could not find the AUDIOTOOL button — no candidate was generated");
+  log("!! could not find the AUDIOTOOL button after USE");
   await context.close();
   await browser.close();
   process.exit(1);

@@ -123,6 +123,7 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   detroit: "cold",
   // Post-rock is the warm-and-dusty guitar genre (the whole point is texture).
   postrock: "warm",
+  drone: "cold",
   // Chiptune is the cold digital genre - no warmth, the pulses are square.
   chiptune: "cold",
   // Eurodance is the bright euphoric-lift genre (supersaw air, 90s radio).

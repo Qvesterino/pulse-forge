@@ -42,4 +42,7 @@ export const GENRE_REFERENCE: Record<string, GenreSongReference> = {
   trance: { integrated: -10.2, punchPlrDb: 9.2, tiltDb: 22.3, bars: 120 },
   detroit: { integrated: -7, punchPlrDb: 6, tiltDb: 26.7, bars: 96 },
   postrock: { integrated: -10.6, punchPlrDb: 9.6, tiltDb: 23.1, bars: 112 },
+  chiptune: { integrated: -11.4, punchPlrDb: 10.4, tiltDb: 16.9, bars: 56 },
+  eurodance: { integrated: -11.4, punchPlrDb: 10.4, tiltDb: 16.5, bars: 104 },
+  latin: { integrated: -10.1, punchPlrDb: 9.1, tiltDb: 27.5, bars: 96 },
 };

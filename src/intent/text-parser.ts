@@ -115,9 +115,17 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // hip-hop sub-genre sweep — grime is a 140 UK floor (house family)
   [/\bgrime\b|\beski\b/, "house"],
   [/\bchillhop\b|\bstudy beats\b|\blofi hip hop\b/, "ambient"],
+  // Explicit ambient compounds win over the standalone drone genre, so
+  // "dark ambient drone" and "drone ambient" remain in the ambient family.
+  [/\bdark ambient\b|\bambient drone\b|\bdrone ambient\b/, "ambient"],
   // Drone / neo-classical - first-class since the promotion. "new age" and
   // "meditation" stay ambient (they are the relaxed-lifestyle lane).
-  [/\bdrone\b|\bdark ambient\b|\bdrone music\b/, "drone"],
+  [/\bdrone\b|\bdrone music\b/, "drone"],
+  [
+    /\bneoclassical\b|\bneo[- ]?classical\b|\bmodern classical\b|\bminimalism\b|\bisolationism\b|\belectroacoustic\b/,
+    "drone",
+  ],
+  [/\bfilm score\b|\borchestral score\b|\bmodern score\b/, "drone"],
   [/\bnew age\b|\bmeditation\b/, "ambient"],
   [/\bbreakcore\b/, "dnb"],
   // sub-genre wave (world-roster follow-up) — specifics still BEFORE generics
@@ -202,11 +210,17 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Chiptune / VGM - first-class genre (the sound-chip tradition). MUST sit
   // ABOVE the generic "game" absence and any "chip" word use. "tracker" is
   // the demoscene school; "8-bit" / "8 bit" are the colloquial names.
-  [/\bchiptune\b|\bchip ?tune\b|\b8[- ]?bit\b|\bgame ?boy\b|\bvgm\b|\bnes music\b|\bbitpop\b|\bchip music\b/, "chiptune"],
+  [
+    /\bchiptune\b|\bchip ?tune\b|\b8[- ]?bit\b|\bgame ?boy\b|\bvgm\b|\bnes music\b|\bbitpop\b|\bchip music\b/,
+    "chiptune",
+  ],
   // Eurodance - first-class genre (the 90s Euro-NRG tradition). "eurodance"
   // and "euro house" sit above the generic house entry; "hands up" is the
   // German school name. "eurobeat" is the Initial D / Avex lineage.
-  [/\beurodance\b|\beuro ?dance\b|\beuro ?house\b|\beurobeat\b|\bhands ?up\b|\bdancecore\b|\beuro nrg\b|\bitalo dance\b/, "eurodance"],
+  [
+    /\beurodance\b|\beuro ?dance\b|\beuro ?house\b|\beurobeat\b|\bhands ?up\b|\bdancecore\b|\beuro nrg\b|\bitalo dance\b|\btrancecore\b/,
+    "eurodance",
+  ],
   // Latin - first-class genre (the Afro-Caribbean + South American dance
   // tradition). Every school name is its own genre word; "latin" bare is
   // guarded so "latin pop" / "latin urban" keep their dembow lane.
@@ -311,7 +325,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\btracker\b|\bdemoscene\b|\bfasttracker\b|\bimpulse tracker\b/, "tracker"],
   // Bare genre words get the genre's default school (chiptune → nintendo,
   // matching the SONG_FORMS default and the artist lane).
-  [/\bchiptune\b|\bchip ?tune\b|\b8[- ]?bit\b|\bvgm\b|\bnes music\b|\bbitpop\b|\bchip music\b|\bgame ?boy\b/, "nintendo"],
+  [
+    /\bchiptune\b|\bchip ?tune\b|\b8[- ]?bit\b|\bvgm\b|\bnes music\b|\bbitpop\b|\bchip music\b|\bgame ?boy\b/,
+    "nintendo",
+  ],
   // ── Eurodance school tree (specific schools BEFORE the bare genre words) ─
   [/\bhappy eurodance\b|\beuphoric dance\b|\beuro happy\b|\bsupersaw dance\b/, "happy"],
   [/\bpitched[- ]?up vocal\b|\bgerman dance\b|\bhard hands\b|\bdancecore\b|\bhands ?up\b/, "handsup"],
@@ -322,7 +339,10 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bfestival revival\b|\bmodern hands\b|\bbig room hands\b/, "hands"],
   // ── Latin school tree ───────────────────────────────────────────────────
   [/\bsonidera\b|\bcolombian cumbia\b|\bguiro\b|\bcumbia sonidera\b|\bcumbia\b/, "cumbia"],
-  [/\btambora\b|\bdominican two[- ]?feel\b|\bpambiche\b|\bmerengue tipico\b|\bperico ripiao\b|\bmerengue\b/, "merengue"],
+  [
+    /\btambora\b|\bdominican two[- ]?feel\b|\bpambiche\b|\bmerengue tipico\b|\bperico ripiao\b|\bmerengue\b/,
+    "merengue",
+  ],
   [/\bderecho\b|\bbongo[- ]?led\b|\bdominican romance\b|\bbachata romantica\b|\bbachata\b/, "bachata"],
   [/\bson clave\b|\btumbao\b|\bmontuno\b|\bcuban son\b|\bsalsa dura\b|\btimba\b|\bsalsa\b/, "salsa"],
   [/\bbig[- ]?band latin\b|\bcowbell latin\b|\bdescarga\b|\bprado\b|\bmambo\b/, "mambo"],
@@ -392,6 +412,14 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Amapiano school tree — specific school words BEFORE the generic amapiano
   // style entry. "yanos" is the core sound; "s'gija" the stripped pocket.
   [/\bprivate school piano\b|\bsoulful amapiano\b/, "soulful"],
+  // Drone / neo-classical school tree - specific school words BEFORE the
+  // generic drone style entry. "neoclassical" is the piano-and-strings school.
+  [/\bneoclassical\b|\bneo[- ]?classical\b|\bmodern classical\b/, "neoclassical"],
+  [/\bminimalism\b|\bsteve reich\b/, "minimalism"],
+  [/\bisolationism\b|\bisolationist\b/, "isolationism"],
+  [/\belectroacoustic\b|\bmodular drone\b/, "electroacoustic"],
+  [/\bfilm score\b|\borchestral score\b|\bmodern score\b|\bmain title\b/, "score"],
+  [/\bdrone\b/, "drone"],
   [/\bs'?gija\b/, "sgija"],
   [/\bnew age bacardi\b/, "bacardi"],
   [/\bquantum sound\b/, "quantum"],
@@ -973,9 +1001,7 @@ export function parseIntentText(text: string): ParsedIntent {
   // a head start, never a correctness dependency.
   // Lazy: a static import would pull the semantic client into the landing
   // route's static closure, which the client itself is built to avoid.
-  void import("./semantic-conditioning")
-    .then((module) => module.primeSemanticForText(text))
-    .catch(() => undefined);
+  void import("./semantic-conditioning").then((module) => module.primeSemanticForText(text)).catch(() => undefined);
 
   // ARTIST "type beat" preset (C1) — applied FIRST as the base: it sets
   // genre/style/mood/sliders/BPM, and the explicit-word steps below still

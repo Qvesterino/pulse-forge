@@ -150,6 +150,15 @@ describe("semantic-conditioning gate", () => {
     expect(embedTextsMock).not.toHaveBeenCalled();
   });
 
+  it("embedding off → structured style fallback without embedding or cross-intent cache bleed", async () => {
+    const house = Array.from({ length: V3_SEMANTIC_DIMS }, () => 0.25);
+    const dnb = Array.from({ length: V3_SEMANTIC_DIMS }, () => -0.5);
+
+    expect(await semanticConditioning("same prompt", embedTextsMock, null, house)).toEqual(house);
+    expect(await semanticConditioning("same prompt", embedTextsMock, null, dnb)).toEqual(dnb);
+    expect(embedTextsMock).not.toHaveBeenCalled();
+  });
+
   it("flag on + 384-dim embed → 16-dim finite conditioning, memoized per text", async () => {
     localStorage.setItem(FLAG, "on");
     priorFlagState.value = "on";
@@ -292,13 +301,13 @@ describe("provider embedding-conditioned path", () => {
     expect(entries[0].pattern.name).toContain("+sem");
   });
 
-  it("flag off → pure v1 path (no embed, no v2 call)", async () => {
+  it("embedding off → structured v3 path without loading the embedder", async () => {
     const { doc, plan } = planFor();
-    runPriorGridMock.mockImplementation(async (_batch: Float32Array, rowCount: number) => ({
-      ok: true,
-      probs: new Array(rowCount).fill(0.4),
-      source: "model" as const,
-    }));
+    runPriorGridV3Mock.mockImplementation(async (batch: Float32Array, rowCount: number) => {
+      expect(batch.length).toBe(rowCount * V3_FEATURE_COUNT);
+      expect(Array.from(batch.slice(0, V3_SEMANTIC_DIMS)).some((value) => value !== 0)).toBe(true);
+      return { ok: true, probs: new Array(rowCount).fill(0.4), source: "model" as const };
+    });
 
     const { entries, failures } = await symbolicPriorProvider.collectCandidates(
       plan,
@@ -307,10 +316,10 @@ describe("provider embedding-conditioned path", () => {
     );
     expect(embedTextsMock).not.toHaveBeenCalled();
     expect(runPriorGridV2Mock).not.toHaveBeenCalled();
-    expect(runPriorGridV3Mock).not.toHaveBeenCalled();
-    expect(runPriorGridMock).toHaveBeenCalled();
+    expect(runPriorGridV3Mock).toHaveBeenCalledTimes(1);
+    expect(runPriorGridMock).not.toHaveBeenCalled();
     expect(failures).toEqual([]);
     expect(entries.length).toBe(1);
-    expect(entries[0].pattern.name).not.toContain("+sem");
+    expect(entries[0].pattern.name).toContain("+sem");
   });
 });

@@ -36,7 +36,10 @@ let activeManifest: IntentModelManifest | null = null;
  * the Cache API (deployments don't ship dev-only public/ folders); every
  * other URL passes through to the origin. Same contract as the semantic
  * worker's fetch bridge. */
-async function fetchWithPackCache(url: string, onProgress?: (loaded: number, total: number) => void): Promise<ArrayBuffer> {
+async function fetchWithPackCache(
+  url: string,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<ArrayBuffer> {
   try {
     const cache = await caches.open(MODEL_PACK_CACHE);
     const cached = await cache.match(new URL(url, self.location.href).href);

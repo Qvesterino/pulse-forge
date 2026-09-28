@@ -184,4 +184,64 @@ export const DRILL_GROOVES: GrooveData[] = [
       },
     ],
   },
+  // ── Jerk: the clapping pattern is the identity. Triple-time snare
+  // roll on top of a 2-step kick, clap doubled hard on the offbeat.
+  {
+    id: "drill.jerk",
+    genre: "drill",
+    name: "Jerk (clap-driven)",
+    bpm: [140, 146],
+    swing: 0.12,
+    activePads: [0, 6, 8, 10, 14],
+    patterns: [
+      {
+        0: [0.92, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        2: [0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0.88, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        6: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35, 0],
+        8: [0, 0, 0, 0, 0, 0, 0.52, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0.9, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.7, 0, 0, 0, 0.6, 0, 0, 0, 0.7, 0, 0, 0, 0.6, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Brooklyn: the 808 is the whole track. Long gliding sub, sparse
+  // hats, snare on the 3 rather than a rolling pattern.
+  {
+    id: "drill.brooklyn",
+    genre: "drill",
+    name: "Brooklyn (long glide)",
+    bpm: [142, 148],
+    swing: 0.06,
+    activePads: [0, 4, 8, 10, 15],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0, 0, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0],
+        15: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5],
+      },
+    ],
+  },
+  // ── Chopped hip hop: half-time everything, snares dragged behind the
+  // grid, the 808 under a swung loop.
+  {
+    id: "drill.chopped",
+    genre: "drill",
+    name: "Chopped hip hop (half-time)",
+    bpm: [84, 92],
+    swing: 0.18,
+    activePads: [0, 5, 8, 12, 14],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0, 0, 0, 0, 0],
+        12: [0.65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0, 0, 0, 0, 0.55, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
 ];
