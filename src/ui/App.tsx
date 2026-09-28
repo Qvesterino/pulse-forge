@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspe
 import type { Services } from "../services";
 import type { LinkStatus } from "../collab/linkSync";
 import { formatSmpTe } from "../midi/smpte";
+import { PcmPlaybackController, PcmPlaybackUnavailableError } from "../audio-engine/pcmPlayback";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { SelectionStore } from "../store/SelectionStore";
@@ -179,6 +180,68 @@ function LinkChip({ services }: { services: Services }) {
  * missing/partial `services.mtc` must never be able to take down the whole
  * App render. Returns null when the receiver is absent or stale.
  */
+/**
+ * External PCM source chip (ADR 0018 wave 3 "hear it" wiring) — desktop
+ * only. Click: spawn the tone source (pcm-gen, realtime-paced) and route it
+ * through the pipe -> ring -> worklet chain to the speakers. Hidden in the
+ * web build (no native source access).
+ */
+function PcmChip({ services }: { services: Services }) {
+  const [state, setState] = useState<"off" | "starting" | "on">("off");
+  const [lastError, setLastError] = useState<string | null>(null);
+  const controllerRef = useRef<PcmPlaybackController | null>(null);
+  const desktop = (globalThis as unknown as { kyxDesktop?: { pcm?: unknown } }).kyxDesktop?.pcm;
+  if (!desktop) return null;
+
+  const toggle = async (): Promise<void> => {
+    const controller =
+      controllerRef.current ??
+      (() => {
+        services.engine.ensureContext();
+        const ctx = services.engine.getLiveAudioContext();
+        if (!ctx) throw new Error("audio engine not ready");
+        controllerRef.current = new PcmPlaybackController(() => ctx);
+        return controllerRef.current;
+      })();
+    try {
+      if (state === "on") {
+        await controller.stop();
+        setState("off");
+        return;
+      }
+      setState("starting");
+      // 440 Hz reference tone, paced like a driver clock.
+      await controller.start("pcm-gen", ["--freq", "440", "--realtime"]);
+      setLastError(null);
+      setState("on");
+    } catch (err) {
+      setState("off");
+      setLastError(err instanceof PcmPlaybackUnavailableError ? err.message : String(err));
+    }
+  };
+
+  const title =
+    state === "on"
+      ? "External PCM source playing (pcm-gen 440 Hz through the ADR 0018 pipe). Click to stop."
+      : state === "starting"
+        ? "Starting the external PCM source…"
+        : lastError
+          ? `External PCM source failed: ${lastError}. Click to retry.`
+          : "Play an external PCM source through the ADR 0018 transport (desktop only). Click to start.";
+
+  return (
+    <button
+      type="button"
+      className="perf-readout-item link-chip"
+      data-state={state === "on" ? "on" : state === "starting" ? "connecting" : lastError ? "error" : "off"}
+      title={title}
+      onClick={() => void toggle()}
+    >
+      {state === "on" ? "EXT ♪" : "EXT PCM"}
+    </button>
+  );
+}
+
 function MtcChip({ services }: { services: Services }) {
   const mtc = services.mtc;
   const [tick, setTick] = useState(0);
@@ -1479,6 +1542,7 @@ export function App({
                   {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                 </span>
                 <MtcChip services={services} />
+                <PcmChip services={services} />
                 <LinkChip services={services} />
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
