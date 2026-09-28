@@ -21,6 +21,7 @@ export const studioAppBase = process.env.STUDIO_APP_BASE ?? "/";
 
 export default defineConfig({
   base: studioAppBase,
+  server: { host: "127.0.0.1" },
   plugins: [react(), ...(desktopBuild ? [] : [VitePWA(pwaOptions)])],
   resolve: {
     alias: [
@@ -47,6 +48,10 @@ export default defineConfig({
         // bytes, and the entry-budget check keeps measuring the shell the
         // team actually controls. The vendor chunk still loads at boot —
         // the initial payload is unchanged; only cache granularity improves.
+        chunkFileNames(chunkInfo) {
+          const containsAudiotoolSdk = chunkInfo.moduleIds.some((id) => id.includes("@audiotool/nexus/"));
+          return containsAudiotoolSdk ? "assets/audiotool-nexus-[hash].js" : "assets/[name]-[hash].js";
+        },
         manualChunks(id) {
           if (id.includes("node_modules")) {
             if (id.includes("react-dom") || /[\/]react[\/]/.test(id) || id.includes("scheduler")) {

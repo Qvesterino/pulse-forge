@@ -59,7 +59,14 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // intent ranker stays lazy: its 13.9 MB WASM runtime must never inflate
     // the app-shell install/update payload.
     globPatterns: ["**/*.{js,css,html,svg,png,woff2,wav}"],
-    globIgnores: ["models/ort/**", "models/intent-ranker-v1.onnx", "golden-review/**"],
+    globIgnores: [
+      "models/ort/**",
+      "models/intent-ranker-v1.onnx",
+      "golden-review/**",
+      // This optional third-party SDK is downloaded only after the user
+      // chooses Audiotool export; do not include it in PWA install/update.
+      "**/audiotool-nexus-*.js",
+    ],
     // Workbox silently EXCLUDES precache entries above its 2 MiB default —
     // raise the cap so curated one-shots (kicks/snares are typically well
     // under this) never get silently dropped from the offline kit.

@@ -1,0 +1,10 @@
+src/midi/hum-harmonize.ts(53,27): error TS1354: 'readonly' type modifier is only permitted on array and tuple literal types.
+src/midi/hum-harmonize.ts(54,11): error TS2339: Property 'map' does not exist on type '{ pitch: number; start: number; duration: number; }'.
+src/midi/hum-harmonize.ts(54,16): error TS7006: Parameter 'note' implicitly has an 'any' type.
+src/midi/hum-harmonize.ts(55,31): error TS2345: Argument of type 'HarmonyNote[]' is not assignable to parameter of type '{ pitch: number; start: number; duration: number; }'.
+  Type 'HarmonyNote[]' is missing the following properties from type '{ pitch: number; start: number; duration: number; }': pitch, start, duration
+src/midi/hum-harmonize.ts(55,79): error TS2345: Argument of type 'HarmonyNote[]' is not assignable to parameter of type '{ pitch: number; start: number; duration: number; }'.
+  Type 'HarmonyNote[]' is missing the following properties from type '{ pitch: number; start: number; duration: number; }': pitch, start, duration
+tests/reference/property-fuzz.test.ts(30,48): error TS6133: 'tonalTrack' is declared but its value is never read.
+tests/services/wiring.test.ts(111,16): error TS2393: Duplicate function implementation.
+tests/services/wiring.test.ts(335,16): error TS2393: Duplicate function implementation.

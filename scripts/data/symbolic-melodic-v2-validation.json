@@ -1,18 +1,18 @@
 {
-  "datasetVersion": "symbolic-melodic-ds.v2",
+  "datasetVersion": "symbolic-melodic-ds.v3",
   "featureVersion": "melodic-features-v2",
   "featureCount": 41,
   "mode": "embedding-v2",
-  "augmentedSamples": 2946,
+  "augmentedSamples": 11153,
   "hidden": [
     64,
     32
   ],
   "epochs": 800,
-  "samples": 239,
-  "valDegreeAcc": 0.5517,
-  "trainDegreeAcc": 0.802,
-  "valDurationAcc": 0.5517,
-  "trainDurationAcc": 0.9002,
+  "samples": 861,
+  "valDegreeAcc": 0.5946,
+  "trainDegreeAcc": 0.7208,
+  "valDurationAcc": 0.5766,
+  "trainDurationAcc": 0.8349,
   "weightPower": 0.5
 }

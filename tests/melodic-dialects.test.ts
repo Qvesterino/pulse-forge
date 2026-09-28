@@ -139,3 +139,44 @@ describe("melodic dialects wave 2 (ghettotech / baile / footwork / jungle / slap
     }
   });
 });
+
+describe("melodic dialects wave 3 (dnb depth: techstep / ragga / sambass / halftime / crossbreed / minimal)", () => {
+  const DNB_STYLES = ["techstep", "ragga", "sambass", "halftime", "crossbreed", "minimal"] as const;
+
+  it("all six dnb dialects produce distinct bass different from the genre fallback", () => {
+    const dnb = musical(partsFor("dnb"));
+    for (const style of DNB_STYLES) {
+      const dialect = partsFor("dnb", style);
+      expect(dialect.bass.length, style).toBeGreaterThan(0);
+      expect(dialect.chord.length, style).toBeGreaterThan(0);
+      expect(dialect.lead.length, style).toBeGreaterThan(0);
+      expect(musical(dialect).bass, style).not.toEqual(dnb.bass);
+    }
+  });
+
+  it("the sub-genres do not collapse into each other", () => {
+    const basses = DNB_STYLES.map((style) => JSON.stringify(musical(partsFor("dnb", style)).bass));
+    expect(new Set(basses).size, "every dnb dialect bass is unique").toBe(DNB_STYLES.length);
+  });
+
+  it("each dnb dialect is deterministic for a fixed seed", () => {
+    for (const style of DNB_STYLES) {
+      expect(musical(partsFor("dnb", style)), style).toEqual(musical(partsFor("dnb", style)));
+    }
+  });
+
+  it("every dnb dialect stays key-safe", () => {
+    const allowed = new Set([0, 2, 3, 5, 7, 8, 10]);
+    for (const style of DNB_STYLES) {
+      const options = generateOptionsFromIntent(
+        normalizeIntent({ genre: "dnb", style, seed: "melodic-dialect-fixture", length: 64 }),
+      );
+      const parts = generateMelodicParts(options, forkRandom("key-safety-3", "melody"), "C Natural Minor");
+      for (const role of [parts.bass, parts.chord, parts.lead]) {
+        for (const note of role) {
+          expect(allowed.has(((note.pitch % 12) + 12) % 12), `dnb.${style}`).toBe(true);
+        }
+      }
+    }
+  });
+});

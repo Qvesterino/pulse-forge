@@ -40,4 +40,5 @@ export const GENRE_REFERENCE: Record<string, GenreSongReference> = {
   boombap: { integrated: -9.9, punchPlrDb: 8.9, tiltDb: 24.1, bars: 72 },
   amapiano: { integrated: -10, punchPlrDb: 9, tiltDb: 28.3, bars: 88 },
   trance: { integrated: -10.2, punchPlrDb: 9.2, tiltDb: 22.3, bars: 120 },
+  detroit: { integrated: -7, punchPlrDb: 6, tiltDb: 26.7, bars: 96 },
 };

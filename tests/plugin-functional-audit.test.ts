@@ -470,11 +470,85 @@ describe("E. serialization round-trip", () => {
 /* F. Automation targets                                               */
 /* ------------------------------------------------------------------ */
 
+describe("F0. deprecated legacy aliases", () => {
+  it("eq carries exactly the 7 documented legacy aliases, each mapped to its canonical id", () => {
+    const aliases = EFFECT_META.eq.params.filter((p) => p.deprecated);
+    expect(aliases.map((p) => p.id).sort()).toEqual(
+      ["highFreq", "highGain", "lowFreq", "lowGain", "midFreq", "midQ", "midGain"].sort(),
+    );
+    for (const alias of aliases) {
+      expect(alias.aliasOf, `${alias.id}: aliasOf set`).toBeDefined();
+      const canonical = EFFECT_META.eq.params.find((p) => p.id === alias.aliasOf);
+      expect(canonical, `${alias.id}: canonical id exists`).toBeDefined();
+      expect(canonical!.deprecated ?? false, `${alias.aliasOf}: canonical is not deprecated`).toBe(false);
+      // The alias default must transfer 1:1 into the canonical range and the
+      // ranges must overlap (some legacy ranges were historically narrower or
+      // wider — canonical clamps take over on remap, which is the documented
+      // compatibility contract).
+      expect(alias.default).toBeGreaterThanOrEqual(canonical!.min);
+      expect(alias.default).toBeLessThanOrEqual(canonical!.max);
+      expect(alias.min).toBeLessThanOrEqual(canonical!.max);
+      expect(alias.max).toBeGreaterThanOrEqual(canonical!.min);
+    }
+  });
+
+  it("deprecated ids never surface as automation targets", () => {
+    const { doc, trackId, fxId } = docWithEffect("eq");
+    for (const p of EFFECT_META.eq.params) {
+      const target = { kind: "fxParam" as const, trackId, fxId, paramId: p.id };
+      expect(isAutomationTargetValid(doc, target)).toBe(!p.deprecated);
+    }
+    // ...and the canonical targets still exist for every alias target
+    for (const alias of EFFECT_META.eq.params.filter((p) => p.deprecated)) {
+      expect(
+        isAutomationTargetValid(doc, { kind: "fxParam", trackId, fxId, paramId: alias.aliasOf! }),
+        `${alias.aliasOf}: canonical target valid`,
+      ).toBe(true);
+    }
+  });
+
+  it("old documents keep their alias lanes — normalizeProject remaps them to canonical ids", () => {
+    const { doc, trackId, fxId } = docWithEffect("eq");
+    const legacy = {
+      ...doc,
+      automation: [
+        {
+          id: "legacy-lane",
+          target: { kind: "fxParam", trackId, fxId, paramId: "midGain" },
+          points: [
+            { tick: 0, value: 3 },
+            { tick: 480, value: 9 },
+          ],
+        },
+      ],
+    } as unknown as ProjectDocument;
+    const normalized = normalizeProject(legacy);
+    expect(normalized.automation.length).toBe(1);
+    const lane = normalized.automation[0] as { target: { paramId: string }; points: { value: number }[] };
+    expect(lane.target.paramId).toBe("lowMidGain");
+    expect(lane.points.map((p) => p.value)).toEqual([3, 9]);
+  });
+
+  it("legacy documents still route alias writes to canonical params", () => {
+    // setEffectParam remaps via eqLegacyMap — the compatibility path the
+    // deprecation must not break.
+    const { doc, trackId, fxId } = docWithEffect("eq");
+    const store = new ProjectStore(doc);
+    store.execute(setEffectParam(store.getDoc(), trackId, fxId, "midGain", 6));
+    const fx = (
+      store.getDoc().tracks.find((t) => t.id === trackId) as { effects: { id: string; params: Record<string, number> }[] }
+    ).effects.find((f) => f.id === fxId)!;
+    expect(fx.params.lowMidGain).toBe(6);
+    expect(fx.params.midGain).toBe(6);
+  });
+});
+
 describe("F. automation targets cover every parameter", () => {
   for (const type of ALL_EFFECT_TYPES) {
     it(`${type}: all params valid targets, lane values clamp into def range`, () => {
       const { doc, trackId, fxId } = docWithEffect(type);
       for (const p of EFFECT_META[type].params) {
+        if (p.deprecated) continue; // F0: aliases are intentionally not targets
         const target = { kind: "fxParam" as const, trackId, fxId, paramId: p.id };
         expect(isAutomationTargetValid(doc, target), `${type}.${p.id}: valid target`).toBe(true);
         expect(clampTargetValue(doc, target, p.min - 100), `${type}.${p.id}: lane clamp mirrors param clamp`).toBe(

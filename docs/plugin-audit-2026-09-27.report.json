@@ -5341,14 +5341,274 @@
   ],
   "instruments": [
     {
+      "kind": "analog",
+      "name": "Analog Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.3690568506717682,
+      "unstableParams": [],
+      "deadParams": [
+        "filterEnv",
+        "spread",
+        "lfoRate",
+        "lfoSync",
+        "lfoDepth",
+        "aShape",
+        "rShape",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 21,
+      "totalParams": 34,
+      "transientWired": [
+        "dShape"
+      ]
+    },
+    {
+      "kind": "bass",
+      "name": "Bass Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.7581661939620972,
+      "unstableParams": [],
+      "deadParams": [
+        "glide",
+        "spread",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 24,
+      "transientWired": []
+    },
+    {
+      "kind": "keys",
+      "name": "Keys",
+      "defaultAudible": true,
+      "defaultPeak": 0.0546691007912159,
+      "unstableParams": [],
+      "deadParams": [
+        "spread",
+        "lfoRate",
+        "lfoSync",
+        "lfoDepth",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 16,
+      "totalParams": 26,
+      "transientWired": []
+    },
+    {
+      "kind": "organ",
+      "name": "Organ",
+      "defaultAudible": true,
+      "defaultPeak": 0.2521776556968689,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "glide"
+      ],
+      "wiredParams": 10,
+      "totalParams": 12,
+      "transientWired": []
+    },
+    {
+      "kind": "strings",
+      "name": "Strings",
+      "defaultAudible": true,
+      "defaultPeak": 0.5496584177017212,
+      "unstableParams": [],
+      "deadParams": [
+        "vibrato",
+        "vibRate",
+        "vibDelay"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10,
+      "transientWired": []
+    },
+    {
+      "kind": "bell",
+      "name": "Bell",
+      "defaultAudible": true,
+      "defaultPeak": 0.5704206228256226,
+      "unstableParams": [],
+      "deadParams": [
+        "shimmer",
+        "strike"
+      ],
+      "wiredParams": 5,
+      "totalParams": 7,
+      "transientWired": []
+    },
+    {
+      "kind": "reese",
+      "name": "Reese",
+      "defaultAudible": true,
+      "defaultPeak": 0.1903364658355713,
+      "unstableParams": [],
+      "deadParams": [
+        "movement",
+        "moveRate",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 10,
+      "transientWired": []
+    },
+    {
+      "kind": "acid",
+      "name": "Acid 303",
+      "defaultAudible": true,
+      "defaultPeak": 0.4159984588623047,
+      "unstableParams": [],
+      "deadParams": [
+        "envMod",
+        "glide"
+      ],
+      "wiredParams": 7,
+      "totalParams": 9,
+      "transientWired": []
+    },
+    {
+      "kind": "brass",
+      "name": "Synth Brass",
+      "defaultAudible": true,
+      "defaultPeak": 0.6165758967399597,
+      "unstableParams": [],
+      "deadParams": [
+        "bite",
+        "sweep",
+        "sweepTime"
+      ],
+      "wiredParams": 6,
+      "totalParams": 9,
+      "transientWired": []
+    },
+    {
+      "kind": "fm",
+      "name": "FM",
+      "defaultAudible": true,
+      "defaultPeak": 0.28594279289245605,
+      "unstableParams": [],
+      "deadParams": [
+        "fbDecay"
+      ],
+      "wiredParams": 12,
+      "totalParams": 13,
+      "transientWired": [
+        "fbSus",
+        "modWave"
+      ]
+    },
+    {
+      "kind": "pluck",
+      "name": "Pluck Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.02361893467605114,
+      "unstableParams": [],
+      "deadParams": [
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 12,
+      "totalParams": 18,
+      "transientWired": []
+    },
+    {
+      "kind": "flute",
+      "name": "Flute",
+      "defaultAudible": true,
+      "defaultPeak": 0.3264425992965698,
+      "unstableParams": [],
+      "deadParams": [
+        "breath",
+        "breathTone",
+        "vibrato",
+        "vibRate",
+        "vibDelay",
+        "glide"
+      ],
+      "wiredParams": 9,
+      "totalParams": 15,
+      "transientWired": []
+    },
+    {
+      "kind": "808",
+      "name": "808 Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.922677218914032,
+      "unstableParams": [],
+      "deadParams": [
+        "click",
+        "glide",
+        "mono",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 9,
+      "totalParams": 18,
+      "transientWired": []
+    },
+    {
+      "kind": "logdrum",
+      "name": "Log Drum",
+      "defaultAudible": true,
+      "defaultPeak": 0.32280775904655457,
+      "unstableParams": [],
+      "deadParams": [
+        "glide",
+        "modASrc",
+        "modADst",
+        "modAAmt",
+        "modBSrc",
+        "modBDst",
+        "modLfoRate"
+      ],
+      "wiredParams": 10,
+      "totalParams": 17,
+      "transientWired": []
+    },
+    {
+      "kind": "drumsynth",
+      "name": "Drum Synth",
+      "defaultAudible": true,
+      "defaultPeak": 0.13721324503421783,
+      "unstableParams": [],
+      "deadParams": [
+        "snap"
+      ],
+      "wiredParams": 7,
+      "totalParams": 8,
+      "transientWired": []
+    },
+    {
       "kind": "sampler",
       "name": "Sampler",
       "defaultAudible": true,
-      "defaultPeak": 0.17937207221984863,
+      "defaultPeak": 0.22115051746368408,
       "unstableParams": [],
       "deadParams": [
         "decay",
-        "release",
         "pitchDecayT",
         "resonance",
         "keytrack",
@@ -5365,101 +5625,44 @@
         "modBAmt",
         "modLfoRate"
       ],
-      "wiredParams": 11,
-      "totalParams": 28
-    },
-    {
-      "kind": "analog",
-      "name": "Analog Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.3607522249221802,
-      "unstableParams": [],
-      "deadParams": [
-        "filterEnv",
-        "spread",
-        "lfoRate",
-        "lfoSync",
-        "lfoDepth",
-        "aShape",
-        "dShape",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 21,
-      "totalParams": 34
-    },
-    {
-      "kind": "bass",
-      "name": "Bass Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.7531448602676392,
-      "unstableParams": [],
-      "deadParams": [
-        "glide",
-        "spread",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 16,
-      "totalParams": 24
-    },
-    {
-      "kind": "808",
-      "name": "808 Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.92267906665802,
-      "unstableParams": [],
-      "deadParams": [
-        "click",
-        "glide",
-        "mono",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 9,
-      "totalParams": 18
+      "wiredParams": 12,
+      "totalParams": 28,
+      "transientWired": []
     },
     {
       "kind": "texture",
       "name": "Texture Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.18165777623653412,
+      "defaultPeak": 0.07498660683631897,
       "unstableParams": [],
       "deadParams": [
         "space",
         "chaos",
+        "hold",
+        "gate",
+        "release",
         "diffuse",
         "modASrc",
         "modADst",
         "modAAmt",
         "modBSrc",
         "modBDst",
+        "modBAmt",
         "modLfoRate"
       ],
-      "wiredParams": 14,
-      "totalParams": 23
+      "wiredParams": 10,
+      "totalParams": 23,
+      "transientWired": [
+        "level"
+      ]
     },
     {
       "kind": "wavetable",
       "name": "Wavetable Synth",
       "defaultAudible": true,
-      "defaultPeak": 0.3897077739238739,
+      "defaultPeak": 0.37468305230140686,
       "unstableParams": [],
       "deadParams": [
-        "table",
-        "morph",
         "morphRate",
         "morphDepth",
         "spread",
@@ -5469,11 +5672,11 @@
         "modAAmt",
         "modBSrc",
         "modBDst",
-        "modBAmt",
         "modLfoRate"
       ],
-      "wiredParams": 10,
-      "totalParams": 23
+      "wiredParams": 13,
+      "totalParams": 23,
+      "transientWired": []
     },
     {
       "kind": "granular",
@@ -5481,201 +5684,45 @@
       "defaultAudible": true,
       "defaultPeak": 0.08050957322120667,
       "unstableParams": [],
-      "deadParams": [
+      "deadParams": [],
+      "wiredParams": 15,
+      "totalParams": 15,
+      "transientWired": [
         "release"
-      ],
-      "wiredParams": 14,
-      "totalParams": 15
-    },
-    {
-      "kind": "keys",
-      "name": "Keys",
-      "defaultAudible": true,
-      "defaultPeak": 0.038110796362161636,
-      "unstableParams": [],
-      "deadParams": [
-        "spread",
-        "lfoRate",
-        "lfoSync",
-        "lfoDepth",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 16,
-      "totalParams": 26
-    },
-    {
-      "kind": "organ",
-      "name": "Organ",
-      "defaultAudible": true,
-      "defaultPeak": 0.2523030936717987,
-      "unstableParams": [],
-      "deadParams": [
-        "click",
-        "glide"
-      ],
-      "wiredParams": 10,
-      "totalParams": 12
-    },
-    {
-      "kind": "strings",
-      "name": "Strings",
-      "defaultAudible": true,
-      "defaultPeak": 0.6430032849311829,
-      "unstableParams": [],
-      "deadParams": [
-        "vibrato",
-        "vibRate",
-        "vibDelay"
-      ],
-      "wiredParams": 7,
-      "totalParams": 10
-    },
-    {
-      "kind": "bell",
-      "name": "Bell",
-      "defaultAudible": true,
-      "defaultPeak": 0.23508836328983307,
-      "unstableParams": [],
-      "deadParams": [
-        "shimmer",
-        "strike"
-      ],
-      "wiredParams": 5,
-      "totalParams": 7
-    },
-    {
-      "kind": "reese",
-      "name": "Reese",
-      "defaultAudible": true,
-      "defaultPeak": 0.19035495817661285,
-      "unstableParams": [],
-      "deadParams": [
-        "movement",
-        "moveRate",
-        "glide"
-      ],
-      "wiredParams": 7,
-      "totalParams": 10
+      ]
     },
     {
       "kind": "clav",
       "name": "Clavinet",
-      "defaultAudible": true,
-      "defaultPeak": 0.025064636021852493,
+      "defaultAudible": false,
+      "defaultPeak": 0,
       "unstableParams": [],
       "deadParams": [
+        "pick",
+        "pickupType",
+        "damp",
         "click",
+        "growl",
         "cutoff",
-        "resonance"
+        "resonance",
+        "release",
+        "level"
       ],
-      "wiredParams": 5,
-      "totalParams": 8
-    },
-    {
-      "kind": "acid",
-      "name": "Acid 303",
-      "defaultAudible": true,
-      "defaultPeak": 0.4130555987358093,
-      "unstableParams": [],
-      "deadParams": [
-        "envMod",
-        "glide"
-      ],
-      "wiredParams": 7,
-      "totalParams": 9
-    },
-    {
-      "kind": "brass",
-      "name": "Synth Brass",
-      "defaultAudible": true,
-      "defaultPeak": 0.6132484674453735,
-      "unstableParams": [],
-      "deadParams": [
-        "bite",
-        "sweep",
-        "sweepTime"
-      ],
-      "wiredParams": 6,
-      "totalParams": 9
-    },
-    {
-      "kind": "fm",
-      "name": "FM",
-      "defaultAudible": true,
-      "defaultPeak": 0.3161630630493164,
-      "unstableParams": [],
-      "deadParams": [
-        "fbDecay"
-      ],
-      "wiredParams": 12,
-      "totalParams": 13
-    },
-    {
-      "kind": "pluck",
-      "name": "Pluck Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.020687807351350784,
-      "unstableParams": [],
-      "deadParams": [
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 12,
-      "totalParams": 18
-    },
-    {
-      "kind": "flute",
-      "name": "Flute",
-      "defaultAudible": true,
-      "defaultPeak": 0.3236413598060608,
-      "unstableParams": [],
-      "deadParams": [
-        "breath",
-        "breathTone",
-        "vibrato",
-        "vibRate",
-        "vibDelay",
-        "glide"
-      ],
-      "wiredParams": 9,
-      "totalParams": 15
-    },
-    {
-      "kind": "logdrum",
-      "name": "Log Drum",
-      "defaultAudible": true,
-      "defaultPeak": 0.3104507327079773,
-      "unstableParams": [],
-      "deadParams": [
-        "glide",
-        "modASrc",
-        "modADst",
-        "modAAmt",
-        "modBSrc",
-        "modBDst",
-        "modLfoRate"
-      ],
-      "wiredParams": 10,
-      "totalParams": 17
+      "wiredParams": 0,
+      "totalParams": 9,
+      "transientWired": []
     },
     {
       "kind": "spectral",
       "name": "Spectral Pad",
-      "defaultAudible": true,
-      "defaultPeak": 0.14844821393489838,
+      "defaultAudible": false,
+      "defaultPeak": 0.00032506557181477547,
       "unstableParams": [],
       "deadParams": [
+        "profile",
         "skew",
-        "resonance",
+        "release",
+        "level",
         "motionRate",
         "motionSync",
         "modASrc",
@@ -5685,20 +5732,20 @@
         "modBDst",
         "modLfoRate"
       ],
-      "wiredParams": 12,
-      "totalParams": 22
+      "wiredParams": 10,
+      "totalParams": 22,
+      "transientWired": []
     },
     {
       "kind": "vocalchop",
       "name": "Vocal Chop",
       "defaultAudible": true,
-      "defaultPeak": 0.04885624349117279,
+      "defaultPeak": 0.06044144183397293,
       "unstableParams": [],
       "deadParams": [
+        "shift",
         "sharp",
-        "cons",
         "morph",
-        "release",
         "modASrc",
         "modADst",
         "modAAmt",
@@ -5707,20 +5754,11 @@
         "modBAmt",
         "modLfoRate"
       ],
-      "wiredParams": 9,
-      "totalParams": 20
-    },
-    {
-      "kind": "drumsynth",
-      "name": "Drum Synth",
-      "defaultAudible": true,
-      "defaultPeak": 0.11606655269861221,
-      "unstableParams": [],
-      "deadParams": [
-        "snap"
-      ],
-      "wiredParams": 7,
-      "totalParams": 8
+      "wiredParams": 10,
+      "totalParams": 20,
+      "transientWired": [
+        "cons"
+      ]
     }
   ],
   "interactions": {
@@ -5739,5 +5777,5 @@
     ]
   },
   "startedAt": "2026-09-27T15:13:04.397Z",
-  "finishedAt": "2026-09-27T17:19:23.530Z"
+  "finishedAt": "2026-09-27T20:13:55.456Z"
 }

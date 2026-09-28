@@ -11,12 +11,17 @@ trainer's shuffle, and measures v1 only on the rows it genuinely never saw.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from train_symbolic_melodic_lib import SemanticLookup  # noqa: E402
+
 DATASET = ROOT / "scripts" / "data" / "symbolic-melodic-dataset.json"
 MODELS = ROOT / "public" / "models"
 SEED = 0x5EED
@@ -24,25 +29,10 @@ VAL_FRACTION = 0.15
 
 
 def transform_for_v2(x_all: np.ndarray, groups: np.ndarray):
-    payload = json.loads((ROOT / "scripts" / "data" / "style-embeddings.json").read_text())
-    vectors: dict[str, list[float]] = {}
-    counts: dict[str, int] = {}
-    for style_id, vector in payload.get("styles", {}).items():
-        genre = style_id.split(".")[0]
-        for vec in [vector] + list(payload.get("variants", {}).get(style_id, [])):
-            if genre not in vectors:
-                vectors[genre] = list(vec)
-                counts[genre] = 1
-            else:
-                for d in range(len(vec)):
-                    vectors[genre][d] += vec[d]
-                counts[genre] += 1
-    for genre, total in counts.items():
-        for d in range(len(vectors[genre])):
-            vectors[genre][d] /= total
+    vectors = SemanticLookup(ROOT / "scripts" / "data" / "style-embeddings.json")
     rows = []
     for i, group in enumerate(groups):
-        semantic = vectors.get(str(group).split("#")[0])
+        semantic = vectors.vector_for(str(group))
         if semantic is None:
             return None
         rows.append(list(semantic) + list(x_all[i][4:]))
@@ -101,10 +91,10 @@ def main() -> None:
 
     print()
     print("Verdict:")
-    print("  v1 honest (its own vintage)          : deg 0.6786  dur 0.5714  -- matches its manifest")
-    print("  v2 retrained (gate, its own split)   : deg 0.5517  dur 0.5517  -- was dur 0.3793")
-    print("  => the bug is FIXED (duration 0.3793 -> 0.5517), but v1 still wins on")
-    print("     degree. Keep v1 preferred; v2 is now a safe semantic alternative.")
+    print("  v1 honest (its own vintage)          : see the v1 line above (its manifest)")
+    print("  v2 retrained (gate, its own split)   : see docs/CURRENT-STATE.md / the gate")
+    print("  => the duration-collapse bug is fixed; v1 still wins on degree on its")
+    print("     own vintage. Keep v1 preferred; v2 is a safe semantic alternative.")
 
 
 if __name__ == "__main__":

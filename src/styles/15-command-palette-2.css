@@ -872,6 +872,134 @@
   background: rgba(255, 208, 0, 0.08);
 }
 
+.audiotool-nexus-export {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 92%, var(--accent));
+  color: var(--text);
+  font-size: 11px;
+}
+
+.audiotool-nexus-export__header,
+.audiotool-nexus-export__actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.audiotool-nexus-export__header strong,
+.audiotool-nexus-export__preview > strong {
+  font-size: 12px;
+}
+
+.audiotool-nexus-export__subhead,
+.audiotool-nexus-export__footer {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.audiotool-nexus-export__footer {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+
+.audiotool-nexus-export__actions,
+.audiotool-nexus-export__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.audiotool-nexus-export__actions p,
+.audiotool-nexus-export__preview p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.audiotool-nexus-export__actions label {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audiotool-nexus-export__actions input[type="url"] {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px 8px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.audiotool-nexus-export__destination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.audiotool-nexus-export__preview ul {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.audiotool-nexus-export__confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.audiotool-nexus-export__confirm input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.audiotool-nexus-export__warning,
+.audiotool-nexus-export__error {
+  color: var(--warning, #f6bd60);
+}
+
+.audiotool-nexus-export__error {
+  margin: 0;
+  color: var(--danger, #ff8585);
+}
+
+.audiotool-nexus-export__success {
+  color: var(--success, #72d59a);
+}
+
+.audiotool-nexus-export__notice {
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+@container (max-width: 520px) {
+  .audiotool-nexus-export__actions-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .intent-candidate-meta {
   display: flex;
   align-items: center;
@@ -888,11 +1016,15 @@
 }
 
 .intent-candidate-source {
+  display: inline-block;
   font-size: 9px;
   letter-spacing: 0.06em;
   padding: 1px 5px;
   border-radius: 999px;
   border: 1px solid currentColor;
+  /* Cursor signals the title tooltip — the badge is the only place the UI
+     says whether the model or the template produced the drums. */
+  cursor: help;
 }
 
 .intent-candidate-source.symbolic-prior {
@@ -901,6 +1033,15 @@
 
 .intent-candidate-source.template {
   color: #9fdf9f;
+}
+
+/* One-time key under the candidate bank so PRIOR/TPL is readable without
+   hovering each badge. */
+.intent-candidate-legend {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .intent-candidate-lane {

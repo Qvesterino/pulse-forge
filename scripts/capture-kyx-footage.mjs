@@ -34,27 +34,24 @@ const log = (...m) => console.log("[capture]", ...m);
 const INTENT_PUNCH = "make the drums hit harder and open the beat up";
 const INTENT_MIX = "louder drums";
 
+/** The studio is a separate lazy route — `/studio` boots the real DAW. */
 async function openStudio(page) {
-  const btn = page.getByRole("button", { name: /open the studio/i }).first();
-  if (await btn.count()) {
-    await btn.click();
-  } else {
-    const link = page.getByRole("link", { name: /open the studio/i }).first();
-    if (await link.count()) await link.click();
-    else await page.goto(new URL("#/studio", BASE).href);
-  }
-  // The studio route is lazy-loaded and mounts a project browser — give it
-  // real time, then open the first project if the browser is what came up.
-  await page.waitForTimeout(6000);
-  const open = page.getByRole("button", { name: /^(open|continue|resume|new beat|blank|empty)/i }).first();
+  await page.goto(new URL("/studio", BASE).href, { waitUntil: "domcontentloaded" });
+  // The studio route is the largest bundle; give it real time to mount.
+  await page.waitForTimeout(9000);
+  // It opens on a project browser — take the first project so the DAW shows.
+  const open = page
+    .getByRole("button", { name: /^(open|continue|resume|load|new|blank|empty|house|beat|template)/i })
+    .first();
   if (await open.count()) {
     try {
-      await open.click({ timeout: 3000 });
-      await page.waitForTimeout(5000);
+      await open.click({ timeout: 4000 });
+      await page.waitForTimeout(9000);
     } catch {
       /* the studio may already be open */
     }
   }
+  await page.waitForTimeout(4000);
 }
 
 async function typeIntent(page, text) {

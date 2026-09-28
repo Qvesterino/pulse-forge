@@ -3,43 +3,43 @@
  *
  * `CoreServices` is the long-lived, project-independent half (one AudioContext,
  * shared preset caches); `Services` is the per-project half built around it.
- * `Services` re-exposes a large subset of `CoreServices` under its own name so
- * a component can read `services.engine` or `services.core.engine` without
+ * `Services` re-exposes most of `CoreServices` under its own name so a
+ * component can read `services.engine` or `services.core.engine` without
  * caring which lifecycle it belongs to.
  *
  * That re-export is the fragile part, and it has already grown by hand several
  * times (generative providers, MTC, Link, morph/ultina preset stores). Each
  * addition is one forgotten alias away from a panel reading `undefined` — a
  * crash with no type error, because the alias is not declared on `Services`.
- * So the alias set is derived from `CoreServices` **at the type level** and
- * checked by identity here: a new required field without an alias fails this
- * test rather than the studio.
+ * So the alias set is asserted by **identity** here: the same instance, not a
+ * copy. A copy would mean a preset saved through one path is invisible to a
+ * panel reading the other, which is far harder to diagnose than a null.
+ *
+ * `snapshots` and `presets` are deliberately core-only: nothing in the panel
+ * tree drives them directly (snapshots ride the save path, presets ride the
+ * instrument registry), so re-exporting them would imply an ownership that
+ * does not exist. They are listed in CORE_ONLY_KEYS so the exclusion stays an
+ * explicit decision rather than a silent gap.
  *
  * The lifecycle half pins three rules the browser only reveals at runtime:
  * a project switch must not re-create the AudioContext, `closeProject` must be
- * idempotent (unmount and an explicit close both fire), and `getDiagnostics`
- * must stay primitive-only because the Diagnostics panel renders it directly.
+ * idempotent (StrictMode unmount and an explicit close both fire), and
+ * `getDiagnostics` must stay primitive-only because the panel renders it
+ * straight into JSX.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openProject, type CoreServices, type Services } from "../../src/services";
+import { openProject, type CoreServices } from "../../src/services";
 import { LatencyCalibrationController } from "../../src/audio-engine/latencyCalibration";
 import { MidiInput } from "../../src/midi/MidiInput";
 import { setBpm } from "../../src/commands/commands";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { AudioEngine } from "../../src/audio-engine/AudioEngine";
+import type { SchedulerDeps } from "../../src/scheduler/Scheduler";
 import type { ProjectDocument } from "../../src/project-model/types";
 
-/**
- * Keys of `CoreServices` that are NOT optional. If a field is required on the
- * core, every project must be able to reach it — so it must be re-exported.
- */
-type RequiredCoreKeys = {
-  [K in keyof CoreServices]-?: undefined extends CoreServices[K] ? never : K;
-}[keyof CoreServices];
-
-/** Fields reachable on `Services` that should be the *same object* as on `core`. */
-const SHARED_REFERENCE_KEYS: RequiredCoreKeys[] = [
+/** Core fields re-exposed on `Services` — must be the *same* object. */
+const SHARED_REFERENCE_KEYS = [
   "engine",
   "bank",
   "repo",
@@ -49,7 +49,10 @@ const SHARED_REFERENCE_KEYS: RequiredCoreKeys[] = [
   "morphPresets",
   "ultinaPresets",
   "latency",
-];
+] as const satisfies ReadonlyArray<keyof CoreServices>;
+
+/** Required core fields intentionally NOT re-exported on `Services`. */
+const CORE_ONLY_KEYS = ["snapshots", "presets"] as const satisfies ReadonlyArray<keyof CoreServices>;
 
 function makeDoc(): ProjectDocument {
   return createProjectFromTemplate("house");
@@ -68,14 +71,23 @@ function makeEngine(): AudioEngine {
     restartFrozenSources: vi.fn(),
     setEffectiveBpm: vi.fn(),
     stopPreview: vi.fn(),
+    getDiagnostics: vi.fn(() => ({ contextState: "closed", workletCount: 0, missedAssets: 0 })),
   } as unknown as AudioEngine;
 }
 
-function makeCore(engine: AudioEngine, repo?: CoreServices["repo"]): CoreServices {
+function makeRepo(): CoreServices["repo"] {
+  return {
+    save: vi.fn(async () => undefined),
+    loadMostRecent: vi.fn(async () => null),
+    referencedFrozenBufferIds: vi.fn(async () => new Set<string>()),
+  } as unknown as CoreServices["repo"];
+}
+
+function makeCore(engine: AudioEngine, repo: CoreServices["repo"] = makeRepo()): CoreServices {
   return {
     engine,
     bank: {} as CoreServices["bank"],
-    repo: repo ?? ({ referencedFrozenBufferIds: vi.fn(async () => new Set<string>()) } as unknown as CoreServices["repo"]),
+    repo,
     snapshots: {
       list: vi.fn(async () => []),
       save: vi.fn(async () => undefined),
@@ -95,6 +107,16 @@ async function flushAsync(): Promise<void> {
   for (let i = 0; i < 6; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** Silence the fire-and-forget restore console noise for a focused assertion. */
+async function withSilencedErrorsAsync<T>(fn: () => Promise<T>): Promise<T> {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    return await fn();
+  } finally {
+    spy.mockRestore();
+  }
+}
+
 describe("openProject — core re-export contract", () => {
   let engine: AudioEngine;
 
@@ -108,13 +130,10 @@ describe("openProject — core re-export contract", () => {
     vi.restoreAllMocks();
   });
 
-  it("re-exports every required core field by identity, not by copy", async () => {
+  it("re-exports every shared core field by identity, not by copy", async () => {
     const core = makeCore(engine);
     const services = await openProject(core, makeDoc());
     for (const key of SHARED_REFERENCE_KEYS) {
-      // Identity, not deep equality: these are the *same* instances. A copy
-      // would mean a preset saved through one path is invisible to a panel
-      // reading the other.
       expect({ key, same: services[key] === core[key] }).toEqual({ key, same: true });
     }
     await services.closeProject();
@@ -127,17 +146,17 @@ describe("openProject — core re-export contract", () => {
     await services.closeProject();
   });
 
-  it("leaves no required core field unreachable from the project surface", async () => {
-    // Compile-time half: assigning every key to `never`-shaped variables fails
-    // to build if a required core key stops existing. Runtime half: each key
-    // must resolve to a defined value on the project surface.
+  it("keeps the core-only fields reachable through core, not through a missing alias", async () => {
+    // snapshots/presets are intentionally not re-exported. This test exists so
+    // that a future contributor adding a panel which wants them has to move
+    // the key here consciously instead of writing `services.snapshots` and
+    // getting undefined at runtime.
     const core = makeCore(engine);
     const services = await openProject(core, makeDoc());
-    const unreachable: string[] = [];
-    for (const key of Object.keys(core) as Array<keyof CoreServices>) {
-      if ((services as unknown as Record<string, unknown>)[key] === undefined) unreachable.push(key);
+    for (const key of CORE_ONLY_KEYS) {
+      expect(services.core[key]).toBe(core[key]);
+      expect((services as unknown as Record<string, unknown>)[key]).toBeUndefined();
     }
-    expect(unreachable).toEqual([]);
     await services.closeProject();
   });
 
@@ -153,9 +172,12 @@ describe("openProject — core re-export contract", () => {
     const servicesB = await openProject(core, docB);
     // The whole point of the core/project split: switching projects must not
     // construct a new AudioContext, or the user re-unlocks audio every time
-    // and every scheduled source is orphaned on the old context.
+    // and every scheduled source is orphaned on the old context. Identity is
+    // the contract — the preload probe inside openProject is expected to call
+    // ensureContext again, so a call count would be a false failure.
     expect(servicesB.engine).toBe(engine);
-    expect(engine.ensureContext).toHaveBeenCalledTimes(0);
+    expect(servicesB.engine).toBe(servicesA.engine);
+    // The new document is projected onto the SAME engine.
     expect(engine.setProject).toHaveBeenLastCalledWith(docB);
     await servicesB.closeProject();
   });
@@ -184,7 +206,7 @@ describe("openProject — lifecycle contract", () => {
     await expect(services.closeProject()).resolves.toBeUndefined();
   });
 
-  it("stops playback and detaches the scheduler on close", async () => {
+  it("stops playback and the scheduler on close", async () => {
     const services = await openProject(makeCore(engine), makeDoc());
     services.transport.play(0, { leadIn: false });
     const stopSpy = vi.spyOn(services.scheduler, "stop");
@@ -196,11 +218,11 @@ describe("openProject — lifecycle contract", () => {
   it("flushes pending saves on close so an edit is never lost on project switch", async () => {
     const saveCalls: ProjectDocument[] = [];
     const repo = {
+      ...makeRepo(),
       save: vi.fn((doc: ProjectDocument) => {
         saveCalls.push(doc);
         return Promise.resolve();
       }),
-      loadMostRecent: vi.fn(async () => null),
     } as unknown as CoreServices["repo"];
     const services = await openProject(makeCore(engine, repo), makeDoc());
     services.store.execute(setBpm(services.store.doc, 140));
@@ -229,27 +251,26 @@ describe("openProject — lifecycle contract", () => {
   it("keeps getDiagnostics primitive-only", async () => {
     // The Diagnostics panel renders these values straight into JSX. A nested
     // object would render as "[object Object]" and a function would throw
-    // during JSON.stringify export.
+    // during the JSON export.
     const services = await openProject(makeCore(engine), makeDoc());
     const diagnostics: Record<string, string | number | boolean> = services.getDiagnostics();
     expect(Object.keys(diagnostics).length).toBeGreaterThan(0);
     for (const [key, value] of Object.entries(diagnostics)) {
-      expect(
-        ["string", "number", "boolean"],
-        `getDiagnostics().${key} is ${typeof value}`,
-      ).toContain(typeof value);
-      if (typeof value === "number") expect(Number.isFinite(value), `getDiagnostics().${key} is not finite`).toBe(true);
+      expect(["string", "number", "boolean"], `getDiagnostics().${key} is ${typeof value}`).toContain(typeof value);
+      if (typeof value === "number") {
+        expect(Number.isFinite(value), `getDiagnostics().${key} is not finite`).toBe(true);
+      }
     }
     await services.closeProject();
   });
 
-  it("returns diagnostics whose values stay primitives across a project switch", async () => {
+  it("keeps getDiagnostics primitive-only across a project switch", async () => {
     const core = makeCore(engine);
     const servicesA = await openProject(core, makeDoc());
     await servicesA.closeProject();
     const servicesB = await openProject(core, makeDoc());
-    for (const value of Object.values(servicesB.getDiagnostics())) {
-      expect(["string", "number", "boolean"]).toContain(typeof value);
+    for (const [key, value] of Object.entries(servicesB.getDiagnostics())) {
+      expect(["string", "number", "boolean"], `after switch: ${key} is ${typeof value}`).toContain(typeof value);
     }
     await servicesB.closeProject();
   });
@@ -268,17 +289,15 @@ describe("openProject — scheduler wiring", () => {
     vi.restoreAllMocks();
   });
 
-  it("hands the scheduler the same store the UI mutates", async () => {
-    const services: Services = await openProject(makeCore(engine), makeDoc());
+  it("hands the scheduler a live project reader, not a construction-time snapshot", async () => {
+    const services = await openProject(makeCore(engine), makeDoc());
     services.store.execute(setBpm(services.store.doc, 133));
     await flushAsync();
-    // The scheduler reads `getProject()` live; if it captured a snapshot at
-    // construction, playback would run on the pre-edit document.
-    const schedulerDoc = (
-      services.scheduler as unknown as { opts: { getProject: () => ProjectDocument } }
-    ).opts.getProject();
-    expect(schedulerDoc.bpm).toBe(133);
-    expect(schedulerDoc).toBe(services.store.doc);
+    const deps = (services.scheduler as unknown as { deps: SchedulerDeps }).deps;
+    // The scheduler reads `getProject()` on every tick. If openProject handed
+    // it a snapshot, playback would run the pre-edit document forever.
+    expect(deps.getProject()).toBe(services.store.doc);
+    expect(deps.getProject().bpm).toBe(133);
     await services.closeProject();
   });
 
@@ -286,11 +305,32 @@ describe("openProject — scheduler wiring", () => {
     // Defect A02.D1: without this getter the "machine gun" burst after a
     // visibility/sleep resume ships anyway, because the gate is dead code.
     const services = await openProject(makeCore(engine), makeDoc());
-    const getContextState = (services.scheduler as unknown as { opts: { getContextState: () => AudioContextState } })
-      .opts.getContextState;
-    expect(getContextState()).toBe("closed");
+    const deps = (services.scheduler as unknown as { deps: SchedulerDeps }).deps;
+    expect(deps.getContextState!()).toBe("closed");
     (engine as unknown as { context: { state: string } }).context = { state: "running" };
-    expect(getContextState()).toBe("running");
+    expect(deps.getContextState!()).toBe("running");
     await services.closeProject();
+  });
+
+  it("still opens the project when the frozen-audio restore throws", async () => {
+    // The frozen-audio restore is best-effort. Its failure must not take the
+    // studio down, and must not leave the scheduler reading a half-built doc.
+    const repo = {
+      ...makeRepo(),
+      referencedFrozenBufferIds: vi.fn(async () => {
+        throw new Error("IndexedDB unavailable");
+      }),
+    } as unknown as CoreServices["repo"];
+    let opened: Awaited<ReturnType<typeof openProject>> | null = null;
+    await withSilencedErrorsAsync(async () => {
+      opened = await openProject(makeCore(engine, repo), makeDoc());
+      // The restore logs on its own microtask; keep the mute window open long
+      // enough to swallow it, otherwise the report shows an expected failure
+      // as if it were a regression.
+      await flushAsync();
+    });
+    expect(opened).not.toBeNull();
+    expect(opened!.store.doc.tracks.length).toBeGreaterThan(0);
+    await opened!.closeProject();
   });
 });

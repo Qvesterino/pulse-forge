@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from train_symbolic_melodic_lib import (  # noqa: E402
     BATCH,
+    DATASET_PATH,
     DEGREE_CLASSES,
     DURATION_CLASSES,
     EPOCHS,
@@ -34,6 +35,7 @@ from train_symbolic_melodic_lib import (  # noqa: E402
     MLP,
     SEED,
     VAL_FRACTION,
+    SemanticLookup,
     class_weights,
     load_datasets,
     softmax,
@@ -63,27 +65,9 @@ GATE = {
 }
 
 
-def genre_semantic_vectors() -> dict[str, list[float]]:
-    """The trainer's genre-averaged 16-dim vectors (styles + variants mean)."""
-    payload = json.loads((ROOT / "scripts" / "data" / "style-embeddings.json").read_text())
-    style_map = payload.get("styles", {})
-    variant_map = payload.get("variants", {})
-    vectors: dict[str, list[float]] = {}
-    counts: dict[str, int] = {}
-    for style_id, vector in style_map.items():
-        genre = style_id.split(".")[0]
-        for vec in [vector] + list(variant_map.get(style_id, [])):
-            if genre not in vectors:
-                vectors[genre] = list(vec)
-                counts[genre] = 1
-            else:
-                for d in range(len(vec)):
-                    vectors[genre][d] += vec[d]
-                counts[genre] += 1
-    for genre, total in counts.items():
-        for d in range(len(vectors[genre])):
-            vectors[genre][d] /= total
-    return vectors
+def genre_semantic_vectors() -> SemanticLookup:
+    """The trainer's style-aware lookup (style vectors + genre centroids)."""
+    return SemanticLookup(ROOT / "scripts" / "data" / "style-embeddings.json")
 
 
 def to_v2_rows(x_v1: np.ndarray, groups: np.ndarray) -> np.ndarray | None:
@@ -91,7 +75,7 @@ def to_v2_rows(x_v1: np.ndarray, groups: np.ndarray) -> np.ndarray | None:
     vectors = genre_semantic_vectors()
     rows: list[list[float]] = []
     for i, group in enumerate(groups):
-        semantic = vectors.get(str(group).split("#")[0])
+        semantic = vectors.vector_for(str(group))
         if semantic is None:
             return None
         rows.append(list(semantic) + list(x_v1[i][4:]))
@@ -116,7 +100,7 @@ def train_fold(base, aug, held_groups, weight_power: float, smoothing: float, em
         def transform(rows_x, rows_groups):
             out = []
             for i, group in enumerate(rows_groups):
-                semantic = vectors.get(str(group).split("#")[0])
+                semantic = vectors.vector_for(str(group))  # type: ignore[union-attr]
                 if semantic is None:
                     return None
                 out.append(list(semantic) + list(rows_x[i][4:]))
@@ -137,7 +121,7 @@ def train_fold(base, aug, held_groups, weight_power: float, smoothing: float, em
             if len(row) == 41:
                 pass
             else:
-                semantic = vectors.get(str(sample["group"]).split("#")[0])
+                semantic = vectors.vector_for(str(sample["group"]))  # type: ignore[union-attr]
                 if semantic is None:
                     continue
                 row = list(semantic) + list(row[4:])
@@ -209,9 +193,10 @@ def main() -> None:
     else:
         folds = [set(f.tolist()) for f in np.array_split(unique, args.folds)]
 
+    dataset_version = json.loads(DATASET_PATH.read_text()).get("datasetVersion", "unknown")
     recipe = "embedding-v2" if args.embedding else "genre-onehot-v1"
     mode = "shipped 15% split" if args.shipped_split else f"{args.folds}-fold group CV"
-    vintage = "ds.v1 (no dnb)" if args.exclude_dnb else "ds.v2 (current)"
+    vintage = f"{dataset_version} -- no dnb" if args.exclude_dnb else f"{dataset_version} (current)"
     print("=" * 78)
     print(f"MELODIC RETRAIN GATE -- {mode}, {recipe}, {vintage}, weightPower={args.weight_power}")
     print("=" * 78)

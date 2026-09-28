@@ -141,7 +141,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "jersey",
   },
   {
-    names: ["pendulum", "goldie", "liquid dnb", "neurofunk", "jungle beat"],
+    names: ["pendulum", "liquid dnb"],
     genre: "dnb",
     style: "liquid",
     mood: "dark",
@@ -2683,9 +2683,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "ltj bukem",
   },
   {
-    names: ["dj marky", "marky", "sambass", "samba bass"],
+    names: ["dj marky", "marky", "innerground"],
     genre: "dnb",
-    style: "liquid",
+    style: "sambass",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
@@ -2921,13 +2921,13 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "remarc",
   },
   {
-    names: ["dj hype", "dj hype type beat"],
+    names: ["dj hype", "sub zero", "frontline"],
     genre: "dnb",
-    style: "jungle",
+    style: "jumpup",
     mood: "energetic",
     energy: 0.85,
     density: 0.65,
-    bpmRange: [158, 168],
+    bpmRange: [172, 178],
     label: "dj hype",
   },
   // UK funky lane (soca-bounce groove).
@@ -3037,14 +3037,14 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "serial killaz",
   },
   {
-    names: ["dj hype", "ganja kru", "sub zero type dnb"],
+    names: ["ganja kru", "ganja records", "ragga dnb"],
     genre: "dnb",
     style: "ragga",
     mood: "energetic",
     energy: 0.8,
     density: 0.6,
     bpmRange: [162, 172],
-    label: "dj hype (ragga)",
+    label: "ganja kru",
   },
   {
     names: ["ivy lab", "halftime dnb", "20/20 type beat"],
@@ -3079,7 +3079,7 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     // Bare "break" would hijack arrangement talk — qualified only.
-    names: ["break dnb", "breakage", "symmetry recordings"],
+    names: ["breakage", "symmetry recordings"],
     genre: "dnb",
     style: "minimal",
     mood: "dark",
@@ -3099,8 +3099,9 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "the outside agency",
   },
   {
-    // Bare "marky" already lives in the world roster; sambass aliases here.
-    names: ["sambass", "innerground", "samba dnb", "samba bass"],
+    // Bare "marky" already lives in the world roster (liquid); the sambass
+    // aliases route here so "sambass" reaches the Brazilian groove.
+    names: ["sambass", "samba dnb", "samba bass", "sambass type beat"],
     genre: "dnb",
     style: "sambass",
     mood: "energetic",

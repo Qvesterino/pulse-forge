@@ -36,7 +36,13 @@ import { defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definit
 import { createProjectFromTemplate } from "./templates";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
-import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "./targets";
+import {
+  canonicalizeDeprecatedTarget,
+  clampTargetValue,
+  isAutomationTargetValid,
+  targetOwner,
+  targetParamDef,
+} from "./targets";
 
 export const SCHEMA_VERSION = 9;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1580,6 +1586,87 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   }
 }
 
+/**
+ * Phase 3a migration: rewrite automation targets that name deprecated legacy
+ * alias ids (eq.midGain…) to their canonical ids (eq.lowMidGain…) BEFORE
+ * target validation runs — otherwise old documents silently lost their lanes
+ * when the alias stopped being a valid target. Covers every collection that
+ * stores AutomationTargets.
+ */
+function remapDeprecatedAliasTargets(s: NormalizeState): void {
+  const doc = s.doc;
+  const remap = (target: unknown): unknown =>
+    target && typeof target === "object"
+      ? canonicalizeDeprecatedTarget(doc, target as AutomationTarget)
+      : target;
+  let changed = false;
+  const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+  if (Array.isArray(doc.automation)) {
+    for (const lane of doc.automation) {
+      if (!lane?.target) continue;
+      const next = remap(lane.target);
+      if (!eq(next, lane.target)) {
+        lane.target = next as typeof lane.target;
+        changed = true;
+      }
+    }
+  }
+  if (Array.isArray(doc.sceneAutomation)) {
+    for (const lane of doc.sceneAutomation) {
+      if (!lane?.target) continue;
+      const next = remap(lane.target);
+      if (!eq(next, lane.target)) {
+        lane.target = next as typeof lane.target;
+        changed = true;
+      }
+    }
+  }
+  if (Array.isArray(doc.lfos)) {
+    for (const lfo of doc.lfos) {
+      if (!lfo?.target) continue;
+      const next = remap(lfo.target);
+      if (!eq(next, lfo.target)) {
+        lfo.target = next as typeof lfo.target;
+        changed = true;
+      }
+    }
+  }
+  if (Array.isArray(doc.macros)) {
+    for (const macro of doc.macros) {
+      if (!Array.isArray(macro?.mappings)) continue;
+      for (const mapping of macro.mappings) {
+        if (!mapping?.target) continue;
+        const next = remap(mapping.target);
+        if (!eq(next, mapping.target)) {
+          mapping.target = next as typeof mapping.target;
+          changed = true;
+        }
+      }
+    }
+  }
+  const midi = doc.midi as { ccMappings?: { target?: unknown; aftertouchTarget?: unknown }[] } | undefined;
+  if (Array.isArray(midi?.ccMappings)) {
+    for (const mapping of midi!.ccMappings) {
+      if (mapping?.target) {
+        const next = remap(mapping.target);
+        if (!eq(next, mapping.target)) {
+          mapping.target = next;
+          changed = true;
+        }
+      }
+      if (mapping?.aftertouchTarget) {
+        const next = remap(mapping.aftertouchTarget);
+        if (!eq(next, mapping.aftertouchTarget)) {
+          mapping.aftertouchTarget = next;
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) s.changed = true;
+}
+
 function normalizeAutomationDomain(s: NormalizeState): void {
   const doc = s.doc;
   const automation = doc.automation;
@@ -2285,6 +2372,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeMasterAndReturnsDomain,
   normalizeScenesDomain,
   normalizeArrangementDomain,
+  remapDeprecatedAliasTargets,
   normalizeAutomationDomain,
   normalizeLfosDomain,
   normalizeMacrosDomain,

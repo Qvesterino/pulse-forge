@@ -89,6 +89,10 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // gabber lane is a researched P1 addition (docs/VOCABULARY-GAP-RESEARCH.md).
   [/\bhardstyle\b|\bhard style\b/, "techno"],
   [/\bhardcore techno\b|\bhappy hardcore\b|\bfrenchcore\b|\bterrorcore\b|\bspeedcore\b|\buptempo hardcore\b/, "techno"],
+  // Crossbreed / darkcore MUST sit above the bare "hardcore" reading below:
+  // the dnb-hardcore border is its own lane (dnb.crossbreed), while bare
+  // "hardcore" stays punk (house.hardcorepunk).
+  [/\bcrossbreed\b|\bdarkcore\b|\bhardcore dnb\b|\bhardcore drum ?n ?bass\b/, "dnb"],
   [/\bhardcore(?: punk)?\b/, "house"],
   [/\bpop[- ]?punk\b/, "house"],
   [/\bindie(?: rock)?\b/, "house"],
@@ -137,10 +141,14 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bjump ?up\b|\bjumpup\b/, "dnb"],
   [/\bdrumfunk\b|\bdrum funk\b|\btechstep\b|\btech step\b|\bdarkstep\b|\bdark step\b/, "dnb"],
   [/\bragga(?: jungle)?\b|\braggajungle\b|\bdancehall dnb\b/, "dnb"],
-  // bare "jungle" — the 1994 chopped-breaks lane (dnb.jungle)
+  // bare "jungle" - the 1994 chopped-breaks lane (dnb.jungle)
   [/\bjungle\b/, "dnb"],
+  // Crossbreed / darkcore — the dnb-hardcore border. Genre routing is
+  // handled above (before the punk reading of bare "hardcore"); the style
+  // entry below picks the groove.
   [/\bhalftime (?:dnb|drum ?n ?bass|jungle)\b|\b(?:dnb|jungle) halftime\b/, "dnb"],
-  [/\bminimal dnb\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
+  [/\bsambass\b|\bsamba (?:dnb|bass)\b|\bbrazilian dnb\b/, "dnb"],
+  [/\bminimal dnb\b|\bautonomic\b|\bdeep (?:dnb|drum ?n ?bass|drum and bass)\b/, "dnb"],
   [/\bhard groove\b|\bhardgroove\b/, "techno"],
   // Detroit's two faces: "detroit techno" / "detroit electro" must not fall
   // into the hip-hop "detroit rap" entry further down. Promoted to the

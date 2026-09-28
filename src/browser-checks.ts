@@ -853,6 +853,52 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   }
 
+  // Analog RELEASE regression (Phase 3b of the plugin-audit follow-up): the
+  // voice-manager stop callback hard-gated at 10 ms and cancelled the
+  // scheduled DAHDSR release — the RELEASE knob was dead on EVERY
+  // voice-manager synth whenever a note ended via noteOff (MIDI playing).
+  // release 0.01 vs 4 must now render measurably different tails.
+  try {
+    const renderAnalogRelease = async (release: number) => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      const def = INSTRUMENT_DEFS.analog;
+      const track: InstrumentTrack = {
+        id: "check-an-rel",
+        kind: "instrument",
+        instrument: "analog",
+        name: "analog",
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        sampleId: null,
+        params: { ...defaultInstrumentParams("analog"), release },
+        effects: [],
+        sends: {},
+      };
+      const rt = def.factory(ctx, track, { bpm: 124, getSample: () => undefined });
+      rt.output.connect(ctx.destination);
+      rt.noteOn(60, 0.9, 0.05, 0.35);
+      rt.noteOff?.(60, 0.4);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      const d = buffer.getChannelData(0);
+      let s = 0;
+      for (let i = Math.floor(0.45 * SR); i < Math.floor(0.7 * SR); i++) s += d[i] * d[i];
+      return Math.sqrt(s / (0.25 * SR));
+    };
+    const relShort = await renderAnalogRelease(0.05);
+    const relLong = await renderAnalogRelease(3);
+    check(
+      "analog RELEASE knob shapes the post-noteOff tail (noteOff path)",
+      relLong > relShort * 2 && relShort < 0.05,
+      `rel0.05=${relShort.toFixed(4)} rel3=${relLong.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("analog RELEASE knob shapes the post-noteOff tail (noteOff path)", false, String(error));
+  }
+
   // Multi-tap determinism regression (Phase 1 of the plugin-audit follow-up):
   // the native DelayNode feedback cycle flipped between two stable variants
   // across offline renders (~8% RMS at feedback .85) — two exports of the

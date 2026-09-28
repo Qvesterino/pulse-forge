@@ -302,13 +302,15 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   **valDurationAcc 0.571** (baseline 0.469), 190 vzoriek / 27 skupín —
   malý dataset je úprimný limit: model interpoluje knižnicu, favorites ho
   naučia viac. Melodic v2 (`symbolic-melodic-v2.onnx`, ~21 kB, 41-dim
-  embedding): manifest hlási valDegreeAcc 0.5517 / valDurationAcc 0.5517 po
-  **retraine 2026-09-27** (bol 0.4828 / 0.4138 pred fixom — duration hlava bola
-  pod majority baseline kvôli dvojitému násobeniu gradientu; viď audit nižšie).
+  embedding): manifest hlási valDegreeAcc 0.5946 / valDurationAcc 0.5766 po
+  **retraine 2026-09-27 na ds.v3** (predtým 0.5517 / 0.5517 po gradient-fixe,
+  0.4828 / 0.4138 pred ním — duration hlava bola pod majority baseline kvôli
+  dvojitému násobeniu gradientu; viď audit nižšie; ds.v3 + style-aware
+  conditioning viď „depth wave" nižšie).
   Provider preferuje v1 a fallbackuje na v2 per-call (P1 audit 2026-09-23:
   drums držať na v3, melodic preferovať v1 kým nebude väčší dataset —
   **revidované auditom 2026-09-27**: v2 je po fixe bezpečná, ale v1 stále
-  vyhráva na čestnom splite v degree (0.6897 vs 0.5517); rozdiel je v dátach,
+  vyhráva na čestnom splite v degree (0.6897 vs 0.5766); rozdiel je v dátach,
   nie v modeli).
 - **Provider**: `SymbolicPriorProvider` v2 — pri dostupnom modeli NAHRADZuje
   template melódiu prior-samplovanými notami (autoregresívne po rolách,
@@ -366,9 +368,35 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
      v `style-embeddings.json`). „v1 vyhráva na degree" platí len kým sa dnb
      mieša do house bucketu.
   8. **Dátové diery ostávajú**: `d1` a `d5` majú **nula** čestných príkladov,
-     duration-8 len 12 v knižnici, a **dnb má 0 augmentovaných riadkov**
-     (augmentačný generátor pokrýva len house/techno/trap/ambient). Ďalší lever
-     je rast knižnice + rozšírenie augmentácie na dnb, nie váženie.
+     duration-8 len 12 v knižnici. Ďalší lever je rast knižnice + rozšírenie
+     augmentácie, nie váženie.
+
+- **DEPTH WAVE 2026-09-27 (ds.v3, style-aware conditioning, HOTOVÉ)**:
+  auditová diera „dnb má 0 augmentovaných riadkov" je zavretá pre celý
+  per-style dialektový set. Zmeny:
+
+  1. **Dataset generátor** (`generate-symbolic-melodic-dataset.mts`) prechádza
+     aj `MELODIC_BY_STYLE` — `symbolic-melodic-ds.v3`: **861 riadkov / 119
+     skupín** (bolo 239/33). Dialekty nesú group key `genre.style#role#idx`,
+     takže leak-guard drží dialekt a jeho genre oddelene (žiadny zdieľaný
+     val group).
+  2. **Augmentácia** (`generate-augmented-data.mts`) tiež prechádza dialekty:
+     **12 672 riadkov** (dnb 3 784; z toho dialektových 2 997 v 576 skupinách;
+     predtým dnb 0). Writer je atomic-with-retry (`write-temp + rename`), aby
+     transientný Windows lock na 260 MB drum datasete nezabil regeneráciu.
+  3. **Style-aware `SemanticLookup`** (`train_symbolic_melodic_lib.py`,
+     zdieľaný trénerom, gateom AJ všetkými audit skriptmi): prefix
+     `dnb.techstep` → style vektor, `dnb` → genre centroid. Chýbajúci prefix
+     **failne nahlas** namiesto tichého zero-fillu — presne ten zero-fill
+     zabil gate hneď na prvom folde („genre outside the vocab"), keď do
+     datasetu vstúpili dialect riadky.
+  4. **Retrain v2** (gate 5-fold PASS): čestne degree **0.5354**, duration
+     **0.5621**; shipped split degree **0.5766**, duration **0.5676**
+     (predtým 0.5517/0.5517). Manifest valDegreeAcc 0.5946 / valDurationAcc
+     0.5766, sha `c00cfb972990b61e`, `datasetVersion: symbolic-melodic-ds.v3`.
+  5. **Testy**: `tests/melodic-dialects.test.ts` wave 3 — 6 dnb dialektov
+     (techstep/ragga/sambass/halftime/crossbreed/minimal) je navzájom
+     jedinečných, deterministických a key-safe naprieč bass/chord/lead.
 
 
 

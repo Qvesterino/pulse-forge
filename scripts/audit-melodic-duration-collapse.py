@@ -12,6 +12,7 @@ named instead of guessed.
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -19,6 +20,10 @@ import numpy as np
 import onnxruntime as ort
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from train_symbolic_melodic_lib import SemanticLookup  # noqa: E402
+
 DATASET = ROOT / "scripts" / "data" / "symbolic-melodic-dataset.json"
 MODELS = ROOT / "public" / "models"
 DURATION_LABELS = ["1", "2", "4", "8"]
@@ -26,27 +31,10 @@ DEGREE_LABELS = ["rest", "d0", "d1", "d2", "d3", "d4", "d5", "d6"]
 
 
 def transform_for_v2(x_all: np.ndarray, groups: np.ndarray):
-    payload = json.loads((ROOT / "scripts" / "data" / "style-embeddings.json").read_text())
-    style_map = payload.get("styles", {})
-    variant_map = payload.get("variants", {})
-    vectors: dict[str, list[float]] = {}
-    counts: dict[str, int] = {}
-    for style_id, vector in style_map.items():
-        genre = style_id.split(".")[0]
-        for vec in [vector] + list(variant_map.get(style_id, [])):
-            if genre not in vectors:
-                vectors[genre] = list(vec)
-                counts[genre] = 1
-            else:
-                for d in range(len(vec)):
-                    vectors[genre][d] += vec[d]
-                counts[genre] += 1
-    for genre, total in counts.items():
-        for d in range(len(vectors[genre])):
-            vectors[genre][d] /= total
+    vectors = SemanticLookup(ROOT / "scripts" / "data" / "style-embeddings.json")
     rows = []
     for i, group in enumerate(groups):
-        semantic = vectors.get(str(group).split("#")[0])
+        semantic = vectors.vector_for(str(group))
         if semantic is None:
             return None
         rows.append(list(semantic) + list(x_all[i][4:]))

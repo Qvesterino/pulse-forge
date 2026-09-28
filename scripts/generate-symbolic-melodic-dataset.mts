@@ -15,7 +15,7 @@
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { MELODIC_BY_GENRE } from "../src/ai/grooves/melodic-data";
+import { MELODIC_BY_GENRE, MELODIC_BY_STYLE } from "../src/ai/grooves/melodic-data";
 import {
   MELODIC_FEATURES_VERSION,
   MELODIC_FEATURE_COUNT,
@@ -26,7 +26,7 @@ import {
   type MelodicRole,
 } from "../src/ai/symbolic/melodic-features";
 
-const DATASET_VERSION = "symbolic-melodic-ds.v2";
+const DATASET_VERSION = "symbolic-melodic-ds.v3";
 
 interface DatasetSample {
   x: number[];
@@ -39,14 +39,25 @@ interface DatasetSample {
 }
 
 const samples: DatasetSample[] = [];
+let sampleCount = 0;
 
-for (const [genre, patterns] of Object.entries(MELODIC_BY_GENRE)) {
-  const genreKey = melodicGenreOf(genre as Parameters<typeof melodicGenreOf>[0]);
+/**
+ * Walk one role's sequences into next-note samples. `groupPrefix` keeps the
+ * held-out split honest: genre references are grouped as `genre#role#idx`,
+ * style dialects as `genre#style#role#idx` — a dialect never shares a group
+ * with its genre parent, so the trainer's leak guard treats them as separate
+ * sequences (which they are).
+ */
+function collectRole(
+  patterns: readonly { role: string; sequences: readonly (readonly { degree: number; duration: number }[])[] }[],
+  genreKey: ReturnType<typeof melodicGenreOf>,
+  groupPrefix: string,
+): void {
   for (const pattern of patterns) {
     const role = pattern.role as MelodicRole;
     for (const [sequenceIndex, sequence] of pattern.sequences.entries()) {
       if (sequence.length === 0) continue;
-      const group = `${genre}#${role}#${sequenceIndex}`;
+      const group = `${groupPrefix}#${role}#${sequenceIndex}`;
       const addSample = (
         noteIndex: number,
         startStep: number,
@@ -61,6 +72,7 @@ for (const [genre, patterns] of Object.entries(MELODIC_BY_GENRE)) {
           duration: durationClass(note.duration),
           group,
         });
+        sampleCount += 1;
       };
       // in-sequence transitions
       let cumulative = 0;
@@ -82,6 +94,20 @@ for (const [genre, patterns] of Object.entries(MELODIC_BY_GENRE)) {
       addSample(0, cumulative % 16, last.degree, last.duration, beforeLast ? beforeLast.degree : -1);
     }
   }
+}
+
+for (const [genre, patterns] of Object.entries(MELODIC_BY_GENRE)) {
+  collectRole(patterns, melodicGenreOf(genre as Parameters<typeof melodicGenreOf>[0]), genre);
+}
+
+// Per-style melodic dialects (dnb sub-genres, amapiano, jungle, …) are
+// hand-written LIBRARY references too — before this pass they never reached
+// the dataset, so a dnb.techstep request trained only on the generic dnb
+// arrays. The dialect's genre key comes from its id prefix.
+for (const [styleId, patterns] of Object.entries(MELODIC_BY_STYLE)) {
+  const genre = styleId.split(".")[0];
+  const genreKey = melodicGenreOf(genre as Parameters<typeof melodicGenreOf>[0]);
+  collectRole(patterns, genreKey, styleId);
 }
 
 // Sanity: durations must map to known classes and rows stay finite/fixed-width.

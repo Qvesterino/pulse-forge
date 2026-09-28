@@ -7,6 +7,7 @@ import {
   loadCuratedLayer,
 } from "../src/sample-library/curated";
 import { SampleBank } from "../src/sample-library/factory";
+import { configureAssetBase } from "../src/shared/assetUrls";
 
 /**
  * Curated factory layer (same-id override contract):
@@ -123,6 +124,24 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
     });
     const slow = curatedReadyWithin(slowBank, 50);
     await expect(slow).resolves.toBeUndefined();
+  });
+
+  it("loads curated WAVs through the configured application mount", async () => {
+    const requestedUrls: string[] = [];
+    configureAssetBase("/kyx/");
+    try {
+      await loadCuratedLayer(new SampleBank(), {
+        fetchImpl: (async (input: RequestInfo | URL) => {
+          requestedUrls.push(String(input));
+          return notFound();
+        }) as typeof fetch,
+        decode: decodeOk,
+      });
+      expect(requestedUrls[0]).toBe(`/kyx/samples/${CURATED_SAMPLES[0]?.file}`);
+      expect(requestedUrls.every((url) => url.startsWith("/kyx/samples/"))).toBe(true);
+    } finally {
+      configureAssetBase("");
+    }
   });
 });
 
