@@ -518,11 +518,7 @@ export function IntentPanel() {
           await controller.stop();
           setStatus("✓ Tone stopped.");
         } else {
-          await controller.start("clap-player", [
-            "--set", String(toneIntent.freq),
-            "--realtime",
-            "--seconds", "300",
-          ]);
+          await controller.start("clap-player", ["--set", String(toneIntent.freq), "--realtime", "--seconds", "300"]);
           setStatus(`✓ CLAP tone @ ${toneIntent.freq} Hz — beží (stop: "stop the tone")`);
         }
       } catch (err) {

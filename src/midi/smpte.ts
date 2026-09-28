@@ -309,6 +309,12 @@ export type ChaseDecision = "chased" | "skipped" | "idle";
  */
 export class MtcChaser {
   armed = false;
+  /**
+   * The TC value that corresponds to project tick 0, in seconds. Default 0
+   * (TC 00:00:00:00 = project start); a session recorded at TC 01:00:00:00
+   * sets 3600. Timecodes BEFORE the offset clamp to the project start.
+   */
+  offsetSeconds = 0;
   private lastResyncAt = -Infinity;
 
   constructor(
@@ -317,12 +323,12 @@ export class MtcChaser {
   ) {}
 
   /**
-   * Map a timecode onto the project timeline at the CURRENT BPM and seek
-   * there (works stopped and playing). Shared by the armed chase policy and
-   * the "go to 1:23" intent verb. Returns false for garbage input.
+   * Map a timecode onto the project timeline at the CURRENT BPM (minus the
+   * configured TC offset) and seek there. Shared by the armed chase policy
+   * and the "go to 1:23" intent verb. Returns false for garbage input.
    */
   seekToTimecode(tc: SmpTeTimecode): boolean {
-    const seconds = smpteToSeconds(tc);
+    const seconds = smpteToSeconds(tc) - this.offsetSeconds;
     if (!Number.isFinite(seconds) || seconds < 0) return false;
     const tick = seconds * ((this.bpm() / 60) * PPQ);
     if (!Number.isFinite(tick) || tick < 0) return false;
@@ -332,11 +338,12 @@ export class MtcChaser {
 
   onFrame(tc: SmpTeTimecode, opts: { immediate?: boolean; wallNow?: number } = {}): ChaseDecision {
     if (!this.armed) return "idle";
-    const seconds = smpteToSeconds(tc);
+    const seconds = smpteToSeconds(tc) - this.offsetSeconds;
     if (!Number.isFinite(seconds) || seconds < 0) return "skipped";
     const ticksPerSecond = (this.bpm() / 60) * PPQ;
-    const tick = seconds * ticksPerSecond;
-    if (!Number.isFinite(tick) || tick < 0) return "skipped";
+    // Timecodes before the configured offset clamp to the project start.
+    const tick = Math.max(0, seconds * ticksPerSecond);
+    if (!Number.isFinite(tick)) return "skipped";
 
     const wallNow = opts.wallNow ?? Date.now();
     if (!this.transport.playing) {

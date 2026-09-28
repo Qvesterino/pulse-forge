@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspe
 import type { Services } from "../services";
 import type { LinkStatus } from "../collab/linkSync";
 import { formatSmpTe } from "../midi/smpte";
-import { PcmPlaybackController, PcmPlaybackUnavailableError } from "../audio-engine/pcmPlayback";
+import { getSharedPcmPlayback, PcmPlaybackUnavailableError, type PcmPlaybackState } from "../audio-engine/pcmPlayback";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { SelectionStore } from "../store/SelectionStore";
@@ -187,35 +187,37 @@ function LinkChip({ services }: { services: Services }) {
  * web build (no native source access).
  */
 function PcmChip({ services }: { services: Services }) {
-  const [state, setState] = useState<"off" | "starting" | "on">("off");
+  const [state, setState] = useState<PcmPlaybackState>("off");
   const [lastError, setLastError] = useState<string | null>(null);
-  const controllerRef = useRef<PcmPlaybackController | null>(null);
   const desktop = (globalThis as unknown as { kyxDesktop?: { pcm?: unknown } }).kyxDesktop?.pcm;
+
+  useEffect(() => {
+    if (!desktop) return;
+    services.engine.ensureContext();
+    const ctx = services.engine.getLiveAudioContext();
+    if (!ctx) return;
+    // The chip and the intent verbs share ONE controller — either surface
+    // reflects the other's session.
+    const controller = getSharedPcmPlayback(() => ctx);
+    return controller.subscribe(setState);
+  }, [services, desktop]);
+
   if (!desktop) return null;
 
   const toggle = async (): Promise<void> => {
-    const controller =
-      controllerRef.current ??
-      (() => {
-        services.engine.ensureContext();
-        const ctx = services.engine.getLiveAudioContext();
-        if (!ctx) throw new Error("audio engine not ready");
-        controllerRef.current = new PcmPlaybackController(() => ctx);
-        return controllerRef.current;
-      })();
+    services.engine.ensureContext();
+    const ctx = services.engine.getLiveAudioContext();
+    if (!ctx) return;
+    const controller = getSharedPcmPlayback(() => ctx);
     try {
       if (state === "on") {
         await controller.stop();
-        setState("off");
         return;
       }
-      setState("starting");
       // 440 Hz reference tone, paced like a driver clock.
       await controller.start("pcm-gen", ["--freq", "440", "--realtime"]);
       setLastError(null);
-      setState("on");
     } catch (err) {
-      setState("off");
       setLastError(err instanceof PcmPlaybackUnavailableError ? err.message : String(err));
     }
   };

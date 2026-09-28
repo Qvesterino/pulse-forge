@@ -19,6 +19,12 @@ const { PcmPipeToSabBridge } = require("./pcm-ring-layout.cjs");
 const SOURCE_KINDS = {
   "pcm-gen": { relative: path.join("native", "pcm-host", "build", "Release", "pcm-gen.exe"), resource: "pcm" },
   "asio-host": { relative: path.join("native", "asio-host", "build", "Release", "asio-host.exe"), resource: "asio" },
+  "clap-player": {
+    relative: path.join("native", "clap-host", "build", "Release", "clap-player.exe"),
+    resource: "clap-host",
+    /** Auto-injected fixture: the tone plugin ships with the dev tree. */
+    fixture: path.join("native", "clap-host", "build", "Release", "clap-tone.clap"),
+  },
 };
 
 const ALLOWED_ARG_FLAGS = new Set(["--rate", "--seconds", "--freq", "--block", "--dll"]);
@@ -35,6 +41,13 @@ function resolveSourcePath(kind, resourcesPath) {
   if (!spec) return null;
   if (resourcesPath) return path.join(resourcesPath, spec.resource, path.basename(spec.relative));
   return path.join(defaultResourcePath(), spec.relative);
+}
+
+/** The tone fixture .clap shipped with the build (clap-player's --dll). */
+function resolveFixturePath(resourcesPath) {
+  const spec = SOURCE_KINDS["clap-player"];
+  if (resourcesPath) return path.join(resourcesPath, spec.resource, path.basename(spec.fixture));
+  return path.join(defaultResourcePath(), spec.fixture);
 }
 
 /** Numeric-or-file argv validation: flags from the allowlist, bounded values. */
@@ -80,10 +93,16 @@ function registerPcmIpcHandlers(ipcMain, options = {}) {
     // One source at a time: a new start stops the previous session.
     for (const [, session] of sessions) session.stop();
 
+    const hostPath = resolveSourcePath(kind, resourcesPath);
+    if (!hostPath) return { ok: false, error: `source binary missing for ${kind}` };
+    // The CLAP player needs its plugin: auto-inject the tone fixture from
+    // the same build tree (renderer never names plugin paths in v1).
+    const finalArgs = kind === "clap-player" ? ["--dll", resolveSourcePath("clap-tone"), ...args] : args;
+
     const id = `pcm-${nextId++}`;
     const source = new PcmPipeSource({
-      hostPath: resolveSourcePath(kind, resourcesPath),
-      args,
+      hostPath,
+      args: finalArgs,
       ...(spawn ? { spawn } : {}),
     });
     const bridge = new PcmPipeToSabBridge({ source, sab });
@@ -117,4 +136,4 @@ function registerPcmIpcHandlers(ipcMain, options = {}) {
   };
 }
 
-module.exports = { registerPcmIpcHandlers, resolveSourcePath, sanitizeArgs, SOURCE_KINDS };
+module.exports = { registerPcmIpcHandlers, resolveSourcePath, resolveFixturePath, sanitizeArgs, SOURCE_KINDS };

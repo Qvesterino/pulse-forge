@@ -31,6 +31,19 @@ interface DesktopPcmSurface {
   stop: (id: string) => Promise<unknown>;
 }
 
+let shared: PcmPlaybackController | null = null;
+let sharedContextGetter: (() => BaseAudioContext) | null = null;
+
+/**
+ * The app-wide controller (statusbar chip AND intent verbs share one
+ * session — a new start from either surface stops the previous source).
+ */
+export function getSharedPcmPlayback(getContext: () => BaseAudioContext): PcmPlaybackController {
+  sharedContextGetter = getContext;
+  if (!shared) shared = new PcmPlaybackController(() => (sharedContextGetter ?? getContext)());
+  return shared;
+}
+
 function desktopSurface(): DesktopPcmSurface {
   const surface = (globalThis as { kyxDesktop?: { pcm?: DesktopPcmSurface } }).kyxDesktop?.pcm;
   if (!surface) throw new PcmPlaybackUnavailableError();
@@ -39,10 +52,14 @@ function desktopSurface(): DesktopPcmSurface {
 
 const RING_CAPACITY = 32768; // ≥ OS pipe buffer in frames (ADR 0018 sizing contract)
 
+export type PcmPlaybackState = "off" | "starting" | "on";
+
 export class PcmPlaybackController {
   private node: AudioWorkletNode | null = null;
   private sessionId: string | null = null;
   private moduleLoaded = new WeakSet<BaseAudioContext>();
+  private state: PcmPlaybackState = "off";
+  private readonly stateListeners = new Set<(state: PcmPlaybackState) => void>();
 
   constructor(private readonly getContext: () => BaseAudioContext) {}
 
@@ -50,14 +67,30 @@ export class PcmPlaybackController {
     return this.node !== null;
   }
 
+  getState(): PcmPlaybackState {
+    return this.state;
+  }
+
+  subscribe(listener: (state: PcmPlaybackState) => void): () => void {
+    this.stateListeners.add(listener);
+    listener(this.state);
+    return () => this.stateListeners.delete(listener);
+  }
+
+  private setState(state: PcmPlaybackState): void {
+    this.state = state;
+    for (const listener of this.stateListeners) listener(state);
+  }
+
   /**
    * Start an external source and route it to the speakers. `host` is an
    * allowlisted kind ("pcm-gen" tone, "asio-host" for the ASIO fixture via
    * --dll); extra args ride the same validation as any other client.
    */
-  async start(host: "pcm-gen" | "asio-host", args: string[] = []): Promise<void> {
+  async start(host: "pcm-gen" | "asio-host" | "clap-player", args: string[] = []): Promise<void> {
     const surface = desktopSurface();
     if (this.node) await this.stop();
+    this.setState("starting");
 
     const context = this.getContext();
     const rate = context.sampleRate;
@@ -76,12 +109,14 @@ export class PcmPlaybackController {
     const result = await surface.start({ sab, host, args: [...args, "--rate", String(rate)] });
     if (!result.ok) {
       node.disconnect();
+      this.setState("off");
       throw new Error(result.error ?? "external source refused to start");
     }
 
     node.connect(context.destination);
     this.node = node;
     this.sessionId = result.id ?? null;
+    this.setState("on");
   }
 
   async stop(): Promise<void> {
@@ -95,6 +130,7 @@ export class PcmPlaybackController {
       this.node.disconnect();
       this.node = null;
     }
+    this.setState("off");
   }
 
   private async ensureModule(context: BaseAudioContext): Promise<void> {

@@ -101,11 +101,15 @@ int main(int argc, char **argv) {
   double seconds = 2;
   long rate = 48000;
   long block = 480;
+  int realtime = 0;
   int queuedParam = 0;
   double queuedParamValue = 0;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--realtime") == 0) continue; /* accepted, ignored: pipe pacing is the source's business */
+    if (strcmp(argv[i], "--realtime") == 0) {
+      realtime = 1;
+      continue;
+    }
     if (i + 1 >= argc) break;
     if (strcmp(argv[i], "--dll") == 0) {
       const int w = MultiByteToWideChar(CP_UTF8, 0, argv[i + 1], -1, NULL, 0);
@@ -134,6 +138,9 @@ int main(int argc, char **argv) {
     return 4;
   }
   if (_setmode(_fileno(stdout), _O_BINARY) == -1) return 3;
+  /* --realtime paces blocks like a driver clock — the listening path needs
+     realtime delivery, not a burst. 1 ms timer resolution keeps Sleep honest. */
+  if (realtime) timeBeginPeriod(1);
 
   HMODULE module = LoadLibraryW(dllPath);
   if (!module) {
@@ -271,6 +278,7 @@ int main(int argc, char **argv) {
     writeFrame(stdout, 1, seq++, interleaved, (unsigned long)(sizeof(float) * frames * 2));
     written += frames;
     steady += (int64_t)frames;
+    if (realtime) Sleep((DWORD)((double)frames / rate * 1000.0 + 0.5));
   }
   plugin->stop_processing(plugin);
   plugin->deactivate(plugin);
@@ -281,6 +289,7 @@ int main(int argc, char **argv) {
   writeJsonFrame(stdout, 3, stats);
   writeJsonFrame(stdout, 4, "{}");
   fflush(stdout);
+  if (realtime) timeEndPeriod(1);
 
   free(interleaved);
   entry->deinit();
