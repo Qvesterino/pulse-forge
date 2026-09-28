@@ -33,6 +33,9 @@ import {
   type NoteEvent,
   type Pattern,
 } from "../project-model/types";
+import { createInstrumentTrackModel } from "../project-model/schema";
+import { uid } from "../shared/ids";
+import { planVocalHarmonyPair } from "../vocal/harmony";
 import { generateOptionsFromIntent } from "./plan";
 import { normalizeIntent } from "./normalize";
 import { refreshPatternOutputHash, refreshPatternQuality } from "./quality";
@@ -59,6 +62,12 @@ export interface ComposeHum {
   loopTicks: number;
   /** Estimated key of the hum — notes transpose to the song key. */
   key?: string | null;
+  /**
+   * Hum & harmonize — also build the diatonic backing stack (third above +
+   * below, key-snapped) on a dedicated "Hum Harmony" track. Needs a song
+   * key; without one the stage skips with an honest note.
+   */
+  harmonize?: boolean;
 }
 
 /** Repeat a hummed phrase at its recorded loop period, clipping at section and loop boundaries. */
@@ -263,7 +272,8 @@ export async function composeFullTrack(
     if (!humSongKey) {
       skipped.push("harmonize: no song key — the backing stack needs a key to stack in");
     } else {
-      harmonyTrackId = uid("track");
+      const resolvedTrackId = uid("track");
+      harmonyTrackId = resolvedTrackId;
       const injectBacking = (sections: SongBuild["sections"]): SongBuild["sections"] =>
         sections.map((section) => {
           if (!section.roles.includes("lead")) return section;
@@ -276,15 +286,14 @@ export async function composeFullTrack(
           if (tiled.length === 0) return section;
           const pair = planVocalHarmonyPair(tiled, humSongKey);
           const backing: NoteEvent[] = [
-            ...pair.above.map((note) => ({ ...note, velocity: note.velocity * 0.72, id: uid("note") }) as NoteEvent),
-            ...pair.below.map((note) => ({ ...note, velocity: note.velocity * 0.66, id: uid("note") }) as NoteEvent),
+            ...pair.above.map((note) => ({ ...note, velocity: 0.72, id: uid("note") }) as NoteEvent),
+            ...pair.below.map((note) => ({ ...note, velocity: 0.66, id: uid("note") }) as NoteEvent),
           ];
-          return refreshHummedPattern(doc, section, harmonyTrackId, backing, humSongKey);
+          return refreshHummedPattern(doc, section, resolvedTrackId, backing, humSongKey);
         });
       build = { ...build, sections: injectBacking(build.sections) };
     }
   }
-  const hum = options.hum;
   if (hum && hum.notes.length > 0) {
     const leadId = resolveLeadTrackId(doc);
     if (!leadId) {
