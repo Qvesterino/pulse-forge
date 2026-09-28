@@ -614,7 +614,7 @@ const AG_COOK: ArtistProfile = {
     "custom / bespoke Max4Live devices for PC Music workflow",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["progressive", "bubblegum", "synthpop", "futurebass"],
+  grooveLanes: ["progressive", "synthpop", "futurebass", "dancefloor"],
   vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
   sources: ["https://en.wikipedia.org/wiki/A._G._Cook", "https://www.residentadvisor.net/features/2942"],
   verificationStatus: "ai-inferred",
@@ -917,7 +917,7 @@ const SOPHIE: ArtistProfile = {
     "Pitchproof (pitch-correction for the alien vocal texture)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["bubblegum", "synthpop", "progressive", "gqom"],
+  grooveLanes: ["synthpop", "progressive", "gqom"],
   vibe: ["ethereal", "futuristic", "synthetic", "metallic", "transcendent", "otherworldly", "pioneering"],
   sources: ["https://en.wikipedia.org/wiki/SOPHIE_(musician)", "https://www.pitchfork.com/features/profile/sophie/"],
   verificationStatus: "verified",
@@ -974,7 +974,7 @@ const DJ_MUSTARD: ArtistProfile = {
     "LFO Tool (subtle sidechain)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["bounce", "gfunk", "westcoast", "crunk"],
+  grooveLanes: ["bounce", "gfunk", "crunk"],
   vibe: ["bouncy", "minimal", "R&B-influenced", "club", "west coast revival", "iconic", "catchy"],
   sources: [
     "https://en.wikipedia.org/wiki/DJ_Mustard",

@@ -132,10 +132,17 @@ describe("verification-status discipline", () => {
     }
   });
 
-  it("the registry currently reports all profiles as ai-inferred (plan balance exhausted)", () => {
+  it("the registry reports a mix of verified and unverified profiles", () => {
+    // Was "all ai-inferred" while the plan balance blocked web research.
+    // After the 2026-09-28 verification pass this is a MIX: a subset was
+    // cross-checked against sources and flipped, the rest still carry an
+    // ai-inferred status. The invariant is not "none verified" any more —
+    // it is that every profile is honestly labelled and the counts add up.
     const counts = countByVerificationStatus();
-    expect(counts["ai-inferred"]).toBe(Object.keys(ARTIST_PROFILES).length);
-    expect(counts.verified).toBe(0);
+    const total = Object.keys(ARTIST_PROFILES).length;
+    expect(counts["ai-inferred"] + counts.mixed + counts.verified).toBe(total);
+    expect(counts.verified).toBeGreaterThan(0);
+    expect(counts.verified).toBeLessThan(total);
   });
 
   it("every profile has at least one source URL backing the claims", () => {
