@@ -293,3 +293,36 @@ describe("melodic dialects — dnb depth wave 2 (twostep / roller / amen / neuro
     expect(matchArtistPreset("total science")?.preset).toMatchObject({ style: "roller", bpmRange: [172, 176] });
   });
 });
+
+describe("melodic dialects — gabber (the stomp kick owns the low end)", () => {
+  it("gabber bass anchors sparsely and the lead screeches", () => {
+    const gabber = musical(partsFor("techno", "gabber"));
+    const house = musical(partsFor("house"));
+    expect(gabber.bass.length).toBeGreaterThan(0);
+    expect(gabber.bass).not.toEqual(house.bass);
+    // the bass is patient — the kick carries the drive
+    const avgBass = gabber.bass.reduce((s, n) => s + n.duration, 0) / gabber.bass.length;
+    expect(avgBass).toBeGreaterThan(150);
+    // the hoover lead is aggressive — high velocities
+    expect(Math.max(...gabber.lead.map((n) => n.velocity))).toBeGreaterThan(0.7);
+  });
+
+  it("key-safe", () => {
+    const allowed = new Set([0, 2, 3, 5, 7, 8, 10]);
+    const options = generateOptionsFromIntent(
+      normalizeIntent({ genre: "techno", style: "gabber", seed: "melodic-dialect-fixture", length: 64 }),
+    );
+    const parts = generateMelodicParts(options, forkRandom("key-safety-gabber", "melody"), "C Natural Minor");
+    for (const note of parts.bass) {
+      expect(allowed.has(((note.pitch % 12) + 12) % 12)).toBe(true);
+    }
+  });
+
+  it("gabber artists resolve with researched uptempo pockets", () => {
+    expect(matchArtistPreset("angerfist")?.preset).toMatchObject({ style: "gabber", bpmRange: [160, 180] });
+    expect(matchArtistPreset("miss k8")?.preset.bpmRange).toEqual([170, 190]);
+    expect(matchArtistPreset("sefa")?.preset.bpmRange).toEqual([175, 200]);
+    expect(matchArtistPreset("partyraiser")?.preset.style).toBe("gabber");
+    expect(matchArtistPreset("dr peacock")?.preset.bpmRange).toEqual([150, 170]);
+  });
+});

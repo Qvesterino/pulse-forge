@@ -2579,6 +2579,66 @@ const DANCEFLOOR_LEAD: MelodicPatternData = {
   ],
 };
 
+// ── Melodic dialects (gabber — the kick carries the low end) ──────────────
+
+// Gabber bass: dark and sparse — the distorted kick owns the low register,
+// the bass only anchors the half-bar. Screechy hoover lead is the genre voice.
+const GABBER_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 8, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 6, velocity: 0.75 },
+    ],
+    [
+      { degree: 0, duration: 8, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 6, duration: 6, velocity: 0.7 },
+    ],
+  ],
+};
+
+const GABBER_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Dark minor stabs on the half-bar, menace over the stomp
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const GABBER_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // The hoover screech — short aggressive phrases with a descending tail
+    [
+      { degree: 0, duration: 1, velocity: 0.85 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: 6, duration: 2, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 6, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 8, velocity: 0 },
+    ],
+    [
+      { degree: 3, duration: 2, velocity: 0.8 },
+      { degree: 3, duration: 1, velocity: 0.75 },
+      { degree: 2, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
 export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "house.amapiano": [AMAPIANO_BASS, AMAPIANO_CHORD, AMAPIANO_LEAD],
   "house.dembow": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
@@ -2604,6 +2664,8 @@ export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "dnb.neuro": [NEURO_BASS, NEURO_CHORD, NEURO_LEAD],
   "dnb.jumpup": [JUMPUP_BASS, JUMPUP_CHORD, JUMPUP_LEAD],
   "dnb.dancefloor": [DANCEFLOOR_BASS, DANCEFLOOR_CHORD, DANCEFLOOR_LEAD],
+  // Gabber — the stomp kick owns the low end; bass anchors, lead screeches
+  "techno.gabber": [GABBER_BASS, GABBER_CHORD, GABBER_LEAD],
   "house.slaphouse": [SLAPHOUSE_BASS, SLAPHOUSE_CHORD, SLAPHOUSE_LEAD],
   // Wave 3 — 14 lanes with a bass signature (2026-09-28)
   "house.disco": [DISCO_BASS, DISCO_CHORD, DISCO_LEAD],
