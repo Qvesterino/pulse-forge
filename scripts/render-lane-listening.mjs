@@ -15,7 +15,8 @@ import { writeFileSync, mkdirSync } from "node:fs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PORT) || 5257;
-const outRoot = path.join(ROOT, "lane-listening");
+// Inside the listening room's serve root — the LANES tab reads this folder.
+const outRoot = path.join(ROOT, "listening", "lanes");
 
 const LANES = [
   { id: "house.amapiano", ref: "log drum answers the kick, airy chords" },
@@ -48,6 +49,7 @@ await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", ti
 
 mkdirSync(outRoot, { recursive: true });
 const lines = ["# New lanes — počúvaci pack (drums + melodic dialect)", ""];
+const manifest = [];
 let totalFiles = 0;
 let failures = 0;
 
@@ -131,10 +133,22 @@ for (const lane of LANES) {
     const name = `${lane.id.replace(".", "-")}-${entry.patternIndex + 1}.wav`;
     writeFileSync(path.join(outRoot, name), Buffer.from(entry.b64, "base64"));
     totalFiles += 1;
+    manifest.push({
+      id: lane.id,
+      file: `../lanes/${name}`,
+      bpm: rendered.midBpm,
+      ref: lane.ref,
+      pattern: entry.patternIndex + 1,
+    });
     lines.push(`- ${name}`);
   }
   lines.push("");
 }
+
+writeFileSync(
+  path.join(outRoot, "lanes.json"),
+  JSON.stringify({ version: 1, generatedAt: Date.now(), lanes: manifest }, null, 2),
+);
 
 lines.push(
   "---",

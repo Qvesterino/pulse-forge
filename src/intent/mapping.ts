@@ -1,11 +1,26 @@
 import type { IntentSpec } from "./types";
 import type { GenerateOptions } from "../ai/types";
+import { artistBpmHint } from "./artist-signature";
+import { getArtistProfile, normalizeArtistSlug } from "./artist-profiles";
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 function clamp(lo: number, hi: number, v: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * The artist tempo pocket for an intent, from the deep profile layer.
+ *
+ * Returns null when no artist matched, when the label does not resolve to a
+ * profile, or when the profile declares no usable range — every one of those
+ * cases must leave groove selection exactly as it was before this existed.
+ */
+function artistGrooveWindow(intent: IntentSpec): [number, number] | null {
+  if (!intent.artist) return null;
+  const profile = getArtistProfile(normalizeArtistSlug(intent.artist));
+  return profile ? artistBpmHint(profile) : null;
 }
 
 /**
@@ -35,8 +50,14 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
   const isDefaultComplexity = Math.abs(intent.complexity - 0.5) < 0.001;
   const isDefaultVariation = Math.abs(intent.variation - base.velocityVariation) < 0.001;
   const isDefaultMood = intent.mood == null;
+  // The artist tempo pocket is INDEPENDENT of the slider defaults above, so it
+  // is resolved on BOTH return paths — otherwise a bare artist preset with
+  // default sliders ("travis scott type beat", nothing else) would silently
+  // lose its pocket and fall back to whichever groove the hash favoured.
+  const grooveWindow = artistGrooveWindow(intent);
+  const baseWithWindow: GenerateOptions = grooveWindow ? { ...base, grooveBpmWindow: grooveWindow } : base;
   if (isDefaultEnergy && isDefaultDensity && isDefaultComplexity && isDefaultVariation && isDefaultMood) {
-    return base;
+    return baseWithWindow;
   }
   let ghostWeight = base.ghostWeight;
   let microWeight = base.microWeight;
@@ -78,7 +99,7 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
   }
 
   return {
-    ...base,
+    ...baseWithWindow,
     ghostWeight,
     microWeight,
     velocityVariation,

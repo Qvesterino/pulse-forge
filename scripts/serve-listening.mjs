@@ -16,6 +16,7 @@ const MIME = {
   ".html": "text/html; charset=utf-8",
   ".wav": "audio/wav",
   ".md": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
 };
 
 const VERDICTS = path.join(SERVE_ROOT, "verdicts.json");

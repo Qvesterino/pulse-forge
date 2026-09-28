@@ -41,6 +41,13 @@
   .sent { color: var(--ok); font-size: 11px; margin-left: 8px; }
   .blind-hidden { display: none !important; }
   #blind-banner { color: var(--acc); border: 1px dashed var(--acc); border-radius: 6px; padding: 8px 12px; }
+  tr.lane-fits td { background: rgba(74, 222, 128, 0.08); }
+  tr.lane-off td { background: rgba(248, 113, 113, 0.08); }
+  tr.lane-hit td { background: rgba(245, 158, 11, 0.15); }
+  tr.lane-hit .lane-sent { color: var(--acc); }
+  .v-fits:hover { border-color: var(--ok); color: var(--ok); }
+  .v-off:hover { border-color: #f87171; color: #f87171; }
+  .v-hit:hover { border-color: var(--acc); color: var(--acc); }
 </style>
 </head>
 <body>
@@ -50,7 +57,8 @@
 <p id="blind-banner" class="hint" style="display:none">BLIND režim (?blind=1) — názvy verzií sú skryté a poradie zamiešané;
 hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="blind-reveal">REVEAL — odhaliť názvy</button></p>
 <div class="tabs">
-  <button data-suite="morph" class="active">MORPH ★ (A/B)</button>
+  <button data-suite="lanes" class="active">LANES ★ (nové)</button>
+  <button data-suite="morph">MORPH ★ (A/B)</button>
   <button data-suite="scenes">SCENE presety (A/B)</button>
   <button data-suite="intent">INTENT učenie (rank ★)</button>
   <button data-suite="conditioning">CONDITIONING (v1 vs v3)</button>
@@ -59,7 +67,8 @@ hodnotíš čistý zvuk. Verdikty sa ukladajú so skutočnými id. <button id="b
 
 <div id="playerWrap"><audio id="player" controls preload="auto" style="width:100%"></audio></div>
 
-<div class="suite active" id="suite-morph"></div>
+<div class="suite active" id="suite-lanes"></div>
+<div class="suite" id="suite-morph"></div>
 <div class="suite" id="suite-scenes"></div>
 <div class="suite" id="suite-intent"></div>
 <div class="suite" id="suite-conditioning"></div>
@@ -378,6 +387,111 @@ function buildGrooves(grooves) {
   }
 }
 
+// ── LANES suite — ★ verdicts that tune the melodic dialects ────────────────
+// Two questions per lane: do the DRUMS match the identity, does the BASS
+// dialect match. Keyboard: ↑/↓ navigate, Space play, S = sedí, X = nesedí,
+// F = ★ hit. Progress counter tracks what you've already rated.
+const laneRatings = new Map(); // "laneId|pattern" -> "fits" | "off" | "hit"
+let laneCursor = 0;
+let laneRows = [];
+
+function buildLanes(lanes) {
+  const root = document.getElementById("suite-lanes");
+  const intro = document.createElement("div");
+  intro.className = "group";
+  intro.innerHTML =
+    "<h3>Nové laney — drums + basový dialekt</h3>" +
+    '<div class="hint">Dve otázky: (1) DRUMY sedia identite? (2) BASOVÝ DIALEKT sedí? ' +
+    "Klávesy: <b>↑/↓</b> navigácia · <b>medzerník</b> prehrať · <b>S</b> sedí · <b>X</b> nesedí · <b>F</b> ★ hit. " +
+    'Verdikty idú priamo do ladenia dialektov.</div><div class="gk" id="lanes-progress"></div>';
+  root.append(intro);
+  const table = document.createElement("table");
+  for (const lane of lanes) {
+    const row = document.createElement("tr");
+    row.dataset.laneKey = lane.id + "|" + lane.pattern;
+    row.innerHTML =
+      "<td><b>" + lane.id + "</b><div class='desc'>" + (lane.ref ?? "") + "</div></td>" +
+      "<td class='cat'>" + lane.bpm + " BPM · pattern " + lane.pattern + "</td>" +
+      "<td>" +
+      '<button class="play">▶</button> ' +
+      '<button class="v-fits">✓ sedí</button> ' +
+      '<button class="v-off">✗ nesedí</button> ' +
+      '<button class="v-hit">★ hit</button>' +
+      "</td><td class='lane-sent sent'></td>";
+    row.querySelector(".play").addEventListener("click", () => playLane(lane, row));
+    const rate = (verdict) => rateLane(lane, row, verdict);
+    row.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
+    row.querySelector(".v-off").addEventListener("click", () => rate("off"));
+    row.querySelector(".v-hit").addEventListener("click", () => rate("hit"));
+    laneRows.push({ lane, row });
+    table.append(row);
+  }
+  root.append(table);
+  updateLaneProgress();
+  if (laneRows.length > 0) laneRows[0]!.row.classList.add("playing");
+}
+
+function playLane(lane, row) {
+  playFile("../" + lane.file, row);
+}
+
+function rateLane(lane, row, verdict) {
+  laneRatings.set(lane.id + "|" + lane.pattern, verdict);
+  row.className = row.className.replace(/ lane-(fits|off|hit)/g, "") + " lane-" + verdict;
+  const sent = row.querySelector(".lane-sent");
+  const icons = { fits: "✓ sedí", off: "✗ nesedí", hit: "★ HIT" };
+  sent.textContent = icons[verdict] ?? "";
+  postVerdict({
+    kind: "lane",
+    laneId: lane.id,
+    pattern: lane.pattern,
+    bpm: lane.bpm,
+    verdict,
+    blind: BLIND,
+    savedAt: Date.now(),
+  })
+    .then(() => {
+      sent.textContent += " ✓ odoslané";
+      updateLaneProgress();
+    })
+    .catch(() => {
+      sent.textContent = "✗ server nefunguje — spusti listening:serve";
+    });
+}
+
+function updateLaneProgress() {
+  const el = document.getElementById("lanes-progress");
+  if (el) el.textContent = "ohodnotené " + laneRatings.size + "/" + laneRows.length;
+}
+
+// Keyboard shortcuts — active when the LANES tab is visible
+document.addEventListener("keydown", (ev) => {
+  const lanesActive = document.getElementById("suite-lanes")?.classList.contains("active");
+  if (!lanesActive || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
+  const current = laneRows[laneCursor];
+  if (!current) return;
+  if (ev.key === "ArrowDown") {
+    laneCursor = Math.min(laneRows.length - 1, laneCursor + 1);
+    laneRows.forEach((r) => r.row.classList.remove("playing"));
+    laneRows[laneCursor]!.row.classList.add("playing");
+    ev.preventDefault();
+  } else if (ev.key === "ArrowUp") {
+    laneCursor = Math.max(0, laneCursor - 1);
+    laneRows.forEach((r) => r.row.classList.remove("playing"));
+    laneRows[laneCursor]!.row.classList.add("playing");
+    ev.preventDefault();
+  } else if (ev.key === " ") {
+    playLane(current.lane, current.row);
+    ev.preventDefault();
+  } else if (ev.key === "s" || ev.key === "S") {
+    rateLane(current.lane, current.row, "fits");
+  } else if (ev.key === "x" || ev.key === "X") {
+    rateLane(current.lane, current.row, "off");
+  } else if (ev.key === "f" || ev.key === "F") {
+    rateLane(current.lane, current.row, "hit");
+  }
+});
+
 fetch("room.json")
   .then((r) => r.json())
   .then((room) => {
@@ -387,6 +501,13 @@ fetch("room.json")
     buildConditioning(room.conditioning ?? []);
     buildGrooves(room.grooves ?? []);
     applyBlind();
+  });
+fetch("../lanes/lanes.json")
+  .then((r) => r.json())
+  .then((pack) => buildLanes(pack.lanes ?? []))
+  .catch(() => {
+    const root = document.getElementById("suite-lanes");
+    root.innerHTML = '<div class="hint">lanes/lanes.json nenájdené — spusti <b>node scripts/render-lane-listening.mjs</b></div>';
   });
 loadVerdictCount();
 
