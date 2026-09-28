@@ -132,17 +132,17 @@ describe("verification-status discipline", () => {
     }
   });
 
-  it("the registry reports a mix of verified and unverified profiles", () => {
-    // Was "all ai-inferred" while the plan balance blocked web research.
-    // After the 2026-09-28 verification pass this is a MIX: a subset was
-    // cross-checked against sources and flipped, the rest still carry an
-    // ai-inferred status. The invariant is not "none verified" any more —
-    // it is that every profile is honestly labelled and the counts add up.
+  it("the registry counts every profile exactly once under an honest status", () => {
+    // The invariant is deliberately NOT "some are verified and some are not".
+    // That was true for two passes and became false when the last two profiles
+    // were researched; a test that pins a MIX breaks the moment the work it
+    // was tracking is finished. What must hold forever is that every profile
+    // carries a real status and the counts account for all of them — a
+    // profile silently dropped from the tally is the failure worth catching.
     const counts = countByVerificationStatus();
     const total = Object.keys(ARTIST_PROFILES).length;
+    expect(total).toBeGreaterThan(0);
     expect(counts["ai-inferred"] + counts.mixed + counts.verified).toBe(total);
-    expect(counts.verified).toBeGreaterThan(0);
-    expect(counts.verified).toBeLessThan(total);
   });
 
   it("every profile has at least one source URL backing the claims", () => {

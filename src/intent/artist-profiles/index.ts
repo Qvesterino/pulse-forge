@@ -1716,4 +1716,3 @@ export function artistMixProfileFromDeep(artistLabel: string): ArtistMixProfile 
   if (Object.keys(derived).length === 0) return null;
   return derived;
 }
-  
