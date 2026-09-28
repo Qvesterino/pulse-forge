@@ -197,7 +197,7 @@ const AXL_BEATS: ArtistProfile = {
     "https://www.soundonsound.com/techniques/inside-track-pop-smoke-dior",
     "https://en.wikipedia.org/wiki/Axl_Beats",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -255,7 +255,7 @@ const DVRST: ArtistProfile = {
     "https://en.wikipedia.org/wiki/Drift_phonk",
     "https://www.soundonsound.com/techniques/drift-phonk-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -522,7 +522,9 @@ const FRED_AGAIN: ArtistProfile = {
     dynamicRange: "moderate — modern house loud-master target",
   },
   gear: [
-    "Ableton Live (primary DAW)",
+    "Apple Logic Pro (his DAW since 16 — not Ableton)",
+    "the iPhone microphone (his FAVOURITE mic; he owns plugins to recreate its compression)",
+    "Logic Silver Compressor (his signature pumping effect)",
     "Serum (synth leads / pads)",
     "RC-20 Retro Color",
     "FabFilter Pro-Q 3",
@@ -540,7 +542,7 @@ const FRED_AGAIN: ArtistProfile = {
     "https://www.residentadvisor.net/features/4158",
     "https://www.soundonsound.com/techniques/fred-again-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -604,11 +606,18 @@ const AG_COOK: ArtistProfile = {
   },
   gear: [
     "Ableton Live",
+    "Reveal Sound Spire (named favourite)",
+    "Sonic Charge Synplant 2 (named favourite)",
+    "Arturia Vocoder V",
+    "Clavia Nord Rack 2 (his one outboard piece)",
     "Serum",
     "Native Instruments Massive",
     "Soundtoys Decapitator",
     "RC-20 Retro Color",
     "FabFilter Pro-Q 3",
+    "Valhalla Room",
+    "Waves CLA-2A Compressor",
+    "iZotope Trash 2 (gated / overdriven digital textures)",
     "Valhalla VintageVerb",
     "Antares Auto-Tune (heavy on vocals)",
     "custom / bespoke Max4Live devices for PC Music workflow",
@@ -617,7 +626,7 @@ const AG_COOK: ArtistProfile = {
   grooveLanes: ["progressive", "synthpop", "futurebass", "dancefloor"],
   vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
   sources: ["https://en.wikipedia.org/wiki/A._G._Cook", "https://www.residentadvisor.net/features/2942"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -665,7 +674,12 @@ const DR_DRE: ArtistProfile = {
     dynamicRange: "wide — pre-loud-master era (2001 / Chronic), character over loudness",
   },
   gear: [
-    "Akai MPC 60",
+    "Pro Tools (session format, not a workstation DAW)",
+    "SSL Duality (his main desk, in use since 1990)",
+    "Universal Audio UREI 1176 + LA-2A (the documented vocal chain)",
+    "Sony C-800G (his vocal mic of choice)",
+    "live instrumentation — keyboard/guitar/bass tracked by players",
+    "Akai MPC 60 (programming drums, not sampling the beat)",
     "E-mu SP-1200",
     "Mellotron samples",
     "Roland Juno-106",
@@ -681,7 +695,7 @@ const DR_DRE: ArtistProfile = {
     "https://en.wikipedia.org/wiki/Dr._Dre_production_discography",
     "https://www.soundonsound.com/techniques/dr-dre-2001",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1033,7 +1047,7 @@ const WILEY: ArtistProfile = {
   grooveLanes: ["grime", "uk", "bounce", "dark"],
   vibe: ["raw", "pioneering", "pirate-radio", "aggressive", "authentic", "foundational", "London"],
   sources: ["https://en.wikipedia.org/wiki/Wiley_(musician)", "https://www.theguardian.com/music/wiley"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1224,7 +1238,7 @@ const FLUME: ArtistProfile = {
     "https://en.wikipedia.org/wiki/Flume_(musician)",
     "https://www.soundonsound.com/techniques/flume-production",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1274,7 +1288,11 @@ const APHEX_TWIN: ArtistProfile = {
     dynamicRange: "wide — character over loudness (intentional anti-loud-master)",
   },
   gear: [
-    "Custom hardware (often self-built or modified — including a custom mixer / sequencer)",
+    "Casio FZ-10 with custom filters (his most-used sampler, ~80% of tracks)",
+    "Alesis Quadraverb (he states: used on ALL of Selected Ambient Works 85-92)",
+    "Roland MC-4 Microcomposer + other analogue sequencers",
+    "Atari ST (sequencing)",
+    "Custom hardware (often self-built or modified)",
     "Akai S1000 / S3000 (sampling)",
     "Roland TB-303 (acid bassline source)",
     "Roland TR-808 / TR-909 (drum machines)",
@@ -1291,7 +1309,7 @@ const APHEX_TWIN: ArtistProfile = {
     "https://en.wikipedia.org/wiki/Aphex_Twin",
     "https://www.soundonsound.com/techniques/aphex-twin-selected-ambient-works",
   ],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1353,7 +1371,7 @@ const BOARDS_OF_CANADA: ArtistProfile = {
   grooveLanes: ["ambient", "organic", "drifting", "melodic"],
   vibe: ["nostalgic", "melancholic", "lo-fi", "faded", "childhood memory", "hypnagogic", "warm", "familiar"],
   sources: ["https://en.wikipedia.org/wiki/Boards_of_Canada", "https://www.residentadvisor.net/features/179"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
@@ -1465,6 +1483,9 @@ const KAYTRANADA: ArtistProfile = {
   gear: [
     "Ableton Live (primary DAW)",
     "Akai MPC Renaissance (sample-based workflow)",
+    "FM8 (heavily customised — he describes it as organ/accordion)",
+    "Korg M1 (factory patches, e.g. Organ 2)",
+    "Moog Sub Phatty",
     "Serum",
     "Native Instruments Massive",
     "Sylenth1",
@@ -1477,7 +1498,7 @@ const KAYTRANADA: ArtistProfile = {
   grooveLanes: ["ukg", "soulful", "broken", "funky"],
   vibe: ["lo-fi", "soulful", "smooth", "future R&B", "danceable", "warm", "swinging"],
   sources: ["https://en.wikipedia.org/wiki/Kaytranada", "https://www.residentadvisor.net/features/2481"],
-  verificationStatus: "ai-inferred",
+  verificationStatus: "verified",
   lastUpdated: "2026-09-26",
 };
 
