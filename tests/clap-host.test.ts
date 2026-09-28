@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { spawn as realSpawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -309,4 +309,62 @@ describe.skipIf(!nativeReady)("CLAP player end-to-end (ADR 0016 audio hosting)",
     expect(verdict.verified).toBe(RATE);
     expect(verdict.params).toEqual([{ id: 7001, name: "Tone Frequency", min: 50, max: 2000, default: 440 }]);
   }, 30_000);
+
+  it("state extension: --set 880 + --state-out, then --state-in replays at 880 Hz", async () => {
+    const PLAYER = path.join(REPO, "native", "clap-host", "build", "Release", "clap-player.exe");
+    const TONE = path.join(REPO, "native", "clap-host", "build", "Release", "clap-tone.clap");
+    const STATE = path.join(REPO, ".zcode", "clap-tone-state.bin");
+    if (!existsSync(PLAYER) || !existsSync(TONE)) return; // older build tree
+    rmSync(STATE, { force: true });
+
+    const runPlayer = async (args: string[]): Promise<number> => {
+      const source = new PcmPipeSource({ hostPath: PLAYER, args });
+      return await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("run did not finish in 20 s")), 20_000);
+        let absolute = 0;
+        source.on("pcm", (raw) => {
+          absolute += (raw as { samples: Float32Array }).samples.length / 2;
+        });
+        source.on("close", () => {
+          clearTimeout(timer);
+          resolve(absolute);
+        });
+        source.start();
+      });
+    };
+
+    // Run 1: retune to 880 Hz and SAVE the state (8 bytes = the frequency).
+    await runPlayer(["--dll", TONE, "--rate", "48000", "--seconds", "0.1", "--set", "880", "--state-out", STATE]);
+    expect(existsSync(STATE)).toBe(true);
+    expect(statSync(STATE).size).toBe(8);
+
+    // Run 2: NO --set — the plugin must come back in the SAVED state and
+    // stream 880 Hz (the 440 default would fail this verification).
+    const source2 = new PcmPipeSource({
+      hostPath: PLAYER,
+      args: ["--dll", TONE, "--rate", "48000", "--seconds", "0.1", "--state-in", STATE],
+    });
+    const verdict = await new Promise<{ verified: number; at880: number }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("reload did not finish in 20 s")), 20_000);
+      let absolute = 0;
+      let at880 = 0;
+      source2.on("pcm", (raw) => {
+        const block = raw as { samples: Float32Array };
+        const frames = block.samples.length / 2;
+        for (let n = 0; n < frames; n++, absolute++) {
+          const at880Hz = 0.25 * Math.sin((2 * Math.PI * 880 * absolute) / 48000);
+          if (Math.abs(block.samples[n * 2] - at880Hz) <= 1e-5) at880++;
+        }
+      });
+      source2.on("close", () => {
+        clearTimeout(timer);
+        resolve({ verified: absolute, at880 });
+      });
+      source2.start();
+    });
+
+    expect(verdict.verified).toBeGreaterThan(0);
+    expect(verdict.at880).toBe(verdict.verified); // every frame is 880 Hz — state survived
+    rmSync(STATE, { force: true });
+  }, 40_000);
 });

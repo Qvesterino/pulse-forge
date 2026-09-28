@@ -23,6 +23,7 @@
 
 #include "clap/clap.h"
 #include "clap/ext/params.h"
+#include "clap/ext/state.h"
 
 static void writeFrame(FILE *out, unsigned char type, unsigned long seq, const void *payload, unsigned long len) {
   unsigned char header[16];
@@ -96,6 +97,94 @@ static const clap_event_header_t *CLAP_ABI inEventsGet(const struct clap_input_e
 static clap_input_events_t g_inEvents = {NULL, inEventsSize, inEventsGet};
 static clap_output_events_t g_outEvents = {NULL, outEventsTryPush};
 
+/* ---- state streams (ADR 0016 hosting wave) ---- */
+
+typedef struct MemoryReader {
+  const unsigned char *data;
+  uint64_t size;
+  uint64_t pos;
+} MemoryReader;
+
+static int64_t CLAP_ABI memRead(const struct clap_istream *stream, void *buffer, uint64_t size) {
+  MemoryReader *reader = (MemoryReader *)stream->ctx;
+  if (!reader || reader->pos >= reader->size) return 0; /* EOF */
+  const uint64_t remaining = reader->size - reader->pos;
+  const uint64_t take = size < remaining ? size : remaining;
+  memcpy(buffer, reader->data + reader->pos, take);
+  reader->pos += take;
+  return (int64_t)take;
+}
+
+typedef struct FileWriter {
+  FILE *file;
+  int failed;
+} FileWriter;
+
+static int64_t CLAP_ABI fileWrite(const struct clap_ostream *stream, const void *buffer, uint64_t size) {
+  FileWriter *writer = (FileWriter *)stream->ctx;
+  if (writer->failed || fwrite(buffer, 1, size, writer->file) != size) {
+    writer->failed = 1;
+    return -1;
+  }
+  return (int64_t)size;
+}
+
+/* Load plugin state from a file right after init (before activation). */
+static void applyStateIn(const clap_plugin_t *plugin, const char *path) {
+  FILE *file = fopen(path, "rb");
+  if (!file) {
+    fprintf(stderr, "clap-player: state-in file not found: %s\n", path);
+    return;
+  }
+  fseek(file, 0, SEEK_END);
+  const long size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  if (size <= 0 || size > (1 << 20)) {
+    fclose(file);
+    fprintf(stderr, "clap-player: state-in file out of bounds\n");
+    return;
+  }
+  unsigned char *data = (unsigned char *)malloc((size_t)size);
+  if (!data || fread(data, 1, (size_t)size, file) != (size_t)size) {
+    free(data);
+    fclose(file);
+    fprintf(stderr, "clap-player: state-in read failed\n");
+    return;
+  }
+  fclose(file);
+
+  const clap_plugin_state_t *state = (const clap_plugin_state_t *)plugin->get_extension(plugin, CLAP_EXT_STATE);
+  if (!state) {
+    fprintf(stderr, "clap-player: plugin has no state extension\n");
+    free(data);
+    return;
+  }
+  MemoryReader reader = {data, (uint64_t)size, 0};
+  clap_istream_t stream = {&reader, memRead};
+  if (!state->load(plugin, &stream)) fprintf(stderr, "clap-player: state load refused\n");
+  else fprintf(stderr, "clap-player: state loaded (%ld bytes)\n", size);
+  free(data);
+}
+
+/* Save plugin state to a file (after processing, before destroy). */
+static void applyStateOut(const clap_plugin_t *plugin, const char *path) {
+  const clap_plugin_state_t *state = (const clap_plugin_state_t *)plugin->get_extension(plugin, CLAP_EXT_STATE);
+  if (!state) return;
+  FILE *file = fopen(path, "wb");
+  if (!file) {
+    fprintf(stderr, "clap-player: cannot open state-out file\n");
+    return;
+  }
+  FileWriter writer = {file, 0};
+  clap_ostream_t stream = {&writer, fileWrite};
+  if (!state->save(plugin, &stream) || writer.failed) {
+    fprintf(stderr, "clap-player: state save failed\n");
+  } else {
+    fprintf(stderr, "clap-player: state saved to %s\n", path);
+  }
+  fclose(file);
+}
+
 int main(int argc, char **argv) {
   const wchar_t *dllPath = NULL;
   double seconds = 2;
@@ -104,6 +193,8 @@ int main(int argc, char **argv) {
   int realtime = 0;
   int queuedParam = 0;
   double queuedParamValue = 0;
+  const char *stateInPath = NULL;
+  const char *stateOutPath = NULL;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--realtime") == 0) {
@@ -130,6 +221,12 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[i], "--set") == 0) {
       queuedParamValue = atof(argv[i + 1]);
       queuedParam = 1;
+      i++;
+    } else if (strcmp(argv[i], "--state-in") == 0) {
+      stateInPath = argv[i + 1];
+      i++;
+    } else if (strcmp(argv[i], "--state-out") == 0) {
+      stateOutPath = argv[i + 1];
       i++;
     }
   }
@@ -184,6 +281,9 @@ int main(int argc, char **argv) {
     FreeLibrary(module);
     return 0;
   }
+  /* State BEFORE activation — the plugin is configured like a host would
+     after restoring a session, then activated with that state. */
+  if (stateInPath) applyStateIn(plugin, stateInPath);
 
   if (!plugin->activate(plugin, (double)rate, 1, 8192)) {
     writeJsonFrame(stdout, 2, "{\"error\":\"activate-failed\"}");
@@ -282,6 +382,7 @@ int main(int argc, char **argv) {
   }
   plugin->stop_processing(plugin);
   plugin->deactivate(plugin);
+  if (stateOutPath) applyStateOut(plugin, stateOutPath);
   plugin->destroy(plugin);
 
   char stats[128];

@@ -17,6 +17,7 @@
 
 #include "clap/clap.h"
 #include "clap/ext/params.h"
+#include "clap/ext/state.h"
 
 static const char *const TONE_FEATURES[] = {
     CLAP_PLUGIN_FEATURE_UTILITY,
@@ -39,6 +40,8 @@ static const clap_plugin_descriptor_t TONE_DESCRIPTOR = {
 
 static double TONE_RATE = 48000.0;
 static double TONE_FREQ = 440.0;
+/* State serialization: the raw little-endian frequency, 8 bytes. */
+#define TONE_STATE_BYTES 8
 #define TONE_PARAM_FREQ 7001
 
 static void CLAP_ABI tone_apply_param_events(const clap_input_events_t *in) {
@@ -197,6 +200,26 @@ static void CLAP_ABI params_flush(const struct clap_plugin *plugin, const clap_i
   tone_apply_param_events(in);
 }
 
+/* ---- state extension: the frequency survives host save/load ---- */
+
+static bool CLAP_ABI state_save(const struct clap_plugin *plugin, const clap_ostream_t *stream) {
+  (void)plugin;
+  if (!stream || !stream->write) return false;
+  /* Little-endian double: the same encoding the host writes to disk. */
+  return stream->write(stream, &TONE_FREQ, TONE_STATE_BYTES) == TONE_STATE_BYTES;
+}
+
+static bool CLAP_ABI state_load(const struct clap_plugin *plugin, const clap_istream_t *stream) {
+  (void)plugin;
+  if (!stream || !stream->read) return false;
+  double freq = 440.0;
+  if (stream->read(stream, &freq, TONE_STATE_BYTES) != TONE_STATE_BYTES) return false;
+  /* Reject garbage: the frequency must stay inside the declared range. */
+  if (!(freq >= 50.0 && freq <= 2000.0)) return false;
+  TONE_FREQ = freq;
+  return true;
+}
+
 static const void *CLAP_ABI tone_get_extension(const struct clap_plugin *plugin, const char *id) {
   (void)plugin;
   if (strcmp(id, CLAP_EXT_PARAMS) == 0) {
@@ -209,6 +232,13 @@ static const void *CLAP_ABI tone_get_extension(const struct clap_plugin *plugin,
         .flush = params_flush,
     };
     return &PARAMS;
+  }
+  if (strcmp(id, CLAP_EXT_STATE) == 0) {
+    static const clap_plugin_state_t STATE = {
+        .save = state_save,
+        .load = state_load,
+    };
+    return &STATE;
   }
   return NULL;
 }
