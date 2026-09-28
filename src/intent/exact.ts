@@ -27,6 +27,8 @@ export type ExactOp =
   | { kind: "patternLength"; steps: number }
   /** Relative pattern length: "4 bars longer", "o 2 takty kratsie". */
   | { kind: "patternLengthDelta"; bars: number }
+  /** Project groove swing: "swing 60 percent", "vypni swing" — 0..100 maps to groove.swing 0..1. */
+  | { kind: "swing"; percent: number }
   | { kind: "addTrack"; trackKind: "drum" | "instrument"; instrument: InstrumentKind }
   | { kind: "removeTrack"; target: ExactTarget }
   | { kind: "renameTrack"; target: ExactTarget; name: string }
@@ -291,6 +293,20 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     if (target) ops.push({ kind: "gainDbAbsolute", target, absDb: Number(gainAbs[2]) });
   }
 
+  // Groove swing — NUMERIC only ("swing 60 percent", "swing na 65",
+  // "60 % swing", "vypni swing" → 0). Bare "swing it" stays with the groove
+  // verb in the production layer; this parser claims only explicit values.
+  const swingOff = /(?:vypni|turn off|bez|no)\s+swing/.exec(lower);
+  const swingNum =
+    /swing\w*\s*(?:na|to|=|:)?\s*(\d{1,3})\s*(?:%|percent\w*)?/.exec(lower) ||
+    /(\d{1,3})\s*(?:%|percent\w*)\s+swing/.exec(lower);
+  if (swingNum) {
+    const percent = Math.max(0, Math.min(100, Number(swingNum[1])));
+    ops.push({ kind: "swing", percent });
+  } else if (swingOff) {
+    ops.push({ kind: "swing", percent: 0 });
+  }
+
   // Transpose: "transpose the lead up one octave", "transpose bass down 3 semitones"
   const transpose =
     /transpose\s+(?:the\s+)?([a-z]+)\s+(up|down|hore|dole)\s+(one|two|three|an)?\s*(octaves?|semitones?|st)\b/.exec(
@@ -391,6 +407,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "renameTrack") return `rename ${op.target} → "${op.name}"`;
       if (op.kind === "duplicateTrack") return `duplicate ${op.target} track`;
       if (op.kind === "gainDbAbsolute") return `${op.target} fader na ${op.absDb} dB`;
+      if (op.kind === "swing") return `swing ${op.percent} %`;
       if (op.kind === "patternLengthDelta") return `length ${op.bars > 0 ? "+" : ""}${op.bars} bars`;
       return `length ${op.steps}`;
     })

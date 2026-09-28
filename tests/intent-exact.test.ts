@@ -11,6 +11,16 @@ import type { InstrumentTrack, ProjectDocument } from "../src/project-model/type
  */
 
 describe("parseExactIntent", () => {
+  it("swing numeric: 'swing 60 percent' / 'swing na 65' / '60 % swing'", () => {
+    expect(parseExactIntent("swing 60 percent")!.ops).toEqual([{ kind: "swing", percent: 60 }]);
+    expect(parseExactIntent("swing na 65")!.ops).toEqual([{ kind: "swing", percent: 65 }]);
+    expect(parseExactIntent("60 % swing")!.ops).toEqual([{ kind: "swing", percent: 60 }]);
+  });
+
+  it("swing off: 'vypni swing' → 0; bare 'swing it' stays with the groove verb", () => {
+    expect(parseExactIntent("vypni swing")!.ops).toEqual([{ kind: "swing", percent: 0 }]);
+    expect(parseExactIntent("swing it")).toBeNull();
+  });
   it("SK gain delta: 'zniz basu o 3 db' → gainDb -3 on bass", () => {
     expect(parseExactIntent("zniz basu o 3 db")!.ops).toContainEqual({ kind: "gainDb", target: "bass", deltaDb: -3 });
   });
@@ -117,6 +127,22 @@ describe("parseExactIntent", () => {
 
 describe("applyExactIntentCommand", () => {
   const doc = () => createProjectFromTemplate("house");
+
+  it("swing percent applies to the project groove (and undo restores)", () => {
+    const d = doc();
+    const plan = parseExactIntent("swing 60 percent")!;
+    const applySwing = applyExactIntentCommand(d, plan);
+    const next = applySwing.execute(d);
+    expect(next.groove.swing).toBeCloseTo(0.6, 6);
+    // numeric off + undo round-trip (undo uses the ORIGINAL command object —
+    // its snapshot-before is the doc the command was constructed against)
+    const offPlan = parseExactIntent("vypni swing")!;
+    const off = applyExactIntentCommand(next, offPlan);
+    const after = off.execute(next);
+    expect(after.groove.swing).toBe(0);
+    const restored = off.undo(after);
+    expect(restored.groove.swing).toBeCloseTo(0.6, 6);
+  });
 
   it("tempo applies to the document", () => {
     const d = doc();

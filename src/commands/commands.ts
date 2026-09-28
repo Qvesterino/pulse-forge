@@ -5486,6 +5486,11 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       next = setPatternLength(next, next.activePatternId, op.steps).execute(next);
       continue;
     }
+    if (op.kind === "swing") {
+      // Project-level groove swing — 0..100 percent → 0..1.
+      next = setGroove(next, { swing: Math.max(0, Math.min(100, op.percent)) / 100 }).execute(next);
+      continue;
+    }
     if (op.kind === "patternLengthDelta") {
       // "4 bars longer" / "o 2 takty kratsie" — relative on the ACTIVE
       // pattern's current length (1 bar = 16 steps on the 4/4 grid).
@@ -5635,6 +5640,10 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
     } else if (op.kind === "patternLengthDelta") {
       const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
       if (steps != null) entries.push(`length ${before.patterns.find((p) => p.id === before.activePatternId)?.stepCount ?? "?"}→${steps}`);
+    } else if (op.kind === "swing") {
+      const b = Math.round((before.groove?.swing ?? 0) * 100);
+      const a = Math.round((after.groove?.swing ?? 0) * 100);
+      if (b !== a) entries.push(`swing ${b}%→${a}%`);
     } else if (op.target === "kick" || op.target === "snare" || op.target === "hats") {
       // pad-family mute/solo/pan — report the family flag
       const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");
