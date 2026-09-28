@@ -119,6 +119,8 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   trance: "bright",
   // Detroit is the machine-funk genre — the cold end (raw 808, no warmth).
   detroit: "cold",
+  // Post-rock is the warm-and-dusty guitar genre (the whole point is texture).
+  postrock: "warm",
 };
 
 /**
@@ -167,7 +169,8 @@ export function planMixProfile(
     genre === "boombap" ||
     genre === "amapiano" ||
     genre === "trance" ||
-    genre === "detroit";
+    genre === "detroit" ||
+    genre === "postrock";
   // Pop songs default to a bright, airy tilt (Wave 4) — explicit tone words
   // and mood tones still win; the style default only fills silence.
   const popSong = intent.style === "pop";
@@ -189,7 +192,8 @@ export function planMixProfile(
     genre === "hyperpop" ||
     genre === "boombap" ||
     genre === "trance" ||
-    genre === "detroit";
+    genre === "detroit" ||
+    genre === "postrock";
 
   const reverbMore =
     overrides.reverb === "more" ||
@@ -215,7 +219,8 @@ export function planMixProfile(
               genre === "ukg" ||
               genre === "amapiano" ||
               genre === "trance" ||
-              genre === "detroit") &&
+              genre === "detroit" ||
+              genre === "postrock") &&
             intent.energy >= 0.55;
 
   const decisions: MixDecision[] = [];

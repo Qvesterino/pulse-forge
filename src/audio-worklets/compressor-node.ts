@@ -1,6 +1,7 @@
 import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
+import { dbToLinearGain } from "../effects/scale-bridges";
 /**
  * Create a Bus Compressor AudioWorkletNode synchronously.
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
@@ -63,7 +64,7 @@ export function createCompressorNode(
   apply("release", instance.params.release ?? 0.2, undefined);
   apply("knee", instance.params.knee ?? 6, undefined);
   // Registry speaks dB for MAKEUP; the processor param is linear.
-  apply("makeup", Math.pow(10, (instance.params.makeup ?? 0) / 20), undefined);
+  apply("makeup", dbToLinearGain(instance.params.makeup ?? 0), undefined);
   apply("mix", instance.params.mix ?? 1, undefined);
   apply("detector", instance.params.detector ?? 0, undefined);
   apply("scHpf", instance.params.scHpf ?? 20, undefined);
@@ -74,14 +75,14 @@ export function createCompressorNode(
     output,
     setParameter(id, value) {
       if (id === "makeup") {
-        apply("makeup", Math.pow(10, value / 20), ctx.currentTime);
+        apply("makeup", dbToLinearGain(value), ctx.currentTime);
         return;
       }
       apply(id, value, ctx.currentTime);
     },
     setParameterAt(id, value, when) {
       if (id === "makeup") {
-        apply("makeup", Math.pow(10, value / 20), when);
+        apply("makeup", dbToLinearGain(value), when);
         return;
       }
       apply(id, value, when);

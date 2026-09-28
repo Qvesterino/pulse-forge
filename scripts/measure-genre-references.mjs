@@ -48,6 +48,7 @@ const GENRES = [
   "amapiano",
   "trance",
   "detroit",
+  "postrock",
 ];
 const SEEDS = ["ref-a", "ref-b"];
 

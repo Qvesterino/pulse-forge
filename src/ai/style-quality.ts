@@ -50,6 +50,9 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Detroit: the machine-funk lineage — steady four-floor, syncopated 808
   // kick talk, generous room for tom/electro percussion.
   detroit: { densityRange: [0.1, 0.78], syncopationRange: [0.14, 0.8], maxDistance: 1.1 },
+  // Post-rock: texture-driven — wide dynamic range (quiet → loud crescendos),
+  // generous syncopation tolerance for irregular first-wave meters.
+  postrock: { densityRange: [0.04, 0.72], syncopationRange: [0.1, 0.82], maxDistance: 1.2 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

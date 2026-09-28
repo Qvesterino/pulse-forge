@@ -1,6 +1,7 @@
 import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
+import { mix01ToPercent100 } from "./scale-bridges";
 
 /**
  * Rack ↔ core parameter-id translation. The rack surface (registry params,
@@ -24,8 +25,9 @@ function normalizeHostValue(id: string, value: number): number {
   if (id === "crossoverOrder") return snapCrossoverOrder(value);
   if (id === "crossoverEqualize") return value >= 0.5 ? 1 : 0;
   // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
-  // 0..100 — the node bridges at the doc→worklet boundary.
-  if (toCoreId(id) === "globalMix") return value * 100;
+  // 0..100 — the node bridges at the doc→worklet boundary. Registered as
+  // fxeq.mix in src/effects/scale-bridges.ts.
+  if (toCoreId(id) === "globalMix") return mix01ToPercent100(value);
   return value;
 }
 

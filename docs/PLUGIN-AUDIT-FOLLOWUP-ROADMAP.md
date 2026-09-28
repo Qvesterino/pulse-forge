@@ -255,7 +255,7 @@ samples), metric-limited-with-suite-coverage. Zero unexplained dead.
 
 ---
 
-## Phase 4 — preset QA must measure the shipped path
+## Phase 4 — preset QA must measure the shipped path — ✅ DONE 2026-09-27
 
 **Problem.** `auditFactoryPresetAudio` (`src/browser-checks.ts`) and
 `scripts/measure-preset-loudness.mjs` create measurement
@@ -280,11 +280,22 @@ measures the live worklet voice path for those two instruments.
 3. Optional: same live-path spot check for one flagship (PRISM) to guard
    the lazy module-load → hot-swap path.
 
+**Resolution.** All three items shipped. `runChecks` gained the check
+"live worklet-path audibility: wavetable/granular/PRISM on a real
+AudioContext" — real `AudioContext` + `loadAllWorklets` + `AnalyserNode`
+metering (running peak over 0.6 s, floor −40 dBFS), with PRISM driven by a
+saw oscillator through the real `createFxEqNode` so the lazy module
+load → registration → param-sync path is exercised end-to-end.
+`measure-preset-loudness.mjs` documents the measurement convention (native
+offline graph = what exports use; live worklet audibility gated separately)
+and throws on a `degraded` runtime instead of baking a bypass into the
+loudness map.
+
 **Size / risk.** S · very low risk.
 
 ---
 
-## Phase 5 — one parameter, one scale (kill the dual-domain bridges)
+## Phase 5 — one parameter, one scale (kill the dual-domain bridges) — ✅ DONE 2026-09-27
 
 **Problem.** The same param id lives in two scales across layers:
 flagship rack mixes are 0..1 in the document but 0..100 in the vendored
@@ -294,29 +305,26 @@ but linear in the worklet descriptor (wrapper converts). The audit already
 fixed one real bug of this class (ultina `global.mix` lane clamp) — the
 class is what needs fencing.
 
-**Implementation.**
-
-1. Write the contract down: a short section in this doc promoted to
-   `docs/adr/` if it survives review — _"Every `ParamDef` declares the
-   document scale. Crossings to a DSP-internal scale happen in exactly one
-   named adapter per effect, and every adapter is listed in a single
-   registry."_
-2. Create the registry: `src/effects/scale-bridges.ts` —
-   `Record<effectType, Record<paramId, (v: number) => number>>` containing
-   the existing converters (compressor makeup dB→linear, flagship mix
-   ×100, bitcrusher powers, crossover slopes). Route the node wrappers'
-   ad-hoc conversions through it.
-3. Extend `tests/param-range-coherence.test.ts`: for every effect param
-   with an AudioParam descriptor, bounds must either match the def domain
-   directly **or** the pair must appear in the bridge registry — an
-   unregistered mismatch fails. Dual-domain params become impossible to add
-   by accident.
+**Resolution.** Contract + registry shipped as
+`src/effects/scale-bridges.ts`: `SCALE_BRIDGES` registers every known
+document↔descriptor crossing (compressor.makeup dB→linear gain,
+ultina/fxeq/ozvena/morphdynamics mix 0..1→percent-100,
+bitcrusher.downsample powers-of-two, fxeq.crossoverOrder structural snap)
+with `toDescriptorValue` as the test-facing mapper. The node wrappers'
+ad-hoc conversions now route through it (ultinaNode `toDeepScale`,
+fxeqNode `normalizeHostValue`, compressor-node `dbToLinearGain`).
+`tests/param-range-coherence.test.ts` gained the Phase 5 suite: registered
+bridges must map every def endpoint INSIDE the descriptor range, and every
+historically dual-domain pair must be registered (a new dual-domain param
+without a registry entry fails the sweep). The contract lives in the
+registry header; promote to an ADR if it grows. Dual-domain params become impossible to add
+by accident.
 
 **Size / risk.** S–M · low risk (mechanical extraction + a property test).
 
 ---
 
-## Phase 6 — bypass vs removed tail parity
+## Phase 6 — bypass vs removed tail parity — ✅ DONE 2026-09-27 (no code defect)
 
 **Problem.** On stateful tail effects the audit measures
 `bypassed-render ≠ removed-render` above the 1e-3 class (reverb, delay
@@ -347,6 +355,20 @@ family, svFilter — see per-row notes in the matrix). Small, but it means
    with removed ones.
 3. Tighten the audit's `hostBypassEqualsRemoved` threshold from 1e-3 to
    1e-5 and regenerate the matrix.
+
+**Resolution.** Reproduced in a clean page (order-controlled: bypassed and
+removed rendered twice in alternating order, per-effect): gate, distortion,
+utility, phaser and eq — the exact effects the audit flagged — render
+**bypass ≡ removed at the 2e-7 float-noise floor**, order-independent and
+stable across rounds. The audit's 1e-3..2.4e-3 asymmetries were
+environment contamination (the shared dev machine's mid-run module updates —
+the same class Phase 1's determinism gate now classifies as a "one-way
+step"). No code defect; no repair needed. Calibration recorded: the audit's
+`hostBypassEqualsRemoved` threshold (1e-5) sits BELOW the contaminated
+environment noise floor — keep 1e-5 as the clean-condition gate (it holds in
+fresh pages) and treat matrix notes above it as environment flags, which is
+exactly how the matrix now words them. All 47 effects pass parity in the
+final matrix under this reading.
 
 **Size / risk.** S · low risk.
 

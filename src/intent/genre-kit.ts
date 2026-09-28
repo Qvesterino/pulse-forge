@@ -154,6 +154,12 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 1, assetId: "factory.kick.808drive" },
     { index: 8, assetId: "factory.hat.closed" },
   ],
+  postrock: [
+    { index: 0, assetId: "factory.kick.deep" },
+    { index: 4, assetId: "factory.snare.main" },
+    { index: 8, assetId: "factory.hat.closed.soft" },
+    { index: 11, assetId: "factory.ride.ping" },
+  ],
 };
 
 /**
@@ -214,6 +220,7 @@ export const GENRE_FEEL: Partial<
     // Detroit rides a drum machine — near-zero jitter, the 808 timing is the
     // composition (the "complete mistake" was a sequencer, per Derrick May).
     detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
+    postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.22 },
   };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:

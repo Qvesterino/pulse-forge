@@ -1,3 +1,4 @@
+import { mix01ToPercent100 } from "./scale-bridges";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 
@@ -20,7 +21,9 @@ export function createUltinaNode(
   // Quality backlog A6: doc mix params are 0..1; the deep DSP expects
   // 0..100 — the node bridges at the doc→worklet boundary. The defaults
   // fallback arrives deep-scale and is not bridged.
-  const toDeepScale = (id: string, v: number): number => (id === "global.mix" ? v * 100 : v);
+  // Document 0..1 mix → vendored percent 0..100. The crossing is registered
+  // in src/effects/scale-bridges.ts (ultina.global.mix) — keep them in sync.
+  const toDeepScale = (id: string, v: number): number => (id === "global.mix" ? mix01ToPercent100(v) : v);
   const initial: Record<string, number> = { ...defaults, ...instance.params };
   for (const [id, v] of Object.entries(instance.params)) initial[id] = toDeepScale(id, v);
 

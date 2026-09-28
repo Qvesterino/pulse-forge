@@ -194,8 +194,8 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "house"],
   // Reggae / ska / roots — the one-drop family (house.reggae groove).
   [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b/, "house"],
-  // Post-rock — the crescendo-guitar lane (house.shoegaze groove).
-  [/\bpost[- ]?rock\b/, "house"],
+  // Post-rock / math rock - promoted to first-class genre (quiet-loud crescendo form).
+  [/\bpost[- ]?rock\b|\bmath rock\b|\bpost-?metal\b|\bpostmetal\b/, "postrock"],
   // Nu jazz / broken beat / boogie / balearic — depth lanes that ride
   // existing house-family grooves (broken / funky / organic).
   [/\bnu ?jazz\b|\bnu[- ]?jazz\b|\bnew jazz\b|\buk jazz\b|\bjazz fusion\b|\bacid jazz\b/, "house"],
@@ -293,9 +293,13 @@ const STYLE_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // Shoegaze / dream pop — BEFORE \bpop\b ("dream pop" contains "pop").
   // house.shoegaze is the dedicated wall-of-guitars groove (P2 wave).
   [/\bshoegaze\b|\bdream ?pop\b|\bnoise ?pop\b/, "shoegaze"],
-  // Post-rock — the crescendo-guitar lane (house.shoegaze groove, which was
-  // built with the same fade-in shape).
-  [/\bpost[- ]?rock\b/, "shoegaze"],
+  // Post-rock school tree - specific school phrases BEFORE the generic post-rock style entry.
+  [/\bcrescendo\b|\bcinematic post[- ]?rock\b/, "crescendo"],
+  [/\borchestral post[- ]?rock\b|\bchamber post[- ]?rock\b/, "orchestral"],
+  [/\bpost-?metal\b|\bpostmetal\b/, "postmetal"],
+  [/\bmath rock\b/, "math"],
+  [/\bambient post[- ]?rock\b/, "ambient"],
+  [/\bpost[- ]?rock\b/, "textured"],
   // Reggae / ska / one-drop — BEFORE the generic \bdub\b entry. house.reggae
   // is the dedicated one-drop groove (kick+snare on 3, empty beat 1).
   [/\breggae\b|\bska\b|\broots reggae\b|\bone drop\b|\breggae dub\b/, "reggae"],

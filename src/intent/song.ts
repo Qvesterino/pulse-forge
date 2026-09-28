@@ -1183,6 +1183,93 @@ const SONG_FORMS: Record<IntentSpec["genre"], SongSectionSpec[]> = {
       instrumentation: ["drums", "bass"],
     },
   ],
+  postrock: [
+    // POST-ROCK dialect: the genre IS the quiet-loud crescendo (Wikipedia:
+    // "climactic endings alongside buildups of textures and timbres"). The
+    // form drops to near-silence, builds in waves, and peaks with a wall of
+    // sound before collapsing back to the intro's hush.
+    {
+      role: "intro",
+      label: "Hush",
+      bars: 16,
+      intensity: 0.3,
+      transitionIn: null,
+      energyDelta: -0.25,
+      densityDelta: -0.3,
+      complexityDelta: -0.1,
+      instrumentation: ["chords", "bass"],
+    },
+    {
+      role: "verse",
+      label: "Build 1",
+      bars: 16,
+      intensity: 0.5,
+      transitionIn: "fill",
+      energyDelta: 0.15,
+      densityDelta: 0.15,
+      complexityDelta: 0.05,
+      instrumentation: ["drums", "bass", "chords"],
+    },
+    {
+      role: "chorus",
+      label: "Peak 1",
+      bars: 16,
+      intensity: 0.85,
+      marker: { type: "impact", name: "PEAK 1" },
+      transitionIn: "impact",
+      energyDelta: 0.25,
+      densityDelta: 0.2,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "bridge",
+      label: "Collapse",
+      bars: 16,
+      intensity: 0.35,
+      marker: { type: "cue", name: "COLLAPSE" },
+      transitionIn: "break",
+      energyDelta: -0.35,
+      densityDelta: -0.35,
+      complexityDelta: -0.15,
+      instrumentation: ["chords", "lead"],
+    },
+    {
+      role: "verse",
+      label: "Build 2",
+      bars: 16,
+      intensity: 0.6,
+      marker: { type: "buildup", name: "BUILD 2" },
+      transitionIn: "riser",
+      energyDelta: 0.25,
+      densityDelta: 0.2,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "chorus",
+      label: "Peak 2",
+      bars: 16,
+      intensity: 1,
+      marker: { type: "impact", name: "PEAK 2" },
+      transitionIn: "impact",
+      energyDelta: 0.3,
+      densityDelta: 0.15,
+      complexityDelta: 0.1,
+      instrumentation: ["drums", "bass", "chords", "lead"],
+    },
+    {
+      role: "outro",
+      label: "Fade",
+      bars: 16,
+      intensity: 0.3,
+      transitionIn: "break",
+      energyDelta: -0.35,
+      densityDelta: -0.3,
+      complexityDelta: -0.15,
+      instrumentation: ["chords", "bass"],
+    },
+  ],
   dnb: [
     // DnB dialect: intro → build → DROP. The second drop lands on the
     // reverse-suck + boom pair; the breakdown breathes before the last one.
@@ -1670,6 +1757,7 @@ const GENRE_DEFAULT_BPM: Record<IntentSpec["genre"], number> = {
   amapiano: 112,
   trance: 138,
   detroit: 130,
+  postrock: 85,
 };
 
 function formBpm(intent: IntentSpec): number {

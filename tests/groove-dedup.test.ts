@@ -9,8 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { GROOVE_LIBRARY, getGrooveById } from "../src/ai/grooves/index";
-import { findGrooveDuplicates, windowOverlap, referencedStyles } from "../src/ai/grooves/dedup";
-import { PARSER_STYLE_PHRASES } from "../src/intent/text-parser";
+import { findGrooveDuplicates, windowOverlap } from "../src/ai/grooves/dedup";
+import { parseIntentText } from "../src/intent/text-parser";
 import type { GrooveData } from "../src/ai/types";
 
 describe("groove library integrity", () => {
@@ -37,24 +37,43 @@ describe("groove library integrity", () => {
     const findings = findGrooveDuplicates();
     // A finding here is always a real editorial question, so the ids and the
     // reason are printed in full rather than collapsed to a count.
-    const report = findings.map((f) => `${f.severity}: ${f.a.id} ~ ${f.b.id} — ${f.reason} (${(f.overlap * 100).toFixed(0)}%)`);
+    const report = findings.map(
+      (f) => `${f.severity}: ${f.a.id} ~ ${f.b.id} — ${f.reason} (${(f.overlap * 100).toFixed(0)}%)`,
+    );
     expect(report).toEqual([]);
   });
 });
 
 describe("near-duplicate detection rules", () => {
-  const groove = (id: string, bpm: [number, number], swing: number): GrooveData =>
-    ({ id, genre: "house", name: id, bpm, swing, activePads: [0], patterns: [{}] }) as unknown as GrooveData;
+  const groove = (id: string, bpm: [number, number], swing: number, activePads: number[] = [0, 8]): GrooveData =>
+    ({ id, genre: "house", name: id, bpm, swing, activePads, patterns: [{}] }) as unknown as GrooveData;
 
-  it("flags identical windows and swing", () => {
-    const findings = findGrooveDuplicates([groove("house.a", [120, 126], 0.1), groove("house.b", [120, 126], 0.1)]);
+  it("flags an identical window, swing AND kit", () => {
+    const findings = findGrooveDuplicates([
+      groove("house.a", [120, 126], 0.1, [0, 1, 6]),
+      groove("house.b", [120, 126], 0.1, [0, 1, 6]),
+    ]);
     expect(findings).toHaveLength(1);
-    expect(findings[0].reason).toContain("identical");
+    expect(findings[0].reason).toContain("active pads");
   });
 
-  it("does not flag identical windows with a different swing", () => {
-    // Same tempo, different feel — that is a legitimate straight/swing pair.
-    const findings = findGrooveDuplicates([groove("house.a", [120, 126], 0.0), groove("house.b", [120, 126], 0.22)]);
+  it("does not flag identical tempo when the kit differs", () => {
+    // The real shape of house.dancefloor ~ house.progressive and
+    // house.basshouse ~ hybrid.techhouse in this library: same tempo, same
+    // swing, different pads. Legitimate siblings, not duplicates.
+    const findings = findGrooveDuplicates([
+      groove("house.dancefloor", [124, 128], 0.04, [0, 1, 6, 8, 10]),
+      groove("house.progressive", [124, 128], 0.04, [0, 3, 7, 8, 10, 14]),
+    ]);
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag identical windows and kit with a different swing", () => {
+    // Same tempo and same kit, straight vs swung — a legitimate contrast.
+    const findings = findGrooveDuplicates([
+      groove("house.a", [120, 126], 0.0, [0, 1, 6]),
+      groove("house.b", [120, 126], 0.22, [0, 1, 6]),
+    ]);
     expect(findings).toEqual([]);
   });
 
@@ -64,29 +83,34 @@ describe("near-duplicate detection rules", () => {
     expect(findGrooveDuplicates([a, b])).toEqual([]);
   });
 
-  it("flags a contained window only when the narrower groove is unreachable", () => {
+  it("does NOT flag a contained window when the narrower groove is merely unreferenced", () => {
+    // Regression lock for a rule that was written, measured, and removed.
+    // "Narrow window inside a wide one + no artist preset" sounds like the
+    // duplicate signature, but unreferenced is the normal state of a groove
+    // that landed before anyone wrote its artists. Measured on the live
+    // library that rule produced 40 findings, all of them false positives
+    // (house.synthpop and house.amapiano were each flagged against ten wider
+    // lanes). A contained unreferenced groove is just a sub-lane.
     const wide = groove("house.wide", [100, 140], 0.1);
-    const narrow = groove("house.narrow", [120, 126], 0.1);
-    // Reachable via an artist preset style.
-    const reachable = { ...narrow, id: "house.driving" } as GrooveData;
-    const unreachable = findGrooveDuplicates([wide, narrow]);
-    expect(unreachable).toHaveLength(1);
-    expect(unreachable[0].bIsUnreferenced || unreachable[0].a.id === "house.narrow").toBe(true);
+    const narrow = groove("house.someunreferencedlane", [120, 126], 0.1);
+    expect(findGrooveDuplicates([wide, narrow])).toEqual([]);
+  });
 
-    // Same geometry, but the narrow one is a real artist style.
-    const styles = referencedStyles("house");
-    expect(styles.has("driving")).toBe(true);
-    const narrowedToReachable = { ...narrow, id: "house.driving" } as GrooveData;
-    // "driving" has its own window, so containment no longer holds exactly —
-    // assert the rule directly instead of relying on that coincidence.
-    expect(findGrooveDuplicates([wide, narrowedToReachable, { ...narrow, id: "house.ukg" } as GrooveData]).length)
-      .toBeLessThanOrEqual(1);
+  it("still flags a contained window when BOTH grooves are unreferenced twins", () => {
+    // Identical window + identical swing is the only shape that counts, and it
+    // counts regardless of reachability — the engine cannot tell them apart.
+    const a = groove("house.unreferenceda", [120, 126], 0.08);
+    const b = groove("house.unreferencedb", [120, 126], 0.08);
+    const findings = findGrooveDuplicates([a, b]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].bIsUnreferenced).toBe(true);
   });
 
   it("computes window overlap against the narrower window", () => {
+    // Contained entirely → 1.0 regardless of how much wider the other is.
     expect(windowOverlap([100, 140], [120, 126])).toBeCloseTo(1, 6);
+    expect(windowOverlap([100, 130], [120, 140])).toBeCloseTo(0.5, 6); // 10 of the narrower 20
     expect(windowOverlap([100, 110], [120, 126])).toBe(0);
-    expect(windowOverlap([100, 130], [120, 140])).toBeCloseTo(1, 6);
   });
 });
 
@@ -100,16 +124,7 @@ describe("groove id reachability", () => {
    * public parser rather than a private phrase table, so it stays valid
    * across refactors and needs no export from text-parser.
    */
-  const PHRASES = [
-    "reggae",
-    "ska",
-    "shoegaze",
-    "dream pop",
-    "post rock",
-    "synthwave",
-    "boogie",
-    "breakcore",
-  ];
+  const PHRASES = ["reggae", "ska", "shoegaze", "dream pop", "post rock", "synthwave", "boogie", "breakcore"];
 
   it("every probed phrase resolves to a real groove", () => {
     const dangling: string[] = [];

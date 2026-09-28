@@ -11,6 +11,16 @@
  * The engine applies these gains wherever an instrument chain is built, so
  * preset browsing and application land at a consistent loudness.
  *
+ * MEASUREMENT CONVENTION (Phase 4 of docs/PLUGIN-AUDIT-FOLLOWUP-ROADMAP.md):
+ * this script measures the DETERMINISTIC NATIVE OFFLINE graph — the probe
+ * context deliberately loads NO worklet modules, so wavetable/granular render
+ * through the native voice graphs instead of the worklet paths. That is the
+ * same routing production exports use (offlineRenderContext gate in
+ * src/instruments/registry.ts). Live worklet-path audibility is gated
+ * SEPARATELY by src/browser-checks.ts ("live worklet-path audibility" check).
+ * Every runtime is asserted non-degraded before measuring: a plugin that
+ * falls back to a 1:1 bypass would silently produce a bogus loudness entry.
+ *
  * Usage: npm run presets:loudness   (PORT=5237 npm run presets:loudness)
  */
 import { createServer } from "vite";
@@ -118,6 +128,9 @@ const measurements = await page.evaluate(async () => {
           bpm: 124,
           getSample: (id) => bank.get(id),
         });
+        if (runtime?.degraded) {
+          throw new Error(`${preset.id}: runtime reports degraded — refusing to bake a bypass into the loudness map`);
+        }
         runtime.output.connect(previewGain).connect(ctx.destination);
         runtime.noteOn(60, 0.82, 0.01, durationSec);
         const buffer = await ctx.startRendering();
