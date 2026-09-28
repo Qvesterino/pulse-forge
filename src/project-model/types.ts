@@ -395,6 +395,20 @@ export interface MasterConfig {
    */
   tiltDb?: number;
   /**
+   * MATCH EQ (reference tonal matching, "znej ako ref"): four corrective
+   * gains in dB (±6, default 0 = transparent) on the master chain — low
+   * shelf <250 Hz, low-mid bell, high-mid bell, high shelf >4 kHz — computed
+   * by comparing the mix's spectral balance against the reference WAV's
+   * (`src/intent/match-eq.ts`). Loudness-invariant by construction: the
+   * curve matches tonal SHAPE, never level.
+   */
+  matchEq?: {
+    low: number;
+    lowMid: number;
+    highMid: number;
+    high: number;
+  };
+  /**
    * Per-genre loudness trim in dB (default 0), computed by the song builder
    * from the measured genre references (scripts/measure-genre-references.mjs)
    * so every generated song exports at ≈ SONG_LOUDNESS_TARGET_LUFS. Applied

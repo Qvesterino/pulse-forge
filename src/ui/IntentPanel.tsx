@@ -44,6 +44,13 @@ import { composeFullTrack, type ComposeResult } from "../intent/compose";
 import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent, faderReadback } from "../intent/conversation";
 import { applyCompoundIntent, compoundReadback } from "../intent/compound";
+import {
+  applyAutomateIntent,
+  applyGrooveIntent,
+  applyMarkerIntent,
+  grooveReadback,
+  markerReadback,
+} from "../intent/studio-words";
 import { applyPresetIntentCommand, presetReadback } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
@@ -59,6 +66,8 @@ import { patternLengthTicks } from "../midi/hum-to-notes";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
+import { computeMasterMatchEq, setMatchEqReference } from "../intent/match-eq";
+import { applyMasterMatchEqCommand } from "../commands/commands";
 import {
   planVariantIntents,
   producerSessionSummary,
@@ -94,6 +103,7 @@ import {
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { tryModelRoute } from "../intent/model-resolver";
+import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
@@ -134,6 +144,16 @@ import { AudiotoolNexusExport } from "./AudiotoolNexusExport";
 let regenAutoRan = false;
 const BRIEF_CONFLICT_BLOCK_MESSAGE =
   "Zadanie si protirečí. Uprav konfliktné požiadavky v texte alebo odstráň ochranný čip pred generovaním.";
+
+/** LOCAL INTENT MODEL chip tooltips per availability state. */
+const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
+  off: "Lokálny intent model je VYPNUTÝ. Klikni pre zapnutie — model sa raz stiahne a potom beží offline.",
+  loading: "Lokálny intent model sa načítava…",
+  ready:
+    "Lokálny intent model aktívny — nerozpoznané formulácie smerujú cez neho (výstup vždy cez validáciu a príkazy).",
+  unavailable: "Lokálny intent model nie je na tomto serveri (chýba artifact). Klikni pre opätovný pokus.",
+  error: "Lokálny intent model zlyhal. Klikni pre opätovný pokus.",
+};
 
 export function IntentPanel() {
   const services = useServices();
@@ -262,6 +282,43 @@ export function IntentPanel() {
       stopAudition();
     };
   }, []);
+
+  // LOCAL INTENT MODEL — warm + availability chip. The loader module is
+  // dynamic (it owns a lazily-spawned worker); when the flag is on, the
+  // model starts loading in the background so the first unmatched prompt
+  // finds the provider already registered. OFF (the default) costs nothing.
+  const [modelState, setModelState] = useState<IntentModelState>("off");
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let disposed = false;
+    void import("../intent/model-loader").then((loader) => {
+      if (disposed) return;
+      loader.warmIntentModelProvider();
+      unsubscribe = loader.onIntentModelStateChange((state) => setModelState(state));
+    });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  const toggleIntentModel = () => {
+    void import("../intent/model-loader").then((loader) => {
+      if (modelState === "off") {
+        loader.setIntentModelMode("on");
+        loader.warmIntentModelProvider();
+        return;
+      }
+      if (modelState === "unavailable" || modelState === "error") {
+        // Retry: drop the memoized probe/breaker, re-enable, warm again.
+        loader.resetIntentModelLoader();
+        loader.setIntentModelMode("on");
+        loader.warmIntentModelProvider();
+        return;
+      }
+      loader.setIntentModelMode("off");
+    });
+  };
 
   // Audit 13 D2: a PROJECT SWITCH swaps `services` while this panel stays
   // mounted — abort the in-flight generation and drop its candidate bank so
@@ -1184,7 +1241,29 @@ export function IntentPanel() {
     setRefGroove(null);
     setVoiceIdea(null);
     setAudioReferenceConditioning(null);
+    setMatchEqReference(null);
     setStatus("🎧 reference cleared — back to text-only intent");
+  };
+  // MATCH EQ ("znej ako ref"): measure the current pattern against the
+  // retained reference and install the corrective curve on the master.
+  const handleMatchEq = async () => {
+    if (refBusy) return;
+    setRefBusy(true);
+    setStatus("🎯 matching the reference…");
+    try {
+      const curve = await computeMasterMatchEq(services.store.getDoc(), services.bank);
+      if (!curve) {
+        setError("🎯 match EQ: reference too short or render failed");
+        return;
+      }
+      const command = applyMasterMatchEqCommand(services.store.getDoc(), curve);
+      services.store.execute(command);
+      setStatus(`🎯 ${command.label} — master matched to the reference`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRefBusy(false);
+    }
   };
   const handleReferenceFile = async (file: File | null) => {
     if (!file || refBusy) return;
@@ -1200,6 +1279,7 @@ export function IntentPanel() {
         await ctx.close();
       }
       const pcm = resampleLinear(downmixToMono(buffer), buffer.sampleRate, 16000);
+      setMatchEqReference(pcm);
       const result = await analyzeAudioReference(pcm);
       if (!result) {
         setError("🎧 reference: audio models unavailable (fetch them or try later)");
@@ -2061,6 +2141,33 @@ export function IntentPanel() {
         // the recorder's own ONE-undo-frame lifecycle.
         services.patternRecorder.setArmed(route.arm);
         setStatus(route.arm ? "⏺ REC armed — play to lay it in, stop ends the take" : "⏹ recording disarmed");
+      } else if (route.kind === "grooveIntent") {
+        // "more swing" / "tighter groove" / "swing 60%" — project groove,
+        // ONE undo step, read-back shows the landing values.
+        const command = applyGrooveIntent(doc, route.intent);
+        services.store.execute(command);
+        setStatus(`🥁 ${command.label} — ${grooveReadback(services.store.getDoc())} (one undo step)`);
+      } else if (route.kind === "automateIntent") {
+        // "automate the volume from 0 to 100" — track-gain ramp lane,
+        // spanning the whole arrangement (v1; role spans come with spans).
+        stopAudition();
+        const command = applyAutomateIntent(doc, route.intent, null);
+        if (!command) {
+          setError("no track to automate");
+          return;
+        }
+        services.store.execute(command);
+        setStatus(`✓ ${command.label} (one undo step)`);
+      } else if (route.kind === "markerIntent") {
+        // "add a marker at bar 8" / "delete the marker at bar 8"
+        const command = applyMarkerIntent(doc, route.intent);
+        if (!command) {
+          setError(`no marker at bar ${route.intent.bar}`);
+          return;
+        }
+        services.store.execute(command);
+        const readback = markerReadback(services.store.getDoc(), route.intent);
+        setStatus(`✓ ${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
       } else if (route.kind === "select") {
         // Explicit track selection — UI state (SelectionStore), not document
         // state: no undo, no mutation. Family → ids via the production
@@ -2327,6 +2434,16 @@ export function IntentPanel() {
       <div className="intent-header">
         <span className="intent-title">INTENT</span>
         <span className="intent-subtitle">describe → audition → choose</span>
+        <button
+          type="button"
+          className="intent-model-chip"
+          data-state={modelState}
+          onClick={toggleIntentModel}
+          title={INTENT_MODEL_CHIP_TITLES[modelState]}
+          aria-label={`Local intent model: ${modelState}`}
+        >
+          🤖
+        </button>
       </div>
       <textarea
         ref={promptInputRef}
@@ -2563,6 +2680,15 @@ export function IntentPanel() {
         <div className="intent-ref-chip" role="status">
           <span className="intent-ref-chip-label">🎧 ref: {refSummary ?? "active"}</span>
           <span className="intent-ref-chip-hint">shapes every generation</span>
+          <button
+            type="button"
+            className="intent-ref-chip-clear"
+            aria-label="Match master EQ to reference"
+            title="Match EQ — measure the mix against the reference and correct the master (znej ako ref)"
+            onClick={handleMatchEq}
+          >
+            🎯
+          </button>
           <button
             type="button"
             className="intent-ref-chip-clear"

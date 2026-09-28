@@ -1017,6 +1017,73 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("analog RELEASE knob shapes the post-noteOff tail (noteOff path)", false, String(error));
   }
 
+  // MATCH EQ ("znej ako ref") — the flagship reference-matching gate.
+  // Three levels: (1) the master stage audibly applies the curve (a +6 dB
+  // high-shelf correction must measurably lift the high band of a rendered
+  // mix), (2) the full pipeline — retained reference → measured mix →
+  // computed curve — points the right way for a dark-mix/bright-reference
+  // pair, (3) the command round-trips through the document.
+  try {
+    const { spectrumBandBalance } = await import("./intent/match-eq");
+    const doc = createProjectFromTemplate("house");
+    const bandHighOf = async (master: Record<string, unknown>) => {
+      const out = await renderProject({ ...doc, master: { ...doc.master, ...master } } as typeof doc, bank, {
+        mode: "pattern",
+        sampleRate: SR,
+        tailSeconds: 0.3,
+      });
+      const channels = out.numberOfChannels;
+      const mono = new Float32Array(out.length);
+      for (let c = 0; c < channels; c++) {
+        const d = out.getChannelData(c);
+        for (let i = 0; i < mono.length; i++) mono[i] += d[i] / channels;
+      }
+      return spectrumBandBalance(mono, SR).high;
+    };
+    const flatHigh = await bandHighOf({});
+    const liftedHigh = await bandHighOf({
+      matchEq: { low: 0, lowMid: 0, highMid: 0, high: 6 },
+    });
+    // +6 dB high-shelf gain ≈ +6 dB in the >4 kHz share (integration tolerance).
+    const liftDb = liftedHigh - flatHigh;
+    check(
+      "match EQ: master stage applies the curve (+6 dB high shelf lifts the high band)",
+      liftDb > 4.5,
+      `lift=${liftDb.toFixed(2)} dB (flat ${flatHigh.toFixed(1)} → lifted ${liftedHigh.toFixed(1)})`,
+    );
+
+    // Full pipeline direction: a bright reference against this (comparatively
+    // darker) house mix must produce a curve with positive high gain.
+    const { setMatchEqReference, computeMasterMatchEq } = await import("./intent/match-eq");
+    const brightRef = new Float32Array(Math.floor(16000 * 2));
+    for (let i = 0; i < brightRef.length; i++) brightRef[i] = 0.4 * Math.sin((2 * Math.PI * 6000 * i) / 16000);
+    setMatchEqReference(brightRef);
+    const curve = await computeMasterMatchEq(doc, bank);
+    setMatchEqReference(null);
+    check(
+      "match EQ: full pipeline — measured mix vs retained reference points the right way",
+      curve !== null && curve.high > 0,
+      curve
+        ? `curve ${curve.low.toFixed(1)}/${curve.lowMid.toFixed(1)}/${curve.highMid.toFixed(1)}/${curve.high.toFixed(1)} dB`
+        : "no curve",
+    );
+
+    // Command round-trip: the curve survives a doc round-trip via schema.
+    if (curve) {
+      const { applyMasterMatchEqCommand } = await import("./commands/commands");
+      const st = new ProjectStore(doc);
+      st.execute(applyMasterMatchEqCommand(st.getDoc(), curve));
+      const roundTrip = normalizeProject(JSON.parse(JSON.stringify(st.getDoc())));
+      check(
+        "match EQ: command + schema round-trip",
+        Math.abs((roundTrip.master.matchEq?.high ?? 0) - curve.high) < 1e-6,
+        `master.matchEq.high=${roundTrip.master.matchEq?.high?.toFixed(2)}`,
+      );
+    }
+  } catch (error) {
+    check("match EQ: master stage applies the curve (+6 dB high shelf lifts the high band)", false, String(error));
+  }
+
   // Multi-tap determinism regression (Phase 1 of the plugin-audit follow-up):
   // the native DelayNode feedback cycle flipped between two stable variants
   // across offline renders (~8% RMS at feedback .85) — two exports of the
@@ -1217,12 +1284,12 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     });
     const t0 = performance.now();
     // `sound` is what the panel GENERATE sends (ranking v3 — render the top
-      // finalists and re-order by audio fit): the shipped production path.
-      const run = await generateAsyncResult(doc, intent, {
-        mode: "apply",
-        includeBank: true,
-        sound: { bank },
-      });
+    // finalists and re-order by audio fit): the shipped production path.
+    const run = await generateAsyncResult(doc, intent, {
+      mode: "apply",
+      includeBank: true,
+      sound: { bank },
+    });
     const elapsedMs = Math.round(performance.now() - t0);
 
     // Determinism: the exact same request must produce the exact same bank.

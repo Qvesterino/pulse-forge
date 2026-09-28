@@ -452,7 +452,10 @@ export class AudioEngine {
    * Master tonal tilt (complementary shelf pair, ±tilt/2 at 150 Hz / 5 kHz).
    * Always in the chain; 0 dB = transparent, so legacy mixes are untouched.
    */
-  private masterTiltLow: BiquadFilterNode | null = null;
+  private masterTiltLow: BiquadFilterNode | null =
+    null; /** MATCH EQ corrective stage (4 biquads, MasterConfig.matchEq-driven). */
+  private masterMatchEqStages: BiquadFilterNode[] | null = null;
+
   private masterTiltHigh: BiquadFilterNode | null = null;
 
   /**
@@ -1179,6 +1182,14 @@ export class AudioEngine {
     } catch {
       /* already disconnected */
     }
+    for (const stage of this.masterMatchEqStages ?? []) {
+      try {
+        stage.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+    }
+    this.masterMatchEqStages = null;
     this.masterTiltLow = null;
     this.masterTiltHigh = null;
     this.masterGlue?.dispose();
@@ -1464,6 +1475,22 @@ export class AudioEngine {
     this.masterDc.type = "highpass";
     this.masterDc.frequency.value = 12;
     this.masterDc.Q.value = 0.5;
+    // MATCH EQ (reference tonal matching): four corrective stages mirroring
+    // the rack EQ's band structure. Always wired; 0 dB config = transparent.
+    const mkMatch = (type: BiquadFilterType, freq: number): BiquadFilterNode => {
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = 0.9; // bells only — shelves ignore Q
+      f.gain.value = 0;
+      return f;
+    };
+    this.masterMatchEqStages = [
+      mkMatch("lowshelf", 180),
+      mkMatch("peaking", 500),
+      mkMatch("peaking", 2200),
+      mkMatch("highshelf", 5200),
+    ];
     // Master tonal tilt (genre color, mix-chain driven): complementary shelf
     // pair at ±tilt/2 so the spectral energy stays roughly constant. Always
     // wired; 0 dB config = transparent.
@@ -1536,7 +1563,12 @@ export class AudioEngine {
     this.masterTape!.output.connect(this.masterMs!.input);
     this.masterMs!.output.connect(this.masterBassMono!.input);
     this.masterBassMono!.output.connect(this.masterDc!);
-    this.masterDc!.connect(this.masterTiltLow!);
+    // Match EQ sits BEFORE the tilt (correction first, taste last).
+    this.masterDc!.connect(this.masterMatchEqStages![0]);
+    this.masterMatchEqStages![0].connect(this.masterMatchEqStages![1]);
+    this.masterMatchEqStages![1].connect(this.masterMatchEqStages![2]);
+    this.masterMatchEqStages![2].connect(this.masterMatchEqStages![3]);
+    this.masterMatchEqStages![3].connect(this.masterTiltLow!);
     this.masterTiltLow!.connect(this.masterTiltHigh!);
     this.masterTiltHigh!.connect(this.masterGlue!.input);
     this.masterGlue!.output.connect(this.masterClipper);
@@ -1683,6 +1715,19 @@ export class AudioEngine {
       const tilt = Math.min(4, Math.max(-4, config.tiltDb ?? 0));
       this.masterTiltLow.gain.setTargetAtTime(tilt / 2, now, 0.05);
       this.masterTiltHigh.gain.setTargetAtTime(-tilt / 2, now, 0.05);
+    }
+    if (this.masterMatchEqStages) {
+      // MATCH EQ: ±6 dB corrective gains, 0 = transparent (absent config
+      // and garbage both land at 0 — the stage never blocks the master).
+      const clamp6 = (v: unknown): number => {
+        const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+        return Math.max(-6, Math.min(6, n));
+      };
+      const match = config.matchEq;
+      const gains = [clamp6(match?.low), clamp6(match?.lowMid), clamp6(match?.highMid), clamp6(match?.high)];
+      for (let i = 0; i < this.masterMatchEqStages.length; i++) {
+        this.masterMatchEqStages[i].gain.setTargetAtTime(gains[i], now, 0.05);
+      }
     }
     if (this.masterGlue) {
       // Buss glue: mix 1/0 on the worklet path (threshold/ratio stay put so

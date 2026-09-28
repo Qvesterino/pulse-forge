@@ -1596,9 +1596,7 @@ function normalizeArrangementDomain(s: NormalizeState): void {
 function remapDeprecatedAliasTargets(s: NormalizeState): void {
   const doc = s.doc;
   const remap = (target: unknown): unknown =>
-    target && typeof target === "object"
-      ? canonicalizeDeprecatedTarget(doc, target as AutomationTarget)
-      : target;
+    target && typeof target === "object" ? canonicalizeDeprecatedTarget(doc, target as AutomationTarget) : target;
   let changed = false;
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -1967,6 +1965,24 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
         ? Math.min(400, Math.max(60, m.bassMonoFreq))
         : 120;
     const tiltDb = typeof m.tiltDb === "number" && Number.isFinite(m.tiltDb) ? Math.min(4, Math.max(-4, m.tiltDb)) : 0;
+    // MATCH EQ (reference tonal match): sanitize per-band ±6 dB; an absent
+    // or all-zero object is dropped entirely (transparent master stays clean
+    // in serialized docs — the engine treats absence as 0 dB anyway).
+    const matchEqRaw = m.matchEq as { low?: unknown; lowMid?: unknown; highMid?: unknown; high?: unknown } | undefined;
+    const matchBand = (v: unknown): number =>
+      typeof v === "number" && Number.isFinite(v) ? Math.min(6, Math.max(-6, v)) : 0;
+    const matchEq =
+      matchEqRaw && typeof matchEqRaw === "object"
+        ? {
+            low: matchBand(matchEqRaw.low),
+            lowMid: matchBand(matchEqRaw.lowMid),
+            highMid: matchBand(matchEqRaw.highMid),
+            high: matchBand(matchEqRaw.high),
+          }
+        : undefined;
+    const matchEqChanged =
+      matchEq !== undefined &&
+      (matchEq.low !== 0 || matchEq.lowMid !== 0 || matchEq.highMid !== 0 || matchEq.high !== 0);
     // loudnessTrimDb (song-builder genre trim): the rebuild below used to
     // OMIT it — any other out-of-range master field silently reset a
     // non-zero trim to 0 on load. Sanitize it like the rest.
@@ -1989,7 +2005,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       bassMonoEnabled !== m.bassMonoEnabled ||
       bassMonoFreq !== m.bassMonoFreq ||
       tiltDb !== m.tiltDb ||
-      loudnessTrimDb !== m.loudnessTrimDb
+      loudnessTrimDb !== m.loudnessTrimDb ||
+      matchEqChanged
     ) {
       doc = {
         ...doc,
@@ -2009,6 +2026,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           bassMonoFreq,
           tiltDb,
           loudnessTrimDb,
+          ...(matchEqChanged ? { matchEq } : {}),
         },
       };
       s.changed = true;

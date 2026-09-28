@@ -5179,6 +5179,33 @@ function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): P
 
 /* ---------------- master / sends / returns ---------------- */
 
+/**
+ * MATCH EQ apply ("znej ako ref"): install the measured corrective curve on
+ * the master (one undo). The curve comes from `computeMatchEqCurve`
+ * (src/intent/match-eq.ts) — this command only carries it into the document
+ * so live and offline render the same correction. `null` clears the stage.
+ */
+export function applyMasterMatchEqCommand(
+  doc: ProjectDocument,
+  curve: { low: number; lowMid: number; highMid: number; high: number } | null,
+): Command {
+  const clamp6 = (v: number): number => Math.max(-6, Math.min(6, Number.isFinite(v) ? v : 0));
+  const matchEq = curve
+    ? {
+        low: clamp6(curve.low),
+        lowMid: clamp6(curve.lowMid),
+        highMid: clamp6(curve.highMid),
+        high: clamp6(curve.high),
+      }
+    : undefined;
+  const fmt = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
+  const label = matchEq
+    ? `Match EQ ${fmt(matchEq.low)}/${fmt(matchEq.lowMid)}/${fmt(matchEq.highMid)}/${fmt(matchEq.high)} dB`
+    : "Match EQ off";
+  const command = setMasterConfig(doc, { matchEq });
+  return { ...command, label };
+}
+
 export function setMasterConfig(doc: ProjectDocument, patch: Partial<MasterConfig>): Command {
   const prev = { ...doc.master };
   return {
