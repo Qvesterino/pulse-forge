@@ -3,6 +3,7 @@ import { generateMelodicParts, type MelodicParts } from "../src/ai/melodic";
 import { generateOptionsFromIntent } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { forkRandom } from "../src/shared/rng";
+import { matchArtistPreset } from "../src/intent/artists";
 
 /**
  * MELODIC DIALECTS (per-style pilot) — amapiano (log drum bass), dembow
@@ -241,5 +242,54 @@ describe("melodic dialects wave 3 (disco / synthpop / progressive / ukg / jersey
         expect(allowed.has(((note.pitch % 12) + 12) % 12), `${genre}.${style}`).toBe(true);
       }
     }
+  });
+});
+
+describe("melodic dialects — dnb depth wave 2 (twostep / roller / amen / neuro / jumpup / dancefloor)", () => {
+  it("all six produce distinct bass different from each other and the dnb fallback", () => {
+    const fallback = musical(partsFor("dnb")).bass;
+    const seen: Array<[string, { pitch: number; start: number; duration: number; velocity: number }[]]> = [];
+    for (const style of ["twostep", "roller", "amen", "neuro", "jumpup", "dancefloor"]) {
+      const bass = musical(partsFor("dnb", style)).bass;
+      expect(bass.length, style).toBeGreaterThan(0);
+      expect(bass, style).not.toEqual(fallback);
+      for (const [prev] of seen) {
+        expect(bass, `${style} vs ${prev}`).not.toEqual(musical(partsFor("dnb", prev)).bass);
+      }
+      seen.push([style, bass]);
+    }
+  });
+
+  it("standout signatures: neuro long dark, jumpup stabs, roller even", () => {
+    // neuro: long reese notes — few, long
+    const neuro = musical(partsFor("dnb", "neuro")).bass;
+    const neuroAvg = neuro.reduce((s, n) => s + n.duration, 0) / neuro.length;
+    expect(neuroAvg).toBeGreaterThanOrEqual(240);
+    // jumpup: punchy stabs — short
+    const jumpup = musical(partsFor("dnb", "jumpup")).bass;
+    const jumpAvg = jumpup.reduce((s, n) => s + n.duration, 0) / jumpup.length;
+    expect(jumpAvg).toBeLessThan(300);
+    // roller: even velocities (the roll never shouts)
+    const roller = musical(partsFor("dnb", "roller")).bass;
+    const velocities = roller.map((n) => n.velocity);
+    const spread = Math.max(...velocities) - Math.min(...velocities);
+    expect(spread).toBeLessThan(0.3);
+  });
+
+  it("key-safe across the six", () => {
+    const allowed = new Set([0, 2, 3, 5, 7, 8, 10]);
+    for (const style of ["twostep", "roller", "amen", "neuro", "jumpup", "dancefloor"]) {
+      const options = generateOptionsFromIntent(
+        normalizeIntent({ genre: "dnb", style, seed: "melodic-dialect-fixture", length: 64 }),
+      );
+      const parts = generateMelodicParts(options, forkRandom("key-safety-dnb2", "melody"), "C Natural Minor");
+      for (const note of parts.bass) {
+        expect(allowed.has(((note.pitch % 12) + 12) % 12), style).toBe(true);
+      }
+    }
+  });
+
+  it("Total Science rides the roller lane", () => {
+    expect(matchArtistPreset("total science")?.preset).toMatchObject({ style: "roller", bpmRange: [172, 176] });
   });
 });

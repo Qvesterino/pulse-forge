@@ -2263,6 +2263,322 @@ const TECHHOUSE_LEAD: MelodicPatternData = {
   ],
 };
 
+// ── Melodic dialects (dnb depth wave 2 — the remaining seven voices) ──────
+
+// Two-step: the snap — bass skips the grid with the break, short and tight
+const TWOSTEP_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 3, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const TWOSTEP_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.45 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const TWOSTEP_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    [
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+// Roller: the smooth roll — even 8th root drive, hypnotic, never busy
+const ROLLER_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 4, duration: 2, velocity: 0.75 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+    ],
+  ],
+};
+
+const ROLLER_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Pad swells — long, dark, supportive
+    [
+      { degree: 0, duration: 8, velocity: 0.45 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 6, velocity: 0.4 },
+    ],
+  ],
+};
+
+const ROLLER_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Hypnotic minor motif — repeats with small changes
+    [
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.5 },
+      { degree: 4, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Amen chop: the bass follows the chop — syncopated with ghost movement
+const AMENCHOP_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 3, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const AMENCHOP_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Ragga stab feel
+    [
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+const AMENCHOP_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Ragga toast-feel phrase
+    [
+      { degree: 0, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+// Neuro: the reese — long dark growling notes, semitone-adjacent tension
+const NEURO_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 6, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 6, duration: 6, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 6, duration: 4, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const NEURO_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Dark techy stabs, mechanical
+    [
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const NEURO_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Techy growl line — mechanical, angular
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 6, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+// Jump-up: the wobble stab — bouncy punchy stabs built for the skip
+const JUMPUP_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const JUMPUP_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 8, velocity: 0 },
+    ],
+  ],
+};
+
+const JUMPUP_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // The bouncywarrior hook — short stabs, big spaces
+    [
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+// Dancefloor: the anthemic drive — wide jumps, big and even
+const DANCEFLOOR_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: 4, duration: 2, velocity: 0.85 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: 5, duration: 2, velocity: 0.8 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+    ],
+  ],
+};
+
+const DANCEFLOOR_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Big anthemic swells
+    [
+      { degree: 0, duration: 8, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 6, velocity: 0.5 },
+    ],
+  ],
+};
+
+const DANCEFLOOR_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // The festival hook — wide, singable, confident
+    [
+      { degree: 4, duration: 4, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
 export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "house.amapiano": [AMAPIANO_BASS, AMAPIANO_CHORD, AMAPIANO_LEAD],
   "house.dembow": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
@@ -2281,6 +2597,13 @@ export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "dnb.halftime": [HALFTIME_BASS, HALFTIME_CHORD, HALFTIME_LEAD],
   "dnb.crossbreed": [CROSSBREED_BASS, CROSSBREED_CHORD, CROSSBREED_LEAD],
   "dnb.minimal": [MINIMAL_BASS, MINIMAL_CHORD, MINIMAL_LEAD],
+  // DnB depth wave 2 — the remaining seven family voices
+  "dnb.twostep": [TWOSTEP_BASS, TWOSTEP_CHORD, TWOSTEP_LEAD],
+  "dnb.roller": [ROLLER_BASS, ROLLER_CHORD, ROLLER_LEAD],
+  "dnb.amen": [AMENCHOP_BASS, AMENCHOP_CHORD, AMENCHOP_LEAD],
+  "dnb.neuro": [NEURO_BASS, NEURO_CHORD, NEURO_LEAD],
+  "dnb.jumpup": [JUMPUP_BASS, JUMPUP_CHORD, JUMPUP_LEAD],
+  "dnb.dancefloor": [DANCEFLOOR_BASS, DANCEFLOOR_CHORD, DANCEFLOOR_LEAD],
   "house.slaphouse": [SLAPHOUSE_BASS, SLAPHOUSE_CHORD, SLAPHOUSE_LEAD],
   // Wave 3 — 14 lanes with a bass signature (2026-09-28)
   "house.disco": [DISCO_BASS, DISCO_CHORD, DISCO_LEAD],

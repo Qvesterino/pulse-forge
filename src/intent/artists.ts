@@ -1511,8 +1511,20 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "tim hecker",
   },
   {
-    names: ["william basinski", "basinski", "disintegration loops"],
+    names: ["william basinski", "basinski"],
     genre: "drone",
+    style: "drone",
+    mood: "dark",
+    energy: 0.15,
+    density: 0.25,
+    bpmRange: [40, 60],
+    label: "basinski",
+  },
+  {
+    // This record title is a widely used ambient prompt, not an artist-name
+    // request; keep its timbral lane while selecting the ambient genre.
+    names: ["disintegration loops"],
+    genre: "ambient",
     style: "drone",
     mood: "dark",
     energy: 0.15,
@@ -2889,6 +2901,17 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "alix perez",
   },
   {
+    // Total Science — the roller/two-step legends (Breakin Point, CIA label)
+    names: ["total science", "total science type beat"],
+    genre: "dnb",
+    style: "roller",
+    mood: "dark",
+    energy: 0.75,
+    density: 0.55,
+    bpmRange: [172, 176],
+    label: "total science",
+  },
+  {
     names: ["dillinja", "dillinja type beat"],
     genre: "dnb",
     style: "roller",
@@ -2921,7 +2944,17 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "remarc",
   },
   {
-    names: ["dj hype", "sub zero", "frontline"],
+    names: ["dj hype"],
+    genre: "dnb",
+    style: "jungle",
+    mood: "energetic",
+    energy: 0.85,
+    density: 0.65,
+    bpmRange: [172, 178],
+    label: "dj hype",
+  },
+  {
+    names: ["sub zero", "frontline"],
     genre: "dnb",
     style: "jumpup",
     mood: "energetic",
