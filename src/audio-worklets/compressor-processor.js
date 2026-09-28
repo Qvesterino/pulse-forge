@@ -22,7 +22,20 @@ class CompressorProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.gain = 1;
-    this.rms = 0; // smoothed squared level (RMS mode)
+    this.rms = 0;
+    // de-ess band-pass state (2× HP + 2× LP one-poles, per channel)
+    this.bpHpIn1L = 0;
+    this.bpHpIn1R = 0;
+    this.bpHp1L = 0;
+    this.bpHp1R = 0;
+    this.bpHpIn2L = 0;
+    this.bpHpIn2R = 0;
+    this.bpHp2L = 0;
+    this.bpHp2R = 0;
+    this.bpLp1L = 0;
+    this.bpLp1R = 0;
+    this.bpLp2L = 0;
+    this.bpLp2R = 0; // smoothed squared level (RMS mode)
     this.postL1 = 0;
     this.postR1 = 0; // one-pole HP stage 1 state (outputs)
     this.postL2 = 0;
@@ -48,6 +61,12 @@ class CompressorProcessor extends AudioWorkletProcessor {
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "detector", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" }, // 0 = RMS, 1 = PEAK
       { name: "scHpf", defaultValue: 20, minValue: 20, maxValue: 500, automationRate: "k-rate" }, // Hz
+      // DE-ESS mode: 0 = scHpf high-pass detector (kick-carve style),
+      // 1 = band-pass detector centered at scBandHz (sibilance band) —
+      // gain reduction triggers only on the 4–10 kHz energy, the classic
+      // wideband de-esser architecture.
+      { name: "scMode", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "scBandHz", defaultValue: 6500, minValue: 2000, maxValue: 12000, automationRate: "k-rate" }, // Hz
       // AUTO RELEASE: program-dependent — the release time-constant shortens
       // when the input peaks arrive densely (fast program), relaxes on
       // sparse material.
@@ -100,6 +119,15 @@ class CompressorProcessor extends AudioWorkletProcessor {
     const rc = hpfOn ? 1 / (2 * Math.PI * Math.max(20, hpfHz)) : 0;
     const hpA = hpfOn ? rc / (rc + dt) : 0;
 
+    // ---- DE-ESS band-pass detector (applies to the MAIN signal too — the
+    // sibilance band is measured on the program itself unless an explicit
+    // sidechain source overrides it). Band = cascaded 12 dB/oct HP at
+    // bandHz/1.8 + 12 dB/oct LP at bandHz*1.8 → ~1.5-octave skirt.
+    const deEss = (parameters.scMode ? parameters.scMode[0] : 0) >= 0.5;
+    const bandHz = Math.max(2000, Math.min(12000, parameters.scBandHz ? parameters.scBandHz[0] : 6500));
+    const bpHpA = deEss ? 1 / (1 + 2 * Math.PI * (bandHz / 1.8) * dt) : 0;
+    const bpLpA = deEss ? Math.exp(-2 * Math.PI * (bandHz * 1.8) * dt) : 0;
+
     for (let i = 0; i < len; i++) {
       const l = mainL ? mainL[i] : 0;
       const r = mainR ? mainR[i] : l;
@@ -107,7 +135,42 @@ class CompressorProcessor extends AudioWorkletProcessor {
       // ---- detector source (sidechain when connected, else main) ----
       let dL = 0;
       let dR = 0;
-      if (sideActive) {
+      if (deEss) {
+        // Band-passed PROGRAM detector (an explicit sidechain input still
+        // wins — routing an external de-ess trigger is a valid use).
+        if (!sideActive) {
+          // 2× cascaded one-pole HP (the scHpf differencing idiom
+          // y = a·(y₁ + x − x₁); each stage carries its OWN previous input)
+          // then 2× one-pole LP, per channel.
+          const h1l = bpHpA * (this.bpHp1L + l - this.bpHpIn1L);
+          const h1r = bpHpA * (this.bpHp1R + r - this.bpHpIn1R);
+          this.bpHpIn1L = l;
+          this.bpHpIn1R = r;
+          this.bpHp1L = h1l;
+          this.bpHp1R = h1r;
+          const h2l = bpHpA * (this.bpHp2L + h1l - this.bpHpIn2L);
+          const h2r = bpHpA * (this.bpHp2R + h1r - this.bpHpIn2R);
+          this.bpHpIn2L = h1l;
+          this.bpHpIn2R = h1r;
+          this.bpHp2L = h2l;
+          this.bpHp2R = h2r;
+          const p1l = bpLpA * this.bpLp1L + (1 - bpLpA) * h2l;
+          const p1r = bpLpA * this.bpLp1R + (1 - bpLpA) * h2r;
+          this.bpLp1L = p1l;
+          this.bpLp1R = p1r;
+          const p2l = bpLpA * this.bpLp2L + (1 - bpLpA) * p1l;
+          const p2r = bpLpA * this.bpLp2R + (1 - bpLpA) * p1r;
+          this.bpLp2L = p2l;
+          this.bpLp2R = p2r;
+          dL = Math.abs(p2l) < 1e-15 ? 0 : p2l;
+          dR = Math.abs(p2r) < 1e-15 ? 0 : p2r;
+        } else {
+          const sl = sideL ? sideL[i] : 0;
+          const sr2 = sideR ? sideR[i] : sl;
+          dL = sl;
+          dR = sr2;
+        }
+      } else if (sideActive) {
         const sl = sideL ? sideL[i] : 0;
         const sr2 = sideR ? sideR[i] : sl;
         if (hpfOn) {

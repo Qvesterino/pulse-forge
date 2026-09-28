@@ -43,7 +43,8 @@ export type ProductionConcept =
   | "vinyl"
   | "wide"
   | "sub"
-  | "air";
+  | "air"
+  | "deess";
 
 export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "kick" | "snare" | "hats";
 
@@ -131,6 +132,7 @@ export const PRODUCTION_CONCEPTS: readonly ProductionConcept[] = [
   "wide",
   "sub",
   "air",
+  "deess",
 ];
 
 export const PRODUCTION_TARGETS: readonly ProductionTarget[] = ["drums", "bass", "lead", "chords"];
@@ -271,14 +273,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
     // Diacritic-safe stems: JS \b does not fire between a word char and a
     // diacritic, so an accented word needs an explicit literal rather than a
     // \b-anchored pattern, and the ASCII stem is what actually generalises.
-    patterns: [
-      /\breverse(?:d)?\b/,
-      /\bbackwards?\b/,
-      /obráten/,
-      /\bspätn/,
-      /\bskúten/,
-      /\bspatn/,
-    ],
+    patterns: [/\breverse(?:d)?\b/, /\bbackwards?\b/, /obráten/, /\bspätn/, /\bskúten/, /\bspatn/],
   },
   {
     concept: "crunchy",
@@ -333,6 +328,11 @@ export const CONCEPTS: readonly ConceptDef[] = [
       /\bvzduch\b/,
       /\bosvecenie\b/,
     ],
+  },
+  {
+    concept: "deess",
+    defaultTarget: "lead",
+    patterns: [/de-?ess\w*/i, /sibilan\w*/i, /ess\w*/i, /sibi?lin\w*/i],
   },
   {
     concept: "stutter",
@@ -570,16 +570,20 @@ export function resolveProductionTargets(doc: ProjectDocument, targets: Producti
       continue;
     }
     const instruments = doc.tracks.filter((t) => t.kind === "instrument");
-    const match =
-      instruments.find((t) => {
-        if (target === "bass") {
-          return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b|\bsub\b/i.test(t.name);
-        }
-        if (target === "chords") {
-          return /\bchord|\bkeys?\b|\bpad\b/i.test(t.name) || t.instrument === "keys";
-        }
-        return /\blead\b|\bsynth\b|\bpluck\b/i.test(t.name) || ["lead", "pluck", "spectral"].includes(t.instrument);
-      }) ?? (target === "lead" ? instruments[0] : undefined);
+    // STRICT resolution — no positional fallback. The old `?? instruments[0]`
+    // for "lead" used to route lead-named asks (fader/effect/production/
+    // transpose) onto whatever instrument happened to be first (usually the
+    // bass): a silent wrong-target mutation. Unmatched targets now surface
+    // through the planner's actionable "No matching track for targets" error.
+    const match = instruments.find((t) => {
+      if (target === "bass") {
+        return ["bass", "808", "logdrum"].includes(t.instrument) || /\bbass\b|\b808\b|\bsub\b/i.test(t.name);
+      }
+      if (target === "chords") {
+        return /\bchord|\bkeys?\b|\bpad\b/i.test(t.name) || t.instrument === "keys";
+      }
+      return /\blead\b|\bsynth\b|\bpluck\b/i.test(t.name) || ["lead", "pluck", "spectral"].includes(t.instrument);
+    });
     if (match) ids.push(match.id);
   }
   return [...new Set(ids)];
@@ -698,6 +702,25 @@ export function planProductionActions(
             trackId,
             type: "freqShifter",
             params: { shift: Math.round(300 + goal.amount * 500), mix: 0.9 },
+          });
+          break;
+        case "deess":
+          // Compressor DE-ESS mode (band detector): amount scales ratio —
+          // subtle ~3:1, full ~10:1. Threshold rides with amount so subtle
+          // only catches the worst offenders.
+          actions.push({
+            trackId,
+            type: "compressor",
+            params: {
+              scMode: 1,
+              scBandHz: 6500,
+              threshold: Math.round(-24 - goal.amount * 12),
+              ratio: Math.round(3 + goal.amount * 7),
+              attack: 0.001,
+              release: 0.06,
+              knee: 2,
+              mix: 1,
+            },
           });
           break;
         case "telephone":

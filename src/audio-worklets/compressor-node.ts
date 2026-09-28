@@ -68,6 +68,8 @@ export function createCompressorNode(
   apply("mix", instance.params.mix ?? 1, undefined);
   apply("detector", instance.params.detector ?? 0, undefined);
   apply("scHpf", instance.params.scHpf ?? 20, undefined);
+  apply("scMode", instance.params.scMode ?? 0, undefined);
+  apply("scBandHz", instance.params.scBandHz ?? 6500, undefined);
   apply("autoRelease", instance.params.autoRelease ?? 0, undefined);
 
   return {
