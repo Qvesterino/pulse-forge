@@ -4,6 +4,8 @@ import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
+import { parseToneIntent } from "../intent/toneIntent";
+import { getSharedPcmPlayback } from "../audio-engine/pcmPlayback";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
 import { parseSectionRequests, type SectionParse } from "../intent/sections";
@@ -49,6 +51,8 @@ import { resolveVocalTake } from "../vocal/resolve";
 import { analyzeVocalTake } from "../vocal/analyzer-client";
 import { applyVocalHookCommand, applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
 import { summarizeVocalProfile } from "../vocal/notes";
+import { planVocalComp } from "../vocal/comping";
+import { VocalCompStrip } from "./VocalCompStrip";
 import type { VocalProfile } from "../vocal/types";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
 import { patternLengthTicks } from "../midi/hum-to-notes";
@@ -496,6 +500,37 @@ export function IntentPanel() {
       setBusy(false);
       return;
     }
+    // TONE VERB (ADR 0016/0018 intent surface): "play the tone" / "tune
+    // tone to 880" / "stop the tone" — the CLAP tone fixture through the
+    // EXT PCM chain (shared controller: the chip reflects it).
+    const toneIntent = parseToneIntent(text);
+    if (toneIntent) {
+      services.engine.ensureContext();
+      const ctx = services.engine.getLiveAudioContext();
+      if (!ctx) {
+        setError("Audio engine not ready.");
+        setBusy(false);
+        return;
+      }
+      const controller = getSharedPcmPlayback(() => ctx);
+      try {
+        if (toneIntent.kind === "stop") {
+          await controller.stop();
+          setStatus("✓ Tone stopped.");
+        } else {
+          await controller.start("clap-player", [
+            "--set", String(toneIntent.freq),
+            "--realtime",
+            "--seconds", "300",
+          ]);
+          setStatus(`✓ CLAP tone @ ${toneIntent.freq} Hz — beží (stop: "stop the tone")`);
+        }
+      } catch (err) {
+        setError(`Tone source: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      setBusy(false);
+      return;
+    }
     // PLUGIN FINDER VERB (ADR 0016 intent surface): "aké clapy mám?" runs
     // the desktop crash-isolated CLAP scan; the web build answers honestly
     // that plugins live behind the desktop shell.
@@ -556,6 +591,13 @@ export function IntentPanel() {
       } else if (chaseIntent.kind === "disarm") {
         chaser.armed = false;
         setStatus("✓ MTC chase vypnutý — transport behá na svojom čase");
+      } else if (chaseIntent.kind === "offset") {
+        chaser.offsetSeconds = chaseIntent.seconds;
+        setStatus(
+          chaseIntent.seconds === 0
+            ? "✓ Timecode offset vynulovaný — TC 00:00:00:00 = začiatok projektu"
+            : `✓ Timecode offset: ${chaseIntent.seconds} s — TC ${chaseIntent.seconds >= 0 ? "začína" : "končí"} na začiatku projektu`,
+        );
       } else if (chaser.seekToTimecode(chaseIntent.tc)) {
         setStatus(`✓ playhead → ${formatSmpTe(chaseIntent.tc)} (TC @ ${services.store.getDoc().bpm} BPM)`);
       } else {
@@ -1112,8 +1154,15 @@ export function IntentPanel() {
     loopTicks: number;
     key: string | null;
     summary: string;
+    harmonize?: boolean;
   } | null>(null);
   const [ideaRecording, setIdeaRecording] = useState(false);
+  // Hum & harmonize — the SUNO build stacks the diatonic backing pair under
+  // the hummed hook (one "Hum Harmony" track, one undo step with the song).
+  const [ideaHarmonize, setIdeaHarmonize] = useState(false);
+  // Take history for the comp strip — the last few analyzed takes, so the
+  // comp plan can compare them bar by bar.
+  const [takeHistory, setTakeHistory] = useState<VocalProfile[]>([]);
   const [ideaMicMonitor, setIdeaMicMonitor] = useState(false);
   const ideaRecorderRef = useRef<PcmMicRecorder | null>(null);
   const ideaBeatSyncRef = useRef(false);
@@ -1277,8 +1326,16 @@ export function IntentPanel() {
       }
       setRefPatch(result.patch);
       if (result.noteCount > 0) {
-        setVoiceIdea({ notes: result.notes, loopTicks: result.loopTicks, key: result.key, summary: result.summary });
-        setStatus(`🎤 idea: ${result.summary} — hook live, ♪ SONG builds around it`);
+        setVoiceIdea({
+          notes: result.notes,
+          loopTicks: result.loopTicks,
+          key: result.key,
+          summary: result.summary,
+          harmonize: ideaHarmonize,
+        });
+        setStatus(
+          `🎤 idea: ${result.summary} — hook live${ideaHarmonize ? " + harmony stack" : ""}, ♪ SONG builds around it`,
+        );
       } else {
         setVoiceIdea(null);
         setStatus(`🎤 idea: ${result.summary} — patch live (no steady melody detected)`);
@@ -1374,6 +1431,7 @@ export function IntentPanel() {
       if (takeToken !== takeTokenRef.current) return; // project switched mid-analysis
       setTakeProfile(outcome.profile);
       setTakeRef({ bufferId: resolved.take.bufferId });
+      setTakeHistory((history) => [...history, outcome.profile].slice(-3));
       setStatus(`🎤 take heard — ${summarizeVocalProfile(outcome.profile).join(" · ")}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1441,7 +1499,16 @@ export function IntentPanel() {
         ...(sections ? { sections } : {}),
         input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
         ...(reviseInput?.seed ? { seed: reviseInput.seed } : {}),
-        ...(voiceIdea ? { hum: { notes: voiceIdea.notes, loopTicks: voiceIdea.loopTicks, key: voiceIdea.key } } : {}),
+        ...(voiceIdea
+          ? {
+              hum: {
+                notes: voiceIdea.notes,
+                loopTicks: voiceIdea.loopTicks,
+                key: voiceIdea.key,
+                ...(voiceIdea.harmonize ? { harmonize: true } : {}),
+              },
+            }
+          : {}),
         ...(takeProfile?.measured ? { vocalProfile: takeProfile } : {}),
         bank: services.bank,
         candidateCount: 3,
@@ -2335,6 +2402,13 @@ export function IntentPanel() {
         </button>
         <label
           className="intent-monitor-toggle"
+          title="Hum & harmonize: the SUNO build stacks diatonic backing vocals (third above + below) under your hummed hook on a 'Hum Harmony' track"
+        >
+          <input type="checkbox" checked={ideaHarmonize} onChange={(event) => setIdeaHarmonize(event.target.checked)} />
+          🎶
+        </label>
+        <label
+          className="intent-monitor-toggle"
           title="Hear yourself through the app — HEADPHONES ONLY (speakers feed back into the mic)"
         >
           <input
@@ -2479,6 +2553,14 @@ export function IntentPanel() {
       {takeProfile && (
         <div className="intent-take-card" role="status" aria-label="Vocal take analysis">
           <span className="intent-take-lines">{summarizeVocalProfile(takeProfile).join(" · ")}</span>
+          {(() => {
+            // The comp strip: when two-plus takes are analyzed, the plan
+            // shows who WINS each bar (the singer keeps every best moment).
+            const plan = takeHistory.length >= 2 ? planVocalComp(takeHistory) : null;
+            if (!plan) return null;
+            const labels = takeHistory.map((_, index) => `Take ${String.fromCharCode(65 + index)}`);
+            return <VocalCompStrip plan={plan} labels={labels} />;
+          })()}
           <div className="intent-take-actions">
             <button
               type="button"
