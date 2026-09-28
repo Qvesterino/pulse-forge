@@ -73,6 +73,19 @@ export interface GenerateOptions {
   key?: import("../project-model/types").MusicalKey | null;
   /** Requested BPM range. Null/undefined leaves the project BPM unchanged. */
   bpmRange?: [number, number] | null;
+
+  /**
+   * Tempo window used to NARROW the groove candidate set before the rendezvous
+   * pick (see `preferGroovesForWindow`). Set from an artist profile's
+   * signature.bpm so "travis scott type beat" lands in the 140-150 pocket
+   * instead of whichever groove the hash happened to favour.
+   *
+   * Distinct from `bpmRange`: that one is the USER's request and is clamped
+   * into at resolveBpm; this one is the ARTIST's pocket and only filters which
+   * grooves are eligible. When both are present the artist window narrows the
+   * candidates and the user range still clamps the resulting number.
+   */
+  grooveBpmWindow?: [number, number] | null;
   /** Enabled semantic output roles. Omitted means all roles for backwards compatibility. */
   roles?: readonly GenerationRole[];
   /** Hard generation constraints. Omitted means the legacy permissive defaults. */

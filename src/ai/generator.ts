@@ -2,7 +2,7 @@ import type { ProjectDocument, Pattern, NoteEvent, StepMeta } from "../project-m
 import type { GenerateOptions, GrooveData } from "./types";
 import { forkRandom, hashString } from "../shared/rng";
 import { uid } from "../shared/ids";
-import { getGroovesForGenre, getGrooveById } from "./grooves/index";
+import { getGroovesForGenre, getGrooveById, preferGroovesForWindow } from "./grooves/index";
 import { generateDrumPattern } from "./drums";
 import { generateMelodicParts } from "./melodic";
 import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "./role-targets";
@@ -57,6 +57,8 @@ export function resolveGrooveSeeded(
   genre: GenerateOptions["genre"],
   style: string | undefined,
   seed: string,
+  /** Artist tempo pocket: narrows the eligible grooves before the hash pick. */
+  grooveBpmWindow?: [number, number] | null,
 ): GrooveData {
   if (style) {
     const byId = getGrooveById(`${genre}.${style.toLowerCase().replace(/\s+/g, "")}`);
@@ -66,7 +68,11 @@ export function resolveGrooveSeeded(
     if (named) return named;
   }
 
-  let grooves = getGroovesForGenre(genre);
+  // The artist tempo pocket narrows WHICH grooves are eligible before the
+  // rendezvous pick. A seed that already resolved inside the window keeps its
+  // groove; only seeds that would have fallen outside move. No window, or a
+  // window nothing overlaps, leaves the candidate set exactly as it was.
+  let grooves = preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow);
   if (grooves.length === 0) {
     // Fallback for unknown / mistyped genres — never let the indexed lookup
     // dereference `undefined.id` and throw into the generator pipeline.
@@ -121,7 +127,7 @@ export function resolveEffectiveSeed(doc: ProjectDocument, options: GenerateOpti
  */
 export function resolveGrooveForGeneration(doc: ProjectDocument, options: GenerateOptions): GrooveData {
   const effectiveSeed = resolveEffectiveSeed(doc, options);
-  return resolveGrooveSeeded(options.genre, options.style, effectiveSeed);
+  return resolveGrooveSeeded(options.genre, options.style, effectiveSeed, options.grooveBpmWindow ?? null);
 }
 
 export interface DiceLocks {
