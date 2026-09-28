@@ -37,13 +37,16 @@ mkdirSync(OUT, { recursive: true });
 const server = await createServer({
   root: ROOT,
   logLevel: "error",
-  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+  // hmr off: a concurrent session saving a file mid-render kills page.evaluate
+  server: { port: PORT, host: "127.0.0.1", strictPort: true, hmr: false },
 });
 await server.listen();
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded" });
+// Generous nav timeout: under a loaded machine (parallel sessions) the
+// default 30 s aborts before the dev server's first compile finishes.
+await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180000 });
 
 // INTENT suite groups come straight from the ranker dataset — same
 // groupKey/genre/style/seeds means ranking verdicts ingest 1:1 into
@@ -421,7 +424,14 @@ const roomDir = path.join(ROOT, "listening", "room");
 mkdirSync(path.join(roomDir, "morph"), { recursive: true });
 mkdirSync(path.join(roomDir, "scenes"), { recursive: true });
 mkdirSync(path.join(roomDir, "intent"), { recursive: true });
-const room = { generatedAt: new Date().toISOString(), morph: [], scenes: [], intent: [], conditioning: [], grooves: [] };
+const room = {
+  generatedAt: new Date().toISOString(),
+  morph: [],
+  scenes: [],
+  intent: [],
+  conditioning: [],
+  grooves: [],
+};
 
 for (const entry of packs.presets) {
   const files = {};
@@ -430,7 +440,13 @@ for (const entry of packs.presets) {
     writeFileSync(path.join(roomDir, rel), Buffer.from(b64, "base64"));
     files[pathKind] = rel;
   }
-  room.morph.push({ id: entry.id, label: entry.label, category: entry.category, description: entry.description, files });
+  room.morph.push({
+    id: entry.id,
+    label: entry.label,
+    category: entry.category,
+    description: entry.description,
+    files,
+  });
 }
 for (const scene of packs.scenes) {
   const relB = `scenes/${scene.id}--bypass.wav`;
@@ -488,7 +504,10 @@ for (const groove of packs.grooves ?? []) {
 }
 writeFileSync(path.join(roomDir, "room.json"), JSON.stringify(room, null, 2));
 // Room page: static template copied verbatim — it fetches room.json.
-writeFileSync(path.join(roomDir, "room.html"), readFileSync(path.join(ROOT, "scripts", "listening-room-template.html")));
+writeFileSync(
+  path.join(roomDir, "room.html"),
+  readFileSync(path.join(ROOT, "scripts", "listening-room-template.html")),
+);
 
 const rows = packs.presets
   .map(
@@ -602,7 +621,10 @@ const md = [
   "",
   "| Preset | Cesta | Súbor |",
   "| ------ | ----- | ----- |",
-  ...packs.presets.flatMap((p) => [`| ${p.label} | drums | ${p.id}--drums.wav |`, `| ${p.label} | 808 | ${p.id}--808.wav |`]),
+  ...packs.presets.flatMap((p) => [
+    `| ${p.label} | drums | ${p.id}--drums.wav |`,
+    `| ${p.label} | 808 | ${p.id}--808.wav |`,
+  ]),
 ].join("\n");
 writeFileSync(path.join(OUT, "LISTENING.md"), md);
 

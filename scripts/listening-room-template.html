@@ -48,6 +48,10 @@
   .v-fits:hover { border-color: var(--ok); color: var(--ok); }
   .v-off:hover { border-color: #f87171; color: #f87171; }
   .v-hit:hover { border-color: var(--acc); color: var(--acc); }
+  .lane-refine { background: #161616; border: 1px solid #2a2a2a; border-radius: 6px; padding: 7px 9px; }
+  .lane-refine input[type="text"] { font: inherit; background: #0d0d0d; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 4px 7px; }
+  .dir-chip { font-size: 11px; padding: 2px 7px; }
+  .dir-chip.on { border-color: var(--acc); color: var(--acc); background: rgba(245, 158, 11, 0.08); }
 </style>
 </head>
 <body>
@@ -417,12 +421,63 @@ function buildLanes(lanes) {
       '<button class="v-fits">✓ sedí</button> ' +
       '<button class="v-off">✗ nesedí</button> ' +
       '<button class="v-hit">★ hit</button>' +
+      '<div class="lane-refine" style="display:none;margin-top:6px">' +
+      '<div class="hint" style="margin-bottom:3px">ČO nesedí? (môže byť viac)</div>' +
+      '<label style="margin-right:8px"><input type="checkbox" data-part="drums" /> DRUMY</label>' +
+      '<label style="margin-right:8px"><input type="checkbox" data-part="bass" /> BASA</label>' +
+      '<label style="margin-right:8px"><input type="checkbox" data-part="lead" /> MELODIA</label>' +
+      '<div class="hint" style="margin:3px 0">SMER (voliteľné, pre basu najužitočnejší):</div>' +
+      '<div class="lane-dir">' +
+      ['pridlhé', 'prirýchle', 'pritlmé', 'privysoké', 'husté'].map((dir) => (
+        '<button type="button" class="dir-chip" data-dir="' + dir + '">' + dir + '</button> '
+      )).join("") +
+      '</div>' +
+      '<input class="lane-note" type="text" placeholder="poznámka (voliteľné) — napr. basa má ísť hlbšie" style="width:90%;margin-top:4px" />' +
+      '<div style="margin-top:4px"><button class="refine-send">odoslať detail</button></div>' +
+      '</div>' +
       "</td><td class='lane-sent sent'></td>";
     row.querySelector(".play").addEventListener("click", () => playLane(lane, row));
     const rate = (verdict) => rateLane(lane, row, verdict);
     row.querySelector(".v-fits").addEventListener("click", () => rate("fits"));
-    row.querySelector(".v-off").addEventListener("click", () => rate("off"));
-    row.querySelector(".v-hit").addEventListener("click", () => rate("hit"));
+    row.querySelector(".v-off").addEventListener("click", () => {
+      rate("off");
+      // the refinement only appears where it is useful — a negative verdict
+      const refine = row.querySelector(".lane-refine");
+      refine.style.display = refine.style.display === "none" ? "block" : "block";
+    });
+    row.querySelector(".v-hit").addEventListener("click", () => {
+      rate("hit");
+      const refine = row.querySelector(".lane-refine");
+      refine.style.display = refine.style.display === "none" ? "block" : "block";
+      const note = refine.querySelector(".lane-note");
+      note.placeholder = "čo z neho robí hit? (voliteľné — stane sa referenciou)";
+    });
+    row.querySelector(".refine-send").addEventListener("click", () => {
+      const parts = [...row.querySelectorAll(".lane-refine input[data-part]:checked")].map((c) => c.dataset.part);
+      const dirs = [...row.querySelectorAll(".dir-chip.on")].map((c) => c.dataset.dir);
+      const note = row.querySelector(".lane-note").value.trim();
+      if (parts.length === 0 && !note && dirs.length === 0) return;
+      postVerdict({
+        kind: "lane-detail",
+        laneId: lane.id,
+        pattern: lane.pattern,
+        parts,
+        directions: dirs,
+        note,
+        blind: BLIND,
+        savedAt: Date.now(),
+      })
+        .then(() => {
+          row.querySelector(".lane-sent").textContent += " ✓ detail";
+          row.querySelector(".lane-refine").style.display = "none";
+        })
+        .catch(() => {
+          row.querySelector(".lane-sent").textContent = "✗ server nefunguje";
+        });
+    });
+    row.querySelectorAll(".dir-chip").forEach((chip) => {
+      chip.addEventListener("click", () => chip.classList.toggle("on"));
+    });
     laneRows.push({ lane, row });
     table.append(row);
   }
