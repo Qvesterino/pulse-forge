@@ -1,4 +1,5 @@
 import { decodeAudioData } from "../services/audio-decode";
+import { assetUrl } from "../shared/assetUrls";
 import { applyRoundRobinVariants, type SampleBank } from "./factory";
 
 /**
@@ -184,7 +185,7 @@ export async function loadCuratedLayer(
       if (options.signal?.aborted) return;
       const sample = queue.shift()!;
       try {
-        const response = await doFetch(`/samples/${sample.file}`, { signal: options.signal });
+        const response = await doFetch(assetUrl(`/samples/${sample.file}`), { signal: options.signal });
         if (!response.ok) {
           // Missing file = the slot simply stays synthesized (offline-first
           // installs, seed-less checkouts). Not an error worth reporting.

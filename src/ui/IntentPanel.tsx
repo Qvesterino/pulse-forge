@@ -100,6 +100,7 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
+import { AudiotoolNexusExport } from "./AudiotoolNexusExport";
 
 /**
  * INTENT dock panel — the "hlavný ťahák" (VISION §10): type what you want,
@@ -130,6 +131,11 @@ export function IntentPanel() {
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
+  const [audiotoolExport, setAudiotoolExport] = useState<{
+    candidateIndex: number;
+    pattern: Pattern;
+    sourceDoc: ProjectDocument;
+  } | null>(null);
   const [semanticChip, setSemanticChip] = useState<string | null>(null);
   // Prompt history strip (vibe-code wave 2): reactivity tick over the
   // module-level session history.
@@ -419,6 +425,7 @@ export function IntentPanel() {
     setError(null);
     setStatus(null);
     setBankResult(null);
+    setAudiotoolExport(null);
     setPlayingIndex(null);
     setJustApplied(false);
     stopAudition();
@@ -494,12 +501,24 @@ export function IntentPanel() {
     // that plugins live behind the desktop shell.
     const pluginFinder = parsePluginFinderIntent(text);
     if (pluginFinder) {
-      const desktop = (window as unknown as {
-        kyxDesktop?: { clap?: { scan?: () => Promise<{ status: string; plugins: Array<{ name: string; vendor?: string; id: string }>; scannedDirectories?: string[] }> } };
-      }).kyxDesktop;
+      const desktop = (
+        window as unknown as {
+          kyxDesktop?: {
+            clap?: {
+              scan?: () => Promise<{
+                status: string;
+                plugins: Array<{ name: string; vendor?: string; id: string }>;
+                scannedDirectories?: string[];
+              }>;
+            };
+          };
+        }
+      ).kyxDesktop;
       const scan = desktop?.clap?.scan;
       if (typeof scan !== "function") {
-        setStatus("✓ CLAP pluginy sa skenujú v desktop shelli (Electron) — prehliadač nemá natívny prístup k pluginom.");
+        setStatus(
+          "✓ CLAP pluginy sa skenujú v desktop shelli (Electron) — prehliadač nemá natívny prístup k pluginom.",
+        );
         setBusy(false);
         return;
       }
@@ -509,10 +528,13 @@ export function IntentPanel() {
         if (result.status !== "ok") {
           setError(`CLAP scan zlyhal (${result.status}) — pozri desktop log.`);
         } else if (result.plugins.length === 0) {
-          setStatus(`✓ Žiadne CLAP pluginy v štandardných adresároch (${(result.scannedDirectories ?? []).join(" · ")})`);
+          setStatus(
+            `✓ Žiadne CLAP pluginy v štandardných adresároch (${(result.scannedDirectories ?? []).join(" · ")})`,
+          );
         } else {
           const shown = result.plugins.slice(0, 6).map((p) => `${p.name}${p.vendor ? ` — ${p.vendor}` : ""}`);
-          const more = result.plugins.length > shown.length ? ` · +${result.plugins.length - shown.length} ďalších` : "";
+          const more =
+            result.plugins.length > shown.length ? ` · +${result.plugins.length - shown.length} ďalších` : "";
           setStatus(`✓ ${result.plugins.length} CLAP pluginov: ${shown.join(" · ")}${more}`);
         }
       } catch (err) {
@@ -2616,7 +2638,14 @@ export function IntentPanel() {
                 </button>
                 <span className="intent-candidate-meta">
                   <span className="intent-candidate-index">#{candidates.indexOf(candidate) + 1}</span>
-                  <span className={`intent-candidate-source ${candidate.source}`}>
+                  <span
+                    className={`intent-candidate-source ${candidate.source}`}
+                    title={
+                      candidate.source === "symbolic-prior"
+                        ? "PRIOR — drums came from the symbolic-prior model (semantic/v2/v3 conditioning on your prompt, falling back to the genre+style one-hot). The model chose the grid."
+                        : "TPL — drums came from the groove template, not the model. Happens when the groove is outside the prior's fixed vocabulary and no semantic conditioning is available; the generator never guesses a grid, it falls back safely."
+                    }
+                  >
                     {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
                   </span>
                   {candidate.search && (
@@ -2649,10 +2678,48 @@ export function IntentPanel() {
                 >
                   USE
                 </button>
+                {!window.kyxDesktop?.isDesktop && (
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => {
+                      if (!previewDocRef.current || services.store.getDoc() !== previewDocRef.current) {
+                        setError("Návrh je zastaraný — projekt sa zmenil počas náhľadu. Vygeneruj znova.");
+                        return;
+                      }
+                      setAudiotoolExport({
+                        candidateIndex: candidate.candidateIndex,
+                        pattern: candidate.pattern,
+                        sourceDoc: doc,
+                      });
+                    }}
+                    title="Review and explicitly send this exact candidate to an Audiotool project"
+                  >
+                    AUDIOTOOL
+                  </button>
+                )}
               </div>
             );
           })}
+          <p className="intent-candidate-legend">
+            <span className="intent-candidate-source symbolic-prior">PRIOR</span> bicie z modelu
+            {" · "}
+            <span className="intent-candidate-source template">TPL</span> bicie zo šablóny — groove je mimo slovníka
+            prioru a bez sémantického podmienenia. Generátor nikdy nedohaduje mriežku, bezpečne padá späť.
+          </p>
         </div>
+      )}
+      {audiotoolExport && (
+        <AudiotoolNexusExport
+          key={audiotoolExport.candidateIndex}
+          pattern={audiotoolExport.pattern}
+          tracks={audiotoolExport.sourceDoc.tracks}
+          timeSignature={audiotoolExport.sourceDoc.timeSignature}
+          sourceBpm={audiotoolExport.sourceDoc.bpm}
+          candidateLabel={`#${audiotoolExport.candidateIndex + 1}`}
+          isSourceCurrent={() => services.store.getDoc() === audiotoolExport.sourceDoc}
+          onClose={() => setAudiotoolExport(null)}
+        />
       )}
       {bankResult && candidates && candidates.length > 1 && (
         <ProducerDnaCompare

@@ -39,13 +39,20 @@ if (!existsSync(join(target, "package.json"))) {
 // 2. Build with the mount base. spawnSync passes env verbatim (no shell
 // path mangling), so "/kyx/" survives Windows Git Bash hosts.
 console.log(`[ecosystem:sync] building with base ${MOUNT} …`);
-const build = spawnSync("npx", ["vite", "build"], {
-  cwd: here,
-  shell: process.platform === "win32",
-  stdio: "inherit",
-  env: { ...process.env, STUDIO_APP_BASE: MOUNT },
-});
-if (build.status !== 0) fail("vite build failed");
+const buildEnv = { ...process.env, STUDIO_APP_BASE: MOUNT };
+for (const [label, command, args] of [
+  ["vite build", "npx", ["vite", "build"]],
+  ["Audiotool third-party notices", "node", ["scripts/copy-audiotool-licenses.mjs"]],
+  ["bundle budget check", "node", ["scripts/check-bundle-size.mjs"]],
+]) {
+  const result = spawnSync(command, args, {
+    cwd: here,
+    shell: process.platform === "win32",
+    stdio: "inherit",
+    env: buildEnv,
+  });
+  if (result.status !== 0) fail(`${label} failed`);
+}
 
 // 3. Validate the artifact BEFORE touching the target.
 const indexPath = join(here, "dist", "index.html");
@@ -76,7 +83,13 @@ writeFileSync(
 );
 
 // 6. Post-copy sanity: the mounted entry + the sw must be there.
-for (const required of ["index.html", "sw.js", "manifest.webmanifest"]) {
+for (const required of [
+  "index.html",
+  "sw.js",
+  "manifest.webmanifest",
+  "third-party-licenses/NOTICE.txt",
+  "third-party-licenses/@audiotool__nexus@0.0.19-LICENSE",
+]) {
   if (!existsSync(join(targetDist, required))) fail(`target dist missing ${required}`);
 }
 console.log(

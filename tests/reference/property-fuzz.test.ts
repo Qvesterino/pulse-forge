@@ -27,7 +27,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeReference } from "../../src/reference/analysis/analyzeReference";
 import { PITCH_CLASSES, type ReferenceMap, type ReferenceOptions } from "../../src/reference/types";
-import { FIXTURE_SR, clickTrack, makeMetadata, tonalTrack } from "./_fixtures";
+import { FIXTURE_SR, clickTrack, makeMetadata } from "./_fixtures";
 
 /** Deterministic 32-bit PRNG (mulberry32). Same seed → same stream. */
 function mulberry32(seed: number): () => number {

@@ -172,7 +172,7 @@ model-level.
 
 ---
 
-## Phase 3 — honest parameter surfaces
+## Phase 3 — honest parameter surfaces — ✅ DONE 2026-09-27
 
 ### 3a. EQ legacy aliases
 
@@ -193,6 +193,16 @@ target list.
    `setEffectParam` mapping is untouched.
 3. Pin with a test: alias count stays 7, every alias resolves through
    `eqLegacyMap`, no deprecated id appears in any target list.
+
+**Resolution (3a).** `ParamDef.deprecated/aliasOf` added; the 7 EQ aliases
+marked; `effectTargetParamDefs` excludes them. **Beyond the plan:** schema
+normalization now REMAPS alias targets to canonical ids
+(`remapDeprecatedAliasTargets` + `canonicalizeDeprecatedTarget`) — without
+that, old documents silently LOST their midGain lanes on reload (the lane
+validator drops invalid targets). Pinned by 3 new tests in
+`tests/plugin-functional-audit.test.ts` (F0 suite, incl. a lane-migration
+test); legacy value ranges documented as "default transfers 1:1, canonical
+clamps take over" (lowFreq 400 vs 500, midFreq 4000 vs 2000 are historical).
 
 ### 3b. Instrument below-metric params — per-param verdicts
 
@@ -223,6 +233,25 @@ params when loop off), or **genuinely dead DSP**.
 
 **Size / risk.** M · low risk (read-mostly investigation; DSP fixes are
 per-instrument and individually small).
+**Resolution (3b).** `auditInstrument` now renders note ON 0.05 s / OFF
+0.40 s and measures attack (0.05–0.15), sustain (0.20–0.35) and release
+(0.42–0.70) window energies; a param is wired if steady-state OR window
+metrics respond. **Systemic defect found & fixed:** the voice-manager stop
+callback on 11 synths (analog/bass/sampler/wavetable/fm/keys/pluck/flute/
+organ/acid/vocalchop) cancelled the scheduled release envelope and
+hard-gated at 10 ms — the RELEASE knob was dead on every one of them for
+MIDI note-offs. All stops are release-aware (tau = release/4, node stops at
+release·3 + 0.1 s); regression in browser-checks. Percussive sweeps no
+longer choke their tails with an explicit noteOff (808 decay visible: tail
+0.236 → 0.698 RMS across its range). Wavetable/synth instruments audition
+without a track sample so factory-table modes respond (table had been
+masked by the pluck-derived table). Verdict table:
+`docs/plugin-audit-instrument-params.md` — 146 below-metric params
+classified: routing-only (mod slots), conditional-by-design (sampler decay
+@ sustain 1, loop family, velFlt, spread @ unison 1, texture hold/gate),
+sub-threshold by design (clicks/snap/shimmer/strike), probe-limited (glide
+family, vocalchop chop params at probe pitch, sampler release on one-shot
+samples), metric-limited-with-suite-coverage. Zero unexplained dead.
 
 ---
 

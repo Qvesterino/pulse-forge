@@ -23,6 +23,8 @@ import numpy as np
 import onnx
 from onnx import checker, helper, numpy_helper, TensorProto
 
+from train_symbolic_melodic_lib import SemanticLookup
+
 ROOT = Path(__file__).resolve().parent.parent
 DATASET_PATH = ROOT / "scripts" / "data" / "symbolic-melodic-dataset.json"
 MODELS_DIR = ROOT / "public" / "models"
@@ -214,45 +216,27 @@ def main() -> None:
 
     # --embedding mode: replace genre one-hot (x[0:4]) with 16-dim semantic
     # vector from style-embeddings.json. Input goes from 29 → 41 dims.
-    genre_semantic: dict[str, list[float]] = {}
+    # The lookup is STYLE-AWARE: a dialect group ('dnb.techstep#bass#0') gets
+    # the techstep style vector, a genre group ('dnb#bass#0') the dnb centroid.
+    lookup: SemanticLookup | None = None
     if args.embedding:
-        emb_payload = json.loads(Path(args.embedding).read_text())
-        style_map = emb_payload.get("styles", {})
-        variant_map = emb_payload.get("variants", {})
-        # Average semantic vectors per genre (melodic model is genre-level).
-        # With the v2 embeddings pack, average across ALL description
-        # variants of every style in the genre — centroid-only averaging
-        # collapsed the genre's semantic spread (melodic gate finding).
-        genre_vectors: dict[str, list[float]] = {}
-        genre_counts: dict[str, int] = {}
-        for style_id, vector in style_map.items():
-            genre = style_id.split(".")[0]
-            for vec in [vector] + list(variant_map.get(style_id, [])):
-                if genre not in genre_vectors:
-                    genre_vectors[genre] = list(vec)
-                    genre_counts[genre] = 1
-                else:
-                    for d in range(len(vec)):
-                        genre_vectors[genre][d] += vec[d]
-                    genre_counts[genre] += 1
-        for genre, total in genre_counts.items():
-            for d in range(len(genre_vectors[genre])):
-                genre_vectors[genre][d] /= total
-        genre_semantic = genre_vectors
-        print(f"[train] embedding mode: {len(genre_vectors)} genre semantic vectors")
+        lookup = SemanticLookup(args.embedding)
+        print(
+            f"[train] embedding mode: {len(lookup.style_vectors)} style vectors, "
+            f"{len(lookup.genre_vectors)} genre centroids"
+        )
 
     # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
     # runtime fallback (mirrors the drum prior v2 policy).
-    embedding_mode = bool(genre_semantic)
+    embedding_mode = lookup is not None
     artifact_name = "symbolic-melodic-v2" if embedding_mode else "symbolic-melodic-v1"
     feature_version = "melodic-features-v2" if embedding_mode else "melodic-features.v1"
     prior_version = "melodic-prior.v2" if embedding_mode else "melodic-prior.v1"
 
-    if genre_semantic:
+    if lookup is not None:
         new_rows: list[list[float]] = []
         for i, sample in enumerate(data):
-            genre = sample["group"].split("#")[0]
-            semantic = genre_semantic.get(genre, [0.0] * 16)
+            semantic = lookup.require(str(sample["group"]))
             structural = list(x_all[i][4:])  # skip genre one-hot (4 dims)
             new_rows.append(list(semantic) + structural)
         x_all = np.array(new_rows, dtype=np.float64)
@@ -290,9 +274,12 @@ def main() -> None:
                 if len(row_x) == 41:
                     pass  # already v2
                 elif len(row_x) == 29:
-                    semantic = genre_semantic.get(aug_group.split("#")[0])
-                    if semantic is None:
-                        continue  # genre outside the embedding vocab — drop
+                    # Style-aware: dialect variants ('dnb.techstep#…') resolve to
+                    # their style vector. A miss means the embedding pack is
+                    # stale — fail loudly instead of silently dropping rows
+                    # (that silent drop is exactly how dnb ended up with zero
+                    # augmented coverage in the first audit).
+                    semantic = lookup.require(aug_group)  # type: ignore[union-attr]
                     row_x = list(semantic) + list(row_x[4:])  # strip genre one-hot
                 else:
                     raise SystemExit(
@@ -334,7 +321,7 @@ def main() -> None:
                     # no explicit genre field — the one-hot IS the record).
                     genre_block = list(row_x[0:4])
                     genre_index = genre_block.index(max(genre_block)) if max(genre_block) > 0 else -1
-                    semantic = genre_semantic.get(MELODIC_GENRES[genre_index]) if genre_index >= 0 else None
+                    semantic = lookup.genre_vector(MELODIC_GENRES[genre_index]) if genre_index >= 0 else None  # type: ignore[union-attr]
                     if semantic is None:
                         continue  # undecodable / out-of-vocab genre — drop, don't fail
                     row_x = list(semantic) + list(row_x[4:])  # strip genre one-hot (4 dims)

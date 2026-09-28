@@ -8,27 +8,27 @@
   "durationOutputName": "duration",
   "degreeClasses": 8,
   "durationClasses": 4,
-  "modelHash": "8b78f0446b35169ede414a921d370563fb0845eeae97b8f3223883e8ab146c80",
+  "modelHash": "c00cfb972990b61edc3eaa5bcb2bf88f5b07f9981bc2e29e509353d003ad49e9",
   "hidden": [
     64,
     32
   ],
   "report": {
-    "datasetVersion": "symbolic-melodic-ds.v2",
+    "datasetVersion": "symbolic-melodic-ds.v3",
     "featureVersion": "melodic-features-v2",
     "featureCount": 41,
     "mode": "embedding-v2",
-    "augmentedSamples": 2946,
+    "augmentedSamples": 11153,
     "hidden": [
       64,
       32
     ],
     "epochs": 800,
-    "samples": 239,
-    "valDegreeAcc": 0.5517,
-    "trainDegreeAcc": 0.802,
-    "valDurationAcc": 0.5517,
-    "trainDurationAcc": 0.9002,
+    "samples": 861,
+    "valDegreeAcc": 0.5946,
+    "trainDegreeAcc": 0.7208,
+    "valDurationAcc": 0.5766,
+    "trainDurationAcc": 0.8349,
     "weightPower": 0.5
   },
   "kind": "melodic-v2",

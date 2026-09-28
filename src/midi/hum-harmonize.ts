@@ -3,7 +3,7 @@ import { uid } from "../shared/ids";
 import { snapshot } from "../commands/commands";
 import { trackPitch } from "../audio-workers/pitch-tracker";
 import { framesToNotes } from "./hum-to-notes";
-import { planVocalHarmonyPair } from "../vocal/harmony";
+import { planVocalHarmonyPair, type HarmonyNote } from "../vocal/harmony";
 
 /**
  * HUM & HARMONIZE (vocal lane) — the singer hums, the producer delivers the
@@ -50,7 +50,7 @@ export function buildHumHarmonyNotes(
     ...(options.clarityGate !== undefined ? { clarityGate: options.clarityGate } : {}),
   });
   const pair = planVocalHarmonyPair(melody, options.key);
-  const withIds = (notes: readonly { pitch: number; start: number; duration: number }, velocity: number) =>
+  const withIds = (notes: readonly HarmonyNote[], velocity: number) =>
     notes.map((note) => ({ ...note, velocity, id: uid("note") }) as NoteEvent);
   const backing = [...withIds(pair.above, BACKING_VELOCITY.above), ...withIds(pair.below, BACKING_VELOCITY.below)].sort(
     (a, b) => a.start - b.start || a.pitch - b.pitch,

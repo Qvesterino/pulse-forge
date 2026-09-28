@@ -7,7 +7,7 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/check-bundle-size.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/copy-audiotool-licenses.mjs && node scripts/check-bundle-size.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "test": "vitest run",
@@ -104,7 +104,6 @@
     "prompts:build": "node scripts/prompts-sync.mjs --build"
   },
   "dependencies": {
-    "@audiotool/nexus": "0.0.19",
     "@breezystack/lamejs": "^1.2.7",
     "@huggingface/transformers": "^4.3.0",
     "electron-updater": "^6.8.9",
@@ -116,6 +115,7 @@
     "yjs": "^13.6.32"
   },
   "devDependencies": {
+    "@audiotool/nexus": "0.0.19",
     "@remotion/cli": "^4.0.525",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",

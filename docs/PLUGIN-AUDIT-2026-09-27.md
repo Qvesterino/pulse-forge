@@ -1,6 +1,6 @@
 # Internal Plugins — Integration, Functionality & Parameter Range Audit
 
-**Run window:** 2026-09-27T15:13:04.397Z → 2026-09-27T17:19:23.530Z (real Chromium, offline renders at 44.1 kHz)
+**Run window:** 2026-09-27T15:13:04.397Z → 2026-09-27T20:13:55.456Z (real Chromium, offline renders at 44.1 kHz)
 
 ## Scope
 
@@ -77,28 +77,28 @@
 
 | Instrument | Loads / Sounds | Param Extremes Finite | Params Wired | Known Issues |
 | --- | --- | --- | --- | --- |
-| Sampler (`sampler`) | PASS | PASS | 11/28 | below-metric at extremes (siblings at defaults): decay, release, pitchDecayT, resonance, keytrack, velFlt, loop, loopXfade, loopStart, loopEnd, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
-| Analog Synth (`analog`) | PASS | PASS | 21/34 | below-metric at extremes (siblings at defaults): filterEnv, spread, lfoRate, lfoSync, lfoDepth, aShape, dShape, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
+| Analog Synth (`analog`) | PASS | PASS | 21/34 | below-metric at extremes (siblings at defaults): filterEnv, spread, lfoRate, lfoSync, lfoDepth, aShape, rShape, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
 | Bass Synth (`bass`) | PASS | PASS | 16/24 | below-metric at extremes (siblings at defaults): glide, spread, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| 808 Synth (`808`) | PASS | PASS | 9/18 | below-metric at extremes (siblings at defaults): click, glide, mono, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Texture Synth (`texture`) | PASS | PASS | 14/23 | below-metric at extremes (siblings at defaults): space, chaos, diffuse, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Wavetable Synth (`wavetable`) | PASS | PASS | 10/23 | below-metric at extremes (siblings at defaults): table, morph, morphRate, morphDepth, spread, keytrack, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
-| Granular Synth (`granular`) | PASS | PASS | 14/15 | below-metric at extremes (siblings at defaults): release |
 | Keys (`keys`) | PASS | PASS | 16/26 | below-metric at extremes (siblings at defaults): spread, lfoRate, lfoSync, lfoDepth, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
 | Organ (`organ`) | PASS | PASS | 10/12 | below-metric at extremes (siblings at defaults): click, glide |
 | Strings (`strings`) | PASS | PASS | 7/10 | below-metric at extremes (siblings at defaults): vibrato, vibRate, vibDelay |
 | Bell (`bell`) | PASS | PASS | 5/7 | below-metric at extremes (siblings at defaults): shimmer, strike |
 | Reese (`reese`) | PASS | PASS | 7/10 | below-metric at extremes (siblings at defaults): movement, moveRate, glide |
-| Clavinet (`clav`) | PASS | PASS | 5/8 | below-metric at extremes (siblings at defaults): click, cutoff, resonance |
 | Acid 303 (`acid`) | PASS | PASS | 7/9 | below-metric at extremes (siblings at defaults): envMod, glide |
 | Synth Brass (`brass`) | PASS | PASS | 6/9 | below-metric at extremes (siblings at defaults): bite, sweep, sweepTime |
 | FM (`fm`) | PASS | PASS | 12/13 | below-metric at extremes (siblings at defaults): fbDecay |
 | Pluck Synth (`pluck`) | PASS | PASS | 12/18 | below-metric at extremes (siblings at defaults): modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
 | Flute (`flute`) | PASS | PASS | 9/15 | below-metric at extremes (siblings at defaults): breath, breathTone, vibrato, vibRate, vibDelay, glide |
+| 808 Synth (`808`) | PASS | PASS | 9/18 | below-metric at extremes (siblings at defaults): click, glide, mono, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
 | Log Drum (`logdrum`) | PASS | PASS | 10/17 | below-metric at extremes (siblings at defaults): glide, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Spectral Pad (`spectral`) | PASS | PASS | 12/22 | below-metric at extremes (siblings at defaults): skew, resonance, motionRate, motionSync, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Vocal Chop (`vocalchop`) | PASS | PASS | 9/20 | below-metric at extremes (siblings at defaults): sharp, cons, morph, release, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
 | Drum Synth (`drumsynth`) | PASS | PASS | 7/8 | below-metric at extremes (siblings at defaults): snap |
+| Sampler (`sampler`) | PASS | PASS | 12/28 | below-metric at extremes (siblings at defaults): decay, pitchDecayT, resonance, keytrack, velFlt, loop, loopXfade, loopStart, loopEnd, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
+| Texture Synth (`texture`) | PASS | PASS | 10/23 | below-metric at extremes (siblings at defaults): space, chaos, hold, gate, release, diffuse, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
+| Wavetable Synth (`wavetable`) | PASS | PASS | 13/23 | below-metric at extremes (siblings at defaults): morphRate, morphDepth, spread, keytrack, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
+| Granular Synth (`granular`) | PASS | PASS | 15/15 | — |
+| Clavinet (`clav`) | FAIL | PASS | 0/9 | below-metric at extremes (siblings at defaults): pick, pickupType, damp, click, growl, cutoff, resonance, release, level |
+| Spectral Pad (`spectral`) | FAIL | PASS | 10/22 | below-metric at extremes (siblings at defaults): profile, skew, release, level, motionRate, motionSync, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
+| Vocal Chop (`vocalchop`) | PASS | PASS | 10/20 | below-metric at extremes (siblings at defaults): shift, sharp, morph, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
 
 ## Interaction block
 
@@ -113,28 +113,27 @@
 ## Findings & repairs
 
 Per-plugin notes are listed in the matrix above; root causes and repairs are recorded in the audit summary below.
-- Instrument `sampler`: inert decay, inert release, inert pitchDecayT, inert resonance, inert keytrack, inert velFlt, inert loop, inert loopXfade, inert loopStart, inert loopEnd, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
-- Instrument `analog`: inert filterEnv, inert spread, inert lfoRate, inert lfoSync, inert lfoDepth, inert aShape, inert dShape, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
+- Instrument `analog`: inert filterEnv, inert spread, inert lfoRate, inert lfoSync, inert lfoDepth, inert aShape, inert rShape, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `bass`: inert glide, inert spread, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
-- Instrument `808`: inert click, inert glide, inert mono, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
-- Instrument `texture`: inert space, inert chaos, inert diffuse, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
-- Instrument `wavetable`: inert table, inert morph, inert morphRate, inert morphDepth, inert spread, inert keytrack, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
-- Instrument `granular`: inert release
 - Instrument `keys`: inert spread, inert lfoRate, inert lfoSync, inert lfoDepth, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `organ`: inert click, inert glide
 - Instrument `strings`: inert vibrato, inert vibRate, inert vibDelay
 - Instrument `bell`: inert shimmer, inert strike
 - Instrument `reese`: inert movement, inert moveRate, inert glide
-- Instrument `clav`: inert click, inert cutoff, inert resonance
 - Instrument `acid`: inert envMod, inert glide
 - Instrument `brass`: inert bite, inert sweep, inert sweepTime
 - Instrument `fm`: inert fbDecay
 - Instrument `pluck`: inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `flute`: inert breath, inert breathTone, inert vibrato, inert vibRate, inert vibDelay, inert glide
+- Instrument `808`: inert click, inert glide, inert mono, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `logdrum`: inert glide, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
-- Instrument `spectral`: inert skew, inert resonance, inert motionRate, inert motionSync, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
-- Instrument `vocalchop`: inert sharp, inert cons, inert morph, inert release, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
 - Instrument `drumsynth`: inert snap
+- Instrument `sampler`: inert decay, inert pitchDecayT, inert resonance, inert keytrack, inert velFlt, inert loop, inert loopXfade, inert loopStart, inert loopEnd, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
+- Instrument `texture`: inert space, inert chaos, inert hold, inert gate, inert release, inert diffuse, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
+- Instrument `wavetable`: inert morphRate, inert morphDepth, inert spread, inert keytrack, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
+- Instrument `clav`: inert pick, inert pickupType, inert damp, inert click, inert growl, inert cutoff, inert resonance, inert release, inert level
+- Instrument `spectral`: inert profile, inert skew, inert release, inert level, inert motionRate, inert motionSync, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
+- Instrument `vocalchop`: inert shift, inert sharp, inert morph, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
 
 ## Repairs shipped with this audit
 

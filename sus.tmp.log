@@ -1,0 +1,34 @@
+{
+ "vocalchop_default": {
+  "rms": 0,
+  "centroid": 0
+ },
+ "vocalchop_shift12": {
+  "rms": 0,
+  "centroid": 0
+ },
+ "wavetable_default": {
+  "rms": 0.19093295122104717,
+  "centroid": 15447
+ },
+ "wavetable_morph1": {
+  "rms": 0.18705564320290827,
+  "centroid": 15438
+ },
+ "wavetable_table3": {
+  "rms": 0.14052316056537656,
+  "centroid": 15437
+ },
+ "clav_default": {
+  "rms": 0,
+  "centroid": 0
+ },
+ "clav_cutoff16000": {
+  "rms": 0,
+  "centroid": 0
+ },
+ "texture_relMax": {
+  "rms": 0.02755618701566566,
+  "centroid": 15765
+ }
+}

@@ -17,9 +17,9 @@
  * Run: npx vite-node scripts/generate-augmented-data.mts
  * Output: scripts/data/augmented-melodic.json + augmented-drum.json
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
-import { MELODIC_BY_GENRE } from "../src/ai/grooves/melodic-data";
+import { MELODIC_BY_GENRE, MELODIC_BY_STYLE } from "../src/ai/grooves/melodic-data";
 import { GROOVE_LIBRARY } from "../src/ai/grooves/index";
 import { PROGRESSIONS_BY_GENRE, expandProgression } from "../src/ai/harmony";
 import {
@@ -43,6 +43,36 @@ import type { GrooveData } from "../src/ai/types";
 
 const OUT_DIR = path.join(process.cwd(), "scripts", "data");
 mkdirSync(OUT_DIR, { recursive: true });
+
+/**
+ * Windows can return a transient UNKNOWN/EPERM from writeFileSync when an
+ * indexer, antivirus or a parallel process briefly holds the target — most
+ * likely on the 260 MB drum dataset. Write to a sibling temp file and rename
+ * over the target (rename is atomic on the same volume), retrying with backoff
+ * so a transient lock cannot kill a regeneration run.
+ */
+async function writeDatasetWithRetry(fileName: string, payload: unknown, attempts = 6): Promise<void> {
+  const outPath = path.join(OUT_DIR, fileName);
+  const tempPath = `${outPath}.tmp`;
+  const body = JSON.stringify(payload);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      writeFileSync(tempPath, body);
+      renameSync(tempPath, outPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      try {
+        rmSync(tempPath, { force: true });
+      } catch {
+        // temp cleanup is best-effort; the retry overwrites it anyway
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+  throw new Error(`[augment] failed to write ${outPath} after ${attempts} attempts: ${String(lastError)}`);
+}
 
 /** Deterministic PRNG (mulberry32). */
 function mulberry32(seed: number): () => number {
@@ -165,7 +195,8 @@ function walkSequence(
     samples.push({
       x: row,
       degree: note.degree < 0 ? 0 : Math.min(7, note.degree + 1),
-      duration: MELODIC_DURATION_VALUES.indexOf(note.duration) >= 0 ? MELODIC_DURATION_VALUES.indexOf(note.duration) : 1,
+      duration:
+        MELODIC_DURATION_VALUES.indexOf(note.duration) >= 0 ? MELODIC_DURATION_VALUES.indexOf(note.duration) : 1,
       group,
     });
     cumulative += note.duration;
@@ -178,7 +209,16 @@ function generateAugmentedMelodic(): MelodicSample[] {
   const samples: MelodicSample[] = [];
   const AUGMENT_PER_ORIGINAL = 15; // ~15 variations per original sequence
 
-  for (const [genre, patterns] of Object.entries(MELODIC_BY_GENRE)) {
+  // Genre-level references AND per-style dialects (dnb.techstep, house.amapiano,
+  // …). The dialect pass is what gives a dnb.techstep request augmented coverage
+  // in the techstep region instead of only the generic dnb one; without it the
+  // training signal for a sub-genre stayed at library size (6-10 rows).
+  const collections: [string, (typeof MELODIC_BY_GENRE)["house"]][] = [
+    ...Object.entries(MELODIC_BY_GENRE),
+    ...Object.entries(MELODIC_BY_STYLE),
+  ];
+
+  for (const [genre, patterns] of collections) {
     for (const pattern of patterns) {
       const role = pattern.role;
       for (const [seqIdx, seq] of pattern.sequences.entries()) {
@@ -191,20 +231,27 @@ function generateAugmentedMelodic(): MelodicSample[] {
           const transformType = Math.floor(rand() * 7);
 
           switch (transformType) {
-            case 0: { // transpose ±1-3
+            case 0: {
+              // transpose ±1-3
               const offset = Math.floor(rand() * 5) - 2;
               if (offset !== 0) variant = transpose(variant, offset);
               break;
             }
-            case 1: variant = swapDurations(variant, rand); break;
-            case 2: variant = substituteDegree(variant, rand); break;
+            case 1:
+              variant = swapDurations(variant, rand);
+              break;
+            case 2:
+              variant = substituteDegree(variant, rand);
+              break;
             case 3: {
               // Modal rotation ±1/±2 (QA-2: replaces octave displacement).
               const offsets = [1, -1, 2, -2];
               variant = rotateDegrees(variant, offsets[Math.floor(rand() * offsets.length)]);
               break;
             }
-            case 4: variant = insertPassingTones(variant, rand); break;
+            case 4:
+              variant = insertPassingTones(variant, rand);
+              break;
             case 5: {
               // Fragment recombination with another sequence from same role+genre
               const others = pattern.sequences.filter((_, i) => i !== seqIdx);
@@ -264,9 +311,7 @@ function generateProgressionSynth(): MelodicSample[] {
   // every later genre) from progression augmentation — the audit found dnb at
   // 0 augmented rows for exactly this reason. Anything with progressions and
   // melodic references gets synth coverage automatically now.
-  const genres = Object.keys(PROGRESSIONS_BY_GENRE).filter(
-    (genre) => (MELODIC_BY_GENRE[genre]?.length ?? 0) > 0,
-  );
+  const genres = Object.keys(PROGRESSIONS_BY_GENRE).filter((genre) => (MELODIC_BY_GENRE[genre]?.length ?? 0) > 0);
   const roles = ["bass", "chord", "lead"];
   for (const genre of genres) {
     const progressions = PROGRESSIONS_BY_GENRE[genre] ?? [];
@@ -301,18 +346,15 @@ function generateProgressionSynth(): MelodicSample[] {
 const melodicSamples = generateAugmentedMelodic();
 const synthSamples = generateProgressionSynth();
 for (const sample of synthSamples) melodicSamples.push({ ...sample, source: "synth" });
-writeFileSync(
-  path.join(OUT_DIR, "augmented-melodic-dataset.json"),
-  JSON.stringify({
-    datasetVersion: "melodic-augmented-v1",
-    featureVersion: MELODIC_FEATURES_VERSION,
-    featureCount: MELODIC_FEATURE_COUNT,
-    durationValues: MELODIC_DURATION_VALUES,
-    samples: melodicSamples.length,
-    groups: new Set(melodicSamples.map((s) => s.group)).size,
-    data: melodicSamples,
-  }),
-);
+await writeDatasetWithRetry("augmented-melodic-dataset.json", {
+  datasetVersion: "melodic-augmented-v1",
+  featureVersion: MELODIC_FEATURES_VERSION,
+  featureCount: MELODIC_FEATURE_COUNT,
+  durationValues: MELODIC_DURATION_VALUES,
+  samples: melodicSamples.length,
+  groups: new Set(melodicSamples.map((s) => s.group)).size,
+  data: melodicSamples,
+});
 console.log(
   `[augment-melodic] ${melodicSamples.length} samples (${synthSamples.length} progression-synth across ${
     new Set(synthSamples.map((s) => s.group)).size
@@ -377,7 +419,10 @@ function generateAugmentedDrum(): DrumSample[] {
   const rand = mulberry32(123);
   const samples: DrumSample[] = [];
   const transforms: Array<"original" | "velocity" | "ghost" | "displace"> = [
-    "original", "velocity", "ghost", "displace",
+    "original",
+    "velocity",
+    "ghost",
+    "displace",
   ];
   let variantIdx = 0;
 
@@ -393,16 +438,13 @@ function generateAugmentedDrum(): DrumSample[] {
 }
 
 const drumSamples = generateAugmentedDrum();
-writeFileSync(
-  path.join(OUT_DIR, "augmented-drum-dataset.json"),
-  JSON.stringify({
-    datasetVersion: "drum-augmented-v1",
-    featureVersion: PRIOR_FEATURES_VERSION,
-    featureCount: PRIOR_FEATURE_COUNT,
-    samples: drumSamples.length,
-    data: drumSamples,
-  }),
-);
+await writeDatasetWithRetry("augmented-drum-dataset.json", {
+  datasetVersion: "drum-augmented-v1",
+  featureVersion: PRIOR_FEATURES_VERSION,
+  featureCount: PRIOR_FEATURE_COUNT,
+  samples: drumSamples.length,
+  data: drumSamples,
+});
 console.log(`[augment-drum] ${drumSamples.length} samples`);
 
 // ── Summary ────────────────────────────────────────────────────────────────

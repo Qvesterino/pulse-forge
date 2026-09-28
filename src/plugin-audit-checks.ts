@@ -133,6 +133,8 @@ export interface InstrumentAudit {
   deadParams: string[];
   wiredParams: number;
   totalParams: number;
+  /** Phase 3b: params wired only into transient/tail windows (not steady RMS). */
+  transientWired: string[];
 }
 
 export interface InteractionAudit {
@@ -692,6 +694,28 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   const deadParams: string[] = [];
   let wiredParams = 0;
 
+  /** Instruments whose DSP consumes the track sample — audition with one. */
+  const SAMPLE_DRIVEN_INSTRUMENTS = new Set(["sampler", "granular", "vocalchop", "clav", "texture"]);
+
+  // Window energies (Phase 3b): steady-state RMS is blind to envelope and
+  // transient shaping (decay/release/click/breath/vibrato …). Three windows
+  // around a note ON at 0.05 s (0.35 s hold — short, so even one-shot
+  // samples are still sounding at note-off) and note OFF at 0.40 s:
+  //   attack  0.05–0.15 s  (click/transient/attack shaping)
+  //   sustain 0.20–0.35 s  (steady-state: the old metric)
+  //   release 0.42–0.70 s  (decay/release curve right after note-off)
+  const windowsOf = (buffer: AudioBuffer) => {
+    const win = (fromSec: number, toSec: number) => {
+      const d = buffer.getChannelData(0);
+      const from = Math.floor(fromSec * SR);
+      const to = Math.min(d.length, Math.floor(toSec * SR));
+      let s = 0;
+      for (let i = from; i < to; i++) s += d[i] * d[i];
+      return Math.sqrt(s / Math.max(1, to - from));
+    };
+    return { attack: win(0.05, 0.15), sustain: win(0.2, 0.35), tail: win(0.42, 0.7) };
+  };
+
   const render = async (params: Record<string, number>): Promise<AudioBuffer> => {
     const ctx = new OfflineAudioContext(2, SR * 2, SR);
     await loadAllWorklets(ctx);
@@ -704,14 +728,21 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
       pan: 0,
       mute: false,
       solo: false,
-      sampleId: "factory.tonal.pluck",
+      // Sample-driven instruments audition with a real sample; synth
+      // instruments audition WITHOUT one so sample-derived state (wavetable
+      // table extraction) cannot mask the synth's own parameters.
+      sampleId: SAMPLE_DRIVEN_INSTRUMENTS.has(kind) ? "factory.tonal.pluck" : null,
       params,
       effects: [],
       sends: {},
     };
     const rt = def.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
     rt.output.connect(ctx.destination);
-    rt.noteOn(45, 0.9, 0.03, 0.5);
+    rt.noteOn(45, 0.9, 0.05, 0.35);
+    // Percussive one-shots (808/logdrum/drumsynth family) decay naturally —
+    // an explicit noteOff would choke their decay tail through the percussive
+    // stop gate and hide every envelope/tail parameter.
+    if (!["808", "logdrum", "drumsynth", "bass808"].includes(kind)) rt.noteOff?.(45, 0.4);
     const buffer = await ctx.startRendering();
     rt.dispose();
     return buffer;
@@ -720,10 +751,13 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
   const defaults = defaultInstrumentParams(kind);
   const baseBuffer = await render(defaults);
   const base = metricsOf(baseBuffer);
+  const baseWindows = windowsOf(baseBuffer);
   const defaultAudible = base.peak > 0.01 && finiteEverywhere(baseBuffer);
+  const transientWired: string[] = [];
 
   for (const p of paramsDef) {
     const deltas: number[] = [];
+    let windowWired = false;
     for (const value of [p.min, p.max]) {
       let rendered: AudioBuffer;
       try {
@@ -737,9 +771,18 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
         continue;
       }
       deltas.push(deltaVs(base, metricsOf(rendered)).delta);
+      const windows = windowsOf(rendered);
+      const attackDelta = Math.abs(windows.attack - baseWindows.attack) / Math.max(baseWindows.attack, 1e-6);
+      const tailDelta = Math.abs(windows.tail - baseWindows.tail) / Math.max(baseWindows.tail, 1e-6);
+      if (attackDelta > RESPONSIVE_EPS || tailDelta > RESPONSIVE_EPS) windowWired = true;
     }
     if (deltas.length && Math.max(...deltas) > RESPONSIVE_EPS) wiredParams++;
-    else deadParams.push(p.id);
+    else if (windowWired) {
+      // Steady-state metrics missed it, but the attack/tail windows respond —
+      // envelope/transient shaping, wired.
+      wiredParams++;
+      transientWired.push(p.id);
+    } else deadParams.push(p.id);
   }
 
   return {
@@ -751,6 +794,7 @@ async function auditInstrument(kind: (typeof INSTRUMENT_ORDER)[number], bank: Sa
     deadParams,
     wiredParams,
     totalParams: paramsDef.length,
+    transientWired,
   };
 }
 

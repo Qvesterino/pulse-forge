@@ -68,7 +68,9 @@ describe("detroit promotion (the machine-funk lineage)", () => {
     const electroRows = Object.values(electro.patterns[0]).filter((r) => r.some((v) => v > 0)).length;
     expect(minimalRows).toBeLessThan(electroRows);
     // Belleville carries the tom talk (the machine-funk signature).
-    const hasTom = belleville.patterns.some((p) => (p[12] ?? []).some((v) => v > 0) || (p[13] ?? []).some((v) => v > 0));
+    const hasTom = belleville.patterns.some(
+      (p) => (p[12] ?? []).some((v) => v > 0) || (p[13] ?? []).some((v) => v > 0),
+    );
     expect(hasTom, "belleville must carry the tom talk").toBe(true);
   });
 

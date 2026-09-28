@@ -19,7 +19,7 @@
  * below; they must stay small enough to load during normal studio startup.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // 1010: pattern-recorder / topbar wave (2bd7349) pushed the measured entry to
@@ -85,6 +85,11 @@ const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-
 // Keep its exported chunk out of the DAW graph while enforcing a separate cap.
 const OPTIONAL_CODEC_BUDGET_KB = 170;
 const OPTIONAL_CODEC_PREFIXES = ["mp3-"];
+// Nexus 0.0.19 is a third-party integration fetched only after an explicit
+// Audiotool action. Its measured minified runtime is ~703 KB; isolate it from
+// the DAW cap but hold the opt-in payload to a narrow 750 KB ceiling.
+const OPTIONAL_NEXUS_BUDGET_KB = 750;
+const OPTIONAL_NEXUS_PREFIXES = ["audiotool-nexus-"];
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped
 // stock EQ worklet pushed the measured size to 144 KB. The core bundle stays
@@ -108,23 +113,40 @@ const LANDING_FORBIDDEN = ["transformers.web-", "App-"];
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 
 const html = readFileSync(join(dist, "index.html"), "utf-8");
-const entryMatch = /<script[^>]*src="(\/assets\/[^"]+\.js)"/.exec(html);
-if (!entryMatch) {
+// Vite prefixes assets with the configured base (for example /kyx/assets/)
+// when the app is deployed beneath a host site. The physical files remain in
+// dist/assets, so use the generated asset filename and reject path escapes.
+const entryMatch = /<script[^>]*src="(\/[^"]+\.js)"/.exec(html);
+const entryPath = entryMatch?.[1];
+const entryAssetMatch = entryPath?.match(/(?:^|\/)assets\/([^/]+\.js)$/);
+const entryFile = entryAssetMatch ? resolve(dist, "assets", entryAssetMatch[1]) : null;
+const entryRelative = entryFile ? relative(dist, entryFile) : "";
+if (
+  !entryFile ||
+  !entryRelative ||
+  entryRelative === ".." ||
+  entryRelative.startsWith(".." + sep) ||
+  entryRelative.startsWith(sep)
+) {
   console.error("[size-budget] could not find the entry <script> in dist/index.html");
   process.exit(1);
 }
-const entryFile = join(dist, entryMatch[1].replace(/^\//, ""));
 
 const entryKb = statSync(entryFile).size / 1024;
 let totalKb = 0;
 let optionalAiRuntimeKb = 0;
 let optionalCodecKb = 0;
+let optionalNexusKb = 0;
+const optionalNexusFiles = [];
 for (const file of readdirSync(join(dist, "assets"))) {
   if (!file.endsWith(".js")) continue;
   const sizeKb = statSync(join(dist, "assets", file)).size / 1024;
   if (OPTIONAL_AI_RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalAiRuntimeKb += sizeKb;
   else if (OPTIONAL_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalCodecKb += sizeKb;
-  else totalKb += sizeKb;
+  else if (OPTIONAL_NEXUS_PREFIXES.some((prefix) => file.startsWith(prefix))) {
+    optionalNexusKb += sizeKb;
+    optionalNexusFiles.push(file);
+  } else totalKb += sizeKb;
 }
 
 console.log(`[size-budget] entry: ${entryKb.toFixed(0)} KB (budget ${ENTRY_BUDGET_KB})`);
@@ -133,7 +155,12 @@ console.log(
   `[size-budget] optional on-demand runtimes: ${optionalAiRuntimeKb.toFixed(0)} KB (budget ${OPTIONAL_AI_RUNTIME_BUDGET_KB})`,
 );
 console.log(`[size-budget] optional codecs: ${optionalCodecKb.toFixed(0)} KB (budget ${OPTIONAL_CODEC_BUDGET_KB})`);
-console.log(`[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb).toFixed(0)} KB`);
+console.log(
+  `[size-budget] optional Audiotool Nexus: ${optionalNexusKb.toFixed(0)} KB (budget ${OPTIONAL_NEXUS_BUDGET_KB})`,
+);
+console.log(
+  `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb + optionalNexusKb).toFixed(0)} KB`,
+);
 
 let coreWorkletKb = 0;
 for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
@@ -168,6 +195,53 @@ if (optionalCodecKb > OPTIONAL_CODEC_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — optional codecs over budget: ${optionalCodecKb.toFixed(0)} > ${OPTIONAL_CODEC_BUDGET_KB} KB.`,
   );
+  failed = true;
+}
+if (optionalNexusKb > OPTIONAL_NEXUS_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — optional Audiotool Nexus chunks over budget: ${optionalNexusKb.toFixed(0)} > ${OPTIONAL_NEXUS_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+
+// Ensure the opt-in SDK is not pulled into the initial static import graph or
+// the service-worker precache (which would download it before user action).
+const assetFiles = readdirSync(join(dist, "assets")).filter((file) => file.endsWith(".js"));
+const staticDeps = (file) => {
+  const prologue = readFileSync(join(dist, "assets", file), "utf8").slice(0, 8000);
+  const out = [];
+  for (const match of prologue.matchAll(/from"\.\/([^"]+)"|import"\.\/([^"]+)"/g)) {
+    out.push(match[1] ?? match[2]);
+  }
+  return out;
+};
+const initialEntry = entryMatch[1].split("/").pop();
+const initialSeen = new Set();
+const initialQueue = initialEntry ? [initialEntry] : [];
+while (initialQueue.length > 0) {
+  const file = initialQueue.shift();
+  if (!file || initialSeen.has(file)) continue;
+  initialSeen.add(file);
+  for (const dep of staticDeps(file)) {
+    if (assetFiles.includes(dep) && !initialSeen.has(dep)) initialQueue.push(dep);
+  }
+}
+const eagerlyLoadedNexus = optionalNexusFiles.filter((file) => initialSeen.has(file));
+if (eagerlyLoadedNexus.length > 0) {
+  console.error(
+    `[size-budget] FAIL — optional Nexus SDK is statically reachable at boot: ${eagerlyLoadedNexus.join(", ")}`,
+  );
+  failed = true;
+}
+const serviceWorker = readFileSync(join(dist, "sw.js"), "utf8");
+const precachedNexus = optionalNexusFiles.filter((file) => serviceWorker.includes(file));
+if (precachedNexus.length > 0) {
+  console.error(`[size-budget] FAIL — optional Nexus SDK is in the PWA precache: ${precachedNexus.join(", ")}`);
+  failed = true;
+}
+const nexusRuntime = optionalNexusFiles.map((file) => readFileSync(join(dist, "assets", file), "utf8")).join("\n");
+if (/undici|connect-node/i.test(nexusRuntime)) {
+  console.error("[size-budget] FAIL — Node-only Nexus transport code entered the browser bundle.");
   failed = true;
 }
 if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {

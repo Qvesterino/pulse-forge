@@ -138,7 +138,13 @@ export function effectTargetParamDefs(effect: EffectInstance): TargetParamDef[] 
     out.push(def);
   };
 
-  for (const def of EFFECT_META[effect.type].params) push(fromRackDef(def));
+  // Deprecated legacy aliases stay command-compatible (old documents) but
+  // must not appear as automation/modulation targets — the canonical id is
+  // the one the runtime consumes.
+  for (const def of EFFECT_META[effect.type].params) {
+    if (def.deprecated) continue;
+    push(fromRackDef(def));
+  }
 
   if (effect.type === "ultina") {
     for (const def of ALL_PARAMS) {
@@ -177,6 +183,27 @@ export function targetParamDef(doc: ProjectDocument, target: AutomationTarget): 
   const effect = owner.effects.find((fx) => fx.id === target.fxId);
   if (!effect) return null;
   return effectTargetParamDefs(effect).find((def) => def.id === target.paramId) ?? null;
+}
+
+/**
+ * Rewrite a target whose paramId names a deprecated legacy alias to the
+ * canonical id (e.g. eq.midGain → eq.lowMidGain). Old documents keep their
+ * automation lanes/macros/MIDI maps after the alias stops being a valid
+ * target; the alias's value transfers 1:1 because commands already remapped
+ * writes through the same pair. Non-alias targets pass through untouched.
+ */
+export function canonicalizeDeprecatedTarget(
+  doc: ProjectDocument,
+  target: AutomationTarget,
+): AutomationTarget {
+  if (target.kind !== "fxParam" || !target.fxId || !target.paramId) return target;
+  const effect = targetEffectsOf(doc, target.trackId).find((fx) => fx.id === target.fxId);
+  if (!effect) return target;
+  const meta = EFFECT_META[effect.type];
+  if (!meta) return target;
+  const alias = meta.params.find((p) => p.id === target.paramId);
+  if (!alias?.deprecated || !alias.aliasOf) return target;
+  return { ...target, paramId: alias.aliasOf };
 }
 
 /** Strict target validation shared by commands, schema normalization and UI. */

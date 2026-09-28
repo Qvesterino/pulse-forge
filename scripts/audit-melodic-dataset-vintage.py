@@ -30,20 +30,22 @@ def describe(label: str, rows: list[dict]) -> None:
 
 
 def main() -> None:
-    base = json.loads(DATASET.read_text())["data"]
+    payload = json.loads(DATASET.read_text())
+    base = payload["data"]
     aug = json.loads(AUGMENTED.read_text())["data"]
+    dataset_version = payload.get("datasetVersion", "unknown")
 
     print("=" * 78)
     print("DATASET COMPOSITION (why old artifacts score higher)")
     print("=" * 78)
-    describe("current base (ds.v2)", base)
+    describe(f"current base ({dataset_version})", base)
     describe("current augmented", aug)
 
     dnb_base = [r for r in base if str(r["group"]).startswith("dnb")]
     dnb_aug = [r for r in aug if str(r["group"]).startswith("dnb")]
     print()
-    print(f"dnb base rows : {len(dnb_base)}  (groups: {sorted(set(r['group'] for r in dnb_base))})")
-    print(f"dnb aug rows  : {len(dnb_aug)}")
+    print(f"dnb base rows : {len(dnb_base)}  (groups: {len(set(r['group'] for r in dnb_base))})")
+    print(f"dnb aug rows  : {len(dnb_aug)} ({len(set(r['group'] for r in dnb_aug))} groups)")
     print()
     print("Manifest provenance of the shipped artifacts:")
     for name in ["symbolic-melodic-v1", "symbolic-melodic-v2"]:
@@ -52,7 +54,7 @@ def main() -> None:
         print(f"  {name}: dataset={report.get('datasetVersion')} samples={report.get('samples')} "
               f"augmented={report.get('augmentedSamples')} featureVersion={report.get('featureVersion')}")
     print()
-    print("=> A retrain today trains on ds.v2 (239 rows incl. dnb). The shipped v1")
+    print(f"=> A retrain today trains on {dataset_version} ({len(base)} rows). The shipped v1")
     print("   trained on ds.v1 (190 rows, no dnb melodic references) with an older")
     print("   augmentation pool. Comparing them is comparing two problems, so the")
     print("   gate compares RECIPES on the SAME current data instead.")

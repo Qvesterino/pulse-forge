@@ -148,3 +148,79 @@ def load_datasets():
     base = json.loads(DATASET_PATH.read_text())["data"]
     aug = json.loads(AUGMENTED_PATH.read_text())["data"]
     return base, aug
+
+
+SEMANTIC_DIMS = 16
+
+
+def _mean_vectors(vectors: list[list[float]]) -> list[float]:
+    return [sum(column) / len(vectors) for column in zip(*vectors)]
+
+
+class SemanticLookup:
+    """Style-aware 16-dim semantic conditioning for melodic next-note rows.
+
+    The runtime conditions the v2 prior on the PCA projection of the intent
+    TEXT — one vector per generation. Training conditions library rows on the
+    matching semantic region:
+
+      - genre-level group ('dnb#bass#0')            -> genre centroid
+      - style-dialect group ('dnb.techstep#bass#0') -> style vector
+
+    Both are the SAME averaging operation (centroid + all description variants)
+    at different granularity, so a per-sub-genre row trains in the region its
+    prompt text actually lands in, while the historical genre recipe stays
+    byte-identical for every pre-existing group key.
+
+    Regression guard (2026-09-27 depth-wave follow-up): the old code looked up
+    `group.split("#")[0]` verbatim, so a dialect key ('dnb.techstep') missed
+    every genre centroid and silently embedded as a ZERO vector — the retrain
+    gate then failed with "embedding transform failed — genre outside the
+    vocab" on the very first fold. `require()` now fails loudly instead of
+    zero-filling, and `vector_for()` resolves style prefixes first.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        payload = json.loads(Path(path).read_text())
+        styles = payload.get("styles", {})
+        variants = payload.get("variants", {})
+        if not styles:
+            raise SystemExit(f"semantic lookup: no styles in {path}")
+        width = len(next(iter(styles.values())))
+        if width != SEMANTIC_DIMS:
+            raise SystemExit(f"semantic lookup: expected {SEMANTIC_DIMS} dims, pack has {width}")
+
+        genre_buckets: dict[str, list[list[float]]] = {}
+        for style_id, vector in styles.items():
+            genre = style_id.split(".")[0]
+            genre_buckets.setdefault(genre, []).append(list(vector))
+            genre_buckets[genre].extend(list(v) for v in variants.get(style_id, []))
+
+        self.genre_vectors = {genre: _mean_vectors(bucket) for genre, bucket in genre_buckets.items()}
+        self.style_vectors = {
+            style_id: _mean_vectors([list(vector)] + [list(v) for v in variants.get(style_id, [])])
+            for style_id, vector in styles.items()
+        }
+
+    @staticmethod
+    def prefix_for(group: str) -> str:
+        return str(group).split("#")[0]
+
+    def vector_for(self, group_or_prefix: str) -> list[float] | None:
+        prefix = self.prefix_for(group_or_prefix)
+        style = self.style_vectors.get(prefix)
+        if style is not None:
+            return style
+        return self.genre_vectors.get(prefix)
+
+    def genre_vector(self, genre: str) -> list[float] | None:
+        return self.genre_vectors.get(genre)
+
+    def require(self, group: str) -> list[float]:
+        vector = self.vector_for(group)
+        if vector is None:
+            raise SystemExit(
+                f"semantic lookup: no vector for group prefix '{self.prefix_for(group)}' — "
+                f"regenerate style-embeddings.json or fix the dataset group key"
+            )
+        return vector
