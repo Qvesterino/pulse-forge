@@ -11,7 +11,20 @@ import {
   type FaderIntent,
   type TempoIntent,
 } from "./conversation";
-import { applyEffectIntent, effectReadback, parseEffectIntent, type EffectIntent } from "./mix";
+import {
+  applyBypassIntent,
+  applyEffectIntent,
+  applySendIntent,
+  bypassReadback,
+  effectReadback,
+  parseBypassIntent,
+  parseEffectIntent,
+  parseSendIntent,
+  sendReadback,
+  type BypassIntent,
+  type EffectIntent,
+  type SendIntent,
+} from "./mix";
 import { parseExactIntent, type ExactIntentPlan } from "./exact";
 import { applyPresetIntentCommand, parsePresetIntent, presetReadback, type PresetIntent } from "./preset-intent";
 
@@ -35,6 +48,8 @@ export type CompoundPart =
   | { kind: "fader"; intent: FaderIntent }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effect"; intent: EffectIntent }
+  | { kind: "send"; intent: SendIntent }
+  | { kind: "bypass"; intent: BypassIntent }
   | { kind: "exact"; plan: ExactIntentPlan }
   | { kind: "preset"; intent: PresetIntent };
 
@@ -43,6 +58,12 @@ function parseCompoundClause(clause: string): CompoundPart | null {
   if (fader) return { kind: "fader", intent: fader };
   const tempo = parseTempoIntent(clause);
   if (tempo) return { kind: "tempo", intent: tempo };
+  // send/bypass BEFORE the greedy effect parse — "more reverb send on the
+  // lead" is a send-level ask, not a return-mix knob ask.
+  const send = parseSendIntent(clause);
+  if (send) return { kind: "send", intent: send };
+  const bypass = parseBypassIntent(clause);
+  if (bypass) return { kind: "bypass", intent: bypass };
   const effect = parseEffectIntent(clause);
   if (effect) return { kind: "effect", intent: effect };
   const exact = parseExactIntent(clause);
@@ -109,7 +130,11 @@ export function applyCompoundIntent(doc: ProjectDocument, parts: CompoundPart[])
               ? applyExactIntentCommand(next, part.plan)
               : part.kind === "preset"
                 ? applyPresetIntentCommand(next, part.intent)
-                : applyEffectIntent(next, part.intent);
+                : part.kind === "send"
+                  ? applySendIntent(next, part.intent)
+                  : part.kind === "bypass"
+                    ? applyBypassIntent(next, part.intent)
+                    : applyEffectIntent(next, part.intent);
       if (!command) continue; // fader clause clamped to a no-op
       next = command.execute(next);
       labels.push(command.label);
@@ -140,6 +165,12 @@ export function compoundReadback(before: ProjectDocument, after: ProjectDocument
       if (entry) entries.push(entry);
     } else if (part.kind === "preset") {
       const entry = presetReadback(after, part.intent);
+      if (entry) entries.push(entry);
+    } else if (part.kind === "send") {
+      const entry = sendReadback(after, part.intent);
+      if (entry) entries.push(entry);
+    } else if (part.kind === "bypass") {
+      const entry = bypassReadback(after, part.intent);
       if (entry) entries.push(entry);
     } else {
       const entry = exactReadback(before, after, part.plan);

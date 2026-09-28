@@ -5486,6 +5486,30 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       next = setPatternLength(next, next.activePatternId, op.steps).execute(next);
       continue;
     }
+    if (op.kind === "patternLengthDelta") {
+      // "4 bars longer" / "o 2 takty kratsie" — relative on the ACTIVE
+      // pattern's current length (1 bar = 16 steps on the 4/4 grid).
+      const current = next.patterns.find((p) => p.id === next.activePatternId)?.stepCount ?? 16;
+      const target = Math.max(2, Math.min(128, current + op.bars * 16));
+      next = setPatternLength(next, next.activePatternId, target).execute(next);
+      continue;
+    }
+    if (op.kind === "gainDbAbsolute") {
+      // "bass to -6 dB" / "basa na -6 dB" — SET the fader to the absolute
+      // dBFS-equivalent multiplier (reads current state only for the clamp).
+      if (op.target === "mix") {
+        const targetMasterGain = Math.max(0, Math.min(1.5, Math.pow(10, op.absDb / 20)));
+        next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
+        continue;
+      }
+      for (const trackId of resolve(op.target)) {
+        const track = next.tracks.find((t) => t.id === trackId);
+        if (!track || track.kind === "group") continue;
+        const targetGain = Math.max(0, Math.min(1.5, Math.pow(10, op.absDb / 20)));
+        next = setTrackParams(next, trackId, { gain: targetGain }).execute(next);
+      }
+      continue;
+    }
     if (op.kind === "gainDb") {
       // "the mix"/"master" is the MASTER FADER (doc.master.masterGain) — the
       // old mapping to tracks[0] boosted whatever happened to be the first
@@ -5598,7 +5622,7 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
     } else if (op.kind === "duplicateTrack") {
       const delta = after.tracks.length - before.tracks.length;
       if (delta > 0) entries.push(`+${delta} track`);
-    } else if (op.kind === "gainDb") {
+    } else if (op.kind === "gainDb" || op.kind === "gainDbAbsolute") {
       if (op.target === "mix") {
         entries.push(`master ${fmt(before.master.masterGain)}→${fmt(after.master.masterGain)}`);
       } else {
@@ -5608,6 +5632,9 @@ export function exactReadback(before: ProjectDocument, after: ProjectDocument, p
           if (b != null && a != null && b !== a) entries.push(`gain ${fmt(b)}→${fmt(a)}`);
         }
       }
+    } else if (op.kind === "patternLengthDelta") {
+      const steps = after.patterns.find((p) => p.id === after.activePatternId)?.stepCount;
+      if (steps != null) entries.push(`length ${before.patterns.find((p) => p.id === before.activePatternId)?.stepCount ?? "?"}→${steps}`);
     } else if (op.target === "kick" || op.target === "snare" || op.target === "hats") {
       // pad-family mute/solo/pan — report the family flag
       const drum = after.tracks.find((t): t is DrumTrack => t.kind === "drum");

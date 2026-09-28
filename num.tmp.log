@@ -1,0 +1,46 @@
+[
+ {
+  "label": "abs gain: basa na −6 dB",
+  "result": "null"
+ },
+ {
+  "label": "abs gain EN: bass to -6 dB",
+  "result": "null"
+ },
+ {
+  "label": "delta dB SK: zniz basu o 3 dB",
+  "result": "null"
+ },
+ {
+  "label": "transpose SK: basu o 3 tony nizsie",
+  "result": "null"
+ },
+ {
+  "label": "transpose SK2: posun lead hore o 2 semitony",
+  "result": "null"
+ },
+ {
+  "label": "percent: zvys basu o 30 percent",
+  "result": "30"
+ },
+ {
+  "label": "percent fraction: delay o tretinu viac",
+  "result": "33"
+ },
+ {
+  "label": "ratio: attack 2x",
+  "result": "none"
+ },
+ {
+  "label": "swing: swing 60 percent",
+  "result": "null"
+ },
+ {
+  "label": "len rel: o 4 takty dlhsie",
+  "result": "null"
+ },
+ {
+  "label": "hz: cutoff na 2 kHz",
+  "result": "none"
+ }
+]

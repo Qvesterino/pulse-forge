@@ -21,8 +21,12 @@ export type ExactOp =
   | { kind: "solo"; target: ExactTarget; value: boolean }
   | { kind: "pan"; target: ExactTarget; value: number }
   | { kind: "gainDb"; target: ExactTarget; deltaDb: number }
+  /** Absolute fader set: "bass to -6 dB", "basa na -6 dB" — reads current state in the applier. */
+  | { kind: "gainDbAbsolute"; target: ExactTarget; absDb: number }
   | { kind: "transpose"; target: ExactTarget; semitones: number }
   | { kind: "patternLength"; steps: number }
+  /** Relative pattern length: "4 bars longer", "o 2 takty kratsie". */
+  | { kind: "patternLengthDelta"; bars: number }
   | { kind: "addTrack"; trackKind: "drum" | "instrument"; instrument: InstrumentKind }
   | { kind: "removeTrack"; target: ExactTarget }
   | { kind: "renameTrack"; target: ExactTarget; name: string }
@@ -261,15 +265,30 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     if (target && target !== "mix") ops.push({ kind: "duplicateTrack", target });
   }
 
-  // Gain dB delta: "lower drums by 2 dB", "boost the mix by 1.5 dB"
+  // Gain dB delta: "lower drums by 2 dB", "boost the mix by 1.5 dB",
+  // "zniz basu o 3 db", "hlasnejsie bicie o 2 db" (de-accented SK verbs:
+  // zniz/ztichni/stis/ztlm down; zvys/zosilni/posilni/hlasnejsi up). The
+  // target alternation is wider than EN (bas*/bic*/synth*) because
+  // firstTarget resolves the SK inflections.
   const gainDb =
-    /(lower|reduce|drop|cut|raise|boost|increase)\s+(?:the\s+)?(drums?|bass|808|lead|synth|chords?|keys?|mix|master)\b(?:\s+by\s+)?\s*(\d+(?:\.\d+)?)?\s*db/.exec(
+    /(lower|reduce|drop|cut|raise|boost|increase|zniz\w*|ztichn\w*|stis|ztlm\w*|zvys\w*|zosiln\w*|posiln\w*|hlasnejs\w*|tichs\w*|prihlas)\s+(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*|mix|master)\b(?:\s+(?:by|o)\s+)?\s*(\d+(?:\.\d+)?)?\s*db/.exec(
       lower,
     );
   if (gainDb) {
     const target = firstTarget(gainDb[2]);
-    const sign = /lower|reduce|drop|cut/.test(gainDb[1]) ? -1 : 1;
+    const sign = /lower|reduce|drop|cut|zniz|ztichn|stis|ztlm|tichs/.test(gainDb[1]) ? -1 : 1;
     if (target) ops.push({ kind: "gainDb", target, deltaDb: sign * Number(gainDb[3] ?? 2) });
+  }
+
+  // Absolute fader set: "set bass to -6 dB", "basa na -6 dB". Checked AFTER
+  // the delta (delta verbs never pair with "na"/"to", so no ambiguity).
+  const gainAbs =
+    /(?:nastav|set)?\s*(?:the\s+)?(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|mix|master)\b\s*(?:na|to)\s*(-?\d+(?:\.\d+)?)\s*db/.exec(
+      lower,
+    );
+  if (gainAbs) {
+    const target = firstTarget(gainAbs[1]);
+    if (target) ops.push({ kind: "gainDbAbsolute", target, absDb: Number(gainAbs[2]) });
   }
 
   // Transpose: "transpose the lead up one octave", "transpose bass down 3 semitones"
@@ -299,6 +318,55 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     }
   }
 
+  // SK transpose, natural word order: "basu o 3 tony nizsie",
+  // "lead hore o 2 semitony", "posun lead hore o 2 semitony". Units: ton =
+  // WHOLE tone (2 semitones — the SK musical meaning), polton/semiton = 1,
+  // oktava = 12. Named groups — the three word orders have different layouts.
+  const transposeSk =
+    /(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+o\s+(?<count>\d+|dva|tri|styri|pat|sest|sedem|osem|devat|desat)\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)/.exec(
+      lower,
+    ) ||
+    /posun\s+(drums?|bass|bas\w*|808|lead|synth\w*|chords?|keys?|bic\w*)\b\s+(?<dir>hore|dole|nizsie|vyssie)\s+o\s+(?<count>\d+|dva|tri|styri|pat|sest|sedem|osem|devat|desat)\s+(?<unit>ton\w*|semiton\w*|polton\w*|oktav\w*)\b/.exec(
+      lower,
+    );
+  if (transposeSk) {
+    const named = firstTarget(transposeSk[1]);
+    if (named !== "mix") {
+      const target = named ?? "lead";
+      const countWord = transposeSk.groups!.count;
+      const count =
+        Number(countWord) ||
+        ({ dva: 2, tri: 3, styri: 4, pat: 5, sest: 6, sedem: 7, osem: 8, devat: 9, desat: 10 }[countWord] as
+          number | undefined) ||
+        1;
+      const unitMult = /semiton|polton/.test(transposeSk.groups!.unit)
+        ? 1
+        : /oktav/.test(transposeSk.groups!.unit)
+          ? 12
+          : 2;
+      const dir = /hore|vyssie/.test(transposeSk.groups!.dir) ? 1 : -1;
+      ops.push({ kind: "transpose", target, semitones: dir * count * unitMult });
+    }
+  }
+
+  // Relative pattern length: "4 bars longer", "o 2 takty kratsie",
+  // "dlhsie o 4 takty". 1 bar = 16 steps (4/4 grid), signed by direction.
+  const lenRel =
+    /(?:o\s+)?(?<count>\d+|dva|tri|styri|two|three|four)\s+(?:takty|taktov|takte|bars?)\s+(?<dir>dlhsie|dlhsi|kratsie|kratsi|longer|shorter)/.exec(
+      lower,
+    ) ||
+    /(?<dir>dlhsie|dlhsi|kratsie|kratsi|longer|shorter)\s+o\s+(?<count>\d+|dva|tri|styri|two|three|four)\s+(?:takty|taktov|takte|bars?)/.exec(
+      lower,
+    );
+  if (lenRel) {
+    const count =
+      Number(lenRel.groups!.count) ||
+      ({ dva: 2, tri: 3, styri: 4, two: 2, three: 3, four: 4 }[lenRel.groups!.count] as number | undefined) ||
+      1;
+    const down = /krats|shorter/.test(lenRel.groups!.dir);
+    ops.push({ kind: "patternLengthDelta", bars: down ? -count : count });
+  }
+
   // Pattern length: "pattern length to 32", "length to 64"
   const length = /(?:pattern\s+)?length\s*(?:to|=|:)?\s*(\d{1,3})\b/.exec(lower);
   if (length) {
@@ -322,6 +390,8 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "removeTrack") return `delete ${op.target} track`;
       if (op.kind === "renameTrack") return `rename ${op.target} → "${op.name}"`;
       if (op.kind === "duplicateTrack") return `duplicate ${op.target} track`;
+      if (op.kind === "gainDbAbsolute") return `${op.target} fader na ${op.absDb} dB`;
+      if (op.kind === "patternLengthDelta") return `length ${op.bars > 0 ? "+" : ""}${op.bars} bars`;
       return `length ${op.steps}`;
     })
     .join(", ");

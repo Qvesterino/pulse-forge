@@ -11,6 +11,54 @@ import type { InstrumentTrack, ProjectDocument } from "../src/project-model/type
  */
 
 describe("parseExactIntent", () => {
+  it("SK gain delta: 'zniz basu o 3 db' → gainDb -3 on bass", () => {
+    expect(parseExactIntent("zniz basu o 3 db")!.ops).toContainEqual({ kind: "gainDb", target: "bass", deltaDb: -3 });
+  });
+
+  it("SK gain delta adjective: 'hlasnejsie bicie o 2 db' → +2 on drums", () => {
+    expect(parseExactIntent("hlasnejsie bicie o 2 db")!.ops).toContainEqual({
+      kind: "gainDb",
+      target: "drums",
+      deltaDb: 2,
+    });
+  });
+
+  it("absolute gain EN: 'set bass to -6 dB' → gainDbAbsolute -6", () => {
+    expect(parseExactIntent("set bass to -6 dB")!.ops).toContainEqual({
+      kind: "gainDbAbsolute",
+      target: "bass",
+      absDb: -6,
+    });
+  });
+
+  it("absolute gain SK: 'basa na -6 db' → gainDbAbsolute -6", () => {
+    expect(parseExactIntent("basa na -6 db")!.ops).toContainEqual({
+      kind: "gainDbAbsolute",
+      target: "bass",
+      absDb: -6,
+    });
+  });
+
+  it("SK transpose natural order: 'basu o 3 tony nizsie' → -6 st (ton = whole tone)", () => {
+    expect(parseExactIntent("basu o 3 tony nizsie")!.ops).toContainEqual({
+      kind: "transpose",
+      target: "bass",
+      semitones: -6,
+    });
+  });
+
+  it("SK transpose verb-first: 'posun lead hore o 2 semitony' → +2 st", () => {
+    expect(parseExactIntent("posun lead hore o 2 semitony")!.ops).toContainEqual({
+      kind: "transpose",
+      target: "lead",
+      semitones: 2,
+    });
+  });
+
+  it("relative length: '4 bars longer' and 'o 2 takty kratsie'", () => {
+    expect(parseExactIntent("4 bars longer")!.ops).toContainEqual({ kind: "patternLengthDelta", bars: 4 });
+    expect(parseExactIntent("o 2 takty kratsie")!.ops).toContainEqual({ kind: "patternLengthDelta", bars: -2 });
+  });
   it("tempo: 'set tempo to 142' and '138 bpm'", () => {
     expect(parseExactIntent("set tempo to 142")!.ops).toEqual([{ kind: "tempo", bpm: 142 }]);
     expect(parseExactIntent("138 bpm")!.ops).toEqual([{ kind: "tempo", bpm: 138 }]);

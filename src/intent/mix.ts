@@ -2,8 +2,10 @@ import type { EffectType, ProjectDocument, SceneAutomation } from "../project-mo
 import {
   addEffectToTracks,
   removeEffectFromTracks,
+  setEffectBypassOnTracks,
   setEffectParam,
   setEffectSidechainSource,
+  setTrackSend,
   snapshot,
 } from "../commands/commands";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
@@ -11,7 +13,7 @@ import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { artistMixProfileOf } from "./artist-mix";
 import { roleForTrack } from "./favorites";
-import { parsePercent } from "./percent";
+import { parsePercent, parsePercentAllowingZero } from "./percent";
 import type { IntentSpec } from "./types";
 
 /**
@@ -960,4 +962,146 @@ export function declinedEffectClarification(text: string): DeclinedIntentClarifi
     reason: `na ktorý track má smerovať ${effectType}?`,
     suggestions: ["drums", "bass", "chords", "lead"].map(ask),
   };
+}
+
+// ── SEND/RETURN + BYPASS intents — mixer routing, one command each ──────────
+
+/**
+ * "more reverb send on the lead", "set the delay send to 40% on the bass",
+ * "no reverb send on the drums". The EFFECT NOUN names the RETURN (the
+ * return whose chain carries that effect type); the target names the SENDING
+ * tracks. Levels live on `track.sends[returnId]` (0..1.5, clamped by
+ * setTrackSend) — "set" is an absolute fraction of that range, more/less
+ * nudge ±0.15, remove lands at 0.
+ *
+ * REQUIRES the word "send": without it "more reverb on the lead" is a
+ * return-mix effectIntent ask, a completely different knob. Returns are
+ * resolved by effect type — a genre without that return fails explicitly.
+ */
+export interface SendIntent {
+  effectType: EffectType;
+  target: MixTarget;
+  direction: "more" | "less" | "set" | "remove";
+  percent?: number;
+}
+
+const SEND_STEP = 0.15;
+
+export function parseSendIntent(text: string): SendIntent | null {
+  const lower = deaccentLower(text);
+  if (!/\bsend\b/.test(lower)) return null;
+  const effectType = effectWordIn(lower);
+  if (!effectType) return null;
+  const target = TARGET_WORDS.find(([re]) => re.test(lower))?.[1];
+  if (!target) return null;
+  let direction: SendIntent["direction"] = "more";
+  if (/\b(?:no|remove|without|bez)\b/.test(lower) || /\bsend\b\s*(?:off|out)\b/.test(lower)) {
+    direction = "remove";
+  } else if (/\bset\b|\bnastav\b/.test(lower)) {
+    direction = "set";
+  } else if (/\bless\b|\bmenej\b/.test(lower)) {
+    direction = "less";
+  }
+  if (direction === "set") {
+    const value = parsePercentAllowingZero(text);
+    if (value == null) return null; // "set the send" without a level is ambiguous
+    return { effectType, target, direction, percent: value };
+  }
+  return { effectType, target, direction };
+}
+
+export function applySendIntent(doc: ProjectDocument, intent: SendIntent): ReturnType<typeof snapshot> {
+  const returns = doc.returns.filter((r) => r.effects.some((fx) => fx.type === intent.effectType));
+  if (returns.length === 0) {
+    throw new Error(`no ${intent.effectType} return in the project — add it first`);
+  }
+  const trackIds = trackIdsForTarget(doc, intent.target);
+  if (trackIds.length === 0) {
+    throw new Error(`no tracks match the target (${intent.target})`);
+  }
+  let cursor = doc;
+  const labels: string[] = [];
+  for (const ret of returns) {
+    for (const trackId of trackIds) {
+      const track = cursor.tracks.find((t) => t.id === trackId);
+      const current = track?.sends?.[ret.id] ?? 0;
+      const level =
+        intent.direction === "set"
+          ? Math.min(1.5, Math.max(0, ((intent.percent ?? 0) / 100) * 1.5))
+          : intent.direction === "more"
+            ? Math.min(1.5, current + SEND_STEP)
+            : intent.direction === "less"
+              ? Math.max(0, current - SEND_STEP)
+              : 0;
+      const rounded = Math.round(level * 1000) / 1000;
+      if (rounded === current) continue;
+      cursor = setTrackSend(cursor, trackId, ret.id, rounded).execute(cursor);
+      labels.push(
+        `${track?.name ?? trackId} → ${ret.name} ${Math.round(current * 100) / 100}→${Math.round(rounded * 100) / 100}`,
+      );
+    }
+  }
+  if (labels.length === 0) throw new Error("send intent changed nothing — the send already matches");
+  return snapshot("applySendIntent", `Send: ${labels.join(", ")}`, doc, cursor);
+}
+
+/**
+ * Read-back for sends — the level ACTUALLY on the channel after execution.
+ */
+export function sendReadback(after: ProjectDocument, intent: SendIntent): string {
+  const returns = after.returns.filter((r) => r.effects.some((fx) => fx.type === intent.effectType));
+  const entries: string[] = [];
+  for (const ret of returns) {
+    for (const trackId of trackIdsForTarget(after, intent.target)) {
+      const track = after.tracks.find((t) => t.id === trackId);
+      if (!track) continue;
+      entries.push(`${track.name}→${ret.name} ${Math.round((track.sends?.[ret.id] ?? 0) * 100) / 100}`);
+    }
+  }
+  return entries.slice(0, 4).join(", ");
+}
+
+/**
+ * "bypass the delay on the lead" / "enable reverb on the bass" — the bypass
+ * FLAG on every instance of the effect across the target family. The
+ * command throws when the family carries no instance (explicit, never a
+ * silent no-op). Level asks ("more/less reverb") are NOT bypass asks — keep
+ * this word-bounded to bypass/unbypass/enable.
+ */
+export interface BypassIntent {
+  effectType: EffectType;
+  target: MixTarget;
+  bypassed: boolean;
+}
+
+export function parseBypassIntent(text: string): BypassIntent | null {
+  const lower = deaccentLower(text);
+  const bypassed = /\bbypass\b/.test(lower);
+  const enabled = /\b(?:unbypass|enable)\b/.test(lower);
+  if (!bypassed && !enabled) return null;
+  const effectType = effectWordIn(lower);
+  if (!effectType) return null;
+  const target = TARGET_WORDS.find(([re]) => re.test(lower))?.[1];
+  if (!target) return null;
+  return { effectType, target, bypassed };
+}
+
+export function applyBypassIntent(doc: ProjectDocument, intent: BypassIntent): ReturnType<typeof snapshot> {
+  const trackIds = trackIdsForTarget(doc, intent.target);
+  if (trackIds.length === 0) {
+    throw new Error(`no tracks match the target (${intent.target})`);
+  }
+  const command = setEffectBypassOnTracks(doc, trackIds, intent.effectType, intent.bypassed);
+  return snapshot("applyBypassIntent", command.label, doc, command.execute(doc));
+}
+
+/** Read-back — the bypass flag per family track carrying the effect. */
+export function bypassReadback(after: ProjectDocument, intent: BypassIntent): string {
+  const entries: string[] = [];
+  for (const trackId of trackIdsForTarget(after, intent.target)) {
+    const track = after.tracks.find((t) => t.id === trackId);
+    const fx = track?.effects.find((effect) => effect.type === intent.effectType);
+    if (track && fx) entries.push(`${track.name} bypass=${fx.bypassed}`);
+  }
+  return entries.slice(0, 4).join(", ");
 }

@@ -1,10 +1,11 @@
 import type { ProjectDocument, SceneRole } from "../project-model/types";
 import { parseArrangeIntent, parseClipArrangeIntent, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
-import { parseEffectIntent } from "./mix";
+import { parseEffectIntent, parseSendIntent, parseBypassIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
 import { parseFaderIntent, parseTempoIntent, parsePopIntent, type FaderIntent, type TempoIntent } from "./conversation";
 import type { EffectIntent, MixOverrides } from "./mix";
+import type { SendIntent, BypassIntent } from "./mix";
 import { namesProductionTarget, parseProductionIntent, type ProductionIntent } from "./production";
 import {
   parseExactIntent,
@@ -211,6 +212,8 @@ export type RoutedIntent =
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
+  | { kind: "sendIntent"; intent: SendIntent }
+  | { kind: "bypassIntent"; intent: BypassIntent }
   | { kind: "clarify"; reason: string; suggestions: string[] }
   | { kind: "tempo"; intent: TempoIntent }
   | { kind: "effectIntent"; intent: EffectIntent }
@@ -361,6 +364,19 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const popVibe = parsePopIntent(text);
   if (popVibe) {
     return { kind: "production", intent: popVibe };
+  }
+  // SEND / BYPASS — mixer-routing asks with their own explicit vocabulary
+  // ("more reverb send on the lead", "bypass the delay on the lead"). These
+  // MUST parse before the effectIntent: its greedy effect×target read would
+  // otherwise claim "more reverb send on the lead" as a return-MIX knob ask
+  // — a completely different parameter from the send level.
+  const sendIntent = parseSendIntent(text);
+  if (sendIntent) {
+    return { kind: "sendIntent", intent: sendIntent };
+  }
+  const bypassIntent = parseBypassIntent(text);
+  if (bypassIntent) {
+    return { kind: "bypassIntent", intent: bypassIntent };
   }
   const effectIntent = parseEffectIntent(text);
   if (effectIntent) {

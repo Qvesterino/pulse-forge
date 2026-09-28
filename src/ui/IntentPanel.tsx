@@ -73,7 +73,16 @@ import { evaluateBriefCompliance } from "../intent/brief-gate";
 import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
-import { applyEffectIntent, applyMixIntent, effectReadback, planMixProfile } from "../intent/mix";
+import {
+  applyBypassIntent,
+  applyEffectIntent,
+  applyMixIntent,
+  applySendIntent,
+  bypassReadback,
+  effectReadback,
+  planMixProfile,
+  sendReadback,
+} from "../intent/mix";
 import { applyLoudnessIntent, measurePreviewLoudness, type LoudnessRecommendation } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
@@ -2106,6 +2115,29 @@ export function IntentPanel() {
         services.store.execute(command);
         const readback = effectReadback(doc, services.store.getDoc(), route.intent);
         setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}`);
+      } else if (route.kind === "sendIntent") {
+        // "more reverb send on the lead" — send level per the matching return
+        stopAudition();
+        try {
+          const command = applySendIntent(doc, route.intent);
+          services.store.execute(command);
+          const readback = sendReadback(services.store.getDoc(), route.intent);
+          setStatus(`✓ ${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } else if (route.kind === "bypassIntent") {
+        // "bypass the delay on the lead" — the bypass FLAG on every instance
+        // across the family; the command throws when nothing exists.
+        stopAudition();
+        try {
+          const command = applyBypassIntent(doc, route.intent);
+          services.store.execute(command);
+          const readback = bypassReadback(services.store.getDoc(), route.intent);
+          setStatus(`✓ ${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } else if (route.kind === "production") {
         // Production intent with an explicit target ("make the drums
         // darker") — same executor as the GENERATE path: track FX, one

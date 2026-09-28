@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
 import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudness";
-import { applyEffectIntent, parseEffectIntent, planMixProfile, applyMixIntent } from "../src/intent/mix";
+import {
+  applyBypassIntent,
+  applyEffectIntent,
+  applySendIntent,
+  parseEffectIntent,
+  planMixProfile,
+  applyMixIntent,
+} from "../src/intent/mix";
 import { applyFaderIntent, applyTempoIntent, faderReadback, type FaderIntent } from "../src/intent/conversation";
 import { applyCompoundIntent, compoundReadback } from "../src/intent/compound";
 import { applyClipArrangeOps } from "../src/intent/arrangeWords";
@@ -69,6 +76,8 @@ function executeRouted(doc: ProjectDocument, text: string, store?: ProjectStore)
   else if (route.kind === "compound") command = applyCompoundIntent(doc, route.parts);
   else if (route.kind === "clips") command = applyClipArrangeOps(doc, route.ops);
   else if (route.kind === "preset") command = applyPresetIntentCommand(doc, route.intent);
+  else if (route.kind === "sendIntent") command = applySendIntent(doc, route.intent);
+  else if (route.kind === "bypassIntent") command = applyBypassIntent(doc, route.intent);
   else if (route.kind === "exact") command = applyExactIntentCommand(doc, route.plan);
   else if (route.kind === "tempo") command = applyTempoIntent(doc, route.intent);
   else if (route.kind === "effectIntent") command = applyEffectIntent(doc, route.intent);
@@ -1511,5 +1520,123 @@ describe("E2E vocabulary extensions", () => {
     }
     expect(routeIntentText("loop", doc).kind).not.toBe("transport");
     expect(routeIntentText("loop the drop", doc).kind).not.toBe("transport");
+  });
+});
+
+// ─── 20. SENDS/RETURNS + BYPASS — mixer routing via canonical commands ──────
+
+describe("E2E send intents", () => {
+  it("more reverb send on the lead raises the lead's send to the reverb return", () => {
+    const doc = withLead();
+    const route = routeIntentText("more reverb send on the lead", doc);
+    expect(route.kind).toBe("sendIntent");
+    if (route.kind === "sendIntent") {
+      expect(route.intent.effectType).toBe("reverb");
+      expect(route.intent.direction).toBe("more");
+    }
+    const next = executeRouted(doc, "more reverb send on the lead");
+    const lead = instrumentTracks(next).find((t) => /\blead\b/i.test(t.name))!;
+    const reverbReturn = next.returns.find((r) => r.effects.some((fx) => fx.type === "reverb"))!;
+    expect(lead.sends?.[reverbReturn.id] ?? 0).toBeCloseTo(0.15, 5);
+    // second nudge composes (0.15 → 0.3)
+    const after2 = executeRouted(next, "more reverb send on the lead");
+    const lead2 = instrumentTracks(after2).find((t) => /\blead\b/i.test(t.name))!;
+    expect(lead2.sends?.[reverbReturn.id] ?? 0).toBeCloseTo(0.3, 5);
+  });
+
+  it("set the delay send to 40% on the bass lands 0.6 (40% of the 1.5 range)", () => {
+    const doc = withLead();
+    const route = routeIntentText("set the delay send to 40% on the bass", doc);
+    expect(route.kind).toBe("sendIntent");
+    if (route.kind === "sendIntent") {
+      expect(route.intent.direction).toBe("set");
+      expect(route.intent.percent).toBe(40);
+    }
+    const next = executeRouted(doc, "set the delay send to 40% on the bass");
+    const bass = bassTrackOf(next);
+    const delayReturn = next.returns.find((r) => r.effects.some((fx) => fx.type === "delay"))!;
+    expect(bass.sends?.[delayReturn.id] ?? 0).toBeCloseTo(0.6, 5);
+  });
+
+  it("no reverb send on the drums lands the send at 0", () => {
+    const doc = withLead();
+    const sent = executeRouted(doc, "more reverb send on the drums");
+    const next = executeRouted(sent, "no reverb send on the drums");
+    const drum = drumTrackOf(next);
+    const reverbReturn = next.returns.find((r) => r.effects.some((fx) => fx.type === "reverb"))!;
+    expect(drum.sends?.[reverbReturn.id] ?? 0).toBe(0);
+  });
+
+  it("send without a matching return fails explicitly (no chorus return by default)", () => {
+    const doc = withLead();
+    expect(() => executeRouted(doc, "more chorus send on the lead")).toThrow(/no chorus return/);
+  });
+
+  it("send words are REQUIRED — 'more reverb on the lead' stays an effectIntent knob ask", () => {
+    const doc = withLead();
+    const route = routeIntentText("more reverb on the lead", doc);
+    expect(route.kind).toBe("effectIntent");
+    if (route.kind === "effectIntent") {
+      // the knob ask turns the RETURN-MIX knob of an added reverb instance —
+      // NOT the send level
+      const next = executeRouted(doc, "more reverb on the lead");
+      const lead = instrumentTracks(next).find((t) => /\blead\b/i.test(t.name))!;
+      expect(lead.effects.some((fx) => fx.type === "reverb")).toBe(true);
+    }
+  });
+});
+
+describe("E2E bypass intents", () => {
+  it("bypass the delay on the lead flips the flag; enable flips it back", () => {
+    const store = new ProjectStore(withLead());
+    executeRouted(store.doc, "viac delayu na leade", store); // install the instance
+    const route = routeIntentText("bypass the delay on the lead", store.doc);
+    expect(route.kind).toBe("bypassIntent");
+    if (route.kind === "bypassIntent") {
+      expect(route.intent.effectType).toBe("delay");
+      expect(route.intent.bypassed).toBe(true);
+    }
+    executeRouted(store.doc, "bypass the delay on the lead", store);
+    const lead = instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!;
+    expect(lead.effects.find((fx) => fx.type === "delay")!.bypassed).toBe(true);
+    expect(store.undoStackLength).toBe(2);
+    store.undo();
+    expect(
+      instrumentTracks(store.doc)
+        .find((t) => /\blead\b/i.test(t.name))!
+        .effects.find((fx) => fx.type === "delay")!.bypassed,
+    ).toBe(false);
+    executeRouted(store.doc, "enable the delay on the lead", store);
+    expect(
+      instrumentTracks(store.doc)
+        .find((t) => /\blead\b/i.test(t.name))!
+        .effects.find((fx) => fx.type === "delay")!.bypassed,
+    ).toBe(false);
+  });
+
+  it("bypass without an instance fails explicitly (never a silent no-op)", () => {
+    const doc = withLead();
+    expect(() => executeRouted(doc, "bypass the reverb on the lead")).toThrow(/no Reverb instances/i);
+  });
+
+  it("bypass rides compounds: 'bypass the delay on the lead and zníž basu'", () => {
+    const store = new ProjectStore(withLead());
+    executeRouted(store.doc, "viac delayu na leade", store);
+    const bassBefore = bassTrackOf(store.doc).gain;
+    const route = routeIntentText("bypass the delay on the lead and zníž basu", store.doc);
+    expect(route.kind).toBe("compound");
+    if (route.kind !== "compound") throw new Error("expected compound route");
+    expect(route.parts[0]).toMatchObject({ kind: "bypass" });
+    executeRouted(store.doc, "bypass the delay on the lead and zníž basu", store);
+    const lead = instrumentTracks(store.doc).find((t) => /\blead\b/i.test(t.name))!;
+    expect(lead.effects.find((fx) => fx.type === "delay")!.bypassed).toBe(true);
+    expect(bassTrackOf(store.doc).gain).toBeLessThan(bassBefore);
+    expect(store.undoStackLength).toBe(2); // delay install + compound
+    store.undo();
+    expect(
+      instrumentTracks(store.doc)
+        .find((t) => /\blead\b/i.test(t.name))!
+        .effects.find((fx) => fx.type === "delay")!.bypassed,
+    ).toBe(false);
   });
 });
