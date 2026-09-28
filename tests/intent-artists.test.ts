@@ -1680,7 +1680,7 @@ describe("ambient / score depth wave", () => {
     expect(parseIntentText("global communication type beat").input.style).toBe("drifting");
     expect(parseIntentText("solar fields type beat").input.mood).toBe("chill");
     expect(parseIntentText("explosions in the sky type beat").input.energy).toBe(0.6);
-    expect(parseIntentText("mogwai type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("mogwai type beat").input.genre).toBe("postrock");
     expect(parseIntentText("sigur ros type beat").input.mood).toBe("energetic");
     expect(parseIntentText("godspeed you black emperor type beat").input.mood).toBe("dark");
   });

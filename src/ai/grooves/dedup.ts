@@ -14,18 +14,25 @@
  * house's 53 grooves produce 405 such pairs. Similar tempo is normal musical
  * diversity, not a defect.
  *
- * So the two rules below are deliberately narrow — they flag only the shapes
- * that are almost certainly copy-paste accidents:
+ * So exactly one rule ships, and it is deliberately narrow: identical BPM
+ * window AND identical swing AND identical `activePads` — the three fields
+ * together that make the engine pick and shape a pocket. Two grooves agreeing
+ * on all three cannot be told apart, so at least one is earning nothing.
  *
- *  1. `identical`    — identical BPM window AND identical swing. Two grooves
- *                      that cannot be told apart by the generator's own
- *                      parameters.
- *  2. `unreferenced` — one tempo window strictly contains the other AND the
- *                      narrower groove is reachable from no artist preset,
- *                      i.e. nothing can select it. This is exactly the
- *                      613903cc case.
+ * Two earlier drafts were written, measured against the live library, and
+ * removed. Both are recorded here because the reasoning behind them is
+ * seductive and wrong:
  *
- * Severity `warn` is informational; `dup` is a hard finding.
+ *  1. "narrower window contained in a wider one AND the narrower groove is
+ *     unreferenced" — looked like the 613903cc signature, produced 40
+ *     findings, 40 of them false positives (house.synthpop and house.amapiano
+ *     were each reported against ten wider lanes). Unreferenced is the NORMAL
+ *     state of a groove between landing and someone writing its artists.
+ *  2. "identical window and swing" — produced 2 findings, both legitimate
+ *     siblings: house.dancefloor ~ house.progressive and house.basshouse ~
+ *     hybrid.techhouse share tempo and feel but play different kits
+ *     ([0,1,6,8,10] vs [0,3,7,8,10,14]) with different patterns. Tempo and
+ *     swing are not a groove's identity; activePads is the rest of it.
  */
 import { GROOVE_LIBRARY } from "./index";
 import { ARTIST_PRESETS } from "../../intent/artists";
@@ -58,10 +65,6 @@ export function windowOverlap(a: readonly [number, number], b: readonly [number,
   return (hi - lo) / Math.max(1, Math.min(a[1] - a[0], b[1] - b[0]));
 }
 
-function contains(outer: readonly [number, number], inner: readonly [number, number]): boolean {
-  return outer[0] <= inner[0] && outer[1] >= inner[1];
-}
-
 /** Styles reachable from an artist preset for this genre. */
 export function referencedStyles(genre: string): Set<string> {
   const styles = new Set<string>();
@@ -92,31 +95,24 @@ export function findGrooveDuplicates(library: readonly GrooveData[] = GROOVE_LIB
 
       const sameWindow = a.bpm[0] === b.bpm[0] && a.bpm[1] === b.bpm[1];
       const sameSwing = Math.abs(a.swing - b.swing) < 1e-9;
+      // Tempo and swing are only half a groove's identity. Measured on the
+      // live library, window+swing alone flagged house.dancefloor ~
+      // house.progressive and house.basshouse ~ hybrid.techhouse — both pairs
+      // are legitimate siblings: same tempo, DIFFERENT kit
+      // (dancefloor plays [0,1,6,8,10], progressive [0,3,7,8,10,14]) and
+      // different patterns. `activePads` is the part of the signature the
+      // generator actually uses to shape the pattern, so it has to match too.
+      const sameKit =
+        a.activePads.length === b.activePads.length && a.activePads.every((p, i) => p === b.activePads[i]);
 
-      if (sameWindow && sameSwing) {
+      if (sameWindow && sameSwing && sameKit) {
         findings.push({
           severity: "dup",
-          reason: "identical BPM window and swing",
+          reason: "identical BPM window, swing and active pads",
           a: brief(a),
           b: brief(b),
           overlap,
-          bIsUnreferenced: isUnreferenced(b, styleCache),
-        });
-        continue;
-      }
-
-      // Containment: one window swallows the other, and the narrower groove is
-      // unreachable. This is the "two sessions added the same lane" signature.
-      const narrow = a.bpm[1] - a.bpm[0] <= b.bpm[1] - b.bpm[0] ? a : b;
-      const wide = narrow === a ? b : a;
-      if (contains(wide.bpm, narrow.bpm) && isUnreferenced(narrow, styleCache)) {
-        findings.push({
-          severity: "dup",
-          reason: `narrower window is fully contained and no artist preset selects "${narrow.id.replace(/^.*\./, "")}"`,
-          a: brief(a),
-          b: brief(b),
-          overlap,
-          bIsUnreferenced: true,
+          bIsUnreferenced: isUnreferenced(b, styleCache) && isUnreferenced(a, styleCache),
         });
       }
     }

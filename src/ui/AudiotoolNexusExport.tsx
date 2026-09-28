@@ -104,7 +104,11 @@ export function AudiotoolNexusExport({
     try {
       // Invoke synchronously from the click handler so browser popup blockers
       // recognize the user gesture. Keep it in the try block for sync failures too.
-      const result = await sdk.audiotoolPopup({ clientId, scope: "project:write" });
+      const result = await sdk.audiotoolPopup({
+        clientId,
+        scope: "project:write",
+        targetOrigin: window.location.origin,
+      });
       if (lifecycleRef.current !== lifecycle) return;
       if (result.status === "authenticated") {
         setAuth(result);
@@ -240,9 +244,10 @@ export function AudiotoolNexusExport({
 
       {!clientId ? (
         <div className="audiotool-nexus-export__notice" role="note">
-          Nexus ešte nie je nakonfigurovaný. Zaregistruj Audiotool aplikáciu s oprávnením <code>project:write</code> a
-          nastav verejný <code>VITE_AUDIOTOOL_NEXUS_CLIENT_ID</code>. Kým to neurobíš, generovanie KYX zostáva bez
-          zmeny.
+          Nexus ešte nie je nakonfigurovaný. V Audiotool Developer Portal zaregistruj aplikáciu so scope{" "}
+          <code>project:write</code> a Redirect URI, ktorého origin sa zhoduje s <code>{window.location.origin}</code>.
+          Nastav verejný <code>VITE_AUDIOTOOL_NEXUS_CLIENT_ID</code>; pre lokálny vývoj zaregistruj aj Redirect URI{" "}
+          <code>http://127.0.0.1:5173/</code>. Kým to neurobíš, generovanie KYX zostáva bez zmeny.
         </div>
       ) : !sdk ? (
         <div className="audiotool-nexus-export__actions">
@@ -254,7 +259,8 @@ export function AudiotoolNexusExport({
       ) : !auth ? (
         <div className="audiotool-nexus-export__actions">
           <p>
-            Prihlásenie žiada iba scope <code>project:write</code>. KYX nepýta ani neposiela token na svoj server.
+            Prihlásenie žiada iba scope <code>project:write</code>. V registrácii Audiotool aplikácie povoľ Redirect URI
+            s originom <code>{window.location.origin}</code>. KYX token neukladá ani neposiela na svoj server.
           </p>
           <button type="button" className="btn btn-small intent-use-btn" onClick={() => void connect()} disabled={busy}>
             {busy ? "ČAKÁM NA AUDIOTOOL…" : "PRIHLÁSIŤ A PRIPOJIŤ"}

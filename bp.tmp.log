@@ -1,0 +1,23 @@
+{
+ "reverb": {
+  "maxDiffBypassVsRemoved": 0,
+  "firstBypassRemovedDiffSec": "same",
+  "firstOnVsBypassSec": 0.005,
+  "rmsOn": 0.4125,
+  "rmsByp": 0.4635
+ },
+ "chorus": {
+  "maxDiffBypassVsRemoved": 0,
+  "firstBypassRemovedDiffSec": "same",
+  "firstOnVsBypassSec": 0.005,
+  "rmsOn": 0.4438,
+  "rmsByp": 0.4635
+ },
+ "svFilter": {
+  "maxDiffBypassVsRemoved": 0,
+  "firstBypassRemovedDiffSec": "same",
+  "firstOnVsBypassSec": 0.005,
+  "rmsOn": 0.4575,
+  "rmsByp": 0.4635
+ }
+}

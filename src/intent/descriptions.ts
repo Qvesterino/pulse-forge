@@ -39,6 +39,7 @@ const GENRE_SYNONYMS: Record<string, string[]> = {
   amapiano: ["amapiano", "yanos", "log drum", "South African house"],
   trance: ["trance", "uplifting", "psytrance", "supersaw"],
   detroit: ["detroit techno", "detroit electro", "machine funk", "808 talk"],
+  postrock: ["post rock", "postrock", "crescendo guitar", "atmospheric rock"],
 };
 
 const STYLE_SYNONYMS: Record<string, string[]> = {
@@ -71,6 +72,12 @@ const STYLE_SYNONYMS: Record<string, string[]> = {
   psy: ["psytrance", "psy trance", "goa", "full-on"],
   tech: ["tech trance", "warehouse trance", "hard rolling trance", "metallic trance"],
   dream: ["dream trance", "piano trance", "euphoric piano", "soft trance"],
+  textured: ["textured postrock", "first wave postrock", "mood over groove", "irregular meters"],
+  crescendo: ["crescendo postrock", "cinematic build", "quiet loud", "second wave"],
+  orchestral: ["orchestral postrock", "Montreal chamber", "GYBE style", "strings and noise"],
+  postmetal: ["post metal", "heavy postrock", "Cult of Luna style", "doom riffs"],
+  math: ["math rock", "angular postrock", "displaced kicks", "Slint style"],
+  ambient: ["ambient postrock", "spacey postrock", "Kranky label", "drone rock"],
   belleville: ["belleville", "first wave detroit", "808 syncopation", "tom talk"],
   secondwave: ["underground resistance", "second wave", "militant techno", "stripped machine"],
   technobass: ["techno bass", "detroit bass", "808 pressure", "machine bass"],

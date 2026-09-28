@@ -577,6 +577,37 @@ const TRANCE_PROGRESSIONS: ChordProgression[] = [
   },
 ];
 
+const POSTROCK_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "i-VII-VI-VII (crescendo minor)",
+    genre: "postrock",
+    events: [
+      { degree: 0, quality: "min", duration: 8, func: "T" },
+      { degree: 6, quality: "maj", duration: 8, func: "D" },
+    ],
+  },
+  {
+    name: "I-IV-V-I (classical rise)",
+    genre: "postrock",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "i-v-iv-VI (post-rock loop)",
+    genre: "postrock",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 4, quality: "min", duration: 4, func: "D" },
+      { degree: 3, quality: "min", duration: 4, func: "S" },
+      { degree: 5, quality: "maj", duration: 4, func: "T" },
+    ],
+  },
+];
+
 const DETROIT_PROGRESSIONS: ChordProgression[] = [
   {
     name: "i-VI-VII (machine minor)",
@@ -623,6 +654,7 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   amapiano: AMAPIANO_PROGRESSIONS,
   trance: TRANCE_PROGRESSIONS,
   detroit: DETROIT_PROGRESSIONS,
+  postrock: POSTROCK_PROGRESSIONS,
 };
 
 /**

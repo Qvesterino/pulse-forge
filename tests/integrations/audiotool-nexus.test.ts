@@ -281,6 +281,21 @@ describe("Audiotool Nexus connection UX", () => {
       stepCount: 16,
       notes: { [instrument.id]: [{ id: "ui-note", pitch: 60, start: 0, duration: 480, velocity: 0.8 }] },
     };
+    const setupView = render(
+      createElement(AudiotoolNexusExport, {
+        pattern: selectedPattern,
+        tracks: project.tracks,
+        timeSignature: { numerator: 4, denominator: 4 },
+        sourceBpm: project.bpm,
+        candidateLabel: "#1",
+        isSourceCurrent: () => true,
+        onClose: vi.fn(),
+        clientId: "",
+      }),
+    );
+    expect(screen.getByRole("note").textContent).toContain(window.location.origin);
+    setupView.unmount();
+
     const callbacks = new Set<(connected: boolean) => void>();
     const connected = {
       getValue: () => true,
@@ -319,7 +334,11 @@ describe("Audiotool Nexus connection UX", () => {
     expect(audiotoolPopupMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "NAČÍTAŤ AUDIOTOOL CONNECTOR" }));
     fireEvent.click(await screen.findByRole("button", { name: "PRIHLÁSIŤ A PRIPOJIŤ" }));
-    expect(audiotoolPopupMock).toHaveBeenCalledWith({ clientId: "public-test-client-id", scope: "project:write" });
+    expect(audiotoolPopupMock).toHaveBeenCalledWith({
+      clientId: "public-test-client-id",
+      scope: "project:write",
+      targetOrigin: window.location.origin,
+    });
 
     const projectInput = await screen.findByLabelText("Odkaz na projekt");
     fireEvent.change(projectInput, {

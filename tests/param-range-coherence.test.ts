@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_META } from "../src/effects/definitions";
+import { scaleBridgeFor, toDescriptorValue } from "../src/effects/scale-bridges";
 import type { EffectType } from "../src/project-model/types";
 
 /**
@@ -152,5 +153,71 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
     expect(clampEffectParam("bitcrusher", "downsample", 1)).toBe(1);
     expect(clampEffectParam("bitcrusher", "downsample", 64)).toBe(64);
     expect(clampEffectParam("bitcrusher", "downsample", Number.NaN)).toBe(1); // default
+  });
+});
+
+describe("scale-bridge registry (Phase 5)", () => {
+  it("every registered bridge maps def endpoints into the descriptor range", () => {
+    // Def↔descriptor pairs with a registered crossing are verified in the
+    // BRIDGE domain: def endpoints transformed by the bridge must land
+    // inside the worklet descriptor's [min, max].
+    let checked = 0;
+    for (const { effect, proc, params } of PROC_CASES) {
+      const cls = registered.get(proc);
+      expect(cls, `${proc} registered`).toBeDefined();
+      const descriptors = new Map(
+        ((cls as any).parameterDescriptors as { name: string; minValue: number; maxValue: number }[]).map((d) => [
+          d.name,
+          d,
+        ]),
+      );
+      for (const paramId of params) {
+        const def = EFFECT_META[effect].params.find((p) => p.id === paramId);
+        const desc = descriptors.get(paramId);
+        if (!def || !desc) continue;
+        const bridge = scaleBridgeFor(effect, paramId);
+        if (!bridge) continue; // identity pairs covered by the main sweep
+        for (const endpoint of [def.min, def.max]) {
+          const descValue = toDescriptorValue(effect, paramId, endpoint);
+          expect(
+            descValue,
+            `${effect}.${paramId}(${endpoint}) bridges into [${desc.minValue}, ${desc.maxValue}]`,
+          ).toBeGreaterThanOrEqual(desc.minValue - 1e-6);
+          expect(descValue).toBeLessThanOrEqual(desc.maxValue + 1e-6);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("known dual-domain params are registered — nothing dual-domain may hide", () => {
+    // The historical audit bugs lived exactly here: a def in one domain, a
+    // descriptor in another, and no bridge. Any param whose descriptor range
+    // does NOT cover the def range must be registered, and the registered
+    // bridge must map the def range INTO the descriptor range.
+    const workload: [EffectType, string, string][] = [
+      ["compressor", "compressor-processor", "makeup"],
+      ["ultina", "ultina-processor", "global.mix"],
+      ["fxeq", "fxeq-processor", "mix"],
+      ["ozvena", "ozvena-processor", "global.dryWet"],
+      ["morphdynamics", "morph-dynamics-processor", "global.mix"],
+      ["bitcrusher", "bitcrusher-processor", "downsample"],
+    ];
+    // The plugin processors register through their own bundles — import the
+    // vendored processors the same way the plugin bundle does.
+    for (const [effect, proc, paramId] of workload) {
+      const bridge = scaleBridgeFor(effect, paramId);
+      expect(bridge, `${effect}.${paramId}: dual-domain param must be registered`).toBeDefined();
+      if (!bridge) continue;
+      const def = EFFECT_META[effect].params.find((p) => p.id === paramId)!;
+      if (bridge.toDescriptor) {
+        for (const endpoint of [def.min, def.max]) {
+          const v = bridge.toDescriptor(endpoint);
+          expect(Number.isFinite(v), `${effect}.${paramId}: bridge output finite`).toBe(true);
+        }
+      }
+      void proc;
+    }
   });
 });

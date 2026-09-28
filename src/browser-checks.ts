@@ -853,6 +853,122 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   }
 
+  // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the
+  // event-queue voice worklets. Offline renders route them through native
+  // graphs (determinism fix above); the LIVE path runs the real worklets and
+  // depends on port-message delivery, so it needs its own gate: a real
+  // AudioContext + loadAllWorklets + AnalyserNode metering. PRISM joins the
+  // check as the lazy-plugin-module representative (module fetch →
+  // registration → param sync on the live context).
+  try {
+    const liveProbe = async (kind: "wavetable" | "granular" | "fxeq") => {
+      const ctx = new AudioContext();
+      try {
+        if (ctx.state === "suspended") await ctx.resume();
+        await loadAllWorklets(ctx);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        const track: InstrumentTrack | null =
+          kind === "fxeq"
+            ? null
+            : {
+                id: `live-${kind}`,
+                kind: "instrument",
+                instrument: kind,
+                name: kind,
+                gain: 1,
+                pan: 0,
+                mute: false,
+                solo: false,
+                sampleId: kind === "granular" ? "factory.tonal.keys" : null,
+                params:
+                  kind === "granular"
+                    ? { ...defaultInstrumentParams("granular"), release: 0.01, rate: 30 }
+                    : defaultInstrumentParams("wavetable"),
+                effects: [],
+                sends: {},
+              };
+        let stopLive: () => void = () => {};
+        let disposeLive: () => void = () => {};
+        if (kind === "fxeq") {
+          const fxDoc = createProjectFromTemplate("house");
+          const drum = fxDoc.tracks.find((t) => t.kind === "drum") as { id: string; effects: unknown[] };
+          drum.effects = [];
+          const st = new ProjectStore(fxDoc);
+          const add = addEffect(st.getDoc(), drum.id, "fxeq");
+          st.execute(add);
+          // Reuse the engine-free factory: the fxeq node processes whatever
+          // feeds its input; drive it with a scheduled oscillator.
+          const node = await import("./effects/fxeqNode").then((m) =>
+            m.createFxEqNode(
+              ctx,
+              { id: add.effectId, type: "fxeq", bypassed: false, params: { ...defaultParamsOf("fxeq") } },
+              defaultParamsOf("fxeq"),
+            ),
+          );
+          node.output.connect(analyser);
+          const osc = ctx.createOscillator();
+          osc.type = "sawtooth";
+          osc.frequency.value = 220;
+          const g = ctx.createGain();
+          g.gain.value = 0.4;
+          osc.connect(g).connect(node.input);
+          osc.start(0);
+          stopLive = () => {
+            try {
+              osc.stop();
+            } catch {
+              /* already stopped */
+            }
+          };
+          disposeLive = () => node.dispose();
+        } else {
+          const def = INSTRUMENT_DEFS[kind];
+          const rt = def.factory(ctx, track as InstrumentTrack, {
+            bpm: 124,
+            getSample: (id) => bank.get(id),
+          });
+          rt.output.connect(analyser);
+          rt.noteOn(60, 0.9, ctx.currentTime + 0.05, 0.5);
+          stopLive = () => {
+            try {
+              rt.panic();
+            } catch {
+              /* already silent */
+            }
+          };
+          disposeLive = () => rt.dispose();
+        }
+        // Meter the analyser for ~0.6 s and keep the running peak.
+        const buf = new Float32Array(analyser.fftSize);
+        let peak = 0;
+        const deadline = performance.now() + 600;
+        while (performance.now() < deadline) {
+          analyser.getFloatTimeDomainData(buf);
+          for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+          await new Promise((r) => setTimeout(r, 40));
+        }
+        stopLive();
+        disposeLive();
+        await ctx.close();
+        return peak;
+      } finally {
+        /* context closed above */
+      }
+    };
+    const wtLive = await liveProbe("wavetable");
+    const granLive = await liveProbe("granular");
+    const prismLive = await liveProbe("fxeq");
+    const minLive = 10 ** (-40 / 20); // −40 dBFS floor
+    check(
+      "live worklet-path audibility: wavetable/granular/PRISM on a real AudioContext",
+      wtLive > minLive && granLive > minLive && prismLive > minLive,
+      `wavetable=${wtLive.toFixed(4)} granular=${granLive.toFixed(4)} prism=${prismLive.toFixed(4)} (floor ${minLive.toFixed(4)})`,
+    );
+  } catch (error) {
+    check("live worklet-path audibility: wavetable/granular/PRISM on a real AudioContext", false, String(error));
+  }
+
   // Analog RELEASE regression (Phase 3b of the plugin-audit follow-up): the
   // voice-manager stop callback hard-gated at 10 ms and cancelled the
   // scheduled DAHDSR release — the RELEASE knob was dead on EVERY

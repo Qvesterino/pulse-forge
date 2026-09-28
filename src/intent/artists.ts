@@ -6375,10 +6375,10 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     label: "ambient techno",
   },
   {
-    names: ["explosions in the sky", "mogwai", "sigur ros", "this will destroy you", "balmorhea"],
+    names: ["explosions in the sky", "mogwai", "sigur ros", "this will destroy you"],
     // Post-rock — the crescendo guitar school (score's loud sibling).
-    genre: "ambient",
-    style: "drifting",
+    genre: "postrock",
+    style: "crescendo",
     mood: "energetic",
     energy: 0.6,
     density: 0.5,
@@ -6387,8 +6387,8 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
   },
   {
     names: ["godspeed you black emperor", "godspeed you! black emperor", "gybe"],
-    genre: "ambient",
-    style: "drifting",
+    genre: "postrock",
+    style: "orchestral",
     mood: "dark",
     energy: 0.5,
     density: 0.5,
@@ -6976,6 +6976,76 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = [
     density: 0.55,
     bpmRange: [122, 132],
     label: "detroit machine soul",
+  },
+  // ── Post-rock school tree (Wikipedia-documented waves and scenes) ──────
+  {
+    names: ["slint", "talk talk", "bark psychosis", "tortoise", "stereolab"],
+    // The first wave (Louisville / Bristol / Chicago): texture over melody,
+    // irregular tempos, mood over groove, 70-90 BPM.
+    genre: "postrock",
+    style: "textured",
+    mood: "dark",
+    energy: 0.55,
+    density: 0.5,
+    bpmRange: [70, 90],
+    label: "post-rock first wave",
+  },
+  {
+    names: ["mono band", "65daysofstatic", "balmorhea"],
+    // The second-wave cinematic build (Montreal/Edinburgh): the dramatic
+    // crescendo from quiet to wall of sound, 80-110 BPM.
+    genre: "postrock",
+    style: "crescendo",
+    mood: "energetic",
+    energy: 0.75,
+    density: 0.6,
+    bpmRange: [80, 110],
+    label: "post-rock crescendo",
+  },
+  {
+    names: ["do make say think", "fly pan am", "set fire to flames"],
+    // The Montreal orchestral chamber side (Constellation Records).
+    genre: "postrock",
+    style: "orchestral",
+    mood: "chill",
+    energy: 0.5,
+    density: 0.5,
+    bpmRange: [60, 90],
+    label: "post-rock orchestral",
+  },
+  {
+    names: ["cult of luna", "isis band", "russian circles", "pelican", "palms"],
+    // The heavy fusion: slow doom riffs + wall of sound, 60-90 BPM.
+    genre: "postrock",
+    style: "postmetal",
+    mood: "aggressive",
+    energy: 0.8,
+    density: 0.55,
+    bpmRange: [60, 90],
+    label: "post-metal",
+  },
+  {
+    names: ["don caballero", "battles", "hella", "toe"],
+    // The math-rock angularity (Slint lineage): displaced kicks, irregular
+    // meters, 90-120 BPM.
+    genre: "postrock",
+    style: "math",
+    mood: "aggressive",
+    energy: 0.75,
+    density: 0.65,
+    bpmRange: [90, 120],
+    label: "post-rock math",
+  },
+  {
+    names: ["labradford", "windy and carl", "bowery electric", "cul de sac"],
+    // The spacey side (Kranky label): droning, sparse, 60-85 BPM.
+    genre: "postrock",
+    style: "ambient",
+    mood: "chill",
+    energy: 0.4,
+    density: 0.35,
+    bpmRange: [60, 85],
+    label: "post-rock ambient",
   },
 ];
 

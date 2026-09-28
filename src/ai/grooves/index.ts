@@ -15,6 +15,7 @@ import { BOOMBAP_GROOVES } from "./boombap";
 import { AMAPIANO_GROOVES } from "./amapiano";
 import { TRANCE_GROOVES } from "./trance";
 import { DETROIT_GROOVES } from "./detroit";
+import { POSTROCK_GROOVES } from "./postrock";
 
 export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...HOUSE_GROOVES,
@@ -33,6 +34,7 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...AMAPIANO_GROOVES,
   ...TRANCE_GROOVES,
   ...DETROIT_GROOVES,
+  ...POSTROCK_GROOVES,
 ];
 
 /** Get all groove styles for a genre */
