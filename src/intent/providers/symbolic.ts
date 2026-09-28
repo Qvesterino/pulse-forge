@@ -284,10 +284,10 @@ export class SymbolicPriorProvider implements GenerationProvider {
       const generationOptions = generationPlan.options;
       const styleId = resolveGrooveForGeneration(doc, generationOptions).id;
       // These models have a fixed, versioned one-hot vocabulary — the STYLE
-      // block is all-zero for styles outside it. Since the ds.v3 retrain the
-      // semantic channel covers EVERY library groove (98 styles in
-      // style-embeddings.json), so v3/v2 are valid for any style; the one-hot
-      // gate only still matters for the v1 fallback below.
+      // block is all-zero for styles outside it. Since the ds.v3 retrain
+      // (170 grooves) the semantic channel covers EVERY library groove
+      // (170 styles in style-embeddings.json), so v3/v2 are valid for any
+      // style; the one-hot gate only still matters for the v1 fallback below.
       const supportsDrumPrior =
         (PRIOR_GENRES as readonly string[]).includes(generationOptions.genre) &&
         (PRIOR_STYLE_VOCAB as readonly string[]).includes(styleId);
