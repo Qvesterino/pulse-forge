@@ -102,16 +102,61 @@ describe("computeMatchEqCurve", () => {
 });
 
 describe("matchEqCurveForPcm (end-to-end math)", () => {
+  /** Four-band broadband probe with per-band weights (all bands populated). */
+  function shaped(amps: [number, number, number, number], seconds = 1.5): Float32Array {
+    const hz = [100, 500, 2500, 6000];
+    const out = new Float32Array(Math.floor(SR * seconds));
+    for (let i = 0; i < out.length; i++) {
+      const t = i / SR;
+      let v = 0;
+      for (let b = 0; b < 4; b++) v += amps[b] * Math.sin(2 * Math.PI * hz[b] * t);
+      out[i] = v / 2; // keep peaks sane
+    }
+    return out;
+  }
+
   it("dark mix vs bright reference: the curve brightens the mix", () => {
-    // Mix = bass-heavy noise, reference = treble-heavy noise.
-    const mix = noise(1.5, 0.5, 1); // flat source as the "mix"
-    // Reference: same noise, but we can't filter here — use tonal probes.
-    const mixPcm = tone(150, 1.5); // dark
-    const refPcm = tone(6000, 1.5); // bright
+    const mixPcm = shaped([0.9, 0.5, 0.2, 0.1]); // low-heavy
+    const refPcm = shaped([0.1, 0.2, 0.5, 0.9]); // high-heavy
     const curve = matchEqCurveForPcm(mixPcm, SR, refPcm, SR);
-    expect(curve.high).toBeGreaterThan(3); // big positive high correction
-    expect(curve.low).toBeLessThan(-3); // big negative low correction
-    void mix;
+    expect(curve).not.toBeNull();
+    expect(curve!.high).toBeGreaterThan(1); // brightens the top
+    expect(curve!.low).toBeLessThan(-1); // tames the bottom
+  });
+
+  it("declines single-band references (a pure tone carries no matchable balance)", () => {
+    // A pure 6 kHz tone leaves 3 bands empty — matching against it would
+    // derive "corrections" from noise. The usable-check must reject it.
+    expect(matchEqCurveForPcm(shaped([0.25, 0.25, 0.25, 0.25]), SR, tone(6000, 1.5), SR)).toBeNull();
+  });
+
+  it("declines unusable inputs: silent or non-finite reference/mix → null (never anti-match)", () => {
+    const silent = new Float32Array(SR);
+    const nan = new Float32Array(SR).fill(NaN);
+    expect(matchEqCurveForPcm(tone(440), SR, silent, SR)).toBeNull();
+    expect(matchEqCurveForPcm(tone(440), SR, nan, SR)).toBeNull();
+    expect(matchEqCurveForPcm(silent, SR, tone(440), SR)).toBeNull();
+  });
+
+  it("bandwidth alignment: the SAME signal measured at 44.1 kHz and 16 kHz gives the same balance", () => {
+    // The top window edge is 8 kHz on BOTH sides — without it, the 44.1 kHz
+    // side would integrate 8–22 kHz energy the 16 kHz reference can never
+    // show and read as systematically darker.
+    const at44 = noise(2, 0.5, 123);
+    // Deterministic "resample": regenerate the same LCG stream at 16 kHz —
+    // identical statistics, different SR (this is the property that matters).
+    let s16 = 123;
+    const at16 = new Float32Array(16000 * 2);
+    for (let i = 0; i < at16.length; i++) {
+      s16 = (s16 * 1103515245 + 12345) & 0x7fffffff;
+      at16[i] = 0.5 * ((s16 / 0x7fffffff) * 2 - 1);
+    }
+    const b44 = spectrumBandBalance(at44, SR);
+    const b16 = spectrumBandBalance(at16, 16000);
+    // White noise spreads energy ∝ bandwidth: shares differ slightly between
+    // band layouts at the two SRs, but the DIFFERENCE must be small and —
+    // critically — free of the one-sided 8–22 kHz bias (bounded ≤ 3 dB).
+    expect(Math.abs(b44.high - b16.high)).toBeLessThan(3);
   });
 
   it("reference level −20 dB → IDENTICAL curve (the flagship invariant)", () => {
@@ -121,9 +166,11 @@ describe("matchEqCurveForPcm (end-to-end math)", () => {
     for (let i = 0; i < refLoud.length; i++) refQuiet[i] = refLoud[i] * 0.1; // −20 dB
     const a = matchEqCurveForPcm(mix, SR, refLoud, SR);
     const b = matchEqCurveForPcm(mix, SR, refQuiet, SR);
-    expect(b.low).toBeCloseTo(a.low, 6);
-    expect(b.lowMid).toBeCloseTo(a.lowMid, 6);
-    expect(b.highMid).toBeCloseTo(a.highMid, 6);
-    expect(b.high).toBeCloseTo(a.high, 6);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(b!.low).toBeCloseTo(a!.low, 6);
+    expect(b!.lowMid).toBeCloseTo(a!.lowMid, 6);
+    expect(b!.highMid).toBeCloseTo(a!.highMid, 6);
+    expect(b!.high).toBeCloseTo(a!.high, 6);
   });
 });

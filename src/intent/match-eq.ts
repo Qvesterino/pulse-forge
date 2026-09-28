@@ -38,7 +38,17 @@ export interface MatchEqBands {
   high: number;
 }
 
-export const MATCH_EQ_BAND_EDGES = [0, 250, 1000, 4000, Number.POSITIVE_INFINITY] as const;
+/**
+ * Band edges in Hz. The TOP edge is 8000, not Nyquist: the reference is
+ * retained at 16 kHz (Nyquist 8 kHz) while the mix measures at 44.1 kHz —
+ * integrating the mix to 22 kHz against a reference that stops at 8 kHz
+ * would read the mix as systematically darker (its >4 kHz band carries
+ * 8–22 kHz energy the reference can never show) and bias every curve toward
+ * darkening. Both analyses therefore integrate the SAME 0–8 kHz window.
+ */
+export const MATCH_EQ_BAND_EDGES = [0, 250, 1000, 4000, 8000] as const;
+/** A band reading at/below this (dB of share) means "no energy anywhere". */
+export const SILENT_BAND_DB = -100;
 export const MATCH_EQ_MAX_GAIN_DB = 6;
 export const MATCH_EQ_DEADZONE_DB = 1;
 
@@ -78,10 +88,14 @@ export function spectrumBandBalance(pcm: Float32Array, sampleRate: number): Matc
   }
 
   // Integrate bin energy into the four bands (bin frequency = k·sr/N).
+  // Bins at/above the 8 kHz window edge are skipped ENTIRELY — including
+  // them in `total` would deflate every band's share on the 44.1 kHz side
+  // and reintroduce the bandwidth bias the fixed window exists to remove.
   const bandPower = [0, 0, 0, 0];
   let total = 0;
   for (let k = 1; k < bins; k++) {
     const hz = (k * sampleRate) / FFT_SIZE;
+    if (hz >= MATCH_EQ_BAND_EDGES[4]) break;
     const p = acc[k];
     total += p;
     if (hz < MATCH_EQ_BAND_EDGES[1]) bandPower[0] += p;
@@ -127,14 +141,34 @@ export function computeMatchEqCurve(mix: MatchEqBands, reference: MatchEqBands):
   };
 }
 
-/** Convenience: PCM → curve in one call. */
+/** A spectrum where every band sits at the floor = no usable energy. */
+export function bandBalanceIsUsable(bands: MatchEqBands): boolean {
+  return (
+    Number.isFinite(bands.low) &&
+    bands.low > SILENT_BAND_DB &&
+    bands.lowMid > SILENT_BAND_DB &&
+    bands.highMid > SILENT_BAND_DB &&
+    bands.high > SILENT_BAND_DB
+  );
+}
+
+/**
+ * Convenience: PCM → curve in one call. Returns null when EITHER side is
+ * unusable (silent / non-finite / no energy in the 0–8 kHz window): a
+ * silent reference would otherwise anti-match (the curve becomes the
+ * inversion of the mix's balance — wrong direction), and a silent mix has
+ * nothing to correct. Declining is the only honest answer for both.
+ */
 export function matchEqCurveForPcm(
   mixPcm: Float32Array,
   mixSr: number,
   refPcm: Float32Array,
   refSr: number,
-): MatchEqCurve {
-  return computeMatchEqCurve(spectrumBandBalance(mixPcm, mixSr), spectrumBandBalance(refPcm, refSr));
+): MatchEqCurve | null {
+  const mix = spectrumBandBalance(mixPcm, mixSr);
+  const ref = spectrumBandBalance(refPcm, refSr);
+  if (!bandBalanceIsUsable(mix) || !bandBalanceIsUsable(ref)) return null;
+  return computeMatchEqCurve(mix, ref);
 }
 
 /* ---------------- reference retention + mix measurement ---------------- */
@@ -165,6 +199,9 @@ export function hasMatchEqReference(): boolean {
 export async function computeMasterMatchEq(doc: ProjectDocument, bank: SampleBank): Promise<MatchEqCurve | null> {
   try {
     if (!hasMatchEqReference()) return null;
+    // A reference with no usable 0–8 kHz energy (silent WAV, NaN PCM) is
+    // declined here as well — computeMasterMatchEq must never hand the
+    // applier an anti-match curve.
     const { renderProject } = await import("../rendering/renderer");
     const buffer = await renderProject(doc, bank, {
       mode: "pattern",
