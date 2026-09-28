@@ -1,9 +1,16 @@
 # LOCAL INTENT MODEL — voice & text control with a downloadable LLM
 
-> Status: design + groundwork (schema, grammar, dataset, golden lock, eval
-> harness are IMPLEMENTED and tested — the model runtime is not integrated
-> yet). Candidate: LFM-2.5 1.2B (Q4 GGUF ≈ 700 MB), class floor ~0.5B with
-> constrained decoding.
+> Status: loader INTEGRATED (2026-09-28) — `src/intent/model-loader.ts`
+> (client: `pf:intent-model` flag, default OFF; availability probe; lazy
+> worker; cold/warm timeouts; circuit breaker) + `src/intent/model-worker.ts`
+> (manifest validation, grammar-drift pin, SHA-256 weight verification,
+> pack-cache-aware fetch, pluggable runtime adapter) + the manifest contract
+> in `src/intent/model-loader-types.ts`. The IntentPanel chip is the only
+> toggle. NOT YET PRESENT: the trained artifact (LFM-2.5 1.2B Q4 GGUF) and
+> the vendored runtime module it declares — an origin without them serves a
+> manifest 404, the loader reports unavailable and the deterministic
+> parsers remain the engine, byte-identical to today. Candidate: LFM-2.5
+> 1.2B (Q4 GGUF ≈ 700 MB), class floor ~0.5B with constrained decoding.
 
 ## 1. The one-paragraph idea
 
@@ -41,6 +48,23 @@ everything else.
                                             ▼ any failure → explicit error /
                                               clarify / pattern generation
 ```
+
+### 2.1 Loader (integrated 2026-09-28)
+
+`src/intent/model-loader.ts` owns [C]→[D] wiring: flag `pf:intent-model`
+(default **off** — a hundreds-of-MB download class is explicit opt-in),
+a one-404 availability probe against `/models/intent-model-v1.manifest.json`,
+lazy module worker, cold (120 s, breaker-exempt) and warm (8 s) budgets, a
+2-failure circuit breaker, and registration into `setIntentModelProvider` —
+the resolver bridge consumes it unchanged. The manifest pins
+`grammarSha256` of `toGbnfGrammar()`; the worker re-computes the digest at
+load and REFUSES a model trained against a different action grammar
+(vocabulary drift = load failure, never a silent mis-prompt). Model bytes
+are fetched own-origin only (pack-cache first), size- and SHA-256-verified
+before init. The runtime adapter is whatever module the manifest names —
+a llama.cpp-class WASM build exporting `createIntentLlmRuntime()`; until it
+and the trained GGUF are vendored, the loader degrades to unavailable and
+nothing about the deterministic path changes.
 
 **[A] and [C] share the same drawer**: `src/ai/` already ships the local-model
 pattern — worker isolation, manifest (modelHash, versions), load timeout,
@@ -108,6 +132,35 @@ pipeline at [B]. Latency budget: whisper-base Q5 ≈ real-time×0.3 on desktop
 CPU; LFM-2.5 Q4 1.2B ≈ 30–80 ms/action on desktop CPU. Voice adds no new
 action kinds — it is a text source, and [B]–[E] are shared unchanged.
 Mic capture itself stays with the existing recording infrastructure.
+
+## 6b. STT drawer (manifest #2) — IMPLEMENTED
+
+`src/intent/stt-*` is whisper manifest #2 in the same drawer:
+
+- `stt-loader-types.ts` — `SttManifest` (runtime module + weights url/bytes/
+  sha256 + 16 kHz audio contract, guard `isSttManifest`), worker request/
+  reply shapes
+- `stt-worker.ts` — heavy side: manifest validation, pack-cache-first model
+  fetch, SHA-256 pin, linear resample to the manifest rate, controlled
+  `{ type: "error" }` on every failure. The whisper runtime itself is
+  VENDORED (manifest.runtime.module) — until an origin ships the artifact,
+  loads fail controlled ("runtime not available"); nothing fakes a
+  transcript.
+- `stt-loader.ts` — main-thread client: opt-in flag `pf:stt-model`,
+  one-probe availability (404 = unavailable), lazy worker, cold-load 60 s /
+  transcribe 20 s timeouts, two-failure breaker, `transcribeWithStt`
+  resolving `null` on every failure path (never a fabricated text)
+- `voice-capture.ts` — mic tap: getUserMedia → ScriptProcessor chunks →
+  linear resample to 16 kHz mono; the stream is ALWAYS stopped, a failed
+  transcription can never hold the input device; sub-300 ms taps are
+  discarded as accidental clicks
+- Panel: 🎙 HOVOR button — capture → transcribe → transcript lands in the
+  intent BAR (user sees/edits it; nothing auto-routes), then the normal
+  [B] deterministic-first flow handles the text
+
+Training/eval harness for the intent model ([C]) is already live
+(`intent:dataset` / `intent:eval`); the loader wiring for [C] landed in
+parallel (model-loader.ts).
 
 ## 7. Non-goals / guards
 

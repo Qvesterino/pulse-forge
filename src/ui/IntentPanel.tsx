@@ -103,6 +103,7 @@ import {
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { tryModelRoute } from "../intent/model-resolver";
+import { createVoiceCapture } from "../intent/voice-capture";
 import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -2040,6 +2041,36 @@ export function IntentPanel() {
   const [routeBusy, setRouteBusy] = useState(false);
   const [clarify, setClarify] = useState<{ reason: string; suggestions: string[] } | null>(null);
   const loudnessBusyRef = useRef(false);
+  // VOICE CAPTURE (pipeline [A], docs/LOCAL-INTENT-MODEL.md §6): the mic tap
+  // fills the intent BAR — the transcript is text the user sees and edits
+  // before anything routes. No auto-execution, by design.
+  const voiceCaptureRef = useRef<ReturnType<typeof createVoiceCapture> | null>(null);
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
+
+  const toggleVoiceCapture = async () => {
+    if (voiceState === "recording") {
+      setVoiceState("transcribing");
+      const capture = voiceCaptureRef.current;
+      const transcript = capture ? await capture.stopAndTranscribe() : null;
+      setVoiceState("idle");
+      if (transcript == null) {
+        setError("hlas sa nepodarilo prepísať — skús znova alebo píš");
+        return;
+      }
+      replacePrompt(transcript, true);
+      setStatus(`🎙 ${transcript}`);
+      return;
+    }
+    const capture = createVoiceCapture();
+    const started = await capture.start();
+    if (!started) {
+      setError("mikrofón nie je dostupný — povoľ prístup v prehliadači");
+      return;
+    }
+    voiceCaptureRef.current = capture;
+    setVoiceState("recording");
+    setStatus("🎙 nahrávam… znova klikni pre stop + prepis");
+  };
   // `override` lets the clarification chips re-run the router against a
   // suggested phrasing in the same tick (React state would still be stale).
   const routeAndExecute = async (override?: string) => {
@@ -2457,6 +2488,18 @@ export function IntentPanel() {
         rows={3}
         aria-label="Intent description"
       />
+      <div className="intent-voice-row">
+        <button
+          type="button"
+          className={`btn intent-voice-btn${voiceState === "recording" ? " intent-voice-rec" : ""}`}
+          disabled={voiceState === "transcribing"}
+          title={voiceState === "recording" ? "Stop + prepísať" : "Hlasový vstup — hovor a prepíš"}
+          aria-label={voiceState === "recording" ? "Stop voice capture" : "Start voice capture"}
+          onClick={() => void toggleVoiceCapture()}
+        >
+          {voiceState === "recording" ? "⏺ REC" : voiceState === "transcribing" ? "…prepisujem" : "🎙 HOVOR"}
+        </button>
+      </div>
       {historyTick >= 0 && promptHistory().length > 0 && (
         <div className="intent-history" aria-label="Prompt history">
           <span className="intent-history-label">RECENT</span>
