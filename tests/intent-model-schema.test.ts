@@ -8,8 +8,6 @@ import {
   validateModelAction,
   validateModelOutputForDoc,
 } from "../src/intent/model-schema";
-import { routeIntentText } from "../src/intent/route";
-import { compactIntentResponse } from "../src/intent/dataset";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
@@ -84,9 +82,7 @@ describe("local intent model schema", () => {
     // preset by NAME (engine resolves the id)
     expect(validateModelAction({ kind: "preset", name: "Warm Sub", target: "bass" }).valid).toBe(true);
     // clips by REF (engine resolves the id)
-    expect(
-      validateModelAction({ kind: "clips", ops: [{ op: "copyClip", ref: "intro", toBar: 9 }] }).valid,
-    ).toBe(true);
+    expect(validateModelAction({ kind: "clips", ops: [{ op: "copyClip", ref: "intro", toBar: 9 }] }).valid).toBe(true);
     // send with explicit level
     expect(
       validateModelAction({ kind: "sendIntent", effectType: "delay", target: "bass", direction: "set", percent: 40 })

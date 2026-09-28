@@ -115,15 +115,7 @@ export const VOCAB = {
 // ── The model-facing schema, as data (drives validation AND GBNF) ───────────
 
 export type SlotType =
-  | "enum"
-  | "int"
-  | "number"
-  | "bool"
-  | "scalar"
-  | "string"
-  | "stringArray"
-  | "enumArray"
-  | "objArray";
+  "enum" | "int" | "number" | "bool" | "scalar" | "string" | "stringArray" | "enumArray" | "objArray";
 
 export interface Slot {
   name: string;
@@ -387,9 +379,7 @@ export function validateModelAction(action: unknown): ValidationResult {
   // tempo/production/bypassIntent → `intent`; preset → `preset`; loudness →
   // `parse`) validate against the nested object; flat kinds (exact/export/
   // select/transport/…) validate against the record itself.
-  const nestedKey = ["intent", "preset", "parse"].find(
-    (key) => record[key] != null && typeof record[key] === "object",
-  );
+  const nestedKey = ["intent", "preset", "parse"].find((key) => record[key] != null && typeof record[key] === "object");
   const payload = (nestedKey != null ? record[nestedKey] : record) as Record<string, unknown>;
   for (const slot of MODEL_ACTIONS[kind].slots) {
     const source = slot.root === true ? record : payload;
@@ -461,10 +451,7 @@ function gbnfSlot(kind: string, slot: Slot): string[] {
  * the same commit as the parsers.
  */
 export function toGbnfGrammar(): string {
-  const lines: string[] = [
-    "root ::= " + VOCAB.kind.map((kind) => kind).join(" | "),
-    "ws ::= [ \\t\\n]*",
-  ];
+  const lines: string[] = ["root ::= " + VOCAB.kind.map((kind) => kind).join(" | "), "ws ::= [ \\t\\n]*"];
   for (const kind of VOCAB.kind) {
     const spec = MODEL_ACTIONS[kind];
     const body =
