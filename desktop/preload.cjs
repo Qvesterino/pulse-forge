@@ -28,4 +28,9 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
     /** Crash-isolated scan of the standard CLAP directories (probe per file). */
     scan: () => ipcRenderer.invoke("kyx:clap:scan"),
   },
+  pcm: {
+    /** External PCM source: main spawns the host, frames land in the shared ring. */
+    start: (request) => ipcRenderer.invoke("kyx:pcm:start", request),
+    stop: (id) => ipcRenderer.invoke("kyx:pcm:stop", { id }),
+  },
 });

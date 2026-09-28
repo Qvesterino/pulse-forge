@@ -71,9 +71,12 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
   (`src/audio-engine/pcmRing.ts`) with the Node producer mirror
   (`desktop/pcm-ring-layout.cjs`), the `pcm-playback` AudioWorklet, and the
   pipe→SAB bridge; E2E verifies 48 000 sine-exact frames across the ring
-  wrap with zero overruns against a realtime-paced source. The audible
-  browser E2E (Electron + real AudioWorklet → `browser-checks`) stays an
-  owner gate.
+  wrap with zero overruns against a realtime-paced source. The **desktop
+  wiring is shipped** (`desktop/pcm-desktop.cjs` + the statusbar EXT PCM
+  chip): the renderer builds the ring, hands the SAB over `kyx:pcm:start`,
+  the shell spawns the allowlisted source and bridges frames into it.
+  Actually LISTENING (click EXT PCM, hear the 440 Hz tone) is the owner
+  gate.
 - Resampling (wave 3.5) IS shipped: the bridge linear-resamples a source at
   a different rate than the ring (stateful across blocks). Acceptance: a
   440 Hz tone through 44100→48000 stays a 440 Hz tone within the linear
@@ -82,13 +85,14 @@ blockFrames}`, streams PCM blocks, closes with STATS and EOF.
 
 ## Support matrix
 
-| Capability                                 | Status                     |
-| ------------------------------------------ | -------------------------- |
-| Framed PCM pipe protocol + Node consumer   | Shipped, acceptance-tested |
-| Reference source (deterministic generator) | Shipped                    |
-| ASIO streaming host (driver → frames)      | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate |
-| Renderer playback from the pipe ring       | Shipped (wave 3); audible browser E2E = owner gate |
-| Resampling (source rate ≠ context rate)    | Shipped (wave 3.5, linear interpolation); master-grade conversion = future work |
+| Capability                                       | Status                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Framed PCM pipe protocol + Node consumer         | Shipped, acceptance-tested                                                      |
+| Reference source (deterministic generator)       | Shipped                                                                         |
+| ASIO streaming host (driver → frames)            | Shipped against the fixture driver (wave 2.5); real-hardware soak = owner gate  |
+| Renderer playback from the pipe ring             | Shipped (wave 3)                                                                |
+| Desktop "hear it" wiring (EXT PCM chip over IPC) | Shipped; the audible owner check is one click                                   |
+| Resampling (source rate ≠ context rate)          | Shipped (wave 3.5, linear interpolation); master-grade conversion = future work |
 
 ## Consequences
 
