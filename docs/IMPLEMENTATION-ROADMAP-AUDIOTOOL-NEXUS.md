@@ -40,6 +40,9 @@ Pri implementácii bol pinned balík `@audiotool/nexus` v0.0.19 použitý s brow
 - **Hotový lokálny slice:** lazy-load po výslovnom kliknutí, OAuth popup flow, validácia Audiotool project URL, preview s read-only tempo/taktom a samostatné potvrdenie vzdialeného zápisu. Create-only zápis pokrýva pitched MIDI + podporované Beatbox8 drum roly, aktívny Heisenberg sine carrier, mixer routing a zapnuté tracky/regióny. Idempotentný retry overuje fingerprint, zariadenia, regióny, MIDI hodnoty a route graf; UI znovu kontroluje KYX zdroj po získaní transakčného zámku a chráni lifecycle pri async štarte/unmount. Offline UI validačná cesta vytvára SDK `OfflineDocument`, nie uložený/exportovateľný Audiotool projekt. Cielený aktuálny Nexus balík: 15/15.
 - **MIDI časová mierka:** KYX používa 480 tickov/štvrťovú dobu, Audiotool 3 840; mapper prevádza pozície, dĺžky a hranice taktov pomerom 8:1. Regresné testy kontrolujú notové polia na vytvorených Audiotool entitách.
 - **Offline dôkaz:** `createOfflineDocument()` s povolenou Nexus validáciou vytvoril MIDI track/region/collection/note, Beatbox8 pattern a Heisenberg/Beatbox8 mixer routes; toto samo osebe **nedokazuje** serverovú validáciu ani úspešný živý Audiotool zápis.
+- **Hotový lokálny slice:** lazy-load po výslovnom kliknutí, popup OAuth flow, validácia Audiotool project URL, náhľad a samostatné potvrdenie vzdialeného zápisu, create-only MIDI/synth/mixer entity, idempotentný retry marker s kontrolou presných MIDI hodnôt (s float32 toleranciou pre velocity) a route grafu pri prvom zápise aj retry, živý stav spojenia, opätovná kontrola KYX zdroja po získaní Nexus transakčného zámku a lifecycle ochrana pre neskoro otvorenú session, prebiehajúci štart aj async UI výsledky po unmount. UI integračný test vykoná potvrdený write cez Nexus `OfflineDocument` a overí receipt aj vytvorené entity; regresia overuje, že ručne zmenené noty sa netvária ako nezmenený idempotentný import. Cielený balík: 11 Nexus testov a spolu s curated-sample, PWA, platform-contract a Intent regresiami 41/41.
+- **MIDI časová mierka:** KYX používa 480 tickov/štvrťovú dobu, Audiotool 3 840; mapper prevádza pozície, dĺžky a hranice taktov pomerom 8:1. Regresné testy kontrolujú notové polia na vytvorených Audiotool entitách.
+- **Offline dôkaz:** `createOfflineDocument()` s povolenou Nexus validáciou vytvoril MIDI track/region/collection/note a Heisenberg→mixer route; toto samo osebe **nedokazuje** serverovú validáciu ani úspešný živý Audiotool zápis.
 - **Podporovaná platforma:** connector UI sa zobrazuje iba v KYX Web. KYX Studio používa `app://bundle`, ktorého OAuth popup/redirect origin nie je zaregistrovaný ani otestovaný; Electron zatiaľ nepodporujeme.
 - **Subpath deploy:** Vite build s `STUDIO_APP_BASE=/kyx/` prefixuje entry/assets, PWA `start_url`/scope aj service worker. Mount-aware Chromium smoke na `http://127.0.0.1:4180/kyx/` po oprave `loadCuratedLayer()` načítal sample súbory z `/kyx/samples/` a skončil s 0 browser console errors. Samotný `vite preview` nie je mount-aware a môže pre chýbajúci asset vrátiť HTML SPA fallback; kontrolovať MIME, nie iba HTTP status. Živý smoke `https://qvesterstudio.com/kyx/` 2026-09-27 naopak zlyhal ešte v Qvester shelli: jeho JS/CSS asset URL pod `/kyx/assets/...` vracajú `text/html` (29 console errors). Toto je samostatný host/deploy blocker; do Qvester repozitára sa v tejto práci nič nesynchronizovalo.
 - **Dependency gate:** SDK 0.0.19 je exact-pin dev/build dependency; emitted Nexus chunk má 678 KiB oproti 750 KiB opt-in capu, nie je v initial/PWA precache a browser bundle neobsahuje Node-only `connect-node`/`undici`. `npm audit --omit=dev` hlási 0, ale plný audit hlási 8 advisories: moderate Nexus cez `connect-node`, high `undici`/Vite a critical Vitest v dev dependency tree. Nevykonať dependency bump/override v tomto feature diff-e; samostatný security/dependency review je potrebný pred distribúciou build toolchainu.
@@ -47,6 +50,8 @@ Pri implementácii bol pinned balík `@audiotool/nexus` v0.0.19 použitý s brow
 - **Deploy artifact gate:** `scripts/sync-to-qvester.mjs` teraz po Vite builde generuje Audiotool LICENSE/NOTICE súbory, spúšťa bundle-budget check a pred kopírovaním vyžaduje Nexus licenčný text. Celá pipeline prešla proti izolovanému cieľu v pracovnom strome; živý Qvester checkout nebol zmenený.
 - **Build gate (2026-09-28):** aktuálny `npm run build` prešiel vrátane `tsc --noEmit`, Vite/PWA build a všetkých bundle budgetov: DAW JS 3 167/3 170 KB, optional AI runtimes 640/650 KB, Audiotool Nexus 678/750 KB, worklets 128/150 KB, landing 157/600 KB; shipped JS spolu 4 651 KB. Zostáva iba 3 KB headroom v DAW JS budgete.
 - **Stále release-blocking:** chýba zaregistrovaný OAuth `clientId`, dedikovaný test project a výslovné potvrdenie pre živý zápis. Posledný zdokumentovaný živý Qvester smoke (2026-09-27) našiel nesprávny MIME na shell assetoch pod `/kyx/assets/...`; pred releasom treba chybu opraviť a znovu overiť. Navyše GitHub `LICENSE`/npm tarball Nexus hovoria Apache-2.0, kým npm metadata deklaruje MIT. Zachovať LICENSE/NOTICE text a pred distribúciou potvrdiť zamýšľanú licenciu publishrom. Kým tieto brány neprejdú, nepovažovať integráciu za release-ready ani za súťažnú compliance.
+- **Build gate (2026-09-28):** `STUDIO_APP_BASE=/kyx/ npx vite build` úspešne skompiloval 738 modulov. Built HTML odkazuje na `/kyx/assets/...`; PWA `start_url` aj `scope` sú `/kyx/`. LICENSE/NOTICE generation aj `scripts/check-bundle-size.mjs` prešli: Nexus 678/750 KB, DAW JS 3 105/3 170 KB, AI runtimes 640/650 KB, shipped JS 4 589 KB; celý budget OK. `npm run build` sa zastaví pred Vite na `tsc --noEmit`; aktuálny pracovný strom má šesť nesúvisiacich diagnostics: dve nepoužité helper funkcie v rozpracovanom `src/instruments/registry.ts` a štyri chyby v `tests/groove-dedup.test.ts`. Tieto súbory sme v Nexus práci nemenili.
+- **Stále release-blocking:** chýba registrovaný OAuth `clientId`, dedikovaný test project a výslovné potvrdenie pre živý zápis; live Qvester mount aktuálne servuje svoje shell assety s chybným MIME. Navyše GitHub `LICENSE`/npm tarball Nexus hovoria Apache-2.0, kým npm metadata deklaruje MIT. Zachovať LICENSE/NOTICE text a pred distribúciou potvrdiť zamýšľanú licenciu publishrom. Kým tieto brány neprejdú, nepovažovať integráciu za release-ready ani za súťažnú compliance.
 
 Roadmapa **nepredpokladá**, že všetky KYX roly, patterny, zariadenia alebo automatizácie majú v SDK priamy ekvivalent. Presný MVP rozsah sa uzamkne až po funkčnom API spike.
 
@@ -266,6 +271,13 @@ Nexus dokumentácia potvrdzuje dostupnosť device/pattern entít (vrátane Beatb
 3. **Songstarter plan — hotovo v lokálnom slice:** pitched MIDI + dokázané Beatbox8 role-y, nepodporované/kolidujúce hity v preview, BPM/signature porovnanie a stabilný fingerprint; cieľové tempo sa nemení.
 4. **Atomic/create-only writer + UI — hotovo lokálne/offline:** zariadenia, patterns, tracks a routes vznikajú v jednej transakcii s receipt/idempotent retry. Žiadny live cloud write sa zatiaľ nevykonal. Upload audio sample-ov je mimo tohto slice-u.
 5. **Živý dôkaz a súťažná prezentácia:** až po client ID, dedikovanom test projekte a výslovnom potvrdení vykonať OAuth → write → retry → projektová kontrola; potom opraviť/overiť `/kyx/` Qvester mount, SDK licenciu/security, build, browser smoke a nahrať krátku ukážku prompt → candidates → audition → Audiotool edit.
+Spúšťať v poradí; každý goal má skončiť konkrétnym gate reportom. Keďže MVP vertical slice už čiastočne existuje, prvý goal má overiť a doplniť aktuálny stav, nie znovu vytvárať hotové súbory. Nezačínať živý OAuth/write smoke bez registrovaného client ID, dedikovaného test projektu a výslovného potvrdenia vlastníka.
+
+1. **Current-state + feasibility gate:** skontrolovať existujúci diff a testy, overiť SDK API/licenciu, offline `noteTrack`/`noteRegion` dôkaz a browser WASM loader; pripraviť živý test iba po získaní potrebných vstupov. Výstup: potvrdené hotové časti, presné medzery a go/no-go.
+2. **Dependency qualification:** keďže dependency už pinned je, auditovať current package/lockfile, SDK licenciu/transitives, lazy bundle a opt-in load; meniť dependency iba ak gate nájde konkrétny dôvod.
+3. **Adapter + failure hardening:** audit auth/session lifecycle, capability checks, error normalization, disconnect/retry/stale confirmation, timeout/circuit behavior; doplniť chýbajúce offline/fake tests bez duplikovania existujúcich testov.
+4. **Intent Songstarter write:** overiť mapovanie vybraného KYX candidate → Audiotool plan → create-only confirmed write, MIDI časovanie, idempotentný retry a zachovanie vzdialeného obsahu; bez zmeny project schema.
+5. **UX + production/release proof:** uzavrieť CDN WASM a `/kyx/` OAuth/browser smoke, PWA/CSP, dokumentáciu, dependency/security/licence review a aktuálne súťažné podmienky. Živý write sa vykoná len po explicitnom test-project potvrdení.
 
 Goal 1 môže zmeniť poradie alebo zastaviť plán, ak SDK nedokáže spoľahlivo vytvoriť a overiť konkrétny kompozičný artefakt. To je očakávaný technický gate, nie zlyhanie implementácie.
 
@@ -290,6 +302,13 @@ write smoke. Machiniste nie je
 otestovaný ani podporovaný týmto slice-om. Nepredstieraj zachovanie KYX samplov,
 presnej velocity/per-step performance ani tempo mutation bez nových testov.
 Sample upload, MRT2 streaming, two-way sync a ďalšie kategórie sú mimo MVP.
+Dokonči bezpečnú a release-ready integráciu KYX × Audiotool Nexus podľa
+`docs/IMPLEMENTATION-ROADMAP-AUDIOTOOL-NEXUS.md`.
+
+Začni auditom aktuálneho pracovného stromu a existujúcich testov. Zachovaj všetky
+nesúvisiace používateľské zmeny a znovu neimplementuj hotové časti. Postupuj cez
+fázy roadmapy v poradí, zapisuj priebežný stav a pri každej fáze uveď dôkazy,
+testy a otvorené riziká. Rešpektuj ADR a AGENTS.md.
 
 Nexus musí zostať opt-in, lazy-loaded a create-only: bez vzdialeného zápisu pri
 boote/generovaní/auditione, iba po náhľade a samostatnom potvrdení. KYX project
@@ -299,6 +318,8 @@ dôvodu. Live write nezačínaj bez registered OAuth client ID, dedikovaného
 Audiotool test projektu a explicitného potvrdenia vlastníka. Over production
 build pod `/kyx/`, vrátane OAuth návratu, Audiotool CDN WASM loadera
 (CORS/MIME/CSP) a PWA/service worker.
+dôvodu. Over production build pod `/kyx/`, vrátane OAuth návratu, Audiotool CDN
+WASM loadera (CORS/MIME/CSP) a PWA/service worker.
 
 Nevykonávaj živý Audiotool zápis, kým vlastník neposkytne zaregistrovaný verejný
 OAuth client ID, dedikovaný test-project URL a výslovne nepotvrdí testovací

@@ -180,3 +180,66 @@ describe("melodic dialects wave 3 (dnb depth: techstep / ragga / sambass / halft
     }
   });
 });
+
+describe("melodic dialects wave 3 (disco / synthpop / progressive / ukg / jersey / trap808 / drill / acid / basshouse / country / kuduro / tropical / liquid / techhouse)", () => {
+  const WAVE3: Array<[string, string]> = [
+    ["house", "disco"],
+    ["house", "synthpop"],
+    ["house", "progressive"],
+    ["house", "ukg"],
+    ["jersey", "club"],
+    ["trap", "classic"],
+    ["drill", "uk"],
+    ["techno", "acid"],
+    ["house", "basshouse"],
+    ["house", "countrypop"],
+    ["house", "kuduro"],
+    ["house", "tropical"],
+    ["dnb", "liquid"],
+    ["house", "techhouse"],
+  ];
+
+  it("all fourteen produce distinct bass different from their genre fallback", () => {
+    const fallbacks = new Map([
+      ["house", musical(partsFor("house")).bass],
+      ["jersey", musical(partsFor("jersey")).bass],
+      ["trap", musical(partsFor("trap")).bass],
+      ["drill", musical(partsFor("drill")).bass],
+      ["techno", musical(partsFor("techno")).bass],
+      ["dnb", musical(partsFor("dnb")).bass],
+    ]);
+    for (const [genre, style] of WAVE3) {
+      const dialect = musical(partsFor(genre, style)).bass;
+      expect(dialect.length, `${genre}.${style}`).toBeGreaterThan(0);
+      expect(dialect, `${genre}.${style}`).not.toEqual(fallbacks.get(genre));
+    }
+  });
+
+  it("standout signatures: disco octave bounce, trap808 patience, acid 16ths", () => {
+    // disco alternates root/fifth on the beat grid
+    const disco = musical(partsFor("house", "disco")).bass;
+    expect(disco.length).toBeGreaterThanOrEqual(4);
+    // trap 808: sparse and long
+    const trap808 = musical(partsFor("trap", "classic")).bass;
+    const avg808 = trap808.reduce((s, n) => s + n.duration, 0) / trap808.length;
+    expect(avg808).toBeGreaterThan(300);
+    // acid: 16th-note drive — many short notes
+    const acid = musical(partsFor("techno", "acid")).bass;
+    expect(acid.length).toBeGreaterThanOrEqual(8);
+    const avgAcid = acid.reduce((s, n) => s + n.duration, 0) / acid.length;
+    expect(avgAcid).toBeLessThan(200);
+  });
+
+  it("every new dialect stays key-safe", () => {
+    const allowed = new Set([0, 2, 3, 5, 7, 8, 10]);
+    for (const [genre, style] of WAVE3) {
+      const options = generateOptionsFromIntent(
+        normalizeIntent({ genre, style, seed: "melodic-dialect-fixture", length: 64 }),
+      );
+      const parts = generateMelodicParts(options, forkRandom("key-safety-3", "melody"), "C Natural Minor");
+      for (const note of parts.bass) {
+        expect(allowed.has(((note.pitch % 12) + 12) % 12), `${genre}.${style}`).toBe(true);
+      }
+    }
+  });
+});

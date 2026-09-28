@@ -1402,9 +1402,7 @@ const HALFTIME_CHORD: MelodicPatternData = {
   octaveOffset: 1,
   sequences: [
     // One vast pad wash
-    [
-      { degree: 0, duration: 16, velocity: 0.4 },
-    ],
+    [{ degree: 0, duration: 16, velocity: 0.4 }],
     // Slow two-chord drift
     [
       { degree: 0, duration: 8, velocity: 0.42 },
@@ -1520,9 +1518,7 @@ const MINIMAL_CHORD: MelodicPatternData = {
   octaveOffset: 1,
   sequences: [
     // Near-silent pad — a whisper
-    [
-      { degree: 0, duration: 16, velocity: 0.3 },
-    ],
+    [{ degree: 0, duration: 16, velocity: 0.3 }],
   ],
 };
 
@@ -1547,6 +1543,726 @@ const MINIMAL_LEAD: MelodicPatternData = {
   ],
 };
 
+// ── Melodic dialects (wave 3 — the octave bounce, the 808 slides, the 303) ──
+
+// Disco: THE octave bounce — root and octave alternating on every beat
+const DISCO_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.8 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+    ],
+    [
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.75 },
+      { degree: 2, duration: 2, velocity: 0.65 },
+    ],
+  ],
+};
+
+const DISCO_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // String stabs on the offbeats
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+    ],
+  ],
+};
+
+const DISCO_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Sunny hook — moves in comfortable steps
+    [
+      { degree: 4, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.55 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+// Synthpop: the driving 8th synth bass — relentless and even
+const SYNTHPOP_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+      { degree: 5, duration: 2, velocity: 0.8 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+      { degree: 4, duration: 2, velocity: 0.75 },
+      { degree: 3, duration: 2, velocity: 0.7 },
+    ],
+  ],
+};
+
+const SYNTHPOP_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Gated stabs — the 80s snapshot chord
+    [
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const SYNTHPOP_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Analog hook with a hook-y fall
+    [
+      { degree: 4, duration: 2, velocity: 0.6 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Progressive house: the long patient bass — half-bar notes, deep and even
+const PROGRESSIVE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 8, velocity: 0.8 },
+      { degree: 3, duration: 8, velocity: 0.7 },
+    ],
+    [
+      { degree: 0, duration: 6, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 8, velocity: 0.7 },
+    ],
+  ],
+};
+
+const PROGRESSIVE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Emotive pad swells
+    [
+      { degree: 0, duration: 8, velocity: 0.5 },
+      { degree: 3, duration: 8, velocity: 0.45 },
+    ],
+  ],
+};
+
+const PROGRESSIVE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // The long hypnotic phrase
+    [
+      { degree: 0, duration: 4, velocity: 0.55 },
+      { degree: 2, duration: 4, velocity: 0.5 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+// UK garage: the 2-step syncopated sub — skips the grid, answers late
+const UKG_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 3, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+const UKG_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Warm shuttling chords — the garage wipe
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.5 },
+    ],
+  ],
+};
+
+const UKG_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Vocal-ishlick — syncopated, singable
+    [
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+// Jersey club: the triple-kick answer — bass punctuates between the kicks
+const JERSEY_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const JERSEY_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // The club stab — short, chopped
+    [
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 8, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+const JERSEY_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Chopped vocal-feel hook
+    [
+      { degree: 0, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 5, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
+// Trap classic: the 808 slide — long gliding root notes, sparse and deep
+const TRAP808_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 6, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 6, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.9 },
+    ],
+  ],
+};
+
+const TRAP808_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Dark sparse bell-ish pad
+    [
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
+const TRAP808_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Dark bell hook — sparse, ringing
+    [
+      { degree: 0, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 4, duration: 3, velocity: 0.55 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// UK drill: the sliding 808 answer — the root slides up a half-step feel
+const DRILL_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 5, velocity: 0.95 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 6, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const DRILL_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Dark sliding pad
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 6, velocity: 0.45 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.4 },
+    ],
+  ],
+};
+
+const DRILL_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Dark sliding hook
+    [
+      { degree: 0, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 3, velocity: 0.5 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+// Acid techno: the 303 — accented 16ths with octave jumps
+const ACID_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 1, velocity: 0.95 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.85 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.7 },
+      { degree: 0, duration: 1, velocity: 0.65 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: 5, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.85 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+    ],
+  ],
+};
+
+const ACID_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Sparse stabs — the 303 carries the identity
+    [
+      { degree: -1, duration: 8, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
+const ACID_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Screaming 303 line up top
+    [
+      { degree: 0, duration: 1, velocity: 0.75 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 5, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.7 },
+      { degree: 4, duration: 1, velocity: 0.65 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
+// Bass house: the wobble stab — syncopated bass stabs between the kicks
+const BASSHOUSE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.95 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: 4, duration: 1, velocity: 0.75 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const BASSHOUSE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const BASSHOUSE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Vocal-chop style hook
+    [
+      { degree: 0, duration: 2, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+// Country pop: the boom-chicka — root and fifth alternating, honest and warm
+const COUNTRY_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.7 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 5, duration: 2, velocity: 0.65 },
+      { degree: 0, duration: 2, velocity: 0.8 },
+      { degree: 4, duration: 2, velocity: 0.65 },
+      { degree: 3, duration: 2, velocity: 0.6 },
+      { degree: 0, duration: 2, velocity: 0.75 },
+    ],
+  ],
+};
+
+const COUNTRY_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Warm acoustic strum feel
+    [
+      { degree: 0, duration: 4, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+  ],
+};
+
+const COUNTRY_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Pentatonic twinkle — the country lead language
+    [
+      { degree: 4, duration: 2, velocity: 0.6 },
+      { degree: 5, duration: 2, velocity: 0.55 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: 2, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Kuduro: the carnival punch — percussive root stabs, fast and dry
+const KUDURO_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 1, velocity: 0.95 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.9 },
+      { degree: -1, duration: 3, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const KUDURO_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Carnival whistle-feel stab
+    [
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.6 },
+      { degree: -1, duration: 5, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const KUDURO_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Half-time rap-feel phrase over the frantic floor
+    [
+      { degree: 0, duration: 4, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Tropical: the soft round beach bass — warm, rounded, patient
+const TROPICAL_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 3, velocity: 0.8 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.75 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.7 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.8 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 4, velocity: 0.65 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.7 },
+    ],
+  ],
+};
+
+const TROPICAL_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Steel-pan flavored bright stabs
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
+const TROPICAL_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // The pan-flute melody — pentatonic sunshine
+    [
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: 2, duration: 3, velocity: 0.55 },
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Liquid dnb: the long warm rolling — soulful, patient under the fast break
+const LIQUID_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 6, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.75 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.85 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 3, duration: 6, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 5, duration: 2, velocity: 0.7 },
+    ],
+  ],
+};
+
+const LIQUID_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    // Soulful Rhodes-feel pads
+    [
+      { degree: 0, duration: 6, velocity: 0.5 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 6, velocity: 0.45 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const LIQUID_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Liquid soul line — smooth and singing
+    [
+      { degree: 4, duration: 3, velocity: 0.6 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 2, duration: 2, velocity: 0.55 },
+      { degree: 0, duration: 4, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 4, velocity: 0.55 },
+    ],
+  ],
+};
+
+// Tech house: the wobbly stab — off-grid bass stabs with groove
+const TECHHOUSE_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.9 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 1, velocity: 0.75 },
+      { degree: -1, duration: 1, velocity: 0 },
+      { degree: 0, duration: 1, velocity: 0.8 },
+      { degree: -1, duration: 3, velocity: 0 },
+    ],
+  ],
+};
+
+const TECHHOUSE_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.5 },
+      { degree: -1, duration: 8, velocity: 0 },
+      { degree: -1, duration: 2, velocity: 0 },
+    ],
+  ],
+};
+
+const TECHHOUSE_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 2,
+  sequences: [
+    // Sparse funk licks
+    [
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.6 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.55 },
+      { degree: -1, duration: 6, velocity: 0 },
+    ],
+  ],
+};
+
 export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "house.amapiano": [AMAPIANO_BASS, AMAPIANO_CHORD, AMAPIANO_LEAD],
   "house.dembow": [DEMBOW_BASS, DEMBOW_CHORD, DEMBOW_LEAD],
@@ -1566,6 +2282,23 @@ export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {
   "dnb.crossbreed": [CROSSBREED_BASS, CROSSBREED_CHORD, CROSSBREED_LEAD],
   "dnb.minimal": [MINIMAL_BASS, MINIMAL_CHORD, MINIMAL_LEAD],
   "house.slaphouse": [SLAPHOUSE_BASS, SLAPHOUSE_CHORD, SLAPHOUSE_LEAD],
+  // Wave 3 — 14 lanes with a bass signature (2026-09-28)
+  "house.disco": [DISCO_BASS, DISCO_CHORD, DISCO_LEAD],
+  "house.synthpop": [SYNTHPOP_BASS, SYNTHPOP_CHORD, SYNTHPOP_LEAD],
+  "house.progressive": [PROGRESSIVE_BASS, PROGRESSIVE_CHORD, PROGRESSIVE_LEAD],
+  "house.ukg": [UKG_BASS, UKG_CHORD, UKG_LEAD],
+  "jersey.club": [JERSEY_BASS, JERSEY_CHORD, JERSEY_LEAD],
+  "trap.classic": [TRAP808_BASS, TRAP808_CHORD, TRAP808_LEAD],
+  "drill.uk": [DRILL_BASS, DRILL_CHORD, DRILL_LEAD],
+  "techno.acid": [ACID_BASS, ACID_CHORD, ACID_LEAD],
+  "house.basshouse": [BASSHOUSE_BASS, BASSHOUSE_CHORD, BASSHOUSE_LEAD],
+  "house.countrypop": [COUNTRY_BASS, COUNTRY_CHORD, COUNTRY_LEAD],
+  "house.kuduro": [KUDURO_BASS, KUDURO_CHORD, KUDURO_LEAD],
+  "house.tropical": [TROPICAL_BASS, TROPICAL_CHORD, TROPICAL_LEAD],
+  "dnb.liquid": [LIQUID_BASS, LIQUID_CHORD, LIQUID_LEAD],
+  // "tech house" prompts route genre=house — the dialect rides that key
+  // (the groove library keeps hybrid.techhouse for its own routing).
+  "house.techhouse": [TECHHOUSE_BASS, TECHHOUSE_CHORD, TECHHOUSE_LEAD],
 };
 
 export const MELODIC_BY_PROFILE: Record<ProductionProfile, MelodicPatternData[]> = {
