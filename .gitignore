@@ -86,3 +86,6 @@ native/pcm-host/build/
 
 # CLAP audio hosting build artifacts
 native/clap-host/build/
+
+# contest deploy build output (user-generated dist snapshot)
+dist-contest/

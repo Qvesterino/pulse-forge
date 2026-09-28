@@ -722,7 +722,7 @@ describe("vocabulary-gap depth lanes — every phrase resolves to a real groove"
     { text: "shoegaze", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
     { text: "dream pop", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
     { text: "nu jazz", genre: "house", style: "broken", groove: "house.broken" },
-    { text: "post rock", genre: "house", style: "shoegaze", groove: "house.shoegaze" },
+    { text: "post rock", genre: "postrock", style: "textured", groove: "postrock.textured" },
     { text: "breakcore", genre: "dnb", style: "amen", groove: "dnb.amen" },
     { text: "gabber", genre: "techno", style: "gabber", groove: "techno.gabber" },
     { text: "hardcore techno", genre: "techno", style: "gabber", groove: "techno.gabber" },

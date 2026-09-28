@@ -254,6 +254,37 @@ export async function composeFullTrack(
   // tile it across every section that plays a LEAD — the beat is built
   // AROUND the artist's idea.
   const hum = options.hum;
+  // Hum & harmonize — the backing stack rides the tiled, song-key melody;
+  // notes land under a dedicated track id created at install (see the
+  // wrapped song command below).
+  let harmonyTrackId: string | null = null;
+  if (hum && hum.harmonize) {
+    const humSongKey = (build.key ?? (hum.key as MusicalKey | null) ?? null) as MusicalKey | null;
+    if (!humSongKey) {
+      skipped.push("harmonize: no song key — the backing stack needs a key to stack in");
+    } else {
+      harmonyTrackId = uid("track");
+      const injectBacking = (sections: SongBuild["sections"]): SongBuild["sections"] =>
+        sections.map((section) => {
+          if (!section.roles.includes("lead")) return section;
+          const sectionTicks = section.stepCount * STEP_TICKS;
+          const tiled = tileNotesAtLoopPeriod(
+            transposeHumToKey(hum.notes, hum.key ?? null, humSongKey),
+            hum.loopTicks,
+            sectionTicks,
+          );
+          if (tiled.length === 0) return section;
+          const pair = planVocalHarmonyPair(tiled, humSongKey);
+          const backing: NoteEvent[] = [
+            ...pair.above.map((note) => ({ ...note, velocity: note.velocity * 0.72, id: uid("note") }) as NoteEvent),
+            ...pair.below.map((note) => ({ ...note, velocity: note.velocity * 0.66, id: uid("note") }) as NoteEvent),
+          ];
+          return refreshHummedPattern(doc, section, harmonyTrackId, backing, humSongKey);
+        });
+      build = { ...build, sections: injectBacking(build.sections) };
+    }
+  }
+  const hum = options.hum;
   if (hum && hum.notes.length > 0) {
     const leadId = resolveLeadTrackId(doc);
     if (!leadId) {
@@ -326,6 +357,37 @@ export async function composeFullTrack(
   }
 
   options.onProgress?.(`ready — ${build.sections.length} sections, ${build.totalBars} bars`);
+  // Hum & harmonize: when the hum requested the backing stack, the song
+  // command installs a dedicated "Hum Harmony" instrument track (created
+  // here, one id, deterministic) and the wrapper keeps ONE undo step for
+  // track + song + backing notes together.
+  if (harmonyTrackId) {
+    const harmonyTrack: InstrumentTrack = {
+      ...createInstrumentTrackModel("sampler", doc.tracks.length),
+      id: harmonyTrackId,
+      name: "Hum Harmony",
+      sampleId: null,
+    };
+    const withTrack: ProjectDocument = { ...doc, tracks: [...doc.tracks, harmonyTrack] };
+    const inner = applySongCommand(withTrack, build);
+    return {
+      text: trimmed,
+      build,
+      lengthHint: length,
+      commands: {
+        song: {
+          type: "humAndHarmonizeSong",
+          label: `${inner.label} + hum harmony stack`,
+          execute: () => inner.execute(withTrack),
+          undo: () => doc,
+        },
+        mix,
+      },
+      mixSummary,
+      loudness,
+      skipped,
+    };
+  }
   return {
     text: trimmed,
     build,

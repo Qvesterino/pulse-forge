@@ -148,6 +148,11 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 
 ## 6. Test gates — what must be green before merging
 
+> Adding or touching an audio effect/instrument? Read
+> `docs/NEW-EFFECT-CHECKLIST.md` first — it encodes the five known ways a
+> parameter goes silently dead (audit 2026-09-27) and the QA obligations
+> that catch them.
+
 | Gate                      | Command                                | Expected result                                                                                                   |
 | ------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                     |
