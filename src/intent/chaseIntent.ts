@@ -15,7 +15,8 @@ import { parseSmpTe } from "../midi/smpte";
  *            (explicit go/jump/seek verbs win over arm/disarm phrases)
  */
 
-export type ChaseIntent = { kind: "arm" } | { kind: "disarm" } | { kind: "seek"; tc: SmpTeTimecode };
+export type ChaseIntent =
+  { kind: "arm" } | { kind: "disarm" } | { kind: "seek"; tc: SmpTeTimecode } | { kind: "offset"; seconds: number };
 
 const deaccent = (value: string): string =>
   value
@@ -44,6 +45,32 @@ export function parseLooseTimecode(token: string): SmpTeTimecode | null {
 
 const TIMECODE_TOKEN = /\b\d{1,2}:\d{1,2}(?::\d{1,2})?(?:[;:]\d{1,2})?\b/;
 
+/** "timecode offset 1 hour" / "tc offset -30 s" — amount + unit. */
+const OFFSET_SET =
+  /\b(?:tc|timecode)\s+offset\s*(?:=|to|na)?\s*(-?\d+(?:\.\d+)?)\s*(hours?|hodin\w*|h|min\w*|m|sec\w*|s)\b/;
+
+const OFFSET_RESET =
+  /\b(?:reset|clear|remove|vynuluj|zrus)\b[^.]*\b(?:tc|timecode)\s+offset\b|\b(?:tc|timecode)\s+offset\s*(?:zero|reset|vynuluj)\b/;
+
+const UNIT_SECONDS: Record<string, number> = {
+  hours: 3600,
+  hour: 3600,
+  hodin: 3600,
+  hodina: 3600,
+  h: 3600,
+  minutes: 60,
+  minute: 60,
+  minut: 60,
+  min: 60,
+  m: 60,
+  seconds: 1,
+  second: 1,
+  sekund: 1,
+  sekunda: 1,
+  sec: 1,
+  s: 1,
+};
+
 const SEEK_VERB =
   /\b(?:go(?:ing)?\s+to|goto|jump\s+to|seek(?:\s+to)?|skip\s+to|chod\s+na|skoc\s+na|prejdi\s+na|posun\s+(?:sa\s+)?na)\b/;
 
@@ -57,6 +84,15 @@ const ARM =
 export function parseChaseIntent(text: string): ChaseIntent | null {
   const lower = deaccent(text);
   if (!lower.trim()) return null;
+
+  // Offset configuration beats seek/arm: "tc offset 1 hour" redefines the
+  // TC origin ("reset/clear" returns it to zero).
+  const offsetSet = OFFSET_SET.exec(lower);
+  if (offsetSet) {
+    const unit = UNIT_SECONDS[offsetSet[2]] ?? 1;
+    return { kind: "offset", seconds: Number(offsetSet[1]) * unit };
+  }
+  if (OFFSET_RESET.test(lower)) return { kind: "offset", seconds: 0 };
 
   // Seek first: an explicit go/jump verb with a timecode token wins over the
   // arm/disarm phrases ("go to timecode 1:23" is a position, not an arming).

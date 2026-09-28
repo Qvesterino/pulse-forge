@@ -87,6 +87,7 @@ import { routeIntentText, REVISE_DELTA, type ReviseAttribute } from "../intent/r
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
+import { PPQ } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
@@ -1988,7 +1989,18 @@ export function IntentPanel() {
         } else if (route.action === "metronomeOn") {
           services.transport.setMetronome(true);
           setStatus("⚡ metronome on");
+        } else if (route.action === "loopOn") {
+          // Preserve the existing loop range; a fresh project has none, so
+          // loop the first 4 bars (4/4 at PPQ 480) as the bounded default.
+          const t = services.transport;
+          const end = t.loopEnd > t.loopStart ? t.loopEnd : t.loopStart + 4 * 4 * PPQ;
+          t.setLoop(true, t.loopStart, end);
+          setStatus(`⚡ loop on [${t.loopStart}–${end}]`);
+        } else if (route.action === "loopOff") {
+          services.transport.setLoop(false, 0, 0);
+          setStatus("⚡ loop off");
         } else {
+          // metronomeOff — the only remaining TransportAction
           services.transport.setMetronome(false);
           setStatus("⚡ metronome off");
         }

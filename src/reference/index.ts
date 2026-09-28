@@ -45,4 +45,13 @@ export type {
 export { analyzeReferenceAsync } from "./reference-client";
 export { analyzeReference, type AnalyzeReferenceInput, type AnalyzeReferenceOutput } from "./analysis/analyzeReference";
 
-export { decodeReferenceFile, ReferenceDecodeError } from "./audio/decode";
+export { decodeReferenceFile, ReferenceDecodeError, type DecodedReference } from "./audio/decode";
+export { toMono } from "./audio/mono";
+
+/**
+ * Confidence wording lives in the engine so the thresholds cannot drift from
+ * the number that produced them. F4 renders the label directly; a panel that
+ * invents its own "High/Moderate/Low" cutoffs would silently disagree with
+ * every other surface once the threshold moves.
+ */
+export { confidenceLabel, confidenceLevel, toPercent, type ConfidenceLevel } from "./analysis/confidence";

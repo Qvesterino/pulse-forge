@@ -170,27 +170,31 @@ class MultitapProcessor extends AudioWorkletProcessor {
         toneInR += g * panR[t] * this.readCubic(bufR, pos);
       }
 
-      // Tone filter (biquad, per-channel state).
+      // Tone filter (biquad, per-channel state). The flush happens BEFORE
+      // the state store: storing the raw toneOut let subnormal values live
+      // in y1/y2 and poisoned the recursion with per-sample denormal math
+      // (caught by tests/multitap-soak.test.ts). Threshold −260 dBFS —
+      // inaudible, but far above the float64 subnormal range.
       let toneOutL =
         this.b0 * toneInL + this.b1 * this.x1L + this.b2 * this.x2L - this.a1 * this.y1L - this.a2 * this.y2L;
+      let toneOutR =
+        this.b0 * toneInR + this.b1 * this.x1R + this.b2 * this.x2R - this.a1 * this.y1R - this.a2 * this.y2R;
+      if (Math.abs(toneOutL) < 1e-15) toneOutL = 0;
+      if (Math.abs(toneOutR) < 1e-15) toneOutR = 0;
       this.x2L = this.x1L;
       this.x1L = toneInL;
       this.y2L = this.y1L;
       this.y1L = toneOutL;
-      let toneOutR =
-        this.b0 * toneInR + this.b1 * this.x1R + this.b2 * this.x2R - this.a1 * this.y1R - this.a2 * this.y2R;
       this.x2R = this.x1R;
       this.x1R = toneInR;
       this.y2R = this.y1R;
       this.y1R = toneOutR;
-      if (Math.abs(toneOutL) < 1e-20) toneOutL = 0;
-      if (Math.abs(toneOutR) < 1e-20) toneOutR = 0;
 
       // Feedback recirculation feeds the tap input — denormal-flushed.
       let fbL = fbGain * toneOutL;
       let fbR = fbGain * toneOutR;
-      if (Math.abs(fbL) < 1e-20) fbL = 0;
-      if (Math.abs(fbR) < 1e-20) fbR = 0;
+      if (Math.abs(fbL) < 1e-15) fbL = 0;
+      if (Math.abs(fbR) < 1e-15) fbR = 0;
       const loopInL = dryL + fbL;
       const loopInR = dryR + fbR;
 

@@ -56,6 +56,7 @@ const outcome = await page.evaluate(async (favorites) => {
   const { extractAudioFeatures } = await import("/src/ai/audio-features.ts");
   const { scoreAudioFit, audioTargetFor } = await import("/src/intent/audio-feedback.ts");
   const { fitRerankWeight } = await import("/src/intent/rerank-weights.ts");
+  const { readAudioFitLedger, audioFitLedgerSamples } = await import("/src/intent/audio-fit-ledger.ts");
 
   const bank = await generateFactoryBank();
   const doc = schema.createDefaultProject();
@@ -159,8 +160,25 @@ const outcome = await page.evaluate(async (favorites) => {
     }
   }
 
-  const fitted = fitRerankWeight(samples);
-  return { fitted, generations, matched, sampleCount: samples.length };
+  // LEDGER SOURCE: every-day generations recorded by ranking-v3 at
+  // selection time (delivered winner = implicit kept candidate).
+  const ledgerSamples = audioFitLedgerSamples(readAudioFitLedger());
+  const ledgerGenerations = new Set(ledgerSamples.map((sample) => sample.generationId)).size;
+  const combined = [...samples, ...ledgerSamples];
+
+  const fittedStar = fitRerankWeight(samples);
+  const fittedLedger = fitRerankWeight(ledgerSamples);
+  const fitted = fitRerankWeight(combined);
+  return {
+    fitted,
+    fittedStar,
+    fittedLedger,
+    generations,
+    matched,
+    sampleCount: samples.length,
+    ledgerGenerations,
+    ledgerSampleCount: ledgerSamples.length,
+  };
 }, entries);
 
 await browser.close();
@@ -168,26 +186,35 @@ await server.close();
 
 if (!outcome || !outcome.fitted) {
   console.log(
-    `[rerank:fit] not enough usable generations (matched ${outcome?.matched ?? 0}/${entries.length}) — KEEP default 0.3`,
+    `[rerank:fit] not enough usable generations (★ matched ${outcome?.matched ?? 0}/${entries.length}, ` +
+      `ledger generations ${outcome?.ledgerGenerations ?? 0}) — KEEP default 0.3`,
   );
   process.exit(1);
 }
 
+if (outcome.fittedLedger) {
+  console.log(
+    `[rerank:fit] ledger-only read: ${outcome.ledgerGenerations} generations / ${outcome.ledgerSampleCount} samples → ` +
+      `weight ${outcome.fittedLedger.weight} (accuracy ${outcome.fittedLedger.accuracy} vs baseline ${outcome.fittedLedger.baselineAccuracy})`,
+  );
+}
+
 const learned = {
   weight: outcome.fitted.weight,
-  source: "learned-v1 (fit-rerank-weights)",
+  source: "learned-v1 (fit-rerank-weights: ★ rolls + audio-fit ledger)",
   fittedAt: new Date().toISOString(),
   accuracy: outcome.fitted.accuracy,
   baselineAccuracy: outcome.fitted.baselineAccuracy,
   generations: outcome.fitted.generations,
-  samples: outcome.sampleCount,
+  samples: outcome.sampleCount + (outcome.ledgerSampleCount ?? 0),
 };
 const outDir = path.join(ROOT, "scripts", "data");
 mkdirSync(outDir, { recursive: true });
 writeFileSync(path.join(outDir, "rerank-weights.json"), JSON.stringify(learned, null, 2) + "\n");
 
 console.log(
-  `[rerank:fit] generations=${learned.generations} matchedKept=${outcome.matched} samples=${outcome.sampleCount}`,
+  `[rerank:fit] generations=${learned.generations} matchedKept=${outcome.matched} ` +
+    `samples=${outcome.sampleCount}★+${outcome.ledgerSampleCount ?? 0}ledger`,
 );
 console.log(
   `[rerank:fit] top-1 accuracy: baseline ${learned.baselineAccuracy} → fitted ${learned.accuracy} at weight ${learned.weight}`,

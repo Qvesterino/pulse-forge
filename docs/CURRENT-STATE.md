@@ -27,7 +27,7 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets                  |     488 | `FACTORY_PRESETS`                                                                                                                        |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                                   |
 | **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                                   |
-| **Vitest spec files**                  | **621** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                             |
+| **Vitest spec files**                  | **633** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                             |
 
 ## Flagship plugin implementations
 
@@ -163,6 +163,12 @@ High-level summary of what landed on top of the 2026-09-14 release-readiness can
 ### Export and interchange
 
 - **BWF Broadcast Wave metadata** — deliverable WAV exports (master, grouped stems, per-track stems, scorepack master/stems, ZYVO transfer) carry an EBU Tech 3285 `bext` chunk: originator, timestamp, sample-accurate time reference and — wherever a render summary exists — the measured loudness in the spec's v2 fixed-point fields (LUFS-I, LRA, true peak, momentary/short-term), which Pro Tools / Nuendo / film workflows read on import. Opt-in at the encoder level (`createBextMetadata` in `src/rendering/wav.ts`), so internal round-trip WAVs (freeze, bounce persistence, consolidation, Qvester handoff) stay byte-compatible. Spec-pinned by `tests/wav-bwf.test.ts`.
+
+### Reference Map (audio analysis)
+
+- **Reference Map panel (F4-lite)** — `src/ui/ReferenceMapPanel.tsx`, reachable from the topbar as **REF MAP** and from the bottom dock. Drop a finished track (WAV / MP3 / FLAC / OGG / M4A / OPUS, 25 MB ceiling enforced _before_ decode) and read back tempo, key, Camelot code and a High/Moderate/Low confidence word, with the half/double reading a producer actually argues about, a per-file BPM + key/mode correction, and JSON export. Tabs: MAPA (onset envelope + beat markers) / RYTMUS / HARMONIA (12-bin chroma + top-5 key candidates) / DIAGNOSTIKA.
+- **Deterministic engine (F1)** — `src/reference/`, browser-native, no server and no model. Spectral-flux onset envelopes → comb-ACF tempo candidates → beat grid → Krumhansl–Schmuckler rotated-Pearson key scoring, all in a Web Worker with a transparent main-thread fallback. Same file → same BPM/key/Camelot every time; silence and unusable input report honest `null` + a warning rather than an invented number. The export separates `detected` from `confirmed` so a user correction never overwrites what the engine actually found.
+- **Not yet shipped:** applying a reference to the project. Setting project BPM from the detected tempo, importing sections as markers and applying a groove feel are F4-full and remain roadmap items, as are F2 (sections/energy) and F5 (inspiration generation).
 
 ### Architecture
 

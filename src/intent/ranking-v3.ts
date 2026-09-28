@@ -16,6 +16,8 @@
 import type { RankedCandidate } from "./types";
 import { scoreCandidatesBySound, AUDIO_FEEDBACK_WEIGHT, type RenderCandidateFn } from "./audio-feedback";
 import { readLearnedRerankWeight } from "./rerank-weights";
+import { recordAudioFitObservation } from "./audio-fit-ledger";
+import { hashString } from "../shared/rng";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 
@@ -85,6 +87,28 @@ export async function rerankTopBySound(
     combined.sort((a, b) => b.combined - a.combined);
 
     const reorderedFinalists = combined.map((item) => item.entry);
+
+    // Phase: audio-fit ledger — the rendered audio scores are a training
+    // signal; record the observation so `npm run rerank:fit` can learn the
+    // audio weight from EVERY generation, not only ★-kept ones. The winner
+    // delivered to the user is the implicit choice. Never throws.
+    try {
+      const winner = reorderedFinalists[0];
+      const winnerPosition = finalists.findIndex((entry) => entry.candidateIndex === winner.candidateIndex);
+      recordAudioFitObservation({
+        generationId: `gen-${hashString(`${doc.id}|${genre}|${finalists.map((entry) => entry.contentHash).join(",")}`)}`,
+        genre,
+        selectedIndex: winnerPosition >= 0 ? winnerPosition : 0,
+        candidates: finalists.map((entry) => ({
+          candidateIndex: entry.candidateIndex,
+          firstPass: firstPassNorm(entry),
+          audio: audioFor(entry) ?? 0.5,
+        })),
+      });
+    } catch {
+      /* ledger is best-effort — selection must never depend on it */
+    }
+
     return [...reorderedFinalists, ...bank.slice(finalistCount)];
   } catch {
     return [...bank];

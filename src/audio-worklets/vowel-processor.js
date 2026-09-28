@@ -8,7 +8,7 @@
  * refreshed once per render quantum (k-rate vowel) — enough for LFOs at
  * beat rates, cheap enough for 128-sample blocks.
  *
- * Mix 0 = dry, 1 = fully filtered. FTZ flush <1e-20 on all state.
+ * Mix 0 = dry, 1 = fully filtered. FTZ flush <1e-15 on all state.
  *
  * NOTE: served RAW to AudioWorklet.addModule() — plain JavaScript only.
  */
@@ -156,11 +156,11 @@ class VowelProcessor extends AudioWorkletProcessor {
         this.x1[f][0] = wetL;
         this.y2[f][0] = this.y1[f][0];
         this.y1[f][0] = yL;
-        if (Math.abs(this.x1[f][0]) < 1e-20) this.x1[f][0] = 0;
-        if (Math.abs(this.x2[f][0]) < 1e-20) this.x2[f][0] = 0;
-        if (Math.abs(this.y1[f][0]) < 1e-20) this.y1[f][0] = 0;
-        if (Math.abs(this.y2[f][0]) < 1e-20) this.y2[f][0] = 0;
-        if (Math.abs(yL) < 1e-20) yL = 0;
+        if (Math.abs(this.x1[f][0]) < 1e-15) this.x1[f][0] = 0;
+        if (Math.abs(this.x2[f][0]) < 1e-15) this.x2[f][0] = 0;
+        if (Math.abs(this.y1[f][0]) < 1e-15) this.y1[f][0] = 0;
+        if (Math.abs(this.y2[f][0]) < 1e-15) this.y2[f][0] = 0;
+        if (Math.abs(yL) < 1e-15) yL = 0;
         wetL = yL;
         // Right
         let yR = b0 * wetR + b1 * this.x1[f][1] + b2 * this.x2[f][1] - a1 * this.y1[f][1] - a2 * this.y2[f][1];
@@ -168,11 +168,11 @@ class VowelProcessor extends AudioWorkletProcessor {
         this.x1[f][1] = wetR;
         this.y2[f][1] = this.y1[f][1];
         this.y1[f][1] = yR;
-        if (Math.abs(this.x1[f][1]) < 1e-20) this.x1[f][1] = 0;
-        if (Math.abs(this.x2[f][1]) < 1e-20) this.x2[f][1] = 0;
-        if (Math.abs(this.y1[f][1]) < 1e-20) this.y1[f][1] = 0;
-        if (Math.abs(this.y2[f][1]) < 1e-20) this.y2[f][1] = 0;
-        if (Math.abs(yR) < 1e-20) yR = 0;
+        if (Math.abs(this.x1[f][1]) < 1e-15) this.x1[f][1] = 0;
+        if (Math.abs(this.x2[f][1]) < 1e-15) this.x2[f][1] = 0;
+        if (Math.abs(this.y1[f][1]) < 1e-15) this.y1[f][1] = 0;
+        if (Math.abs(this.y2[f][1]) < 1e-15) this.y2[f][1] = 0;
+        if (Math.abs(yR) < 1e-15) yR = 0;
         wetR = yR;
       }
       outL[i] = l * (1 - mix) + wetL * mix;

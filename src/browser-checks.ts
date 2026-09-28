@@ -19,9 +19,11 @@ import {
   addAutomationLane,
   addAutomationPoint,
   addEffect,
+  applyGenerationResultCommand,
   applyInstrumentPreset,
   setEffectParam,
 } from "./commands/commands";
+import { generateAsyncResult } from "./intent/pipeline";
 import { ProjectStore } from "./store/ProjectStore";
 import { PPQ } from "./project-model/types";
 import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
@@ -1195,6 +1197,84 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("phaser rate changes the rendered signal (wet chain alive)", diff > 0.01, `maxDiff=${diff.toFixed(4)}`);
   } catch (error) {
     check("phaser rate changes the rendered signal (wet chain alive)", false, String(error));
+  }
+
+  // Phase: intent production-path gate (plugin-audit "measure the shipped
+  // path" applied to the intent engine). The vitest intent suites cover the
+  // pieces; THIS proves the full browser chain end-to-end on the real page:
+  // generateAsyncResult (bank + ONNX ranker) → determinism → bank quality →
+  // applyGenerationResultCommand → offline render → audible pattern, all
+  // inside a latency budget.
+  try {
+    const doc = createProjectFromTemplate("house");
+    const intent = normalizeIntent({
+      genre: "techno",
+      seed: "prod-path-gate",
+      roles: ["drums", "bass"],
+      candidateCount: 4,
+      symbolicCandidates: 2,
+      length: 16,
+    });
+    const t0 = performance.now();
+    // `sound` is what the panel GENERATE sends (ranking v3 — render the top
+      // finalists and re-order by audio fit): the shipped production path.
+      const run = await generateAsyncResult(doc, intent, {
+        mode: "apply",
+        includeBank: true,
+        sound: { bank },
+      });
+    const elapsedMs = Math.round(performance.now() - t0);
+
+    // Determinism: the exact same request must produce the exact same bank.
+    const run2 = await generateAsyncResult(doc, intent, { mode: "apply", includeBank: true });
+    const hashes1 = (run.bank ?? []).map((c) => c.contentHash);
+    const hashes2 = (run2.bank ?? []).map((c) => c.contentHash);
+    const deterministic = hashes1.length > 0 && hashes1.join() === hashes2.join();
+
+    // Bank quality: populated, unique content hashes (diversity), all accepted.
+    const candidateBank = run.bank ?? [];
+    const uniqueHashes = new Set(hashes1).size;
+    const allAccepted = candidateBank.every((c) => c.status === "accepted" || c.status === "repaired");
+
+    // Audibility: install the winner via the REAL apply command and render.
+    const st = new ProjectStore(doc);
+    st.execute(applyGenerationResultCommand(st.getDoc(), run));
+    const rendered = await renderProject(st.getDoc(), bank, {
+      mode: "pattern",
+      sampleRate: SR,
+      tailSeconds: 0.3,
+    });
+    const d = rendered.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+
+    // Loop closure: the sound rerank must record the audio-fit observation
+    // (pf:audio-fit-ledger) — that's what `npm run rerank:fit` learns from.
+    let ledgerOk = false;
+    try {
+      const raw = localStorage.getItem("pf:audio-fit-ledger");
+      const parsed = raw ? (JSON.parse(raw) as { selectedIndex?: number }[]) : [];
+      ledgerOk = parsed.length > 0 && parsed.every((o) => typeof o.selectedIndex === "number");
+    } catch {
+      ledgerOk = false;
+    }
+
+    const ok =
+      deterministic &&
+      candidateBank.length >= 4 &&
+      uniqueHashes === candidateBank.length &&
+      allAccepted &&
+      peak > 0.01 &&
+      ledgerOk &&
+      elapsedMs < 10_000;
+    check(
+      "intent production path: generate → deterministic bank → apply → audible render",
+      ok,
+      `bank=${candidateBank.length} unique=${uniqueHashes} peak=${peak.toFixed(3)} elapsed=${elapsedMs}ms ` +
+        `selection=${run.selection?.source ?? "?"}/${run.selection?.mode ?? "?"} ledger=${ledgerOk}`,
+    );
+  } catch (error) {
+    check("intent production path: generate → deterministic bank → apply → audible render", false, String(error));
   }
 
   // Intent ranker worker (goal doc Fáze 3/4): the ONNX model must load from

@@ -1,0 +1,245 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ServicesContext } from "../../src/ui/context";
+import { ReferenceMapPanel } from "../../src/ui/ReferenceMapPanel";
+import { mockServices } from "../helpers";
+import { clickTrack, FIXTURE_SR } from "../reference/_fixtures";
+
+/**
+ * Reference Map panel (F4-lite) — the first surface that makes the F1 engine
+ * reachable by a user. Before this panel existed, `src/reference/` had zero
+ * production callers: 8 files of DSP, 28 tests, nothing a musician could run.
+ *
+ * These tests drive the real chain — file → decodeAudioData → analyzeReference
+ * → rendered result — with only the AudioContext faked, because a jsdom
+ * "AudioContext" has no decoder. The click-track fixture gives the analyzer a
+ * real 128 BPM pulse train, so a passing assertion here means the whole
+ * pipeline agrees, not that a mock returned the right shape.
+ *
+ * The guard tests matter more than the happy path: the two rejection paths
+ * (wrong extension, oversized file) are the ones that protect the tab, and
+ * both must fire BEFORE decode — rejecting a 26 MB file after decoding it is
+ * the exact failure the 25 MB ceiling exists to prevent.
+ */
+
+const { downloadSpy } = vi.hoisted(() => ({ downloadSpy: vi.fn() }));
+vi.mock("../../src/export/download", () => ({ downloadBlob: downloadSpy }));
+
+/** The payload of the Nth downloadBlob call, parsed from its Blob body. */
+async function exportedJson(index = 0): Promise<Record<string, never>> {
+  const blob = downloadSpy.mock.calls[index][0] as Blob;
+  return JSON.parse(await blob.text()) as Record<string, never>;
+}
+
+/** A decoded AudioBuffer carrying a real click track at `bpm`. */
+function decodedClickTrack(bpm: number, seconds: number) {
+  const pcm = clickTrack(bpm, seconds);
+  return {
+    duration: seconds,
+    sampleRate: FIXTURE_SR,
+    numberOfChannels: 1,
+    length: pcm.length,
+    getChannelData: () => pcm,
+  };
+}
+
+function makeFile(name: string, bytes = 1024): File {
+  return new File([new Uint8Array(bytes)], name, { type: "audio/wav" });
+}
+
+/** Render the panel with an engine whose decoder yields `audioBuffer`. */
+function setup(audioBuffer: unknown) {
+  const decodeAudioData = vi.fn(async () => audioBuffer);
+  const services = mockServices();
+  (services.engine as unknown as { ensureContext: unknown }).ensureContext = () => ({
+    state: "running",
+    resume: vi.fn(async () => {}),
+    currentTime: 0,
+    decodeAudioData,
+  });
+  render(
+    <ServicesContext.Provider value={services}>
+      <ReferenceMapPanel />
+    </ServicesContext.Provider>,
+  );
+  return { decodeAudioData, services };
+}
+
+describe("ReferenceMapPanel — input guards", () => {
+  beforeEach(() => {
+    downloadSpy.mockClear();
+  });
+
+  it("renders a drop zone before anything is analyzed", () => {
+    setup(decodedClickTrack(128, 4));
+    expect(screen.getByTestId("reference-dropzone")).toBeInTheDocument();
+    // No result surface until a file arrives — the panel must not render an
+    // empty "0.00 BPM" that reads as a real measurement.
+    expect(screen.queryByTestId("reference-primary")).not.toBeInTheDocument();
+  });
+
+  it("rejects an unsupported extension before touching the audio context", async () => {
+    const { decodeAudioData } = setup(decodedClickTrack(128, 4));
+    const file = makeFile("notes.txt");
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByTestId("reference-error")).toBeInTheDocument());
+    expect(screen.getByTestId("reference-error").textContent).toMatch(/unsupported/i);
+    // The guard must run before decode — reading the header of a file we
+    // cannot handle is pure cost.
+    expect(decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("rejects a file over 25 MB before decoding it", async () => {
+    const { decodeAudioData } = setup(decodedClickTrack(128, 4));
+    const file = makeFile("huge.wav", 16);
+    // Override the read-only size rather than allocating 26 MB in a test.
+    Object.defineProperty(file, "size", { value: 26 * 1024 * 1024, configurable: true });
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByTestId("reference-error")).toBeInTheDocument());
+    expect(screen.getByTestId("reference-error").textContent).toMatch(/25 MB/);
+    // This is the assertion that matters: decoding first would already have
+    // allocated the decoded PCM — 5-10x the file size — which is the tab kill.
+    expect(decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty file", async () => {
+    const { decodeAudioData } = setup(decodedClickTrack(128, 4));
+    const file = makeFile("empty.wav", 0);
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByTestId("reference-error")).toBeInTheDocument());
+    expect(decodeAudioData).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReferenceMapPanel — analysis result", () => {
+  beforeEach(() => {
+    downloadSpy.mockClear();
+  });
+
+  it("reports the detected tempo and key of a dropped track", async () => {
+    setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    const bpm = screen.getByTestId("reference-bpm").textContent ?? "";
+    // ±1 BPM tolerance: the analyzer refines to two decimals but the click
+    // train is synthesized, so this is a measurement, not an exact replay.
+    const value = Number.parseFloat(bpm);
+    expect(value).toBeGreaterThan(127);
+    expect(value).toBeLessThan(129);
+    expect(bpm).toMatch(/BPM/);
+  });
+
+  it("does not re-decode when switching tabs", async () => {
+    const { decodeAudioData } = setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+
+    for (const tab of ["rhythm", "harmony", "diag", "map"]) {
+      fireEvent.click(screen.getByTestId(`reference-tab-${tab}`));
+      expect(screen.getByTestId(`reference-panel-${tab}`)).toBeInTheDocument();
+    }
+    // Tab state is presentation. Re-decoding on a tab click would make the
+    // panel feel broken and burn seconds of CPU for no new information.
+    expect(decodeAudioData).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces engine diagnostics in the DIAGNOSTIKA tab", async () => {
+    setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("reference-tab-diag"));
+    const diag = screen.getByTestId("reference-diag").textContent ?? "";
+    expect(diag).toContain("kyx-reference/1.0.0");
+    expect(diag).toMatch(/22050/);
+  });
+
+  it("shows honest nulls for a silent file instead of inventing a tempo", async () => {
+    const silence = {
+      duration: 5,
+      sampleRate: FIXTURE_SR,
+      numberOfChannels: 1,
+      length: FIXTURE_SR * 5,
+      getChannelData: () => new Float32Array(FIXTURE_SR * 5),
+    };
+    setup(silence);
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("silence.wav")] } });
+
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    expect(screen.getByTestId("reference-bpm").textContent).toBe("—");
+    expect(screen.getByTestId("reference-confidence").textContent).toMatch(/nothing detected/i);
+    // The warning is the point: silence is reported, not papered over.
+    expect(screen.getByTestId("reference-warnings").textContent).toMatch(/silent/i);
+  });
+});
+
+describe("ReferenceMapPanel — corrections and export", () => {
+  beforeEach(() => {
+    downloadSpy.mockClear();
+  });
+
+  it("keeps a user BPM correction in `confirmed` and leaves `detected` alone", async () => {
+    setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("reference-bpm-input"), { target: { value: "132.5" } });
+    expect(screen.getByTestId("reference-bpm").textContent).toContain("132.50");
+
+    fireEvent.click(screen.getByTestId("reference-export"));
+    expect(downloadSpy).toHaveBeenCalledTimes(1);
+    const payload = (await exportedJson()) as unknown as {
+      detected: { bpm: number | null };
+      confirmed: { bpm: number | null; edited: boolean };
+      engineVersion: string;
+    };
+    // The whole point of the split: the export must not claim the engine
+    // found 132.5. Downstream users compare the two fields.
+    expect(payload.confirmed.bpm).toBe(132.5);
+    expect(payload.confirmed.edited).toBe(true);
+    expect(payload.detected.bpm).not.toBe(132.5);
+    expect(payload.engineVersion).toBe("kyx-reference/1.0.0");
+  });
+
+  it("rejects an out-of-range BPM instead of silently clamping it", async () => {
+    setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("reference-bpm-input"), { target: { value: "1300" } });
+    fireEvent.click(screen.getByTestId("reference-export"));
+    const payload = (await exportedJson()) as unknown as {
+      confirmed: { bpm: number | null; edited: boolean };
+    };
+    // A typed "1300" is a typo. Clamping it to 400 would publish a confident
+    // lie; refusing it leaves the detected value standing and honest.
+    expect(payload.confirmed.bpm).not.toBe(400);
+    expect(payload.confirmed.edited).toBe(false);
+  });
+
+  it("halves and doubles the reading on demand", async () => {
+    setup(decodedClickTrack(128, 10));
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+
+    const shown = () => Number.parseFloat(screen.getByTestId("reference-bpm").textContent ?? "");
+    const base = shown();
+    fireEvent.click(screen.getByTestId("reference-half"));
+    expect(shown()).toBeCloseTo(base / 2, 1);
+    fireEvent.click(screen.getByTestId("reference-double"));
+    expect(shown()).toBeCloseTo(base * 2, 1);
+  });
+
+  it("sanitizes the dropped file name before it can reach the download", async () => {
+    setup(decodedClickTrack(128, 10));
+    // RTL marks and control bytes in a file name must not survive into the
+    // artifact name — this is the same sanitiser the export path uses.
+    const file = makeFile("‮gnp.exe‍.wav");
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("reference-export"));
+    const name = String(downloadSpy.mock.calls[0][1]);
+    expect(name).not.toContain("‮");
+    expect(name).toMatch(/\.json$/);
+  });
+});

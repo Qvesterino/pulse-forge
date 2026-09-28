@@ -35,10 +35,10 @@ export interface ExactIntentPlan {
 
 const TARGET_RES: [RegExp, ExactTarget][] = [
   [/\bdrums?\b|\bbic\u00edc|\bbic(?:i|ie|ich)?\b|\bbubny\b/i, "drums"],
-  [/\bbass\b|\b808\b|\bbasa\b/i, "bass"],
-  [/\blead\b|\bsynth(?:esizer)?\b|\bsynt\u00e9z/i, "lead"],
+  [/\bbass\b|\bbas(?:a|u|y|e)?\b|\b808\b/i, "bass"],
+  [/\blead\b|\bsynth(?:esizer)?\b|\bsyntez/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
-  [/\b(?:the )?mix\b|\bmaster\b|\bv\u0161etko\b/i, "mix"],
+  [/\b(?:the )?mix\b|\bmaster\b|\bvsetko\b|\beverything\b|\ball\b/i, "mix"],
 ];
 
 /**
@@ -129,7 +129,13 @@ function flatToSharp(letter: string, accidental: string): string {
 }
 
 export function parseExactIntent(text: string): ExactIntentPlan | null {
-  const lower = text.toLowerCase();
+  // De-accented like every other parser — SK diacritics break \b word
+  // boundaries ("všetko" never matches a "vsetko" stem otherwise). The
+  // pattern table below is written with de-accented stems accordingly.
+  const lower = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   const ops: ExactOp[] = [];
 
   // Tempo: "set tempo to 142", "142 bpm", "tempo 138"
@@ -156,9 +162,12 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
   // Mute / unmute / solo — target required, otherwise skip (too ambiguous).
   // The capture allows hyphens so "hi-hats" resolves as the hats family.
-  const muteMatch = /\b(mute|st\u00eds)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  // "everything/all/všetko" resolves to the MIX family, which the applier
+  // expands to EVERY track for mute/solo ("mute everything" is a real ask).
+  const muteMatch = /\b(mute|st\u00eds|vypni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const soloMatch = /\b(solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const unsoloMatch = /\b(?:unsolo|solo\s+off|zrus\s+solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   if (unmuteMatch) {
     const target = firstTarget(unmuteMatch[2], true);
     if (target) ops.push({ kind: "mute", target, value: false });
@@ -166,9 +175,20 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     const target = firstTarget(muteMatch[2], true);
     if (target) ops.push({ kind: "mute", target, value: true });
   }
-  if (soloMatch) {
+  if (unsoloMatch) {
+    const target = firstTarget(unsoloMatch[1], true);
+    if (target && target !== "mix") ops.push({ kind: "solo", target, value: false });
+  } else if (soloMatch) {
     const target = firstTarget(soloMatch[1] + " " + soloMatch[2], true);
     if (target) ops.push({ kind: "solo", target, value: true });
+  }
+
+  // Center pan: "center the bass" / "vycentruj hi-hats" → pan 0 (any family,
+  // pads included; the mix is not a pan target).
+  const centerMatch = /\b(?:cent(?:er|re)|vycentruj)\s+(?:the\s+)?([a-z-]+)\s*(?:tracks?)?\b/.exec(lower);
+  if (centerMatch) {
+    const target = firstTarget(centerMatch[1], true);
+    if (target && target !== "mix") ops.push({ kind: "pan", target, value: 0 });
   }
 
   // Pan: "pan the hats 20% right", "pan bass left 30" — pad families allowed.
@@ -184,7 +204,9 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
     const directional = pan[2] === "left" || pan[2] === "right";
     const pct = Number(directional ? pan[3] : pan[2]);
     const dir = directional ? pan[2] : pan[3];
-    if (target && Number.isFinite(pct)) {
+    // "pan the mix" has no lane (the mix is not a pan target) — declining at
+    // parse keeps the applier from producing a silent no-op command.
+    if (target && target !== "mix" && Number.isFinite(pct)) {
       let value = pct;
       if (dir === "left") value = -value;
       if (!dir && /left|lavo/.test(lower) && /to\s*-?\d/.test(lower)) value = -value;
@@ -256,19 +278,25 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       lower,
     );
   if (transpose) {
-    const target = firstTarget(transpose[1]) ?? "lead";
-    const dir = /up|hore/.test(transpose[2]) ? 1 : -1;
-    const unit = transpose[4];
-    const count =
-      transpose[3] === "one" || transpose[3] === "an"
-        ? 1
-        : transpose[3] === "two"
-          ? 2
-          : transpose[3] === "three"
-            ? 3
-            : Number(transpose[3] ?? 1);
-    const semitones = dir * (/octave/.test(unit) ? 12 * (count || 1) : count || 1);
-    ops.push({ kind: "transpose", target, semitones });
+    // "everything/all" resolves to the mix family, but transpose has no
+    // mix-wide op — decline rather than silently no-op (the "lead" fallback
+    // is only for an unnamed SINGLE track, never for an all-ask).
+    const named = firstTarget(transpose[1]);
+    if (named !== "mix") {
+      const target = named ?? "lead";
+      const dir = /up|hore/.test(transpose[2]) ? 1 : -1;
+      const unit = transpose[4];
+      const count =
+        transpose[3] === "one" || transpose[3] === "an"
+          ? 1
+          : transpose[3] === "two"
+            ? 2
+            : transpose[3] === "three"
+              ? 3
+              : Number(transpose[3] ?? 1);
+      const semitones = dir * (/octave/.test(unit) ? 12 * (count || 1) : count || 1);
+      ops.push({ kind: "transpose", target, semitones });
+    }
   }
 
   // Pattern length: "pattern length to 32", "length to 64"
@@ -302,7 +330,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
 
 // ── TRANSPORT — bare-word runtime commands (not document state) ─────────────
 
-export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metronomeOff";
+export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metronomeOff" | "loopOn" | "loopOff";
 
 /**
  * Transport commands are accepted as BARE WORDS ONLY ("stop", "play",
@@ -313,7 +341,7 @@ export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metro
  */
 export function parseTransportIntent(text: string): TransportAction | null {
   if (
-    !/^\s*(?:please\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?)\s*[.!]?\s*$/i.test(
+    !/^\s*(?:please\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj)(?:\s+(?:on|off|zapni|vypni))?)\s*[.!]?\s*$/i.test(
       text,
     )
   ) {
@@ -324,6 +352,11 @@ export function parseTransportIntent(text: string): TransportAction | null {
     if (/\bon\b|\bzapni|\bstart/.test(lower)) return "metronomeOn";
     if (/\boff\b|\bvypni/.test(lower)) return "metronomeOff";
     return null; // bare "metronome" — on or off? decline
+  }
+  if (/^(?:loop|cykluj)/.test(lower)) {
+    if (/\bon\b|\bzapni/.test(lower)) return "loopOn";
+    if (/\boff\b|\bvypni/.test(lower)) return "loopOff";
+    return null; // bare "loop" — on or off? decline
   }
   if (/^(?:play|hraj|hrať|start|štart)/.test(lower)) return "play";
   if (/^(?:pause|pauza|pauzu)/.test(lower)) return "pause";
@@ -365,15 +398,15 @@ export function parseSaveIntent(text: string): boolean {
 }
 
 /**
- * "export wav" / "exportuj mp3" / "export the project as mp3" / bare
- * "export" → the master-bounce format. Bare "export" defaults to WAV (the
- * master delivery format — a bounded, documented default). Execution is the
- * async render+encode+download pipeline the export panel drives; parsing
- * stays pure.
+ * "export wav" / "exportuj mp3" / "bounce" / "export the project as mp3" /
+ * bare "export" → the master-bounce format. Bare "export"/"bounce" defaults
+ * to WAV (the master delivery format — a bounded, documented default).
+ * Execution is the async render+encode+download pipeline the export panel
+ * drives; parsing stays pure.
  */
 export function parseExportIntent(text: string): ExportFormat | null {
   const m =
-    /^\s*(?:please\s+)?export(?:uj)?\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i.exec(
+    /^\s*(?:please\s+)?(?:export(?:uj)?|bounce)\s*(?:the\s+)?(?:project\s+)?(?:as\s+|do\s+|to\s+)?(wav|mp3)?\s*[.!]?\s*$/i.exec(
       text,
     );
   if (!m) return null;
@@ -381,16 +414,16 @@ export function parseExportIntent(text: string): ExportFormat | null {
 }
 
 /**
- * "record" / "record pattern" / "nahrávaj" → arm the pattern recorder;
- * "stop recording" → disarm (the transport stop path ends the take either
- * way). Recording is runtime service state (`patternRecorder.setArmed`) —
- * the arming is the whole operation; takes land through the recorder's own
- * ONE-undo-frame lifecycle.
+ * "record" / "rec" / "record pattern" / "nahrávaj" → arm the pattern
+ * recorder; "stop recording" → disarm (the transport stop path ends the
+ * take either way). Recording is runtime service state
+ * (`patternRecorder.setArmed`) — the arming is the whole operation; takes
+ * land through the recorder's own ONE-undo-frame lifecycle.
  */
 export function parseRecordIntent(text: string): { arm: boolean } | null {
   const lower = text.toLowerCase();
   if (
-    /^\s*(?:please\s+)?record(?:\s+(?:the\s+)?(?:pattern|take))?\s*[.!]?\s*$|^\s*(?:please\s+)?start\s+recording\s*[.!]?\s*$|^\s*nahr[áa]vaj\s*[.!]?\s*$/i.test(
+    /^\s*(?:please\s+)?(?:rec|record(?:\s+(?:the\s+)?(?:pattern|take))?)\s*[.!]?\s*$|^\s*(?:please\s+)?start\s+recording\s*[.!]?\s*$|^\s*nahr[áa]vaj\s*[.!]?\s*$/i.test(
       lower,
     )
   ) {

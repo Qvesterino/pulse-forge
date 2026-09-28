@@ -4,13 +4,50 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createOfflineDocument } from "@audiotool/nexus/node";
 import type { AuthenticatedClient, SyncedDocument } from "@audiotool/nexus";
 import { createDefaultProject } from "../../src/project-model/schema";
-import type { Pattern } from "../../src/project-model/types";
+import type { DrumPad, DrumTrack, Pattern } from "../../src/project-model/types";
 import { audiotoolProjectIdFromUrl, buildAudiotoolWritePlan } from "../../src/integrations/audiotool-nexus/mapping";
 import { writeAudiotoolPlan } from "../../src/integrations/audiotool-nexus/writer";
+import { readAudiotoolProjectTempo } from "../../src/integrations/audiotool-nexus/tempo";
 import { AudiotoolNexusExport } from "../../src/ui/AudiotoolNexusExport";
 
-const { audiotoolPopupMock } = vi.hoisted(() => ({ audiotoolPopupMock: vi.fn() }));
-vi.mock("@audiotool/nexus", () => ({ audiotoolPopup: audiotoolPopupMock }));
+const { audiotoolPopupMock, createOfflineDocumentMock } = vi.hoisted(() => ({
+  audiotoolPopupMock: vi.fn(),
+  createOfflineDocumentMock: vi.fn(),
+}));
+vi.mock("@audiotool/nexus", () => ({
+  audiotoolPopup: audiotoolPopupMock,
+  createOfflineDocument: createOfflineDocumentMock,
+}));
+
+function makeDrumPad(id: string, assetId: string | null, synth: DrumPad["synth"] = null): DrumPad {
+  return {
+    id,
+    name: id,
+    assetId,
+    gain: 1,
+    pan: 0,
+    pitch: 0,
+    mute: false,
+    solo: false,
+    chokeGroup: null,
+    synth,
+  };
+}
+
+function makeDrumTrack(pads: DrumPad[], id = "test-drums"): DrumTrack {
+  return {
+    id,
+    kind: "drum",
+    name: "Test Drums",
+    gain: 1,
+    pan: 0,
+    mute: false,
+    solo: false,
+    pads,
+    effects: [],
+    sends: {},
+  };
+}
 
 describe("Audiotool Nexus MIDI mapping", () => {
   it("maps selected KYX notes to deterministic, bar-aligned MIDI without changing the source project", () => {
@@ -60,6 +97,102 @@ describe("Audiotool Nexus MIDI mapping", () => {
     expect(repeatedPlan.ok).toBe(true);
     if (repeatedPlan.ok) expect(result.plan.fingerprint).toBe(repeatedPlan.plan.fingerprint);
     expect(doc.patterns.find((candidate) => candidate.id === doc.activePatternId)?.notes).toEqual(pattern.notes);
+  });
+
+  it("maps supported factory drum roles into a 16th-note Beatbox8 loop, including drum-only ideas", () => {
+    const doc = createDefaultProject();
+    const source = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    expect(source).toBeDefined();
+    if (!source) return;
+    const kick = makeDrumPad("kick-pad", "factory.kick.deep");
+    const snare = makeDrumPad("snare-pad", "factory.snare.main");
+    const hats = makeDrumPad("hat-pad", "factory.hat.open.short");
+    const drums = makeDrumTrack([kick, snare, hats]);
+    const selected: Pattern = {
+      ...source,
+      stepCount: 16,
+      notes: {},
+      rows: {
+        [kick.id]: [0.6, 0, 0.9],
+        [snare.id]: [0, 0.8],
+        [hats.id]: [0, 0, 0, 0.4],
+        unknownPad: [0.7],
+      },
+    };
+
+    const result = buildAudiotoolWritePlan({
+      pattern: selected,
+      tracks: [...doc.tracks, drums],
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: doc.bpm,
+      projectId: "drum-only-project",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.parts).toHaveLength(0);
+    expect(result.plan.drumPattern).toMatchObject({ length: 16, hits: 4 });
+    expect(result.plan.drumHitCount).toBe(4);
+    expect(result.plan.unsupportedDrumHits).toBe(1);
+    expect(result.plan.drumPattern?.steps).toHaveLength(64);
+    expect(result.plan.drumPattern?.steps[0]).toMatchObject({ bassdrumIsActive: true, isAccented: false });
+    expect(result.plan.drumPattern?.steps[1]).toMatchObject({ snaredrumIsActive: true, isAccented: true });
+    expect(result.plan.drumPattern?.steps[2]).toMatchObject({ bassdrumIsActive: true, isAccented: true });
+    expect(result.plan.drumPattern?.steps[3]).toMatchObject({ openHihatIsActive: true, isAccented: false });
+  });
+
+  it("reports role collisions and drum hits past Beatbox8's 64-step limit instead of truncating silently", () => {
+    const doc = createDefaultProject();
+    const source = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    expect(source).toBeDefined();
+    if (!source) return;
+    const sampleKick = makeDrumPad("sample-kick", "factory.kick.trap");
+    const synthKick = makeDrumPad("synth-kick", null, {
+      type: "kick",
+      decay: 0.2,
+      tone: 100,
+      snap: 0.4,
+      body: 0.5,
+    });
+    const unsupported = makeDrumPad("perc-pad", null, {
+      type: "perc",
+      decay: 0.2,
+      tone: 1000,
+      snap: 0.4,
+      body: 0.2,
+    });
+    const rows = new Array<number>(65).fill(0);
+    rows[0] = 0.8;
+    rows[63] = 0.5;
+    const overflow = new Array<number>(65).fill(0);
+    overflow[64] = 1;
+    const selected: Pattern = {
+      ...source,
+      stepCount: 80,
+      notes: {},
+      rows: {
+        [sampleKick.id]: rows,
+        [synthKick.id]: [0.9],
+        [unsupported.id]: [0.6],
+        staleOverflow: overflow,
+      },
+    };
+
+    const result = buildAudiotoolWritePlan({
+      pattern: selected,
+      tracks: [...doc.tracks, makeDrumTrack([sampleKick, synthKick, unsupported])],
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: doc.bpm,
+      projectId: "drum-limits-project",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.drumPattern).toMatchObject({ length: 64, sourceStepCount: 80, hits: 2 });
+    expect(result.plan.collapsedDrumHits).toBe(1);
+    expect(result.plan.unsupportedDrumHits).toBe(2);
+    expect(result.plan.drumPattern?.steps[0]).toMatchObject({ bassdrumIsActive: true, isAccented: true });
+    expect(result.plan.drumPattern?.steps[63]).toMatchObject({ bassdrumIsActive: true });
   });
 
   it("rejects invalid notes and reports note lanes that are not KYX instrument tracks", () => {
@@ -139,7 +272,7 @@ describe("Audiotool Nexus MIDI mapping", () => {
 });
 
 describe("Audiotool Nexus offline entity write", () => {
-  it("creates editable MIDI plus an audible synth/mixer route, then makes retries idempotent", async () => {
+  it("creates active MIDI and Beatbox8 tracks with mixer routes, then makes retries idempotent", async () => {
     const doc = createDefaultProject();
     const instrument = doc.tracks.find((track) => track.kind === "instrument");
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
@@ -147,13 +280,16 @@ describe("Audiotool Nexus offline entity write", () => {
     expect(pattern).toBeDefined();
     if (!instrument || instrument.kind !== "instrument" || !pattern) return;
 
+    const kick = makeDrumPad("offline-kick", "factory.kick.deep");
+    const drums = makeDrumTrack([kick], "offline-drums");
     const result = buildAudiotoolWritePlan({
       pattern: {
         ...pattern,
         stepCount: 16,
         notes: { [instrument.id]: [{ id: "note", pitch: 60, start: 480, duration: 120, velocity: 0.8 }] },
+        rows: { [kick.id]: [1, 0, 0.5] },
       },
-      tracks: doc.tracks,
+      tracks: [...doc.tracks, drums],
       timeSignature: { numerator: 4, denominator: 4 },
       sourceBpm: doc.bpm,
       projectId: "offline-project",
@@ -163,20 +299,48 @@ describe("Audiotool Nexus offline entity write", () => {
 
     const openDocument = await createOfflineDocument();
     const first = await writeAudiotoolPlan(openDocument, result.plan);
-    expect(first).toMatchObject({ status: "created", parts: 1, notes: 1, devices: 1, mixerChannels: 1, cables: 1 });
+    expect(first).toMatchObject({
+      status: "created",
+      parts: 1,
+      notes: 1,
+      drumPatterns: 1,
+      drumHits: 2,
+      collapsedDrumHits: 0,
+      devices: 2,
+      mixerChannels: 2,
+      cables: 2,
+    });
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
-    expect(openDocument.queryEntities.ofTypes("noteTrack").get()).toHaveLength(1);
-    expect(openDocument.queryEntities.ofTypes("noteRegion").get()).toHaveLength(1);
+    const synth = openDocument.queryEntities.ofTypes("heisenberg").get()[0];
+    expect(synth?.fields.isActive.value).toBe(true);
+    expect(synth?.fields.operatorA.fields.gain.value).toBe(1);
+    expect(synth?.fields.operatorA.fields.waveformIndex.value).toBe(1);
+    expect(openDocument.queryEntities.ofTypes("noteTrack").get()[0]?.fields.isEnabled.value).toBe(true);
+    expect(openDocument.queryEntities.ofTypes("noteRegion").get()[0]?.fields.region.fields.isEnabled.value).toBe(true);
     const notes = openDocument.queryEntities.ofTypes("note").get();
     expect(notes).toHaveLength(1);
     expect(notes[0]?.fields.positionTicks.value).toBe(3840);
     expect(notes[0]?.fields.durationTicks.value).toBe(960);
-    expect(openDocument.queryEntities.ofTypes("mixerChannel").get()).toHaveLength(1);
-    expect(openDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(1);
+    expect(openDocument.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
+    expect(openDocument.queryEntities.ofTypes("beatbox8").get()[0]?.fields.isActive.value).toBe(true);
+    expect(openDocument.queryEntities.ofTypes("beatbox8Pattern").get()).toHaveLength(1);
+    const beatboxPattern = openDocument.queryEntities.ofTypes("beatbox8Pattern").get()[0];
+    expect(beatboxPattern?.fields.length.value).toBe(16);
+    expect(beatboxPattern?.fields.stepScaleIndex.value).toBe(3);
+    expect(beatboxPattern?.fields.steps.array).toHaveLength(64);
+    expect(beatboxPattern?.fields.steps.array[0]?.fields.bassdrumIsActive.value).toBe(true);
+    expect(beatboxPattern?.fields.steps.array[2]?.fields.bassdrumIsActive.value).toBe(true);
+    expect(openDocument.queryEntities.ofTypes("patternTrack").get()[0]?.fields.isEnabled.value).toBe(true);
+    expect(openDocument.queryEntities.ofTypes("patternRegion").get()[0]?.fields.region.fields.isEnabled.value).toBe(
+      true,
+    );
+    expect(openDocument.queryEntities.ofTypes("mixerChannel").get()).toHaveLength(2);
+    expect(openDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(2);
 
     const retry = await writeAudiotoolPlan(openDocument, result.plan);
     expect(retry).toMatchObject({ status: "already-imported", parts: 0, notes: 0 });
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
+    expect(openDocument.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
     expect(openDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
 
     let preflightChecks = 0;
@@ -192,6 +356,32 @@ describe("Audiotool Nexus offline entity write", () => {
     expect(preflightChecks).toBe(2);
     expect(openDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(1);
     expect(openDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
+  });
+
+  it("reads the target tempo and meter, with documented defaults for a blank offline document", async () => {
+    const openDocument = await createOfflineDocument();
+    expect(readAudiotoolProjectTempo(openDocument)).toEqual({
+      bpm: 125,
+      timeSignature: { numerator: 4, denominator: 4 },
+      isDefault: true,
+    });
+
+    await openDocument.modify((transaction) => {
+      const groove = transaction.create("groove", {});
+      transaction.create("config", {
+        tempoBpm: 138,
+        baseFrequencyHz: 440,
+        signatureNumerator: 3,
+        signatureDenominator: 4,
+        durationTicks: 46080,
+        defaultGroove: groove.location,
+      });
+    });
+    expect(readAudiotoolProjectTempo(openDocument)).toEqual({
+      bpm: 138,
+      timeSignature: { numerator: 3, denominator: 4 },
+      isDefault: false,
+    });
   });
 
   it("does not treat edited imported notes as an unchanged idempotent retry", async () => {
@@ -266,7 +456,11 @@ describe("Audiotool Nexus offline entity write", () => {
 });
 
 describe("Audiotool Nexus connection UX", () => {
-  beforeEach(() => audiotoolPopupMock.mockReset());
+  beforeEach(() => {
+    audiotoolPopupMock.mockReset();
+    createOfflineDocumentMock.mockReset();
+    createOfflineDocumentMock.mockImplementation(() => createOfflineDocument());
+  });
 
   it("lazy-loads on demand, authenticates in the click flow, and previews before write confirmation", async () => {
     const project = createDefaultProject();
@@ -279,6 +473,7 @@ describe("Audiotool Nexus connection UX", () => {
     const selectedPattern: Pattern = {
       ...pattern,
       stepCount: 16,
+      rows: {},
       notes: { [instrument.id]: [{ id: "ui-note", pitch: 60, start: 0, duration: 480, velocity: 0.8 }] },
     };
     const setupView = render(
@@ -291,9 +486,11 @@ describe("Audiotool Nexus connection UX", () => {
         isSourceCurrent: () => true,
         onClose: vi.fn(),
         clientId: "",
+        allowOffline: false,
       }),
     );
-    expect(screen.getByRole("note").textContent).toContain(window.location.origin);
+    fireEvent.click(screen.getByRole("button", { name: "NAČÍTAŤ AUDIOTOOL CONNECTOR" }));
+    expect((await screen.findByRole("note")).textContent).toContain(window.location.origin);
     setupView.unmount();
 
     const callbacks = new Set<(connected: boolean) => void>();
@@ -377,6 +574,43 @@ describe("Audiotool Nexus connection UX", () => {
     fireEvent.click(screen.getByRole("button", { name: "ODPOJIŤ PROJEKT" }));
     await waitFor(() => expect(session.stop).toHaveBeenCalledOnce());
     expect(await screen.findByLabelText("Odkaz na projekt")).toBeInTheDocument();
+  });
+
+  it("creates and writes to a real local offline document when no Audiotool client id is configured", async () => {
+    const project = createDefaultProject();
+    const source = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    expect(source).toBeDefined();
+    if (!source) return;
+    const kick = makeDrumPad("offline-ui-kick", "factory.kick.trap");
+    const drumTrack = makeDrumTrack([kick], "offline-ui-drums");
+    const localDocument = await createOfflineDocument();
+    createOfflineDocumentMock.mockResolvedValue(localDocument);
+
+    render(
+      createElement(AudiotoolNexusExport, {
+        pattern: { ...source, stepCount: 16, notes: {}, rows: { [kick.id]: [1, 0, 0, 0.75] } },
+        tracks: [...project.tracks, drumTrack],
+        timeSignature: { numerator: 4, denominator: 4 },
+        sourceBpm: project.bpm,
+        candidateLabel: "#1",
+        isSourceCurrent: () => true,
+        onClose: vi.fn(),
+        clientId: "",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "NAČÍTAŤ AUDIOTOOL CONNECTOR" }));
+    fireEvent.click(await screen.findByRole("button", { name: "VYTVORIŤ OFFLINE DOKUMENT" }));
+    expect(await screen.findByText(/lokálny dokument/)).toBeInTheDocument();
+    expect(audiotoolPopupMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "VLOŽIŤ DO LOKÁLNEHO DOKUMENTU" }));
+    expect(await screen.findByRole("button", { name: "VLOŽENÉ LOKÁLNE" })).toBeInTheDocument();
+    expect(localDocument.queryEntities.ofTypes("beatbox8").get()).toHaveLength(1);
+    expect(localDocument.queryEntities.ofTypes("beatbox8Pattern").get()).toHaveLength(1);
+    expect(localDocument.queryEntities.ofTypes("patternRegion").get()[0]?.fields.region.fields.isEnabled.value).toBe(
+      true,
+    );
   });
 
   it("stops a project that finishes opening after the export panel unmounts", async () => {

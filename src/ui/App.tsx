@@ -32,6 +32,7 @@ const MidiPanel = lazy(() => import("./MidiPanel").then((m) => ({ default: m.Mid
 const ExportPanel = lazy(() => import("./ExportPanel").then((m) => ({ default: m.ExportPanel })));
 const DiceTray = lazy(() => import("./DiceTray").then((m) => ({ default: m.DiceTray })));
 const IntentPanel = lazy(() => import("./IntentPanel").then((m) => ({ default: m.IntentPanel })));
+const ReferenceMapPanel = lazy(() => import("./ReferenceMapPanel").then((m) => ({ default: m.ReferenceMapPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -1401,6 +1402,11 @@ export function App({
     intent: (
       <ErrorBoundary panel="intent">
         <IntentPanel />
+      </ErrorBoundary>
+    ),
+    reference: (
+      <ErrorBoundary panel="reference">
+        <ReferenceMapPanel />
       </ErrorBoundary>
     ),
   };

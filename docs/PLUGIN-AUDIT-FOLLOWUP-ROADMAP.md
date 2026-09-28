@@ -374,6 +374,64 @@ final matrix under this reading.
 
 ---
 
+## Bonus — intent → audio-fit → weights: CLOSED LOOP (user request)
+
+The last open half of the loop: ranking-v3 rendered the top finalists and
+scored their audio fit on EVERY generation — and threw the signal away; the
+weight learner (`npm run rerank:fit`) trained only on ★-kept rolls.
+
+**Shipped:**
+
+- **`src/intent/audio-fit-ledger.ts`** — `pf:audio-fit-ledger` (bounded to
+  100 newest generations, shape-validated, in-memory store when localStorage
+  is unavailable — tests/workers/node keep working).
+  `recordAudioFitObservation` replaces by deterministic `generationId`
+  (re-rolls dedupe), out-of-range scores clamp (engine convention).
+- **ranking-v3 hook** — after the finalists' reorder, the observation is
+  recorded in the SAME space selection mixes in (firstPassNorm + audio;
+  winner = the delivered candidate). Best-effort: never throws into
+  selection.
+- **Fit harness** (`scripts/fit-rerank-weights.mjs`) fits ★ rolls AND the
+  ledger TOGETHER (report: ledger-only read + combined fit), install line
+  unchanged (`pf:rerank-weights` → ranking-v3 weight chain).
+- **Tests** `tests/audio-fit-ledger.test.ts` (6): round-trip + dedupe,
+  clamp-vs-reject contract, cap, **fit-measurability** (a fixture where the
+  delivered winner loses on first-pass but wins on audio — fitted weight
+  beats baseline), and the ranking-v3 integration (observation recorded
+  during a sound rerank, winner marked).
+
+Loop closed: generate → render → fit → weights, learning from every-day
+generations with zero extra renders (the audio scores were already computed
+— they just evaporated).
+
+**Follow-up (latency + shipped-path gate):** `scoreCandidatesBySound` now
+renders the finalists IN PARALLEL (each finalist has its own
+OfflineAudioContext — independent browser threads; order preserved via
+candidateIndex mapping). Measured in Chromium, sound rerank enabled:
+warm generation ~1.0 s total (≈3 parallel finalist renders ~330 ms each;
+the sequential version paid the sum), cold page ~9 s dominated by worklet
+module load + JIT — not generation cost. The browser-checks intent gate
+now enables `sound` (what panel GENERATE sends — the real production path)
+and asserts the loop CLOSURE: `pf:audio-fit-ledger` must contain the
+observation after the gate. Latency gotcha recorded: a generation without
+`candidateCount` takes the single-candidate fast path (11 ms, empty bank by
+design) — always pin candidateCount when measuring.
+
+## Bonus — intent production-path gate (plugin-audit "measure the shipped path" applied to the intent engine)
+
+The vitest intent suites cover the pieces (parser, plan, ranker, auditions);
+nothing gated the FULL browser chain. `runChecks` now includes **"intent
+production path: generate → deterministic bank → apply → audible render"**:
+`generateAsyncResult` (bank + ONNX ranker) → same request twice must produce
+an identical content-hash sequence (determinism) → bank ≥ 4 candidates, all
+unique, all accepted → `applyGenerationResultCommand` → offline render →
+peak > 0.01, all inside a 10 s latency budget. Validated in Chromium:
+bank 6/6 unique, peak 0.89, 4.5 s, selection source=model / mode=active.
+Gotcha baked into the gate: an intent WITHOUT `candidateCount` takes the
+single-candidate fast path (empty bank by design) — the gate pins
+candidateCount 4 + symbolicCandidates 2 so it always exercises the real
+ranked path.
+
 ## Explicitly out of scope
 
 - **beatMangler sweep exemption** — the factory sweep cannot exercise

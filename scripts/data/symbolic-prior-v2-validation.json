@@ -3,26 +3,26 @@
   "featureVersion": "prior-features-v3",
   "featureCount": 60,
   "mode": "embedding-v2",
-  "augmentedSamples": 313344,
+  "augmentedSamples": 963072,
   "hidden": [
     64,
     32
   ],
   "epochs": 500,
-  "samples": 230400,
-  "hitRatio": 0.0857,
-  "posWeight": 8.715,
-  "valAuc": 0.8532,
-  "trainAuc": 0.8333,
-  "bestF1Threshold": 0.65,
+  "samples": 375552,
+  "hitRatio": 0.0843,
+  "posWeight": 8.301,
+  "valAuc": 0.8471,
+  "trainAuc": 0.7755,
+  "bestF1Threshold": 0.61,
   "val": {
-    "precision": 0.2807,
-    "recall": 0.6898,
-    "f1": 0.3991
+    "precision": 0.2587,
+    "recall": 0.6726,
+    "f1": 0.3737
   },
   "train": {
-    "precision": 0.301,
-    "recall": 0.6994,
-    "f1": 0.4209
+    "precision": 0.2677,
+    "recall": 0.5729,
+    "f1": 0.3649
   }
 }

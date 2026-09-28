@@ -440,6 +440,25 @@ export function TopBar({
       active: bottomPanel === "intent" || splitPanel === "intent",
       onClick: (event) => onSetBottomPanel("intent", event.ctrlKey || event.metaKey),
     },
+    {
+      // Reference Map reads a FINISHED track, unlike every other panel here
+      // which acts on the open project. Its position mirrors that: it is a
+      // lookup surface you reach for when you do not know what you are aiming
+      // at yet, not a mixing tool.
+      //
+      // Priority BELOW EXPORT (76 < 78) on purpose. The topbar promotes the
+      // highest-priority actions and drops the rest into the ⋯ overflow, so a
+      // new panel button above EXPORT silently evicts it from the bar — the
+      // existing TopBar test caught exactly that. EXPORT keeps its direct
+      // reach; Reference Map is one keystroke or a click away.
+      id: "reference",
+      label: "REF MAP",
+      ariaLabel: "Toggle reference map panel",
+      title: "Toggle reference map — drop a track, get its BPM, key and confidence",
+      priority: 76,
+      active: bottomPanel === "reference" || splitPanel === "reference",
+      onClick: (event) => onSetBottomPanel("reference", event.ctrlKey || event.metaKey),
+    },
   ];
 
   const toolActions: TopbarAction[] = [

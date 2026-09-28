@@ -1394,3 +1394,122 @@ describe("E2E typo clarification", () => {
     expect(routeIntentText("solo the bass", doc).kind).toBe("exact");
   });
 });
+
+// ─── 19. VOCAB EXTENSIONS — mute-all, unsolo, center, SK vypni, bounce, rec, loop ──
+
+describe("E2E vocabulary extensions", () => {
+  it("mute everything mutes EVERY track (was a silent no-op) — one undo", () => {
+    const store = new ProjectStore(testDoc());
+    const route = routeIntentText("mute everything", store.doc);
+    expect(route.kind).toBe("exact");
+    executeRouted(store.doc, "mute everything", store);
+    const lanes = store.doc.tracks.filter((t) => t.kind !== "group");
+    expect(lanes.length).toBeGreaterThan(1);
+    for (const track of lanes) expect(track.mute).toBe(true);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    for (const track of store.doc.tracks.filter((t) => t.kind !== "group")) {
+      expect(track.mute).toBe(false);
+    }
+  });
+
+  it("SK: zapni všetko unmutes every track", () => {
+    const doc = testDoc();
+    const muted = { ...doc, tracks: doc.tracks.map((t) => ({ ...t, mute: true })) };
+    const next = executeRouted(muted, "zapni všetko");
+    for (const track of next.tracks.filter((t) => t.kind !== "group")) {
+      expect(track.mute).toBe(false);
+    }
+  });
+
+  it("vypni basu — SK mute verb symmetric with zapni", () => {
+    const doc = testDoc();
+    const route = routeIntentText("vypni basu", doc);
+    expect(route.kind).toBe("exact");
+    const next = executeRouted(doc, "vypni basu");
+    expect(bassTrackOf(next).mute).toBe(true);
+  });
+
+  it("unsolo the bass / solo off the drums clear solo", () => {
+    const doc = testDoc();
+    const bassSoloed = {
+      ...doc,
+      tracks: doc.tracks.map((t) => (t.kind === "instrument" ? { ...t, solo: true } : t)),
+    };
+    const next = executeRouted(bassSoloed, "unsolo the bass");
+    expect(bassTrackOf(next).solo).toBe(false);
+    const drumsSoloed = { ...doc, tracks: doc.tracks.map((t) => (t.kind === "drum" ? { ...t, solo: true } : t)) };
+    const next2 = executeRouted(drumsSoloed, "solo off the drums");
+    expect(drumTrackOf(next2).solo).toBe(false);
+  });
+
+  it("center the bass zeroes the pan (from a non-zero start)", () => {
+    const doc = testDoc();
+    const panned = { ...doc, tracks: doc.tracks.map((t) => ({ ...t, pan: -0.5 })) };
+    const route = routeIntentText("center the bass", panned);
+    expect(route.kind).toBe("exact");
+    const next = executeRouted(panned, "center the bass");
+    expect(bassTrackOf(next).pan).toBe(0);
+    // other tracks untouched
+    expect(drumTrackOf(next).pan).toBe(-0.5);
+  });
+
+  it("center the hi-hats zeroes PAD pans only", () => {
+    const doc = testDoc();
+    const next = executeRouted(doc, "center the hi-hats");
+    const drum = drumTrackOf(next);
+    const hatIds = new Set(classifyPads(drum.pads).hats.map((pad) => pad.id));
+    for (const pad of drum.pads) {
+      if (hatIds.has(pad.id)) expect(pad.pan).toBe(0);
+    }
+  });
+
+  it("pan the mix declines at parse (no more silent no-op command)", () => {
+    const doc = testDoc();
+    expect(parseExactIntent("pan the mix left 30")).toBeNull();
+    expect(routeIntentText("pan the mix left 30", doc).kind).not.toBe("exact");
+  });
+
+  it("transpose all declines instead of silently no-oping (guard for the mix target)", () => {
+    expect(parseExactIntent("transpose all up one octave")).toBeNull();
+  });
+
+  it("bounce aliases export: bounce wav / bounce mp3 / bare bounce", () => {
+    const doc = testDoc();
+    const cases = [
+      ["bounce wav", "wav"],
+      ["bounce mp3", "mp3"],
+      ["bounce", "wav"],
+      ["bounce the project as mp3", "mp3"],
+    ] as const;
+    for (const [text, format] of cases) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind).toBe("export");
+      if (route.kind === "export") expect(route.format).toBe(format);
+    }
+  });
+
+  it("rec arms the pattern recorder (bare-word alias)", () => {
+    const doc = testDoc();
+    const route = routeIntentText("rec", doc);
+    expect(route.kind).toBe("record");
+    if (route.kind === "record") expect(route.arm).toBe(true);
+  });
+
+  it("loop on/off/cykluj route to transport; bare 'loop' declines", () => {
+    const doc = testDoc();
+    const cases = [
+      ["loop on", "loopOn"],
+      ["loop off", "loopOff"],
+      ["cykluj zapni", "loopOn"],
+      ["loop vypni", "loopOff"],
+    ] as const;
+    for (const [text, action] of cases) {
+      const route = routeIntentText(text, doc);
+      expect(route.kind).toBe("transport");
+      if (route.kind === "transport") expect(route.action).toBe(action);
+    }
+    expect(routeIntentText("loop", doc).kind).not.toBe("transport");
+    expect(routeIntentText("loop the drop", doc).kind).not.toBe("transport");
+  });
+});

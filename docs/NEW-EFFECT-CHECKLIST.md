@@ -34,6 +34,11 @@ Check each before merging:
    once per 128-sample block, the time constant inflates by the block
    length (vowel/svfilter glides ran ~100× slow). Use
    `1 - exp(-blockLen / (tc * sr))` for block-rate application.
+   Related trap: **flush the recursive state BEFORE storing it** — a
+   denormal guard that flushes `toneOut` _after_ `y1 = toneOut` leaves
+   subnormals living in the filter state, taxing every following sample
+   (multitap shipped this; caught by its soak,
+   `tests/multitap-soak.test.ts`).
 5. **Port messages are not delivered during OfflineAudioContext renders** —
    Chromium does not pump processor message queues mid-render. Event-queue
    worklets (noteOn/noteOff via `postMessage`) render SILENT offline

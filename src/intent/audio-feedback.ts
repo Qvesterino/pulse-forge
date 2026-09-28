@@ -116,19 +116,26 @@ export async function scoreCandidatesBySound(
   const target = audioTargetFor(genre);
   const results: CandidateAudioScore[] = [];
 
-  for (const candidate of candidates) {
-    try {
-      const audio = await renderFn(doc, candidate.pattern);
-      const features = extractAudioFeatures(audio, 44100);
-      const audioScore = scoreAudioFit(features, target);
-      results.push({
-        candidateIndex: candidate.candidateIndex,
-        features,
-        audioScore,
-      });
-    } catch {
-      // Skip candidates that fail to render — they just don't get an audio score
-    }
+  // Render in PARALLEL: every render runs in its own OfflineAudioContext
+  // (independent threads in the browser), so the audio-fit stage costs the
+  // slowest render instead of the sum. Feature extraction + scoring stay on
+  // the main thread after each render settles. Order is preserved — the
+  // caller maps scores back by candidateIndex.
+  const settled = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const audio = await renderFn(doc, candidate.pattern);
+        const features = extractAudioFeatures(audio, 44100);
+        const audioScore = scoreAudioFit(features, target);
+        return { candidateIndex: candidate.candidateIndex, features, audioScore };
+      } catch {
+        // Skip candidates that fail to render — they just don't get an audio score
+        return null;
+      }
+    }),
+  );
+  for (const result of settled) {
+    if (result) results.push(result);
   }
   return results;
 }

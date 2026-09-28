@@ -5550,6 +5550,18 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       }
       continue;
     }
+    // MUTE/SOLO on the mix family = EVERY lane ("mute everything", "zapni
+    // všetko") — the parser only sends mix here for mute/solo (pan and the
+    // destructive ops decline it), and a per-track op on "the mix" used to
+    // resolve to NOTHING, a silent no-op command that reported success.
+    if ((op.kind === "mute" || op.kind === "solo") && op.target === "mix") {
+      for (const track of next.tracks) {
+        if (track.kind === "group") continue;
+        const params = paramFor(track.id, op);
+        if (params) next = setTrackParams(next, track.id, params).execute(next);
+      }
+      continue;
+    }
     for (const trackId of resolve(op.target)) {
       const params = paramFor(trackId, op as ExactOp);
       if (params) next = setTrackParams(next, trackId, params).execute(next);
