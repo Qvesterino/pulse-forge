@@ -175,7 +175,7 @@ describe("semanticConditioning — structured fallback engages when the embed ca
     const result = await semanticConditioningForIntent({
       genre: "house",
       style: "deep",
-      text: null,
+      text: undefined,
       artist: undefined,
     });
     expect(result).not.toBeNull();
@@ -188,14 +188,14 @@ describe("semanticConditioning — structured fallback engages when the embed ca
     const first = await semanticConditioningForIntent({
       genre: "drill",
       style: null,
-      text: null,
+      text: undefined,
       artist: undefined,
     });
     resetSemanticConditioning();
     const second = await semanticConditioningForIntent({
       genre: "drill",
       style: null,
-      text: null,
+      text: undefined,
       artist: undefined,
     });
     expect(first).toEqual(second);
@@ -223,3 +223,6 @@ describe("the fallback actually reaches the drum prior's input space", () => {
     }
   });
 });
+
+
+
