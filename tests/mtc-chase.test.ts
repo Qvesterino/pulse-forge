@@ -93,3 +93,35 @@ describe("MtcChaser policy (ADR 0017 wave 2)", () => {
     expect(chaser.onFrame(tc(0, 0, 3), { wallNow: wallStart + 100 + CHASE_MIN_INTERVAL_MS })).toBe("chased");
   });
 });
+
+describe("MtcChaser TC offset (ADR 0017 wave 2 follow-up)", () => {
+  it("offset redefines which TC value lands on project start", () => {
+    const { transport, chaser } = chasedTransport(120); // 960 ticks/s
+    chaser.offsetSeconds = 3600; // session recorded starting at TC 01:00:00:00
+    // TC 01:00:00:00 now maps to the PROJECT START (tick 0).
+    expect(chaser.seekToTimecode(tc(1, 0, 0))).toBe(true);
+    expect(transport.position).toBe(0);
+    // TC 01:00:30:00 → 30 s into the project.
+    chaser.seekToTimecode(tc(1, 0, 30));
+    expect(transport.position).toBe(30 * 960);
+  });
+
+  it("timecodes before the offset clamp to the project start", () => {
+    const { transport, chaser } = chasedTransport(120);
+    chaser.offsetSeconds = 3600;
+    chaser.seekToTimecode(tc(0, 30, 0)); // 30 min BEFORE the session origin
+    expect(transport.position).toBe(0);
+  });
+
+  it("playing chase honors the offset in drift math", () => {
+    const { transport, chaser, advance } = chasedTransport(120);
+    chaser.offsetSeconds = 3600;
+    transport.play(0);
+    advance(60); // 60 s into the project
+    // TC 01:01:00:00 = project second 60 → no drift → no re-sync.
+    expect(chaser.onFrame(tc(1, 1, 0), { immediate: true })).toBe("skipped");
+    // TC 01:00:30:00 = project second 30 → 30 s drift → chased.
+    expect(chaser.onFrame(tc(1, 0, 30), { immediate: true })).toBe("chased");
+    expect(Math.abs(transport.position / 960 - 30)).toBeLessThan(1);
+  });
+});

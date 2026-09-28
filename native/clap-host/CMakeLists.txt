@@ -24,6 +24,7 @@ endif()
 
 add_executable(clap-player clap-player.c)
 target_include_directories(clap-player PRIVATE ${CLAP_INCLUDE})
+target_link_libraries(clap-player PRIVATE winmm)
 
 add_library(clap-tone SHARED clap-tone.c)
 set_target_properties(clap-tone PROPERTIES PREFIX "")

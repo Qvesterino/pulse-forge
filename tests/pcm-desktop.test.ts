@@ -21,13 +21,15 @@ const { registerPcmIpcHandlers, resolveSourcePath, sanitizeArgs, SOURCE_KINDS } 
  */
 
 describe("source allowlist (renderer never names executables)", () => {
-  it("resolves the two allowlisted kinds", () => {
+  it("resolves the three allowlisted kinds", () => {
     expect(SOURCE_KINDS["pcm-gen"]).toBeDefined();
     expect(SOURCE_KINDS["asio-host"]).toBeDefined();
+    expect(SOURCE_KINDS["clap-player"]).toBeDefined();
     expect(resolveSourcePath("pcm-gen")).toContain(path.join("native", "pcm-host", "build", "Release", "pcm-gen.exe"));
     expect(resolveSourcePath("asio-host", "C:/res")).toBe(path.join("C:/res", "asio", "asio-host.exe"));
     expect(resolveSourcePath("vst3")).toBeNull();
     expect(resolveSourcePath("cmd")).toBeNull();
+    expect(resolveSourcePath("clap-player")).toContain("clap-player.exe");
   });
 
   it("sanitizes argv: allowlisted flags with bounded string values only", () => {
