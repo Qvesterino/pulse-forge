@@ -3,15 +3,35 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createOfflineDocument } from "@audiotool/nexus/node";
 import type { AuthenticatedClient, SyncedDocument } from "@audiotool/nexus";
+import type { NexusPreset } from "@audiotool/nexus/api";
 import { createDefaultProject } from "../../src/project-model/schema";
 import type { Pattern } from "../../src/project-model/types";
-import { audiotoolProjectIdFromUrl, buildAudiotoolWritePlan } from "../../src/integrations/audiotool-nexus/mapping";
+import {
+  audiotoolProjectIdFromUrl,
+  buildAudiotoolWritePlan,
+  DEFAULT_GM_PROGRAM_BY_INSTRUMENT,
+} from "../../src/integrations/audiotool-nexus/mapping";
 import { readAudiotoolProjectTempo } from "../../src/integrations/audiotool-nexus/tempo";
 import { writeAudiotoolPlan } from "../../src/integrations/audiotool-nexus/writer";
 import { AudiotoolNexusExport } from "../../src/ui/AudiotoolNexusExport";
 
 const { audiotoolPopupMock } = vi.hoisted(() => ({ audiotoolPopupMock: vi.fn() }));
 vi.mock("@audiotool/nexus", () => ({ audiotoolPopup: audiotoolPopupMock }));
+
+async function createOfflineGakkiPreset(): Promise<NexusPreset<"gakki">> {
+  const source = await createOfflineDocument();
+  let data: unknown;
+  await source.modify((transaction) => {
+    const device = transaction.create("gakki", {});
+    data = transaction.createPresetFor(device);
+  });
+  return {
+    meta: {} as NexusPreset<"gakki">["meta"],
+    data: data as NexusPreset<"gakki">["data"],
+    entityType: "gakki",
+    _presetName: "presets/kyx-offline-test",
+  };
+}
 
 describe("Audiotool Nexus MIDI mapping", () => {
   it("maps selected KYX notes to deterministic, bar-aligned MIDI without changing the source project", () => {
@@ -44,6 +64,11 @@ describe("Audiotool Nexus MIDI mapping", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.plan.parts).toHaveLength(1);
+    expect(result.plan.parts[0]).toMatchObject({
+      sourceTrackId: instrument.id,
+      instrumentKind: instrument.instrument,
+      gmProgram: DEFAULT_GM_PROGRAM_BY_INSTRUMENT[instrument.instrument],
+    });
     expect(result.plan.parts[0]?.notes).toEqual([
       { pitch: 60, positionTicks: 0, durationTicks: 3840, velocity: 0.75, doesSlide: false },
       { pitch: 64, positionTicks: 7680, durationTicks: 2880, velocity: 0.5, doesSlide: true },
@@ -61,6 +86,22 @@ describe("Audiotool Nexus MIDI mapping", () => {
     expect(repeatedPlan.ok).toBe(true);
     if (repeatedPlan.ok) expect(result.plan.fingerprint).toBe(repeatedPlan.plan.fingerprint);
     expect(doc.patterns.find((candidate) => candidate.id === doc.activePatternId)?.notes).toEqual(pattern.notes);
+
+    const gmResult = buildAudiotoolWritePlan({
+      pattern: selected,
+      tracks: doc.tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: doc.bpm,
+      projectId: "test-project-1",
+      instrumentMode: "gakki",
+      gmProgramByTrackId: { [instrument.id]: 11 },
+    });
+    expect(gmResult.ok).toBe(true);
+    if (gmResult.ok) {
+      expect(gmResult.plan.instrumentMode).toBe("gakki");
+      expect(gmResult.plan.parts[0]?.gmProgram).toBe(11);
+      expect(gmResult.plan.fingerprint).not.toBe(result.plan.fingerprint);
+    }
   });
 
   it("maps supported factory and synth drum roles, merges collisions, and reports unsupported hits", () => {
@@ -234,6 +275,47 @@ describe("Audiotool Nexus MIDI mapping", () => {
 });
 
 describe("Audiotool Nexus offline entity write", () => {
+  it("creates MIDI on the selected Audiotool Gakki GM preset and keeps the import idempotent", async () => {
+    const project = createDefaultProject();
+    const instrument = project.tracks.find((track) => track.kind === "instrument");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    expect(instrument?.kind).toBe("instrument");
+    expect(pattern).toBeDefined();
+    if (!instrument || instrument.kind !== "instrument" || !pattern) return;
+
+    const result = buildAudiotoolWritePlan({
+      pattern: {
+        ...pattern,
+        notes: { [instrument.id]: [{ id: "gm-note", pitch: 64, start: 0, duration: 480, velocity: 0.7 }] },
+      },
+      tracks: project.tracks,
+      timeSignature: { numerator: 4, denominator: 4 },
+      sourceBpm: project.bpm,
+      projectId: "gakki-project",
+      instrumentMode: "gakki",
+      gmProgramByTrackId: { [instrument.id]: 11 },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const document = await createOfflineDocument();
+    const preset = await createOfflineGakkiPreset();
+    const first = await writeAudiotoolPlan(document, result.plan, { gakkiPresets: new Map([[11, preset]]) });
+    expect(first).toMatchObject({ status: "created", devices: 1, parts: 1, notes: 1 });
+    const gakki = document.queryEntities.ofTypes("gakki").get();
+    expect(gakki).toHaveLength(1);
+    expect(gakki[0]?.fields.displayName.value).toContain(instrument.name);
+    expect(gakki[0]?.fields.soundfontId.value).not.toBe("");
+    expect(document.queryEntities.ofTypes("heisenberg").get()).toHaveLength(0);
+    expect(document.queryEntities.ofTypes("noteTrack").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("note").get()).toHaveLength(1);
+    expect(document.queryEntities.ofTypes("desktopAudioCable").get().length).toBeGreaterThanOrEqual(1);
+    expect(await writeAudiotoolPlan(document, result.plan, { gakkiPresets: new Map([[11, preset]]) })).toMatchObject({
+      status: "already-imported",
+    });
+    expect(document.queryEntities.ofTypes("gakki").get()).toHaveLength(1);
+  });
+
   it("creates editable MIDI plus an audible synth/mixer route, then makes retries idempotent", async () => {
     const doc = createDefaultProject();
     const instrument = doc.tracks.find((track) => track.kind === "instrument");
@@ -527,10 +609,20 @@ describe("Audiotool Nexus connection UX", () => {
       start: vi.fn(async () => {}),
       stop: vi.fn(async () => {}),
     }) as unknown as SyncedDocument;
+    const gakkiPreset = await createOfflineGakkiPreset();
+    const gmInstruments = Array.from({ length: 128 }, (_, program) => ({
+      program,
+      displayName: `GM ${program + 1}`,
+      category: "Test",
+    }));
     const auth = {
       status: "authenticated",
       userName: "KYX QA",
       open: vi.fn(async () => session),
+      presets: {
+        gmInstruments,
+        getInstrument: vi.fn(async () => gakkiPreset),
+      },
     } as unknown as AuthenticatedClient;
     audiotoolPopupMock.mockResolvedValue(auth);
 
@@ -567,8 +659,10 @@ describe("Audiotool Nexus connection UX", () => {
     expect(auth.open).toHaveBeenCalledWith("https://beta.audiotool.com/studio?project=ui-project");
     expect(screen.getByText(/1 MIDI part/)).toBeInTheDocument();
 
-    const confirm = screen.getByRole("checkbox");
+    const confirm = screen.getByRole("checkbox", { name: "Potvrdiť vzdialený zápis do Audiotoolu" });
+    const useGakki = screen.getByRole("checkbox", { name: "Použiť vybrané Audiotool GM zvuky" });
     const sendButton = screen.getByRole("button", { name: "PRIDAŤ MIDI + DRUMS DO AUDIOTOOLU" });
+    expect(useGakki).toBeChecked();
     expect(sendButton).toBeDisabled();
     fireEvent.click(confirm);
     expect(sendButton).toBeEnabled();
@@ -584,9 +678,16 @@ describe("Audiotool Nexus connection UX", () => {
     });
     await waitFor(() => expect(sendButton).toBeEnabled());
 
-    fireEvent.click(sendButton);
+    const gmSelect = screen.getByRole("combobox", { name: `Audiotool GM zvuk pre ${instrument.name}` });
+    fireEvent.change(gmSelect, { target: { value: "11" } });
+    expect(auth.presets.getInstrument).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "PRIDAŤ MIDI + DRUMS DO AUDIOTOOLU" }));
     expect(await screen.findByRole("button", { name: "ODOSLANÉ" })).toBeInTheDocument();
     expect(screen.getByText(/Pridané: 1 MIDI part/)).toBeInTheDocument();
+    expect(auth.presets.getInstrument).toHaveBeenCalledWith(gmInstruments[11]);
+    expect(offlineDocument.queryEntities.ofTypes("gakki").get()).toHaveLength(1);
+    expect(offlineDocument.queryEntities.ofTypes("heisenberg").get()).toHaveLength(0);
     expect(offlineDocument.queryEntities.ofTypes("note").get()).toHaveLength(1);
     expect(offlineDocument.queryEntities.ofTypes("beatbox8Pattern").get()).toHaveLength(1);
     expect(offlineDocument.queryEntities.ofTypes("desktopAudioCable").get()).toHaveLength(2);

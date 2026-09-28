@@ -2,6 +2,7 @@ import type {
   DrumPad,
   DrumSynthType,
   InstrumentTrack,
+  InstrumentKind,
   NoteEvent,
   Pattern,
   TimeSignature,
@@ -69,12 +70,17 @@ export interface AudiotoolMidiNote {
 }
 
 export interface AudiotoolMidiPart {
+  sourceTrackId: string;
+  instrumentKind: InstrumentKind;
+  /** 0-based General MIDI program used by Audiotool's Gakki soundfont player. */
+  gmProgram: number;
   name: string;
   notes: AudiotoolMidiNote[];
 }
 
 export interface AudiotoolWritePlan {
   projectId: string;
+  instrumentMode: "heisenberg" | "gakki";
   sourceBpm: number;
   timeSignature: TimeSignature;
   durationTicks: number;
@@ -134,8 +140,18 @@ export function buildAudiotoolWritePlan(args: {
   timeSignature: TimeSignature;
   sourceBpm: number;
   projectId: string;
+  instrumentMode?: AudiotoolWritePlan["instrumentMode"];
+  gmProgramByTrackId?: Readonly<Record<string, number>>;
 }): AudiotoolPlanResult {
-  const { pattern, tracks, timeSignature, sourceBpm, projectId } = args;
+  const {
+    pattern,
+    tracks,
+    timeSignature,
+    sourceBpm,
+    projectId,
+    instrumentMode = "heisenberg",
+    gmProgramByTrackId = {},
+  } = args;
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(projectId)) return { ok: false, error: "Audiotool project URL is invalid." };
   if (!Number.isFinite(sourceBpm) || sourceBpm < 20 || sourceBpm > 400) {
     return { ok: false, error: "The KYX tempo is outside the supported range." };
@@ -178,6 +194,10 @@ export function buildAudiotoolWritePlan(args: {
     }
 
     const notes: AudiotoolMidiNote[] = [];
+    const gmProgram = gmProgramByTrackId[trackId] ?? DEFAULT_GM_PROGRAM_BY_INSTRUMENT[instrument.instrument];
+    if (!Number.isInteger(gmProgram) || gmProgram < 0 || gmProgram > 127) {
+      return { ok: false, error: `The Audiotool General MIDI program for “${instrument.name}” is invalid.` };
+    }
     for (const note of sourceNotes) {
       if (!isValidNote(note)) return { ok: false, error: `A note on “${instrument.name}” has invalid MIDI data.` };
       noteCount += 1;
@@ -199,7 +219,13 @@ export function buildAudiotoolWritePlan(args: {
       });
     }
     notes.sort(compareNotes);
-    parts.push({ name: safePartName(instrument.name, parts.length + 1), notes });
+    parts.push({
+      sourceTrackId: trackId,
+      instrumentKind: instrument.instrument,
+      gmProgram,
+      name: safePartName(instrument.name, parts.length + 1),
+      notes,
+    });
   }
 
   const drumResult = mapDrumPattern(pattern, tracks, maxSourceSteps);
@@ -226,22 +252,25 @@ export function buildAudiotoolWritePlan(args: {
 
   const fingerprintPayload: {
     projectId: string;
+    instrumentMode: AudiotoolWritePlan["instrumentMode"];
     sourceBpm: number;
     timeSignature: TimeSignature;
     durationTicks: number;
-    parts: AudiotoolMidiPart[];
+    parts: Array<Pick<AudiotoolMidiPart, "name" | "gmProgram" | "notes">>;
     drumPattern?: Pick<AudiotoolBeatboxPattern, "length" | "steps">;
   } = {
     projectId,
+    instrumentMode,
     sourceBpm,
     timeSignature,
     durationTicks,
-    parts: parts.map((part) => ({ name: part.name, notes: part.notes })),
+    parts: parts.map((part) => ({ name: part.name, gmProgram: part.gmProgram, notes: part.notes })),
   };
   if (drumPattern) fingerprintPayload.drumPattern = { length: drumPattern.length, steps: drumPattern.steps };
   const fingerprintInput = JSON.stringify(fingerprintPayload);
   const plan: AudiotoolWritePlan = {
     projectId,
+    instrumentMode,
     sourceBpm,
     timeSignature: { ...timeSignature },
     durationTicks,
@@ -257,6 +286,32 @@ export function buildAudiotoolWritePlan(args: {
   };
   return { ok: true, plan };
 }
+
+/** Best-effort GM soundfont defaults; users can choose any Audiotool GM patch before export. */
+export const DEFAULT_GM_PROGRAM_BY_INSTRUMENT: Readonly<Record<InstrumentKind, number>> = {
+  sampler: 0,
+  analog: 81,
+  bass: 38,
+  "808": 38,
+  texture: 89,
+  wavetable: 81,
+  granular: 99,
+  keys: 4,
+  organ: 16,
+  strings: 48,
+  bell: 11,
+  reese: 39,
+  clav: 7,
+  acid: 38,
+  brass: 61,
+  fm: 5,
+  pluck: 24,
+  flute: 73,
+  logdrum: 38,
+  spectral: 98,
+  vocalchop: 54,
+  drumsynth: 38,
+};
 
 type DrumMappingResult =
   | { ok: true; pattern?: AudiotoolBeatboxPattern; unsupportedHits: number; collapsedHits: number }

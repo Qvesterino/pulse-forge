@@ -10,7 +10,7 @@
   "model": {
     "url": "/models/intent-model-v1.onnx",
     "bytes": 806932,
-    "sha256": "1970552af5aae4f6ce4f32f899ee74b736b977ff04ee21ba2c631234fea8b394"
+    "sha256": "a1a1cbe7c02037483222671dda8dd5393bac57971ee5e42ec379749cb4bae3fd"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -451,10 +451,11 @@
     ]
   },
   "report": {
+    "gatePassed": false,
     "trainRows": 389,
     "valRows": 65,
     "goldenRows": 49,
-    "valHeadAccuracyMean": 0.9654,
+    "valHeadAccuracyMean": 0.9599,
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
   }
 }

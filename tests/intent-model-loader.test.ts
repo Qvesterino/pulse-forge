@@ -50,6 +50,7 @@ function validManifest(overrides: Partial<IntentModelManifest> = {}): IntentMode
     model: { url: "/models/llm/intent-model-v1.q4_k_s.gguf", bytes: 8, sha256: "b".repeat(64) },
     prompt: { system: "SYSTEM", instructionTemplate: "TASK: {instruction}" },
     generation: { maxTokens: 96, temperature: 0 },
+    report: { gatePassed: true },
     ...overrides,
   };
 }
@@ -133,6 +134,19 @@ describe("loader flag + probe", () => {
     setIntentModelWorkerFactoryForTests(factory);
     await expect(ensureIntentModelProvider()).resolves.toBe(false);
     expect(factory).not.toHaveBeenCalled();
+    expect(getIntentModelProvider()).toBeNull();
+  });
+
+  it("a manifest WITHOUT a passed release gate is refused — a candidate is not an actor", async () => {
+    setIntentModelMode("on");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(validManifest({ report: { gatePassed: false } }))),
+    );
+    const factory = vi.fn(() => null);
+    setIntentModelWorkerFactoryForTests(factory);
+    await expect(ensureIntentModelProvider()).resolves.toBe(false);
+    expect(factory).not.toHaveBeenCalled(); // never even spawns the worker
     expect(getIntentModelProvider()).toBeNull();
   });
 

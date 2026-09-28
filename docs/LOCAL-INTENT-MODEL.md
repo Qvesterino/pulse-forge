@@ -107,9 +107,28 @@ downloadable on demand; neither is in the web bundle's critical path.
   templates — regenerate and the golden diff shows exactly what moved.
 - **Lock**: `tests/intent-sft-golden.test.ts` — parser changes move the
   training target visibly; model re-trains against the new teacher.
-- **SFT**: LFM-2.5 1.2B instruct, LoRA or full FT, 2–3 epochs on train.jsonl,
-  prompt = system + instruction, completion = action JSON. Chat template per
-  the base model.
+- **v1 student (TRAINED, 2026-09-28)**: `npm run intent-model:all` —
+  `scripts/train-intent-model.py` trains a numpy multi-head slot-filling MLP
+  (binary BoW trunk 384→192 + 30 closed-class heads; classes ARE the
+  constraint a GBNF grammar gives the future LLM) over the corpus and
+  exports one ONNX graph (per-head outputs). Out-of-scope kinds decode to an
+  explicit abstain — never a guess. The manifest is written by
+  `scripts/write-intent-model-manifest.mts`, which pins
+  `grammarSha256 = sha256(toGbnfGrammar())` from the LIVE TypeScript grammar
+  (python cannot produce it) plus model/vocab SHA-256s.
+- **Gate**: `scripts/validate-intent-model.mts` runs EVERY corpus row
+  through the real ORT graph + the canonical TS decoder
+  (`src/intent/model-decoder.ts`) and enforces attempted-exact ≥ 95 %,
+  wrongKind = 0, abstain ≤ 20 % on val + golden, plus determinism. On pass
+  it patches `report.gatePassed = true`; the loader REFUSES models without
+  that pin. STATUS: gate NOT passed yet (val attempted-exact ~7 %,
+  abstain ~59 % — the 389-row corpus is the bottleneck), so the committed
+  artifact is inert by construction; the deterministic layer is the engine.
+  Path to activation: expand generator templates → `intent-model:all` →
+  gate → `gatePassed=true`.
+- **SFT (phase 2, LLM)**: LFM-2.5 1.2B instruct, LoRA or full FT on
+  train.jsonl, prompt = system + instruction, completion = action JSON;
+  same manifest/gate/loader contract via the GGUF runtime adapter.
 - **Augment (optional, phase 2)**: paraphrase pass with a larger offline
   model to multiply instructions per action — validation always against the
   deterministic teacher, never the generator.

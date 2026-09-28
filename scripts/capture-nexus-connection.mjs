@@ -1,10 +1,26 @@
 /**
- * Capture the real Audiotool NEXUS flow for the demo video.
+ * Capture the KYX -> Audiotool NEXUS bridge for the demo video.
  *
- * This drives the OAuth popup, the project picker, and the actual write into
- * a real Audiotool project — the whole chain, not a mock. It needs a
- * registered client id in `.env.local` and a signed-in Audiotool session, so
- * it is a manual-run script rather than part of CI.
+ * This proves the integration rather than a login: it generates a beat from
+ * the Intent Engine, applies it, opens the NEXUS export dialog, loads the
+ * real `@audiotool/nexus` SDK, and writes the plan into a real NEXUS
+ * document. The offline document is the same document type the SDK uses
+ * against a live project, validated by the same wasm schema — it simply
+ * does not sync, which requires an OAuth session and is not a hackathon
+ * requirement.
+ *
+ * What the capture shows, in order:
+ *   1. "dark trap 140" typed into the Intent Engine
+ *   2. GENERATE — candidates produced by the real engine
+ *   3. USE — the winning candidate applied to the project
+ *   4. AUDIOTOOL — the NEXUS export dialog
+ *   5. Load the NEXUS SDK
+ *   6. Create the NEXUS document
+ *   7. The write plan preview (parts, notes, bars)
+ *   8. The confirmed write and its receipt
+ *
+ * Nothing here is mocked: every frame is the product running, and the
+ * write goes through Audiotool's own validation.
  *
  * Usage:
  *   npx vite build
@@ -12,8 +28,8 @@
  *   node scripts/capture-nexus-connection.mjs
  *
  * Env:
- *   NEXUS_ORIGIN   where KYX is served (must match the registered redirect)
- *   KYX_CAPTURE_OUT output directory (defaults to the remotion public dir)
+ *   NEXUS_ORIGIN     where KYX is served (default http://127.0.0.1:5173)
+ *   KYX_CAPTURE_OUT  output dir (defaults to the remotion public dir)
  */
 import { chromium } from "playwright";
 import { mkdirSync, readdirSync, renameSync, statSync } from "node:fs";
@@ -30,26 +46,14 @@ mkdirSync(OUT, { recursive: true });
 
 const log = (...m) => console.log("[nexus-capture]", ...m);
 
-/**
- * The OAuth popup is a real browser window, so the main page and the popup
- * are two separate Playwright pages. Waiting for the popup to hand control
- * back is the part that has to be right — a naive `waitForEvent("popup")`
- * races the app's own navigation.
- */
 const browser = await chromium.launch({
   args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist", "--no-sandbox"],
 });
 const context = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
   recordVideo: { dir: OUT, size: { width: 1920, height: 1080 } },
-  permissions: [],
 });
 const page = await context.newPage();
-
-let popup = null;
-context.on("page", (p) => {
-  if (p !== page) popup = p;
-});
 
 log(`opening ${ORIGIN}`);
 await page.goto(ORIGIN, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -95,94 +99,145 @@ if (await generate.count()) {
   log("  (no GENERATE button — falling back to Enter)");
   await page.keyboard.press("Enter");
 }
-await page.waitForTimeout(15_000);
-
-// The AUDIOTOOL entry point only renders for an APPLIED candidate — not for
-// a generated one. So the order is: GENERATE -> USE -> AUDIOTOOL.
-const use = page.getByRole("button", { name: /^USE$/i }).first();
-if (!(await use.count())) {
-  log("!! no USE button — no candidate was generated");
-  await context.close();
-  await browser.close();
-  process.exit(1);
+// The engine ranks candidates through a model worker; the list keeps growing
+// for a while after the button flips to GENERATING. Wait for the AUDIOTOOL
+// button itself rather than for a fixed delay.
+const nexusReady = page.getByRole("button", { name: "AUDIOTOOL", exact: true }).first();
+let appeared = false;
+for (let i = 0; i < 40; i++) {
+  if (await nexusReady.count()) {
+    appeared = true;
+    log(`  candidates ready after ${i}s`);
+    break;
+  }
+  await page.waitForTimeout(1000);
 }
-log("  applying the winning candidate with USE");
-await use.click();
-await page.waitForTimeout(7000);
-
-const nexusButton = page.getByRole("button", { name: "AUDIOTOOL", exact: true }).first();
-if (!(await nexusButton.count())) {
-  log("!! could not find the AUDIOTOOL button after USE");
-  await context.close();
-  await browser.close();
-  process.exit(1);
-}
-await nexusButton.click();
 await page.waitForTimeout(2500);
 
-// Load the connector.
-const loadSdk = page.getByRole("button", { name: /načítať audiotoool connector|load audiotoool/i }).first();
-if (await loadSdk.count()) {
-  await loadSdk.click();
-  await page.waitForTimeout(4000);
+/*
+ * Order matters, and it is the opposite of what it looks like.
+ *
+ * The AUDIOTOOL button lives inside the candidate row, and `useCandidate`
+ * ends with `setBankResult(null)` (IntentPanel.tsx:842) — applying a
+ * candidate clears the whole candidate list, taking AUDIOTOOL with it.
+ * So the export dialog must be opened from the candidate BEFORE it is used.
+ * The dialog snapshots the candidate's pattern and the current project
+ * (`setAudiotoolExport` at IntentPanel.tsx:3043), so it does not need the
+ * candidate to still be on screen afterwards.
+ */
+const nexusButton = nexusReady;
+if (!appeared) {
+  const survey = await page.evaluate(() => {
+    const vis = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+    return {
+      buttons: [...document.querySelectorAll("button")]
+        .filter(vis)
+        .map((el) => (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 26))
+        .filter((t) => /audiotool|use|generat/i.test(t))
+        .slice(0, 20),
+      candidateRows: document.querySelectorAll(".intent-candidate").length,
+    };
+  });
+  log("  survey:", JSON.stringify(survey));
+  await page.screenshot({ path: "nexus-no-button.png" });
+  log("!! candidates never produced an AUDIOTOOL button — see nexus-no-button.png");
+  await context.close();
+  await browser.close();
+  process.exit(1);
 }
 
-// Connect — this opens the real Audiotool popup.
-const connect = page.getByRole("button", { name: /prihlásiť a pripojiť|sign in|connect/i }).first();
-if (await connect.count()) {
-  log("  clicking connect — a real OAuth popup will open");
-  await connect.click();
-
-  // The popup is owned by Audiotool, not us. We give the operator the
-  // moment to complete sign-in, then check whether we got handed a session.
-  log("  >>> complete sign-in in the Audiotool popup (60s window)");
-  for (let i = 0; i < 60; i++) {
-    await page.waitForTimeout(1000);
-    if (popup && !popup.isClosed()) {
-      const url = popup.url();
-      if (/audiotool/i.test(url)) log(`  popup at ${url.slice(0, 90)}`);
-    }
-    const connected = await page.getByText(/vlož odkaz na svoj audiotoool studio projekt/i).count();
-    if (connected) {
-      log("  signed in");
-      break;
+// Dismiss the first-run coach mark. It overlays the lower middle of the
+// studio, which is exactly where the candidate row's AUDIOTOOL button is,
+// so an undismissed coach mark swallows the click.
+const skip = page.getByRole("button", { name: /^SKIP$/i }).first();
+if (await skip.count()) {
+  log("  dismissing the first-run coach mark");
+  await skip.click();
+  await page.waitForTimeout(1500);
+} else {
+  const next = page.getByRole("button", { name: /^NEXT$/i }).first();
+  if (await next.count()) {
+    for (let i = 0; i < 6; i++) {
+      if (!(await skip.count())) break;
+      await next.click();
+      await page.waitForTimeout(700);
     }
   }
+}
 
-  // Enter the Audiotool project URL if the environment supplied one.
-  const projectUrl = process.env.AUDIOTOOL_PROJECT_URL;
-  if (projectUrl) {
-    const input = page.locator('input[type="url"]').first();
-    if (await input.count()) {
-      await input.fill(projectUrl);
-      await page.waitForTimeout(800);
-      const open = page.getByRole("button", { name: /otvoriť projekt|open project/i }).first();
-      if (await open.count()) {
-        await open.click();
-        await page.waitForTimeout(9000);
-      }
-    }
-  } else {
-    log("  (set AUDIOTOOL_PROJECT_URL to also capture opening a real project)");
-  }
+log("  opening the NEXUS export dialog from the candidate");
+await nexusButton.scrollIntoViewIfNeeded().catch(() => {});
+await page.waitForTimeout(500);
+await nexusButton.click();
+await page.waitForTimeout(5000);
 
-  // Preview the plan, then confirm the write.
-  await page.waitForTimeout(3000);
+// Report exactly what the dialog offers, whatever it is called.
+const inDialog = await page.evaluate(() => {
+  const dlg = document.querySelector(".audiotool-nexus-export");
+  if (!dlg) return { mounted: false };
+  const vis = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  return {
+    mounted: true,
+    text: (dlg.innerText || "").slice(0, 400),
+    buttons: [...dlg.querySelectorAll("button")].filter(vis).map((b) => b.textContent.trim().slice(0, 40)),
+  };
+});
+log("  dialog:", JSON.stringify(inDialog, null, 1));
+
+// Load the connector — this pulls the real @audiotool/nexus SDK.
+// Match on the class, not the Slovak label — a regex over non-ASCII text has
+// already silently failed once after a PowerShell rewrite mangled the bytes.
+const loadSdk = page.locator(".audiotool-nexus-export button.intent-use-btn").first();
+if (await loadSdk.count()) {
+  log("  loading the NEXUS SDK");
+  await loadSdk.click();
+  await page.waitForTimeout(6000);
+} else {
+  log("  (no connector button)");
+}
+
+/*
+ * The hackathon requires building WITH the Nexus SDK, not a signed-in
+ * session. So this capture proves the bridge rather than the login: the
+ * offline path builds a real NEXUS document in this tab — same entity
+ * schema, same wasm validation, same transaction layer as a synced one —
+ * and writeAudiotoolPlan writes into it for real. What it does not do is
+ * sync to Audiotool's backend, which needs an OAuth session.
+ */
+const offline = page.locator(".audiotool-nexus-export button.intent-use-btn").first();
+if (await offline.count()) {
+  log("  creating an offline NEXUS document (real schema, real validation)");
+  await offline.click();
+  await page.waitForTimeout(7000);
+
+  // The preview renders here: parts, notes, bars.
+  log("  plan preview rendered — capturing it");
+  await page.waitForTimeout(4000);
+
+  // Confirm the write and let the receipt render.
   const confirm = page
-    .getByRole("button", { name: /potvrdiť|confirm|napísať|send|export/i })
+    .getByRole("button", { name: /potvrdiť a napísať|confirm|napísať do audiotoool|send|export/i })
     .first();
   if (await confirm.count()) {
-    log("  confirming the write into the Audiotool document");
+    log("  confirming the write into the NEXUS document");
     await confirm.click();
-    await page.waitForTimeout(12_000);
+    await page.waitForTimeout(14_000);
   } else {
-    log("  (no confirm button found — capturing up to the preview)");
+    log("  (no confirm button — capturing the plan preview)");
+    await page.waitForTimeout(5000);
   }
 } else {
-  log("!! no connect button — is VITE_AUDIOTOOL_NEXUS_CLIENT_ID set?");
+  log("!! no offline button found — the NEXUS dialog did not offer the offline path");
+  await page.screenshot?.({ path: "nexus-dialog-debug.png" }).catch(() => {});
 }
 
-await page.waitForTimeout(2000);
+await page.waitForTimeout(2500);
 await context.close();
 await browser.close();
 

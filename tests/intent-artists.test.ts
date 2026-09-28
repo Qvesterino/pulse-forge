@@ -1628,22 +1628,24 @@ describe("UKG depth wave (originators / bassline / dark / funky / revival)", () 
 
 describe("ambient / score depth wave", () => {
   it("4th world + minimalist avant-garde", () => {
-    expect(parseIntentText("harold budd type beat").input.style).toBe("drifting");
+    const budd = parseIntentText("harold budd type beat");
+    expect(budd.input.genre).toBe("drone");
+    expect(budd.input.style).toBe("minimalism");
     expect(parseIntentText("robert fripp type beat").input.mood).toBe("chill");
     expect(parseIntentText("terry riley type beat").input.energy).toBe(0.3);
-    expect(parseIntentText("pauline oliveros type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("pauline oliveros type beat").input.genre).toBe("drone");
   });
 
   it("drone / dark ambient / isolationist", () => {
     const lustmord = parseIntentText("lustmord type beat");
-    expect(lustmord.input.genre).toBe("ambient");
-    expect(lustmord.input.style).toBe("drifting");
+    expect(lustmord.input.genre).toBe("drone");
+    expect(lustmord.input.style).toBe("drone");
     expect(lustmord.input.mood).toBe("dark");
     expect(lustmord.input.bpmRange).toEqual([40, 70]);
     expect(parseIntentText("sunn o))) type beat").input.mood).toBe("dark");
-    expect(parseIntentText("kevin drumsm type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("kevin drumsm type beat").input.genre).toBe("drone");
     expect(parseIntentText("kammarheit type beat").input.mood).toBe("dark");
-    expect(parseIntentText("raison d'etre type beat").input.style).toBe("drifting");
+    expect(parseIntentText("raison d'etre type beat").input.style).toBe("isolationism");
   });
 
   it("new age + kankyō ongaku + minimalists", () => {
@@ -1654,22 +1656,22 @@ describe("ambient / score depth wave", () => {
     const glass = parseIntentText("philip glass type beat");
     expect(glass.input.energy).toBe(0.55);
     expect(glass.input.bpmRange).toEqual([90, 130]);
-    expect(parseIntentText("steve reich type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("steve reich type beat").input.genre).toBe("drone");
   });
 
   it("score composers: orchestral + modern + post-classical", () => {
     expect(parseIntentText("ennio morricone type beat").input.mood).toBe("dark");
-    expect(parseIntentText("john williams type beat").input.style).toBe("drifting");
-    expect(parseIntentText("trent reznor type beat").input.style).toBe("glitch");
-    expect(parseIntentText("yann tiersen type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("john williams type beat").input.style).toBe("score");
+    expect(parseIntentText("trent reznor type beat").input.style).toBe("neoclassical");
+    expect(parseIntentText("yann tiersen type beat").input.genre).toBe("drone");
     expect(parseIntentText("lubomyr melnyk type beat").input.style).toBe("organic");
     expect(parseIntentText("goldmund type beat").input.mood).toBe("chill");
   });
 
   it("modern ambient revival + experimental edges", () => {
-    expect(parseIntentText("caterina barbieri type beat").input.genre).toBe("ambient");
+    expect(parseIntentText("caterina barbieri type beat").input.genre).toBe("drone");
     expect(parseIntentText("julianna barwick type beat").input.mood).toBe("chill");
-    expect(parseIntentText("kali malone type beat").input.style).toBe("drifting");
+    expect(parseIntentText("kali malone type beat").input.style).toBe("electroacoustic");
     expect(parseIntentText("huerco s type beat").input.style).toBe("glitch");
     expect(parseIntentText("moor mother type beat").input.mood).toBe("aggressive");
     expect(parseIntentText("ryoji ikeda type beat").input.style).toBe("glitch");
@@ -1784,14 +1786,14 @@ describe("experimental + score wave", () => {
 
   it("neoclassical / modern score depth", () => {
     const einaudi = parseIntentText("ludovico einaudi type beat");
-    expect(einaudi.input.genre).toBe("ambient");
-    expect(einaudi.input.style).toBe("organic");
+    expect(einaudi.input.genre).toBe("drone");
+    expect(einaudi.input.style).toBe("neoclassical");
     expect(einaudi.input.mood).toBe("chill");
     expect(parseIntentText("max richter type beat").input.mood).toBe("dark");
     expect(parseIntentText("vangelis type beat").input.mood).toBe("energetic");
-    expect(parseIntentText("steve roach type beat").input.style).toBe("drifting");
+    expect(parseIntentText("steve roach type beat").input.style).toBe("drone");
     expect(parseIntentText("ryuichi sakamoto type beat").input.mood).toBe("chill");
-    expect(parseIntentText("biosphere type beat").input.style).toBe("drifting");
+    expect(parseIntentText("biosphere type beat").input.style).toBe("isolationism");
   });
 
   it("big beat + 90s rave lineage resolve", () => {

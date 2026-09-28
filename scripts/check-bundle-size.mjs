@@ -85,9 +85,9 @@ const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-
 // Keep its exported chunk out of the DAW graph while enforcing a separate cap.
 const OPTIONAL_CODEC_BUDGET_KB = 170;
 const OPTIONAL_CODEC_PREFIXES = ["mp3-"];
-// Nexus 0.0.19 is a third-party integration fetched only after an explicit
-// Audiotool action. Its measured minified runtime is ~703 KB; isolate it from
-// the DAW cap but hold the opt-in payload to a narrow 750 KB ceiling.
+// Nexus 0.0.19 and its KYX adapter are fetched only after an explicit
+// Audiotool action. Measure them together in a narrow opt-in payload budget;
+// the adapter must not hide outside the SDK's separate allowance.
 const OPTIONAL_NEXUS_BUDGET_KB = 750;
 const OPTIONAL_NEXUS_PREFIXES = ["audiotool-nexus-"];
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's

@@ -53,24 +53,28 @@ export function buildIntentBow(text: string, tokens: string[]): Float32Array {
 const ABSENT = "__absent__";
 
 /**
- * Kind-head confidence floor: below this softmax probability the model
- * ABSTAINS (decodes to null = "unsupported, fall back") instead of guessing
- * a kind. This is the rejection option that keeps wrong-kind outputs near
- * zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
+ * Kind-head abstention, MARGIN-based: the trained logits carry a large
+ * shared offset (regularized saturation), so absolute softmax probability
+ * is meaningless — the invariant signal is the gap between the top two
+ * classes. A margin below this value means the model cannot tell kinds
+ * apart: it ABSTAINS (decodes to null = "unsupported, fall back") instead
+ * of guessing. This is the rejection option that keeps wrong-kind outputs
+ * near zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
  */
-export const INTENT_MODEL_CONFIDENCE_FLOOR = 0.6;
+export const INTENT_MODEL_KIND_MARGIN = 1.0;
 
-function softmax(values: Float32Array): Float32Array {
-  let max = -Infinity;
-  for (let i = 0; i < values.length; i++) if (values[i] > max) max = values[i];
-  let sum = 0;
-  const out = new Float32Array(values.length);
+function topTwoGap(values: Float32Array): number {
+  let best = -Infinity;
+  let second = -Infinity;
   for (let i = 0; i < values.length; i++) {
-    out[i] = Math.exp(values[i] - max);
-    sum += out[i];
+    if (values[i] > best) {
+      second = best;
+      best = values[i];
+    } else if (values[i] > second) {
+      second = values[i];
+    }
   }
-  for (let i = 0; i < values.length; i++) out[i] /= sum;
-  return out;
+  return best - second;
 }
 
 function argmaxClass(head: IntentModelHead, scores: Float32Array): string {
@@ -79,10 +83,15 @@ function argmaxClass(head: IntentModelHead, scores: Float32Array): string {
   return head.classes[best] ?? ABSENT;
 }
 
-function activeClasses(head: IntentModelHead, scores: Float32Array, threshold = 0.5): string[] {
+function activeClasses(head: IntentModelHead, scores: Float32Array): string[] {
+  // Canonical rule, EXACTLY the trainer's label semantics: a class is
+  // active iff its logit is >= 0 (sigmoid >= 0.5). Keeping decode and
+  // training labels aligned is what makes the validate gate authoritative;
+  // calibration (positives crossing 0) is the trainer's job, not a
+  // decoder-side heuristic.
   const active: string[] = [];
   for (let i = 0; i < head.classes.length; i++) {
-    if (head.classes[i] !== ABSENT && scores[i] >= threshold) active.push(head.classes[i]);
+    if (head.classes[i] !== ABSENT && scores[i] >= 0) active.push(head.classes[i]);
   }
   return active;
 }
@@ -140,11 +149,11 @@ export function decodeIntentHeads(
   };
   const optNum = (name: string): number | null => num(head(name), scores(name));
 
+  const kindScores = scores("kind");
   const kind = cls("kind");
   if (kind === ABSENT || kind === "abstain") return null;
-  // Confidence floor: an unsure kind is an abstention, never a guess.
-  const kindConfidence = Math.max(...softmax(scores("kind")));
-  if (kindConfidence < INTENT_MODEL_CONFIDENCE_FLOOR) return null;
+  // Margin abstention: an unsure kind is an abstention, never a guess.
+  if (topTwoGap(kindScores) < INTENT_MODEL_KIND_MARGIN) return null;
 
   const targets = activeClasses(head("targets"), scores("targets"));
   const pads = activeClasses(head("pads"), scores("pads"));

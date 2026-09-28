@@ -52,8 +52,8 @@ MODELS_DIR = ROOT / "public" / "models"
 
 TRUNK = [384, 192]
 VOCAB_CAP = 1024
-EPOCHS = 3000
-LR = 4e-4
+EPOCHS = 4000
+LR = 2.5e-4
 GRAD_CLIP_NORM = 1.0
 WEIGHT_DECAY = 1e-4
 SEED = 0x5EED
@@ -426,7 +426,7 @@ class MultiHeadNet:
 
 
 def label_smoothing() -> float:
-    return 0.05
+    return 0.02
 
 
 def main() -> None:
@@ -479,37 +479,45 @@ def main() -> None:
         for param, value in zip(all_params, snapshot_bytes):
             param[...] = value
 
-    kind_index = [head["name"] for head in heads].index("kind")
-
-    def train_kind_accuracy() -> float:
+    def train_full_head_accuracy() -> float:
+        """Checkpoint selection metric: fraction of (row, head) labels the
+        net reproduces under the DECODER's rules (softmax argmax; sigmoid
+        >= 0). Assembled quality, not a single head — kind alone let
+        underfit sigmoid heads slip through."""
         _, _, logits = net.forward(x_train)
-        predicted = logits[kind_index].argmax(axis=1)
-        truth = np.array(
-            [
-                heads[kind_index]["classes"].index(entry["kind"])
-                if entry["kind"] in heads[kind_index]["classes"]
-                else 0
-                for entry in labels_train
-            ]
-        )
-        return float((predicted == truth).mean())
+        hits = 0
+        total = 0
+        for index, head in enumerate(heads):
+            scores = logits[index]
+            for row_index, labels in enumerate(labels_train):
+                value = labels.get(head["name"])
+                if value is None:
+                    continue
+                total += 1
+                if head["kind"] == "softmax":
+                    predicted = head["classes"][int(scores[row_index].argmax())]
+                else:
+                    predicted = head["classes"][int(scores[row_index].argmax())] if scores[row_index].max() >= 0 else None
+                if predicted == value:
+                    hits += 1
+        return hits / max(1, total)
 
-    best_score = (-1.0, float("inf"))  # (kind acc desc, loss asc)
+    best_score = (-1.0, float("inf"))  # (full-head acc desc, loss asc)
     best_snapshot = snapshot()
     best_epoch = 0
     for epoch in range(EPOCHS):
         lr_scale = 0.5 * (1.0 + np.cos(np.pi * epoch / EPOCHS))
         loss = net.train_step(x_train, labels_train, heads, lr_scale)
-        if epoch % 25 == 0 or epoch == EPOCHS - 1:
-            score = (train_kind_accuracy(), loss)
+        if epoch % 10 == 0 or epoch == EPOCHS - 1:
+            score = (train_full_head_accuracy(), loss)
             if score[0] > best_score[0] or (score[0] == best_score[0] and score[1] < best_score[1]):
                 best_score = score
                 best_snapshot = snapshot()
                 best_epoch = epoch
         if epoch % 200 == 0 or epoch == EPOCHS - 1:
-            print(f"epoch {epoch:5d}  loss {loss:.4f}  best kind-acc {best_score[0]:.4f} @ {best_epoch}")
+            print(f"epoch {epoch:5d}  loss {loss:.4f}  best head-acc {best_score[0]:.4f} @ {best_epoch}")
     restore(best_snapshot)
-    print(f"restored best snapshot from epoch {best_epoch} (train kind acc {best_score[0]:.4f}, loss {best_score[1]:.4f})")
+    print(f"restored best snapshot from epoch {best_epoch} (train full-head acc {best_score[0]:.4f}, loss {best_score[1]:.4f})")
 
     def head_accuracy(x, labels) -> dict:
         _, _, logits = net.forward(x)

@@ -21,7 +21,7 @@
  * Exit 0 = all gates pass.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { toGbnfGrammar } from "../src/intent/model-schema";
@@ -61,9 +61,7 @@ if (vocab.tokens.length !== manifest.features.vocabSize) throw new Error("vocab 
 // Browser-compatible runtime on a node host — same pattern as
 // validate-intent-ranker.mjs; the wasm binaries stay local node_modules.
 const ort = await import("onnxruntime-web");
-ort.env.wasm.wasmPaths = pathToFileURL(
-  path.join(ROOT, "node_modules", "onnxruntime-web", "dist", path.sep),
-).href;
+ort.env.wasm.wasmPaths = pathToFileURL(path.join(ROOT, "node_modules", "onnxruntime-web", "dist", path.sep)).href;
 ort.env.wasm.numThreads = 1;
 const session = await ort.InferenceSession.create(new Uint8Array(modelBytes), {
   executionProviders: ["wasm"],
@@ -205,4 +203,17 @@ checkGate(goldenStats, "golden");
 console.log(
   `train attemptedExact=${((trainStats.exact / Math.max(1, trainStats.attempted)) * 100).toFixed(1)}% (informational, not gated)`,
 );
-console.log("RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 20% on val + golden");
+// Gate passed — pin the verdict into the manifest so the loader may
+// register this artifact (read → patch → write, pins untouched).
+const manifestPath = path.join(MODELS_DIR, "intent-model-v1.manifest.json");
+const patched = JSON.parse(readFileSync(manifestPath, "utf8")) as typeof manifest;
+patched.report = { ...patched.report, gatePassed: true };
+if (!isIntentModelManifest(patched)) throw new Error("patched manifest malformed — refusing to write");
+writeFileSync(
+  manifestPath,
+  `${JSON.stringify(patched, null, 2)}
+`,
+);
+console.log(
+  "RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 20% on val + golden; manifest gatePassed=true",
+);

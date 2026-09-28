@@ -1,4 +1,5 @@
 import type { OfflineDocument, SyncedDocument } from "@audiotool/nexus";
+import type { NexusPreset } from "@audiotool/nexus/api";
 import type { NexusEntity, SafeTransactionBuilder } from "@audiotool/nexus/document";
 import {
   AUDIOTOOL_BEATBOX_STEP_TICKS,
@@ -23,6 +24,8 @@ export interface AudiotoolWriteReceipt {
 export interface AudiotoolWriteOptions {
   /** Rechecked after Nexus acquires its transaction lock and before any entity is created. */
   isWriteStillAuthorized?: () => boolean;
+  /** Optional Audiotool GM soundfont presets, keyed by 0-based GM program. */
+  gakkiPresets?: ReadonlyMap<number, NexusPreset<"gakki">>;
 }
 
 const MARKER_PREFIX = "KYX-NEXUS";
@@ -55,11 +58,21 @@ export async function writeAudiotoolPlan(
     }
   };
   assertWritable();
+  if (plan.instrumentMode === "gakki" && !options.gakkiPresets) {
+    throw new Error("Audiotool Gakki presets must be loaded before writing this plan.");
+  }
+  if (plan.instrumentMode === "gakki" && options.gakkiPresets) {
+    for (const part of plan.parts) {
+      if (!options.gakkiPresets.has(part.gmProgram)) {
+        throw new Error(`The selected Audiotool GM sound ${part.gmProgram + 1} was not loaded.`);
+      }
+    }
+  }
   const midiMarkers = midiPlanMarkers(plan, plan.fingerprint);
   const drumMarker = plan.drumPattern ? `${MARKER_PREFIX}:${plan.fingerprint}:drums` : null;
   const expectedMarkers = [...midiMarkers, ...(drumMarker ? [drumMarker] : [])];
-  const legacyMidiFingerprint = plan.drumPattern && plan.parts.length > 0 ? fingerprintMidiOnlyPlan(plan) : null;
-  const legacyMidiMarkers = legacyMidiFingerprint ? midiPlanMarkers(plan, legacyMidiFingerprint) : [];
+  const currentMidiMarkers = plan.parts.length > 0 ? midiPlanMarkers(plan, fingerprintMidiOnlyPlan(plan)) : [];
+  const previousMidiMarkers = plan.parts.length > 0 ? midiPlanMarkers(plan, fingerprintLegacyMidiOnlyPlan(plan)) : [];
 
   const decision = await document.modify((transaction) => {
     // modify() can wait for the Nexus transaction lock. Revalidate the exact source
@@ -68,7 +81,7 @@ export async function writeAudiotoolPlan(
     const countsBefore = entityCounts(transaction.entities);
     const deviceNames = [
       ...transaction.entities
-        .ofTypes("heisenberg")
+        .ofTypes("heisenberg", "gakki")
         .get()
         .map((device) => device.fields.displayName.value),
       ...transaction.entities
@@ -90,16 +103,27 @@ export async function writeAudiotoolPlan(
       };
     }
 
-    const legacyFound = legacyMidiMarkers.filter((marker) =>
+    const currentMidiFound = currentMidiMarkers.filter((marker) =>
       deviceNames.some((name) => name.startsWith(`${marker} · `)),
     );
-    const legacyMidiComplete =
-      legacyMidiMarkers.length > 0 &&
-      legacyFound.length === legacyMidiMarkers.length &&
-      hasCompleteMidiImport(transaction.entities, plan, legacyMidiMarkers);
+    const previousMidiFound = previousMidiMarkers.filter((marker) =>
+      deviceNames.some((name) => name.startsWith(`${marker} · `)),
+    );
+    const currentMidiComplete =
+      currentMidiMarkers.length > 0 &&
+      currentMidiFound.length === currentMidiMarkers.length &&
+      hasCompleteMidiImport(transaction.entities, plan, currentMidiMarkers);
+    const previousMidiComplete =
+      plan.instrumentMode === "heisenberg" &&
+      previousMidiMarkers.length > 0 &&
+      previousMidiFound.length === previousMidiMarkers.length &&
+      hasCompleteMidiImport(transaction.entities, plan, previousMidiMarkers);
+    const legacyMidiComplete = currentMidiComplete || previousMidiComplete;
+    const legacyMidiMarkers = currentMidiComplete ? currentMidiMarkers : previousMidiMarkers;
+    const legacyFound = [...new Set([...currentMidiFound, ...previousMidiFound])];
     const legacyDrumFound = drumMarker && deviceNames.some((name) => name.startsWith(`${drumMarker} · `));
-    if (legacyMidiComplete && legacyDrumFound) {
-      if (hasCompleteDrumImport(transaction.entities, plan, drumMarker)) {
+    if (legacyMidiComplete) {
+      if (!plan.drumPattern) {
         return {
           countsBefore,
           alreadyImported: true,
@@ -108,7 +132,18 @@ export async function writeAudiotoolPlan(
           midiMarkersToVerify: legacyMidiMarkers,
         };
       }
-      throw new Error("A partial KYX Beatbox8 import marker already exists in this Audiotool project.");
+      if (legacyDrumFound) {
+        if (hasCompleteDrumImport(transaction.entities, plan, drumMarker)) {
+          return {
+            countsBefore,
+            alreadyImported: true,
+            createMidi: false,
+            createDrums: false,
+            midiMarkersToVerify: legacyMidiMarkers,
+          };
+        }
+        throw new Error("A partial KYX Beatbox8 import marker already exists in this Audiotool project.");
+      }
     }
     if (found.length > 0) {
       throw new Error("A partial KYX import marker already exists in this Audiotool project.");
@@ -133,7 +168,8 @@ export async function writeAudiotoolPlan(
       ) + 1;
 
     const midiTrackCount = !legacyMidiComplete ? plan.parts.length : 0;
-    if (midiTrackCount > 0) createMidiEntities(transaction, plan, midiMarkers, nextTrackOrder, nextStripOrder);
+    if (midiTrackCount > 0)
+      createMidiEntities(transaction, plan, midiMarkers, nextTrackOrder, nextStripOrder, options.gakkiPresets);
     if (plan.drumPattern && drumMarker) {
       createBeatboxEntities(
         transaction,
@@ -160,7 +196,7 @@ export async function writeAudiotoolPlan(
   const expectedMidiNotes = decision.createMidi ? plan.noteCount : 0;
   const expectedDrumDevices = decision.createDrums ? 1 : 0;
   if (
-    after.heisenberg - countsBefore.heisenberg < expectedMidiParts ||
+    after.midiDevices - countsBefore.midiDevices < expectedMidiParts ||
     after.noteTrack - countsBefore.noteTrack < expectedMidiParts ||
     after.noteRegion - countsBefore.noteRegion < expectedMidiParts ||
     after.noteCollection - countsBefore.noteCollection < expectedMidiParts ||
@@ -201,13 +237,25 @@ function midiPlanMarkers(plan: AudiotoolWritePlan, fingerprint: string): string[
   return plan.parts.map((_, index) => `${MARKER_PREFIX}:${fingerprint}:${index + 1}`);
 }
 
-function fingerprintMidiOnlyPlan(plan: AudiotoolWritePlan): string {
+function fingerprintLegacyMidiOnlyPlan(plan: AudiotoolWritePlan): string {
   const value = JSON.stringify({
     projectId: plan.projectId,
     sourceBpm: plan.sourceBpm,
     timeSignature: plan.timeSignature,
     durationTicks: plan.durationTicks,
-    parts: plan.parts,
+    parts: plan.parts.map(({ name, notes }) => ({ name, notes })),
+  });
+  return stableFingerprint(value);
+}
+
+function fingerprintMidiOnlyPlan(plan: AudiotoolWritePlan): string {
+  const value = JSON.stringify({
+    projectId: plan.projectId,
+    instrumentMode: plan.instrumentMode,
+    sourceBpm: plan.sourceBpm,
+    timeSignature: plan.timeSignature,
+    durationTicks: plan.durationTicks,
+    parts: plan.parts.map(({ name, gmProgram, notes }) => ({ name, gmProgram, notes })),
   });
   return stableFingerprint(value);
 }
@@ -218,18 +266,31 @@ function createMidiEntities(
   markers: readonly string[],
   nextTrackOrder: number,
   nextStripOrder: number,
+  gakkiPresets?: ReadonlyMap<number, NexusPreset<"gakki">>,
 ): void {
   plan.parts.forEach((part, index) => {
     const marker = markers[index];
     if (!marker) throw new Error("The Audiotool write plan is incomplete.");
     const title = `${marker} · ${part.name}`.slice(0, 96);
-    const player = transaction.create("heisenberg", {
-      displayName: title,
-      positionX: 1000 + index * 320,
-      positionY: 250,
-      isActive: true,
-      operatorA: { gain: 1, waveformIndex: 1 },
-    });
+    const positionX = 1000 + index * 320;
+    const preset = plan.instrumentMode === "gakki" ? gakkiPresets?.get(part.gmProgram) : undefined;
+    if (plan.instrumentMode === "gakki" && !preset) {
+      throw new Error(`The selected Audiotool GM sound ${part.gmProgram + 1} was not loaded.`);
+    }
+    const player = preset
+      ? transaction.createDeviceFromPreset(preset)
+      : transaction.create("heisenberg", {
+          displayName: title,
+          positionX,
+          positionY: 250,
+          isActive: true,
+          operatorA: { gain: 1, waveformIndex: 1 },
+        });
+    if (preset) {
+      transaction.update(player.fields.displayName, title);
+      transaction.update(player.fields.positionX, positionX);
+      transaction.update(player.fields.positionY, 250);
+    }
     const noteTrack = transaction.create("noteTrack", {
       orderAmongTracks: nextTrackOrder++,
       player: player.location,
@@ -358,7 +419,7 @@ function stableFingerprint(value: string): string {
 
 function entityCounts(query: SyncedDocument["queryEntities"]) {
   return {
-    heisenberg: query.ofTypes("heisenberg").get().length,
+    midiDevices: query.ofTypes("heisenberg", "gakki").get().length,
     noteTrack: query.ofTypes("noteTrack").get().length,
     noteRegion: query.ofTypes("noteRegion").get().length,
     noteCollection: query.ofTypes("noteCollection").get().length,
@@ -389,7 +450,7 @@ function hasCompleteMidiImport(
   plan: AudiotoolWritePlan,
   markers: readonly string[],
 ): boolean {
-  const devices = query.ofTypes("heisenberg").get();
+  const devices = query.ofTypes(plan.instrumentMode).get();
   const tracks = query.ofTypes("noteTrack").get();
   const regions = query.ofTypes("noteRegion").get();
   const collections = query.ofTypes("noteCollection").get();
@@ -404,13 +465,17 @@ function hasCompleteMidiImport(
     if (matchingDevices.length !== 1) return false;
     const device = matchingDevices[0];
     if (!device) return false;
-    if (
-      device.fields.isActive.value !== true ||
-      device.fields.operatorA.fields.gain.value <= 0 ||
-      device.fields.operatorA.fields.waveformIndex.value !== 1
-    ) {
-      return false;
-    }
+    if (plan.instrumentMode === "heisenberg" && device.entityType === "heisenberg") {
+      if (
+        device.fields.isActive.value !== true ||
+        device.fields.operatorA.fields.gain.value <= 0 ||
+        device.fields.operatorA.fields.waveformIndex.value !== 1
+      ) {
+        return false;
+      }
+    } else if (plan.instrumentMode === "gakki" && device.entityType === "gakki") {
+      if (device.fields.gain.value <= 0 || device.fields.soundfontId.value.length === 0) return false;
+    } else return false;
 
     const matchingTracks = tracks.filter((track) => track.fields.player.value.equals(device.location));
     if (matchingTracks.length !== 1) return false;
@@ -444,14 +509,14 @@ function hasCompleteMidiImport(
     const outputCables = cables.filter((cable) =>
       cable.fields.fromSocket.value.equals(device.fields.audioOutput.location),
     );
-    if (outputCables.length !== 1) return false;
-    const linkedChannels = mixerChannels.filter((channel) =>
-      channel.fields.audioInput.location.equals(outputCables[0]!.fields.toSocket.value),
+    const linkedChannels = mixerChannels.filter(
+      (channel) => channel.fields.displayParameters.fields.displayName.value === `${part.name} · KYX`,
     );
-    return (
-      linkedChannels.length === 1 &&
-      linkedChannels[0]?.fields.displayParameters.fields.displayName.value === `${part.name} · KYX`
-    );
+    if (linkedChannels.length !== 1 || !linkedChannels[0]) return false;
+    const routeCount = outputCables.filter((cable) =>
+      cable.fields.toSocket.value.equals(linkedChannels[0]!.fields.audioInput.location),
+    ).length;
+    return routeCount === 1;
   });
 }
 

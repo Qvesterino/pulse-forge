@@ -48,6 +48,8 @@ export function AudiotoolNexusExport({
   const lifecycleRef = useRef(0);
   const [projectUrl, setProjectUrl] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [gmProgramByTrackId, setGmProgramByTrackId] = useState<Record<string, number>>({});
+  const [useGakkiSounds, setUseGakkiSounds] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<AudiotoolWriteReceipt | null>(null);
@@ -55,8 +57,19 @@ export function AudiotoolNexusExport({
   const [isConnected, setIsConnected] = useState(false);
 
   const result = useMemo(
-    () => (projectId ? buildAudiotoolWritePlan({ pattern, tracks, timeSignature, sourceBpm, projectId }) : null),
-    [pattern, tracks, timeSignature, sourceBpm, projectId],
+    () =>
+      projectId
+        ? buildAudiotoolWritePlan({
+            pattern,
+            tracks,
+            timeSignature,
+            sourceBpm,
+            projectId,
+            instrumentMode: useGakkiSounds ? "gakki" : "heisenberg",
+            gmProgramByTrackId,
+          })
+        : null,
+    [pattern, tracks, timeSignature, sourceBpm, projectId, gmProgramByTrackId, useGakkiSounds],
   );
   const plan: AudiotoolWritePlan | null = result?.ok ? result.plan : null;
 
@@ -201,25 +214,49 @@ export function AudiotoolNexusExport({
   };
 
   const sendToAudiotool = async () => {
-    if (!session || !plan || !confirmed || !isSourceCurrent() || !isConnected || busy || receipt) return;
+    if (!auth || !session || !plan || !confirmed || !isSourceCurrent() || !isConnected || busy || receipt) return;
     const lifecycle = lifecycleRef.current;
     setBusy(true);
     setError(null);
     setReceipt(null);
     try {
-      const written = await writeAudiotoolPlan(session, plan, { isWriteStillAuthorized: isSourceCurrent });
+      const gakkiPresets =
+        plan.instrumentMode === "gakki"
+          ? new Map<number, Awaited<ReturnType<typeof auth.presets.getInstrument>>>()
+          : undefined;
+      if (gakkiPresets) {
+        const selectedPrograms = [...new Set(plan.parts.map((part) => part.gmProgram))];
+        await Promise.all(
+          selectedPrograms.map(async (program) => {
+            const instrument = auth.presets.gmInstruments.find((candidate) => candidate.program === program);
+            if (!instrument) throw new Error(`GM preset ${program + 1} is not available.`);
+            try {
+              gakkiPresets.set(program, await auth.presets.getInstrument(instrument));
+            } catch {
+              throw new Error(`GM preset ${program + 1} could not be loaded.`);
+            }
+          }),
+        );
+      }
+      if (lifecycleRef.current !== lifecycle) return;
+      const written = await writeAudiotoolPlan(session, plan, {
+        isWriteStillAuthorized: isSourceCurrent,
+        ...(gakkiPresets ? { gakkiPresets } : {}),
+      });
       if (lifecycleRef.current === lifecycle) setReceipt(written);
     } catch (cause) {
       if (lifecycleRef.current !== lifecycle) return;
       const message = cause instanceof Error ? cause.message : "";
       setError(
-        message.includes("KYX source changed")
-          ? "KYX projekt sa pred zápisom zmenil. Zavri export a vytvor kandidáta znova."
-          : message.includes("partial") || message.includes("did not confirm")
-            ? "SDK nahlásilo možný čiastočný zápis. Projekt skontroluj v Audiotool; zatiaľ neposielaj ten istý nápad znova."
-            : message.includes("disconnected")
-              ? "Audiotool session je offline. Znovu ju otvor a pred opakovaním skontroluj projekt."
-              : "Zápis zlyhal alebo sa nepotvrdil. Skontroluj Audiotool projekt pred prípadným opakovaním.",
+        message.includes("GM preset")
+          ? "Audiotool GM sound sa nepodarilo načítať. Skontroluj pripojenie a skús to znova; do projektu sa nič nezapísalo."
+          : message.includes("KYX source changed")
+            ? "KYX projekt sa pred zápisom zmenil. Zavri export a vytvor kandidáta znova."
+            : message.includes("partial") || message.includes("did not confirm")
+              ? "SDK nahlásilo možný čiastočný zápis. Projekt skontroluj v Audiotool; zatiaľ neposielaj ten istý nápad znova."
+              : message.includes("disconnected")
+                ? "Audiotool session je offline. Znovu ju otvor a pred opakovaním skontroluj projekt."
+                : "Zápis zlyhal alebo sa nepotvrdil. Skontroluj Audiotool projekt pred prípadným opakovaním.",
       );
     } finally {
       if (lifecycleRef.current === lifecycle) setBusy(false);
@@ -232,7 +269,8 @@ export function AudiotoolNexusExport({
         <div>
           <strong>Poslať {candidateLabel} do Audiotoolu</strong>
           <div className="audiotool-nexus-export__subhead">
-            Vybraný KYX MIDI a podporované Beatbox8 drums · bez automatickej synchronizácie
+            KYX MIDI {useGakkiSounds ? "s Audiotool GM zvukmi" : "s Heisenbergom"} + podporované Beatbox8 drums · bez
+            automatickej synchronizácie
           </div>
         </div>
         <button
@@ -321,7 +359,31 @@ export function AudiotoolNexusExport({
               <ul>
                 {plan.parts.map((part, index) => (
                   <li key={`${part.name}:${index}`}>
-                    {part.name} · {part.notes.length} nôt · nový Heisenberg
+                    {part.name} · {part.notes.length} nôt ·{" "}
+                    {plan.instrumentMode === "gakki" ? (
+                      <label>
+                        Audiotool GM zvuk
+                        <select
+                          aria-label={`Audiotool GM zvuk pre ${part.name}`}
+                          value={part.gmProgram}
+                          onChange={(event) =>
+                            setGmProgramByTrackId((current) => ({
+                              ...current,
+                              [part.sourceTrackId]: Number(event.target.value),
+                            }))
+                          }
+                          disabled={busy}
+                        >
+                          {auth.presets.gmInstruments.map((instrument) => (
+                            <option key={instrument.program} value={instrument.program}>
+                              {instrument.displayName} · {instrument.category}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      "nový Heisenberg"
+                    )}
                   </li>
                 ))}
                 {plan.drumPattern && (
@@ -352,6 +414,18 @@ export function AudiotoolNexusExport({
               >
                 OBNOVIŤ AUDIOTOOL BPM/TAKT
               </button>
+              {plan.parts.length > 0 && (
+                <label className="audiotool-nexus-export__confirm">
+                  <input
+                    type="checkbox"
+                    aria-label="Použiť vybrané Audiotool GM zvuky"
+                    checked={useGakkiSounds}
+                    disabled={busy}
+                    onChange={(event) => setUseGakkiSounds(event.target.checked)}
+                  />
+                  Použiť Audiotool GM zvuky (odporúčané; vypnutím sa použije jednoduchý Heisenberg oscilátor)
+                </label>
+              )}
               {targetTempo &&
                 (targetTempo.bpm !== plan.sourceBpm ||
                   targetTempo.timeSignature.numerator !== plan.timeSignature.numerator ||
@@ -365,6 +439,12 @@ export function AudiotoolNexusExport({
                 <p className="audiotool-nexus-export__warning">
                   KYX sample-y a presné drum timbre sa neprenášajú. Použijú sa vstavané Beatbox8 zvuky; presná velocity,
                   ratchety, probability a microtiming sa nezachovajú.
+                </p>
+              )}
+              {plan.instrumentMode === "gakki" && plan.parts.length > 0 && (
+                <p className="audiotool-nexus-export__warning">
+                  MIDI party používajú vybrané Audiotool Gakki General MIDI zvuky. KYX syntéza, efekty a presný
+                  instrument patch sa nekopírujú; zvuk môžeš po importe ďalej upraviť v Audiotool Studiu.
                 </p>
               )}
               {plan.drumPattern && plan.drumPattern.sourceStepCount > 64 && (
@@ -401,9 +481,14 @@ export function AudiotoolNexusExport({
                 </p>
               )}
               <label className="audiotool-nexus-export__confirm">
-                <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-                Rozumiem, že potvrdenie pridá nové MIDI/Beatbox8 zariadenia, tracky, patterns a mixer kanály do
-                vzdialeného Audiotool projektu.
+                <input
+                  type="checkbox"
+                  aria-label="Potvrdiť vzdialený zápis do Audiotoolu"
+                  checked={confirmed}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                />
+                Rozumiem, že potvrdenie pridá nové MIDI/{plan.instrumentMode === "gakki" ? "Gakki" : "Heisenberg"}/
+                Beatbox8 zariadenia, tracky, patterns a mixer kanály do vzdialeného Audiotool projektu.
               </label>
               <div className="audiotool-nexus-export__actions-row">
                 <button

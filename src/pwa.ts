@@ -58,19 +58,42 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // golden-review listening renders are not product assets, and the optional
     // intent ranker stays lazy: its 13.9 MB WASM runtime must never inflate
     // the app-shell install/update payload.
+    // The Audiotool validator is a large, optional SDK dependency. Keep it out
+    // of the install payload; a separate runtime rule caches it only after the
+    // user enters the Audiotool flow.
     globPatterns: ["**/*.{js,css,html,svg,png,woff2,wav}"],
     globIgnores: [
       "models/ort/**",
       "models/intent-ranker-v1.onnx",
       "golden-review/**",
-      // This optional third-party SDK is downloaded only after the user
-      // chooses Audiotool export; do not include it in PWA install/update.
+      // The optional SDK and its KYX adapter are downloaded only after the
+      // user chooses Audiotool export; do not include either in PWA install/update.
       "**/audiotool-nexus-*.js",
+      // The ONNX runtime blobs are model dependencies, loaded behind circuit
+      // breakers — never part of the install payload.
+      "assets/ort-*.wasm",
+      // An optional vendored copy must not be downloaded during PWA install.
+      "audiotool-nexus/**",
     ],
     // Workbox silently EXCLUDES precache entries above its 2 MiB default —
     // raise the cap so curated one-shots (kicks/snares are typically well
     // under this) never get silently dropped from the offline kit.
+    //
+    // Keep the app-shell cap bounded: optional third-party runtimes must not
+    // turn a small PWA install into a multi-dozen-megabyte download.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+    runtimeCaching: [
+      {
+        urlPattern:
+          /^https:\/\/cdn\.audiotool\.com\/website-assets\/document-service\/[0-9a-f]+\/(?:wasm_exec\.js|document_validator\.wasm\.gz)$/,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "audiotool-nexus-validator",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        },
+      },
+    ],
     navigateFallback: "index.html",
     // Qvester owns this nested marketing route. The KYX worker shares the
     // /kyx/ scope, but must let the host shell serve /kyx/landing.

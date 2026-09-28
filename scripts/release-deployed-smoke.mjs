@@ -38,9 +38,7 @@ function positiveInt(value, fallback) {
 }
 
 const deployUrl = normalizeBaseUrl(process.env.KYX_DEPLOY_URL, "KYX_DEPLOY_URL");
-const collabUrl = process.env.KYX_COLLAB_URL
-  ? normalizeBaseUrl(process.env.KYX_COLLAB_URL, "KYX_COLLAB_URL")
-  : null;
+const collabUrl = process.env.KYX_COLLAB_URL ? normalizeBaseUrl(process.env.KYX_COLLAB_URL, "KYX_COLLAB_URL") : null;
 const allowedOrigin = process.env.KYX_ALLOWED_ORIGIN?.trim() || new URL(deployUrl).origin;
 const timeoutMs = positiveInt(process.env.KYX_DEPLOY_SMOKE_TIMEOUT_MS, 15_000);
 const failures = [];
@@ -73,6 +71,80 @@ async function request(url, init = {}) {
 
 function textFromBytes(bytes) {
   return new TextDecoder().decode(bytes);
+}
+
+function runtimeAssetReferences(html) {
+  const references = new Set();
+  for (const match of html.matchAll(/<(script|link)\b[^>]*>/gi)) {
+    const tagName = match[1].toLowerCase();
+    const tag = match[0];
+    const urlMatch = tag.match(/\b(src|href)\s*=\s*(?:"([^"]+)"|'([^']+)')/i);
+    if (!urlMatch) continue;
+    const reference = urlMatch[2] ?? urlMatch[3];
+    if (!reference || /^(?:data:|blob:|javascript:)/i.test(reference)) continue;
+    if (/\.(?:m?js)(?:[?#]|$)/i.test(reference)) references.add(reference);
+    if (tagName === "link" && /\.css(?:[?#]|$)/i.test(reference)) references.add(reference);
+  }
+  return [...references];
+}
+
+async function checkRuntimeAssets(html) {
+  const references = runtimeAssetReferences(html);
+  const baseUrl = new URL(`${deployUrl}/`);
+  const assets = references.flatMap((reference) => {
+    try {
+      const url = new URL(reference, baseUrl);
+      if (url.origin !== baseUrl.origin) return [];
+      const extension = url.pathname.toLowerCase().split(".").at(-1);
+      if (extension === "css") return [{ url, kind: "css" }];
+      if (extension === "js" || extension === "mjs") return [{ url, kind: "js" }];
+      return [];
+    } catch {
+      fail(`deployed index contains an invalid runtime asset URL: ${reference}`);
+      return [];
+    }
+  });
+
+  if (assets.length === 0) {
+    fail("deployed index exposes no same-origin JavaScript or CSS runtime assets");
+    return;
+  }
+
+  for (const { url, kind } of assets) {
+    let response;
+    try {
+      response = await request(url);
+    } catch (error) {
+      fail(String(error));
+      continue;
+    }
+    const body = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() ?? "";
+    const validMime =
+      kind === "css"
+        ? contentType === "text/css"
+        : [
+            "application/javascript",
+            "text/javascript",
+            "application/ecmascript",
+            "text/ecmascript",
+            "application/x-javascript",
+          ].includes(contentType);
+    if (response.status !== 200 || body.byteLength === 0) {
+      fail(`${url.pathname} returned HTTP ${response.status} with ${body.byteLength} bytes`);
+      continue;
+    }
+    if (!validMime) {
+      fail(`${url.pathname} has invalid ${kind.toUpperCase()} Content-Type: ${contentType || "<missing>"}`);
+      continue;
+    }
+    const prefix = textFromBytes(new Uint8Array(body).subarray(0, 512));
+    if (/^\s*(?:<!doctype\s+html|<html\b)/i.test(prefix)) {
+      fail(`${url.pathname} returned an HTML document instead of ${kind.toUpperCase()} content`);
+      continue;
+    }
+    pass(`${url.pathname} serves ${kind.toUpperCase()} with ${contentType}`);
+  }
 }
 
 async function requireAsset(relativePath, predicate = null) {
@@ -111,6 +183,7 @@ async function checkAppShell() {
     if (/pulse\s+forge|pulseforge|vocalforge/i.test(html)) {
       fail("deployed index contains a legacy public brand label");
     }
+    await checkRuntimeAssets(html);
   }
 
   const manifest = await requireAsset("/manifest.webmanifest");
@@ -233,5 +306,7 @@ if (failures.length > 0) {
   console.error(`[release-deployed-smoke] FAIL — ${failures.length} check(s)`);
   process.exitCode = 1;
 } else {
-  console.log("[release-deployed-smoke] PASS — deployed app-shell checks completed; inspect SKIP lines for optional services");
+  console.log(
+    "[release-deployed-smoke] PASS — deployed app-shell checks completed; inspect SKIP lines for optional services",
+  );
 }

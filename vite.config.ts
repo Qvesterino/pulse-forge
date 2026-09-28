@@ -49,8 +49,13 @@ export default defineConfig({
         // team actually controls. The vendor chunk still loads at boot —
         // the initial payload is unchanged; only cache granularity improves.
         chunkFileNames(chunkInfo) {
-          const containsAudiotoolSdk = chunkInfo.moduleIds.some((id) => id.includes("@audiotool/nexus/"));
-          return containsAudiotoolSdk ? "assets/audiotool-nexus-[hash].js" : "assets/[name]-[hash].js";
+          const containsAudiotoolCode = chunkInfo.moduleIds.some(
+            (id) =>
+              id.includes("@audiotool/nexus/") ||
+              id.includes("/src/integrations/audiotool-nexus/") ||
+              id.endsWith("/src/ui/AudiotoolNexusExport.tsx"),
+          );
+          return containsAudiotoolCode ? "assets/audiotool-nexus-[hash].js" : "assets/[name]-[hash].js";
         },
         manualChunks(id) {
           if (id.includes("node_modules")) {

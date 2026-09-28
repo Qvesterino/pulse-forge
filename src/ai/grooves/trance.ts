@@ -1,4 +1,5 @@
 import type { GrooveData } from "../types";
+import { decodeGrooves } from "./compact";
 
 /**
  * Trance grooves — promoted from `techno.trance` to a first-class genre with
@@ -23,7 +24,7 @@ import type { GrooveData } from "../types";
  */
 const TRANCE_KICK = [0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0];
 
-export const TRANCE_GROOVES: GrooveData[] = [
+export const TRANCE_GROOVES: GrooveData[] = decodeGrooves([
   // ── Uplifting (the anthem school) ───────────────────────
   {
     id: "trance.uplifting",
@@ -36,17 +37,17 @@ export const TRANCE_GROOVES: GrooveData[] = [
       {
         // Four-floor + the offbeat open-hat "bass mask" that defines the genre.
         2: TRANCE_KICK,
-        6: [0, 0, 0, 0, 0.65, 0, 0, 0, 0, 0, 0, 0, 0.65, 0, 0, 0],
-        8: [0.5, 0.3, 0.5, 0.3, 0.5, 0.3, 0.5, 0.3, 0.5, 0.3, 0.5, 0.3, 0.5, 0.3, 0.5, 0.3],
-        10: [0, 0.6, 0, 0.6, 0, 0.6, 0, 0.6, 0, 0.6, 0, 0.6, 0, 0.6, 0, 0.6],
-        11: [0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0, 0.3, 0],
+        6: "g4wcw",
+        8: "g0q1d2q3d4q5d6q7d8q9daqbdcqddeqfd",
+        10: "g1u3u5u7u9ubudufu",
+        11: "g0d2d4d6d8dadcded",
       },
       {
         // The build bar: snare-roll energy into the anthem.
         2: TRANCE_KICK,
-        4: [0.7, 0, 0, 0, 0.75, 0, 0, 0, 0.8, 0, 0, 0, 0.85, 0, 0, 0.9],
-        8: [0.5, 0.35, 0.5, 0.35, 0.55, 0.4, 0.55, 0.4, 0.6, 0.45, 0.6, 0.45, 0.65, 0.5, 0.7, 0.75],
-        10: [0, 0.65, 0, 0.65, 0, 0.65, 0, 0.65, 0, 0.7, 0, 0.7, 0, 0.75, 0, 0.8],
+        4: "g0y4B8EcHfK",
+        8: "g0q1h2q3h4s5k6s7k8u9naubncwdqeyfB",
+        10: "g1w3w5w7w9ybydBfE",
       },
     ],
   },
@@ -62,17 +63,17 @@ export const TRANCE_GROOVES: GrooveData[] = [
       {
         // Deeper kick, subdued tops, long-phrase patience.
         0: TRANCE_KICK,
-        6: [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0],
-        8: [0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25],
-        10: [0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45],
-        15: [0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.35, 0],
+        6: "g4qcq",
+        8: "g0k1a2k3a4k5a6k7a8k9aakbackdaekfa",
+        10: "g1n3n5n7n9nbndnfn",
+        15: "g2d6dadeh",
       },
       {
         // Extra percussion layer for the second half of the phrase.
         0: TRANCE_KICK,
-        8: [0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25, 0.4, 0.25],
-        10: [0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.55],
-        11: [0.25, 0, 0.25, 0, 0.25, 0, 0.25, 0, 0.25, 0, 0.25, 0, 0.25, 0, 0.3, 0],
+        8: "g0k1a2k3a4k5a6k7a8k9aakbackdaekfa",
+        10: "g1q3q5q7q9qbqdqfs",
+        11: "g0a2a4a6a8aaacaed",
       },
     ],
   },
@@ -88,17 +89,17 @@ export const TRANCE_GROOVES: GrooveData[] = [
       {
         // Driving kick + the rolling 16th bass tick (psy's engine).
         1: TRANCE_KICK,
-        6: [0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0, 0],
-        8: [0.55, 0.4, 0.55, 0.4, 0.55, 0.4, 0.55, 0.4, 0.55, 0.4, 0.55, 0.4, 0.55, 0.4, 0.55, 0.45],
-        10: [0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.35, 0.5],
-        15: [0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.55],
+        6: "g0y4y8ycy",
+        8: "g0s1k2s3k4s5k6s7k8s9kasbkcsdkesfn",
+        10: "g0d1n2d3n4d5n6d7n8d9nadbncddnehfq",
+        15: "g1q3q5q7q9qbqdqfs",
       },
       {
         // The full-roll variant: every 16th present.
         1: TRANCE_KICK,
-        8: [0.55, 0.42, 0.58, 0.42, 0.55, 0.42, 0.58, 0.42, 0.55, 0.42, 0.58, 0.42, 0.55, 0.42, 0.58, 0.5],
-        10: [0.35, 0.5, 0.35, 0.5, 0.35, 0.5, 0.35, 0.5, 0.35, 0.5, 0.35, 0.5, 0.35, 0.5, 0.4, 0.55],
-        15: [0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0.6],
+        8: "g0s1l2t3l4s5l6t7l8s9latblcsdletfq",
+        10: "g0h1q2h3q4h5q6h7q8h9qahbqchdqekfs",
+        15: "g0q2q4q6q8qaqcqeqfu",
       },
     ],
   },
@@ -114,16 +115,16 @@ export const TRANCE_GROOVES: GrooveData[] = [
       {
         // Harder kick, metallic percussion, melody pulled back.
         2: TRANCE_KICK,
-        4: [0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
-        8: [0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3, 0.45, 0.3],
-        11: [0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0, 0.35, 0],
-        15: [0, 0, 0.4, 0, 0, 0.4, 0, 0, 0, 0.4, 0, 0, 0, 0.4, 0, 0],
+        4: "g4BcB",
+        8: "g0n1d2n3d4n5d6n7d8n9danbdcnddenfd",
+        11: "g0h2h4h6h8hahcheh",
+        15: "g2k5k9kdk",
       },
       {
         2: TRANCE_KICK,
-        4: [0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0.5, 0],
-        8: [0.45, 0.3, 0.5, 0.3, 0.45, 0.3, 0.5, 0.3, 0.45, 0.3, 0.5, 0.3, 0.45, 0.3, 0.5, 0.35],
-        11: [0.35, 0, 0.4, 0, 0.35, 0, 0.4, 0, 0.35, 0, 0.4, 0, 0.35, 0, 0.4, 0.3],
+        4: "g4BcEeq",
+        8: "g0n1d2q3d4n5d6q7d8n9daqbdcnddeqfh",
+        11: "g0h2k4h6k8hakchekfd",
       },
     ],
   },
@@ -139,10 +140,10 @@ export const TRANCE_GROOVES: GrooveData[] = [
       {
         // Squelch over the four-floor — the shared lane with techno.acid.
         0: TRANCE_KICK,
-        2: [0, 0, 0.6, 0, 0, 0.55, 0, 0, 0, 0.6, 0, 0, 0, 0.55, 0, 0.5],
-        6: [0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0],
-        10: [0, 0.55, 0, 0.55, 0, 0.55, 0, 0.55, 0, 0.55, 0, 0.55, 0, 0.55, 0, 0.6],
-        15: [0.45, 0, 0, 0.5, 0, 0, 0.45, 0, 0.5, 0, 0, 0.45, 0, 0.5, 0, 0],
+        2: "g2u5s9udsfq",
+        6: "g4ucu",
+        10: "g1s3s5s7s9sbsdsfu",
+        15: "g0n3q6n8qbndq",
       },
     ],
   },
@@ -157,17 +158,17 @@ export const TRANCE_GROOVES: GrooveData[] = [
     patterns: [
       {
         // Soft kick + piano-led space: half the density, all the melody.
-        0: [0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0],
-        6: [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0],
-        8: [0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.25],
-        10: [0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.4, 0, 0.45],
+        0: "g0E4E8EcE",
+        6: "g4qcq",
+        8: "g0h182h384h586h788h98ahb8chd8ehfa",
+        10: "g1k3k5k7k9kbkdkfn",
       },
       {
-        0: [0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0],
-        6: [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0.4, 0],
-        8: [0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.22, 0.35, 0.25],
-        10: [0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.45, 0, 0.5],
+        0: "g0E4E8EcE",
+        6: "g4qcqek",
+        8: "g0h182h384h586h788h98ahb8chd8ehfa",
+        10: "g1n3n5n7n9nbndnfq",
       },
     ],
   },
-];
+]);

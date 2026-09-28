@@ -1,5 +1,6 @@
 import type { MelodicPatternData } from "../types";
 import type { ProductionProfile } from "../../project-model/types";
+import { decodeMelodicSequences } from "./melodic-codec";
 
 /**
  * Melodic reference patterns per genre.
@@ -14,93 +15,36 @@ import type { ProductionProfile } from "../../project-model/types";
 const HOUSE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Classic offbeat bass
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "7r0Bqo0B7r0Bk10B",
     // Rolling bass
-    [
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.75 },
-      { degree: 4, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: 2, duration: 2, velocity: 0.65 },
-    ],
+    "6Q6G0BpSpK0Bk1dD",
     // Walking bass
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 2, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 6, duration: 2, velocity: 0.65 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: 3, duration: 2, velocity: 0.75 },
-      { degree: 2, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-    ],
-  ],
+    "7rdGqrD3wLk4dG7p",
+  ]),
 };
 
 const HOUSE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Stab on offbeats
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.55 },
-    ],
+    "0B7g0Bqk0B7g0BjY",
     // Sustained pads
-    [
-      { degree: 0, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.45 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "8k1Lrl1L",
+  ]),
 };
 
 const HOUSE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Simple house motif
-    [
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "7f0Bqj0BjU0BdB0B",
     // Call and response
-    [
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "8p0Bqj1Ldx0B",
+  ]),
 };
 
 // ── Techno ─────────────────────────────────────────────
@@ -108,91 +52,36 @@ const HOUSE_LEAD: MelodicPatternData = {
 const TECHNO_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Root pulse
-    [
-      { degree: 0, duration: 1, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-    ],
+    "6S00006G0B6N000BpP000B7p",
     // Rumble pattern
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.6 },
-    ],
+    "7t0B6H6B0Bqo0BjZ",
     // Minimal pulse
-    [
-      { degree: 0, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.75 },
-    ],
-  ],
+    "8B1L7j0BrB",
+  ]),
 };
 
 const TECHNO_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Minimal stab
-    [
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8p1Lrt1L",
     // Syncopated riff
-    [
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7g0BjZ0Bql0BdB0B",
+  ]),
 };
 
 const TECHNO_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Minimal stab chords
-    [
-      { degree: 0, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8o1Lrp1L",
     // Industrial stab pattern
-    [
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7f0B0Bqj1LjU0B",
+  ]),
 };
 
 // ── Trap ───────────────────────────────────────────────
@@ -200,82 +89,36 @@ const TECHNO_CHORD: MelodicPatternData = {
 const TRAP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Classic 808 pattern
-    [
-      { degree: 0, duration: 4, velocity: 0.95 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8G1L7p0BrG1L",
     // Bouncy
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.85 },
-      { degree: 3, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.9 },
-    ],
+    "7t0B6K1aqwk41L8D",
     // Sparse
-    [
-      { degree: 0, duration: 8, velocity: 0.95 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.85 },
-    ],
-  ],
+    "a-1LrG",
+  ]),
 };
 
 const TRAP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Simple motif
-    [
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: 2, duration: 2, velocity: 0.6 },
-      { degree: 4, duration: 4, velocity: 0.7 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.55 },
-      { degree: 0, duration: 2, velocity: 0.6 },
-    ],
+    "7gdCry1LjY7f",
     // Arpeggio
-    [
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: 2, duration: 1, velocity: 0.55 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: 6, duration: 1, velocity: 0.5 },
-      { degree: 4, duration: 1, velocity: 0.55 },
-      { degree: 2, duration: 1, velocity: 0.5 },
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-  ],
+    "6Gd0pLCopKcY7g43",
+  ]),
 };
 
 const TRAP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Trap pad stabs
-    [
-      { degree: 0, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.45 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8k1Lrl1L",
     // Dark chord hits
-    [
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "7e2VjU2V",
+  ]),
 };
 
 // Original, profile-level material: scale-degree sketches rather than copied
@@ -285,52 +128,17 @@ const SPACEY_RAP_MELODICS: MelodicPatternData[] = [
   {
     role: "bass",
     octaveOffset: -1,
-    sequences: [
-      [
-        { degree: 0, duration: 8, velocity: 0.82 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.68 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.78 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.66 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["aU1Lrx", "8y1Lrw1L"]),
   },
   {
     role: "chord",
     octaveOffset: 1,
-    sequences: [
-      [
-        { degree: 0, duration: 8, velocity: 0.44 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.38 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.42 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 2, duration: 4, velocity: 0.36 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["az1Lrg", "8e1Lex1L"]),
   },
   {
     role: "lead",
     octaveOffset: 2,
-    sequences: [
-      [
-        { degree: 4, duration: 4, velocity: 0.52 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 2, duration: 4, velocity: 0.47 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-      [
-        { degree: 0, duration: 8, velocity: 0.5 },
-        { degree: -1, duration: 8, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["rq1LeF1L", "aE43"]),
   },
 ];
 
@@ -338,54 +146,17 @@ const DARK_ATMOSPHERIC_TRAP_MELODICS: MelodicPatternData[] = [
   {
     role: "bass",
     octaveOffset: -1,
-    sequences: [
-      [
-        { degree: 0, duration: 4, velocity: 0.94 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 0, duration: 2, velocity: 0.74 },
-        { degree: -1, duration: 2, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.82 },
-      ],
-      [
-        { degree: 0, duration: 8, velocity: 0.9 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 3, duration: 4, velocity: 0.72 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["8F1L7l0BrF", "aX1Llc"]),
   },
   {
     role: "chord",
     octaveOffset: 1,
-    sequences: [
-      [
-        { degree: 0, duration: 8, velocity: 0.46 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 3, duration: 4, velocity: 0.4 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.48 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 8, velocity: 0.4 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["aB1LkX", "8j1LtC"]),
   },
   {
     role: "lead",
     octaveOffset: 2,
-    sequences: [
-      [
-        { degree: 0, duration: 2, velocity: 0.54 },
-        { degree: -1, duration: 6, velocity: 0 },
-        { degree: 3, duration: 2, velocity: 0.48 },
-        { degree: -1, duration: 6, velocity: 0 },
-      ],
-      [
-        { degree: 4, duration: 4, velocity: 0.52 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 0, duration: 4, velocity: 0.46 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["7d2VjT2V", "rq1L8h1L"]),
   },
 ];
 
@@ -393,52 +164,17 @@ const SPACEY_DARK_TRAP_MELODICS: MelodicPatternData[] = [
   {
     role: "bass",
     octaveOffset: -1,
-    sequences: [
-      [
-        { degree: 0, duration: 8, velocity: 0.92 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.76 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.9 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 3, duration: 4, velocity: 0.72 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["aY1LrC", "8D1Llc1L"]),
   },
   {
     role: "chord",
     octaveOffset: 1,
-    sequences: [
-      [
-        { degree: 0, duration: 8, velocity: 0.45 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 4, duration: 4, velocity: 0.39 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.46 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 3, duration: 8, velocity: 0.4 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["aA1Lrh", "8h1Lnf"]),
   },
   {
     role: "lead",
     octaveOffset: 2,
-    sequences: [
-      [
-        { degree: 4, duration: 4, velocity: 0.53 },
-        { degree: -1, duration: 8, velocity: 0 },
-        { degree: 2, duration: 4, velocity: 0.48 },
-      ],
-      [
-        { degree: 0, duration: 4, velocity: 0.52 },
-        { degree: -1, duration: 4, velocity: 0 },
-        { degree: 3, duration: 4, velocity: 0.47 },
-        { degree: -1, duration: 4, velocity: 0 },
-      ],
-    ],
+    sequences: decodeMelodicSequences(["rr43eG", "8l1Ll01L"]),
   },
 ];
 
@@ -447,66 +183,34 @@ const SPACEY_DARK_TRAP_MELODICS: MelodicPatternData[] = [
 const AMBIENT_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Drone
-    [
-      { degree: 0, duration: 8, velocity: 0.5 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
+    "aE43",
     // Slow movement
-    [
-      { degree: 0, duration: 8, velocity: 0.55 },
-      { degree: 4, duration: 8, velocity: 0.5 },
-    ],
-  ],
+    "aItJ",
+  ]),
 };
 
 const AMBIENT_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse melody
-    [
-      { degree: 0, duration: 4, velocity: 0.45 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.4 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.42 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8g1Lri1LeB1L",
     // Arpeggiated
-    [
-      { degree: 0, duration: 2, velocity: 0.4 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.38 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.4 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 4, velocity: 0.35 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "730Bq60Bdq0BDY1L",
+  ]),
 };
 
 const AMBIENT_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Evolving pad drones
-    [
-      { degree: 0, duration: 8, velocity: 0.4 },
-      { degree: 4, duration: 8, velocity: 0.35 },
-    ],
+    "axty",
     // Sparse chord tones
-    [
-      { degree: 0, duration: 4, velocity: 0.35 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.3 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.32 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "891Leu1Lrd1L",
+  ]),
 };
 
 // ── Drum & bass ──────────────────────────────────────────
@@ -517,83 +221,34 @@ const AMBIENT_CHORD: MelodicPatternData = {
 const DNB_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Reese roller
-    [
-      { degree: 0, duration: 4, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "8D0B7p0BrB0B",
     // Octave stepper
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: 5, duration: 2, velocity: 0.75 },
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: 2, duration: 2, velocity: 0.65 },
-    ],
-  ],
+    "7r7jquqlwOqkk1dD",
+  ]),
 };
 
 const DNB_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Liquid pads
-    [
-      { degree: 0, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.45 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "8k1Lk-1L",
     // Minimal stabs
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "0BpL000Bd0001L7a0B",
+  ]),
 };
 
 const DNB_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Roller motif
-    [
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: 5, duration: 1, velocity: 0.55 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: 6, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.55 },
-      { degree: 4, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "pLw5pLCo0BwGpG00dB0B0B",
     // Sparse call
-    [
-      { degree: 6, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "Eb1Lqfdx1L",
+  ]),
 };
 
 // ── Melodic dialects (per-style pilots) ───────────────
@@ -602,247 +257,94 @@ const DNB_LEAD: MelodicPatternData = {
 const AMAPIANO_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Core log-drum answer — syncopated short notes between the kicks
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "7t006K0Bk40B6QpM0BwL0B",
     // Log roll — the short-note tumble
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-    ],
+    "7t0BpPpL0B7p00w70Bk100",
     // Deep walk — root patience, syncopated lift
-    [
-      { degree: 0, duration: 4, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-    ],
-  ],
+    "8D0Bk10B7r00pM0BwL",
+  ]),
 };
 
 const AMAPIANO_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Airy stabs — sparse, soft, floating above the log drum
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.45 },
-    ],
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.45 },
-    ],
-  ],
+    "1L8k1LxI",
+    "1Ll21L8g",
+  ]),
 };
 
 const AMAPIANO_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Gentle piano phrase — patient, jazzy movement
-    [
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 5, duration: 3, velocity: 0.55 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.5 },
-    ],
-  ],
+    "8p0Bdx0Brt0B",
+    "xf00rp1LeH",
+  ]),
 };
 
 // Dembow: the chop bass — root-heavy staccato answering the rim chop
 const DEMBOW_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 3, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 3, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-    ],
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["82006N0Bqo0B80006K0Bqo", "7t0BwL006N0Bqo0B7r00"]),
 };
 
 const DEMBOW_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Bright stabs answering the chop
-    [
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-    [
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+    "1a6H1L1apL1L",
+    "1aw6436G1a",
+  ]),
 };
 
 const DEMBOW_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Syncopated tropical-urban hook
-    [
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-    [
-      { degree: 5, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-  ],
+    "7g00d00BqV0BdB1a",
+    "wH0Bqj0BdB43",
+  ]),
 };
 
 // Metal: the gallop — driving root-heavy 8ths, dark sustained power chords
 const METAL_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Gallop — root drive with fifth jumps
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 4, duration: 2, velocity: 0.9 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 4, duration: 2, velocity: 0.9 },
-      { degree: 3, duration: 2, velocity: 0.8 },
-    ],
+    "7w7rqy7r7w7rqyk7",
     // Chug walk — root 8ths with a dark lift
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 6, duration: 2, velocity: 0.75 },
-      { degree: 4, duration: 2, velocity: 0.85 },
-    ],
-  ],
+    "7w7r7twR7w7rD9qw",
+  ]),
 };
 
 const METAL_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark sustained power — two heavy hits per bar
-    [
-      { degree: 0, duration: 8, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 6, velocity: 0.8 },
-    ],
-    [
-      { degree: 0, duration: 6, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 8, velocity: 0.8 },
-    ],
-  ],
+    "aV0B9J",
+    "9L0BAj",
+  ]),
 };
 
 const METAL_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark minor run — the riff line
-    [
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 6, duration: 2, velocity: 0.65 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: 2, duration: 2, velocity: 0.65 },
-    ],
+    "7p7jqrk17pD3qodD",
     // Sparse menace — long tones, dark intervals
-    [
-      { degree: 0, duration: 4, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.75 },
-    ],
-  ],
+    "8z0Blb0BrB",
+  ]),
 };
 
 // ── Registry ───────────────────────────────────────────
@@ -869,64 +371,25 @@ export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
 const GHETTOTECH_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7w0B7p0B7t00wd0B7r0B", "7w00pS0B7t0BwR006Q0B"]),
 };
 
 const GHETTOTECH_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse chant stab
-    [
-      { degree: 0, duration: 4, velocity: 0.7 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "8t2Vl80B",
+  ]),
 };
 
 const GHETTOTECH_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Short electro licks — hooky, chromatic-feeling edges
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7j0Bql0BjZ1L7g0B",
+  ]),
 };
 
 // Baile funk: the tamborzão — punchy bass riding the syncopation, minimal
@@ -934,54 +397,25 @@ const GHETTOTECH_LEAD: MelodicPatternData = {
 const BAILE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["6U0B6Q0B6S00pP006U0B6Q0Bwa00"]),
 };
 
 const BAILE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Minimal chant stab — one shout per bar
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 10, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7j5dql0B",
+  ]),
 };
 
 const BAILE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Call-and-response short phrase
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 5, velocity: 0 },
-    ],
-  ],
+    "7j00d12kql2k",
+  ]),
 };
 
 // Footwork: jumpy polyrhythm — off-grid short notes with octave jumps,
@@ -989,54 +423,25 @@ const BAILE_LEAD: MelodicPatternData = {
 const FOOTWORK_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 1, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["6U0BpP0B7p00wa0B7r0BpM00"]),
 };
 
 const FOOTWORK_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse — the battle is between bass and drums
-    [
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "438p1L",
+  ]),
 };
 
 const FOOTWORK_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Manic repeated motif — 2-3 notes, machine-repeated
-    [
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 5, velocity: 0 },
-    ],
-  ],
+    "6KpM6KpM1L6KpM6K2k",
+  ]),
 };
 
 // Jungle: THE chop bass — long deep sub notes under the fast break; the
@@ -1044,52 +449,25 @@ const FOOTWORK_LEAD: MelodicPatternData = {
 const JUNGLE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 8, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 6, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["a-0BrG0B", "9Q0Blj0Bqu"]),
 };
 
 const JUNGLE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse reggae-ish skank stabs on the offbeats
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-    ],
-  ],
+    "0B6G2k0BpL2k",
+  ]),
 };
 
 const JUNGLE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Ragga-ish stabs — sparse, punchy, patient
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.6 },
-    ],
-  ],
+    "7j2Vql1LjZ",
+  ]),
 };
 
 // Slap house: the slap — plucky short notes with fifth pops, bouncy and
@@ -1097,53 +475,25 @@ const JUNGLE_LEAD: MelodicPatternData = {
 const SLAPHOUSE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["6X006K00pZ006N006U00wa006U00pP00"]),
 };
 
 const SLAPHOUSE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Long soft pad — the slap carries the identity
-    [
-      { degree: 0, duration: 8, velocity: 0.45 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.4 },
-    ],
-  ],
+    "aA1LxF",
+  ]),
 };
 
 const SLAPHOUSE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse hook — patient, roomy
-    [
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "8p1Lrt1L",
+  ]),
 };
 
 // ── DnB dialects (depth wave 2026-09-27) ─────────────────
@@ -1162,385 +512,191 @@ const SLAPHOUSE_LEAD: MelodicPatternData = {
 const TECHSTEP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Clipped staccato root — the techstep signature is a SHORT note
-    [
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "6X006Q1ajC00jv1a7t0B",
     // The step-down answer
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 1, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-    ],
-  ],
+    "7w0BCF00wi00qu0B7t",
+  ]),
 };
 
 const TECHSTEP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Metallic stab on the 1 — reverb does the rest
-    [
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
+    "7e2V43",
     // Two stabs, second a fourth up
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 7, velocity: 0 },
-    ],
-  ],
+    "1L6B1apK3u",
+  ]),
 };
 
 const TECHSTEP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sci-fi blip motif — short, quantised, cold
-    [
-      { degree: 0, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.5 },
-      { degree: -1, duration: 7, velocity: 0 },
-    ],
+    "6F1ajj1apG3u",
     // Descending scanner
-    [
-      { degree: 6, duration: 2, velocity: 0.5 },
-      { degree: 5, duration: 2, velocity: 0.5 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: 2, duration: 2, velocity: 0.45 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-  ],
+    "CZwCqfdt43",
+  ]),
 };
 
 const RAGGA_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The reggae drop — root on the beat, rest OFF the beat, fifth pickup
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "7t0BpP007r1L",
     // Walking dub line
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-    ],
-  ],
+    "7t00jv0BwR0Bqr",
+  ]),
 };
 
 const RAGGA_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The skank — short offbeat stabs, the reggae organ/chop answer
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
+    "0B6H1a6G1apM1a",
     // Two-chord skank turnaround
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+    "1Ljo1aw61a",
+  ]),
 };
 
 const RAGGA_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Call-and-response horn-ish phrase
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 2, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
+    "7jd26H1Lqo2V",
     // Patient dub call
-    [
-      { degree: 5, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "xS0Bqk7g2V",
+  ]),
 };
 
 const SAMBASS_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Bossa-tinged roller — root-fifth-octave with a syncopated push
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
+    "7t00pV0B7r0BwR0B",
     // Gentle walking answer
-    [
-      { degree: 0, duration: 4, velocity: 0.9 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 2, duration: 2, velocity: 0.75 },
-      { degree: 0, duration: 4, velocity: 0.85 },
-    ],
-  ],
+    "8DquwRqrdJ8B",
+  ]),
 };
 
 const SAMBASS_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Long airy pads — the melodic sample leads, chords breathe
-    [
-      { degree: 0, duration: 8, velocity: 0.45 },
-      { degree: 3, duration: 8, velocity: 0.42 },
-    ],
-  ],
+    "aAng",
+  ]),
 };
 
 const SAMBASS_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Melodic hook — the Marky/Bukem school lead
-    [
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: 5, duration: 1, velocity: 0.55 },
-      { degree: 4, duration: 1, velocity: 0.55 },
-      { degree: 2, duration: 2, velocity: 0.6 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: 4, duration: 2, velocity: 0.6 },
-    ],
+    "qkw5pKdC8p0BdBqk",
     // Sparse sung-feel call
-    [
-      { degree: 6, duration: 4, velocity: 0.55 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: 0, duration: 6, velocity: 0.55 },
-    ],
-  ],
+    "Ebqj0Bdx9y",
+  ]),
 };
 
 const HALFTIME_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Huge sparse sub — the bass is the hook in halftime
-    [
-      { degree: 0, duration: 6, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
+    "9Q0By11L",
     // The drop-and-return
-    [
-      { degree: 0, duration: 4, velocity: 0.95 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.9 },
-      { degree: 2, duration: 4, velocity: 0.85 },
-    ],
-  ],
+    "8G1LlleY",
+  ]),
 };
 
 const HALFTIME_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // One vast pad wash
-    [{ degree: 0, duration: 16, velocity: 0.4 }],
+    "cg",
     // Slow two-chord drift
-    [
-      { degree: 0, duration: 8, velocity: 0.42 },
-      { degree: 5, duration: 8, velocity: 0.4 },
-    ],
-  ],
+    "ayzZ",
+  ]),
 };
 
 const HALFTIME_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Distant, patient motif — room between every note
-    [
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
+    "7a2Vqf2V",
     // Rising sigh
-    [
-      { degree: 2, duration: 4, velocity: 0.5 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-  ],
+    "eHrt43",
+  ]),
 };
 
 const CROSSBREED_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // 16th root churn — relentless
-    [
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 3, duration: 1, velocity: 0.85 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-    ],
+    "6X6Q6U6N6X6QjA6N7t0B7t",
     // Octave hammer
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 4, duration: 2, velocity: 0.9 },
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: 5, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: 3, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 4, velocity: 0.95 },
-    ],
-  ],
+    "7wqy7wwT7tk98G",
+  ]),
 };
 
 const CROSSBREED_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Industrial hammer stabs
-    [
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 7, velocity: 0 },
-    ],
-  ],
+    "6K006G2kwa3u",
+  ]),
 };
 
 const CROSSBREED_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Screaming siren call
-    [
-      { degree: 6, duration: 2, velocity: 0.7 },
-      { degree: 5, duration: 1, velocity: 0.65 },
-      { degree: 6, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "D6w7Cu1Lql2V",
+  ]),
 };
 
 const MINIMAL_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // One-note autonomic sub — the space is the style
-    [
-      { degree: 0, duration: 8, velocity: 0.9 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
+    "aX43",
     // Two-note movement, barely
-    [
-      { degree: 0, duration: 6, velocity: 0.88 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 6, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "9M0Bg40B",
+  ]),
 };
 
 const MINIMAL_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Near-silent pad — a whisper
-    [{ degree: 0, duration: 16, velocity: 0.3 }],
-  ],
+    "ca",
+  ]),
 };
 
 const MINIMAL_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Micro motif — one gesture per phrase
-    [
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.45 },
-      { degree: -1, duration: 9, velocity: 0 },
-    ],
+    "2VpC4E",
     // Textural blip pair
-    [
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: 2, duration: 1, velocity: 0.4 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.45 },
-      { degree: -1, duration: 5, velocity: 0 },
-    ],
-  ],
+    "43cR00pC2k",
+  ]),
 };
 
 // ── Melodic dialects (wave 3 — the octave bounce, the 808 slides, the 303) ──
@@ -1549,718 +705,344 @@ const MINIMAL_LEAD: MelodicPatternData = {
 const DISCO_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-    ],
-    [
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 2, duration: 2, velocity: 0.65 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7t0Bqu0B7t0Bquk1", "6UpP0B7rwL0BqrdD"]),
 };
 
 const DISCO_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // String stabs on the offbeats
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-    ],
-  ],
+    "0B7f0Bqj",
+  ]),
 };
 
 const DISCO_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sunny hook — moves in comfortable steps
-    [
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.55 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "qk0BwGqj0Bdx1L",
+  ]),
 };
 
 // Synthpop: the driving 8th synth bass — relentless and even
 const SYNTHPOP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7r7m7r7mwRwLqrk1"]),
 };
 
 const SYNTHPOP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Gated stabs — the 80s snapshot chord
-    [
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7f0B7f0B",
+  ]),
 };
 
 const SYNTHPOP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Analog hook with a hook-y fall
-    [
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "qkdB8p0Bdxrt",
+  ]),
 };
 
 // Progressive house: the long patient bass — half-bar notes, deep and even
 const PROGRESSIVE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 8, velocity: 0.8 },
-      { degree: 3, duration: 8, velocity: 0.7 },
-    ],
-    [
-      { degree: 0, duration: 6, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 8, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["aTnv", "9J0BtS"]),
 };
 
 const PROGRESSIVE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Emotive pad swells
-    [
-      { degree: 0, duration: 8, velocity: 0.5 },
-      { degree: 3, duration: 8, velocity: 0.45 },
-    ],
-  ],
+    "aEni",
+  ]),
 };
 
 const PROGRESSIVE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The long hypnotic phrase
-    [
-      { degree: 0, duration: 4, velocity: 0.55 },
-      { degree: 2, duration: 4, velocity: 0.5 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "8oeHrt1L",
+  ]),
 };
 
 // UK garage: the 2-step syncopated sub — skips the grid, answers late
 const UKG_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7r00qo1a7p00j-1a"]),
 };
 
 const UKG_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Warm shuttling chords — the garage wipe
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.5 },
-    ],
-  ],
+    "0B7e0BwC",
+  ]),
 };
 
 const UKG_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Vocal-ishlick — syncopated, singable
-    [
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "qV00dB0B8p1L",
+  ]),
 };
 
 // Jersey club: the triple-kick answer — bass punctuates between the kicks
 const JERSEY_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7t0B6K007r0BpP007t0B"]),
 };
 
 const JERSEY_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The club stab — short, chopped
-    [
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+    "1a6H43pL1a",
+  ]),
 };
 
 const JERSEY_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Chopped vocal-feel hook
-    [
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "6H00pL2kdB2V",
+  ]),
 };
 
 // Trap classic: the 808 slide — long gliding root notes, sparse and deep
 const TRAP808_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 6, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 6, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 4, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.9 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["9Q0BsS0B", "8G0Blj0B8D"]),
 };
 
 const TRAP808_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark sparse bell-ish pad
-    [
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "2V8k2V",
+  ]),
 };
 
 const TRAP808_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark bell hook — sparse, ringing
-    [
-      { degree: 0, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 3, velocity: 0.55 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "7Q1aqU1aeL",
+  ]),
 };
 
 // UK drill: the sliding 808 answer — the root slides up a half-step feel
 const DRILL_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 5, velocity: 0.95 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 6, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 4, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["9f007p0BsS0B", "8G0By10BrI0B"]),
 };
 
 const DRILL_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark sliding pad
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 6, velocity: 0.45 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.4 },
-    ],
-  ],
+    "1L9q0Bri",
+  ]),
 };
 
 const DRILL_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark sliding hook
-    [
-      { degree: 0, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 3, velocity: 0.5 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+    "7Q00rt0Bxb1a",
+  ]),
 };
 
 // Acid techno: the 303 — accented 16ths with octave jumps
 const ACID_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.85 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.7 },
-      { degree: 0, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: 5, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["6X6G6KpX6G6U00pP6H6Uwd006KpX006G"]),
 };
 
 const ACID_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse stabs — the 303 carries the identity
-    [
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "437a2V",
+  ]),
 };
 
 const ACID_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Screaming 303 line up top
-    [
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 5, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: 4, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "6NpM6Kw71L6KpM2V",
+  ]),
 };
 
 // Bass house: the wobble stab — syncopated bass stabs between the kicks
 const BASSHOUSE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 4, duration: 1, velocity: 0.75 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7w0B6QpS7t0Bwd007t0B"]),
 };
 
 const BASSHOUSE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["1L7e2Vqf0B"]),
 };
 
 const BASSHOUSE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Vocal-chop style hook
-    [
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "7g0Bqk1LwH1L",
+  ]),
 };
 
 // Country pop: the boom-chicka — root and fifth alternating, honest and warm
 const COUNTRY_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 5, duration: 2, velocity: 0.65 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: 3, duration: 2, velocity: 0.6 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7r0Bqo0B7r0Bqo0B", "7rql7pwI7pqljZ7m"]),
 };
 
 const COUNTRY_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Warm acoustic strum feel
-    [
-      { degree: 0, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "8o1Lrp1L",
+  ]),
 };
 
 const COUNTRY_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Pentatonic twinkle — the country lead language
-    [
-      { degree: 4, duration: 2, velocity: 0.6 },
-      { degree: 5, duration: 2, velocity: 0.55 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "qkwGqjdx1L8o",
+  ]),
 };
 
 // Kuduro: the carnival punch — percussive root stabs, fast and dry
 const KUDURO_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 1, velocity: 0.95 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.9 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["6X007r0B6U1apS007r0B"]),
 };
 
 const KUDURO_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Carnival whistle-feel stab
-    [
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 5, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "2V6G2kqj0B",
+  ]),
 };
 
 const KUDURO_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Half-time rap-feel phrase over the frantic floor
-    [
-      { degree: 0, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "8q0Bru0Bl6",
+  ]),
 };
 
 // Tropical: the soft round beach bass — warm, rounded, patient
 const TROPICAL_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 3, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.75 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.7 },
-    ],
-    [
-      { degree: 0, duration: 4, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7-008w1Lry", "8z0BxS0Bry"]),
 };
 
 const TROPICAL_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Steel-pan flavored bright stabs
-    [
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "0B7e1Lqf2V",
+  ]),
 };
 
 const TROPICAL_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The pan-flute melody — pentatonic sunshine
-    [
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: 2, duration: 3, velocity: 0.55 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "qVea8p0BeL",
+  ]),
 };
 
 // Liquid dnb: the long warm rolling — soulful, patient under the fast break
 const LIQUID_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 6, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.75 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 6, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["9L0BrB1L", "8B0Bmo0BwL"]),
 };
 
 const LIQUID_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Soulful Rhodes-feel pads
-    [
-      { degree: 0, duration: 6, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 6, velocity: 0.45 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "9u0Bsv0B",
+  ]),
 };
 
 const LIQUID_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Liquid soul line — smooth and singing
-    [
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.55 },
-      { degree: 0, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 4, velocity: 0.55 },
-    ],
-  ],
+    "qV00dB8p0Brt",
+  ]),
 };
 
 // Tech house: the wobbly stab — off-grid bass stabs with groove
 const TECHHOUSE_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 1, velocity: 0.75 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7t006N0B7t0BpS006Q1a"]),
 };
 
 const TECHHOUSE_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 8, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["1L7a430B"]),
 };
 
 const TECHHOUSE_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Sparse funk licks
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "1L7f0Bqj2V",
+  ]),
 };
 
 // ── Melodic dialects (dnb depth wave 2 — the remaining seven voices) ──────
@@ -2269,314 +1051,141 @@ const TECHHOUSE_LEAD: MelodicPatternData = {
 const TWOSTEP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 3, duration: 1, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7t0000qo0B7r00jp0Bqo0B"]),
 };
 
 const TWOSTEP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.45 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["1L7a1L0Bwy0B"]),
 };
 
 const TWOSTEP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
-    [
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 2, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["qV00dx0B8o1L"]),
 };
 
 // Roller: the smooth roll — even 8th root drive, hypnotic, never busy
 const ROLLER_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.75 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-    ],
-    [
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 3, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.85 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7r7j7p7jqrql7p7j", "7r7jk17j7r7jwLqo"]),
 };
 
 const ROLLER_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Pad swells — long, dark, supportive
-    [
-      { degree: 0, duration: 8, velocity: 0.45 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 6, velocity: 0.4 },
-    ],
-  ],
+    "aA0Bm5",
+  ]),
 };
 
 const ROLLER_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Hypnotic minor motif — repeats with small changes
-    [
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.5 },
-      { degree: 4, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.55 },
-    ],
-  ],
+    "7e0BjUqf0BjU0B7e",
+  ]),
 };
 
 // Amen chop: the bass follows the chop — syncopated with ghost movement
 const AMENCHOP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 3, velocity: 0.9 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["82007m0Bqu006K0BwO0B"]),
 };
 
 const AMENCHOP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Ragga stab feel
-    [
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 4, velocity: 0 },
-    ],
-  ],
+    "1a6G2Vqj1L",
+  ]),
 };
 
 const AMENCHOP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Ragga toast-feel phrase
-    [
-      { degree: 0, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 3, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 3, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 3, velocity: 0 },
-    ],
-  ],
+    "7g006G0BqV0BjY1a",
+  ]),
 };
 
 // Neuro: the reese — long dark growling notes, semitone-adjacent tension
 const NEURO_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 6, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 6, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-    [
-      { degree: 0, duration: 4, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 4, velocity: 0.85 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 4, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["9Q0BFA0B", "8G0By10BEq0B"]),
 };
 
 const NEURO_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark techy stabs, mechanical
-    [
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.6 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: -1, duration: 3, velocity: 0 },
-      { degree: 5, duration: 1, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "1a6G2V1aw50B",
+  ]),
 };
 
 const NEURO_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Techy growl line — mechanical, angular
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 5, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7j0BD20B7j0BwH0B",
+  ]),
 };
 
 // Jump-up: the wobble stab — bouncy punchy stabs built for the skip
 const JUMPUP_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.95 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: -1, duration: 1, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7w0B6Q00qy0B7t0B7p0B"]),
 };
 
 const JUMPUP_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
-    [
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.6 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["2V7f43"]),
 };
 
 const JUMPUP_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The bouncywarrior hook — short stabs, big spaces
-    [
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 4, duration: 2, velocity: 0.65 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.7 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "7j1Lql1L7j0B",
+  ]),
 };
 
 // Dancefloor: the anthemic drive — wide jumps, big and even
 const DANCEFLOOR_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: 4, duration: 2, velocity: 0.85 },
-      { degree: 4, duration: 2, velocity: 0.7 },
-      { degree: 0, duration: 2, velocity: 0.9 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: 5, duration: 2, velocity: 0.8 },
-      { degree: 5, duration: 2, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["7t7mqwqo7t7mwRwL"]),
 };
 
 const DANCEFLOOR_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Big anthemic swells
-    [
-      { degree: 0, duration: 8, velocity: 0.55 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 4, duration: 6, velocity: 0.5 },
-    ],
-  ],
+    "aI0Bsz",
+  ]),
 };
 
 const DANCEFLOOR_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The festival hook — wide, singable, confident
-    [
-      { degree: 4, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 2, duration: 4, velocity: 0.6 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 4, velocity: 0.65 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "rv0BeM0B8q0B",
+  ]),
 };
 
 // ── Melodic dialects (gabber — the kick carries the low end) ──────────────
@@ -2586,57 +1195,26 @@ const DANCEFLOOR_LEAD: MelodicPatternData = {
 const GABBER_BASS: MelodicPatternData = {
   role: "bass",
   octaveOffset: 0,
-  sequences: [
-    [
-      { degree: 0, duration: 8, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 0, duration: 6, velocity: 0.75 },
-    ],
-    [
-      { degree: 0, duration: 8, velocity: 0.8 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 6, velocity: 0.7 },
-    ],
-  ],
+  sequences: decodeMelodicSequences(["aT0B9G", "aT0BFq"]),
 };
 
 const GABBER_CHORD: MelodicPatternData = {
   role: "chord",
   octaveOffset: 1,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // Dark minor stabs on the half-bar, menace over the stomp
-    [
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.55 },
-      { degree: -1, duration: 6, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.5 },
-      { degree: -1, duration: 2, velocity: 0 },
-    ],
-  ],
+    "1L7e2V7a0B",
+  ]),
 };
 
 const GABBER_LEAD: MelodicPatternData = {
   role: "lead",
   octaveOffset: 2,
-  sequences: [
+  sequences: decodeMelodicSequences([
     // The hoover screech — short aggressive phrases with a descending tail
-    [
-      { degree: 0, duration: 1, velocity: 0.85 },
-      { degree: 0, duration: 1, velocity: 0.8 },
-      { degree: 6, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 2, velocity: 0 },
-      { degree: 6, duration: 2, velocity: 0.8 },
-      { degree: -1, duration: 8, velocity: 0 },
-    ],
-    [
-      { degree: 3, duration: 2, velocity: 0.8 },
-      { degree: 3, duration: 1, velocity: 0.75 },
-      { degree: 2, duration: 1, velocity: 0.7 },
-      { degree: -1, duration: 4, velocity: 0 },
-      { degree: 0, duration: 2, velocity: 0.75 },
-      { degree: -1, duration: 6, velocity: 0 },
-    ],
-  ],
+    "6S6QD90BDc43",
+    "k7jvd51L7m2V",
+  ]),
 };
 
 export const MELODIC_BY_STYLE: Record<string, MelodicPatternData[]> = {

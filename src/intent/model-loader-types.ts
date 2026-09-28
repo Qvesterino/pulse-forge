@@ -83,6 +83,17 @@ export interface IntentModelVocab {
   heads: IntentModelHead[];
 }
 
+/**
+ * Release-gate verdict pin: the validate script patches `report.gatePassed`
+ * to true ONLY when the assembled exact/kindOK/abstain gates pass on val +
+ * golden. The loader refuses to register a model without it — an artifact
+ * that exists is not an artifact that may act (the ranker shipped the same
+ * way: shadow until its golden verdict said ready-for-active).
+ */
+export function manifestGatePassed(manifest: IntentModelManifest): boolean {
+  return manifest.report?.["gatePassed"] === true;
+}
+
 export type IntentModelRequest =
   | { type: "load"; requestId: number; manifest: IntentModelManifest }
   | { type: "generate"; requestId: number; instruction: string }

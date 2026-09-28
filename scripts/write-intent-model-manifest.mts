@@ -26,8 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODELS_DIR = path.join(ROOT, "public", "models");
 const REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-report.json");
 
-const sha256 = (data: string | Uint8Array): string =>
-  createHash("sha256").update(data).digest("hex");
+const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
 
 const report = JSON.parse(readFileSync(REPORT_PATH, "utf8")) as {
   modelVersion: string;
@@ -68,8 +67,7 @@ const manifest = {
     sha256: sha256(modelBytes),
   },
   prompt: {
-    system:
-      "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
+    system: "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
     instructionTemplate: "INSTRUCTION: {instruction}\nACTION:",
   },
   generation: {
@@ -86,6 +84,9 @@ const manifest = {
     heads: vocab.heads,
   },
   report: {
+    // patched to true ONLY by scripts/validate-intent-model.mts when the
+    // assembled gate passes; the loader refuses models without it
+    gatePassed: false,
     trainRows: report.trainRows,
     valRows: report.valRows,
     goldenRows: report.goldenRows,

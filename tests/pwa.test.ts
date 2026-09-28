@@ -88,6 +88,28 @@ describe("PWA caching strategy", () => {
     expect(ignores).toContain("golden-review/**");
   });
 
+  it("keeps the optional Audiotool validator out of install precache and caches it on demand", () => {
+    const workbox = pwaOptions.workbox!;
+    const glob = (workbox.globPatterns as string[]).join(" ");
+    const ignores = (workbox.globIgnores as string[]).join(" ");
+    expect(glob).not.toContain("wasm}");
+    expect(ignores).toContain("audiotool-nexus/**");
+    expect(workbox.maximumFileSizeToCacheInBytes).toBe(4 * 1024 * 1024);
+
+    const runtimeCaching = workbox.runtimeCaching as Array<{ urlPattern: RegExp; handler: string }>;
+    const validatorCache = runtimeCaching.find((rule) =>
+      rule.urlPattern.test(
+        "https://cdn.audiotool.com/website-assets/document-service/c7e8de11659988655221fab1d0d228a522a5318d/document_validator.wasm.gz",
+      ),
+    );
+    expect(validatorCache?.handler).toBe("CacheFirst");
+    expect(
+      validatorCache?.urlPattern.test(
+        "https://cdn.audiotool.com/website-assets/document-service/c7e8de11659988655221fab1d0d228a522a5318d/wasm_exec.js",
+      ),
+    ).toBe(true);
+  });
+
   it("navigations fall back to index.html for SPA routing", () => {
     expect(pwaOptions.workbox!.navigateFallback).toBe("index.html");
   });

@@ -10,6 +10,9 @@
 import { describe, expect, it } from "vitest";
 import { GROOVE_LIBRARY, getGrooveById } from "../src/ai/grooves/index";
 import { findGrooveDuplicates, windowOverlap } from "../src/ai/grooves/dedup";
+import { decodeGrooveRow, encodeGrooveRow } from "../src/ai/grooves/compact";
+import { decodeMelodicSequences, encodeMelodicSequences } from "../src/ai/grooves/melodic-codec";
+import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE, MELODIC_BY_STYLE } from "../src/ai/grooves/melodic-data";
 import { parseIntentText } from "../src/intent/text-parser";
 import type { GrooveData } from "../src/ai/types";
 
@@ -41,6 +44,56 @@ describe("groove library integrity", () => {
       (f) => `${f.severity}: ${f.a.id} ~ ${f.b.id} — ${f.reason} (${(f.overlap * 100).toFixed(0)}%)`,
     );
     expect(report).toEqual([]);
+  });
+});
+
+describe("compact groove rows", () => {
+  it("round-trips every shipped velocity row without changing a value", () => {
+    let rowCount = 0;
+    for (const groove of GROOVE_LIBRARY) {
+      for (const pattern of groove.patterns) {
+        for (const [pad, row] of Object.entries(pattern)) {
+          expect(Array.isArray(row), `${groove.id} pad ${pad} stays numeric at runtime`).toBe(true);
+          expect(decodeGrooveRow(encodeGrooveRow(row)), `${groove.id} pad ${pad}`).toEqual(row);
+          rowCount++;
+        }
+      }
+    }
+    expect(rowCount).toBeGreaterThan(3000);
+  });
+
+  it("preserves sparse positions and rejects malformed or unsupported data", () => {
+    const row = [0.9, 0, 0, 0, 0.65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3];
+    const encoded = encodeGrooveRow(row);
+    expect(encoded.length).toBeLessThan(row.length + 2);
+    expect(decodeGrooveRow(encoded)).toEqual(row);
+    expect(() => decodeGrooveRow("")).toThrow("missing its length prefix");
+    expect(() => decodeGrooveRow("000")).toThrow("exceeds row length");
+    expect(() => encodeGrooveRow([0.123])).toThrow("Unsupported groove velocity");
+  });
+});
+
+describe("compact melodic sequences", () => {
+  it("round-trips every built-in melodic motif without changing its notes", () => {
+    const patterns = new Set([
+      ...Object.values(MELODIC_BY_GENRE).flat(),
+      ...Object.values(MELODIC_BY_STYLE).flat(),
+      ...Object.values(MELODIC_BY_PROFILE).flat(),
+    ]);
+    let sequenceCount = 0;
+    for (const pattern of patterns) {
+      expect(decodeMelodicSequences(encodeMelodicSequences(pattern.sequences))).toEqual(pattern.sequences);
+      sequenceCount += pattern.sequences.length;
+    }
+    expect(sequenceCount).toBeGreaterThan(190);
+  });
+
+  it("rejects malformed codes and notes outside the exact data palette", () => {
+    expect(() => decodeMelodicSequences(["0"])).toThrow("incomplete note code");
+    expect(() => decodeMelodicSequences(["--"])).toThrow("out of range");
+    expect(() => encodeMelodicSequences([[{ degree: 1, duration: 2, velocity: 0.5 }]])).toThrow(
+      "Unsupported melodic note",
+    );
   });
 });
 

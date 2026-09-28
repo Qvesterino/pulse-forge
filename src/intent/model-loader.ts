@@ -1,6 +1,7 @@
 import { assetUrl } from "../shared/assetUrls";
 import {
   isIntentModelManifest,
+  manifestGatePassed,
   type IntentModelManifest,
   type IntentModelReply,
   type IntentModelRequest,
@@ -221,6 +222,13 @@ async function doEnsure(): Promise<boolean> {
   notifyState();
   const manifest = await probeManifest();
   if (!manifest) {
+    notifyState();
+    return false;
+  }
+  // Release-gate pin: a trained artifact without a PASSED validate gate is
+  // a candidate, not an actor — the deterministic layer stays the engine.
+  if (!manifestGatePassed(manifest)) {
+    probeUnavailable = true;
     notifyState();
     return false;
   }
