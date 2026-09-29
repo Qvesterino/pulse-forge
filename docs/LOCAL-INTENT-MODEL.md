@@ -1,5 +1,8 @@
 # LOCAL INTENT MODEL — voice & text control with a downloadable LLM
 
+> Expansion plan (undo/query intents, step-level + sound-swap vocab, listening
+> loop, KYX as an MCP server): see docs/INTENT-MCP-EXPANSION-PLAN.md.
+
 > Status: loader INTEGRATED (2026-09-28) — `src/intent/model-loader.ts`
 > (client: `pf:intent-model` flag, default OFF; availability probe; lazy
 > worker; cold/warm timeouts; circuit breaker) + `src/intent/model-worker.ts`
