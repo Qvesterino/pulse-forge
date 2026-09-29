@@ -252,7 +252,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "notch",
     defaultTarget: "mix",
-    patterns: [/notch/i, /rezonanc\w*/i, /vypichn\w*/i, /ringy (?:freq|tone|resonanc)\w*/i],
+    patterns: [/\bnotch\b/i, /\brezonanc\w*\b/i, /\bvypichn\w*\b/i, /\bringy (?:freq|tone|resonanc)\w*\b/i],
   },
   {
     concept: "phaser",
@@ -341,7 +341,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "deess",
     defaultTarget: "lead",
-    patterns: [/de-?ess\w*/i, /sibilan\w*/i, /ess\w*/i, /sibi?lin\w*/i],
+    patterns: [/\bde-?ess\w*\b/i, /\bsibilan\w*\b/i, /\bess\w*\b/i, /\bsibi?lin\w*\b/i],
   },
   {
     concept: "stutter",
@@ -476,7 +476,7 @@ function detectAmount(text: string, conceptIndex: number, conceptLength: number)
  * first, Slovak equivalents alongside.
  */
 const CLAUSE_BREAK =
-  /[;,.!?]|\b(?:and|then|also|while|but|plus)\b|\b(?:taky|ale|tiež|tom|alebo)\b|\ba\b(?!\s+(?:bit|lot|little|touch|tad|single)\b)/gi;
+  /[;,!?]|(?<!\d)\.(?!\d)|\b(?:and|then|also|while|but|plus)\b|\b(?:taky|ale|tiež|tom|alebo)\b|\ba\b(?!\s+(?:bit|lot|little|touch|tad|single)\b)/gi;
 
 /** Targets named inside one clause, in order of first appearance. */
 function targetsInClause(clause: string): ProductionTarget[] {
@@ -537,7 +537,7 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
         // Surgical notch: extract the explicit frequency from the clause
         // ("notch at 347 Hz", "rezonancia na 1.2k", "vypichni 2.2k").
         if (def.concept === "notch") {
-          const hzM = /([\d.]+)\s*(?:hz|k)/.exec(clause) || /(\d{2,5})\s*(?:hz)?/.exec(clause);
+          const hzM = /([\d.]+)\s*(?:hz|k)\b/.exec(clause) || /(\d{2,5})\b\s*(?:hz)?/.exec(clause);
           if (hzM) {
             const raw = Number(hzM[1]);
             goal.targetHz = hzM[0].includes("k") && raw <= 20 ? raw * 1000 : raw;
@@ -580,6 +580,13 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
 export function resolveProductionTargets(doc: ProjectDocument, targets: ProductionTarget[]): string[] {
   const ids: string[] = [];
   for (const target of targets) {
+    if (target === "mix") {
+      // The model has no master FX rack — a "whole mix" ask (surgical notch,
+      // glue) is realized per-lane: one device per non-group track, all in
+      // the caller's single undo step.
+      ids.push(...doc.tracks.filter((t) => t.kind !== "group").map((t) => t.id));
+      continue;
+    }
     if (target === "drums" || target === "kick" || target === "snare" || target === "hats") {
       // Pad-family targets land on the drum track too — the per-pad part
       // rides in the planner result's padAdjustments field, the track FX
