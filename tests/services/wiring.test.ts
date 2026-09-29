@@ -37,6 +37,7 @@ import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { AudioEngine } from "../../src/audio-engine/AudioEngine";
 import type { SchedulerDeps } from "../../src/scheduler/Scheduler";
 import type { ProjectDocument } from "../../src/project-model/types";
+import { CrashJournalRepository } from "../../src/persistence/crashJournal";
 
 /** Core fields re-exposed on `Services` — must be the *same* object. */
 const SHARED_REFERENCE_KEYS = [
@@ -100,6 +101,7 @@ function makeCore(engine: AudioEngine, repo: CoreServices["repo"] = makeRepo()):
     morphPresets: {} as CoreServices["morphPresets"],
     ultinaPresets: {} as CoreServices["ultinaPresets"],
     latency: new LatencyCalibrationController(null),
+    crashJournal: new CrashJournalRepository(),
   };
 }
 

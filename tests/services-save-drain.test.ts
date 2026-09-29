@@ -7,6 +7,7 @@ import { setBpm } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { AudioEngine } from "../src/audio-engine/AudioEngine";
 import type { SampleBank } from "../src/sample-library/factory";
+import { CrashJournalRepository } from "../src/persistence/crashJournal";
 
 /**
  * GOAL 08 — the single most valuable untested data-loss guard, pinned at the
@@ -44,6 +45,7 @@ function makeCore(engine: AudioEngine, repo: CoreServices["repo"]): CoreServices
     userKits: {} as CoreServices["userKits"],
     groovePool: {} as CoreServices["groovePool"],
     latency: new LatencyCalibrationController(null),
+    crashJournal: new CrashJournalRepository(),
   };
 }
 

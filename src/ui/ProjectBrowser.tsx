@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoreServices } from "../services";
 import type { IncompatibleProjectMeta, SavedProjectMeta } from "../persistence/ProjectRepository";
+import type { CrashJournalReport } from "../persistence/crashJournal";
 import type { ProjectDocument } from "../project-model/types";
 import { TEMPLATES, createProjectFromTemplate } from "../project-model/templates";
 import type { TemplateId } from "../project-model/templates";
@@ -42,6 +43,8 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
   const [importError, setImportError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [crashReport, setCrashReport] = useState<CrashJournalReport | null>(null);
+  const [crashDismissed, setCrashDismissed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const applyLists = useCallback((list: SavedProjectMeta[], newer: IncompatibleProjectMeta[]) => {
@@ -196,6 +199,21 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       refresh();
     });
 
+  // Crash journal probe: did the PREVIOUS session end unexpectedly? The
+  // journal is best-effort telemetry — a failed read just means no banner.
+  useEffect(() => {
+    let cancelled = false;
+    core.crashJournal
+      .read()
+      .then((report) => {
+        if (!cancelled) setCrashReport(report);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [core]);
+
   const firstRun = projects !== null && projects.length === 0 && newerProjects.length === 0;
   const rows = projects === null ? null : mergeRows(projects, newerProjects);
   const latest = projects !== null && projects.length > 0 ? projects[0] : null;
@@ -218,6 +236,24 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
       </header>
 
       <div className="pb-body">
+        {crashReport !== null && !crashReport.lastSessionClean && !crashDismissed && (
+          <div className="pb-crash-banner" role="alert">
+            <span className="pb-crash-text">
+              Previous session may have ended unexpectedly (crash or force-quit).
+              {crashReport.lastSaveOk
+                ? ` Last completed save: ${formatRelative(crashReport.lastSaveOk.t)} — check the project for missing edits.`
+                : " No completed save was recorded."}
+            </span>
+            <button
+              type="button"
+              className="pb-crash-dismiss"
+              onClick={() => setCrashDismissed(true)}
+              aria-label="Dismiss crash notice"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {actionError && (
           <p className="pb-import-error" role="alert">
             {actionError}

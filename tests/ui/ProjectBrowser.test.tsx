@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ProjectBrowser } from "../../src/ui/ProjectBrowser";
 import type { CoreServices } from "../../src/services";
 import type { IncompatibleProjectMeta } from "../../src/persistence/ProjectRepository";
+import { CrashJournalRepository } from "../../src/persistence/crashJournal";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -49,6 +50,7 @@ function makeCore(saved: ProjectDocument[]): CoreServices {
     morphPresets: {} as CoreServices["morphPresets"],
     ultinaPresets: {} as CoreServices["ultinaPresets"],
     latency: {} as CoreServices["latency"],
+    crashJournal: new CrashJournalRepository(),
   };
 }
 

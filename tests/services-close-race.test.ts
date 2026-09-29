@@ -7,6 +7,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import type { ProjectDocument } from "../src/project-model/types";
 import type { AudioEngine } from "../src/audio-engine/AudioEngine";
 import type { SampleBank } from "../src/sample-library/factory";
+import { CrashJournalRepository } from "../src/persistence/crashJournal";
 
 /**
  * Critical-path audit regression: openProject starts fire-and-forget asyncs
@@ -64,6 +65,7 @@ function makeCore(engine: AudioEngine): CoreServices {
     userKits: {} as CoreServices["userKits"],
     groovePool: {} as CoreServices["groovePool"],
     latency: new LatencyCalibrationController(null),
+    crashJournal: new CrashJournalRepository(),
   };
 }
 

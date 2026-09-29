@@ -13,6 +13,7 @@ import { GroovePoolRepository } from "./persistence/GroovePoolRepository";
 import { MorphPresetRepository } from "./persistence/MorphPresetRepository";
 import { UltinaPresetRepository } from "./persistence/UltinaPresetRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
+import { CrashJournalRepository } from "./persistence/crashJournal";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
   IFrozenBufferRepository,
@@ -85,6 +86,8 @@ export interface CoreServices {
   morphPresets: MorphPresetRepository;
   ultinaPresets: UltinaPresetRepository;
   latency: LatencyCalibrationController;
+  /** Crash-journal telemetry (unclean-shutdown detection) — best-effort. */
+  crashJournal: CrashJournalRepository;
 }
 
 export interface Services {
@@ -392,6 +395,7 @@ export async function createCoreServices(): Promise<CoreServices> {
     morphPresets: new MorphPresetRepository(),
     ultinaPresets: new UltinaPresetRepository(),
     latency: new LatencyCalibrationController(),
+    crashJournal: new CrashJournalRepository(),
   };
 }
 
@@ -496,6 +500,10 @@ export async function openProject(
     })();
   };
   maybeAutoSnapshot("Auto — session start");
+  // Crash journal: announce the session. If the tab dies before the
+  // matching session-close, the next boot's Project Browser can tell the
+  // user their previous session ended unexpectedly. Best-effort.
+  void core.crashJournal.record("session-open", initial.id);
 
   const transport = new Transport({ now: () => engine.currentTime }, initial.bpm);
   transport.setBarTicks(ticksPerBar(initial));
@@ -928,6 +936,11 @@ export async function openProject(
       // flushSave unhandled during pagehide/beforeunload/crash-save.
       store.setSaveStatus("saving");
       await repo.save(documentAtStart);
+      // Journal trails the data on purpose (recorded AFTER the commit): a
+      // crash between the two leaves the journal conservative — it reports
+      // an unclean session even though this revision landed. Detection may
+      // over-report; it must never under-report.
+      void core.crashJournal.record("save-ok", documentAtStart.id);
       if (store.doc !== documentAtStart) {
         saveQueued = true;
         store.setSaveStatus("dirty");
@@ -935,8 +948,9 @@ export async function openProject(
         store.setSaveStatus("saved");
         maybeAutoSnapshot("Auto — daily");
       }
-    } catch {
+    } catch (err) {
       store.setSaveStatus("error");
+      void core.crashJournal.record("save-fail", documentAtStart.id, err instanceof Error ? err.message : String(err));
       // If a newer edit landed while the write failed, retry the newest
       // revision through the shared drain instead of losing it behind the
       // failed transaction.
@@ -1082,6 +1096,11 @@ export async function openProject(
     document.removeEventListener("visibilitychange", onVisibility);
     uninstallUnloadGuards();
     await flushSave();
+    // Deliberate shutdown marker — the event that makes the next boot's
+    // crash report read "previous session ended cleanly". Best-effort: if
+    // the tab dies before this lands, the journal correctly shows an
+    // unclean end instead.
+    void core.crashJournal.record("session-close", store.doc.id);
   };
 
   const getDiagnostics = (): Record<string, string | number | boolean> => {
