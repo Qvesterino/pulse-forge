@@ -52,6 +52,7 @@ import {
   grooveReadback,
   markerReadback,
 } from "../intent/studio-words";
+import { applySoundSwapIntent, applyStepEditIntent, soundSwapReadback } from "../intent/sound-words";
 import { applyPresetIntentCommand, presetReadback } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
@@ -2256,6 +2257,28 @@ export function IntentPanel() {
         }
         services.store.execute(command);
         setStatus(`🥁 ${command.label} (one undo step)`);
+      } else if (route.kind === "stepEditIntent") {
+        // "remove the kick on beat 3 of bar 2" — per-step edit folded into
+        // one snapshot; out-of-range bars fail explicitly.
+        const command = applyStepEditIntent(doc, route.intent);
+        if (!command) {
+          setError(route.intent.action === "remove" ? "na tejto pozícii nie je žiadny hit" : "nič na úpravu");
+          return;
+        }
+        services.store.execute(command);
+        setStatus(`✓ ${command.label} (one undo step)`);
+      } else if (route.kind === "soundSwapIntent") {
+        // "swap the snare to something fatter" — descriptor-scored factory
+        // asset within the pad family; no candidate → explicit error.
+        const command = applySoundSwapIntent(doc, route.intent);
+        if (!command) {
+          setError(`žiadny ${route.intent.descriptor} kandidát v rodine ${route.intent.family}`);
+          return;
+        }
+        services.store.execute(command);
+        setStatus(
+          `✓ ${command.label} — ${soundSwapReadback(services.store.getDoc(), route.intent.family)} (one undo step)`,
+        );
       } else if (route.kind === "grooveIntent") {
         // "more swing" / "tighter groove" / "swing 60%" — project groove,
         // ONE undo step, read-back shows the landing values.

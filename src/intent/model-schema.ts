@@ -47,6 +47,8 @@ export const VOCAB = {
     "compound",
     "clarify",
     "presetUnknown",
+    "stepEdit",
+    "soundSwap",
   ] as const,
   faderTarget: ["drums", "bass", "chords", "lead", "master"] as const,
   padFamily: ["kick", "snare", "clap", "hat", "perc", "tom"] as const,
@@ -278,6 +280,20 @@ export const MODEL_ACTIONS: Record<string, ActionSpec> = {
   },
   clarify: { slots: [SA("suggestions")] },
   presetUnknown: { slots: [T("name"), SA("suggestions", false)] },
+  stepEdit: {
+    slots: [
+      E("action", ["remove", "ghost", "accent"]),
+      E("family", ["kick", "snare", "clap", "hat", "perc", "tom"]),
+      I("bar", 1, 64),
+      I("beat", 1, 4),
+    ],
+  },
+  soundSwap: {
+    slots: [
+      E("family", ["kick", "snare", "clap", "hat", "perc", "tom"]),
+      E("descriptor", ["fatter", "thinner", "tighter", "darker", "brighter", "harder", "softer"]),
+    ],
+  },
 };
 
 // ── Validation (dependency-free — runs at runtime on model output) ──────────

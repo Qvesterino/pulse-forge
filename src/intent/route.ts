@@ -33,12 +33,7 @@ import {
   type SectionGrooveIntent,
   type UndoIntent,
 } from "./studio-words";
-import {
-  parseSoundSwapIntent,
-  parseStepEditIntent,
-  type SoundSwapIntent,
-  type StepEditIntent,
-} from "./sound-words";
+import { parseSoundSwapIntent, parseStepEditIntent, type SoundSwapIntent, type StepEditIntent } from "./sound-words";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";

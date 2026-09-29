@@ -8,6 +8,8 @@ import {
   applySectionGrooveIntent,
   grooveReadback,
 } from "../src/intent/studio-words";
+import { applySoundSwapIntent, applyStepEditIntent } from "../src/intent/sound-words";
+import { setStepVelocityCommand } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 import { createScene, setSceneRole } from "../src/commands/commands";
@@ -247,4 +249,122 @@ describe("section groove intents", () => {
     const expected = Math.min(1, 0.65 * (5 / 3));
     expect(pattern.stepMeta?.[padId]?.[1]?.microtiming).toBeCloseTo(expected, 3);
   });
+});
+
+// ─── SOUND WORDS — step edits + pad sound swaps (Phase B) ───────────────────
+
+describe("step edit intents", () => {
+  function padIdOf(doc: ProjectDocument): string {
+    const drums = doc.tracks.find((t) => t.kind === "drum")!;
+    return drums.pads.find((p) => p.name.toLowerCase().includes("kick"))!.id;
+  }
+
+  function withBeat(doc: ProjectDocument, step: number, velocity = 0.8) {
+    const store = new ProjectStore(doc);
+    const padId = padIdOf(doc);
+    store.execute(setStepVelocityCommand(store.doc, padId, step, velocity));
+    return { store, padId };
+  }
+
+  it("remove the kick on beat 3 zeroes exactly that step; undo restores", () => {
+    const store = new ProjectStore(freshDoc());
+    const { store: withHit } = withBeat(store.doc, 8); // beat 3 = 0-based step 8
+    store.replaceDoc(withHit.doc);
+    expect(routeIntentText("remove the kick on beat 3", store.doc).kind).toBe("stepEditIntent");
+    executeStepEdit(store, "remove the kick on beat 3");
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    const kickPad = drums.pads.find((p) => p.name.toLowerCase().includes("kick"))!;
+    expect(store.doc.patterns[0].rows[kickPad.id]?.[8] ?? 0).toBe(0);
+    expect(store.undoStackLength).toBe(1); // replaceDoc seed is not an undo entry; the edit is
+    store.undo();
+    expect(store.doc.patterns[0].rows[kickPad.id]?.[8] ?? 0).toBe(0.8);
+  });
+
+  it("bar 2 on a 16-step pattern fails explicitly (1 bar only)", () => {
+    const doc = freshDoc();
+    expect(() => executeStepEdit(new ProjectStore(doc), "remove the kick on beat 3 of bar 2")).toThrow(/1 takt/);
+  });
+
+  it("ghost snare on the last 16th adds a quiet probable hit", () => {
+    const store = new ProjectStore(freshDoc());
+    executeStepEdit(store, "add a ghost snare on the last 16th");
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    const snare = drums.pads.find((p) => p.name.toLowerCase().includes("snare"))!;
+    const pattern = store.doc.patterns[store.doc.activePatternId as unknown as number] ?? store.doc.patterns[0];
+    const velocity = pattern.rows[snare.id]?.[15] ?? 0;
+    expect(velocity).toBeCloseTo(0.35, 5);
+    const probability = pattern.stepMeta?.[snare.id]?.[15]?.probability ?? 1;
+    expect(probability).toBeCloseTo(0.5, 5);
+  });
+
+  it("accent the kick on beat 1 pushes velocity to full", () => {
+    const store = new ProjectStore(freshDoc());
+    executeStepEdit(store, "accent the kick on beat 1");
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    const kick = drums.pads.find((p) => p.name.toLowerCase().includes("kick"))!;
+    expect(store.doc.patterns[0].rows[kick.id]?.[0] ?? 0).toBe(1);
+  });
+
+  it("removing silence returns the explicit no-hit error", () => {
+    const store = new ProjectStore(freshDoc());
+    expect(() => executeStepEdit(store, "remove the snare on beat 3")).toThrow(/žiadny hit/);
+  });
+
+  function executeStepEdit(store: ProjectStore, text: string): void {
+    const route = routeIntentText(text, store.doc);
+    if (route.kind !== "stepEditIntent") throw new Error(`expected stepEdit, got ${route.kind}`);
+    const command = applyStepEditIntent(store.doc, route.intent);
+    if (!command)
+      throw new Error(route.intent.action === "remove" ? "na tejto pozícii nie je žiadny hit" : "nič na úpravu");
+    store.execute(command);
+  }
+});
+
+describe("sound swap intents", () => {
+  it("swap the kick to something deeper picks a deep kick asset family-wide", () => {
+    const doc = freshDoc();
+    const store = new ProjectStore(doc);
+    const route = routeIntentText("swap the kick to something deeper", store.doc);
+    expect(route.kind).toBe("soundSwapIntent");
+    if (route.kind !== "soundSwapIntent") throw new Error(`expected soundSwap, got ${route.kind}`);
+    expect(route.intent.family).toBe("kick");
+    expect(route.intent.descriptor).toBe("fatter");
+    const next = executeSwap(store, "swap the kick to something deeper");
+    const drums = next.tracks.find((t) => t.kind === "drum")!;
+    const swapped = drums.pads.filter((p) => p.name.toLowerCase().includes("kick"));
+    expect(swapped.length).toBeGreaterThan(0);
+    for (const pad of swapped) expect(pad.assetId).toContain("kick");
+    expect(drums.pads.find((p) => p.name.toLowerCase().includes("snare"))!.assetId).not.toContain("kick");
+  });
+
+  it("darker swap prefers a dark-mood asset; undo restores", () => {
+    const store = new ProjectStore(freshDoc());
+    const kick = store.doc.tracks
+      .find((t) => t.kind === "drum")!
+      .pads.find((p) => p.name.toLowerCase().includes("kick"))!;
+    const before = kick.assetId;
+    executeSwap(store, "swap the kick to a darker one");
+    const after = store.doc.tracks
+      .find((t) => t.kind === "drum")!
+      .pads.find((p) => p.name.toLowerCase().includes("kick"))!.assetId;
+    expect(after).not.toBe(before);
+    store.undo();
+    expect(
+      store.doc.tracks.find((t) => t.kind === "drum")!.pads.find((p) => p.name.toLowerCase().includes("kick"))!.assetId,
+    ).toBe(before);
+  });
+
+  it("explicit unknown descriptor declines (no candidate hallucinated)", () => {
+    const doc = freshDoc();
+    expect(routeIntentText("paint the kick purple", doc).kind).not.toBe("soundSwapIntent");
+  });
+
+  function executeSwap(store: ProjectStore, text: string): ProjectDocument {
+    const route = routeIntentText(text, store.doc);
+    if (route.kind !== "soundSwapIntent") throw new Error(`expected soundSwap, got ${route.kind}`);
+    const command = applySoundSwapIntent(store.doc, route.intent);
+    if (!command) throw new Error("no swap candidate");
+    store.execute(command);
+    return command.execute(store.doc);
+  }
 });

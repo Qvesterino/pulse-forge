@@ -194,7 +194,10 @@ export function applySoundSwapIntent(doc: ProjectDocument, intent: SoundSwapInte
     if (asset.category !== category) continue;
     if (current.has(asset.id)) continue;
     let score = 0;
-    if (DESCRIPTOR_MOOD[intent.descriptor] != null && asset.mood.includes(DESCRIPTOR_MOOD[intent.descriptor] as never)) {
+    if (
+      DESCRIPTOR_MOOD[intent.descriptor] != null &&
+      asset.mood.includes(DESCRIPTOR_MOOD[intent.descriptor] as never)
+    ) {
       score += 2;
     }
     if (
@@ -217,12 +220,7 @@ export function applySoundSwapIntent(doc: ProjectDocument, intent: SoundSwapInte
     swapped += 1;
   }
   if (swapped === 0) return null;
-  return snapshot(
-    "applySoundSwapIntent",
-    `Swap ${intent.family} â ${best.id} (${intent.descriptor})`,
-    doc,
-    next,
-  );
+  return snapshot("applySoundSwapIntent", `Swap ${intent.family} â ${best.id} (${intent.descriptor})`, doc, next);
 }
 
 /** Read-back: the family's current assets after the swap. */
