@@ -35,6 +35,7 @@ export type ProductionConcept =
   // starting values, and the amount scales the primary parameter.
   | "filter"
   | "sidechain"
+  | "notch"
   | "phaser"
   | "chorus"
   | "sharper"
@@ -46,11 +47,13 @@ export type ProductionConcept =
   | "air"
   | "deess";
 
-export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "kick" | "snare" | "hats";
+export type ProductionTarget = "drums" | "bass" | "lead" | "chords" | "kick" | "snare" | "hats" | "mix";
 
 export interface ProductionGoal {
   concept: ProductionConcept;
   amount: number; // 0..1, default 0.7
+  /** Explicit frequency for surgical concepts (notch/notch-filter). */
+  targetHz?: number;
 }
 
 export interface ProductionIntent {
@@ -123,6 +126,7 @@ export const PRODUCTION_CONCEPTS: readonly ProductionConcept[] = [
   "metallic",
   "filter",
   "sidechain",
+  "notch",
   "phaser",
   "chorus",
   "sharper",
@@ -244,6 +248,11 @@ export const CONCEPTS: readonly ConceptDef[] = [
       /\bduck(?:s|ing|ed)?\b/,
       /\bdukladn[ýy] bass\b/,
     ],
+  },
+  {
+    concept: "notch",
+    defaultTarget: "mix",
+    patterns: [/notch/i, /rezonanc\w*/i, /vypichn\w*/i, /ringy (?:freq|tone|resonanc)\w*/i],
   },
   {
     concept: "phaser",
@@ -524,7 +533,17 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
       for (const re of def.patterns) {
         const hit = re.exec(clause);
         if (!hit) continue;
-        goals.push({ concept: def.concept, amount: detectAmount(clause, hit.index, hit[0].length) });
+        const goal: ProductionGoal = { concept: def.concept, amount: detectAmount(clause, hit.index, hit[0].length) };
+        // Surgical notch: extract the explicit frequency from the clause
+        // ("notch at 347 Hz", "rezonancia na 1.2k", "vypichni 2.2k").
+        if (def.concept === "notch") {
+          const hzM = /([\d.]+)\s*(?:hz|k)/.exec(clause) || /(\d{2,5})\s*(?:hz)?/.exec(clause);
+          if (hzM) {
+            const raw = Number(hzM[1]);
+            goal.targetHz = hzM[0].includes("k") && raw <= 20 ? raw * 1000 : raw;
+          }
+        }
+        goals.push(goal);
         clauseOfConcept.push(clause);
         matched = true;
         break;
@@ -723,6 +742,24 @@ export function planProductionActions(
             },
           });
           break;
+        case "notch": {
+          // EQ free surgical band as a deep notch: the intent parser or the
+          // caller supplies the frequency via `goal.targetHz`; without it
+          // the sweep defaults to 350 Hz (the classic boxy resonance).
+          const notchHz = Math.max(30, Math.min(18000, goal.targetHz ?? 350));
+          const notchQ = 4 + goal.amount * 12;
+          actions.push({
+            trackId,
+            type: "eq",
+            params: {
+              free1Type: 1, // notch
+              free1Freq: Math.round(notchHz),
+              free1Q: Math.round(notchQ * 10) / 10,
+              free1Gain: -24,
+            },
+          });
+          break;
+        }
         case "telephone":
           // The handset chain: narrow band-pass + the crackle drive —
           // two devices, one concept (the telephone preset recipe).

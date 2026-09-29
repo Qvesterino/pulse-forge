@@ -124,6 +124,7 @@ TRACK_NAMES = sorted(["sub", "sub bass"])
 EXPORT_FORMATS = sorted(["wav", "mp3"])
 SELECT_TARGETS = sorted(["drums", "bass", "lead", "chords"])
 REVISE_ATTRIBUTES = sorted(["energy", "density"])
+REVISE_ROLES = sorted(["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro"])
 PROD_CONCEPTS = sorted(
     [
         "deeper",
@@ -143,7 +144,8 @@ PROD_CONCEPTS = sorted(
         "stutter",
     ]
 )
-KEYS = sorted(["D Natural Minor", "F# Natural Minor"])
+# KEYS / semitones / steps are DERIVED from the corpus (build_head_specs) —
+# new templates extend the closed sets automatically.
 
 
 def tokenize(text: str) -> list[str]:
@@ -168,6 +170,15 @@ def numeric_field_values(rows: list[dict], field: str) -> list[str]:
         for value in extract_labels(row)["numeric"].get(field, []):
             values.add(str(value))
     return sorted(values, key=float)
+
+
+def string_field_values(rows: list[dict], field: str) -> list[str]:
+    values: set[str] = set()
+    for row in rows:
+        value = extract_labels(row).get(field)
+        if value is not None and value != ABSENT:
+            values.add(value)
+    return sorted(values)
 
 
 def payload_of(response: dict) -> dict:
@@ -233,6 +244,7 @@ def extract_labels(row: dict) -> dict:
     note("panValue", (op or {}).get("value") if (op or {}).get("kind") == "pan" else None)
     labels["panValue"] = as_class((op or {}).get("value") if (op or {}).get("kind") == "pan" else None)
     note("semitones", (op or {}).get("semitones"))
+    note("semitones", (op or {}).get("semitones"))
     labels["semitones"] = as_class((op or {}).get("semitones"))
     note("steps", (op or {}).get("steps"))
     labels["steps"] = as_class((op or {}).get("steps"))
@@ -259,6 +271,7 @@ def extract_labels(row: dict) -> dict:
         else None
     )
     labels["reviseAttribute"] = as_class(payload.get("attribute"))
+    labels["targetRole"] = as_class(payload.get("targetRole"))
     goals = payload.get("goals") or []
     goal = goals[0] if goals else {}
     labels["prodConcept"] = as_class(goal.get("concept"))
@@ -282,6 +295,7 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
     semitones = sorted({v for v in numeric_field_values(rows, "semitones")}, key=float)
     steps = sorted({v for v in numeric_field_values(rows, "steps")}, key=float)
     amounts = sorted({v for v in numeric_field_values(rows, "prodAmount")}, key=float)
+    keys = string_field_values(rows, "key")
     heads = [
         {"name": "kind", "kind": "softmax", "classes": ["abstain"] + KINDS},
         {"name": "direction", "kind": "softmax", "classes": [ABSENT] + DIRECTIONS},
@@ -297,7 +311,7 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
         {"name": "panValue", "kind": "softmax", "classes": [ABSENT] + pan},
         {"name": "semitones", "kind": "softmax", "classes": [ABSENT] + semitones},
         {"name": "steps", "kind": "softmax", "classes": [ABSENT] + steps},
-        {"name": "key", "kind": "softmax", "classes": [ABSENT] + KEYS},
+        {"name": "key", "kind": "softmax", "classes": [ABSENT] + keys},
         {"name": "exactOp", "kind": "softmax", "classes": [ABSENT] + EXACT_OPS},
         {"name": "boolValue", "kind": "softmax", "classes": [ABSENT, "true", "false"]},
         {"name": "trackKind", "kind": "softmax", "classes": [ABSENT] + TRACK_KINDS},
@@ -307,6 +321,7 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
         {"name": "exportFormat", "kind": "softmax", "classes": [ABSENT] + EXPORT_FORMATS},
         {"name": "selectTarget", "kind": "softmax", "classes": [ABSENT] + SELECT_TARGETS},
         {"name": "reviseAttribute", "kind": "softmax", "classes": [ABSENT] + REVISE_ATTRIBUTES},
+        {"name": "targetRole", "kind": "softmax", "classes": [ABSENT] + REVISE_ROLES},
         {"name": "prodConcept", "kind": "softmax", "classes": [ABSENT] + PROD_CONCEPTS},
         {"name": "prodAmount", "kind": "softmax", "classes": [ABSENT] + amounts},
         {"name": "mixReverb", "kind": "softmax", "classes": [ABSENT, "more", "less", "huge"]},

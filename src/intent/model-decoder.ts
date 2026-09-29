@@ -316,7 +316,7 @@ export function decodeIntentHeads(
       const attribute = opt("reviseAttribute");
       const direction = opt("direction");
       if (!attribute || !direction) return null;
-      return { kind: "revise", attribute, direction, detected: ["AI"], targetRole: null };
+      return { kind: "revise", attribute, direction, detected: ["AI"], targetRole: opt("targetRole") ?? null };
     }
     default:
       // preset / arrange / clips / compound / clarify / presetUnknown —

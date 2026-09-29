@@ -35,6 +35,14 @@ const EQ_CANONICAL = [
   "highMidQ",
   "highShelfFreq",
   "highShelfGain",
+  "free1Freq",
+  "free1Gain",
+  "free1Q",
+  "free1Type",
+  "free2Freq",
+  "free2Gain",
+  "free2Q",
+  "free2Type",
 ];
 
 export function resolveEqParams(params: Record<string, number>): Record<string, number> {

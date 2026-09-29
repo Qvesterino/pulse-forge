@@ -75,6 +75,22 @@ function peakProto(fc, gdb, q, sr) {
   };
 }
 
+/** RBJ notch — infinite depth at fc, near-unity elsewhere. */
+function notchProto(fc, q, sr) {
+  const w0 = (2 * Math.PI * fc) / sr;
+  const cos = Math.cos(w0);
+  const sin = Math.sin(w0);
+  const alpha = sin / (2 * q);
+  const a0 = 1 + alpha;
+  return {
+    b0: 1 / a0,
+    b1: (-2 * cos) / a0,
+    b2: 1 / a0,
+    a1: (-2 * cos) / a0,
+    a2: (1 - alpha) / a0,
+  };
+}
+
 /**
  * Inverse of the bilinear bandwidth warp: a peaking band designed with Q'
  * measures Q at fc. → 1 far below Nyquist, ≈ 1.05 at 8 kHz/48 kHz,
@@ -103,9 +119,12 @@ class EqProcessor extends AudioWorkletProcessor {
     this.hmQ = 1;
     this.hsF = 6000;
     this.hsG = 0;
-    // 6 DF-I biquads × 4 states (x1, x2, y1, y2) per channel.
-    this.sL = new Float64Array(24);
-    this.sR = new Float64Array(24);
+    // Free surgical bands: gain 0 = bypassed (transparent).
+    this.f1F = 1000; this.f1G = 0; this.f1Q = 2; this.f1Type = 0;
+    this.f2F = 3000; this.f2G = 0; this.f2Q = 2; this.f2Type = 0;
+    // 8 DF-I biquads × 4 states (x1, x2, y1, y2) per channel.
+    this.sL = new Float64Array(32);
+    this.sR = new Float64Array(32);
   }
 
   static get parameterDescriptors() {
@@ -122,6 +141,14 @@ class EqProcessor extends AudioWorkletProcessor {
       { name: "highMidQ", defaultValue: 1, minValue: 0.2, maxValue: 16, automationRate: "k-rate" },
       { name: "highShelfFreq", defaultValue: 6000, minValue: 1500, maxValue: 16000, automationRate: "k-rate" },
       { name: "highShelfGain", defaultValue: 0, minValue: -15, maxValue: 15, automationRate: "k-rate" },
+      { name: "free1Freq", defaultValue: 1000, minValue: 20, maxValue: 20000, automationRate: "k-rate" },
+      { name: "free1Gain", defaultValue: 0, minValue: -24, maxValue: 24, automationRate: "k-rate" },
+      { name: "free1Q", defaultValue: 2, minValue: 0.1, maxValue: 24, automationRate: "k-rate" },
+      { name: "free1Type", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "free2Freq", defaultValue: 3000, minValue: 20, maxValue: 20000, automationRate: "k-rate" },
+      { name: "free2Gain", defaultValue: 0, minValue: -24, maxValue: 24, automationRate: "k-rate" },
+      { name: "free2Q", defaultValue: 2, minValue: 0.1, maxValue: 24, automationRate: "k-rate" },
+      { name: "free2Type", defaultValue: 0, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
 
@@ -165,6 +192,12 @@ class EqProcessor extends AudioWorkletProcessor {
     this.hmQ += (this.clampNum(P.highMidQ[0], 0.3, 8) - this.hmQ) * k;
     this.hsF += (this.clampNum(P.highShelfFreq[0], 1500, 16000) - this.hsF) * k;
     this.hsG += (this.clampNum(P.highShelfGain[0], -15, 15) - this.hsG) * k;
+    this.f1F += (this.clampNum(P.free1Freq ? P.free1Freq[0] : 1000, 20, 20000) - this.f1F) * k;
+    this.f1G += (this.clampNum(P.free1Gain ? P.free1Gain[0] : 0, -24, 24) - this.f1G) * k;
+    this.f1Q += (this.clampNum(P.free1Q ? P.free1Q[0] : 2, 0.1, 24) - this.f1Q) * k;
+    this.f2F += (this.clampNum(P.free2Freq ? P.free2Freq[0] : 3000, 20, 20000) - this.f2F) * k;
+    this.f2G += (this.clampNum(P.free2Gain ? P.free2Gain[0] : 0, -24, 24) - this.f2G) * k;
+    this.f2Q += (this.clampNum(P.free2Q ? P.free2Q[0] : 2, 0.1, 24) - this.f2Q) * k;
 
     // Block-rate coefficients (controls glide on ~3 ms, never step audibly).
     const C = {
@@ -174,6 +207,12 @@ class EqProcessor extends AudioWorkletProcessor {
       hsLp: lpProto(this.hsF, sr),
       lm: peakProto(this.lmF, this.lmG, decrampedQ(this.lmQ, this.lmF, sr), sr),
       hm: peakProto(this.hmF, this.hmG, decrampedQ(this.hmQ, this.hmF, sr), sr),
+      f1: this.f1Type >= 0.5
+        ? notchProto(this.f1F, decrampedQ(this.f1Q, this.f1F, sr), sr)
+        : peakProto(this.f1F, this.f1G, decrampedQ(this.f1Q, this.f1F, sr), sr),
+      f2: this.f2Type >= 0.5
+        ? notchProto(this.f2F, decrampedQ(this.f2Q, this.f2F, sr), sr)
+        : peakProto(this.f2F, this.f2G, decrampedQ(this.f2Q, this.f2F, sr), sr),
       lsG: Math.pow(10, this.lsG / 20) - 1,
       hsG: Math.pow(10, this.hsG / 20) - 1,
     };
@@ -206,15 +245,17 @@ class EqProcessor extends AudioWorkletProcessor {
 
   runChannel(st, C, x) {
     // State slots: 0 HP, 4 lowshelf-LP, 8 lowmid-peak, 12 highmid-peak,
-    // 16 highshelf-LP, 20 LP.
+    // 16 free1, 20 free2, 24 highshelf-LP, 28 LP.
     let v = this.df1(st, 0, C.hp, x);
     const lsT = this.df1(st, 4, C.lsLp, v);
     v = v + C.lsG * lsT;
     v = this.df1(st, 8, C.lm, v);
     v = this.df1(st, 12, C.hm, v);
-    const hsT = this.df1(st, 16, C.hsLp, v);
+    v = this.df1(st, 16, C.f1, v);
+    v = this.df1(st, 20, C.f2, v);
+    const hsT = this.df1(st, 24, C.hsLp, v);
     v = v + C.hsG * (v - hsT);
-    v = this.df1(st, 20, C.lp, v);
+    v = this.df1(st, 28, C.lp, v);
     return v;
   }
 

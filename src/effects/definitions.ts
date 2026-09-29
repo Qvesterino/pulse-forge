@@ -523,6 +523,16 @@ export const eqParams: ParamDef[] = [
     taper: "log",
   },
   { id: "highShelfGain", label: "HIGH SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
+  // Free surgical bands — fully parametric (bell / notch), ±24 dB for
+  // deep notches. Gain 0 = bypassed (transparent on old projects).
+  { id: "free1Freq", label: "FREE 1 FREQ", min: 20, max: 20000, default: 1000, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "free1Gain", label: "FREE 1 GAIN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+  { id: "free1Q", label: "FREE 1 Q", min: 0.1, max: 24, default: 2, format: (v) => v.toFixed(2) },
+  { id: "free1Type", label: "FREE 1 TYPE", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"), kind: "toggle" },
+  { id: "free2Freq", label: "FREE 2 FREQ", min: 20, max: 20000, default: 3000, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "free2Gain", label: "FREE 2 GAIN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+  { id: "free2Q", label: "FREE 2 Q", min: 0.1, max: 24, default: 2, format: (v) => v.toFixed(2) },
+  { id: "free2Type", label: "FREE 2 TYPE", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"), kind: "toggle" },
   // Legacy aliases remain in the registry so old documents and commands keep
   // working; `deprecated` keeps them out of automation target lists and UI
   // pickers (the command layer remaps them via eqLegacyMap).
