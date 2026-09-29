@@ -102,4 +102,65 @@ export const JERSEY_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
+  // ── The genre's actual identity (orphiq): a FIVE-kick pattern at
+  // 4-4-3-3-2 in sixteenths. Fourteen and fifteen count as 1 and 2 of the
+  // next bar, so the run wraps. Everything else in jersey club is decoration.
+  {
+    id: "jersey.fivekick",
+    genre: "jersey",
+    name: "Five-Kick (4-4-3-3-2)",
+    bpm: [130, 140],
+    swing: 0.04,
+    activePads: [0, 4, 8, 14],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        6: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
+        8: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        11: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0],
+        14: [0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4],
+      },
+    ],
+  },
+  // ── Jersey club rap: the modern variant, leaner and less flip-heavy so
+  // a rap verse has room. Same five-kick underneath.
+  {
+    id: "jersey.rap",
+    genre: "jersey",
+    name: "Jersey Club Rap",
+    bpm: [135, 140],
+    swing: 0.05,
+    activePads: [0, 4, 6, 8, 10],
+    patterns: [
+      {
+        0: [0.92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0.88, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0.82, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0],
+        14: [0.86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45],
+      },
+    ],
+  },
+  // ── Krushclub: the documented SoundCloud-born derivative. Half-time
+  // 150-160, bitcrushed, detuned past usability on purpose.
+  {
+    id: "jersey.krush",
+    genre: "jersey",
+    name: "Krushclub (half-time, crushed)",
+    bpm: [150, 160],
+    swing: 0,
+    activePads: [0, 4, 8, 11, 14],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0],
+        8: [0.95, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+        11: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0],
+        14: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45],
+      },
+    ],
+  },
+
 ]);

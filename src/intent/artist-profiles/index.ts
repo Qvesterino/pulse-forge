@@ -301,7 +301,7 @@ const DJ_TAMEIL: ArtistProfile = {
     "LFO Tool (sidechain + rhythmic gating)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["bounce", "club", "flip", "baltimore"],
+  grooveLanes: ["club", "fivekick", "bounce", "baltimore"],
   vibe: ["energetic", "bouncy", "danceable", "club", "tight", "forward"],
   sources: ["https://en.wikipedia.org/wiki/Jersey_club", "https://www.residentadvisor.net/features/3587"],
   verificationStatus: "verified",
@@ -869,7 +869,7 @@ const BURIAL: ArtistProfile = {
     "outboard processors for analog warmth (varies)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["twostep", "liquid", "halftime", "ambient"],
+  grooveLanes: ["halftime", "liquid", "drone", "glitch"],
   vibe: ["melancholic", "dark", "nostalgic", "ghostly", "rainy", "London-night", "lonely", "haunted"],
   sources: [
     "https://en.wikipedia.org/wiki/Burial_(musician)",
@@ -1110,7 +1110,7 @@ const EXCISION: ArtistProfile = {
     "Valhalla VintageVerb (snare reverb tails)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["neuro", "jumpup", "techstep", "halftime"],
+  grooveLanes: ["schranz", "industrial", "acid", "hard"],
   vibe: ["aggressive", "mechanical", "heavy", "brutal", "industrial", "alien", "relentless"],
   sources: ["https://en.wikipedia.org/wiki/Excision_(DJs)", "https://www.dubstepforum.com/wiki/excision"],
   verificationStatus: "verified",
@@ -1172,7 +1172,7 @@ const ANYMA: ArtistProfile = {
     "RC-20 Retro Color (on pad bus)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["progressive", "melodic", "minimal", "driving"],
+  grooveLanes: ["melodic", "progressive", "minimal", "detroit"],
   vibe: ["hypnotic", "ethereal", "atmospheric", "transcendent", "euphoric", "cinematic", "afterhours"],
   sources: ["https://en.wikipedia.org/wiki/Anyma", "https://www.residentadvisor.net/features/3782"],
   verificationStatus: "verified",
@@ -1307,7 +1307,7 @@ const APHEX_TWIN: ArtistProfile = {
     "Studer A800 (tape machine — used on his masters)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["liquid", "halftime", "breakbeat", "ambient"],
+  grooveLanes: ["bleep", "drone", "glitch", "tribal"],
   vibe: ["experimental", "complex", "atmospheric", "pioneering", "intense", "beautiful", "haunting"],
   sources: [
     "https://en.wikipedia.org/wiki/Aphex_Twin",
@@ -1372,7 +1372,7 @@ const BOARDS_OF_CANADA: ArtistProfile = {
     "film archive libraries (educational footage — public domain)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["ambient", "organic", "drifting", "melodic"],
+  grooveLanes: ["ambient", "drifting", "organic", "glitch"],
   vibe: ["nostalgic", "melancholic", "lo-fi", "faded", "childhood memory", "hypnagogic", "warm", "familiar"],
   sources: ["https://en.wikipedia.org/wiki/Boards_of_Canada", "https://www.residentadvisor.net/features/179"],
   verificationStatus: "verified",

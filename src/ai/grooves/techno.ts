@@ -590,4 +590,138 @@ export const TECHNO_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
+  // ── Detroit: the original. Funk-meets-machine-futurism, mechanical
+  // soul, syncopation (Belleville Three: Atkins, May, Saunderson).
+  {
+    id: "techno.detroit",
+    genre: "techno",
+    name: "Detroit",
+    bpm: [128, 140],
+    swing: 0.1,
+    activePads: [0, 2, 4, 8, 10],
+    patterns: [
+      {
+        0: [0.92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.75, 0, 0, 0, 0.6, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Bleep: the British foundation (Yorkshire / Warp, LFO). Sparse synth
+  // bleeps over reggae-scale sub. Cold and spare.
+  {
+    id: "techno.bleep",
+    genre: "techno",
+    name: "Bleep",
+    bpm: [120, 132],
+    swing: 0.08,
+    activePads: [0, 2, 8, 14, 15],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4],
+        14: [0.5, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Tribal: the Polaris rhythm — a rolling conga pattern layered over
+  // four-on-the-floor. Drum-heavy, global percussion influence.
+  {
+    id: "techno.tribal",
+    genre: "techno",
+    name: "Tribal (Polaris)",
+    bpm: [130, 138],
+    swing: 0.06,
+    activePads: [0, 12, 13, 8, 10],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0],
+        8: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.78, 0, 0, 0],
+        14: [0.7, 0, 0, 0.6, 0, 0, 0.7, 0, 0.7, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Berlin: the Tresor / Berghain vault sound. Dark, relentless 909,
+  // stripped of melody.
+  {
+    id: "techno.berlin",
+    genre: "techno",
+    name: "Berlin (vault)",
+    bpm: [130, 138],
+    swing: 0.04,
+    activePads: [2, 3, 8, 9, 10],
+    patterns: [
+      {
+        0: [0.92, 0, 0.92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.92, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.9, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0],
+        12: [0, 0, 0, 0, 0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.72, 0, 0.6, 0, 0.72, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Hypnotic: long loops, subtle evolution, near-static. The sound the
+  // name promises — the point is that nothing much happens.
+  {
+    id: "techno.hypnotic",
+    genre: "techno",
+    name: "Hypnotic (long loop)",
+    bpm: [130, 142],
+    swing: 0.04,
+    activePads: [0, 4, 8, 15],
+    patterns: [
+      {
+        0: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.86, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.78, 0, 0, 0],
+        15: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35],
+      },
+    ],
+  },
+  // ── Schranz: Frankfurt, mid-90s. A hard distorted kick looped with
+  // no melody at all. The absence of a hook is the genre.
+  {
+    id: "techno.schranz",
+    genre: "techno",
+    name: "Schranz (factory)",
+    bpm: [145, 160],
+    swing: 0,
+    activePads: [0, 4, 8, 11],
+    patterns: [
+      {
+        0: [0.95, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.95, 0, 0, 0, 0, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0],
+        12: [0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.78, 0, 0, 0, 0, 0, 0, 0, 0.72, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Hardgroove: Ben Sims, late 90s. Rolling percussive loops from a
+  // single drum machine, tribal without the hand percussion.
+  {
+    id: "techno.hardgroove",
+    genre: "techno",
+    name: "Hardgroove (rolling)",
+    bpm: [135, 145],
+    swing: 0.08,
+    activePads: [0, 3, 8, 10, 13],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0],
+        4: [0, 0, 0, 0.45, 0, 0, 0, 0, 0.8, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.86, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.65, 0, 0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+
 ]);

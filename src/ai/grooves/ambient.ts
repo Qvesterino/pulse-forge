@@ -455,4 +455,97 @@ export const AMBIENT_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
+  // ── Drone: sustained tones, no rhythm at all. The baseline ambient
+  // form — a pad that never resolves and never repeats.
+  {
+    id: "ambient.drone",
+    genre: "ambient",
+    name: "Drone",
+    bpm: [60, 80],
+    swing: 0,
+    activePads: [2, 9, 15],
+    patterns: [
+      {
+        0: [0.6, 0, 0.6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.58, 0, 0.6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        15: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35],
+      },
+    ],
+  },
+  // ── Space / kosmische: the Berlin-school counterpart to drone. Tempo
+  // present, everything smeared.
+  {
+    id: "ambient.space",
+    genre: "ambient",
+    name: "Space (kosmische)",
+    bpm: [90, 110],
+    swing: 0,
+    activePads: [0, 8, 11, 15],
+    patterns: [
+      {
+        0: [0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.42, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.38, 0, 0, 0, 0, 0],
+        15: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3],
+      },
+    ],
+  },
+  // ── New age: harp and bells, no percussion, warm and devotional. A
+  // real and still-produced ambient lineage (Kitaro, Deuter).
+  {
+    id: "ambient.newage",
+    genre: "ambient",
+    name: "New Age (harp)",
+    bpm: [70, 90],
+    swing: 0,
+    activePads: [9, 11, 14, 15],
+    patterns: [
+      {
+        0: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35, 0.4],
+      },
+    ],
+  },
+  // ── Noise / harsh ambient: the industrial edge. Harsh, granular,
+  // deliberately uncomfortable in the way health-and-safety ambient is.
+  {
+    id: "ambient.noise",
+    genre: "ambient",
+    name: "Noise (harsh)",
+    bpm: [60, 90],
+    swing: 0,
+    activePads: [3, 7, 13, 14],
+    patterns: [
+      {
+        0: [0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        3: [0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        6: [0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        9: [0, 0, 0, 0, 0, 0, 0.42, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        13: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0],
+      },
+    ],
+  },
+  // ── Environmental: field recordings as the music. Leaves, water, rooms —
+  // the city-listening ambient that Brian Eno documented.
+  {
+    id: "ambient.environmental",
+    genre: "ambient",
+    name: "Environmental (field)",
+    bpm: [70, 95],
+    swing: 0,
+    activePads: [7, 9, 15],
+    patterns: [
+      {
+        0: [0.4, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0.35, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.38, 0, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0.32, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        15: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3],
+      },
+    ],
+  },
+
 ]);
