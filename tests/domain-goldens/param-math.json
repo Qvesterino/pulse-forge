@@ -518,6 +518,14 @@
             "highMidQ": 1,
             "highShelfFreq": 6000,
             "highShelfGain": 0,
+            "free1Freq": 1000,
+            "free1Gain": 0,
+            "free1Q": 2,
+            "free1Type": 0,
+            "free2Freq": 3000,
+            "free2Gain": 0,
+            "free2Q": 2,
+            "free2Type": 0,
             "lowGain": 0,
             "lowFreq": 120,
             "midGain": 0,
@@ -575,6 +583,8 @@
             "knee": 6,
             "detector": 0,
             "scHpf": 20,
+            "scMode": 0,
+            "scBandHz": 6500,
             "autoRelease": 0,
             "makeup": 0,
             "mix": 1
@@ -1750,6 +1760,50 @@
         260,
         500,
         500
+      ]
+    },
+    {
+      "name": "clampEffectParam compressor:scMode",
+      "operation": "clampEffectParam",
+      "input": {
+        "type": "compressor",
+        "paramId": "scMode",
+        "probes": [
+          -100,
+          0,
+          0.5,
+          1,
+          101
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        0.5,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "clampEffectParam compressor:scBandHz",
+      "operation": "clampEffectParam",
+      "input": {
+        "type": "compressor",
+        "paramId": "scBandHz",
+        "probes": [
+          1900,
+          2000,
+          7000,
+          12000,
+          12100
+        ]
+      },
+      "expected": [
+        2000,
+        2000,
+        7000,
+        12000,
+        12000
       ]
     },
     {
