@@ -6,6 +6,7 @@ import { noteEventsInWindow } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import type { Transport } from "../transport/Transport";
+import type { SchedulerDriver } from "./schedulerDriver";
 
 export interface SchedulerDeps {
   getProject(): ProjectDocument;
@@ -184,6 +185,15 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   /** Fast flip-commit loop — non-null only while a tempo flip is pending. */
   private flipTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Wave 3 (RT robustness): audio-clock driver installed via setDriver().
+   * When present it REPLACES the 25 ms setInterval as the tick source —
+   * ticker messages (and the driver's own stall watchdog) drive tick()
+   * instead of a main-thread timer. start() falls back to the interval
+   * when no driver was installed (tests, degraded hosts).
+   */
+  private driver: SchedulerDriver | null = null;
+  private driverActive = false;
   /** Last invalid active-pattern signature reported by this scheduler. */
   private invalidPatternSignature: string | null = null;
   /**
@@ -253,7 +263,18 @@ export class Scheduler {
   /** Marker ids scheduled to fire in the current window (deferred trigger). */
   private pendingMarkers: { assetId: string | null; when: number; trackId?: string }[] = [];
   /** `failedWindows` = scheduling windows skipped after an exception (see tick). */
-  stats = { scheduledEvents: 0, lastHorizonTick: 0, windows: 0, failedWindows: 0, flipFastCommits: 0 };
+  stats = {
+    scheduledEvents: 0,
+    lastHorizonTick: 0,
+    windows: 0,
+    failedWindows: 0,
+    flipFastCommits: 0,
+    // Wave 3 driver observability (populated from the driver each tick).
+    driverKind: "none",
+    driverTickerTicks: 0,
+    driverWatchdogTicks: 0,
+    driverMaxTickerGapMs: 0,
+  };
   private listeners = new Set<() => void>();
   private loopBoundaryListeners = new Set<(boundary: LoopTakeBoundary) => void>();
   private pendingLoopBoundary: LoopTakeBoundary | null = null;
@@ -400,8 +421,18 @@ export class Scheduler {
     return this.pendingLaunch?.patternId ?? null;
   }
 
+  /**
+   * Install the tick driver (Wave 3). Must be called BEFORE start() while
+   * the scheduler is idle; a live scheduler keeps its current driver.
+   * Without a driver the scheduler behaves exactly as before (25 ms timer).
+   */
+  setDriver(driver: SchedulerDriver): void {
+    if (this.timer !== null || this.driverActive) return;
+    this.driver = driver;
+  }
+
   start(): void {
-    if (this.timer !== null) return;
+    if (this.timer !== null || this.driverActive) return;
     const transport = this.deps.getTransport();
     this.windowStartTick = Math.max(0, transport.position);
     this.stopped = false;
@@ -411,7 +442,15 @@ export class Scheduler {
     // first beat even when start() is called mid-bar (e.g. play at 0 with a
     // 2-bar count-in starts the transport two bars early).
     this.clickCursor = Math.max(0, transport.position);
-    this.timer = setInterval(() => this.tick(), INTERVAL_MS);
+    if (this.driver) {
+      // The driver (audio-clock ticker + stall watchdog) owns the cadence;
+      // its callback signature carries the ticker's audio time, which tick()
+      // does not need (it reads ctx.currentTime through deps.getAudioTime()).
+      this.driverActive = true;
+      this.driver.start(() => this.tick());
+    } else {
+      this.timer = setInterval(() => this.tick(), INTERVAL_MS);
+    }
     this.tick();
   }
 
@@ -425,6 +464,10 @@ export class Scheduler {
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.driverActive) {
+      this.driverActive = false;
+      this.driver?.stop();
     }
     // A queued scene launch survives a stop as an immediate switch — the user
     // asked for that pattern; stopping should not silently discard the choice.
@@ -535,6 +578,16 @@ export class Scheduler {
     if (!transport.playing) {
       this.stop();
       return;
+    }
+    // Wave 3 driver observability: mirror the driver's counters into stats
+    // so diagnostics show which tick source is alive and how healthy the
+    // ticker cadence is (maxTickerGapMs spikes = main-thread stalls).
+    if (this.driver) {
+      const ds = this.driver.getStats();
+      this.stats.driverKind = ds.kind;
+      this.stats.driverTickerTicks = ds.tickerTicks;
+      this.stats.driverWatchdogTicks = ds.watchdogTicks;
+      this.stats.driverMaxTickerGapMs = Math.round(ds.maxTickerGapMs);
     }
     // Tempo-seam flip (roadmap 2.2): the playhead crossed the scheduled
     // boundary — re-anchor the transport now. The fast committer below

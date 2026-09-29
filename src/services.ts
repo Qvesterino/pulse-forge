@@ -14,6 +14,7 @@ import { MorphPresetRepository } from "./persistence/MorphPresetRepository";
 import { UltinaPresetRepository } from "./persistence/UltinaPresetRepository";
 import { installSaveUnloadGuards } from "./persistence/save-lifecycle";
 import { CrashJournalRepository } from "./persistence/crashJournal";
+import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { processorErrorCount } from "./audio-worklets/processor-errors";
 import type {
   IFrozenBufferRepository,
@@ -628,6 +629,19 @@ export async function openProject(
     void ensureWorkletsForDoc(store.doc, engine.ensureContext());
   } catch (error) {
     console.error("[openProject] AudioContext unavailable at open — worklet preload deferred:", error);
+  }
+  // Wave 3 (RT robustness): drive the scheduler from the AUDIO clock when a
+  // realtime context exists — the ticker worklet is primary and the driver's
+  // own timer watchdog covers stalls (suspended context, missing module).
+  // Without a context the scheduler keeps the legacy 25 ms interval (the
+  // driver seam simply stays unset). The driver's lifecycle is the
+  // scheduler's: start()/stop() arm and tear it down with playback.
+  try {
+    const schedulerDriver = createSchedulerDriver(engine.ensureContext());
+    if (schedulerDriver) scheduler.setDriver(schedulerDriver);
+  } catch {
+    // No realtime context at open (blocked embed, iOS cap) — the legacy
+    // interval keeps working for this scheduler instance's lifetime.
   }
   transport.seek(0);
   const playback = new PlaybackController(

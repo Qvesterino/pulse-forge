@@ -40,8 +40,10 @@ class RtTickerProcessor extends AudioWorkletProcessor {
     if (++this.counter >= this.intervalBlocks) {
       this.counter = 0;
       this.ticks++;
-      // `currentTime` and `quantum` are worklet globals (seconds / 128).
-      this.port.postMessage({ type: "tick", time: currentTime, quantum, seq: this.ticks });
+      // `currentTime` is the audio-clock time. The render quantum has no
+      // portable global (Chrome throws on the spec's `renderQuantum`), and
+      // it is the fixed 128 in every current browser — hardcode it.
+      this.port.postMessage({ type: "tick", time: currentTime, quantum: 128, seq: this.ticks });
     }
     return true;
   }

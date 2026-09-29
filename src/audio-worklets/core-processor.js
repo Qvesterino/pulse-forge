@@ -1,3 +1,4 @@
+import "./rt-ticker-processor.js";
 import "./sidechain-processor.js";
 import "./transient-processor.js";
 import "./gate-processor.js";

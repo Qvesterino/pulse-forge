@@ -1,5 +1,8 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
 import type { DrumPad } from "./project-model/types";
+import { Scheduler } from "./scheduler/Scheduler";
+import { Transport } from "./transport/Transport";
+import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-library/factory";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
@@ -5698,6 +5701,89 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   } catch (error) {
     check("PDC export alignment browser suite", false, String(error));
+  }
+
+  // ── Wave 3: RT scheduler driver (audio-clock ticker) ──────
+  // 1. The ticker worklet is registered in the core bundle, gets pulled by
+  //    the graph, and its message cadence/timestamps follow the AUDIO clock.
+  // 2. End-to-end seam: a live scheduler driven by createSchedulerDriver()
+  //    plans windows from ticker messages while the transport plays.
+  try {
+    const ctx = new AudioContext();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      await loadCoreWorklets(ctx);
+      const node = new AudioWorkletNode(ctx, "rt-ticker-processor", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        processorOptions: { intervalBlocks: 4 },
+      });
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      node.connect(mute).connect(ctx.destination);
+      const times: number[] = [];
+      node.port.onmessage = (ev: MessageEvent) => {
+        const m = ev.data as { type?: string; time?: number } | null;
+        if (m?.type === "tick" && typeof m.time === "number") times.push(m.time);
+      };
+      await new Promise((r) => setTimeout(r, 600));
+      node.disconnect();
+      mute.disconnect();
+      const span = times.length >= 2 ? times[times.length - 1] - times[0] : 0;
+      const expected = times.length >= 2 ? ((times.length - 1) * 4 * 128) / ctx.sampleRate : 0;
+      const monotonic = times.every((t, i) => i === 0 || t > times[i - 1]);
+      check(
+        "rt-ticker: audio-clock tick source registered, cadence matches intervalBlocks, timestamps monotonic",
+        times.length >= 20 && monotonic && Math.abs(span - expected) < 0.05 * Math.max(expected, 1e-6),
+        `ticks=${times.length} span=${span.toFixed(3)}s expected=${expected.toFixed(3)}s mono=${monotonic}`,
+      );
+    } finally {
+      await ctx.close();
+    }
+  } catch (error) {
+    check("rt-ticker browser suite", false, String(error));
+  }
+  try {
+    const ctx = new AudioContext();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      await loadCoreWorklets(ctx);
+      const { AudioEngine: Engine } = await import("./audio-engine/AudioEngine");
+      const doc = createProjectFromTemplate("house");
+      const engine = new Engine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      const transport = new Transport({ now: () => ctx.currentTime }, doc.bpm);
+      const scheduler = new Scheduler({
+        getProject: () => doc,
+        getTransport: () => transport,
+        getAudioTime: () => ctx.currentTime,
+        getMode: () => "pattern",
+        trigger: () => {},
+        noteOn: () => {},
+        applyAutomation: () => {},
+        applyPatternLaunch: () => {},
+      });
+      const driver = createSchedulerDriver(ctx);
+      if (driver) scheduler.setDriver(driver);
+      transport.play(0, { leadIn: false });
+      scheduler.start();
+      await new Promise((r) => setTimeout(r, 700));
+      scheduler.stop();
+      transport.stop();
+      const s = scheduler.stats;
+      check(
+        "scheduler driver: audio-clock ticker drives live playback windows end-to-end",
+        !!driver && s.driverKind === "audio-ticker" && s.driverTickerTicks > 10 && s.windows > 5,
+        `kind=${s.driverKind} tickerTicks=${s.driverTickerTicks} windows=${s.windows} watchdogTicks=${s.driverWatchdogTicks} maxGap=${s.driverMaxTickerGapMs}ms`,
+      );
+    } finally {
+      await ctx.close();
+    }
+  } catch (error) {
+    check("scheduler driver browser suite", false, String(error));
   }
 
   return results;
