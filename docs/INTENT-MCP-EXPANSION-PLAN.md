@@ -178,7 +178,7 @@ disable/answer`), pending-call map + 10 s timeout per forwarded call
   client config (command/args/env) to paste into the MCP client
 - Opt-in: the bridge does not exist until the user flips the chip
 
-### D3. Web transport (streamable HTTP)
+### D3. Web transport (streamable HTTP) — SHIPPED
 
 - `server/collab-server.mjs` hosts `/mcp` (streamable HTTP) beside the
   gallery API — one process, one port (same deployment)
@@ -188,6 +188,13 @@ disable/answer`), pending-call map + 10 s timeout per forwarded call
 - Auth: session token issued by the KYX UI on explicit user enable (same
   opt-in shape as `pf:stt-model` / `pf:intent-model`); no anonymous tool
   calls
+- WIRING (shipped): server opts in via `MCP_TOKEN` env; the renderer ⚡ chip
+  (browser branch) starts/stops `src/mcp/bridge.ts` against the ACTIVE
+  collab server (`src/mcp/web-host.ts` — `?server=` override rides the
+  shared `isAllowedServerUrl` gate; token persisted under
+  `pf:mcp-relay-token`, opt-in under `pf:mcp-relay-enabled`; App re-arms
+  the bridge on services swaps). External client config (streamable-HTTP
+  URL + Bearer token) is shown/copyable in the chip
 
 ### D4. Security guards (non-negotiable)
 
