@@ -25,7 +25,7 @@ import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
 import type { ProjectDocument } from "../src/project-model/types";
 
-const DATASET_VERSION = 2;
+const DATASET_VERSION = 4;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
 
 /** Fixed dataset document: deterministic ids, role scenes, two clips. */
@@ -110,7 +110,7 @@ function corpus(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
         "change the key to D minor",
         "set key to F# minor",
         "transpose the lead up one octave",
-        "transpose the bass down 3 semitones",
+        "transpose the bass down three semitones",
         "pattern length to 32",
         "length to 64",
         // gain dB
@@ -311,7 +311,7 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   const en: string[] = [];
   const sk: string[] = [];
 
-  // fader: direction × target × amount
+  // ── FADER: direction × target × amount ──────────────────────────────────
   for (const verb of ["turn down", "lower", "quiet down"]) {
     for (const target of ["drums", "bass", "lead", "chords"]) {
       for (const tail of ["", " a bit", " a lot", " completely"]) {
@@ -324,115 +324,636 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
     for (const target of ["drums", "bass", "lead", "chords"]) {
       en.push(`${verb} the ${target}`);
       en.push(`${verb} the ${target} a bit`);
+      en.push(`${verb} the ${target} a lot`);
     }
   }
-  // fader: absolute set × target × percent
-  for (const target of ["bass", "drums", "lead", "master"]) {
-    for (const pct of [0, 20, 35, 50, 75, 100]) {
-      en.push(`set the ${target} to ${pct}%`);
-    }
+  for (const target of ["drums", "bass", "lead", "chords", "master"]) {
+    en.push(`quieter ${target}`);
+    en.push(`louder ${target}`);
   }
-  // fader: relative percent
-  for (const target of ["bass", "drums", "lead"]) {
-    for (const pct of [5, 10, 25, 40]) {
+  // fader on PAD families ("turn down the kick")
+  for (const pad of ["kick", "snare", "hat"]) {
+    en.push(`turn down the ${pad}`);
+    en.push(`raise the ${pad}`);
+    en.push(`quieter ${pad}`);
+    en.push(`louder ${pad}`);
+  }
+  // fader: relative percent (down AND up)
+  for (const target of ["bass", "drums", "lead", "chords"]) {
+    for (const pct of [5, 10, 15, 25, 40]) {
       en.push(`turn down the ${target} by ${pct} percent`);
       en.push(`raise the ${target} by ${pct} percent`);
     }
   }
+  // fader: absolute set × target × percent
+  for (const target of ["bass", "drums", "lead", "chords", "master"]) {
+    for (const pct of [0, 10, 20, 25, 35, 50, 60, 75, 90, 100]) {
+      en.push(`set the ${target} to ${pct}%`);
+    }
+  }
+  for (const pad of ["kick", "snare", "hat"]) {
+    for (const pct of [0, 25, 50, 75, 100]) {
+      en.push(`set the ${pad} to ${pct}%`);
+    }
+  }
   // SK fader
-  for (const target of ["basu", "bicie", "lead"]) {
+  for (const target of ["basu", "bicie", "lead", "chords", "master"]) {
     for (const tail of ["", " trochu", " o dosť", " úplne"]) {
       sk.push(`zníž ${target}${tail}`);
     }
     sk.push(`zvýš ${target}`);
+    sk.push(`zvýš ${target} trochu`);
   }
-  // SK absolute
-  for (const target of ["basu", "master", "kick"]) {
+  sk.push("kick hlasnejší");
+  sk.push("kick tichší");
+  sk.push("snare hlasnejší");
+  sk.push("haty hlasnejšie");
+  sk.push("haty tichšie");
+  for (const target of ["basu", "master", "kick", "lead", "bicie"]) {
     for (const pct of [0, 25, 50, 80, 100]) {
       sk.push(`nastav ${target} na ${pct} %`);
     }
   }
+  for (const target of ["basu", "bicie", "lead"]) {
+    for (const pct of [5, 10, 20, 25]) {
+      sk.push(`zníž ${target} o ${pct} %`);
+      sk.push(`zvýš ${target} o ${pct} %`);
+    }
+  }
 
-  // mute/solo × target
+  // ── MUTE / SOLO / PAN ────────────────────────────────────────────────────
   for (const verb of ["mute", "unmute", "solo", "unsolo"]) {
     for (const target of ["drums", "bass", "lead", "chords"]) {
       en.push(`${verb} the ${target}`);
     }
   }
+  en.push("mute all");
+  for (const pad of ["kick", "snare", "claps", "hats"]) {
+    en.push(`mute the ${pad}`);
+    en.push(`unmute the ${pad}`);
+    en.push(`center the ${pad}`);
+  }
+  en.push("solo the hats");
   for (const verb of ["vypni", "zapni"]) {
-    for (const target of ["basu", "bicie", "lead"]) {
+    for (const target of ["basu", "bicie", "lead", "chords"]) {
       sk.push(`${verb} ${target}`);
     }
   }
-
-  // pan × direction × magnitude
-  for (const target of ["bass", "lead", "hats"]) {
+  sk.push("solo bicie");
+  sk.push("solo basu");
+  for (const target of ["bass", "lead", "hats", "drums", "chords", "snare"]) {
     for (const dir of ["left", "right"]) {
       for (const mag of [10, 30, 60, 90]) {
         en.push(`pan the ${target} ${dir} ${mag}`);
+        en.push(`pan the ${target} ${mag}% ${dir}`);
       }
     }
     en.push(`center the ${target}`);
   }
+  sk.push("pan basu 30 pravo");
+  sk.push("pan lead 20 lavo");
 
-  // tempo set × bpm grid
+  // ── TEMPO / KEY / TRANSPOSE / LENGTH ─────────────────────────────────────
   for (const bpm of [90, 100, 110, 120, 128, 132, 140, 150, 160, 174]) {
     en.push(`set tempo to ${bpm}`);
+    en.push(`set tempo to ${bpm} bpm`);
+    en.push(`tempo ${bpm}`);
     en.push(`${bpm} bpm`);
   }
-  for (const bpm of [90, 120, 128, 140, 150]) {
+  en.push("make it faster");
+  en.push("make it slower");
+  en.push("speed up");
+  en.push("slow down");
+  en.push("slow it down");
+  for (const bpm of [90, 120, 128, 140, 150, 174]) {
     sk.push(`tempo na ${bpm}`);
   }
+  sk.push("tempo dole");
+  sk.push("tempo hore");
+  sk.push("spomal to");
+  for (const key of ["A minor", "E minor", "C major", "G major", "F major", "D minor"]) {
+    en.push(`change the key to ${key}`);
+    en.push(`set key to ${key}`);
+  }
+  for (const target of ["lead", "bass", "chords"]) {
+    for (const dir of ["up", "down"]) {
+      for (const count of ["one", "two", "three"]) {
+        en.push(`transpose the ${target} ${dir} ${count} octave${count === "one" ? "" : "s"}`);
+      }
+      for (const st of ["one", "two", "three"]) {
+        en.push(`transpose the ${target} ${dir} ${st} semitone${st === "one" ? "" : "s"}`);
+      }
+    }
+  }
+  for (const steps of [16, 32, 64, 128]) {
+    en.push(`pattern length to ${steps}`);
+    en.push(`length to ${steps}`);
+  }
 
-  // effect × target × direction (no effect instance needed for parse)
-  for (const effect of ["reverb", "delay", "chorus", "distortion", "tremolo"]) {
-    for (const target of ["lead", "bass", "chords"]) {
+  // ── GAIN dB ──────────────────────────────────────────────────────────────
+  for (const target of ["drums", "bass", "lead", "chords", "mix"]) {
+    for (const db of [0.5, 1, 1.5, 2, 3]) {
+      en.push(`boost the ${target} by ${db} dB`);
+      en.push(`lower the ${target} by ${db} dB`);
+    }
+  }
+
+  // ── TRACK CRUD ───────────────────────────────────────────────────────────
+  for (const instrument of ["808", "bass", "keys", "pluck", "flute", "acid", "strings", "bells"]) {
+    en.push(`add an ${instrument} track`);
+  }
+  en.push("add a drum track");
+  en.push("add a track");
+  for (const target of ["drums", "bass", "lead", "chords"]) {
+    en.push(`delete the ${target} track`);
+    en.push(`duplicate the ${target} track`);
+  }
+  en.push('rename the bass to "sub bass"');
+  en.push('rename the lead to "top line"');
+
+  // ── TRANSPORT / APP ──────────────────────────────────────────────────────
+  for (const word of ["play", "stop", "pause", "save", "export", "record"]) {
+    en.push(`please ${word}`);
+  }
+  en.push("stop recording");
+  en.push("start recording");
+  en.push("save the project");
+  en.push("save it");
+  en.push("export the project as mp3");
+  en.push("export the project as wav");
+  sk.push("stoj");
+  sk.push("metronome vypni");
+  sk.push("zruš nahrávanie");
+
+  // ── SELECT ───────────────────────────────────────────────────────────────
+  en.push("select the chords");
+  sk.push("vyber bicie");
+  sk.push("vyber lead");
+
+  // ── PRESETS ──────────────────────────────────────────────────────────────
+  for (const name of ["Warm Sub", "House Chords", "Reese"]) {
+    for (const target of ["bass", "chords", "lead"]) {
+      en.push(`load the ${name} preset on the ${target}`);
+    }
+  }
+  en.push("load the warm preset on the lead");
+  sk.push("načítaj preset reese na leade");
+
+  // ── EFFECT INTENTS ───────────────────────────────────────────────────────
+  for (const effect of [
+    "reverb",
+    "delay",
+    "chorus",
+    "distortion",
+    "saturation",
+    "compressor",
+    "eq",
+    "flanger",
+    "phaser",
+    "tremolo",
+    "bitcrusher",
+    "pump",
+  ]) {
+    for (const target of ["lead", "bass", "chords", "drums"]) {
       en.push(`more ${effect} on the ${target}`);
       en.push(`less ${effect} on the ${target}`);
       en.push(`remove ${effect} from the ${target}`);
     }
   }
-  // effect absolute set
-  for (const pct of [10, 25, 50, 75, 90]) {
-    en.push(`set the lead reverb mix to ${pct}%`);
+  for (const target of ["lead", "bass", "chords", "drums"]) {
+    for (const pct of [10, 25, 50, 75, 90]) {
+      en.push(`set the ${target} reverb mix to ${pct}%`);
+      en.push(`set the ${target} delay mix to ${pct}%`);
+    }
   }
-  // sends
-  for (const effect of ["reverb", "delay"]) {
-    for (const target of ["lead", "bass", "drums"]) {
+  for (const effect of ["reverb", "delay", "chorus"]) {
+    for (const target of ["leade", "basi"]) {
+      sk.push(`viac ${effect === "reverb" ? "reverbu" : effect} na ${target}`);
+      sk.push(`menej ${effect === "reverb" ? "reverbu" : effect} na ${target}`);
+    }
+    for (const pct of [10, 25, 50, 75]) {
+      sk.push(`nastav ${effect} na leade na ${pct} %`);
+      sk.push(`nastav ${effect} na basi na ${pct} %`);
+    }
+  }
+
+  // ── SENDS ────────────────────────────────────────────────────────────────
+  for (const effect of ["reverb", "delay", "chorus"]) {
+    for (const target of ["lead", "bass", "drums", "chords"]) {
       en.push(`more ${effect} send on the ${target}`);
+      en.push(`less ${effect} send on the ${target}`);
       en.push(`no ${effect} send on the ${target}`);
     }
-    en.push(`set the ${effect} send to 30% on the lead`);
+    for (const pct of [20, 30, 40, 50]) {
+      en.push(`set the ${effect} send to ${pct}% on the lead`);
+    }
   }
-  // bypass
-  for (const effect of ["reverb", "delay", "chorus"]) {
-    for (const target of ["lead", "drums"]) {
+
+  // ── BYPASS ───────────────────────────────────────────────────────────────
+  for (const effect of ["reverb", "delay", "chorus", "saturation"]) {
+    for (const target of ["lead", "drums", "bass", "chords"]) {
       en.push(`bypass the ${effect} on the ${target}`);
       en.push(`enable the ${effect} on the ${target}`);
     }
   }
 
-  // production × concept × target (subset grid — full grid is huge)
-  const concepts = ["darker", "brighter", "punchier", "warmer", "deeper", "wider"];
-  for (const concept of concepts) {
+  // ── MIX PROFILE ──────────────────────────────────────────────────────────
+  for (const ask of [
+    "more reverb",
+    "wetter mix",
+    "less reverb",
+    "drier mix",
+    "dry it up",
+    "huge reverb",
+    "more punch",
+    "punchier",
+    "tighter mix",
+    "softer drums",
+    "no pump",
+    "without sidechain",
+    "sidechain",
+    "ducking",
+    "darker",
+    "brighter",
+    "warmer",
+    "colder",
+    "darker mix",
+    "brighter mix",
+    "warmer mix",
+    "colder mix",
+  ]) {
+    en.push(ask);
+  }
+  for (const ask of [
+    "viac dozvuku",
+    "menej dozvuku",
+    "obri dozvuk",
+    "bez pumpy",
+    "tmavší mix",
+    "svetlejší mix",
+    "teplejší mix",
+    "razantnejšie",
+    "menej razantné",
+  ]) {
+    sk.push(ask);
+  }
+
+  // ── LOUDNESS ─────────────────────────────────────────────────────────────
+  for (const ask of [
+    "make it louder",
+    "make it quieter",
+    "louder",
+    "quieter",
+    "loudness to -9",
+    "loudness to -14",
+    "-9 lufs",
+    "-14 lufs",
+  ]) {
+    en.push(ask);
+  }
+  for (const ask of ["loudness na -9", "loudness na -12", "hlasnejšie", "tichšie"]) {
+    sk.push(ask);
+  }
+
+  // ── PRODUCTION ───────────────────────────────────────────────────────────
+  for (const concept of ["darker", "brighter", "punchier", "warmer", "deeper", "wider", "grittier"]) {
+    for (const target of ["drums", "bass", "lead", "chords"]) {
+      en.push(`make the ${target} ${concept}`);
+    }
+  }
+  for (const concept of ["telephone", "robotic", "tape", "lofi", "wobbly", "metallic", "stutter", "glue"]) {
     for (const target of ["drums", "bass", "lead"]) {
       en.push(`make the ${target} ${concept}`);
     }
   }
-
-  // transport / app bare words with polite wrappers
-  for (const word of ["play", "stop", "pause", "save", "export", "record"]) {
-    en.push(`please ${word}`);
+  for (const tail of [" a lot", " slightly", " much more"]) {
+    for (const target of ["drums", "bass", "lead"]) {
+      en.push(`make the ${target} darker${tail}`);
+      en.push(`make the ${target} punchier${tail}`);
+    }
+  }
+  for (const skTarget of ["basu", "bicie", "lead"]) {
+    for (const skConcept of ["hlbšiu", "razantnejšie", "teplejšiu", "sirošiu"]) {
+      sk.push(`sprav ${skTarget} ${skConcept}`);
+    }
+  }
+  for (const ask of ["hlbší bas", "razantnejšie bicie", "siroší lead", "teplejší bas"]) {
+    sk.push(ask);
   }
 
-  // typo variants — one edit away, the typo layer offers the fix
-  for (const base of ["mute the drums", "solo the bass", "pan the lead left 30", "stop", "record"]) {
+  // ── REVISE (content sliders, targeted variants included) ─────────────────
+  for (const ask of [
+    "more energetic",
+    "less energetic",
+    "more energy",
+    "less energy",
+    "busier",
+    "denser",
+    "less busy",
+    "sparser",
+    "calmer",
+  ]) {
+    for (const scope of ["", " in the bridge", " in the chorus", " in the intro", " in the outro"]) {
+      en.push(`${ask}${scope}`);
+    }
+  }
+  for (const ask of ["viac energie", "menej energie", "hustejšie", "menej husté"]) {
+    for (const scope of ["", " v moste", " v refrene", " v intru"]) {
+      sk.push(`${ask}${scope}`);
+    }
+  }
+
+  // ── CLIPS ────────────────────────────────────────────────────────────────
+  for (const bar of [9, 10, 13]) {
+    en.push(`copy the intro clip to bar ${bar}`);
+  }
+  for (const bar of [9, 10]) {
+    en.push(`move the drop clip to bar ${bar}`);
+  }
+  for (const bar of [1, 5]) {
+    for (const bars of [2, 3]) {
+      en.push(`trim the clip at bar ${bar} to ${bars} bars`);
+    }
+  }
+  for (const bar of [5, 8]) {
+    en.push(`delete the clip at bar ${bar}`);
+  }
+  for (const bar of [9, 10]) {
+    sk.push(`kopíruj intro clip na takt ${bar}`);
+  }
+
+  // ── ARRANGE ──────────────────────────────────────────────────────────────
+  for (const bars of [1, 2, 3]) {
+    en.push(`shorten the intro to ${bars} bars`);
+  }
+  en.push("lengthen the drop to 8 bars");
+  en.push("add a break before the drop");
+  en.push("add an intro before the drop");
+  en.push("duplicate the drop");
+  en.push("duplicate the intro");
+  en.push("remove the intro");
+  en.push("remove the break");
+  en.push("auto-arrange into a song");
+  sk.push("usporiadaj do pesničky");
+  for (const bars of [1, 2]) {
+    sk.push(`skráť intro na ${bars} takty`);
+  }
+  sk.push("pridaj break pred drop");
+
+  // ── COMPOUNDS (mixed executors, mixed languages) ─────────────────────────
+  en.push("set tempo to 128 and mute the drums");
+  en.push("more reverb on the lead and turn down the drums");
+  en.push("set the bass to 50% and set tempo to 140");
+  en.push("louder drums and more punch");
+  en.push("enable the delay on the lead and quiet down the bass");
+  sk.push("zníž bicie a zvýš basu");
+  sk.push("viac delayu na leade a mute the bass");
+  sk.push("mlčanie na leade a zvýš basu");
+
+  // ── CLARIFY (declined asks teach the model to ask, not to guess) ─────────
+  en.push("more delay");
+  en.push("turn down");
+  en.push("set the reverb decay to 40%");
+
+  // ── TYPO VARIANTS (one edit away — the typo layer offers the fix) ────────
+  for (const base of [
+    "mute the drums",
+    "solo the bass",
+    "pan the lead left 30",
+    "stop",
+    "record",
+    "select the bass",
+    "export wav",
+  ]) {
     const tokens = base.split(" ");
     const mutated = tokens.map((t, i) => (i === 1 ? t + "x" : t)).join(" ");
     en.push(mutated);
   }
 
-  // mixed-language sentences (SK verb + EN target/fx — real producer slang)
+  // ── WAVE 2: finer numeric grids + new verb families ─────────────────────
+  // fader absolute: full 5%-step grid
+  for (const target of ["bass", "drums", "lead", "chords", "master"]) {
+    for (const pct of [15, 30, 45, 65, 85]) {
+      en.push(`set the ${target} to ${pct}%`);
+    }
+  }
+  for (const target of ["basu", "master", "kick", "lead", "bicie"]) {
+    for (const pct of [15, 30, 70, 90]) {
+      sk.push(`nastav ${target} na ${pct} %`);
+    }
+  }
+  // fader relative: finer percent
+  for (const target of ["bass", "drums", "lead", "chords"]) {
+    for (const pct of [30, 60, 85]) {
+      en.push(`turn down the ${target} by ${pct} percent`);
+      en.push(`raise the ${target} by ${pct} percent`);
+    }
+  }
+  for (const target of ["basu", "bicie", "lead"]) {
+    for (const pct of [15, 30, 50]) {
+      sk.push(`zníž ${target} o ${pct} %`);
+      sk.push(`zvýš ${target} o ${pct} %`);
+    }
+  }
+  // SK fader: the other proven verb stems
+  for (const target of ["basu", "bicie", "mix", "lead"]) {
+    sk.push(`stíš ${target}`);
+    sk.push(`zosilni ${target}`);
+    sk.push(`ztlm ${target}`);
+    sk.push(`posilni ${target}`);
+  }
+  // pan: wider magnitude grid (extends the closed pan value set)
+  for (const target of ["bass", "lead", "hats", "drums", "chords", "snare"]) {
+    for (const dir of ["left", "right"]) {
+      for (const mag of [15, 25, 50, 75]) {
+        en.push(`pan the ${target} ${mag}% ${dir}`);
+        en.push(`pan the ${target} ${dir} ${mag}`);
+      }
+    }
+  }
+  // mute/solo everything-family + 808 alias
+  en.push("unmute all");
+  en.push("solo all");
+  en.push("mute the 808");
+  en.push("unmute the 808");
+  // tempo: extended bpm grid
+  for (const bpm of [95, 115, 126, 138, 155, 170]) {
+    en.push(`set tempo to ${bpm}`);
+    en.push(`set tempo to ${bpm} bpm`);
+    en.push(`tempo ${bpm}`);
+    en.push(`${bpm} bpm`);
+  }
+  // transpose: word-count forms only (the parser accepts one|two|three|an)
+  for (const target of ["lead", "bass", "chords"]) {
+    for (const dir of ["up", "down"]) {
+      en.push(`transpose the ${target} ${dir} two octaves`);
+      en.push(`transpose the ${target} ${dir} three octaves`);
+    }
+  }
+  // key: more sharp-spelled keys
+  for (const key of [
+    "B minor",
+    "F# minor",
+    "C# minor",
+    "G minor",
+    "C minor",
+    "F minor",
+    "A major",
+    "E major",
+    "D major",
+  ]) {
+    en.push(`change the key to ${key}`);
+    en.push(`set key to ${key}`);
+  }
+  // gainDb: more verbs + master/808 + SK grid
+  for (const verb of ["raise", "increase", "cut", "reduce"]) {
+    for (const target of ["drums", "bass", "mix", "master", "808"]) {
+      for (const db of [1, 2, 3]) {
+        en.push(`${verb} the ${target} by ${db} dB`);
+      }
+    }
+  }
+  for (const verb of ["zníž", "zvýš"]) {
+    for (const target of ["basu", "bicie", "mix"]) {
+      for (const db of [1, 2, 3]) {
+        sk.push(`${verb} ${target} o ${db} db`);
+      }
+    }
+  }
+  sk.push("hlasnejšie bicie o 2 db");
+  sk.push("tichší mix o 1.5 db");
+  // CRUD: more instruments + "new" article
+  for (const instrument of [
+    "organ",
+    "brass",
+    "fm",
+    "reese",
+    "wavetable",
+    "granular",
+    "sampler",
+    "logdrum",
+    "vocal chops",
+    "drumsynth",
+  ]) {
+    en.push(`add an ${instrument} track`);
+  }
+  en.push("add a new keys track");
+  en.push("add a new bass track");
+  // effects: role targets ("add reverb to the drop") + add-form + no-form
+  for (const effect of ["reverb", "delay", "chorus", "distortion", "saturation", "compressor", "eq"]) {
+    for (const role of ["drop", "bridge"]) {
+      en.push(`add ${effect} to the ${role}`);
+      en.push(`more ${effect} on the ${role}`);
+      en.push(`less ${effect} on the ${role}`);
+    }
+    for (const target of ["lead", "bass", "chords", "drums"]) {
+      en.push(`add ${effect} to the ${target}`);
+      en.push(`no ${effect} on the ${target}`);
+    }
+  }
+  for (const pct of [25, 50]) {
+    for (const target of ["lead", "bass"]) {
+      en.push(`set the ${target} chorus mix to ${pct}%`);
+      en.push(`set the ${target} saturation mix to ${pct}%`);
+    }
+  }
+  sk.push("viac reverbu na akordoch");
+  sk.push("viac delayu na bicie");
+  // sends: add-form grid + set on more targets
+  for (const effect of ["reverb", "delay", "chorus"]) {
+    for (const target of ["lead", "bass", "drums", "chords"]) {
+      en.push(`add ${effect} send to the ${target}`);
+    }
+    for (const pct of [20, 30, 40, 50]) {
+      en.push(`set the ${effect} send to ${pct}% on the bass`);
+    }
+  }
+  // mix profile: remaining regex-proven asks
+  en.push("huge space");
+  en.push("softer hit");
+  en.push("more sidechain");
+  en.push("pumping");
+  en.push("ducking");
+  en.push("wetter");
+  en.push("drier");
+  sk.push("viac ozveny");
+  sk.push("menej ozveny");
+  // loudness: more explicit targets
+  en.push("loudness to -7");
+  en.push("loudness to -12");
+  en.push("-7 lufs");
+  en.push("-12 lufs");
+  sk.push("loudness na -14");
+  sk.push("loudness na -16");
+  // production: 808/synth/keys aliases + colder-side SK
+  for (const concept of ["darker", "brighter", "punchier", "warmer", "deeper", "wider", "grittier"]) {
+    en.push(`make the 808 ${concept}`);
+    en.push(`make the synth ${concept}`);
+    en.push(`make the keys ${concept}`);
+  }
+  sk.push("sprav bicie svetlejšie");
+  sk.push("sprav lead tmavší");
+  sk.push("hlbšie bicie");
+  sk.push("plnší bas");
+  // revise: bare calmer + drop scope SK
+  en.push("calmer");
+  sk.push("viac energie v dropu");
+  sk.push("menej energie v dropu");
+  // clips: wider grids
+  for (const bar of [14, 17]) {
+    en.push(`copy the intro clip to bar ${bar}`);
+  }
+  for (const bar of [12, 16]) {
+    en.push(`move the drop clip to bar ${bar}`);
+  }
+  for (const bar of [2, 6]) {
+    for (const bars of [1, 2]) {
+      en.push(`trim the clip at bar ${bar} to ${bars} bars`);
+    }
+  }
+  for (const bar of [1, 6]) {
+    en.push(`delete the clip at bar ${bar}`);
+  }
+  sk.push("kopíruj drop clip na takt 9");
+  // arrange: drop-side ops
+  en.push("shorten the drop to 4 bars");
+  en.push("shorten the drop to 2 bars");
+  en.push("lengthen the intro to 6 bars");
+  en.push("lengthen the intro to 8 bars");
+  en.push("duplicate the break");
+  en.push("remove the drop");
+  en.push("add a fill before the drop");
+  // compounds: 10 more mixed-executor combos
+  en.push("mute the drums and boost the mix by 2 dB");
+  en.push("set the kick to 100% and solo the drums");
+  en.push("unsolo the bass and set the lead to 50%");
+  en.push("pan the bass left 30 and quiet down the hats");
+  en.push("load the Warm Sub preset on the bass and set tempo to 140");
+  en.push("transpose the lead up one octave and quiet down the bass");
+  sk.push("zníž tempo a zníž basu");
+  sk.push("viac reverbu na leade a tempo na 128");
+  sk.push("vypni bicie a zvýš basu");
+  sk.push("nastav basu na 50 % a zvýš lead");
+  // clarify: more declined asks
+  en.push("more saturation");
+  en.push("less distortion");
+  en.push("more phaser");
+  // typos: more bases
+  for (const base of [
+    "load the Warm Sub preset on the bass",
+    "loudness to -9",
+    "make it louder",
+    "set the bass to 50%",
+    "more reverb on the lead",
+  ]) {
+    const tokens = base.split(" ");
+    const mutated = tokens.map((t, i) => (i === 1 ? t + "x" : t)).join(" ");
+    en.push(mutated);
+  }
+  // transport: SK save variant
+  sk.push("ulož to");
+
+  // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");
   sk.push("nastav delay na bass to 25%");
   sk.push("bypass reverb na drums prosím");
@@ -528,8 +1049,38 @@ function main(): void {
     "bypass reverb on the drums",
     "please stop",
     "mute the bass a zvýš lead",
+    "make it quieter",
+    "loudness na -9",
+    "tempo dole",
+    "vyber bicie",
+    "set the snare to 100%",
+    "mute the hats",
+    "make the chords warmer",
+    "export the project as mp3",
+    "start recording",
+    "stíš celý mix",
+    "more energetic in the bridge",
+    "wetter mix",
+    "pan basu 30 pravo",
+    "stíš bicie",
+    "pan the lead 50% right",
+    "set tempo to 126",
+    "transpose the bass down three semitones",
+    "set key to B minor",
+    "add reverb to the bridge",
+    "make the 808 deeper",
+    "calmer",
+    "trim the clip at bar 6 to 1 bars",
+    "shorten the drop to 4 bars",
+    "mute the drums and boost the mix by 2 dB",
+    "more energetic in the chorus",
   ];
   const byInstruction = new Map(unique.map((p) => [p.instruction, p]));
+  for (const pick of goldenPicks) {
+    if (!byInstruction.has(pick)) {
+      console.warn(`golden pick missing from the corpus (typo? parser dropped it?): "${pick}"`);
+    }
+  }
   const golden = goldenPicks.map((instruction) => byInstruction.get(instruction)).filter((p) => p != null);
 
   const kindCounts = new Map<string, number>();

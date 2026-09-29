@@ -49,6 +49,21 @@ export { decodeReferenceFile, ReferenceDecodeError, type DecodedReference } from
 export { toMono } from "./audio/mono";
 
 /**
+ * F2 structure — energy curve + section map ("where is what"). Ported from
+ * beat_modifier's analysis pipeline, with section edges snapped to the F1 beat
+ * grid so an imported marker lands on a downbeat.
+ */
+export {
+  averageEnergy,
+  dominantRole,
+  energyCurve,
+  markerTypeForRole,
+  sectionsFromEnergy,
+  sectionsToMarkerSeconds,
+  type StructureOptions,
+} from "./structure";
+
+/**
  * Reference Map → project commands (F4-full). Pure `(doc, map) → Command`
  * functions so a panel can act on an analysis without owning any mutation
  * logic, and so the mapping is testable without React.
@@ -61,7 +76,9 @@ export {
   markerCommand,
   musicalKeyFor,
   secondsToTicks,
+  sectionMarkerCommand,
   type PhraseMarkerOptions,
+  type SectionMarkerOptions,
   type TempoReading,
 } from "./apply";
 

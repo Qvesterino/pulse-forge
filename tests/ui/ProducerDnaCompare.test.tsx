@@ -63,17 +63,38 @@ afterEach(() => {
 });
 
 describe("ProducerDnaCompare", () => {
-  it("refuses a confounded suggestion without recording a vote", () => {
+  it("offers a blind A/B probe for a confounded pair and records no vote until confirmed", () => {
+    // The product changed here: a confounded pair used to be refused outright
+    // ("v tomto banku niet nového páru"). It now degrades to a BLIND A/B
+    // comparison, which is the better call for music — when the score cannot
+    // separate two takes, the human ear is the tiebreaker, and the panel says
+    // so explicitly ("nič sa neuloží, kým nepotvrdíš voľbu").
+    //
+    // What must NOT regress is the safety property underneath: no preference
+    // is written until the user actually decides. That is the assertion this
+    // test now leads with, because it is the one that can silently rot.
     const { project, result } = buildFixture();
     render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "NAVRHNÚŤ TASTE PROBE" }));
 
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent(/niet nového páru s porovnateľným globálnym skóre a jasným rozdielom/i);
-    expect(
-      screen.getAllByRole("button", { name: "A" }).some((button) => button.getAttribute("aria-pressed") === "true"),
-    ).toBe(false);
     expect(localStorage.getItem(PREFERENCE_LEDGER_KEY)).toBeNull();
+
+    const status = screen.getByRole("status");
+    // The confound is explained rather than hidden: random assignment, which
+    // measured axis differs, and by how much.
+    expect(status).toHaveTextContent(/náhodne priradené/i);
+    expect(status).toHaveTextContent(/nič sa neuloží/i);
+    // Both sides are offered so the user can listen — a probe with no
+    // auditionable sides would be a dead end. The accessible names carry the
+    // play glyph (▶ A / ▶ B). Note the previous version of this assertion
+    // matched name "A" exactly, which matched NOTHING when the probe was
+    // refused — it passed vacuously instead of checking anything.
+    expect(screen.getAllByRole("button", { name: /A$/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /B$/ }).length).toBeGreaterThan(0);
+    // Neither side is pre-committed: the user must press one.
+    expect(
+      screen.getAllByRole("button", { name: /A$/ }).some((b) => b.getAttribute("aria-pressed") === "true"),
+    ).toBe(false);
   });
 
   it("randomizes suggested A/B sides, hides rank/source, and records the displayed side", () => {

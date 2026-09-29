@@ -12,8 +12,14 @@
 
 export const REFERENCE_ENGINE_VERSION = "kyx-reference/1.0.0";
 
-/** Schema version of the persisted ReferenceMap shape. Bump + migrate on change. */
-export const REFERENCE_SCHEMA_VERSION = 1;
+/**
+ * Schema version of the persisted ReferenceMap shape. Bump + migrate on change.
+ *
+ * v2 (F2): added the optional `structure` block (energy curve + sections). The
+ * field is optional and additive, so a v1 document still loads — it simply has
+ * no structure to show, which is reported as absent rather than faked.
+ */
+export const REFERENCE_SCHEMA_VERSION = 2;
 
 export const PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
@@ -87,10 +93,46 @@ export interface ReferenceDiagnostics {
   rmsLevel: number;
 }
 
+/**
+ * One section of the "where is what" map (F2).
+ *
+ * Positions are held in BOTH seconds and beats because the two consumers
+ * differ: the waveform overlay and click-to-seek work in seconds, while
+ * marker import works in project ticks and needs the beat anchor. Holding
+ * only one forces the consumer to re-derive the other with a tempo it may not
+ * have.
+ */
+export interface ReferenceSection {
+  role: "intro" | "outro" | "drop" | "breakdown" | "development" | "full";
+  /** Section start, snapped to the nearest detected beat. */
+  startSec: number;
+  endSec: number;
+  /** Index into the F1 beat grid, or null when no tempo was detected. */
+  startBeat: number | null;
+  endBeat: number | null;
+  /** Mean energy over the section, 0..1, relative to the loudest point. */
+  energy: number;
+  /** KYX Marker type this role maps to. */
+  markerType: MarkerType;
+}
+
+/** Mirrors `Marker["type"]` without importing the project model into types.ts. */
+export type MarkerType = "drop" | "buildup" | "riser" | "impact" | "cue" | "custom";
+
+export interface ReferenceStructure {
+  /** Normalized energy samples: position 0..1, energy 0..1. */
+  energyCurve: Array<{ position: number; energy: number }>;
+  sections: ReferenceSection[];
+  /** Mean of the energy curve — the "how loud overall" headline. */
+  averageEnergy: number;
+}
+
 export interface ReferenceMap {
   metadata: ReferenceAudioMetadata;
   rhythm: ReferenceRhythm;
   tonal: ReferenceTonal;
+  /** F2 — absent only when the signal was too short to segment. */
+  structure?: ReferenceStructure;
   diagnostics: ReferenceDiagnostics;
   warnings: string[];
 }
@@ -113,7 +155,7 @@ export const DEFAULT_REFERENCE_OPTIONS: ReferenceOptions = {
   hopSize: 512,
 };
 
-export type ReferenceStage = "decoding" | "buffer" | "transients" | "tempo" | "chroma" | "key" | "finalizing" | "done";
+export type ReferenceStage = "decoding" | "buffer" | "transients" | "tempo" | "chroma" | "key" | "structure" | "finalizing" | "done";
 
 export const REFERENCE_STAGE_LABELS: Record<ReferenceStage, string> = {
   decoding: "Decoding audio",
@@ -122,6 +164,7 @@ export const REFERENCE_STAGE_LABELS: Record<ReferenceStage, string> = {
   tempo: "Estimating tempo",
   chroma: "Analyzing pitch classes",
   key: "Estimating key",
+  structure: "Mapping song structure",
   finalizing: "Finalizing results",
   done: "Complete",
 };
@@ -133,6 +176,7 @@ export const REFERENCE_STAGE_ORDER: ReferenceStage[] = [
   "tempo",
   "chroma",
   "key",
+  "structure",
   "finalizing",
   "done",
 ];

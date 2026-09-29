@@ -11,9 +11,9 @@ import {
   grooveCommand,
   keyCommand,
   markerCommand,
+  sectionMarkerCommand,
   toMono,
   toPercent,
-  type PhraseMarkerOptions,
   type ReferenceKeyCandidate,
   type ReferenceMap,
   type ReferenceMode,
@@ -319,13 +319,22 @@ export function ReferenceMapPanel() {
 
   const applyMarkers = useCallback(() => {
     if (!analysis) return;
-    const options: PhraseMarkerOptions = {
-      beatsPerPhrase,
-      bpm: shownBpm ?? readingBpm ?? doc.bpm,
-      label: analysis.fileName.replace(/\.[^.]+$/, ""),
-    };
+    const bpm = shownBpm ?? readingBpm ?? doc.bpm;
+    const label = analysis.fileName.replace(/\.[^.]+$/, "");
+    const sections = analysis.map.structure?.sections ?? [];
+    // Sections are the honest import: the marker says "the drop is here"
+    // because the energy analysis put it there. Equal-length phrases are the
+    // fallback for a signal with no detectable structure (a flat drone), and
+    // the label says which one ran.
+    if (sections.length > 0) {
+      runCommand(
+        (d) => sectionMarkerCommand(d, analysis.map, { bpm, label }),
+        "No sections to import.",
+      );
+      return;
+    }
     runCommand(
-      (d) => markerCommand(d, analysis.map, options),
+      (d) => markerCommand(d, analysis.map, { beatsPerPhrase, bpm, label }),
       "Not enough beats for a phrase marker.",
     );
   }, [analysis, beatsPerPhrase, shownBpm, readingBpm, doc.bpm, runCommand]);
@@ -596,9 +605,32 @@ function MapTab({ analysis }: { analysis: Analyzed }) {
   const peak = useMemo(() => envelope.reduce((m, v) => Math.max(m, v), 0) || 1, [envelope]);
   const sampleCount = envelope.length > 0 ? Math.min(envelope.length, 320) : 0;
   const stride = envelope.length > 0 ? envelope.length / sampleCount : 1;
+  const [seekTo, setSeekTo] = useState<number | null>(null);
+  const sections = map.structure?.sections ?? [];
+  const pct = (sec: number): number => (duration > 0 ? Math.min(100, Math.max(0, (sec / duration) * 100)) : 0);
 
   return (
     <div className="reference-map" data-testid="reference-map">
+      {sections.length > 0 && (
+        <div className="reference-sections" data-testid="reference-sections">
+          {sections.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`reference-section reference-section-${s.role}`}
+              style={{
+                left: `${pct(s.startSec)}%`,
+                width: `${Math.max(1, pct(s.endSec) - pct(s.startSec))}%`,
+              }}
+              onClick={() => setSeekTo(s.startSec)}
+              title={`${s.role} — ${s.startSec.toFixed(1)}s · energy ${(s.energy * 100).toFixed(0)}%`}
+              data-testid={`reference-section-${s.role}`}
+            >
+              {s.role}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="reference-wave" style={{ height: 72 }}>
         {Array.from({ length: sampleCount }, (_, i) => {
           const v = envelope[Math.floor(i * stride)] ?? 0;
@@ -611,10 +643,49 @@ function MapTab({ analysis }: { analysis: Analyzed }) {
           if (bucket < 0 || bucket > sampleCount) return null;
           return <span key={i} className="reference-beat" style={{ left: `${(bucket / sampleCount) * 100}%` }} />;
         })}
+        {seekTo !== null && <span className="reference-seek" style={{ left: `${pct(seekTo)}%` }} />}
       </div>
+      {map.structure && map.structure.energyCurve.length > 0 && (
+        <EnergyStrip
+          curve={map.structure.energyCurve}
+          average={map.structure.averageEnergy}
+          onSeek={(position) => setSeekTo(position * duration)}
+        />
+      )}
       <p className="panel-sub">
         {map.diagnostics.frameCount} frames · {map.rhythm.beatTimes.length} beats · {duration.toFixed(1)}s
+        {sections.length > 0 && ` · ${sections.length} sections`}
+        {seekTo !== null && ` · @ ${seekTo.toFixed(2)}s`}
       </p>
+    </div>
+  );
+}
+
+/** F2 energy curve as a thin strip under the waveform; clicking a point seeks there. */
+function EnergyStrip({
+  curve,
+  average,
+  onSeek,
+}: {
+  curve: Array<{ position: number; energy: number }>;
+  average: number;
+  onSeek: (position: number) => void;
+}) {
+  const peak = curve.reduce((m, p) => Math.max(m, p.energy), 0) || 1;
+  return (
+    <div className="reference-energy" data-testid="reference-energy">
+      {curve.map((p, i) => (
+        <button
+          key={i}
+          type="button"
+          className="reference-energy-bar"
+          style={{ left: `${p.position * 100}%`, height: `${Math.max(2, (p.energy / peak) * 100)}%` }}
+          onClick={() => onSeek(p.position)}
+          title={`energy ${(p.energy * 100).toFixed(0)}% @ ${(p.position * 100).toFixed(0)}%`}
+          aria-label={`Energy ${(p.energy * 100).toFixed(0)} percent at ${(p.position * 100).toFixed(0)} percent`}
+        />
+      ))}
+      <span className="reference-energy-avg" style={{ bottom: `${average * 100}%` }} aria-hidden="true" />
     </div>
   );
 }

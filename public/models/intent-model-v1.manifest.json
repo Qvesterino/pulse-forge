@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 806932,
-    "sha256": "a1a1cbe7c02037483222671dda8dd5393bac57971ee5e42ec379749cb4bae3fd"
+    "bytes": 1054773,
+    "sha256": "ac244cefc6e451a865d1d766586f800bce046c0c0fc507ae4abbf859a4a892c4"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -22,8 +22,8 @@
   },
   "features": {
     "version": "intent-features.v1",
-    "vocabSha256": "f00c1ff4924b8b2030825400e3404c5c3ec28e612b948a8435fb90f6bd6ce6b7",
-    "vocabSize": 221,
+    "vocabSha256": "a5e258d5e8cd3adda4693257922a2857458ba0d1a098a577d27865a5a3a6c506",
+    "vocabSize": 348,
     "inputName": "features",
     "outputNames": [
       "head_kind",
@@ -50,6 +50,7 @@
       "head_exportFormat",
       "head_selectTarget",
       "head_reviseAttribute",
+      "head_targetRole",
       "head_prodConcept",
       "head_prodAmount",
       "head_mixReverb",
@@ -188,14 +189,20 @@
           "0",
           "5",
           "10",
+          "15",
           "20",
           "25",
           "30",
           "35",
           "40",
+          "45",
           "50",
+          "60",
+          "65",
+          "70",
           "75",
           "80",
+          "85",
           "90",
           "100"
         ]
@@ -206,15 +213,20 @@
         "classes": [
           "__absent__",
           "90",
+          "95",
           "100",
           "110",
+          "115",
           "120",
+          "126",
           "128",
           "132",
           "138",
           "140",
           "150",
+          "155",
           "160",
+          "170",
           "174",
           "300"
         ]
@@ -224,7 +236,11 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
-          "-9"
+          "-16",
+          "-14",
+          "-12",
+          "-9",
+          "-7"
         ]
       },
       {
@@ -232,7 +248,14 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "-3",
+          "-2",
           "-1.5",
+          "-1",
+          "-0.5",
+          "0.5",
+          "1",
+          "1.5",
           "2",
           "3"
         ]
@@ -243,13 +266,22 @@
         "classes": [
           "__absent__",
           "-0.9",
+          "-0.75",
           "-0.6",
+          "-0.5",
           "-0.3",
+          "-0.25",
+          "-0.15",
           "-0.1",
           "0",
           "0.1",
+          "0.15",
+          "0.2",
+          "0.25",
           "0.3",
+          "0.5",
           "0.6",
+          "0.75",
           "0.8",
           "0.9"
         ]
@@ -259,7 +291,18 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
-          "12"
+          "-36",
+          "-24",
+          "-12",
+          "-3",
+          "-2",
+          "-1",
+          "1",
+          "2",
+          "3",
+          "12",
+          "24",
+          "36"
         ]
       },
       {
@@ -267,8 +310,10 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "16",
           "32",
-          "64"
+          "64",
+          "128"
         ]
       },
       {
@@ -276,8 +321,21 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
+          "A Major",
+          "A Natural Minor",
+          "B Natural Minor",
+          "C Major",
+          "C Natural Minor",
+          "C# Natural Minor",
+          "D Major",
           "D Natural Minor",
-          "F# Natural Minor"
+          "E Major",
+          "E Natural Minor",
+          "F Major",
+          "F Natural Minor",
+          "F# Natural Minor",
+          "G Major",
+          "G Natural Minor"
         ]
       },
       {
@@ -380,6 +438,21 @@
         ]
       },
       {
+        "name": "targetRole",
+        "kind": "softmax",
+        "classes": [
+          "__absent__",
+          "break",
+          "bridge",
+          "build",
+          "chorus",
+          "drop",
+          "intro",
+          "outro",
+          "verse"
+        ]
+      },
+      {
         "name": "prodConcept",
         "kind": "softmax",
         "classes": [
@@ -406,7 +479,9 @@
         "kind": "softmax",
         "classes": [
           "__absent__",
-          "0.7"
+          "0.35",
+          "0.7",
+          "0.85"
         ]
       },
       {
@@ -452,10 +527,10 @@
   },
   "report": {
     "gatePassed": false,
-    "trainRows": 389,
-    "valRows": 65,
-    "goldenRows": 49,
-    "valHeadAccuracyMean": 0.9599,
+    "trainRows": 1479,
+    "valRows": 247,
+    "goldenRows": 74,
+    "valHeadAccuracyMean": 0.961,
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
   }
 }

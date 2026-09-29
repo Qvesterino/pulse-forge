@@ -1,5 +1,6 @@
 import { preprocessForAnalysis } from "../audio/preprocess";
 import { resampleLinear } from "../audio/resample";
+import { averageEnergy, energyCurve, sectionsFromEnergy } from "../structure";
 import {
   DEFAULT_REFERENCE_OPTIONS,
   REFERENCE_ENGINE_VERSION,
@@ -9,6 +10,7 @@ import {
   type ReferenceMap,
   type ReferenceOptions,
   type ReferenceStage,
+  type ReferenceStructure,
 } from "../types";
 import { analyzeRhythm } from "./rhythm";
 import { analyzeTonality } from "./tonal";
@@ -158,6 +160,26 @@ export function analyzeReference(input: AnalyzeReferenceInput): AnalyzeReference
   if (rhythm.warning) warnings.push(rhythm.warning);
   if (tonal.warning) warnings.push(tonal.warning);
 
+  // F2 — "where is what". The energy curve comes from the same preprocessed
+  // signal the rhythm pass used, and section edges snap to the beat grid F1
+  // just found, so an imported marker lands on a downbeat rather than between
+  // two kicks. Absent only when the signal was too short to frame at all.
+  onStage?.("structure");
+  const analysedSeconds = signal.length / analysisRate;
+  let structure: ReferenceStructure | undefined;
+  if (signal.length > 0) {
+    const curve = energyCurve(signal, analysedSeconds);
+    structure = {
+      energyCurve: curve,
+      sections: sectionsFromEnergy(curve, {
+        durationSeconds: analysedSeconds,
+        beatTimes: rhythm.beatTimes,
+        bpm: rhythm.bpm,
+      }),
+      averageEnergy: averageEnergy(curve),
+    };
+  }
+
   // Strip envelope/frameCount from the rhythm/tonal output before persisting
   // (envelopes are kept only in the worker for visualization).
   const { envelopes, ...rhythmResult } = rhythm;
@@ -184,6 +206,7 @@ export function analyzeReference(input: AnalyzeReferenceInput): AnalyzeReference
     metadata,
     rhythm: rhythmResult,
     tonal: tonalResult,
+    structure,
     diagnostics,
     warnings,
   };

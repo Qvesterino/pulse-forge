@@ -33,6 +33,12 @@ import {
   type SectionGrooveIntent,
   type UndoIntent,
 } from "./studio-words";
+import {
+  parseSoundSwapIntent,
+  parseStepEditIntent,
+  type SoundSwapIntent,
+  type StepEditIntent,
+} from "./sound-words";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
@@ -229,6 +235,8 @@ export type RoutedIntent =
   | { kind: "sectionGrooveIntent"; intent: SectionGrooveIntent }
   | { kind: "automateIntent"; intent: AutomateIntent }
   | { kind: "markerIntent"; intent: MarkerIntent }
+  | { kind: "stepEditIntent"; intent: StepEditIntent }
+  | { kind: "soundSwapIntent"; intent: SoundSwapIntent }
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
   | { kind: "presetUnknown"; name: string; suggestions: string[] }
@@ -345,6 +353,17 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
     const markerIntent = parseMarkerIntent(text);
     if (markerIntent) {
       return { kind: "markerIntent", intent: markerIntent };
+    }
+    // STEP EDITS + SOUND SWAPS (Phase B) — drum-family nouns with explicit
+    // position/swap verbs; the genre gate above keeps "remove the kick in a
+    // dark techno beat" as a generation prompt.
+    const stepEditIntent = parseStepEditIntent(text);
+    if (stepEditIntent) {
+      return { kind: "stepEditIntent", intent: stepEditIntent };
+    }
+    const soundSwapIntent = parseSoundSwapIntent(text);
+    if (soundSwapIntent) {
+      return { kind: "soundSwapIntent", intent: soundSwapIntent };
     }
   }
   if (doc.scenes.length > 0) {

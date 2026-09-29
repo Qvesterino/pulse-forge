@@ -27,8 +27,8 @@ For an architecture overview, see `ARCHITECTURE.md` and `docs/adr/`. For a user-
 | └─ instrument presets                  |     488 | `FACTORY_PRESETS`                                                                                                                                  |
 | └─ drum-synth presets                  |       6 | `DRUM_FACTORY_PRESETS`                                                                                                                             |
 | **Architecture decision records**      |  **20** | `docs/adr/0001` … `0018`, plus 0006/0007 each have two companion files                                                                             |
-| **Vitest spec files**                  | **657** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                                       |
-| **Local intent model (ONNX)**          |       1 | `public/models/intent-model-v1.*` (multi-head student, 0.8 MB; `report.gatePassed=false` — loader refuses it until `intent-model:validate` passes) |
+| **Vitest spec files**                  | **658** | `tests/` files matching `*.test.ts` and `*.test.tsx`, excluding `tests/e2e/`                                                                       |
+| **Local intent model (ONNX)**          |       1 | `public/models/intent-model-v1.*` (multi-head student, ~1 MB, corpus v3 1192 párov; `report.gatePassed=false` — loader refuses it until `intent-model:validate` passes; expansion manual: `docs/INTENT-DATASET-TEMPLATES.md`) |
 
 ## Flagship plugin implementations
 

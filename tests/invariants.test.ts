@@ -267,10 +267,20 @@ describe("AGENTS.md invariant — leaky `as any` budget on critical layers", () 
   // storage-bridge (Yjs YMap.get cast). Pinning the count lets us
   // notice if a NEW layer leaks — not a comprehensive type-tightening,
   // just a regression guard that catches a future leak before it lands.
+  //
+  // Comments are stripped before counting. The phrase "as any" occurs in
+  // ordinary English prose ("the same validation as any other client"), and a
+  // raw text scan counted that sentence as a type leak — which is how this
+  // guard came to expect 18 against 17 real casts. A tripwire that fires on
+  // prose is a tripwire people learn to ignore, so the budget stays honest
+  // about what it measures: casts in code, not words in comments.
+  function stripComments(text: string): string {
+    return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  }
   function countAsAny(dir: string): number {
     let count = 0;
     for (const f of listFiles(dir)) {
-      count += (readFileSync(f, "utf8").match(/\bas any\b/g) ?? []).length;
+      count += (stripComments(readFileSync(f, "utf8")).match(/\bas any\b/g) ?? []).length;
     }
     return count;
   }

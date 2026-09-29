@@ -12,6 +12,15 @@ import {
   DEFAULT_GM_PROGRAM_BY_INSTRUMENT,
 } from "../../src/integrations/audiotool-nexus/mapping";
 import { readAudiotoolProjectTempo } from "../../src/integrations/audiotool-nexus/tempo";
+import {
+  AudiotoolTimeoutError,
+  CONNECT_TIMEOUT_MS,
+  describeAuthFailure,
+  describeAuthTimeout,
+  describeConnectTimeout,
+  POPUP_AUTH_TIMEOUT_MS,
+  withTimeout,
+} from "../../src/integrations/audiotool-nexus/auth";
 import { writeAudiotoolPlan } from "../../src/integrations/audiotool-nexus/writer";
 import { AudiotoolNexusExport } from "../../src/ui/AudiotoolNexusExport";
 
@@ -817,5 +826,246 @@ describe("Audiotool Nexus connection UX", () => {
     });
 
     expect(session.stop).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * `@audiotool/nexus` settles its popup on a postMessage from the accounts origin
+ * or on `popup.closed`, and has no timeout of its own. A popup the accounts
+ * service cannot post back to — unregistered Redirect URI origin, or an app
+ * without the project:write scope — therefore never settles. These tests pin
+ * the bound that keeps that from bricking the export panel.
+ */
+describe("Audiotool Nexus popup auth bounds", () => {
+  it("clears the wait handle when the popup answers in time", async () => {
+    vi.useFakeTimers();
+    try {
+      await expect(withTimeout(Promise.resolve("authenticated"), POPUP_AUTH_TIMEOUT_MS)).resolves.toBe("authenticated");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects with a timeout error when the popup never comes back", async () => {
+    vi.useFakeTimers();
+    try {
+      const hung = withTimeout(new Promise<never>(() => {}), POPUP_AUTH_TIMEOUT_MS);
+      // Attach the handler before advancing: otherwise the rejection lands with
+      // nothing listening and Vitest counts it as an unhandled error.
+      const settled = expect(hung).rejects.toBeInstanceOf(AudiotoolTimeoutError);
+      await vi.advanceTimersByTimeAsync(POPUP_AUTH_TIMEOUT_MS);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes a real SDK failure through instead of reporting a timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const failed = withTimeout(
+        Promise.reject(new Error("Popup was closed before login completed.")),
+        POPUP_AUTH_TIMEOUT_MS,
+      );
+      await expect(failed).rejects.toThrow("Popup was closed");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the timeout outcome when the popup answers too late", async () => {
+    vi.useFakeTimers();
+    try {
+      let answerLate: (value: string) => void = () => {};
+      const slow = new Promise<string>((resolve) => {
+        answerLate = resolve;
+      });
+      const guarded = withTimeout(slow, POPUP_AUTH_TIMEOUT_MS);
+      const settled = expect(guarded).rejects.toBeInstanceOf(AudiotoolTimeoutError);
+      await vi.advanceTimersByTimeAsync(POPUP_AUTH_TIMEOUT_MS);
+      await settled;
+      answerLate("too late to matter");
+      await expect(guarded).rejects.toBeInstanceOf(AudiotoolTimeoutError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["Popup was blocked. audiotoolPopup() must be called from a user-gesture handler.", "pop-upy"],
+    ["Popup was closed before login completed.", "zavrel"],
+    ["invalid_scope: The requested scope is not allowed", "project:write"],
+    ["access_denied", "odmietol"],
+    ["invalid_client: unknown client", "VITE_AUDIOTOOL_NEXUS_CLIENT_ID"],
+    ["invalid_grant: authorization code expired", "vypršal"],
+    ["invalid_state: State mismatch", "sedlo"],
+    ["invalid_response: unexpected message shape", "neočakávanú"],
+  ])("maps the SDK failure %j to a message that names the fix", (sdkMessage, expectedFragment) => {
+    expect(describeAuthFailure(sdkMessage)).toContain(expectedFragment);
+  });
+
+  it("gives every known SDK failure its own message, never a duplicated one", () => {
+    const messages = [
+      "Popup was blocked. audiotoolPopup() must be called from a user-gesture handler.",
+      "Popup was closed before login completed.",
+      "invalid_scope: The requested scope is not allowed",
+      "access_denied",
+      "invalid_client: unknown client",
+      "invalid_grant: authorization code expired",
+      "invalid_state: State mismatch",
+      "invalid_response: unexpected message shape",
+    ].map(describeAuthFailure);
+    expect(new Set(messages).size).toBe(messages.length);
+  });
+
+  it("falls back to a generic message for a failure it cannot classify", () => {
+    expect(describeAuthFailure("something went sideways")).toBe(
+      "Prihlásenie bolo zrušené alebo zlyhalo. Skontroluj prihlasenie v Audiotole a skús to znova.",
+    );
+  });
+
+  it("names the origin and both real misconfigurations when the popup times out", () => {
+    const message = describeAuthTimeout("https://qvesterstudio.com");
+    expect(message).toContain("https://qvesterstudio.com");
+    expect(message).toContain("project:write");
+    expect(message).toContain("Redirect URI");
+  });
+
+  it("unblocks the export panel when the popup never returns, so the user can retry", async () => {
+    const project = createDefaultProject();
+    const instrument = project.tracks.find((track) => track.kind === "instrument");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    expect(instrument?.kind).toBe("instrument");
+    expect(pattern).toBeDefined();
+    if (!instrument || instrument.kind !== "instrument" || !pattern) return;
+
+    audiotoolPopupMock.mockReset();
+    render(
+      createElement(AudiotoolNexusExport, {
+        pattern: {
+          ...pattern,
+          notes: { [instrument.id]: [{ id: "hung", pitch: 60, start: 0, duration: 120, velocity: 0.8 }] },
+        },
+        tracks: project.tracks,
+        timeSignature: { numerator: 4, denominator: 4 },
+        sourceBpm: project.bpm,
+        candidateLabel: "#1",
+        isSourceCurrent: () => true,
+        onClose: vi.fn(),
+        clientId: "public-test-client-id",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "NAČÍTAŤ AUDIOTOOL CONNECTOR" }));
+    const login = await screen.findByRole("button", { name: "PRIHLÁSIŤ A PRIPOJIŤ" });
+
+    vi.useFakeTimers();
+    try {
+      // A popup the accounts service can never post back to: it neither posts a
+      // message nor closes, which is exactly the SDK's only two exit paths.
+      audiotoolPopupMock.mockReturnValue(new Promise<never>(() => {}));
+      fireEvent.click(login);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POPUP_AUTH_TIMEOUT_MS);
+      });
+
+      expect(audiotoolPopupMock).toHaveBeenCalledOnce();
+      // The panel is usable again rather than permanently disabled.
+      expect(screen.getByRole("button", { name: "PRIHLÁSIŤ A PRIPOJIŤ" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Zavrieť Audiotool export" })).toBeEnabled();
+
+      const alert = screen.getByRole("alert").textContent ?? "";
+      expect(alert).toContain(window.location.origin);
+      expect(alert).toContain("project:write");
+      expect(alert).toContain("Redirect URI");
+    } finally {
+      vi.useRealTimers();
+      audiotoolPopupMock.mockReset();
+    }
+  });
+
+  it("keeps a slow-syncing project open instead of tearing it down, and holds the write", async () => {
+    const project = createDefaultProject();
+    const instrument = project.tracks.find((track) => track.kind === "instrument");
+    const pattern = project.patterns.find((candidate) => candidate.id === project.activePatternId);
+    expect(instrument?.kind).toBe("instrument");
+    expect(pattern).toBeDefined();
+    if (!instrument || instrument.kind !== "instrument" || !pattern) return;
+
+    audiotoolPopupMock.mockReset();
+    // The gateway reconnects on its own, so start() can stay pending while the
+    // network is down. That must read as "still connecting", never as a failure.
+    const slowSession = {
+      connected: {
+        getValue: () => false,
+        subscribe: (callback: (value: boolean) => void, initial?: boolean) => {
+          if (initial) callback(false);
+          return { terminate: vi.fn() };
+        },
+      },
+      start: vi.fn(() => new Promise<void>(() => {})),
+      stop: vi.fn(async () => {}),
+    } as unknown as SyncedDocument;
+    const auth = {
+      status: "authenticated",
+      userName: "KYX QA",
+      open: vi.fn(async () => slowSession),
+      // The plan renders a GM select per part as soon as a project is open.
+      presets: { gmInstruments: [{ program: 0, displayName: "GM 1", category: "Test" }] },
+    } as unknown as AuthenticatedClient;
+    audiotoolPopupMock.mockResolvedValue(auth);
+
+    render(
+      createElement(AudiotoolNexusExport, {
+        pattern: {
+          ...pattern,
+          notes: { [instrument.id]: [{ id: "slow", pitch: 60, start: 0, duration: 120, velocity: 0.8 }] },
+        },
+        tracks: project.tracks,
+        timeSignature: { numerator: 4, denominator: 4 },
+        sourceBpm: project.bpm,
+        candidateLabel: "#1",
+        isSourceCurrent: () => true,
+        onClose: vi.fn(),
+        clientId: "public-test-client-id",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "NAČÍTAŤ AUDIOTOOL CONNECTOR" }));
+    fireEvent.click(await screen.findByRole("button", { name: "PRIHLÁSIŤ A PRIPOJIŤ" }));
+    // Resolve every async lookup under real timers: RTL's waitFor does not
+    // cooperate with the fake clock installed below.
+    fireEvent.change(await screen.findByLabelText("Odkaz na projekt"), {
+      target: { value: "https://beta.audiotool.com/studio?project=slow-sync" },
+    });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "OTVORIŤ PROJEKT" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS);
+      });
+
+      // The session survives: a slow sync is not a reason to drop a live login.
+      expect(slowSession.stop).not.toHaveBeenCalled();
+      expect(screen.getByText(/· KYX QA · OFFLINE/)).toBeInTheDocument();
+      expect(screen.getByText(/prvý sync trvá dlhšie/)).toBeInTheDocument();
+      // Write stays locked until the gateway actually links up.
+      expect(screen.getByRole("button", { name: "PRIDAŤ MIDI + DRUMS DO AUDIOTOOLU" })).toBeDisabled();
+      // And the panel is fully interactive again — disconnect and close both work.
+      expect(screen.getByRole("button", { name: "ODPOJIŤ PROJEKT" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Zavrieť Audiotool export" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+      audiotoolPopupMock.mockReset();
+    }
+  });
+
+  it("tells the user the login is still active when a slow sync resolves later", () => {
+    const message = describeConnectTimeout();
+    expect(message).toContain("Prihlásenie ostáva aktívne");
+    expect(message).toContain("zopakuje sám");
   });
 });

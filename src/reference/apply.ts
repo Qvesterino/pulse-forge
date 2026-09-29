@@ -94,6 +94,48 @@ export interface PhraseMarkerOptions {
   label?: string;
 }
 
+export interface SectionMarkerOptions {
+  /** Tempo used to convert section seconds into project ticks. */
+  bpm: number;
+  /** Prefix for the marker names. */
+  label?: string;
+  /** Re-derive equal-length phrases when the signal had no detectable structure. */
+  fallbackBeats?: number;
+}
+
+/**
+ * Import the F2 section map as markers — one per section start, typed by role
+ * (`drop` → drop marker, `intro` → buildup, `outro` → impact).
+ *
+ * This is the honest version of the F4 "import markers" action: the marker
+ * says "the drop is here" because the ENERGY analysis put it there, not
+ * because the beat grid was divided by a number. When F2 found nothing (a
+ * flat drone has no structure), the caller falls back to equal-length
+ * phrases rather than importing a phantom section.
+ */
+export function sectionMarkerCommand(
+  doc: ProjectDocument,
+  map: ReferenceMap,
+  options: SectionMarkerOptions,
+): Command | null {
+  const sections = map.structure?.sections ?? [];
+  if (sections.length === 0) return null;
+
+  const label = options.label ? `${options.label} ` : "";
+  const before = doc;
+  const after = sections.reduce(
+    (d, section) => {
+      const tick = secondsToTicks(section.startSec, options.bpm);
+      // A section that snaps to bar 0 is the track's own head, not a cue.
+      if (tick <= 0) return d;
+      return addMarker(d, { tick, type: section.markerType, name: `${label}${section.role}` }).execute(d);
+    },
+    doc,
+  );
+  if (after.markers.length === before.markers.length) return null;
+  return snapshot("importReferenceSections", `Import ${after.markers.length - before.markers.length} section markers`, before, after);
+}
+
 /**
  * Seconds → project ticks at `bpm` (PPQ 480). Tick length is tempo-dependent
  * by definition, so a reference analysed at 128 places differently in a 120

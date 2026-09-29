@@ -2,6 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthenticatedClient, PopupAuthResult, SyncedDocument } from "@audiotool/nexus";
 import type { Pattern, TimeSignature, Track } from "../project-model/types";
 import {
+  AudiotoolTimeoutError,
+  CONNECT_TIMEOUT_MS,
+  describeAuthFailure,
+  describeAuthTimeout,
+  describeConnectTimeout,
+  POPUP_AUTH_TIMEOUT_MS,
+  withTimeout,
+} from "../integrations/audiotool-nexus/auth";
+import {
   audiotoolProjectIdFromUrl,
   audiotoolProjectUrl,
   buildAudiotoolWritePlan,
@@ -113,32 +122,33 @@ export function AudiotoolNexusExport({
   const connect = async () => {
     if (!sdk || !clientId || busy) return;
     const lifecycle = lifecycleRef.current;
+    const origin = window.location.origin;
     setBusy(true);
     setError(null);
     setUnauthenticated(null);
     try {
       // Invoke synchronously from the click handler so browser popup blockers
       // recognize the user gesture. Keep it in the try block for sync failures too.
-      const result = await sdk.audiotoolPopup({
-        clientId,
-        scope: "project:write",
-        targetOrigin: window.location.origin,
-      });
+      // withTimeout is what keeps a popup the accounts service can never post back
+      // to from holding this panel busy forever — the SDK itself has no timeout.
+      const result = await withTimeout(
+        sdk.audiotoolPopup({ clientId, scope: "project:write", targetOrigin: origin }),
+        POPUP_AUTH_TIMEOUT_MS,
+      );
       if (lifecycleRef.current !== lifecycle) return;
       if (result.status === "authenticated") {
         setAuth(result);
       } else {
         setUnauthenticated(result);
-        const reason = result.error?.message ?? "";
-        setError(
-          reason.includes("Popup was blocked")
-            ? "Prehliadač zablokoval prihlasovacie okno. Povoľ pop-upy pre KYX a skús znova."
-            : "Prihlásenie bolo zrušené alebo zlyhalo. Skontroluj Audiotool povolenie a skús znova.",
-        );
+        setError(describeAuthFailure(result.error?.message ?? ""));
       }
-    } catch {
+    } catch (cause) {
       if (lifecycleRef.current === lifecycle) {
-        setError("Audiotool prihlásenie sa nepodarilo. Skontroluj sieť a konfiguráciu aplikácie.");
+        setError(
+          cause instanceof AudiotoolTimeoutError
+            ? describeAuthTimeout(origin)
+            : "Audiotool prihlásenie sa nepodarilo. Skontroluj sieť a konfiguráciu aplikácie.",
+        );
       }
     } finally {
       if (lifecycleRef.current === lifecycle) setBusy(false);
@@ -159,13 +169,23 @@ export function AudiotoolNexusExport({
     setConfirmed(false);
     let openingDocument: SyncedDocument | null = null;
     try {
-      openingDocument = await auth.open(audiotoolProjectUrl(id));
+      openingDocument = await withTimeout(auth.open(audiotoolProjectUrl(id)), CONNECT_TIMEOUT_MS);
       if (lifecycleRef.current !== lifecycle) {
         await openingDocument.stop().catch(() => {});
         return;
       }
       sessionRef.current = openingDocument;
-      await openingDocument.start();
+      // A first sync that outlasts the bound is slow, not broken. The gateway
+      // reconnects on its own, so keep the session and let the existing
+      // not-connected state hold the write button until it links up; only a real
+      // start() failure tears the document down below.
+      let syncTimedOut = false;
+      try {
+        await withTimeout(openingDocument.start(), CONNECT_TIMEOUT_MS);
+      } catch (cause) {
+        if (!(cause instanceof AudiotoolTimeoutError)) throw cause;
+        syncTimedOut = true;
+      }
       if (lifecycleRef.current !== lifecycle) {
         if (sessionRef.current === openingDocument) {
           sessionRef.current = null;
@@ -174,8 +194,9 @@ export function AudiotoolNexusExport({
         return;
       }
       setSession(openingDocument);
-      setTargetTempo(readTargetTempo(openingDocument));
       setProjectId(id);
+      if (syncTimedOut) setError(describeConnectTimeout());
+      else setTargetTempo(readTargetTempo(openingDocument));
     } catch {
       if (openingDocument && sessionRef.current === openingDocument) {
         sessionRef.current = null;

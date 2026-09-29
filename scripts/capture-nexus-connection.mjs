@@ -52,6 +52,11 @@ const browser = await chromium.launch({
 const context = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
   recordVideo: { dir: OUT, size: { width: 1920, height: 1080 } },
+  // The PWA service worker from a previous visit keeps serving a stale shell
+  // and answers every navigation with its 404 fallback, which wipes the app
+  // out of the recording. A fresh context starts with no SW, which is what
+  // we want for a deterministic capture.
+  serviceWorkers: "block",
 });
 const page = await context.newPage();
 
@@ -77,10 +82,31 @@ if (await openProject.count()) {
   }
 }
 
-// The studio's IntentPanel field, identified by its aria-label.
-const intent = page.locator('input[aria-label="Intent description"], textarea[aria-label="Intent description"]').first();
+// The first-run coach mark overlays the lower third of the studio, which is
+// exactly where the Intent panel and the candidate row live. Walk it to the
+// end (or skip it) before touching anything below it.
+const skipTour = page.getByRole("button", { name: /^SKIP$/i }).first();
+if (await skipTour.count()) {
+  log("  skipping the first-run coach mark");
+  await skipTour.click();
+  await page.waitForTimeout(2000);
+}
+
+// The IntentPanel is a toggleable panel, not always mounted. Open it if the
+// toggle exists and the field is not already there.
+let intent = page.locator('input[aria-label="Intent description"], textarea[aria-label="Intent description"]').first();
 if (!(await intent.count())) {
-  log("!! could not find the IntentPanel field — the panel is not mounted");
+  const toggleIntent = page.getByRole("button", { name: /toggle intent panel/i }).first();
+  if (await toggleIntent.count()) {
+    log("  opening the Intent panel");
+    await toggleIntent.click();
+    await page.waitForTimeout(3000);
+  }
+  intent = page.locator('input[aria-label="Intent description"], textarea[aria-label="Intent description"]').first();
+}
+if (!(await intent.count())) {
+  await page.screenshot({ path: "nexus-panel-missing.png" });
+  log("!! could not find the IntentPanel field — see nexus-panel-missing.png");
   await context.close();
   await browser.close();
   process.exit(1);
