@@ -61,6 +61,7 @@ import { analyzeVocalTake } from "../vocal/analyzer-client";
 import { applyVocalHookCommand, applyVocalKeyCommand, applyVocalTempoCommand } from "../vocal/adapt";
 import { summarizeVocalProfile } from "../vocal/notes";
 import { planVocalComp } from "../vocal/comping";
+import { applyVocalCompCommand } from "../vocal/comp-apply";
 import { VocalCompStrip } from "./VocalCompStrip";
 import type { VocalProfile } from "../vocal/types";
 import { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
@@ -1235,9 +1236,10 @@ export function IntentPanel() {
   // Hum & harmonize — the SUNO build stacks the diatonic backing pair under
   // the hummed hook (one "Hum Harmony" track, one undo step with the song).
   const [ideaHarmonize, setIdeaHarmonize] = useState(false);
-  // Take history for the comp strip — the last few analyzed takes, so the
-  // comp plan can compare them bar by bar.
-  const [takeHistory, setTakeHistory] = useState<VocalProfile[]>([]);
+  // Take history for the comp strip — the last few analyzed takes with their
+  // staged buffer ids, so the comp plan can compare AND assemble them.
+  const [takeHistory, setTakeHistory] = useState<{ profile: VocalProfile; bufferId: string }[]>([]);
+  const [compBusy, setCompBusy] = useState(false);
   const [ideaMicMonitor, setIdeaMicMonitor] = useState(false);
   const ideaRecorderRef = useRef<PcmMicRecorder | null>(null);
   const ideaBeatSyncRef = useRef(false);
@@ -1529,7 +1531,9 @@ export function IntentPanel() {
       if (takeToken !== takeTokenRef.current) return; // project switched mid-analysis
       setTakeProfile(outcome.profile);
       setTakeRef({ bufferId: resolved.take.bufferId });
-      setTakeHistory((history) => [...history, outcome.profile].slice(-3));
+      setTakeHistory((history) =>
+        [...history, { profile: outcome.profile, bufferId: resolved.take.bufferId }].slice(-3),
+      );
       setStatus(`🎤 take heard — ${summarizeVocalProfile(outcome.profile).join(" · ")}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2918,10 +2922,37 @@ export function IntentPanel() {
           {(() => {
             // The comp strip: when two-plus takes are analyzed, the plan
             // shows who WINS each bar (the singer keeps every best moment).
-            const plan = takeHistory.length >= 2 ? planVocalComp(takeHistory) : null;
+            const plan = takeHistory.length >= 2 ? planVocalComp(takeHistory.map((h) => h.profile)) : null;
             if (!plan) return null;
             const labels = takeHistory.map((_, index) => `Take ${String.fromCharCode(65 + index)}`);
-            return <VocalCompStrip plan={plan} labels={labels} />;
+            return (
+              <>
+                <VocalCompStrip plan={plan} labels={labels} />
+                <div style={{ marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    disabled={compBusy || busy}
+                    onClick={() => {
+                      if (compBusy) return;
+                      setCompBusy(true);
+                      try {
+                        const cmd = applyVocalCompCommand(services.store.getDoc(), takeHistory, plan);
+                        services.store.execute(cmd);
+                        setStatus(`✓ ${cmd.label} (one undo step)`);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setCompBusy(false);
+                      }
+                    }}
+                    title="Assemble the winning bars into one comped vocal — one undo step"
+                  >
+                    {compBusy ? "…" : "🎹 BUILD COMP"}
+                  </button>
+                </div>
+              </>
+            );
           })()}
           <div className="intent-take-actions">
             <button
