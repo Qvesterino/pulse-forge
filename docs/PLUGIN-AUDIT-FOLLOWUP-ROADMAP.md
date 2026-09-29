@@ -452,3 +452,39 @@ ranked path.
 | 5   | Phase 4 (QA path)         | live-path analyser check green for wavetable/granular        |
 | 6   | Phase 5 (scale bridges)   | bridge-registry property test                                |
 | 7   | Phase 6 (bypass parity)   | `hostBypassEqualsRemoved` ≤ 1e-5 matrix-wide                 |
+
+---
+
+## Post-roadmap hardening wave — 2026-09-29
+
+Follow-up features shipped after the six phases closed, all verified with
+real-audio evidence (browser-check gates + vitest families):
+
+- **MATCH EQ ("znej ako ref")** — averaged-periodogram reference matching on
+  the master chain. Reliability hardening: analysis window capped at 8 kHz on
+  BOTH sides (44.1 kHz vs 16 kHz references no longer bias the balance),
+  `bandBalanceIsUsable` declines silent/NaN/single-band references (anti-match
+  fix), de-meaned shape curve with ±6 dB clamp and 1 dB deadzone.
+  Gates: `tests/match-eq.test.ts` 12/12 + three browser checks (master stage
+  applies curve, full pipeline points the right way, command + schema
+  round-trip).
+- **DE-ESS as compressor mode** — band-pass detector (`scMode`/`scBandHz`) on
+  the existing compressor, no new plugin surface. `tests/compressor-deess.test.ts`.
+- **Surgical notch via EQ free bands** — `free1/free2` bell/notch params on the
+  eq worklet (20 Hz–20 kHz, ±24 dB, Q 0.1–24). Production-intent concept
+  `notch` extracts explicit Hz ("notch at 2.2k", "odstráň rezonanciu na 347 Hz")
+  and routes mix-target asks to every non-group track (no master FX rack in the
+  model). Resonance finder (`src/intent/resonance.ts`) suggests candidates.
+- **Two parser landmines found and fixed** (2026-09-29, commit 50448249):
+  1. The `notch`/`deess` CONCEPTS regexes contained **literal backspace bytes
+     (U+0008) where `\b` anchors were intended** — a tool-encoding corruption
+     that made the patterns unmatchable and the parse return null. Detection
+     method: runtime dump of `pattern.source` via JSON.stringify showed `\b`
+     JSON escapes; `od -c` confirmed 0x08 bytes. If a regex "looks right in
+     the file but never matches", check for invisible control bytes.
+  2. `CLAUSE_BREAK` split on every period, so decimal frequencies
+     ("notch at 2.2k") were torn into "…at 2" + "2k" and the Hz extraction
+     failed. The splitter now refuses to break between digits
+     (`(?<!\d)\.(?!\d)`).
+- **Audio-fit ledger → ranker** — bounded (100) observation ledger feeding
+  rerank weight fitting (`scripts/fit-rerank-weights.mjs`).
