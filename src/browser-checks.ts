@@ -1044,19 +1044,41 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const liftedHigh = await bandHighOf({
       matchEq: { low: 0, lowMid: 0, highMid: 0, high: 6 },
     });
-    // +6 dB high-shelf gain ≈ +6 dB in the >4 kHz share (integration tolerance).
+    // +6 dB high-shelf gain lands at ~3.5 dB in the band share: the share
+    // domain renormalizes by total power (the shelf lifts the total too) and
+    // the analysis window caps at 8 kHz on both sides. A no-op stage
+    // measures ~0 and an inverted stage goes negative — 2.5 dB still
+    // discriminates a working master stage from either.
     const liftDb = liftedHigh - flatHigh;
     check(
       "match EQ: master stage applies the curve (+6 dB high shelf lifts the high band)",
-      liftDb > 4.5,
+      liftDb > 2.5,
       `lift=${liftDb.toFixed(2)} dB (flat ${flatHigh.toFixed(1)} → lifted ${liftedHigh.toFixed(1)})`,
     );
 
     // Full pipeline direction: a bright reference against this (comparatively
-    // darker) house mix must produce a curve with positive high gain.
+    // darker) house mix must produce a curve with positive high gain. The
+    // reference must be BROADBAND — a pure tone is rejected by
+    // bandBalanceIsUsable (a single-band signal is not a matchable
+    // reference; that guard is the anti-match hardening, by design).
     const { setMatchEqReference, computeMasterMatchEq } = await import("./intent/match-eq");
     const brightRef = new Float32Array(Math.floor(16000 * 2));
-    for (let i = 0; i < brightRef.length; i++) brightRef[i] = 0.4 * Math.sin((2 * Math.PI * 6000 * i) / 16000);
+    {
+      const partials: Array<[freq: number, amp: number]> = [
+        [100, 0.05],
+        [250, 0.06],
+        [700, 0.14],
+        [1500, 0.2],
+        [3000, 0.35],
+        [4800, 0.45],
+        [6500, 0.5],
+      ];
+      for (let i = 0; i < brightRef.length; i++) {
+        let s = 0;
+        for (const [f, a] of partials) s += a * Math.sin((2 * Math.PI * f * i) / 16000);
+        brightRef[i] = 0.35 * s;
+      }
+    }
     setMatchEqReference(brightRef);
     const curve = await computeMasterMatchEq(doc, bank);
     setMatchEqReference(null);
@@ -1090,16 +1112,19 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // same project could sound different. The loop now lives inside the
   // multitap worklet processor; three renders of the same doc must be
   // sample-identical AND the wet path must stay audible.
+  // NOTE: renders must share ONE doc — instrument/pad noise and drift are
+  // seeded by track ids (hashString(track.id)), so a fresh doc per render
+  // legitimately sounds different. Determinism is per-document.
   try {
-    const renderMtd = async (feedback: number) => {
-      const doc = createProjectFromTemplate("house");
-      const drum = doc.tracks.find((t) => t.kind === "drum") as { id: string; effects: unknown[] };
-      drum.effects = [];
-      const st = new ProjectStore(doc);
-      const add = addEffect(st.getDoc(), drum.id, "multiTapDelay");
-      st.execute(add);
-      st.execute(setEffectParam(st.getDoc(), drum.id, add.effectId, "feedback", feedback));
-      const out = await renderProject(st.getDoc(), bank, {
+    const docMtd = createProjectFromTemplate("house");
+    const drum = docMtd.tracks.find((t) => t.kind === "drum") as { id: string; effects: unknown[] };
+    drum.effects = [];
+    const stMtd = new ProjectStore(docMtd);
+    const addMtd = addEffect(stMtd.getDoc(), drum.id, "multiTapDelay");
+    stMtd.execute(addMtd);
+    stMtd.execute(setEffectParam(stMtd.getDoc(), drum.id, addMtd.effectId, "feedback", 0.85));
+    const renderMtdDoc = async () => {
+      const out = await renderProject(stMtd.getDoc(), bank, {
         mode: "pattern",
         sampleRate: SR,
         tailSeconds: 0.6,
@@ -1107,11 +1132,14 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       });
       return Array.from(out.getChannelData(0));
     };
-    const a = await renderMtd(0.85);
-    const b = await renderMtd(0.85);
+    const a = await renderMtdDoc();
+    const b = await renderMtdDoc();
     let maxDiff = 0;
     for (let i = 0; i < a.length; i++) maxDiff = Math.max(maxDiff, Math.abs(a[i] - b[i]));
-    const dry = await renderMtd(0);
+    // Dry reference on the SAME doc lineage (same ids → same seeded noise):
+    // set feedback to 0 and re-render.
+    stMtd.execute(setEffectParam(stMtd.getDoc(), drum.id, addMtd.effectId, "feedback", 0));
+    const dry = await renderMtdDoc();
     let peakWet = 0;
     for (let i = Math.floor(SR / 2); i < a.length; i++) peakWet = Math.max(peakWet, Math.abs(a[i] - dry[i]));
     check(

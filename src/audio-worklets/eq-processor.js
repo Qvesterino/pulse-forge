@@ -120,8 +120,14 @@ class EqProcessor extends AudioWorkletProcessor {
     this.hsF = 6000;
     this.hsG = 0;
     // Free surgical bands: gain 0 = bypassed (transparent).
-    this.f1F = 1000; this.f1G = 0; this.f1Q = 2; this.f1Type = 0;
-    this.f2F = 3000; this.f2G = 0; this.f2Q = 2; this.f2Type = 0;
+    this.f1F = 1000;
+    this.f1G = 0;
+    this.f1Q = 2;
+    this.f1Type = 0;
+    this.f2F = 3000;
+    this.f2G = 0;
+    this.f2Q = 2;
+    this.f2Type = 0;
     // 8 DF-I biquads × 4 states (x1, x2, y1, y2) per channel.
     this.sL = new Float64Array(32);
     this.sR = new Float64Array(32);
@@ -198,6 +204,10 @@ class EqProcessor extends AudioWorkletProcessor {
     this.f2F += (this.clampNum(P.free2Freq ? P.free2Freq[0] : 3000, 20, 20000) - this.f2F) * k;
     this.f2G += (this.clampNum(P.free2Gain ? P.free2Gain[0] : 0, -24, 24) - this.f2G) * k;
     this.f2Q += (this.clampNum(P.free2Q ? P.free2Q[0] : 2, 0.1, 24) - this.f2Q) * k;
+    // Type toggles hard-set — gliding a prototype switch over ~3 ms would
+    // morph through an intermediate filter shape.
+    this.f1Type = this.clampNum(P.free1Type ? P.free1Type[0] : 0, 0, 1) >= 0.5 ? 1 : 0;
+    this.f2Type = this.clampNum(P.free2Type ? P.free2Type[0] : 0, 0, 1) >= 0.5 ? 1 : 0;
 
     // Block-rate coefficients (controls glide on ~3 ms, never step audibly).
     const C = {
@@ -207,12 +217,14 @@ class EqProcessor extends AudioWorkletProcessor {
       hsLp: lpProto(this.hsF, sr),
       lm: peakProto(this.lmF, this.lmG, decrampedQ(this.lmQ, this.lmF, sr), sr),
       hm: peakProto(this.hmF, this.hmG, decrampedQ(this.hmQ, this.hmF, sr), sr),
-      f1: this.f1Type >= 0.5
-        ? notchProto(this.f1F, decrampedQ(this.f1Q, this.f1F, sr), sr)
-        : peakProto(this.f1F, this.f1G, decrampedQ(this.f1Q, this.f1F, sr), sr),
-      f2: this.f2Type >= 0.5
-        ? notchProto(this.f2F, decrampedQ(this.f2Q, this.f2F, sr), sr)
-        : peakProto(this.f2F, this.f2G, decrampedQ(this.f2Q, this.f2F, sr), sr),
+      f1:
+        this.f1Type >= 0.5
+          ? notchProto(this.f1F, decrampedQ(this.f1Q, this.f1F, sr), sr)
+          : peakProto(this.f1F, this.f1G, decrampedQ(this.f1Q, this.f1F, sr), sr),
+      f2:
+        this.f2Type >= 0.5
+          ? notchProto(this.f2F, decrampedQ(this.f2Q, this.f2F, sr), sr)
+          : peakProto(this.f2F, this.f2G, decrampedQ(this.f2Q, this.f2F, sr), sr),
       lsG: Math.pow(10, this.lsG / 20) - 1,
       hsG: Math.pow(10, this.hsG / 20) - 1,
     };
@@ -225,7 +237,20 @@ class EqProcessor extends AudioWorkletProcessor {
     }
     this.flushTiny(this.sL);
     this.flushTiny(this.sR);
+    // Output flush: biquad state decay with partial cancellation (notch Q
+    // high) can push y below the denormal threshold while every state is
+    // still above it — the state flush alone cannot catch those. The
+    // convention (multitap soak) is zero subnormals leaving the processor.
+    this.flushBuf(outL);
+    if (outR) this.flushBuf(outR);
     return true;
+  }
+
+  flushBuf(buf) {
+    for (let i = 0; i < buf.length; i++) {
+      const v = buf[i];
+      if (v < 1e-15 && v > -1e-15) buf[i] = 0;
+    }
   }
 
   clampNum(v, lo, hi) {
