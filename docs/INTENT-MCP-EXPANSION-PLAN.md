@@ -121,6 +121,10 @@ green under a fake metrics provider; no new audio worklets.
 
 ## Phase D — KYX as MCP server (the strategic phase)
 
+> **STATUS: D1–D3 SHIPPED** (web transport live over the collab server,
+> token-authed, relay-to-browser execution). D2 desktop stdio host remains
+> (the manager pattern is copied from clap-host when needed).
+
 **Thesis:** KYX as an MCP server turns it from "DAW with AI assist" into a
 tool any AI agent can drive. The command layer we hardened across 17 waves
 (clamps, strict targets, undo, read-backs, explicit failures) IS the MCP
