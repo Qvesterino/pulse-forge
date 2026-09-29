@@ -249,10 +249,16 @@ function PcmChip({ services }: { services: Services }) {
 function MtcChip({ services }: { services: Services }) {
   const mtc = services.mtc;
   const [tick, setTick] = useState(0);
+  const visibleRef = useRef(false);
   useEffect(() => {
     if (!mtc) return;
     const unsubscribe = mtc.subscribe(() => setTick((n) => n + 1));
-    const timer = setInterval(() => setTick((n) => n + 1), 300); // re-hide on stale
+    const timer = setInterval(() => {
+      // Re-hide on stale — but only tick while MTC is actually arriving,
+      // plus one final tick after it goes stale. An always-on 300 ms
+      // interval re-rendered this chip 3.3×/s for the whole session.
+      if (mtc.isFresh() || visibleRef.current) setTick((n) => n + 1);
+    }, 300);
     return () => {
       unsubscribe();
       clearInterval(timer);
@@ -260,6 +266,8 @@ function MtcChip({ services }: { services: Services }) {
   }, [mtc]);
   if (!mtc) return null;
   const snapshot = mtc.getSnapshot();
+  const visible = Boolean(snapshot && mtc.isFresh());
+  visibleRef.current = visible;
   if (!snapshot || !mtc.isFresh()) return null;
   void tick;
   const armed = services.mtcChaser.armed;

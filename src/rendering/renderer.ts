@@ -515,6 +515,13 @@ export async function renderProject(
     // INSIDE the try: an abort here must still release the bank
     // subscription above, not leak it into the shared bank.
     throwIfAborted(options.signal);
+    // PDC export barrier (Wave 2): let the worklet processors' constructor
+    // latency reports land, then size + write the compensation delays
+    // exactly before the un-abortable render begins. Without this the
+    // export races the async reports (delayTime 0 → whole file misaligned
+    // against look-ahead chains) or glides into alignment over ~100 ms of
+    // rendered audio (setTargetAtTime on a fresh offline timeline).
+    await engine.prepareOfflineRender();
     // Audit 11 (reliability wave): OfflineAudioContext.startRendering is
     // itself un-abortable — but the CALLER should not stay wedged in
     // "exporting" for a 10-minute render after pressing Cancel. Race the

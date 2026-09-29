@@ -14,7 +14,8 @@ import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words
 import { generateLocalResult } from "../intent/pipeline";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
-import type { InstrumentKind } from "../project-model/types";
+import { inferPadRole } from "../ai/pad-roles";
+import type { DrumTrack, InstrumentKind, SceneRole } from "../project-model/types";
 import { applyPresetIntentCommand } from "../intent/preset-intent";
 import {
   addMarker,
@@ -24,7 +25,11 @@ import {
   createInstrumentTrack,
   deleteTrack,
   removeMarker,
+  setActivePattern,
+  setStepMeta,
+  setStepVelocityCommand,
   setTrackParams,
+  snapshot,
 } from "../commands/commands";
 
 /**

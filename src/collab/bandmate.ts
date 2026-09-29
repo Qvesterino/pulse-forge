@@ -54,6 +54,9 @@ export interface BandmateControls {
   subscribe(listener: () => void): () => void;
   /** Test/step hook: run one clock tick immediately. */
   tick(): void;
+  /** Teardown: clear the 250 ms tick timer (its closure retains the whole
+   *  session — store, transport, Y.Doc — so jam open/close cycles leak). */
+  stop(): void;
 }
 
 interface StoreLike {
@@ -452,8 +455,7 @@ export function createBandmate(deps: {
     emit();
   };
 
-  const interval = window.setInterval(tick, TICK_MS);
-  void interval; // cleared implicitly when the page dies with the session
+  let interval: number | null = window.setInterval(tick, TICK_MS);
 
   return {
     setEnabled(on: boolean) {
@@ -487,5 +489,12 @@ export function createBandmate(deps: {
       return () => listeners.delete(listener);
     },
     tick,
+    stop() {
+      if (interval !== null) {
+        clearInterval(interval);
+        interval = null;
+      }
+      enabled = false;
+    },
   };
 }

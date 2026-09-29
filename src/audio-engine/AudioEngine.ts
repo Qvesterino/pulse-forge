@@ -420,11 +420,33 @@ export function expandSceneLaneWindow(
   return expanded;
 }
 
+/** Shared master-metering readout (true peak, BS.1770 loudness, GR). */
+export interface MasterMeterSnapshot {
+  left: ChannelLevels;
+  right: ChannelLevels;
+  correlation: number;
+  peakHoldDb: number;
+  truePeakDb: number;
+  lufsMomentary: number;
+  lufsShortTerm: number;
+  lufsIntegrated: number;
+  monoLossDb: number;
+  lrImbalanceDb: number;
+  gainReductionDb: number;
+  glueReductionDb: number;
+}
+
 export class AudioEngine {
   private ctx: BaseAudioContext | null = null;
   private liveContextListeners = new Set<(context: AudioContext | null) => void>();
   private master: GainNode | null = null;
   private masterClipper: WaveShaperNode | null = null;
+  /** Cached soft-clip curve — depends only on constants, so built once and
+   *  reused across commits / fader-preview frames (applyMasterConfig runs
+   *  on every syncProject). */
+  private masterClipperCurve: Float32Array<ArrayBuffer> | null = null;
+  /** One-frame TTL cache for getMasterMeterSnapshot (see that method). */
+  private masterMeterCache: { at: number; snapshot: MasterMeterSnapshot } | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
   /**
    * Look-ahead limiter runtime spliced between the master clipper and the
@@ -1031,6 +1053,19 @@ export class AudioEngine {
   // stale callback suppress (and permanently strand) the new context's FX
   // refresh.
   private workletRefreshQueuedFor: BaseAudioContext | null = null;
+
+  /**
+   * Set by prepareOfflineRender(): syncPdc() writes sample-exact
+   * setValueAtTime instead of the live glide.
+   */
+  private offlineExactPdc = false;
+
+  /**
+   * Set by prepareOfflineRender() AFTER the final exact sizing pass:
+   * syncPdc() early-returns so a straggler latency report can never mutate
+   * an OfflineAudioContext mid-render.
+   */
+  private offlineRenderLocked = false;
 
   /**
    * Rebuild all FX chains so factories swap bypass/fallback runtimes for real
@@ -1742,15 +1777,26 @@ export class AudioEngine {
       }
     }
     if (config.clipperEnabled) {
-      const n = 2048;
-      const curve = new Float32Array(new ArrayBuffer(n * 4));
-      const ceilingLin = Math.pow(10, -0.3 / 20);
-      for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * 2 - 1;
-        curve[i] = (ceilingLin * Math.tanh(x * 3)) / Math.tanh(3);
+      // The curve depends only on constants (fixed −0.3 dB ceiling) — build
+      // it once. Rebuilding 2048 tanh samples + re-ingesting the WaveShaper
+      // curve on every commit (and every master-fader preview frame) was
+      // pure per-gesture waste.
+      if (!this.masterClipperCurve) {
+        const n = 2048;
+        const curve = new Float32Array(new ArrayBuffer(n * 4));
+        const ceilingLin = Math.pow(10, -0.3 / 20);
+        for (let i = 0; i < n; i++) {
+          const x = (i / (n - 1)) * 2 - 1;
+          curve[i] = (ceilingLin * Math.tanh(x * 3)) / Math.tanh(3);
+        }
+        this.masterClipperCurve = curve;
       }
-      this.masterClipper.curve = curve;
-    } else {
+      // Re-assign only when the node does not already carry it (the node is
+      // rebuilt on context swaps; the cached array survives).
+      if (this.masterClipper.curve !== this.masterClipperCurve) {
+        this.masterClipper.curve = this.masterClipperCurve;
+      }
+    } else if (this.masterClipper.curve !== null) {
       this.masterClipper.curve = null;
     }
     // DynamicsCompressorNode.threshold is expressed in dBFS, not linear
@@ -2580,10 +2626,18 @@ export class AudioEngine {
    * relative timing (no padding inflation). Documented residual: a return
    * carrying its own latency FX (limiter on a return) fed from a
    * lower-latency chain stays late by (returnLat − downstream).
+   *
+   * Write mode: live edits glide (setTargetAtTime, 20 ms — a chain edit must
+   * not click). Offline renders armed via prepareOfflineRender() write
+   * EXACTLY (setValueAtTime): a glide on a fresh offline timeline leaves the
+   * head of the export progressively misaligned — at the 20 ms time constant
+   * a 5 ms look-ahead target is within one sample only after ~100 ms of
+   * rendered audio, which is a defect frozen into the file.
    */
   private syncPdc(): void {
     const ctx = this.ctx;
     if (!ctx || !this.doc) return;
+    if (this.offlineRenderLocked) return; // a rendering graph must not be mutated
     const chainLatency = (state: FxChainState): number => {
       let total = 0;
       for (const rt of state.runtimes.values()) total += rt.getLatencySec?.() ?? 0;
@@ -2608,14 +2662,21 @@ export class AudioEngine {
     const returnLatency = new Map<string, number>();
     for (const [id, nodes] of this.returnNodes) returnLatency.set(id, chainLatency(nodes.fx));
     const now = ctx.currentTime;
+    const writeDelay = (delay: DelayNode | null | undefined, seconds: number): void => {
+      // Non-finite mirrors sendPdcDelaySec: treat as no compensation rather
+      // than throwing on the AudioParam write.
+      const target = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+      if (this.offlineExactPdc) delay?.delayTime.setValueAtTime(target, now);
+      else delay?.delayTime.setTargetAtTime(target, now, 0.02);
+    };
     for (const [id, nodes] of this.trackNodes) {
-      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(Math.max(0, maxEffective - (effective.get(id) ?? 0)), now, 0.02);
+      writeDelay(nodes.fx.pdcDelay, Math.max(0, maxEffective - (effective.get(id) ?? 0)));
     }
     for (const nodes of this.groupNodes.values()) {
-      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
+      writeDelay(nodes.fx.pdcDelay, 0);
     }
     for (const nodes of this.returnNodes.values()) {
-      nodes.fx.pdcDelay?.delayTime.setTargetAtTime(0, now, 0.02);
+      writeDelay(nodes.fx.pdcDelay, 0);
     }
     // Per-send compensation. Track taps sit post-track-PDC at
     // (maxEffective − groupLat), so the send waits out the downstream group
@@ -2625,14 +2686,48 @@ export class AudioEngine {
       const track = this.doc.tracks.find((t) => t.id === id);
       const downstream = track && track.kind !== "group" && track.groupId ? (groupLatency.get(track.groupId) ?? 0) : 0;
       for (const [returnId, delay] of nodes.sendDelays) {
-        delay.delayTime.setTargetAtTime(sendPdcDelaySec(downstream, returnLatency.get(returnId) ?? 0), now, 0.02);
+        writeDelay(delay, sendPdcDelaySec(downstream, returnLatency.get(returnId) ?? 0));
       }
     }
     for (const nodes of this.groupNodes.values()) {
       for (const [returnId, delay] of nodes.sendDelays) {
-        delay.delayTime.setTargetAtTime(sendPdcDelaySec(0, returnLatency.get(returnId) ?? 0), now, 0.02);
+        writeDelay(delay, sendPdcDelaySec(0, returnLatency.get(returnId) ?? 0));
       }
     }
+  }
+
+  /**
+   * Offline-render PDC barrier — the renderer calls this right before
+   * OfflineAudioContext.startRendering().
+   *
+   * Two concerns in one gate:
+   * 1. Latency settle. Worklet processors (gate, limiter, fxeq, ultina,
+   *    ozvena, morph) post their DSP latency from the audio thread during
+   *    node construction; those port messages are MAIN-THREAD TASKS and
+   *    startRendering() does not wait for them. Rendering without the
+   *    yield races the reports: the export runs with delayTime 0 (whole
+   *    file misaligned against look-ahead chains) or a mid-render
+   *    syncPdc() mutates an OfflineAudioContext graph (spec-undefined).
+   *    Two macrotask turns let every constructor-time report land, then
+   *    syncPdc() sizes the graph from real figures.
+   * 2. Exact writes. Arming switches syncPdc to setValueAtTime so the
+   *    compensation is sample-exact from sample 0 (see syncPdc). Late
+   *    straggler reports after arming early-return in syncPdc — a rendering
+   *    graph is never mutated.
+   *
+   * The render engine is throwaway (one per export), so arming never needs
+   * to disarm.
+   */
+  async prepareOfflineRender(): Promise<void> {
+    for (let turn = 0; turn < 2; turn++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    // Switch to exact writes FIRST, then run the final sizing pass with
+    // them, then lock: a mid-glide final write would defeat the whole
+    // barrier (the arm-before-write ordering is the contract).
+    this.offlineExactPdc = true;
+    this.syncPdc();
+    this.offlineRenderLocked = true;
   }
 
   private syncSends(sends: Record<string, number>, nodes: TrackNodes | GroupNodes): void {
@@ -5643,20 +5738,21 @@ export class AudioEngine {
     this.kwMeter?.reset();
   }
 
-  getMasterMeterSnapshot(): {
-    left: ChannelLevels;
-    right: ChannelLevels;
-    correlation: number;
-    peakHoldDb: number;
-    truePeakDb: number;
-    lufsMomentary: number;
-    lufsShortTerm: number;
-    lufsIntegrated: number;
-    monoLossDb: number;
-    lrImbalanceDb: number;
-    gainReductionDb: number;
-    glueReductionDb: number;
-  } {
+  getMasterMeterSnapshot(): MasterMeterSnapshot {
+    // Three UI consumers poll this on the shared rAF bus (meter wall + stereo
+    // strip ~30 Hz, loudness history ~10 Hz). A full snapshot runs true-peak
+    // oversampling over 2×2048 samples plus ring pushes and allocations; a
+    // one-frame TTL lets same-frame consumers share one computation instead
+    // of paying it two-three times per animation frame.
+    const now = performance.now();
+    const cached = this.masterMeterCache;
+    if (cached && now - cached.at < 12) return cached.snapshot;
+    const snapshot = this.computeMasterMeterSnapshot();
+    this.masterMeterCache = { at: now, snapshot };
+    return snapshot;
+  }
+
+  private computeMasterMeterSnapshot(): MasterMeterSnapshot {
     const levels = this.getMasterLevels();
     this.meterHistoryL.push(this.masterChBufL);
     this.meterHistoryR.push(this.masterChBufR);

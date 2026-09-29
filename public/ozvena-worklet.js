@@ -3464,46 +3464,69 @@
     const inIm = new Float64Array(partitionSize);
     const accRe = new Float64Array(partitionSize);
     const accIm = new Float64Array(partitionSize);
+    const partitionHasSignal = new Uint8Array(numPartitions);
+    let activePartitions = 0;
     fftPlan(partitionSize);
     function runBlock(t) {
-      for (let i = 0; i < hopSize; i++) {
-        inRe[i] = blockBuf[i];
-        inIm[i] = 0;
-      }
-      for (let i = hopSize; i < partitionSize; i++) {
-        inRe[i] = 0;
-        inIm[i] = 0;
-      }
-      fft(inRe, inIm);
       const xSlot = t % numPartitions * partitionSize * 2;
-      for (let k = 0; k < partitionSize; k++) {
-        blockSpectra[xSlot + 2 * k] = inRe[k];
-        blockSpectra[xSlot + 2 * k + 1] = inIm[k];
+      let hasSignal = false;
+      for (let i = 0; i < hopSize; i++) {
+        if (blockBuf[i] !== 0) {
+          hasSignal = true;
+          break;
+        }
+      }
+      if (hasSignal) {
+        for (let i = 0; i < hopSize; i++) {
+          inRe[i] = blockBuf[i];
+          inIm[i] = 0;
+        }
+        for (let i = hopSize; i < partitionSize; i++) {
+          inRe[i] = 0;
+          inIm[i] = 0;
+        }
+        fft(inRe, inIm);
+        for (let k = 0; k < partitionSize; k++) {
+          blockSpectra[xSlot + 2 * k] = inRe[k];
+          blockSpectra[xSlot + 2 * k + 1] = inIm[k];
+        }
+        if (!partitionHasSignal[t % numPartitions]) {
+          partitionHasSignal[t % numPartitions] = 1;
+          activePartitions++;
+        }
+      } else {
+        blockSpectra.fill(0, xSlot, xSlot + partitionSize * 2);
+        if (partitionHasSignal[t % numPartitions]) {
+          partitionHasSignal[t % numPartitions] = 0;
+          activePartitions--;
+        }
       }
       accRe.fill(0);
       accIm.fill(0);
-      for (let p = 0; p < numPartitions; p++) {
-        const j = t - p;
-        if (j < 0) continue;
-        const xb = j % numPartitions * partitionSize * 2;
-        const hb = p * partitionSize * 2;
-        for (let k = 0; k < partitionSize; k++) {
-          const xR = blockSpectra[xb + 2 * k];
-          const xI = blockSpectra[xb + 2 * k + 1];
-          const hR = irSpectrums[hb + 2 * k];
-          const hI = irSpectrums[hb + 2 * k + 1];
-          accRe[k] += hR * xR - hI * xI;
-          accIm[k] += hR * xI + hI * xR;
+      if (activePartitions > 0) {
+        for (let p = 0; p < numPartitions; p++) {
+          const j = t - p;
+          if (j < 0 || !partitionHasSignal[j % numPartitions]) continue;
+          const xb = j % numPartitions * partitionSize * 2;
+          const hb = p * partitionSize * 2;
+          for (let k = 0; k < partitionSize; k++) {
+            const xR = blockSpectra[xb + 2 * k];
+            const xI = blockSpectra[xb + 2 * k + 1];
+            const hR = irSpectrums[hb + 2 * k];
+            const hI = irSpectrums[hb + 2 * k + 1];
+            accRe[k] += hR * xR - hI * xI;
+            accIm[k] += hR * xI + hI * xR;
+          }
         }
-      }
-      for (let k = 0; k < partitionSize; k++) {
-        inRe[k] = accRe[k];
-        inIm[k] = -accIm[k];
-      }
-      fft(inRe, inIm);
-      for (let k = 0; k < partitionSize; k++) {
-        accRe[k] = inRe[k] / partitionSize;
-        accIm[k] = -inIm[k] / partitionSize;
+        for (let k = 0; k < partitionSize; k++) {
+          inRe[k] = accRe[k];
+          inIm[k] = -accIm[k];
+        }
+        fft(inRe, inIm);
+        for (let k = 0; k < partitionSize; k++) {
+          accRe[k] = inRe[k] / partitionSize;
+          accIm[k] = -inIm[k] / partitionSize;
+        }
       }
       const dest = (t + 1) * hopSize % partitionSize;
       for (let m = 0; m < hopSize; m++) {
@@ -3547,6 +3570,8 @@
         inIm.fill(0);
         accRe.fill(0);
         accIm.fill(0);
+        partitionHasSignal.fill(0);
+        activePartitions = 0;
         pending = 0;
         blockCount = 0;
         absRead = 0;

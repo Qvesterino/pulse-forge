@@ -10,8 +10,9 @@ const H = 132;
  *
  * Shows the source waveform with the grain window (SIZE ± JITTER) and the
  * POSITION marker. Dragging the canvas moves the playhead — commits stream
- * through setInstrumentParam with a coalesceKey, so one drag = one undo
- * entry while the engine hears every move. On the granular voice-worklet
+ * through setInstrumentParam with a coalesceKey (rAF-coalesced to one commit
+ * per frame, flushed on release), so one drag = one undo entry while the
+ * engine hears every frame. On the granular voice-worklet
  * path POSITION is read at every grain spawn, so the drag steers the cloud
  * LIVE during a held note (Granulator-II style); the fallback cloud picks
  * the new position up on its next notes.
@@ -30,6 +31,17 @@ export function GranularPanel({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragPos, setDragPos] = useState<number | null>(null);
+  // Commit coalescing (perf audit): high-poll-rate pointers emit move events
+  // far faster than the commit pipeline (normalize + engine sync + emit)
+  // should run. One command per frame is indistinguishable to the granular
+  // voice (position is read at grain-spawn rate) and pointerup always
+  // flushes the final value.
+  const pendingCommitRef = useRef<number | null>(null);
+  const commitRafRef = useRef<number | null>(null);
+  // Min/max envelope cache: the draw runs per frame while SCAN animates —
+  // rescanning every sample of the source per frame scaled with buffer
+  // length, not canvas width.
+  const envelopeRef = useRef<{ buffer: AudioBuffer; columns: number; values: Float32Array } | null>(null);
   const position = dragPos ?? Math.max(0, Math.min(1, track.params.position ?? 0.25));
   const size = Math.min(0.4, Math.max(0.02, track.params.size ?? 0.09));
   const jitter = Math.max(0, Math.min(1, track.params.jitter ?? 0.15));
@@ -54,22 +66,35 @@ export function GranularPanel({
       const dim = getComputedStyle(canvas).getPropertyValue("--text-faint") || "#3a3d44";
       const accent = getComputedStyle(canvas).getPropertyValue("--accent") || "#f59e0b";
 
-      // Min/max envelope of the source, faint.
+      // Min/max envelope of the source, faint. Cached per buffer — the
+      // envelope only changes when the sample changes.
       const data = buffer.getChannelData(0);
       const columns = Math.min(w, 240);
-      const per = Math.floor(data.length / columns);
+      let envelope = envelopeRef.current;
+      if (!envelope || envelope.buffer !== buffer || envelope.columns !== columns) {
+        const per = Math.max(1, Math.floor(data.length / columns));
+        const values = new Float32Array(columns * 2);
+        for (let c = 0; c < columns; c++) {
+          let min = 1;
+          let max = -1;
+          for (let i = c * per; i < (c + 1) * per && i < data.length; i++) {
+            const v = data[i];
+            if (v < min) min = v;
+            if (v > max) max = v;
+          }
+          values[c * 2] = min;
+          values[c * 2 + 1] = max;
+        }
+        envelope = { buffer, columns, values };
+        envelopeRef.current = envelope;
+      }
       ctx.strokeStyle = dim;
       ctx.globalAlpha = 0.6;
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let c = 0; c < columns; c++) {
-        let min = 1;
-        let max = -1;
-        for (let i = c * per; i < (c + 1) * per && i < data.length; i++) {
-          const v = data[i];
-          if (v < min) min = v;
-          if (v > max) max = v;
-        }
+        const min = envelope.values[c * 2];
+        const max = envelope.values[c * 2 + 1];
         const x = (c / columns) * w;
         ctx.moveTo(x, h / 2 - max * (h / 2 - 2));
         ctx.lineTo(x, h / 2 - min * (h / 2 - 2));
@@ -121,11 +146,43 @@ export function GranularPanel({
 
   const commitPosition = (v: number) => {
     setDragPos(v);
-    services.store.execute({
-      ...setInstrumentParam(doc, track.id, "position", v),
-      coalesceKey: `granular-position:${track.id}`,
+    pendingCommitRef.current = v;
+    if (commitRafRef.current !== null) return;
+    commitRafRef.current = requestAnimationFrame(() => {
+      commitRafRef.current = null;
+      const pending = pendingCommitRef.current;
+      pendingCommitRef.current = null;
+      if (pending === null) return;
+      services.store.execute({
+        ...setInstrumentParam(doc, track.id, "position", pending),
+        coalesceKey: `granular-position:${track.id}`,
+      });
     });
   };
+
+  // Release/cleanup path: land the final value synchronously so a drag never
+  // ends on a dropped frame.
+  const flushPendingCommit = () => {
+    if (commitRafRef.current !== null) {
+      cancelAnimationFrame(commitRafRef.current);
+      commitRafRef.current = null;
+    }
+    const pending = pendingCommitRef.current;
+    pendingCommitRef.current = null;
+    if (pending !== null) {
+      services.store.execute({
+        ...setInstrumentParam(doc, track.id, "position", pending),
+        coalesceKey: `granular-position:${track.id}`,
+      });
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (commitRafRef.current !== null) cancelAnimationFrame(commitRafRef.current);
+    },
+    [],
+  );
 
   const pointerToPos = (e: React.PointerEvent<HTMLCanvasElement>): number => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -149,8 +206,14 @@ export function GranularPanel({
           if (e.buttons === 0) return;
           commitPosition(pointerToPos(e));
         }}
-        onPointerUp={() => setDragPos(null)}
-        onPointerCancel={() => setDragPos(null)}
+        onPointerUp={() => {
+          flushPendingCommit();
+          setDragPos(null);
+        }}
+        onPointerCancel={() => {
+          flushPendingCommit();
+          setDragPos(null);
+        }}
       />
       <div className="wt-caption">
         <span>GRANULAR PLAYHEAD</span>

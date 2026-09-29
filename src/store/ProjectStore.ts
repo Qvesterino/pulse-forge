@@ -146,6 +146,11 @@ export class ProjectStore {
   }
 
   setSaveStatus(status: SaveStatus): void {
+    // No-op repeats are common (onDocChanged re-asserts "dirty" right after
+    // afterMutation already set it) — each redundant emit sweeps every
+    // subscribed component a second time per commit. "saved" always passes:
+    // it re-stamps lastSavedAt for a fresh flush of the same doc.
+    if (status === this.saveStatus_ && status !== "saved") return;
     this.saveStatus_ = status;
     if (status === "saved") this.lastSavedAt_ = new Date().toISOString();
     this.emit();

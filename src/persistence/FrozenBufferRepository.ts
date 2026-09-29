@@ -60,6 +60,21 @@ export class FrozenBufferRepository {
       return [];
     }
   }
+
+  /**
+   * Ids of all stored frozen buffers. The orphan-GC sweep only needs keys —
+   * `list()` would materialize every rendered track's WAV bytes on every
+   * project open just to read `entry.id`.
+   */
+  async listIds(): Promise<string[]> {
+    try {
+      const db = await this.openDatabase();
+      const keys = await tx<IDBValidKey[]>(db, STORE_FROZEN_AUDIO, "readonly", (s) => s.getAllKeys());
+      return (keys ?? []).map(String);
+    } catch {
+      return [];
+    }
+  }
 }
 
 /**

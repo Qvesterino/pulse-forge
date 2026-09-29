@@ -1,4 +1,5 @@
 import { EFFECT_DEFS, EFFECT_ORDER, defaultParamsOf } from "./effects/registry";
+import type { DrumPad } from "./project-model/types";
 import { INSTRUMENT_DEFS, INSTRUMENT_ORDER, defaultInstrumentParams } from "./instruments/registry";
 import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-library/factory";
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
@@ -5613,6 +5614,72 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     }
   } catch (error) {
     check("granular voice worklet browser suite", false, String(error));
+  }
+
+  // ── PDC Wave 2: offline export alignment ──────────────────
+  // The end-to-end proof for the export barrier: two identical drum hits,
+  // one track with the look-ahead gate (constant 2.5 ms), one dry. Each
+  // track renders in ISOLATION (same full graph — PDC is sized from all
+  // chains — only one track triggered per render), so the click positions
+  // measure the per-track compensation directly.
+  try {
+    const SR = 48000;
+    const { AudioEngine } = await import("./audio-engine/AudioEngine");
+    const makeDoc = (withGate: boolean) => {
+      const base = createProjectFromTemplate("house");
+      const drumA = base.tracks.find((t) => t.kind === "drum")!;
+      const drumB = {
+        ...drumA,
+        id: "pdc-drums-b",
+        name: "PDC B",
+        effects: withGate
+          ? [{ id: "pdc-gate", type: "gate" as const, bypassed: false, params: defaultParamsOf("gate") }]
+          : [],
+      };
+      const trackA = { ...drumA, id: "pdc-drums-a", name: "PDC A", effects: [] };
+      return { ...base, tracks: [trackA, drumB] };
+    };
+    const clickPosSec = async (trackId: string, withGate: boolean, prepare: boolean): Promise<number> => {
+      const doc = makeDoc(withGate);
+      const when = 0.02;
+      const pad = (doc.tracks[0] as unknown as { pads: DrumPad[] }).pads[0];
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadCoreWorklets(ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      engine.trigger(trackId, pad, when, 1);
+      if (prepare) await engine.prepareOfflineRender();
+      const buffer = await ctx.startRendering();
+      const data = buffer.getChannelData(0);
+      const start = Math.floor(when * SR) - 64;
+      for (let i = Math.max(0, start); i < data.length; i++) {
+        if (Math.abs(data[i]) > 0.2) return i / SR - when;
+      }
+      return Number.NaN;
+    };
+    // Control: WITHOUT the barrier the gated track lands ~2.5 ms late —
+    // proves the gate really delays (if this fails the check proves nothing).
+    const rawA = await clickPosSec("pdc-drums-a", true, false);
+    const rawB = await clickPosSec("pdc-drums-b", true, false);
+    const rawDeltaSamples = Math.abs((rawB - rawA) * SR);
+    check(
+      "PDC control: ungated-barrier render keeps the gate's ~2.5 ms offset (gate really delays)",
+      Number.isFinite(rawDeltaSamples) && rawDeltaSamples > 0.6 * 0.0025 * SR && rawDeltaSamples < 1.6 * 0.0025 * SR,
+      `rawDelta=${rawDeltaSamples.toFixed(1)} samples (expected ~${(0.0025 * SR).toFixed(0)})`,
+    );
+    // With the barrier: both tracks land sample-aligned.
+    const aPos = await clickPosSec("pdc-drums-a", true, true);
+    const bPos = await clickPosSec("pdc-drums-b", true, true);
+    const alignedSamples = Math.abs((bPos - aPos) * SR);
+    check(
+      "PDC export alignment: gate track vs dry track land within 2 samples after prepareOfflineRender",
+      Number.isFinite(alignedSamples) && alignedSamples <= 2,
+      `alignedDelta=${alignedSamples.toFixed(1)} samples (a=${(aPos * SR).toFixed(1)}, b=${(bPos * SR).toFixed(1)})`,
+    );
+  } catch (error) {
+    check("PDC export alignment browser suite", false, String(error));
   }
 
   return results;

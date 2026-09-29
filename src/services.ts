@@ -870,8 +870,8 @@ export async function openProject(
       }
       const referenced = await repo.referencedFrozenBufferIds();
       if (closed) return;
-      for (const entry of await frozenAudio.list()) {
-        if (!referenced.has(entry.id)) await frozenAudio.remove(entry.id);
+      for (const id of await frozenAudio.listIds()) {
+        if (!referenced.has(id)) await frozenAudio.remove(id);
       }
     } catch (err) {
       // Restore is best-effort — never leave an unhandled rejection behind.
@@ -1082,6 +1082,10 @@ export async function openProject(
     await generativeRuntime.dispose();
     playback.stop();
     collab?.dispose();
+    // The bandmate's 250 ms tick timer outlives the project otherwise — its
+    // closure retains the whole session (store, transport, Y.Doc), so every
+    // jam open/close cycle leaked one timer plus one project document.
+    bandmate?.stop();
     // Audit 13 INFO: the 8s sync-guard must not fire against a disposed
     // session (it would flush buffered commands into a dead Y.Doc).
     if (syncGuardTimerRef) {

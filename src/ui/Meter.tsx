@@ -22,6 +22,10 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
 
   useEffect(() => {
     let last = 0;
+    // Last applied DOM strings — in silence every poll computes the same
+    // values, and re-writing identical styles/attributes 30×/s per strip
+    // (one per track/return) is pure CSSOM churn.
+    const applied = { height: "", bg: "", holdBottom: "", holdOpacity: "", holdBg: "", clip: "", aria: "" };
     registerRaf(meterId, (t) => {
       if (t - last < 33) return; // ~30 Hz
       last = t;
@@ -41,20 +45,41 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
         holdLevel.current = Math.max(0, holdLevel.current - 0.02);
       }
 
-      // Direct DOM mutation — zero React reconciliation on the hot path.
-      if (fillRef.current) {
-        fillRef.current.style.height = `${level * 100}%`;
-        fillRef.current.style.background = clipping || level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
+      // Direct DOM mutation — zero React reconciliation on the hot path,
+      // and no write at all while the values are unchanged.
+      const height = `${level * 100}%`;
+      const bg = clipping || level > 0.92 ? "#f87171" : level > 0.75 ? "#f59e0b" : "#4ade80";
+      if (height !== applied.height || bg !== applied.bg) {
+        applied.height = height;
+        applied.bg = bg;
+        if (fillRef.current) {
+          fillRef.current.style.height = height;
+          fillRef.current.style.background = bg;
+        }
       }
-      if (holdRef.current) {
-        holdRef.current.style.bottom = `${holdLevel.current * 100}%`;
-        holdRef.current.style.opacity = holdLevel.current > 0.01 ? "1" : "0";
-        holdRef.current.style.background = clipping ? "#f87171" : "#fff";
+      const holdBottom = `${holdLevel.current * 100}%`;
+      const holdOpacity = holdLevel.current > 0.01 ? "1" : "0";
+      const holdBg = clipping ? "#f87171" : "#fff";
+      if (holdBottom !== applied.holdBottom || holdOpacity !== applied.holdOpacity || holdBg !== applied.holdBg) {
+        applied.holdBottom = holdBottom;
+        applied.holdOpacity = holdOpacity;
+        applied.holdBg = holdBg;
+        if (holdRef.current) {
+          holdRef.current.style.bottom = holdBottom;
+          holdRef.current.style.opacity = holdOpacity;
+          holdRef.current.style.background = holdBg;
+        }
       }
-      if (rootRef.current) {
-        rootRef.current.dataset.clipping = clipping ? "true" : "false";
-        rootRef.current.setAttribute("aria-valuenow", String(Math.round(level * 100)));
-        rootRef.current.setAttribute("aria-valuetext", clipping ? "CLIP" : `${Math.round(level * 100)}%`);
+      const clip = clipping ? "true" : "false";
+      const aria = clipping ? "CLIP" : `${Math.round(level * 100)}%`;
+      if (clip !== applied.clip || aria !== applied.aria) {
+        applied.clip = clip;
+        applied.aria = aria;
+        if (rootRef.current) {
+          rootRef.current.dataset.clipping = clip;
+          rootRef.current.setAttribute("aria-valuenow", String(Math.round(level * 100)));
+          rootRef.current.setAttribute("aria-valuetext", aria);
+        }
       }
     });
     return () => unregisterRaf(meterId);

@@ -45,6 +45,11 @@ class KwMeterProcessor extends AudioWorkletProcessor {
     this.subAccum = [0, 0];
     this.subPowers = []; // channel-summed mean square per 100 ms subblock
     this.integratedStart = 0; // RESET INTEGRATED moves this forward
+    // Perf: integratedLoudness() is a two-pass rescan over the WHOLE ring
+    // (10 entries/s of session, ~1 h cap) on the audio thread. Recomputing
+    // it every subblock made that cost O(ring) per 100 ms and linear in
+    // session length; integrated LUFS moves slowly — 1 Hz is plenty.
+    this.integratedCooldown = 0;
     this.lastPost = 0;
     this.loudness = { m: -180, s: -180, i: -180 };
     this.port.onmessage = (event) => {
@@ -157,7 +162,14 @@ class KwMeterProcessor extends AudioWorkletProcessor {
           for (let k = n - 30; k < n; k++) acc += this.subPowers[k];
           this.loudness.s = this.loudnessOf(acc / 30);
         }
-        this.loudness.i = this.integratedLoudness();
+        // Integrated: full gated rescan — throttled to 1 Hz (every 10th
+        // subblock) so the audio-thread cost does not grow with the ring.
+        if (this.integratedCooldown <= 0) {
+          this.loudness.i = this.integratedLoudness();
+          this.integratedCooldown = 10;
+        } else {
+          this.integratedCooldown--;
+        }
       }
     }
 
@@ -174,6 +186,7 @@ class KwMeterProcessor extends AudioWorkletProcessor {
     // RESET INTEGRATED: gating restarts from now — momentary/short-term keep
     // measuring continuously (they are windowed, not accumulated).
     this.integratedStart = this.subPowers.length;
+    this.integratedCooldown = 0;
     this.loudness = { m: this.loudness.m, s: this.loudness.s, i: -180 };
   }
 }

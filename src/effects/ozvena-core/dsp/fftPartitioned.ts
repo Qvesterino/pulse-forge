@@ -165,6 +165,16 @@ function makeConvolver(
   const accRe = new Float64Array(partitionSize);
   const accIm = new Float64Array(partitionSize);
 
+  // (Reconciled from Pulse Forge, 2026-09-29.) Silence gate: per-partition
+  // signal flags + live count. An all-zero input block's spectrum is exactly
+  // zero in every bin, so it is stored directly (no forward FFT) and skipped
+  // in the accumulate pass; once no partition in the window carries signal
+  // the MAC sweep and the inverse FFT are skipped too. A silent send (the
+  // steady state for a reverb return between phrases) drops from a full
+  // FFT + numPartitions×N complex MAC sweep per hop to an O(hop) zero scan.
+  const partitionHasSignal = new Uint8Array(numPartitions);
+  let activePartitions = 0;
+
   // For unit testing — pre-compute plan reference (cached globally).
   fftPlan(partitionSize);
 
@@ -187,50 +197,77 @@ function makeConvolver(
    * The reported latency is `hopSize` samples.
    */
   function runBlock(t: number): void {
-    // X_t = FFT([blockBuf, zeros]).
-    for (let i = 0; i < hopSize; i++) {
-      inRe[i] = blockBuf[i];
-      inIm[i] = 0;
-    }
-    for (let i = hopSize; i < partitionSize; i++) {
-      inRe[i] = 0;
-      inIm[i] = 0;
-    }
-    fft(inRe, inIm);
+    // (Reconciled from Pulse Forge, 2026-09-29.) Zero-scan before the
+    // transform: FFT of an all-zero block is exactly +0 in every bin, so
+    // storing zeros directly is bit-identical to running it.
     const xSlot = (t % numPartitions) * partitionSize * 2;
-    for (let k = 0; k < partitionSize; k++) {
-      blockSpectra[xSlot + 2 * k] = inRe[k];
-      blockSpectra[xSlot + 2 * k + 1] = inIm[k];
+    let hasSignal = false;
+    for (let i = 0; i < hopSize; i++) {
+      if (blockBuf[i] !== 0) {
+        hasSignal = true;
+        break;
+      }
+    }
+    if (hasSignal) {
+      // X_t = FFT([blockBuf, zeros]).
+      for (let i = 0; i < hopSize; i++) {
+        inRe[i] = blockBuf[i];
+        inIm[i] = 0;
+      }
+      for (let i = hopSize; i < partitionSize; i++) {
+        inRe[i] = 0;
+        inIm[i] = 0;
+      }
+      fft(inRe, inIm);
+      for (let k = 0; k < partitionSize; k++) {
+        blockSpectra[xSlot + 2 * k] = inRe[k];
+        blockSpectra[xSlot + 2 * k + 1] = inIm[k];
+      }
+      if (!partitionHasSignal[t % numPartitions]) {
+        partitionHasSignal[t % numPartitions] = 1;
+        activePartitions++;
+      }
+    } else {
+      blockSpectra.fill(0, xSlot, xSlot + partitionSize * 2);
+      if (partitionHasSignal[t % numPartitions]) {
+        partitionHasSignal[t % numPartitions] = 0;
+        activePartitions--;
+      }
     }
 
     // Y_t = IFFT(Σ_p H_p · X_{t−p}).
     accRe.fill(0);
     accIm.fill(0);
-    for (let p = 0; p < numPartitions; p++) {
-      const j = t - p;
-      if (j < 0) continue;
-      const xb = (j % numPartitions) * partitionSize * 2;
-      const hb = p * partitionSize * 2;
+    if (activePartitions > 0) {
+      for (let p = 0; p < numPartitions; p++) {
+        const j = t - p;
+        if (j < 0 || !partitionHasSignal[j % numPartitions]) continue;
+        const xb = (j % numPartitions) * partitionSize * 2;
+        const hb = p * partitionSize * 2;
+        for (let k = 0; k < partitionSize; k++) {
+          const xR = blockSpectra[xb + 2 * k];
+          const xI = blockSpectra[xb + 2 * k + 1];
+          const hR = irSpectrums[hb + 2 * k];
+          const hI = irSpectrums[hb + 2 * k + 1];
+          accRe[k] += hR * xR - hI * xI;
+          accIm[k] += hR * xI + hI * xR;
+        }
+      }
+
+      // Inverse FFT via conjugate trick: IFFT(x) = conj(FFT(conj(x))) / N.
       for (let k = 0; k < partitionSize; k++) {
-        const xR = blockSpectra[xb + 2 * k];
-        const xI = blockSpectra[xb + 2 * k + 1];
-        const hR = irSpectrums[hb + 2 * k];
-        const hI = irSpectrums[hb + 2 * k + 1];
-        accRe[k] += hR * xR - hI * xI;
-        accIm[k] += hR * xI + hI * xR;
+        inRe[k] = accRe[k];
+        inIm[k] = -accIm[k]; // conjugate
+      }
+      fft(inRe, inIm);
+      for (let k = 0; k < partitionSize; k++) {
+        accRe[k] = inRe[k] / partitionSize;
+        accIm[k] = -inIm[k] / partitionSize; // conjugate back
       }
     }
-
-    // Inverse FFT via conjugate trick: IFFT(x) = conj(FFT(conj(x))) / N.
-    for (let k = 0; k < partitionSize; k++) {
-      inRe[k] = accRe[k];
-      inIm[k] = -accIm[k]; // conjugate
-    }
-    fft(inRe, inIm);
-    for (let k = 0; k < partitionSize; k++) {
-      accRe[k] = inRe[k] / partitionSize;
-      accIm[k] = -inIm[k] / partitionSize; // conjugate back
-    }
+    // With every partition exactly zero, accRe/accIm stay +0 — the same
+    // values the MAC + iFFT would produce — so the skip is bit-exact and
+    // the tail-combine below keeps its bookkeeping.
     // accRe now holds the time-domain circular convolution Y_t. The
     // output segment is out_t[m] = Y_t[m] + prevSecondHalf[m], where
     // prevSecondHalf carries Y_{t−1}[L .. 2L) computed previously.
@@ -284,6 +321,8 @@ function makeConvolver(
       inIm.fill(0);
       accRe.fill(0);
       accIm.fill(0);
+      partitionHasSignal.fill(0);
+      activePartitions = 0;
       pending = 0;
       blockCount = 0;
       absRead = 0;

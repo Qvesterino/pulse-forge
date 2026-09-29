@@ -104,6 +104,8 @@ export interface IFrozenBufferRepository {
   load(bufferId: string): Promise<ArrayBuffer | undefined>;
   remove(bufferId: string): Promise<void>;
   list(): Promise<FrozenAudioEntry[]>;
+  /** Key-only listing for the orphan-GC sweep (never materializes WAV payloads). */
+  listIds(): Promise<string[]>;
 }
 
 /**

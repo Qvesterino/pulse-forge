@@ -373,6 +373,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       load: vi.fn(async () => undefined),
       remove: vi.fn(async () => {}),
       list: vi.fn(async () => []),
+      listIds: vi.fn(async () => []),
     } as any,
     userSamples: {
       list: vi.fn(async () => []),

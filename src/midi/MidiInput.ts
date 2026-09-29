@@ -68,6 +68,30 @@ export class MidiInput {
   private mpeListeners = new Set<() => void>();
   /** True once any per-note pressure or CC74 timbre message has arrived. */
   private mpeConnected = false;
+  /** Coalesced macro CC values (macroId → latest normalized), flushed at ~30 Hz. */
+  private pendingMacroValues = new Map<string, number>();
+  private macroFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleMacroFlush(): void {
+    if (this.macroFlushTimer !== null) return;
+    this.macroFlushTimer = setTimeout(() => {
+      this.macroFlushTimer = null;
+      this.flushMacroValues();
+    }, 32);
+  }
+
+  private flushMacroValues(): void {
+    if (this.pendingMacroValues.size === 0) return;
+    const pending = this.pendingMacroValues;
+    this.pendingMacroValues = new Map();
+    const doc = this.getDoc?.();
+    if (!doc || !this.store) return;
+    for (const [macroId, value] of pending) {
+      // The macro can be deleted while its sweep is coalescing.
+      if (!doc.macros.some((m) => m.id === macroId)) continue;
+      this.store.execute(this.setMacroValueCmd(doc, macroId, value));
+    }
+  }
 
   /** Subscribe to MPE activity changes (per-note pressure/timbre). */
   subscribeMpe(listener: () => void): () => void {
@@ -179,6 +203,12 @@ export class MidiInput {
     this.listeners.clear();
     if (this.access) this.access.onstatechange = null;
     this.noteRepeat?.stopAll();
+    // Land any coalesced macro sweep at its final value before teardown.
+    if (this.macroFlushTimer !== null) {
+      clearTimeout(this.macroFlushTimer);
+      this.macroFlushTimer = null;
+    }
+    this.flushMacroValues();
     this.engine = null;
     this.store = null;
     this.transport = null;
@@ -413,13 +443,18 @@ export class MidiInput {
       this.engine.applyMidiCc(mapping.target, targetValue);
     }
 
-    // Check macro source:midiCC mappings
+    // Check macro source:midiCC mappings. Controllers stream CC at 50–200
+    // msgs/s; each message used to run the full commit pipeline (normalize +
+    // engine sync + emit). Latest value per macro, flushed at ~30 Hz — a
+    // knob sweep is a continuous gesture, so the coalesceKey still yields
+    // one undo entry.
     for (const macro of doc.macros) {
       for (const m of macro.mappings) {
         if (m.source !== "midiCC" || m.ccNumber !== cc) continue;
         if (m.channel !== undefined && m.channel !== channel) continue;
         const normalized = value / 127;
-        this.store.execute(this.setMacroValueCmd(doc, macro.id, normalized));
+        this.pendingMacroValues.set(macro.id, normalized);
+        this.scheduleMacroFlush();
       }
     }
 
