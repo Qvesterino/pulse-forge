@@ -95,7 +95,14 @@ for (const row of rows) {
     bucket.wrongKind += 1;
     continue;
   }
-  if (canonicalModelJson(route) === canonicalModelJson(truth)) {
+  // The resolver wraps "exact" actions into a plan ({kind, plan:{label, ops}})
+  // — the engine-generated label is not model output, so the comparison
+  // flattens to the ops the teacher carries.
+  const comparable =
+    route.kind === "exact" && route.plan && Array.isArray((route.plan as { ops?: unknown }).ops)
+      ? { kind: route.kind, ops: (route.plan as { ops: unknown[] }).ops }
+      : route;
+  if (canonicalModelJson(comparable) === canonicalModelJson(truth)) {
     exact += 1;
     bucket.exact += 1;
   }
