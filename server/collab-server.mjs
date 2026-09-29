@@ -16,6 +16,7 @@
  * jam sessions. Only light sanitization and rate limiting on uploads.
  */
 import { createServer } from "node:http";
+import { createMcpHub, handleMcpRequest, isValidToken } from "./mcp-core.mjs";
 import { timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -517,9 +518,47 @@ export function createCollabServer({
     rejectedUpgrades: 0,
     rejectedPayloads: 0,
   };
+  let mcpRelaySocket = null;
+
+  // KYX MCP server (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D3): opt-in via
+  // MCP_TOKEN env — without it /mcp and /mcp-relay 404/refuse and the
+  // surface costs nothing. Tool calls relay to the connected KYX window,
+  // which executes them through the deterministic command layer.
+  const mcpToken = String(process.env.MCP_TOKEN ?? "").trim();
+  const mcpHub = createMcpHub({
+    token: mcpToken,
+    sendToSession: (payload) => {
+      if (mcpRelaySocket != null && mcpRelaySocket.readyState === WS_OPEN) {
+        mcpRelaySocket.send(JSON.stringify(payload));
+      }
+    },
+  });
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
+    if (url.pathname === "/mcp" && req.method === "POST") {
+      if (mcpToken.length === 0) {
+        sendJson(res, 404, { error: "MCP server is disabled (set MCP_TOKEN to enable)" });
+        return;
+      }
+      const auth = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+      if (!isValidToken(auth, mcpToken)) {
+        sendJson(res, 401, { error: "unauthorized" });
+        return;
+      }
+      let raw = "";
+      req.on("data", (chunk) => {
+        raw += chunk;
+        if (raw.length > 1_000_000) req.destroy();
+      });
+      req.on("end", () => {
+        void handleMcpRequest(mcpHub, mcpToken, auth, raw).then((response) => {
+          if (response != null) sendJson(res, 200, response);
+          else sendJson(res, 202, {});
+        });
+      });
+      return;
+    }
     if (!url.pathname.startsWith("/api/")) {
       sendJson(res, 404, { error: "not found (this port speaks y-websocket + /api/gallery)" });
       return;
@@ -709,6 +748,30 @@ export function createCollabServer({
   };
 
   server.on("upgrade", (request, socket, head) => {
+    const upgradeUrl = new URL(request.url ?? "/", "http://x");
+    // MCP relay: the KYX window registers as the tool executor session.
+    if (upgradeUrl.pathname === "/mcp-relay") {
+      const token = String(upgradeUrl.searchParams.get("token") ?? "").trim();
+      if (mcpToken.length === 0 || !isValidToken(token, mcpToken)) {
+        rejectUpgrade(socket, 401, "Unauthorized", "mcp token missing or wrong");
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (conn) => {
+        mcpRelaySocket = conn;
+        conn.on("message", (raw) => {
+          try {
+            mcpHub.handleSessionMessage(JSON.parse(String(raw)));
+          } catch {
+            /* malformed relay message — ignored */
+          }
+        });
+        conn.on("close", () => {
+          if (mcpRelaySocket === conn) mcpRelaySocket = null;
+        });
+      });
+      return;
+    }
+
     const requestOrigin = request.headers.origin;
     if (!allowedOrigins.has("*") && requestOrigin && !allowedOrigins.has(requestOrigin)) {
       metrics.rejectedUpgrades += 1;
