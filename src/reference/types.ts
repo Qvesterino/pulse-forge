@@ -155,7 +155,8 @@ export const DEFAULT_REFERENCE_OPTIONS: ReferenceOptions = {
   hopSize: 512,
 };
 
-export type ReferenceStage = "decoding" | "buffer" | "transients" | "tempo" | "chroma" | "key" | "structure" | "finalizing" | "done";
+export type ReferenceStage =
+  "decoding" | "buffer" | "transients" | "tempo" | "chroma" | "key" | "structure" | "finalizing" | "done";
 
 export const REFERENCE_STAGE_LABELS: Record<ReferenceStage, string> = {
   decoding: "Decoding audio",

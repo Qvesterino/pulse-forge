@@ -65,9 +65,15 @@ load and REFUSES a model trained against a different action grammar
 (vocabulary drift = load failure, never a silent mis-prompt). Model bytes
 are fetched own-origin only (pack-cache first), size- and SHA-256-verified
 before init. The runtime adapter is whatever module the manifest names —
-a llama.cpp-class WASM build exporting `createIntentLlmRuntime()`; until it
-and the trained GGUF are vendored, the loader degrades to unavailable and
-nothing about the deterministic path changes.
+a llama.cpp-class WASM build exporting `createIntentLlmRuntime()`. The v1
+ONNX student needs NO external module: `model-worker.ts` carries a NATIVE
+backend (`runtime.kind: "onnx-intent-v1"`) that fetches + hash-verifies the
+vocab artifact (manifest `features.url`), creates the ORT-wasm session in
+the worker (the ranker worker's exact single-threaded setup) and decodes
+head outputs through the canonical TS decoder — the action JSON text
+contract is identical for both backends, so the resolver bridge cannot tell
+them apart. Until the release gate passes, the loader refuses to register
+either backend and nothing about the deterministic path changes.
 
 **[A] and [C] share the same drawer**: `src/ai/` already ships the local-model
 pattern — worker isolation, manifest (modelHash, versions), load timeout,
@@ -124,11 +130,15 @@ downloadable on demand; neither is in the web bundle's critical path.
   (`src/intent/model-decoder.ts`) and enforces attempted-exact ≥ 95 %,
   wrongKind = 0, abstain ≤ 20 % on val + golden, plus determinism. On pass
   it patches `report.gatePassed = true`; the loader REFUSES models without
-  that pin. STATUS: gate NOT passed yet (val attempted-exact ~7 %,
-  abstain ~59 % — the 389-row corpus is the bottleneck), so the committed
-  artifact is inert by construction; the deterministic layer is the engine.
-  Path to activation: expand generator templates → `intent-model:all` →
-  gate → `gatePassed=true`.
+  that pin. STATUS: gate NOT passed yet (corpus v4 = 1726 pairs gives
+  val attempted-exact ~22–40 % depending on split, wrongKind = 0 on val +
+  golden — safe but not exact enough; the ceiling is the classifier's
+  joint-slot coherence, not the corpus), so the committed artifact
+  is inert by construction; the deterministic layer is the engine.
+  Path to activation: (a) keep expanding templates per
+  `docs/INTENT-DATASET-TEMPLATES.md` — the SAME corpus feeds the LLM
+  fine-tune, so the work carries over — or (b) the GGUF runtime adapter
+  (GBNF constrained decoding solves joint-slot coherence natively).
 - **SFT (phase 2, LLM)**: LFM-2.5 1.2B instruct, LoRA or full FT on
   train.jsonl, prompt = system + instruction, completion = action JSON;
   same manifest/gate/loader contract via the GGUF runtime adapter.

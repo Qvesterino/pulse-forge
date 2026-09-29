@@ -78,7 +78,11 @@ export function bpmCommand(doc: ProjectDocument, bpm: number): Command {
  * detected key into that existing source of truth instead of inventing a new
  * one (the F4 rule: "nevymýšľať nový source-of-truth").
  */
-export function keyCommand(doc: ProjectDocument, tonic: string | null, mode: ReferenceMode | string | null): Command | null {
+export function keyCommand(
+  doc: ProjectDocument,
+  tonic: string | null,
+  mode: ReferenceMode | string | null,
+): Command | null {
   if (!tonic || !mode) return null;
   const key = musicalKeyFor(tonic, mode);
   if (!key) return null;
@@ -123,17 +127,19 @@ export function sectionMarkerCommand(
 
   const label = options.label ? `${options.label} ` : "";
   const before = doc;
-  const after = sections.reduce(
-    (d, section) => {
-      const tick = secondsToTicks(section.startSec, options.bpm);
-      // A section that snaps to bar 0 is the track's own head, not a cue.
-      if (tick <= 0) return d;
-      return addMarker(d, { tick, type: section.markerType, name: `${label}${section.role}` }).execute(d);
-    },
-    doc,
-  );
+  const after = sections.reduce((d, section) => {
+    const tick = secondsToTicks(section.startSec, options.bpm);
+    // A section that snaps to bar 0 is the track's own head, not a cue.
+    if (tick <= 0) return d;
+    return addMarker(d, { tick, type: section.markerType, name: `${label}${section.role}` }).execute(d);
+  }, doc);
   if (after.markers.length === before.markers.length) return null;
-  return snapshot("importReferenceSections", `Import ${after.markers.length - before.markers.length} section markers`, before, after);
+  return snapshot(
+    "importReferenceSections",
+    `Import ${after.markers.length - before.markers.length} section markers`,
+    before,
+    after,
+  );
 }
 
 /**

@@ -79,6 +79,7 @@ const manifest = {
     // raw file bytes — the validator hashes the file, not a re-serialization
     vocabSha256: sha256(vocabBytes),
     vocabSize: vocab.tokens.length,
+    url: "/models/intent-model-v1.vocab.json",
     inputName: "features",
     outputNames: vocab.heads.map((head) => `head_${head.name}`),
     heads: vocab.heads,

@@ -72,6 +72,8 @@ describe("reference/determinism", () => {
       metadata: makeMetadata(6),
     });
     expect(result.result.diagnostics.engineVersion).toBe("kyx-reference/1.0.0");
-    expect(result.result.diagnostics.schemaVersion).toBe(1);
+    // v2 with F2's structure block. Bumping this is a real contract change, so
+    // it is asserted rather than floated.
+    expect(result.result.diagnostics.schemaVersion).toBe(2);
   });
 });

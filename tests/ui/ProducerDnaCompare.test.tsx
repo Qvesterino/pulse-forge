@@ -92,9 +92,9 @@ describe("ProducerDnaCompare", () => {
     expect(screen.getAllByRole("button", { name: /A$/ }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /B$/ }).length).toBeGreaterThan(0);
     // Neither side is pre-committed: the user must press one.
-    expect(
-      screen.getAllByRole("button", { name: /A$/ }).some((b) => b.getAttribute("aria-pressed") === "true"),
-    ).toBe(false);
+    expect(screen.getAllByRole("button", { name: /A$/ }).some((b) => b.getAttribute("aria-pressed") === "true")).toBe(
+      false,
+    );
   });
 
   it("randomizes suggested A/B sides, hides rank/source, and records the displayed side", () => {

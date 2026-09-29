@@ -56,6 +56,8 @@ describe("intent model artifact lock", () => {
     const vocab = JSON.parse(vocabBytes.toString("utf8")) as IntentModelVocab;
     expect(vocab.tokens.length).toBe(manifest.features.vocabSize);
     expect(vocab.heads.map((head) => `head_${head.name}`)).toEqual(manifest.features.outputNames);
+    // the native ONNX backend resolves the vocab through the manifest pin
+    expect(manifest.features.url).toBe("/models/intent-model-v1.vocab.json");
   });
 
   it("the release-gate verdict is explicit (loader refuses models without it)", () => {

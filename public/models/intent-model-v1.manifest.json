@@ -1,7 +1,7 @@
 {
   "intentModelVersion": "intent-model.v1",
   "schemaVersion": 1,
-  "grammarSha256": "646dcf47c30c37abf60ed422f78e822b166aaf6fe10b3221eb6e0b07b779b699",
+  "grammarSha256": "a7cde2485afab1ae22e11f137bb5ad544fb77bbde19555c470c365edd17f8dee",
   "runtime": {
     "kind": "onnx-intent-v1",
     "module": "/models/llm/intent-runtime.js",
@@ -24,6 +24,7 @@
     "version": "intent-features.v1",
     "vocabSha256": "a5e258d5e8cd3adda4693257922a2857458ba0d1a098a577d27865a5a3a6c506",
     "vocabSize": 348,
+    "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
     "outputNames": [
       "head_kind",

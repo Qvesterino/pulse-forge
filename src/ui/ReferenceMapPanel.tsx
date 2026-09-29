@@ -327,10 +327,7 @@ export function ReferenceMapPanel() {
     // fallback for a signal with no detectable structure (a flat drone), and
     // the label says which one ran.
     if (sections.length > 0) {
-      runCommand(
-        (d) => sectionMarkerCommand(d, analysis.map, { bpm, label }),
-        "No sections to import.",
-      );
+      runCommand((d) => sectionMarkerCommand(d, analysis.map, { bpm, label }), "No sections to import.");
       return;
     }
     runCommand(
@@ -505,12 +502,7 @@ export function ReferenceMapPanel() {
               </p>
             )}
             <div className="reference-apply-row">
-              <button
-                type="button"
-                onClick={applyBpm}
-                disabled={shownBpm === null}
-                data-testid="reference-apply-bpm"
-              >
+              <button type="button" onClick={applyBpm} disabled={shownBpm === null} data-testid="reference-apply-bpm">
                 Set project BPM
               </button>
               <button

@@ -43,6 +43,24 @@ function decodedClickTrack(bpm: number, seconds: number) {
   };
 }
 
+/** 20 s with a real shape: 4 s quiet, 12 s loud, 4 s quiet → intro/drop/outro. */
+function decodedStructure() {
+  const seconds = 20;
+  const pcm = new Float32Array(FIXTURE_SR * seconds);
+  for (let i = 0; i < pcm.length; i++) {
+    const t = i / FIXTURE_SR;
+    const loud = t >= 4 && t < 16;
+    pcm[i] = (loud ? 0.7 : 0.06) * Math.sin(2 * Math.PI * 110 * t);
+  }
+  return {
+    duration: seconds,
+    sampleRate: FIXTURE_SR,
+    numberOfChannels: 1,
+    length: pcm.length,
+    getChannelData: () => pcm,
+  };
+}
+
 function makeFile(name: string, bytes = 1024): File {
   return new File([new Uint8Array(bytes)], name, { type: "audio/wav" });
 }
@@ -170,6 +188,88 @@ describe("ReferenceMapPanel — analysis result", () => {
     expect(screen.getByTestId("reference-confidence").textContent).toMatch(/nothing detected/i);
     // The warning is the point: silence is reported, not papered over.
     expect(screen.getByTestId("reference-warnings").textContent).toMatch(/silent/i);
+  });
+});
+
+describe("ReferenceMapPanel — F2 structure", () => {
+  beforeEach(() => {
+    downloadSpy.mockClear();
+  });
+
+  it("renders section bands and an energy strip when structure was detected", async () => {
+    setup(decodedStructure());
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+
+    await waitFor(() => expect(screen.getByTestId("reference-sections")).toBeInTheDocument());
+    expect(screen.getByTestId("reference-energy")).toBeInTheDocument();
+    // The loudest section must be labelled, not left anonymous.
+    expect(screen.getByTestId("reference-section-drop")).toBeInTheDocument();
+  });
+
+  it("omits the section strip when the signal has no detectable structure", async () => {
+    // A flat drone has no intro/drop/outro. Rendering empty bands would be a
+    // lie; the F1 contract is "absent, not invented".
+    const flat = {
+      duration: 10,
+      sampleRate: FIXTURE_SR,
+      numberOfChannels: 1,
+      length: FIXTURE_SR * 10,
+      getChannelData: () => {
+        const pcm = new Float32Array(FIXTURE_SR * 10);
+        for (let i = 0; i < pcm.length; i++) pcm[i] = Math.sin((2 * Math.PI * 220 * i) / FIXTURE_SR) * 0.4;
+        return pcm;
+      },
+    };
+    setup(flat);
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("drone.wav")] } });
+
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    expect(screen.queryByTestId("reference-sections")).not.toBeInTheDocument();
+  });
+
+  it("seeks to a section start when its band is clicked", async () => {
+    setup(decodedStructure());
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-sections")).toBeInTheDocument());
+
+    expect(screen.getByTestId("reference-map").textContent).not.toMatch(/@ \d/);
+    fireEvent.click(screen.getByTestId("reference-section-drop"));
+    // The readout names the position so the seek is visible, not just a caret.
+    expect(screen.getByTestId("reference-map").textContent).toMatch(/@ \d+\.\d\ds/);
+  });
+
+  it("imports section markers typed by role rather than generic cues", async () => {
+    // One render only — `setup()` would leave a second panel in the DOM and
+    // every getByTestId would then match twice.
+    const services = mockServices();
+    const executed = vi.fn();
+    (services.store as unknown as { execute: unknown }).execute = executed;
+    (services as unknown as { engine: { ensureContext: unknown } }).engine = {
+      ensureContext: () => ({
+        state: "running",
+        resume: vi.fn(async () => {}),
+        currentTime: 0,
+        decodeAudioData: vi.fn(async () => decodedStructure()),
+      }),
+    } as never;
+    render(
+      <ServicesContext.Provider value={services}>
+        <ReferenceMapPanel />
+      </ServicesContext.Provider>,
+    );
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-sections")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("reference-apply-markers"));
+    // The section import is a real command carrying real marker types — the
+    // whole point of F2 is that the drop marker is typed `drop`, not `cue`.
+    expect(executed).toHaveBeenCalledTimes(1);
+    const command = executed.mock.calls[0][0] as {
+      execute: (d: typeof services.store.doc) => typeof services.store.doc;
+    };
+    const next = command.execute(services.store.doc);
+    expect(next.markers.some((m) => m.type === "drop")).toBe(true);
+    expect(next.markers.length).toBeGreaterThan(0);
   });
 });
 

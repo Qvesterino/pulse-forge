@@ -98,7 +98,7 @@ describe("F2 energy curve", () => {
 const NO_BEATS = { durationSeconds: 20, beatTimes: [] as number[], bpm: null };
 
 describe("F2 sections from energy", () => {
-    it("finds quiet → loud → quiet as intro, drop, outro", () => {
+  it("finds quiet → loud → quiet as intro, drop, outro", () => {
     const curve = energyCurve(structureIntroDropOutro(), 20);
     const sections = sectionsFromEnergy(curve, NO_BEATS);
     expect(sections.length).toBeGreaterThanOrEqual(2);

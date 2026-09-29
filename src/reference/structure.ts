@@ -120,11 +120,7 @@ function median(values: number[]): number {
  * The correction: a section that RUNS TO THE END is the outro, whatever its
  * start. That is the definition, not a heuristic.
  */
-function sectionRole(
-  position: number,
-  label: "low" | "mid" | "high",
-  isLast: boolean,
-): ReferenceSection["role"] {
+function sectionRole(position: number, label: "low" | "mid" | "high", isLast: boolean): ReferenceSection["role"] {
   if (position < 0.15) return "intro";
   if (position > 0.9 || isLast) return "outro";
   if (label === "high") return "drop";
@@ -198,8 +194,7 @@ export function sectionsFromEnergy(
   for (let i = 1; i <= labels.length; i++) {
     if (i !== labels.length && labels[i] === labels[start]) continue;
     const endPos = i < labels.length ? curve[i].position : 1;
-    const segEnergy =
-      energies.slice(start, Math.max(i, start + 1)).reduce((a, b) => a + b, 0) / Math.max(1, i - start);
+    const segEnergy = energies.slice(start, Math.max(i, start + 1)).reduce((a, b) => a + b, 0) / Math.max(1, i - start);
     raw.push({
       role: sectionRole(curve[start].position, labels[start], endPos >= 1),
       start: Math.min(curve[start].position, endPos),
@@ -314,5 +309,3 @@ export function averageEnergy(curve: ReferenceStructure["energyCurve"]): number 
   if (curve.length === 0) return 0;
   return Number((curve.reduce((a, p) => a + p.energy, 0) / curve.length).toFixed(4));
 }
-
-

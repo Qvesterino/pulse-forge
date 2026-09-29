@@ -62,6 +62,9 @@ export interface IntentModelManifest {
     inputName: string;
     outputNames: string[];
     heads: IntentModelHead[];
+    /** Vocab artifact URL (own origin) — the native ONNX backend fetches and
+     * hash-verifies it before building the BoW featurizer. */
+    url?: string;
   };
   /** Training/eval summary (display + gates), engine-ignored. */
   report?: Record<string, unknown>;
@@ -161,6 +164,7 @@ export function isIntentModelManifest(value: unknown): value is IntentModelManif
     if (typeof f.vocabSize !== "number" || !Number.isInteger(f.vocabSize) || f.vocabSize <= 0) return false;
     if (typeof f.inputName !== "string" || f.inputName.length === 0) return false;
     if (!Array.isArray(f.outputNames) || f.outputNames.some((name) => typeof name !== "string")) return false;
+    if (f.url !== undefined && (typeof f.url !== "string" || !f.url.startsWith("/"))) return false;
     if (!Array.isArray(f.heads) || f.heads.length === 0) return false;
     for (const head of f.heads) {
       if (head == null || typeof head !== "object") return false;

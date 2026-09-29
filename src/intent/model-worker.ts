@@ -15,6 +15,8 @@
  * never the audio callback.
  */
 
+import { assetUrl } from "../shared/assetUrls";
+import { buildIntentBow, decodeIntentHeads, type IntentModelVocab } from "./model-decoder";
 import {
   buildIntentModelPrompt,
   isIntentModelManifest,
@@ -72,8 +74,99 @@ async function fetchWithPackCache(
   return out.buffer;
 }
 
+// ── Native ONNX backend (runtime.kind "onnx-intent-v1") ─────────────────────
+
+type OrtNamespace = typeof import("onnxruntime-web/wasm");
+type OrtSession = Awaited<ReturnType<OrtNamespace["InferenceSession"]["create"]>>;
+
+interface OnnxBackend {
+  ort: OrtNamespace;
+  session: OrtSession;
+  vocab: IntentModelVocab;
+  inputName: string;
+}
+
+let onnx: OnnxBackend | null = null;
+
+async function ensureOrt(): Promise<OrtNamespace> {
+  const loaded = await import("onnxruntime-web/wasm");
+  // Single-threaded WASM, binary fetched from our own origin and handed over
+  // via env.wasm.wasmBinary — the ranker worker's exact setup (a plain fetch
+  // is served as-is by vite dev AND the production build, while importing
+  // the .mjs loader from public would hit vite's no-source-imports error).
+  const wasmResponse = await fetch(assetUrl("/models/ort/ort-wasm-simd-threaded.wasm"));
+  if (!wasmResponse.ok) throw new Error(`ort wasm fetch failed: ${wasmResponse.status}`);
+  loaded.env.wasm.wasmBinary = await wasmResponse.arrayBuffer();
+  loaded.env.wasm.numThreads = 1;
+  return loaded as OrtNamespace;
+}
+
+function isVocabArtifact(value: unknown): value is IntentModelVocab {
+  if (value == null || typeof value !== "object") return false;
+  const v = value as Partial<IntentModelVocab>;
+  if (v.version !== 1 || !Array.isArray(v.tokens) || v.tokens.some((t) => typeof t !== "string")) return false;
+  if (!Array.isArray(v.heads) || v.heads.length === 0) return false;
+  return v.heads.every(
+    (head) =>
+      head != null &&
+      typeof head.name === "string" &&
+      (head.kind === "softmax" || head.kind === "sigmoid") &&
+      Array.isArray(head.classes) &&
+      head.classes.length > 0,
+  );
+}
+
+async function ensureOnnxBackend(manifest: IntentModelManifest, weights: ArrayBuffer): Promise<OnnxBackend> {
+  const features = manifest.features;
+  if (!features) throw new Error("onnx backend requires a manifest features pin");
+  if (!features.url) throw new Error("onnx backend requires features.url (vocab artifact)");
+  const vocabBytes = await fetchWithPackCache(features.url);
+  const vocabError = await sha256Mismatch(vocabBytes, features.vocabSha256);
+  if (vocabError) throw new Error(`vocab ${vocabError}`);
+  const vocab = JSON.parse(new TextDecoder().decode(vocabBytes)) as unknown;
+  if (!isVocabArtifact(vocab)) throw new Error("vocab artifact malformed");
+  if (vocab.tokens.length !== features.vocabSize) throw new Error("vocab size mismatch");
+
+  const ort = await ensureOrt();
+  const session = await ort.InferenceSession.create(new Uint8Array(weights), {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  });
+  for (const name of features.outputNames) {
+    if (!session.outputNames.includes(name)) throw new Error(`output ${name} missing from graph`);
+  }
+  return { ort, session, vocab, inputName: features.inputName };
+}
+
+/** Run one instruction through the native backend; null = the model abstained.
+ * The decoded action is serialized to the SAME text contract the LLM runtime
+ * adapter honours — the resolver bridge cannot tell the backends apart. */
+async function generateOnnx(backend: OnnxBackend, instruction: string): Promise<string | null> {
+  const bow = buildIntentBow(instruction, backend.vocab.tokens);
+  const tensor = new backend.ort.Tensor("float32", bow, [1, bow.length]);
+  const results = (await backend.session.run({ [backend.inputName]: tensor })) as Record<
+    string,
+    { data: Float32Array }
+  >;
+  const outputs: Record<string, Float32Array> = {};
+  for (const head of backend.vocab.heads) {
+    const value = results[`head_${head.name}`];
+    if (!value) throw new Error(`session returned no head_${head.name}`);
+    outputs[`head_${head.name}`] = value.data;
+  }
+  const decoded = decodeIntentHeads(outputs, backend.vocab);
+  return decoded === null ? null : JSON.stringify(decoded);
+}
+
 async function ensureRuntime(manifest: IntentModelManifest): Promise<void> {
   if (runtime && activeManifest === manifest) return;
+  if (runtime && activeManifest && activeManifest !== manifest) {
+    // a different artifact — drop the resident session first
+    runtime?.dispose?.();
+    runtime = null;
+    onnx = null;
+    activeManifest = null;
+  }
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
@@ -92,7 +185,16 @@ async function ensureRuntime(manifest: IntentModelManifest): Promise<void> {
     }
     const hashError = await sha256Mismatch(weights, manifest.model.sha256);
     if (hashError) throw new Error(hashError);
-    // 3. Runtime adapter: a vendored own-origin module (no CDN imports) that
+    // 3a. NATIVE ONNX BACKEND — the v1 student runs in this worker through
+    //     onnxruntime-web (same build as the ranker worker): vocab artifact
+    //     fetch + hash → BoW featurizer → session → canonical decoder. No
+    //     external runtime module, no network beyond this origin.
+    if (manifest.runtime.kind === "onnx-intent-v1") {
+      onnx = await ensureOnnxBackend(manifest, weights);
+      activeManifest = manifest;
+      return;
+    }
+    // 3b. Runtime adapter: a vendored own-origin module (no CDN imports) that
     //    exports createIntentLlmRuntime() (or the manifest-named export).
     const moduleUrl = new URL(manifest.runtime.module, self.location.href).href;
     const mod = (await import(/* @vite-ignore */ moduleUrl)) as Record<string, unknown>;
@@ -158,10 +260,23 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
 
   if (request.type === "generate") {
     try {
-      if (!runtime || !activeManifest) throw new Error("model not loaded");
+      if (!activeManifest) throw new Error("model not loaded");
       const instruction = request.instruction.slice(0, 500); // bounded — prompts are one clause
-      const text = await runtime.generate(buildIntentModelPrompt(activeManifest, instruction));
-      if (typeof text !== "string") throw new Error("runtime returned a non-string completion");
+      let text: string;
+      if (onnx) {
+        // Native ONNX backend: heads → canonical decoder → compact action
+        // JSON (the same contract the LLM runtime adapter honours). An
+        // abstention rejects — the main thread treats it as a controlled
+        // miss and falls back to the deterministic parsers.
+        const decoded = await generateOnnx(onnx, instruction);
+        if (decoded === null) throw new Error("model abstained — out of scope or unsure");
+        text = JSON.stringify(decoded);
+      } else if (runtime) {
+        text = await runtime.generate(buildIntentModelPrompt(activeManifest, instruction));
+        if (typeof text !== "string") throw new Error("runtime returned a non-string completion");
+      } else {
+        throw new Error("model not loaded");
+      }
       respond({ type: "generate", requestId: request.requestId, ok: true, text });
     } catch (err) {
       respond({
@@ -177,6 +292,7 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
   // reset — test/diagnostic hook: drop the resident session so a later load re-inits.
   runtime?.dispose?.();
   runtime = null;
+  onnx = null;
   activeManifest = null;
   loadPromise = null;
   respond({ type: "reset", requestId: request.requestId, ok: true });
