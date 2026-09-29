@@ -700,7 +700,7 @@ const ROLE_TARGETS: Record<string, MixTarget[]> = {
   fill: ["drums"],
 };
 
-const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
+export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
   [/\bdrum|\bbic/, "drums"],
   [/\bbass\w*|\bbas(?:a|u|y|i|ou|ov|om)?\b|\b808\w*/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],

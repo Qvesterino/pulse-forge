@@ -105,6 +105,7 @@ import {
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { tryModelRoute } from "../intent/model-resolver";
 import { createVoiceCapture } from "../intent/voice-capture";
+import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
@@ -2178,6 +2179,73 @@ export function IntentPanel() {
         // the recorder's own ONE-undo-frame lifecycle.
         services.patternRecorder.setArmed(route.arm);
         setStatus(route.arm ? "⏺ REC armed — play to lay it in, stop ends the take" : "⏹ recording disarmed");
+      } else if (route.kind === "undoIntent") {
+        // SESSION CONTROL — undo/redo through the store. A live mic take
+        // pins the stack: rewinding under a recording would corrupt its
+        // undo frame (Audit 09 lesson), so the ask is declined honestly.
+        if (route.intent.kind === "undo") {
+          if (isMicRecordingActive()) {
+            setError("nahrávka beží — undo až po stop");
+            return;
+          }
+          const labels: string[] = [];
+          for (let i = 0; i < route.intent.steps; i++) {
+            const before = services.store.undoStackLength;
+            services.store.undo();
+            if (services.store.undoStackLength === before) break;
+            labels.unshift(services.store.lastCommandLabel ?? "");
+          }
+          setStatus(
+            `↩ undone ${route.intent.steps} step(s)${labels.length > 0 ? ` — ${labels.filter(Boolean).join(" · ")}` : ""}`,
+          );
+        } else {
+          for (let i = 0; i < route.intent.steps; i++) services.store.redo();
+          setStatus(`↪ redone ${route.intent.steps} step(s)`);
+        }
+      } else if (route.kind === "queryIntent") {
+        // READ-ONLY queries — answers from the current doc + store history,
+        // never a mutation.
+        const d = services.store.getDoc();
+        const q = route.intent;
+        if (q.subject === "lastAction") {
+          const entry = services.store.history[services.store.history.length - 1];
+          setStatus(entry ? `⚙ last action: ${entry.label}` : "žiadna akcia v tejto relácii");
+        } else if (q.subject === "tempo") {
+          setStatus(
+            `⏱ ${d.bpm} BPM · ${d.key ?? "key unset"} · ${d.timeSignature.numerator}/${d.timeSignature.denominator}`,
+          );
+        } else if (q.subject === "key") {
+          setStatus(`🎼 ${d.key ?? "key unset"}`);
+        } else if (q.subject === "tracks") {
+          setStatus(`🎚 ${d.tracks.length} tracks: ${d.tracks.map((t) => t.name).join(", ")}`);
+        } else if (q.subject === "markers") {
+          setStatus(
+            d.markers.length > 0
+              ? `📍 ${d.markers.map((m) => `${m.name}@${Math.round(m.tick / 480 / 4) + 1}`).join(", ")}`
+              : "žiadne markery",
+          );
+        } else if (q.subject === "groove") {
+          setStatus(`🥁 ${grooveReadback(d) || "groove neutrálny"}`);
+        } else {
+          const named = q.target;
+          const tracks = d.tracks.filter((t) => {
+            if (t.kind === "group") return false;
+            const inst = t.kind === "instrument" ? t.instrument : "";
+            if (named != null) {
+              return (
+                (["bass", "808", "logdrum"].includes(inst) && named === "bass") ||
+                (inst === "keys" && named === "chords") ||
+                new RegExp(`${named}`, "i").test(t.name)
+              );
+            }
+            return true;
+          });
+          const lines = tracks.map((t) => {
+            const chain = t.effects.map((fx) => `${fx.type}${fx.bypassed ? " (bypassed)" : ""}`).join(", ");
+            return `${t.name}: ${chain || "no FX"}`;
+          });
+          setStatus(`🎛 ${lines.slice(0, 6).join(" · ") || "žiadne FX"}`);
+        }
       } else if (route.kind === "sectionGrooveIntent") {
         // "more swing in the drop" — the swing DELTA baked into the section
         // pattern's odd 16ths (microtiming), one undo step.

@@ -23,11 +23,15 @@ import {
   parseAutomateIntent,
   parseGrooveIntent,
   parseMarkerIntent,
+  parseQueryIntent,
   parseSectionGrooveIntent,
+  parseUndoIntent,
   type AutomateIntent,
   type GrooveIntent,
   type MarkerIntent,
+  type QueryIntent,
   type SectionGrooveIntent,
+  type UndoIntent,
 } from "./studio-words";
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
@@ -219,6 +223,8 @@ export type RoutedIntent =
   | { kind: "save" }
   | { kind: "export"; format: ExportFormat }
   | { kind: "record"; arm: boolean }
+  | { kind: "undoIntent"; intent: UndoIntent }
+  | { kind: "queryIntent"; intent: QueryIntent }
   | { kind: "grooveIntent"; intent: GrooveIntent }
   | { kind: "sectionGrooveIntent"; intent: SectionGrooveIntent }
   | { kind: "automateIntent"; intent: AutomateIntent }
@@ -310,6 +316,17 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const studioGenreSignal = Boolean(
     studioPattern.input.genre || studioPattern.detected.some((chip) => chip.startsWith("♪")),
   );
+  // SESSION CONTROL — undo/redo and read-only queries are the most-said
+  // producer asks; they must not be gated on anything (a question is always
+  // a question). Undo is bounded by the store; queries never mutate.
+  const undoIntent = parseUndoIntent(text);
+  if (undoIntent) {
+    return { kind: "undoIntent", intent: undoIntent };
+  }
+  const queryIntent = parseQueryIntent(text);
+  if (queryIntent) {
+    return { kind: "queryIntent", intent: queryIntent };
+  }
   if (!studioGenreSignal) {
     // SECTION-SCOPED groove first ("more swing in the drop") — more specific
     // than the global groove ask; falls through to global when unscoped.

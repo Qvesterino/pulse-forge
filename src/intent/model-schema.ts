@@ -202,7 +202,7 @@ export const MODEL_ACTIONS: Record<string, ActionSpec> = {
         N("panValue", -100, 100, false),
         I("bpm", 20, 300, false),
         N("deltaDb", -24, 24, false),
-        I("semitones", -24, 24, false),
+        I("semitones", -36, 36, false),
         I("steps", 16, 256, false),
         T("name", false),
       ]),

@@ -197,6 +197,7 @@ export function markerReadback(after: ProjectDocument, intent: MarkerIntent): st
 
 import type { DrumTrack } from "../project-model/types";
 import { resolveSceneTarget, type ArrangeRole } from "./arrangeWords";
+import { TARGET_WORDS } from "./mix";
 import { setStepMeta } from "../commands/commands";
 
 /**
@@ -319,4 +320,91 @@ export function sectionGrooveReadback(after: ProjectDocument, intent: SectionGro
     }
   }
   return count > 0 ? `micro ${Math.round((sum / count) * 1000) / 1000}` : "";
+}
+
+// ── UNDO / REDO / HISTORY + QUERIES — session control, read-only answers ────
+
+/**
+ * "vráť to", "undo two steps", "redo", "čo si spravil", "v akom je to
+ * takte", "čo má lead na sebe" — the session-control layer. Undo/redo are
+ * RUNTIME store operations (services.store) — the panel dispatches them the
+ * same way as transport; queries are READ-ONLY and answer from the current
+ * document + store history. One guard: undo is declined while a mic take is
+ * live (isMicRecordingActive) — rewinding under a recording would corrupt
+ * the take's undo frame (Audit 09 lesson).
+ */
+
+export interface UndoIntent {
+  kind: "undo" | "redo";
+  steps: number;
+}
+
+export interface QueryIntent {
+  subject: "tempo" | "key" | "tracks" | "fxChain" | "markers" | "groove" | "lastAction";
+  /** fxChain tracks: the named family, empty = all */
+  target?: string;
+}
+
+const NUMBER_WORDS: ReadonlyArray<readonly [RegExp, number]> = [
+  [/\b(?:two|dva|dve)\b/i, 2],
+  [/\b(?:three|tri)\b/i, 3],
+  [/\b(?:four|styri)\b/i, 4],
+];
+
+const UNDO_ASK =
+  /^\s*(?:please\s+)?(?:undo|vr[aá]ť(?:\s+to)?|vrath?ni|sp[aä]ť(?:\s+to)?|step\s+back)(?:\s+(?:the\s+)?(?:last\s+)?(?:action|change|krok))?(?:\s+(two|dva|dve|three|tri|four|styri)|\s+(\d{1,2}))?(?:\s*(?:steps?|kroky|krokov))?\s*[.!]?\s*$/i;
+const REDO_ASK = /^\s*(?:please\s+)?(?:redo|zopakuj|dopredn?\w*)(?:\s+(\d{1,2}))?\s*[.!]?\s*$/i;
+
+export function parseUndoIntent(text: string): UndoIntent | null {
+  const undo = UNDO_ASK.exec(text);
+  if (undo) {
+    let steps = 1;
+    const digits = undo[2] != null ? Number(undo[2]) : null;
+    const word = undo[1] != null ? String(undo[1]).toLowerCase() : null;
+    if (digits != null) steps = digits;
+    else if (word != null) {
+      for (const [pattern, count] of NUMBER_WORDS) {
+        if (pattern.test(word)) {
+          steps = count;
+          break;
+        }
+      }
+    }
+    return { kind: "undo", steps: Math.max(1, Math.min(20, steps)) };
+  }
+  const redo = REDO_ASK.exec(text);
+  if (redo) {
+    return { kind: "redo", steps: redo[1] != null ? Math.max(1, Math.min(20, Number(redo[1]))) : 1 };
+  }
+  return null;
+}
+
+const QUERY_SUBJECTS: ReadonlyArray<readonly [RegExp, QueryIntent["subject"]]> = [
+  [/\b(?:tempo|bpm|takt(?:e|u)?)\b/i, "tempo"],
+  [/\bkey\b|\btonina\b/i, "key"],
+  [/\btracks?\b|\btrackov\b|\blanes?\b/i, "tracks"],
+  [/\bmarkers?\b|\bmarkery\b|\bcues?\b/i, "markers"],
+  [/\bgroove\b|\bswing\b/i, "groove"],
+  [/\bfx\b|\beffects?\b|\bchain\b|\bna sebe\b|\bplugin|\bon\s+(?:the\s+)?(?:bass|lead|chords|drums)\b/i, "fxChain"],
+];
+
+export function parseQueryIntent(text: string): QueryIntent | null {
+  const isQuestion =
+    /\?\s*$/.test(text) ||
+    /^\s*(?:what|which|how many|list|show|ako|aky|ak[áá]|v akom|kolko|koľko|zoznam|ukaz|co|čo)\b/i.test(text);
+  if (!isQuestion) return null;
+  // "what did you just do" / "čo si spravil" → the LAST action from history
+  if (/\b(?:did you|you just|si spravil|si urobil|last action|posledn)/i.test(text)) {
+    return { subject: "lastAction" };
+  }
+  for (const [re, subject] of QUERY_SUBJECTS) {
+    if (re.test(text)) {
+      if (subject === "fxChain") {
+        const target = TARGET_WORDS.find(([pattern]) => pattern.test(text))?.[1];
+        return { subject, ...(target != null ? { target } : {}) };
+      }
+      return { subject };
+    }
+  }
+  return null;
 }
