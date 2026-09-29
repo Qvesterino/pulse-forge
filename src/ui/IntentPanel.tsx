@@ -106,6 +106,8 @@ import {
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { tryModelRoute } from "../intent/model-resolver";
+import { diagnoseComplaint } from "../intent/complaints";
+import type { SongSectionMeter } from "../intent/song-audio-review";
 import { createVoiceCapture } from "../intent/voice-capture";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import type { IntentModelState } from "../intent/model-loader-types";
@@ -2184,6 +2186,28 @@ export function IntentPanel() {
         // the recorder's own ONE-undo-frame lifecycle.
         services.patternRecorder.setArmed(route.arm);
         setStatus(route.arm ? "⏺ REC armed — play to lay it in, stop ends the take" : "⏹ recording disarmed");
+      } else if (route.kind === "complaintIntent") {
+        // LISTENING LOOP (Phase C): complaint → measured diagnosis →
+        // executable bounded proposals as verified chips. Nothing mutates
+        // until a chip is picked (audition-first by construction).
+        stopAudition();
+        const meters: SongSectionMeter[] = [];
+        const diagnosis = diagnoseComplaint(route.intent, meters);
+        if (diagnosis == null) {
+          setError("complaint sa nepodarilo vyhodnotiť");
+          return;
+        }
+        const verified = diagnosis.proposals
+          .map((proposal) => proposal.instruction)
+          .filter((instruction) => {
+            const probe = routeIntentText(instruction, doc);
+            return probe.kind !== "pattern" && probe.kind !== "clarify";
+          });
+        setClarify({
+          reason: `Diagnóza: ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}`,
+          suggestions: verified,
+        });
+        setStatus(`👂 ${diagnosis.diagnosis}${diagnosis.measurement ? ` — ${diagnosis.measurement}` : ""}`);
       } else if (route.kind === "undoIntent") {
         // SESSION CONTROL — undo/redo through the store. A live mic take
         // pins the stack: rewinding under a recording would corrupt its

@@ -37,6 +37,7 @@ import { parseSoundSwapIntent, parseStepEditIntent, type SoundSwapIntent, type S
 import { declinedFaderClarification } from "./conversation";
 import { declinedEffectClarification } from "./mix";
 import { parseCompoundIntent, type CompoundPart } from "./compound";
+import { parseComplaintIntent, type ComplaintIntent } from "./complaints";
 import { parsePresetIntent, type PresetIntent } from "./preset-intent";
 import { typoCorrections } from "./typo";
 import { parseSectionRequests } from "./sections";
@@ -225,6 +226,7 @@ export type RoutedIntent =
   | { kind: "export"; format: ExportFormat }
   | { kind: "record"; arm: boolean }
   | { kind: "undoIntent"; intent: UndoIntent }
+  | { kind: "complaintIntent"; intent: ComplaintIntent }
   | { kind: "queryIntent"; intent: QueryIntent }
   | { kind: "grooveIntent"; intent: GrooveIntent }
   | { kind: "sectionGrooveIntent"; intent: SectionGrooveIntent }
@@ -329,6 +331,13 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const queryIntent = parseQueryIntent(text);
   if (queryIntent) {
     return { kind: "queryIntent", intent: queryIntent };
+  }
+  // COMPLAINT — the listening loop ("drop pôsobí prázdno", "the lead is
+  // harsh"): measured diagnosis + executable bounded proposals as clarify
+  // chips. Nothing mutates until the user picks a chip.
+  const complaintIntent = parseComplaintIntent(text);
+  if (complaintIntent) {
+    return { kind: "complaintIntent", intent: complaintIntent };
   }
   if (!studioGenreSignal) {
     // SECTION-SCOPED groove first ("more swing in the drop") — more specific
