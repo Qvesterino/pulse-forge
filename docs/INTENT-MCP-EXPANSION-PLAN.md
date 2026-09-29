@@ -134,8 +134,9 @@ green under a fake metrics provider; no new audio worklets.
 ## Phase D — KYX as MCP server (the strategic phase)
 
 > **STATUS: D1–D3 SHIPPED** (web transport live over the collab server,
-> token-authed, relay-to-browser execution). D2 desktop stdio host remains
-> (the manager pattern is copied from clap-host when needed).
+> token-authed, relay-to-browser execution) AND **D2 desktop stdio SHIPPED**
+> (loopback bridge in Electron main + stateless stdio forwarder; the tool
+> surface is 11 tools, not the 5 originally scoped).
 
 **Thesis:** KYX as an MCP server turns it from "DAW with AI assist" into a
 tool any AI agent can drive. The command layer we hardened across 17 waves
@@ -156,14 +157,26 @@ bar. Nothing bypasses the domain layer.
 All tools are JSON-Schema-typed (generated from the same vocab as
 `model-schema.ts` — one source, two consumers).
 
-### D2. Desktop transport (stdio)
+### D2. Desktop transport (stdio) — SHIPPED
 
-- `desktop/mcp-host-manager.cjs` — the same manager pattern as
-  clap-host/asio-host: spawn `mcp-server.cjs` over stdio, lifecycle tied to
-  the app
-- The MCP server imports the shared tools module and calls the app's
-  services through a narrow bridge (IPC → main → services), reusing the
-  manager/handshake conventions already in main.cjs
+Chain: external MCP client (Claude Desktop & co.) → `desktop/mcp-server.cjs`
+(stateless stdio JSON-RPC forwarder) → HTTP POST → loopback bridge inside
+Electron main (`desktop/mcp-bridge-server.cjs`, binds 127.0.0.1 ONLY,
+constant-time bearer token, 1 MB body cap) → IPC `kyx:mcp:call` to the
+focused window → `src/mcp/desktop-host.ts` executes through
+`executeMcpTool` (the SAME deterministic command layer as the web relay)
+→ `kyx:mcp:answer` back out. The stdio process holds no project data and
+executes nothing.
+
+- `desktop/mcp-host-manager.cjs` — manager pattern (clap-host/pcm): bridge
+  lifecycle, token generation, IPC handlers (`kyx:mcp:status/enable/
+disable/answer`), pending-call map + 10 s timeout per forwarded call
+- `desktop/mcp-tool-defs.cjs` — CJS mirror of `MCP_TOOLS`; pinned to the
+  TS source by `tests/desktop-mcp.test.ts` (anti-drift)
+- Renderer: `startMcpDesktopHost(services)` bound per-project in App;
+  IntentPanel ⚡ chip (desktop-only) enables/disables and reveals the
+  client config (command/args/env) to paste into the MCP client
+- Opt-in: the bridge does not exist until the user flips the chip
 
 ### D3. Web transport (streamable HTTP)
 
@@ -195,8 +208,11 @@ All tools are JSON-Schema-typed (generated from the same vocab as
 - `desktop/mcp-host-manager.cjs` + `desktop/mcp-server.cjs` — stdio host
 - `tests/mcp-tools.test.ts` — tool contracts against the real command
   layer (fake relay), incl. wrong-kind hard-fail assertion
+- `tests/desktop-mcp.test.ts` — the real CJS transport artifacts over real
+  HTTP/stdio: bridge auth + guards, stdio subprocess round-trip (11 tools),
+  host-manager pending-call lifecycle, tool-defs mirror pin
 
-**Gate D:** an MCP inspector (or any stdio client) lists the 5 tools,
+**Gate D:** an MCP inspector (or any stdio client) lists the 11 tools,
 `kyx_intent("mute the drums")` returns the wave-8 read-back and the doc
 state matches; two-failure breaker and auth-token rejection tested.
 

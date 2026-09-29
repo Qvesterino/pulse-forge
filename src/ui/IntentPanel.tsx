@@ -5,6 +5,7 @@ import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
+import { getDesktopMcpApi, type McpDesktopStatus } from "../mcp/desktop-host";
 import { getSharedPcmPlayback } from "../audio-engine/pcmPlayback";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
@@ -330,6 +331,38 @@ export function IntentPanel() {
       }
       loader.setIntentModelMode("off");
     });
+  };
+
+  // DESKTOP MCP (Phase D2) — opt-in loopback bridge + stdio forwarder in the
+  // desktop shell. The chip is desktop-only: enabling starts the bridge in
+  // main and reveals the client config (Claude Desktop & co. point their MCP
+  // config at it); forwarded calls execute through startMcpDesktopHost —
+  // the same deterministic command layer as every intent in this panel.
+  const desktopMcp = useMemo(() => getDesktopMcpApi(), []);
+  const [mcpStatus, setMcpStatus] = useState<McpDesktopStatus | null>(null);
+  const mcpConfigText = useMemo(
+    () => (mcpStatus?.clientConfig ? JSON.stringify(mcpStatus.clientConfig, null, 2) : ""),
+    [mcpStatus],
+  );
+  useEffect(() => {
+    if (!desktopMcp) return;
+    let disposed = false;
+    void desktopMcp
+      .status()
+      .then((status) => {
+        if (!disposed) setMcpStatus(status);
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, [desktopMcp]);
+  const toggleDesktopMcp = () => {
+    if (!desktopMcp) return;
+    void (mcpStatus?.enabled ? desktopMcp.disable() : desktopMcp.enable())
+      .then(() => desktopMcp.status())
+      .then((status) => setMcpStatus(status))
+      .catch(() => setMcpStatus(null));
   };
 
   // Audit 13 D2: a PROJECT SWITCH swaps `services` while this panel stays
@@ -2610,7 +2643,39 @@ export function IntentPanel() {
         >
           🤖
         </button>
+        {desktopMcp && (
+          <button
+            type="button"
+            className="intent-model-chip"
+            data-state={mcpStatus?.enabled ? "ready" : "off"}
+            onClick={toggleDesktopMcp}
+            title={
+              mcpStatus?.enabled
+                ? "MCP server beží — externý klient môže ovládať KYX. Klikni pre vypnutie."
+                : "MCP server (desktop): externý MCP klient (Claude Desktop) ovláda KYX cez deterministickú command vrstvu. Klikni pre zapnutie."
+            }
+            aria-label={`MCP server: ${mcpStatus?.enabled ? "on" : "off"}`}
+          >
+            ⚡
+          </button>
+        )}
       </div>
+      {desktopMcp && mcpStatus?.enabled && mcpConfigText && (
+        <div className="intent-mcp-config" aria-label="MCP client config">
+          <span className="intent-history-label">MCP</span>
+          <pre>{mcpConfigText}</pre>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              void navigator.clipboard?.writeText(mcpConfigText).catch(() => {});
+            }}
+            title="Skopíruj konfiguráciu do MCP klienta (Claude Desktop & co.)"
+          >
+            KOPIÍROVAŤ
+          </button>
+        </div>
+      )}
       <textarea
         ref={promptInputRef}
         className="intent-textarea"

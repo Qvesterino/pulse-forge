@@ -23,6 +23,7 @@ const { pathToFileURL } = require("node:url");
 const os = require("node:os");
 const { registerMrt2IpcHandlers } = require("./mrt2-bridge.cjs");
 const { registerClapIpcHandlers } = require("./clap-host-manager.cjs");
+const { registerMcpIpcHandlers } = require("./mcp-host-manager.cjs");
 const { registerPcmIpcHandlers } = require("./pcm-desktop.cjs");
 const { Mrt2NativeHostManager } = require("./mrt2-host-manager.cjs");
 const { Mrt2WindowsHostManager } = require("./mrt2-windows-host-manager.cjs");
@@ -201,6 +202,14 @@ app.whenReady().then(() => {
     isTrustedSender: isTrustedMrt2Frame,
   });
   registerClapIpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
+  // MCP (Phase D2): opt-in loopback bridge + stdio forwarder lifecycle. Tool
+  // calls execute in the renderer through the deterministic command layer.
+  registerMcpIpcHandlers(ipcMain, {
+    getWebContents: () => {
+      const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+      return win?.webContents ?? null;
+    },
+  });
   const pcmSessions = registerPcmIpcHandlers(ipcMain, { resourcesPath: process.resourcesPath });
   buildMenu();
   createWindow();

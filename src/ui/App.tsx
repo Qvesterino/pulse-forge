@@ -5,6 +5,7 @@ import { formatSmpTe } from "../midi/smpte";
 import { getSharedPcmPlayback, PcmPlaybackUnavailableError, type PcmPlaybackState } from "../audio-engine/pcmPlayback";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
+import { startMcpDesktopHost } from "../mcp/desktop-host";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -308,6 +309,9 @@ export function App({
   // window on channel pulse_forge so sibling audio-reactive apps can loop
   // our curves. Cleared on unmount (the documented publisher sign-out).
   useEffect(() => startQvesterProfileBus(services).stop, [services]);
+  // Desktop MCP (Phase D2): relay main-forwarded tool calls into the
+  // deterministic command layer. Browser is a noop (web relay instead).
+  useEffect(() => startMcpDesktopHost(services), [services]);
   const [toolStore] = useState(() => new ToolStore());
   const tool = useSyncExternalStore(toolStore.subscribe, toolStore.getTool, toolStore.getTool);
   void tool;

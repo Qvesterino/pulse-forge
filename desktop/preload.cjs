@@ -33,4 +33,17 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
     start: (request) => ipcRenderer.invoke("kyx:pcm:start", request),
     stop: (id) => ipcRenderer.invoke("kyx:pcm:stop", { id }),
   },
+  mcp: {
+    status: () => ipcRenderer.invoke("kyx:mcp:status"),
+    enable: () => ipcRenderer.invoke("kyx:mcp:enable"),
+    disable: () => ipcRenderer.invoke("kyx:mcp:disable"),
+    /** Main forwards an external tools/call; answer with { id, result }. */
+    onCall: (listener) => {
+      if (typeof listener !== "function") throw new TypeError("MCP call listener must be a function");
+      const handler = (_event, payload) => listener(payload);
+      ipcRenderer.on("kyx:mcp:call", handler);
+      return () => ipcRenderer.removeListener("kyx:mcp:call", handler);
+    },
+    answer: (payload) => ipcRenderer.invoke("kyx:mcp:answer", payload),
+  },
 });

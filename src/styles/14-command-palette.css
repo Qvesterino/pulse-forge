@@ -455,6 +455,28 @@ a.brand:hover .brand-mark {
 .intent-model-chip[data-state="error"] {
   color: #e06c75;
 }
+/* DESKTOP MCP (Phase D2) — enabled-state client config: the JSON snippet an
+   external MCP client (Claude Desktop & co.) points at the stdio forwarder. */
+.intent-mcp-config {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.intent-mcp-config pre {
+  flex: 1;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 72px;
+  overflow: auto;
+}
 .intent-textarea {
   width: 100%;
   min-height: 60px;

@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+/**
+ * KYX MCP STDIO SERVER — the process an external MCP client (Claude Desktop
+ * & co.) spawns. Speaks JSON-RPC 2.0 over stdin/stdout, forwards every
+ * request to the KYX app's loopback bridge (desktop/mcp-bridge-server.cjs
+ * inside Electron main) over HTTP POST, and writes the response to stdout.
+ *
+ * Config (env, set in the MCP client's config):
+ *   KYX_MCP_BRIDGE_URL  default http://127.0.0.1:8787/rpc
+ *   KYX_MCP_TOKEN       shared secret — REQUIRED; without it the server
+ *                       refuses every call (opt-in by design)
+ *
+ * THIS PROCESS IS STATELESS: it holds no project data, executes nothing,
+ * and only relays. All execution happens inside the KYX window through the
+ * deterministic command layer (clamps, strict targets, undo).
+ */
+const { MCP_TOOL_DEFS } = require("./mcp-tool-defs.cjs");
+
+const BRIDGE_URL = process.env.KYX_MCP_BRIDGE_URL || "http://127.0.0.1:8787/rpc";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify(payload) + "\n");
+}
+
+function rpcResult(id, result) {
+  return { jsonrpc: "2.0", id, result };
+}
+
+function rpcError(id, code, message) {
+  return { jsonrpc: "2.0", id, error: { code, message } };
+}
+
+async function forwardToBridge(rpc) {
+  const response = await fetch(BRIDGE_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${process.env.KYX_MCP_TOKEN || ""}`,
+    },
+    body: JSON.stringify(rpc),
+  });
+  if (response.status === 204) return undefined;
+  const parsed = await response.json();
+  if (parsed.error) {
+    const error = new Error(parsed.error.message || "bridge error");
+    error.code = parsed.error.code;
+    throw error;
+  }
+  return parsed.result;
+}
+
+async function handleRequest(rpc) {
+  if (rpc.method === "initialize") {
+    return rpcResult(rpc.id ?? null, {
+      protocolVersion: "2025-03-26",
+      capabilities: { tools: {} },
+      serverInfo: { name: "kyx-mcp", version: "1.0.0" },
+    });
+  }
+  if (rpc.method === "notifications/initialized") return undefined;
+  if (rpc.method === "ping") return rpcResult(rpc.id ?? null, {});
+  if (rpc.method === "tools/list") {
+    if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
+    return rpcResult(rpc.id ?? null, { tools: MCP_TOOL_DEFS });
+  }
+  if (rpc.method === "tools/call") {
+    if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
+    const result = await forwardToBridge(rpc);
+    return rpcResult(rpc.id ?? null, result);
+  }
+  return rpcError(rpc.id ?? null, -32601, `method not found: ${rpc.method}`);
+}
+
+let buffer = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  let newlineIndex;
+  while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+    const line = buffer.slice(0, newlineIndex).trim();
+    buffer = buffer.slice(newlineIndex + 1);
+    if (line === "") continue;
+    let rpc;
+    try {
+      rpc = JSON.parse(line);
+    } catch {
+      write(rpcError(null, -32700, "Parse error"));
+      continue;
+    }
+    handleRequest(rpc)
+      .then((response) => {
+        if (response != null) write(response);
+      })
+      .catch((error) => {
+        write(rpcError(rpc?.id ?? null, -32603, error instanceof Error ? error.message : String(error)));
+      });
+  }
+});
+process.stdin.on("end", () => process.exit(0));
+
+process.on("disconnect", () => process.exit(0));

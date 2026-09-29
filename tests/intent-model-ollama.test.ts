@@ -105,7 +105,9 @@ describe("ollama provider wiring", () => {
     expect(provider?.id).toBe("ollama.hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M");
     const text = await provider!.generate("stop", {} as never);
     expect(JSON.parse(text)).toEqual({ kind: "transport", action: "stop" });
-    expect(bodies[0].format.anyOf).toBeDefined();
+    // NO format constraint (measured 2026-09-29: the schema grammar flips the
+    // SFT model's kinds — f27406b9); validation stays with validateModelAction.
+    expect(bodies[0].format).toBeUndefined();
     expect(bodies[0].options.temperature).toBe(0);
   });
 
