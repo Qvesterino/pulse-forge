@@ -1334,3 +1334,7 @@ button.brief-chip:hover {
 .instrument-docked-content .wt-mod-row {
   min-height: 20px;
 }
+.intent-mcp-destructive-on {
+  color: #e06c75;
+  border-color: #e06c75;
+}

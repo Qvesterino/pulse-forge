@@ -263,6 +263,43 @@ export const MCP_TOOL_DEFS = [
       required: ["op"],
     },
   },
+  {
+    name: "kyx_pattern",
+    description:
+      "List the project's patterns or switch the ACTIVE pattern (step edits " +
+      "and generation act on the active one). Select by 1-based index or name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "select"] },
+        pattern: { type: "string", description: "1-based index or pattern name (for select)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_steps",
+    description:
+      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps " +
+      "per bar, 1-based indexes across the whole pattern). add sets velocity, " +
+      "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
+      "clearPad empties the whole family. Returns a verification read-back " +
+      "with the family's before → after step counts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+        family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
+        steps: {
+          type: "array",
+          items: { type: "integer", minimum: 1, maximum: 256 },
+          description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
+        },
+        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
+      },
+      required: ["op", "family"],
+    },
+  },
 ];
 
 /**

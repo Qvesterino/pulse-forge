@@ -4,6 +4,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
+import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -13,15 +14,17 @@ import type { ProjectDocument } from "../src/project-model/types";
  * through the deterministic command layer, and failures are honest.
  */
 
-function makeCtx(doc: ProjectDocument): McpToolContext {
+function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
   const undoStack: Array<() => ProjectDocument> = [];
   const redoStack: Array<() => ProjectDocument> = [];
+  const labels: string[] = [];
   return {
     getDoc: () => current,
     execute: (command) => {
       const prev = current;
       current = command.execute(current);
+      labels.push(command.label);
       undoStack.push(() => command.undo(prev));
       redoStack.length = 0;
     },
@@ -37,7 +40,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
       if (restore) current = restore();
     },
     undoStackLength: () => undoStack.length,
-    historyLabels: () => [],
+    historyLabels: () => [...labels],
     isMicRecordingActive: () => false,
     transport: {
       play: () => {},
@@ -46,19 +49,20 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
       setLoop: () => {},
       setMetronome: () => {},
     },
+    ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
   };
 }
 
 /** Context whose mutations land in the REAL store (structured tests read
  * store.doc afterwards — the makeCtx holder would hide them). */
-function storeCtx(store: ProjectStore): McpToolContext {
+function storeCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
   return {
     getDoc: () => store.doc,
     execute: (command) => store.execute(command),
     undo: () => store.undo(),
     redo: () => store.redo(),
     undoStackLength: () => store.undoStackLength,
-    historyLabels: () => [],
+    historyLabels: () => store.history.map((entry) => entry.label),
     isMicRecordingActive: () => false,
     transport: {
       play: () => {},
@@ -67,6 +71,7 @@ function storeCtx(store: ProjectStore): McpToolContext {
       setLoop: () => {},
       setMetronome: () => {},
     },
+    ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
   };
 }
 
@@ -93,7 +98,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", () => {
-  it("tool surface: the 11 documented tools", () => {
+  it("tool surface: the 13 documented tools", () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -106,6 +111,8 @@ describe("mcp tools — headless execution", () => {
       "kyx_sections",
       "kyx_markers",
       "kyx_tracks",
+      "kyx_pattern",
+      "kyx_steps",
     ]);
   });
 
@@ -235,5 +242,160 @@ describe("mcp structured tools", () => {
     expect(store.doc.tracks.length).toBe(before + 1);
     store.undo();
     expect(store.doc.tracks.length).toBe(before);
+  });
+});
+
+// ─── MODEL-DRIVABILITY WAVE — pattern select, structured steps, D4 gate ─────
+
+/** The pad id whose inferred role matches the family (the tool uses the
+ * same inference — tests must not assume kit layout). */
+function padIdForFamily(doc: ProjectDocument, family: string): string | null {
+  for (const track of doc.tracks) {
+    if (track.kind !== "drum") continue;
+    const found = track.pads.find((pad, index) => inferPadRole(pad.name, index) === family);
+    if (found) return found.id;
+  }
+  return null;
+}
+
+describe("mcp model-drivability wave", () => {
+  it("kyx_steps add lands exact 16th steps in ONE undo step; remove/undo restores", () => {
+    const store = new ProjectStore(datasetDoc());
+    const kickPad = padIdForFamily(store.doc, "kick");
+    expect(kickPad).toBeTruthy();
+    const originalStep0 = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!.rows[kickPad!]?.[0] ?? 0;
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_steps", {
+      op: "add",
+      family: "kick",
+      steps: [1, 5],
+      velocity: 0.9,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("kick add");
+    expect(result.text).toContain("one undo step");
+    const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    expect(pattern.rows[kickPad!]?.[0]).toBeCloseTo(0.9, 5);
+    expect(pattern.rows[kickPad!]?.[4]).toBeCloseTo(0.9, 5);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    const restored = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    expect(restored.rows[kickPad!]?.[0] ?? 0).toBe(originalStep0);
+  });
+
+  it("kyx_steps ghost lands soft velocity + 0.5 probability only on empty steps", () => {
+    const store = new ProjectStore(datasetDoc());
+    const kickPad = padIdForFamily(store.doc, "kick")!;
+    const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    const occupied = (pattern.rows[kickPad] ?? []).findIndex((v) => v > 0);
+    // one occupied step + one guaranteed-empty step far away
+    const emptyStep = pattern.stepCount - 1;
+    const result = executeMcpTool(storeCtx(store), "kyx_steps", {
+      op: "ghost",
+      family: "kick",
+      steps: occupied >= 0 ? [occupied + 1, emptyStep + 1] : [emptyStep + 1],
+    });
+    expect(result.mutated).toBe(true);
+    const after = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    expect(after.rows[kickPad]?.[emptyStep]).toBeCloseTo(0.35, 5);
+    expect(after.stepMeta?.[kickPad]?.[emptyStep]?.probability).toBe(0.5);
+    if (occupied >= 0) {
+      // ghost must NOT overwrite the existing hit
+      expect(after.rows[kickPad]?.[occupied]).toBe(pattern.rows[kickPad]?.[occupied]);
+    }
+  });
+
+  it("kyx_steps clearPad empties the family; out-of-range steps are refused honestly", () => {
+    const store = new ProjectStore(datasetDoc());
+    const kickPad = padIdForFamily(store.doc, "kick")!;
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_steps", { op: "add", family: "kick", steps: [1, 3, 5] });
+    const cleared = executeMcpTool(ctx, "kyx_steps", { op: "clearPad", family: "kick" });
+    expect(cleared.mutated).toBe(true);
+    const pattern = store.doc.patterns.find((p) => p.id === store.doc.activePatternId)!;
+    expect((pattern.rows[kickPad] ?? []).every((v) => v === 0)).toBe(true);
+
+    const refused = executeMcpTool(storeCtx(store), "kyx_steps", {
+      op: "add",
+      family: "kick",
+      steps: [999],
+    });
+    expect(refused.mutated).toBe(false);
+    expect(refused.text).toContain("no valid steps");
+  });
+
+  it("kyx_pattern lists and selects by 1-based index or name; unknown is honest", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const list = executeMcpTool(ctx, "kyx_pattern", { op: "list" });
+    expect(list.mutated).toBe(false);
+    expect(list.text).toContain("ACTIVE");
+
+    const already = executeMcpTool(ctx, "kyx_pattern", { op: "select", pattern: "1" });
+    expect(already.mutated).toBe(false);
+    expect(already.text).toContain("already the active pattern");
+
+    // a second pattern (generation) → select by 1-based index, then by name
+    executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "second" });
+    expect(store.doc.patterns.length).toBe(2);
+    const select = executeMcpTool(ctx, "kyx_pattern", { op: "select", pattern: "1" });
+    expect(select.mutated).toBe(true);
+    expect(store.doc.activePatternId).toBe(store.doc.patterns[0].id);
+    const secondName = store.doc.patterns[1].name;
+    const byName = executeMcpTool(ctx, "kyx_pattern", { op: "select", pattern: secondName });
+    expect(byName.mutated).toBe(true);
+    expect(store.doc.activePatternId).toBe(store.doc.patterns[1].id);
+
+    const missing = executeMcpTool(ctx, "kyx_pattern", { op: "select", pattern: "quantum" });
+    expect(missing.mutated).toBe(false);
+    expect(missing.text).toContain('no pattern "quantum"');
+  });
+
+  it("kyx_state pattern/history/scenes subjects read the real state", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_steps", { op: "add", family: "kick", steps: [3] });
+    const pattern = executeMcpTool(ctx, "kyx_state", { subject: "pattern" });
+    expect(pattern.text).toContain("active:");
+    expect(pattern.text).toContain("kick:");
+    // grid shows the 1-based step the tool just wrote
+    expect(pattern.text).toContain("3");
+
+    const history = executeMcpTool(ctx, "kyx_state", { subject: "history" });
+    expect(history.text).toContain("MCP steps");
+
+    const scenes = executeMcpTool(ctx, "kyx_state", { subject: "scenes" });
+    expect(scenes.text).toContain("Intro");
+    expect(scenes.text).toContain("intro");
+
+    const overview = executeMcpTool(ctx, "kyx_state", { subject: "overview" });
+    expect(overview.text).toContain("active pattern:");
+  });
+
+  it("D4 gate: destructive ops refuse while locked, run once allowed", () => {
+    const doc = datasetDoc();
+    const locked = makeCtx(doc);
+    const refusal = executeMcpTool(locked, "kyx_tracks", { op: "remove", family: "drums" });
+    expect(refusal.mutated).toBe(false);
+    expect(refusal.text).toContain("destructive MCP ops are locked");
+    expect(doc.tracks.length).toBe(datasetDoc().tracks.length);
+
+    const sectionRefusal = executeMcpTool(locked, "kyx_sections", { op: "remove", role: "intro" });
+    expect(sectionRefusal.text).toContain("locked");
+
+    const allowed = storeCtx(new ProjectStore(datasetDoc()), { allowDestructive: true });
+    const removed = executeMcpTool(allowed, "kyx_tracks", { op: "remove", family: "drums" });
+    expect(removed.mutated).toBe(true);
+    expect(removed.text).toContain("removed");
+  });
+
+  it("kyx_generate honors bars (length) — 2 bars land 32 steps", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "len", bars: 2 });
+    expect(result.mutated).toBe(true);
+    const pattern = store.doc.patterns[store.doc.patterns.length - 1];
+    expect(pattern.stepCount).toBe(32);
+    expect(result.text).toContain("2 bar");
   });
 });

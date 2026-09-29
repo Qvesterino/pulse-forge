@@ -1,4 +1,5 @@
 import { executeMcpTool, type McpToolContext } from "./tools";
+import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import type { Services } from "../services";
 
@@ -52,6 +53,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     historyLabels: () => services.store.history.map((entry) => entry.label),
     isMicRecordingActive,
     transport: services.transport,
+    allowDestructive: mcpAllowDestructive,
   };
 }
 

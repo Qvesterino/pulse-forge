@@ -6,6 +6,7 @@ import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
 import { getDesktopMcpApi, type McpDesktopStatus } from "../mcp/desktop-host";
+import { mcpAllowDestructive, setMcpAllowDestructive } from "../mcp/flags";
 import { getSharedPcmPlayback } from "../audio-engine/pcmPlayback";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
@@ -340,6 +341,7 @@ export function IntentPanel() {
   // the same deterministic command layer as every intent in this panel.
   const desktopMcp = useMemo(() => getDesktopMcpApi(), []);
   const [mcpStatus, setMcpStatus] = useState<McpDesktopStatus | null>(null);
+  const [mcpDestructive, setMcpDestructive] = useState(() => mcpAllowDestructive());
   const mcpConfigText = useMemo(
     () => (mcpStatus?.clientConfig ? JSON.stringify(mcpStatus.clientConfig, null, 2) : ""),
     [mcpStatus],
@@ -2673,6 +2675,22 @@ export function IntentPanel() {
             title="Skopíruj konfiguráciu do MCP klienta (Claude Desktop & co.)"
           >
             KOPIÍROVAŤ
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${mcpDestructive ? " intent-mcp-destructive-on" : ""}`}
+            onClick={() => {
+              const next = !mcpDestructive;
+              setMcpAllowDestructive(next);
+              setMcpDestructive(next);
+            }}
+            title={
+              mcpDestructive
+                ? "Mazanie (tracky/sekcie/FX) cez MCP je POVOLENÉ — externý klient môže mazať."
+                : "Mazanie cez MCP je zamknuté (odporúčané) — externý klient môže len pridávať/upravovať."
+            }
+          >
+            {mcpDestructive ? "🔓 MAZANIE" : "🔒 MAZANIE"}
           </button>
         </div>
       )}

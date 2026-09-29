@@ -15,7 +15,7 @@ import { generateLocalResult } from "../intent/pipeline";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
-import type { DrumTrack, InstrumentKind, SceneRole } from "../project-model/types";
+import type { DrumTrack, InstrumentKind } from "../project-model/types";
 import { applyPresetIntentCommand } from "../intent/preset-intent";
 import {
   addMarker,
@@ -80,13 +80,14 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_state",
     description:
       "Read-only project snapshot: tempo, key, time signature, track list, " +
-      "markers, groove, or the FX chain of one family. Never mutates.",
+      "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
+      "scenes, the undo history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
         subject: {
           type: "string",
-          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain"],
+          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain", "pattern", "scenes", "history"],
           description: "Which part of the project state to return",
         },
         family: {
@@ -167,6 +168,17 @@ export const MCP_TOOLS: McpToolDef[] = [
         energy: { type: "number", minimum: 0, maximum: 1 },
         density: { type: "number", minimum: 0, maximum: 1 },
         bpm: { type: "integer", minimum: 40, maximum: 220 },
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description: "Pattern length in bars (16 steps per bar; default engine choice)",
+        },
+        replaceMode: {
+          type: "string",
+          enum: ["new", "replace"],
+          description: "replace = overwrite the active pattern in place (default: add a new pattern)",
+        },
         roles: {
           type: "array",
           items: { type: "string", enum: ["drums", "bass", "chords", "lead"] },
@@ -281,6 +293,46 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["op"],
     },
   },
+  {
+    name: "kyx_pattern",
+    description:
+      "List the project's patterns or switch the ACTIVE pattern (step edits " +
+      "and generation act on the active one). Select by 1-based index or name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "select"] },
+        pattern: {
+          type: "string",
+          description: "1-based index or pattern name (for select)",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_steps",
+    description:
+      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps " +
+      "per bar, 1-based indexes across the whole pattern). add sets velocity, " +
+      "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
+      "clearPad empties the whole family. Returns a verification read-back " +
+      "with the family's before → after step counts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+        family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
+        steps: {
+          type: "array",
+          items: { type: "integer", minimum: 1, maximum: 256 },
+          description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
+        },
+        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
+      },
+      required: ["op", "family"],
+    },
+  },
 ];
 
 /** Narrow capability surface the tools need — implemented by the app's
@@ -302,6 +354,11 @@ export interface McpToolContext {
   };
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (format: "wav" | "mp3") => Promise<string>;
+  /**
+   * D4 escalation: destructive MCP ops (removing tracks/sections/FX) run
+   * ONLY while the user's allow flag is on. Absent/false → honest refusal.
+   */
+  allowDestructive?: () => boolean;
 }
 
 export interface McpToolResult {
@@ -313,12 +370,27 @@ export interface McpToolResult {
 
 const TICKS_PER_BAR = 4 * 480;
 
+/** D4 escalation gate — every destructive op routes through this refusal. */
+function destructiveRefusal(): McpToolResult {
+  return {
+    text:
+      "declined: destructive MCP ops are locked — the user must allow them " +
+      "in the KYX MCP chip (undoable edits still work)",
+    mutated: false,
+  };
+}
+
 export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): McpToolResult {
   const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   switch (name) {
     case "kyx_state":
       return {
-        text: stateSnapshot(ctx.getDoc(), String(record.subject ?? "overview"), record.family as string | undefined),
+        text: stateSnapshot(
+          ctx.getDoc(),
+          String(record.subject ?? "overview"),
+          record.family as string | undefined,
+          () => ctx.historyLabels(),
+        ),
         mutated: false,
       };
     case "kyx_undo": {
@@ -364,12 +436,15 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     case "kyx_intent":
       return executeIntentTool(ctx, String(record.instruction ?? ""));
     case "kyx_generate": {
+      const bars = typeof record.bars === "number" ? Math.max(1, Math.min(16, Math.round(record.bars))) : undefined;
       const spec = normalizeIntent({
         genre: typeof record.genre === "string" ? record.genre : undefined,
         seed: typeof record.seed === "string" ? record.seed : undefined,
         energy: typeof record.energy === "number" ? record.energy : undefined,
         density: typeof record.density === "number" ? record.density : undefined,
         bpmRange: typeof record.bpm === "number" ? [Number(record.bpm), Number(record.bpm)] : undefined,
+        ...(bars != null ? { length: bars * 16 } : {}),
+        ...(record.replaceMode === "replace" ? { replaceMode: "replace" as const } : {}),
         roles: Array.isArray(record.roles) ? record.roles : undefined,
       });
       const result = generateLocalResult(ctx.getDoc(), spec, "apply");
@@ -426,6 +501,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return { text: command.label, mutated: true };
     }
     case "kyx_sections": {
+      if (String(record.op ?? "") === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
       const command = sectionCommand(record, ctx.getDoc());
       if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
       ctx.execute(command);
@@ -468,6 +544,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         return { text: `renamed to "${name}"`, mutated: true };
       }
       if (op === "remove") {
+        if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
         const family = String(record.family ?? "");
         const ids = tracksInFamily(ctx.getDoc(), family);
         if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
@@ -479,6 +556,43 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       return { text: `unknown track op: ${op}`, mutated: false };
     }
+    case "kyx_pattern": {
+      const op = String(record.op ?? "list");
+      if (op === "list") {
+        const activeId = ctx.getDoc().activePatternId;
+        const list = ctx
+          .getDoc()
+          .patterns.map((pattern, index) => {
+            const bars = Math.max(1, Math.round(pattern.stepCount / 16));
+            const active = pattern.id === activeId ? " · ACTIVE" : "";
+            return `${index + 1}. "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""})${active}`;
+          })
+          .join("\n");
+        return { text: list || "no patterns", mutated: false };
+      }
+      // select — by 1-based index or case-insensitive name
+      const wanted = String(record.pattern ?? "").trim();
+      const patterns = ctx.getDoc().patterns;
+      const byIndex = /^\d+$/.test(wanted) ? patterns[Number(wanted) - 1] : undefined;
+      const target = byIndex ?? patterns.find((pattern) => pattern.name.toLowerCase() === wanted.toLowerCase());
+      if (!target) {
+        return {
+          text: `no pattern "${wanted}" — use kyx_pattern op:list (have: ${patterns.map((p) => p.name).join(", ") || "none"})`,
+          mutated: false,
+        };
+      }
+      if (target.id === ctx.getDoc().activePatternId) {
+        return { text: `"${target.name}" is already the active pattern`, mutated: false };
+      }
+      ctx.execute(setActivePattern(ctx.getDoc(), target.id));
+      const bars = Math.max(1, Math.round(target.stepCount / 16));
+      return {
+        text: `active pattern: "${target.name}" (${bars} bar${bars > 1 ? "s" : ""}) — step edits and generation act on it now`,
+        mutated: true,
+      };
+    }
+    case "kyx_steps":
+      return executeStepsTool(ctx, record);
     default:
       return { text: `unknown tool: ${name}`, mutated: false };
   }
@@ -537,7 +651,12 @@ function sectionGrooveFrom(direction: string, percent: number | undefined, secti
   return { role: section, direction: direction === "less" ? ("swingDown" as const) : ("swingUp" as const) };
 }
 
-function stateSnapshot(doc: ProjectDocument, subject: string, family: string | undefined): string {
+function stateSnapshot(
+  doc: ProjectDocument,
+  subject: string,
+  family: string | undefined,
+  historyLabels: () => string[],
+): string {
   if (subject === "tempo") {
     return `${doc.bpm} BPM · ${doc.key ?? "key unset"} · ${doc.timeSignature.numerator}/${doc.timeSignature.denominator}`;
   }
@@ -567,12 +686,167 @@ function stateSnapshot(doc: ProjectDocument, subject: string, family: string | u
     }
     return lines.slice(0, 8).join("\n") || "no tracks";
   }
+  if (subject === "pattern") {
+    const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    if (!pattern) return "no active pattern";
+    const bars = Math.max(1, Math.round(pattern.stepCount / 16));
+    const families = ["kick", "snare", "clap", "hat", "perc", "tom"] as const;
+    const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
+    const lines = [`active: "${pattern.name}" — ${bars} bar${bars > 1 ? "s" : ""}, ${pattern.stepCount} steps`];
+    for (const family of families) {
+      const pads: Array<{ id: string }> = [];
+      for (const track of drums) {
+        track.pads.forEach((pad, index) => {
+          if (inferPadRole(pad.name, index) === family) pads.push({ id: pad.id });
+        });
+      }
+      const velocities = pads.flatMap((pad) => pattern.rows[pad.id] ?? []).filter((v) => v > 0);
+      if (velocities.length === 0) continue;
+      const mean = velocities.reduce((sum, v) => sum + v, 0) / velocities.length;
+      const grid = pads
+        .map((pad) =>
+          (pattern.rows[pad.id] ?? [])
+            .map((v, i) => (v > 0 ? (i + 1).toString() : ""))
+            .filter(Boolean)
+            .join(" "),
+        )
+        .filter(Boolean)
+        .join(" | ");
+      lines.push(`${family}: ${velocities.length} steps [${grid}] vel≈${mean.toFixed(2)}`);
+    }
+    return lines.join("\n");
+  }
+  if (subject === "scenes") {
+    if (doc.scenes.length === 0) return "no scenes (empty arrangement)";
+    const barsOf = (sceneId: string): number => {
+      const clips = doc.arrangement.clips.filter((clip) => clip.sceneId === sceneId);
+      if (clips.length === 0) return 0;
+      return (
+        Math.max(...clips.map((clip) => clip.startBar + clip.lengthBars)) -
+        Math.min(...clips.map((clip) => clip.startBar))
+      );
+    };
+    return doc.scenes
+      .map((scene, index) => {
+        const role = scene.role ?? "—";
+        const bars = barsOf(scene.id);
+        return `${index + 1}. "${scene.name}" ${role}${bars > 0 ? ` ${bars}bar` : ""} intensity ${Math.round(scene.intensity * 100)}%`;
+      })
+      .join("\n");
+  }
+  if (subject === "history") {
+    const labels = historyLabels();
+    if (labels.length === 0) return "undo history empty";
+    return labels
+      .slice(-12)
+      .map((label, index, list) => `${list.length - index}. ${label}`)
+      .join("\n");
+  }
   // overview
+  const active = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
   const lines = [
-    `${doc.bpm} BPM · ${doc.key ?? "key unset"} · ${doc.tracks.length} tracks · ${doc.scenes.length} scenes`,
+    `${doc.bpm} BPM · ${doc.key ?? "key unset"} · ${doc.tracks.length} tracks · ${doc.scenes.length} scenes · ${doc.patterns.length} patterns`,
     `tracks: ${doc.tracks.map((t) => t.name).join(", ")}`,
+    `active pattern: "${active?.name ?? "none"}"${active ? ` (${Math.max(1, Math.round(active.stepCount / 16))} bar)` : ""}`,
+    `scenes: ${doc.scenes.map((s) => `${s.name}${s.role ? `(${s.role})` : ""}`).join(", ") || "none"}`,
   ];
   return lines.join("\n");
+}
+
+/** kyx_steps — structured 16th-grid edit on the active pattern's drum pads.
+ * Family → pads via the same role inference the fader/step intents use;
+ * the whole call folds into ONE snapshot (one undo step). */
+function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const doc = ctx.getDoc();
+  const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+  if (!pattern) return { text: "no active pattern", mutated: false };
+  const op = String(record.op ?? "");
+  const family = String(record.family ?? "");
+  if (!["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
+    return { text: `unknown pad family "${family}"`, mutated: false };
+  }
+  const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
+  if (drums.length === 0) return { text: "no drum tracks in the project", mutated: false };
+
+  const targets: Array<{ padId: string; name: string }> = [];
+  for (const track of drums) {
+    track.pads.forEach((pad, index) => {
+      if (inferPadRole(pad.name, index) === family) targets.push({ padId: pad.id, name: pad.name });
+    });
+  }
+  if (targets.length === 0) return { text: `no pad matches family "${family}"`, mutated: false };
+
+  const stepCount = pattern.stepCount;
+  const requested = Array.isArray(record.steps)
+    ? [...new Set(record.steps.map((step) => Math.round(Number(step))))].filter(
+        (step) => Number.isFinite(step) && step >= 1 && step <= stepCount,
+      )
+    : [];
+  if (op !== "clearPad" && requested.length === 0) {
+    return {
+      text: `no valid steps — pattern "${pattern.name}" has ${stepCount} steps (1-based, 16 per bar)`,
+      mutated: false,
+    };
+  }
+  const velocity = typeof record.velocity === "number" && record.velocity > 0 ? Math.min(1, record.velocity) : 0.8;
+
+  const familySteps = (source: ProjectDocument): number => {
+    const sourcePattern = source.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    if (!sourcePattern) return 0;
+    return targets.reduce(
+      (sum, target) => sum + (sourcePattern.rows[target.padId]?.filter((v) => v > 0).length ?? 0),
+      0,
+    );
+  };
+  const before = familySteps(doc);
+
+  let next = doc;
+  const touched: number[] = [];
+  const rowAt = (source: ProjectDocument, padId: string, index: number): number =>
+    source.patterns.find((candidate) => candidate.id === doc.activePatternId)?.rows[padId]?.[index] ?? 0;
+  for (const step of op === "clearPad" ? [] : requested) {
+    const index = step - 1;
+    for (const target of targets) {
+      const current = rowAt(next, target.padId, index);
+      let write: number | null = null;
+      if (op === "add") write = velocity;
+      else if (op === "remove") write = current > 0 ? 0 : null;
+      else if (op === "toggle") write = current > 0 ? 0 : velocity;
+      else if (op === "ghost") write = current > 0 ? null : 0.35;
+      if (write == null) continue;
+      next = setStepVelocityCommand(next, target.padId, index, write).execute(next);
+      if (op === "ghost") next = setStepMeta(next, pattern.id, target.padId, index, { probability: 0.5 }).execute(next);
+      if (!touched.includes(index)) touched.push(index);
+    }
+  }
+  if (op === "clearPad") {
+    for (const target of targets) {
+      for (let index = 0; index < stepCount; index++) {
+        if (rowAt(next, target.padId, index) > 0) {
+          next = setStepVelocityCommand(next, target.padId, index, 0).execute(next);
+          touched.push(index);
+        }
+      }
+    }
+  }
+  if (touched.length === 0) {
+    return { text: `nothing changed (${op} on ${family}: steps already match)`, mutated: false };
+  }
+  const after = familySteps(next);
+  const bars = Math.max(1, Math.round(stepCount / 16));
+  const command = snapshot("mcpSteps", `MCP steps: ${op} ${family} ×${touched.length}`, doc, next);
+  ctx.execute(command);
+  const touchedText =
+    touched.length <= 12
+      ? touched
+          .sort((a, b) => a - b)
+          .map((step) => String(step))
+          .join(", ")
+      : `${touched.length} steps`;
+  return {
+    text: `${family} ${op}: ${before} → ${after} steps (touched: ${touchedText}) · pattern "${pattern.name}" (${bars} bar${bars > 1 ? "s" : ""}) · one undo step`,
+    mutated: true,
+  };
 }
 
 function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {

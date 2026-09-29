@@ -26,13 +26,14 @@ const MCP_TOOL_DEFS = [
     name: "kyx_state",
     description:
       "Read-only project snapshot: tempo, key, time signature, track list, markers, " +
-      "groove, or the FX chain of one family. Never mutates.",
+      "groove, the ACTIVE pattern's step grid, the arrangement scenes, the undo " +
+      "history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
         subject: {
           type: "string",
-          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain"],
+          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain", "pattern", "scenes", "history"],
           description: "Which part of the project state to return",
         },
         family: {
@@ -113,6 +114,17 @@ const MCP_TOOL_DEFS = [
         energy: { type: "number", minimum: 0, maximum: 1 },
         density: { type: "number", minimum: 0, maximum: 1 },
         bpm: { type: "integer", minimum: 40, maximum: 220 },
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 16,
+          description: "Pattern length in bars (16 steps per bar; default engine choice)",
+        },
+        replaceMode: {
+          type: "string",
+          enum: ["new", "replace"],
+          description: "replace = overwrite the active pattern in place (default: add a new pattern)",
+        },
         roles: {
           type: "array",
           items: { type: "string", enum: ["drums", "bass", "chords", "lead"] },
@@ -225,6 +237,46 @@ const MCP_TOOL_DEFS = [
         name: { type: "string", description: "New name for rename" },
       },
       required: ["op"],
+    },
+  },
+  {
+    name: "kyx_pattern",
+    description:
+      "List the project's patterns or switch the ACTIVE pattern (step edits " +
+      "and generation act on the active one). Select by 1-based index or name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "select"] },
+        pattern: {
+          type: "string",
+          description: "1-based index or pattern name (for select)",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_steps",
+    description:
+      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps " +
+      "per bar, 1-based indexes across the whole pattern). add sets velocity, " +
+      "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
+      "clearPad empties the whole family. Returns a verification read-back " +
+      "with the family's before → after step counts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+        family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
+        steps: {
+          type: "array",
+          items: { type: "integer", minimum: 1, maximum: 256 },
+          description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
+        },
+        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
+      },
+      required: ["op", "family"],
     },
   },
 ];

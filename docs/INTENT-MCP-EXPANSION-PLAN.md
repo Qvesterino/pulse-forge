@@ -136,7 +136,7 @@ green under a fake metrics provider; no new audio worklets.
 > **STATUS: D1–D3 SHIPPED** (web transport live over the collab server,
 > token-authed, relay-to-browser execution) AND **D2 desktop stdio SHIPPED**
 > (loopback bridge in Electron main + stateless stdio forwarder; the tool
-> surface is 11 tools, not the 5 originally scoped).
+> surface is 13 tools, not the 5 originally scoped).
 
 **Thesis:** KYX as an MCP server turns it from "DAW with AI assist" into a
 tool any AI agent can drive. The command layer we hardened across 17 waves
@@ -144,7 +144,7 @@ tool any AI agent can drive. The command layer we hardened across 17 waves
 tool validation — an external LLM gets the same guardrails as the intent
 bar. Nothing bypasses the domain layer.
 
-### D1. Tool surface (5 tools, no new domain code)
+### D1. Tool surface (13 tools, no new domain code)
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -209,10 +209,10 @@ disable/answer`), pending-call map + 10 s timeout per forwarded call
 - `tests/mcp-tools.test.ts` — tool contracts against the real command
   layer (fake relay), incl. wrong-kind hard-fail assertion
 - `tests/desktop-mcp.test.ts` — the real CJS transport artifacts over real
-  HTTP/stdio: bridge auth + guards, stdio subprocess round-trip (11 tools),
+  HTTP/stdio: bridge auth + guards, stdio subprocess round-trip (13 tools),
   host-manager pending-call lifecycle, tool-defs mirror pin
 
-**Gate D:** an MCP inspector (or any stdio client) lists the 11 tools,
+**Gate D:** an MCP inspector (or any stdio client) lists the 13 tools,
 `kyx_intent("mute the drums")` returns the wave-8 read-back and the doc
 state matches; two-failure breaker and auth-token rejection tested.
 

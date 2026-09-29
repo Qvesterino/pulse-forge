@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { executeMcpTool, type McpToolContext } from "./tools";
+import { mcpAllowDestructive } from "./flags";
 
 /**
  * KYX MCP — BROWSER-SIDE RELAY BRIDGE (the execution half of the MCP
@@ -111,6 +112,7 @@ export class McpBridge {
       isMicRecordingActive: () => this.deps.isMicRecordingActive(),
       transport: this.deps.transport,
       export: this.deps.export,
+      allowDestructive: mcpAllowDestructive,
     };
     const result = executeMcpTool(ctx, record.tool, record.args ?? {});
     this.socket?.send(JSON.stringify({ type: "mcp-result", id: record.id, result }));
