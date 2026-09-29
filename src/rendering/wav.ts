@@ -70,7 +70,7 @@ export function createBextMetadata(input: {
   const p2 = (n: number) => String(n).padStart(2, "0");
   return {
     description: input.description,
-    originator: input.originator ?? "KYX (Pulse Forge)",
+    originator: input.originator ?? "KYX",
     originatorReference: input.originatorReference ?? globalThis.location?.hostname ?? "KYX",
     originationDate: `${d.getFullYear()}:${p2(d.getMonth() + 1)}:${p2(d.getDate())}`,
     originationTime: `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`,

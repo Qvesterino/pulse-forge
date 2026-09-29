@@ -240,7 +240,10 @@ export function ProjectBrowser({ core, onOpen }: { core: CoreServices; onOpen: (
           <input
             ref={fileInputRef}
             type="file"
-            accept=".kyx,.json,.kyx.json,.pulseforge.json"
+            // No accept filter — the importer is shape-based and accepts
+            // legacy sessions regardless of extension; the literal legacy
+            // brand token must not ship in the bundle (release preflight).
+            accept=".kyx,.json,.kyx.json,application/json"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
