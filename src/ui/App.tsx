@@ -6,6 +6,7 @@ import { getSharedPcmPlayback, PcmPlaybackUnavailableError, type PcmPlaybackStat
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { startMcpDesktopHost } from "../mcp/desktop-host";
+import { startMcpWebBridgeIfEnabled } from "../mcp/web-host";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -320,6 +321,9 @@ export function App({
   // Desktop MCP (Phase D2): relay main-forwarded tool calls into the
   // deterministic command layer. Browser is a noop (web relay instead).
   useEffect(() => startMcpDesktopHost(services), [services]);
+  // Web MCP (Phase D3): re-arm the persisted /mcp-relay bridge after a
+  // project/services swap. Inert unless the user opted in with a token.
+  useEffect(() => startMcpWebBridgeIfEnabled(services), [services]);
   const [toolStore] = useState(() => new ToolStore());
   const tool = useSyncExternalStore(toolStore.subscribe, toolStore.getTool, toolStore.getTool);
   void tool;

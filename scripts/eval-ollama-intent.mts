@@ -50,7 +50,10 @@ const rows = readFileSync(path.join(ROOT, "scripts", "data", "intent-sft", "val.
   .map((line) => JSON.parse(line) as { instruction: string; response: { kind?: string } })
   .slice(0, limit);
 
-const perKind = new Map<string, { rows: number; attempted: number; exact: number; wrongKind: number; abstain: number }>();
+const perKind = new Map<
+  string,
+  { rows: number; attempted: number; exact: number; wrongKind: number; abstain: number }
+>();
 let attempted = 0;
 let exact = 0;
 let wrongKind = 0;

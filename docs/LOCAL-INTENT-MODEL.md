@@ -156,9 +156,21 @@ artifact loader (ONNX now / wllama-GGUF later).
   `docs/INTENT-DATASET-TEMPLATES.md` — the SAME corpus feeds the LLM
   fine-tune, so the work carries over — or (b) the GGUF runtime adapter
   (GBNF constrained decoding solves joint-slot coherence natively).
-- **SFT (phase 2, LLM)**: LFM-2.5 1.2B instruct, LoRA or full FT on
-  train.jsonl, prompt = system + instruction, completion = action JSON;
-  same manifest/gate/loader contract via the GGUF runtime adapter.
+- **SFT (LIVE 2026-09-29)**: `scripts/train-intent-sft.py` — LoRA
+  (r16/α32, all-linear, bf16, 3 epochs) on the corpus with the EXACT
+  Ollama system prompt (`prompt.txt`, pinned by
+  tests/intent-model-sft-prompt.test.ts). Targets are FLATTENED
+  ({kind, intent} → root slots) — the runtime adapters and the eval
+  compare flat. Measured on val (60 rows, live Ollama, RTX 3060 6 GB,
+  ~35 min train): BASE model attempted-exact 1.7 % (wrongKind 42) →
+  **SFT model 92.3 % (48/52), wrongKind 3, schema-invalid 0** — via the
+  resolver's NESTED-UNWRAP GUARD (model-resolver.ts), which makes the
+  adapter accept the compact teacher shape the corpus teaches. Deployment:
+  merge → convert_hf_to_gguf → `ollama create kyx-intent-v1`. The
+  evaluator: `npm run intent-model:sft-eval [--model <tag>] [--limit N]`.
+  NOTE (2026-09-29, f27406b9): the Ollama request sends NO JSON-schema
+  constraint — the schema grammar flipped the tuned model's kinds; output
+  validity stays with validateModelAction.
 - **Augment (optional, phase 2)**: paraphrase pass with a larger offline
   model to multiply instructions per action — validation always against the
   deterministic teacher, never the generator.

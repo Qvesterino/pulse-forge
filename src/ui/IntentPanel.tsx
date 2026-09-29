@@ -7,6 +7,16 @@ import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
 import { getDesktopMcpApi, type McpDesktopStatus } from "../mcp/desktop-host";
 import { mcpAllowDestructive, setMcpAllowDestructive } from "../mcp/flags";
+import {
+  mcpHttpEndpoint,
+  mcpRelayEnabled,
+  mcpRelayServerUrl,
+  mcpWebBridgeConnected,
+  setMcpRelayEnabled,
+  setMcpRelayToken,
+  startMcpWebBridge,
+  stopMcpWebBridge,
+} from "../mcp/web-host";
 import { getSharedPcmPlayback } from "../audio-engine/pcmPlayback";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
@@ -365,6 +375,48 @@ export function IntentPanel() {
       .then(() => desktopMcp.status())
       .then((status) => setMcpStatus(status))
       .catch(() => setMcpStatus(null));
+  };
+
+  // WEB MCP (Phase D3) — the ⚡ chip's browser branch: starts/stops the
+  // /mcp-relay WebSocket bridge against the ACTIVE collab server. The
+  // operator's MCP_TOKEN authenticates BOTH this window's relay socket and
+  // the external client's streamable-HTTP calls; without it nothing starts.
+  const [webMcpEnabled, setWebMcpEnabled] = useState(() => mcpRelayEnabled());
+  const [webMcpConnected, setWebMcpConnected] = useState(false);
+  const [webTokenDraft, setWebTokenDraft] = useState("");
+  const webMcpServer = useMemo(() => mcpRelayServerUrl(), []);
+  const webMcpConfigText = useMemo(
+    () =>
+      JSON.stringify({ url: mcpHttpEndpoint(webMcpServer), headers: { authorization: "Bearer <MCP_TOKEN>" } }, null, 2),
+    [webMcpServer],
+  );
+  useEffect(() => {
+    if (!webMcpEnabled) return;
+    const poll = setInterval(() => setWebMcpConnected(mcpWebBridgeConnected()), 1500);
+    return () => clearInterval(poll);
+  }, [webMcpEnabled]);
+  const toggleWebMcp = () => {
+    if (webMcpEnabled) {
+      setMcpRelayEnabled(false);
+      stopMcpWebBridge();
+      setWebMcpEnabled(false);
+      setWebMcpConnected(false);
+      return;
+    }
+    if (webTokenDraft.trim() !== "") setMcpRelayToken(webTokenDraft);
+    const started = startMcpWebBridge(services);
+    if (!started) return; // no token yet — the config row asks for it
+    setMcpRelayEnabled(true);
+    setWebMcpEnabled(true);
+    setWebTokenDraft("");
+  };
+  const applyWebToken = () => {
+    if (webTokenDraft.trim() === "") return;
+    setMcpRelayToken(webTokenDraft);
+    setWebTokenDraft("");
+    if (webMcpEnabled) {
+      startMcpWebBridge(services); // restart with the new token
+    }
   };
 
   // Audit 13 D2: a PROJECT SWITCH swaps `services` while this panel stays
@@ -2661,7 +2713,52 @@ export function IntentPanel() {
             ⚡
           </button>
         )}
+        {!desktopMcp && (
+          <button
+            type="button"
+            className="intent-model-chip"
+            data-state={webMcpEnabled ? (webMcpConnected ? "ready" : "loading") : "off"}
+            onClick={toggleWebMcp}
+            title={
+              webMcpEnabled
+                ? `MCP relay (${webMcpConnected ? "pripojené" : "pripájam…"}) — klikni pre vypnutie.`
+                : "MCP relay (web): pripoj KYX ku collab serveru /mcp-relay, aby externý MCP klient mohol ovládať tento projekt. Vyžaduje MCP token servera."
+            }
+            aria-label={`MCP relay: ${webMcpEnabled ? "on" : "off"}`}
+          >
+            ⚡
+          </button>
+        )}
       </div>
+      {!desktopMcp && webMcpEnabled && (
+        <div className="intent-mcp-config" aria-label="MCP relay config">
+          <span className="intent-history-label">MCP</span>
+          <pre>{webMcpConfigText}</pre>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              void navigator.clipboard?.writeText(webMcpConfigText).catch(() => {});
+            }}
+            title="Skopíruj streamable-HTTP config pre externého MCP klienta"
+          >
+            KOPIÍROVAŤ
+          </button>
+          <input
+            type="password"
+            className="intent-mcp-token-input"
+            placeholder="MCP token"
+            value={webTokenDraft}
+            onChange={(event) => setWebTokenDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") applyWebToken();
+            }}
+            onBlur={applyWebToken}
+            aria-label="MCP relay token"
+          />
+          <span className="intent-history-label">{webMcpConnected ? "● LIVE" : "○ …"}</span>
+        </div>
+      )}
       {desktopMcp && mcpStatus?.enabled && mcpConfigText && (
         <div className="intent-mcp-config" aria-label="MCP client config">
           <span className="intent-history-label">MCP</span>

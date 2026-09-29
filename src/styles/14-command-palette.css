@@ -1338,3 +1338,12 @@ button.brief-chip:hover {
   color: #e06c75;
   border-color: #e06c75;
 }
+.intent-mcp-token-input {
+  width: 110px;
+  font-size: 10px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+}

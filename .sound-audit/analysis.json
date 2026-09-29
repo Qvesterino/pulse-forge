@@ -1,0 +1,3840 @@
+[
+ {
+  "file": "factory.clap.main",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": -0.000382,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 95,
+  "loudMs": 300,
+  "attackMs": 0.2,
+  "decayMs": 8.5,
+  "crestDb": 11,
+  "momentaryLufs": -9.1,
+  "energyFirst10ms": 0.068,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -33.6,
+   "low": -30.2,
+   "lowmid": -21.9,
+   "mid": -1.7,
+   "himid": -5.6,
+   "high": -13.8,
+   "air": -24.2,
+   "centroid": 2058.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.clap.pop",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.405,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.000234,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 350,
+  "attackMs": 0.5,
+  "decayMs": 107.8,
+  "crestDb": 10.1,
+  "momentaryLufs": -7.7,
+  "energyFirst10ms": 0.05,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -34.5,
+   "low": -28,
+   "lowmid": -19.1,
+   "mid": -1.5,
+   "himid": -6.2,
+   "high": -14.3,
+   "air": -25.6,
+   "centroid": 1911
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.clap.soft",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.415,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.000214,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 360,
+  "attackMs": 0.3,
+  "decayMs": 10.8,
+  "crestDb": 11.5,
+  "momentaryLufs": -9.1,
+  "energyFirst10ms": 0.069,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -29.5,
+   "low": -26.5,
+   "lowmid": -19.6,
+   "mid": -1.4,
+   "himid": -6.4,
+   "high": -15,
+   "air": -26.4,
+   "centroid": 1823.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.crash.dark",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.507,
+  "peakDb": -9.6,
+  "clipSamples": 0,
+  "dcOffset": 2.86e-7,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1452.4,
+  "attackMs": 0.4,
+  "decayMs": 367.4,
+  "crestDb": 19,
+  "momentaryLufs": -17,
+  "energyFirst10ms": 0.044,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -53.6,
+   "low": -44.7,
+   "lowmid": -31.9,
+   "mid": -11.4,
+   "himid": -2.9,
+   "high": -4.5,
+   "air": -12.2,
+   "centroid": 5980.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.crash.main",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.146,
+  "peakDb": -8.1,
+  "clipSamples": 0,
+  "dcOffset": 0.0000016,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1091.4,
+  "attackMs": 0.4,
+  "decayMs": 272.8,
+  "crestDb": 19.4,
+  "momentaryLufs": -17,
+  "energyFirst10ms": 0.06,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -57.4,
+   "low": -48.7,
+   "lowmid": -35.9,
+   "mid": -15,
+   "himid": -4.2,
+   "high": -3.4,
+   "air": -8.8,
+   "centroid": 7514.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.crash.pop",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.335,
+  "peakDb": -9.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00000227,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 1279.5,
+  "attackMs": 0.4,
+  "decayMs": 291.8,
+  "crestDb": 18.4,
+  "momentaryLufs": -16.5,
+  "energyFirst10ms": 0.045,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -51.2,
+   "low": -47.1,
+   "lowmid": -33.4,
+   "mid": -12.8,
+   "himid": -3.1,
+   "high": -3.9,
+   "air": -12.6,
+   "centroid": 6234
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.downlifter",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.488,
+  "peakDb": -7.1,
+  "clipSamples": 0,
+  "dcOffset": 0.00000397,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1433.1,
+  "attackMs": 0.8,
+  "decayMs": 399.8,
+  "crestDb": 17.4,
+  "momentaryLufs": -12.8,
+  "energyFirst10ms": 0.032,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -60.4,
+   "low": -52.4,
+   "lowmid": -40.6,
+   "mid": -16.7,
+   "himid": -3.6,
+   "high": -2.9,
+   "air": -14.9,
+   "centroid": 6492
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.impact",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.827,
+  "peakDb": -1.6,
+  "clipSamples": 0,
+  "dcOffset": 0.00181,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 771.7,
+  "attackMs": 1.1,
+  "decayMs": 138,
+  "crestDb": 12.1,
+  "momentaryLufs": -10.6,
+  "energyFirst10ms": 0.059,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -6.1,
+   "low": -1.3,
+   "lowmid": -24.3,
+   "mid": -21.6,
+   "himid": -27,
+   "high": -44.2,
+   "air": -48.8,
+   "centroid": 83
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.noise",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -3,
+  "clipSamples": 0,
+  "dcOffset": 0.000519,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 95,
+  "loudMs": 300,
+  "attackMs": 0.2,
+  "decayMs": 100.9,
+  "crestDb": 13.9,
+  "momentaryLufs": -12.2,
+  "energyFirst10ms": 0.153,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -26.5,
+   "low": -29.5,
+   "lowmid": -15.8,
+   "mid": -7.4,
+   "himid": -4.9,
+   "high": -5.9,
+   "air": -6.7,
+   "centroid": 7123.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.reverse",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.185,
+  "peakDb": -3.4,
+  "clipSamples": 0,
+  "dcOffset": -0.000024,
+  "leadSilenceMs": 295.7,
+  "tailSilenceMs": 50,
+  "loudMs": 839.3,
+  "attackMs": 280.9,
+  "decayMs": 35.6,
+  "crestDb": 18.5,
+  "momentaryLufs": -12.5,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -48.2,
+   "low": -47.1,
+   "lowmid": -39.4,
+   "mid": -16.8,
+   "himid": -3.3,
+   "high": -3.2,
+   "air": -14.7,
+   "centroid": 6382.8
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.riser",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.005,
+  "peakDb": -6,
+  "clipSamples": 0,
+  "dcOffset": -0.00000163,
+  "leadSilenceMs": 661.7,
+  "tailSilenceMs": 50,
+  "loudMs": 1293.5,
+  "attackMs": 513.4,
+  "decayMs": 14.1,
+  "crestDb": 18,
+  "momentaryLufs": -12.8,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -57.1,
+   "low": -52.6,
+   "lowmid": -41.6,
+   "mid": -18.9,
+   "himid": -4.9,
+   "high": -2.1,
+   "air": -12.7,
+   "centroid": 7251.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.fx.sweep",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.338,
+  "peakDb": -4,
+  "clipSamples": 0,
+  "dcOffset": -0.00000543,
+  "leadSilenceMs": 208.3,
+  "tailSilenceMs": 50,
+  "loudMs": 1080,
+  "attackMs": 182,
+  "decayMs": 164.4,
+  "crestDb": 19.1,
+  "momentaryLufs": -12.6,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -52.9,
+   "low": -50.8,
+   "lowmid": -37.2,
+   "mid": -14.9,
+   "himid": -1.9,
+   "high": -5.1,
+   "air": -17.8,
+   "centroid": 5379.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.closed.soft",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -4.4,
+  "clipSamples": 0,
+  "dcOffset": 0.000447,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 304.9,
+  "loudMs": 90.1,
+  "attackMs": 0.1,
+  "decayMs": 24.8,
+  "crestDb": 12.8,
+  "momentaryLufs": -17.4,
+  "energyFirst10ms": 0.518,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -37.2,
+   "low": -45.1,
+   "lowmid": -31.8,
+   "mid": -22.6,
+   "himid": -6.7,
+   "high": -3.3,
+   "air": -5.1,
+   "centroid": 10082.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.closed",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -4.4,
+  "clipSamples": 0,
+  "dcOffset": 0.000092,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 289.9,
+  "loudMs": 105.1,
+  "attackMs": 0.1,
+  "decayMs": 28.6,
+  "crestDb": 13.4,
+  "momentaryLufs": -17.2,
+  "energyFirst10ms": 0.45,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -48.4,
+   "low": -46,
+   "lowmid": -32.4,
+   "mid": -22.7,
+   "himid": -10.3,
+   "high": -2.7,
+   "air": -4.4,
+   "centroid": 11188.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.dnb",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.6,
+  "clipSamples": 0,
+  "dcOffset": -0.0000249,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 304.8,
+  "loudMs": 90.1,
+  "attackMs": 0.3,
+  "decayMs": 24.6,
+  "crestDb": 13,
+  "momentaryLufs": -15.8,
+  "energyFirst10ms": 0.395,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -42.1,
+   "low": -35.6,
+   "lowmid": -28.7,
+   "mid": -22.6,
+   "himid": -17,
+   "high": -0.6,
+   "air": -9.9,
+   "centroid": 8203.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.drill",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.2,
+  "clipSamples": 0,
+  "dcOffset": -0.000139,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 309.8,
+  "loudMs": 85.1,
+  "attackMs": 0.1,
+  "decayMs": 20.6,
+  "crestDb": 14.1,
+  "momentaryLufs": -16.6,
+  "energyFirst10ms": 0.487,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -42.7,
+   "low": -45.5,
+   "lowmid": -34.8,
+   "mid": -24.6,
+   "himid": -12.6,
+   "high": -2.5,
+   "air": -4.2,
+   "centroid": 11234.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.jersey",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.3,
+  "clipSamples": 0,
+  "dcOffset": 0.0000458,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 289.9,
+  "loudMs": 105,
+  "attackMs": 0.1,
+  "decayMs": 30.4,
+  "crestDb": 13.3,
+  "momentaryLufs": -15.2,
+  "energyFirst10ms": 0.364,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -39.8,
+   "low": -41.5,
+   "lowmid": -35.9,
+   "mid": -25.6,
+   "himid": -16,
+   "high": -0.5,
+   "air": -11.5,
+   "centroid": 7475.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.open.cup",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.3,
+  "clipSamples": 0,
+  "dcOffset": 0.0000567,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 75,
+  "loudMs": 319.9,
+  "attackMs": 1,
+  "decayMs": 94.7,
+  "crestDb": 15.9,
+  "momentaryLufs": -12.9,
+  "energyFirst10ms": 0.166,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -47.4,
+   "low": -41.6,
+   "lowmid": -36.1,
+   "mid": -26.2,
+   "himid": -4.9,
+   "high": -2.7,
+   "air": -8.7,
+   "centroid": 8075.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.open.short",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.6,
+  "clipSamples": 0,
+  "dcOffset": 0.000331,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 165.1,
+  "loudMs": 229.9,
+  "attackMs": 0.1,
+  "decayMs": 65.1,
+  "crestDb": 15.8,
+  "momentaryLufs": -14.5,
+  "energyFirst10ms": 0.242,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -48.9,
+   "low": -50.5,
+   "lowmid": -39.2,
+   "mid": -29.3,
+   "himid": -8.8,
+   "high": -2.6,
+   "air": -5,
+   "centroid": 10624.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.open",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.462,
+  "peakDb": -2.6,
+  "clipSamples": 0,
+  "dcOffset": 0.000148,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 406.8,
+  "attackMs": 0.8,
+  "decayMs": 97.2,
+  "crestDb": 18.1,
+  "momentaryLufs": -14.3,
+  "energyFirst10ms": 0.16,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -51.7,
+   "low": -51,
+   "lowmid": -44.1,
+   "mid": -31.9,
+   "himid": -9.3,
+   "high": -2.6,
+   "air": -4.8,
+   "centroid": 10790.8
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.pedal",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -4.4,
+  "clipSamples": 0,
+  "dcOffset": 0.000355,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 315,
+  "loudMs": 80,
+  "attackMs": 0.1,
+  "decayMs": 17.8,
+  "crestDb": 12.8,
+  "momentaryLufs": -17.9,
+  "energyFirst10ms": 0.594,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -35.5,
+   "low": -40.8,
+   "lowmid": -29.8,
+   "mid": -21.7,
+   "himid": -5.3,
+   "high": -4,
+   "air": -5.3,
+   "centroid": 9625.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.hat.phonk",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000102,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 274.8,
+  "loudMs": 120.1,
+  "attackMs": 0.1,
+  "decayMs": 38.4,
+  "crestDb": 13.3,
+  "momentaryLufs": -15,
+  "energyFirst10ms": 0.336,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -42,
+   "low": -39.3,
+   "lowmid": -33.3,
+   "mid": -23.5,
+   "himid": -3.6,
+   "high": -3.6,
+   "air": -9,
+   "centroid": 7541.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.kick.808drive",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.355,
+  "peakDb": -1.9,
+  "clipSamples": 0,
+  "dcOffset": 0.000903,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 1300.1,
+  "attackMs": 0.4,
+  "decayMs": 806.1,
+  "crestDb": 3.9,
+  "momentaryLufs": -2.2,
+  "energyFirst10ms": 0.008,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -2.8,
+   "low": -4.7,
+   "lowmid": -9.3,
+   "mid": -17.3,
+   "himid": -42,
+   "high": -67.1,
+   "air": -76.5,
+   "centroid": 81.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 113.1,
+    "note": 45,
+    "cents": 47,
+    "noteName": "A2"
+   },
+   "mid": {
+    "hz": 87.5,
+    "note": 41,
+    "cents": 3,
+    "noteName": "F2"
+   },
+   "late": {
+    "hz": 52.5,
+    "note": 32,
+    "cents": 19,
+    "noteName": "G#1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.808pure",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.555,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00115,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1500,
+  "attackMs": 0.6,
+  "decayMs": 780.9,
+  "crestDb": 5,
+  "momentaryLufs": -2.4,
+  "energyFirst10ms": 0.007,
+  "limiterRuns": 49,
+  "limiterMaxRunMs": 2.3,
+  "bands": {
+   "sub": -2.2,
+   "low": -4.9,
+   "lowmid": -11.7,
+   "mid": -21.7,
+   "himid": -53.7,
+   "high": -77.2,
+   "air": -86.1,
+   "centroid": 66.4
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 102.3,
+    "note": 44,
+    "cents": -26,
+    "noteName": "G#2"
+   },
+   "mid": {
+    "hz": 76.7,
+    "note": 39,
+    "cents": -24,
+    "noteName": "D#2"
+   },
+   "late": {
+    "hz": 44.4,
+    "note": 29,
+    "cents": 30,
+    "noteName": "F1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.909",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00179,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 74.8,
+  "loudMs": 320.1,
+  "attackMs": 0,
+  "decayMs": 118.5,
+  "crestDb": 4.6,
+  "momentaryLufs": -6.5,
+  "energyFirst10ms": 0.038,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -3.9,
+   "low": -5.6,
+   "lowmid": -5.7,
+   "mid": -13.6,
+   "himid": -29,
+   "high": -44.9,
+   "air": -59.5,
+   "centroid": 121.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 53.8,
+    "note": 33,
+    "cents": -37,
+    "noteName": "A1"
+   },
+   "mid": {
+    "hz": 52.5,
+    "note": 32,
+    "cents": 19,
+    "noteName": "G#1"
+   },
+   "late": {
+    "hz": 47.1,
+    "note": 30,
+    "cents": 32,
+    "noteName": "F#1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.deep",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.494,
+  "peakDb": -1.4,
+  "clipSamples": 0,
+  "dcOffset": 0.00252,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 439,
+  "attackMs": 0.1,
+  "decayMs": 115,
+  "crestDb": 5.9,
+  "momentaryLufs": -6.8,
+  "energyFirst10ms": 0.041,
+  "limiterRuns": 15,
+  "limiterMaxRunMs": 3.7,
+  "bands": {
+   "sub": -2.6,
+   "low": -4.2,
+   "lowmid": -12.5,
+   "mid": -19.2,
+   "himid": -46.9,
+   "high": -64.3,
+   "air": -67,
+   "centroid": 77.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 48.5,
+    "note": 31,
+    "cents": -19,
+    "noteName": "G1"
+   },
+   "mid": {
+    "hz": 45.8,
+    "note": 30,
+    "cents": -19,
+    "noteName": "F#1"
+   },
+   "late": {
+    "hz": 45.8,
+    "note": 30,
+    "cents": -19,
+    "noteName": "F#1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.dnb",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.3,
+  "clipSamples": 0,
+  "dcOffset": 0.00268,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 114.8,
+  "loudMs": 280.1,
+  "attackMs": 0.1,
+  "decayMs": 148.6,
+  "crestDb": 4.9,
+  "momentaryLufs": -7.1,
+  "energyFirst10ms": 0.045,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -4.3,
+   "low": -3.1,
+   "lowmid": -9.7,
+   "mid": -15.5,
+   "himid": -33.1,
+   "high": -50.3,
+   "air": -61.2,
+   "centroid": 102.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 55.2,
+    "note": 33,
+    "cents": 6,
+    "noteName": "A1"
+   },
+   "mid": {
+    "hz": 52.5,
+    "note": 32,
+    "cents": 19,
+    "noteName": "G#1"
+   },
+   "late": {
+    "hz": 24.2,
+    "note": 19,
+    "cents": -20,
+    "noteName": "G0"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.drill",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.655,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00164,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 600.2,
+  "attackMs": 0.2,
+  "decayMs": 592.4,
+  "crestDb": 1.9,
+  "momentaryLufs": -3.7,
+  "energyFirst10ms": 0.011,
+  "limiterRuns": 34,
+  "limiterMaxRunMs": 8.9,
+  "bands": {
+   "sub": -0.6,
+   "low": -11.9,
+   "lowmid": -11.9,
+   "mid": -21.8,
+   "himid": -43.1,
+   "high": -57,
+   "air": -65.9,
+   "centroid": 56.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 41.7,
+    "note": 28,
+    "cents": 21,
+    "noteName": "E1"
+   },
+   "mid": {
+    "hz": 41.7,
+    "note": 28,
+    "cents": 21,
+    "noteName": "E1"
+   },
+   "late": {
+    "hz": 41.7,
+    "note": 28,
+    "cents": 21,
+    "noteName": "E1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.jersey",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.3,
+  "clipSamples": 0,
+  "dcOffset": 0.00245,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 154.8,
+  "loudMs": 240.1,
+  "attackMs": 0.1,
+  "decayMs": 131,
+  "crestDb": 4.9,
+  "momentaryLufs": -7.3,
+  "energyFirst10ms": 0.052,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -6.5,
+   "low": -2.9,
+   "lowmid": -6.6,
+   "mid": -13.8,
+   "himid": -30.8,
+   "high": -46.9,
+   "air": -59,
+   "centroid": 121.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 59.2,
+    "note": 34,
+    "cents": 28,
+    "noteName": "A#1"
+   },
+   "mid": {
+    "hz": 56.5,
+    "note": 33,
+    "cents": 48,
+    "noteName": "A1"
+   },
+   "late": {
+    "hz": 24.2,
+    "note": 19,
+    "cents": -20,
+    "noteName": "G0"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.knock",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.415,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.0054,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 360.1,
+  "attackMs": 0.1,
+  "decayMs": 172.3,
+  "crestDb": 5.2,
+  "momentaryLufs": -6.6,
+  "energyFirst10ms": 0.043,
+  "limiterRuns": 14,
+  "limiterMaxRunMs": 4.4,
+  "bands": {
+   "sub": -3.1,
+   "low": -3.6,
+   "lowmid": -12.2,
+   "mid": -17.7,
+   "himid": -36.6,
+   "high": -55.2,
+   "air": -73.4,
+   "centroid": 84.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 55.2,
+    "note": 33,
+    "cents": 5,
+    "noteName": "A1"
+   },
+   "mid": {
+    "hz": 55.2,
+    "note": 33,
+    "cents": 6,
+    "noteName": "A1"
+   },
+   "late": {
+    "hz": 55.2,
+    "note": 33,
+    "cents": 6,
+    "noteName": "A1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.lofi",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00433,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 74.5,
+  "loudMs": 320.2,
+  "attackMs": 0.1,
+  "decayMs": 174.2,
+  "crestDb": 4.3,
+  "momentaryLufs": -6.5,
+  "energyFirst10ms": 0.038,
+  "limiterRuns": 14,
+  "limiterMaxRunMs": 5.2,
+  "bands": {
+   "sub": -2.6,
+   "low": -4.4,
+   "lowmid": -11.9,
+   "mid": -17,
+   "himid": -35.1,
+   "high": -53.9,
+   "air": -73.2,
+   "centroid": 82.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 49.8,
+    "note": 31,
+    "cents": 28,
+    "noteName": "G1"
+   },
+   "mid": {
+    "hz": 48.5,
+    "note": 31,
+    "cents": -19,
+    "noteName": "G1"
+   },
+   "late": {
+    "hz": 41.7,
+    "note": 28,
+    "cents": 22,
+    "noteName": "E1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.phonk",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00383,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 74.7,
+  "loudMs": 320.1,
+  "attackMs": 0.1,
+  "decayMs": 178.2,
+  "crestDb": 4.2,
+  "momentaryLufs": -6.2,
+  "energyFirst10ms": 0.038,
+  "limiterRuns": 15,
+  "limiterMaxRunMs": 5,
+  "bands": {
+   "sub": -2.8,
+   "low": -4.1,
+   "lowmid": -11.7,
+   "mid": -16.6,
+   "himid": -33.4,
+   "high": -51.2,
+   "air": -69.3,
+   "centroid": 89
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 52.5,
+    "note": 32,
+    "cents": 19,
+    "noteName": "G#1"
+   },
+   "mid": {
+    "hz": 49.8,
+    "note": 31,
+    "cents": 28,
+    "noteName": "G1"
+   },
+   "late": {
+    "hz": 41.7,
+    "note": 28,
+    "cents": 22,
+    "noteName": "E1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.pop",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.4,
+  "clipSamples": 0,
+  "dcOffset": 0.00237,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 114.8,
+  "loudMs": 280,
+  "attackMs": 0.1,
+  "decayMs": 136.8,
+  "crestDb": 5.3,
+  "momentaryLufs": -7.3,
+  "energyFirst10ms": 0.05,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -4.9,
+   "low": -3.2,
+   "lowmid": -8,
+   "mid": -15.2,
+   "himid": -33.8,
+   "high": -51.8,
+   "air": -61.9,
+   "centroid": 106.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 55.2,
+    "note": 33,
+    "cents": 6,
+    "noteName": "A1"
+   },
+   "mid": {
+    "hz": 52.5,
+    "note": 32,
+    "cents": 19,
+    "noteName": "G#1"
+   },
+   "late": {
+    "hz": 24.2,
+    "note": 19,
+    "cents": -20,
+    "noteName": "G0"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.punch",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2,
+  "clipSamples": 0,
+  "dcOffset": 0.00232,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 95,
+  "loudMs": 300,
+  "attackMs": 0.1,
+  "decayMs": 77.3,
+  "crestDb": 5.9,
+  "momentaryLufs": -8.1,
+  "energyFirst10ms": 0.056,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -6.4,
+   "low": -3,
+   "lowmid": -6.3,
+   "mid": -15.2,
+   "himid": -40.7,
+   "high": -57,
+   "air": -61.2,
+   "centroid": 111.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 56.5,
+    "note": 33,
+    "cents": 47,
+    "noteName": "A1"
+   },
+   "mid": {
+    "hz": 53.8,
+    "note": 33,
+    "cents": -37,
+    "noteName": "A1"
+   },
+   "late": {
+    "hz": 24.2,
+    "note": 19,
+    "cents": -20,
+    "noteName": "G0"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.soft",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.535,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00298,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 480,
+  "attackMs": 0.2,
+  "decayMs": 174.2,
+  "crestDb": 6,
+  "momentaryLufs": -6.9,
+  "energyFirst10ms": 0.038,
+  "limiterRuns": 14,
+  "limiterMaxRunMs": 4.9,
+  "bands": {
+   "sub": -2,
+   "low": -5,
+   "lowmid": -13.2,
+   "mid": -20.7,
+   "himid": -52.5,
+   "high": -68.9,
+   "air": -70.8,
+   "centroid": 68.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 45.8,
+    "note": 30,
+    "cents": -19,
+    "noteName": "F#1"
+   },
+   "mid": {
+    "hz": 44.4,
+    "note": 29,
+    "cents": 30,
+    "noteName": "F1"
+   },
+   "late": {
+    "hz": 44.4,
+    "note": 29,
+    "cents": 30,
+    "noteName": "F1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.sub808",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.155,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.000987,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1100,
+  "attackMs": 0.9,
+  "decayMs": 363.2,
+  "crestDb": 7.7,
+  "momentaryLufs": -4.3,
+  "energyFirst10ms": 0.017,
+  "limiterRuns": 29,
+  "limiterMaxRunMs": 0.9,
+  "bands": {
+   "sub": -5.4,
+   "low": -3,
+   "lowmid": -6.9,
+   "mid": -24.4,
+   "himid": -74.1,
+   "high": -75.3,
+   "air": -76.2,
+   "centroid": 89
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 111.7,
+    "note": 45,
+    "cents": 27,
+    "noteName": "A2"
+   },
+   "mid": {
+    "hz": 80.7,
+    "note": 40,
+    "cents": -35,
+    "noteName": "E2"
+   },
+   "late": {
+    "hz": 43.1,
+    "note": 29,
+    "cents": -23,
+    "noteName": "F1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.techno",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.625,
+  "peakDb": -1.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00182,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 570,
+  "attackMs": 0.2,
+  "decayMs": 235.7,
+  "crestDb": 5.6,
+  "momentaryLufs": -5.7,
+  "energyFirst10ms": 0.03,
+  "limiterRuns": 20,
+  "limiterMaxRunMs": 5.7,
+  "bands": {
+   "sub": -1.8,
+   "low": -6.1,
+   "lowmid": -11.2,
+   "mid": -18.3,
+   "himid": -41.5,
+   "high": -71.4,
+   "air": -79.4,
+   "centroid": 74.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 45.8,
+    "note": 30,
+    "cents": -19,
+    "noteName": "F#1"
+   },
+   "mid": {
+    "hz": 44.4,
+    "note": 29,
+    "cents": 30,
+    "noteName": "F1"
+   },
+   "late": {
+    "hz": 44.4,
+    "note": 29,
+    "cents": 30,
+    "noteName": "F1"
+   }
+  }
+ },
+ {
+  "file": "factory.kick.trap",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.425,
+  "peakDb": -1.3,
+  "clipSamples": 0,
+  "dcOffset": 0.00275,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 370,
+  "attackMs": 0.1,
+  "decayMs": 109.1,
+  "crestDb": 5.2,
+  "momentaryLufs": -6.5,
+  "energyFirst10ms": 0.043,
+  "limiterRuns": 18,
+  "limiterMaxRunMs": 3.9,
+  "bands": {
+   "sub": -3.1,
+   "low": -4.2,
+   "lowmid": -9.8,
+   "mid": -16.3,
+   "himid": -38.1,
+   "high": -65.1,
+   "air": -71.4,
+   "centroid": 91.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 49.8,
+    "note": 31,
+    "cents": 28,
+    "noteName": "G1"
+   },
+   "mid": {
+    "hz": 48.5,
+    "note": 31,
+    "cents": -19,
+    "noteName": "G1"
+   },
+   "late": {
+    "hz": 47.1,
+    "note": 30,
+    "cents": 31,
+    "noteName": "F#1"
+   }
+  }
+ },
+ {
+  "file": "factory.mallet.kalimba",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.055,
+  "peakDb": -7.8,
+  "clipSamples": 0,
+  "dcOffset": 8.9e-7,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1000,
+  "attackMs": 2.1,
+  "decayMs": 480.7,
+  "crestDb": 12.2,
+  "momentaryLufs": -13.6,
+  "energyFirst10ms": 0.024,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -92.4,
+   "low": -85,
+   "lowmid": -62,
+   "mid": -0.3,
+   "himid": -12,
+   "high": -73.4,
+   "air": -98.9,
+   "centroid": 623.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.mallet.musicbox",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.255,
+  "peakDb": -12.9,
+  "clipSamples": 0,
+  "dcOffset": 0.00000229,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 2200,
+  "attackMs": 1.9,
+  "decayMs": 1375,
+  "crestDb": 10.9,
+  "momentaryLufs": -14.3,
+  "energyFirst10ms": 0.01,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -94.6,
+   "low": -92.7,
+   "lowmid": -83,
+   "mid": -0.7,
+   "himid": -8.7,
+   "high": -19.8,
+   "air": -72.6,
+   "centroid": 1383.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.blip",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000523,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 285,
+  "loudMs": 110,
+  "attackMs": 0.1,
+  "decayMs": 46.5,
+  "crestDb": 8.6,
+  "momentaryLufs": -13.1,
+  "energyFirst10ms": 0.268,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -57.2,
+   "low": -55.7,
+   "lowmid": -49.2,
+   "mid": 0,
+   "himid": -20.9,
+   "high": -45.7,
+   "air": -70.7,
+   "centroid": 816.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.conga",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00176,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 95.4,
+  "loudMs": 299.6,
+  "attackMs": 0.3,
+  "decayMs": 77.6,
+  "crestDb": 11.1,
+  "momentaryLufs": -12.2,
+  "energyFirst10ms": 0.146,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -51.9,
+   "low": -46.4,
+   "lowmid": 0,
+   "mid": -22.6,
+   "himid": -45.2,
+   "high": -55.9,
+   "air": -66.8,
+   "centroid": 187.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.cowbell.bright",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000246,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 114,
+  "loudMs": 280.8,
+  "attackMs": 2.4,
+  "decayMs": 110,
+  "crestDb": 10.4,
+  "momentaryLufs": -10.8,
+  "energyFirst10ms": 0.087,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -58.7,
+   "low": -29.3,
+   "lowmid": -34.9,
+   "mid": -0.1,
+   "himid": -18,
+   "high": -36.7,
+   "air": -56.9,
+   "centroid": 921.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.cowbell.dark",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.475,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000585,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 420,
+  "attackMs": 4.4,
+  "decayMs": 144.8,
+  "crestDb": 10.6,
+  "momentaryLufs": -9.8,
+  "energyFirst10ms": 0.053,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -32.3,
+   "low": -33.1,
+   "lowmid": -19.7,
+   "mid": -0.1,
+   "himid": -26.1,
+   "high": -52,
+   "air": -79.4,
+   "centroid": 473.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.cowbell.drill",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": -0.000133,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 191.6,
+  "loudMs": 203.2,
+  "attackMs": 2.9,
+  "decayMs": 85.3,
+  "crestDb": 9.1,
+  "momentaryLufs": -11.2,
+  "energyFirst10ms": 0.109,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -32.9,
+   "low": -63.5,
+   "lowmid": -18.1,
+   "mid": -0.1,
+   "himid": -22.6,
+   "high": -42.8,
+   "air": -60.6,
+   "centroid": 635.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.cowbell.scream",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.516,
+  "peakDb": -2.7,
+  "clipSamples": 0,
+  "dcOffset": 0.000512,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 460.6,
+  "attackMs": 0.9,
+  "decayMs": 172.7,
+  "crestDb": 9.7,
+  "momentaryLufs": -9.1,
+  "energyFirst10ms": 0.059,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -53,
+   "low": -28,
+   "lowmid": -19.6,
+   "mid": -0.2,
+   "himid": -16,
+   "high": -39.1,
+   "air": -62.2,
+   "centroid": 741.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.cowbell",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000953,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 74.1,
+  "loudMs": 320.8,
+  "attackMs": 3.1,
+  "decayMs": 100.2,
+  "crestDb": 11.9,
+  "momentaryLufs": -12.1,
+  "energyFirst10ms": 0.108,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -45.4,
+   "low": -71.2,
+   "lowmid": -24.3,
+   "mid": 0,
+   "himid": -24.8,
+   "high": -47.9,
+   "air": -62.5,
+   "centroid": 646.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.shaker.pop",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.3,
+  "clipSamples": 0,
+  "dcOffset": 0.000476,
+  "leadSilenceMs": 5.3,
+  "tailSilenceMs": 234.7,
+  "loudMs": 160,
+  "attackMs": 5.1,
+  "decayMs": 60.8,
+  "crestDb": 12,
+  "momentaryLufs": -12,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -34.1,
+   "low": -37.4,
+   "lowmid": -29.9,
+   "mid": -18.6,
+   "himid": -5.2,
+   "high": -1.9,
+   "air": -15.6,
+   "centroid": 6880.8
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.tambourine",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.6,
+  "clipSamples": 0,
+  "dcOffset": 0.000306,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 215,
+  "loudMs": 180,
+  "attackMs": 35.2,
+  "decayMs": 15.3,
+  "crestDb": 13.4,
+  "momentaryLufs": -13.2,
+  "energyFirst10ms": 0.173,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -35.2,
+   "low": -36.1,
+   "lowmid": -27,
+   "mid": -19.8,
+   "himid": -8.8,
+   "high": -2.4,
+   "air": -5.5,
+   "centroid": 9968.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.perc.tick",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.8,
+  "clipSamples": 0,
+  "dcOffset": -0.000103,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 374.7,
+  "loudMs": 20.3,
+  "attackMs": 0.2,
+  "decayMs": 11.5,
+  "crestDb": 6.5,
+  "momentaryLufs": -16.6,
+  "energyFirst10ms": 0.779,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -44.5,
+   "low": -33.7,
+   "lowmid": -26.1,
+   "mid": -5,
+   "himid": -1.9,
+   "high": -14.5,
+   "air": -25.6,
+   "centroid": 2495.4
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.ride.bell",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.09,
+  "peakDb": -8.1,
+  "clipSamples": 0,
+  "dcOffset": -0.00000514,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1035.5,
+  "attackMs": 4.2,
+  "decayMs": 204.4,
+  "crestDb": 19.3,
+  "momentaryLufs": -16.9,
+  "energyFirst10ms": 0.071,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -66.5,
+   "low": -65.5,
+   "lowmid": -57.8,
+   "mid": -39.9,
+   "himid": -1.4,
+   "high": -7.8,
+   "air": -10,
+   "centroid": 6608.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.ride.ping",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.647,
+  "peakDb": -4.9,
+  "clipSamples": 0,
+  "dcOffset": -0.0000156,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 591.7,
+  "attackMs": 1.2,
+  "decayMs": 131.7,
+  "crestDb": 19.8,
+  "momentaryLufs": -16.7,
+  "energyFirst10ms": 0.16,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -62.2,
+   "low": -57.1,
+   "lowmid": -53.8,
+   "mid": -32.9,
+   "himid": -5.5,
+   "high": -3.3,
+   "air": -5.9,
+   "centroid": 9284.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.rim.chip",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.2,
+  "clipSamples": 0,
+  "dcOffset": -0.000185,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 335,
+  "loudMs": 60,
+  "attackMs": 0.1,
+  "decayMs": 21.2,
+  "crestDb": 8.7,
+  "momentaryLufs": -14.2,
+  "energyFirst10ms": 0.471,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -40.7,
+   "low": -40.8,
+   "lowmid": -34.3,
+   "mid": -0.1,
+   "himid": -19.3,
+   "high": -27.4,
+   "air": -38.1,
+   "centroid": 1761.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.rim.pop",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.2,
+  "clipSamples": 0,
+  "dcOffset": 0.00043,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 344.8,
+  "loudMs": 50.1,
+  "attackMs": 0,
+  "decayMs": 21.4,
+  "crestDb": 7.9,
+  "momentaryLufs": -13.6,
+  "energyFirst10ms": 0.459,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -36.4,
+   "low": -35.7,
+   "lowmid": -39.2,
+   "mid": -22.2,
+   "himid": -0.1,
+   "high": -19.2,
+   "air": -34.5,
+   "centroid": 2115.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.shaker.soft",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -3.3,
+  "clipSamples": 0,
+  "dcOffset": 0.0000528,
+  "leadSilenceMs": 5.4,
+  "tailSilenceMs": 244.9,
+  "loudMs": 149.7,
+  "attackMs": 5.2,
+  "decayMs": 44.4,
+  "crestDb": 12,
+  "momentaryLufs": -13.3,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -36.6,
+   "low": -31.8,
+   "lowmid": -32.5,
+   "mid": -17.3,
+   "himid": -3,
+   "high": -3.4,
+   "air": -16,
+   "centroid": 6168.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.dnb",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.7,
+  "clipSamples": 0,
+  "dcOffset": 0.00018,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 154.6,
+  "loudMs": 240.3,
+  "attackMs": 0.2,
+  "decayMs": 102.7,
+  "crestDb": 8.3,
+  "momentaryLufs": -8.6,
+  "energyFirst10ms": 0.112,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -29.4,
+   "low": -27.1,
+   "lowmid": -2.9,
+   "mid": -6.7,
+   "himid": -6.2,
+   "high": -15.6,
+   "air": -27.2,
+   "centroid": 1392
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.drill",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2,
+  "clipSamples": 0,
+  "dcOffset": 0.00226,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 214.3,
+  "loudMs": 180.6,
+  "attackMs": 0,
+  "decayMs": 85.8,
+  "crestDb": 8.5,
+  "momentaryLufs": -9.8,
+  "energyFirst10ms": 0.135,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -29.1,
+   "low": -27.9,
+   "lowmid": -5,
+   "mid": -7.1,
+   "himid": -3.7,
+   "high": -12.6,
+   "air": -23.4,
+   "centroid": 2194.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.jersey",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.1,
+  "clipSamples": 0,
+  "dcOffset": 0.000493,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 234.4,
+  "loudMs": 160.5,
+  "attackMs": 0.1,
+  "decayMs": 68.8,
+  "crestDb": 8.7,
+  "momentaryLufs": -10.4,
+  "energyFirst10ms": 0.147,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -34.8,
+   "low": -26.4,
+   "lowmid": -6,
+   "mid": -8.1,
+   "himid": -2.7,
+   "high": -13,
+   "air": -23.5,
+   "centroid": 2371.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.lofi",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.4,
+  "clipSamples": 0,
+  "dcOffset": 0.0029,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 174.1,
+  "loudMs": 220.7,
+  "attackMs": 0.1,
+  "decayMs": 100.2,
+  "crestDb": 7.6,
+  "momentaryLufs": -8.9,
+  "energyFirst10ms": 0.114,
+  "limiterRuns": 19,
+  "limiterMaxRunMs": 2.1,
+  "bands": {
+   "sub": -14.9,
+   "low": -15.4,
+   "lowmid": -3.3,
+   "mid": -3.9,
+   "himid": -12.7,
+   "high": -28.8,
+   "air": -44.8,
+   "centroid": 680.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.main",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00144,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 144.8,
+  "loudMs": 250.2,
+  "attackMs": 0.1,
+  "decayMs": 98.7,
+  "crestDb": 9,
+  "momentaryLufs": -9.2,
+  "energyFirst10ms": 0.141,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -28,
+   "low": -29.3,
+   "lowmid": -3.6,
+   "mid": -6.3,
+   "himid": -5.4,
+   "high": -14.9,
+   "air": -25.4,
+   "centroid": 1591.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.phonk",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.4,
+  "clipSamples": 0,
+  "dcOffset": 0.00444,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 144.7,
+  "loudMs": 250.2,
+  "attackMs": 0.2,
+  "decayMs": 109.8,
+  "crestDb": 8,
+  "momentaryLufs": -8.4,
+  "energyFirst10ms": 0.109,
+  "limiterRuns": 15,
+  "limiterMaxRunMs": 1.6,
+  "bands": {
+   "sub": -22.3,
+   "low": -17.8,
+   "lowmid": -3,
+   "mid": -4.4,
+   "himid": -9.9,
+   "high": -25.4,
+   "air": -41.3,
+   "centroid": 831.8
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.punch",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -1.4,
+  "clipSamples": 0,
+  "dcOffset": 0.00208,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 134.9,
+  "loudMs": 260,
+  "attackMs": 0,
+  "decayMs": 96.7,
+  "crestDb": 10.3,
+  "momentaryLufs": -9.8,
+  "energyFirst10ms": 0.168,
+  "limiterRuns": 1,
+  "limiterMaxRunMs": 0.2,
+  "bands": {
+   "sub": -38.4,
+   "low": -23.2,
+   "lowmid": -4.5,
+   "mid": -5.6,
+   "himid": -5,
+   "high": -13.8,
+   "air": -25.2,
+   "centroid": 1807.4
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.tight",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -2.5,
+  "clipSamples": 0,
+  "dcOffset": 0.0017,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 234.8,
+  "loudMs": 160.2,
+  "attackMs": 0.1,
+  "decayMs": 64.6,
+  "crestDb": 8.1,
+  "momentaryLufs": -10.8,
+  "energyFirst10ms": 0.178,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -40,
+   "low": -34,
+   "lowmid": -3.7,
+   "mid": -7.5,
+   "himid": -4.6,
+   "high": -13.8,
+   "air": -23.1,
+   "centroid": 1852.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.snare.trap",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.4,
+  "peakDb": -3.8,
+  "clipSamples": 0,
+  "dcOffset": -0.00078,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 234.9,
+  "loudMs": 160.1,
+  "attackMs": 0,
+  "decayMs": 86,
+  "crestDb": 9,
+  "momentaryLufs": -10.8,
+  "energyFirst10ms": 0.151,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -35.8,
+   "low": -37.7,
+   "lowmid": -15.9,
+   "mid": -16.3,
+   "himid": -3.9,
+   "high": -5.4,
+   "air": -6,
+   "centroid": 8262.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tom.floor",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00322,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 399.5,
+  "attackMs": 0.5,
+  "decayMs": 145.6,
+  "crestDb": 8.1,
+  "momentaryLufs": -8.1,
+  "energyFirst10ms": 0.062,
+  "limiterRuns": 1,
+  "limiterMaxRunMs": 0.4,
+  "bands": {
+   "sub": -43.1,
+   "low": -1.1,
+   "lowmid": -7.1,
+   "mid": -17,
+   "himid": -47.3,
+   "high": -82.7,
+   "air": -104.3,
+   "centroid": 121.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 103.6,
+    "note": 44,
+    "cents": -3,
+    "noteName": "G#2"
+   },
+   "mid": {
+    "hz": 83.4,
+    "note": 40,
+    "cents": 22,
+    "noteName": "E2"
+   },
+   "late": {
+    "hz": 75.4,
+    "note": 38,
+    "cents": 46,
+    "noteName": "D2"
+   }
+  }
+ },
+ {
+  "file": "factory.tom.high",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00179,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 400,
+  "attackMs": 0.4,
+  "decayMs": 128.7,
+  "crestDb": 9.8,
+  "momentaryLufs": -9.3,
+  "energyFirst10ms": 0.088,
+  "limiterRuns": 1,
+  "limiterMaxRunMs": 0.2,
+  "bands": {
+   "sub": -55.2,
+   "low": -52.3,
+   "lowmid": -0.1,
+   "mid": -19.2,
+   "himid": -60.4,
+   "high": -91.1,
+   "air": -102,
+   "centroid": 206.6
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 129.3,
+    "note": 48,
+    "cents": -21,
+    "noteName": "C3"
+   },
+   "mid": {
+    "hz": 129.1,
+    "note": 48,
+    "cents": -22,
+    "noteName": "C3"
+   },
+   "late": {
+    "hz": 129,
+    "note": 48,
+    "cents": -24,
+    "noteName": "C3"
+   }
+  }
+ },
+ {
+  "file": "factory.tom.low",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00267,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 400,
+  "attackMs": 0.5,
+  "decayMs": 120.5,
+  "crestDb": 9.5,
+  "momentaryLufs": -9.3,
+  "energyFirst10ms": 0.087,
+  "limiterRuns": 1,
+  "limiterMaxRunMs": 0.3,
+  "bands": {
+   "sub": -51.8,
+   "low": -9.4,
+   "lowmid": -0.6,
+   "mid": -18.5,
+   "himid": -70.7,
+   "high": -94.2,
+   "air": -104.8,
+   "centroid": 137.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 123.8,
+    "note": 47,
+    "cents": 5,
+    "noteName": "B2"
+   },
+   "mid": {
+    "hz": 100.9,
+    "note": 44,
+    "cents": -49,
+    "noteName": "G#2"
+   },
+   "late": {
+    "hz": 91.5,
+    "note": 42,
+    "cents": -19,
+    "noteName": "F#2"
+   }
+  }
+ },
+ {
+  "file": "factory.tom.mid",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00214,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 400,
+  "attackMs": 0.4,
+  "decayMs": 124.1,
+  "crestDb": 9.7,
+  "momentaryLufs": -9.3,
+  "energyFirst10ms": 0.094,
+  "limiterRuns": 1,
+  "limiterMaxRunMs": 0.2,
+  "bands": {
+   "sub": -53.7,
+   "low": -31.2,
+   "lowmid": -0.1,
+   "mid": -18.9,
+   "himid": -64.4,
+   "high": -92.6,
+   "air": -103.4,
+   "centroid": 172
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {
+   "early": {
+    "hz": 129,
+    "note": 48,
+    "cents": -24,
+    "noteName": "C3"
+   },
+   "mid": {
+    "hz": 129.2,
+    "note": 48,
+    "cents": -22,
+    "noteName": "C3"
+   },
+   "late": {
+    "hz": 119.8,
+    "note": 46,
+    "cents": 47,
+    "noteName": "A#2"
+   }
+  }
+ },
+ {
+  "file": "factory.tonal.acousticguitar",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.255,
+  "peakDb": -8.1,
+  "clipSamples": 0,
+  "dcOffset": 0.000338,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 2200.1,
+  "attackMs": 1,
+  "decayMs": 5.6,
+  "crestDb": 12.1,
+  "momentaryLufs": -13.2,
+  "energyFirst10ms": 0.017,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -37.1,
+   "low": -1.1,
+   "lowmid": -6.5,
+   "mid": -23,
+   "himid": -48.2,
+   "high": -73.4,
+   "air": -86.4,
+   "centroid": 104.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.animepluck",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00542,
+  "leadSilenceMs": 5.1,
+  "tailSilenceMs": 50,
+  "loudMs": 400,
+  "attackMs": 0.1,
+  "decayMs": 112.8,
+  "crestDb": 12.7,
+  "momentaryLufs": -12,
+  "energyFirst10ms": 0.12,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -40,
+   "low": -57.7,
+   "lowmid": -49.8,
+   "mid": -0.1,
+   "himid": -23.6,
+   "high": -49.8,
+   "air": -71.8,
+   "centroid": 575.9
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.bell",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.301,
+  "peakDb": -7.9,
+  "clipSamples": 0,
+  "dcOffset": 0.000047,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 1246.3,
+  "attackMs": 0.1,
+  "decayMs": 350.8,
+  "crestDb": 15.3,
+  "momentaryLufs": -15.7,
+  "energyFirst10ms": 0.046,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -65.6,
+   "low": -63.9,
+   "lowmid": -56.2,
+   "mid": -0.1,
+   "himid": -18.9,
+   "high": -84.2,
+   "air": -97.7,
+   "centroid": 709.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.cello",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.454,
+  "peakDb": -4.4,
+  "clipSamples": 0,
+  "dcOffset": 0.00557,
+  "leadSilenceMs": 6.4,
+  "tailSilenceMs": 50,
+  "loudMs": 2397.3,
+  "attackMs": 46.1,
+  "decayMs": 8.6,
+  "crestDb": 12.3,
+  "momentaryLufs": -13.4,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -15.6,
+   "low": -11.3,
+   "lowmid": -1.5,
+   "mid": -7.4,
+   "himid": -32.9,
+   "high": -52.5,
+   "air": -71.2,
+   "centroid": 258.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.choirpad",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 3.06,
+  "peakDb": -7,
+  "clipSamples": 0,
+  "dcOffset": 0.000606,
+  "leadSilenceMs": 7.6,
+  "tailSilenceMs": 50,
+  "loudMs": 3002.7,
+  "attackMs": 937,
+  "decayMs": 683.5,
+  "crestDb": 14,
+  "momentaryLufs": -13.7,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -62.9,
+   "low": -81.6,
+   "lowmid": -12.4,
+   "mid": -0.3,
+   "himid": -24.4,
+   "high": -43.8,
+   "air": -62.4,
+   "centroid": 721.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.darkstrings",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.428,
+  "peakDb": -6.4,
+  "clipSamples": 0,
+  "dcOffset": 0.000123,
+  "leadSilenceMs": 5.6,
+  "tailSilenceMs": 50,
+  "loudMs": 1372.2,
+  "attackMs": 108,
+  "decayMs": 336.7,
+  "crestDb": 14.5,
+  "momentaryLufs": -13.5,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -72.7,
+   "low": -47.9,
+   "lowmid": -2.2,
+   "mid": -4.2,
+   "himid": -20.1,
+   "high": -50.1,
+   "air": -76.2,
+   "centroid": 515.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.erhu",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.855,
+  "peakDb": -1.9,
+  "clipSamples": 0,
+  "dcOffset": 0.00324,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1799.3,
+  "attackMs": 1.6,
+  "decayMs": 186.8,
+  "crestDb": 20.2,
+  "momentaryLufs": -12.9,
+  "energyFirst10ms": 0.028,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -46.3,
+   "low": -64.4,
+   "lowmid": -4.8,
+   "mid": -2.2,
+   "himid": -14,
+   "high": -31,
+   "air": -49.4,
+   "centroid": 753.4
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.harp",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.771,
+  "peakDb": -3.6,
+  "clipSamples": 0,
+  "dcOffset": 0.00102,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 715.8,
+  "attackMs": 0.2,
+  "decayMs": 170.2,
+  "crestDb": 14,
+  "momentaryLufs": -12.8,
+  "energyFirst10ms": 0.076,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -55.7,
+   "low": -54.3,
+   "lowmid": -0.8,
+   "mid": -7.5,
+   "himid": -35.4,
+   "high": -71.7,
+   "air": -93,
+   "centroid": 324.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.keys",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.945,
+  "peakDb": -6.3,
+  "clipSamples": 0,
+  "dcOffset": 0.00039,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 889.9,
+  "attackMs": 0.3,
+  "decayMs": 212.2,
+  "crestDb": 14.7,
+  "momentaryLufs": -15.3,
+  "energyFirst10ms": 0.076,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -57.6,
+   "low": -55.6,
+   "lowmid": -0.8,
+   "mid": -7.5,
+   "himid": -37.5,
+   "high": -58.2,
+   "air": -73.1,
+   "centroid": 312
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.memphisguitar",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.826,
+  "peakDb": -5.8,
+  "clipSamples": 0,
+  "dcOffset": 0.000949,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 770.5,
+  "attackMs": 0.5,
+  "decayMs": 228.6,
+  "crestDb": 12.6,
+  "momentaryLufs": -13.2,
+  "energyFirst10ms": 0.065,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -57.7,
+   "low": -55.8,
+   "lowmid": -0.5,
+   "mid": -10.4,
+   "himid": -20,
+   "high": -49.9,
+   "air": -73.7,
+   "centroid": 352.7
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.nylonguitar",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.255,
+  "peakDb": -9.8,
+  "clipSamples": 0,
+  "dcOffset": 0.0000123,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 2199.8,
+  "attackMs": 9.6,
+  "decayMs": 498.3,
+  "crestDb": 11.3,
+  "momentaryLufs": -13.4,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -50.1,
+   "low": -0.6,
+   "lowmid": -9.2,
+   "mid": -24.2,
+   "himid": -48.6,
+   "high": -85,
+   "air": -103.2,
+   "centroid": 122.2
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.orchestrahit",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.651,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00715,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 596.3,
+  "attackMs": 1.9,
+  "decayMs": 97.5,
+  "crestDb": 15.1,
+  "momentaryLufs": -12.9,
+  "energyFirst10ms": 0.118,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -33.8,
+   "low": -9.1,
+   "lowmid": -4.6,
+   "mid": -3.1,
+   "himid": -18.8,
+   "high": -26.5,
+   "air": -37.3,
+   "centroid": 479
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.organ",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.004,
+  "peakDb": -10.7,
+  "clipSamples": 0,
+  "dcOffset": -0.000114,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1949.1,
+  "attackMs": 14.4,
+  "decayMs": 468.8,
+  "crestDb": 6.1,
+  "momentaryLufs": -13.7,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -70.8,
+   "low": -22.4,
+   "lowmid": -1.8,
+   "mid": -5,
+   "himid": -18.7,
+   "high": -80.7,
+   "air": -87.9,
+   "centroid": 394.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.padwarm",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.189,
+  "peakDb": -8.9,
+  "clipSamples": 0,
+  "dcOffset": 0.00000302,
+  "leadSilenceMs": 5.6,
+  "tailSilenceMs": 50,
+  "loudMs": 2133.2,
+  "attackMs": 451.6,
+  "decayMs": 340.1,
+  "crestDb": 11.8,
+  "momentaryLufs": -13.6,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -67.2,
+   "low": -18.2,
+   "lowmid": -0.5,
+   "mid": -10.5,
+   "himid": -44.1,
+   "high": -79.6,
+   "air": -111.8,
+   "centroid": 242.3
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.pizzicato",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.455,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00366,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 400,
+  "attackMs": 0.2,
+  "decayMs": 97.5,
+  "crestDb": 12,
+  "momentaryLufs": -11.6,
+  "energyFirst10ms": 0.113,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -41.6,
+   "low": -41.5,
+   "lowmid": -0.1,
+   "mid": -15.8,
+   "himid": -37.9,
+   "high": -67.9,
+   "air": -95,
+   "centroid": 272.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.pluck",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.421,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00141,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 366,
+  "attackMs": 0.5,
+  "decayMs": 104.6,
+  "crestDb": 13.5,
+  "momentaryLufs": -13.5,
+  "energyFirst10ms": 0.15,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -54,
+   "low": -51.5,
+   "lowmid": -0.1,
+   "mid": -16.9,
+   "himid": -38.7,
+   "high": -54.5,
+   "air": -69.2,
+   "centroid": 270
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.rhodes",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.264,
+  "peakDb": -6.2,
+  "clipSamples": 0,
+  "dcOffset": 0.000224,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1208.8,
+  "attackMs": 1,
+  "decayMs": 335.9,
+  "crestDb": 14.1,
+  "momentaryLufs": -13.4,
+  "energyFirst10ms": 0.045,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -52.7,
+   "low": -56.4,
+   "lowmid": -0.1,
+   "mid": -16.2,
+   "himid": -46.4,
+   "high": -67.4,
+   "air": -80.9,
+   "centroid": 276.8
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.sadpiano",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.518,
+  "peakDb": -7.3,
+  "clipSamples": 0,
+  "dcOffset": 0.000426,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1463.1,
+  "attackMs": 0.3,
+  "decayMs": 380.3,
+  "crestDb": 13.9,
+  "momentaryLufs": -13.5,
+  "energyFirst10ms": 0.039,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -59.7,
+   "low": -58,
+   "lowmid": -0.4,
+   "mid": -10.8,
+   "himid": -49.5,
+   "high": -94,
+   "air": -114.5,
+   "centroid": 287.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.sitar",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.053,
+  "peakDb": -6.4,
+  "clipSamples": 0,
+  "dcOffset": 0.000555,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1997.8,
+  "attackMs": 3.4,
+  "decayMs": 121.4,
+  "crestDb": 11.6,
+  "momentaryLufs": -13.6,
+  "energyFirst10ms": 0.015,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -43,
+   "low": -35.4,
+   "lowmid": -1,
+   "mid": -7.5,
+   "himid": -16.8,
+   "high": -31.8,
+   "air": -59.1,
+   "centroid": 328.4
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.stab",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.475,
+  "peakDb": -1.8,
+  "clipSamples": 0,
+  "dcOffset": 0.00058,
+  "leadSilenceMs": 5,
+  "tailSilenceMs": 50,
+  "loudMs": 419.6,
+  "attackMs": 0.8,
+  "decayMs": 102.8,
+  "crestDb": 15.3,
+  "momentaryLufs": -14.1,
+  "energyFirst10ms": 0.144,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -45.1,
+   "low": -42.9,
+   "lowmid": -3.7,
+   "mid": -2.7,
+   "himid": -15,
+   "high": -40.5,
+   "air": -68.3,
+   "centroid": 652.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.trumpet",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 1.156,
+  "peakDb": -5.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00639,
+  "leadSilenceMs": 5.2,
+  "tailSilenceMs": 50,
+  "loudMs": 1101.2,
+  "attackMs": 40.6,
+  "decayMs": 296.6,
+  "crestDb": 12.2,
+  "momentaryLufs": -12.6,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -52.9,
+   "low": -75.1,
+   "lowmid": -10.1,
+   "mid": -0.6,
+   "himid": -16.1,
+   "high": -31.6,
+   "air": -51.7,
+   "centroid": 976.5
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.violin",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.055,
+  "peakDb": -11.6,
+  "clipSamples": 0,
+  "dcOffset": 0.000174,
+  "leadSilenceMs": 5.9,
+  "tailSilenceMs": 50,
+  "loudMs": 1998.8,
+  "attackMs": 40.9,
+  "decayMs": 1299.7,
+  "crestDb": 7.1,
+  "momentaryLufs": -13.9,
+  "energyFirst10ms": 0,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -74.8,
+   "low": -94.8,
+   "lowmid": -65,
+   "mid": -0.1,
+   "himid": -18.6,
+   "high": -35.9,
+   "air": -55.8,
+   "centroid": 493
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
+  "file": "factory.tonal.wurli",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 2.255,
+  "peakDb": -6.9,
+  "clipSamples": 0,
+  "dcOffset": -0.00057,
+  "leadSilenceMs": 5.3,
+  "tailSilenceMs": 50,
+  "loudMs": 2199.9,
+  "attackMs": 11.5,
+  "decayMs": 529.6,
+  "crestDb": 14.6,
+  "momentaryLufs": -13.4,
+  "energyFirst10ms": 0.01,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -62.7,
+   "low": -67.3,
+   "lowmid": -1.8,
+   "mid": -4.8,
+   "himid": -46,
+   "high": -95.8,
+   "air": -106,
+   "centroid": 363.1
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ }
+]
