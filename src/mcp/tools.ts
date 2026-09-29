@@ -11,8 +11,21 @@ import {
 } from "../intent/studio-words";
 import { applyClipArrangeOps, applyArrangeOps } from "../intent/arrangeWords";
 import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words";
+import { generateLocalResult } from "../intent/pipeline";
+import { normalizeIntent } from "../intent/normalize";
+import { resolveSceneTarget } from "../intent/arrangeWords";
+import type { InstrumentKind } from "../project-model/types";
 import { applyPresetIntentCommand } from "../intent/preset-intent";
-import { applyExactIntentCommand } from "../commands/commands";
+import {
+  addMarker,
+  applyExactIntentCommand,
+  applyGenerationResultCommand,
+  createDrumTrack,
+  createInstrumentTrack,
+  deleteTrack,
+  removeMarker,
+  setTrackParams,
+} from "../commands/commands";
 
 /**
  * KYX MCP — TOOL SURFACE (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D1).
@@ -117,6 +130,152 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["format"],
     },
   },
+  {
+    name: "kyx_generate",
+    description:
+      "Generate a new pattern from an intent spec (deterministic engine, " +
+      "one undo step). Returns the pattern name and resolved BPM.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        seed: { type: "string", description: "Deterministic seed (same seed = same pattern)" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        density: { type: "number", minimum: 0, maximum: 1 },
+        bpm: { type: "integer", minimum: 40, maximum: 220 },
+        roles: {
+          type: "array",
+          items: { type: "string", enum: ["drums", "bass", "chords", "lead"] },
+          description: "Which roles the pattern plays (default all)",
+        },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_groove",
+    description:
+      "Groove/swing control. Global (no section) adjusts project swing; " +
+      "section-scoped bakes microtiming into that section's pattern.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        direction: { type: "string", enum: ["more", "less", "tighter", "set"] },
+        section: {
+          type: "string",
+          enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+          description: "Omit = global groove",
+        },
+        percent: { type: "integer", minimum: 0, maximum: 100, description: "Only for direction 'set'" },
+      },
+      required: ["direction"],
+    },
+  },
+  {
+    name: "kyx_fx",
+    description:
+      "Structured effect operation on a track family: more/less turn the " +
+      "primary knob, remove deletes instances, bypass/enable flags them.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        effect: {
+          type: "string",
+          enum: [
+            "reverb",
+            "delay",
+            "saturation",
+            "distortion",
+            "chorus",
+            "flanger",
+            "phaser",
+            "tremolo",
+            "bitcrusher",
+            "compressor",
+            "pump",
+            "eq",
+          ],
+        },
+        family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
+        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+      },
+      required: ["effect", "family", "action"],
+    },
+  },
+  {
+    name: "kyx_sections",
+    description:
+      "Arrangement operations: add/remove/duplicate/reorder/resize named " +
+      "sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize"] },
+        role: {
+          type: "string",
+          enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+        },
+        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize" },
+      },
+      required: ["op", "role"],
+    },
+  },
+  {
+    name: "kyx_markers",
+    description: "Add a cue marker at a bar, or remove the marker nearest a bar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove"] },
+        bar: { type: "integer", minimum: 1, description: "1-based bar" },
+        name: { type: "string", description: "Optional marker name" },
+      },
+      required: ["op", "bar"],
+    },
+  },
+  {
+    name: "kyx_tracks",
+    description:
+      "Track CRUD: add a drum or instrument track, remove/rename an " +
+      "existing one by family. Removing the last track is declined.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["addDrum", "addInstrument", "remove", "rename"] },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
+          description: "For remove/rename: which family to touch",
+        },
+        instrument: {
+          type: "string",
+          enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
+          description: "For addInstrument",
+        },
+        name: { type: "string", description: "New name for rename" },
+      },
+      required: ["op"],
+    },
+  },
 ];
 
 /** Narrow capability surface the tools need — implemented by the app's
@@ -199,9 +358,178 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     }
     case "kyx_intent":
       return executeIntentTool(ctx, String(record.instruction ?? ""));
+    case "kyx_generate": {
+      const spec = normalizeIntent({
+        genre: typeof record.genre === "string" ? record.genre : undefined,
+        seed: typeof record.seed === "string" ? record.seed : undefined,
+        energy: typeof record.energy === "number" ? record.energy : undefined,
+        density: typeof record.density === "number" ? record.density : undefined,
+        bpmRange: typeof record.bpm === "number" ? [Number(record.bpm), Number(record.bpm)] : undefined,
+        roles: Array.isArray(record.roles) ? record.roles : undefined,
+      });
+      const result = generateLocalResult(ctx.getDoc(), spec, "apply");
+      if (!result.proposal) {
+        return {
+          text: `generation rejected: ${result.diagnostics.errors[0] ?? "unknown"}`,
+          mutated: false,
+        };
+      }
+      ctx.execute(applyGenerationResultCommand(ctx.getDoc(), result));
+      const pattern = result.proposal.pattern;
+      const stepBars = Math.max(1, Math.round(pattern.stepCount / 16));
+      return {
+        text: `generated "${pattern.name}" — ${pattern.stepCount} steps (~${stepBars} bar) · project ${ctx.getDoc().bpm} BPM (one undo step in KYX)`,
+        mutated: true,
+      };
+    }
+    case "kyx_groove": {
+      const direction = String(record.direction ?? "");
+      const section = typeof record.section === "string" ? record.section : undefined;
+      const percent = typeof record.percent === "number" ? record.percent : undefined;
+      if (section == null) {
+        const command = applyGrooveIntent(
+          ctx.getDoc(),
+          direction === "set"
+            ? { direction: "set", percent: percent ?? 50 }
+            : direction === "tighter"
+              ? { direction: "tighter" }
+              : { direction: direction === "less" ? "swingDown" : "swingUp" },
+        );
+        if (!command) return { text: "groove already neutral", mutated: false };
+        ctx.execute(command);
+        return { text: command.label, mutated: true };
+      }
+      const scoped = applySectionGrooveIntent(ctx.getDoc(), sectionGrooveFrom(direction, percent, section));
+      if (!scoped) return { text: `no pattern for the "${section}" section`, mutated: false };
+      ctx.execute(scoped);
+      return { text: scoped.label, mutated: true };
+    }
+    case "kyx_fx": {
+      const command = applyEffectIntent(ctx.getDoc(), {
+        effectType: record.effect,
+        targets: [record.family],
+        direction:
+          record.action === "remove" || record.action === "bypass"
+            ? "remove"
+            : record.action === "enable"
+              ? "more"
+              : record.action,
+        ...(typeof record.percent === "number" ? { percent: record.percent } : {}),
+        detected: ["MCP"],
+      } as unknown as Parameters<typeof applyEffectIntent>[1]);
+      ctx.execute(command);
+      return { text: command.label, mutated: true };
+    }
+    case "kyx_sections": {
+      const command = sectionCommand(record, ctx.getDoc());
+      if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
+      ctx.execute(command);
+      return { text: command.label, mutated: true };
+    }
+    case "kyx_markers": {
+      const op = String(record.op ?? "add");
+      const bar = Math.max(1, Number(record.bar ?? 1));
+      const tick = (bar - 1) * TICKS_PER_BAR;
+      if (op === "add") {
+        const name = typeof record.name === "string" && record.name.trim() !== "" ? record.name.trim() : undefined;
+        const command = addMarker(ctx.getDoc(), { tick, name });
+        ctx.execute(command);
+        return { text: `marker at bar ${bar}`, mutated: true };
+      }
+      const nearest = ctx.getDoc().markers.find((marker) => Math.abs(marker.tick - tick) < TICKS_PER_BAR);
+      if (nearest == null) return { text: `no marker near bar ${bar}`, mutated: false };
+      ctx.execute(removeMarker(ctx.getDoc(), nearest.id));
+      return { text: `marker "${nearest.name}" removed`, mutated: true };
+    }
+    case "kyx_tracks": {
+      const op = String(record.op ?? "");
+      if (op === "addDrum") {
+        const command = createDrumTrack(ctx.getDoc());
+        ctx.execute(command);
+        return { text: command.label, mutated: true };
+      }
+      if (op === "addInstrument") {
+        const kind = (typeof record.instrument === "string" ? record.instrument : "analog") as InstrumentKind;
+        const command = createInstrumentTrack(ctx.getDoc(), kind);
+        ctx.execute(command);
+        return { text: command.label, mutated: true };
+      }
+      if (op === "rename") {
+        const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
+        const family = String(record.family ?? "");
+        const ids = tracksInFamily(ctx.getDoc(), family);
+        if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+        ctx.execute(setTrackParams(ctx.getDoc(), ids[0], { name }));
+        return { text: `renamed to "${name}"`, mutated: true };
+      }
+      if (op === "remove") {
+        const family = String(record.family ?? "");
+        const ids = tracksInFamily(ctx.getDoc(), family);
+        if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+        if (ctx.getDoc().tracks.length - ids.length < 1) {
+          return { text: "declined: cannot remove the last track", mutated: false };
+        }
+        for (const id of ids) ctx.execute(deleteTrack(ctx.getDoc(), id));
+        return { text: `removed ${ids.length} track(s) (${family})`, mutated: true };
+      }
+      return { text: `unknown track op: ${op}`, mutated: false };
+    }
     default:
       return { text: `unknown tool: ${name}`, mutated: false };
   }
+}
+
+/** Strict family -> track ids for MCP ops: name/kind match only, groups and
+ * non-matching families return empty (the caller reports honestly). */
+function tracksInFamily(doc: ProjectDocument, family: string): string[] {
+  if (family === "drums") return doc.tracks.filter((t) => t.kind === "drum").map((t) => t.id);
+  const wanted = new RegExp("\\b" + family + "\\b", "i");
+  return doc.tracks
+    .filter((t) => {
+      if (t.kind === "group") return false;
+      if (wanted.test(t.name)) return true;
+      if (t.kind !== "instrument") return false;
+      if (family === "bass") return ["bass", "808", "logdrum"].includes(t.instrument);
+      if (family === "lead") return ["lead", "pluck", "spectral"].includes(t.instrument);
+      if (family === "chords") return t.instrument === "keys" || /chord|pad/i.test(t.name);
+      return false;
+    })
+    .map((t) => t.id);
+}
+
+/** Section op -> arrange command via the role resolver. */
+function sectionCommand(record: Record<string, unknown>, doc: ProjectDocument): Command | null {
+  const op = String(record.op ?? "");
+  const role = String(record.role ?? "drop");
+  const bars = Math.max(1, Math.min(64, Number(record.bars ?? 4)));
+  const scene = resolveSceneTarget(doc, role, [role as never]);
+  switch (op) {
+    case "add":
+      return applyArrangeOps(doc, [{ op: "addRole", role: role as never, beforeSceneId: null }]);
+    case "remove":
+      if (!scene) return null;
+      return applyArrangeOps(doc, [{ op: "remove", sceneId: scene.id, role: scene.role ?? null, name: scene.name }]);
+    case "duplicate":
+      if (!scene) return null;
+      return applyArrangeOps(doc, [{ op: "duplicate", sceneId: scene.id, role: scene.role ?? null, name: scene.name }]);
+    case "reorder":
+      if (!scene) return null;
+      return applyArrangeOps(doc, [{ op: "reorder", sceneId: scene.id, dir: "later" }]);
+    case "resize":
+      if (!scene) return null;
+      return applyArrangeOps(doc, [
+        { op: "resize", sceneId: scene.id, role: scene.role ?? null, name: scene.name, bars },
+      ]);
+    default:
+      return null;
+  }
+}
+
+/** Scoped groove part builder for the kyx_groove tool. */
+function sectionGrooveFrom(direction: string, percent: number | undefined, section: string) {
+  if (direction === "set") return { role: section, direction: "set" as const, swingPercent: percent ?? 50 };
+  if (direction === "tighter") return { role: section, direction: "tighter" as const };
+  return { role: section, direction: direction === "less" ? ("swingDown" as const) : ("swingUp" as const) };
 }
 
 function stateSnapshot(doc: ProjectDocument, subject: string, family: string | undefined): string {

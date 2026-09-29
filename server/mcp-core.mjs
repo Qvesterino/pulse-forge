@@ -126,6 +126,143 @@ export const MCP_TOOL_DEFS = [
       required: ["format"],
     },
   },
+  {
+    name: "kyx_generate",
+    description: "Generate a new pattern from an intent spec (deterministic engine, one undo step).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        seed: { type: "string" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        density: { type: "number", minimum: 0, maximum: 1 },
+        bpm: { type: "integer", minimum: 40, maximum: 220 },
+        roles: {
+          type: "array",
+          items: { type: "string", enum: ["drums", "bass", "chords", "lead"] },
+        },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_groove",
+    description:
+      "Groove/swing: global (no section) adjusts project swing; section-scoped " +
+      "bakes microtiming into that section's pattern.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        direction: { type: "string", enum: ["more", "less", "tighter", "set"] },
+        section: {
+          type: "string",
+          enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+        },
+        percent: { type: "integer", minimum: 0, maximum: 100 },
+      },
+      required: ["direction"],
+    },
+  },
+  {
+    name: "kyx_fx",
+    description:
+      "Structured effect op on a track family: more/less turn the primary knob, " +
+      "remove deletes, bypass/enable flags instances.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        effect: {
+          type: "string",
+          enum: [
+            "reverb",
+            "delay",
+            "saturation",
+            "distortion",
+            "chorus",
+            "flanger",
+            "phaser",
+            "tremolo",
+            "bitcrusher",
+            "compressor",
+            "pump",
+            "eq",
+          ],
+        },
+        family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
+        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+      },
+      required: ["effect", "family", "action"],
+    },
+  },
+  {
+    name: "kyx_sections",
+    description: "Arrangement ops on named sections (intro/drop/chorus/...).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize"] },
+        role: {
+          type: "string",
+          enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
+        },
+        bars: { type: "integer", minimum: 1, maximum: 64 },
+      },
+      required: ["op", "role"],
+    },
+  },
+  {
+    name: "kyx_markers",
+    description: "Add a cue marker at a bar, or remove the marker nearest a bar.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "remove"] },
+        bar: { type: "integer", minimum: 1 },
+        name: { type: "string" },
+      },
+      required: ["op", "bar"],
+    },
+  },
+  {
+    name: "kyx_tracks",
+    description:
+      "Track CRUD: add drum/instrument track, remove or rename by family. " + "Removing the last track is declined.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["addDrum", "addInstrument", "remove", "rename"] },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
+        },
+        instrument: {
+          type: "string",
+          enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
+        },
+        name: { type: "string" },
+      },
+      required: ["op"],
+    },
+  },
 ];
 
 /**
